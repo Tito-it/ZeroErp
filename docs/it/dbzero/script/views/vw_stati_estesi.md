@@ -5,6 +5,8 @@
 >
 > Estensione dei dati degli stati: include info ISTAT, catastale e contesto da jsonb.
 
+> 🔐 **Sicurezza**: definer (default delle viste) — le tabelle sotto si leggono con i privilegi dell'owner `zeroerp_owner`, e la RLS che vale e' la sua, non quella di chi interroga.
+
 <div data-search-exclude markdown>
 
 ```sql

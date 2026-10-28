@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_resolve_stato_esecuzione(p_stato_source text, p_has_critical boolean, p_fatturato boolean, p_default_stato_esecuzione character varying)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

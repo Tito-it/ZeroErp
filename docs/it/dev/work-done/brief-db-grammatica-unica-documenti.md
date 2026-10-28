@@ -1,0 +1,2177 @@
+# Brief DB — Una sola grammatica per i tipi di documento
+
+## ⏭️ Chi riparte — aggiornato al 2026-10-25
+
+✅ **Brief chiuso il 2026-10-25 e archiviato.** Lotto 4 fatto: presidio verde come app (Tid, 2026-10-25), L4-1 = A (§15). I due punti che non erano grammatica (il blocco «origine» della stampa della fattura, la prova a video del 2b) sono passati a [brief-modello-documento-vendita §10](../work-in-progress/brief-modello-documento-vendita.md) (D-G1, D-G2). Lo storico qui sotto resta com'era. Il giro BE/FE del lotto 3 è committato (`de6adcf9f`, PR #1949). Il lotto 3 (le note) è chiuso su DB (`20261025-53` … `-69`, applicato su dbdev e scratch, pgTAP verdi come app) e su BE/FE (§14.10, 2026-10-25: elenco BE-1 … FE-2 tutto fatto, chiamata reale su dbdev, suite intera verde); il giro BE/FE è **da committare**. A Tid, quando vuole, la prova a video delle note di ordine, DDT, offerta e articolo. Tutto il resto è chiuso e in `main`: lotti 0, 1, 2a … 2e e §13.6 su DB e BE/FE (§13.6: DB `2ada3f6d1`, BE/FE `a5af6305e`). Il ponte di `fn_articolo_riga_contesto` è morto nel 2a (`20261019-53`). Restano a Tid, quando vuole, le prove a video di fine cantiere. Il brief si è fermato il 2026-10-21 perché il lavoro è passato a [brief-modello-documento-vendita](../work-in-progress/brief-modello-documento-vendita.md): i due brief non dipendono l'uno dall'altro (§14.1).
+
+| # | Chi | Che cosa | Dove | Aspetta |
+| --- | --- | --- | --- | --- |
+| 1 | ✅ **Tid** | Direzione: una grammatica sola per tutti i tipi di documento (la strada 3 dell'A-8-ter) | §2 | — |
+| 2 | ✅ **Tid** | G-1 (vince `config.sorgenti`), G-2 (righe, varianti, tutti gli schemi, `EMAIL_BOZZA`), G-3 (il vincolo si adegua al nome), G-4 (lotti 0 → 4), 2026-10-18 | §5 | — |
+| 3 | ✅ team DB | Censimento: otto vocabolari, matrice, chi parla e chi traduce (DB e backend), vincoli | §7 | — |
+| 4 | ✅ **Tid** | G-5 famiglie di numerazione, G-6 aree al plurale, G-7 catalogo delle note, G-8 prefissi di chiave (2026-10-18) | §7.9 | — |
+| 4-bis | ✅ **Tid** | Il via allo sviluppo (2026-10-18 sera; numeri da `20261019-14`) | — | — |
+| 5 | ✅ team DB | Lotto 0 scritto e provato in transazione: `20261019-14`, `-15`, due CSV, pgTAP | §8 | — |
+| 5-bis | ✅ **Tid** | K-1 = (b1), la chiave resta doppia; nomi `DISTINTA_INCASSO` ed `EMAIL` confermati (2026-10-19) | §8.3 | — |
+| 5-ter | ✅ **Tid** | Apply del lotto 0, pgTAP 9/9 come app dopo la correzione del test 6 (2026-10-19) | §8.5 | 5 |
+| 5-quater | ✅ sessione FE | Le 25 chiavi `config.tipi_entita.*` in `it.json`/`en.json`, `check_i18n_keys` verde (2026-10-19) | §8.4 | 5 |
+| 6 | ✅ team DB | Lotto 1 scritto e provato in transazione: `20261019-18` … `-32`, pgTAP (2026-10-19) | §9 | — |
+| 6-bis | ✅ sessione BE | Il giro BE del lotto 1: `DocumentoEccezioni` e i due service sui codici delle sorgenti, chiamata reale su dbdev (2026-10-19) | §9.4, §9.6 | 6 |
+| 6-ter | ✅ **Tid** | Apply del lotto 1 su dbdev e corsa dei pgTAP come app: nessuna regressione (2026-10-19) | §9.5 | 6 |
+| 6-quater | ✅ team DB | Piano del lotto 2: perimetro misurato, proposta di cinque sotto-giri (2026-10-19) | §10 | — |
+| 6-quinquies | ✅ **Tid** | L2-1: sì ai cinque sotto-giri, via al 2a (2026-10-19) | §10.3 | 6-quater |
+| 6-sexies-a | ✅ team DB | Lotto 2a scritto e provato in transazione: `20261019-40` … `-79` | §11 | — |
+| 6-sexies-b | ✅ sessione BE/FE | Il giro BE/FE del 2a (mixin indirizzi, annullo con legami, due risposte API), chiamata reale su dbdev (2026-10-19) | §11.4, §11.6 | 6-sexies-a |
+| 6-sexies-c | ✅ **Tid** | Apply del 2a su dbdev e corsa dei pgTAP come app: verdi, dopo l'adeguamento di un test (2026-10-19) | §11.5 | 6-sexies-a |
+| 6-septies-a | ✅ team DB | Lotto 2b scritto e provato in transazione: `20261019-87` … `-99`, tre CSV, 16 pgTAP (uno nuovo) | §12 | — |
+| 6-septies-b | ✅ sessione BE/FE | Il giro BE/FE del 2b: origine dell'ordine da offerta, origine dei legami, destinazione dello smistamento (tre risposte API), e2e sul DB vero (2026-10-19) | §12.4, §12.7 | 6-septies-a |
+| 6-septies-d | **Tid** | Prova a video del 2b (§12.7); ✅ L2b-1 decisa: (a), etichetta in una colonna a DB (2026-10-19) | §12.7, §12.9 | 6-septies-b |
+| 6-septies-c | ✅ **Tid** | Apply del 2b su dbdev e corsa dei pgTAP come app: verdi (2026-10-19) | §12.6 | 6-septies-a |
+| 6-septies-e+f | ✅ team DB | §12.8 e §12.9 insieme (via di Tid, 2026-10-19 sera): `config.sorgenti.etichetta` (colonna, CSV, `NOT NULL` in `90_end`), `fn_partite_merce` con `ORDINE_VENDITA`, lo standard dell'ordine v2 (forma 3); `20261020-22` … `-25`, provati in transazione (2026-10-20) | §12.10 | — |
+| 6-septies-h | ✅ **Tid** | Apply di `20261020-22` … `-25` su dbdev (2026-10-19 sera) e corsa dei pgTAP come app: verdi, nessuna regressione (2026-10-20); L2b-2 = (c) (2026-10-20) | §12.10.3, §12.10.5 | 6-septies-e+f |
+| 6-septies-g | ✅ sessione BE | `get_ordine` con `documento_origine_etichetta`, builder dell'ordine in **forma 3** con `origine.etichetta`, test (anche sul DB vero), `api_ordini.md`; i commenti e la doc del §12.8; worker ricaricati (2026-10-20) | §12.10.6 | 6-septies-h |
+| 6-septies-i | ✅ **Tid** | Lo SQL una tantum di L2b-2 su dbdev, dopo il riavvio del backend in forma 3 (2026-10-20) | §12.10.3 | 6-septies-g |
+| 6-octies-a | ✅ **Tid** | L2-2 = (b), un apply solo per 2c, 2d, 2e; L2d-1 = `apribile`; L2e-1 = solo dbdev (2026-10-20) | §10.4 | — |
+| 6-octies-b | ✅ **Tid** | Il via allo sviluppo (2026-10-20): numeri dal primo libero, `20261020-32`, oltre il `-99` al `20261021-01`; `%TYPE` in firma, `DECLARE`, `RETURNS TABLE` | §10.4.1 | 6-octies-a |
+| 6-octies-c | ✅ team DB | 2c e 2d scritti (`-32` … `-73`) e provati sullo scratch: 251 pgTAP, nessuna regressione dopo l'adeguamento di 26 test (2026-10-20) | §13.1, §13.5 | — |
+| 6-octies-d | ✅ **Tid** | L2e-2 = (a), due BB della chiave; L2c-1 = (a), nel giro (2026-10-20) | §13.3, §13.3-bis | 6-octies-c |
+| 6-octies-e | ✅ team DB | L2c-1 e 2e scritti (`-64`, `-65` … `-98`), prova d'insieme sullo scratch: 328 pgTAP, nessuna regressione (2026-10-20) | §13.1, §13.5-bis | 6-octies-d |
+| 6-octies-f | ✅ **Tid** | Apply di `20261020-32` … `-98` su dbdev e corsa dei pgTAP come app: 16 rossi nuovi, poi verdi dopo il §13.5-ter; lo SQL una tantum del 2e eseguito: 350 chiavi, 62 copie nel `meta`, 24 registri (2026-10-20) | §13, §13.5-bis | 6-octies-e |
+| 6-octies-f-bis | ✅ team DB | La corsa come app ha dato 16 rossi nuovi: test col vocabolario ritirato. Adeguati, più sette file dal censimento (2026-10-20) | §13.5-ter | 6-octies-f |
+| 6-octies-f-ter | ✅ **Tid** | Nuova corsa dei pgTAP come app sui 23 file adeguati: verdi (2026-10-20) | §13.5-ter | 6-octies-f-bis |
+| 6-octies-g | ✅ sessione BE/FE | Il giro BE/FE dei sotto-giri 2c-2e, chiamata reale su dbdev (2026-10-20): mixin indirizzi su un codice solo; dashboard sui codici delle sorgenti e `documento_apribile` (BE e FE); lista attività di commessa su `sorgente_apribile` (BE); famiglie create da una sorgente (endpoint `famiglie/sorgenti/`, drawer, policy rigenerate, ripiego del codice nuovo); chiavi del push e registri (commenti, test, smoke). Suite Django intera col DB vero verde; **da committare** | §13.4 | 6-octies-f |
+| 6-octies-h | ✅ team DB | `fn_list_commessa_attivita` con `sorgente_codice_interno` e in più `sorgente_etichetta` (lista e ordinamento sull'etichetta); `famiglie_documento.codice` a `varchar(50)`; `20261021-18` … `-20` applicati su dbdev (2026-10-21) | §13.6.1 | — |
+| 6-octies-i | ✅ sessione BE/FE | Colonne e whitelist d'ordinamento del repository, apertura del documento d'origine dalla commessa (fattura e reso compresi) col BB `buildApriDocumentoAction`, test, chiamata reale su dbdev (2026-10-21); committato (`a5af6305e`) | §13.6.2 | 6-octies-h |
+| 6-sexies | ✅ team DB, poi sessione BE/FE | Sotto-giri 2c, 2d, 2e insieme (un apply; con lo SQL una tantum delle chiavi su dbdev, G-8), poi un giro BE/FE; lotto 3 anticipabile; censimento su `pg_get_functiondef`, non su `prosrc` (§12.3) | §10, §10.4, §5 G-4 | 6-octies-b |
+| 6-novies-a | ✅ team DB | Piano del lotto 3 (le note): ricognizione sulla doc auto-generata, proposta, domande per Tid (2026-10-25) | §14 | — |
+| 6-novies-b | ✅ **Tid** | L3-1 … L3-6 come da proposta, e via allo sviluppo (2026-10-25) | §14.5, §14.6 | 6-novies-a |
+| 6-novies-c | ✅ team DB | Lotto 3 scritto e provato: `20261025-53` … `-69`, 10 pgTAP portati, uno nuovo; avanti, rollback e «da zero» provati sul dump di schema (2026-10-25); committato su `dev/db-tid` | §14.7, §14.8 | 6-novies-b |
+| 6-novies-d | ✅ **Tid** | Apply su dbdev e scratch (`-57` rilanciato dopo il §14.8.1, `-69` dopo il §14.8.2), corsa dei pgTAP come app: verdi (2026-10-25) | §14.8 | 6-novies-c |
+| 6-novies-e | ✅ sessione BE/FE | Il giro del §14.9 (elenco chiuso BE-1 … FE-2): codici nuovi nei repository, `TARGET_TIPI_AMMESSI` ritirata, voce del tipo target sulla FK, schema OpenAPI verificato (solo i nomi dei componenti), un presidio nuovo della giuntura; chiamata reale su dbdev, suite Django intera verde (2026-10-25); **da committare** | §14.9, §14.10 | 6-novies-d |
+| 6-novies-f | ✅ **Tid** | Prova a video: una nota su ordine, DDT, offerta, articolo e componente (2026-10-25) | §14.10 | 6-novies-e |
+| 7-bis | ✅ **Tid** | L4-1 = A: la FK lega il nome, non l'accensione, e resta così (il catalogo lo scrive solo chi migra; le FK sull'id già bloccano lo spegnimento di un tipo con documenti), 2026-10-25 | §15.1 | — |
+| 7 | ✅ team DB | Lotto 4, il presidio: `config/test-grammatica-presidio-tipo-documento-v1` (6 test), nessun changeSet; query provate sul catalogo di dbdev (2026-10-25) | §15.2 | 6-novies-e, 7-bis |
+| 7-ter | ✅ **Tid** | pgTAP del presidio lanciato come app: 6/6 verde, dopo la correzione del test 5 (2026-10-25) | §15.3 | 7 |
+| 8 | ✅ team DB | Riga di PROJECT_CONTEXT, archiviazione in `work-done/`; il blocco «origine» della stampa e la prova a video del 2b passati a brief-modello-documento-vendita §10 (2026-10-25) | §15.3 | 7-ter |
+
+**Decisioni aperte di Tid:** nessuna sul giro 2c-2e (L2e-2 = (a), L2c-1 = (a) in questo giro, 2026-10-20); il giro DB 2c-2e è committato (PR #1910); il giro BE/FE del §13.4 è committato (PR #1913), quello del §13.6 è committato (`a5af6305e`); **nessuna sul lotto 3** (L3-1 … L3-6 decise il 2026-10-25, §14.6); il lotto 3 è committato su `dev/db-tid` (2026-10-25), il suo giro BE/FE (§14.10) è **da committare** su `dev/backend-tid`; il blocco «origine» della stampa della fattura, che non si vede mai (§12.9, in fondo). Il giro DB dei
+§12.8 e §12.9 (§12.10) è committato (PR #1904); il giro BE del §12.10.6 è committato (`323c96a5c`, PR #1907). Verificato su dbdev il 2026-10-20: lo standard e le
+copie degli emittenti 32 e 44 stampano l'ordine in forma 3, e nessuno legge più `origine.tipo`. Lo SQL una tantum
+di L2b-2 resta accanto al brief fino all'archiviazione. Il §12.8 è partito il 2026-10-19 sera, insieme al
+§12.9 (Tid). L2-1 decisa il 2026-10-19
+(§10.3); il 2b applica G-3 così com'è (§12.2); L2b-1 decisa il 2026-10-19: (a), colonna a DB (§12.9). Il giro BE/FE
+del 2b con la sua revisione (§12.7) e questo brief sono committati su `dev/backend-tid` (2026-10-19). Nello
+stesso commit c'è anche un lavoro **fuori da questo brief**: `core/utils/ripristinaLookup.js`,
+`vendite/_shared/cliente/` e i cinque drawer di vendita (preventivo, offerta, ordine, DDT, contratto) — il
+cliente riaperto mostrava il solo codice (collaudo di Tid, regola del 2), coi due BB nel catalogo BB frontend. I rimandi del §6.1 ci sono nei tre brief (verificati e aggiornati il 2026-10-20).
+
+> **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-18. **A chi:** il team DB, poi Tid.
+> **Origine:** l'A-8-ter di
+> [brief-db-articoli-ammessi-per-documento §9.8.3](../work-done/brief-db-articoli-ammessi-per-documento.md).
+> Spostare tre funzioni del listino sul vocabolario delle entità moltiplicava i punti di
+> traduzione invece di toglierli: il problema non è di tre funzioni, è della grammatica.
+
+## 1. Il caso
+
+Lo stesso concetto, «di che tipo di documento si parla», ha **più nomi** nel database e nel backend,
+e chi passa da un vocabolario all'altro traduce. Quello che si vede già dal contratto (seed in
+`80_data` e doc auto-generata, 2026-10-18 — struttura, non popolazione):
+
+| Vocabolario | Dove | Esempi | Note |
+| --- | --- | --- | --- |
+| **entità** | `config.tipi_entita` (`80_data/sql/config/tipi_entita.csv`) | `PREVENTIVO`, `ORDINE_VENDITA`, `DDT_VENDITA`, `OFFERTA_COMMERCIALE`, `CONTRATTO`, `COMMESSA`, `FATTURA`, `LISTINO_VERSIONE`, `ARTICOLO`, `PROMO_ARTICOLO`… | lo parla il picker degli articoli ammessi e la check per tipo di riga. ⚠️ Non ha un reso |
+| **sorgenti** | `config.sorgenti` (`sorgenti.csv`) | gli stessi codici delle entità per le testate (`OFFERTA_COMMERCIALE`, `DDT_VENDITA`, `RESO_VENDITA`…), più le righe (`*_RIGA`) e altri (`ATTIVITA`, `EVENTO_ASSET`, `DDT_VENDITA_PRELIEVO`…) | le note dei due cataloghi dicono già «codice identico» dove si intersecano |
+| **testate** | `script.fn_get_stato_testata_documento`, `fn_get_testata_id_di_riga`, `fn_get_cliente_testata_documento`, `fn_doc_indirizzi_sede` e altri (27 pagine della doc auto-generata) | `DDT`, `ORDINE`, `CONTRATTO`, `OFFERTA`, `PREVENTIVO`, `RESO`, `COMMESSA`, `EMAIL_BOZZA` | lock fuori bozza, annullo con legami, indirizzi, lineage |
+| **documenti con eccezioni** | `vendite.fn_documento_listino_operativo`, `fn_documento_righe_eccezione`, `fn_documento_righe_preview`, `script.fn_check_riga_erogazione`… (la famiglia del §9.8.3) | `OFFERTA`, `CONTRATTO` | un sottoinsieme della grammatica delle testate |
+| **partizioni delle note** | `target_tipo` delle note (`varchar(16)`), `backend/apps/vendite/db/note_repositories.py` | `OFFERTA` | il commento del backend dice che `OFFERTA_COMMERCIALE` non ci sta per lunghezza: un vincolo di **colonna** che decide un nome |
+
+Il **ponte** dichiarato oggi è uno: `script.fn_articolo_riga_contesto` traduce dalle entità alle
+testate. Gli altri punti di traduzione non sono censiti.
+
+## 2. La decisione presa
+
+**Tid, 2026-10-18:** la soluzione è **una grammatica sola** per i tipi di documento, usata da tutto
+il database e dal backend, senza ponti. Non è un debito da tenere: è la direzione. Si apre qui, fuori
+dal brief degli articoli ammessi, perché tocca decine di oggetti che con gli articoli non c'entrano e
+perché altri brief aperti lavorano sugli stessi oggetti (§6).
+
+## 3. Che cosa si chiede
+
+### 3.1 Al team DB: il censimento (§4), prima di ogni changeSet
+
+G-1 … G-4 sono decisi (§5, 2026-10-18) sulla struttura dei cataloghi; il censimento dà l'elenco
+degli oggetti per lotto. Nessun changeSet prima del via di Tid.
+
+### 3.2 La ricaduta sul backend (per il piano, non ora)
+
+Le traduzioni del backend vanno ritirate **nello stesso giro** del lotto DB che le rende inutili
+(regola del 2). Quelle già note:
+
+* `backend/apps/vendite/db/_documento_eccezioni_repo.py`: `DocumentoEccezioni = Literal["CONTRATTO", "OFFERTA"]`;
+* `offerte_service.py`, `contratti_service.py`, che passano quei codici;
+* `_annullo_con_legami.py`, che traduce `OFFERTA` nel codice delle sorgenti;
+* `backend/apps/config/sorgenti.py` (le costanti `SORGENTE_*`) e `note_repositories.py` (le partizioni).
+
+Il censimento le completa: cercare nel backend ogni letterale di tipo documento usato come chiave.
+
+## 4. Il censimento (team DB)
+
+Da leggere sul **contratto** (seed, doc auto-generata, firme e corpi delle funzioni, CHECK, enum),
+mai sulle righe di oggi.
+
+1. **I vocabolari.** Tutti quelli che nominano un tipo di documento (testata o riga): catalogo,
+   enum, CHECK, colonne `varchar` con valori ammessi, letterali nei corpi delle funzioni. Per
+   ciascuno: dove vive, chi è la fonte, quali codici ha.
+2. **La matrice dei codici.** Per ogni tipo di documento, il suo nome in ciascun vocabolario
+   (una riga per tipo, una colonna per vocabolario), con i **buchi**: per esempio il reso, che
+   `config.tipi_entita` non ha, ed `EMAIL_BOZZA`, che vive solo nella grammatica delle testate.
+3. **Chi parla cosa.** Per ogni funzione, trigger, vista e montaggio che riceve o confronta un tipo
+   di documento: quale vocabolario usa, e se lo riceve da fuori o lo scrive come letterale.
+4. **Chi traduce.** Ogni punto in cui un codice di un vocabolario diventa un codice di un altro (il
+   ponte di `fn_articolo_riga_contesto` e gli altri), DB e backend.
+5. **I vincoli che decidono un nome.** Colonne troppo corte (`target_tipo varchar(16)`), indici,
+   chiavi di partizione, chiavi dei locales: ciò che oggi impedisce di usare il codice lungo.
+6. **I confini.** Che cosa è «un tipo di documento» e che cosa no: le entità che non sono documenti
+   (`TASK_RUN`, `FLUSSO`, `LOTTO`), le righe (`*_RIGA`), le varianti di un documento
+   (`DDT_VENDITA_PRELIEVO`, `RESO_VENDITA_RIENTRO`). La grammatica unica le comprende o le lascia
+   fuori?
+7. **Gli incroci con i cantieri aperti** (§6): quali oggetti del censimento stanno toccando altri
+   brief. La ricognizione dei brief è già nel §6; qui si scende all'oggetto (funzione, trigger,
+   service) e si leggono i documenti del §6.2.
+
+Consegna: una sezione di questo brief con le tabelle, e una **proposta** per G-1 … G-4.
+
+## 5. Le decisioni per Tid (dopo il censimento)
+
+* **G-1 — quale vocabolario vince.** ✅ **Deciso da Tid il 2026-10-18: vince `config.sorgenti`**
+  (strada A), prima del censimento e sulla struttura dei due cataloghi.
+  * **Che cosa vuol dire.** Il tipo di documento si nomina col `codice_interno` di
+    `config.sorgenti`, ovunque, DB e backend: `DDT_VENDITA`, `ORDINE_VENDITA`,
+    `OFFERTA_COMMERCIALE`, `RESO_VENDITA`, `PREVENTIVO`, `CONTRATTO`, `COMMESSA`. I nomi corti della
+    grammatica delle testate (`DDT`, `ORDINE`, `OFFERTA`, `RESO`) si ritirano; quel che manca
+    (acquisti, `EMAIL_BOZZA`, secondo G-2) entra in `config.sorgenti`.
+  * **`config.tipi_entita` resta**, col suo compito: il catalogo delle cose che si possono
+    indicare (bersaglio d'errore, giornale, picker), documenti e non (`LOTTO`, `TASK_RUN`, `FLUSSO`,
+    `ARTICOLO`…). Per i documenti porta lo stesso codice delle sorgenti, **legato da un vincolo** e
+    non per convenzione: la forma del legame la propone il piano.
+  * **Perché.** Le sorgenti sono già il catalogo dei documenti: hanno il codice immutabile, la
+    tabella puntata (`target_table`), il reso e le righe, e le usano lineage e motore documentale.
+    Il nome lungo regge l'ingresso degli acquisti (`DDT_ACQUISTO` accanto a `DDT_VENDITA`) senza
+    rinominare niente. Le alternative scartate: allargare `config.tipi_entita` (rifarebbe lì ciò che
+    le sorgenti hanno, e mescola documenti e non documenti) o un catalogo nuovo (un terzo
+    vocabolario finché la migrazione non è finita).
+  * **Da sciogliere nel piano:** i due cataloghi già divergono su `key_selector` (preventivo e
+    offerta `uid` nelle sorgenti, `id` nelle entità). ~~Con un codice solo la chiave deve essere
+    una.~~ ⚠️ Corretto il 2026-10-19 (K-1, §8.3): le due colonne rispondono a due domande diverse
+    (collegare, aprire) e restano così. G-1 unifica il nome del tipo, non la chiave.
+  * **Ricaduta su G-3:** `OFFERTA_COMMERCIALE` (19 caratteri) non sta in `target_tipo varchar(16)`.
+  * Il censimento resta da fare: la matrice del §4 punto 2 si scrive verso i codici delle sorgenti,
+    e dà il costo della migrazione, non la scelta.
+* **G-2 — il perimetro.** ✅ **Deciso da Tid il 2026-10-18.**
+  * **Righe e varianti: dentro.** Il nome di una riga si costruisce da quello della testata
+    (`DDT_VENDITA` → `DDT_VENDITA_RIGA`), le varianti restano voci proprie (`DDT_VENDITA_PRELIEVO`,
+    `RESO_VENDITA_RIENTRO`); le distingue `config.sorgenti.categoria` (`DOCUMENTO` | `RIGA`).
+  * **Tutti gli schemi: dentro `acquisti` e `magazzino`.** Ogni tipo di documento che il database
+    nomina in qualche punto (partizioni e `CHECK` delle note, sorgente di un movimento, lock, stato)
+    ha la sua riga in `config.sorgenti`. Il motivo è sul modello: le note di `acquisti` e di
+    `magazzino` nominano già quei documenti, fuori catalogo; lasciarli fuori terrebbe in vita un
+    vocabolario a parte. Dare loro un nome non apre il cantiere degli acquisti.
+  * **Il criterio:** è un tipo di documento ciò che ha una testata con uno stato e regole che da
+    quello stato dipendono. Per questo **`EMAIL_BOZZA` è dentro**.
+  * **Fuori:** ciò che non è un documento (`LOTTO`, `TASK_RUN`, `FLUSSO`, `ARTICOLO`,
+    `LISTINO_VERSIONE`, `DEFINIZIONE_WORKFLOW`, `PROMO_ARTICOLO`): resta solo in
+    `config.tipi_entita`, col suo compito di bersaglio.
+  * Il censimento (§4 punto 2) elenca le voci da aggiungere a `config.sorgenti`, coi codici
+    costruiti sulla stessa regola (`<DOCUMENTO>_<CICLO>`, per esempio `ORDINE_ACQUISTO`, `DDT_ACQUISTO`).
+* **G-3 — i vincoli che decidono un nome.** ✅ **Deciso da Tid il 2026-10-18: si allarga il
+  vincolo, il codice non si accorcia.**
+  * **La regola:** *il vincolo si adegua al nome, mai il nome al vincolo.* Ogni colonna che porta un
+    tipo di documento ha la lunghezza di `config.sorgenti.codice_interno` (`varchar(50)`, `UNIQUE`)
+    e, dove si può, una **FK verso `config.sorgenti`** al posto del `CHECK` con l'elenco scritto a
+    mano: un tipo nuovo è una riga del CSV, non un `CHECK` da riscrivere. Per le colonne che
+    nominano qualcosa che si può indicare (le note) la FK va a `config.tipi_entita`: G-7.
+  * **Le note** (`vendite.note`, `acquisti.note` `varchar(16)`; `magazzino.note` `varchar(32)`):
+    `target_tipo` è la chiave di partizione, e il suo tipo non si cambia con un `ALTER`. Le tre
+    tabelle si **ricostruiscono** (nuova, copia, scambio) in un lotto proprio. I valori di oggi
+    (`DDT`, `ORDINE`, `OFFERTA`, `ATTIVITAFT`; nella storia dei changeSet anche `ddt` e `ordine`
+    minuscoli, da verificare sulla doc auto-generata) passano ai codici delle sorgenti.
+  * **Dove una FK non si può** (per esempio le chiavi delle traduzioni nel frontend): un presidio
+    che confronti le chiavi col catalogo. Quali siano lo dice il censimento (§4 punto 5).
+  * Scartate: accorciare i codici (contraddice G-1 e l'immutabilità di `codice_interno`) e lasciare
+    alle note i loro nomi (sarebbe un ponte).
+* **G-4 — l'ordine dei lotti.** ✅ **Deciso da Tid il 2026-10-18.** Ogni lotto è chiuso in sé:
+  DB e backend cambiano nello stesso giro, e alla fine del lotto non resta una traduzione (regola
+  del 2).
+
+  | Lotto | Che cosa | Perché lì |
+  | --- | --- | --- |
+  | **0. Catalogo** | voci mancanti in `config.sorgenti` (acquisti, testate di magazzino, `EMAIL_BOZZA`, G-2); `key_selector` unico; `config.tipi_entita` legato alle sorgenti da un vincolo (G-1) | additivo, non rompe niente; i lotti dopo ne hanno bisogno per le FK |
+  | **1. Eccezioni** | la famiglia del §9.8.3 (`fn_documento_listino_operativo` e le sorelle) da `OFFERTA` a `OFFERTA_COMMERCIALE`; nel backend si ritira `DocumentoEccezioni` coi letterali | il più piccolo e il più noto: prova il metodo prima del lotto grande |
+  | **2. Testate** | stato, lock, annullo con legami, indirizzi, lineage: le funzioni coi codici corti e i loro chiamanti, DB e backend. Muore il ponte di `fn_articolo_riga_contesto` | il più grande, a metodo provato |
+  | **3. Note** | le tre tabelle ricostruite con `target_tipo` lungo e FK verso le sorgenti (G-3); `note_repositories.py` | dipende solo dal lotto 0: **anticipabile** |
+  | **4. Chiusura** | il presidio contro la ricaduta (per esempio un pgTAP: ogni colonna di tipo documento ha la FK verso le sorgenti), la riga di PROJECT_CONTEXT, l'archiviazione | senza presidio il prossimo letterale scritto a mano rientra |
+
+  **Rispetto ai cantieri aperti (§6.1):**
+  * **indirizzi**: il giro BE (R-BE-1) si chiude **così com'è**, coi selettori corti; li migra il
+    lotto 2 insieme agli altri consumatori;
+  * **stato iniziale**: parte **dopo il lotto 0**, così nasce sui codici delle sorgenti;
+  * **articoli ammessi**: il ponte resta fino al lotto 2.
+
+  Prima del lotto 0 resta il **censimento** (§4): con le decisioni prese, il suo compito è
+  l'elenco degli oggetti di ciascun lotto. ⛔ I changeSet partono col via di Tid.
+
+## 6. Cantieri che toccano gli stessi oggetti
+
+Questo brief è la **sede unica** del vocabolario dei tipi di documento: gli altri brief vi
+rimandano con una riga, non ne ricopiano il contenuto. Ricognizione del 2026-10-18, sui brief in
+`work-in-progress/` (grep sui nomi degli oggetti del §1).
+
+⛔ **Fino a G-1, nessun vocabolario nuovo.** Il codice che si scrive nel frattempo usa la
+grammatica che c'è e si **iscrive al §4 punto 3** (chi parla cosa), così il perimetro della
+migrazione resta chiuso invece di crescere a ogni giro.
+
+### 6.1 Cantieri che scrivono oggi codice sul vocabolario (consumatori nuovi)
+
+| Brief | Oggetti in comune | Che cosa si fa |
+| --- | --- | --- |
+| [brief-db-indirizzi-documento-seguono-il-cliente](../work-done/brief-db-indirizzi-documento-seguono-il-cliente.md) | `vendite.fn_doc_indirizzo_default` coi selettori `DDT`, `ORDINE`, `PREVENTIVO`, `OFFERTA`, `CONTRATTO` (R-BE-1, il BE li passa da quattro service e dai verbi con cascata); `script.fn_doc_lock_regola` e il lock delle testate del §8.7 (`20261018-65`); `fn_get_cliente_testata_documento`, `fn_doc_indirizzi_sede` | ✅ rimando in R-BE-1; i selettori sono migrati nel lotto 2a (§11), annotato lì il 2026-10-20 |
+| [brief-db-documento-nasce-nello-stato-iniziale](../work-done/brief-db-documento-nasce-nello-stato-iniziale.md) | i guard di transizione delle testate (`trg_<doc>_a10_guard_transizione_upd`), gli stati iniziali per famiglia | ✅ chiuso e archiviato il 2026-10-25: confluito in `brief-modello-documento-vendita` §4-bis, nessun registro per tipo di documento introdotto |
+| [brief-db-articoli-ammessi-per-documento](../work-done/brief-db-articoli-ammessi-per-documento.md) | il ponte di `script.fn_articolo_riga_contesto`, la famiglia del §9.8.3 | il ponte resta fino al lotto che lo rende inutile: lo ritira chi chiude questo brief |
+
+### 6.2 Documenti che pesano sulle decisioni G-1 … G-3 (da leggere nel censimento)
+
+| Documento | Che cosa porta | Decisione |
+| --- | --- | --- |
+| [analisi-simmetria-ordini-acquisto](../work-in-progress/analisi-simmetria-ordini-acquisto.md) §4.6 | `config.sorgenti` ha solo sorgenti di `vendite`; `config.tipi_entita` non ha l'ordine d'acquisto: lineage, motore documentale e bersaglio d'errore non vedono gli acquisti | **G-2**: la grammatica comprende `acquisti`? |
+| [brief-design-proiezione-stato-dominio](../work-in-progress/brief-design-proiezione-stato-dominio.md) | `config.sorgenti` trattato già da registro dei tipi (`target_table`, `key_selector`, la proposta `resolver_key`) | **G-1** |
+| [valutazione-modello-di-dominio-db](../work-in-progress/valutazione-modello-di-dominio-db.md) | V-5: `codice` mutabile e `codice_interno` immutabile; le note di `vendite`, `acquisti`, `magazzino` partizionate per `target_tipo`, con `CHECK` e routing di partizione | **G-1** (quale colonna porta il codice), **G-3** (allargare `target_tipo` tocca le partizioni) |
+| [analisi-db-magazzino-carico-e-scarico](../work-in-progress/analisi-db-magazzino-carico-e-scarico.md), [analisi-db-magazzino-aggancio-documento-e-produzione](../work-in-progress/analisi-db-magazzino-aggancio-documento-e-produzione.md) | le sorgenti di riga (`*_RIGA`) e la sorgente polimorfa (`sorgente_tipo_id` → `config.sorgenti`) di rettifiche, trasferimenti, inventari, eventi asset | **G-2** (righe e varianti) |
+
+### 6.3 Solo da avvisare
+
+* [brief-db-offerta-emissione-ed-erogazione](../work-done/brief-db-offerta-emissione-ed-erogazione.md):
+  `fn_documento_listino_operativo`, `fn_check_riga_erogazione`. Lato DB chiuso: la migrazione di
+  quegli oggetti la fa un lotto di questo brief.
+
+## 7. Il censimento (team DB, 2026-10-18)
+
+Letto sul **contratto**: doc auto-generata (corpi di funzioni e viste), seed in `80_data`, e il
+catalogo di PostgreSQL di dbdev per ciò che la doc non riporta (espressioni dei `CHECK`, confini
+delle partizioni, argomenti dei trigger: `pg_constraint`, `pg_inherits`, `pg_trigger.tgargs`).
+Nessun conteggio di righe: è la struttura, non la popolazione.
+
+### 7.1 I vocabolari (§4 punto 1)
+
+Il brief ne contava quattro più le note. Sono **otto**:
+
+| # | Vocabolario | Dove vive | Forma dei codici | Fonte |
+| --- | --- | --- | --- | --- |
+| V1 | **sorgenti** | `config.sorgenti.codice_interno` (`varchar(50)`, `UNIQUE`) | lunga: `DDT_VENDITA`, `ORDINE_VENDITA`, `OFFERTA_COMMERCIALE`, `RESO_VENDITA`, `*_RIGA`, varianti | catalogo (✅ vince, G-1) |
+| V2 | **entità** | `config.tipi_entita.codice` (PK) | lunga, uguale a V1 dove si incrociano; niente reso | catalogo |
+| V3 | **testate** | il parametro `p_documento` di una famiglia di funzioni, e gli argomenti dei trigger montati per tabella | corta: `DDT`, `ORDINE`, `OFFERTA`, `RESO`, `EMAIL_BOZZA`, più `PREVENTIVO`, `CONTRATTO`, `COMMESSA`, `FATTURA` | ⛔ nessuna: elenchi scritti in ogni corpo (`NOT IN (…)`, `IF … ELSIF`) |
+| V4 | **famiglie di numerazione** | `vendite.famiglie_documento.codice_interno` (`varchar(16)`); FK da `vendite.registri_fatturazione.famiglia_documento` | corta: `FATTURA`, `DDT`, `ORDINE`, `COMMESSA`, `RESO`, `DISTINTA` | catalogo (con `schema_tabella`, `nome_tabella`: «dove vive» il documento, come `config.sorgenti.target_table`) |
+| V5 | **aree documentali** (plurale) | `config.sorgenti.area` (`varchar(30)`) e `config.tipi_indirizzi_allowed.ambito` (`text`, `CHECK`), argomento di `trgfn_tipi_indirizzi_only_allowed` | plurale: `PREVENTIVI`, `ORDINI`, `CONTRATTI`, `DDT`, `OFFERTE`, `COMMESSE`, `FATTURE`, `ACQUISTI_DDT` | due: una colonna di V1 e un `CHECK` |
+| V6 | **bersagli delle note** | `target_tipo` delle note partizionate, `CHECK` + confini di partizione; argomento di `trgfn_note_validate_generic`; `fn_scope_note_*` | misto: `DDT`, `ORDINE`, `OFFERTA`, `ATTIVITAFT`, `PREVENTIVO`, `CONTRATTO`, `FATTURA` (vendite); `DDT`, `ORDINE` (+ `FATTURA`, `CONTRATTO` nel `CHECK`, senza partizione) (acquisti); `INVENTARIO`, `RETTIFICA`, `TRASFERIMENTO`, `*_RIGA`, `ASSET`, `EVENTO_ASSET`, `MOVIMENTO` (magazzino); `ARTICOLI`, `ARTICOLI_COMPONENTI` (catalogo) | ⛔ un `CHECK` per schema |
+| V7 | **origine e destinazione** | `vendite.ordini.documento_origine_tipo` (`CHECK`: `PREVENTIVO`, `OFFERTA`); `config.nature_vendita.destinazione_tipo` (`CHECK`: `ORDINE`, `COMMESSA`, `CONTRATTO`); l'`origine` restituita da `vendite.fn_documento_legami` (`ORDINE`, `RESO`, `OFFERTA`) | corta | ⛔ `CHECK` |
+| V8 | **prefissi di chiave** | `vendite.commesse_attivita.segment_key` (`ORD:…`, `DDT:…`), letto con `split_part(…) = ANY ('ORD','DDT')` da `vendite.fn_af_merce_per_riga`; la `corsia` `'DDT'` in `vendite.fn_partite_merce` | abbreviata | ⛔ nessuna |
+
+⚠️ **Il caso che dimostra il problema, sul modello:** in `acquisti.note` i codici `DDT` e `ORDINE`
+indicano la bolla e l'ordine **d'acquisto**; in `vendite.note` gli stessi codici indicano quelli di
+**vendita**. Lo stesso nome per due documenti diversi: regge solo perché le due tabelle sono
+separate. È il motivo di G-1, in un caso concreto.
+
+### 7.2 La matrice dei codici (§4 punto 2)
+
+`—` = il vocabolario non nomina quel documento. ❌ = dovrebbe e non c'è.
+
+| Documento | V1 sorgenti | V2 entità | V3 testate | V4 famiglie | V5 aree | V6 note | V7 / V8 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Preventivo | `PREVENTIVO` | `PREVENTIVO` | `PREVENTIVO` | — | `PREVENTIVI` | `PREVENTIVO` | origine `PREVENTIVO` |
+| Ordine di vendita | `ORDINE_VENDITA` | `ORDINE_VENDITA` | `ORDINE` | `ORDINE` | `ORDINI` | `ORDINE` | destinazione e legami `ORDINE`; chiave `ORD` |
+| DDT di vendita | `DDT_VENDITA` | `DDT_VENDITA` | `DDT` | `DDT` | `DDT` | `DDT` | chiave e corsia `DDT` |
+| Offerta | `OFFERTA_COMMERCIALE` | `OFFERTA_COMMERCIALE` | `OFFERTA` | — | `OFFERTE` | `OFFERTA` | origine e legami `OFFERTA` |
+| Contratto | `CONTRATTO` | `CONTRATTO` | `CONTRATTO` | — | `CONTRATTI` | `CONTRATTO` | destinazione `CONTRATTO` |
+| Commessa | `COMMESSA` | `COMMESSA` | `COMMESSA` | `COMMESSA` | `COMMESSE` | — | destinazione `COMMESSA` |
+| Fattura | `FATTURA` | `FATTURA` | `FATTURA` (indirizzi, cliente) | `FATTURA` | `FATTURE` | `FATTURA` | — |
+| Reso di vendita | `RESO_VENDITA` | ❌ | `RESO` | `RESO` | — | — | legami `RESO` |
+| Attività fatturabile | `ATTIVITA` (riga) | — | — | — | — | `ATTIVITAFT` | — |
+| Attività consumi | `ATTIVITA_CONSUMI` | — | — | — | — | — | — |
+| Email in bozza | ❌ | — | `EMAIL_BOZZA` | — | — | — | — |
+| Distinta d'incasso | ❌ | — | — | `DISTINTA` | — | — | — |
+| Ordine d'acquisto | ❌ | ❌ | — | — | — | `ORDINE` (acquisti) | — |
+| DDT d'acquisto | ❌ | ❌ | — | — | `ACQUISTI_DDT` | `DDT` (acquisti) | — |
+| Fattura, contratto d'acquisto | ❌ | ❌ | — | — | — | nel `CHECK` di `acquisti.note`, senza partizione | — |
+| Inventario, rettifica, trasferimento | ❌ (solo le `*_RIGA`) | ❌ | — | — | — | `INVENTARIO`, `RETTIFICA`, `TRASFERIMENTO` | — |
+| Righe | `*_RIGA` | — | ruolo `RIGA` negli argomenti del lock | — | — | `*_RIGA` (magazzino) | — |
+
+Non documenti con note (G-2: fuori dalla grammatica, dentro le note): `ARTICOLI`,
+`ARTICOLI_COMPONENTI`, `ASSET`, `MOVIMENTO`. V2 ha `ARTICOLO`, al singolare.
+
+### 7.3 Chi parla cosa (§4 punto 3)
+
+**V3, codici ricevuti da fuori** (`p_documento` con elenco nel corpo):
+`script.fn_get_stato_testata_documento`, `fn_get_testata_id_di_riga`,
+`fn_get_cliente_testata_documento`, `fn_doc_indirizzi_sede`, `fn_doc_date_consegna_anteriori`,
+`fn_check_listino_cambiabile`, `fn_check_listino_congelabile`, `fn_check_riga_erogazione`,
+`fn_check_indirizzi_documento_cliente`, `fn_indirizzi_obbligatori_mancanti`;
+`vendite.fn_documento_listino_operativo`, `fn_documento_righe_eccezione`,
+`fn_documento_righe_preview`, `fn_documento_legami`, `fn_documento_ritira_legami`,
+`fn_doc_fornitura_sede`, `fn_doc_porta_ritiro_ammette`, `fn_doc_indirizzo_default`.
+
+**V3, codici negli argomenti dei trigger** (montaggio per tabella): `trgfn_doc_testata_lock_fuori_bozza`,
+`trgfn_doc_righe_lock_fuori_bozza`, `trgfn_doc_guard_annullo_con_legami`, `trgfn_doc_guard_emittente_ba`,
+`trgfn_doc_guard_listino_con_righe`, `trgfn_doc_guard_listino_documento`,
+`trgfn_doc_indirizzi_guard_cliente`, `trgfn_doc_indirizzi_seguono_cliente`,
+`trgfn_doc_fornitura_guard_coppia`, `trgfn_doc_fornitura_segue_cliente`,
+`trgfn_doc_righe_guard_data_consegna`, `trgfn_doc_testata_guard_data_consegna_righe`,
+`trgfn_righe_guard_erogazione_perimetro`.
+
+**V3, codici scritti come letterale** nelle chiamate: i verbi di annullo (`fn_annulla_ddt`,
+`fn_annulla_ordine`), i guard di bolla, ordine, reso e offerta, `fn_available_actions_offerta`,
+`fn_offerta_righe_espanse`, `fn_offerta_righe_preview`, `trgfn_doc_guard_delete_solo_bozza`,
+`trgfn_dlt_block_ordrig_ddtrig`, `trgfn_email_allegato_guard_solo_bozza`, `dbops.fn_pgtap_crea_ddt`.
+
+**V1 (o V2), codici lunghi:** `catalogo.fn_articoli_ammessi`, `fn_articolo_righe_vive_non_ammesse`,
+`script.fn_articolo_riga_contesto`, `fn_check_articolo_riga_su_contesto`, i lineage
+(`fn_documento_lineage_nodi`, `_archi`), i push (`fn_push_offerta_a_contratto`,
+`fn_push_preventivo_a_ordine`, `fn_list_*_da_pushare`), le viste `vw_stato_sorgente_*` e
+`vw_*_lista`, i trigger montati con `DDT_VENDITA`/`ORDINE_VENDITA`/`OFFERTA_COMMERCIALE`
+(`trgfn_righe_guard_articolo_ammesso`, `trgfn_doc_guard_chiusura_sorgente`,
+`trgfn_guard_fatturazione_immediata_immutabile`). ⭐ Chi usa `sorgente_tipo_id` (FK) parla già V1
+senza letterali: è la forma d'arrivo.
+
+**V4:** i numeratori (`trgfn_ddt_gen_numero_emesso`, `trgfn_ordini_gen_numero`,
+`trgfn_resi_gen_numero`, `fn_get_next_progressivo`, `fn_assegna_numero_documento`,
+`fn_get_registro_documento`, `fn_lookup_registro_documento`, `fn_get_or_create_commessa`), il
+provisioning dei registri, i guard delle famiglie, `anagrafiche.fn_ba_ha_storia_emittente`.
+
+**V6:** `script.fn_scope_note_cliente`, `fn_scope_note_ef_whitelist`, `fn_scope_note_shop`,
+`trgfn_note_validate_generic`. **V7:** `vw_ordini_lista`, `vw_dash_fatturazione_offerte`,
+`fn_documento_lineage_archi`, `fn_offerta_documenti_vivi`, `fn_check_preventivo_annullabile`, le
+viste di smistamento del preventivo, `catalogo.trgfn_articoli_guard_onere_natura`.
+
+### 7.4 Chi traduce (§4 punto 4), lato DB
+
+| Punto | Da → a |
+| --- | --- |
+| `script.fn_articolo_riga_contesto` | V1 → V3 (`OFFERTA_COMMERCIALE` → `OFFERTA`): il ponte dichiarato |
+| `vendite.fn_documento_ritira_legami` | V3 → V1 (`CASE 'DDT' THEN 'DDT_VENDITA'`) |
+| `script.fn_doc_indirizzi_sede` | V3 → V5 (`ORDINE` → `ORDINI`, `OFFERTA` → `OFFERTE`), dentro la tabella di `VALUES` |
+| `config.sorgenti.area` | V1 → V5, come **dato** |
+| `script.fn_check_articolo_riga_su_contesto` | V1 (`ORDINE_VENDITA`) confrontato con V7 (`destinazione_tipo = 'ORDINE'`) |
+| `vendite.fn_documento_lineage_archi`, `vw_ordini_lista` | V7 (`OFFERTA`) letto accanto a V1 (`OFFERTA_COMMERCIALE`) |
+| `vendite.trgfn_resi_guard_cliente_ddt`, `fn_check_ddt_riga_correggi_qta_evasa`, `fn_genera_ddt_riconsegna`, `fn_documento_legami`, `script.fn_available_actions_offerta` | due grammatiche nello stesso corpo (V1 e V3) |
+
+Il backend: §7.8.
+
+### 7.5 I vincoli che decidono un nome (§4 punto 5)
+
+| Vincolo | Ostacolo |
+| --- | --- |
+| `vendite.note`, `acquisti.note`: `target_tipo varchar(16)`, chiave di partizione, nella PK (`target_tipo, id`) e negli indici | il tipo non si cambia con `ALTER`: ricostruzione (G-3) |
+| `magazzino.note`, `catalogo.note`: `varchar(32)`, idem | idem, se cambiano i valori |
+| `vendite.famiglie_documento.codice_interno varchar(16)`, FK da `registri_fatturazione.famiglia_documento varchar(16)` | i nomi lunghi ci stanno (`ORDINE_VENDITA` è 14), ma la regola G-3 vuole 50 |
+| `vendite.ordini.documento_origine_tipo varchar(20)`, `config.nature_vendita.destinazione_tipo varchar(20)` | ci stanno; il `CHECK` va sostituito |
+| Argomenti dei trigger (`tgargs`) | si cambiano solo smontando e rimontando il trigger: un changeSet per ogni montaggio |
+| `vendite.commesse_attivita.segment_key` (`ORD:…`) | è una chiave di idempotenza scritta nelle righe: cambiare il prefisso cambia l'identità delle righe esistenti |
+| Chiavi delle traduzioni nel frontend | fuori dal perimetro DB: le censisce la sessione FE |
+
+### 7.6 I confini (§4 punto 6)
+
+Li ha già decisi G-2. Il censimento aggiunge tre casi che G-2 non nominava: la **distinta
+d'incasso** (`pagamenti.vendite_contabili`, in V4) e le **testate di magazzino** (inventario,
+rettifica, trasferimento: in V6 ma non in V1) sono documenti numerati o con stato, quindi
+**dentro**; asset e movimento non sono documenti, quindi **fuori** (ma con note: G-7).
+
+### 7.7 Gli incroci con i cantieri aperti (§4 punto 7)
+
+* **Indirizzi:** `fn_doc_indirizzo_default`, `fn_doc_indirizzi_sede`,
+  `trgfn_doc_indirizzi_guard_cliente`, `trgfn_doc_indirizzi_seguono_cliente`,
+  `trgfn_doc_testata_lock_fuori_bozza` (il `20261018-65` risulta montato: gli argomenti hanno già
+  il `-`). Tutto V3 e V5: lotto 2.
+* **Stato iniziale:** i guard di transizione di ogni famiglia; nessun vocabolario nuovo finché non
+  parte (§6.1).
+* **Articoli ammessi:** già su V1, salvo il ponte.
+* **Offerta:** `fn_doc_fornitura_*`, `trgfn_righe_guard_erogazione_perimetro`,
+  `fn_documento_listino_operativo`: V3, lotti 1 e 2.
+
+### 7.8 Il backend
+
+Ricerca dei letterali in `backend/` (Python; test esclusi, ripetono gli stessi codici). Esclusi gli
+omonimi che non nominano un tipo di documento (la colonna `ordine` di posizione, i codici `E_*`, le
+etichette leggibili, `TIPO_MOVIMENTO_RETTIFICA`). L'app `acquisti` è vuota.
+
+**Già su V1, senza traduzione (la forma d'arrivo):** le costanti `SORGENTE_*` di
+`apps/config/sorgenti.py` e chi le usa (PDF, lineage, push verso la commessa, pratiche,
+`fn_list_*_da_pushare`), il picker degli articoli ammessi (il codice arriva dal client e passa così
+com'è), il giornale (`entity_type` di V2).
+
+**Parlano V3 (corto):**
+
+| Dove | Codici | Per |
+| --- | --- | --- |
+| `vendite/services/_annullo_con_legami.py:48-52` | `DDT`, `ORDINE`, `PREVENTIVO`, `CONTRATTO`, `COMMESSA` | `vendite.fn_documento_legami`, dai cinque service |
+| `vendite/db/_documento_eccezioni_repo.py:39` (`DocumentoEccezioni`), `offerte_service`, `contratti_service` | `OFFERTA`, `CONTRATTO` | la famiglia delle eccezioni (lotto 1) |
+| `vendite/db/*_repository.py` col mixin indirizzi (`_indirizzi_documento`) | `PREVENTIVO`, `ORDINE`, `OFFERTA`, `CONTRATTO`, `DDT` | `vendite.fn_doc_indirizzo_default` |
+| `vendite/services/ordini_service.py:738, 758` | `OFFERTA` | scrive `ordini.documento_origine_tipo` (V7) e lo **espone nella risposta API** |
+| `vendite/services/_iva_contesto_documento.py:61-74` | `PREVENTIVO`, `ORDINE`, `DDT` | registro dei loader, **esposto come `choices`** di un endpoint (`views_iva.py:53`) |
+| `vendite/services/vendite_service.py:2577` | `ORDINE`, `DDT` | il `contesto` della situazione merce, **nella risposta API** |
+
+**Parlano V5 (plurale):** `_indirizzi_ambito` dei cinque repository (`PREVENTIVI`, `ORDINI`,
+`OFFERTE`, `CONTRATTI`, `DDT`); le aree della dashboard in `vendite_repository.py:227-256`,
+allineate a `area` delle viste `vw_dash_*`.
+
+**Parlano V6:** `core/db/partitioned_note_repository.py:80-83` (`TARGET_TIPI_AMMESSI`, copia del
+`CHECK` di `vendite.note`, `ATTIVITAFT` compreso) e `vendite/db/note_repositories.py`.
+
+**Vocabolari che vivono solo nel backend** (nessun catalogo DB):
+
+* `preventivo`, `contratto`, `offerta` **minuscoli** (`_approvazioni_prezzo_constants.py:46-55`):
+  la chiave `META_KEY_SORGENTE` nel `meta` jsonb della pratica, cioè un vocabolario **scritto nei
+  dati**. Stesso nome delle costanti di `sorgenti.py`, valori diversi;
+* `TIPI_DOCUMENTO_AMMESSI` dell'IVA e il `contesto` della situazione merce (sopra);
+* `ErrorScope = Literal["LOTTO", "FATTURA"]` (`pipeline_error_logger.py:20`): valori di V2,
+  instradamento solo Python. Non è un tipo di documento come chiave nuova: resta, legato a V2.
+
+**Chi traduce, lato backend:**
+
+| Punto | Da → a |
+| --- | --- |
+| `_annullo_con_legami.py:63-70` | V3 → V1 (`DDT` → `DDT_VENDITA`, `ORDINE` → `ORDINE_VENDITA`) |
+| `_annullo_con_legami.py:77-86` | l'`origine` di V7 → V1 (`OFFERTA` → `OFFERTA_COMMERCIALE`, `RESO` → `RESO_VENDITA`) |
+| i cinque repository col mixin indirizzi | V5 ↔ V3, una coppia per classe |
+| `magazzino/db/famiglie.py:84, 103` | segmento d'URL (`inventari`, `rettifiche`) → `INVENTARIO_RIGA`, `RETTIFICA_RIGA`. Il segmento è una rotta, non un codice: resta |
+| `ordini_service.py:111-112` | `_TIPO_VIVO_ORDINE = 'ORDINE_VENDITA'`: copia locale di V1, non presa da `sorgenti.py` |
+| `post_smistamento_handler.py:73-74`, `preventivi_service.py:2101` | `SORGENTE_PREVENTIVO` usato come valore di `documento_origine_tipo` (V7): due vocabolari che coincidono per caso, cosa che `sorgenti.py:15-20` vieta |
+
+⚠️ **Ricaduta sul frontend.** Tre risposte API portano codici V3 (`documento_origine.tipo`, le
+`choices` dell'IVA, il `contesto` della situazione merce), e le chiavi delle traduzioni possono
+dipenderne. Il censimento del FE (chiavi i18n, confronti nei componenti) lo fa la sessione FE nel
+lotto che cambia quelle risposte.
+
+### 7.9 Le decisioni nuove che il censimento apre
+
+G-1 … G-4 restano valide. Il censimento trova quattro vocabolari che non avevano una decisione:
+
+* **G-5 — le famiglie di numerazione (V4).** ✅ **Deciso da Tid il 2026-10-18, come da
+  proposta.** È un catalogo di tipi di documento con codici propri e con «dove vive» il documento
+  (`schema_tabella`, `nome_tabella`), che ripete `config.sorgenti.target_table`.
+  * `vendite.famiglie_documento` **resta** per ciò che è solo della numerazione: colonna del
+    numero, prefisso stampato (`ORD`, `DDT`: non cambia), lunghezza, serie;
+  * la sua identità diventa una **FK verso `config.sorgenti`**: il codice della famiglia è quello
+    della sorgente (`DDT` → `DDT_VENDITA`, `ORDINE` → `ORDINE_VENDITA`, `RESO` → `RESO_VENDITA`), e
+    `registri_fatturazione.famiglia_documento` segue;
+  * `schema_tabella` e `nome_tabella` **si ritirano** a favore di `target_table` (regola del 2);
+    `vendite.fn_crea_famiglia_documento` riceve una sorgente esistente invece della tabella;
+  * la distinta d'incasso (`DISTINTA`) entra in `config.sorgenti` (G-2). Lotto 0 per il catalogo,
+    lotto 2 per i numeratori.
+* **G-6 — le aree documentali al plurale (V5).** ✅ **Deciso da Tid il 2026-10-18, come da
+  proposta: il plurale si ritira.**
+  * **Indirizzi:** `config.tipi_indirizzi_allowed.ambito` diventa il codice della sorgente, con FK
+    al posto del `CHECK` (`ORDINI` → `ORDINE_VENDITA`, `ACQUISTI_DDT` → `DDT_ACQUISTO`); gli
+    argomenti di `trgfn_tipi_indirizzi_only_allowed` seguono, e nel backend il mixin indirizzi
+    passa un codice solo invece della coppia `_indirizzi_ambito` / `_indirizzi_documento`;
+  * **Dashboard:** `config.sorgenti.area` si ritira; le viste `vw_dash_*` e le costanti
+    `DASH_*_AREE` del backend raggruppano per `codice_interno`, e l'etichetta la danno le
+    traduzioni;
+  * ⭐ **il significato si tiene:** oggi `area IS NULL` vuol dire «la sorgente non è un documento
+    sfogliabile in dashboard». È una regola nascosta in un vuoto: diventa una colonna esplicita di
+    `config.sorgenti` (per esempio `in_dashboard boolean NOT NULL`), il nome lo fissa il piano;
+  * lotto 2; il frontend della dashboard (chiavi di traduzione, filtri) lo verifica la sessione FE
+    nello stesso lotto.
+* **G-7 — il catalogo delle note (V6).** ✅ **Deciso da Tid il 2026-10-18: le note puntano a
+  `config.tipi_entita`** (strada a). Le note stanno anche su cose che non sono documenti
+  (articoli, componenti, asset, movimenti), quindi una FK verso `config.sorgenti` non le copre
+  tutte; i due meccanismi (FK per i documenti, `CHECK` per il resto) sono scartati.
+  * **Precisazione di G-3:** *una colonna che nomina un **documento** punta alle sorgenti; una
+    colonna che nomina **qualcosa che si può indicare** (note, bersaglio d'errore, giornale)
+    punta alle entità.* Per G-1 le entità dei documenti hanno il codice della sorgente, legato:
+    il codice resta uno.
+  * **I codici delle note si allineano:** `DDT` → `DDT_VENDITA` (vendite) e `DDT_ACQUISTO`
+    (acquisti), `ORDINE` → `ORDINE_VENDITA` e `ORDINE_ACQUISTO`, `OFFERTA` →
+    `OFFERTA_COMMERCIALE`, `ATTIVITAFT` → `ATTIVITA`, `ARTICOLI` → `ARTICOLO`,
+    `ARTICOLI_COMPONENTI` → `ARTICOLO_COMPONENTE`. Il caso dello stesso nome per due documenti
+    (§7.1) sparisce.
+  * **In `config.tipi_entita` entrano** le voci che mancano: `ARTICOLO_COMPONENTE`, `ASSET`,
+    `EVENTO_ASSET`, `MOVIMENTO`, `ATTIVITA`, le testate di magazzino e le righe con nota
+    (`INVENTARIO_RIGA`…), i documenti d'acquisto, il reso.
+  * Segue anche `catalogo.articoli.note_target_tipo` / `articoli_componenti.note_target_tipo`
+    (oggi `CHECK` fisso). Nel backend si ritira `TARGET_TIPI_AMMESSI` di
+    `partitioned_note_repository.py`: decide la FK.
+  * ⚠️ **La FK toglie l'elenco, non la partizione.** Ogni tipo ha la sua partizione con la FK
+    verso la tabella del documento (`target_id`): un tipo nuovo di nota resta un changeSet per
+    la partizione, più una riga di `tipi_entita.csv` al posto del `CHECK` e della copia Python.
+  * Lotto 3 (le tabelle si ricostruiscono comunque per G-3); le voci del catalogo nel lotto 0.
+* **G-8 — i prefissi di chiave (V8).** ✅ **Deciso da Tid il 2026-10-18, come da proposta.**
+  `vendite.commesse_attivita.segment_key` è la chiave d'idempotenza del push
+  (`<PREFISSO>:<uid>:R:<riga>[:M:<mese>][#CMP:<componente>]`), coi prefissi `PREV`, `ORD`, `DDT`,
+  `CONTR`, `CONS`: un sesto vocabolario corto.
+  * **Chi decide non legge il prefisso:** «è merce?» (`vendite.fn_af_merce_per_riga`, oggi
+    `split_part(…) = ANY ('ORD','DDT')`) si chiede a `sorgente_tipo_id`, la FK che la riga porta già;
+  * **la chiave la costruisce un solo building block** in `script` (sorgente, uid, riga, mese):
+    le copie scritte a mano (`'ORD:' || uid || ':R:' || id` nei push, nel reso
+    `fn_accredita_riga_reso` / `fn_annulla_accredito_riga_reso`, nei builder pgTAP) si ritirano
+    nello stesso giro, e chi ritrova una chiave usa la stessa funzione (regola del 2);
+  * **il prefisso diventa il `codice_interno` della sorgente** (`ORDINE_VENDITA:<uid>:R:<id>`;
+    `varchar(128)` basta). `MAN` (attività a mano) resta: non è un tipo di documento;
+  * **le chiavi esistenti** si convertono **a mano con un SQL una tantum** sui database di sviluppo
+    (Tid, 2026-10-18: non c'è produzione), non con un changeSet: in CI il database nasce vuoto e
+    non ha chiavi da convertire. Va fatto **insieme all'apply del lotto 2**: una chiave vecchia
+    davanti al builder nuovo non viene riconosciuta e il push successivo duplica la riga.
+    ⚠️ L'`UPDATE` passa dai guard `BEFORE UPDATE` di `commesse_attivita` (quantità immutabile,
+    prezzo di rettifica): il SQL lo prepara il team DB col lotto e lo prova in transazione.
+  * Lotto 2.
+
+V7 (origine e destinazione) non apre una decisione: rientra in G-3 (`CHECK` → FK verso le sorgenti).
+Nemmeno i vocabolari solo del backend (§7.8): G-1 vale anche lì, e i minuscoli del `meta` della
+pratica passano ai codici delle sorgenti nel lotto che tocca le approvazioni di prezzo.
+
+## 8. Lotto 0 — il catalogo (team DB, 2026-10-19)
+
+Via di Tid il 2026-10-18 sera, numeri da `20261019-14`. Scritto e provato in transazione; **non
+applicato**.
+
+### 8.1 Che cosa contiene
+
+| Pezzo | Dove | Che cosa |
+| --- | --- | --- |
+| `20261019-14` | `00_schema/config` | `config.sorgenti.scope` ammette `CATALOGO`: il tipo è a catalogo per il suo nome, e nessun meccanismo (push, pipeline, movimenti) lo legge per scope. Nessuno dei valori di prima descriveva i tipi nuovi |
+| `20261019-15` | `00_schema/config` | `config.tipi_entita.is_sorgente` + colonna generata `sorgente_codice_interno` con FK verso `config.sorgenti(codice_interno)`: un'entità che è anche una sorgente porta lo stesso codice **per vincolo** (G-1). COMMENT di tabella riscritto (diceva «non ci si aggancia») |
+| `sorgenti.csv` | `80_data` | sette sorgenti nuove, id 23-29, scope `CATALOGO`: `ORDINE_ACQUISTO`, `DDT_ACQUISTO`, `INVENTARIO`, `RETTIFICA`, `TRASFERIMENTO`, `DISTINTA_INCASSO`, `EMAIL` |
+| `tipi_entita.csv` + mirror `20260822-55` | `80_data` | colonna `is_sorgente` in coda (e nell'elenco del mirror, `ANY`); 25 voci nuove: ogni sorgente che non era un'entità (22) più le tre di G-7 che non sono sorgenti (`ARTICOLO_COMPONENTE`, `ASSET`, `MOVIMENTO`). Tutte con chiave `id`, non giornalabili |
+| pgTAP | `db/pgtap/config/test-grammatica-catalogo-sorgenti-entita-v1.sql` | 9 test: ogni sorgente ha la sua entità (il verso che la FK non sa dire), la FK, il rifiuto di un'entità che si dichiara sorgente senza esserlo, le sette sorgenti nuove |
+
+Il resync della sequenza di `config.sorgenti` non serve un changeSet: lo fa già `90_end/20260616-02`
+(`runAlways`, tutte le sequenze di `config`). Il `20261019-16`, tenuto per K-1, non serve (§8.3).
+
+### 8.2 Le scelte del piano
+
+* **Il verso del legame: entità → sorgenti.** Nel migrate il mirror delle sorgenti (`20251002-21`)
+  gira prima di quello delle entità (`20260822-55`): un tipo nuovo è una riga in tutti e due i CSV, e
+  in questo verso la riga puntata c'è già. Nel verso opposto ogni tipo nuovo fermerebbe il migrate.
+  Il verso che la FK non copre (ogni sorgente ha la sua entità) lo asserisce il pgTAP, test 1.
+* **Ogni sorgente è un'entità**, righe e varianti comprese: ha una tabella e una chiave, quindi si può
+  indicare (bersaglio, note). Così il presidio è una regola sola, senza eccezioni per categoria.
+* **Le righe d'acquisto non entrano**: oggi nessun punto del database le nomina (le note di
+  `acquisti` sono per testata). Entrano col primo che le nomina, per esempio il carico da DDT
+  d'acquisto. Fattura e contratto d'acquisto, nominati solo dal `CHECK` di `acquisti.note`, non hanno
+  tabella: fuori; il `CHECK` lo ricostruisce il lotto 3.
+* **`label_selector`**: `numero` per i due documenti d'acquisto, `codice` per la distinta; `NULL` per le
+  testate di magazzino (non hanno un numero leggibile) e per l'email.
+* ⚠️ **L'automazione `attivo` non lega l'accensione.** Provato sullo scratch:
+  `dbops.fn_run_automations_attivo('AUTO', ARRAY['config'], false)` non monta niente sulla FK nuova, e
+  una sorgente con la sua entità si spegne senza errore. La FK lega il **nome**, non l'accensione. Se si
+  vuole che un tipo nominato da note e bersagli non si spenga, è una regola da scrivere (lotto 4).
+
+### 8.3 Le decisioni del lotto 0 (Tid, 2026-10-19)
+
+* **K-1 — la chiave di preventivo e offerta: ✅ (b1), resta com'è.** `config.sorgenti.key_selector`
+  dice `uid`, `config.tipi_entita.key_selector` dice `id`, e le due colonne restano così, col loro nome.
+  * **Perché.** Le due colonne rispondono a due domande diverse: la prima dice con che chiave un
+    documento si **collega** (collegamento polimorfo, guard, resolver, `vw_stato_sorgente_*`), la seconda
+    con che chiave lo si **apre** a video (le rotte `<int:preventivo_id>`). Lo dicevano già la nota della
+    riga `PREVENTIVO` in `tipi_entita.csv` e il manuale di `config.sorgenti` («convenzione voluta e
+    portante: non va ripulita»). G-1 unifica il **nome del tipo**, non la chiave: la frase del §5 «con un
+    codice solo la chiave deve essere una» era sbagliata, ed è corretta lì.
+  * ⚠️ **Il vicolo cieco, da non ripercorrere.** La prima stesura di questo paragrafo raccomandava
+    (a), «una chiave sola, `id`», contando solo i due collegamenti testuali (`pratiche_sorgenti`,
+    `commesse_sorgenti`). L'`uid` vive anche fuori dal meccanismo polimorfo: `commesse_attivita` porta
+    sempre l'`uid` del documento, le chiavi di idempotenza del push lo contengono, `vendite.ddt` e
+    `vendite.resi` hanno `sorgente_uid uuid` tipizzato, e la proiezione dello stato delle pratiche si
+    aggancia al preventivo per `uid` (`trgfn_documento_reconcile_proiezione('2', 'uid')`). La guida
+    [sorgente polimorfa](../../guide/sorgente-polimorfa.md) §4 e §6 lo dice in chiaro («non
+    canonicalizzare a un'unica chiave»), e il brief `work-done/brief-db-guard-sorgente-polimorfa` §2a
+    aveva già scartato l'alternativa. Tid l'ha fermata: è una scelta discussa più volte, ed è (b).
+  * Scartata anche (b2), rinominare la colonna delle entità: sposta lavoro su backend e frontend per una
+    questione di nome già coperta dalla documentazione. Il `20261019-16` non serve.
+* **I nomi: ✅ `DISTINTA_INCASSO` ed `EMAIL`**, come scritti nel lotto 0.
+  * `DISTINTA_INCASSO` e non `DISTINTA`: la regola `<DOCUMENTO>_<CICLO>` di G-2. La distinta dei
+    fornitori, quando esisterà, sarà `DISTINTA_PAGAMENTO`;
+  * `EMAIL` e non `EMAIL_BOZZA`: la riga di `config.email_outbox` è l'email in ogni stato, e la bozza è
+    uno stato.
+
+### 8.4 Ricaduta sul frontend (stesso giro)
+
+`scripts/check_i18n_keys.py` legge la colonna `etichetta_key` di `tipi_entita.csv`: senza le chiavi nei
+locales la CI è rossa. Le 25 chiavi da seminare in `it.json` ed `en.json`, sotto `config.tipi_entita`:
+`attivita`, `attivita_consumi`, `reso_vendita`, `preventivo_riga`, `contratto_riga`,
+`ordine_vendita_riga`, `ddt_vendita_riga`, `fattura_riga`, `reso_vendita_riga`,
+`ddt_vendita_prelievo`, `reso_vendita_rientro`, `ordine_acquisto`, `ddt_acquisto`, `inventario`,
+`inventario_riga`, `rettifica`, `rettifica_riga`, `trasferimento`, `trasferimento_riga`,
+`evento_asset`, `distinta_incasso`, `email`, `articolo_componente`, `asset`, `movimento`.
+Il backend non cambia: il lookup dei tipi entità legge il catalogo così com'è.
+
+### 8.5 La prova (2026-10-19, scratch `zeroerp_ruoli`, come owner, in transazione annullata)
+
+* SQL estratto da `-14` e `-15`, poi l'upsert di **tutte** le righe dei due CSV come lo fa il loader
+  (nessuna riga rifiutata: nessun mirror è una mina), poi il pgTAP: **9/9**.
+* Controprova: senza le righe delle entità il test 1 e il test 8 sono rossi.
+* Presidi vicini, prima e dopo, identici: `config/test-costanti-catalogo-citate-dal-codice-v1` 6/6,
+  `script/test-giornale-registri-catalogo-v1` 13/13, `dbops/test-automazione-attivo-eccezioni-v1` 8/8,
+  `dbops/test-vw-bersagli-non-dichiarati` 4/4. `script/test-vw-giornale-entita` è rosso **già prima**,
+  con lo stesso errore di fixture (`p_tipo_doc_fiscale_id obbligatorio`): non viene da qui.
+* Cancelli statici verdi: `run_on_change`, `precondition_seed`, `sql_letterali`,
+  `ddl_su_trigger_automazione`, `timestamp_senza_fuso`, `v1_congelato`. `check_i18n_keys` rosso per le
+  25 chiavi del §8.4.
+* Non provato prima dell'apply: il pgTAP **come app** (lo lancia Tid).
+* **Dopo l'apply su dbdev (2026-10-19), corsa di Tid come app: test 6 rosso**, per un difetto del
+  test e non del lotto. `target_table::text` stampa il `regclass` **senza schema** quando lo schema è
+  nel `search_path` di chi legge: come app `email_outbox`, come owner sullo scratch
+  `config.email_outbox`. Il test legge ora schema e tabella da `pg_class`/`pg_namespace`, convertiti in
+  `text` con `COLLATE "default"`: due `name` composti lasciano indeciso il confronto di `results_eq`.
+  Rilanciato come app: **9/9**.
+
+## 9. Lotto 1 — la famiglia delle eccezioni (team DB, 2026-10-19)
+
+Via di Tid il 2026-10-19 («procedi col progressivo successivo»). Numeri `20261019-18` … `-32`. Scritto,
+provato in transazione e ✅ **applicato su dbdev il 2026-10-19** (nessuna regressione). ⚠️ Andava applicato **insieme** al giro BE del §9.4: dopo l'apply il
+codice `OFFERTA` è rifiutato dalle funzioni della famiglia.
+
+### 9.1 Che cosa contiene
+
+La famiglia dei documenti con eccezioni (§9.8.3 del brief degli articoli ammessi) passa da `OFFERTA` al
+codice della sorgente, `OFFERTA_COMMERCIALE`. `CONTRATTO` è già il codice della sorgente.
+
+| ChangeSet | Oggetto | Che cosa |
+| --- | --- | --- |
+| `-18` | `vendite.fn_documento_listino_operativo` | ramo `OFFERTA_COMMERCIALE`; `p_documento` ancorato (DROP + CREATE) |
+| `-19` | `vendite.fn_documento_righe_eccezione` | idem |
+| `-20` | `script.fn_check_esclusione_articolo_documento` | firma ancorata (il corpo passa il codice al `-18`) |
+| `-21` | `script.fn_check_riga_erogazione` | valori ammessi `OFFERTA_COMMERCIALE`, `CONTRATTO`; firma ancorata |
+| `-22` | `script.fn_check_listino_congelabile` | idem, e il ramo dell'offerta; i codici `E_OFFERTA_*` restano |
+| `-23` | `vendite.fn_documento_righe_preview` | il ramo dei componenti dell'offerta; firma ancorata |
+| `-24` | `vendite.fn_documento_riga_erogazioni` | firma ancorata (passa il codice al `-21`) |
+| `-25` | `vendite.fn_offerta_righe_espanse` | chiama il listino operativo con `OFFERTA_COMMERCIALE` |
+| `-26` | `vendite.fn_offerta_righe_preview` | chiama la preview comune con `OFFERTA_COMMERCIALE` |
+| `-27` | `script.fn_available_actions_offerta` | chiama la check del listino con `OFFERTA_COMMERCIALE` |
+| `-28` | `vendite.trgfn_offerte_commerciali_guard_transizione` | idem |
+| `-29` | `script.trgfn_righe_guard_erogazione_perimetro` | il commento che elenca i documenti |
+| `-30` | i due montaggi del guard dell'erogazione su `vendite.offerte_commerciali_eccezioni` | rimontati con `OFFERTA_COMMERCIALE`, stessa forma (`WHEN` compreso) |
+| `-31` | `script.fn_articolo_riga_contesto` (il ponte A-8) | il listino operativo riceve il codice com'è; la chiave `doc_listino` esce dal contesto |
+| `-32` | `script.fn_check_articolo_riga_su_contesto` | le due check del listino ricevono il documento del contesto; `v_doc_listino` esce |
+
+pgTAP: nuovo `vendite/test-grammatica-eccezioni-codice-sorgente-v1` (12 test); adeguati
+`vendite/test-righe-esclusione-solo-non-si-vende-v1` (test 25, il codice) e
+`vendite/offerte_commerciali/test-offerta-emissione-congela-listino-v1` (test 2, la firma).
+
+### 9.2 Le scelte
+
+* **`p_documento` ancorato a `config.sorgenti.codice_interno%TYPE`** (raccomandazione di Tid: `%TYPE` in
+  firma, `DECLARE` e `RETURNS TABLE`). Era un `text` nudo «senza colonna-vocabolario»; col lotto 0 la
+  colonna c'è. Il tipo passa da `text` a `character varying`, quindi la firma cambia: **DROP + CREATE**
+  per le sette funzioni che ricevono `p_documento` (un `CREATE OR REPLACE` avrebbe lasciato due overload).
+  Tutte `plpgsql`, nessun dipendente registrato in `pg_depend`; nessun `COST`/`ROWS`/`SET` da ripetere
+  (default). Il backend passa il codice come parametro semplice: un `text` si converte da solo.
+* **Il ponte A-8 si restringe, non sparisce.** Traduceva per tre lettori (listino operativo, etichetta
+  della testata, le due check via `doc_listino`). Dopo il lotto 1 traduce solo verso
+  `script.fn_get_stato_testata_documento`, che parla la grammatica delle testate: lo ritira il lotto 2.
+  La chiave `doc_listino` del contesto era diventata una copia di `documento` ed esce (regola del 2).
+* **Due funzioni parlano per un giro due grammatiche**, dichiarato nei loro changeSet:
+  `fn_available_actions_offerta` e `trgfn_offerte_commerciali_guard_transizione` passano ancora `'OFFERTA'`
+  a `script.fn_check_indirizzi_documento_cliente` (grammatica delle testate, lotto 2).
+* **I COMMENT** delle funzioni sono storie: non si riscrivono, prendono in coda una nota di revisione
+  che dice il codice di oggi.
+
+### 9.3 Fuori dal lotto 1 (e perché)
+
+* `script.trgfn_righe_default_erogazione_da_articolo` (nel censimento del §9.8.3): non nomina il documento.
+* I montaggi del contratto (`'CONTRATTO'`): già il codice della sorgente.
+* Tutto ciò che parla la grammatica delle testate (`fn_get_stato_testata_documento`,
+  `fn_check_indirizzi_documento_cliente`, lock, indirizzi, `_indirizzi_documento = "OFFERTA"` nel
+  repository): lotto 2. Le note (`target_tipo = 'OFFERTA'`): lotto 3.
+
+### 9.4 Richiesta al backend (stesso apply)
+
+| Dove | Oggi | Dopo |
+| --- | --- | --- |
+| `vendite/db/_documento_eccezioni_repo.py:39` | `DocumentoEccezioni = Literal["CONTRATTO", "OFFERTA"]` | i codici delle sorgenti: `SORGENTE_CONTRATTO`, `SORGENTE_OFFERTA_COMMERCIALE` di `apps/config/sorgenti.py` (anche nel commento di testa, riga 15) |
+| `vendite/services/offerte_service.py:1259` | `list_erogazioni_riga("OFFERTA", …)` | `SORGENTE_OFFERTA_COMMERCIALE` |
+| `vendite/services/offerte_service.py:1678` | `listino_versione_operativa("OFFERTA", …)` | `SORGENTE_OFFERTA_COMMERCIALE` |
+| `vendite/services/contratti_service.py` | `"CONTRATTO"` | invariato nel valore; `SORGENTE_CONTRATTO` se si vuole la costante |
+| `vendite/tests/api/test_riga_erogazioni_api.py` | `"OFFERTA"` | da adeguare |
+
+Restano come sono (lotti 2 e 3): `offerte_repository._indirizzi_documento = "OFFERTA"`, `note_views`
+(`target_tipo="OFFERTA"`), `_annullo_con_legami.py`. Le API non cambiano forma: nessuna risposta porta il
+selettore.
+
+### 9.5 La prova (2026-10-19, scratch `zeroerp_ruoli`, come owner, in transazione annullata)
+
+* **Censimento dal catalogo vivo** (`pg_proc.prosrc` di dbdev), non solo dalla doc: i chiamanti delle sette
+  funzioni sono quelli del §9.1, più `vendite.trgfn_contratti_freeze_listino_versione`,
+  `script.fn_available_actions_contratto` e `vendite.fn_contratto_righe_preview` (passano `CONTRATTO`:
+  invariati) e `script.trgfn_righe_default_erogazione_da_articolo` (solo un commento).
+  `script.trgfn_righe_guard_aggiunta_fuori_listino`, nominato in un COMMENT, non esiste più.
+* SQL estratto dei 15 changeSet: applicato senza errori; una sola firma per ciascuna delle sette, primo
+  argomento `character varying`; `plpgsql_check` a zero errori sulle dodici funzioni toccate.
+* **48 pgTAP** (ogni file che nomina un oggetto del lotto, più `script/test-catalogo-messaggi-errore-completo`
+  e `dbops/test-riferimenti-morti-v1`), prima e dopo: **identici**. Il nuovo
+  `vendite/test-grammatica-eccezioni-codice-sorgente-v1`: **12/12**.
+* Rossi **già prima**, con gli stessi test (da owner sullo scratch, non dal lotto):
+  `script/test-capability-annulla-aspetto-e-stato-leggibile-v1` (2, 4, 8),
+  `vendite/test-annullo-documento-con-legami-v1` (27), `vendite/test-fn-contratto-righe-preview-nuovi-campi-v1`
+  (2, fixture), `vendite/test-offerta-righe-espanse` (6, 7, 8).
+* Cancelli statici verdi (`run_on_change`, `precondition_seed`, `sql_letterali`,
+  `ddl_su_trigger_automazione`, `timestamp_senza_fuso`, `v1_congelato`, `check_i18n_keys`).
+* Non provato prima dell'apply: i pgTAP **come app** (li lancia Tid) e il giro BE del §9.4.
+* **Dopo l'apply su dbdev (2026-10-19), corsa di Tid come app: nessuna regressione.** Resta il giro BE
+  del §9.4: fino alla sua consegna, sul dev, le chiamate del backend con `OFFERTA` sono rifiutate.
+
+### 9.6 Il giro BE (sessione BE, 2026-10-19)
+
+* `DocumentoEccezioni = Literal["CONTRATTO", "OFFERTA_COMMERCIALE"]`; `offerte_service` e
+  `contratti_service` passano `SORGENTE_OFFERTA_COMMERCIALE` e `SORGENTE_CONTRATTO` di `apps.config.sorgenti`;
+  il test delle erogazioni dell'offerta segue.
+* ⭐ Le costanti di `apps/config/sorgenti.py` sono ora **`Final`**: mypy le legge come letterali e le
+  confronta col `Literal` della firma. Controprova: `SORGENTE_PREVENTIVO` e `'OFFERTA'` passati al
+  repository sono errori di tipo; prima erano `str` e passavano.
+* ⚠️ `_approvazioni_prezzo_constants` aveva un `SORGENTE_CONTRATTO = "contratto"` (il `meta` della
+  pratica, §7.8): stesso nome, altro valore, e in un modulo che importava i due vinceva l'ultimo import in
+  silenzio. Ora `META_SORGENTE_*` (sotto); i valori minuscoli si ritirano col lotto delle approvazioni di
+  prezzo (§7.9, in coda).
+* Prova: mypy a cricchetto pulito; 4291 test Django e 686 test FE verdi, build FE; chiamata **reale** su dbdev di
+  `listino_versione_operativa` e `list_erogazioni_riga`: `OFFERTA_COMMERCIALE` e `CONTRATTO` passano,
+  `OFFERTA` è rifiutato («Tipo documento OFFERTA sconosciuto»). Worker gunicorn del dev ricaricati.
+* Le API non cambiano forma: il frontend non ha lavoro.
+* **Revisione dello stesso giro.** I `SORGENTE_*` minuscoli del meta della pratica si chiamano ora
+  `META_SORGENTE_*` (solo il nome Python: i valori scritti nei dati restano, li migra il lotto delle
+  approvazioni), e `test_sorgenti_seed` ha un 4° test contro lo stesso nome con un altro valore. Lato FE:
+  tre dialog di emissione e tre liste scrivevano a mano il codice sorgente invece di usare
+  `SORGENTE_CODES`, e la chiave `SORGENTE_CODES.DDT` diventa `DDT_VENDITA` (la chiave è il codice);
+  presidio `documenti/constants.spec.js`.
+
+## 10. Lotto 2 — il piano (team DB, 2026-10-19)
+
+### 10.1 Il perimetro misurato (catalogo vivo di dbdev, 2026-10-19; struttura, non popolazione)
+
+* **42 funzioni** scrivono un codice corto (`DDT`, `ORDINE`, `OFFERTA`, `RESO`, `EMAIL_BOZZA`) come
+  letterale fuori dai commenti: i lettori della grammatica delle testate (§7.3), i verbi di annullo e del
+  reso, i generatori di bolla, i guard di bolla, ordine e reso, i numeratori, i lettori delle note, un
+  builder pgTAP.
+* **18 funzioni trigger** portano codici corti negli argomenti, per **76 montaggi**. Il lock delle righe
+  fuori bozza da solo ne ha 22, quello delle testate 6, i due degli indirizzi 10, l'annullo con legami 5.
+  Ogni montaggio si cambia solo smontando e rimontando.
+* Dentro questo perimetro stanno pezzi che le decisioni hanno messo in **sedi diverse**: le note
+  (`trgfn_note_validate_generic`, `fn_scope_note_*`) sono del **lotto 3**; i numeratori sono di **G-5**;
+  `trgfn_tipi_indirizzi_only_allowed` e `config.sorgenti.area` di **G-6**; `documento_origine_tipo` e
+  `destinazione_tipo` di **V7** (G-3); `segment_key` di **G-8**.
+* Lato backend: il mixin degli indirizzi dei cinque repository, `_annullo_con_legami.py` (le due
+  traduzioni), `_iva_contesto_documento.py` (le `choices` di un endpoint), il `contesto` della situazione
+  merce, `ordini_service` (`documento_origine.tipo` nella risposta): tre risposte API toccano il frontend.
+
+Messo tutto in un giro sarebbero un centinaio di changeSet e tre risposte API in un solo apply, coordinato
+con BE e FE. G-4 chiede che ogni lotto sia chiuso in sé: un lotto così grande non lo è nei fatti.
+
+### 10.2 La proposta: cinque sotto-giri, ciascuno chiuso (L2-1, per Tid)
+
+| Sotto-giro | Che cosa | ChangeSet (stima) | Backend / frontend |
+| --- | --- | --- | --- |
+| **2a. Testate** | la grammatica delle testate passa ai codici delle sorgenti (`DDT_VENDITA`, `ORDINE_VENDITA`, `OFFERTA_COMMERCIALE`, `RESO_VENDITA`, `EMAIL`; gli altri sono già uguali): i lettori (`fn_get_stato_testata_documento` e i fratelli), i verbi e i guard coi letterali, i montaggi dei trigger. **Muore il ponte** di `fn_articolo_riga_contesto` | ~55 (circa 35 funzioni, una per changeSet, più un changeSet di rimontaggio per funzione trigger) | il mixin indirizzi passa un codice solo per il documento; `_annullo_con_legami.py` perde le due traduzioni |
+| **2b. Origine e destinazione** (V7) | `vendite.ordini.documento_origine_tipo` e `config.nature_vendita.destinazione_tipo`: dal `CHECK` alla FK verso `config.sorgenti`; i dati di oggi convertiti; l'`origine` di `fn_documento_legami` | ~6 + CSV | `ordini_service` scrive `OFFERTA_COMMERCIALE`; **risposta API** `documento_origine.tipo` (FE) |
+| **2c. Famiglie** (G-5) | `vendite.famiglie_documento` con identità FK verso le sorgenti, `schema_tabella`/`nome_tabella` ritirati, numeratori e `fn_crea_famiglia_documento` | ~10 + CSV | da censire nel giro (le famiglie si gestiscono dal CRUD) |
+| **2d. Aree** (G-6) | `config.tipi_indirizzi_allowed.ambito` → codice della sorgente con FK; `config.sorgenti.area` ritirata e `in_dashboard` esplicita; viste `vw_dash_*` | ~10 + CSV | mixin indirizzi (l'ambito), costanti `DASH_*_AREE`; **dashboard** (FE) |
+| **2e. Chiavi del push** (G-8) | il builder unico di `segment_key`, «è merce?» da `sorgente_tipo_id`, le copie a mano ritirate | ~8 | SQL una tantum sulle chiavi dei database di sviluppo, **insieme all'apply** |
+
+Ordine proposto: **2a** per primo (il nucleo, e il ponte che muore); poi 2b, 2c, 2d, 2e in qualunque
+ordine: dipendono solo dal lotto 0. Il lotto 3 (note) resta anticipabile, anche fra un sotto-giro e
+l'altro. Ogni sotto-giro chiude con la sua consegna BE/FE, come il lotto 1.
+
+Le **risposte API** che portano un codice di tipo documento (`choices` dell'IVA, `contesto` della
+situazione merce) cambiano nel sotto-giro che cambia il loro produttore: 2a per la situazione merce e
+per l'IVA, che usano i codici delle testate.
+
+### 10.3 La decisione (Tid, 2026-10-19)
+
+✅ **L2-1: sì ai cinque sotto-giri, si parte dal 2a** («ok parti come da tuo piano»), con `%TYPE` in firma,
+`DECLARE` e `RETURNS TABLE`, e la numerazione che oltre `-99` passa al `20261020-01`.
+
+### 10.4 I sotto-giri 2c, 2d, 2e — le decisioni prima dello sviluppo (Tid, 2026-10-20)
+
+* ✅ **L2-2 = (b): i tre sotto-giri DB in un apply solo**, poi un solo giro BE/FE. Proposta del team DB era (a),
+  uno alla volta; Tid sceglie (b). Ne discende che 2c, 2d e 2e si scrivono e si provano **insieme**, con un
+  preludio unico nella prova pre-apply, e lo SQL una tantum delle chiavi (2e) si lancia insieme all'apply.
+* ✅ **L2d-1: la colonna di G-6 si chiama `apribile`**, non `in_dashboard` (correzione di G-6, proposta del team
+  DB accettata). Il censimento sulla struttura dice che `config.sorgenti.area` non serve solo alla dashboard:
+  `vendite.fn_list_commessa_attivita` (`sorgente_area`) e `vendite.vw_dash_competenza_gruppi`
+  (`area_documento`) la restituiscono al frontend **per aprire il documento** dalla riga, e `s.area IS NOT NULL`
+  è la condizione per risolverne il numero. Quindi:
+  * `config.sorgenti.apribile boolean NOT NULL`: «questa sorgente è un documento con una sua pagina»; il valore
+    nel CSV;
+  * quali aree mostra la dashboard resta una scelta di **presentazione**, nelle costanti `DASH_*_AREE` del
+    backend, che passano ai codici delle sorgenti;
+  * il frontend apre il documento dal **codice della sorgente**, non dal plurale: cambiano due risposte API
+    (`sorgente_area`, `area_documento`), da verificare con la sessione FE.
+* ✅ **L2e-1: lo SQL una tantum delle chiavi del push si lancia solo su dbdev** (`dev.smoke` è un utente di dbdev,
+  non un altro database). Lo scratch nasce da zero e non ne ha bisogno. Si scrive per criterio, non per id.
+* ⛔ **Lo sviluppo non è partito**: lo apre Tid, perché c'è un altro cantiere in corso sulla numerazione.
+
+#### 10.4.1 I progressivi che servono (stima del 2026-10-20, sul catalogo vivo di dbdev)
+
+Un changeSet per oggetto, come nei giri precedenti; il rimontaggio dei trigger di una funzione in un changeSet
+solo. Censimento su `pg_get_functiondef` e `pg_get_viewdef` (§12.3), ripulito a mano dagli omonimi (l'«ambito»
+dei titoli IVA e delle email, le funzioni generiche di `dbops` che nominano `schema_tabella`).
+
+| Sotto-giro | `00_schema` | Funzioni e trigger | Viste | Rimontaggi | Totale |
+| --- | --- | --- | --- | --- | --- |
+| **2c** famiglie | 3 (codice lungo e FK su famiglie e registri, con le dipendenze; ritiro di `schema_tabella`/`nome_tabella`) | ~22 (numeratori, registri e loro provisioning, guard e check delle famiglie, `fn_crea_famiglia_documento`, la distinta) | 1 | 2 | **~28** |
+| **2d** aree | 3 (`ambito` alla FK, `apribile`, ritiro di `area`, con le viste che le leggono) | ~16 (lettori dell'ambito degli indirizzi, generatori di bolla e fattura, push, `fn_list_commessa_attivita`) | ~9 (`vw_dash_*`, `vw_contratti_lista`) | 1 (6 montaggi di `trgfn_tipi_indirizzi_only_allowed`) | **~29** |
+| **2e** chiavi | — | ~14 (il BB nuovo della chiave, i `fn_list_*_da_pushare`, partite e situazione merce, reso, onere, push) | 4 | — | **~18** |
+| | | | | | **~75** |
+
+**Richiesta: un blocco di 90 progressivi** (stima più un margine del 20% per ciò che il censimento fine trova:
+dipendenti di vista a cascata, `90_end`). Oggi il più alto in uso è `20261020-27`: dal `-28` al `-99` ce ne
+sono 72, quindi il blocco va oltre e continua al `20261021-01`. Il blocco lo assegna Tid, che coordina l'altro
+cantiere.
+
+## 11. Lotto 2a — le testate (team DB, 2026-10-19)
+
+Numeri `20261019-40` … `-79`. Scritto, provato in transazione e ✅ **applicato su dbdev il 2026-10-19** (pgTAP
+verdi come app). ⚠️ Andava applicato **insieme**
+al giro BE del §11.4: dopo l'apply i lettori delle testate rifiutano `DDT`, `ORDINE`, `OFFERTA`, `RESO`,
+`EMAIL_BOZZA`.
+
+### 11.1 Che cosa contiene
+
+La grammatica delle testate (V3) passa ai codici delle sorgenti: `DDT` → `DDT_VENDITA`, `ORDINE` →
+`ORDINE_VENDITA`, `OFFERTA` → `OFFERTA_COMMERCIALE`, `RESO` → `RESO_VENDITA`, `EMAIL_BOZZA` → `EMAIL`.
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `-40` … `-52` | **i lettori**, `DROP` + `CREATE` con `p_documento` ancorato a `config.sorgenti.codice_interno%TYPE`: `script.fn_get_stato_testata_documento`, `fn_get_testata_id_di_riga`, `fn_get_cliente_testata_documento`, `fn_doc_indirizzi_sede`, `fn_doc_date_consegna_anteriori`, `fn_check_listino_cambiabile`, `fn_check_indirizzi_documento_cliente`; `vendite.fn_doc_indirizzo_default`, `fn_doc_fornitura_sede`, `fn_doc_fornitura_da_anagrafica`, `fn_doc_porta_ritiro_ammette`, `fn_documento_legami`, `fn_documento_ritira_legami` |
+| `-53` | **muore il ponte A-8**: `script.fn_articolo_riga_contesto` chiede l'etichetta col codice com'è |
+| `-54` … `-67` | **i chiamanti coi letterali** (`CREATE OR REPLACE`): capability dell'offerta, check della bolla e dell'ordine, accredito del reso, i verbi di annullo di bolla e ordine, i guard di transizione dell'offerta, dell'allegato email, dei legami di bolla, della riga evasa, delle cancellazioni |
+| `-68` … `-71` | funzioni trigger col commento o i valori ammessi da aggiornare, **più i loro montaggi**: annullo con legami (2), lock delle righe fuori bozza (15), i due guard del listino (2 + 1) |
+| `-72` … `-79` | **solo i montaggi**: lock della testata (4), indirizzi (3 + 2), emittente (1), fornitura (1 + 1), date di consegna (1 + 1) |
+
+Montaggi rimontati: **34**, rigenerati da `pg_get_triggerdef` di dbdev col solo primo argomento cambiato.
+Quelli con `CONTRATTO`, `PREVENTIVO`, `COMMESSA`, `FATTURA` non cambiano e non si toccano.
+
+### 11.2 Le scelte
+
+* **Proprietà ripetute dal catalogo vivo**: volatilità, `SECURITY DEFINER`, `SET search_path`. Un
+  `CREATE OR REPLACE` senza `SET` avrebbe tolto il `search_path` alle `DEFINER`.
+* **Postura**: `fn_documento_legami` e `fn_documento_ritira_legami` restano senza `EXECUTE` a PUBLIC (il
+  `DROP` + `CREATE` lo ridarebbe): `REVOKE` nello stesso changeSet, come nei `20261011-77`/`-84`.
+* **La GUC del ritiro** (`zeroerp.doc_ritira_legami = '<DOCUMENTO>:<id>'`): scrittore
+  (`fn_documento_ritira_legami`) e lettore (`fn_doc_porta_ritiro_ammette`) cambiano insieme; dentro il
+  ritiro sparisce la traduzione `DDT` → `DDT_VENDITA` verso `config.sorgenti`.
+* **`meta.accredito_da`** della riga di commessa scrive `RESO_VENDITA`: nessun lettore (cercato in DB,
+  backend, frontend, pgTAP); le righe già scritte portano `RESO`.
+* **Il ponte A-8 non c'è più.** L'etichetta di ripiego, quando la testata non si vede, è il codice in
+  chiaro («Offerta Commerciale #id»).
+
+### 11.3 Restano ad altri giri (e perché) — i codici corti che il 2a lascia
+
+| Dove | Codice | Giro |
+| --- | --- | --- |
+| `vendite.fn_documento_legami` (colonna `origine`), `fn_documento_ritira_legami` (`l.origine IN (…)`), `vendite.ordini.documento_origine_tipo`, `fn_offerta_documenti_vivi`, `vw_ordini_lista`, `vw_dash_fatturazione_offerte` | `ORDINE`, `RESO`, `OFFERTA` | **2b** (V7) |
+| `config.nature_vendita.destinazione_tipo` e i suoi lettori (`trgfn_articoli_guard_onere_natura`, `fn_check_articolo_riga_su_contesto`, le viste di smistamento del preventivo) | `ORDINE` | **2b** |
+| numeratori (`p_famiglia_documento => 'DDT'`, `'ORDINE'`, `'RESO'`) | | **2c** (G-5) |
+| ambito degli indirizzi (`fn_indirizzi_obbligatori_mancanti('DDT', …)`, `a.ambito = 'DDT'`, la quinta colonna di `fn_doc_indirizzi_sede`, `trgfn_tipi_indirizzi_only_allowed`), `area` delle viste `vw_dash_*` | | **2d** (G-6) |
+| note (`trgfn_note_validate_generic`, `fn_scope_note_*`) | | **lotto 3** |
+
+⚠️ **Nota del 2026-10-21 per il lotto 3** (da [brief-db-perimetro-una-volta-famiglie-residue](../work-done/brief-db-perimetro-una-volta-famiglie-residue.md),
+giro 1): gli smistatori dell'operatore cambiano nome e corpo. `fn_scope_note_ef_whitelist` e
+`fn_scope_note_magazzino_ef_whitelist` sono ritirate dal `20261021-27`; al loro posto
+`fn_scope_note_ef_perimetro` e `fn_scope_note_magazzino_ef_perimetro` (`20261021-25`), che ricevono il
+perimetro e smistano sul **modo** del risolutore. Il lotto 3 riparte dal loro corpo nella doc
+auto-generata, non dagli YAML del 2026-09. `fn_scope_note_cliente` e `fn_scope_note_shop` le tocca
+lo stesso brief in un giro successivo: chi arriva per secondo riparte dal corpo vivo.
+| il testo dei messaggi per l'operatore (`'DDT'` come parola nei guard di bolla e reso) | | resta: non è un codice |
+
+### 11.4 Richiesta al backend (stesso apply)
+
+| Dove | Oggi | Dopo |
+| --- | --- | --- |
+| `_indirizzi_documento` dei cinque repository (`ordini`, `offerte`, `ddt`; `preventivi` e `contratti` già uguali) | `"ORDINE"`, `"OFFERTA"`, `"DDT"` | `SORGENTE_ORDINE_VENDITA`, `SORGENTE_OFFERTA_COMMERCIALE`, `SORGENTE_DDT_VENDITA` (`apps/config/sorgenti.py`). `_indirizzi_ambito` resta fino al 2d |
+| `_annullo_con_legami.py`: `DOCUMENTO_DDT`, `DOCUMENTO_ORDINE` passati a `vendite.fn_documento_legami` | `"DDT"`, `"ORDINE"` | i codici delle sorgenti; **la traduzione V3 → V1** (righe 63-70) **si ritira**. La traduzione dell'`origine` (righe 77-86) resta fino al 2b |
+| `_iva_contesto_documento.py`: loader e `TIPI_DOCUMENTO_AMMESSI` (le `choices` di `views_iva.py`) | `"ORDINE"`, `"DDT"` | `ORDINE_VENDITA`, `DDT_VENDITA`. ⚠️ **cambia una risposta API** (FE) |
+| `vendite_service.py:2577`, il `contesto` della situazione merce | `"ORDINE"`, `"DDT"` | `ORDINE_VENDITA`, `DDT_VENDITA`. ⚠️ **cambia una risposta API** (FE) |
+| test Django e smoke che passano i codici corti a questi punti | | da adeguare |
+
+Il frontend: le due risposte API sopra (le chiavi di traduzione e i confronti che leggono quei valori).
+
+### 11.5 La prova (2026-10-19, scratch `zeroerp_ruoli`, come owner, in transazione annullata)
+
+* **Censimento dal catalogo vivo** di dbdev: 55 funzioni che scrivono un codice corto o portano montaggi
+  coi codici corti, più le tre che ricevono `p_documento` e lo passano
+  (`fn_check_indirizzi_documento_cliente`, `fn_doc_indirizzo_default`, `fn_doc_fornitura_da_anagrafica`).
+  Ogni letterale classificato (124 righe): nel 2a la grammatica delle testate; il resto nel §11.3.
+  Nessun seed, nessun `CHECK` e nessuna vista del 2a (quelli trovati sono di 2b, 2d, lotto 3).
+* SQL estratto dei 40 changeSet: applicato senza errori. Le 13 funzioni ricreate hanno una sola firma,
+  `character varying`; **i `RETURNS` di tutte e 40 identici a quelli vivi** (`pg_get_function_result`
+  prima e dopo); `plpgsql_check` a zero errori; `search_path`, `SECURITY DEFINER` e postura (`EXECUTE`
+  revocato a PUBLIC per i due dei legami) come prima; nessun montaggio col primo argomento corto, fuori da
+  note e ambito.
+* ⚠️ **Due difetti trovati dalla prova e corretti prima della consegna**: il `RETURNS` di
+  `fn_get_stato_testata_documento` era preso da uno YAML vecchio (mancava `nata_in_transazione`, aggiunta
+  l'11-10: il `DROP` + `CREATE` non l'avrebbe segnalato, l'ha visto `plpgsql_check`); il `REVOKE` a PUBLIC
+  non usciva perché il generatore cercava `=X/` e lo trovava dentro `zeroerp_owner=X/`.
+* **113 pgTAP** (ogni file che nomina una funzione, un montaggio o un codice corto del 2a, più i presidi
+  trasversali), prima e dopo. **13 regressioni, tutte dei test** che passavano i codici corti (le chiamate
+  dirette ai lettori e ai legami, la GUC del ritiro, i montaggi attesi del lock, la firma inchiodata di
+  `fn_get_testata_id_di_riga`): adeguati, ciascuno con la nota di revisione in testa. Dopo: **esiti identici
+  a prima** in tutti i 113. Il test 12 del pgTAP del lotto 1 passa all'etichetta senza ponte.
+* Rossi **già prima**, uguali dopo (fixture o scope da owner, non dal lotto): fra gli altri
+  `script/test-fn-available-actions-ddt-reason-catch-all-v1` (16), `vendite/test-annullo-documento-con-legami-v1`
+  (27), `vendite/test-fn-list-ddt-da-pushare-v1`, `test-fn-resolve-prezzo-listino-v2-v1`,
+  `test-vw-dash-fatturazione-v1`, `test-vw-preventivi-smistamento-v1`.
+* Cancelli statici verdi.
+* Non provato prima dell'apply: i pgTAP **come app** (li lancia Tid) e il giro BE/FE del §11.4.
+* **Dopo l'apply su dbdev (2026-10-19), corsa di Tid come app**: `script/test-capability-motivi-e-nessuna-azione-v1`
+  rosso, perché passava `'ORDINE'`/`'DDT'` a `fn_documento_legami`. Era nel censimento ma non fra le
+  regressioni della prova: sullo scratch, da owner, era rosso già prima per la fixture, e il confronto
+  prima/dopo non poteva vederlo. Adeguato, 13/13 come app. Ricercate di nuovo in tutti i pgTAP e nel
+  backend le chiamate coi codici corti, anche su più righe: nessuna (resta, voluta, la chiamata con
+  `'ORDINE'` che `test-testata-dopo-emissione-rdb-v1` usa per provare il rifiuto).
+
+### 11.6 Il giro BE/FE (sessione BE/FE, 2026-10-19)
+
+* **Indirizzi**: `_indirizzi_documento` dei cinque repository è la costante `SORGENTE_*` di
+  `apps/config/sorgenti.py` (anche per preventivo e contratto, già uguali nel valore). `_indirizzi_ambito`
+  resta fino al 2d.
+* **Annullo con legami**: le costanti `DOCUMENTO_*` di `_annullo_con_legami.py` sono **ritirate**, non
+  ridefinite: coi codici delle sorgenti sarebbero state un secondo nome dello stesso codice. I cinque service
+  passano `SORGENTE_*`; la traduzione verso il tipo del lineage (`_TIPO_LINEAGE_DEL_DOCUMENTO`) è ritirata,
+  resta quella dell'`origine` (`_TIPO_LINEAGE_DELL_ORIGINE`) fino al 2b. Il campo `documento` della risposta
+  dei legami porta ora il codice della sorgente: il frontend legge solo `COMMESSA`, invariato.
+* **IVA**: `TIPI_DOCUMENTO_AMMESSI` e i loader sono `PREVENTIVO`, `ORDINE_VENDITA`, `DDT_VENDITA`; i tre
+  `*RigaForm.vue` passano `SORGENTE_CODES.*`. Presidio nuovo in `test_iva_contesto_documento` (12): i corti
+  sono un rifiuto col campo `documento_tipo`.
+* **Situazione merce**: `contesto` vale `ORDINE_VENDITA` / `DDT_VENDITA`; lato FE `CONTESTO_MERCE` legge i
+  valori da `SORGENTE_CODES`, i consumatori non cambiano.
+* `apps/config/sorgenti.py`: il commento non mette più il `p_documento` di `fn_documento_legami` fra i
+  vocabolari diversi (lo è l'`origine`, fino al 2b), e dice che la grammatica delle testate è questa.
+* Test adeguati: `test_annullo_con_legami`, `test_situazione_merce_service`, `test_ddt_service` e
+  `test_ordini_service` (le chiamate attese al BB), `test_indirizzi_seguono_cliente_db` (la sonda della firma:
+  `character varying`, non più `text`), lo spec del dialog dei legami. Doc: `api_iva_resolve.md`,
+  `api_situazione_merce.md`, voce `legami_del_documento` del catalogo BB. Gli smoke non passano codici del 2a
+  (`smoke-test-ordini-giro-commessa.sh` legge l'`origine`, del 2b).
+* Prova: 2516 test Django di `vendite` e `config`, 207 e2e di `vendite/tests/db` su dbdev (nessuno saltato),
+  mypy a cricchetto pulito, 136 test FE di `vendite` e `documenti`, lint, `npm run guards`, build. Chiamata
+  **reale** su dbdev, in transazione annullata: `fn_documento_legami` e `fn_doc_indirizzo_default` accettano i
+  cinque codici delle sorgenti, e rifiutano `DDT`, `ORDINE`, `OFFERTA`. ⚠️ ruff non è installato in locale: lo
+  vede il pre-commit. Worker gunicorn del dev ricaricati.
+* Da vedere a video (Tid): pannello indirizzi alla creazione di ordine, offerta e bolla; finestra dell'annullo
+  con legami di bolla e ordine; IVA proposta nel form di riga di preventivo, ordine e bolla; pannello situazione
+  merce dall'ordine e dalla bolla (il conto deve uscire: con un `contesto` non riconosciuto il FE conta zero).
+
+#### 11.6.1 Revisione critica dello stesso giro (2026-10-19)
+
+* 🔴 **Un punto che il §11.4 non elencava**: `richiedi_righe_in_bozza` (`_righe_bozza_guard.py`), il pre-check
+  Python di `E_RIGA_DOC_NON_BOZZA`, scrive nel `context` «le chiavi e i valori del trigger»
+  `trgfn_doc_righe_lock_fuori_bozza`. Ricavava `documento` dal maiuscolo della parola dell'etichetta
+  («Ordine» → `ORDINE`); dopo il `20261019-69` il trigger scrive `ORDINE_VENDITA`, e lo stesso rifiuto
+  arrivava al diario in due lingue. Ora il chiamante passa il codice della sorgente (`SORGENTE_*`, tipo
+  `DocumentoRighe`), che va nel contesto com'è; la parola dell'etichetta è `PAROLA_ETICHETTA`, una tabella
+  sola al posto dei 17 letterali nei chiamanti (DDT, ordini, preventivi, contratti, resi).
+* 🔴 **Divergenza già esistente, corretta nello stesso modulo**: il DB scrive «Preventivo <numero> rev. <rev>»,
+  il Python scriveva «Preventivo <numero>». Ora porta la revisione; `load_componente_with_scope` del
+  preventivo legge anche `p.rev`. L'etichetta si compone solo sul ramo del rifiuto (in bozza non serve).
+* `legami_del_documento(documento: DocumentoLegami, …)`: ritirate le `DOCUMENTO_*`, l'elenco dei documenti
+  che il lettore conosce resta come tipo. Controprova: `"DDT"`, `SORGENTE_FATTURA` e `"Ordine"` passati ai due
+  BB sono errori di mypy.
+* IVA: `TIPI_DOCUMENTO_AMMESSI` è `tuple(_LOADER)`; i tre codici erano scritti due volte (chiavi del registro e
+  whitelist). Il registro è una mappa costante di loader con import locali; ritirato `_registry()`.
+* Due fixture di test portavano ancora `documento: "DDT"` (`test_ddt_service`, `test_ddt_api`).
+* Presidi nuovi in `test_righe_bozza_guard`: documento fuori catalogo, revisione del preventivo,
+  `PAROLA_ETICHETTA` ⇔ `DocumentoRighe`, e (e2e) ogni `DocumentoRighe` accettato da
+  `script.fn_get_stato_testata_documento` sul DB vero.
+* Prova finale sullo stato committato: 2521 test di `vendite` e `config`, 220 e2e su dbdev (compresi i tre del
+  guard), mypy a cricchetto pulito; 136 test FE di `vendite` e `documenti`, lint. Worker gunicorn ricaricati.
+* ✅ **La copia dell'etichetta ha il suo presidio** (stesso giorno, ok Tid): `RigheBozzaGuardEtichettaE2ETests`
+  in `test_righe_bozza_guard` costruisce una testata per ciascun `DocumentoRighe` (ordine e preventivo dagli
+  stampi `dbops.fn_pgtap_crea_*`, DDT dal service, contratto con un INSERT come nei pgTAP, reso sopra una
+  bolla consegnata) e confronta la frase del guard con quella composta sull'`etichetta` di
+  `script.fn_get_stato_testata_documento` per la stessa riga. Un documento nel `Literal` senza stampo è
+  rosso, non saltato. Prove di mutazione: una parola cambiata («Ordine» → «Ordini», «Reso» → «Resi»), la
+  revisione cambiata, il `numero` ignorato: ciascuna rossa (il ramo col numero lo coprono ordine, preventivo
+  e contratto; DDT e reso nascono senza numero e provano il ripiego `#id`).
+* Regola del 2: la bolla consegnata dei test sul DB è lo stampo `vendite/tests/db/_ddt_consegnato.py`
+  (`crea_ddt_consegnato`, voce nel catalogo BB backend); `test_resi_create_db` lo usa e la sua copia è
+  ritirata. ⚠️ Lascia tabelle temporanee: una chiamata per transazione.
+* Nello stesso giro: la descrizione OpenAPI di `contesto` (`situazione_merce_views.py`) dice i codici delle
+  sorgenti; lato FE `DOCUMENTO_LEGAMI` è ritirato, il dialog dei legami confronta `SORGENTE_CODES.COMMESSA`
+  (aggiunto a `SORGENTE_CODES`, con la voce del catalogo BB frontend).
+* ⚠️ **Limite dichiarato**: il presidio legge la testata dalla tabella, non dai lettori del backend. Prova
+  che l'etichetta si compone come nel DB, non che ogni lettura usata dai service porti `numero` e `rev`. Una
+  lettura del preventivo senza `rev` è un `KeyError` (rumoroso); una lettura senza `numero` ripiegherebbe su
+  `#id` senza errore.
+
+## 12. Lotto 2b — origine e destinazione (team DB, 2026-10-19)
+
+Numeri `20261019-87` … `-99`. Scritto, provato in transazione e ✅ **applicato su dbdev il 2026-10-19** (pgTAP
+verdi come app, §12.6). Il giro BE/FE del §12.4 è ✅ fatto lo stesso giorno (§12.7).
+
+### 12.1 Che cosa contiene
+
+Il vocabolario V7 passa ai codici di `config.sorgenti`: l'origine dell'ordine (`OFFERTA` →
+`OFFERTA_COMMERCIALE`), la destinazione della natura (`ORDINE` → `ORDINE_VENDITA`), l'origine dei legami
+(`ORDINE` → `ORDINE_VENDITA`, `RESO` → `RESO_VENDITA`, `OFFERTA` → `OFFERTA_COMMERCIALE`; nel ramo della
+commessa anche `DDT` → `DDT_VENDITA` e `CONSUMI` → `ATTIVITA_CONSUMI`, che il §11.3 non elencava).
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `-87` (`00_schema`) | `vendite.ordini.documento_origine_tipo` convertita sul posto: `varchar(50)`, FK verso `config.sorgenti(codice_interno)` al posto del `CHECK`, `uq_ordini_v_documento_origine_offerta` col predicato nuovo. Prima toglie ciò che legge la colonna: la funzione lineage (BEGIN ATOMIC), la sua vista, `vw_ordini_lista`, la catena della dashboard |
+| `-88` (`00_schema`) | `config.nature_vendita.destinazione_tipo`, stessa forma; toglie le quattro viste dello smistamento, `vw_dash_fatturazione_preventivi`, `catalogo.vw_articoli_dettaglio` |
+| `-89` | `vendite.fn_documento_lineage_archi` ricreata, l'origine dell'offerta col codice nuovo (tre rami) |
+| `-90` … `-94` | le 14 viste ricreate: `vw_documento_lineage_archi`, `vw_ordini_lista`, smistamento (4), dashboard (7), `vw_articoli_dettaglio`. Cambiano i letterali in quattro; le altre tornano identiche |
+| `-95` | `vendite.fn_documento_legami`: `origine` è il codice della sorgente, ancorata in `RETURNS TABLE` (DROP + CREATE) |
+| `-96` … `-99` | i lettori coi letterali: `fn_documento_ritira_legami`, `fn_offerta_documenti_vivi`, `catalogo.trgfn_articoli_guard_onere_natura`, `script.fn_check_articolo_riga_su_contesto` |
+
+CSV: `nature_vendita.csv` (`MERCE` → `ORDINE_VENDITA`; il seed è `runOnChange`), e il testo tecnico di tre
+codici in `codici_errore.csv`/`messaggi_errore.csv`.
+
+pgTAP: nuovo `vendite/test-grammatica-origine-destinazione-sorgenti-v1` (12), adeguati 15 file (nota di
+revisione in testa a ciascuno).
+
+### 12.2 Le scelte
+
+* **Conversione sul posto** (`ALTER COLUMN … TYPE … USING CASE`): DDL, nessun trigger di riga, nessun momento
+  con due vocabolari. Il prezzo è il giro delle dipendenze: ogni vista che legge le due colonne, anche a
+  cascata, si toglie in `00_schema` e torna in `20_code`, nella stessa corsa (forma del `20261001-42`). `DROP`
+  senza `CASCADE`: un dipendente nuovo e non censito ferma il migrate invece di sparire.
+* **Le FK in `00_schema`**, come quella del lotto 0 (`20261019-15`): da zero le tabelle sono vuote, e il
+  mirror delle sorgenti gira prima del seed delle nature.
+* **La FK al posto del `CHECK` (G-3).** Il `CHECK` diceva anche *quali* sorgenti possono essere un'origine (due)
+  o una destinazione (tre); la FK dice solo che il codice esiste. Chi sceglie fra le sorgenti sono gli
+  scrittori (`fn_push_preventivo_a_ordine`, il backend dell'ordine da offerta, il CSV delle nature) e i
+  lettori, che riconoscono i loro codici. È G-3 così com'è stata decisa: un tipo nuovo è una riga del CSV,
+  non un `CHECK` da riscrivere.
+* **L'automazione ATTIVO non lega queste FK**: salta le colonne che non finiscono in `_id`
+  (`ATTIVO_SKIP_FK_NO_ID`). Provato sullo scratch: nessun trigger nuovo su ordini, nature, sorgenti. La FK
+  lega il nome, non l'accensione, come quella del lotto 0.
+* **`ONERE` resta.** È l'origine di una riga di commessa senza sorgente per progetto
+  (`chk_commesse_attivita_senza_sorgente_onere_rettifica`): non un codice corto da migrare, ma l'assenza
+  dell'origine detta con un nome. `origine` è quindi «il codice della sorgente, oppure `ONERE`», ed è scritto
+  nel commento del corpo e nel COMMENT.
+* **`%TYPE`** in firma, `DECLARE` e `RETURNS TABLE` dove c'è una colonna: `origine` su
+  `config.sorgenti.codice_interno`, `p_offerta_id` e `tipo` di `fn_offerta_documenti_vivi` (prima nudi),
+  `v_uid` e `v_sorgente_uid` su `commesse_attivita.sorgente_uid`. Restano nudi, col motivo scritto accanto, i
+  campi polimorfi (righe e testate di tabelle diverse), i vocabolari propri di una funzione (`natura`), i
+  testi liberi, gli array (`%TYPE[]` non esiste).
+* **Corpi dal catalogo vivo** di dbdev; la funzione lineage dal `20261011-92`, verificato uguale al vivo.
+
+### 12.3 Restano ad altri giri — e una lacuna del censimento del 2a
+
+* Numeratori (G-5, 2c), aree e ambito degli indirizzi (G-6, 2d), chiavi del push (G-8, 2e), note (lotto 3):
+  come nel §11.3.
+* ⚠️ **Il censimento del 2a non vedeva le funzioni `BEGIN ATOMIC`**: il loro corpo non sta in `prosrc`, e la
+  ricerca dei letterali leggeva solo quello. Rifatta col testo di `pg_get_functiondef`, ne escono quattro:
+  `fn_documento_lineage_archi` (V7, chiusa qui) e tre che non sono del 2a:
+
+  | Funzione | Letterale | Che cos'è |
+  | --- | --- | --- |
+  | `vendite.fn_ddt_push_diagnosi` | `'RESO'` | lo stato `RESO` della bolla, non un tipo di documento: resta |
+  | `vendite.fn_af_merce_per_riga` | `'DDT'` | il prefisso di `segment_key`: **2e** (G-8) |
+  | `vendite.fn_partite_merce` | `corsia = 'DDT'`; `origine` `NESSUNA` \| `MULTIPLA` \| `ORDINE` | la corsia viene dal `segment_key` (**2e**); l'`origine`: **correzione decisa da Tid, §12.8** (`ORDINE` → `ORDINE_VENDITA`) |
+
+  Chi censisce i sotto-giri successivi legge `pg_get_functiondef`, non `prosrc`.
+
+### 12.4 Richiesta al backend e al frontend (stesso apply)
+
+| Dove | Oggi | Dopo |
+| --- | --- | --- |
+| `ordini_service.py:737, 757`: scrive `ordini.documento_origine_tipo` e risponde `documento_origine.tipo` | `"OFFERTA"` | `SORGENTE_OFFERTA_COMMERCIALE`. ⚠️ **Cambia una risposta API** (FE); dopo l'apply `"OFFERTA"` è rifiutato dalla FK |
+| `vw_ordini_lista.documento_origine_tipo` (lista ordini, colonna `col_documento_origine`); `ordine_document_context_builder.py:201` | `OFFERTA` | `OFFERTA_COMMERCIALE`: da controllare chi lo traduce a video o in stampa |
+| `_annullo_con_legami.py`: `_TIPO_LINEAGE_DELL_ORIGINE` | traduce `ORDINE`, `RESO`, `OFFERTA`, `DDT`… | **si ritira**: `origine` è già il codice della sorgente. Resta da dire quali origini sono documenti da aprire: non `ONERE`, non `ATTIVITA_CONSUMI` (prima `CONSUMI`, fuori dalla mappa) |
+| `preventivi_repository.py:1214` (righe dello smistamento, `destinazione_tipo`) | `ORDINE` | `ORDINE_VENDITA`. ⚠️ **Cambia una risposta API** (FE) |
+| `catalogo_repository.py:205` (`natura_vendita_destinazione_tipo`) | `ORDINE` | `ORDINE_VENDITA`: da controllare chi lo legge a video |
+| FE `constants.js`: `DESTINAZIONE_SMISTAMENTO.ORDINE`, `ORIGINE_LEGAME.RESO` | `'ORDINE'`, `'RESO'` | i codici delle sorgenti (`SORGENTE_CODES`); il routing di «Smista selezionate» confronta la destinazione |
+| FE dialog dei legami: il ripiego `vendite.annullo_legami.origine_<origine>` quando l'origine non è un documento da aprire | chiavi dei codici corti (`origine_ordine`, `origine_reso`, `origine_offerta`, `origine_ddt`, `origine_consumi`…) | il vocabolario del lineage, `vendite.lineage.tipo_<sorgente>` (per i consumi `tipo_attivita_consumi`; `ONERE` non è una sorgente e non ha chiave). ⚠️ **Cambia una risposta API** (il campo `origine` dei legami) |
+| `error_policies_generated.py` | testo di due codici | si rigenera dal CSV |
+| test Django, `smoke-test-ordini-giro-commessa.sh` (legge l'`origine`) | codici corti | da adeguare |
+
+### 12.5 La prova (2026-10-19, scratch `zeroerp_ruoli`, come owner, in transazione annullata)
+
+* **SQL estratto dei 13 changeSet, avanti e indietro**: applicato senza errori, poi i 13 rollback in ordine
+  inverso. Fotografia del catalogo (definizioni, `RETURNS`, ACL, COMMENT di viste, colonne, funzioni, indici,
+  vincoli; trigger; valori) prima, dopo, e dopo il ritorno:
+  * prima → dopo: cambiano **solo** i letterali e le colonne del §12.1, i tipi delle due colonne (e delle
+    colonne di vista che le espongono), `origine` di `fn_documento_legami` (`text` → `character varying`),
+    i vincoli (`CHECK` → FK), il predicato dell'indice unico, i COMMENT. La funzione lineage dal
+    `20261011-92` coincide col corpo vivo a meno del letterale. `ix_ordini_documento_origine`, ricostruito da
+    `ALTER TYPE`, conserva il suo COMMENT;
+  * prima → ritorno: identici, a meno dell'ordine delle voci nell'ACL della funzione lineage e della forma
+    stampata dei due `CHECK` (stessi valori).
+* `plpgsql_check` sulle quattro plpgsql: nessun errore; restano i due avvisi di prima (`PERFORM` di
+  `fn_log_and_raise_error` in una `STABLE`).
+* `dbops.fn_run_automations_attivo('AUTO', ARRAY['vendite','config'], false)` dopo il giro: nessun trigger
+  nuovo (§12.2).
+* **pgTAP**: 84 file (ogni file che nomina un oggetto, una colonna o un codice del 2b), ciascuno com'è e con
+  l'SQL estratto dopo la riga `BEGIN;`. **8 regressioni, tutte dei test**: fixture che scrivono l'origine
+  `OFFERTA` (ora rifiutata dalla FK), nature cercate con `destinazione_tipo = 'ORDINE'`, legami letti coi
+  codici corti, le asserzioni sul vecchio `CHECK`. Adeguati, insieme ad altri sette file che usavano gli
+  stessi codici senza cambiare esito (fra questi `test-fn-genera-ddt-riconsegna-eredita-v1`, che col filtro
+  `<> 'ORDINE'` avrebbe preso anche la merce). Dopo: **ognuno dei 15 torna, sul DB del 2b, all'esito che
+  aveva sul DB di oggi**, compresi i tre rossi già prima (fixture o scope da owner:
+  `test-articolo-usato-struttura-v1` 17, `test-annullo-documento-con-legami-v1` 30,
+  `test-vw-preventivi-smistamento-v1` 1). Il test nuovo: 12/12 col 2b, rosso senza.
+* Cancelli statici verdi; `guardrail_pgtap_preambolo` era rosso anche per il pgTAP del lotto 1 (mancava
+  `SET CONSTRAINTS ALL IMMEDIATE`): corretto, 12/12. Resta rosso per
+  `dbops/test-automazioni-guasto-ambiente-rilanciato-v1`, di un altro cantiere.
+* Su dbdev, in lettura (2026-10-19): gli ordini hanno origine `OFFERTA`, `PREVENTIVO` o nessuna; le nature
+  `ORDINE`, `COMMESSA`, `CONTRATTO`. Sono tutti valori che la conversione conosce: all'apply la FK non trova
+  valori fuori dalle sorgenti.
+* Non provato prima dell'apply: i pgTAP **come app** (li lancia Tid) e il giro BE/FE del §12.4.
+
+### 12.6 L'apply (Tid, 2026-10-19)
+
+* Applicato su dbdev: i 13 changeSet `20261019-87` … `-99` sono in `databasechangelog`. pgTAP come app: verdi.
+* Da qui il DB parla i codici delle sorgenti anche per origine e destinazione. Fino al giro BE/FE del §12.4
+  (✅ §12.7, stesso giorno) la creazione di un ordine da offerta (`ordini_service`, `"OFFERTA"`) era rifiutata
+  da `fk_ordini_documento_origine_tipo_sorgenti`, e il dialog dei legami e quello dello smistamento ricevevano
+  valori che il frontend non riconosceva (`ORIGINE_LEGAME.RESO`, `DESTINAZIONE_SMISTAMENTO.ORDINE`).
+
+### 12.7 Il giro BE/FE (sessione BE/FE, 2026-10-19)
+
+* **Origine dell'ordine da offerta**: `crea_ordine_da_offerta` scrive e risponde `SORGENTE_OFFERTA_COMMERCIALE`
+  (`documento_origine.tipo` della risposta API). Il preventivo era già `SORGENTE_PREVENTIVO`.
+* **Legami**: `_TIPO_LINEAGE_DELL_ORIGINE` è **ritirata**. Al suo posto `_ORIGINI_DOCUMENTO`, l'elenco delle
+  origini che sono un documento da aprire (ordine, reso, preventivo, offerta, commessa, contratto, bolla): per
+  queste il tipo del lineage è l'origine stessa. Fuori `ATTIVITA_CONSUMI` e `ONERE`, e ogni sorgente nuova che il
+  lettore imparasse a dare finché non si dichiara qui (senza tipo la finestra la nomina, senza link).
+* **Smistamento**: il backend passa `destinazione_tipo` com'è (nessun codice nel Python, solo commenti); lato
+  FE `DESTINAZIONE_SMISTAMENTO` legge i valori da `SORGENTE_CODES` (`ORDINE_VENDITA`, `COMMESSA`): il routing di
+  «Smista selezionate» e il tag della colonna confrontano la costante, i consumatori non cambiano.
+* **Dialog dei legami**: `ORIGINE_LEGAME` è **ritirata** (come `DOCUMENTO_LEGAMI` nel 2a); il reso «da
+  accreditare» confronta `SORGENTE_CODES.RESO_VENDITA` (aggiunto, con la voce del catalogo BB frontend). Il
+  vocabolario di ripiego `vendite.annullo_legami.origine_*` è **ritirato** per intero (revisione dello stesso
+  giorno): dal 2b l'origine è un codice di `config.sorgenti`, come il tipo del lineage, e tenere due vocabolari
+  della stessa cosa era una seconda copia (regola del 2). Ogni origine si nomina con `lineageDocumentoLabel`; i
+  consumi con `vendite.lineage.tipo_attivita_consumi` («Consumi»), spostata lì da `origine_attivita_consumi`. `origine_onere`, aggiunta nello stesso giro, è
+  **tolta** nella revisione dello stesso giorno (sotto): i legami `ONERE` hanno natura `ANNULLO`, esistono solo
+  sulla commessa, e lì la finestra li conta a parte (`oneri_annullati`) senza mai nominarli.
+* `catalogo_repository` (`natura_vendita_destinazione_tipo`): nessun lettore a video né nel backend; cambia solo
+  il valore della risposta, documentato in `api_catalogo.md`.
+* `error_policies_generated.py` rigenerato dal DB: cambiano solo i commenti di due codici.
+* `apps/config/sorgenti.py`: il commento non mette più l'`origine` dei legami fra i vocabolari diversi, e dice che
+  origine e destinazione sono questo vocabolario dal 2b.
+* **Due punti che il §12.4 non elencava**, entrambi silenziosi: `_smoke_documenti.sh` (`smoke_articolo_merce`,
+  il BB che dà l'articolo merce agli smoke) e `smoke-push-termine-documento-commessa.py` cercavano la natura con
+  destinazione `ORDINE`: dopo l'apply non avrebbero trovato più nessun articolo. Adeguati, con
+  `smoke-test-ordini-giro-commessa.sh`.
+* **Presidio nuovo, sul DB vero** (`vendite/tests/db/test_origine_ordine_sorgente_db.py`): su un ordine dello
+  stampo, la provenienza scritta da `set_documento_origine` con `SORGENTE_OFFERTA_COMMERCIALE` è accettata e i
+  legami del BB la riportano col tipo da aprire; `OFFERTA` è rifiutato da
+  `fk_ordini_documento_origine_tipo_sorgenti`. In `test_annullo_con_legami` un caso nuovo: una sorgente fuori
+  da `_ORIGINI_DOCUMENTO` resta senza tipo e senza nome anche se il lineage la vede. Nello spec del dialog: i
+  consumi della commessa si nominano con `vendite.lineage.tipo_attivita_consumi` (con la chiave sbagliata
+  uscirebbe il codice grezzo). Il test sul DB vero usa i BB di `db_e2e` (`apri_transazione_annullata`), non un
+  `Annulla` ricopiato.
+* Doc: `api_offerte`, `api_ordini`, `api_preventivi`, `api_ddt`, `api_contratti`, `api_commessa_stato`,
+  `push_preventivo_handler`, `api_catalogo`, le guide di ordini e offerte, i due cataloghi BB.
+* Prova: 2574 test Django di `vendite`, `config`, `catalogo`; e2e di `vendite/tests/db` e `config` su dbdev
+  (nessuno saltato; i 5 saltati sono di `catalogo`, per il DB usa-e-getta); mypy a cricchetto pulito; 137 test FE
+  di `vendite` e `documenti`, lint, `npm run guards`, `check_i18n_keys`, build. Worker gunicorn ricaricati.
+  ⚠️ Gli smoke bash non sono stati lanciati (scrivono dati veri): `smoke-test-ordini-giro-commessa.sh` è quello
+  che passa dai legami della commessa.
+* ⚠️ **L2b-1, per Tid — la provenienza nella stampa dell'ordine.** Le versioni di modello «stampa ordine
+  vendita» (le pubblicate sono la 264 e la 3113 su dbdev) stampano `{{ ordine.origine.tipo }}` così com'è: sulla
+  carta usciva già un **codice** (`PREVENTIVO`, `OFFERTA`), e dal 2b esce `OFFERTA_COMMERCIALE`. Non è un difetto
+  nuovo del 2b, che lo rende solo più visibile. Strade: (a) il context builder dell'ordine porta anche
+  l'etichetta della sorgente (`origine.etichetta`, dalla descrizione di `config.sorgenti`) e i modelli la usano;
+  (b) si lascia il codice. La (a) cambia il contratto di stampa e i modelli a DB: non l'ho fatta senza il tuo via.
+  ✅ **Decisa da Tid il 2026-10-19: (a)**, con l'etichetta in una colonna a DB (§12.9).
+* Da vedere a video (Tid): «Genera ordine» da un'offerta accettata (prima del giro era un rifiuto della FK); la
+  finestra dell'annullo con legami di un ordine nato da offerta («Offerta …, torna trasformabile», col link) e di
+  una commessa con righe da reso e da consumi; il pannello di smistamento di un preventivo misto (tag
+  Ordine/Commessa, «Smista tutto» / «Smista selezionate» e il routing verso ordine e commessa).
+* **Revisione critica dello stesso giro** (2026-10-19, su richiesta di Tid):
+  * `ordini_service._crea_testata_ordine_da_origine` è **rientrato** in `crea_ordine_da_offerta`. Si diceva
+    «condiviso da preventivo e offerta (regola del 2)», ma il preventivo passa da
+    `vendite.fn_push_preventivo_a_ordine`, che la provenienza la scrive da sé: un BB con un solo consumatore.
+    Col 2b il nome dell'operazione nei log si costruiva dal codice d'origine (`crea_ordine_da_offerta_commerciale`)
+    e non era più quello della funzione; ora è fisso (`crea_ordine_da_offerta`). I due test mockano `crea_ordine`
+    e provano che `set_documento_origine` riceve `OFFERTA_COMMERCIALE`.
+  * Il commento prometteva un errore «parlante» se la FK rifiuta il tipo: la FK e il `CHECK` di co-presenza non
+    sono nelle mappe del traduttore e cadono sul fallback generico. Scritto com'è, col motivo: il tipo è una
+    costante del codice, un rifiuto è un difetto del codice e non dell'operatore.
+  * `origine_onere` tolta da `it.json`/`en.json` (sopra); commenti stantii (`(OFFERTA, id)`, una riga lunga in
+    `sorgenti.py`); nel presidio e2e un `getattr(…, None)` che non proteggeva niente.
+* **Prova sullo stato attuale** (dopo la revisione, 2026-10-19): 2448 test Django di `vendite` e `config`, 211
+  e2e di `vendite/tests/db` su dbdev (nessuno saltato), 697 test FE di `vendite`, `documenti` e `core`, lint:
+  verdi.
+
+### 12.8 Correzione richiesta: l'`origine` della partita (`vendite.fn_partite_merce`) — team DB
+
+> ✅ **Scritta il 2026-10-20** (`20261020-24`, §12.10), applicata su dbdev il 2026-10-19 sera.
+>
+> **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-19, su decisione di Tid. **A chi:** il team DB, poi la
+> sessione BE per la ricaduta.
+
+**Il caso.** `vendite.fn_partite_merce` (e la sua proiezione `vendite.vw_partite_merce`) restituisce per ogni
+partita un'`origine` a tre valori, calcolata nel `SELECT` finale:
+
+| Valore | Che cosa dice |
+| --- | --- |
+| `NESSUNA` | la riga di DDT non evade nessuna riga d'ordine |
+| `MULTIPLA` | la riga di DDT evade più righe d'ordine |
+| `ORDINE` | la riga di DDT evade una riga d'ordine |
+
+Il §12.3 la lasciava «da classificare nel 2e». Classificata: **`ORDINE` nomina un tipo di documento** (il
+documento da cui la merce parte) ed è il codice corto di `ORDINE_VENDITA`, lo stesso caso dell'`origine` dei
+legami chiusa in questo lotto. Non ha niente del `segment_key` (quella è la `corsia`, che resta al 2e).
+`NESSUNA` e `MULTIPLA` **non** sono sorgenti: dicono l'assenza e l'ambiguità dell'origine, come `ONERE` nei
+legami (§12.2), e restano.
+
+**Che cosa si chiede (changeSet in `20_code`, nuovo file).**
+
+* Nel `CASE` di `origine`: `'ORDINE'` → `'ORDINE_VENDITA'`. `NESSUNA` e `MULTIPLA` invariati.
+* L'`origine` diventa quindi «il codice della sorgente, oppure `NESSUNA` | `MULTIPLA`»: va scritto nel commento
+  del corpo e nel COMMENT, come per `fn_documento_legami`. Il tipo in `RETURNS TABLE` segue la stessa scelta
+  del `-95` (ancorato a `config.sorgenti.codice_interno%TYPE` col motivo accanto, o nudo col motivo): la decide
+  il team DB, purché sia la stessa delle due funzioni.
+* Corpo **dal catalogo vivo** (`pg_get_functiondef`), non da uno YAML. Se `vw_partite_merce` va ricreata
+  (cambia solo un letterale, non il tipo, quindi probabilmente no), nella stessa corsa.
+* **Censimento dei lettori su `pg_get_functiondef`** (§12.3): chi confronta `origine = 'ORDINE'` o
+  `<> 'ORDINE'` cambia nello stesso changeSet. Già noto: `vendite.fn_situazione_merce_ordine` legge solo
+  `origine = 'MULTIPLA'` (non cambia).
+* pgTAP: un caso che **costruisce** una riga di DDT legata a una riga d'ordine e verifica `ORDINE_VENDITA`
+  (rosso senza la correzione); i file che leggono l'`origine` delle partite
+  (`test-fn-partite-merce-chiusura-v1`, `test-vw-partite-merce-v1`, quelli della situazione merce) rilanciati,
+  con nota di revisione dove cambia un'attesa.
+
+**Ricaduta sul backend e sul frontend (stesso apply).**
+
+| Dove | Oggi | Dopo |
+| --- | --- | --- |
+| `vendite_repository.py` (proiezione `partite`, campo `origine`) | passa il valore com'è | nessun codice da cambiare. ⚠️ **Cambia una risposta API**: `partite[].origine` della situazione merce |
+| `vendite_service.py:2563` (commento) | `origine <> 'ORDINE'` | `origine <> 'ORDINE_VENDITA'` |
+| `api_situazione_merce.md:87` (esempio), `dbzero/vendite/manual/fn_partite_merce.md` | `origine ORDINE` | `origine ORDINE_VENDITA` |
+| Frontend | non legge il valore (il pannello usa `stato`, `misurabile`, `differenza`) | nessuna modifica; da riverificare con un grep al giro |
+| `apps/config/sorgenti.py` (commento dei vocabolari) | non nomina l'origine della partita | aggiungerla fra quelle che sono questo vocabolario (tranne `NESSUNA`/`MULTIPLA`) |
+
+**Quando.** È un residuo del 2b (lo stesso vocabolario V7, origine), indipendente dai sotto-giri 2c … 2e: si può
+fare da solo prima del 2c. Il momento lo decide Tid.
+
+### 12.9 L2b-1: l'etichetta della sorgente nella stampa (team DB, poi sessione BE)
+
+> ✅ **Lato DB scritto il 2026-10-20** (`20261020-22`, `-23`, `-25`, §12.10), applicato su dbdev il 2026-10-19 sera. ⚠️ Due punti di questa
+> richiesta sono cambiati nello sviluppo: si evolve lo **standard**, non le versioni 264 e 3113 degli emittenti
+> (§12.10.2), e il contesto dell'ordine passa alla **forma 3** (§12.10.4).
+>
+> **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-19. **Decisione di Tid:** L2b-1 = (a), e
+> l'etichetta sta **in una colonna a DB** (non nel backend, non nella `descrizione` ripulita). **A chi:** il team
+> DB, poi la sessione BE.
+
+**Il caso.** Le versioni pubblicate del modello «Ordini vendita» (su dbdev la 264, `template_documento_id` 75, e
+la 3113, `template_documento_id` 2531; `context_schema` vuoto) stampano la provenienza così:
+
+```
+{% if ordine.origine.tipo or ordine.origine.codice %}
+      <strong>{{ ordine.origine.tipo or "Documento origine" }}</strong>
+```
+
+`ordine.origine.tipo` è `vendite.ordini.documento_origine_tipo`, cioè un **codice**: sulla carta usciva
+`PREVENTIVO`/`OFFERTA`, dal 2b esce `OFFERTA_COMMERCIALE`. Nessuna fonte di oggi va bene per la carta:
+`config.sorgenti.descrizione` è una nota tecnica («Offerta commerciale (testata)», «Commessa (root pipeline
+attivita fatturabili)»), e l'etichetta leggibile c'è solo nel frontend (`config.tipi_entita.*` nei locales): il
+backend non ha traduzioni per la stampa, e una mappa in Python sarebbe la seconda copia delle stesse
+etichette. La stampa prende le parole dal catalogo del DB, come fa già la fattura col suo tipo
+(`tipo_doc_fiscale.descrizione`).
+
+**Che cosa si chiede al team DB.**
+
+* **`config.sorgenti.etichetta`**: il nome del tipo di documento come lo legge una persona, sulla carta
+  («Preventivo», «Offerta», «Ordine», «DDT», «Reso», «Contratto», «Commessa», «Fattura», …). Il nome della colonna
+  lo decide il team DB secondo le linee guida; qui la chiamo `etichetta`.
+  * **`NOT NULL`, per ogni riga** (anche `RIGA` e le altre categorie): una sorgente nuova senza il suo nome non
+    deve poter entrare. Il valore sta nel CSV `sorgenti.csv` (`80_data`), non in un `UPDATE`.
+  * `descrizione` resta com'è: è la nota tecnica.
+  * Una sola lingua, l'italiano, come le altre parole di stampa nel catalogo. Il giorno delle stampe in più
+    lingue è un cantiere suo, non di questa colonna.
+* **I modelli dell'ordine**, nuova versione e pubblicazione come nei `20260816-01`/`-02`: nelle due righe sopra
+  `ordine.origine.tipo` diventa `ordine.origine.etichetta` (nell'`if` e nel testo). Il ripiego «Documento origine»
+  resta. Se le versioni pubblicate sono più di quelle due nel momento del changeSet, si leggono tutte quelle
+  di codice «Ordini vendita» che usano `origine.tipo`.
+* pgTAP: la colonna è `NOT NULL` e ogni riga del seed ha un'etichetta; la versione pubblicata del modello
+  dell'ordine non legge più `origine.tipo`.
+
+**Ricaduta sul backend (dopo l'apply).**
+
+| Dove | Oggi | Dopo |
+| --- | --- | --- |
+| `OrdiniRepository.get_ordine` (la testata della stampa e del dettaglio) | `v.*` di `vw_ordini_lista` | + `LEFT JOIN config.sorgenti` su `documento_origine_tipo`, colonna `documento_origine_etichetta` (NULL quando l'ordine non ha origine) |
+| `ordine_document_context_builder._shape_ordine` | `origine: {tipo, codice}` | + `etichetta`; `tipo` resta (il codice, per chi lo confronta) |
+| test del builder, `api_ordini.md` (contratto di stampa) | | il campo nuovo |
+
+Il frontend non cambia: il dettaglio dell'ordine non mostra il tipo dell'origine.
+
+**Fuori da questa richiesta, trovato strada facendo.** Anche i modelli della fattura (le pubblicate 2334 e 3097
+su dbdev) hanno il blocco `fattura.origine.tipo`, ma `VenditeRepository.get_fattura_testata` non porta né
+`origine_tipo` né `origine_codice`: il blocco non si vede mai. Una fattura può nascere da più documenti, quindi
+non è «la stessa correzione»: è da decidere a parte (togliere il blocco dal modello, o dire che cosa una fattura
+chiama «origine»).
+
+## 12.10 Il giro DB dei §12.8 e §12.9 (team DB, 2026-10-20)
+
+Via di Tid il 2026-10-19 sera: i due giri insieme, un solo apply. Numeri `20261020-22` … `-25` (il 19 è pieno
+fino a `-99`).
+
+### 12.10.1 Che cosa contiene
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `-22` (`00_schema`) | `config.sorgenti.etichetta` `varchar(60)`, **nullable qui**, col `CHECK` di non-vuoto (`chk_sorgenti_etichetta_non_vuota`) e il COMMENT |
+| CSV `sorgenti.csv` + loader `20251002-21` | la colonna `etichetta` per tutte le 29 righe; il loader esteso sul posto, come per `area` e `label_selector` |
+| `-23` (`90_end`) | il `NOT NULL`, dopo il mirror: in `00_schema` la tabella ha già righe (le INSERT dei `20260928-62`/`-85`), stessa sede e forma del `20260904-42`; se una riga è scoperta lo dice con una frase, non con un `23502` |
+| `-24` (`20_code`) | `vendite.fn_partite_merce`: `origine` `ORDINE` → `ORDINE_VENDITA` (§12.8); `NESSUNA` e `MULTIPLA` restano |
+| `-25` (`80_data/changelog`) | lo **standard** «Ordine di vendita», versione 2: stampa `ordine.origine.etichetta` al posto di `ordine.origine.tipo`, dichiara la **forma dei dati 3**, pubblicata dalla data operativa |
+
+pgTAP: nuovo `config/test-grammatica-etichetta-sorgenti-v1` (8); `vendite/test-fn-partite-merce-chiusura-v1` passa
+a 16 (il 16 costruisce la riga che evade una riga d'ordine e vuole `ORDINE_VENDITA`). Doc: `dbzero/config/manual/sorgenti.md`
+(la colonna, e la nota del 20-08 sulle `*_RIGA` fuori dal CSV, superata: il CSV ha tutte le 29 righe),
+`dbzero/vendite/manual/fn_partite_merce.md` (i tre valori di `origine`).
+
+### 12.10.2 Le scelte
+
+* **Le etichette** sono quelle che il brief proponeva per i documenti di vendita, cioè le stesse del lineage a
+  video (`vendite.lineage.tipo_*`: «Preventivo», «Offerta», «Ordine», «DDT», «Reso», «Contratto», «Commessa»,
+  «Fattura», «Consumi»); per il resto quelle di `config.tipi_entita.*` («Ordine d'acquisto», «Riga di DDT»,
+  «Prelievo»…). Si cambiano nel CSV.
+* ⚠️ **Il §12.9 chiedeva di ripubblicare le versioni 264 e 3113: superato.** Dal 2026-10-19 vale la regola del
+  brief dei modelli standard ([brief-db-modelli-documento-standard](../work-done/brief-db-modelli-documento-standard.md) §4.1
+  Q-5): *i changeSet di evoluzione scrivono solo sullo standard*. Le 264 e 3113 sono le copie degli emittenti
+  32 e 44, dati dell'applicazione: il changeSet non le tocca.
+* **Forma dei dati 3.** `etichetta` è una chiave **nuova** del contesto dell'ordine, e il render gira con
+  `StrictUndefined`: un modello che la legge, reso da un builder che non la produce, fallisce. Il patto della
+  forma (`documenti.fn_guard_versione_contesto`) esiste per questo, e il precedente c'è: la chiave nuova
+  `annotazioni` della fattura è stata la forma 3 → 4 (2026-10-02). Quindi la versione 2 dello standard dichiara
+  la forma 3, e il builder dell'ordine passa a `CONTEXT_VERSION = 3` (§12.10.4).
+* **La versione 2 si copia, non si riscrive**: dalla pubblicata valida oggi, per sostituzione contata (due
+  occorrenze di `ordine.origine.tipo`, né una di più né una di meno), nella forma del `20260816-01`. Un modello
+  ritoccato nel frattempo ferma il changeSet. Idempotente; una bozza dello standard già presente lo ferma.
+* **Pubblicata da `script.fn_data_operativa()`**, la data con cui il backend sceglie la versione da stampare
+  (`get_versione_pubblicata_attiva`), non da `current_date`, che dipende dal fuso della sessione.
+* **`fn_partite_merce`**: corpo dal `20261012-32`, verificato uguale al vivo; `RETURNS TABLE` ancorato con
+  `%TYPE` dove la colonna esiste (`origine` su `config.sorgenti.codice_interno`: il tipo resta
+  `character varying`, quindi `CREATE OR REPLACE` senza `DROP`, e `vw_partite_merce` con le funzioni
+  `BEGIN ATOMIC` che la leggono restano in piedi); `SECURITY INVOKER` scritto. Lettori censiti su
+  `pg_get_functiondef`: nessuno confronta `'ORDINE'` (`fn_situazione_merce_ordine` legge solo `MULTIPLA`).
+
+### 12.10.3 La conseguenza della forma 3 — L2b-2, per Tid
+
+Fatto di dbdev, letto il 2026-10-20: l'ordine si stampa oggi con tre modelli, tutti in forma 2. Lo standard
+(template 2731, versione 1) e le copie degli emittenti 32 (template 75, versione 264) e 44 (template 2531,
+versione 3113); le due copie leggono `origine.tipo`.
+
+* **Fra l'apply e il giro BE**: lo standard ha solo la versione 2 (forma 3), il builder produce ancora la 2 → lo
+  standard non stampa (409 `E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA`, non un PDF sbagliato). Su dbdev non lo usa
+  nessuno: la risoluzione a due livelli del BE non c'è ancora (brief dei modelli standard, §6).
+* **Dopo il giro BE**: le copie in forma 2 non stampano più (409), finché qualcuno non ne pubblica una versione
+  in forma 3. `documenti.vw_template_personalizzati_scarto` le mostra `CONTESTO_SUPERATO`. È il patto che fa il
+  suo lavoro, come per la fattura il 2026-10-02.
+
+**L2b-2 — le due copie di dbdev.** (a) Tid le ripubblica dall'app (Clona → `origine.tipo` → `origine.etichetta`
+nelle due righe → «Legge i dati nella forma» = 3 → Pubblica), come la fattura v6 del 2026-10-02; (b) le spegne,
+quando il BE avrà la risoluzione a due livelli, e gli emittenti 32 e 44 passano allo standard; (c) un SQL una
+tantum a mano su dbdev, che il team DB prepara (non un changeSet: sono dati dell'applicazione).
+**Proposta: (a) o (c)**, perché (b) dipende da un giro BE di un altro brief.
+✅ **Decisa da Tid il 2026-10-20: (c).** Lo script è
+[sql-una-tantum-l2b2-copie-ordine-forma-3.sql](sql-una-tantum-l2b2-copie-ordine-forma-3.sql) (accanto a questo
+brief; si cancella all'archiviazione). Cerca per criterio, non per id: i modelli d'ordine degli emittenti la cui
+versione stampata oggi è in forma 2 e legge `origine.tipo`. Li copia, sostituisce le due occorrenze, li porta
+alla forma 3 e li pubblica dalla data operativa. Si ferma, annullando tutto, se un modello ha già una bozza attiva
+o se le occorrenze non sono due; rilanciato non fa niente. **Si lancia subito dopo il riavvio del backend in
+forma 3** (`psql -X -v ON_ERROR_STOP=1 -f …`, come owner). Provato su dbdev il 2026-10-20 in transazione annullata,
+con un secondo giro nella stessa transazione: le copie 75 (emittente 32) e 2531 (emittente 44) passano dalla
+versione 4 alla 5 (forma 3), il secondo giro non trova niente, e dopo il giro tutti e tre i modelli che stampano
+l'ordine sono in forma 3 e nessuno legge il codice. ⚠️ Se invece Tid preferisce che una
+chiave aggiunta **non** cambi la forma (forma 2 «estesa»), cambiano un letterale nel `-25` e il test 8 del pgTAP
+nuovo, e le copie non si fermano; ma il patto smette di dire quali chiavi un modello può leggere, e il precedente
+della fattura va nell'altro verso.
+
+### 12.10.4 Richiesta al backend (stesso apply) — aggiorna la tabella del §12.9 e del §12.8
+
+| Dove | Oggi | Dopo |
+| --- | --- | --- |
+| `OrdiniRepository.get_ordine` | `v.*` di `vw_ordini_lista` | + `LEFT JOIN config.sorgenti` su `documento_origine_tipo`, colonna `documento_origine_etichetta` (NULL quando l'ordine non ha origine) |
+| `ordine_document_context_builder` | `CONTEXT_VERSION = 2`; `origine: {tipo, codice}` | ⭐ **`CONTEXT_VERSION = 3`**; `origine: {tipo, codice, etichetta}`, chiave **sempre presente** (`None` senza origine: `StrictUndefined`); `tipo` resta (il codice, per chi lo confronta) |
+| test del builder, `api_ordini.md` (contratto di stampa) | | la forma 3 e il campo nuovo |
+| §12.8: `vendite_service.py:2563` (commento), `api_situazione_merce.md:87` (esempio), `apps/config/sorgenti.py` (commento dei vocabolari) | `ORDINE` | `ORDINE_VENDITA`; ⚠️ cambia `partite[].origine` nella risposta della situazione merce; il FE non legge il valore (da riverificare con un grep) |
+
+Il frontend non cambia per il §12.9: il dettaglio dell'ordine non mostra il tipo dell'origine.
+
+### 12.10.5 La prova (2026-10-20, scratch `zeroerp_ruoli`, come owner, in transazione annullata)
+
+* **SQL estratto** dei quattro changeSet (non riscritto), nell'ordine del migrate: `-22`, il mirror del CSV
+  simulato con 29 `UPDATE` per id, `-23`, `-24`, `-25`. Passa: `etichetta` `NOT NULL`; lo standard ha la
+  versione 1 `OBSOLETA` fino a ieri e la 2 `PUBBLICATA` (forma 3) da oggi. Il `-25` lanciato una seconda volta
+  non fa niente (idempotente). ⚠️ **Non provato: il loader vero** (`loadUpdateData` del `20251002-21`), che il
+  seed simulato non copre; il CSV è confrontato col DB colonna per colonna prima della modifica (0 differenze).
+* **`-24`**: il corpo del `20261012-32` è identico al vivo (definizione e COMMENT); dopo il `-24` l'unica
+  differenza della definizione è il letterale, ACL invariata, `origine` resta `character varying`,
+  `vw_partite_merce` in piedi; il rollback riporta definizione e COMMENT al vivo.
+* **pgTAP**: 64 file (chi nomina le partite e i loro lettori, `config.sorgenti`, i modelli e la forma dei dati),
+  ciascuno com'è e con l'SQL estratto dopo la riga `BEGIN;`, uno alla volta. **43 verdi prima e dopo, 19 rossi
+  identici prima e dopo** (fixture senza `billing_account`, test di scope e `-app` rossi da owner per
+  costruzione). Cambiano solo i due di questo giro: il nuovo, rosso senza (la colonna non c'è) e 8/8 con;
+  `test-fn-partite-merce-chiusura-v1`, il caso 16 rosso senza e verde con (gli resta rosso lo scope, rosso da
+  owner come prima).
+* Cancelli statici verdi; `guardrail_pgtap_preambolo` resta rosso solo per
+  `dbops/test-automazioni-guasto-ambiente-rilanciato-v1`, di un altro cantiere (§12.5).
+* Non provato prima dell'apply: i pgTAP **come app** (li lancia Tid), il loader del CSV, il giro BE del §12.10.4.
+* ✅ **Apply su dbdev** (Tid, 2026-10-19 sera): i quattro changeSet `EXECUTED`. Il `-23` è passato, quindi il
+  loader vero ha dato l'etichetta a ogni riga. Lo standard dell'ordine stampa la versione 2, in forma 3.
+* ✅ **pgTAP come app** (Tid, 2026-10-20): verdi, nessuna regressione.
+
+### 12.10.6 Il giro BE (sessione BE, 2026-10-20)
+
+* **`OrdiniRepository.get_ordine`**: `LEFT JOIN config.sorgenti` per codice su `documento_origine_tipo`, colonna
+  `documento_origine_etichetta` (NULL senza origine). Il dettaglio dell'ordine la porta in risposta (campo in più,
+  documentato in `api_ordini.md`); il frontend non la legge.
+* **`OrdineDocumentContextBuilder`**: `CONTEXT_VERSION = 3`; `ordine.origine` = `{tipo, codice, etichetta}`, le tre
+  chiavi sempre presenti (`None` senza origine). Il motivo della forma nuova sta nell'header, come per la fattura.
+* **§12.8**: commento di `vendite_service.py` (`origine <> 'ORDINE_VENDITA'`), esempio di
+  `api_situazione_merce.md`, commento dei vocabolari in `apps/config/sorgenti.py` (l'`origine` delle partite è
+  questo vocabolario, tranne `NESSUNA` e `MULTIPLA`). Frontend: un grep conferma che nessuno legge
+  `partite[].origine`. Nessun lettore BE confronta `'ORDINE'` con quell'origine.
+* **`api_ordini.md`**: il contratto di stampa dell'ordine non era scritto da nessuna parte; ora c'è (forma 3, le
+  tre chiavi di `origine`, la storia della forma).
+* **Test**: nel builder l'etichetta e la forma 3, più un caso nuovo (ordine senza origine: le tre chiavi a
+  `None`). Sul DB vero (`vendite/tests/db/test_origine_ordine_sorgente_db.py`, caso 3): `get_ordine` dà NULL
+  senza origine e l'etichetta del catalogo con `OFFERTA_COMMERCIALE` (letta da `config.sorgenti`, non
+  ricopiata), e il builder la passa.
+* **La giuntura col modello**, provata una volta su dbdev in transazione annullata (script a perdere, non un
+  test): lo standard pubblicato dell'ordine (versione 2, forma 3) reso con `_render_html_with_jinja` sul
+  contesto del builder nuovo. Senza origine si rende; con origine da offerta la carta dice «Offerta» e non
+  contiene `OFFERTA_COMMERCIALE`.
+* **Prova**: 2783 test Django di `vendite`, `config`, `documenti` verdi; e2e su dbdev di `vendite/tests/db`,
+  `documenti/tests/db`, `config`: 283, un solo rosso, **fuori da questo giro**:
+  `documenti/tests/db/test_template_standard_db.py::test_modello_suo_senza_predefinito_non_usa_lo_standard`
+  (il preventivo, strada B), file non tracciato del lavoro in corso di
+  [brief-db-modelli-documento-standard](../work-done/brief-db-modelli-documento-standard.md); era rosso per la `20261020-26`
+  di quel brief, ed è adeguato lo stesso giorno (§8.4 lì): ora 283/283. ruff e mypy a cricchetto
+  puliti. Worker gunicorn ricaricati il 2026-10-20 alle 10:18.
+* Da vedere a video (Tid), **dopo lo SQL di L2b-2**: la stampa di un ordine nato da offerta e di uno nato da
+  preventivo (la provenienza dice «Offerta»/«Preventivo»), e di un ordine senza origine (il blocco non c'è).
+
+## 13. Sotto-giri 2c, 2d, 2e — un apply solo (team DB, 2026-10-20)
+
+Via di Tid il 2026-10-20 (L2-2 = (b), §10.4). Numeri dal primo libero, `20261020-32`; oltre il `-99` si passa al
+`20261021-01`. ⏸️ **2c e 2d scritti (`-32` … `-73`), 2e fermo su una domanda (L2e-2, §13.3).** Niente applicato,
+niente committato. Tid, 2026-10-20: fattura e reso **apribili** (§13.2).
+
+### 13.1 Che cosa contiene
+
+**2c — famiglie di numerazione (G-5).**
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `-32` (`00_schema`) | `famiglie_documento.codice_interno` e `registri_fatturazione.famiglia_documento` ai codici delle sorgenti (`DDT_VENDITA`, `ORDINE_VENDITA`, `RESO_VENDITA`, `DISTINTA_INCASSO`; `FATTURA`, `COMMESSA` uguali), `varchar(50)`, conversione sul posto; FK della famiglia verso `config.sorgenti` |
+| `-33` (`00_schema`) | si ritirano `schema_tabella` e `nome_tabella` (la tabella la dice `target_table`); via i due guard che le nominano e l'indice «una famiglia attiva per tabella» |
+| `-34` | **BB nuovo** `config.fn_sorgente_tabella(codice)`: schema, nome, oid della `target_table` dal catalogo di PostgreSQL |
+| `-35`, `-36`, `-37` | i due guard delle famiglie sulla sorgente, e rimontati; la regola «una tabella, una famiglia» entra nel guard dei riferimenti col codice nuovo `E_FAMIGLIA_DOCUMENTO_TABELLA_GIA_NUMERATA` |
+| `-38`, `-40`, `-41` | check di spegnimento della famiglia e le due funzioni della storia dell'emittente del BA, sul BB |
+| `-39` | `vendite.fn_crea_famiglia_documento` riceve la sorgente: escono `p_schema_tabella`, `p_nome_tabella` (DROP + CREATE) |
+| `-42` … `-45` | i quattro numeratori chiedono la famiglia col codice lungo (bolla, ordine, reso, distinta) |
+| `-46` | `vw_famiglie_documento_lista` torna con le stesse colonne: `schema_tabella`, `nome_tabella`, `tabella_documento` calcolate dalla sorgente |
+| `-73` | **builder pgTAP** `dbops.fn_pgtap_crea_sorgente(codice, tabella)`: una sorgente di prova. I pgTAP delle famiglie costruivano famiglie con un codice inventato; ora una famiglia è una sorgente, e la stessa `INSERT` sarebbe stata in tre file (regola del 2) |
+
+80_data: `famiglie_documento.csv` (codici, due colonne in meno) e il suo loader; i due seed dei registri
+`20260831-03` e `20260915-34` (runOnChange + ANY: rigirano, la primitiva è idempotente); il codice d'errore nuovo
+in `codici_errore.csv` / `messaggi_errore.csv` (id 1377).
+
+**2d — aree e ambito degli indirizzi (G-6, L2d-1).**
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `-47` (`00_schema`) | `config.tipi_indirizzi_allowed.ambito` ai codici delle sorgenti (`FATTURE` → `FATTURA`, `ORDINI` → `ORDINE_VENDITA`, `DDT` → `DDT_VENDITA`, `PREVENTIVI` → `PREVENTIVO`, `OFFERTE` → `OFFERTA_COMMERCIALE`, `CONTRATTI` → `CONTRATTO`, `ACQUISTI_DDT` → `DDT_ACQUISTO`), FK al posto del `CHECK` |
+| `-48` (`00_schema`) | si ritira `config.sorgenti.area`, entra `apribile boolean NOT NULL`, uguale a «area valorizzata» |
+| `-49` | `script.fn_doc_indirizzi_sede` perde la colonna `ambito` (era il traduttore V3 → V5 del §7.4): DROP + CREATE |
+| `-50` … `-52` | `fn_doc_indirizzo_default`, `fn_indirizzi_obbligatori_mancanti` (DROP + CREATE: `p_ambito` ancorato, da `text` a `varchar`), il guard dei tipi d'indirizzo ammessi |
+| `-53` | i sette montaggi di `trgfn_tipi_indirizzi_only_allowed` col codice della sorgente |
+| `-54` … `-62` | i letterali dell'ambito: check di emissione della bolla, i due generatori di bolla, i due push, la fotografia degli indirizzi della fattura, due guard, il builder pgTAP della bolla |
+| `-63` | `fn_list_commessa_attivita`: `sorgente_area` → `sorgente_apribile` (DROP + CREATE) |
+| `-82` | `vw_dash_competenza_gruppi`: `area_documento` → `documento_apribile` (torna una volta sola, dopo le viste di L2c-1) |
+| `-65` … `-72` | le otto viste della dashboard con un'area scritta: il valore diventa il codice della sorgente (`ORDINI` → `ORDINE_VENDITA`, `RESI` → `RESO_VENDITA`…) |
+
+80_data: `tipi_indirizzi_allowed.csv`, `sorgenti.csv` (`area` → `apribile`) e i due loader.
+
+**L2c-1 — il codice dei registri provvisionati (decisa (a), nel giro).**
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `-64` | `vendite.fn_codice_registro_provisionato`: `<codice della famiglia>-<id dell'emittente>` (`ORDINE_ACQUISTO-31848`) al posto delle prime tre lettere |
+| `-74` (`00_schema`) | `registri_fatturazione.codice` da `varchar(16)` a `varchar(80)`; via le sette viste che lo leggono (le liste di ordini, DDT, fatture, scadenze, resi, `vw_dash_competenza_attivita`, `vw_dash_competenza_mensile`) |
+| `-75` … `-81` | le sette viste tornano identiche (colonna `registro_codice` a `varchar(80)`) |
+| `-82` | `vw_dash_competenza_gruppi` torna una volta sola, con `documento_apribile` (2d) |
+
+Per la fattura il registro standard si riconosce **solo dal codice** (l'indice unico per famiglia, emittente,
+utility esclude la `FATTURA`): i registri già provvisionati su dbdev prendono il codice nuovo con lo SQL una
+tantum. ⚠️ Debito del modello, fuori dal giro: lo standard della fattura non ha un'identità sua.
+
+**2e — le chiavi del push (G-8, L2e-2 = (a)).**
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `-65` | **BB** `script.fn_segment_key(sorgente, uid, riga, mese)`: il solo costruttore della chiave |
+| `-66`, `-67` | **BB** `script.fn_segment_key_sorgente(chiave)` e `script.fn_segment_key_riga(chiave)`: chi legge documento e riga dalla chiave (anche per rettifiche e oneri, che non hanno sorgente). `LANGUAGE sql` senza `SET`: si espandono in linea |
+| `-68`, `-83` | le viste della dashboard di DDT e ordini: area col codice (2d) e chiave dal BB, nello stesso changeSet |
+| `-84`, `-85` | le viste della dashboard di contratti e commesse (2d; numeri scambiati coi BB, che devono nascere prima delle viste che li chiamano) |
+| `-86` | `fn_af_merce_per_riga`: la corsia è il codice della sorgente letto dal BB (`ORDINE_VENDITA` / `DDT_VENDITA`), «è merce?» idem |
+| `-87`, `-88` | `fn_partite_merce`, `fn_situazione_merce_ordine`: chiavi dal BB, corsia lunga |
+| `-89` … `-93` | i cinque lister del push (consumi, contratti, DDT, ordini, preventivi) |
+| `-94` … `-96` | la diagnosi del push della bolla, le capability dell'ordine, l'accredito del reso (i suffissi `#RET:`/`#CMP:` restano a chi li scrive) |
+| `-97`, `-98` | le due viste dello smistamento del preventivo |
+
+**Lo SQL una tantum** (dopo l'apply, solo dbdev, L2e-1):
+[sql-una-tantum-2e-chiavi-e-registri.sql](sql-una-tantum-2e-chiavi-e-registri.sql). Chiavi di
+`commesse_attivita` col prefisso lungo (`MAN` resta), le loro copie nel `meta` delle attività fatturabili, i
+codici dei registri provvisionati. Spegne i trigger utente delle due tabelle **solo** dentro la transazione
+(i guard di riga senza lista di colonne e lo storico; `ALTER TYPE` è impedito dalla colonna generata
+`segment_base`). Provato su dbdev in transazione annullata (2026-10-20): 350 chiavi, 62 copie, 20 registri; dopo,
+solo prefissi di sorgente e `MAN`. ⚠️ Il passo dei registri, prima dell'apply, vede le famiglie corte: prova la
+forma, non la lunghezza dei codici nuovi.
+✅ **Eseguito da Tid su dbdev dopo l'apply (2026-10-20), con COMMIT:** 350 chiavi di `commesse_attivita`, 62 copie
+nel `meta` delle attività fatturabili, 24 codici di registri provvisionati (fatto datato: la prova in transazione
+annullata ne contava 20). Prefissi rimasti nelle chiavi: `CONTRATTO` 50, `DDT_VENDITA` 10, `MAN` 4,
+`ORDINE_VENDITA` 146, `PREVENTIVO` 156. Nessun prefisso corto.
+
+### 13.2 Le scelte
+
+* **Corpi dal catalogo vivo**, con un generatore che applica sostituzioni **contate** (si ferma se un testo
+  non c'è esattamente) e scrive il rollback col corpo di prima. Su richiesta di Tid (2026-10-20), **`%TYPE` in
+  firma, `DECLARE` e `RETURNS TABLE` di ogni funzione toccata** dove c'è una colonna, anche nelle funzioni grandi
+  cambiate per una riga; nudi, col motivo accanto, conteggi, jsonb di lavoro, array, valori polimorfi.
+* **Il BB `config.fn_sorgente_tabella` (regola del 2).** Sei lettori risolvevano la tabella della famiglia dalle
+  due colonne ritirate: la risoluzione sta in un posto. Per codice di sorgente e non per famiglia, perché il guard
+  la chiama in `BEFORE INSERT`. Mai `target_table::text`, che dipende dal `search_path`.
+* **«Una tabella, una famiglia» resta**, nel guard: la tabella ora viene da un'altra tabella e un indice non fa
+  join. ⚠️ Un guard non è a prova di concorrenza come un indice unico: due creazioni simultanee sulla stessa
+  tabella passerebbero. È una scrittura rara di amministrazione: dichiarato, non coperto.
+* **I trigger che nominano una colonna convertita** (`UPDATE OF`) sono dipendenze che `ALTER TYPE` rifiuta. Il
+  lock di `codice_interno` lo monta `90_end` o l'automazione: da zero, a quel punto, non c'è. Il `-32` mette da
+  parte **quelli che ci sono** (definizione e COMMENT dal catalogo) e li rimonta identici dopo la conversione
+  (§11.5 delle linee guida: niente DDL incondizionata su un trigger d'automazione).
+* **`apribile` nasce uguale a `area` valorizzata** nella conversione del `-48`. ✅ **Tid, 2026-10-20: si accendono
+  anche fattura e reso** (`FATTURA`, `RESO_VENDITA`), che una pagina ce l'hanno: lo fa il CSV, che gira dopo.
+  Entrambe hanno `label_selector = numero`, quindi l'invariante «una sorgente apribile ha un numero» regge. Le
+  sorgenti apribili sono otto: preventivo, contratto, ordine, DDT, fattura, commessa, offerta, reso.
+* **La colonna `area` delle viste della dashboard tiene il nome**: cambia il valore (il codice della sorgente).
+  Rinominarla avrebbe allargato il giro BE/FE senza cambiare il significato.
+* Fuori: `'scope': 'COMMESSE'` nel `meta` delle attività fatturabili (`fn_emit_attivita_fatturabili_da_commessa`)
+  è un'etichetta di provenienza scritta nei dati, come `scope` nel `meta` delle sorgenti: non è un'area né un
+  tipo di documento.
+
+### 13.3 2e — la domanda prima di scrivere (L2e-2, per Tid)
+
+G-8 dice: *«chi decide non legge il prefisso: "è merce?" si chiede a `sorgente_tipo_id`, la FK che la riga porta
+già»*. Il modello lo smentisce. `vendite.commesse_attivita` ammette righe **senza sorgente**
+(`chk_commesse_attivita_senza_sorgente_onere_rettifica`: `ONERE` e `RETTIFICA`), e le rettifiche da reso hanno la
+chiave della bolla col suffisso `#RET:`. `vendite.fn_af_merce_per_riga` le conta nella corsia `DDT`, e
+`fn_partite_merce` le legge come `rettificato`. Per quelle righe il «di che documento è» sta **solo nella chiave**.
+(Fatto datato, dbdev 2026-10-20: 8 righe `DDT:` senza sorgente. È un controesempio, non la ragione: la ragione è
+il `CHECK`.)
+
+Il censimento ha trovato anche più forme di quante G-8 ne nominasse: la chiave senza riga dei consumi
+(`CONS:<uid>`), il mese dei contratti (`:M:YYYY-MM`), i suffissi `#CMP:` (componente di kit, **costruito dal
+backend**, `_kit_meta.py`) e `#RET:` (rettifica), e la «corsia» (`ORD`/`DDT`) che `fn_af_merce_per_riga` ricava
+dal prefisso e passa a partite e situazione merce.
+
+Strade:
+
+* **(a) Due BB in `script`, uno che costruisce e uno che legge la chiave** (sorgente, uid, riga, mese, suffisso).
+  La corsia diventa il codice della sorgente letto dalla chiave **col BB**, non con `split_part` a mano; «è merce?»
+  è «la sorgente della chiave è `ORDINE_VENDITA` o `DDT_VENDITA`». Copre rettifiche e oneri senza toccare il
+  modello. Il backend appende `#CMP:` a una chiave che riceve dal DB: resta così, o usa il BB.
+* **(b) Le rettifiche prendono una sorgente** (quella della riga che rettificano) e il `CHECK` si stringe ai soli
+  oneri; allora «è merce?» si chiede davvero a `sorgente_tipo_id`, come G-8. È un cambio di modello sulle rettifiche
+  (chi le scrive, `fn_accredita_riga_reso`, e il loro `CHECK`), più grande e fuori dal vocabolario.
+
+✅ **Decisa da Tid il 2026-10-20: (a), come da proposta.** Applica G-8 dove regge (un solo costruttore, il codice lungo nel prefisso, la conversione una
+tantum su dbdev) e corregge il punto che il modello smentisce. La (b) è un cantiere sulle rettifiche, non sulla
+grammatica.
+
+### 13.3-bis L2c-1 — un difetto latente trovato dalla prova (per Tid)
+
+`vendite.fn_codice_registro_provisionato` costruisce il codice del registro con **le prime tre lettere della
+famiglia** più l'id dell'emittente, e il suo commento lo dice «unico per costruzione». Lo è solo finché le
+famiglie hanno iniziali diverse. Con i codici delle sorgenti le famiglie di oggi tengono le loro iniziali
+(`DDT_VENDITA` → `DDT`, `ORDINE_VENDITA` → `ORD`, `RESO_VENDITA` → `RES`, `DISTINTA_INCASSO` → `DIS`): **nessun
+registro esistente cambia**. Ma una famiglia d'acquisto (`ORDINE_ACQUISTO`, `DDT_ACQUISTO`) collide con quella di
+vendita sullo stesso emittente (`uq_registri_fatturazione_codice`). Il modello lo ammetteva già prima del 2c:
+qualunque famiglia nuova che cominciasse con `ORD` avrebbe colliso; il pgTAP del CRUD, che il 2c aveva portato sulla
+sorgente vera `ORDINE_ACQUISTO`, l'ha trovato (e torna su una sorgente di prova).
+
+La correzione non è di questo giro: il provisioning ritrova i registri esistenti **per codice** (`r.codice =
+fn_codice_registro_provisionato(…)`), quindi cambiare la regola del codice vuol dire cambiare anche come si
+ritrovano (per famiglia, emittente, utility, che è la chiave unica vera). Strade: (a) il codice dal codice intero
+della famiglia, allargando `registri_fatturazione.codice` (G-3), e la ricerca per chiave unica; (b) il codice
+dall'id della famiglia. Da decidere prima che nasca la prima famiglia d'acquisto.
+
+✅ **Decisa da Tid il 2026-10-20: (a).** Il codice di un registro che nasce dal provisioning è il codice della
+famiglia più l'id dell'emittente (`ORDINE_ACQUISTO-31848`), uguale su ogni installazione e leggibile; il
+provisioning ritrova un registro per la sua chiave vera (famiglia, emittente, utility:
+`uq_registri_fatturazione_famiglia_emittente_utility`), non per codice. Il codice resta un nome modificabile, e
+i registri esistenti tengono il loro. Indicazione di Tid: non c'è produzione, si ottimizza lo sviluppo e non si
+salvaguarda il comportamento di prima.
+⚠️ **Il costo misurato** (catalogo vivo, 2026-10-20): `registri_fatturazione.codice` è `varchar(16)` e sei viste lo
+leggono (`vw_ordini_lista`, `vw_ddt_lista`, `vw_fatture_lista`, `vw_fatture_scadenze_lista`, `vw_resi_lista`,
+`vw_dash_competenza_attivita`): allargarlo vuol dire toglierle e rimetterle (con i loro dipendenti). Stima: una
+dozzina di changeSet; la ricerca per chiave vera e la regola del codice sono due.
+✅ **Tid, 2026-10-20: in questo giro.**
+
+### 13.5 La prova del 2c e del 2d (2026-10-20, scratch `zeroerp_ruoli`, come owner, in transazione annullata)
+
+* **SQL estratto** dei changeSet `-32` … `-73` nell'ordine del migrate (globale per numero fra `00_schema` e
+  `20_code`), più i due seed dei registri adeguati; i CSV simulati a mano (i due codici d'errore nuovi, fattura e
+  reso apribili). ⚠️ **Non provati i loader veri** (`loadUpdateData`) di `famiglie_documento.csv`,
+  `tipi_indirizzi_allowed.csv` e `sorgenti.csv`.
+* **Rollback del 2c**: trigger, colonne, vincoli, indici, le dieci funzioni e la vista tornano identici, a meno
+  dell'ordine delle voci nell'ACL e di `security_invoker=on`/`true`.
+* **Trovato e corretto strada facendo**: `ALTER TYPE` rifiutava la conversione per due trigger che nominano le
+  colonne in `UPDATE OF`; il `-32` li mette da parte e li rimonta (§13.2).
+* **pgTAP**: 251 file (chi nomina famiglie, registri, numeratori, ambiti, aree, la dashboard, le funzioni
+  toccate), ciascuno com'è e con l'SQL estratto dopo la riga `BEGIN;`, uno alla volta. Prima corsa: 26 cambiavano
+  esito, **tutti test che parlavano la grammatica vecchia** (famiglie `DDT`, ambiti `ORDINI`, aree al plurale, le
+  colonne ritirate, il `CHECK` dell'ambito diventato FK). Adeguati, con la nota di revisione in testa a ciascuno;
+  sei riscritti sul modello nuovo (le famiglie di prova nascono come sorgenti, col builder del `-73`). Seconda
+  corsa, contro gli esiti di prima del giro: **182 verdi, 69 rossi identici a prima** (fixture senza billing
+  account, test di scope da owner), **nessuna regressione**.
+* Cancelli statici verdi; i 46 YAML si leggono.
+* Non provato prima dell'apply: i pgTAP **come app** (li lancia Tid), i loader dei CSV, il 2e.
+
+### 13.5-bis La prova d'insieme: 2c, 2d, L2c-1, 2e (2026-10-20, scratch, come owner, in transazione annullata)
+
+* **SQL estratto** di `20261020-32` … `-98` nell'ordine del migrate, più i due seed dei registri adeguati e i
+  CSV simulati. I building block danno le chiavi attese (`ORDINE_VENDITA:<uid>:R:<riga>`,
+  `CONTRATTO:<uid>:R:<riga>:M:<mese>`), leggono sorgente e riga anche da una rettifica (`…#RET:<n>`), e il
+  registro nuovo si chiama `ORDINE_ACQUISTO-31848`.
+* **Due correzioni d'ordine** trovate scrivendo: le viste che chiamano `script.fn_segment_key` nascevano prima
+  della funzione (i numeri dei tre BB e di tre viste della dashboard sono scambiati: BB `-65` … `-67`, viste
+  `-83` … `-85`); `vw_dash_competenza_gruppi` torna una volta sola (`-82`), dopo le viste di L2c-1.
+* **pgTAP**: 328 file, ciascuno com'è e con l'SQL estratto. 22 cambiavano esito, **tutti test con le chiavi
+  scritte a mano** (`'ORD:' || …`), la corsia corta o il codice del registro con tre lettere. Adeguati: la chiave
+  la compone `script.fn_segment_key` dove la forma lo permette, le forme su più righe prendono il prefisso lungo
+  (stessa chiave, carattere per carattere: `test-annulla-accredito-riga-reso-v1`, `test-annullo-commessa-v1`,
+  `test-annullo-commessa-rettifica-v1`, `test-fn-accredita-riga-reso-v1`, `test-push-list-gia-inviato-v1`,
+  `test-fn-list-*-da-pushare-v1`, `test-vw-situazione-merce-ordine-v1`, `test-fn-af-merce-per-riga-chiusura-v1`).
+  Dopo: **ogni file torna all'esito che aveva prima del giro**, nessuna regressione.
+* Cancelli statici verdi. `guardrail_timestamp_senza_fuso`: un `::timestamp` nella definizione viva di
+  `vw_dash_competenza_attivita` (`-80`, ricreata identica) è dichiarato col marcatore: è un giorno che passa da
+  `date_trunc` e torna `date`. `guardrail_pgtap_preambolo` resta rosso solo per il file di un altro cantiere.
+* Non provato prima dell'apply: i pgTAP **come app**, i loader dei CSV, lo SQL una tantum sui codici lunghi dei
+  registri (provato sulla forma).
+
+### 13.5-ter La corsa come app dopo l'apply: 16 regressioni che la prova non vedeva (2026-10-20)
+
+Dopo l'apply su dbdev, la corsa di Tid come app ha dato **16 rossi nuovi**, tutti in `vendite/`, nessuno
+fra i file adeguati nel §13.5 e nel §13.5-bis. La causa è una sola: **scrivevano a mano il vocabolario che il
+giro ha ritirato**.
+
+| Vocabolario ritirato | Dove | File |
+| --- | --- | --- |
+| chiavi del push corte (`PREV:`, `DDT:`, `ORD:`, `CONTR:`, `CONS:`) e la corsia `ORD`/`DDT` | 2e | `test-fn-list-{consumi,ddt,preventivi}-da-pushare-*` (5), `test-fn-preventivo-ha-residuo-commessa-v1`, `test-resi-rinunce-scenario-v1`, `test-vw-preventivi-smistamento-v1`, `test-vw-af-merce-per-riga-v1` |
+| aree al plurale della dashboard | 2d | `test-vw-dash-backlog-v1`, `test-vw-dash-fatturazione-v1`, `test-vw-dash-preventivi-revisione-attiva` |
+| `vw_dash_competenza_gruppi.area_documento` → `documento_apribile` | `-82` | `test-vw-dash-competenza-gruppi-v1` (ERRORE_FIXTURE, colonna) |
+| `tipi_indirizzi_allowed.ambito = 'FATTURE'` → `'FATTURA'` | `-47` | `test-snapshot-indirizzi-fattura-v1`, `test-snapshot-indirizzi-lotto-v1` (ERRORE_FIXTURE: il filtro vuoto lasciava passare ogni BA, la sottoquery tornava più righe) |
+| famiglie corte (`DDT`, `ORDINE`, `RESO`, `DISTINTA`) | 2c | `test-numero-prefisso-registro-v1` |
+
+**Adeguati** (2026-10-20), con la nota di revisione in testa: le chiavi col prefisso lungo, uguali carattere
+per carattere a quelle di `script.fn_segment_key`; le aree e l'ambito col codice della sorgente;
+`documento_apribile` (`true` per il preventivo, `NULL` per il gruppo oneri, che non ha sorgente); le
+famiglie col codice lungo, anche nell'atteso del test 6 (`COMMESSA=CMM-, DDT_VENDITA=DDT,
+DISTINTA_INCASSO=DIS-, ORDINE_VENDITA=ORD, RESO_VENDITA=RESO`).
+
+**Censimento del resto** (stessa ricerca su tutto `db/pgtap/`): altri sette file scrivevano il vocabolario
+vecchio senza essere nell'elenco dei rossi, perché le loro chiavi sono fittizie o il letterale non decide
+l'esito. Adeguati nello stesso giro, per non lasciare il letterale da ricopiare:
+`test-trgfn-doc-righe-lock-fuori-bozza-v1` (la chiave `DDT:` del segmento ALLOCATO),
+`test-ritiro-alla-chiusura-documento-v1`, `test-ritiro-commessa-attivita-da-sorgente-v1`,
+`test-tipo-movimento-colonna-v1`, `test-ordini-guard-transizione-v1`,
+`test-drop-uq-commesse-attivita-src-uid-partial-v1` (chiavi `ORD:`/`PREV:`),
+`test-fn-crea-revisione-preventivo` (`ambito = 'PREVENTIVI'`). Fuori: `pratiche/test-obsoleto-dal-catalogo-v1`,
+dove `PREVENTIVI` è un tipo di prestazione e non un'area.
+
+⛔ **Perché la prova non li ha visti.** Il confronto prima/dopo del §13.5 e del §13.5-bis è stato fatto
+sullo scratch **come owner**, dove 69 file sono rossi già prima del giro (fixture senza billing account, test
+di scope da owner). Un file rosso prima e rosso dopo risulta «identico», anche se dopo è rosso per un
+motivo in più: **il confronto su un file già rosso non prova niente**. È il caso di
+`ref_regressione_rosso_preesistente_nasconde` (memoria del progetto). Ipotesi da confermare con l'elenco dei
+69, se c'è ancora: i 16 erano fra quelli. Come app su dbdev erano verdi.
+Per il prossimo giro che cambia un vocabolario: **prima** dell'apply, la ricerca dei letterali ritirati su
+tutto `db/pgtap/` (non solo sui file che nominano gli oggetti toccati), e per i file già rossi sullo
+scratch la lettura dei test, non il loro esito.
+
+✅ **Corsa come app di Tid su dbdev, dopo l'apply (2026-10-20): verdi.**
+
+### 13.4 Richiesta al backend e al frontend (dopo l'apply)
+
+| Dove | Oggi | Dopo |
+| --- | --- | --- |
+| CRUD delle famiglie: `famiglie_service` / `famiglie_repository` (chiamata a `fn_crea_famiglia_documento`, per posizione) | schema e tabella | la **sorgente** (`p_codice_interno` = codice della sorgente); escono due parametri. FE: il drawer delle famiglie sceglie una sorgente invece di scrivere schema e tabella |
+| Lista delle famiglie (`vw_famiglie_documento_lista`) | | stesse colonne; `codice_interno` è il codice della sorgente |
+| Codice nuovo `E_FAMIGLIA_DOCUMENTO_TABELLA_GIA_NUMERATA` | | `error_policies_generated.py` rigenerato; il contesto porta `campo` = `codice_interno` |
+| Storia dell'emittente del BA (`fn_get_storia_emittente_ba`) | `famiglia_documento` `DDT`, `ORDINE`… | il codice della sorgente: chi lo mostra lo nomina col vocabolario delle sorgenti |
+| Mixin indirizzi dei repository (`_indirizzi_ambito` / `_indirizzi_documento`) | la coppia plurale + documento | **un codice solo**, quello della sorgente (G-6) |
+| Costanti `DASH_*_AREE` e frontend della dashboard (`dashboardAree.js`) | il plurale (`ORDINI`, `RESI`…) | il codice della sorgente. ⚠️ Cambia un valore nelle risposte della dashboard |
+| `fn_list_commessa_attivita` (lista attività di commessa) | `sorgente_area` | `sorgente_apribile`; il documento d'origine si apre da `sorgente_codice`. ⚠️ Cambia una risposta API |
+| `vw_dash_competenza_gruppi` | `area_documento` | `documento_apribile`. ⚠️ Cambia una colonna |
+| Chiavi del push (2e) | `ORD:`, `DDT:`, `PREV:`, `CONTR:`, `CONS:` | il codice della sorgente (`ORDINE_VENDITA:<uid>:R:<riga>`…); il backend appende `#CMP:` alla chiave che riceve dal lister, e resta così. Da rivedere: i commenti e i test di `_kit_meta.py` e `commesse_source_handlers.py`, gli smoke che scrivono chiavi; il FE mostra la chiave così com'è (`CommessaGestioneDrawer`), ora più lunga |
+| Codice dei registri provvisionati (L2c-1) | `ORD-31848` | `ORDINE_VENDITA-31848` per i nuovi e, dopo lo SQL una tantum, per quelli di dbdev; `registro_codice` delle liste a `varchar(80)` |
+| ⭐ Fattura e reso **apribili** (Tid, 2026-10-20) | `area` vuota: la riga non si apriva | `sorgente_apribile` / `documento_apribile` sono veri anche per `FATTURA` e `RESO_VENDITA`: il FE deve saperli aprire dal codice (rotta del dettaglio fattura e del reso), nella lista attività di commessa e nei gruppi della competenza. Il backend non ha logica sua: passa il valore |
+
+### 13.6 Richiesta della sessione BE/FE: il tipo del documento d'origine col `codice_interno` (team DB)
+
+> **Chi scrive:** sessione BE/FE, 2026-10-20, durante il giro del §13.4. **Deciso da Tid il 2026-10-20:** si usa
+> `codice_interno`.
+
+**Il difetto, sul contratto.** Il §13.4 chiede al frontend di aprire il documento d'origine di una riga di commessa
+dal codice della sorgente. `vendite.fn_list_commessa_attivita` lo restituisce come `sorgente_codice`, ma calcolato
+su **`s.codice`**: il nome **modificabile** di `config.sorgenti` (solo `uq_sorgenti_codice`). Il nome del tipo è
+**`codice_interno`** (G-1), l'unico protetto da `trgfn_lock_columns`. Oggi le due colonne coincidono su ogni
+sorgente di dbdev (fatto datato, 2026-10-20): è il motivo per cui il difetto non si vede, non una ragione per
+tenerlo. Basta rinominare il `codice` di una sorgente perché l'azione «apri documento d'origine» si spenga in
+silenzio, perché il frontend non trova più il drawer per quel tipo. `vw_dash_competenza_gruppi.tipo_gruppo` invece
+è già su `codice_interno`.
+
+**Che cosa si chiede** (un changeSet, DROP + CREATE come il `-63`):
+
+| Dove | Oggi | Dopo |
+| --- | --- | --- |
+| `RETURNS TABLE` di `fn_list_commessa_attivita` | `sorgente_codice` = `s.codice` | **`sorgente_codice_interno`** = `s.codice_interno`, ancorato con `%TYPE`. Il nome segue la colonna, come nelle API di magazzino (`sorgente_codice_interno`) |
+| whitelist di `p_order_by` | `'sorgente_codice'` → `s.codice` | `'sorgente_codice_interno'` → `s.codice_interno` |
+| `80_data/sql/ui/lista_colonna.csv`, riga 488 (`origine_tipo`, lista 38) | campo `sorgente_codice` | campo `sorgente_codice_interno` |
+
+**Il giro BE/FE che segue** (sessione BE/FE, dopo l'apply): `_ATTIVITA_COLS` e la whitelist d'ordinamento di
+`commesse_repository.py`, i test; in `CommessaGestioneDrawer` l'azione «apri documento d'origine» apre dal
+`sorgente_codice_interno` quando `sorgente_apribile` è vero, fattura e reso compresi (§13.4, ultima riga).
+⚠️ Fino all'apply il frontend del giro 3 resta fermo: la lista attività di commessa risponde (il `sorgente_area`
+ritirato è già sostituito da `sorgente_apribile` nel backend, 2026-10-20), ma l'azione d'apertura non trova il
+drawer, perché si appoggia ancora alle chiavi delle aree.
+
+**Secondo punto, trovato nello stesso giro (2026-10-20): `famiglie_documento.codice` è più corto del nome che
+riceve.** Il `-32` ha portato `codice_interno` a `varchar(50)`, la lunghezza di `config.sorgenti.codice_interno`
+(G-3). Il `codice` dell'operatore è rimasto `varchar(32)`, e alla nascita
+`vendite.trgfn_famiglie_documento_default_codice` ci copia il `codice_interno` (`NEW.codice :=
+NEW.codice_interno`). Una sorgente con un codice da 33 a 50 caratteri, che il modello ammette, non può avere
+una famiglia: la creazione cade su un `DataError` del trigger, che non è un errore di dominio e arriva come
+errore generico. Oggi il codice più lungo fra le sorgenti di documento è `OFFERTA_COMMERCIALE` (19): è il
+motivo per cui non si vede, non una ragione per tenerlo. Per G-3 («il vincolo si adegua al nome») la proposta è
+`famiglie_documento.codice` a `varchar(50)`, con i dipendenti che lo leggono. Il frontend si adegua nello stesso
+giro (`FIELD_LENGTH.FAMIGLIA_CODICE_OPERATORE_MAX`).
+
+#### 13.6.1 La consegna del team DB (commit `2ada3f6d1`, applicata su dbdev il 2026-10-21)
+
+Ricostruita dalla sessione BE/FE sul repo e sul catalogo vivo, perché il brief non la registrava.
+
+| ChangeSet | Che cosa | Rispetto alla richiesta |
+| --- | --- | --- |
+| `20261021-18` | `famiglie_documento.codice` a `varchar(50)` | come chiesto |
+| `20261021-19` | `vw_famiglie_documento_lista` ricreata sul codice a 50 | il dipendente |
+| `20261021-20` | `fn_list_commessa_attivita`: esce `sorgente_codice` (`s.codice`), entra `sorgente_codice_interno` (`s.codice_interno`) nella stessa posizione | come chiesto |
+| idem | entra `sorgente_etichetta` (`s.etichetta`), ultima colonna; l'ordinamento è su `sorgente_etichetta` | **in più**: la lista mostra e ordina il nome a video («Ordine»), il codice immutabile resta per aprire il documento |
+| `lista_colonna.csv` riga 488 | «Tipo origine» legge `sorgente_etichetta` | diverso dalla richiesta (`sorgente_codice_interno`), ed è meglio: a video va il nome, non il codice |
+
+⚠️ Fra l'apply e il giro BE la lista attività di commessa su dbdev andava in errore (il backend chiedeva
+`sorgente_codice`): è il costo di un apply che cambia una `RETURNS TABLE` prima del suo consumatore.
+
+#### 13.6.2 Il giro BE/FE (sessione BE/FE, 2026-10-21)
+
+* **Backend.** `commesse_repository.py`: `_ATTIVITA_COLS` con `sorgente_codice_interno` e `sorgente_etichetta` in
+  coda; `ATTIVITA_SORT_COLUMNS` con `sorgente_etichetta` al posto di `sorgente_codice` (specchio della whitelist
+  della funzione, lo presidia `test_liste_configurabili_seed`). Test del repository sulla riga nuova. Chiamata
+  reale su dbdev: la lista risponde (`ORDINE_VENDITA`, «Ordine», apribile).
+* **Frontend.** Il BB `buildApriDocumentoAction` (`vendite/dashboardAree.js`) apre anche un documento che non è
+  un'area del cruscotto, se il codice è una sorgente con drawer iscritto (la fattura); la voce del cruscotto, quando
+  c'è, vince (la commessa apre la gestione). `CommessaGestioneDrawer` gli passa `sorgente_codice_interno` quando
+  `sorgente_apribile` è vero. Spec nuovo `dashboardAree.spec.js` (4); i test FE di vendite, core e amministrazione
+  verdi.
+* **Doc.** `api_commessa_attivita.md`, catalogo BB frontend.
+* ⚠️ **Fuori da questo brief, trovato nella stessa corsa:** `test_liste_configurabili_seed` è rosso su
+  `documenti.template_documenti`: il commit DB `2ada3f6d1` (brief-db-modelli-documento-standard) ha una colonna
+  ordinabile `standard` che la whitelist del repository dei template non ha. È del cantiere dei modelli di
+  documento. ✅ Corretto su richiesta di Tid (2026-10-21): `"standard": "t.standard"` in
+  `TEMPLATES_ORDER_COLUMNS` (`apps/documenti/db/documenti_repository.py`); seed e test di `apps.documenti` verdi,
+  ordinamento provato su dbdev nei due versi. Annotato anche in brief-db-modelli-documento-standard.
+
+## 14. Lotto 3 — le note: ricognizione, piano, sviluppo (team DB, 2026-10-25)
+
+Piano (§14.1 … §14.5), decisioni di Tid e correzioni della scrittura (§14.6), sviluppo e prova (§14.7, §14.8),
+richiesta al BE/FE (§14.9) e il suo giro (§14.10). Applicato su dbdev e scratch; giro BE/FE fatto il 2026-10-25.
+
+### 14.1 Il rapporto col brief del modello del documento
+
+Nessuna dipendenza, nei due versi. [brief-modello-documento-vendita](../work-in-progress/brief-modello-documento-vendita.md)
+lavora su stato, verbo, permesso, emissione e annullo; i suoi BB (`fn_doc_stato_modello`,
+`fn_stato_iniziale_id`, `fn_doc_stato_id`, `fn_doc_azione_passaggio`, `fn_stato_emissione_id`) ricevono la
+**tabella** (`regclass`), non un codice di tipo: non aprono un vocabolario nuovo. Il lotto 3 non tocca
+nessuno di quegli oggetti. Il fermo dei temi trasversali (PROJECT_CONTEXT) non lo ferma: il brief è già in
+esecuzione e le note passano da un trigger e da una partizione comuni, non da copie per documento.
+
+### 14.2 Com'è oggi (catalogo vivo di dbdev, 2026-10-25 — struttura, non popolazione)
+
+Le tabelle sono **quattro**, non tre: G-7 nomina anche `catalogo.note` (`ARTICOLI` → `ARTICOLO`).
+
+| Tabella | `target_tipo` | Partizioni (`FOR VALUES IN`) | `CHECK` | RLS sul padre |
+| --- | --- | --- | --- | --- |
+| `vendite.note` | `varchar(16)` | `PREVENTIVO`, `CONTRATTO`, `FATTURA`, `ORDINE`, `DDT`, `ATTIVITAFT`, `OFFERTA` | gli stessi sette | sì: `rls_note_ef_whitelist`, `rls_note_cliente`, `rls_note_shop` |
+| `acquisti.note` | `varchar(16)` | `ORDINE`, `DDT` | `ORDINE`, `DDT`, `FATTURA`, `CONTRATTO` (gli ultimi due senza partizione né tabella) | no |
+| `magazzino.note` | `varchar(32)` | `ASSET`, `EVENTO_ASSET`, `INVENTARIO`, `INVENTARIO_RIGA`, `MOVIMENTO`, `RETTIFICA`, `RETTIFICA_RIGA`, `TRASFERIMENTO`, `TRASFERIMENTO_RIGA` | gli stessi nove | sì: `rls_note_ef_whitelist` |
+| `catalogo.note` | `varchar(32)` | `ARTICOLI`, `ARTICOLI_COMPONENTI` | gli stessi due | no |
+
+Che cosa altro nomina quei codici:
+
+* **gli smistatori dell'RLS sul padre**: `script.fn_scope_note_ef_perimetro` (sette rami),
+  `fn_scope_note_cliente_perimetro` (`FATTURA`, `ORDINE`), `fn_scope_note_shop_perimetro` (`ORDINE`),
+  `fn_scope_note_magazzino_ef_perimetro` (nove rami, codici già giusti). Tutti con `ELSE false`;
+* **il terzo argomento di `trgfn_note_validate_generic`** su cinque partizioni (`'DDT'`, `'ORDINE'`, `'OFFERTA'`
+  in vendite; `'DDT'`, `'ORDINE'` in acquisti): finisce solo nel `dominio` del payload di
+  `E_NOTE_RIGA_MISMATCH`, e ripete il confine della partizione;
+* **`catalogo.articoli.note_target_tipo`** e **`articoli_componenti.note_target_tipo`** (`varchar(32)`, `CHECK`
+  `= 'ARTICOLI'` / `'ARTICOLI_COMPONENTI'`, FK composta `(note_target_tipo, note_id)` verso `catalogo.note` con
+  `ON UPDATE CASCADE`); le viste `vw_articoli_note`, `vw_articoli_componenti_note` (espongono `nota_target_tipo`);
+* `fn_get_note` e i tre lettori di schema passano il codice com'è (`UPPER($1)`): non cambiano;
+  `fn_cleanup_fatture_by_ids` legge `'FATTURA'`, che non cambia;
+* **le policy delle partizioni** chiamano il risolutore con i suoi *modi* minuscoli (`'ddt'`, `'offerta'`,
+  `'attivita_fatturabile'`…): non sono codici di tipo, restano (§14.5, L3-6);
+* il seed: i CSV `80_data/sql/magazzino/note_*.csv` (codici che non cambiano);
+* `dbops.fk_index_policy.csv` registra le FK del padre **per nome** (`fk_vendite_note_id_lingua`…): i nomi
+  restano uguali e il registro non cambia. Nessun registro punta alle note per OID (`regclass`), verificato.
+
+L'`id` è `GENERATED BY DEFAULT AS IDENTITY` **sul padre** (`vendite.note_id_seq`, `catalogo.note_id_seq`…):
+ricostruire il padre rifà la sequenza (§14.3, trappola 1).
+
+### 14.3 Il piano
+
+**I codici** (G-7, decisi; tutti già in `config.tipi_entita`, verificato):
+
+| Tabella | Da → a |
+| --- | --- |
+| `vendite.note` | `ORDINE` → `ORDINE_VENDITA`, `DDT` → `DDT_VENDITA`, `OFFERTA` → `OFFERTA_COMMERCIALE`, `ATTIVITAFT` → `ATTIVITA`; `PREVENTIVO`, `CONTRATTO`, `FATTURA` uguali |
+| `acquisti.note` | `ORDINE` → `ORDINE_ACQUISTO`, `DDT` → `DDT_ACQUISTO`; `FATTURA`, `CONTRATTO` escono (nessuna tabella, partizione né entità: §8.2) |
+| `magazzino.note` | uguali |
+| `catalogo.note` | `ARTICOLI` → `ARTICOLO`, `ARTICOLI_COMPONENTI` → `ARTICOLO_COMPONENTE` |
+
+**La tecnica proposta: stacca, converti, riattacca** (L3-3). Il tipo della chiave di partizione non si cambia
+con un `ALTER` sul padre, ma una partizione staccata è una tabella qualunque. Per ogni tabella, un changeSet in
+`00_schema`:
+
+1. si crea il padre nuovo (`target_tipo varchar(50)`, stesse colonne, PK, indici `ON ONLY`, FK di stile e
+   lingua coi **nomi di oggi**, FK `target_tipo` → `config.tipi_entita(codice)` al posto del `CHECK`);
+2. per ogni partizione: `DETACH`, `DROP` del `CHECK` ereditato rimasto locale, `ALTER COLUMN target_tipo TYPE
+   varchar(50)`, `UPDATE` del codice, `ATTACH … FOR VALUES IN ('<codice nuovo>')`. Policy, trigger, FK verso la
+   testata e indici della partizione **restano dove sono**: non si ricopiano;
+3. si toglie il padre vecchio e si rinomina il nuovo; sul padre si rimettono RLS (vendite, magazzino), le
+   policy del padre, i GRANT, i COMMENT; la sequenza riparte dal massimo `id` (trappola 1).
+
+Su CI le tabelle sono vuote e gli `UPDATE` non fanno niente; su dbdev convertono le righe nello stesso
+changeSet. Per questo **non serve uno SQL una tantum** (a differenza di G-8).
+
+Per `catalogo` prima si toglie la FK composta da `articoli`/`articoli_componenti`, poi si convertono note e
+`note_target_tipo` (col `CHECK` nuovo), poi si rimette la FK verso il padre nuovo.
+
+**Il resto, nello stesso apply** (`20_code`):
+
+* `fn_scope_note_ef_perimetro`, `fn_scope_note_cliente_perimetro`, `fn_scope_note_shop_perimetro` coi codici
+  nuovi (la firma con `%TYPE` verso il padre nuovo: si riscrive dopo la ricostruzione);
+* `trgfn_note_validate_generic`: secondo L3-4;
+* le due viste di `catalogo` non cambiano nel testo, ma si ricontrollano dopo l'apply (puntano alle partizioni,
+  che sopravvivono).
+
+**Le prove:** i 13 pgTAP che nominano `target_tipo` (`vendite/test-note-partitioning`,
+`vendite/test-attivita-fatturabili`, `rls/test-rls-note-padre`, `rls/test-rls-{ddt,offerte,contratti}-satelliti`,
+`rls/test-rls-fatture-residuo`, `rls/test-rls-magazzino-perimetro-v1`, `magazzino/test-valore-giacenza-forma-v1`,
+quattro di `catalogo`), più un pgTAP nuovo: ogni confine di partizione delle quattro tabelle è un codice di
+`config.tipi_entita`, e `target_tipo` è `varchar(50)` con la FK. È anche il primo pezzo del presidio del lotto 4.
+
+**Trappole già note:**
+
+1. **la sequenza dell'`id`** nasce a 1 sul padre nuovo: senza un `setval` al massimo di oggi il prossimo
+   inserimento collide con la PK `(target_tipo, id)` della partizione;
+2. **`trg_note_offerte_commerciali_a10_eccezioni_require_attivo_ins_u`** è `AFTER INSERT OR UPDATE` senza
+   `OF`: l'`UPDATE` del codice lo fa scattare, e una nota su un'eccezione spenta ferma il migrate. L'`UPDATE`
+   passa a trigger spento nel changeSet, oppure si corregge prima il montaggio (`UPDATE OF target_riga_id`, come
+   gli altri), che è il difetto vero;
+3. **l'`ON UPDATE CASCADE`** di `catalogo`: senza togliere prima la FK, l'`UPDATE` della nota cascata su
+   `articoli.note_target_tipo` e sbatte contro il `CHECK` `= 'ARTICOLI'`;
+4. **il seed dei CSV di magazzino** ha `id` espliciti: il resync della sequenza deve venire **dopo** il seed
+   (`90_end`), non solo nel changeSet della ricostruzione.
+
+### 14.4 Ricaduta sul backend e sul frontend (stesso giro, dopo l'apply)
+
+Dopo l'apply il backend che scrive `'DDT'` finisce senza partizione: DB e BE cambiano **insieme** (G-4).
+
+* `vendite/db/note_repositories.py` e `vendite/api/note_views.py`: i codici nuovi; via i commenti sulla
+  lunghezza (`varchar(16)`);
+* `core/db/partitioned_note_repository.py`: si ritira `TARGET_TIPI_AMMESSI` (decide la FK, G-7);
+* `core/services/partitioned_note_service.py`: la mappa degli errori sul vincolo `chk_note_target_tipo`, che non
+  c'è più (un codice sconosciuto fallisce prima, sul confine di partizione);
+* `catalogo/services/catalogo_service.py:1884` (`"ARTICOLI"`) e `catalogo_bom_repository.py`;
+* `core/api/partitioned_note_views.py`: i nomi dei serializer e delle viste nascono dal codice
+  (`PartitionedNote_DDT_…` → `PartitionedNote_DDT_VENDITA_…`): **cambia lo schema OpenAPI**;
+* i 5 file di test del backend che usano `target_tipo`;
+* frontend: 5 occorrenze di `target_tipo` in `frontend/src`, e il valore restituito nelle risposte delle note
+  (`'DDT'` → `'DDT_VENDITA'`). Le censisce la sessione FE.
+
+### 14.5 Domande per Tid
+
+| # | Domanda | Proposta |
+| --- | --- | --- |
+| L3-1 | **Quattro tabelle, `catalogo.note` compresa?** G-7 ne nomina i codici, ma G-3 e G-4 parlano di tre | **sì**: senza, `ARTICOLI` resta un nome fuori catalogo e il presidio del lotto 4 ha un'eccezione |
+| L3-2 | **`varchar(50)` anche dove il codice ci sta** (`magazzino`, `catalogo`, oggi 32)? | **sì**: è la regola di G-3, già applicata a `famiglie_documento.codice` nel §13.6 quando il codice ci stava. Costo: ricostruire anche `magazzino.note`, dove i valori non cambiano |
+| L3-3 | **La tecnica**: stacca, converti, riattacca (§14.3), o nuova, copia, scambio (G-3)? | **stacca e riattacca**: niente copia di righe, e policy, trigger e FK delle partizioni non si ricopiano (una ricopia è il posto dove se ne perde una) |
+| L3-4 | **Il terzo argomento di `trgfn_note_validate_generic`** (`'DDT'`, `'OFFERTA'`…): (a) si rimonta col codice nuovo; (b) si toglie, e il `dominio` dell'errore diventa `NEW.target_tipo` | **(b)**: l'argomento ripete il confine della partizione, ed è una copia; `NEW.target_tipo` lo dice già, sempre giusto |
+| L3-5 | **Il montaggio del trigger d'offerta senza `OF`** (trappola 2): si corregge nel giro? | **sì**, prima della conversione: è un difetto di montaggio (gli altri hanno `UPDATE OF target_riga_id`), non un ostacolo da aggirare spegnendo il trigger |
+| L3-6 | **I modi del risolutore** (`'ddt'`, `'offerta'`, `'fiscale'`, `'contabile'`… di `fn_resolve_emittente_fiscale_id`) | **fuori**: sono modi di risoluzione (ci sono anche `fiscale` e `contabile`, che non sono tipi), non nomi di tipo; li governa il brief del perimetro. Annotato perché il censimento del §7 non li elenca |
+
+⚠️ Notato, non proposto: `config.tipi_entita.modo_risoluzione_emittente` è valorizzata solo per `FATTURA`. Se
+fosse completa, gli smistatori `fn_scope_note_*` potrebbero leggerla al posto dei loro `CASE`. È un tema del
+perimetro, non della grammatica: qui gli smistatori cambiano solo i codici.
+
+### 14.6 Le decisioni (Tid, 2026-10-25) e cosa ha corretto la scrittura
+
+✅ **Tid, 2026-10-25: «ok», sì alle proposte L3-1 … L3-6, e via allo sviluppo.** Numeri dal primo libero,
+`20261025-53` (max + 1 su tutti i livelli e sul `databasechangelog` di dbdev e scratch).
+
+Scrivendo, tre punti del §14.3 sono cambiati — tutti sul **come**, nessuno sul modello:
+
+* **Niente `UPDATE`: conversione sul posto.** `ALTER COLUMN target_tipo TYPE varchar(50) USING '<codice>'` sulla
+  partizione staccata è DDL: nessun trigger di riga scatta. Così audit (`data_update`, `user_update`) e `tx_id`
+  restano quelli dell'ultima modifica vera, e la trappola 2 non c'è più come ostacolo (è la forma già usata nel
+  `20261001-42`).
+* **La trappola 2 era un doppione.** Il trigger d'offerta senza `OF` è un trigger ATTIVO **scritto a mano** dal
+  `20260524-08`, accanto a quello che il framework genera dalla FK `fk_offnote_riga` (stessa funzione, stessi
+  argomenti, differito, `OF target_riga_id`). Le linee guida vietano di scriverli a mano: L3-5 diventa «si toglie»
+  (`-53`), non «si corregge».
+* **La trappola 4 non c'è:** i CSV `80_data/sql/magazzino/note_*.csv` hanno la sola intestazione e nessun changelog
+  li carica.
+* **In più, trovato scrivendo L3-4:** il terzo argomento finiva anche nella **frase** per l'operatore
+  («…al documento di dominio %s…»). Le due destinazioni ora sono separate (linee-guida-sql §5, i tre canali): nel
+  payload il codice (`NEW.target_tipo`), nella frase l'etichetta della sorgente (`config.sorgenti.etichetta`:
+  «DDT», «Ordine»).
+* **Le viste di `catalogo` sono quattro e vanno tolte e rimesse:** `ALTER TYPE` rifiuta una colonna letta da una
+  vista. Oltre alle due delle note (`target_tipo` delle partizioni) ci sono `vw_articoli_dettaglio` e
+  `vw_articoli_componenti_dettaglio` (`note_target_tipo`). Nessun'altra vista né funzione dipende da loro
+  (`pg_depend`). Tornano identiche, come nel `20261021-18`/`-19`.
+
+### 14.7 Scritto (team DB, 2026-10-25) — non applicato
+
+| ChangeSet | Dove | Che cosa |
+| --- | --- | --- |
+| `-53` | `20_code/vendite` | via il trigger ATTIVO scritto a mano su `note_offerte_commerciali` (L3-5) |
+| `-54` | `00_schema/vendite` | `vendite.note` ricostruita: sette partizioni staccate, convertite, riattaccate (`ORDINE_VENDITA`, `DDT_VENDITA`, `OFFERTA_COMMERCIALE`, `ATTIVITA`); FK `fk_vendite_note_target_tipo`; le tre policy del padre, RLS, GRANT, COMMENT |
+| `-55` | `00_schema/acquisti` | `acquisti.note`: `ORDINE_ACQUISTO`, `DDT_ACQUISTO`; escono `FATTURA` e `CONTRATTO` |
+| `-56` | `00_schema/magazzino` | `magazzino.note`: codici uguali, `varchar(50)` e FK; la policy del padre |
+| `-57` | `00_schema/catalogo` | via le quattro viste e la FK composta; `catalogo.note` con `ARTICOLO`, `ARTICOLO_COMPONENTE`; `articoli(_componenti).note_target_tipo` convertita sul posto, `CHECK` col codice nuovo, FK composta verso il padre nuovo |
+| `-58` … `-61` | `20_code/catalogo` | le quattro viste, identiche dal catalogo vivo |
+| `-62`, `-63`, `-64` | `20_code/script` | `fn_scope_note_ef_perimetro`, `_cliente_perimetro`, `_shop_perimetro` coi codici nuovi (rami e modi del risolutore uguali) |
+| `-65` | `20_code/script` | `fn_scope_note_magazzino_ef_perimetro`: rami uguali, il presidio citato passa dal `CHECK` ai confini |
+| `-66` | `20_code/script` | `trgfn_note_validate_generic`: dominio da `NEW.target_tipo` (payload) ed etichetta (frase); `SECURITY INVOKER` esplicito |
+| `-67`, `-68` | `20_code/vendite`, `/acquisti` | gli otto montaggi del validatore senza il terzo argomento |
+| `-69` | `20_code/acquisti` | via i due validatori di acquisti col nome vecchio, che da zero restavano accanto a quelli del `-68` (§14.8.2) |
+
+Tutti con rollback: il rollback delle ricostruzioni fa lo stesso procedimento al contrario, quello delle funzioni
+rimette il testo esatto dei changeSet di prima (`20261021-25`, `-38`, `20260804-46`).
+
+**pgTAP.** Nuovo: `config/test-grammatica-note-target-tipo-v1` (10 test: lunghezza, FK, nessun `CHECK` sul tipo,
+ogni confine è un'entità e le partizioni ci sono, nessun codice ritirato, l'altra metà della FK di catalogo, i due
+argomenti del validatore, nessun trigger doppione, il routing del codice ritirato, la frase dell'operatore). È il
+primo pezzo del presidio del lotto 4. Portati: `rls/test-rls-note-padre` (il test 4 ora legge i confini delle
+partizioni, ed è rosso con zero partizioni), `rls/test-rls-magazzino-perimetro-v1` (il 12, idem),
+`magazzino/test-valore-giacenza-forma-v1` (il 4: un `NOT EXISTS` su un `CHECK` ritirato sarebbe stato verde per
+sottrazione), `rls/test-rls-ddt-satelliti`, `rls/test-rls-offerte-satelliti`, `vendite/test-attivita-fatturabili`,
+`vendite/test-note-partitioning` (solo la nota), i tre di `catalogo` che scrivono le note. Invariati, perché i loro
+codici non cambiano: `rls/test-rls-contratti-satelliti`, `rls/test-rls-fatture-residuo`,
+`catalogo/test-articoli-componenti-immutabilita`.
+
+**Doc** (`manual/`, con la data): `vendite/note`, `acquisti/note`, `catalogo/note`, `catalogo/articoli`,
+`vendite/note_offerte_commerciali`, `vendite/offerte_commerciali_eccezioni`, `vendite/fn_get_vendite_note`,
+`script/fn_get_note`, `script/trgfn_note_validate_generic`, `script/fn_scope_note_magazzino_ef_perimetro`. La doc
+auto-generata si rigenera dopo l'apply.
+
+### 14.8 La prova (2026-10-25, cluster usa-e-getta PostgreSQL 18, col dump di schema di dbdev)
+
+Sullo scratch non ci sono credenziali da owner; la prova si è fatta su un cluster usa-e-getta: dump di **solo
+schema** di dbdev (`pg_dump -s` come app, senza gli schemi `shop` e `test`), ripristinato senza errori; copiati da
+dbdev i cataloghi che servono (`tipi_entita`, `sorgenti`, `note_stili`, `lingue`, `codici_errore`,
+`messaggi_errore`), gli articoli coi componenti e le 63 note di catalogo; note sintetiche per vendite (dieci, in
+tutte le sette partizioni), acquisti e magazzino (una per partizione), con audit di una data vecchia. Lo SQL
+eseguito è quello **estratto dagli YAML veri**, in una transazione con `ON_ERROR_STOP`.
+
+* **Avanti:** passa. Confronto prima/dopo su tutta la struttura toccata (colonne, vincoli, indici, confini, RLS,
+  policy, trigger, viste, funzioni, sequenze, dati): cambiano solo i confini, i codici delle righe, i `CHECK` → FK,
+  i tre argomenti → due, il trigger doppione, i COMMENT. Le policy, gli indici e la definizione delle quattro viste
+  (md5) sono **identici**; `data_update`/`user_update` delle note **invariati**; sequenze e identity uguali.
+* **Comportamento:** dal padre `DDT_VENDITA` va in `note_ddt` con l'id seguente della sequenza vecchia; `DDT` è
+  rifiutato dal routing; la FK composta di catalogo regge e rifiuta `ARTICOLI`; ogni confine di partizione di
+  vendite e magazzino ha il suo ramo nello smistatore, `DDT` no; una funzione per nome; la frase d'errore dice
+  «…al documento di dominio Ordine indicato…».
+* **Rollback:** avanti → indietro → struttura e dati **identici** a prima (ACL a parte: il dump era senza
+  privilegi); avanti di nuovo → identico al primo avanti.
+* **Da zero** (note e `config.tipi_entita` vuote, come in CI quando gira `00_schema`): passa.
+* **pgTAP nuovo:** 10/10 dopo; sul database di prima 10/10 rossi. Il test 10 era verde anche prima sul DDT (la sua
+  etichetta è «DDT», cioè il vecchio terzo argomento: coincidenza testuale), ed è stato spostato sugli ordini.
+* **Presidi portati** (test 4 del padre di vendite, 12 di magazzino): 0 dopo; con uno smistatore mutato a cui
+  mancano rami, 6 e 8.
+* **Guardrail** del repository: tutti verdi. ⚠️ `guardrail_pgtap_preambolo` dice che il debito dei `throws_ok`
+  senza discriminante è **calato di 2** (soglia 115, oggi 113): non viene da questo giro (2 → 2 sui file toccati),
+  era già nell'albero.
+
+⚠️ **Non provato:** i pgTAP con fixture (servono i dati e i builder: li lancia Tid come app dopo l'apply); la RLS
+come app.
+
+#### 14.8.1 Incidente dell'apply (2026-10-25, 15:03, dbdev) e correzione
+
+Il migrate di Tid su dbdev ha applicato `-53` … `-56` e si è fermato sul `-57`: *«la tabella figlia
+"note_articoli" ha una definizione diversa del vincolo di controllo "chk_note_anchor_tipo"»*.
+
+* **Il meccanismo.** L'`ATTACH` confronta l'**albero** dell'espressione dei `CHECK`, non il testo che
+  `pg_get_constraintdef` stampa, e la stampa non è reversibile: rianalizzata, dà un albero diverso. Il padre nuovo
+  era scritto col testo stampato. Le partizioni di catalogo hanno l'albero della forma d'origine
+  (`anchor_tipo IN (...)`, `20260113-06`); quelle di vendite, acquisti e magazzino **su dbdev** l'albero del testo
+  stampato (dbdev non è nato da zero), e per questo `-54` … `-56` sono passati. Misurato con `conbin` sullo scratch
+  (nato da zero): **tutte e quattro** le tabelle hanno l'albero della forma `IN`, quindi in CI si sarebbero fermati
+  anche `-54` … `-56`.
+* **Perché la prova non l'ha visto.** Il dump di schema ricostruisce i vincoli **dal testo stampato**: sul cluster
+  usa-e-getta gli alberi coincidevano per costruzione. La prova sul dump è cieca a questa differenza.
+* **La correzione** (`-54` … `-57` riscritti): su ogni partizione staccata i `CHECK` del padre si tolgono e si
+  rimettono **con lo stesso testo del padre nuovo** (la forma d'origine, `IN (...)`). Gli alberi coincidono per
+  costruzione, qualunque sia la storia del database. `-54` … `-56` portano `validCheckSums: ANY`: su dbdev non si
+  rieseguono (lì sono passati e lo stato è equivalente), da zero gira il corpo corretto. Il `-57` non era mai
+  andato a buon fine: il suo record non c'è.
+* **La prova della correzione** (cluster usa-e-getta, dump dello schema di dbdev **dopo** l'apply parziale):
+  * mondo «dbdev com'è» (catalogo con gli alberi `IN`): il `-57` vecchio riproduce **esattamente** l'errore di
+    Tid; il nuovo `-57` … `-68` passa;
+  * mondo «da zero» (riportato a prima del lotto col rollback nuovo di `-56` … `-53`: tutte le partizioni con
+    gli alberi `IN`, come in CI) e una variante avversaria (tutte con l'albero del testo stampato): avanti,
+    rollback, avanti passano in entrambi; il secondo avanti è identico al primo; il rollback è identico a prima,
+    salvo ACL (dump senza privilegi), COMMENT dei vincoli e la **forma** dei `CHECK` (il rollback li rimette nella
+    forma d'origine: stesso significato);
+  * il pgTAP nuovo: 10/10 nei tre mondi; guardrail verdi.
+
+**Per Tid:** rilanciare il migrate su dbdev (riparte dal `-57`); lo scratch prende tutto da `-53`.
+
+#### 14.8.2 Rosso del pgTAP nuovo sullo scratch (2026-10-25) e `-69`
+
+Corsa di Tid su `zeroerp_ruoli`: `config/test-grammatica-note-target-tipo-v1` rosso (regressione: il file è nuovo).
+Rifatte in sola lettura le query delle asserzioni 1-8: rossa la **7**. Su `acquisti.note_ddt` e
+`acquisti.note_ordini` c'erano **due** validatori: quello del `-68` (`*_validate_ins_upd`, due argomenti) e uno col
+nome vecchio (`*_ins_upd_validate`, col terzo argomento ritirato).
+
+* **Il difetto è del 2025.** Il `20251021-03` li monta col nome vecchio; il `20251119-42` doveva rinominarli, ma la
+  sua preCondition cerca in `pg_proc` una **funzione** che si chiama come un **trigger**
+  (`trg_ddt_a10_upd_a_protect_num`): non la trova mai, e con `onFail: MARK_RAN` la rinomina salta. Su dbdev è
+  girata (`RERAN`), da zero no (`MARK_RAN` sullo scratch). Il `-68` (`DROP IF EXISTS` del nome nuovo + `CREATE`)
+  da zero ha quindi **aggiunto** un validatore accanto al vecchio.
+* **`20261025-69`** (`20_code/acquisti`): `DROP TRIGGER IF EXISTS` dei due nomi vecchi. Su dbdev non fa niente.
+  Il `20251119-42` non si tocca; gli altri trigger che rinominava sullo scratch hanno già il nome giusto
+  (rimontati dopo, verificato su `pg_trigger`).
+* Il presidio ha fatto il suo lavoro: il doppione esisteva da zero dal 2025 (col validatore che girava due volte),
+  e nessun test lo vedeva.
+
+**Per Tid:** migrate (dbdev e scratch) per il `-69`, poi di nuovo il pgTAP.
+
+### 14.9 Richiesta al backend e al frontend (elenco chiuso, dopo l'apply)
+
+Dopo l'apply il backend che scrive `'DDT'` o `'ARTICOLI'` finisce senza partizione: le note di vendita di ordini,
+DDT e offerte, e quelle di catalogo, **non si scrivono** finché il BE non passa ai codici nuovi. Il percorso,
+censito su `backend/`, `frontend/src` e la doc del 2026-10-25:
+
+| # | Dove | Che cosa |
+| --- | --- | --- |
+| BE-1 | `vendite/db/note_repositories.py`, `vendite/api/note_views.py` | `ORDINE` → `ORDINE_VENDITA`, `DDT` → `DDT_VENDITA`, `OFFERTA` → `OFFERTA_COMMERCIALE` (`PREVENTIVO`, `CONTRATTO`, `FATTURA` uguali); via i commenti sulla lunghezza `varchar(16)` |
+| BE-2 | `core/db/partitioned_note_repository.py` | si ritira `TARGET_TIPI_AMMESSI` (copia del `CHECK` ritirato; decide la FK) e il suo controllo |
+| BE-3 | `core/services/partitioned_note_service.py:140` | la voce della mappa errori su `chk_note_target_tipo`, che non esiste più: un codice senza partizione è un `23514` del routing |
+| BE-4 | `catalogo/services/catalogo_service.py:1805, 1851, 1884` | `"ARTICOLI"` → `"ARTICOLO"`, `"ARTICOLI_COMPONENTI"` → `"ARTICOLO_COMPONENTE"` (anche il confronto su `nota_target_tipo` letto dalle viste) |
+| BE-5 | `core/api/partitioned_note_views.py` | i nomi dei serializer e delle viste nascono dal codice (`PartitionedNote_DDT_…` → `PartitionedNote_DDT_VENDITA_…`, e `.title()` di un codice con `_`): **cambia lo schema OpenAPI**, da verificare coi tipi generati del FE |
+| BE-6 | `vendite/api/urls_ordini.py:158`, `urls_ddt.py:150`, `urls_offerte.py:187` | i commenti col codice vecchio |
+| BE-7 | test: `core/tests/db/test_scritture_email_note_db.py`, `core/tests/services/test_partitioned_note_service.py`, `catalogo/tests/db/test_scritture_dinamiche_db.py`, `catalogo/tests/services/test_catalogo_service.py`, `scripts/tests/smoke-fattura-contatore-note.py` | i codici nuovi |
+| BE-8 | doc BE: `dev/backend/catalogo-building-block-backend.md` (`PartitionedNoteRepository`), `backend/core/manual/api_note_documento.md`, `backend/vendite/manual/api_{ordini,ddt,offerte,preventivi,contratti}.md`, `offerte_service.md`, `api_fattura_dettaglio.md` | dove citano i codici o `TARGET_TIPI_AMMESSI` |
+| FE-1 | `vendite/ordini/components/OrdineNoteDrawer.vue:5`, `vendite/ddt/components/DdtNoteDrawer.vue:5`, `dev/frontend/catalogo-building-block-frontend.md` | i commenti col codice vecchio; il FE non scrive `target_tipo` (lo governa il BE, `useNote.js:73`) |
+| FE-2 | risposte delle note | `target_tipo` restituito cambia valore (`'DDT'` → `'DDT_VENDITA'`…): verificare che nessuna vista FE lo confronti |
+
+Le API non cambiano rotta. Un solo passaggio BE/FE; una richiesta nuova dopo questa o è una riga dell'elenco o è
+un brief nuovo.
+
+✅ **Fatto tutto, 2026-10-25** (sessione BE/FE): il dettaglio, le tre righe che sono andate oltre la lettera
+dell'elenco e la prova sono al §14.10.
+
+### 14.10 Il giro BE/FE (sessione BE/FE, 2026-10-25)
+
+| # | Esito |
+| --- | --- |
+| BE-1 | ✅ `vendite/db/note_repositories.py`: `ORDINE_VENDITA`, `DDT_VENDITA`, `OFFERTA_COMMERCIALE`; via i commenti su `varchar(16)` e su `TARGET_TIPI_AMMESSI`. In `vendite/api/note_views.py` le view **leggono** il codice dall'istanza (`NOTE_REPO_DDT.target_tipo`) invece di riscriverlo: era una seconda copia del codice della partizione |
+| BE-2 | ✅ `TARGET_TIPI_AMMESSI` e il suo controllo nel `__init__` ritirati; al loro posto un commento che dice chi decide (FK + confine). In più la proprietà `partition_table`, accanto a `target_tipo`, che serve al presidio nuovo (sotto) |
+| BE-3 | ✅ la voce `chk_note_target_tipo` esce da `_CHECK_CONSTRAINTS`; ⚠️ **non** sparisce: entra `fk_vendite_note_target_tipo` in `_FK_CONSTRAINTS` (`E_NOTA_FK`, «Tipo target nota non ammesso.», a due elementi: non ha un campo). La FK del padre si ripete su ogni partizione (letto su `pg_constraint` di dbdev), e il presidio `core/tests/db/test_note_vincoli_mappati_db.py` vuole ogni vincolo mappato. Il caso che il §14.9 descrive resta vero: un codice senza partizione esce dal routing (23514 senza nome di vincolo, `E_NOTA_VALIDATION`) e alla FK non ci arriva |
+| BE-4 | ✅ i due codici di catalogo sono costanti in `catalogo_bom_repository.py` (`NOTA_TARGET_ARTICOLO`, `NOTA_TARGET_COMPONENTE`), usate dalle due creazioni e dal confronto di `fn_update_nota`: tre letterali con un significato solo |
+| BE-5 | ✅ nomi dei serializer `PartitionedNote_<codice>_<suffisso>`; nomi di classe in CamelCase dal codice (`NoteDdtVenditaListCreateView`: `.title()` avrebbe dato `NoteDdt_Vendita…`). **Schema OpenAPI generato prima e dopo** (`spectacular --validate`): cambiano **solo** i 24 componenti di ordine, DDT e offerta (`PartitionedNote_DDT_…` → `PartitionedNote_DDT_VENDITA_…`); `operationId` (945), rotte e rilievi di drf-spectacular identici; `test_schema_openapi_registro` verde. **Tipi generati del FE: non ce ne sono** (nessun generatore OpenAPI in `frontend/` né in CI, verificato): nessun consumatore dei nomi dei componenti |
+| BE-6 | ✅ i tre commenti di `urls_ordini.py`, `urls_ddt.py`, `urls_offerte.py`; e quello di `core/services/error_ui_overrides.py` (elencava `ATTIVITAFT`) |
+| BE-7 | ✅ `test_partitioned_note_service`: il test della whitelist diventa `test_target_tipo_senza_whitelist` (un codice con `_` si costruisce); i due file di catalogo coi codici nuovi. `test_scritture_email_note_db` e `smoke-fattura-contatore-note.py` usano `FATTURA`, che non cambia: invariati, verdi. ➕ **Presidio nuovo** `core/tests/db/test_note_confini_partizione_db.py` (secondo livello, struttura): ogni istanza di `note_repositories.py` — raccolte dal modulo, non elencate — nomina il confine `FOR VALUES IN` della sua partizione, e i due codici di catalogo sono confini di `catalogo.note`. È la giuntura che il lotto 3 ha rotto e che i test mockati non vedono; **provato per mutazione** (`DDT_VENDITA` → `DDT`: rosso sulla partizione `vendite.note_ddt`) |
+| BE-8 | ✅ `catalogo-building-block-backend.md` (le due voci), `core/manual/api_note_documento.md` (matrice e paragrafo datato sul cambio, risposte e schema), `vendite/manual/api_{ordini,ddt,offerte,fattura_dettaglio}.md`, `offerte_service.md` (le voci storiche annotate con la data, non riscritte). `api_preventivi.md` e `api_contratti.md` citano `PREVENTIVO`/`CONTRATTO`: invariati |
+| FE-1 | ✅ i commenti di `OrdineNoteDrawer.vue` e `DdtNoteDrawer.vue`. Il catalogo BB frontend non cita codici (`useNote`: solo il nome del campo): invariato |
+| FE-2 | ✅ nessuna vista FE confronta `target_tipo` (unico uso: `useNote.js` lo **toglie** dal PATCH). Nessun test FE ne ha uno |
+
+**La prova (2026-10-25):**
+
+* **Chiamata reale su dbdev**, in transazione annullata, come `zeroerp_app` col contesto operatore: per DDT e ordine
+  (builder `fn_pgtap_crea_ddt_da_ordine`) e per un'offerta visibile all'operatore, dal service vero: nota di
+  testata e di riga, lista, update, delete. La riga finisce nella partizione giusta (`note_ddt` con `DDT_VENDITA`…)
+  e la risposta restituisce il codice nuovo. Catalogo: nota di articolo e di componente da `catalogo_service`,
+  update passando da `resolve_nota` (il confronto con `NOTA_TARGET_ARTICOLO`), delete;
+* **suite Django intera** col DB vero (`ZEROERP_TEST_DB_E2E=1`): 6944 test, verde (1 skip e 1 expected failure, già
+  noti); smoke `smoke-fattura-contatore-note.py`: verde; `ruff` sui file toccati: verde;
+* ⚠️ **non provato: mypy.** In questo ambiente non parte (errore interno al caricamento del plugin `django-stubs`,
+  mypy 2.4.0), **anche sull'albero pulito**: non viene da questo giro, ma il cricchetto mypy non è stato visto. Lo
+  vede la CI;
+* i worker di sviluppo sono ripartiti alle 15:31:34, dopo l'ultima modifica Python: girano già il codice nuovo.
+
+## 15. Lotto 4 — la chiusura: il presidio (team DB, 2026-10-25)
+
+### 15.1 L4-1, l'accensione: resta così (Tid, 2026-10-25)
+
+**Decisione: A.** La FK lega il **nome** del tipo, non l'accensione, e non si scrive una regola in più.
+Perché, sul modello:
+
+* `config.sorgenti` non ha una schermata: lo scrive solo chi migra, coi CSV di `80_data`. Il caso «un tipo
+  nominato da note o legami si spegne» lo può produrre solo un changeSet;
+* le FK sull'`id` (`sorgente_tipo_id` di tutte le testate e delle righe) hanno già il `block_deact`
+  dell'automazione ATTIVO: un tipo che ha documenti non si spegne. Un tipo che ha note ha anche documenti;
+* le FK sul **codice** (note, legami, entità) l'automazione le salta (`ATTIVO_SKIP_FK_NO_ID`: il guard della
+  figlia legge il padre per `id`). Resta così, ed è un limite **dichiarato**, non un caso dimenticato.
+
+Nella discussione sono uscite due strade, scartate: «spento = niente di nuovo» sulle note (sbagliata sul modello:
+ritirare il tipo DDT vuol dire niente DDT nuovi, non niente note sui DDT che esistono; e per ritirare una voce di
+catalogo il progetto ha `obsoleto_dal`, non `attivo`), ed estendere l'automazione alle FK sul codice (lavoro vero
+per un caso che il modello non produce).
+
+### 15.2 Il presidio
+
+Nuovo: `db/pgtap/config/test-grammatica-presidio-tipo-documento-v1.sql` (6 test). Nessun changeSet: il lotto
+non tocca lo schema.
+
+* **La definizione è una grammatica dei nomi**: una colonna porta un tipo di documento se si chiama
+  `[…_]sorgente[_…]_tipo_id`, `[…_]target_tipo`, `entity_type`, `…_origine_tipo`, `destinazione_tipo`,
+  `sorgente_codice_interno`. Il test 1 pretende che ognuna sia ancorata al catalogo: FK diretta verso
+  `config.sorgenti` o `config.tipi_entita`, oppure una FK composta verso una colonna che lo è (un passo:
+  `catalogo.articoli(_componenti).note_target_tipo` verso le note, `vendite.fatture_stampa_coda.sorgente_tipo_id`
+  verso `documenti.template_documenti`);
+* **eccezioni dichiarate, col motivo, nel test**: una sola, `pratiche.reconcile_errori.sorgente_tipo_id` (registro
+  append-only, «nessuna FK, log resiliente per definizione» dal suo COMMENT). Il test 2 pretende che ogni eccezione
+  sia viva;
+* **G-3**: ogni FK sul codice del catalogo è lunga almeno come `config.sorgenti.codice_interno`, letto dal
+  catalogo e non scritto nel test (test 3);
+* **nessun elenco a mano**: nessun `CHECK` su una colonna della grammatica nomina due o più codici del catalogo
+  (test 4). Un solo codice non è un elenco: `chk_famiglie_documento_regole_fiscali_solo_fattura` (una regola su
+  `FATTURA`) e il `CHECK` delle FK composte del catalogo restano, e il secondo lo prova già il lotto 3;
+* **contro il verde per sottrazione**: la grammatica deve trovare colonne di tutti e tre i tipi di ancoraggio
+  (test 5); **contro la grammatica che invecchia**: ogni colonna con la FK diretta al catalogo ha un nome della
+  grammatica, o è dichiarata fuori, col motivo (test 6: oggi `config.tipi_indirizzi_allowed.ambito` e
+  `vendite.famiglie_documento.codice_interno`).
+
+**Fatti datati, dbdev 2026-10-25** (servono a trovare gli errori del test, non a disegnarlo): la grammatica trova
+38 colonne, 34 con la FK diretta, 3 per un passo, 1 eccezione; nessun `CHECK` con un elenco; una scansione larga dei
+nomi (`sorgente`, `origine`, `entita`, `tipo_doc`…) non trova altre colonne che portino un tipo di documento
+(`origine` di distinte, fondi e allegati sono vocabolari loro). Le query sono state provate sul catalogo di dbdev;
+il file l'ha lanciato Tid (§15.3).
+
+### 15.3 Cosa resta per chiudere
+
+1. ✅ **Tid**: pgTAP lanciato come app, 6/6 verde (2026-10-25). La prima corsa aveva il test 5 rosso per un
+   difetto del test: `regclass::text` perde lo schema quando `config` è nel search_path di chi legge, e il
+   confronto col nome falliva; ora si confrontano gli oid;
+2. ✅ riga di PROJECT_CONTEXT e archiviazione in `work-done/` (2026-10-25);
+3. ✅ passati a [brief-modello-documento-vendita §10](../work-in-progress/brief-modello-documento-vendita.md)
+   (scelta di Tid, 2026-10-25): il blocco «origine» della stampa della fattura (§12.9, in fondo) come D-G1, la
+   prova a video del 2b (riga 6-septies-d) come D-G2.

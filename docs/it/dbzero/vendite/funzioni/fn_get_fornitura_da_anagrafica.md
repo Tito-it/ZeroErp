@@ -4,6 +4,8 @@
 CREATE FUNCTION fn_get_fornitura_da_anagrafica(p_istanza_utility_id bigint, p_utility_id integer)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

@@ -1,0 +1,47 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL LETTORE DELLO STATO INIZIALE DAL VOCABOLARIO: CHI LO USA ORA
+#   Brief: brief-modello-documento-vendita §15.13.
+#
+#   Solo il COMMENT. Con script.fn_doc_stato_iniziale_id (20261027-29) chi
+#   ha in mano una testata della mappa legge da li'; qui restano i chiamanti
+#   che hanno il vocabolario e non una testata della mappa. Consumatori dal
+#   censimento sui corpi vivi (pg_get_functiondef, scratch 2026-10-27, dopo
+#   -30 … -38): il trigger della nascita, la push preventivo -> ordine (le
+#   righe), il BB gemello. dbops.fn_pgtap_porta_a_stato, citato dal COMMENT
+#   di prima, non la chiama.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261027-39-comment-fn-stato-iniziale-id-consumatori-mctit.yaml
+
+  - changeSet:
+      id: 20261027-39-comment-fn-stato-iniziale-id-consumatori
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_stato_iniziale_id: COMMENT coi consumatori di oggi e il rimando al lettore dalla
+        testata, script.fn_doc_stato_iniziale_id. Brief: brief-modello-documento-vendita §15.13.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_doc_stato_iniziale_id';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION script.fn_stato_iniziale_id(p_vocabolario regclass)
+                IS 'L''id dello stato in cui un documento nasce, letto dal suo vocabolario degli stati (colonna iniziale = true). Unica sede della regola: nessuno scrive ''DRAFT'' o ''BOZZA'' per dire «lo stato in cui si nasce». NULL se il vocabolario non lo dichiara (decide il chiamante); vocabolario NULL o senza la colonna iniziale: E_SCRIPT_CHIAMATA_NON_VALIDA. Riceve il VOCABOLARIO: chi ha in mano una testata della mappa (script.fn_doc_stato_modello) legge con script.fn_doc_stato_iniziale_id, che delega qui. Consumatori: script.fn_doc_stato_iniziale_id, script.trgfn_doc_stato_iniziale (il trigger della nascita: il vocabolario e'' un suo argomento, montato anche sulle testate d''acquisto, fuori mappa), vendite.fn_push_preventivo_a_ordine (lo stato delle RIGHE dell''ordine). Brief: brief-modello-documento-vendita §4-ter (N-1, P-1); consumatori rivisti al §15.13 (2026-10-27).';

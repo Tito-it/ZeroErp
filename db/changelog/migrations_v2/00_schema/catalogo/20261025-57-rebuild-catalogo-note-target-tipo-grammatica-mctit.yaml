@@ -1,0 +1,501 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA GRAMMATICA SOLA PER I TIPI DI DOCUMENTO — lotto 3 (le note): catalogo.note.
+#   Brief: brief-db-grammatica-unica-documenti §14 (Tid, 2026-10-25: ok alle proposte; L3-1: anche catalogo).
+#
+#   I codici: ARTICOLI -> ARTICOLO, ARTICOLI_COMPONENTI -> ARTICOLO_COMPONENTE (G-7, al singolare come
+#   le altre entita'). Segue catalogo.articoli(_componenti).note_target_tipo, l'altra meta' della FK
+#   composta verso le note: stesso codice, varchar(50), il CHECK col codice nuovo.
+#   ⚠️ Quattro viste leggono le colonne che cambiano tipo (pg_depend, dbdev, 2026-10-25):
+#     vw_articoli_note, vw_articoli_componenti_note (target_tipo delle partizioni),
+#     vw_articoli_dettaglio, vw_articoli_componenti_dettaglio (note_target_tipo). Nessun'altra
+#     vista ne' funzione dipende da loro. Si tolgono qui e tornano IDENTICHE in 20_code
+#     (20261025-58 … -61), come nel 20261021-18/-19.
+#   ⚠️ L'unica BEGIN ATOMIC su catalogo.articoli (vendite.fn_partite_merce) dipende da id e
+#     is_composito, non da note_target_tipo: l'ALTER passa. Nessun trigger e' UPDATE OF note_target_tipo.
+#
+# -- LA FORMA: STACCA, CONVERTI, RIATTACCA (L3-3) ------------------------------
+#   Il tipo della chiave di partizione non si cambia con ALTER sul padre; una partizione staccata
+#   e' una tabella qualunque. Quindi: padre nuovo, ogni partizione staccata -> convertita SUL
+#   POSTO (ALTER COLUMN ... TYPE ... USING, cioe' DDL: nessun trigger di riga scatta, audit e
+#   tx_id restano quelli dell'ultima modifica vera) -> riattaccata col codice nuovo; poi il padre
+#   vecchio, vuoto, se ne va e il nuovo prende il nome. Niente copia di righe: policy, trigger
+#   (anche i generati: nessun DDL su di loro, linee-guida-sql §11.5), FK e indici delle
+#   partizioni non si ricopiano. Provato su PostgreSQL 18 col dump di schema di dbdev e, per gli
+#   alberi dei CHECK, sullo scratch (nato da zero).
+#   * L'ATTACH fonde i CHECK per NOME, i NOT NULL per colonna, FK e indici per definizione: per
+#     questo CHECK, FK e NOT NULL del padre nuovo hanno i nomi di oggi, e PK e indici un nome
+#     provvisorio (i nomi d'indice sono unici nello schema) che si rinomina quando il vecchio non
+#     c'e' piu'.
+#   * ⛔ L'ATTACH confronta l'ALBERO dei CHECK (equal()), non il testo stampato, e l'albero dipende da
+#     come il vincolo e' nato: da zero dalla forma `IN (...)` dei changeSet d'origine, su dbdev (in
+#     parte ricaricato da dump) dal testo stampato, che rianalizzato da' un albero diverso. Per questo
+#     ogni partizione staccata riprende i CHECK del padre col testo del padre nuovo: gli alberi
+#     coincidono per costruzione, su qualunque database. (Il primo apply del 2026-10-25 si e' fermato
+#     sul -57 per questo; la prova sul dump non poteva vederlo, il dump ricostruisce dal testo.)
+#   * La sequenza dell'id e' del padre (identity): la nuova riparte da last_value della vecchia.
+#   * Le FK di catalogo e del registro dbops.fk_index_policy si leggono per NOME: i nomi restano.
+#     La FK nuova su target_tipo e' coperta dal prefisso della PK: nessun indice in piu' (§8.7).
+#   * Da zero l'ordine e' per numero, 00_schema e 20_code insieme: qui ci sono gia' partizioni,
+#     policy e trigger scritti a mano; le tabelle sono vuote e gli ALTER non convertono niente.
+#     config.tipi_entita si semina dopo (80_data): una FK su una tabella vuota non lo chiede.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/catalogo/20261025-57-rebuild-catalogo-note-target-tipo-grammatica-mctit.yaml
+
+  - changeSet:
+      id: 20261025-57-rebuild-catalogo-note-target-tipo-grammatica
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        catalogo.note ricostruita: target_tipo a varchar(50) col codice di config.tipi_entita e la FK al
+        posto del CHECK; le partizioni staccate, convertite sul posto e riattaccate. Grammatica
+        unica, lotto 3 (G-3, G-7).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 2
+            sql: >
+              SELECT count(*) FROM pg_inherits i JOIN pg_class c ON c.oid = i.inhrelid
+               WHERE i.inhparent = 'catalogo.note'::regclass
+                 AND pg_get_expr(c.relpartbound, c.oid) IN ('FOR VALUES IN (''ARTICOLI'')', 'FOR VALUES IN (''ARTICOLI_COMPONENTI'')')
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_attribute
+               WHERE attrelid = 'catalogo.note'::regclass AND attname = 'target_tipo'
+                 AND format_type(atttypid, atttypmod) = 'character varying(32)'
+        - sqlCheck:
+            expectedResult: 4
+            sql: >
+              SELECT count(*) FROM pg_class
+               WHERE oid IN (to_regclass('catalogo.vw_articoli_note'), to_regclass('catalogo.vw_articoli_componenti_note'),
+                             to_regclass('catalogo.vw_articoli_dettaglio'), to_regclass('catalogo.vw_articoli_componenti_dettaglio'))
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 1. Chi legge le colonne che cambiano tipo: le quattro viste tornano identiche in 20_code
+              --    (20261025-58 … -61). Senza CASCADE: un dipendente non censito ferma il migrate.
+              DROP VIEW catalogo.vw_articoli_note;
+              DROP VIEW catalogo.vw_articoli_componenti_note;
+              DROP VIEW catalogo.vw_articoli_dettaglio;
+              DROP VIEW catalogo.vw_articoli_componenti_dettaglio;
+
+              -- 2. La FK composta degli articoli punta al padre che si ricostruisce, e il suo CHECK
+              --    nomina il codice vecchio: si tolgono prima, tornano in fondo.
+              ALTER TABLE catalogo.articoli DROP CONSTRAINT fk_articoli_note;
+              ALTER TABLE catalogo.articoli DROP CONSTRAINT chk_articoli_note_target_tipo;
+              ALTER TABLE catalogo.articoli_componenti DROP CONSTRAINT fk_articoli_componenti_note;
+              ALTER TABLE catalogo.articoli_componenti DROP CONSTRAINT chk_articoli_componenti_note_target_tipo;
+
+              -- 3. Il padre nuovo: le stesse colonne, target_tipo a varchar(50) con la FK verso
+              --    config.tipi_entita al posto del CHECK. CHECK e FK coi NOMI di oggi (l'ATTACH li fonde
+              --    con quelli delle partizioni); PK e indici con un nome provvisorio, che si libera al punto 6.
+              CREATE TABLE catalogo.note_nuova (
+                  id bigint CONSTRAINT note_id_not_null NOT NULL GENERATED BY DEFAULT AS IDENTITY,
+                  target_tipo character varying(50) CONSTRAINT note_target_tipo_not_null NOT NULL,
+                  target_id uuid CONSTRAINT note_target_id_not_null NOT NULL,
+                  target_riga_id uuid,
+                  anchor_tipo character varying(12) CONSTRAINT note_anchor_tipo_not_null NOT NULL,
+                  posizione character varying(12) CONSTRAINT note_posizione_not_null NOT NULL,
+                  seq integer CONSTRAINT note_seq_not_null NOT NULL DEFAULT 10,
+                  testo text,
+                  testo_md text,
+                  id_stile bigint CONSTRAINT note_id_stile_not_null NOT NULL,
+                  id_lingua bigint,
+                  visibile boolean CONSTRAINT note_visibile_not_null NOT NULL DEFAULT true,
+                  solo_stampa boolean CONSTRAINT note_solo_stampa_not_null NOT NULL DEFAULT false,
+                  meta jsonb CONSTRAINT note_meta_not_null NOT NULL DEFAULT '{}'::jsonb,
+                  data_insert timestamp with time zone CONSTRAINT note_data_insert_not_null NOT NULL DEFAULT now(),
+                  user_insert character varying(80) CONSTRAINT note_user_insert_not_null NOT NULL DEFAULT CURRENT_USER,
+                  data_update timestamp with time zone CONSTRAINT note_data_update_not_null NOT NULL DEFAULT now(),
+                  user_update character varying(80) CONSTRAINT note_user_update_not_null NOT NULL DEFAULT CURRENT_USER,
+                  CONSTRAINT chk_note_anchor_tipo CHECK (anchor_tipo IN ('DOCUMENTO', 'RIGA')),
+                  CONSTRAINT chk_note_posizione CHECK (posizione IN ('HEADER', 'FOOTER', 'SEZIONE', 'BEFORE', 'AFTER')),
+                  CONSTRAINT chk_note_seq_pos CHECK (seq >= 0),
+                  CONSTRAINT fk_cat_note_id_lingua FOREIGN KEY (id_lingua) REFERENCES config.lingue(id) ON UPDATE CASCADE,
+                  CONSTRAINT fk_cat_note_id_stile FOREIGN KEY (id_stile) REFERENCES config.note_stili(id) ON UPDATE CASCADE,
+                  CONSTRAINT fk_cat_note_target_tipo FOREIGN KEY (target_tipo) REFERENCES config.tipi_entita(codice),
+                  CONSTRAINT pk_note__nuova PRIMARY KEY (target_tipo, id)
+              ) PARTITION BY LIST (target_tipo);
+              CREATE INDEX ix_note_render_order__nuova ON catalogo.note_nuova USING btree (target_tipo, target_id, anchor_tipo, posizione, seq);
+
+              -- 4. Ogni partizione: si stacca, perde il CHECK ereditato (ora locale), riprende i CHECK
+              --    del padre col TESTO del padre nuovo (l'ATTACH confronta l'albero, non la stampa), si converte
+              --    SUL POSTO (ALTER ... USING: e' DDL, nessun trigger di riga scatta — audit, tx_id e i
+              --    guard non vedono niente), si riattacca col codice della grammatica. Policy, trigger,
+              --    FK verso la testata e indici della partizione restano dove sono.
+              ALTER TABLE catalogo.note DETACH PARTITION catalogo.note_articoli;
+              ALTER TABLE catalogo.note_articoli DROP CONSTRAINT chk_note_target_tipo;
+              ALTER TABLE catalogo.note_articoli DROP CONSTRAINT chk_note_anchor_tipo, ADD CONSTRAINT chk_note_anchor_tipo CHECK (anchor_tipo IN ('DOCUMENTO', 'RIGA'));
+              ALTER TABLE catalogo.note_articoli DROP CONSTRAINT chk_note_posizione, ADD CONSTRAINT chk_note_posizione CHECK (posizione IN ('HEADER', 'FOOTER', 'SEZIONE', 'BEFORE', 'AFTER'));
+              ALTER TABLE catalogo.note_articoli DROP CONSTRAINT chk_note_seq_pos, ADD CONSTRAINT chk_note_seq_pos CHECK (seq >= 0);
+              ALTER TABLE catalogo.note_articoli ALTER COLUMN target_tipo TYPE character varying(50) USING 'ARTICOLO'::character varying(50);
+              ALTER TABLE catalogo.note_nuova ATTACH PARTITION catalogo.note_articoli FOR VALUES IN ('ARTICOLO');
+              ALTER TABLE catalogo.note DETACH PARTITION catalogo.note_articoli_componenti;
+              ALTER TABLE catalogo.note_articoli_componenti DROP CONSTRAINT chk_note_target_tipo;
+              ALTER TABLE catalogo.note_articoli_componenti DROP CONSTRAINT chk_note_anchor_tipo, ADD CONSTRAINT chk_note_anchor_tipo CHECK (anchor_tipo IN ('DOCUMENTO', 'RIGA'));
+              ALTER TABLE catalogo.note_articoli_componenti DROP CONSTRAINT chk_note_posizione, ADD CONSTRAINT chk_note_posizione CHECK (posizione IN ('HEADER', 'FOOTER', 'SEZIONE', 'BEFORE', 'AFTER'));
+              ALTER TABLE catalogo.note_articoli_componenti DROP CONSTRAINT chk_note_seq_pos, ADD CONSTRAINT chk_note_seq_pos CHECK (seq >= 0);
+              ALTER TABLE catalogo.note_articoli_componenti ALTER COLUMN target_tipo TYPE character varying(50) USING 'ARTICOLO_COMPONENTE'::character varying(50);
+              ALTER TABLE catalogo.note_nuova ATTACH PARTITION catalogo.note_articoli_componenti FOR VALUES IN ('ARTICOLO_COMPONENTE');
+
+              -- 5. La sequenza dell'id e' del PADRE (identity): quella nuova riparte da dove era
+              --    arrivata la vecchia, o il prossimo id collide con la PK delle partizioni.
+              DO $seq$
+              DECLARE
+                v_last   bigint;
+                v_called boolean;
+              BEGIN
+                EXECUTE format('SELECT last_value, is_called FROM %s', pg_get_serial_sequence('catalogo.note', 'id'))
+                  INTO v_last, v_called;
+                PERFORM setval(pg_get_serial_sequence('catalogo.note_nuova', 'id'), v_last, v_called);
+              END
+              $seq$;
+
+              -- 6. Il padre vecchio, vuoto, se ne va (con le sue policy); il nuovo prende il nome.
+              DROP TABLE catalogo.note;
+              ALTER TABLE catalogo.note_nuova RENAME TO note;
+              ALTER TABLE catalogo.note RENAME CONSTRAINT pk_note__nuova TO pk_note;
+              ALTER INDEX catalogo.ix_note_render_order__nuova RENAME TO ix_note_render_order;
+              ALTER SEQUENCE catalogo.note_nuova_id_seq RENAME TO note_id_seq;
+
+              -- 7. Cio' che stava sul padre e non sulle partizioni.
+              GRANT SELECT, INSERT, UPDATE, DELETE ON catalogo.note TO zeroerp_app;
+              COMMENT ON TABLE catalogo.note IS
+                'Note testuali ancorabili ad articoli o articoli_componenti; tabella padre partizionata per target_tipo. Rev 2026-10-25 (20261025-57, brief-db-grammatica-unica-documenti lotto 3, G-3/G-7): ricostruita per portare target_tipo a varchar(50) col codice di config.tipi_entita (ARTICOLO, ARTICOLO_COMPONENTE); le partizioni sono le stesse, staccate e riattaccate.';
+              COMMENT ON COLUMN catalogo.note.target_tipo IS
+                'Il tipo della cosa a cui la nota e'' ancorata: il codice di config.tipi_entita (G-7 di brief-db-grammatica-unica-documenti), che per un documento e'' il codice_interno della sua sorgente. E'' la chiave di partizione: ogni valore ha la sua partizione, con la FK verso la tabella della cosa. ⛔ Non c''e'' piu'' un CHECK con l''elenco: lo dice la FK fk_cat_note_target_tipo, e un tipo nuovo e'' una riga di tipi_entita.csv piu'' la sua partizione.';
+              COMMENT ON CONSTRAINT fk_cat_note_target_tipo ON catalogo.note IS
+                'Il tipo della nota e'' un''entita'' indicabile (G-7 di brief-db-grammatica-unica-documenti): toglie l''elenco scritto a mano. ⚠️ Non sostituisce la partizione: un codice senza partizione e'' rifiutato prima, dal routing.';
+              COMMENT ON CONSTRAINT chk_note_posizione ON catalogo.note IS 'Valori ammessi: HEADER | FOOTER | SEZIONE | BEFORE | AFTER.';
+              COMMENT ON CONSTRAINT chk_note_seq_pos ON catalogo.note IS 'seq obbligatoria e non negativa.';
+              COMMENT ON CONSTRAINT chk_note_anchor_tipo ON catalogo.note IS 'Valori ammessi: DOCUMENTO | RIGA.';
+              COMMENT ON CONSTRAINT pk_note ON catalogo.note IS 'PK composita (target_tipo, id) richiesta per tabella partizionata.';
+
+              -- 8. Gli articoli: note_target_tipo segue il codice e la lunghezza, sul posto; tornano il
+              --    CHECK col codice nuovo e la FK composta verso il padre nuovo.
+              ALTER TABLE catalogo.articoli
+                ALTER COLUMN note_target_tipo TYPE character varying(50)
+                USING (CASE note_target_tipo WHEN 'ARTICOLI' THEN 'ARTICOLO' ELSE note_target_tipo END);
+              ALTER TABLE catalogo.articoli
+                ADD CONSTRAINT chk_articoli_note_target_tipo CHECK (((note_target_tipo IS NULL) OR ((note_target_tipo)::text = 'ARTICOLO'::text)));
+              ALTER TABLE catalogo.articoli
+                ADD CONSTRAINT fk_articoli_note FOREIGN KEY (note_target_tipo, note_id)
+                REFERENCES catalogo.note(target_tipo, id) ON UPDATE CASCADE ON DELETE SET NULL;
+              COMMENT ON COLUMN catalogo.articoli.note_target_tipo IS
+                'Tipo target per nota (FK composita verso catalogo.note): vale ARTICOLO, il codice di config.tipi_entita della partizione delle note all''articolo. Rev 2026-10-25 (20261025-57, brief-db-grammatica-unica-documenti lotto 3): era ARTICOLI, varchar(32).';
+              ALTER TABLE catalogo.articoli_componenti
+                ALTER COLUMN note_target_tipo TYPE character varying(50)
+                USING (CASE note_target_tipo WHEN 'ARTICOLI_COMPONENTI' THEN 'ARTICOLO_COMPONENTE' ELSE note_target_tipo END);
+              ALTER TABLE catalogo.articoli_componenti
+                ADD CONSTRAINT chk_articoli_componenti_note_target_tipo CHECK (((note_target_tipo IS NULL) OR ((note_target_tipo)::text = 'ARTICOLO_COMPONENTE'::text)));
+              ALTER TABLE catalogo.articoli_componenti
+                ADD CONSTRAINT fk_articoli_componenti_note FOREIGN KEY (note_target_tipo, note_id)
+                REFERENCES catalogo.note(target_tipo, id) ON UPDATE CASCADE ON DELETE SET NULL;
+              COMMENT ON COLUMN catalogo.articoli_componenti.note_target_tipo IS
+                'Tipo target per nota (FK composita verso catalogo.note): vale ARTICOLO_COMPONENTE, il codice di config.tipi_entita della partizione delle note alla riga componente. Rev 2026-10-25 (20261025-57, brief-db-grammatica-unica-documenti lotto 3): era ARTICOLI_COMPONENTI, varchar(32).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ Fallisce se intanto e' nata una nota di un tipo che il CHECK di prima non ammette:
+              --    e' voluto, un rollback non butta via righe.
+              DROP VIEW IF EXISTS catalogo.vw_articoli_note;
+              DROP VIEW IF EXISTS catalogo.vw_articoli_componenti_note;
+              DROP VIEW IF EXISTS catalogo.vw_articoli_dettaglio;
+              DROP VIEW IF EXISTS catalogo.vw_articoli_componenti_dettaglio;
+              ALTER TABLE catalogo.articoli DROP CONSTRAINT fk_articoli_note;
+              ALTER TABLE catalogo.articoli DROP CONSTRAINT chk_articoli_note_target_tipo;
+              ALTER TABLE catalogo.articoli_componenti DROP CONSTRAINT fk_articoli_componenti_note;
+              ALTER TABLE catalogo.articoli_componenti DROP CONSTRAINT chk_articoli_componenti_note_target_tipo;
+              CREATE TABLE catalogo.note_vecchia (
+                  id bigint CONSTRAINT note_id_not_null NOT NULL GENERATED BY DEFAULT AS IDENTITY,
+                  target_tipo character varying(32) CONSTRAINT note_target_tipo_not_null NOT NULL,
+                  target_id uuid CONSTRAINT note_target_id_not_null NOT NULL,
+                  target_riga_id uuid,
+                  anchor_tipo character varying(12) CONSTRAINT note_anchor_tipo_not_null NOT NULL,
+                  posizione character varying(12) CONSTRAINT note_posizione_not_null NOT NULL,
+                  seq integer CONSTRAINT note_seq_not_null NOT NULL DEFAULT 10,
+                  testo text,
+                  testo_md text,
+                  id_stile bigint CONSTRAINT note_id_stile_not_null NOT NULL,
+                  id_lingua bigint,
+                  visibile boolean CONSTRAINT note_visibile_not_null NOT NULL DEFAULT true,
+                  solo_stampa boolean CONSTRAINT note_solo_stampa_not_null NOT NULL DEFAULT false,
+                  meta jsonb CONSTRAINT note_meta_not_null NOT NULL DEFAULT '{}'::jsonb,
+                  data_insert timestamp with time zone CONSTRAINT note_data_insert_not_null NOT NULL DEFAULT now(),
+                  user_insert character varying(80) CONSTRAINT note_user_insert_not_null NOT NULL DEFAULT CURRENT_USER,
+                  data_update timestamp with time zone CONSTRAINT note_data_update_not_null NOT NULL DEFAULT now(),
+                  user_update character varying(80) CONSTRAINT note_user_update_not_null NOT NULL DEFAULT CURRENT_USER,
+                  CONSTRAINT chk_note_anchor_tipo CHECK (anchor_tipo IN ('DOCUMENTO', 'RIGA')),
+                  CONSTRAINT chk_note_posizione CHECK (posizione IN ('HEADER', 'FOOTER', 'SEZIONE', 'BEFORE', 'AFTER')),
+                  CONSTRAINT chk_note_seq_pos CHECK (seq >= 0),
+                  CONSTRAINT chk_note_target_tipo CHECK (((target_tipo)::text = ANY ((ARRAY['ARTICOLI'::character varying, 'ARTICOLI_COMPONENTI'::character varying])::text[]))),
+                  CONSTRAINT fk_cat_note_id_lingua FOREIGN KEY (id_lingua) REFERENCES config.lingue(id) ON UPDATE CASCADE,
+                  CONSTRAINT fk_cat_note_id_stile FOREIGN KEY (id_stile) REFERENCES config.note_stili(id) ON UPDATE CASCADE,
+                  CONSTRAINT pk_note__vecchia PRIMARY KEY (target_tipo, id)
+              ) PARTITION BY LIST (target_tipo);
+              CREATE INDEX ix_note_render_order__vecchia ON catalogo.note_vecchia USING btree (target_tipo, target_id, anchor_tipo, posizione, seq);
+              ALTER TABLE catalogo.note DETACH PARTITION catalogo.note_articoli;
+              ALTER TABLE catalogo.note_articoli DROP CONSTRAINT fk_cat_note_target_tipo;
+              ALTER TABLE catalogo.note_articoli DROP CONSTRAINT chk_note_anchor_tipo, ADD CONSTRAINT chk_note_anchor_tipo CHECK (anchor_tipo IN ('DOCUMENTO', 'RIGA'));
+              ALTER TABLE catalogo.note_articoli DROP CONSTRAINT chk_note_posizione, ADD CONSTRAINT chk_note_posizione CHECK (posizione IN ('HEADER', 'FOOTER', 'SEZIONE', 'BEFORE', 'AFTER'));
+              ALTER TABLE catalogo.note_articoli DROP CONSTRAINT chk_note_seq_pos, ADD CONSTRAINT chk_note_seq_pos CHECK (seq >= 0);
+              ALTER TABLE catalogo.note_articoli ALTER COLUMN target_tipo TYPE character varying(32) USING 'ARTICOLI'::character varying(32);
+              ALTER TABLE catalogo.note_articoli ADD CONSTRAINT chk_note_target_tipo CHECK (((target_tipo)::text = ANY ((ARRAY['ARTICOLI'::character varying, 'ARTICOLI_COMPONENTI'::character varying])::text[])));
+              ALTER TABLE catalogo.note_vecchia ATTACH PARTITION catalogo.note_articoli FOR VALUES IN ('ARTICOLI');
+              ALTER TABLE catalogo.note DETACH PARTITION catalogo.note_articoli_componenti;
+              ALTER TABLE catalogo.note_articoli_componenti DROP CONSTRAINT fk_cat_note_target_tipo;
+              ALTER TABLE catalogo.note_articoli_componenti DROP CONSTRAINT chk_note_anchor_tipo, ADD CONSTRAINT chk_note_anchor_tipo CHECK (anchor_tipo IN ('DOCUMENTO', 'RIGA'));
+              ALTER TABLE catalogo.note_articoli_componenti DROP CONSTRAINT chk_note_posizione, ADD CONSTRAINT chk_note_posizione CHECK (posizione IN ('HEADER', 'FOOTER', 'SEZIONE', 'BEFORE', 'AFTER'));
+              ALTER TABLE catalogo.note_articoli_componenti DROP CONSTRAINT chk_note_seq_pos, ADD CONSTRAINT chk_note_seq_pos CHECK (seq >= 0);
+              ALTER TABLE catalogo.note_articoli_componenti ALTER COLUMN target_tipo TYPE character varying(32) USING 'ARTICOLI_COMPONENTI'::character varying(32);
+              ALTER TABLE catalogo.note_articoli_componenti ADD CONSTRAINT chk_note_target_tipo CHECK (((target_tipo)::text = ANY ((ARRAY['ARTICOLI'::character varying, 'ARTICOLI_COMPONENTI'::character varying])::text[])));
+              ALTER TABLE catalogo.note_vecchia ATTACH PARTITION catalogo.note_articoli_componenti FOR VALUES IN ('ARTICOLI_COMPONENTI');
+              DO $seq$
+              DECLARE
+                v_last   bigint;
+                v_called boolean;
+              BEGIN
+                EXECUTE format('SELECT last_value, is_called FROM %s', pg_get_serial_sequence('catalogo.note', 'id'))
+                  INTO v_last, v_called;
+                PERFORM setval(pg_get_serial_sequence('catalogo.note_vecchia', 'id'), v_last, v_called);
+              END
+              $seq$;
+              DROP TABLE catalogo.note;
+              ALTER TABLE catalogo.note_vecchia RENAME TO note;
+              ALTER TABLE catalogo.note RENAME CONSTRAINT pk_note__vecchia TO pk_note;
+              ALTER INDEX catalogo.ix_note_render_order__vecchia RENAME TO ix_note_render_order;
+              ALTER SEQUENCE catalogo.note_vecchia_id_seq RENAME TO note_id_seq;
+              GRANT SELECT, INSERT, UPDATE, DELETE ON catalogo.note TO zeroerp_app;
+              COMMENT ON TABLE catalogo.note IS 'Note testuali ancorabili ad articoli o articoli_componenti; tabella padre partizionata per target_tipo.';
+              COMMENT ON CONSTRAINT chk_note_posizione ON catalogo.note IS 'Valori ammessi: HEADER | FOOTER | SEZIONE | BEFORE | AFTER.';
+              COMMENT ON CONSTRAINT chk_note_seq_pos ON catalogo.note IS 'seq obbligatoria e non negativa.';
+              COMMENT ON CONSTRAINT chk_note_anchor_tipo ON catalogo.note IS 'Valori ammessi: DOCUMENTO | RIGA.';
+              COMMENT ON CONSTRAINT pk_note ON catalogo.note IS 'PK composita (target_tipo, id) richiesta per tabella partizionata.';
+              COMMENT ON CONSTRAINT chk_note_target_tipo ON catalogo.note IS 'Valori ammessi: ARTICOLI | ARTICOLI_COMPONENTI.';
+              ALTER TABLE catalogo.articoli
+                ALTER COLUMN note_target_tipo TYPE character varying(32)
+                USING (CASE note_target_tipo WHEN 'ARTICOLO' THEN 'ARTICOLI' ELSE note_target_tipo END);
+              ALTER TABLE catalogo.articoli
+                ADD CONSTRAINT chk_articoli_note_target_tipo CHECK (((note_target_tipo IS NULL) OR ((note_target_tipo)::text = 'ARTICOLI'::text)));
+              ALTER TABLE catalogo.articoli
+                ADD CONSTRAINT fk_articoli_note FOREIGN KEY (note_target_tipo, note_id)
+                REFERENCES catalogo.note(target_tipo, id) ON UPDATE CASCADE ON DELETE SET NULL;
+              COMMENT ON COLUMN catalogo.articoli.note_target_tipo IS 'Tipo target per nota (FK composita verso catalogo.note).';
+              ALTER TABLE catalogo.articoli_componenti
+                ALTER COLUMN note_target_tipo TYPE character varying(32)
+                USING (CASE note_target_tipo WHEN 'ARTICOLO_COMPONENTE' THEN 'ARTICOLI_COMPONENTI' ELSE note_target_tipo END);
+              ALTER TABLE catalogo.articoli_componenti
+                ADD CONSTRAINT chk_articoli_componenti_note_target_tipo CHECK (((note_target_tipo IS NULL) OR ((note_target_tipo)::text = 'ARTICOLI_COMPONENTI'::text)));
+              ALTER TABLE catalogo.articoli_componenti
+                ADD CONSTRAINT fk_articoli_componenti_note FOREIGN KEY (note_target_tipo, note_id)
+                REFERENCES catalogo.note(target_tipo, id) ON UPDATE CASCADE ON DELETE SET NULL;
+              COMMENT ON COLUMN catalogo.articoli_componenti.note_target_tipo IS 'Tipo target per nota (FK composita verso catalogo.note).';
+              -- Le quattro viste tornano come prima del giro: i rollback dei 20261025-58 … -61 (che
+              --    girano PRIMA di questo, l'ordine e' inverso) le hanno tolte. Definizione e COMMENT
+              --    del catalogo vivo di dbdev (2026-10-25).
+              CREATE VIEW catalogo.vw_articoli_note AS
+               SELECT a.id AS articolo_id,
+                  a.codice AS articolo_codice,
+                  a.descrizione AS articolo_descrizione,
+                  n.id AS nota_id,
+                  n.target_tipo AS nota_target_tipo,
+                  n.target_id AS nota_target_id,
+                  n.target_riga_id AS nota_target_riga_id,
+                  n.anchor_tipo AS nota_anchor_tipo,
+                  n.posizione AS nota_posizione,
+                  n.seq AS nota_seq,
+                  n.testo AS nota_testo,
+                  n.testo_md AS nota_testo_md,
+                  n.visibile AS nota_visibile,
+                  n.solo_stampa AS nota_solo_stampa,
+                  n.meta AS nota_meta,
+                  n.data_insert AS nota_data_insert,
+                  n.user_insert AS nota_user_insert,
+                  n.data_update AS nota_data_update,
+                  n.user_update AS nota_user_update,
+                  ns.id AS stile_id,
+                  ns.codice AS stile_codice,
+                  ns.descrizione AS stile_descrizione,
+                  l.id AS lingua_id,
+                  l.codice_iso AS lingua_codice_iso,
+                  l.descrizione AS lingua_descrizione,
+                  l.descrizione_locale AS lingua_descrizione_locale
+                 FROM catalogo.note_articoli n
+                   JOIN catalogo.articoli a ON a.id = n.target_id
+                   LEFT JOIN config.note_stili ns ON ns.id = n.id_stile
+                   LEFT JOIN config.lingue l ON l.id = n.id_lingua;
+              COMMENT ON VIEW catalogo.vw_articoli_note IS 'Vista note per articoli con dati stile e lingua.';
+              GRANT SELECT, INSERT, UPDATE, DELETE ON catalogo.vw_articoli_note TO zeroerp_app;
+              CREATE VIEW catalogo.vw_articoli_componenti_note AS
+               SELECT ac.id AS articolo_componente_id,
+                  ac.prodotto_id,
+                  ap.codice AS prodotto_codice,
+                  ap.descrizione AS prodotto_descrizione,
+                  ac.componente_id,
+                  acmp.codice AS componente_codice,
+                  acmp.descrizione AS componente_descrizione,
+                  n.id AS nota_id,
+                  n.target_tipo AS nota_target_tipo,
+                  n.target_id AS nota_target_id,
+                  n.target_riga_id AS nota_target_riga_id,
+                  n.anchor_tipo AS nota_anchor_tipo,
+                  n.posizione AS nota_posizione,
+                  n.seq AS nota_seq,
+                  n.testo AS nota_testo,
+                  n.testo_md AS nota_testo_md,
+                  n.visibile AS nota_visibile,
+                  n.solo_stampa AS nota_solo_stampa,
+                  n.meta AS nota_meta,
+                  n.data_insert AS nota_data_insert,
+                  n.user_insert AS nota_user_insert,
+                  n.data_update AS nota_data_update,
+                  n.user_update AS nota_user_update,
+                  ns.id AS stile_id,
+                  ns.codice AS stile_codice,
+                  ns.descrizione AS stile_descrizione,
+                  l.id AS lingua_id,
+                  l.codice_iso AS lingua_codice_iso,
+                  l.descrizione AS lingua_descrizione,
+                  l.descrizione_locale AS lingua_descrizione_locale
+                 FROM catalogo.note_articoli_componenti n
+                   JOIN catalogo.articoli_componenti ac ON ac.id = n.target_id
+                   LEFT JOIN catalogo.articoli ap ON ap.id = ac.prodotto_id
+                   LEFT JOIN catalogo.articoli acmp ON acmp.id = ac.componente_id
+                   LEFT JOIN config.note_stili ns ON ns.id = n.id_stile
+                   LEFT JOIN config.lingue l ON l.id = n.id_lingua;
+              COMMENT ON VIEW catalogo.vw_articoli_componenti_note IS 'Vista note per componenti articolo con dati stile e lingua.';
+              GRANT SELECT, INSERT, UPDATE, DELETE ON catalogo.vw_articoli_componenti_note TO zeroerp_app;
+              CREATE VIEW catalogo.vw_articoli_dettaglio AS
+               SELECT a.id,
+                  a.codice,
+                  a.descrizione,
+                  a.descrizione_breve,
+                  a.uom_id,
+                  a.tipo_voce_id,
+                  a.gruppo_voce_id,
+                  a.spesa_id,
+                  a.iva_id,
+                  a.conto_contabile_vendita_id,
+                  a.conto_contabile_acquisto_id,
+                  a.is_composito,
+                  a.is_solo_componente,
+                  a.requires_serial,
+                  a.listino_tipologia_id,
+                  a.meta,
+                  a.user_insert,
+                  a.user_update,
+                  a.data_insert,
+                  a.data_update,
+                  a.tx_id,
+                  a.storicizza,
+                  a.attivo,
+                  a.note_target_tipo,
+                  a.note_id,
+                  u.id AS uom_ref_id,
+                  u.codice AS uom_codice,
+                  u.descrizione AS uom_descrizione,
+                  t.id AS tipologia_ref_id,
+                  t.codice AS tipologia_codice,
+                  t.descrizione AS tipologia_descrizione,
+                  g.id AS gruppo_ref_id,
+                  g.codice AS gruppo_codice,
+                  g.descrizione AS gruppo_descrizione,
+                  s.id AS spesa_ref_id,
+                  s.codice AS spesa_codice,
+                  s.descrizione AS spesa_descrizione,
+                  i.id AS iva_ref_id,
+                  i.codice AS iva_codice,
+                  i.descrizione AS iva_descrizione,
+                  i.aliquota_iva AS iva_aliquota_iva,
+                  lt.codice AS tipologia_listino_codice,
+                  lt.descrizione AS tipologia_listino_descrizione,
+                  a.is_composito AND NOT a.is_solo_componente AS puo_gestire_bom,
+                      CASE
+                          WHEN a.is_composito AND NOT a.is_solo_componente THEN NULL::text
+                          WHEN a.is_solo_componente THEN 'ARTICOLO_SOLO_COMPONENTE'::text
+                          ELSE 'ARTICOLO_NON_COMPOSITO'::text
+                      END AS motivo_non_gestibile_bom,
+                  a.is_composito AND (EXISTS ( SELECT 1
+                         FROM catalogo.articoli_componenti ac
+                        WHERE ac.prodotto_id = a.id AND ac.validita @> (( SELECT script.fn_data_operativa() AS fn_data_operativa)) AND ac.attivo = true)) AS has_componenti_alla_data,
+                  a.natura_vendita_id,
+                  nv.codice_interno AS natura_vendita_codice_interno,
+                  nv.descrizione AS natura_vendita_descrizione,
+                  nv.destinazione_tipo AS natura_vendita_destinazione_tipo,
+                  a.modo_approvvigionamento_id,
+                  ma.codice_interno AS modo_approvvigionamento_codice_interno,
+                  ma.descrizione AS modo_approvvigionamento_descrizione,
+                  a.gestito_a_magazzino,
+                  a.lead_time_giorni,
+                  a.requires_lotto
+                 FROM catalogo.articoli a
+                   LEFT JOIN catalogo.unita_misura u ON u.id = a.uom_id
+                   LEFT JOIN vendite.articoli_tipologie t ON t.id = a.tipo_voce_id
+                   LEFT JOIN vendite.articoli_gruppi g ON g.id = a.gruppo_voce_id
+                   LEFT JOIN vendite.articoli_spesa s ON s.id = a.spesa_id
+                   LEFT JOIN config.iva i ON i.id = a.iva_id
+                   LEFT JOIN config.listini_tipologie lt ON lt.id = a.listino_tipologia_id
+                   LEFT JOIN config.nature_vendita nv ON nv.id = a.natura_vendita_id
+                   LEFT JOIN config.modi_approvvigionamento ma ON ma.id = a.modo_approvvigionamento_id;
+              COMMENT ON VIEW catalogo.vw_articoli_dettaglio IS 'Vista della lista (ui.lista_definizione 26) e del drawer articolo: catalogo.articoli + decodifiche (uom, tipologia, gruppo, spesa, iva, tipologia listino, natura di vendita) + capability BoM. Nessuna security_invoker, e non deve prenderla per imitazione: catalogo.articoli non ha RLS e la vista non attraversa tabelle protette (presidio sul merito: db/pgtap/rls/test-rls-viste-security-invoker.sql). ⭐ rev 2026-09-18 (P-1, brief-db-magazzino-lotto-2-motore sezione 4.9): + requires_lotto in coda — la primitiva di magazzino pretende il lotto quando e'' vero (passo 6), e l''operatore deve poterlo vedere e impostare; SENZA lock BoM (Lotto 1 sezione 4.3: il lotto non entra nella distinta), quindi ne'' fra i non_editable_fields del BE ne'' disabilitato nel drawer. rev 2026-09-13 (P-6, brief-db-modifiche-certe-ciclo-vendita-e-articolo sezione 5.2): + modo_approvvigionamento_id, modo_approvvigionamento_codice_interno, modo_approvvigionamento_descrizione, gestito_a_magazzino, lead_time_giorni, in coda (CREATE OR REPLACE VIEW puo'' solo appendere). La decodifica e'' sulla forma di natura_vendita_*: codice_interno per la logica, descrizione a video; NON `_codice`, che mentirebbe sulla sorgente (linee-guida-sql 6c). ⚠️ catalogo_repository proietta ARTICOLI_DETAIL_COLUMNS per nome: una colonna nuova non esce finche'' il BE non la nomina.';
+              GRANT SELECT, INSERT, UPDATE, DELETE ON catalogo.vw_articoli_dettaglio TO zeroerp_app;
+              CREATE VIEW catalogo.vw_articoli_componenti_dettaglio AS
+               SELECT ac.id,
+                  ac.prodotto_id,
+                  ac.componente_id,
+                  ac.coeff_qta,
+                  ac.obbligatorio,
+                  ac.valido_dal,
+                  ac.valido_al,
+                  ac.meta,
+                  ac.user_insert,
+                  ac.user_update,
+                  ac.data_insert,
+                  ac.data_update,
+                  ac.tx_id,
+                  ac.storicizza,
+                  ac.attivo,
+                  ac.note_target_tipo,
+                  ac.note_id,
+                  ap.codice AS prodotto_codice,
+                  ap.descrizione AS prodotto_descrizione,
+                  acmp.codice AS componente_codice,
+                  acmp.descrizione AS componente_descrizione,
+                  ac.valido_al IS NULL AS puo_chiudersi,
+                      CASE
+                          WHEN ac.valido_al IS NULL THEN ac.valido_dal
+                          ELSE NULL::date
+                      END AS data_min_chiusura,
+                      CASE
+                          WHEN ac.valido_al IS NULL THEN GREATEST(ac.valido_dal, ( SELECT script.fn_data_operativa() AS fn_data_operativa))
+                          ELSE NULL::date
+                      END AS data_default_chiusura,
+                      CASE
+                          WHEN ac.valido_al IS NULL THEN NULL::text
+                          ELSE 'RIGA_GIA_CHIUSA'::text
+                      END AS motivo_non_chiudibile,
+                  ac.esposizione_in_fattura,
+                  ec.codice AS esposizione_in_fattura_codice,
+                  ec.etichetta_key AS esposizione_in_fattura_etichetta_key
+                 FROM catalogo.articoli_componenti ac
+                   LEFT JOIN catalogo.articoli ap ON ap.id = ac.prodotto_id
+                   LEFT JOIN catalogo.articoli acmp ON acmp.id = ac.componente_id
+                   LEFT JOIN config.esposizioni_componente ec ON ec.codice_interno::text = ac.esposizione_in_fattura::text;
+              COMMENT ON VIEW catalogo.vw_articoli_componenti_dettaglio IS 'Righe della distinta base (componenti di un articolo) con codici e descrizioni di prodotto e componente, piu'' la capability di riga (puo_chiudersi, data_min_chiusura, data_default_chiusura, motivo_non_chiudibile) per «Chiudi riga». Dal 2026-09-28 (brief-db-liste-righe-documento, D-8.5) e'' la SORGENTE UNICA delle righe: per la lista configurabile catalogo.articolo_componenti e per il repository, che prima ne rifaceva la proiezione e la capability in Python. Dal 2026-10-01 (brief-db-esposizione-componenti-kit-in-fattura) esposizione_in_fattura (NASCOSTO | DESCRITTIVO | VALORIZZATO) al posto del booleano esposto_in_fattura, e in coda codice ed etichetta_key del modo da config.esposizioni_componente: la logica confronta esposizione_in_fattura, il codice e'' solo a video. Dal 2026-10-02 (brief-db-bom-flag-quantita-e-kit-in-fattura, D-1) senza partecipa_qta e determina_qta_padre, ritirate dalla tabella: nessuna logica le leggeva. Tutte le righe, anche le non attive e le chiuse: filtro e ordine li mette chi legge.';
+              GRANT SELECT, INSERT, UPDATE, DELETE ON catalogo.vw_articoli_componenti_dettaglio TO zeroerp_app;

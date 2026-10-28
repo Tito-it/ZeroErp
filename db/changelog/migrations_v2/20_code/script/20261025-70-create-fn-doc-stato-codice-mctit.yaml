@@ -1,0 +1,110 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# BB: DALL'ID AL CODICE DELLO STATO DI UNA TESTATA
+#   Brief: brief-modello-documento-vendita §8.11 (richiesta del team BE al
+#   §8.10; V-1 di Tid, 2026-10-25).
+#
+# ── CHE COSA DICE ───────────────────────────────────────────────────
+#   Il codice_interno dello stato con quell'id nel vocabolario della testata
+#   (dalla mappa, script.fn_doc_stato_modello). Gemello inverso di
+#   script.fn_doc_stato_id: uno stato ha due chiavi, l'id e il codice_interno,
+#   e la traduzione nei due sensi sta in questa coppia.
+#   NULL se l'id e' NULL o il vocabolario non lo ha: decide il chiamante.
+#   Nessun filtro sugli attivi: un id e' gia' una riga esistente; uno stato
+#   spento come destinazione lo rifiuta il verbo con fn_doc_stato_id (U-3).
+#
+# ── PERCHE' ─────────────────────────────────────────────────────────
+#   I verbi di stato prendono il codice; script.fn_stato_emissione_id da'
+#   l'id. «Emetti» del backend compone i due lettori,
+#   fn_doc_stato_codice(t, fn_stato_emissione_id(t)), e ritira i letterali
+#   dello stato di emissione (STATO_EMESSO di bolla e preventivo,
+#   StatoOfferta.EMESSA): passaggio BE B-1 … B-4 del §8.11.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261025-70-create-fn-doc-stato-codice-mctit.yaml
+
+  - changeSet:
+      id: 20261025-70-create-fn-doc-stato-codice
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        BB script.fn_doc_stato_codice(regclass, bigint): il codice_interno dello stato con
+        quell'id nel vocabolario di una testata della mappa, NULL se non c'e'. Gemello inverso
+        di script.fn_doc_stato_id. Brief: brief-modello-documento-vendita §8.11 (V-1).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_doc_stato_modello';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION script.fn_doc_stato_codice(
+                  p_testata  regclass,
+                  p_stato_id bigint)
+               RETURNS text
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  -- Il vocabolario di una qualunque testata della mappa: nessuna
+                  -- colonna comune a cui ancorare il tipo del codice.
+                  v_vocabolario regclass;
+                  v_codice      text;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo: il codice_interno dello stato con quell'id nel
+                  --   vocabolario della testata. NULL: id NULL o che il
+                  --   vocabolario non ha (decide il chiamante).
+                  -- =========================================================
+                  SELECT m.vocabolario
+                    INTO v_vocabolario
+                    FROM script.fn_doc_stato_modello(p_testata) m;
+
+                  IF v_vocabolario IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_doc_stato_codice', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('testata', p_testata::text),
+                          NULL::uuid,
+                          'script.fn_doc_stato_codice',
+                          'p_testata: una testata della mappa del modello (script.fn_doc_stato_modello)');
+                  END IF;
+
+                  EXECUTE format(
+                      'SELECT s.codice_interno::text FROM %s s WHERE s.id = $1',
+                      v_vocabolario)
+                     INTO v_codice
+                    USING p_stato_id;
+
+                  RETURN v_codice;
+              END;
+              $function$;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION script.fn_doc_stato_codice(p_testata regclass, p_stato_id bigint)
+                IS 'BB del modello del documento: il codice_interno (la chiave stabile del vocabolario) dello stato con quell''id nel vocabolario degli stati di una testata, letto dalla mappa script.fn_doc_stato_modello. Gemello inverso di script.fn_doc_stato_id: la traduzione id <-> codice sta in questa coppia. NULL se l''id e'' NULL o il vocabolario non lo ha: decide il chiamante. Nessun filtro sugli attivi: uno stato spento come destinazione lo rifiuta il verbo (U-3). Testata fuori mappa: E_SCRIPT_CHIAMATA_NON_VALIDA. Consumatore: il backend, che compone fn_doc_stato_codice(t, script.fn_stato_emissione_id(t)) per lo stato chiesto da «Emetti». Brief: brief-modello-documento-vendita §8.11 (V-1 di Tid, 2026-10-25).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_doc_stato_codice(regclass, bigint);

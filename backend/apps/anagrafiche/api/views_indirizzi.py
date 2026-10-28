@@ -13,8 +13,8 @@ from rest_framework import serializers
 from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
-from apps.core.api.endpoint_helpers import handle_detail_patch, handle_post_json
-from apps.core.api.payload_validators import optional_int, paginated_envelope, parse_list_params
+from apps.core.api.endpoint_helpers import handle_post_json
+from apps.core.api.payload_validators import corpo_oggetto, optional_int, paginated_envelope, parse_list_params
 from apps.core.api.success_responses import success_response
 from apps.anagrafiche.services.geo_service import GeoService
 from apps.core.api.openapi_params import param_ricerca_full
@@ -89,7 +89,7 @@ class IndirizziDetailView(DomainAPIView):
         responses={200: inline_serializer(name="IndirizzoUpdateResp", fields={"data": serializers.DictField()})},
     )
     def patch(self, request: Request, pk: int) -> JsonResponse:
-        return handle_detail_patch(request, GeoService().update_indirizzo, pk)
+        return success_response(GeoService().update_indirizzo(pk, corpo_oggetto(request)))
 
 
 class IndirizziCheckDuplicatoView(DomainAPIView):

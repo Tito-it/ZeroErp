@@ -9,7 +9,10 @@
 --   vendite.fn_get_or_create_commessa          (20260831-16)
 --   vendite.fn_assegna_numero_documento        (20260831-55 — la lunghezza dal registro)
 --   Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, §3.6
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): la bolla in bozza da dbops.fn_pgtap_crea_ddt_senza_ordine (p_data 2101-12-20), l'ordine confermato da dbops.fn_pgtap_crea_ordine_con_righe; restano a mano il cambio di data prima dell'emissione (il caso del test 2), la commessa e il registro spento.
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2c/2d): la famiglia della bolla e' DDT_VENDITA.
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito): il reso in bozza dal builder dbops.fn_pgtap_crea_reso; resta scritta la conferma dal verbo vendite.fn_conferma_reso, perche' e' il passo che numera (8-9).
+-- rev 2026-10-25 (brief-modello-documento-vendita §7, giro 5): emissione e consegna della bolla da dbops.fn_pgtap_porta_a_stato (il verbo): lo stato della bolla non si cambia piu' con un UPDATE diretto (E_DOC_STATO_SOLO_DAL_VERBO).
 -- ------------------------------------------------------------
 -- Elenco test (plan 11):
 -- 0) ⚠️ Precondizioni: la fixture non mente
@@ -112,43 +115,11 @@ CREATE TEMP TABLE tmp_num_refs AS
 SELECT
     ba.id                                                    AS billing_account_id,
     ba.utility_id                                            AS utility_id,
-    ba.soggetto_ruolo_id                                     AS soggetto_ruolo_id,
-    ef.id                                                    AS emittente_fiscale_id,
     ef.soggetto_ruolo_id                                     AS emittente_sr_id,
     ef.codice                                                AS sigla,
     -- ⛔ rev 2026-10-13: l'articolo si COSTRUISCE (merce non gestito: il test
     --   misura la numerazione, non il magazzino).
-    dbops.fn_pgtap_crea_articolo('PGTAP-NUM-TRASLOCO', false)               AS articolo_id,
-    (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)              AS valuta_id,
-    (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
-    (SELECT s.id FROM config.stati_doc_ddt s
-      WHERE s.codice_interno = 'DRAFT'  ORDER BY s.id LIMIT 1) AS stato_ddt_draft_id,
-    (SELECT s.id FROM config.stati_doc_ddt s
-      WHERE s.codice_interno = 'EMESSO' ORDER BY s.id LIMIT 1) AS stato_ddt_emesso_id,
-    (SELECT s.id FROM config.stati_doc_ddt s
-      WHERE s.codice_interno = 'SPEDITO' ORDER BY s.id LIMIT 1) AS stato_ddt_spedito_id,
-    (SELECT s.id FROM config.stati_doc_ddt s
-      WHERE s.codice_interno = 'CONSEGNATO' ORDER BY s.id LIMIT 1) AS stato_ddt_consegnato_id,
-    (SELECT s.id FROM config.stati_doc_ordini s
-      WHERE s.codice_interno = 'CONFERMATO' ORDER BY s.id LIMIT 1) AS stato_ord_conf_id,
-    (SELECT s.id FROM config.stati_doc_ordini s
-      WHERE s.codice_interno = 'DRAFT' ORDER BY s.id LIMIT 1) AS stato_ord_draft_id,
-    -- ⚠️ Qui l'aggancio e' su `codice` e NON su `codice_interno`, e non per
-    --   scelta: config.causali_trasporto la colonna `codice_interno` non ce
-    --   l'ha proprio. Resta quindi un aggancio FRAGILE — `codice` e'
-    --   modificabile dall'utente, e un rename lo sgancia in silenzio — ed e'
-    --   dichiarato qui invece di essere scoperto da chi vedra' il test
-    --   diventare rosso senza capire perche'.
-    (SELECT c.id FROM config.causali_trasporto c
-      WHERE c.codice = 'VENDITA' ORDER BY c.id LIMIT 1)                   AS causale_vendita_id,
-    (SELECT ti.id FROM config.tipi_indirizzi ti
-      WHERE ti.codice_interno = 'CON' ORDER BY ti.id LIMIT 1)             AS tipo_ind_con_id,
-    (SELECT so.id FROM config.sorgenti so
-      WHERE so.codice_interno = 'DDT_VENDITA' AND so.attivo ORDER BY so.id LIMIT 1) AS sorgente_ddt_id,
-    (SELECT s2.id FROM config.stati_doc_reso s2
-      WHERE s2.codice_interno = 'DRAFT' ORDER BY s2.id LIMIT 1)           AS stato_reso_draft_id,
-    (SELECT tr.id FROM config.tipi_reso tr
-      WHERE tr.codice_interno = 'RESO_PER_RICONSEGNA' AND tr.attivo ORDER BY tr.id LIMIT 1) AS tipo_reso_id
+    dbops.fn_pgtap_crea_articolo('PGTAP-NUM-TRASLOCO', false)               AS articolo_id
   FROM anagrafiche.billing_account ba
   -- ⛔ rev 2026-10-13: il BA e' quello COSTRUITO, non «il primo che soddisfa i
   --   filtri»; i filtri restano, e la precondizione 0) li verifica.
@@ -189,24 +160,9 @@ SELECT is(
                 LATERAL (VALUES
                     ('billing_account_id',  t.billing_account_id  IS NULL),
                     ('utility_id',          t.utility_id          IS NULL),
-                    ('soggetto_ruolo_id',   t.soggetto_ruolo_id   IS NULL),
-                    ('emittente_fiscale_id',t.emittente_fiscale_id IS NULL),
                     ('emittente_sr_id',     t.emittente_sr_id     IS NULL),
                     ('sigla',               t.sigla               IS NULL),
-                    ('articolo_id',         t.articolo_id         IS NULL),
-                    ('valuta_id',           t.valuta_id           IS NULL),
-                    ('iva_id',              t.iva_id              IS NULL),
-                    ('stato_ddt_draft_id',  t.stato_ddt_draft_id  IS NULL),
-                    ('stato_ddt_emesso_id', t.stato_ddt_emesso_id IS NULL),
-                    ('stato_ddt_spedito_id',t.stato_ddt_spedito_id IS NULL),
-                    ('stato_ddt_consegnato_id', t.stato_ddt_consegnato_id IS NULL),
-                    ('stato_ord_conf_id',   t.stato_ord_conf_id   IS NULL),
-                    ('stato_ord_draft_id',  t.stato_ord_draft_id  IS NULL),
-                    ('causale_vendita_id',  t.causale_vendita_id  IS NULL),
-                    ('tipo_ind_con_id',     t.tipo_ind_con_id     IS NULL),
-                    ('sorgente_ddt_id',     t.sorgente_ddt_id     IS NULL),
-                    ('stato_reso_draft_id', t.stato_reso_draft_id IS NULL),
-                    ('tipo_reso_id',        t.tipo_reso_id        IS NULL)
+                    ('articolo_id',         t.articolo_id         IS NULL)
                 ) AS x(campo, mancante)
           WHERE x.mancante),
         CASE WHEN (SELECT count(*) FROM tmp_num_refs) = 0
@@ -222,38 +178,14 @@ SELECT is(
 --   di far divergere «l'anno dell'INSERT» dall'«anno della data documento».
 --   ⚠️ Gli anni sono FISSI e lontani da quelli veri, cosi' il caso non dipende
 --   da quando gira la suite — il tempo non si simula, si costruisce.
-CREATE TEMP TABLE tmp_num_ddt (ddt_id bigint);
-
-DO $$
-DECLARE
-    v_ddt bigint;
-    r     record;
-BEGIN
-    SELECT * INTO r FROM tmp_num_refs;
-
-    INSERT INTO vendite.ddt (
-        destinatario_soggetto_ruolo_id, stato_doc_ddt_id, data,
-        billing_account_id, valuta_id, causale_trasporto_id,
-        emittente_fiscale_id, storicizza, meta)
-    VALUES (r.soggetto_ruolo_id, r.stato_ddt_draft_id, DATE '2101-12-20',
-            r.billing_account_id, r.valuta_id, r.causale_vendita_id,
-            r.emittente_fiscale_id, false,
-            jsonb_build_object('test_scope', 'pgtap_num_trasloco'))
-    RETURNING id INTO v_ddt;
-
-    INSERT INTO vendite.ddt_righe (
-        ddt_id, riga_nr, articolo_id, descrizione,
-        qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
-    VALUES (v_ddt, 1, r.articolo_id, 'Riga numerazione', 3, 3, 10, r.iva_id, true, false,
-            jsonb_build_object('test_scope', 'pgtap_num_trasloco'));
-
-    INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
-    VALUES (v_ddt, r.tipo_ind_con_id, '{"display":"CON"}'::jsonb)
-    ON CONFLICT DO NOTHING;
-
-    INSERT INTO tmp_num_ddt VALUES (v_ddt);
-END;
-$$;
+-- La bolla senza ordine, in bozza, datata dicembre 2101, con una riga (3 a
+-- 10) e gli indirizzi che l'emissione pretende: dal builder.
+CREATE TEMP TABLE tmp_num_ddt AS
+SELECT b.ddt_id
+  FROM dbops.fn_pgtap_crea_ddt_senza_ordine('num_trasloco', 'DRAFT',
+         (SELECT billing_account_id FROM tmp_num_refs),
+         p_quantita => 3, p_prezzo => 10, p_articolo_id => (SELECT articolo_id FROM tmp_num_refs),
+         p_data => DATE '2101-12-20') b;
 
 -- ⚠️ La DATA cambia PRIMA dell'emissione: da dicembre 2101 a gennaio 2102.
 --   Se l'anno seguisse l'INSERT (o CURRENT_DATE), resterebbe indietro.
@@ -263,9 +195,7 @@ UPDATE vendite.ddt d
 
 -- ⚠️ Il verbo in un'istruzione SEPARATA dalle asserzioni: la transizione
 --   scrive numero, anno e registro.
-UPDATE vendite.ddt d
-   SET stato_doc_ddt_id = (SELECT stato_ddt_emesso_id FROM tmp_num_refs)
- WHERE d.id = (SELECT ddt_id FROM tmp_num_ddt);
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', (SELECT ddt_id FROM tmp_num_ddt), 'EMESSO');
 
 SELECT is(
     (SELECT reg.famiglia_documento::text || '|' ||
@@ -306,44 +236,13 @@ SELECT ok(
 -- =========================================================
 -- 4) L'ORDINE — si numera all'INSERT, sul proprio registro
 -- =========================================================
--- ⚠️ L'ordine si costruisce CON la sua riga: un ordine senza righe non e' un
---   caso reale, e le testate di questo dominio portano constraint trigger che
---   pretendono il satellite — con `SET CONSTRAINTS ALL IMMEDIATE` scatterebbero
---   subito.
-CREATE TEMP TABLE tmp_num_ord (ordine_id bigint);
-
-DO $$
-DECLARE
-    v_ord bigint;
-    r     record;
-BEGIN
-    SELECT * INTO r FROM tmp_num_refs;
-
-    -- ⚠️ `stato_doc_ordine_id` al SINGOLARE, mentre la tabella di catalogo e'
-    --   `config.stati_doc_ordini` al plurale. L'asimmetria e' reale e non si
-    --   deduce per analogia col DDT (`stato_doc_ddt_id`): si legge.
-    INSERT INTO vendite.ordini (
-        soggetto_ruolo_id, stato_doc_ordine_id, data,
-        billing_account_id, valuta_id, utility_id, emittente_fiscale_id,
-        storicizza, meta)
-    -- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce
-    --   DRAFT, prende la riga, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato —
-    --   fuori bozza le righe non si scrivono piu' (20261008-90).
-    VALUES (r.soggetto_ruolo_id, r.stato_ord_draft_id, script.fn_data_operativa(),
-            r.billing_account_id, r.valuta_id, r.utility_id, r.emittente_fiscale_id,
-            false, jsonb_build_object('test_scope', 'pgtap_num_trasloco'))
-    RETURNING id INTO v_ord;
-
-    INSERT INTO vendite.ordini_righe (
-        ordine_id, riga_nr, articolo_id, descrizione,
-        qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
-    VALUES (v_ord, 1, r.articolo_id, 'Riga numerazione ordine', 2, 2, 10, r.iva_id,
-            true, false, jsonb_build_object('test_scope', 'pgtap_num_trasloco'));
-    PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', v_ord, 'CONFERMATO');
-
-    INSERT INTO tmp_num_ord VALUES (v_ord);
-END;
-$$;
+-- ⚠️ L'ordine si costruisce CON la sua riga (2 a 10) e confermato: dal
+--   builder, che lo fa nascere DRAFT e lo porta avanti per la matrice.
+CREATE TEMP TABLE tmp_num_ord AS
+SELECT o.ordine_id
+  FROM dbops.fn_pgtap_crea_ordine_con_righe('num_trasloco', 'CONFERMATO',
+         (SELECT billing_account_id FROM tmp_num_refs),
+         p_quantita => 2, p_prezzo => 10, p_articolo_id => (SELECT articolo_id FROM tmp_num_refs)) o;
 
 SELECT is(
     (SELECT (o.numero IS NOT NULL)::text || '|' || reg.famiglia_documento::text || '|' ||
@@ -480,58 +379,24 @@ SELECT throws_ok(
 --   il trigger sia montato dove serve.
 -- ⚠️ La riga del reso vuole `ddt_riga_id` (NOT NULL): il DDT costruito sopra
 --   serve anche a questo, e non se ne fabbrica un secondo.
--- ℹ️ destinatario ed emittente NON si passano benche' siano NOT NULL: li
---   deriva il DB dal DDT sorgente. Passarli a mano nasconderebbe il giorno in
---   cui quella derivazione smette di funzionare.
+-- ℹ️ Il reso in bozza dal builder (dbops.fn_pgtap_crea_reso): destinatario ed
+--   emittente non li passa, li deriva il DB dal DDT sorgente. La conferma e'
+--   il passo del test.
 -- ⛔ IL DDT VA PORTATO A `CONSEGNATO`, e il guard che lo pretende ha ragione:
 --   «non si rende cio' che non e' stato consegnato». I test 1..3 hanno gia'
 --   letto numero, registro e anno subito dopo l'emissione — la transizione non
 --   li tocca.
--- ⚠️ Uno stato alla volta: la matrice delle transizioni non ammette salti
---   (EMESSO -> SPEDITO -> CONSEGNATO), e un UPDATE diretto a CONSEGNATO
---   verrebbe respinto da vendite.trgfn_ddt_guard_transizione.
-UPDATE vendite.ddt d
-   SET stato_doc_ddt_id = (SELECT stato_ddt_spedito_id FROM tmp_num_refs)
- WHERE d.id = (SELECT ddt_id FROM tmp_num_ddt);
+-- ⚠️ La matrice non ammette salti (EMESSO -> SPEDITO -> CONSEGNATO): il
+--   builder fa un passo alla volta, col verbo.
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', (SELECT ddt_id FROM tmp_num_ddt), 'CONSEGNATO');
 
-UPDATE vendite.ddt d
-   SET stato_doc_ddt_id = (SELECT stato_ddt_consegnato_id FROM tmp_num_refs)
- WHERE d.id = (SELECT ddt_id FROM tmp_num_ddt);
+CREATE TEMP TABLE tmp_num_reso AS
+SELECT reso_id
+  FROM dbops.fn_pgtap_crea_reso('num_trasloco', (SELECT ddt_id FROM tmp_num_ddt), 1,
+                                'RESO_PER_RICONSEGNA', 'DRAFT');
 
-CREATE TEMP TABLE tmp_num_reso (reso_id bigint);
-
-DO $$
-DECLARE
-    v_reso bigint;
-    r      record;
-BEGIN
-    SELECT * INTO r FROM tmp_num_refs;
-
-    INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_uid,
-                              storicizza, meta)
-    SELECT r.stato_reso_draft_id, r.sorgente_ddt_id, d.uid, false,
-           jsonb_build_object('test_scope', 'pgtap_num_trasloco')
-      FROM vendite.ddt d
-     WHERE d.id = (SELECT ddt_id FROM tmp_num_ddt)
-    RETURNING id INTO v_reso;
-
-    INSERT INTO vendite.resi_righe (
-        reso_id, riga_nr, ddt_riga_id, articolo_id, descrizione,
-        qta_operativa, uom_operativa_id, factor_to_base, tipo_reso_id, storicizza, meta)
-    SELECT v_reso, 1, dr.id, dr.articolo_id, dr.descrizione,
-           1, dr.uom_operativa_id, dr.factor_to_base, r.tipo_reso_id, false,
-           jsonb_build_object('test_scope', 'pgtap_num_trasloco')
-      FROM vendite.ddt_righe dr
-     WHERE dr.ddt_id = (SELECT ddt_id FROM tmp_num_ddt)
-     ORDER BY dr.id
-     LIMIT 1;
-
-    -- ⭐ La madre, non un UPDATE: e' la transizione vera.
-    PERFORM vendite.fn_conferma_reso(v_reso);
-
-    INSERT INTO tmp_num_reso VALUES (v_reso);
-END;
-$$;
+-- ⭐ La madre, non un UPDATE: e' la transizione vera.
+SELECT vendite.fn_conferma_reso((SELECT reso_id FROM tmp_num_reso));
 
 SELECT is(
     (SELECT (re.numero IS NOT NULL)::text || '|' || reg.famiglia_documento::text || '|' ||

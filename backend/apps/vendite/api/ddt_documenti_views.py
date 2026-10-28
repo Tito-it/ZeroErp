@@ -31,7 +31,7 @@ from apps.documenti.api.sorgente_documenti_views import (
 from apps.documenti.services.document_generation_service import (
     DocumentGenerationService,
 )
-from apps.vendite.db.ddt_repository import DdtRepository
+from apps.vendite.db.ddt_repository import TESTATA_DDT, DdtRepository
 from apps.vendite.services import ddt_service
 
 
@@ -66,11 +66,11 @@ _views = build_documenti_sorgente_views(
     emetti_call=_emetti_call,
     emetti_response_key="ddt",
     model_permission=("vendite", "ddt"),
-    # ⛔ L'azione di processo che il verbo DB applica all'emissione
-    #    (`fn_cambia_stato_ddt` -> EMESSO: `emetti_ddt`), dichiarata qui come il
-    #    gemello preventivo dichiara `cambia_stato_preventivi`
-    #    (brief-be-verifica-documentazione-api §A5, 2026-10-20).
-    emetti_post_permission="emetti_ddt",
+    # ⭐ L'azione dell'emissione la dice la riga della matrice verso lo stato
+    #    di emissione (oggi `emetti_ddt`), non questa view: il 403 arriva dalla
+    #    stessa riga che legge il verbo (M-3, brief-modello-documento-vendita
+    #    §7.6); lo stato lo dice il vocabolario a ogni richiesta (§8.11 B-2).
+    emetti_passaggio=TESTATA_DDT,
 )
 
 ApiDdtEmetti = _views.emetti

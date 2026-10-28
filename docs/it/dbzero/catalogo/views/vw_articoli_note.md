@@ -3,7 +3,9 @@
 
 > 📝 **Descrizione**
 >
-> Vista note per articoli con dati stile e lingua.
+> Vista note per articoli con dati stile e lingua. Rev 2026-10-25 (20261025-57/-58, brief-db-grammatica-unica-documenti lotto 3, G-7): tolta e rimessa identica perche' la colonna che legge cambia tipo; nota_target_tipo vale ARTICOLO (era ARTICOLI) e diventa varchar(50), dalla partizione.
+
+> 🔐 **Sicurezza**: definer (default delle viste) — le tabelle sotto si leggono con i privilegi dell'owner `zeroerp_owner`, e la RLS che vale e' la sua, non quella di chi interroga.
 
 <div data-search-exclude markdown>
 

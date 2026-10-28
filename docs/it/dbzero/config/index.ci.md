@@ -13,6 +13,7 @@ search:
 - [assets_ownership](manual/assets_ownership.md) — * Definire un **catalogo univoco e governato** delle modalità di proprietà degli asset. * Assicurare coerenza tra domini diversi (magazzino, installazioni, contratti, fatturazione, manutenzione). * Abilitare logiche avanzate, tra cui:
 - [auth_totp_device](manual/auth_totp_device.md) — (riscritta il 29-09-2026)
 - [azioni_processo](manual/azioni_processo.md) — * Catalogare le **azioni di processo** che richiedono abilitazione esplicita. * Raccordare il **codename Django** (`Meta.permissions` → `auth_permission`) con la gestione profili. * Segnalare le azioni **pericolose** che richiedono conferma aggiuntiva nella UI.
+- [azioni_riga](manual/azioni_riga.md)
 - [canali_pratiche](manual/canali_pratiche.md) — La tabella `config.canali_pratiche` definisce i **canali di visibilita'** attraverso cui i flussi di una pratica possono essere esposti verso l'esterno. Non e' un flag booleano sulla pratica ma un **registry di interfacce** configurabile.
 - [categoria_accisa](manual/categoria_accisa.md) — (rev 2026-08-21)
 - [causali_onere](manual/causali_onere.md) — (rev 2026-07-21)
@@ -54,7 +55,7 @@ search:
 - [note_stili](manual/note_stili.md) — (latest review 15-01-26) * Fornire un **catalogo centralizzato** degli stili che possono essere applicati alle note (formattazione e/o semantica). * Separare la **semantica dello stile** (es. AVVISO, AVVERTENZA, INFO) dalla renderizzazione effettiva lato UI/templating. * Supportare la definizione di **regole visuali e di priorità** per note e messaggi (es. stile per warning, info, errori, note di servizio).
 - [parameter_fk_surrogate](manual/parameter_fk_surrogate.md) — (latest review 02-05-2026)
 - [parameter_overrides](manual/parameter_overrides.md)
-- [parameters](manual/parameters.md) — La tabella **`config.parameters`** implementa un’**architettura a due livelli** per la configurazione dinamica dell’applicazione:
+- [parameters](manual/parameters.md) — (ultima revisione 25-10-2026)
 - [priorita_pratiche](manual/priorita_pratiche.md) — La tabella `config.priorita_pratiche` definisce i **livelli di priorita'** assegnabili alle pratiche. Ogni pratica ha una priorita' obbligatoria che ne influenza l'ordine di lavorazione.
 - [profili_accesso](manual/profili_accesso.md) — (latest revision 04-05-2026 — modello legacy `profili_reparto_*` dismesso)
 - [profili_accesso_aree](manual/profili_accesso_aree.md) — (latest revision 04-05-2026 — modello legacy `profili_reparto_aree` dismesso)
@@ -67,7 +68,7 @@ search:
 - [registri_giornale](manual/registri_giornale.md) — (rev 2026-09-19 — nata con `20260919-08`, seminata da `20260919-09`)
 - [scope_policy](manual/scope_policy.md) — (latest revision 18-04-2026)
 - [sistema_codici](manual/sistema_codici.md) — (latest review 18-01-26) * **Definizione del formato codice**   Consente di specificare per ogni tipo di codice (`codice_interno`) un **prefisso**, un **separatore** e la **lunghezza numerica** totale, rendendo parametrica la struttura dei codici generati. * **Configurazione del meccanismo di sequenza**   Tramite il flag `usa_sequenza` si abilita o meno l’utilizzo di una progressione automatica basata su sequenza di database, a garanzia di unicità e ordinarietà. * **Aggancio alla tabella target**   Le colonne `schema_tabella`, `nome_tabella` e `nome_colonna` definiscono la destinazione del codice e permettono di derivare automaticamente il nome sequenza standard. * **Automazione trigger**   Le righe con `usa_sequenza = TRUE` attivano automaticamente la creazione di un trigger sulla tabella target che genera il codice quando il campo risulta nullo (o vuoto/0 secondo il tipo).
-- [sorgenti](manual/sorgenti.md) — (latest update 24-01-2026) * Fornire un **catalogo univoco** delle sorgenti applicative utilizzate in:
+- [sorgenti](manual/sorgenti.md) — (latest update 27-10-2026) * Fornire un **catalogo univoco** delle sorgenti applicative utilizzate in:
 - [stati](manual/stati.md) — * **Elenco degli stati/paesi**   Contiene tutte le nazioni riconosciute, con sigle e codici ISO standard (ISO 3166-1 alpha-2 e alpha-3) e prefisso telefonico internazionale.
 - [stati_assets](manual/stati_assets.md) — (latest review 16-01-26) * Fornire un **catalogo centralizzato e stabile** degli stati in cui può trovarsi un asset. * Supportare la gestione del **ciclo di vita degli asset**, inclusi:
 - [stati_cliente](manual/stati_cliente.md) — La tabella `config.stati_cliente` definisce i possibili **stati funzionali** di un cliente all’interno di Zero ERP, utilizzati sia per il controllo dei processi (letture, fatturazione) sia per la logica di avanzamento (precontrattuale, attivo, sospeso, chiuso, ecc.).
@@ -75,13 +76,14 @@ search:
 - [stati_doc_ddt](manual/stati_doc_ddt.md) — (latest review 29-03-2026) `config.stati_doc_ddt` definisce gli **stati documento** dei Documenti di Trasporto. Centralizza il vocabolario di stato usato nel ciclo logistico, dalla emissione alla consegna o agli eventuali esiti finali.
 - [stati_doc_fiscale](manual/stati_doc_fiscale.md) — (latest review 23-01-2026) `config.stati_doc_fiscale` definisce gli **stati documento** utilizzati dal ciclo fatturazione. Gli stessi stati possono essere applicati sia alle **fatture** sia ai **lotti**, tramite flag di applicabilita`.
 - [stati_doc_fiscale_transizioni](manual/stati_doc_fiscale_transizioni.md) — (latest review 24-01-2026) `config.stati_doc_fiscale_transizioni` definisce le **transizioni ammesse** tra stati documento, con validita` separata per **lotti** e **fatture**.
-- [stati_doc_offerte](manual/stati_doc_offerte.md) — (latest review 2026-07-02) `config.stati_doc_offerte` definisce gli **stati documento** del ciclo di vita delle offerte commerciali, dalla bozza fino all'accettazione, al rifiuto o al superamento.
-- [stati_doc_offerte_transizioni](manual/stati_doc_offerte_transizioni.md) — (latest review 2026-05-24)
+- [stati_doc_offerte](manual/stati_doc_offerte.md) — (latest review 2026-10-26) `config.stati_doc_offerte` definisce gli **stati documento** del ciclo di vita delle offerte commerciali, dalla bozza fino all'accettazione, al rifiuto o al superamento.
+- [stati_doc_offerte_transizioni](manual/stati_doc_offerte_transizioni.md) — (latest review 2026-10-26)
 - [stati_doc_ordini](manual/stati_doc_ordini.md) — (latest review 29-03-2026) `config.stati_doc_ordini` definisce gli **stati documento** del ciclo ordine di vendita. Raccoglie in un catalogo unico le fasi di avanzamento commerciale e operativo dell'ordine, dalla bozza fino all'evasione o chiusura.
 - [stati_doc_preventivi](manual/stati_doc_preventivi.md) — (latest review 29-03-2026) `config.stati_doc_preventivi` definisce gli **stati documento** del ciclo dei preventivi commerciali. Serve a governare il passaggio dalla proposta iniziale alla sua accettazione, revisione o chiusura operativa.
 - [stati_doc_reso](manual/stati_doc_reso.md) — (rev 2026-07-13)
 - [stati_flussi_pratiche](manual/stati_flussi_pratiche.md) — La tabella `config.stati_flussi_pratiche` definisce i possibili **stati di un flusso operativo** all'interno di una pratica. Ogni flusso ha esattamente uno stato che ne indica l'avanzamento nel workflow.
 - [stati_fornitore](manual/stati_fornitore.md) — (latest review 29-03-2026) `config.stati_fornitore` definisce gli **stati operativi** dei fornitori. Il catalogo non serve solo a classificare il fornitore, ma anche a governare se il soggetto puo` essere usato normalmente nei processi di acquisto.
+- [stati_lotto_job](manual/stati_lotto_job.md)
 - [stati_pdp](manual/stati_pdp.md) — * **Dominio degli stati tecnici del PDP**   Fornisce il catalogo centralizzato degli stati tecnici ammessi per i punti di prelievo, utilizzato da `anagrafiche.pdp.stato_pdp_id`.
 - [stati_pratiche](manual/stati_pratiche.md) — La tabella `config.stati_pratiche` definisce i possibili **stati del ciclo di vita** di una pratica. Ogni pratica ha esattamente uno stato, che ne governa le transizioni e le operazioni consentite.
 - [stati_sdi](manual/stati_sdi.md) — (latest review 23-01-2026) `config.stati_sdi` definisce gli **stati di invio SDI** (Italia) utilizzati per tracciare l’esito di trasmissione dei documenti fiscali.
@@ -118,6 +120,7 @@ search:
 - [transizioni_stati_contratti](manual/transizioni_stati_contratti.md) — (rev 2026-05-28)
 - [transizioni_stati_ddt](manual/transizioni_stati_ddt.md) — (rev 2026-07-09)
 - [transizioni_stati_flussi_pratiche](manual/transizioni_stati_flussi_pratiche.md) — `config.transizioni_stati_flussi_pratiche` definisce la **matrice delle transizioni ammesse** tra stati dei flussi pratica. Il trigger guard `trgfn_flussi_guard_transizione` consulta questa tabella per bloccare qualsiasi transizione non configurata.
+- [transizioni_stati_lotto_job](manual/transizioni_stati_lotto_job.md)
 - [transizioni_stati_ordini](manual/transizioni_stati_ordini.md) — (rev 2026-06-05)
 - [transizioni_stati_pratiche](manual/transizioni_stati_pratiche.md) — `config.transizioni_stati_pratiche` definisce la **matrice delle transizioni ammesse** tra stati delle pratiche. Il trigger guard `trgfn_pratiche_guard_transizione` consulta questa tabella per bloccare qualsiasi transizione non configurata.
 - [transizioni_stati_preventivi](manual/transizioni_stati_preventivi.md) — (latest review 03-04-2026) `config.transizioni_stati_preventivi` definisce la **matrice delle transizioni ammesse** tra gli stati del preventivo vendita. Pattern identico a `config.transizioni_stati_pratiche`.
@@ -152,7 +155,9 @@ search:
 - [trgfn_iva_guard_conti_iva](manual/trgfn_iva_guard_conti_iva.md) — * **Validazione contestuale**: eseguire controlli sui campi contabili prima di inserire o aggiornare un record in `config.iva`. * **Coerenza dei dati**: evitare associazioni errate tra codici IVA e conti di tipo sbagliato.
 - [trgfn_iva_stati_normalize](manual/trgfn_iva_stati_normalize.md) — (latest review 15-01-26) * **Impostare valori di default** per campi mancanti in `config.iva_stati` (ad esempio, assegnare `stato_id` da `config.stati` se `NEW.stato_id` è `NULL`). * **Pulire e normalizzare** ulteriori campi (es. trimming, uppercasing) seguendo le regole di business.
 - [trgfn_parameter_overrides_fk_surrogate_dispatch](manual/trgfn_parameter_overrides_fk_surrogate_dispatch.md) — (latest review 02-05-2026)
+- [trgfn_parameter_overrides_guard_ammette_override](manual/trgfn_parameter_overrides_guard_ammette_override.md) — (scritta il 25-10-2026)
 - [trgfn_parameters_fk_surrogate_dispatch](manual/trgfn_parameters_fk_surrogate_dispatch.md) — (latest review 02-05-2026)
+- [trgfn_parameters_guard_ammette_override](manual/trgfn_parameters_guard_ammette_override.md) — (scritta il 25-10-2026)
 - [trgfn_profili_accesso_bindings_guard_coerenza](manual/trgfn_profili_accesso_bindings_guard_coerenza.md) — (latest review 18-04-2026) La trigger function **`config.trgfn_profili_accesso_bindings_guard_coerenza()`** verifica che il **tipo di binding** (colonna valorizzata) sia coerente con il **tipo del profilo di accesso** a cui il binding fa riferimento.
 - [trgfn_profili_accesso_bindings_guard_ultimo_super_admin](manual/trgfn_profili_accesso_bindings_guard_ultimo_super_admin.md) — (latest review 19-04-2026)
 - [trgfn_regioni_normalize](manual/trgfn_regioni_normalize.md) — (latest review 15-01-26) * **Impostare valori di default** per campi mancanti in `config.regioni` (ad esempio, assegnare `stato_id` da `config.stati` se `NEW.stato_id` è `NULL`). * **Pulire e normalizzare** ulteriori campi (es. trimming, uppercasing) seguendo le regole di business.

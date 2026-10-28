@@ -1,0 +1,4 @@
+id,codice_interno,descrizione,ordine,attivo,meta,data_insert,user_insert,data_update,user_update
+1,IN_ESECUZIONE,In esecuzione,10,t,{},2026-10-27 00:00:00+01,mctit,2026-10-27 00:00:00+01,mctit
+2,COMPLETATO,Completato,20,t,{},2026-10-27 00:00:00+01,mctit,2026-10-27 00:00:00+01,mctit
+3,ERRORE,Errore,30,t,{},2026-10-27 00:00:00+01,mctit,2026-10-27 00:00:00+01,mctit

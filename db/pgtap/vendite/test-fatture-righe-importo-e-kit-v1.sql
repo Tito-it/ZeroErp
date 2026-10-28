@@ -74,35 +74,32 @@ SELECT plan(19);
 
 -- ============================================================
 -- FIXTURE
--- ⚠️ Emittente e billing account NON si scelgono in modo indipendente: si parte
---    dalla configurazione (emittente, utility), altrimenti
---    fn_ricalcola_totali_fattura non trova i decimali di arrotondamento.
 -- ============================================================
+-- rev 2026-10-27 (lotto 4 di D7): cliente e articolo si COSTRUISCONO
+--   (dbops.fn_pgtap_crea_cliente_ba, BA dell'azienda di chi agisce;
+--   dbops.fn_pgtap_crea_articolo, il padre del kit), l'emittente e' quello
+--   dell'operatore di contesto e il registro e' il suo
+--   (script.fn_pgtap_registro_fattura). Prima la coppia (emittente, utility)
+--   si pescava da emittenti_fiscali_utilities, il BA col primo id e
+--   l'articolo era l'ultimo inserito: da zero non c'era niente. Senza la
+--   riga (emittente, utility) i decimali li danno i parametri di sistema
+--   dell'utility. Le fatture restano scritte a mano: sono il caso del test.
+CREATE TEMP TABLE tmp_cli_fri AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('fatture righe importo');
+
 CREATE TEMP TABLE tmp_refs_fri AS
-WITH cfg AS (
-  SELECT efu.emittente_soggetto_ruolo_id, efu.utility_id
-    FROM anagrafiche.emittenti_fiscali_utilities efu
-   WHERE efu.attivo IS TRUE
-     AND EXISTS (SELECT 1 FROM anagrafiche.billing_account ba
-                  WHERE ba.utility_id = efu.utility_id)
-   ORDER BY efu.emittente_soggetto_ruolo_id, efu.utility_id
-   LIMIT 1
-)
-SELECT (SELECT emittente_soggetto_ruolo_id FROM cfg) AS emittente_soggetto_ruolo_id,
-       (SELECT ba.id FROM anagrafiche.billing_account ba
-         WHERE ba.utility_id = (SELECT utility_id FROM cfg)
-         ORDER BY ba.id LIMIT 1)                       AS billing_account_id,
+SELECT script.fn_pgtap_emittente_sr_operatore()                             AS emittente_soggetto_ruolo_id,
+       (SELECT billing_account_id FROM tmp_cli_fri)                         AS billing_account_id,
        (SELECT id FROM config.iva WHERE attivo IS TRUE ORDER BY id LIMIT 1) AS iva_id,
        (SELECT id FROM config.valute ORDER BY id LIMIT 1)                   AS valuta_id,
        (SELECT id FROM config.stati_doc_fiscale WHERE codice_interno = 'DRAFT')      AS stato_draft,
        (SELECT id FROM config.stati_doc_fiscale WHERE codice_interno = 'EMESSA')     AS stato_emessa,
        (SELECT id FROM config.stati_doc_fiscale WHERE codice_interno = 'DEFINITIVA') AS stato_definitiva,
-       (SELECT a.id FROM catalogo.articoli a WHERE a.attivo IS TRUE
-         ORDER BY a.data_insert DESC NULLS LAST LIMIT 1)                     AS articolo_id,
+       dbops.fn_pgtap_crea_articolo('PGTAP-FRI-PADRE')                      AS articolo_id,
        -- 3b.3: l'utility va scritta IN TESTATA. Il ricalcolo la legge da
        -- vendite.fatture.utility_id invece di dedurla da lotto/BA, quindi la
-       -- fixture deve portarla dalla stessa `cfg` da cui prende l'emittente.
-       (SELECT utility_id FROM cfg)                                          AS utility_id;
+       -- fixture la porta dal cliente costruito.
+       (SELECT utility_id FROM tmp_cli_fri)                                 AS utility_id;
 
 SELECT ok(
   (SELECT emittente_soggetto_ruolo_id IS NOT NULL
@@ -112,19 +109,8 @@ SELECT ok(
   '1) Riferimenti minimi presenti');
 
 CREATE TEMP TABLE tmp_reg_fri AS
-WITH ins AS (
-  -- ⛔ emittente_soggetto_ruolo_id e' NOT NULL dal 2026-08-30 (C1-2,
-  --   20260830-11), e dev'essere lo STESSO delle fatture di questo file:
-  --   vendite.trgfn_fatture_guard_registro_emittente rifiuta un documento
-  --   sul registro di un altro emittente (C1-3, 20260830-10).
-  INSERT INTO vendite.registri_fatturazione (codice, descrizione, reset_policy, attivo,
-          emittente_soggetto_ruolo_id, meta)
-  VALUES ('REGFRI_PGTAP', 'Registro test importo riga', 'ANNUALE', true,
-          (SELECT emittente_soggetto_ruolo_id FROM tmp_refs_fri),
-          jsonb_build_object('test_scope', 'pgtap_fatture_righe_importo'))
-  RETURNING id
-)
-SELECT * FROM ins;
+SELECT script.fn_pgtap_registro_fattura(
+         (SELECT emittente_soggetto_ruolo_id FROM tmp_refs_fri)) AS id;
 
 -- Scopo: crea una fattura di test nello stato richiesto.
 CREATE OR REPLACE FUNCTION pg_temp.fx_fattura_fri(p_stato bigint)
@@ -249,27 +235,27 @@ UPDATE vendite.fatture
        cliente_snapshot   = '{"denominazione":"Cliente pgTAP"}'::jsonb
  WHERE id = (SELECT id FROM tmp_fattura_fri);
 
-UPDATE vendite.fatture SET stato_doc_fiscale_id = (SELECT stato_emessa FROM tmp_refs_fri)
- WHERE id = (SELECT id FROM tmp_fattura_fri);
-UPDATE vendite.fatture SET stato_doc_fiscale_id = (SELECT stato_definitiva FROM tmp_refs_fri)
- WHERE id = (SELECT id FROM tmp_fattura_fri);
+-- rev 2026-10-27 (brief-modello-documento-vendita §15): con la porta sulla fattura
+-- lo stato si scrive dal verbo della fattura, come lo scrive la pipeline.
+SELECT vendite.fn_fattura_proietta_stato((SELECT id FROM tmp_fattura_fri), (SELECT stato_emessa FROM tmp_refs_fri));
+SELECT vendite.fn_fattura_proietta_stato((SELECT id FROM tmp_fattura_fri), (SELECT stato_definitiva FROM tmp_refs_fri));
 
-SELECT throws_ok(
+SELECT throws_like(
   $$ UPDATE vendite.fatture_righe SET qta = 5
       WHERE fattura_id = (SELECT id FROM tmp_fattura_fri) AND riga_nr = 1 $$,
-  NULL::text, NULL::text,
+  '%righe non sono piu'' modificabili%',
   '12) oltre soglia l''UPDATE della quantita'' e'' respinto');
 
-SELECT throws_ok(
+SELECT throws_like(
   $$ DELETE FROM vendite.fatture_righe
       WHERE fattura_id = (SELECT id FROM tmp_fattura_fri) AND riga_nr = 1 $$,
-  NULL::text, NULL::text,
+  '%righe non sono piu'' modificabili%',
   '13) oltre soglia il DELETE della riga e'' respinto');
 
-SELECT throws_ok(
+SELECT throws_like(
   $$ INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, descrizione, qta, prezzo_unitario, competenza_dal, competenza_al)
      SELECT (SELECT id FROM tmp_fattura_fri), 99, 'Riga tardiva', 1, 1, script.fn_data_operativa(), script.fn_data_operativa() $$,
-  NULL::text, NULL::text,
+  '%righe non sono piu'' modificabili%',
   '14) oltre soglia anche l''INSERT di una riga nuova e'' respinto');
 
 -- ============================================================
@@ -281,10 +267,10 @@ SELECT throws_ok(
 CREATE TEMP TABLE tmp_fattura_vuota_fri AS
 SELECT pg_temp.fx_fattura_fri((SELECT stato_draft FROM tmp_refs_fri)) AS id;
 
-SELECT throws_ok(
+SELECT throws_like(
   $$ SELECT * FROM vendite.fn_assign_numero_fattura(
        (SELECT id FROM tmp_fattura_vuota_fri)) $$,
-  NULL::text, NULL::text,
+  '%il documento non ha righe%',
   '15) numerazione di una fattura SENZA righe: respinta');
 
 -- ============================================================
@@ -295,11 +281,16 @@ SELECT throws_ok(
 CREATE TEMP TABLE tmp_fattura_kit_fri AS
 SELECT pg_temp.fx_fattura_fri((SELECT stato_draft FROM tmp_refs_fri)) AS id;
 
-SELECT throws_ok(
-  $$ INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, descrizione, qta,
+-- rev 2026-10-27 (lotto 4 di D7): la riga ha il suo articolo. Senza, scattava
+--   chk_fatture_righe_kit_articolo (kit_key senza articolo) e il test era verde
+--   per il vincolo sbagliato: quello di coerenza non veniva mai raggiunto.
+--   Trovato con la sonda (discriminante impossibile, «caught:» letto).
+SELECT throws_like(
+  $$ INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, articolo_id, descrizione, qta,
                                         prezzo_unitario, kit_key, competenza_dal, competenza_al)
-     SELECT (SELECT id FROM tmp_fattura_kit_fri), 1, 'kit a meta', 1, 1, 'K-INCOMPLETO', script.fn_data_operativa(), script.fn_data_operativa() $$,
-  NULL::text, NULL::text,
+     SELECT (SELECT id FROM tmp_fattura_kit_fri), 1, (SELECT articolo_id FROM tmp_refs_fri),
+            'kit a meta', 1, 1, 'K-INCOMPLETO', script.fn_data_operativa(), script.fn_data_operativa() $$,
+  '%chk_fatture_righe_kit_coerente%',
   '16) riga di kit con metadati a meta'': respinta dal CHECK di coerenza');
 
 -- Kit completo: 3 componenti (2+6+9 = 17), due esposti e uno no. Ogni componente
@@ -333,9 +324,9 @@ SELECT is(
 -- Il CASE inline che questa funzione sostituisce aveva un ELSE che assorbiva
 -- qualunque valore ignoto in HALF_UP: un importo sbagliato che sembra giusto.
 -- ============================================================
-SELECT throws_ok(
+SELECT throws_like(
   $$ SELECT script.fn_arrotonda_importo(1.005, 2, 'PIPPO') $$,
-  NULL::text, NULL::text,
+  '%non riconosciuto%',
   '19) metodo di arrotondamento non riconosciuto: solleva invece di indovinare');
 
 SELECT * FROM finish();

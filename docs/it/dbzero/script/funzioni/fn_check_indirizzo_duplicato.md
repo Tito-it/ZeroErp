@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_check_indirizzo_duplicato(p_stradario_id integer, p_civico integer, p_estensione_civico character varying, p_palazzina character varying, p_scala character varying, p_piano character varying, p_interno character varying, p_stradario_generale_id integer, p_comune_id integer, p_codice_postale_id integer)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

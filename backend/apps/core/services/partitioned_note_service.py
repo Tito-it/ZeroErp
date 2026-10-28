@@ -137,10 +137,6 @@ _VINCOLI_PARTIZIONE: tuple[_VincoliPartizione, ...] = (
 #    client in `error.fields`. Le voci di coerenza e il tipo target restano a
 #    due — non hanno UN campo (presidio C2, brief-be-presidio-ui-action-e-canale-campi §3-ter).
 _CHECK_CONSTRAINTS: dict[str, tuple] = {
-    "chk_note_target_tipo": (
-        "E_NOTA_CHECK_VIOLATION",
-        "Tipo target nota non ammesso.",
-    ),
     "chk_note_anchor_tipo": (
         "E_NOTA_CHECK_VIOLATION",
         "anchor_tipo non ammesso (consentiti: DOCUMENTO, RIGA).",
@@ -163,9 +159,19 @@ _CHECK_CONSTRAINTS: dict[str, tuple] = {
     ),
 }
 
-# FK comuni: lo stile e la lingua. Le FK locali a ogni partizione si
-# derivano da `_VINCOLI_PARTIZIONE` (sotto).
+# FK comuni: il tipo target, lo stile e la lingua. Le FK locali a ogni
+# partizione si derivano da `_VINCOLI_PARTIZIONE` (sotto).
+# ⭐ Il tipo target e' dal 2026-10-25 una FK verso `config.tipi_entita` (prima
+#    il CHECK `chk_note_target_tipo`, lotto 3 di brief-db-grammatica-unica-
+#    documenti). Un codice senza partizione non ci arriva: lo rifiuta prima il
+#    routing (23514 senza nome di vincolo, `E_NOTA_VALIDATION`). La voce resta
+#    perche' il vincolo c'e' su ogni partizione, e una voce mancante e' un
+#    vincolo che parla col messaggio generico.
 _FK_CONSTRAINTS: dict[str, tuple] = {
+    "fk_vendite_note_target_tipo": (
+        "E_NOTA_FK",
+        "Tipo target nota non ammesso.",
+    ),
     "fk_vendite_note_id_stile": (
         "E_NOTA_FK",
         "Stile nota non valido.",
@@ -638,3 +644,18 @@ def _default_lingua_lookup(codice_iso: str) -> int | None:
         )
         row = cursor.fetchone()
     return int(row[0]) if row else None
+
+
+# Scopo: I `contatori` dei badge di un documento, nel payload del suo
+#        DETTAGLIO: oggi `{"note": <n>}`, il numero sul pulsante standard
+#        «Gestisci note» (FE `useContatoreNote`). UN posto per la forma: la
+#        chiave e' il contratto col frontend, e tutti i documenti con note
+#        partizionate la danno uguale (regola del 2, 2026-10-25).
+#        Dict e non scalare per reggere i prossimi contatori senza cambiare
+#        shape (api_fattura_dettaglio §`contatori`).
+# ⛔ Si chiama DOPO il cancello di testata: un documento fuori perimetro e'
+#    un 404, non un conteggio.
+def contatori_documento(repo: PartitionedNoteRepository, target_id: int) -> dict[str, int]:
+    return {
+        "note": PartitionedNoteService(repo=repo).count_per_target(target_id=target_id),
+    }

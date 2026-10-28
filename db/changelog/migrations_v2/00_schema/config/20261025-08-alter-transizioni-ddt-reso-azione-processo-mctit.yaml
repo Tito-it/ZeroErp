@@ -1,0 +1,78 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'AZIONE DI PROCESSO STA SULLA RIGA DEL PASSAGGIO (M-3)
+#   Brief: brief-modello-documento-vendita §4 (M-3, M-4 di Tid, 2026-10-24) e
+#   §7 (giro 5: bolla e reso, T-3 di Tid, 2026-10-25).
+#
+# ── LA REGOLA ───────────────────────────────────────────────────────
+#   Il permesso che un passaggio chiede si dichiara sulla sua riga della
+#   matrice: lo leggono il verbo (lo controlla), il backend (403 subito) e la
+#   capability (nasconde il bottone). Riga senza azione: basta il permesso sul
+#   documento, che controlla il backend. Una sola azione per documento, sui
+#   passaggi pesanti (M-4): emissione e annullo dell'emesso.
+#
+# ── LA COLONNA ──────────────────────────────────────────────────────
+#   azione_processo_codename, FK verso config.azioni_processo.permission_codename
+#   (la chiave stabile del catalogo, linee-guida-sql §6b: il CSV la nomina per
+#   codice, non per id). NULL = nessuna azione. I valori stanno nei CSV delle due
+#   matrici (80_data, mirror 20260709-10 e 20260713-41), non qui (§11.2).
+#
+# ── PERCHE' SOLO DUE MATRICI ────────────────────────────────────────
+#   Il modello si porta un documento per giro (M-1). Le altre matrici prendono
+#   la colonna nel giro del loro documento.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261025-08-alter-transizioni-ddt-reso-azione-processo-mctit.yaml
+
+  - changeSet:
+      id: 20261025-08-alter-transizioni-ddt-reso-azione-processo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Colonna azione_processo_codename (FK a config.azioni_processo.permission_codename,
+        NULL = nessuna azione) su config.transizioni_stati_ddt e config.transizioni_stati_reso:
+        l'azione di processo che il passaggio chiede (M-3). Brief: brief-modello-documento-vendita
+        §7.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists: { schemaName: config, tableName: transizioni_stati_ddt }
+            - tableExists: { schemaName: config, tableName: transizioni_stati_reso }
+            - tableExists: { schemaName: config, tableName: azioni_processo }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.transizioni_stati_ddt
+                  ADD COLUMN azione_processo_codename varchar(100),
+                  ADD CONSTRAINT fk_transizioni_stati_ddt_azioni_processo
+                      FOREIGN KEY (azione_processo_codename)
+                      REFERENCES config.azioni_processo (permission_codename);
+
+              ALTER TABLE config.transizioni_stati_reso
+                  ADD COLUMN azione_processo_codename varchar(100),
+                  ADD CONSTRAINT fk_transizioni_stati_reso_azioni_processo
+                      FOREIGN KEY (azione_processo_codename)
+                      REFERENCES config.azioni_processo (permission_codename);
+
+              COMMENT ON COLUMN config.transizioni_stati_ddt.azione_processo_codename IS
+                  'L''azione di processo che questo passaggio chiede (config.azioni_processo.permission_codename); NULL = basta il permesso sul documento, che controlla il backend. La leggono il verbo (script.fn_guard_passaggio, E_PERMESSO_NEGATO), il backend (403 prima della transazione) e la capability (il bottone si nasconde a chi non ha l''azione), tutti da script.fn_doc_passaggio. Una sola azione per documento, sui passaggi pesanti: emissione e annullo dell''emesso (M-4). Il valore sta nel CSV della matrice. Brief: brief-modello-documento-vendita (M-3, Tid 2026-10-24).';
+              COMMENT ON COLUMN config.transizioni_stati_reso.azione_processo_codename IS
+                  'L''azione di processo che questo passaggio chiede (config.azioni_processo.permission_codename); NULL = basta il permesso sul documento, che controlla il backend. La leggono il verbo (script.fn_guard_passaggio, E_PERMESSO_NEGATO), il backend (403 prima della transazione) e la capability (il bottone si nasconde a chi non ha l''azione), tutti da script.fn_doc_passaggio. Una sola azione per documento, sui passaggi pesanti: conferma e annullo del confermato (M-4). Il valore sta nel CSV della matrice. Brief: brief-modello-documento-vendita (M-3, Tid 2026-10-24).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.transizioni_stati_ddt  DROP COLUMN IF EXISTS azione_processo_codename;
+              ALTER TABLE config.transizioni_stati_reso DROP COLUMN IF EXISTS azione_processo_codename;

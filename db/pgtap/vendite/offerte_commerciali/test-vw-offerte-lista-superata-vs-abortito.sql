@@ -29,6 +29,11 @@
 --         B) rev.1 EMESSA + INSERT rev.2 (il trigger porta rev.1 a SUPERATA)
 --            -> rev.1 is_superata=T / is_abortito=F; rev.2 attiva.
 --
+-- rev 2026-10-26 (brief-modello-documento-vendita §13, giro 9): lo stato
+--   dell'offerta dal verbo — A si annulla con vendite.fn_annulla_offerta, rev.1
+--   di B si emette con dbops.fn_pgtap_porta_a_stato, invece degli UPDATE di
+--   stato che la porta ora rifiuta.
+--
 -- Indice test (1..11):
 --   1)  Struttura catalogo: config.stati_doc_offerte espone is_superato
 --   2)  Catalogo: is_superato=true sul SOLO stato SUPERATA
@@ -215,10 +220,11 @@ WITH ins AS (
     RETURNING id)
 SELECT id FROM ins;
 
-UPDATE vendite.offerte_commerciali
-   SET stato_doc_offerta_id = (SELECT stato_annullata_id FROM tmp_osa_ctx),
-       data_annullamento    = now()
- WHERE id = (SELECT id FROM tmp_osa_a);
+-- rev 2026-10-26 (giro 9): l'annullo dal verbo, con la motivazione; nessun
+--   legame da confermare (NULL: revisione unica). La data_annullamento che
+--   l'UPDATE scriveva a mano non e' oggetto del test.
+SELECT vendite.fn_annulla_offerta(a.id, 'pgTAP: offerta annullata', NULL)
+  FROM tmp_osa_a a;
 
 -- ============================================================
 -- Fixture B) rev.1 EMESSA + rev.2: il trigger z90 porta rev.1 a SUPERATA.
@@ -236,9 +242,9 @@ WITH ins AS (
     RETURNING id)
 SELECT id FROM ins;
 
-UPDATE vendite.offerte_commerciali
-   SET stato_doc_offerta_id = (SELECT stato_emessa_id FROM tmp_osa_ctx)
- WHERE id = (SELECT id FROM tmp_osa_b1);
+-- rev 2026-10-26 (giro 9): l'emissione dal verbo, non con un UPDATE di stato.
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', b1.id, 'EMESSA')
+  FROM tmp_osa_b1 b1;
 
 CREATE TEMP TABLE tmp_osa_b2 AS
 WITH ins AS (

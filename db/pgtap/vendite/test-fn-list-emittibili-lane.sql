@@ -4,13 +4,14 @@
 -- Test: vendite.fn_list_emittibili_lane (changeset 20260619-01, 20260619-11)
 --   Discovery corsie (emittente, tipo_doc_fiscale, utility, competenza_mese) per il driver batch.
 --
--- NB: l'emittente di test deriva da un billing_account ESISTENTE, che puo' avere gia'
+-- NB: l'emittente di test e' quello di chi agisce, che puo' avere gia'
 -- commesse/attivita' candidate. Quindi i conteggi sono verificati per DELTA (baseline
 -- pre-fixture vs dopo), non in assoluto. competenza_mese e l'esclusione NULL sono invece
 -- robusti per costruzione (il filtro <= cappa al mese richiesto).
 --
--- Prerequisiti ambiente: un billing_account con emittente fiscale, un articolo e una UoM
--- attivi, e >= 2 tipi_doc_fiscale attivi (X, Y distinti).
+-- rev 2026-10-27 (lotto 4 di D7): billing account, secondo billing account,
+-- articolo e lotto dei test 14-15 si COSTRUISCONO. Prerequisiti dal solo seed:
+-- una UoM attiva, >= 2 tipi_doc_fiscale attivi (X, Y distinti), >= 2 utilities.
 --
 -- NB grana per-utility (changeset 20260619-11): la fn raggruppa anche per c.utility_id.
 -- Le commesse A/B condividono lo stesso billing_account -> stessa utility U1, quindi i
@@ -54,41 +55,40 @@ SELECT plan(15);
 -- ============================================================
 -- SETUP: riferimenti minimi + due tipi_doc distinti (X, Y)
 -- ============================================================
+-- rev 2026-10-27 (lotto 4 di D7): il cliente e l'articolo si COSTRUISCONO
+--   (dbops.fn_pgtap_crea_cliente_ba, dbops.fn_pgtap_crea_articolo); UoM e
+--   tipi documento restano letti dal catalogo di seed. Prima BA e articolo si
+--   pescavano («il primo BA con un emittente», «l'ultimo articolo inserito»):
+--   da zero non c'erano, e la prima commessa moriva su un BA NULL.
+CREATE TEMP TABLE tmp_cli_lane AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('emittibili lane');
+
 CREATE TEMP TABLE tmp_refs AS
 SELECT
-  ba.id                          AS billing_account_id,
-  ba.utility_id                  AS utility_id,
-  ba.istanza_utility_id          AS istanza_utility_id,
-  (SELECT a.id FROM catalogo.articoli a WHERE a.attivo IS TRUE
-     ORDER BY a.data_insert DESC NULLS LAST LIMIT 1)            AS articolo_id,
+  c.billing_account_id           AS billing_account_id,
+  c.utility_id                   AS utility_id,
+  c.istanza_utility_id           AS istanza_utility_id,
+  dbops.fn_pgtap_crea_articolo('PGT-LANE')                      AS articolo_id,
   (SELECT u.id FROM catalogo.unita_misura u WHERE u.attivo IS TRUE
      ORDER BY u.id LIMIT 1)                                     AS uom_id,
   (SELECT t.id FROM config.tipi_doc_fiscale t WHERE t.attivo IS TRUE
      ORDER BY t.id LIMIT 1)                                     AS doc_x,
   (SELECT t.id FROM config.tipi_doc_fiscale t WHERE t.attivo IS TRUE
      ORDER BY t.id OFFSET 1 LIMIT 1)                            AS doc_y
-FROM anagrafiche.billing_account ba
-WHERE ba.utility_id IS NOT NULL
-  AND ba.istanza_utility_id IS NOT NULL
-  AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-ORDER BY ba.id
-LIMIT 1;
+FROM tmp_cli_lane c;
 
 -- Secondo BA con LO STESSO emittente fiscale ma utility DIVERSA (per il test multi-utility).
--- Puo' non esistere: in quel caso il test 8 viene skippato (skip condizionale).
+-- rev 2026-10-27 (lotto 4 di D7): si COSTRUISCE sull'azienda di chi agisce (stesso
+--   emittente del primo) con un'altra utility del seed. Prima si pescava «un BA
+--   fratello» e, se mancava, il test 8 veniva skippato: da zero saltava sempre.
+--   Lo skip resta come rete, ma non scatta piu'.
 CREATE TEMP TABLE tmp_refs2 AS
-SELECT
-  ba.id                  AS billing_account_id,
-  ba.utility_id          AS utility_id,
-  ba.istanza_utility_id  AS istanza_utility_id
-FROM anagrafiche.billing_account ba
-WHERE ba.utility_id IS NOT NULL
-  AND ba.istanza_utility_id IS NOT NULL
-  AND ba.utility_id <> (SELECT utility_id FROM tmp_refs)
-  AND anagrafiche.fn_get_emittente_fiscale_id(ba.id)
-      = (SELECT anagrafiche.fn_get_emittente_fiscale_id(billing_account_id) FROM tmp_refs)
-ORDER BY ba.id
-LIMIT 1;
+SELECT c.billing_account_id, c.utility_id, c.istanza_utility_id
+  FROM dbops.fn_pgtap_crea_cliente_ba(
+         'emittibili lane U2',
+         (SELECT u.id FROM config.utilities u
+           WHERE u.id <> (SELECT utility_id FROM tmp_refs)
+           ORDER BY u.id LIMIT 1)) c;
 
 -- Helper: crea una riga commesse_attivita variando commessa/tipo_doc/competenza/stato.
 CREATE FUNCTION pg_temp.mk_att(
@@ -259,6 +259,10 @@ SELECT pg_temp.mk_att2(c.commessa_id, (SELECT doc_x FROM tmp_refs), DATE '2026-0
 FROM tmp_c c;
 
 -- Porta in stato emittibile A, B e (se esiste) C
+-- rev 2026-10-27: il verbo della commessa chiede cambia_stato_commessa
+-- all'operatore del test (giro 10); senza, su un db dove l'operatore non ce l'ha,
+-- si ferma qui con E_PERMESSO_NEGATO.
+SELECT dbops.fn_pgtap_concedi_azione(current_setting('app.current_user_id')::integer, 'cambia_stato_commessa');
 SELECT * FROM vendite.fn_cambia_stato_commessa((SELECT commessa_id FROM tmp_a), 'PRONTA_FATTURAZIONE');
 SELECT * FROM vendite.fn_cambia_stato_commessa((SELECT commessa_id FROM tmp_b), 'PRONTA_FATTURAZIONE');
 SELECT vendite.fn_cambia_stato_commessa(c.commessa_id, 'PRONTA_FATTURAZIONE') FROM tmp_c c;
@@ -498,21 +502,16 @@ END;
 CREATE TEMP TABLE tmp_trat_g AS
 SELECT k FROM tmp_gruppi ORDER BY k LIMIT 1;
 
+-- rev 2026-10-27 (lotto 4 di D7): il lotto vivo si COSTRUISCE
+--   (dbops.fn_pgtap_crea_lotto, DRAFT, luglio, azienda di chi agisce: lo
+--   stesso emittente E delle commesse). Prima si scriveva a mano col tipo
+--   documento pescato dall'ultimo lotto del DB: da zero non c'era.
 CREATE TEMP TABLE tmp_trat_lotto AS
-WITH ins AS (
-  INSERT INTO vendite.fatturazione_lotti (
-    codice, competenza_mese, tipo_doc_fiscale_id, emittente_soggetto_ruolo_id,
-    stato_doc_fiscale_id)
-  SELECT 'PGTAP-LANE-TRAT-' || substr(md5(clock_timestamp()::text), 1, 8),
-         DATE '2026-07-01',
-         (SELECT l.tipo_doc_fiscale_id FROM vendite.fatturazione_lotti l
-           ORDER BY l.id DESC LIMIT 1),
-         (SELECT e FROM tmp_e),
-         -- ⛔ `codice_interno`, mai un id.
-         (SELECT sdf.id FROM config.stati_doc_fiscale sdf
-           WHERE sdf.codice_interno = 'DRAFT')
-  RETURNING id)
-SELECT id FROM ins;
+SELECT l.lotto_id AS id
+  FROM dbops.fn_pgtap_crea_lotto(
+         'lane trattenuto', 'DRAFT',
+         (SELECT billing_account_id FROM tmp_refs),
+         p_competenza_mese => DATE '2026-07-01') l;
 
 INSERT INTO vendite.fatturazione_lotti_gruppi (lotto_id, gruppo_key)
 SELECT (SELECT id FROM tmp_trat_lotto), (SELECT k FROM tmp_trat_g);
@@ -533,10 +532,9 @@ SELECT ok(
 
 -- ⭐ IL VERSO OPPOSTO: annullato il lotto, il documento torna disponibile — e
 --   l'esito e' rimasto COMPLETED, cioe' non e' lui a decidere.
-UPDATE vendite.fatturazione_lotti
-   SET stato_doc_fiscale_id = (SELECT sdf.id FROM config.stati_doc_fiscale sdf
-                                WHERE sdf.codice_interno = 'ANNULLATA')
- WHERE id = (SELECT id FROM tmp_trat_lotto);
+-- rev 2026-10-27 (brief-modello-documento-vendita §15): con la porta sul lotto
+-- lo stato si scrive dal verbo del lotto (l'annullo della bozza, nessuna azione).
+SELECT * FROM vendite.fn_cambia_stato_lotto((SELECT id FROM tmp_trat_lotto), 'ANNULLATA');
 
 SELECT ok(
   EXISTS (

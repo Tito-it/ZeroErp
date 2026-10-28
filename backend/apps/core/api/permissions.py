@@ -7,20 +7,24 @@
 # ZeroERPPermission: risoluzione completa area funzionale + livello accesso.
 # valuta_accesso_endpoint: la stessa decisione, chiesta per una view e un
 # metodo senza una richiesta HTTP (la usano i tool dell'assistente AI).
+# PassaggioDocumento: l'azione di un cambio di stato, letta dalla riga della
+# matrice invece che dichiarata a mano (`<metodo>_passaggio`).
 # ------------------------------------------------------------
 
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
 from rest_framework.permissions import BasePermission
 from rest_framework.request import Request
 
+from apps.core.api.payload_validators import corpo_oggetto
+from apps.core.db.documento_modello_repository import DocumentoModelloRepository
 from apps.core.services.auth_constants import (
     RUOLI_PORTALE,
     RUOLI_SHOP,
@@ -52,6 +56,7 @@ class MotivoDiniego(StrEnum):
     AREA_NON_DEFINITA = "area_non_definita"
     LIVELLO_INSUFFICIENTE = "livello_insufficiente"
     OGGETTO_SENZA_RICHIESTA = "oggetto_senza_richiesta"
+    PASSAGGIO_SENZA_RICHIESTA = "passaggio_senza_richiesta"
 
 
 # Scopo: L'esito di una decisione di permesso, con cio' che serve a chi la
@@ -71,6 +76,84 @@ class EsitoPermesso:
 
 
 _CONSENTITO = EsitoPermesso(consentito=True)
+
+
+# Scopo: BB — il permesso di un CAMBIO DI STATO di un documento portato al
+#        modello (guida `modello-documento-di-vendita.md` §6, M-3): l'azione
+#        di processo non si dichiara sulla view, si legge dalla riga del
+#        passaggio (stato corrente -> stato chiesto), la stessa che leggono il
+#        verbo e le capability. La view dichiara `<metodo>_passaggio =
+#        PassaggioDocumento(...)` al posto di `<metodo>_permission`.
+# ⭐ Il backend CHIEDE, non decide una seconda volta (guida dei permessi §7.4):
+#    il 403 arriva prima della transazione, il verbo controlla di nuovo.
+# Campi: testata — la testata nella mappa del modello (`vendite.ddt`);
+#        documento_kwarg — il parametro di percorso con l'id del documento;
+#        stato_chiesto — il codice dello stato di arrivo, fisso per le rotte
+#        di un verbo (la `CONFERMATO` del reso); None = dal corpo, campo
+#        `campo_stato` (il cambio stato generico), o dal modello;
+#        stato_del_modello — lo stato di arrivo e' uno stato che il modello
+#        dice, letto dal vocabolario A OGNI RICHIESTA: "emissione" («Emetti»,
+#        B-2 di brief-modello-documento-vendita §8.11) o "annullo" (la rotta
+#        di un verbo d'annullo, §9.8) o "iniziale" (lo stato in cui il
+#        documento nasce: «riporta in bozza» del lotto, §15.13). Un codice
+#        fissato alla definizione della view sarebbe un letterale spostato. ⛔ Esclusivo con
+#        `stato_chiesto`; un vocabolario che non lo dichiara -> None;
+#        campo_stato — il campo del corpo con lo stato chiesto (`stato_codice`;
+#        il preventivo usa `nuovo_stato`);
+#        risolvi_documento — per una rotta il cui parametro non e' l'id del
+#        documento (il preventivo ROOT di una pratica, dal `pratica_id`): la
+#        funzione che lo ricava, None = documento che non c'e' (decide il
+#        livello, e il 404 lo da' il service).
+@dataclass(frozen=True)
+class PassaggioDocumento:
+    testata: str
+    documento_kwarg: str
+    stato_chiesto: str | None = None
+    campo_stato: str = "stato_codice"
+    risolvi_documento: Callable[[int], int | None] | None = None
+    stato_del_modello: Literal["emissione", "annullo", "iniziale"] | None = None
+
+    # Errore di cablaggio, quindi alla definizione della view e non a una
+    # richiesta: due fonti dello stato chiesto non si sa quale valga.
+    def __post_init__(self) -> None:
+        if self.stato_del_modello is not None and self.stato_chiesto is not None:
+            raise ValueError(
+                "PassaggioDocumento: `stato_del_modello` e `stato_chiesto` sono esclusivi"
+            )
+
+    # Scopo: L'azione che il passaggio chiede in questa richiesta, o None (riga
+    #        senza azione, o nessuna riga: decide il livello sul documento, e il
+    #        resto lo rifiuta il service o il verbo col suo codice).
+    # ⚠️ Un corpo illeggibile e' il 400 di sempre (`corpo_oggetto`), sollevato
+    #    qui invece che nell'handler: lo stesso codice, un passo prima.
+    def azione(self, view: Any) -> str | None:
+        parametro = view.kwargs.get(self.documento_kwarg)
+        stato = self.stato_chiesto
+        if stato is None and self.stato_del_modello is None:
+            valore = corpo_oggetto(view.request).get(self.campo_stato)
+            stato = valore.strip() if isinstance(valore, str) else None
+            if not stato:
+                return None
+        if parametro is None:
+            return None
+        documento_id: int | None = int(parametro)
+        if self.risolvi_documento is not None:
+            documento_id = self.risolvi_documento(int(parametro))
+        if documento_id is None:
+            return None
+        repo = DocumentoModelloRepository()
+        if self.stato_del_modello is not None:
+            lettori = {
+                "emissione": repo.stato_di_emissione,
+                "annullo": repo.stato_di_annullo,
+                "iniziale": repo.stato_iniziale,
+            }
+            letto = lettori[self.stato_del_modello](self.testata)
+            if letto is None:
+                return None
+            stato = letto.codice
+        assert stato is not None
+        return repo.azione_del_passaggio(self.testata, documento_id, stato)
 
 # I tipi di accesso CRUD che la catena conosce: quelli che il livello piu'
 # alto concede. Un `<chiave>_accesso` o un `accesso` fuori da qui si nega.
@@ -253,6 +336,8 @@ class ZeroERPPermission(BasePermission):
     - ``area_funzionale = "vendite"`` per indicare l'area quando non c'e' queryset
     - ``<action>_permission = "codename"`` per azioni di processo custom
       (es. ``post_permission = "genera_fatture_lotti"``)
+    - ``<action>_passaggio = PassaggioDocumento(...)`` per un cambio di stato
+      di un documento sul modello: l'azione la dice la riga del passaggio
     - ``<action>_accesso = "view"`` per il tipo di accesso che il metodo chiede,
       quando non e' quello del suo verbo HTTP (es. ``post_accesso = "view"``
       per una lettura che viaggia in una POST)
@@ -372,6 +457,26 @@ class ZeroERPPermission(BasePermission):
                 return EsitoPermesso(
                     consentito=False, motivo=MotivoDiniego.AZIONE_NEGATA, azione=azione,
                 )
+            # Il cambio di stato di un documento sul modello: l'azione dalla
+            # riga del passaggio. Con l'azione decide lei (come sopra); senza,
+            # si ricade sul livello sul documento qui sotto.
+            # ⛔ Sulla sola classe (i tool dell'assistente) stato corrente e
+            #    stato chiesto non ci sono: si nega.
+            # La dichiarazione si riconosce dal TIPO: un attributo qualunque con
+            # quel nome (una view finta, un refuso) non apre il ramo.
+            passaggio = getattr(view, f"{chiave}_passaggio", None)
+            if isinstance(passaggio, PassaggioDocumento):
+                if isinstance(view, type):
+                    return EsitoPermesso(
+                        consentito=False, motivo=MotivoDiniego.PASSAGGIO_SENZA_RICHIESTA,
+                    )
+                azione = passaggio.azione(view)
+                if azione:
+                    if PermissionResolver.check_azione(user, azione, cache=cache):
+                        return _CONSENTITO
+                    return EsitoPermesso(
+                        consentito=False, motivo=MotivoDiniego.AZIONE_NEGATA, azione=azione,
+                    )
 
         # CRUD standard: determina il tipo di accesso richiesto
         if accesso is not None:

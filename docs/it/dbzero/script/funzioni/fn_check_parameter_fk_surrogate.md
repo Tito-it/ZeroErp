@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_check_parameter_fk_surrogate(p_code text, p_value text)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

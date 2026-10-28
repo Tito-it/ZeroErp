@@ -9,6 +9,10 @@
 --       (vendite.fn_annulla_commessa_attivita).
 -- Brief: brief-annullamento-righe-manuali-commessa §4e (garanzie A1-A9),
 --        changeset D4 del §9.
+-- rev 2026-10-26 (brief-modello-documento-vendita §14, giro 10): prima di
+--   «rendi pronta» (test 19) si concede all'operatore l'azione
+--   cambia_stato_commessa, che il verbo di stato ora chiede; il file prova
+--   l'annullo della riga, non il permesso;
 --
 -- COSA DIMOSTRA. Non che una colonna sia cambiata — quello e' il minimo — ma
 -- l'EFFETTO VOLUTO: la riga annullata esce dalla catena di fatturazione (non
@@ -352,6 +356,9 @@ SELECT throws_like(
 -- ============================================================
 -- Sulla commessa restano: A (annullata), B (viva), C (viva ma con sorgente).
 -- L'emissione deve raccogliere B e C e IGNORARE A.
+-- Giro 10: «rendi pronta» chiede l'azione cambia_stato_commessa; il file
+--   prova l'annullo della riga, non il permesso: la si concede all'operatore.
+SELECT dbops.fn_pgtap_concedi_azione(current_setting('app.current_user_id')::integer, 'cambia_stato_commessa');
 SELECT vendite.fn_cambia_stato_commessa((SELECT commessa_id FROM tmp_com1), 'PRONTA_FATTURAZIONE');
 
 CREATE TEMP TABLE tmp_emit AS

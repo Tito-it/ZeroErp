@@ -6,8 +6,8 @@
 #        cambio stato data-driven, push singolo a commessa). Clone
 #        strutturale di views_ordini: la transizione di stato e' enforced dal
 #        trigger DB trgfn_ddt_guard_transizione; il service traduce gli errori
-#        P0001 in ServiceError -> envelope uniforme. Nessun post_permission
-#        (solo area_funzionale, come ordini). Numero assegnato a EMESSO dal
+#        P0001 in ServiceError -> envelope uniforme. Il permesso del cambio
+#        stato dalla riga del passaggio (`post_passaggio`, M-3). Numero assegnato a EMESSO dal
 #        trigger DB (non passato dal client). L'EMISSIONE (DRAFT->EMESSO +
 #        genera PDF, multipart) vive in `ddt_documenti_views.ApiDdtEmetti`
 #        (mirror ordini).
@@ -24,6 +24,7 @@ from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import get_actor_user_id, get_scope_user_id, handle_post_json
+from apps.core.api.permissions import PassaggioDocumento
 from apps.core.api.payload_validators import (
     corpo_oggetto,
     paginated_envelope,
@@ -40,7 +41,7 @@ from apps.vendite.api.indirizzi_documento_views import (
 from apps.vendite.api.riepilogo_iva_views import build_riepilogo_iva_view
 from apps.vendite.services import ddt_service
 from apps.ui.api.lista_figlia_views import EMITTENTE_DOCUMENTO_PARAM, build_lista_figlia_views
-from apps.vendite.db.ddt_repository import DdtRepository
+from apps.vendite.db.ddt_repository import TESTATA_DDT, DdtRepository
 from apps.core.api.openapi_params import param_ricerca_full
 from apps.vendite.api._componenti_schema import (
     COMPONENTE_PATCH_REQUEST,
@@ -236,11 +237,10 @@ class ApiDdtDetail(DomainAPIView):
     )
     # Scopo: Aggiorna testata DDT. Quali campi si cambiano in quale stato lo
     #        decide il lock di testata del DB (`trg_ddt_a05_lock_fuori_bozza_upd`).
-    #        PATCH usa request.data (DRF ha gia' parsato il body;
-    #        handle_post_json rileggerebbe il raw consumato).
+    #        Corpo da `corpo_oggetto` (api.md §«Quando usare handle_post_json»).
     def patch(self, request: Request, ddt_id: int) -> JsonResponse:
         return success_response(
-            ddt_service.aggiorna_ddt(int(ddt_id), dict(corpo_oggetto(request))),
+            ddt_service.aggiorna_ddt(int(ddt_id), corpo_oggetto(request)),
         )
 
     @extend_schema(
@@ -253,14 +253,18 @@ class ApiDdtDetail(DomainAPIView):
 
 class ApiDdtCambiaStato(DomainAPIView):
     """POST /api/v1/vendite/ddt/<ddt_id>/cambia-stato/ — transizione di stato
-    data-driven (SPEDITO / CONSEGNATO / RESO / ANNULLATO). Body: `stato_codice`
-    (= `target_state` dell'azione). L'ammissibilita' e' validata dal trigger
+    data-driven (SPEDITO / CONSEGNATO / ANNULLATO; EMESSO solo da `emetti/`).
+    Body: `stato_codice` (= `target_state` dell'azione). L'ammissibilita' e' validata dal trigger
     guard DB. Verso ANNULLATO, una bolla con legami risponde
     E_DOC_ANNULLO_CON_LEGAMI (`confirm_and_retry`) finche' il corpo non
     dichiara `legami_confermati` (letto da `…/legami/`)."""
 
     area_funzionale = "vendite"
     model_permission = ("vendite", "ddt")
+    # L'azione del passaggio (stato corrente -> `stato_codice`) dalla riga della
+    # matrice: l'annullo di una bolla emessa chiede `emetti_ddt`, gli altri il
+    # solo livello sul documento (M-3, M-4).
+    post_passaggio = PassaggioDocumento(testata=TESTATA_DDT, documento_kwarg="ddt_id")
 
     @extend_schema(
         request=CAMBIA_STATO_CON_CONFERMA_REQUEST,
@@ -398,7 +402,7 @@ class ApiDdtRigaDetail(DomainAPIView):
     def patch(self, request: Request, ddt_id: int, riga_id: int) -> JsonResponse:
         return success_response(
             ddt_service.aggiorna_riga(
-                int(ddt_id), int(riga_id), dict(corpo_oggetto(request)),
+                int(ddt_id), int(riga_id), corpo_oggetto(request),
                 auth_user_id=get_actor_user_id(request),
             ),
         )
@@ -484,7 +488,7 @@ class ApiDdtRigaPrelievoDetail(DomainAPIView):
     ) -> JsonResponse:
         return success_response(
             ddt_service.aggiorna_prelievo(
-                int(ddt_id), int(riga_id), int(prelievo_id), dict(corpo_oggetto(request)),
+                int(ddt_id), int(riga_id), int(prelievo_id), corpo_oggetto(request),
             ),
         )
 
@@ -565,7 +569,7 @@ class ApiDdtRigaComponenteDetail(DomainAPIView):
     ) -> JsonResponse:
         return success_response(
             ddt_service.update_componente(
-                int(ddt_id), int(riga_id), int(componente_id), dict(corpo_oggetto(request)),
+                int(ddt_id), int(riga_id), int(componente_id), corpo_oggetto(request),
                 auth_user_id=get_actor_user_id(request),
             ),
         )

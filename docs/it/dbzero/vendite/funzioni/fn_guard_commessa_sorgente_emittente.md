@@ -4,6 +4,8 @@
 CREATE FUNCTION fn_guard_commessa_sorgente_emittente(p_commessa_id bigint, p_sorgente_tipo_id bigint, p_sorgente_uid text)
 ```
 
+> 🔐 **Sicurezza**: `SECURITY DEFINER` — gira con i privilegi dell'owner `zeroerp_owner`: GRANT e RLS sono i suoi, non quelli di chi la chiama.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

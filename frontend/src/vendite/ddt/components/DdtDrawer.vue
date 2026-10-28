@@ -13,6 +13,7 @@ import { ref, watch, computed, nextTick, provide } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useDdtStore } from '../stores/ddt'
 import { useApiHandler } from '../../../core/composables/useApiHandler'
+import { useContatoreNote } from '../../../core/composables/useContatoreNote'
 import { useNotify } from '../../../core/composables/useNotify'
 import { useInjectReadonly, READONLY_KEY } from '../../../core/composables/useReadonlyMode'
 import { useConfirmAction } from '../../../core/composables/useConfirmAction'
@@ -40,7 +41,7 @@ import { useRigheDocumento } from '../../../core/composables/useRigheDocumento'
 import { ripristinaBillingAccount } from '../../../core/utils/ripristinaLookup'
 import { CLIENTE_BA } from '../../_shared/cliente/clienteCambiato'
 import { useCambioClienteDocumento } from '../../_shared/cliente/useCambioClienteDocumento'
-import { DRAWER_WIDTH, MANAGE_ICONS, TAB_ENTITIES } from '../../../core/constants'
+import { DRAWER_WIDTH, TAB_ENTITIES } from '../../../core/constants'
 import { NAV_ICONS } from '../../../core/navigation'
 import AppDrawer from '../../../core/components/AppDrawer.vue'
 import DrawerEntityHeader from '../../../core/components/DrawerEntityHeader.vue'
@@ -117,6 +118,9 @@ const showRiepilogoIva = computed(
   () => Array.isArray(riepilogoIva.value) && riepilogoIva.value.length > 0,
 )
 const noteDrawerVisible = ref(false)
+// Il pulsante «Gestisci note» standard, col numero delle note del documento
+// (BB `useContatoreNote`: dal dettaglio, poi dal sotto-drawer dopo un salvataggio).
+const contatoreNote = useContatoreNote(() => detail.value)
 const resoDialogVisible = ref(false)
 // Scopo: si e' chiuso un documento aperto dalla barra collegamenti (passaggi
 //        lineage): li' l'operatore puo' aver agito — annullare il DDT di un
@@ -719,13 +723,10 @@ const drawerActions = computed(() => {
           command: () => { resoDialogVisible.value = true },
         }]
       : []),
-    {
-      key: 'manage-note',
-      kind: 'manage',
+    contatoreNote.azione({
       label: t('vendite.ddt.gestisci_note'),
-      icon: MANAGE_ICONS.NOTE,
       command: () => { noteDrawerVisible.value = true },
-    },
+    }),
   ]
 })
 
@@ -881,6 +882,7 @@ const drawerActions = computed(() => {
   <DdtNoteDrawer
     v-if="effectiveDdtId"
     v-model:visible="noteDrawerVisible"
+    @saved="contatoreNote.aggiorna"
     :ddt-id="effectiveDdtId"
   />
 

@@ -4,7 +4,7 @@
 // Copyright (C) 2026 Tid (Michele Carlo Titini)
 // Doc: JavaScript
 // Scopo: Presidio del numero sulle azioni (`ActionBadge` + `haBadge` /
-//        `etichettaConBadge` di useActionBar): lo zero si dice, il vuoto no;
+//        `etichettaConBadge` di useActionBar): lo zero e il vuoto non si dicono;
 //        e la barra delle liste lo MOSTRA — il caso che l'ha fatto nascere:
 //        «Personalizza colonne» con le colonne nuove, il cui numero stava
 //        nell'etichetta di un pulsante a sola icona e non si vedeva.
@@ -16,8 +16,9 @@ import { etichettaConBadge, haBadge } from '../composables/useActionBar'
 import { monta } from '../../../test/montaggio'
 
 describe('ActionBadge', () => {
-  it('haBadge: lo zero e\' un numero, null/undefined/vuoto no', () => {
-    expect(haBadge({ badge: 0 })).toBe(true)
+  it('haBadge: lo zero non si mostra, come null/undefined/vuoto', () => {
+    expect(haBadge({ badge: 0 })).toBe(false)
+    expect(haBadge({ badge: '0' })).toBe(false)
     expect(haBadge({ badge: 8 })).toBe(true)
     expect(haBadge({ badge: null })).toBe(false)
     expect(haBadge({ badge: '' })).toBe(false)
@@ -27,6 +28,7 @@ describe('ActionBadge', () => {
   it('etichettaConBadge: il numero nella voce di menu', () => {
     expect(etichettaConBadge({ label: 'Personalizza colonne', badge: 8 })).toBe('Personalizza colonne (8)')
     expect(etichettaConBadge({ label: 'Ricarica' })).toBe('Ricarica')
+    expect(etichettaConBadge({ label: 'Gestisci righe', badge: 0 })).toBe('Gestisci righe')
   })
 
   it('il pallino porta il numero; il punto no; vuoto non c\'e\'', () => {
@@ -35,6 +37,7 @@ describe('ActionBadge', () => {
     expect(punto.exists()).toBe(true)
     expect(punto.text()).toBe('')
     expect(monta(ActionBadge, { valore: null }).find('.app-action-badge').exists()).toBe(false)
+    expect(monta(ActionBadge, { valore: 0 }).find('.app-action-badge').exists()).toBe(false)
   })
 
   it('la barra delle liste mostra il numero sull\'icona dell\'azione', () => {

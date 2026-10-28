@@ -5,6 +5,8 @@
 CREATE FUNCTION trgfn_tipi_ruoli_guard_entita_ref()
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

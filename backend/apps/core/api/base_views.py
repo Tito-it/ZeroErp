@@ -15,6 +15,7 @@ from rest_framework.views import APIView
 from apps.core.api.jwt_audit_authentication import JwtAuditAuthentication
 from apps.core.api.permissions import (
     IsAdminZeroERP,
+    PassaggioDocumento,
     PortaleBasePermission,
     ShopBasePermission,
     ZeroERPPermission,
@@ -98,6 +99,7 @@ class DomainAPIView(_ApiViewBase):
     model_permission: tuple[str, str] | None
     get_permission: str
     post_permission: str
+    post_passaggio: PassaggioDocumento
     put_permission: str
     patch_permission: str
     delete_permission: str

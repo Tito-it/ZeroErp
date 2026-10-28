@@ -4,6 +4,8 @@
 CREATE FUNCTION fn_scope_email_ambito(p_auth_user_id integer, p_ambito character varying, p_emittente_fiscale_id bigint, p_unita_organizzativa_id integer, p_creato_da_user_id integer, p_processo_codice text)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

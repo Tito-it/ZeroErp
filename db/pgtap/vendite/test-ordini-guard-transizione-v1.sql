@@ -1,5 +1,21 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-26 (brief-modello-documento-vendita §14, giro 10):
+--   la commessa del caso 7 nasce APERTA con l'attivita' del builder (p_con_attivita
+--   => true, prima false): BOZZA -> APERTA e' spenta, APERTA si raggiunge solo da
+--   PRONTA_FATTURAZIONE («riapri»), e PRONTA_FATTURAZIONE vuole una riga APPROVATA
+--   e non emessa. La riga del builder ha la sua sorgente, non l'ordine: il guard
+--   del caso 7 lo ferma ancora e solo la riga EMESSA scritta sotto. Attese invariate.
+-- rev 2026-10-25 (brief-modello-documento-vendita §9): l'ordine ha la porta sulla colonna di
+--   stato. Le transizioni provate passano dal verbo vendite.fn_cambia_stato_ordine (con
+--   emetti_ordine concessa all'operatore costruito), che arriva al guard di transizione:
+--   prima erano UPDATE diretti, ora fermati dalla porta (E_DOC_STATO_SOLO_DAL_VERBO). Stessi
+--   esiti attesi; i throws_ok dei casi 3, 5, 7 passavano anche sulla porta, per questo
+--   passano dal verbo e non restano UPDATE.
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): gli ordini A, C, D (DRAFT) ed E, F
+--   (CONFERMATO) da dbops.fn_pgtap_crea_ordine_con_righe (3 x 10, data 2026-06-15); lo slot B,
+--   senza righe, da dbops.fn_pgtap_crea_ordine. Restano a mano le transizioni provate, la
+--   sorgente della commessa e la riga EMESSA del caso 7.
 -- rev 2026-10-24 (brief-modello-documento-vendita N-1): i documenti nascono in bozza e si
 --   portano avanti con dbops.fn_pgtap_porta_a_stato (prima nascevano gia' CONFERMATO
 --   l'ordine F e APERTA la commessa).
@@ -55,8 +71,8 @@
 -- Brief: brief-db-vie-uscita-operatore.md
 -- ------------------------------------------------------------
 
--- Nota emittente: gli ordini passano emittente_fiscale_id esplicito, quello
---   dell'azienda costruita, a cui e' legato il loro billing account.
+-- Nota emittente: gli ordini nascono dai builder sul billing account del cliente
+--   costruito, legato all'azienda dell'operatore: l'emittente e' quello del BA.
 -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-1): fino a questo giorno gli
 --   ordini nascevano con billing_account_id=NULL per saltare il guard di
 --   coerenza emittente <-> BA. L'ordine senza BA non esiste piu': il cliente si
@@ -104,10 +120,11 @@ SELECT plan(8);
 CREATE TEMP TABLE tmp_gt_az AS
 SELECT * FROM dbops.fn_pgtap_crea_emittente_operatore();
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM tmp_gt_az)); END $ctx$;
+-- rev 2026-10-25 (§9): la conferma e l'annullo del confermato chiedono emetti_ordine.
+SELECT dbops.fn_pgtap_concedi_azione((SELECT auth_user_id FROM tmp_gt_az), 'emetti_ordine');
 
 CREATE TEMP TABLE tmp_refs_gt AS
 SELECT
-  (SELECT emittente_fiscale_id FROM tmp_gt_az) AS emittente_fiscale_id,
 -- 🔴 rev 2026-10-13 (brief-db-articoli-ammessi-per-documento D-1/D-2): l'articolo si
 --   COSTRUISCE. Prima si pescava dal catalogo (il primo per id, o il piu' recente):
 --   il primo per id e' l'onere del seed ONERE_SENZA_CONTRATTO (natura servizio), e
@@ -115,14 +132,6 @@ SELECT
 --   le proprieta' che il test gli da' (merce, non gestito a magazzino).
   dbops.fn_pgtap_crea_articolo('PGT-OGT-ART', false) AS articolo_id,
   (SELECT v.id FROM config.valute v WHERE v.codice = 'EUR') AS valuta_id,
-  -- ⚠️ Aggiunta 2026-08-29: dal changeSet 20260829-07 il guard rifiuta
-  --   l'ingresso in CONFERMATO se una riga attiva porta un prezzo senza
-  --   aliquota (Regola 4, E_ORDINE_RIGA_IVA_MANCANTE). Le righe di questa
-  --   fixture il prezzo ce l'hanno — prezzo_unitario e' NOT NULL — quindi
-  --   senza iva_id descrivono un documento che il dominio non ammette piu'.
-  --   Per codice: un'aliquota ordinaria positiva, non «la prima per id».
-  (SELECT i.id FROM config.iva i WHERE i.codice_interno = '22' AND i.attivo IS TRUE) AS iva_id,
-  (SELECT id FROM config.stati_doc_ordini WHERE codice_interno = 'DRAFT') AS stato_draft_id,
   (SELECT id FROM config.stati_doc_ordini WHERE codice_interno = 'CONFERMATO') AS stato_conf_id,
   (SELECT id FROM config.stati_doc_ordini WHERE codice_interno = 'ANNULLATO') AS stato_ann_id,
   (SELECT id FROM config.stati_doc_ordini WHERE codice_interno = 'SPEDITO') AS stato_sped_id;
@@ -132,76 +141,41 @@ SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('guard transizione ordini', NULL,
                                              (SELECT soggetto_ruolo_id FROM tmp_gt_az));
 SET CONSTRAINTS ALL IMMEDIATE;
 
--- Helper: crea ordine DRAFT e ritorna id. Slot via meta.
+-- Gli slot: ordini del cliente costruito, 3 x 10 sull'articolo costruito. La riga
+--   porta l'aliquota (la mette il builder): l'ingresso in CONFERMATO rifiuta un
+--   prezzo senza aliquota (E_ORDINE_RIGA_IVA_MANCANTE).
 -- Slot A: DRAFT con riga (test 2)
 CREATE TEMP TABLE tmp_gt_a AS
-WITH ins AS (
-  INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
-      stato_doc_ordine_id, valuta_id, data, storicizza, meta)
-  SELECT c.soggetto_ruolo_id, c.billing_account_id, r.emittente_fiscale_id, r.stato_draft_id, r.valuta_id,
-         DATE '2026-06-15', false, '{"test_scope":"pgtap_guard_transizione","slot":"A"}'::jsonb
-  FROM tmp_refs_gt r, tmp_gt_cli c RETURNING id
-) SELECT id FROM ins;
-INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
-    qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
-SELECT o.id, 1, r.articolo_id, 'riga A', 3.0, 3.0, 10.0, r.iva_id, true, false, '{}'::jsonb
-FROM tmp_gt_a o, tmp_refs_gt r;
+SELECT * FROM dbops.fn_pgtap_crea_ordine_con_righe('guard transizione A', 'DRAFT',
+    p_billing_account_id => (SELECT billing_account_id FROM tmp_gt_cli),
+    p_quantita => 3, p_prezzo => 10, p_articolo_id => (SELECT articolo_id FROM tmp_refs_gt),
+    p_data_ordine => DATE '2026-06-15');
 
--- Slot B: DRAFT senza righe (test 3)
+-- Slot B: DRAFT senza righe (test 3): la testata sola.
 CREATE TEMP TABLE tmp_gt_b AS
-WITH ins AS (
-  INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
-      stato_doc_ordine_id, valuta_id, data, storicizza, meta)
-  SELECT c.soggetto_ruolo_id, c.billing_account_id, r.emittente_fiscale_id, r.stato_draft_id, r.valuta_id,
-         DATE '2026-06-15', false, '{"test_scope":"pgtap_guard_transizione","slot":"B"}'::jsonb
-  FROM tmp_refs_gt r, tmp_gt_cli c RETURNING id
-) SELECT id FROM ins;
+SELECT * FROM dbops.fn_pgtap_crea_ordine('guard transizione B', 'DRAFT',
+    (SELECT billing_account_id FROM tmp_gt_cli), DATE '2026-06-15');
 
 -- Slot C: DRAFT con riga (test 4 annulla)
 CREATE TEMP TABLE tmp_gt_c AS
-WITH ins AS (
-  INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
-      stato_doc_ordine_id, valuta_id, data, storicizza, meta)
-  SELECT c.soggetto_ruolo_id, c.billing_account_id, r.emittente_fiscale_id, r.stato_draft_id, r.valuta_id,
-         DATE '2026-06-15', false, '{"test_scope":"pgtap_guard_transizione","slot":"C"}'::jsonb
-  FROM tmp_refs_gt r, tmp_gt_cli c RETURNING id
-) SELECT id FROM ins;
-INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
-    qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
-SELECT o.id, 1, r.articolo_id, 'riga C', 3.0, 3.0, 10.0, r.iva_id, true, false, '{}'::jsonb
-FROM tmp_gt_c o, tmp_refs_gt r;
+SELECT * FROM dbops.fn_pgtap_crea_ordine_con_righe('guard transizione C', 'DRAFT',
+    p_billing_account_id => (SELECT billing_account_id FROM tmp_gt_cli),
+    p_quantita => 3, p_prezzo => 10, p_articolo_id => (SELECT articolo_id FROM tmp_refs_gt),
+    p_data_ordine => DATE '2026-06-15');
 
 -- Slot D: DRAFT con riga (test 5 transizione fuori matrice)
 CREATE TEMP TABLE tmp_gt_d AS
-WITH ins AS (
-  INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
-      stato_doc_ordine_id, valuta_id, data, storicizza, meta)
-  SELECT c.soggetto_ruolo_id, c.billing_account_id, r.emittente_fiscale_id, r.stato_draft_id, r.valuta_id,
-         DATE '2026-06-15', false, '{"test_scope":"pgtap_guard_transizione","slot":"D"}'::jsonb
-  FROM tmp_refs_gt r, tmp_gt_cli c RETURNING id
-) SELECT id FROM ins;
-INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
-    qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
-SELECT o.id, 1, r.articolo_id, 'riga D', 3.0, 3.0, 10.0, r.iva_id, true, false, '{}'::jsonb
-FROM tmp_gt_d o, tmp_refs_gt r;
+SELECT * FROM dbops.fn_pgtap_crea_ordine_con_righe('guard transizione D', 'DRAFT',
+    p_billing_account_id => (SELECT billing_account_id FROM tmp_gt_cli),
+    p_quantita => 3, p_prezzo => 10, p_articolo_id => (SELECT articolo_id FROM tmp_refs_gt),
+    p_data_ordine => DATE '2026-06-15');
 
--- Slot E: CONFERMATO con riga (test 6 CONFERMATO->ANNULLATO disabilitata)
--- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT, prende la riga, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le righe non si scrivono piu' (20261008-90).
+-- Slot E: CONFERMATO con riga (test 6 CONFERMATO->ANNULLATO senza figli a valle)
 CREATE TEMP TABLE tmp_gt_e AS
-WITH ins AS (
-  INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
-      stato_doc_ordine_id, valuta_id, data, storicizza, meta)
-  SELECT c.soggetto_ruolo_id, c.billing_account_id, r.emittente_fiscale_id, r.stato_draft_id, r.valuta_id,
-         DATE '2026-06-15', false, '{"test_scope":"pgtap_guard_transizione","slot":"E"}'::jsonb
-  FROM tmp_refs_gt r, tmp_gt_cli c RETURNING id
-) SELECT id FROM ins;
-INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
-    qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
-SELECT o.id, 1, r.articolo_id, 'riga E', 3.0, 3.0, 10.0, r.iva_id, true, false, '{}'::jsonb
-FROM tmp_gt_e o, tmp_refs_gt r;
-DO $x$ BEGIN
-  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', (SELECT id FROM tmp_gt_e), 'CONFERMATO');
-END $x$;
+SELECT * FROM dbops.fn_pgtap_crea_ordine_con_righe('guard transizione E', 'CONFERMATO',
+    p_billing_account_id => (SELECT billing_account_id FROM tmp_gt_cli),
+    p_quantita => 3, p_prezzo => 10, p_articolo_id => (SELECT articolo_id FROM tmp_refs_gt),
+    p_data_ordine => DATE '2026-06-15');
 
 -- ============================================================
 -- 1) trigger esiste
@@ -219,9 +193,8 @@ SELECT ok(
 -- 2) DRAFT->CONFERMATO con riga -> ok
 -- ============================================================
 SELECT lives_ok(
-  format($q$UPDATE vendite.ordini SET stato_doc_ordine_id =
-              (SELECT stato_conf_id FROM tmp_refs_gt) WHERE id = %s$q$,
-         (SELECT id FROM tmp_gt_a)),
+  format($q$SELECT * FROM vendite.fn_cambia_stato_ordine(%s, 'CONFERMATO')$q$,
+         (SELECT ordine_id FROM tmp_gt_a)),
   '2) DRAFT->CONFERMATO con riga -> ok'
 );
 
@@ -229,9 +202,8 @@ SELECT lives_ok(
 -- 3) DRAFT->CONFERMATO senza righe -> throws E_ORDINE_CONFERMA_SENZA_RIGHE
 -- ============================================================
 SELECT throws_ok(
-  format($q$UPDATE vendite.ordini SET stato_doc_ordine_id =
-              (SELECT stato_conf_id FROM tmp_refs_gt) WHERE id = %s$q$,
-         (SELECT id FROM tmp_gt_b)),
+  format($q$SELECT * FROM vendite.fn_cambia_stato_ordine(%s, 'CONFERMATO')$q$,
+         (SELECT ordine_id FROM tmp_gt_b)),
   'P0001', NULL,
   '3) DRAFT->CONFERMATO senza righe -> throws E_ORDINE_CONFERMA_SENZA_RIGHE'
 );
@@ -240,9 +212,8 @@ SELECT throws_ok(
 -- 4) DRAFT->ANNULLATO -> ok
 -- ============================================================
 SELECT lives_ok(
-  format($q$UPDATE vendite.ordini SET stato_doc_ordine_id =
-              (SELECT stato_ann_id FROM tmp_refs_gt) WHERE id = %s$q$,
-         (SELECT id FROM tmp_gt_c)),
+  format($q$SELECT * FROM vendite.fn_cambia_stato_ordine(%s, 'ANNULLATO')$q$,
+         (SELECT ordine_id FROM tmp_gt_c)),
   '4) DRAFT->ANNULLATO -> ok (transizione manuale attiva)'
 );
 
@@ -250,9 +221,8 @@ SELECT lives_ok(
 -- 5) DRAFT->SPEDITO (fuori matrice) -> throws E_ORDINE_TRANSIZIONE_NON_AMMESSA
 -- ============================================================
 SELECT throws_ok(
-  format($q$UPDATE vendite.ordini SET stato_doc_ordine_id =
-              (SELECT stato_sped_id FROM tmp_refs_gt) WHERE id = %s$q$,
-         (SELECT id FROM tmp_gt_d)),
+  format($q$SELECT * FROM vendite.fn_cambia_stato_ordine(%s, 'SPEDITO')$q$,
+         (SELECT ordine_id FROM tmp_gt_d)),
   'P0001', NULL,
   '5) DRAFT->SPEDITO (fuori matrice) -> throws E_ORDINE_TRANSIZIONE_NON_AMMESSA'
 );
@@ -263,9 +233,8 @@ SELECT throws_ok(
 --    script.fn_check_ordine_annullabile ritorna [] e il guard lascia passare.
 -- ============================================================
 SELECT lives_ok(
-  format($q$UPDATE vendite.ordini SET stato_doc_ordine_id =
-              (SELECT stato_ann_id FROM tmp_refs_gt) WHERE id = %s$q$,
-         (SELECT id FROM tmp_gt_e)),
+  format($q$SELECT * FROM vendite.fn_cambia_stato_ordine(%s, 'ANNULLATO')$q$,
+         (SELECT ordine_id FROM tmp_gt_e)),
   '6) CONFERMATO->ANNULLATO senza figli a valle -> ammesso'
 );
 
@@ -276,24 +245,12 @@ SELECT lives_ok(
 --    ⚠️ Il solo collegamento alla commessa NON basta piu' (Q-9): quello che
 --    ferma e' il lavoro in volo, non il fatto di aver spinto.
 -- ============================================================
+-- Il secondo ordine confermato, come lo slot E.
 CREATE TEMP TABLE tmp_gt_f AS
-WITH ins AS (
-  INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
-      stato_doc_ordine_id, valuta_id, data, storicizza, meta)
-  SELECT c.soggetto_ruolo_id, c.billing_account_id, r.emittente_fiscale_id, r.stato_draft_id, r.valuta_id,
-         DATE '2026-06-15', false, '{"test_scope":"pgtap_guard_transizione","slot":"F"}'::jsonb
-  FROM tmp_refs_gt r, tmp_gt_cli c RETURNING id
-) SELECT id FROM ins;
--- ⚠️ rev 2026-10-24 (brief-modello-documento-vendita N-1): l'ordine nasce DRAFT,
---   prende la riga (DRAFT->CONFERMATO la pretende) e passa a CONFERMATO con
---   dbops.fn_pgtap_porta_a_stato, come lo slot E.
-INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
-    qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
-SELECT o.id, 1, r.articolo_id, 'riga F', 3.0, 3.0, 10.0, r.iva_id, true, false, '{}'::jsonb
-FROM tmp_gt_f o, tmp_refs_gt r;
-DO $x$ BEGIN
-  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', (SELECT id FROM tmp_gt_f), 'CONFERMATO');
-END $x$;
+SELECT * FROM dbops.fn_pgtap_crea_ordine_con_righe('guard transizione F', 'CONFERMATO',
+    p_billing_account_id => (SELECT billing_account_id FROM tmp_gt_cli),
+    p_quantita => 3, p_prezzo => 10, p_articolo_id => (SELECT articolo_id FROM tmp_refs_gt),
+    p_data_ordine => DATE '2026-06-15');
 
 -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-1): la commessa e' quella del
 --   cliente dell'ordine, con l'emittente dell'ordine. Prima si copiava dalla
@@ -301,18 +258,19 @@ END $x$;
 --   passava solo perche' l'ordine non aveva BA, e il guard «una commessa, un
 --   emittente» non aveva niente da confrontare.
 -- rev 2026-10-24 (Q-2): la testata dal builder, sul billing account dell'ordine,
---   portata ad APERTA per la matrice. ⚠️ p_con_attivita => false: la riga che
---   conta e' quella EMESSA scritta sotto, e una riga APPROVATA del builder
---   sarebbe lavoro in piu' che il caso non dichiara.
+--   portata ad APERTA per la matrice. ⚠️ p_con_attivita => true (giro 10): APERTA
+--   passa da PRONTA_FATTURAZIONE, che vuole una riga APPROVATA e non emessa;
+--   la riga che conta per il guard resta quella EMESSA scritta sotto (la riga
+--   del builder non nasce dall'ordine).
 CREATE TEMP TABLE tmp_gt_com AS
 SELECT * FROM dbops.fn_pgtap_crea_commessa(
     'guard transizione ordini', 'APERTA',
-    (SELECT billing_account_id FROM tmp_gt_cli), false);
+    (SELECT billing_account_id FROM tmp_gt_cli), true);
 
 INSERT INTO vendite.commesse_sorgenti (commessa_id, sorgente_tipo_id, sorgente_uid, ruolo_link)
 SELECT (SELECT commessa_id FROM tmp_gt_com),
        (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'ORDINE_VENDITA'),
-       (SELECT id FROM tmp_gt_f)::text,
+       (SELECT ordine_id FROM tmp_gt_f)::text,
        'ROOT';
 
 -- ⛔ E la riga che davvero FERMA: una commessa_attivita gia' EMESSA spinta da
@@ -343,13 +301,12 @@ SELECT (SELECT commessa_id FROM tmp_gt_com),
        r.valuta_id, 10.000000, 'FIXED',
        'BOZZA', 'EMESSA',
        (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'ORDINE_VENDITA'),
-       (SELECT o.uid::text FROM vendite.ordini o WHERE o.id = (SELECT id FROM tmp_gt_f))
+       (SELECT o.uid::text FROM vendite.ordini o WHERE o.id = (SELECT ordine_id FROM tmp_gt_f))
   FROM tmp_refs_gt r;
 
 SELECT throws_ok(
-  format($q$UPDATE vendite.ordini SET stato_doc_ordine_id =
-              (SELECT stato_ann_id FROM tmp_refs_gt) WHERE id = %s$q$,
-         (SELECT id FROM tmp_gt_f)),
+  format($q$SELECT * FROM vendite.fn_cambia_stato_ordine(%s, 'ANNULLATO')$q$,
+         (SELECT ordine_id FROM tmp_gt_f)),
   'P0001', NULL,
   '7) CONFERMATO->ANNULLATO con righe di commessa gia'' EMESSA -> rifiutato dal guard'
 );
@@ -385,9 +342,7 @@ LANGUAGE plpgsql
 AS $fn$
 BEGIN
     BEGIN
-        UPDATE vendite.ordini
-           SET stato_doc_ordine_id = (SELECT stato_ann_id FROM tmp_refs_gt)
-         WHERE id = p_ordine_id;
+        PERFORM vendite.fn_cambia_stato_ordine(p_ordine_id, 'ANNULLATO');
         v_sqlstate := NULL; v_constraint := NULL;
         RETURN NEXT;
     EXCEPTION WHEN OTHERS THEN
@@ -401,7 +356,7 @@ $fn$;
 
 SELECT is(
   (SELECT ROW(v_sqlstate, v_constraint)::text
-     FROM pg_temp.capture_annulla((SELECT id FROM tmp_gt_f))),
+     FROM pg_temp.capture_annulla((SELECT ordine_id FROM tmp_gt_f))),
   ROW('P0001', 'E_SORGENTE_CON_RIGHE_EMESSE')::text,
   '8) il codice di dominio (da v_motivi, non da letterale) esce nel campo CONSTRAINT'
 );

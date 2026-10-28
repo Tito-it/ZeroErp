@@ -50,9 +50,10 @@ correggevano tutte le copie. Ora la strada ha una sede.
 ---
 ### 🔗 Cosa decide la funzione e cosa decide il dominio
 
-* **L'ordine** lo costruisce `dbops.fn_pgtap_crea_ordine`, in bozza, con **una** riga
+* **L'ordine** lo costruisce `dbops.fn_pgtap_crea_ordine_con_righe`, confermato: **una** riga
   (`p_quantita`, default 10, a `p_prezzo`, default 25) dell'articolo `p_articolo_id` o di
-  uno costruito (merce non gestita). Il **trigger di fatturazione** (`p_fatturazione_trigger`)
+  uno costruito (merce non gestita), oppure le righe di `p_righe_ordine` (più righe, sconto,
+  date di consegna, nella grammatica di quel builder). Il **trigger di fatturazione** (`p_fatturazione_trigger`)
   si scrive in bozza, perché fuori bozza è congelato; senza, resta quello del cliente. Poi la
   conferma, per la matrice.
 * **Il cliente** è quello del terzo parametro (il billing account di un'altra fixture) o uno

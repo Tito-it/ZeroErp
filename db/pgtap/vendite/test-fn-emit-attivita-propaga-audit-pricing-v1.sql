@@ -36,26 +36,18 @@ SELECT plan(6);
 -- ============================================================
 -- SETUP: riferimenti minimi
 -- ============================================================
+-- rev 2026-10-27 (lotto 4 di D7): il cliente si COSTRUISCE
+--   (dbops.fn_pgtap_crea_cliente_ba, BA legato all'azienda di chi agisce):
+--   prima il billing account si pescava con LIMIT 1, e su un database
+--   ricostruito da zero non c'era.
+CREATE TEMP TABLE tmp_cli_au AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('emit propaga audit pricing');
+
 CREATE TEMP TABLE tmp_refs_au AS
 SELECT
-  (
-    SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1
-  ) AS billing_account_id,
-  (
-    SELECT ba.utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1
-  ) AS utility_id,
-  (
-    SELECT ba.istanza_utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1
-  ) AS istanza_utility_id,
+  (SELECT billing_account_id FROM tmp_cli_au) AS billing_account_id,
+  (SELECT utility_id FROM tmp_cli_au) AS utility_id,
+  (SELECT istanza_utility_id FROM tmp_cli_au) AS istanza_utility_id,
   (
     SELECT a.id FROM catalogo.articoli a
     WHERE a.attivo IS TRUE ORDER BY a.data_insert DESC NULLS LAST LIMIT 1
@@ -150,6 +142,10 @@ UPDATE vendite.commesse_attivita
  WHERE id = (SELECT commessa_attivita_id FROM tmp_ca_au);
 
 -- Porta in PRONTA_FATTURAZIONE (emittibile)
+-- rev 2026-10-27: il verbo della commessa chiede cambia_stato_commessa
+-- all'operatore del test (giro 10); senza, su un db dove l'operatore non ce l'ha,
+-- si ferma qui con E_PERMESSO_NEGATO.
+SELECT dbops.fn_pgtap_concedi_azione(current_setting('app.current_user_id')::integer, 'cambia_stato_commessa');
 SELECT * FROM vendite.fn_cambia_stato_commessa(
   (SELECT commessa_id FROM tmp_commessa_au), 'PRONTA_FATTURAZIONE');
 

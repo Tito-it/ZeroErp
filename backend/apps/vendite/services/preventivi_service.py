@@ -24,12 +24,16 @@ from apps.config.sorgenti import SORGENTE_COMMESSA, SORGENTE_PREVENTIVO
 from apps.core.db._helpers import richiedi_codice_a_vocabolario
 from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
+from apps.core.services.documento_modello import (
+    e_stato_di_annullo,
+    rifiuta_stato_di_emissione,
+    stato_di_emissione,
+)
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.services._cliente_coppia_documento import rifiuta_colonne_ferme, risolvi_cliente_coppia
 from apps.vendite.services._righe_bozza_guard import Verbo, richiedi_righe_in_bozza
 from apps.vendite.services._date_consegna_righe import aggiorna_date_consegna_righe
 from apps.vendite.services._annullo_con_legami import (
-    STATO_ANNULLATO,
     legami_del_documento,
     legami_confermati as dichiarazione_legami,
 )
@@ -63,7 +67,9 @@ from apps.vendite.services._indirizzi_documento_helpers import (
     list_indirizzi_documento,
     upsert_indirizzo_documento,
 )
-from apps.vendite.db.preventivi_repository import PreventiviRepository
+from apps.core.services.partitioned_note_service import contatori_documento
+from apps.vendite.db.note_repositories import NOTE_REPO_PREVENTIVO
+from apps.vendite.db.preventivi_repository import TESTATA_PREVENTIVI, PreventiviRepository
 from apps.vendite.types import PreventivoDetailRow
 from apps.vendite.services._approvazioni_prezzo_constants import (
     STATO_APPROVAZIONE_APPROVED,
@@ -323,6 +329,7 @@ def get_preventivo(preventivo_id: int) -> dict[str, Any]:
         "capabilities": capabilities,
         "indirizzi": indirizzi,
         "righe_count": righe_count,
+        "contatori": contatori_documento(NOTE_REPO_PREVENTIVO, preventivo_id),
     }
 
 
@@ -632,7 +639,7 @@ def aggiorna_preventivo(preventivo_id: int, payload: dict[str, Any]) -> dict[str
     return {"status": "ok", "preventivo_id": preventivo_id}
 
 
-# Scopo: Cambia stato preventivo delegando alla funzione DB.
+# Scopo: Cambia stato preventivo delegando al verbo DB.
 #
 # Caso speciale EMESSO → ACCETTATO (transizione "accettazione"):
 #   l'operatore deve specificare la modalita' di fatturazione del preventivo
@@ -644,11 +651,21 @@ def aggiorna_preventivo(preventivo_id: int, payload: dict[str, Any]) -> dict[str
 #   (primo del mese corrente), il valore eventuale passato dal caller viene
 #   ignorato. Per ora la regola e' applicata qui (BE service); future
 #   defense-in-depth via trigger DB se servira'.
+#   Su un preventivo gia' ACCETTATO la stessa richiesta aggiorna SOLO la
+#   modalita' di fatturazione: lo stato non cambia, e il verbo non si chiama
+#   (la matrice non ha ACCETTATO → ACCETTATO: fino al giro 6 la richiesta
+#   finiva in E_PREV_TRANSIZIONE_NON_AMMESSA, brief-modello-documento-vendita
+#   §8.7 punto 5).
 #
-# Le altre transizioni (DRAFT→EMESSO, EMESSO→RIFIUTATO, *→ANNULLATO, ...)
-# ignorano i 2 parametri.
+# Le altre transizioni (EMESSO→RIFIUTATO, *→ANNULLATO, ...) ignorano i 2
+# parametri.
 #
-# ⭐ ANNULLATO passa SEMPRE dal verbo `vendite.fn_annulla_preventivo`
+# ⛔ Lo stato di emissione NO (M-2): il preventivo si emette solo da «Emetti»
+#    (`emetti`), che produce numero e PDF nella stessa transazione. Quale stato
+#    sia l'emissione lo dice il vocabolario (BB `rifiuta_stato_di_emissione`).
+#
+# ⭐ L'annullo (lo stato d'annullo del vocabolario, `is_abortito`) passa SEMPRE
+# dal verbo `vendite.fn_annulla_preventivo`
 # (brief-db-annullo-documento-con-legami): con legami il DB rifiuta
 # (E_DOC_ANNULLO_CON_LEGAMI, `confirm_and_retry`) finche' la richiesta non
 # dichiara `legami_confermati`, il numero letto da `get_legami`. La risposta ha
@@ -664,14 +681,19 @@ def cambia_stato(
 ) -> dict[str, Any]:
     repo = PreventiviRepository()
 
-    # Gate accettazione: applichiamo la regola SOLO sulla transizione
-    # EMESSO → ACCETTATO. Su ACCETTATO → ACCETTATO (no-op stato) consentiamo
-    # update dei 2 campi finche' il preventivo e' fatturabile (vedi
-    # _STATI_FATTURABILI). Su altre transizioni i parametri sono ignorati.
+    rifiuta_stato_di_emissione(
+        TESTATA_PREVENTIVI, nuovo_stato, campo="nuovo_stato",
+        validation_code=E_PREV_VALIDAZIONE, function_name=f"{_FN}.cambia_stato",
+    )
+
+    # Gate accettazione: i 2 parametri servono su EMESSO → ACCETTATO e
+    # sull'aggiornamento di un ACCETTATO (finche' il preventivo e' fatturabile,
+    # vedi _STATI_FATTURABILI). Su altre transizioni i parametri sono ignorati.
     if nuovo_stato == "ACCETTATO":
-        testata = _get_testata_or_raise(repo, preventivo_id, op="cambia_stato")
-        stato_attuale = testata["stato_codice_interno"]
-        # Solo EMESSO → ACCETTATO (e ACCETTATO no-op) richiedono i parametri.
+        # Lo stato corrente decide se servono i due parametri. Un preventivo
+        # che non c'e' (None) salta il ramo e lo rifiuta il verbo
+        # (E_PREV_NOT_FOUND, regola del 1).
+        stato_attuale = repo.get_stato_codice(preventivo_id)
         if stato_attuale in ("EMESSO", "ACCETTATO"):
             ErrorManager.require(
                 fatturazione_immediata is not None,
@@ -695,59 +717,41 @@ def cambia_stato(
                     ),
                     function_name=f"{_FN}.cambia_stato",
                 )
-            # Update testata PRIMA del cambio stato, in transazione atomica
-            # di cambia_stato (la fn DB sotto e' atomic per natura: un solo
-            # statement INSERT/UPDATE con trigger). Per multi-statement
-            # atomic serve transaction.atomic, ma qui sono 2 UPDATE
-            # consecutivi: avvolgiamo entrambe.
+            # La modalita' PRIMA del passaggio, nella stessa transazione: il
+            # guard dell'accettazione la trova gia' scritta.
             with _db_errors("cambia_stato"), transaction.atomic():
                 repo.update_preventivo(
                     preventivo_id,
                     fatturazione_immediata=bool(fatturazione_immediata),
                     competenza_mese=competenza_mese,
                 )
-                result = repo.cambia_stato(preventivo_id, nuovo_stato, "django_api")
-            return result
+                if stato_attuale == "ACCETTATO":
+                    return {
+                        "preventivo_id": preventivo_id,
+                        "stato_precedente": stato_attuale,
+                        "stato_nuovo": stato_attuale,
+                    }
+                return repo.cambia_stato(preventivo_id, nuovo_stato)
 
-    # Guard refactor 2026-05-28: la transizione *->EMESSO non passa piu' da
-    # qui. ApiPreventivoEmetti (endpoint multipart `/emetti/`) orchestra in
-    # transaction.atomic() la sequenza stato + genera_documento + allegati,
-    # mirror del flusso offerta. cambia_stato resta per le altre transizioni
-    # (ACCETTATO, RIFIUTATO, ANNULLATO, ecc.). Defense-in-depth: se qualcuno
-    # invoca cambia_stato('EMESSO') direttamente la transizione fallirebbe a
-    # meta', lasciando il preventivo EMESSO senza PDF (rompe l'invariante
-    # documentale). Fail-fast con messaggio parlante.
-    ErrorManager.require(
-        nuovo_stato != "EMESSO",
-        code=E_PREV_VALIDAZIONE,
-        message=(
-            "Usare l'endpoint /emetti/ (multipart) per la transizione "
-            "BOZZA->EMESSO: orchestra stato + generazione documento + "
-            "allegati in transazione atomica."
-        ),
-        function_name=f"{_FN}.cambia_stato",
-    )
-
-    if nuovo_stato == STATO_ANNULLATO:
+    if e_stato_di_annullo(TESTATA_PREVENTIVI, nuovo_stato):
         confermati = dichiarazione_legami(
             legami_confermati, validation_code=E_PREV_VALIDAZIONE,
             function_name=f"{_FN}.cambia_stato",
         )
-        stato_prec = testata_o_not_found(
-            repo.get_stato_codice, preventivo_id,
-            code="E_PREV_NOT_FOUND", message="Preventivo non trovato.",
-            id_name="preventivo_id", function_name=f"{_FN}.cambia_stato",
-        )
+        # Lo stato di partenza per la risposta: il verbo d'annullo rende i soli
+        # legami. «Il preventivo c'e'» lo dice il verbo (E_PREV_NOT_FOUND,
+        # regola del 1), e il None di qui non arriva al client.
+        stato_prec = repo.get_stato_codice(preventivo_id)
         with _db_errors("cambia_stato"):
             repo.annulla(preventivo_id, confermati)
         return {
             "preventivo_id": preventivo_id,
             "stato_precedente": stato_prec,
-            "stato_nuovo": STATO_ANNULLATO,
+            "stato_nuovo": nuovo_stato,
         }
 
     with _db_errors("cambia_stato"):
-        result = repo.cambia_stato(preventivo_id, nuovo_stato, "django_api")
+        result = repo.cambia_stato(preventivo_id, nuovo_stato)
     return result
 
 
@@ -804,11 +808,13 @@ def cambia_stato_da_pratica(
 #        un'unica `transaction.atomic()` esterna, garantendo che EMESSO
 #        implichi sempre l'esistenza del documento generato (invariante di
 #        dominio). Mirror del pattern offerta `OfferteService.emetti`.
-#        Bypassa il guard di `cambia_stato` su EMESSO via accesso diretto
-#        al repository.
+#        Bypassa il guard di `cambia_stato` sull'emissione via accesso
+#        diretto al repository. Lo stato che scrive lo dice il vocabolario (BB
+#        `stato_di_emissione`, brief-modello-documento-vendita §8.11 B-3).
 def emetti(preventivo_id: int, *, user: str | None = None) -> dict[str, Any]:
     repo = PreventiviRepository()
-    result = repo.cambia_stato(preventivo_id, "EMESSO", "django_api")
+    stato = stato_di_emissione(TESTATA_PREVENTIVI, function_name=f"{_FN}.emetti")
+    result = repo.cambia_stato(preventivo_id, stato.codice)
     # Percorso pratica-first: l'emissione del preventivo completa il flusso di
     # preventivazione ancora aperto (quello che ha aperto questo drawer via
     # azione_ui APRI_PREVENTIVO). No-op se il preventivo non nasce da una pratica

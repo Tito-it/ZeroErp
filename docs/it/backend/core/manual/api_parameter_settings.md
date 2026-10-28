@@ -56,6 +56,12 @@ La risoluzione e' gestita dalla funzione DB `script.fn_get_parameter_full()`. La
   - Risoluzione con override user → categoria cliente → group → emittente → default, identica per ogni utente (superuser compreso); la categoria cliente qui non viene passata, quindi quel livello non scatta
   - Codici non trovati vengono esclusi dal risultato (nessun errore)
   - Limite massimo 20 codici per richiesta (protezione DOS): i successivi vengono ignorati
+- Uso frontend: il composable `useParameterDefaults` (tabella «Frontend» in fondo)
+```javascript
+const { defaults, load } = useParameterDefaults(['DEFAULT_IVA'])
+load()
+// defaults.value.DEFAULT_IVA → "22"  (codice_interno, NON un id)
+```
 
 ---
 
@@ -82,7 +88,8 @@ La risoluzione e' gestita dalla funzione DB `script.fn_get_parameter_full()`. La
       "categoria_cliente_override_id": null,
       "user_value": "5",
       "user_override_id": 42,
-      "resolved_value": "5"
+      "resolved_value": "5",
+      "ammette_override": true
     },
     {
       "code": "VENDITE_MAX_SCONTO_PCT",
@@ -95,7 +102,8 @@ La risoluzione e' gestita dalla funzione DB `script.fn_get_parameter_full()`. La
       "categoria_cliente_override_id": 314,
       "user_value": null,
       "user_override_id": null,
-      "resolved_value": "5"
+      "resolved_value": "5",
+      "ammette_override": true
     }
   ],
   "meta": { "request_id": "..." }
@@ -108,6 +116,7 @@ La risoluzione e' gestita dalla funzione DB `script.fn_get_parameter_full()`. La
   - `user_override_id` / `emittente_override_id` / `categoria_cliente_override_id`: ID dei rispettivi override (null se assente), da usare nel DELETE con lo `scope` corrispondente. `categoria_cliente_override_id` è **bigint** (non integer) per coerenza con `config.parameter_overrides.id` (derivato via `%TYPE`).
   - `emittente_fiscale_id` risolto automaticamente: whitelist personale `config.user_emittenti_fiscali`, altrimenti gestore globale da `anagrafiche.emittenti_fiscali_billing_account` (riga con `billing_account_id` NULL e `is_default`)
   - `billing_account_id` che non risulta (inesistente o fuori scope): 404 `E_ANAG_NOT_FOUND` (dal 2026-10-08; prima la categoria restava NULL senza errore)
+  - `ammette_override`: la famiglia del parametro (`config.parameters.ammette_override`, NOT NULL, dal 2026-10-25, [brief-db-parametri-senza-override](../../../dev/work-done/brief-db-parametri-senza-override.md)). Dove e' `false` il parametro vale per tutti: i livelli sono `null` e `resolved_value` e' il default per costruzione, perche' il DB rifiuta ogni override (endpoint 3). La UI non offre la personalizzazione su quelle righe
   - `categoria_cliente_value` / `categoria_cliente_override_id` sono SEMPRE presenti come chiavi nello shape della risposta; restano `null` se la richiesta non ha passato né `categoria_cliente_id` né `billing_account_id`
   - Delega a `script.fn_list_parameters_for_user(p_django_user_id, p_group_ids, p_emittente_fiscale_id, p_categoria_cliente_id)` (firma 4-arg)
 
@@ -144,10 +153,12 @@ La risoluzione e' gestita dalla funzione DB `script.fn_get_parameter_full()`. La
     Che le altre dimensioni siano NULL lo garantisce il DB (`chk_parameter_overrides_un_ambito`, dal 2026-10-07): le righe miste non esistono. Fino ad allora il perimetro lo teneva il repository (F-5 dell'[analisi difetti](../../../dev/work-done/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
   - Se l'override esiste gia' sullo stesso ambito, aggiorna il valore e `data_update` e lo **riattiva** (`attivo = true`): impostare un override vuol dire volerlo in vigore. L'upsert e' un `INSERT … ON CONFLICT ON CONSTRAINT uq_overrides_full_scope_v5 DO UPDATE` (unicita' `NULLS NOT DISTINCT`): due richieste concorrenti sullo stesso ambito non creano un doppione e non rispondono errore, la seconda aggiorna (dal 2026-10-07; prima il vincolo v4 non scattava e il doppione era possibile). Fino al 2026-09-28 una riga spenta (`attivo` false o NULL) veniva aggiornata e restava spenta — risposta con l'id, ma override ignorato dalla risoluzione e assente dalla lista, che leggono solo `attivo = true`
   - Se il `parameter_code` non esiste in `config.parameters` → **404 `E_PARAMETER_NOT_FOUND`**, niente scritto (dal 2026-09-28, E-9: prima `E_DATABASE` 400 dalla violazione del NOT NULL)
+  - Se il parametro vale per tutti (`ammette_override = false`) → **400 `E_PARAMETER_OVERRIDE_NON_AMMESSO`** dal guard del DB (`config.trgfn_parameter_overrides_guard_ammette_override`), niente scritto. Il rimedio e' cambiare il default. Fino al 2026-10-25 l'override nasceva e il lettore del default lo ignorava
 - Errori:
   - `E_PARAMETER_VALIDATION` (400) — codice parametro vuoto, `value` assente o `null`, `scope` non ammesso, `categoria_cliente_id` mancante/non-positivo per scope categoria, emittente non risolvibile per scope emittente
   - `E_PERMISSION_DENIED` (403) — scope `emittente` o `categoria_cliente` da non-admin
   - `E_PARAMETER_NOT_FOUND` (404) — `parameter_code` inesistente
+  - `E_PARAMETER_OVERRIDE_NON_AMMESSO` (400, dal DB) — parametro che vale per tutti (`ammette_override = false`)
 
 ---
 
@@ -200,6 +211,8 @@ La risoluzione e' gestita dalla funzione DB `script.fn_get_parameter_full()`. La
 |--------|------|-------------|
 | `E_PARAMETER_NOT_FOUND` | 404 | Parametro o override non trovato |
 | `E_PARAMETER_VALIDATION` | 400 | Valore parametro non valido o parametri di input mancanti |
+| `E_PARAMETER_OVERRIDE_NON_AMMESSO` | 400 | Override su un parametro che vale per tutti (`ammette_override = false`): lo rifiuta il DB |
+| `E_PERMISSION_DENIED` | 403 | Scope `emittente` / `categoria_cliente` da non amministratore |
 
 ## Architettura backend
 

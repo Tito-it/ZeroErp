@@ -5,6 +5,8 @@
 CREATE FUNCTION trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo()
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

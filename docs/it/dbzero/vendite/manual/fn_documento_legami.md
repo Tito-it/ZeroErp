@@ -12,7 +12,7 @@
 ---
 
 ### 🎯 Scopo Principale
-(2026-10-11, brief-db-annullo-documento-con-legami, D-4)
+(2026-10-11, brief-db-annullo-documento-con-legami, D-4; ultima revisione 2026-10-26)
 
 Risponde a una domanda sola: **«se annullo questo documento, che cosa torna
 disponibile, e dove?»**. Una riga per legame.
@@ -38,6 +38,18 @@ Generalizza `vendite.fn_ddt_legami` (la sola bolla), che si è ritirata.
 | `PREVENTIVO` | consumo | `ordini_righe.preventivo_riga_id` | ordine |
 | `OFFERTA` | **provenienza** | `contratti.offerta_id`, `ordini.documento_origine_*` | contratto, ordine |
 | `COMMESSA` | consumo | righe di commessa `NON_EMESSA` spinte dal documento | bolla, ordine, preventivo, contratto |
+| `OFFERTA_COMMERCIALE` | **provenienza** | `offerte_commerciali.revisione_padre_id`: la revisione precedente, superata, che torna emessa | offerta (dal 2026-10-26) |
+
+#### L'offerta (dal 2026-10-26, brief-modello-documento-vendita §13, O-4)
+
+Annullare l'**ultima revisione viva** di un'offerta fa tornare emessa la revisione
+precedente: è un annullo che riapre un altro documento, e la guida del modello (§8)
+lo vuole confermato. Il legame è il padre (`origine_id`), di provenienza: non si
+ritira niente, il ritorno lo scrive la proiezione
+[`vendite.fn_offerta_proietta_stato_revisione`](/dbzero/vendite/funzioni/fn_offerta_proietta_stato_revisione)
+dopo l'annullo. Nessun legame se la revisione è già annullata, se il padre non è
+superato o se un'altra revisione viva lo tiene superato: l'annullo non riaprirebbe
+niente. Il verbo che conferma è [`vendite.fn_annulla_offerta`](/dbzero/vendite/funzioni/fn_annulla_offerta).
 
 #### La commessa (dal 2026-10-12, brief-db-annullo-a-valle-riapre-a-monte)
 

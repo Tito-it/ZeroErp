@@ -5,6 +5,8 @@
 >
 > Presidio degli ORFANI di sorgente (D-9): SELECT * FROM dbops.fn_sorgenti_orfane(). DEVE RESTARE VUOTA. Una riga = una tabella del perimetro (le sei di magazzino comprese) con una sorgente che punta a un record sparito. Natura ZERO, perimetro DEFINER (la funzione attraversa la RLS), cadenza SETTIMANALE. Il rimedio non e' cancellare la riga: e' capire chi ha cancellato il bersaglio. Brief: brief-db-magazzino-lotto-2-motore, sezione 4.7.
 
+> 🔐 **Sicurezza**: definer (default delle viste) — le tabelle sotto si leggono con i privilegi dell'owner `zeroerp_owner`, e la RLS che vale e' la sua, non quella di chi interroga.
+
 <div data-search-exclude markdown>
 
 ```sql

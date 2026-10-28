@@ -147,7 +147,7 @@ urlpatterns = [
          ApiDdtRigaPrelievoDetail.as_view(),
          name="vendite-ddt-riga-prelievo-detail"),
 
-    # Note partizionate (target_tipo='DDT'). Building block
+    # Note partizionate (target_tipo='DDT_VENDITA'). Building block
     # PartitionedNoteRepository: 3 righe di cablaggio + view generata.
     path("<int:ddt_id>/note/", ApiDdtNoteList.as_view(),
          name="vendite-ddt-note-list"),

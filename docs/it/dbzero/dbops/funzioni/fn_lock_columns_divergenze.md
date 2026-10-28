@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_lock_columns_divergenze(p_exec_mode text, p_schemas text[])
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_get_natura_doc_fiscale_id(p_codice_interno character varying)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

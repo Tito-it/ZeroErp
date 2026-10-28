@@ -1,0 +1,119 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NESSUN OVERRIDE SU UN PARAMETRO CHE VALE PER TUTTI
+#   config.trgfn_parameter_overrides_guard_ammette_override
+#   Brief: brief-db-parametri-senza-override §3 punto 2 (D-1, Tid 2026-10-24)
+#
+# ── LA REGOLA ────────────────────────────────────────────────────
+#   Un override su un parametro con ammette_override = false si rifiuta con
+#   E_PARAMETER_OVERRIDE_NON_AMMESSO. Prima veniva accettato e poi ignorato:
+#   il lettore guarda il default, e chi scriveva l'override credeva di aver
+#   cambiato qualcosa.
+#   ⭐ Vale per QUALUNQUE riga, anche spenta (attivo = false): una riga spenta si
+#   riaccende con un UPDATE di attivo, che questo guard non vede. Lo stesso
+#   criterio usa il guard inverso (20261025-85): su un parametro senza override
+#   non esiste nessuna riga di override.
+#
+# ── LA FASE: a05, PRIMA DEL DISPATCHER FK-SURROGATA (a10) ────────
+#   Su un parametro del registro FK-surrogata con un valore sbagliato parlano
+#   in due. Se il parametro non si personalizza, dire «il valore non esiste nel
+#   catalogo» manda l'operatore a correggere il valore: la frase giusta e'
+#   questa. Fra due rifiuti parla prima chi dice «questa cosa non si tocca»
+#   (linee-guida-trigger §«La fase»); il pgTAP lo presidia con throws_like.
+#
+# ── IL TRIGGER ───────────────────────────────────────────────────
+#   BEFORE INSERT OR UPDATE OF parameter_id: nessun altro trigger BEFORE della
+#   tabella scrive parameter_id. Il corpo confronta OLD e NEW (UPDATE OF scatta
+#   anche a valore uguale). Il parametro padre si legge dalla tabella del
+#   PADRE, non da questa: nessuna rilettura della riga che cambia.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20261025-84-create-trgfn-parameter-overrides-guard-ammette-override-mctit.yaml
+
+  - changeSet:
+      id: 20261025-84-create-trgfn-parameter-overrides-guard-ammette-override
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Guard config.trgfn_parameter_overrides_guard_ammette_override su config.parameter_overrides
+        (a05, BEFORE INSERT OR UPDATE OF parameter_id): un override su un parametro con
+        ammette_override = false si rifiuta con E_PARAMETER_OVERRIDE_NON_AMMESSO, anche spento.
+        Parla prima del dispatcher FK-surrogata (a10). Brief: brief-db-parametri-senza-override §3.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: config
+            tableName: parameters
+            columnName: ammette_override
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION config.trgfn_parameter_overrides_guard_ammette_override()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- =========================================================
+              -- Scopo: rifiuta un override su un parametro che vale per tutti
+              --   (config.parameters.ammette_override = false). Qualunque riga,
+              --   anche spenta: una riga spenta si riaccende senza passare di qui.
+              -- Parametro assente: lo giudica la FK fk_overrides_parameter.
+              -- Brief: brief-db-parametri-senza-override §3 punto 2.
+              -- =========================================================
+              DECLARE
+                  v_code     config.parameters.code%TYPE;
+                  v_ammette  config.parameters.ammette_override%TYPE;
+              BEGIN
+                  -- UPDATE OF scatta anche a valore uguale: conta il cambio.
+                  IF TG_OP = 'UPDATE' AND NEW.parameter_id IS NOT DISTINCT FROM OLD.parameter_id THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT p.code, p.ammette_override
+                    INTO v_code, v_ammette
+                    FROM config.parameters p
+                   WHERE p.id = NEW.parameter_id;
+
+                  -- Zero righe lascia NULL: passa, e decide la FK.
+                  IF v_ammette IS DISTINCT FROM false THEN
+                      RETURN NEW;
+                  END IF;
+
+                  PERFORM script.fn_log_and_raise_error(
+                      'database',
+                      'config.trgfn_parameter_overrides_guard_ammette_override',
+                      'E_PARAMETER_OVERRIDE_NON_AMMESSO',
+                      jsonb_build_object(
+                          'override_id',  NEW.id,
+                          'parameter_id', NEW.parameter_id,
+                          'code',         v_code),
+                      NEW.tx_id,
+                      v_code::text);
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION config.trgfn_parameter_overrides_guard_ammette_override() IS
+                  'Guard di config.parameter_overrides (a05, BEFORE INSERT OR UPDATE OF parameter_id): un override su un parametro con config.parameters.ammette_override = false si rifiuta con E_PARAMETER_OVERRIDE_NON_AMMESSO. Vale per qualunque riga, anche spenta: una riga spenta si riaccende con un UPDATE di attivo, che il guard non vede. Parla prima del dispatcher FK-surrogata (a10): se il parametro non si personalizza, la frase giusta e'' questa e non «valore assente dal catalogo». Parametro assente: lo giudica la FK. Gemello inverso: config.trgfn_parameters_guard_ammette_override. Brief: brief-db-parametri-senza-override §3 (D-1).';
+
+              DROP TRIGGER IF EXISTS trg_parameter_overrides_a05_guard_ammette_override_ins_upd
+                  ON config.parameter_overrides;
+              CREATE TRIGGER trg_parameter_overrides_a05_guard_ammette_override_ins_upd
+                  BEFORE INSERT OR UPDATE OF parameter_id ON config.parameter_overrides
+                  FOR EACH ROW EXECUTE FUNCTION config.trgfn_parameter_overrides_guard_ammette_override();
+      rollback:
+        - sql:
+            sql: >
+              DROP TRIGGER IF EXISTS trg_parameter_overrides_a05_guard_ammette_override_ins_upd ON config.parameter_overrides;
+              DROP FUNCTION IF EXISTS config.trgfn_parameter_overrides_guard_ammette_override();

@@ -170,7 +170,7 @@ class ApiRegistriList(DomainAPIView):
     #    stare nello scope dell'operatore, o la creazione è un modo di scrivere
     #    fuori perimetro su una tabella senza RLS.
     def post(self, request: Request) -> JsonResponse:
-        payload = dict(corpo_oggetto(request))
+        payload = corpo_oggetto(request)
         # ⛔ `optional_int` e NON `qp_int_optional`: il secondo e' per la QUERY
         #    STRING e fa `raw.strip()` sul valore. Un id che arriva come NUMERO
         #    dal corpo JSON — cioe' sempre, dal frontend — gli fa sollevare
@@ -261,7 +261,7 @@ class ApiRegistroDetail(DomainAPIView):
         result = RegistriService().update_registro(
             registro_id,
             PermissionResolver.get_emittenti_sr_ids(request.user),
-            dict(corpo_oggetto(request)),
+            corpo_oggetto(request),
         )
         return success_response(result)
 
@@ -288,7 +288,7 @@ class ApiRegistroAttivo(DomainAPIView):
     #    trigger di disattivazione. La check che la lista legge serve a spegnere
     #    il pulsante e a dire perché, non a decidere al posto del database.
     def post(self, request: Request, registro_id: int) -> JsonResponse:
-        payload = dict(corpo_oggetto(request))
+        payload = corpo_oggetto(request)
         # ⛔ Nessun default silenzioso: un corpo senza `attivo` e' una richiesta
         #    incompleta, non «accendilo». Il verbo ha due direzioni e una delle
         #    due e' distruttiva — indovinare quale, su un payload vuoto, e'

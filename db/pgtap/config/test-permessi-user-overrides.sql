@@ -3,6 +3,11 @@
 -- pgTAP test per Zero ERP
 --
 -- Test: tabelle override utente e scope emittente
+-- rev 2026-10-27 (brief-modello-documento-vendita §15, giro 11): la seconda azione
+--   (azione_id_2, quella del CHECK valido_dal <= valido_al) era approva_fattura, che il
+--   giro ritira (attivo = false): un override su un'azione spenta lo rifiuterebbe il
+--   guard ATTIVO prima del CHECK che il test cerca. Ora e' numera_fatture_lotti, attiva.
+--   Attese invariate.
 --       config.user_override_aree, config.user_override_oggetti,
 --       config.user_override_azioni, config.user_emittenti_fiscali
 --
@@ -78,7 +83,7 @@ SELECT
     (SELECT id FROM config.azioni_processo
      WHERE permission_codename = 'genera_fatture_lotti') AS azione_id,
     (SELECT id FROM config.azioni_processo
-     WHERE permission_codename = 'approva_fattura')      AS azione_id_2,
+     WHERE permission_codename = 'numera_fatture_lotti') AS azione_id_2,
     (SELECT id FROM anagrafiche.emittenti_fiscali
      WHERE attivo = true ORDER BY id LIMIT 1)            AS emittente_id;
 

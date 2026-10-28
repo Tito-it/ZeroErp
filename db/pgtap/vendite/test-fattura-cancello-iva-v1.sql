@@ -11,6 +11,10 @@
 --   alla fattura con D-3 del 2026-10-22; richiesta BE §9.9 di
 --   brief-be-utenti-di-sviluppo. changeSet 20261022-06 … -08; codice
 --   E_FATTURA_RIGA_IVA_MANCANTE.
+-- rev 2026-10-27 (brief-modello-documento-vendita §15, giro 11): con la porta
+--   sulla fattura (20261027-17) il test 4 emette dal verbo della fattura
+--   (vendite.fn_fattura_proietta_stato), e il cancello scatta come prima. Attese
+--   invariate.
 --
 -- Semantica attesa (il contratto, non l'implementazione):
 --   - una riga senza codice IVA si salva in bozza, e il riepilogo IVA della
@@ -107,10 +111,8 @@ SELECT is(
 -- ============================================================
 SELECT is(
     pg_temp.codice_errore(format(
-        $$UPDATE vendite.fatture
-             SET stato_doc_fiscale_id = (SELECT s.id FROM config.stati_doc_fiscale s
-                                          WHERE s.codice_interno = 'EMESSA')
-           WHERE id = %s$$,
+        $$SELECT vendite.fn_fattura_proietta_stato(%s, (SELECT s.id FROM config.stati_doc_fiscale s
+                                                          WHERE s.codice_interno = 'EMESSA'))$$,
         (SELECT fattura_id FROM t_f))),
     'E_FATTURA_RIGA_IVA_MANCANTE',
     '4) DRAFT -> EMESSA con una riga senza IVA -> E_FATTURA_RIGA_IVA_MANCANTE'

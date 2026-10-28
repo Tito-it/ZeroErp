@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_crea_pratica(p_emittente_fiscale_id bigint, p_tipo_prestazione_id integer, p_soggetto_id uuid, p_soggetto_ruolo_id bigint, p_istanza_utility_id bigint, p_priorita_id integer, p_descrizione text, p_meta jsonb, p_billing_account_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

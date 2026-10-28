@@ -39,7 +39,7 @@ from apps.core.services.list_helpers import (
     validate_order_params,
 )
 from apps.core.services.parameter_service import ParameterService
-from apps.core.services.partitioned_note_service import PartitionedNoteService
+from apps.core.services.partitioned_note_service import contatori_documento
 from apps.core.services.testata_guard import pagina_dopo_testata
 from apps.vendite.db.fatture_repository import FattureRepository
 from apps.vendite.db.note_repositories import NOTE_REPO_FATTURA
@@ -59,7 +59,6 @@ from apps.vendite.db.vendite_repository import (
     FONDI_DA_DECIDERE_MOTIVI,
     STATI_ESECUZIONE_DOCUMENTO,
     STATI_ESECUZIONE_LOTTO,
-    STATI_LOTTO,
     VenditeRepository,
 )
 from apps.vendite.services._lotto_perimetro import lotto_visibile
@@ -247,7 +246,7 @@ def _envelope_pagina_effettiva(
 # Scopo: I filtri della lista lotti che la query non sa rifiutare, validati in
 #        un posto solo per la lista e per il suo export (gemelli: un filtro
 #        sbagliato e' un 400 in entrambi, mai una lista o un file vuoti).
-#        - `stato_lotto` nel suo vocabolario (specchio del CHECK);
+#        - `stato_lotto` nel suo vocabolario (`config.stati_lotto_job`);
 #        - ⛔ «Recuperi del mese» ha senso solo RISPETTO A UN MESE: senza,
 #          il predicato diventa `competenza_mese < NULL`, cioe' zero righe.
 def _valida_filtri_lotti(
@@ -257,8 +256,11 @@ def _valida_filtri_lotti(
     solo_recuperi_mese: bool,
     function_name: str,
 ) -> None:
-    _validate_enum(
-        stato_lotto, allowed=STATI_LOTTO, param_name="stato_lotto",
+    # Il vocabolario dello stato del job e' una tabella (`config.stati_lotto_job`,
+    # F-4): si legge da li', non da una costante che la ricopia.
+    richiedi_codice_a_vocabolario(
+        "config.stati_lotto_job", "codice_interno", stato_lotto,
+        codice_errore="E_VENDITE_VALIDATION", parametro="stato_lotto",
         function_name=function_name,
     )
     ErrorManager.require(
@@ -2052,6 +2054,12 @@ def get_fattura_dettaglio(
         # `fatture_rettifiche` no — leggerlo prima esporrebbe il numero di un
         # documento fuori perimetro.
         "rettifiche": repository.get_fattura_rettifiche(fattura_id),
+        # ⭐ LE ORIGINI: i documenti a monte che la fattura cita, dal lettore
+        #    del DB (`vendite.fn_fattura_origini`, BE-1 di brief-modello-
+        #    documento-vendita §15.11.1), nell'ordine in cui arrivano. Lo
+        #    STESSO lettore della stampa: video e carta citano gli stessi
+        #    documenti. Dopo il cancello: la funzione e' INVOKER.
+        "origini": repository.list_fattura_origini(fattura_id),
         # ⭐ L'ERRORE VIVO del documento — la riga ERROR piu' recente e non
         #    ritirata del suo giornale, o `None` — per il banner in testa al
         #    drawer. Sta nel DETTAGLIO e non nella Storia (2026-09-27): da
@@ -2065,11 +2073,7 @@ def get_fattura_dettaglio(
         "errore_vivo": repository.get_giornale_errore_vivo(
             entity_type="FATTURA", entity_id=fattura_id,
         ),
-        "contatori": {
-            "note": PartitionedNoteService(repo=NOTE_REPO_FATTURA).count_per_target(
-                target_id=fattura_id,
-            ),
-        },
+        "contatori": contatori_documento(NOTE_REPO_FATTURA, fattura_id),
     }
 
 

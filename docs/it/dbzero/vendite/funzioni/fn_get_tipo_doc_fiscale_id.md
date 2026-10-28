@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_get_tipo_doc_fiscale_id(p_sorgente_tipo_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

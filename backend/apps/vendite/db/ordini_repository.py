@@ -93,6 +93,11 @@ _ORDER_COLS_RIGHE: dict[str, str] = {
 }
 
 
+# La testata nella mappa del modello del documento (`script.fn_doc_stato_modello`):
+# la leggono il repository, il service e la catena dei permessi.
+TESTATA_ORDINI = "vendite.ordini"
+
+
 class OrdiniRepository(
     RigheDocumentoRepositoryMixin,
     ComponentiRepositoryMixin,
@@ -504,17 +509,24 @@ class OrdiniRepository(
             row = cursor.fetchone()
             return int(row[0]) if row and row[0] is not None else 0
 
-    # Scopo: Cambia stato ordine via UPDATE diretto di stato_doc_ordine_id. La
-    #        transizione e' validata dal trigger DB
-    #        `trgfn_ordini_guard_transizione_approvazione` (niente fn dedicata).
-    #        Usato per la conferma (DRAFT → CONFERMATO).
-    def update_stato(self, ordine_id: int, stato_doc_ordine_id: int) -> bool:
+    # Scopo: Cambia lo stato dell'ordine dal suo verbo
+    #        `vendite.fn_cambia_stato_ordine` (brief-modello-documento-vendita
+    #        §9.6 C-1), gemello di `PreventiviRepository.cambia_stato`: permesso
+    #        dalla riga del passaggio, perimetro, porta, e il guard di
+    #        transizione per matrice, righe attive, aliquote, prezzi e
+    #        annullabilita'. Lo stato chiesto e' il `codice_interno`.
+    #        ⛔ Fino al 2026-10-25 un UPDATE diretto della colonna: ora la porta
+    #        lo rifiuta (E_DOC_STATO_SOLO_DAL_VERBO).
+    # Ritorna: {ordine_id, stato_precedente, stato_nuovo} (codici).
+    def cambia_stato(self, ordine_id: int, stato_codice: str) -> dict[str, Any]:
         with connection.cursor() as cursor:
             cursor.execute(
-                "UPDATE vendite.ordini SET stato_doc_ordine_id = %s WHERE id = %s",
-                [stato_doc_ordine_id, ordine_id],
+                "SELECT * FROM vendite.fn_cambia_stato_ordine(%s, %s)",
+                [int(ordine_id), stato_codice],
             )
-            return cursor.rowcount > 0
+            result = row_to_dict(cursor)
+            assert result is not None
+            return result
 
     # ══════════════════════════════════════════════════════════
     #  SCRITTURE — Righe (ricalcolo totali automatico via trigger DB)
@@ -713,14 +725,3 @@ class OrdiniRepository(
     #    `script.fn_cliente_dal_billing_account` (brief-db-esecutivi-ba-coppia
     #    §10.2 domanda 2). Derivarli qui era una copia della regola.
 
-    # Scopo: id di uno stato ordine via codice_interno (immutabile).
-    def get_stato_id_by_codice(self, codice_interno: str) -> int | None:
-        sql = """
-            SELECT id FROM config.stati_doc_ordini
-             WHERE codice_interno = %s AND attivo = true
-             LIMIT 1
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [codice_interno])
-            row = cursor.fetchone()
-            return row[0] if row else None

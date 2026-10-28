@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_indirizzo_elemento(p_el jsonb, p_chi text, p_contesto jsonb)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

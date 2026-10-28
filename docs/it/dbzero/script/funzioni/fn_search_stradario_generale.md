@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_search_stradario_generale(p_search text, p_toponomastica_id integer, p_limit integer)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

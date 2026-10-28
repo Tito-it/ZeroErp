@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_get_permessi_effettivi_oggetti(p_auth_user_id integer, p_app_label character varying, p_model_name character varying)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

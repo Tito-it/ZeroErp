@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_audit_summary(p_audit_source_code text, p_storico_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

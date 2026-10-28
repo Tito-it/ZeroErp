@@ -7,7 +7,7 @@
 #        Repo e ParameterService mockati: nessun accesso DB reale.
 #
 # Indice test (0..N):
-#   0. RepoInit         - validazione target_tipo + child_table coerenti
+#   0. RepoInit         - target_tipo senza whitelist + child_table coerenti
 #   1. ListNote         - 404 parent / pass-through ok / clamp page_size
 #   2. GetNota          - 404 anti-tampering id<->target
 #   3. CreaNota         - default anchor/posizione/seq, testo obbligatorio,
@@ -16,6 +16,7 @@
 #   4. AggiornaNota     - rifiuta target_riga_id, 404, patch vuoto idempotente
 #   5. EliminaNota      - 404 / ok
 #   6. CountPerTarget   - delega al repo
+#   7. ContatoriDocumento - la forma `{"note": n}` del dettaglio, zero compreso
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -27,6 +28,7 @@ from apps.core.db.partitioned_note_repository import PartitionedNoteRepository
 from apps.core.services.partitioned_note_service import (
     PARAM_DEFAULT_STILE,
     PartitionedNoteService,
+    contatori_documento,
 )
 from apps.core.services.service_errors import ServiceError
 
@@ -115,13 +117,18 @@ def _make_service(
 
 
 class RepoInitTests(unittest.TestCase):
-    def test_target_tipo_invalido_solleva(self) -> None:
-        with self.assertRaises(ValueError):
-            PartitionedNoteRepository(
-                partition_table="vendite.note_xxx",
-                target_tipo="INESISTENTE",
-                parent_table="vendite.preventivi",
-            )
+    # ⛔ Il `target_tipo` non ha una whitelist nel backend dal 2026-10-25: e' un
+    #    codice di `config.tipi_entita` e il confine di una partizione, e decide
+    #    il DB (presidio: `core/tests/db/test_note_confini_partizione_db.py`).
+    #    Un codice con `_` si costruisce come gli altri.
+    def test_target_tipo_senza_whitelist(self) -> None:
+        repo = PartitionedNoteRepository(
+            partition_table="vendite.note_ddt",
+            target_tipo="DDT_VENDITA",
+            parent_table="vendite.ddt",
+        )
+        self.assertEqual(repo.target_tipo, "DDT_VENDITA")
+        self.assertEqual(repo.partition_table, "vendite.note_ddt")
 
     def test_child_table_senza_fk_solleva(self) -> None:
         with self.assertRaises(ValueError):
@@ -456,3 +463,21 @@ class CountPerTargetTests(unittest.TestCase):
         repo.count_for_parent.return_value = 7
         svc = _make_service(repo, _make_params_mock())
         self.assertEqual(svc.count_per_target(target_id=1), 7)
+
+
+# ⭐ La chiave `note` e' il contratto col pulsante standard «Gestisci note» del
+#    frontend (`useContatoreNote` legge `contatori.note`): un rename qui spegne
+#    il badge di ogni documento senza errori.
+class ContatoriDocumentoTests(unittest.TestCase):
+    def test_forma_del_dettaglio(self) -> None:
+        repo = _make_repo_mock()
+        repo.count_for_parent.return_value = 3
+        self.assertEqual(contatori_documento(repo, 42), {"note": 3})
+        repo.count_for_parent.assert_called_once_with(42)
+
+    # Lo zero e' un numero, non un'assenza: decide il frontend di non
+    # mostrarlo, il backend lo dice comunque.
+    def test_zero_e_un_numero(self) -> None:
+        repo = _make_repo_mock()
+        repo.count_for_parent.return_value = 0
+        self.assertEqual(contatori_documento(repo, 42), {"note": 0})

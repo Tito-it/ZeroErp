@@ -1,6 +1,6 @@
 # Guida — Sicurezza di ZeroErp
 
-> **Ultimo aggiornamento**: 26 settembre 2026
+> **Ultimo aggiornamento**: 25 ottobre 2026
 >
 > **Destinatari**: chiunque voglia capire come ZeroErp protegge i dati e il codice, senza
 > bisogno di essere uno sviluppatore. Chi deve configurare o usare gli strumenti legge il
@@ -10,7 +10,7 @@
 >
 > * [Architettura Permessi e Autorizzazioni](architettura-permessi-e-autorizzazioni.md) — chi può fare cosa
 > * [Architettura multi face auth](architettura-multi-face-auth.md) — come si entra, e con quale veste
-> * [Risorse umane e accessi](risorse-umane-e-accessi.md) — credenziali, blocchi, reset password
+> * [Risorse umane e accessi](risorse-umane-e-accessi.md) — credenziali, blocchi, secondo fattore, reset password
 > * [Audit e tracciabilità](audit-e-tracciabilita.md) — chi ha fatto cosa, e quando
 > * [Presidi e registri del debito](presidi-e-registri-del-debito.md) — perché un controllo automatico vale più di una regola scritta
 
@@ -42,29 +42,52 @@ La sicurezza di ZeroErp lavora in due momenti:
 Quando un utente apre una schermata, la sua richiesta attraversa questi cancelli, in quest'ordine.
 
 1. **L'ingresso.** C'è una sola porta d'entrata, cifrata (HTTPS). Chi bussa troppe volte di
-   seguito — per esempio provando password a raffica — viene rallentato e poi respinto. Le parti
-   del sistema che servono solo agli sviluppatori, da fuori, semplicemente non esistono.
+   seguito viene rallentato e poi respinto, con limiti più stretti sul login e sul recupero della
+   password. Le parti del sistema che servono solo agli sviluppatori, da fuori, semplicemente non
+   esistono. Il browser riceve istruzioni che gli impediscono di caricare codice da altri siti o di
+   mostrare ZeroErp dentro la pagina di qualcun altro.
 
-2. **Chi sei.** Per entrare servono credenziali. Dopo alcuni tentativi sbagliati l'accesso si
-   frena, poi si blocca. Le password devono essere robuste (maiuscole, minuscole, cifre, simboli),
-   e chi riceve una password provvisoria è obbligato a cambiarla al primo accesso. L'accesso dura
-   un tempo limitato e si rinnova in automatico; all'uscita il «biglietto» viene annullato.
+2. **Chi sei.** Per entrare servono credenziali, e chi entra lo fa da una **porta**: quella degli
+   operatori, quella del portale clienti e fornitori, quella del negozio online. La persona è una
+   sola, con una sola password, anche se ha più ruoli.
+   * **Password robuste**: maiuscole, minuscole, cifre e simboli. Quando un amministratore lo
+     chiede, il cambio della password è obbligatorio al primo accesso utile. Chi viene invitato la
+     sceglie da sé: nessuno gli manda una password provvisoria.
+   * **Secondo fattore**: oltre alla password, un codice generato da un'app sul telefono. È
+     obbligatorio per gli amministratori del sistema, e lo si può rendere obbligatorio per una
+     persona o per un profilo. Se si perde il telefono, ci sono codici di recupero da usare una volta
+     sola.
+   * **Chi prova le password a ripetizione** viene frenato: dopo alcuni errori dalla stessa
+     macchina l'accesso da lì si sospende per qualche minuto, e oltre una soglia ogni nuovo tentativo
+     deve aspettare un po' di più. Il titolare, dalla sua macchina, può entrare lo stesso. Un nome
+     utente che non esiste riceve le stesse risposte di uno che esiste: chi prova non scopre quali
+     nomi sono veri. Il blocco vero e proprio di un account lo decide solo un amministratore, con un
+     motivo.
+   * **La sessione** dura poco e si rinnova da sola finché si lavora; il «biglietto» che la rinnova
+     sta in un cookie che il codice della pagina non può leggere. All'uscita il biglietto viene
+     annullato.
 
 3. **Cosa puoi fare.** Ogni funzione di ZeroErp appartiene a un'**area** (vendite, anagrafiche,
    configurazione, …). Per ogni area un utente può avere accesso completo, sola lettura, oppure
    nessun accesso. Una funzione che non dichiara la propria area è **negata per principio**: nel
    dubbio, il sistema dice no.
 
-4. **Cosa puoi vedere.** Anche dentro un'area, non tutti vedono tutto: un'azienda del gruppo vede
-   i propri documenti, un reparto le proprie mail. Questa regola non sta solo nel programma, ma
-   **dentro il database**: anche se il programma avesse un errore, il database non restituirebbe
-   righe che l'utente non deve vedere.
+4. **Cosa puoi vedere.** Anche dentro un'area, non tutti vedono tutto: un operatore vede i documenti
+   delle aziende del gruppo che gli sono assegnate, un reparto le proprie mail, un cliente del
+   portale solo i propri documenti, un cliente del negozio solo i propri acquisti fatti lì. Questa
+   regola non sta solo nel programma, ma **dentro il database**: anche se il programma avesse un
+   errore, il database non restituirebbe righe che l'utente non deve vedere. Gli utenti tecnici che
+   potrebbero scavalcare questa regola non sono usabili dal sito.
 
 5. **Nessuna modifica per sbaglio.** Una schermata che si limita a *mostrare* dati non ha il
    permesso tecnico di modificarli.
 
 6. **La traccia.** Il sistema registra chi ha fatto cosa, quando e da quale sessione. Gli accessi
    bloccati e i permessi negati finiscono in un registro dedicato alla sicurezza.
+
+E due attenzioni che stanno nella pagina, non nel server: il testo delle email che arriva da fuori
+viene ripulito prima di essere mostrato, e all'uscita i dati dell'utente vengono cancellati dalla
+memoria del browser, così chi entra dopo sullo stesso computer non li vede.
 
 ---
 
@@ -76,17 +99,17 @@ unita al resto (la *CI*).
 
 | Controllo | Che cosa cerca, in parole semplici |
 | --- | --- |
-| **Analisi del codice** | errori di programmazione e costruzioni pericolose: per esempio un'interrogazione al database composta in modo che un utente malintenzionato potrebbe manipolarla, o un errore che viene ignorato in silenzio |
+| **Analisi del codice** | errori di programmazione e costruzioni pericolose: per esempio un'interrogazione al database composta in modo che un utente malintenzionato potrebbe manipolarla, o un errore che viene ignorato in silenzio. Vale per il server e per la pagina |
 | **Ricerca di segreti** | password, chiavi o token finiti per sbaglio nel codice. Un segreto pubblicato va considerato perso: questo controllo lo ferma prima |
-| **Componenti di terze parti** | le librerie esterne che ZeroErp usa vengono confrontate con gli elenchi pubblici di vulnerabilità note |
+| **Componenti di terze parti** | le librerie esterne che ZeroErp usa, sul server e nella pagina, vengono confrontate con gli elenchi pubblici di vulnerabilità note |
 | **Pacchetto finale** | il pacchetto pronto da installare viene analizzato allo stesso modo |
 | **Configurazione di produzione** | che le impostazioni di sicurezza del server siano quelle giuste (cookie protetti, modalità di debug spenta, chiave segreta robusta) |
-| **Regole del database** | che nessuna modifica al database dia a qualcuno più permessi del dovuto |
-| **Test** | migliaia di prove automatiche, fra cui quelle che verificano che ogni funzione sia protetta da un permesso |
+| **Regole del database** | che nessuna modifica al database dia a qualcuno più permessi del dovuto, e che ogni tabella con dati di un'azienda abbia la sua regola di visibilità |
+| **Test** | migliaia di prove automatiche, fra cui quelle che verificano che ogni funzione sia protetta da un permesso e che l'identità di un utente non resti appesa alla richiesta di un altro |
 
-Ogni controllo è stato acceso **dopo** aver corretto tutto ciò che trovava già: così, quando uno
-di questi controlli si accende di rosso, vuol dire sempre che il problema l'ha appena introdotto
-la modifica in esame.
+Ogni controllo è stato acceso **dopo** aver sistemato ciò che trovava già: corretto, oppure scritto
+in un registro che può solo calare. Così, quando uno di questi controlli si accende di rosso, vuol
+dire che il problema l'ha appena introdotto la modifica in esame.
 
 ---
 
@@ -96,17 +119,18 @@ Password del database, chiave segreta del server e simili **non stanno mai nel c
 file che restano solo sulla macchina che li usa. Nel progetto c'è soltanto un **modello** con i
 nomi delle impostazioni, da compilare.
 
-Se il server viene avviato senza la chiave segreta, **si rifiuta di partire** invece di usarne
-una di ripiego. Una partenza «di ripiego» sarebbe più comoda, ma è proprio il genere di comodità
-che, dimenticata, finisce in produzione.
+Se il server viene avviato senza la chiave segreta, o senza le chiavi che cifrano i dati delicati
+salvati nel database (come il segreto del secondo fattore), **si rifiuta di partire** invece di
+usarne una di ripiego. Una partenza «di ripiego» sarebbe più comoda, ma è proprio il genere di
+comodità che, dimenticata, finisce in produzione.
 
 ---
 
 ## Cosa non c'è ancora
 
-ZeroErp è in sviluppo, e alcune difese sono decise ma non ancora costruite. L'elenco aggiornato è
-nel documento tecnico, sezione «Aperto»: fra le principali, alcune intestazioni di sicurezza del
-sito web e l'accesso con un secondo fattore (per esempio un codice sul telefono).
+ZeroErp è in sviluppo, e alcune cose sono decise o proposte ma non ancora fatte. L'elenco aggiornato
+è nel documento tecnico, sezione «Aperto»: fra le principali, un filtro che oscuri i dati sensibili
+nei log e un servizio che segnali da solo gli aggiornamenti di sicurezza delle librerie.
 
 ---
 

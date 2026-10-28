@@ -8,6 +8,14 @@
 -- rev 2026-10-24 (brief-modello-documento-vendita N-1): i documenti nascono in
 --   bozza e si portano avanti con dbops.fn_pgtap_porta_a_stato (prima il
 --   preventivo nasceva gia' ACCETTATO).
+-- rev 2026-10-26 (brief-modello-documento-vendita §14, giro 10): il passaggio a
+--   PRONTA_FATTURAZIONE dal verbo chiede l'azione cambia_stato_commessa: il file
+--   prova le discovery filtrate, non il permesso, e la concede all'utente del contesto.
+-- rev 2026-10-25 (brief-modello-documento-vendita §8, giro 6): il preventivo
+--   ROOT si emette con una riga (merce, 1 x 10) da
+--   dbops.fn_pgtap_crea_preventivo_con_righe (p_preventivo_id): l'emissione
+--   senza righe e' rifiutata. Le attese contano righe della commessa, non
+--   del preventivo: non cambiano.
 -- rev 2026-10-24 (brief-modello-documento-vendita Q-2/Q-4): il mondo si
 --   COSTRUISCE (azienda col suo operatore, contesto su di lui, cliente, articolo
 --   servizio) invece di pescare «il primo BA / articolo / emittente per id»; il
@@ -125,8 +133,12 @@ SELECT
 
 -- Preventivo REALE: serve come ROOT source della commessa.
 -- ⚠️ rev 2026-10-24: nasce in bozza (lo stato non si scrive: lo mette il
---   trigger della nascita) e va ad ACCETTATO con dbops.fn_pgtap_porta_a_stato,
---   sotto i guard veri: senza righe non hanno motivi da sollevare.
+--   trigger della nascita) e va ad ACCETTATO sotto i guard veri.
+-- ⚠️ rev 2026-10-25 (§8, giro 6): con una riga (merce, 1 x 10) scritta in
+--   bozza da dbops.fn_pgtap_crea_preventivo_con_righe, che poi porta lo stato:
+--   senza righe l'emissione e' rifiutata (E_PREV_NESSUNA_RIGA_ATTIVA). La riga
+--   del preventivo non e' una riga documentale della commessa: i conteggi dei
+--   test leggono commesse_attivita, che il preventivo non tocca.
 CREATE TEMP TABLE tmp_gr_prev AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
@@ -142,7 +154,8 @@ WITH ins AS (
 SELECT * FROM ins;
 
 DO $porta$ BEGIN
-  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_gr_prev), 'ACCETTATO');
+  PERFORM dbops.fn_pgtap_crea_preventivo_con_righe('gruppi', 'ACCETTATO',
+            p_preventivo_id => (SELECT id FROM tmp_gr_prev));
 END $porta$;
 
 -- Contratto VERO per il gruppo C (rev 2026-10-13): basta la testata in bozza.
@@ -392,6 +405,10 @@ SELECT is(
 --   La transizione e' ammessa perche' restano righe APPROVATA+NON_EMESSA
 --   (le 2 del gruppo contratto).
 -- ============================================================
+-- rev 2026-10-26 (giro 10): «rendi pronta» chiede l'azione cambia_stato_commessa
+-- (brief-modello-documento-vendita §14, C-1); questo file prova il filtro per gruppi, non il
+-- permesso: la si concede all'utente del contesto.
+SELECT dbops.fn_pgtap_concedi_azione(current_setting('app.current_user_id')::integer, 'cambia_stato_commessa');
 SELECT vendite.fn_cambia_stato_commessa(
   (SELECT commessa_id FROM tmp_gr_comm), 'PRONTA_FATTURAZIONE');
 

@@ -3,5 +3,3 @@ db/pgtap/anagrafiche/test-catasto-unita-immobiliare.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-indirizzi-fallback.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-istanze-dati-precontrattuali.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-sync-auth-user-is-active-multi-role.sql	ASSERZIONE
-db/pgtap/pratiche/test-workflow-definizioni-fase2b.sql	ERRORE_FIXTURE
-db/pgtap/vendite/test-fn-resolve-prezzo-composito-v1.sql	ERRORE_FIXTURE

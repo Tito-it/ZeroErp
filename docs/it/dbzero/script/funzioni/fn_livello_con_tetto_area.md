@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_livello_con_tetto_area(p_livello_specifico config.livello_accesso, p_livello_area config.livello_accesso)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

@@ -15,7 +15,7 @@
 --      (utility seed) -> ammesso.
 --   2) INSERT override su DEFAULT_UTILITY con valore inesistente -> raise
 --      E_PARAMETER_OVERRIDE_VALUE_INVALID (P0001).
---   3) INSERT override su parametro fuori registry (es. login_max_tentativi_falliti)
+--   3) INSERT override su parametro fuori registry (VENDITE_MAX_SCONTO_PCT)
 --      con valore arbitrario -> ammesso (dispatcher no-op via lookup runtime).
 --   4) INSERT override su DEFAULT_TIPO_SOGGETTO_DETTAGLIO_CL con
 --      codice_interno valido -> ammesso (pattern LIKE).
@@ -24,6 +24,11 @@
 --   6) UPDATE overridden_value verso valore valido (sul record creato in 1)
 --      -> ammesso.
 --   7) UPDATE overridden_value verso valore invalido -> raise.
+--
+-- ⚠️ Rev 2026-10-25 (brief-db-parametri-senza-override): il caso 3 usava
+--   login_max_tentativi_falliti, che e' diventato senza override
+--   (ammette_override = false): il guard 20261025-84 lo rifiuterebbe prima del
+--   dispatcher. Passa a VENDITE_MAX_SCONTO_PCT, fuori registry e con override.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -52,7 +57,7 @@ CREATE TEMP TABLE tmp_ctx_param AS
 SELECT
     (SELECT id FROM config.parameters WHERE code = 'DEFAULT_UTILITY')                       AS pid_utility,
     (SELECT id FROM config.parameters WHERE code = 'DEFAULT_TIPO_SOGGETTO_DETTAGLIO_CL')    AS pid_tsd_cl,
-    (SELECT id FROM config.parameters WHERE code = 'login_max_tentativi_falliti')           AS pid_login,
+    (SELECT id FROM config.parameters WHERE code = 'VENDITE_MAX_SCONTO_PCT')                AS pid_fuori_registry,
     (SELECT codice_interno FROM config.utilities ORDER BY id LIMIT 1)                       AS util_ok,
     (SELECT codice_interno FROM config.tipi_soggetto_dettaglio ORDER BY id LIMIT 1)         AS tsd_ok;
 
@@ -86,7 +91,7 @@ SELECT throws_ok(
 SELECT lives_ok(
     $$INSERT INTO config.parameter_overrides
         (parameter_id, overridden_value, function_name)
-      SELECT pid_login, '99', 'pgtap_test_override_v1_caso3'
+      SELECT pid_fuori_registry, '99', 'pgtap_test_override_v1_caso3'
         FROM tmp_ctx_param$$,
     'INSERT override su parametro fuori registry con valore arbitrario ammesso'
 );

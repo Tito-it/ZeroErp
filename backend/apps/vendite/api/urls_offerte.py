@@ -11,6 +11,7 @@
 
 from django.urls import path
 
+from apps.vendite.api.legami_views import ApiOffertaLegami
 from apps.vendite.api.lineage_views import ApiOffertaPassaggi
 from apps.vendite.api.note_views import (
     ApiOffertaNoteDetail,
@@ -105,6 +106,13 @@ urlpatterns = [
         ApiOffertaAnnulla.as_view(),
         name="vendite-offerta-annulla",
     ),
+    # I legami per la finestra di conferma dell'annullo (O-4): la revisione
+    # precedente che torna emessa.
+    path(
+        "<int:offerta_id>/legami/",
+        ApiOffertaLegami.as_view(),
+        name="vendite-offerta-legami",
+    ),
     # Revisioni (Step 6-7 brief DB, atterrati 2026-05-25).
     path(
         "<int:offerta_id>/crea-revisione/",
@@ -184,7 +192,7 @@ urlpatterns = [
         ApiOffertaUtilityDetail.as_view(),
         name="vendite-offerta-utility-detail",
     ),
-    # Note partizionate (target_tipo='OFFERTA'). Building block
+    # Note partizionate (target_tipo='OFFERTA_COMMERCIALE'). Building block
     # PartitionedNoteRepository: 3 righe di cablaggio + view generata.
     path(
         "<int:offerta_id>/note/",

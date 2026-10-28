@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_annulla_commessa_attivita(p_commessa_attivita_id bigint, p_motivo text)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

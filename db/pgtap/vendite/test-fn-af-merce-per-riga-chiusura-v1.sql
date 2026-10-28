@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-26 (brief-modello-documento-vendita §14, giro 10): il passaggio a PRONTA_FATTURAZIONE dal verbo chiede l'azione cambia_stato_commessa: il file prova il conto, non il permesso, e la concede all'utente del contesto.
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
 -- pgTAP test per Zero ERP
 -- Test: vendite.fn_af_merce_per_riga — il contatore delle attivita'
@@ -193,6 +194,10 @@ SELECT pg_temp.afk_mk((SELECT k_foo FROM tmp_k),            5, 'NORMALE', '{}'::
 SELECT pg_temp.afk_mk((SELECT k_foo FROM tmp_k) || '#FOO:1', 6, 'NORMALE', '{}'::jsonb);
 
 -- Emissione: nascono le attivita' fatturabili, che il conto legge.
+-- rev 2026-10-26 (giro 10): «rendi pronta» chiede l'azione cambia_stato_commessa
+-- (brief-modello-documento-vendita §14, C-1); questo file prova il conto della merce per riga, non il
+-- permesso: la si concede all'utente del contesto.
+SELECT dbops.fn_pgtap_concedi_azione(current_setting('app.current_user_id')::integer, 'cambia_stato_commessa');
 SELECT vendite.fn_cambia_stato_commessa((SELECT commessa_id FROM tmp_com_afk), 'PRONTA_FATTURAZIONE');
 SELECT vendite.fn_emit_attivita_fatturabili_da_commessa((SELECT commessa_id FROM tmp_com_afk));
 

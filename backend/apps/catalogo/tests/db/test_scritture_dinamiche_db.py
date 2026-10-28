@@ -100,8 +100,8 @@ class RifiutoChiaviFuoriListaTests(unittest.TestCase):
             ("update_conversione", lambda: repo.update_conversione(1, {"uom_from_id": 2})),
             ("create_componente", lambda: bom.create_componente("a", {"coeff_qta": 1, "estranea": 1})),
             ("update_componente", lambda: bom.update_componente("a", "c", {"prodotto_id": "b"})),
-            ("create_nota", lambda: bom.create_nota("ARTICOLI", "a", {"testo": "t", "estranea": 1})),
-            ("update_nota", lambda: bom.update_nota(1, "ARTICOLI", {"target_id": "b"})),
+            ("create_nota", lambda: bom.create_nota("ARTICOLO", "a", {"testo": "t", "estranea": 1})),
+            ("update_nota", lambda: bom.update_nota(1, "ARTICOLO", {"target_id": "b"})),
             ("create_uom_operativa", lambda: uom.create_uom_operativa("a", {"uom_id": 1, "estranea": 1})),
             ("update_uom_operativa", lambda: uom.update_uom_operativa("a", 1, {"articolo_id": "b"})),
         )
@@ -221,7 +221,7 @@ class ScrittureDinamicheCatalogoDbTests(unittest.TestCase):
                 stile = cur.fetchone()
                 self.assertIsNotNone(stile, "config.note_stili vuota: e' un seed")
 
-                nota_id = bom.create_nota("ARTICOLI", art, {
+                nota_id = bom.create_nota("ARTICOLO", art, {
                     "anchor_tipo": "DOCUMENTO",
                     "posizione": "HEADER",
                     "testo": "Nota di prova",
@@ -230,15 +230,15 @@ class ScrittureDinamicheCatalogoDbTests(unittest.TestCase):
                 })
                 riga = _riga(cur, """
                     SELECT target_tipo, target_id, testo, jsonb_typeof(meta) AS tipo_meta
-                    FROM catalogo.note WHERE target_tipo = 'ARTICOLI' AND id = %s
+                    FROM catalogo.note WHERE target_tipo = 'ARTICOLO' AND id = %s
                 """, [nota_id])
-                self.assertEqual(riga["target_tipo"], "ARTICOLI")
+                self.assertEqual(riga["target_tipo"], "ARTICOLO")
                 self.assertEqual(str(riga["target_id"]), str(art))
                 self.assertEqual(riga["tipo_meta"], "object")
 
-                self.assertTrue(bom.update_nota(nota_id, "ARTICOLI", {"testo": "Aggiornata", "seq": 2}))
-                self.assertFalse(bom.update_nota(nota_id, "ARTICOLI_COMPONENTI", {"testo": "no"}))
-                riga = _riga(cur, "SELECT testo, seq FROM catalogo.note WHERE target_tipo = 'ARTICOLI' AND id = %s", [nota_id])
+                self.assertTrue(bom.update_nota(nota_id, "ARTICOLO", {"testo": "Aggiornata", "seq": 2}))
+                self.assertFalse(bom.update_nota(nota_id, "ARTICOLO_COMPONENTE", {"testo": "no"}))
+                riga = _riga(cur, "SELECT testo, seq FROM catalogo.note WHERE target_tipo = 'ARTICOLO' AND id = %s", [nota_id])
                 self.assertEqual((riga["testo"], riga["seq"]), ("Aggiornata", 2))
                 raise Annulla
         except Annulla:

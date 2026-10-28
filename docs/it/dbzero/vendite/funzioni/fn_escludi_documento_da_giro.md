@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_escludi_documento_da_giro(p_lotto_id bigint, p_gruppo_key text, p_motivo text)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

@@ -1,6 +1,6 @@
 # Guida — Gestione DDT di vendita
 
-> **Ultimo aggiornamento**: 12 ottobre 2026
+> **Ultimo aggiornamento**: 25 ottobre 2026
 >
 > **Destinatari**: analisti funzionali, operatori commerciali/logistici,
 > sviluppatori backend/frontend, DBA.
@@ -33,6 +33,7 @@
 >
 > **Vedi anche** — guide correlate:
 >
+> * [Il modello del documento di vendita](/guide/modello-documento-di-vendita) — **le regole comuni a tutti i documenti**: nascita, cambio di stato, permesso sul passaggio, emissione, annullo
 > * [Gestione Ordini](/guide/gestione-ordini) — la sorgente del DDT (evasione)
 > * [Gestione Commesse](/guide/gestione-commesse) — la destinazione del push
 > * [Fatturazione end-to-end](/guide/fatturazione) — il push a commessa avvia la pipeline
@@ -212,6 +213,8 @@ comportamento di preventivi, ordini, offerte e contratti.
 
 ## 4. Ciclo di vita e stati
 
+⭐ Le regole comuni a tutti i documenti — in che stato si nasce, chi cambia lo stato, quale permesso chiede un passaggio, l'emissione, l'annullo — stanno nel [modello del documento di vendita](/guide/modello-documento-di-vendita), che al §10 dice anche a che punto è il DDT (e il reso) rispetto al modello. Qui ci sono gli stati e i passaggi che sono suoi.
+
 ### 4.1 Stati
 
 Il catalogo `config.stati_doc_ddt` prevede sei stati:
@@ -270,10 +273,21 @@ per ordini, preventivi e contratti.
 ### 4.4 La doppia difesa
 
 1. **In interfaccia**: `fn_available_actions_ddt` legge la matrice e restituisce
-   solo le azioni disponibili — i pulsanti senza senso non compaiono.
-2. **Nel database**: il trigger `trgfn_ddt_guard_transizione` rifiuta qualsiasi
-   cambio di stato non previsto; `trgfn_ddt_guard_indirizzi_obbligatori` blocca
-   l'emissione senza indirizzo di consegna.
+   solo le azioni disponibili — i pulsanti senza senso non compaiono, e quelli
+   che chiedono un permesso che l'operatore non ha (*Emetti DDT*, `emetti_ddt`,
+   sull'emissione e sull'annullo di una bolla emessa) si nascondono.
+2. **Nel database**: ogni cambio di stato passa dal verbo
+   `vendite.fn_cambia_stato_ddt` (l'annullo da `vendite.fn_annulla_ddt`), che
+   controlla il permesso del passaggio; una modifica diretta dello stato la
+   rifiuta la porta (`E_DOC_STATO_SOLO_DAL_VERBO`). Il trigger
+   `trgfn_ddt_guard_transizione` rifiuta qualsiasi cambio di stato non previsto;
+   `trgfn_ddt_guard_indirizzi_obbligatori` blocca l'emissione senza indirizzo di
+   consegna. Le regole comuni stanno nel
+   [modello del documento di vendita](/guide/modello-documento-di-vendita) §5-§6.
+
+Il passaggio a `RESO`, e il ritorno a `CONSEGNATO`, sono **di processo**: li fa
+la conferma (o l'annullo) di un reso che rende tutta la merce della bolla, non
+si chiedono a mano.
 
 ---
 
@@ -542,11 +556,13 @@ Come funziona, dal punto di vista del DDT:
 * **reso a credito** → alimenta la coda "da accreditare" (vista
   `vw_resi_da_accreditare`) per la futura nota di credito. L'accredito scrive una
   **rettifica** nella commessa della riga fatturata che corregge;
-* **se si annulla quella commessa** (la rettifica è ancora da emettere, cioè dopo il
-  reset del lotto: finché la riga fatturata è emessa la commessa non si annulla),
-  l'accredito si annulla con lei e la quota **non risulta più accreditata**: la
-  finestra di conferma lo dice («torna da accreditare»), e la coda accrediti la
-  ripropone quando la merce torna in fattura. Dettaglio in
+* **la commessa della rettifica non si annulla finché l'accredito c'è.** La riga
+  fatturata che la rettifica corregge resta emessa: una fattura con un accredito
+  registrato non si disfa, e una commessa con righe emesse non si annulla. Per
+  tornare indietro si annulla prima l'accredito (`vendite.fn_annulla_accredito_riga_reso`):
+  la quota non risulta più accreditata e la coda accrediti la ripropone. La regola
+  «annullando la commessa l'accredito si annulla con lei» resta scritta per il giorno
+  in cui le due regole sopra cambiassero, ma oggi nessuna strada ci arriva. Dettaglio in
   [Gestione Commesse](/guide/gestione-commesse) §«Annullare una commessa».
 
 > Il modello completo del reso (entità, guard, ri-consegna, note di credito) è

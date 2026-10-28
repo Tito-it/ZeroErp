@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_storico_risolvi_scope(p_schema text, p_tabella text, p_riga jsonb, p_profondita integer)
 ```
 
+> 🔐 **Sicurezza**: `SECURITY DEFINER` — gira con i privilegi dell'owner `zeroerp_owner`: GRANT e RLS sono i suoi, non quelli di chi la chiama.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

@@ -1,5 +1,9 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): l'ordine C (trigger SPEDITO, confermato
+--   senza bolla, 5 x 15) da dbops.fn_pgtap_crea_ordine_con_righe; la testata D in bozza senza righe da
+--   dbops.fn_pgtap_crea_ordine. Il BA pushabile e' costruito: tolti gli «OR push_ba_id IS NULL»
+--   (skip-tolerance del tempo della pesca), la precondizione resta il test 1.
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine (fixture A e B, bolla in bozza); restano scritti a mano gli ordini C (trigger SPEDITO, confermato senza bolla) e D (in bozza): sono il caso, non la strada della bolla.
 -- pgTAP test per Zero ERP
 -- Test: script.fn_available_actions_ordine — decoupling fatturazione <->
@@ -19,9 +23,6 @@
 --  8) DRAFT -> reason ORDINE_NON_CONFERMATO (non-regressione v1)
 --  9) namespace i18n: ogni reason_key emessa sta sotto 'vendite.ordini.'
 -- ------------------------------------------------------------
--- Nota emittente: come v1 — GUC app.current_user_id vuota, emittente
---   passato esplicito nei payload.
--- Nota skip-tolerance: fallback OR su BA pushabile mancante (pattern v1).
 
 BEGIN;
 
@@ -80,20 +81,11 @@ SELECT
       AND ba.fatturazione_ordini = 'CONFERMATO'
       AND anagrafiche.fn_get_emittente_fiscale_pk(ba.id) IS NOT NULL)  AS push_ba_id,
   (SELECT m.cliente_soggetto_ruolo_id FROM tmp_mondo_aa2 m)           AS soggetto_ruolo_id,
-  -- ⛔ L'emittente NON si pesca, si DERIVA (2026-09-23, guida pgTAP §5): con
-  --   una sola azienda a catalogo «il primo attivo» e quello di chi agisce
-  --   coincidevano per caso, su un database ricostruito no.
-  script.fn_pgtap_emittente_operatore()  AS emittente_fiscale_id,
   -- ⛔ rev 2026-10-13 (Lotto 3a): l'articolo si COSTRUISCE (merce, semplice,
   --   non gestito): da zero il catalogo ha solo servizi, che l'ordine non ammette.
   dbops.fn_pgtap_crea_articolo('PGTAP-AAO-V2', false) AS articolo_id,
-  (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
-  (SELECT i.id FROM config.iva i
-    WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1)    AS iva_id,
   (SELECT s.id FROM config.stati_doc_ordini s
-    WHERE s.codice_interno = 'CONFERMATO' AND s.attivo IS TRUE LIMIT 1) AS stato_conf_id,
-  (SELECT s.id FROM config.stati_doc_ordini s
-    WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE LIMIT 1)      AS stato_draft_id;
+    WHERE s.codice_interno = 'CONFERMATO' AND s.attivo IS TRUE LIMIT 1) AS stato_conf_id;
 
 SELECT ok(
   (SELECT push_ba_id IS NOT NULL
@@ -120,8 +112,7 @@ SELECT b.ordine_id AS id, b.ordine_uid AS uid
 -- 2) orfano EVASO -> can_push_commessa = true
 SELECT ok(
   ((script.fn_available_actions_ordine(
-      (SELECT id FROM tmp_ord_aa2_a)))->>'can_push_commessa')::boolean
-  OR (SELECT push_ba_id IS NULL FROM tmp_refs_aa2),
+      (SELECT id FROM tmp_ord_aa2_a)))->>'can_push_commessa')::boolean,
   '2) orfano EVASO trigger CONFERMATO -> can_push_commessa=true (fix)'
 );
 
@@ -132,8 +123,7 @@ SELECT ok(
       FROM jsonb_array_elements(
              (script.fn_available_actions_ordine(
                 (SELECT id FROM tmp_ord_aa2_a)))->'available_actions') AS a
-     WHERE a->>'key' = 'push_commessa')
-  OR (SELECT push_ba_id IS NULL FROM tmp_refs_aa2),
+     WHERE a->>'key' = 'push_commessa'),
   '3) orfano EVASO -> push_commessa in available_actions'
 );
 
@@ -153,8 +143,7 @@ SELECT b.ordine_id AS id
 -- 4) PARZIALMENTE_EVASO -> can_push = true
 SELECT ok(
   ((script.fn_available_actions_ordine(
-      (SELECT id FROM tmp_ord_aa2_b)))->>'can_push_commessa')::boolean
-  OR (SELECT push_ba_id IS NULL FROM tmp_refs_aa2),
+      (SELECT id FROM tmp_ord_aa2_b)))->>'can_push_commessa')::boolean,
   '4) PARZIALMENTE_EVASO trigger CONFERMATO -> can_push_commessa=true'
 );
 
@@ -215,8 +204,7 @@ SELECT ok(
             (SELECT id FROM tmp_ord_aa2_a)))->>'can_push_commessa')::boolean)
    AND (script.fn_available_actions_ordine(
           (SELECT id FROM tmp_ord_aa2_a)))->>'can_push_commessa_reason'
-       = 'ORDINE_GIA_FATTURATO')
-  OR (SELECT push_ba_id IS NULL FROM tmp_refs_aa2),
+       = 'ORDINE_GIA_FATTURATO'),
   '5) dopo push simulato (EMESSA) -> can_push=false + ORDINE_GIA_FATTURATO'
 );
 
@@ -226,82 +214,41 @@ SELECT ok(
 SELECT ok(
   ((script.fn_available_actions_ordine(
       (SELECT id FROM tmp_ord_aa2_a)))->>'can_push_commessa_reason_key'
-     = 'vendite.ordini.push_commessa_reason.gia_fatturato')
-  OR (SELECT push_ba_id IS NULL FROM tmp_refs_aa2),
+     = 'vendite.ordini.push_commessa_reason.gia_fatturato'),
   '6) reason_key = vendite.ordini.push_commessa_reason.gia_fatturato'
 );
 
 -- ============================================================
 -- 7) trigger SPEDITO (stato CONFERMATO) -> ORDINE_FATTURA_DA_DDT
 -- ============================================================
--- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT,
---   prende la riga, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
---   righe non si scrivono piu' (20261008-90).
+-- L'ordine del BA pushabile con fatturazione alla spedizione (scritta in bozza:
+-- il normalize la eredita dal BA solo all'INSERT), una riga di 5 a 15, confermato.
 CREATE TEMP TABLE tmp_ord_aa2_c AS
-WITH ins AS (
-  INSERT INTO vendite.ordini (
-    soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
-    stato_doc_ordine_id, valuta_id, data, storicizza, meta)
-  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia): il cliente e' il ruolo del BA.
-  SELECT (SELECT b.soggetto_ruolo_id FROM anagrafiche.billing_account b WHERE b.id = r.push_ba_id),
-         r.push_ba_id,
-         anagrafiche.fn_get_emittente_fiscale_pk(r.push_ba_id),
-         r.stato_draft_id, r.valuta_id, DATE '2026-07-07', false,
-         jsonb_build_object('test_scope','pgtap_fn_aa_ordine_v2','fix','spedito_c')
-  FROM tmp_refs_aa2 r
-  WHERE r.push_ba_id IS NOT NULL
-  RETURNING id)
-SELECT * FROM ins;
-
--- normalize e' INSERT-only: il trigger si aggiorna DOPO l'INSERT
-UPDATE vendite.ordini
-   SET fatturazione_trigger = 'SPEDITO'
- WHERE id = (SELECT id FROM tmp_ord_aa2_c);
-
-INSERT INTO vendite.ordini_righe (
-  ordine_id, riga_nr, articolo_id, descrizione,
-  qta_operativa, quantita, prezzo_unitario, iva_id,
-  attivo, storicizza, meta)
-SELECT o.id, 1, r.articolo_id, 'Riga spedito CC2',
-       5.000000, 5.000000, 15.000000, r.iva_id,
-       true, false, jsonb_build_object('test_scope','pgtap_fn_aa_ordine_v2')
-FROM tmp_ord_aa2_c o, tmp_refs_aa2 r;
-
-DO $x$ BEGIN
-  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', o.id, 'CONFERMATO') FROM tmp_ord_aa2_c o;
-END $x$;
+SELECT o.ordine_id AS id
+  FROM dbops.fn_pgtap_crea_ordine_con_righe('pgtap_fn_aa_ordine_v2 spedito_c', 'CONFERMATO',
+         p_billing_account_id   => (SELECT push_ba_id FROM tmp_refs_aa2),
+         p_articolo_id          => (SELECT articolo_id FROM tmp_refs_aa2),
+         p_quantita             => 5,
+         p_prezzo               => 15,
+         p_fatturazione_trigger => 'SPEDITO',
+         p_data_ordine          => DATE '2026-07-07') o;
 
 SELECT ok(
   (((script.fn_available_actions_ordine(
        (SELECT id FROM tmp_ord_aa2_c)))->>'can_push_commessa')::boolean IS FALSE
    AND (script.fn_available_actions_ordine(
           (SELECT id FROM tmp_ord_aa2_c)))->>'can_push_commessa_reason'
-       = 'ORDINE_FATTURA_DA_DDT')
-  OR (SELECT push_ba_id IS NULL FROM tmp_refs_aa2),
+       = 'ORDINE_FATTURA_DA_DDT'),
   '7) trigger SPEDITO -> can_push=false + ORDINE_FATTURA_DA_DDT (pusha il DDT)'
 );
 
 -- ============================================================
 -- 8) DRAFT -> ORDINE_NON_CONFERMATO (non-regressione v1)
 -- ============================================================
--- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-1): l'ordine senza BA non esiste piu'.
---   Il cliente si FABBRICA (BA legato all'emittente dell'operatore dal trigger z90).
-CREATE TEMP TABLE tmp_aa2_cli AS
-SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('capability ordine v2');
-SET CONSTRAINTS ALL IMMEDIATE;
-
+-- Una testata in bozza, senza righe, di un cliente nuovo.
 CREATE TEMP TABLE tmp_ord_aa2_d AS
-WITH ins AS (
-  INSERT INTO vendite.ordini (
-    soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
-    stato_doc_ordine_id, valuta_id, data, storicizza, meta)
-  SELECT c.soggetto_ruolo_id, c.billing_account_id,
-         anagrafiche.fn_get_emittente_fiscale_pk(c.billing_account_id),
-         r.stato_draft_id, r.valuta_id, DATE '2026-07-08', false,
-         jsonb_build_object('test_scope','pgtap_fn_aa_ordine_v2','fix','draft_d')
-  FROM tmp_refs_aa2 r, tmp_aa2_cli c
-  RETURNING id)
-SELECT * FROM ins;
+SELECT o.ordine_id AS id
+  FROM dbops.fn_pgtap_crea_ordine('capability ordine v2 draft_d', 'DRAFT', NULL, DATE '2026-07-08') o;
 
 SELECT ok(
   ((script.fn_available_actions_ordine(
@@ -334,8 +281,7 @@ SELECT ok(
        SELECT (script.fn_available_actions_ordine(
                  (SELECT id FROM tmp_ord_aa2_d)))->>'can_push_commessa_reason_key'
      ) q
-    WHERE k IS NOT NULL)
-  OR (SELECT push_ba_id IS NULL FROM tmp_refs_aa2),
+    WHERE k IS NOT NULL),
   '9) tutte le reason_key emesse stanno sotto vendite.ordini.push_commessa_reason.*'
 );
 

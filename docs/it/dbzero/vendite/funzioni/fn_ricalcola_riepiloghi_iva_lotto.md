@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_ricalcola_riepiloghi_iva_lotto(p_lotto_id bigint, p_batch_size integer)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

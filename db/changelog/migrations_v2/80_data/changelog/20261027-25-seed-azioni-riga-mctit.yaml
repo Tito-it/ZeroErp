@@ -1,0 +1,61 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Seed config.azioni_riga: il registro delle azioni di riga.
+#   Brief: brief-modello-documento-vendita §15.10 (giro 11; Q-F5 = vista DB).
+#   Tabella: 20261027-23. Prima riga: «togli dal giro» del lotto, superficie
+#   vendite.vw_lotti_gruppi_azioni (20261027-24). Le azioni per riga degli
+#   altri documenti si aggiungono qui, con la loro vista.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261027-25-seed-azioni-riga-mctit.yaml
+
+  - changeSet:
+      id: 20261027-25-seed-azioni-riga
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: azioni_riga
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/azioni_riga.csv
+            tableName: azioni_riga
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            nullValue: "NULL"
+            primaryKey: "id"
+            columns:
+              - column: { name: id, type: STRING }
+              - column: { name: codice_interno, type: STRING }
+              - column: { name: descrizione, type: STRING }
+              - column: { name: superficie, type: STRING }
+              - column: { name: colonna_motivo, type: STRING }
+              - column: { name: colonna_motivo_chiave, type: STRING }
+              - column: { name: fn_check, type: STRING }
+              - column: { name: verbo, type: STRING }
+              - column: { name: attivo, type: BOOLEAN }
+              - column:
+                  name: meta
+                  type: JSON
+                  defaultValue: "{}"
+              - column: { name: data_insert, type: STRING }
+              - column: { name: user_insert, type: STRING }
+              - column:
+                  name: data_update
+                  type: STRING
+                  defaultValue: "NOW()"
+              - column: { name: user_update, type: STRING }

@@ -36,6 +36,7 @@ from django.test import Client
 
 from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
+from apps.core.tests._helpers.operatore_di_prova import operatore_di_prova
 
 _MENSILE_RESPONSE = {
     "anno": 2026,
@@ -248,10 +249,7 @@ class DashboardCompetenzaAttivitaApiTests(JwtMockedApiTest):
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate")
     @patch("apps.vendite.api.views_dashboard_competenza.fn_dash_competenza_attivita")
     def test_attivita_scope_db_side_no_auth_user(self, mocked_fn, mock_auth, _mock_perm):
-        user = Mock()
-        user.id = 42
-        user.is_superuser = False
-        user.is_authenticated = True
+        user = operatore_di_prova(user_id=42)
         mock_auth.return_value = (user, None)
         mocked_fn.return_value = _ATTIVITA_RESPONSE
         self.client.get(f"{self._URL}?competenza_mese=2026-05-01")

@@ -4,6 +4,8 @@
 CREATE FUNCTION fn_fonte_porta_quantita(p_fonte character varying)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

@@ -1,0 +1,59 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA PORTA SUL CONTRATTO
+#   Brief: brief-modello-documento-vendita §11 (giro 8; S-1 b di Tid).
+#   Stampo: la porta dell'ordine (20261025-80).
+#
+#   Lo stato del contratto si cambia solo dai suoi verbi, che scrivono con
+#   script.fn_doc_scrivi_stato: vendite.fn_cambia_stato_contratto (-05), la
+#   cessazione vendite.fn_cessa_contratto (-06), il job
+#   vendite.fn_cessa_contratti_scaduti (-07), l'annullo
+#   vendite.fn_annulla_contratto (-09). Un UPDATE diretto (il backend,
+#   ContrattiRepository.update_stato; il vecchio UPDATE dinamico della
+#   chiusura per scadenza): E_DOC_STATO_SOLO_DAL_VERBO.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261026-10-create-trigger-stato-solo-dal-verbo-contratti-mctit.yaml
+
+  - changeSet:
+      id: 20261026-10-create-trigger-stato-solo-dal-verbo-contratti
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Monta script.trgfn_doc_stato_solo_dal_verbo (BEFORE UPDATE OF colonna di stato, _a05_)
+        su vendite.contratti. Brief: brief-modello-documento-vendita §11 (S-1 b).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'trgfn_doc_stato_solo_dal_verbo';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_contratti_a05_stato_solo_dal_verbo_upd
+                  BEFORE UPDATE OF stato_doc_contratto_id ON vendite.contratti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_doc_stato_solo_dal_verbo();
+
+              COMMENT ON TRIGGER trg_contratti_a05_stato_solo_dal_verbo_upd ON vendite.contratti IS
+                  'La porta (BB script.trgfn_doc_stato_solo_dal_verbo): lo stato del contratto si cambia solo dai suoi verbi (vendite.fn_cambia_stato_contratto, vendite.fn_cessa_contratto, vendite.fn_annulla_contratto; la cessazione per scadenza da vendite.fn_cessa_contratti_scaduti), che scrivono con script.fn_doc_scrivi_stato. Un UPDATE diretto: E_DOC_STATO_SOLO_DAL_VERBO. Fascia _a05_. Brief: brief-modello-documento-vendita §11 (S-1 b, Tid 2026-10-25/26).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_contratti_a05_stato_solo_dal_verbo_upd ON vendite.contratti;

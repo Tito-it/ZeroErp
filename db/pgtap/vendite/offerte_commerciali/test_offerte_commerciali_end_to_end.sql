@@ -1,6 +1,11 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
+-- rev 2026-10-26 (brief-modello-documento-vendita §13, giro 9): lo stato dell'offerta si
+--   cambia solo dal verbo vendite.fn_cambia_stato_offerta; i flussi A, B, C lo chiamano al
+--   posto degli UPDATE di stato (EMESSA -> RIFIUTATA con la motivazione, che la matrice
+--   chiede). All'utente del contesto si concede l'azione emetti_offerta: il test prova i
+--   flussi, non il permesso.
 --
 -- Test integrativo end-to-end: dominio offerte_commerciali (Step 9).
 --       Verifica i tre flussi principali del dominio:
@@ -25,6 +30,9 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 SELECT plan(8);
+
+-- Il test prova i flussi, non il permesso: l'azione di processo di BOZZA -> EMESSA.
+SELECT dbops.fn_pgtap_concedi_azione(current_setting('app.current_user_id')::integer, 'emetti_offerta');
 
 -- ============================================================
 -- Setup fixture comune
@@ -104,15 +112,11 @@ INSERT INTO vendite.offerte_commerciali_utilities (
 SELECT a.id, a.istanza_utility_id, a.utility_id
   FROM tmp_e2e_ofc_a a;
 
--- BOZZA -> EMESSA
-UPDATE vendite.offerte_commerciali
-   SET stato_doc_offerta_id = (SELECT stato_emessa_id FROM tmp_e2e_ctx)
- WHERE id = (SELECT id FROM tmp_e2e_ofc_a);
+-- BOZZA -> EMESSA, dal verbo
+SELECT * FROM vendite.fn_cambia_stato_offerta((SELECT id FROM tmp_e2e_ofc_a), 'EMESSA', NULL);
 
--- EMESSA -> ACCETTATA
-UPDATE vendite.offerte_commerciali
-   SET stato_doc_offerta_id = (SELECT stato_accettata_id FROM tmp_e2e_ctx)
- WHERE id = (SELECT id FROM tmp_e2e_ofc_a);
+-- EMESSA -> ACCETTATA, dal verbo
+SELECT * FROM vendite.fn_cambia_stato_offerta((SELECT id FROM tmp_e2e_ofc_a), 'ACCETTATA', NULL);
 
 -- Push a contratto
 CREATE TEMP TABLE tmp_e2e_contratto_a AS
@@ -181,9 +185,7 @@ WITH ins AS (
 )
 SELECT id FROM ins;
 
-UPDATE vendite.offerte_commerciali
-   SET stato_doc_offerta_id = (SELECT stato_emessa_id FROM tmp_e2e_ctx)
- WHERE id = (SELECT id FROM tmp_e2e_ofc_b);
+SELECT * FROM vendite.fn_cambia_stato_offerta((SELECT id FROM tmp_e2e_ofc_b), 'EMESSA', NULL);
 
 CREATE TEMP TABLE tmp_e2e_rev2_id AS
 SELECT vendite.fn_crea_revisione_offerta(
@@ -236,13 +238,10 @@ WITH ins AS (
 )
 SELECT id FROM ins;
 
-UPDATE vendite.offerte_commerciali
-   SET stato_doc_offerta_id = (SELECT stato_emessa_id FROM tmp_e2e_ctx)
- WHERE id = (SELECT id FROM tmp_e2e_ofc_c);
+SELECT * FROM vendite.fn_cambia_stato_offerta((SELECT id FROM tmp_e2e_ofc_c), 'EMESSA', NULL);
 
-UPDATE vendite.offerte_commerciali
-   SET stato_doc_offerta_id = (SELECT stato_rifiutata_id FROM tmp_e2e_ctx)
- WHERE id = (SELECT id FROM tmp_e2e_ofc_c);
+-- EMESSA -> RIFIUTATA: la matrice chiede la motivazione
+SELECT * FROM vendite.fn_cambia_stato_offerta((SELECT id FROM tmp_e2e_ofc_c), 'RIFIUTATA', 'pgTAP e2e: rifiuto del cliente');
 
 -- ============================================================
 -- 7) Flusso C: EMESSA -> RIFIUTATA ok

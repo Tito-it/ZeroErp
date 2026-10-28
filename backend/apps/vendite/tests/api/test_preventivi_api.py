@@ -28,9 +28,17 @@ TestPreventivoEmissioneAllegati:
    service.emetti + genera_documento(allegati=...) in transazione atomica
 2) test_get_documento_allegati_list_ok — GET allegati: lista file (princ. + all.)
 3) test_post_documento_allegati_upload_ok — POST allegati: append multipart
+
+PreventivoPermessoPassaggioTests:
+1) test_cambio_stato_ed_emissione_dichiarano_il_passaggio — l'azione dalla riga, nessun post_permission
+2) test_collega_pratica_chiede_il_livello — non e' un passaggio: livello sul documento
+3) test_nuovo_stato_ripulito — lo stesso valore che legge il permesso (strip)
+4) test_nuovo_stato_assente_o_non_testo_e_un_400 — mai "None" o "123" al service
 """
 
 from unittest.mock import ANY, Mock, patch
+
+from django.test import SimpleTestCase
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
@@ -368,3 +376,62 @@ class TestPreventivoEmissioneAllegati(JwtMockedApiTest):
         self.assertEqual(len(args[2]), 1)
         self.assertEqual(args[2][0]["mime_type"], "application/pdf")
         self.assertEqual(args[2][0]["file_name"], "extra.pdf")
+
+
+class PreventivoPermessoPassaggioTests(SimpleTestCase):
+    # Scopo: cambio stato (anche dalla pratica) ed emissione del preventivo
+    #        leggono l'azione dalla riga del passaggio (M-3,
+    #        brief-modello-documento-vendita §8.7 punto 2), non la dichiarano:
+    #        `cambia_stato_preventivi` e' spenta, e un `post_permission` rimasto
+    #        risponderebbe 403 a tutti.
+    def test_cambio_stato_ed_emissione_dichiarano_il_passaggio(self) -> None:
+        from apps.core.api.permissions import PassaggioDocumento
+        from apps.vendite.api.preventivi_documenti_views import ApiPreventivoEmetti
+        from apps.vendite.api.preventivi_views import (
+            ApiPreventivoStato,
+            ApiPreventivoStatoDaPratica,
+            _preventivo_della_pratica,
+        )
+
+        self.assertEqual(ApiPreventivoEmetti.post_passaggio, PassaggioDocumento(
+            testata="vendite.preventivi", documento_kwarg="sorgente_id", stato_del_modello="emissione",
+        ))
+        self.assertEqual(ApiPreventivoStato.post_passaggio, PassaggioDocumento(
+            testata="vendite.preventivi", documento_kwarg="preventivo_id",
+            campo_stato="nuovo_stato",
+        ))
+        self.assertEqual(ApiPreventivoStatoDaPratica.post_passaggio, PassaggioDocumento(
+            testata="vendite.preventivi", documento_kwarg="pratica_id",
+            campo_stato="nuovo_stato", risolvi_documento=_preventivo_della_pratica,
+        ))
+        for view in (ApiPreventivoEmetti, ApiPreventivoStato, ApiPreventivoStatoDaPratica):
+            with self.subTest(view=view.__name__):
+                self.assertIsNone(getattr(view, "post_permission", None))
+                # Senza azione sulla riga decide il livello sul DOCUMENTO.
+                self.assertEqual(view.model_permission, ("vendite", "preventivo"))
+
+    def test_collega_pratica_chiede_il_livello(self) -> None:
+        from apps.vendite.api.preventivi_views import ApiPreventivoCollegaPratica
+
+        self.assertIsNone(getattr(ApiPreventivoCollegaPratica, "post_permission", None))
+        self.assertIsNone(getattr(ApiPreventivoCollegaPratica, "post_passaggio", None))
+        self.assertEqual(ApiPreventivoCollegaPratica.model_permission, ("vendite", "preventivo"))
+
+    # Il permesso (`PassaggioDocumento`) legge `nuovo_stato` ripulito: il
+    # service deve ricevere lo stesso valore, o il rifiuto dell'emissione
+    # guarderebbe un codice diverso da quello del permesso.
+    def test_nuovo_stato_ripulito(self) -> None:
+        from apps.vendite.api.preventivi_views import _parse_cambio_stato_payload
+
+        self.assertEqual(_parse_cambio_stato_payload({"nuovo_stato": " EMESSO "})[0], "EMESSO")
+
+    def test_nuovo_stato_assente_o_non_testo_e_un_400(self) -> None:
+        from apps.core.services.service_errors import ServiceError
+        from apps.vendite.api.preventivi_views import _parse_cambio_stato_payload
+
+        for corpo in ({}, {"nuovo_stato": None}, {"nuovo_stato": 123}, {"nuovo_stato": "  "}):
+            with self.subTest(corpo=corpo):
+                with self.assertRaises(ServiceError) as cm:
+                    _parse_cambio_stato_payload(corpo)
+                self.assertEqual(cm.exception.code, "E_PREV_VALIDAZIONE")
+                self.assertEqual(cm.exception.context.get("field"), "nuovo_stato")

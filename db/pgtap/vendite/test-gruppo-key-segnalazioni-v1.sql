@@ -42,18 +42,12 @@
 --   chiudono il canale (il parametro) e la conoscenza (la conversione dalla
 --   commessa), che sono le due cose che mancavano.
 --
--- ⚠️ I CASI 1-13 SONO TUTTI COSTRUITI. L'unica cosa presa dai dati sono i due
---   riferimenti obbligatori del lotto (tipo documento ed emittente), letti da
---   un lotto esistente perche' devono stare nel perimetro dell'operatore.
---
--- ⚠️ I CASI 14-15 SONO DATA-DEPENDENT e lo DICHIARANO con uno skip motivato:
---   servono una commessa vera con almeno DUE documenti sorgente distinti, e
---   costruirla vorrebbe dire fabbricare articolo, istanza di utility, unita' di
---   misura e commessa — una fixture piu' grande della cosa da provare. ⛔ Su un
---   database ricostruito da zero (la CI) quei due saltano, e la copertura di
---   quel verso vale ZERO, non «parziale»: e' un debito dichiarato, non un
---   verde. Il verso costruibile — una commessa che non alimenta niente — e' il
---   test 4.
+-- ⚠️ I CASI SONO TUTTI COSTRUITI, anche il 14-15.
+-- rev 2026-10-27 (lotto 4 di D7): i due lotti nascono da
+--   dbops.fn_pgtap_crea_lotto (prima: tipo documento ed emittente letti
+--   dall'ultimo lotto del DB) e la commessa 1:N dei test 14-15 si costruisce
+--   con due preventivi veri come sorgenti (prima: pescata, e da zero i due
+--   test saltavano — il debito dichiarato qui fino a oggi).
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -69,11 +63,16 @@ SELECT plan(15);
 -- ============================================================
 -- Fixture: un lotto con due documenti — uno gia' USCITO, uno ancora in gioco
 -- ============================================================
-CREATE TEMP TABLE tmp_rif AS
-SELECT l.tipo_doc_fiscale_id, l.emittente_soggetto_ruolo_id
-  FROM vendite.fatturazione_lotti l
- ORDER BY l.id DESC
- LIMIT 1;
+-- rev 2026-10-27 (lotto 4 di D7): il lotto si COSTRUISCE con
+--   dbops.fn_pgtap_crea_lotto (madre vera, azienda di chi agisce, stato DRAFT
+--   per codice_interno). Prima si scriveva a mano coi riferimenti dell'ultimo
+--   lotto del DB: da zero non c'era, e un lotto senza perimetro dell'operatore
+--   faceva rifiutare dalla RLS le righe di fatturazione_lotti_gruppi.
+-- ⚠️ Lo stato serve: la check dell'uscita legge `congela_fiscale`
+--   FAIL-CLOSED, e un lotto senza stato risulta oltre il pre-fiscale. Il
+--   builder lo porta nato in DRAFT.
+CREATE TEMP TABLE tmp_lotto_gk AS
+SELECT * FROM dbops.fn_pgtap_crea_lotto('gruppo key segnalazioni');
 
 CREATE TEMP TABLE tmp_lotto (id bigint);
 
@@ -81,17 +80,7 @@ DO $fixture$
 DECLARE
     v_lotto vendite.fatturazione_lotti.id%TYPE;
 BEGIN
-    -- ⚠️ Lo stato serve: la check dell'uscita legge `congela_fiscale`
-    --   FAIL-CLOSED, e un lotto senza stato risulta oltre il pre-fiscale.
-    --   ⛔ `codice_interno`, mai un id.
-    INSERT INTO vendite.fatturazione_lotti
-        (codice, competenza_mese, tipo_doc_fiscale_id, emittente_soggetto_ruolo_id,
-         stato_doc_fiscale_id)
-    SELECT 'PGTAP-GRUPPO-KEY', date_trunc('month', script.fn_data_operativa())::date,
-           t.tipo_doc_fiscale_id, t.emittente_soggetto_ruolo_id,
-           (SELECT s.id FROM config.stati_doc_fiscale s WHERE s.codice_interno = 'DRAFT')
-      FROM tmp_rif t
-    RETURNING id INTO v_lotto;
+    SELECT g.lotto_id INTO v_lotto FROM tmp_lotto_gk g;
 
     INSERT INTO tmp_lotto VALUES (v_lotto);
 
@@ -349,40 +338,53 @@ SELECT is(
 -- ============================================================
 -- 14..15 — il verso POSITIVO: commessa -> documenti
 -- ============================================================
--- ⚠️ DATA-DEPENDENT, e dichiarato. Serve una commessa vera con almeno DUE
---   documenti sorgente distinti: e' il caso 1:N, quello che rende necessario
---   l'array. Costruirla richiederebbe articolo, istanza di utility, unita' di
---   misura e commessa — una fixture piu' grande della cosa da provare.
+-- Serve una commessa vera con almeno DUE documenti sorgente distinti: e' il
+--   caso 1:N, quello che rende necessario l'array.
+-- rev 2026-10-27 (lotto 4 di D7): la commessa 1:N si COSTRUISCE — commessa
+--   (dbops.fn_pgtap_crea_commessa, sul cliente del lotto), due preventivi veri
+--   (dbops.fn_pgtap_crea_preventivo: il guard della sorgente polimorfa
+--   pretende che il documento esista) e un'attivita' per ciascuno
+--   (dbops.fn_pgtap_crea_commessa_attivita). Prima era la prima commessa del
+--   DB con due sorgenti: da zero non c'era, e i test 14-15 saltavano (il
+--   debito dichiarato in testata). Le chiavi le calcola ancora la funzione del
+--   dominio, dalla tabella: la forma della lettura e' invariata.
+CREATE TEMP TABLE tmp_commessa_gk AS
+SELECT * FROM dbops.fn_pgtap_crea_commessa(
+                'gruppo key 1:N', NULL,
+                (SELECT billing_account_id FROM tmp_lotto_gk));
+
+CREATE TEMP TABLE tmp_preventivi_gk AS
+SELECT g.n, pr.preventivo_uid
+  FROM generate_series(1, 2) AS g(n)
+  CROSS JOIN LATERAL dbops.fn_pgtap_crea_preventivo('gruppo key 1:N ' || g.n) pr;
+
+CREATE TEMP TABLE tmp_attivita_gk AS
+SELECT a.attivita_id
+  FROM tmp_preventivi_gk p
+  CROSS JOIN LATERAL dbops.fn_pgtap_crea_commessa_attivita(
+                       p_commessa_id     => (SELECT commessa_id FROM tmp_commessa_gk),
+                       p_sorgente_codice => 'PREVENTIVO',
+                       p_sorgente_uid    => p.preventivo_uid::text) a;
+
 CREATE TEMP TABLE tmp_commessa AS
 SELECT ca.commessa_id,
        array_agg(DISTINCT vendite.fn_build_gruppo_fatturabile_key(
                      ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id)) AS chiavi
   FROM vendite.commesse_attivita ca
+ WHERE ca.commessa_id = (SELECT commessa_id FROM tmp_commessa_gk)
  GROUP BY ca.commessa_id
 HAVING count(DISTINCT vendite.fn_build_gruppo_fatturabile_key(
-                 ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id)) >= 2
- ORDER BY ca.commessa_id
- LIMIT 1;
+                 ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id)) >= 2;
 
 -- Un secondo lotto SENZA perimetro: li' la commessa li alimenta tutti.
 CREATE TEMP TABLE tmp_lotto_massa (id bigint);
 
-DO $massa$
-DECLARE
-    v_lotto vendite.fatturazione_lotti.id%TYPE;
-BEGIN
-    INSERT INTO vendite.fatturazione_lotti
-        (codice, competenza_mese, tipo_doc_fiscale_id, emittente_soggetto_ruolo_id,
-         stato_doc_fiscale_id)
-    SELECT 'PGTAP-GRUPPO-KEY-MASSA', date_trunc('month', script.fn_data_operativa())::date,
-           t.tipo_doc_fiscale_id, t.emittente_soggetto_ruolo_id,
-           (SELECT s.id FROM config.stati_doc_fiscale s WHERE s.codice_interno = 'DRAFT')
-      FROM tmp_rif t
-    RETURNING id INTO v_lotto;
-
-    INSERT INTO tmp_lotto_massa VALUES (v_lotto);
-END;
-$massa$;
+-- rev 2026-10-27 (lotto 4 di D7): anche lui dal builder, sullo stesso
+--   cliente del primo (prima: INSERT a mano coi riferimenti pescati).
+INSERT INTO tmp_lotto_massa
+SELECT l.lotto_id
+  FROM dbops.fn_pgtap_crea_lotto('gruppo key massa', 'DRAFT',
+                                 (SELECT billing_account_id FROM tmp_lotto_gk)) l;
 
 SELECT CASE
   WHEN NOT EXISTS (SELECT 1 FROM tmp_commessa)

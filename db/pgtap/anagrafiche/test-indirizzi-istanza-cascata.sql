@@ -96,14 +96,7 @@ WITH upsert AS (
     SELECT s.id, 998, NULL, NULL, NULL, NULL,
         'Test istanza cascata (pgTAP)', 'VIA TEST ISTANZA', '998', TRUE, FALSE
     FROM tmp_stradario_ut s
-    ON CONFLICT (
-        stradario_id, civico,
-        COALESCE(estensione_civico, ''::character varying),
-        COALESCE(palazzina, ''::character varying),
-        COALESCE(scala, ''::character varying),
-        COALESCE(piano, ''::character varying),
-        COALESCE(interno, ''::character varying)
-    )
+    ON CONFLICT (stradario_id, civico, estensione_civico, palazzina, scala, piano, interno)
     DO UPDATE SET data_update = now(), user_update = CURRENT_USER
     RETURNING id
 )

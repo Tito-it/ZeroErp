@@ -38,7 +38,6 @@ La logica e` implementata in `apps/core/api/endpoint_helpers.py` e viene usata d
 
 ## Altri helper del modulo
 
-- `handle_detail_patch(request, update_fn, pk, *, require_idempotency_key=False)`: PATCH di dettaglio, delega a `handle_post_json` con `update_fn(pk, payload)`.
 - `get_scope_user_id(request)`: `auth_user_id` per il filtro di scope emittente; `None` per il superuser Django (nessun filtro).
 - `get_risorsa_umana_id(request)`: la risorsa umana dell'utente (identita' OPERATORE attiva → `risorse_umane` attiva), con cache per richiesta; `None` se non associato.
 

@@ -391,13 +391,14 @@ export function etichettaAccreditoSeverity(codice) {
 }
 
 // --- Mappa stati commessa ---
-// BOZZA=grigio, APERTA/IN_ESECUZIONE/PRONTA_FATTURAZIONE=azzurro (ciclo in corso),
+// BOZZA=grigio, APERTA/PRONTA_FATTURAZIONE=azzurro (ciclo in corso),
 // CHIUSA=verde (concluso), ANNULLATA=rosso.
-// Allineato a vendite.stati_commessa.codice_interno.
+// Allineato a vendite.stati_commessa.codice_interno (stati attivi):
+// IN_ESECUZIONE ritirato il 2026-10-26 (brief-modello-documento-vendita C-3);
+// il guard ATTIVO del vocabolario non lo spegne finche' una commessa lo ha.
 export const STATO_COMMESSA_MAP = {
   BOZZA: 'secondary',
   APERTA: 'info',
-  IN_ESECUZIONE: 'info',
   PRONTA_FATTURAZIONE: 'info',
   CHIUSA: 'success',
   ANNULLATA: 'danger',

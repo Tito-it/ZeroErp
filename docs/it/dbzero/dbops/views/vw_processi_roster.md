@@ -5,6 +5,8 @@
 >
 > Per ogni processo automatico, con quale IDENTITA' lavora ciascuna azienda: la terna (auth_user_id, username, identita_id) piu' l'emittente. ⭐ Il fatto esisteva gia' ma viveva in una stringa SQL dentro Python (processi_repository.roster_processo): serviva solo al produttore della fatturazione. Da quando anche il DB deve accodare — il job pgAgent della chiusura scadenze — riscriverlo sarebbe stata una SECONDA scrittura dello stesso fatto. ⚠️ Le cinque condizioni sono tutte necessarie (legame attivo, identita' attiva, ruolo OPERATORE, utente Django attivo, emittente attivo): spegnerne uno basta a fermare il processo, quindi guardarne uno solo basta a sbagliare — e' la stessa terna che script.fn_riattiva_utente_tecnico riaccende tutta insieme. ⚠️ La condizione sull'utente Django passa da script.fn_get_auth_user_stato e non da un JOIN diretto: una vista si risolve alla CREATE e le tabelle di django le crea manage.py migrate, non Liquibase. ⚠️ Al backend: roster_processo puo' diventare un SELECT su questa vista. Finche' restano due copie, sono due copie.
 
+> 🔐 **Sicurezza**: definer (default delle viste) — le tabelle sotto si leggono con i privilegi dell'owner `zeroerp_owner`, e la RLS che vale e' la sua, non quella di chi interroga.
+
 <div data-search-exclude markdown>
 
 ```sql

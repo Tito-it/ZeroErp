@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_genera_pratica_da_flusso(p_flusso_id bigint, p_regola_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

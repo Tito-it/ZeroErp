@@ -6,6 +6,19 @@
 # Rilasciato sotto GNU GPLv3 o versione successiva.
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
+# ⭐ DAL 2026-10-25 E' IL MIRROR UNICO DI config.parameters IN 80_data
+#   (brief-db-parametri-senza-override, D-3 di Tid). parameters.csv ha preso le
+#   righe dei sei CSV laterali, ritirati coi loro changeSet (20250717-23,
+#   20260429-59, 20260430-62, 20260520-03, 20260826-03, 20260925-20): una
+#   tabella, un CSV. Fuori resta solo parameters_sistema.csv, caricato da
+#   70_dati_sistema/20260825-12 perche' il codice lo legge prima di 80_data.
+#   ⚠️ Da zero queste righe nascono qui, prima del registro FK-surrogata
+#   (80_data/20260520-02): il dispatcher non le valida, come gia' DEFAULT_IVA e
+#   STATO_PROPOSTO_ISO2; le valida al primo risveglio del mirror su un DB
+#   popolato. Prima della fusione ogni riga e' stata confrontata col DB di
+#   sviluppo: valori e descrizioni identici (storicizza a parte, che il trigger
+#   dello storico rimette a false dopo la prima modifica).
+# ------------------------------------------------------------
 
 databaseChangeLog:
   - changeSet:
@@ -47,7 +60,10 @@ databaseChangeLog:
               - column: { name: user_update,  type: STRING }
               - column: { name: tx_id,    type: uuid  }
               - column: { name: storicizza,    type: STRING }
-              
+              # 2026-10-25 (brief-db-parametri-senza-override, D-1): la famiglia
+              # del parametro, dichiarata riga per riga (nessun DEFAULT nel modello).
+              - column: { name: ammette_override, type: BOOLEAN }
+
   - changeSet:
       id: 20250715-90-upsert_parameters
       author: mctit

@@ -174,9 +174,9 @@ SELECT is(
 -- 10) INSERT con default_value valido (pattern LIKE) -> ammesso
 -- ============================================================
 SELECT lives_ok(
-    $$INSERT INTO config.parameters(id, code, default_value, description)
+    $$INSERT INTO config.parameters(id, code, default_value, description, ammette_override)
       SELECT 99001, 'DEFAULT_TIPO_SOGGETTO_DETTAGLIO_TEST_OK',
-             tsd.codice_interno, 'pgTAP test row OK'
+             tsd.codice_interno, 'pgTAP test row OK', true
         FROM tmp_ctx_tsd tsd$$,
     'INSERT con default_value esistente in tipi_soggetto_dettaglio ammesso'
 );
@@ -185,9 +185,9 @@ SELECT lives_ok(
 -- 11) INSERT con default_value invalido (pattern LIKE) -> raise
 -- ============================================================
 SELECT throws_ok(
-    $$INSERT INTO config.parameters(id, code, default_value, description)
+    $$INSERT INTO config.parameters(id, code, default_value, description, ammette_override)
       VALUES (99002, 'DEFAULT_TIPO_SOGGETTO_DETTAGLIO_TEST_BAD',
-              'CODICE_INESISTENTE_XYZ', 'pgTAP test row BAD')$$,
+              'CODICE_INESISTENTE_XYZ', 'pgTAP test row BAD', true)$$,
     'P0001',
     NULL,
     'INSERT con default_value inesistente -> P0001 (E_PARAMETER_DEFAULT_VALUE_INVALID)'
@@ -212,9 +212,9 @@ SELECT throws_ok(
 --     nessun pattern -> fn_check ritorna true -> passa.
 -- ============================================================
 SELECT lives_ok(
-    $$INSERT INTO config.parameters(id, code, default_value, description)
+    $$INSERT INTO config.parameters(id, code, default_value, description, ammette_override)
       VALUES (99003, 'PGTAP_FUORI_REGISTRY', 'VALORE_LIBERO_XYZ',
-              'pgTAP test code fuori registry')$$,
+              'pgTAP test code fuori registry', true)$$,
     'INSERT con code fuori registry e default_value arbitrario ammesso'
 );
 

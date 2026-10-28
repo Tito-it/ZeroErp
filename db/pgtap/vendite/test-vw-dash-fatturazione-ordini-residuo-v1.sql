@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito): il reso per ri-consegna di B dal builder dbops.fn_pgtap_crea_reso; nulla della strada del reso resta scritto a mano.
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine (le evasioni parziali restano in bozza: il residuo legge il fulfillment); il reso resta scritto a mano (giro 2).
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2d): l'area della dashboard e' il codice della sorgente (ORDINE_VENDITA).
 -- pgTAP test per Zero ERP
@@ -48,14 +49,6 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_
 
 SELECT plan(6);
 
--- Dal 2026-09-28 conferma e annullo del reso sono verbi che applicano
--- l'azione conferma_reso (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-f):
--- l'operatore di fixture non ha azioni, si concede qui.
-DO $az$ BEGIN
-    PERFORM dbops.fn_pgtap_concedi_azione(
-        NULLIF(current_setting('app.current_user_id', true), '')::integer, 'conferma_reso');
-END $az$;
-
 -- ============================================================
 -- Riferimenti + helper
 -- ============================================================
@@ -64,10 +57,7 @@ SELECT
   -- ⛔ rev 2026-10-13: BA dal mondo costruito; l'articolo si costruisce
   --   (merce, non gestito: il test non misura il magazzino).
   (SELECT billing_account_id FROM _m)                                    AS billing_account_id,
-  dbops.fn_pgtap_crea_articolo('PGTAP-DASH-RESIDUO', false)              AS articolo_id,
-  (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='DDT_VENDITA' AND s.attivo LIMIT 1)     AS sorgente_ddt_id,
-  (SELECT s.id FROM config.stati_doc_reso s WHERE s.codice_interno='DRAFT' AND s.attivo LIMIT 1)     AS stato_reso_draft_id,
-  (SELECT t.id FROM config.tipi_reso t WHERE t.codice_interno='RESO_PER_RICONSEGNA' AND t.attivo LIMIT 1) AS tipo_riconsegna_id;
+  dbops.fn_pgtap_crea_articolo('PGTAP-DASH-RESIDUO', false)              AS articolo_id;
 
 -- ============================================================
 -- FIXTURE: ordine 10 pz @25 col trigger del caso, bolla dal builder.
@@ -117,24 +107,9 @@ SELECT is(
   0::numeric, '3) evaso tutto -> valore 0 (il valore e'' interamente in mano al DDT)');
 
 -- 4) B + reso 3 PER RICONSEGNA confermato: il residuo risale (reso-aware)
--- ⛔ rev 2026-10-13: testata e righe del reso in due istruzioni. Con un operatore
---   vero (non piu' l'utente 1) la WITH CHECK di resi_righe risale al reso, e un
---   reso scritto nella stessa istruzione (CTE) e' fuori dalla sua snapshot.
-CREATE TEMP TABLE reso AS
-WITH ins AS (
-  INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_uid, storicizza, meta)
-  SELECT r.stato_reso_draft_id, r.sorgente_ddt_id, (SELECT d.uid FROM vendite.ddt d WHERE d.id=(SELECT ddt_id FROM tmp_b)),
-         false, jsonb_build_object('test_scope','pgtap_residuo')
-  FROM tmp_refs r RETURNING id)
-SELECT id FROM ins;
-INSERT INTO vendite.resi_righe (reso_id, riga_nr, ddt_riga_id, ordine_riga_id,
-  articolo_id, descrizione, qta_operativa, uom_operativa_id, factor_to_base, tipo_reso_id, storicizza)
-SELECT (SELECT id FROM reso), 1, dr.id, (SELECT ordine_riga_id FROM tmp_b),
-       dr.articolo_id, dr.descrizione, 3, dr.uom_operativa_id, dr.factor_to_base,
-       (SELECT tipo_riconsegna_id FROM tmp_refs), false
-FROM vendite.ddt_righe dr WHERE dr.ddt_id=(SELECT ddt_id FROM tmp_b);
-
-SELECT vendite.fn_conferma_reso((SELECT id FROM reso));
+CREATE TEMP TABLE tmp_b_reso AS
+SELECT * FROM dbops.fn_pgtap_crea_reso('residuo B', (SELECT ddt_id FROM tmp_b), 3,
+         'RESO_PER_RICONSEGNA');
 
 SELECT is(
   (SELECT valore_totale FROM vendite.vw_dash_fatturazione_ordini

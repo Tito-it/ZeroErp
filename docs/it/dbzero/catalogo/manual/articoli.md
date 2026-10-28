@@ -71,7 +71,8 @@
 
 * **Univocità**: `uq_articoli_codice (codice)` → un codice per articolo.
 * **Integrità referenziale**: tutte le FK sono `ON UPDATE CASCADE` / `ON DELETE NO ACTION` (salvo diversa policy su note).
-* **Note**: `note_target_tipo` è vincolato a `ARTICOLI` quando valorizzato.
+* **Note**: `note_target_tipo` è vincolato a `ARTICOLO` quando valorizzato (il codice della partizione
+  `catalogo.note_articoli`; fino al 2026-10-25 `ARTICOLI`, varchar(32), ora varchar(50)).
 * **Solo componente**: se `is_solo_componente=true` l’articolo non può essere usato come prodotto in `articoli_componenti`.
 * **`uom_id` obbligatorio**: dalla revisione del 07-04-2026 la colonna è `NOT NULL`. L'unità di misura principale è anagrafica e necessaria per il seed automatico della UoM operativa base.
 * **Tipologia listino (pricing v5, 14-04-2026)**: `listino_tipologia_id` nullable, FK a `config.listini_tipologie`. Un articolo senza tipologia non puo' essere inserito in un listino tipizzato (motivo di `script.fn_check_articolo_riga` per la versione di listino, sollevato dal guard `trg_listini_righe_a10_guard_articolo_ammesso_ins_upd`; codice errore `E_ARTICOLO_TIPOLOGIA_MANCANTE`). Un articolo con tipologia diversa dalla tipologia del listino genera `E_ARTICOLO_TIPOLOGIA_INCOMPATIBILE`. Backfill iniziale (14-04-2026): articoli con `voce_utility = false` mappati automaticamente a `PRODOTTI`; articoli voce utility lasciati NULL per mapping manuale alle 4 tipologie tecniche (`CONSUMO`, `QUOTA_FISSA`, `IMPOSTA`, `ONERE_SISTEMA`).

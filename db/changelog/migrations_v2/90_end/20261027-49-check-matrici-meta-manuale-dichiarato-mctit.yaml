@@ -1,0 +1,132 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# OGNI PASSAGGIO DICHIARA SE E' MANUALE
+#   Brief: brief-modello-documento-vendita §15.14 (D-3 di Tid, 2026-10-27).
+#
+#   Sulle otto matrici dei passaggi della mappa (script.fn_doc_stato_modello)
+#   meta.manuale e' un booleano dichiarato su ogni riga. Senza la chiave le
+#   letture divergevano: script.fn_doc_passaggio e i CHECK ck_*_meta_ui la
+#   leggevano «manuale», le capability di lotto e commessa «di processo».
+#   Ora il caso non si costruisce, e la regola ha una lettura sola.
+#   ⚠️ La forma «jsonb_exists(meta, 'manuale') AND …»: jsonb_typeof di una chiave che
+#   manca e' NULL, e un CHECK che vale NULL passa.
+#   L'operatore in forma di funzione (jsonb_exists, non «?»): fuori da un
+#   corpo dollar-quoted il driver JDBC legge «?» come segnaposto.
+#
+# ⚠️ PERCHE' STA IN `90_end`. Le righe le scrivono i mirror dei CSV in
+#   `80_data`, che da zero girano dopo `00_schema`: un CHECK accanto alla
+#   tabella giudicherebbe righe di seed scritte prima della chiave
+#   (ref: 20261020-23, stessa forma). Se una riga fosse scoperta il changeSet
+#   lo dice con una frase leggibile, non con un 23514 nudo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261027-49-check-matrici-meta-manuale-dichiarato-mctit.yaml
+
+  - changeSet:
+      id: 20261027-49-check-matrici-meta-manuale-dichiarato
+      author: mctit
+      failOnError: true
+      comment: >
+        CHECK sulle otto matrici dei passaggi della mappa: meta.manuale e' un booleano dichiarato su
+        ogni riga. In 90_end perche' le righe le scrive il seed. Brief:
+        brief-modello-documento-vendita §15.14 (D-3).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_constraint c
+               WHERE c.conname LIKE 'ck\_%\_meta\_manuale\_dichiarato';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $manuale$
+              DECLARE
+                  -- nomi di tabella e un elenco per il messaggio: tipi nudi
+                  v_matrice regclass;
+                  v_scoperte text;
+              BEGIN
+                  FOREACH v_matrice IN ARRAY ARRAY[
+                      'config.transizioni_stati_preventivi', 'config.stati_doc_offerte_transizioni',
+                      'config.transizioni_stati_contratti', 'config.transizioni_stati_ordini',
+                      'config.transizioni_stati_ddt', 'config.transizioni_stati_reso',
+                      'vendite.transizioni_stati_commessa', 'config.stati_doc_fiscale_transizioni']::regclass[]
+                  LOOP
+                      EXECUTE format(
+                          'SELECT string_agg(t.id::text, '', '' ORDER BY t.id) FROM %s t'
+                          ' WHERE jsonb_typeof(t.meta -> ''manuale'') IS DISTINCT FROM ''boolean''',
+                          v_matrice)
+                         INTO v_scoperte;
+                      IF v_scoperte IS NOT NULL THEN
+                          RAISE EXCEPTION
+                              '%: le righe % non dichiarano meta.manuale (booleano). Va scritto nel CSV della matrice prima di questo vincolo.',
+                              v_matrice, v_scoperte;
+                      END IF;
+                  END LOOP;
+              END
+              $manuale$;
+
+              ALTER TABLE config.transizioni_stati_preventivi
+                ADD CONSTRAINT ck_transizioni_stati_preventivi_meta_manuale_dichiarato
+                CHECK (jsonb_exists(meta, 'manuale') AND jsonb_typeof(meta -> 'manuale') = 'boolean');
+              ALTER TABLE config.stati_doc_offerte_transizioni
+                ADD CONSTRAINT ck_stati_doc_offerte_transizioni_meta_manuale_dichiarato
+                CHECK (jsonb_exists(meta, 'manuale') AND jsonb_typeof(meta -> 'manuale') = 'boolean');
+              ALTER TABLE config.transizioni_stati_contratti
+                ADD CONSTRAINT ck_transizioni_stati_contratti_meta_manuale_dichiarato
+                CHECK (jsonb_exists(meta, 'manuale') AND jsonb_typeof(meta -> 'manuale') = 'boolean');
+              ALTER TABLE config.transizioni_stati_ordini
+                ADD CONSTRAINT ck_transizioni_stati_ordini_meta_manuale_dichiarato
+                CHECK (jsonb_exists(meta, 'manuale') AND jsonb_typeof(meta -> 'manuale') = 'boolean');
+              ALTER TABLE config.transizioni_stati_ddt
+                ADD CONSTRAINT ck_transizioni_stati_ddt_meta_manuale_dichiarato
+                CHECK (jsonb_exists(meta, 'manuale') AND jsonb_typeof(meta -> 'manuale') = 'boolean');
+              ALTER TABLE config.transizioni_stati_reso
+                ADD CONSTRAINT ck_transizioni_stati_reso_meta_manuale_dichiarato
+                CHECK (jsonb_exists(meta, 'manuale') AND jsonb_typeof(meta -> 'manuale') = 'boolean');
+              ALTER TABLE vendite.transizioni_stati_commessa
+                ADD CONSTRAINT ck_transizioni_stati_commessa_meta_manuale_dichiarato
+                CHECK (jsonb_exists(meta, 'manuale') AND jsonb_typeof(meta -> 'manuale') = 'boolean');
+              ALTER TABLE config.stati_doc_fiscale_transizioni
+                ADD CONSTRAINT ck_stati_doc_fiscale_transizioni_meta_manuale_dichiarato
+                CHECK (jsonb_exists(meta, 'manuale') AND jsonb_typeof(meta -> 'manuale') = 'boolean');
+
+              COMMENT ON CONSTRAINT ck_transizioni_stati_preventivi_meta_manuale_dichiarato ON config.transizioni_stati_preventivi
+                IS 'Ogni passaggio dichiara se e'' manuale (meta.manuale booleano): una lettura sola per script.fn_doc_passaggio e script.fn_doc_azioni_permesse. Brief: brief-modello-documento-vendita §15.14 (D-3).';
+              COMMENT ON CONSTRAINT ck_stati_doc_offerte_transizioni_meta_manuale_dichiarato ON config.stati_doc_offerte_transizioni
+                IS 'Ogni passaggio dichiara se e'' manuale (meta.manuale booleano): una lettura sola per script.fn_doc_passaggio e script.fn_doc_azioni_permesse. Brief: brief-modello-documento-vendita §15.14 (D-3).';
+              COMMENT ON CONSTRAINT ck_transizioni_stati_contratti_meta_manuale_dichiarato ON config.transizioni_stati_contratti
+                IS 'Ogni passaggio dichiara se e'' manuale (meta.manuale booleano): una lettura sola per script.fn_doc_passaggio e script.fn_doc_azioni_permesse. Brief: brief-modello-documento-vendita §15.14 (D-3).';
+              COMMENT ON CONSTRAINT ck_transizioni_stati_ordini_meta_manuale_dichiarato ON config.transizioni_stati_ordini
+                IS 'Ogni passaggio dichiara se e'' manuale (meta.manuale booleano): una lettura sola per script.fn_doc_passaggio e script.fn_doc_azioni_permesse. Brief: brief-modello-documento-vendita §15.14 (D-3).';
+              COMMENT ON CONSTRAINT ck_transizioni_stati_ddt_meta_manuale_dichiarato ON config.transizioni_stati_ddt
+                IS 'Ogni passaggio dichiara se e'' manuale (meta.manuale booleano): una lettura sola per script.fn_doc_passaggio e script.fn_doc_azioni_permesse. Brief: brief-modello-documento-vendita §15.14 (D-3).';
+              COMMENT ON CONSTRAINT ck_transizioni_stati_reso_meta_manuale_dichiarato ON config.transizioni_stati_reso
+                IS 'Ogni passaggio dichiara se e'' manuale (meta.manuale booleano): una lettura sola per script.fn_doc_passaggio e script.fn_doc_azioni_permesse. Brief: brief-modello-documento-vendita §15.14 (D-3).';
+              COMMENT ON CONSTRAINT ck_transizioni_stati_commessa_meta_manuale_dichiarato ON vendite.transizioni_stati_commessa
+                IS 'Ogni passaggio dichiara se e'' manuale (meta.manuale booleano): una lettura sola per script.fn_doc_passaggio e script.fn_doc_azioni_permesse. Brief: brief-modello-documento-vendita §15.14 (D-3).';
+              COMMENT ON CONSTRAINT ck_stati_doc_fiscale_transizioni_meta_manuale_dichiarato ON config.stati_doc_fiscale_transizioni
+                IS 'Ogni passaggio dichiara se e'' manuale (meta.manuale booleano): una lettura sola per script.fn_doc_passaggio e script.fn_doc_azioni_permesse. Brief: brief-modello-documento-vendita §15.14 (D-3).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.transizioni_stati_preventivi DROP CONSTRAINT IF EXISTS ck_transizioni_stati_preventivi_meta_manuale_dichiarato;
+              ALTER TABLE config.stati_doc_offerte_transizioni DROP CONSTRAINT IF EXISTS ck_stati_doc_offerte_transizioni_meta_manuale_dichiarato;
+              ALTER TABLE config.transizioni_stati_contratti DROP CONSTRAINT IF EXISTS ck_transizioni_stati_contratti_meta_manuale_dichiarato;
+              ALTER TABLE config.transizioni_stati_ordini DROP CONSTRAINT IF EXISTS ck_transizioni_stati_ordini_meta_manuale_dichiarato;
+              ALTER TABLE config.transizioni_stati_ddt DROP CONSTRAINT IF EXISTS ck_transizioni_stati_ddt_meta_manuale_dichiarato;
+              ALTER TABLE config.transizioni_stati_reso DROP CONSTRAINT IF EXISTS ck_transizioni_stati_reso_meta_manuale_dichiarato;
+              ALTER TABLE vendite.transizioni_stati_commessa DROP CONSTRAINT IF EXISTS ck_transizioni_stati_commessa_meta_manuale_dichiarato;
+              ALTER TABLE config.stati_doc_fiscale_transizioni DROP CONSTRAINT IF EXISTS ck_stati_doc_fiscale_transizioni_meta_manuale_dichiarato;

@@ -17,6 +17,9 @@ Approfondimento parametri tabellari Vs GUC
 
 ---
 ### 🎯 Scopo Principale
+
+(ultima revisione 25-10-2026)
+
 La tabella **`config.parameters`** implementa un’**architettura a due livelli** per la configurazione dinamica dell’applicazione:
 
 1. **Parametri di sistema (global defaults)**
@@ -36,10 +39,29 @@ La tabella **`config.parameters`** implementa un’**architettura a due livelli*
 | `code`          | VARCHAR(100)                | NO       | —                   | Codice univoco del parametro (es. `TIMEOUT`). |
 | `default_value` | TEXT                        | NO       | —                   | Valore di default del parametro.              |
 | `description`   | TEXT                        | SÌ       | —                   | Descrizione estesa.                           |
+| `ammette_override` | BOOLEAN                  | NO       | —                   | La famiglia: `true` con override, `false` uguale per tutti. Nessun default: un parametro nuovo la dichiara. |
 | `data_insert`   | TIMESTAMP WITHOUT TIME ZONE | NO       | `CURRENT_TIMESTAMP` | Data di creazione del record.                 |
 | `user_insert`   | VARCHAR(80)                 | NO       | `CURRENT_USER`      | Utente creazione.                             |
 | `data_update`   | TIMESTAMP WITHOUT TIME ZONE | NO       | `CURRENT_TIMESTAMP` | Data ultima modifica.                         |
 | `user_update`   | VARCHAR(80)                 | NO       | `CURRENT_USER`      | Utente ultima modifica.                       |
+
+---
+
+### La famiglia del parametro
+
+`ammette_override` dice se il valore può cambiare per chi lavora (`true`, letto con la cascata di
+`script.fn_get_parameter_full`) o deve valere per tutti (`false`, letto dal default dalla funzione
+che possiede la regola). Il database la fa rispettare:
+
+* su `config.parameter_overrides`, un override su un parametro `false` si rifiuta
+  (`E_PARAMETER_OVERRIDE_NON_AMMESSO`);
+* qui, il passaggio `true` → `false` si rifiuta finché il parametro ha override
+  (`E_PARAMETER_OVERRIDE_PRESENTI`, trigger `trg_parameters_a10_guard_ammette_override_upd`,
+  [la funzione](/dbzero/config/funzioni/trgfn_parameters_guard_ammette_override)).
+
+Il quadro, con le regole di lettura: [Configurazione e gestione parametri](/guide/configurazione-e-gestione-parametri).
+I valori si seminano da `80_data/sql/config/parameters.csv`; i parametri di sistema da
+`parameters_sistema.csv`, caricato da `70_dati_sistema` perché il codice li legge prima dei seed.
 
 ---
 

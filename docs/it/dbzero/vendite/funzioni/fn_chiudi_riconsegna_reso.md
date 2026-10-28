@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_chiudi_riconsegna_reso(p_reso_id bigint, p_righe jsonb, p_note character varying)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

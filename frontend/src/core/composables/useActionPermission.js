@@ -1,7 +1,7 @@
 // Composable per verificare se un'azione di processo e' abilitata.
 //
 // Livello 2 permessi: le azioni processo controllano singole operazioni
-// (es. genera_fatture_lotti, reset_lotto_draft) dentro un'area accessibile.
+// (es. genera_fatture_lotti, numera_fatture_lotti) dentro un'area accessibile.
 //
 // Uso diretto (nei componenti):
 //   const { isAllowed } = useActionPermission('genera_fatture_lotti')
@@ -10,7 +10,7 @@
 // Uso multiplo:
 //   const auth = useAuthStore()
 //   const canGenerate = computed(() => auth.isActionAllowed('genera_fatture_lotti'))
-//   const canReset = computed(() => auth.isActionAllowed('reset_lotto_draft'))
+//   const canNumera = computed(() => auth.isActionAllowed('numera_fatture_lotti'))
 
 import { computed } from 'vue'
 import { useAuthStore } from '../../stores/auth'

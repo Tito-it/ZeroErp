@@ -131,6 +131,10 @@ class DateValiditaGuardComuneDbTests(unittest.TestCase):
 
     # 1. Contratti: tre punti, e il traduttore che riconosce solo i codici in
     #    lista. La cessazione e' PROGRAMMATA (data futura): scrive solo valido_al.
+    #    ⚠️ Si cessa un contratto ATTIVO: dal 2026-10-26 la cessazione passa da
+    #    `vendite.fn_cessa_contratto`, che prima della data guarda la strada
+    #    dalla matrice — da bozza a CESSATO non c'e' (brief-modello-documento-
+    #    vendita §11.6). L'attivazione chiede `emetti_contratto` e un listino.
     def test_contratti_create_update_e_cessazione(self):
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -153,10 +157,18 @@ class DateValiditaGuardComuneDbTests(unittest.TestCase):
                     "valido_dal": _DAL.isoformat(), "valido_al": _AL_PRIMA.isoformat(),
                 }),
             )
+            cur.execute(
+                "SELECT listino_id FROM dbops.fn_pgtap_crea_listino(%s, 'date validita')",
+                [m.utility],
+            )
+            listino_id = int(cur.fetchone()[0])
+            cur.execute("SELECT dbops.fn_pgtap_concedi_azione(%s, 'emetti_contratto')", [m.uid])
+            attivo = svc.create_contratto({**base, "listino_id": listino_id})
+            svc.emetti(attivo["id"])
             self._rifiuto_del_periodo(
                 "contratti.cambia_stato(CESSATO)",
                 lambda: svc.cambia_stato(
-                    contratto["id"], codice_interno="CESSATO", valido_al=_AL_PRIMA,
+                    attivo["id"], codice_interno="CESSATO", valido_al=_AL_PRIMA,
                 ),
             )
         self._nel_mondo(_prova)

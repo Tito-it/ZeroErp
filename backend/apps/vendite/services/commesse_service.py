@@ -20,6 +20,7 @@ Funzioni esposte:
 - get_legami                — legami per la finestra di conferma dell'annullo (read)
 """
 
+from collections.abc import Callable
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Any
@@ -42,15 +43,18 @@ from apps.core.db._helpers import (
     sql_tiebreak_direction,
 )
 from apps.core.services.diagnostica_best_effort import diagnostica_best_effort
+from apps.core.services.documento_modello import e_stato_di_annullo
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.list_helpers import validate_enum_param, validate_order_params
 from apps.core.services.payload_helpers import (
     PayloadValidator,
     translate_db_errors,
 )
+from apps.core.services.testata_guard import testata_o_not_found
 from apps.anagrafiche.services.anagrafiche_service import AnagraficheService
 from apps.anagrafiche.services.billing_account_service import istanza_del_billing_account
 from apps.vendite.db.commesse_repository import (
+    TESTATA_COMMESSE,
     ATTIVITA_SORT_COLUMNS,
     TIPO_MOVIMENTO_RETTIFICA,
     STATI_APPROVAZIONE_ATTIVITA,
@@ -59,7 +63,6 @@ from apps.vendite.db.commesse_repository import (
     CommesseRepository,
 )
 from apps.vendite.services._annullo_con_legami import (
-    STATO_ANNULLATA,
     legami_del_documento,
     legami_confermati as dichiarazione_legami,
 )
@@ -455,6 +458,19 @@ def fn_get_commesse_push_log(*, push_log_id: int) -> dict:
 
 # Scopo: guard standard su commessa_id (intero positivo) condiviso dagli entrypoint
 #        del service. Estratto (regola del 2): 3 occorrenze identiche tranne function_name.
+# Scopo: La testata della commessa da `getter`, o il 404 del dominio (BB core
+#        `testata_o_not_found`: qui solo codice e messaggio). Inesistente e
+#        fuori perimetro sono lo stesso 404: i lettori girano sotto la RLS.
+#        ⛔ Solo dove il DB non lo dice gia': davanti a un verbo che prende la
+#        testata nel perimetro sarebbe la stessa regola in due sedi.
+def _commessa_o_not_found(getter: Callable[[int], Any], commessa_id: int, *, function_name: str) -> Any:
+    return testata_o_not_found(
+        getter, commessa_id,
+        code="E_COMMESSA_NOT_FOUND", message="Commessa non trovata.",
+        id_name="commessa_id", function_name=function_name,
+    )
+
+
 def _guard_commessa_id(commessa_id: int, *, function_name: str) -> None:
     ErrorManager.require(
         bool(commessa_id and commessa_id > 0),
@@ -472,17 +488,10 @@ def fn_get_commessa_stato(*, commessa_id: int) -> dict:
     """Entrypoint servizio Python: stato commessa con contatori."""
     _guard_commessa_id(commessa_id, function_name="vendite.commesse_service.fn_get_commessa_stato")
     repo = CommesseRepository()
-    stato = repo.get_commessa_stato(commessa_id)
-    if stato is None:
-        ErrorManager.raise_error(
-            code="E_COMMESSA_NOT_FOUND",
-            message="Commessa non trovata.",
-            detail=f"Nessuna commessa con id={commessa_id}",
-            context={"commessa_id": commessa_id},
-            function_name="vendite.commesse_service.fn_get_commessa_stato",
-            log_to_db=True,
-        )
-    assert stato is not None  # raise_error è NoReturn — aiuta il type checker
+    stato = _commessa_o_not_found(
+        repo.get_commessa_stato, commessa_id,
+        function_name="vendite.commesse_service.fn_get_commessa_stato",
+    )
     # Capability data-driven (azioni di stato utente + flag edit) per la UI: blob
     # da `script.fn_available_actions_commessa`, stesso pattern di ordini/preventivi/
     # offerte/contratti. Espone anche `stato_codice` (= sc.codice_interno).
@@ -599,14 +608,17 @@ def aggiorna_commessa_testata(commessa_id: int, payload: dict[str, Any]) -> dict
     return fn_get_commessa_stato(commessa_id=commessa_id)
 
 
-# Scopo: Azione di stato utente sulla testata commessa (chiudi/riapri/annulla).
-#        Difesa applicativa data-driven oltre al guard DB: la transizione e'
-#        ammessa solo se il `nuovo_stato` figura tra le `available_actions`
-#        (transizioni manuali) di `fn_available_actions_commessa` — questo
-#        impedisce di forzare via API le transizioni AUTOMATICHE (ponte
-#        push/emittibilita', es. →PRONTA_FATTURAZIONE) che il guard DB
-#        accetterebbe (valida la coppia, non il flag `manuale`). L'UPDATE
-#        effettivo + le precondizioni di matrice restano a `fn_cambia_stato_commessa`.
+# Scopo: Azione di stato utente sulla testata commessa (rendi pronta, riapri,
+#        chiudi, annulla) dal verbo `vendite.fn_cambia_stato_commessa`, sul
+#        modello del documento (brief-modello-documento-vendita §14). Il
+#        permesso lo legge la view dalla riga del passaggio
+#        (`PassaggioDocumento`); il resto lo dice il DB: il passaggio di
+#        processo chiesto a mano e lo stato che ha gia' il verbo, matrice e
+#        condizioni il guard, uno stato ritirato il vocabolario.
+#        ⛔ Ritirata la «difesa applicativa» (lo stato ammesso solo se era una
+#        `available_action` abilitata, §14.6 punto 3): ripeteva quelle regole,
+#        e nasceva perche' il verbo di prima non rifiutava i passaggi di
+#        processo.
 #        ⭐ ANNULLATA passa SEMPRE dal verbo `vendite.fn_annulla_commessa`
 #        (brief-db-annullo-a-valle-riapre-a-monte D-2): con righe NON_EMESSA
 #        il DB rifiuta (E_DOC_ANNULLO_CON_LEGAMI, `confirm_and_retry`) finche'
@@ -614,60 +626,38 @@ def aggiorna_commessa_testata(commessa_id: int, payload: dict[str, Any]) -> dict
 #        `get_legami`; il verbo ritira i legami (riapre a monte) e cambia lo
 #        stato. Stessa forma di bolla, ordine, preventivo e contratto.
 def cambia_stato_commessa(
-    *, commessa_id: int, nuovo_stato: str, user: str | None = None,
-    legami_confermati: Any = None,
+    *, commessa_id: int, nuovo_stato: Any, legami_confermati: Any = None,
 ) -> dict:
-    _guard_commessa_id(commessa_id, function_name="vendite.commesse_service.cambia_stato_commessa")
-    nuovo_stato = (nuovo_stato or "").strip()
+    function_name = "vendite.commesse_service.cambia_stato_commessa"
+    _guard_commessa_id(commessa_id, function_name=function_name)
+    # Lo stato come lo legge `PassaggioDocumento`: un non-testo (null, numero)
+    # e' assente, mai la sua stringa («None») mandata al verbo.
+    nuovo_stato = nuovo_stato.strip() if isinstance(nuovo_stato, str) else ""
     ErrorManager.require(
         bool(nuovo_stato),
         code="E_COMMESSA_VALIDATION",
         message="Stato di destinazione obbligatorio.",
         detail="nuovo_stato mancante",
         context={"commessa_id": commessa_id},
-        function_name="vendite.commesse_service.cambia_stato_commessa",
+        function_name=function_name,
         log_to_db=True,
     )
 
     repo = CommesseRepository()
-    capabilities = repo.get_capabilities(commessa_id)
-    # capabilities vuoto ⇒ commessa inesistente (fn ritorna NULL → {}).
-    if not capabilities:
-        ErrorManager.raise_error(
-            code="E_COMMESSA_NOT_FOUND",
-            message="Commessa non trovata.",
-            detail=f"Nessuna commessa con id={commessa_id}",
-            context={"commessa_id": commessa_id},
-            function_name="vendite.commesse_service.cambia_stato_commessa",
-            log_to_db=True,
-        )
-
-    # Difesa applicativa: il target deve essere una transizione manuale ammessa
-    # E abilitata. Con enabled/reasons (brief-db-guard-uscita-commessa §6.1) le
-    # azioni terminali vietate (chiudi/annulla con righe pendenti/emesse) restano
-    # in lista ma con `enabled:false`: senza questo filtro passerebbero il gate
-    # applicativo e il DB le respingerebbe con 558/559 — la difesa nata per
-    # bloccare le transizioni AUTOMATICHE forzate via API si aprirebbe. Confronto
-    # stretto con False: un'azione senza `enabled` degrada ad abilitata (coerente
-    # col mapper FE mapAvailableActionsToDrawerActions).
-    azioni = capabilities.get("available_actions") or []
-    stati_ammessi = {a.get("target_state") for a in azioni if a.get("enabled") is not False}
-    ErrorManager.require(
-        nuovo_stato in stati_ammessi,
-        code="E_COMMESSA_AZIONE_NON_AMMESSA",
-        message="Azione di stato non ammessa nello stato corrente della commessa.",
-        detail=f"nuovo_stato={nuovo_stato!r} non tra le azioni utente {sorted(s for s in stati_ammessi if s)}",
-        context={"commessa_id": commessa_id, "nuovo_stato": nuovo_stato,
-                 "stato_corrente": capabilities.get("stato_codice")},
-        function_name="vendite.commesse_service.cambia_stato_commessa",
-        log_to_db=True,
-    )
-
-    if nuovo_stato == STATO_ANNULLATA:
+    # ⛔ Nessun controllo «la commessa c'e'» qui (regola del 1, Tid
+    #    2026-10-27): i due verbi prendono la testata nel perimetro e rifiutano
+    #    da se' (E_COMMESSA_NON_TROVATA, 404). Fino al 2026-10-27 un lettore
+    #    lo ridiceva col suo codice: la stessa regola in due sedi.
+    # L'annullo (lo stato d'annullo del vocabolario, ANNULLATA) dal suo verbo.
+    if e_stato_di_annullo(TESTATA_COMMESSE, nuovo_stato):
         confermati = dichiarazione_legami(
             legami_confermati, validation_code="E_COMMESSA_VALIDATION",
-            function_name="vendite.commesse_service.cambia_stato_commessa",
+            function_name=function_name,
         )
+        # Lo stato di partenza per la risposta: il verbo d'annullo rende i
+        # soli legami. Un None (commessa che non c'e') non arriva al client:
+        # il verbo rifiuta prima.
+        stato_da = repo.get_commessa_stato_codice(commessa_id)
         with translate_db_errors(
             context={"op": "annulla_commessa", "commessa_id": commessa_id},
             fallback_code="E_COMMESSA_VALIDATION",
@@ -678,13 +668,16 @@ def cambia_stato_commessa(
         # (e non deve sapere) che l'annullo e' passato da un verbo.
         return {
             "commessa_id": commessa_id,
-            "stato_da": capabilities.get("stato_codice"),
-            "stato_a": STATO_ANNULLATA,
+            "stato_da": stato_da,
+            "stato_a": nuovo_stato,
         }
 
-    return repo.cambia_stato_commessa(
-        commessa_id=commessa_id, nuovo_stato=nuovo_stato, user=user,
-    )
+    with translate_db_errors(
+        context={"op": "cambia_stato_commessa", "commessa_id": commessa_id},
+        fallback_code="E_COMMESSA_VALIDATION",
+        fallback_message="Stato della commessa non cambiato.",
+    ):
+        return repo.cambia_stato_commessa(commessa_id=commessa_id, nuovo_stato=nuovo_stato)
 
 
 # Scopo: I legami della commessa per la finestra di conferma dell'annullo (BB
@@ -696,15 +689,7 @@ def get_legami(commessa_id: int) -> dict[str, Any]:
     function_name = "vendite.commesse_service.get_legami"
     _guard_commessa_id(commessa_id, function_name=function_name)
     repo = CommesseRepository()
-    if repo.get_commessa_stato_codice(commessa_id) is None:
-        ErrorManager.raise_error(
-            code="E_COMMESSA_NOT_FOUND",
-            message="Commessa non trovata.",
-            detail=f"Nessuna commessa con id={commessa_id}",
-            context={"commessa_id": commessa_id},
-            function_name=function_name,
-            log_to_db=True,
-        )
+    _commessa_o_not_found(repo.get_commessa_stato_codice, commessa_id, function_name=function_name)
     return legami_del_documento(SORGENTE_COMMESSA, commessa_id)
 
 
@@ -736,7 +721,7 @@ def _parse_ids_list(raw: object, *, field: str, function_name: str) -> list[int]
 #        vendite.fn_approva_commessa_attivita (idempotente: gia' APPROVATA = 0).
 #        righe_ids None = tutte le righe NON_EMESSA della commessa; altrimenti solo
 #        le righe indicate. Il gate di permesso (`approva_attivita_commessa`) e'
-#        applicato dalla view; qui guard input + esistenza commessa.
+#        applicato dalla view; qui il guard dell'input, l'esistenza la dice la fn.
 def approva_commessa_attivita(
     *, commessa_id: int, righe_ids: list[int] | None = None, user: str | None = None,
 ) -> dict:
@@ -745,20 +730,18 @@ def approva_commessa_attivita(
     righe_ids = _parse_ids_list(righe_ids, field="righe_ids", function_name=_fn)
 
     repo = CommesseRepository()
-    # Esistenza commessa (404 parlante prima del guard DB della fn).
-    if repo.get_commessa_stato_codice(commessa_id) is None:
-        ErrorManager.raise_error(
-            code="E_COMMESSA_NOT_FOUND",
-            message="Commessa non trovata.",
-            detail=f"Nessuna commessa con id={commessa_id}",
-            context={"commessa_id": commessa_id},
-            function_name=_fn,
-            log_to_db=True,
+    # ⛔ Nessun controllo «la commessa c'e'» qui (regola del 1, Tid
+    #    2026-10-27): `fn_approva_commessa_attivita` e' INVOKER su
+    #    `vendite.commesse`, che ha la RLS, e rifiuta da se' la commessa che
+    #    non c'e' o non si vede (E_COMMESSA_NON_TROVATA, 404).
+    with translate_db_errors(
+        context={"op": "approva_commessa_attivita", "commessa_id": commessa_id},
+        fallback_code="E_COMMESSA_VALIDATION",
+        fallback_message="Attivita' della commessa non approvate.",
+    ):
+        approvate = repo.approva_commessa_attivita(
+            commessa_id=commessa_id, righe_ids=righe_ids, user=user,
         )
-
-    approvate = repo.approva_commessa_attivita(
-        commessa_id=commessa_id, righe_ids=righe_ids, user=user,
-    )
     return {"commessa_id": commessa_id, "approvate": approvate}
 
 
@@ -942,17 +925,7 @@ def aggiungi_onere_commessa(
     # mockato con un MagicMock — che accetta qualunque attributo — e poi
     # esplode in produzione con AttributeError (difetto del 2026-07-28,
     # rilevato solo alla prova in-app della porta oneri).
-    stato = repo.get_commessa_stato(commessa_id)
-    if stato is None:
-        ErrorManager.raise_error(
-            code="E_COMMESSA_NOT_FOUND",
-            message="Commessa non trovata.",
-            detail=f"Nessuna commessa con id={commessa_id}",
-            context={"commessa_id": commessa_id},
-            function_name=_fn,
-            log_to_db=True,
-        )
-    assert stato is not None
+    stato = _commessa_o_not_found(repo.get_commessa_stato, commessa_id, function_name=_fn)
 
     # Istanza utility: un billing account ha UNA sola istanza (FK NOT NULL,
     # immutabile: E_BA_ISTANZA_IMMUTABILE) — un'istanza invece ne ha uno per

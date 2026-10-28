@@ -81,6 +81,23 @@ from apps.vendite.types import (
     LottoListRow,
 )
 
+
+# La testata del lotto nella mappa del modello del documento
+# (`script.fn_doc_stato_modello`): la leggono la catena dei permessi
+# (`PassaggioDocumento`) e la proiezione della riga di lotto (`azioni_permesse`).
+# ⚠️ Sta qui, accanto alla lettura del lotto, e non in `pipeline_repository`:
+#    di la' si arriva gia' a questo modulo (via `commesse_repository`), e
+#    l'import inverso sarebbe un ciclo.
+TESTATA_LOTTI = "vendite.fatturazione_lotti"
+
+# Lo stato fiscale della NUMERAZIONE («Rendi definitive»): l'arrivo del passaggio
+# `numera` del lotto (EMESSA -> DEFINITIVA), la fine della catena che numera e
+# lo stato da cui il lotto si ristampa (`ristampa_lotto`, `ristampabile` della
+# riga). ⚠️ Nessuna colonna del vocabolario lo dice (non e' l'emissione ne'
+# l'annullo): come la `CONFERMATO` del reso, e' lo stato di arrivo di un verbo.
+# Una sede, qui accanto alla testata e per la stessa ragione (il ciclo d'import).
+STATO_DEFINITIVA = "DEFINITIVA"
+
 logger = logging.getLogger(__name__)
 
 # Whitelist colonne ordinamento per list_lotto_fatture; mai interpolate direttamente.
@@ -368,10 +385,11 @@ STATI_ESECUZIONE_DOCUMENTO: tuple[str, ...] = (
     STATO_ESECUZIONE_ESCLUSO,
 )
 
-# Il vocabolario dello stato del LOTTO (il suo job), per il filtro della lista
-# lotti: specchio del CHECK `chk_fatturazione_lotti_stato_job`, che il
-# guardrail `test_specchi_dei_check_db` confronta col database (2026-10-20).
-STATI_LOTTO: tuple[str, ...] = ("IN_ESECUZIONE", "COMPLETATO", "ERRORE")
+# ⛔ `STATI_LOTTO` (lo specchio del CHECK `chk_fatturazione_lotti_stato_job`) e'
+#    ritirato il 2026-10-27: lo stato del job e' un vocabolario in tabella
+#    (`config.stati_lotto_job`, FK sul codice dal `20261027-05`, F-4 di
+#    brief-modello-documento-vendita §15), e il filtro della lista lotti lo
+#    legge da li' (`richiedi_codice_a_vocabolario`). Il CHECK non c'e' piu'.
 
 DASH_STADIO_DA_APPROVARE = "DA_APPROVARE"
 DASH_COMPETENZA_STADI: tuple[str, ...] = (
@@ -697,8 +715,34 @@ class VenditeRepository:
                 -- Due id diversi, non intercambiabili
                 -- (feedback_emittente_pk_vs_soggetto_ruolo). ⚠️ In coda, come
                 -- impone il mapper posizionale.
-                ef_pk.id AS emittente_fiscale_id
-    """  # noqa: S608 — costanti di modulo STATO_ESECUZIONE_* letterali
+                ef_pk.id AS emittente_fiscale_id,
+                -- ⭐ I PASSAGGI CHE L'OPERATORE PUO' FARE DA QUESTO STATO
+                -- (brief-modello-documento-vendita §15.14, 2026-10-27): le
+                -- `action_key` del lettore del modello, che applica il permesso
+                -- della riga del passaggio. Il kebab propone un verbo di stato
+                -- SOLO se compare qui: chi non ha l'azione non lo vede, come
+                -- nel dettaglio (le capability leggono lo stesso lettore).
+                -- ⚠️ Non e' il verdetto: le precondizioni (`fn_check_*`) le
+                -- legge il click, dal dettaglio (`eseguiVerificato`).
+                -- ⚠️ Lo stato e non l'id del documento: il permesso dipende
+                -- dall'utente e dall'azione, e la riga lo stato ce l'ha gia'.
+                -- Stato NULL -> nessuna riga -> array vuoto.
+                -- ⚠️ In coda, come impone il mapper posizionale.
+                ARRAY(
+                    SELECT ap.action_key
+                      FROM script.fn_doc_azioni_permesse(
+                               '{TESTATA_LOTTI}'::regclass, fl.stato_doc_fiscale_id) ap
+                     ORDER BY ap.action_key
+                ) AS azioni_permesse,
+                -- ⭐ SI RISTAMPA? (proposta del kebab): lo STESSO predicato con
+                -- cui `ristampa_lotto` accetta o rifiuta, sulla stessa costante.
+                -- La ristampa non e' un passaggio di stato (stampare e' leggere,
+                -- I-4), quindi `azioni_permesse` non la porta. Prima il kebab
+                -- confrontava il codice dello stato con un `'DEFINITIVA'` scritto
+                -- nel frontend: una terza copia.
+                -- ⚠️ In coda, come impone il mapper posizionale.
+                (sdf.codice_interno = '{STATO_DEFINITIVA}') AS ristampabile
+    """  # noqa: S608 — costanti di modulo STATO_ESECUZIONE_*, TESTATA_LOTTI e STATO_DEFINITIVA letterali
 
     _LOTTO_JOINS = f"""
             LEFT JOIN config.utilities u
@@ -781,6 +825,10 @@ class VenditeRepository:
             "n_presi_in_carico": int(row[25]),
             "n_esiti_completati": int(row[26]),
             "emittente_fiscale_id": None if row[27] is None else int(row[27]),
+            # Mai `None`: `ARRAY(subquery)` senza righe e' l'array vuoto.
+            "azioni_permesse": list(row[28]),
+            # Lotto senza stato (LEFT JOIN vuoto): NULL -> non si ristampa.
+            "ristampabile": row[29] is True,
         }
 
     # Colonne ordinabili della lista lotti: chiave esposta al FE -> espressione
@@ -3956,7 +4004,7 @@ class VenditeRepository:
             ),
             gruppi AS (
                 SELECT d.gruppo_key,
-                       -- ⚠️ Serve alle due LATERAL della pagina: averlo qui
+                       -- ⚠️ Serve al join della pagina con la vista delle azioni di riga: averlo qui
                        --    evita un secondo segnaposto, e i parametri di
                        --    questa query hanno gia' un ordine delicato
                        --    (perimetro + ordinamento + paginazione).
@@ -4024,29 +4072,20 @@ class VenditeRepository:
                    gr.uscita_motivo,
                    gr.uscita_quando,
                    gr.uscita_da,
-                   -- ⭐ IL MOTIVO DEL PULSANTE SPENTO, PER RIGA (§12.5 delle
-                   --    linee guida). Non e' ricalcolato qui: e' la STESSA
-                   --    funzione che la madre chiama per RIFIUTARE, quindi il
-                   --    tooltip e l'errore non possono dire due cose diverse.
-                   -- ⚠️ Il PRIMO motivo, perche' l'ordine dell'array e' il
-                   --    contratto: la madre solleva quello.
-                   -- ⛔ Colonne che nominano IL VERBO (§12.5.4): non si riusa
-                   --    la colonna di blocco di un altro atto.
-                   chk.motivi -> 0 ->> 'reason'     AS uscita_blocco_reason,
-                   chk.motivi -> 0 ->> 'reason_key' AS uscita_blocco_reason_key,
-                   -- ⭐ QUANTI DOCUMENTI VIENE VIA INSIEME (D-2b): una bozza
-                   --    puo' coprirne piu' d'uno, e chiedere di togliere A
-                   --    porta via anche B. ⚠️ Va detto PRIMA, non scoperto
-                   --    dopo — e non e' un motivo che rifiuta: e' una
-                   --    conseguenza, e le conseguenze stanno nella conferma.
-                   -- ⚠️ Calcolato SOLO dove l'azione e' viva: su una riga
-                   --    bloccata la conferma non si apre mai, e la catena
-                   --    delle righe non e' gratis.
-                   CASE WHEN jsonb_array_length(chk.motivi) = 0
-                        THEN jsonb_array_length(
-                                 script.fn_gruppi_trascinati_da_uscita(
-                                     gr.lotto_id, gr.gruppo_key))
-                   END AS n_trascinati,
+                   -- ⭐ IL MOTIVO DEL PULSANTE SPENTO e QUANTI DOCUMENTI
+                   --    VENGONO VIA INSIEME, letti dalla superficie del DB
+                   --    (`vendite.vw_lotti_gruppi_azioni`, la superficie che il
+                   --    registro `config.azioni_riga` nomina per
+                   --    ESCLUDI_DOCUMENTO_DA_GIRO: brief-modello-documento-
+                   --    vendita §15.11.1, BE-2). La vista chiama la STESSA
+                   --    `fn_check_documento_escludibile_da_giro` della madre,
+                   --    e lo verifica il presidio del registro: tooltip ed
+                   --    errore non possono dire due cose diverse.
+                   -- ⛔ Prima queste colonne le componeva questa query, e il
+                   --    presidio del DB non poteva vederle.
+                   az.uscita_blocco_reason,
+                   az.uscita_blocco_reason_key,
+                   az.n_trascinati,
                    ref.riferimento,
                    ref.tipo_gruppo,
                    ref.documento_apribile,
@@ -4057,10 +4096,15 @@ class VenditeRepository:
                    COUNT(*) OVER () AS total_count
             FROM gruppi gr
             LEFT JOIN ref ON ref.gruppo_key = gr.gruppo_key
-            CROSS JOIN LATERAL (
-                SELECT script.fn_check_documento_escludibile_da_giro(
-                           gr.lotto_id, gr.gruppo_key) AS motivi
-            ) chk
+            -- 🔴 Il filtro sul lotto e' COSTANTE (`(SELECT id FROM lotto)`), non
+            --    il join su `gr.lotto_id`, e non e' un dettaglio. La vista ha una
+            --    UNION (perimetro ∪ esiti): un filtro di JOIN non ci entra, e la
+            --    vista calcolava la check per ogni gruppo di OGNI lotto visibile
+            --    (EXPLAIN su dbdev, 2026-10-27: 155 righe per servirne 12). Un
+            --    filtro costante invece scende nei due rami della UNION.
+            LEFT JOIN vendite.vw_lotti_gruppi_azioni az
+                   ON az.lotto_id = (SELECT id FROM lotto)
+                  AND az.gruppo_key = gr.gruppo_key
             {order_clause}
             LIMIT %s OFFSET %s
         """  # noqa: S608
@@ -4503,6 +4547,31 @@ class VenditeRepository:
             SELECT a.codice, a.testo
               FROM vendite.fn_annotazioni_fattura(%s) a
              ORDER BY a.ordine
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(fattura_id)])
+            return rows_to_list(cursor)
+
+    # Scopo: Le ORIGINI della fattura, i documenti a monte che cita (DDT,
+    #        ordine, contratto…; per la nota di credito la fattura rettificata e
+    #        il reso): una lista `{livello, tipo_id, tipo_codice_interno,
+    #        etichetta, uid, codice}`. QUALI documenti e in che ordine lo decide
+    #        il database (`vendite.fn_fattura_origini`, D-G1 = c, Q-F6 = b,
+    #        Q-F7; brief-modello-documento-vendita §15.11.1, BE-1). Nessuna
+    #        origine = lista vuota.
+    # ⭐ L'ordine e' quello in cui la funzione le consegna, e qui lo si FISSA
+    #    con `WITH ORDINALITY` invece di riscriverlo: un `ORDER BY livello, …`
+    #    in questa query sarebbe una seconda sede della regola.
+    # ⚠️ La funzione e' INVOKER: i documenti che chi legge non vede non escono.
+    #    Si chiama DOPO il cancello della testata (`_testata_fattura_o_404`).
+    def list_fattura_origini(self, fattura_id: int) -> list[dict[str, Any]]:
+        sql = """
+            SELECT o.livello, o.tipo_id, o.tipo_codice_interno,
+                   o.etichetta, o.uid, o.codice
+              FROM vendite.fn_fattura_origini(%s)
+                   WITH ORDINALITY AS o(livello, tipo_id, tipo_codice_interno,
+                                        etichetta, uid, codice, ordine)
+             ORDER BY o.ordine
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [int(fattura_id)])

@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_applica_fondi_lotto(p_lotto_id bigint, p_tipo_fondo_codice_interno character varying)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

@@ -1,5 +1,18 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-26 (brief-modello-documento-vendita §11): il contratto ha la porta sulla colonna di
+--   stato e verso CESSATO la data di fine deve essere arrivata. CES e B_CES vanno nel passato
+--   (CES 2020-01-01 .. 2020-12-31 CESSATO, B_CES 2020-06-01 .. 2021-03-31 sopra CES): un CESSATO
+--   con una data futura non e' piu' uno stato raggiungibile (con una data futura la cessazione e'
+--   programmata e il contratto resta ATTIVO). Il test 13 prova la stessa cosa: un CESSATO e'
+--   vincolante. L'attivazione senza date (5, 10, 17) passa dal verbo vendite.fn_cambia_stato_contratto
+--   (prima un UPDATE diretto, ora fermato dalla porta). Stessi esiti attesi.
+--   ⛔ RITIRATI 11 e 12 (Tid, 2026-10-26; plan 24 -> 22, i numeri degli altri restano): provavano
+--   che il guard giudica le date nuove di un UPDATE che cambia date e stato nella STESSA istruzione.
+--   Con la porta lo stato lo scrive solo script.fn_doc_scrivi_stato, che tocca la sola colonna di
+--   stato: date e stato non cambiano piu' in una istruzione, da nessuna strada. Il ritiro e'
+--   strutturale (la porta), non una misura sui dati; il guard continua a giudicare su NEW, come
+--   difesa.
 -- pgTAP test per Zero ERP
 --
 -- Test: «Attiva» del contratto si spegne su un contratto VINCOLANTE sovrapposto,
@@ -17,19 +30,20 @@
 --
 -- ⭐ I soggetti li FABBRICA (fn_pgtap_crea_cliente_ba, fn_pgtap_crea_listino):
 --   nessuna pesca dai dati, verde anche su un database ricostruito da zero.
---   Periodi dal 2078 in poi, su clienti nuovi: nessun contratto vero li tocca.
+--   Periodi dal 2078 in poi (CES e B_CES nel 2020: rev 2026-10-26), su clienti
+--   nuovi: nessun contratto vero li tocca.
 --
 -- Fixture (BA1 salvo dove detto, ambito COMMODITY, listino con versione di oggi):
 --   INC    ATTIVO   2080-01-01 .. 2080-12-31
---   CES    CESSATO  2078-01-01 .. 2078-12-31
+--   CES    CESSATO  2020-01-01 .. 2020-12-31   (rev 2026-10-26: era 2078, la data deve essere arrivata)
 --   PERP   ATTIVO   2085-01-01 .. (perpetuo)
 --   B_OVL  DRAFT    2080-06-01 .. 2081-05-31   sopra INC
 --   B_DOPO DRAFT    2081-01-01 .. 2081-12-31   periodo libero
 --   B_AMB  DRAFT    2080-06-01 .. 2080-09-30   ambito SERVIZI
 --   B_IST  DRAFT    2080-06-01 .. 2080-09-30   su BA2 (altra istanza)
---   B_CES  DRAFT    2078-06-01 .. 2079-03-31   sopra CES
+--   B_CES  DRAFT    2020-06-01 .. 2021-03-31   sopra CES (rev 2026-10-26: era 2078-06 .. 2079-03)
 --   B_PERP DRAFT    2086-01-01 .. 2086-12-31   sopra PERP
---   B_ESCE DRAFT    2080-07-01 .. 2080-09-30   sopra INC, esce nella stessa istruzione
+--   B_ESCE DRAFT    2080-07-01 .. 2080-09-30   sopra INC (serviva al 12, ritirato: resta in bozza)
 --   D1, D2 DRAFT    2082 / 2082-06..2082-12    due bozze sovrapposte fra loro
 --
 -- Indice test (1..24):
@@ -46,9 +60,7 @@
 --    8) B_AMB, ambito diverso: acceso
 --    9) B_IST, istanza diversa: acceso
 --   10) B_IST: l'attivazione passa
---   La quintupla e' quella di NEW (stessa istruzione)
---   11) B_DOPO spostato sopra INC nello stesso UPDATE che lo attiva: rifiutato col codice
---   12) B_ESCE spostato fuori da INC nello stesso UPDATE che lo attiva: passa
+--   11, 12) ritirati il 2026-10-26: date e stato nella stessa istruzione (vedi la rev in testa)
 --   Altri vincolanti
 --   13) B_CES sopra un CESSATO: spento, valori [CES]
 --   14) B_PERP sopra un ATTIVO perpetuo (valido_al NULL): spento, valori [PERP]
@@ -93,7 +105,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(24);
+SELECT plan(22);
 
 -- ============================================================
 -- Fixture
@@ -164,19 +176,19 @@ RETURNS text LANGUAGE sql AS $$
      WHERE m ->> 'reason' = 'CONTRATTO_SOVRAPPOSTO'
 $$;
 
--- Scopo: porta il contratto ad ATTIVO, eventualmente cambiando le date nella
---   STESSA istruzione. Ritorna 'OK' oppure SQLSTATE|codice|messaggio.
-CREATE FUNCTION pg_temp.attiva(p_numero text, p_dal date DEFAULT NULL, p_al date DEFAULT NULL)
+-- Scopo: porta il contratto ad ATTIVO. Ritorna 'OK' oppure
+--   SQLSTATE|codice|messaggio.
+-- rev 2026-10-26 (§11): dal verbo vendite.fn_cambia_stato_contratto (la porta
+--   ferma l'UPDATE dello stato). Le date nella stessa istruzione servivano ai test
+--   11 e 12, ritirati: vedi la testata.
+CREATE FUNCTION pg_temp.attiva(p_numero text)
 RETURNS text LANGUAGE plpgsql AS $$
 DECLARE
     v_cod text;
     v_msg text;
 BEGIN
-    UPDATE vendite.contratti
-       SET stato_doc_contratto_id = (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'ATTIVO'),
-           valido_dal = COALESCE(p_dal, valido_dal),
-           valido_al  = CASE WHEN p_dal IS NULL THEN valido_al ELSE p_al END
-     WHERE numero = p_numero;
+    PERFORM vendite.fn_cambia_stato_contratto(
+        (SELECT id FROM vendite.contratti WHERE numero = p_numero), 'ATTIVO');
     RETURN 'OK';
 EXCEPTION WHEN OTHERS THEN
     GET STACKED DIAGNOSTICS v_cod = CONSTRAINT_NAME, v_msg = MESSAGE_TEXT;
@@ -184,13 +196,13 @@ EXCEPTION WHEN OTHERS THEN
 END $$;
 
 SELECT pg_temp.contratto('PGTAP_SOV_INC',    'ATTIVO',  'BA1', DATE '2080-01-01', DATE '2080-12-31');
-SELECT pg_temp.contratto('PGTAP_SOV_CES',    'CESSATO', 'BA1', DATE '2078-01-01', DATE '2078-12-31');
+SELECT pg_temp.contratto('PGTAP_SOV_CES',    'CESSATO', 'BA1', DATE '2020-01-01', DATE '2020-12-31');
 SELECT pg_temp.contratto('PGTAP_SOV_PERP',   'ATTIVO',  'BA1', DATE '2085-01-01', NULL);
 SELECT pg_temp.contratto('PGTAP_SOV_B_OVL',  'DRAFT',   'BA1', DATE '2080-06-01', DATE '2081-05-31');
 SELECT pg_temp.contratto('PGTAP_SOV_B_DOPO', 'DRAFT',   'BA1', DATE '2081-01-01', DATE '2081-12-31');
 SELECT pg_temp.contratto('PGTAP_SOV_B_AMB',  'DRAFT',   'BA1', DATE '2080-06-01', DATE '2080-09-30', 'SERVIZI');
 SELECT pg_temp.contratto('PGTAP_SOV_B_IST',  'DRAFT',   'BA2', DATE '2080-06-01', DATE '2080-09-30');
-SELECT pg_temp.contratto('PGTAP_SOV_B_CES',  'DRAFT',   'BA1', DATE '2078-06-01', DATE '2079-03-31');
+SELECT pg_temp.contratto('PGTAP_SOV_B_CES',  'DRAFT',   'BA1', DATE '2020-06-01', DATE '2021-03-31');
 SELECT pg_temp.contratto('PGTAP_SOV_B_PERP', 'DRAFT',   'BA1', DATE '2086-01-01', DATE '2086-12-31');
 SELECT pg_temp.contratto('PGTAP_SOV_B_ESCE', 'DRAFT',   'BA1', DATE '2080-07-01', DATE '2080-09-30');
 SELECT pg_temp.contratto('PGTAP_SOV_D1',     'DRAFT',   'BA1', DATE '2082-01-01', DATE '2082-12-31');
@@ -253,18 +265,10 @@ SELECT is((pg_temp.azione_attiva('PGTAP_SOV_B_IST') ->> 'enabled')::boolean, tru
 SELECT is(pg_temp.attiva('PGTAP_SOV_B_IST'), 'OK',
     '10) stesso periodo, istanza diversa: l''attivazione passa');
 
--- ============================================================
--- La quintupla e' quella di NEW
--- ============================================================
--- ⭐ La prova che vale e' la STESSA istruzione: con la riga riletta per id il
---   guard giudicherebbe le date di ieri, e i due esiti qui sotto si invertirebbero.
-
-SELECT is(split_part(pg_temp.attiva('PGTAP_SOV_B_DOPO', DATE '2080-06-01', DATE '2080-08-31'), '|', 2),
-    'E_CONTRATTO_OVERLAP_ESISTENTE',
-    '11) spostato sopra INC nello stesso UPDATE che lo attiva: rifiutato col codice');
-
-SELECT is(pg_temp.attiva('PGTAP_SOV_B_ESCE', DATE '2084-01-01', DATE '2084-12-31'), 'OK',
-    '12) spostato fuori da INC nello stesso UPDATE che lo attiva: passa');
+-- 11, 12) RITIRATI il 2026-10-26 (Tid): provavano la quintupla di NEW in un UPDATE
+--   che cambiava date e stato nella stessa istruzione. Con la porta lo stato lo scrive
+--   solo la scrittura comune, che tocca la sola colonna di stato: il caso non ha piu'
+--   una strada. Vedi la rev in testa.
 
 -- ============================================================
 -- Altri vincolanti

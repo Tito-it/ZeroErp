@@ -1,0 +1,58 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA PORTA SULL'OFFERTA
+#   Brief: brief-modello-documento-vendita §13 (giro 9; S-1 b di Tid).
+#   Stampo: la porta del contratto (20261026-10).
+#
+#   Lo stato dell'offerta si cambia solo dai suoi verbi, che scrivono con
+#   script.fn_doc_scrivi_stato: vendite.fn_cambia_stato_offerta (-16),
+#   l'annullo vendite.fn_annulla_offerta (-25), i passaggi di processo della
+#   revisione vendite.fn_offerta_proietta_stato_revisione (-17). Un UPDATE
+#   diretto (il backend, OfferteRepository.update_stato; i vecchi UPDATE dei
+#   due trigger della revisione): E_DOC_STATO_SOLO_DAL_VERBO.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261026-26-create-trigger-stato-solo-dal-verbo-offerte-mctit.yaml
+
+  - changeSet:
+      id: 20261026-26-create-trigger-stato-solo-dal-verbo-offerte
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Monta script.trgfn_doc_stato_solo_dal_verbo (BEFORE UPDATE OF colonna di stato, _a05_)
+        su vendite.offerte_commerciali. Brief: brief-modello-documento-vendita §13 (S-1 b).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'trgfn_doc_stato_solo_dal_verbo';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_offerte_commerciali_a05_stato_solo_dal_verbo_upd
+                  BEFORE UPDATE OF stato_doc_offerta_id ON vendite.offerte_commerciali
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_doc_stato_solo_dal_verbo();
+
+              COMMENT ON TRIGGER trg_offerte_commerciali_a05_stato_solo_dal_verbo_upd ON vendite.offerte_commerciali IS
+                  'La porta (BB script.trgfn_doc_stato_solo_dal_verbo): lo stato dell''offerta si cambia solo dai suoi verbi (vendite.fn_cambia_stato_offerta, vendite.fn_annulla_offerta; il superamento e il rientro della revisione da vendite.fn_offerta_proietta_stato_revisione), che scrivono con script.fn_doc_scrivi_stato. Un UPDATE diretto: E_DOC_STATO_SOLO_DAL_VERBO. Fascia _a05_. Brief: brief-modello-documento-vendita §13 (S-1 b, Tid 2026-10-25/26).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_offerte_commerciali_a05_stato_solo_dal_verbo_upd ON vendite.offerte_commerciali;

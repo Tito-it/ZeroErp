@@ -256,6 +256,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_CONTRATTO_CAMPI_BLOCCATI_CON_RIGHE": "Modifica del listino bloccata: ci sono righe gia' caricate contro questo contesto pricing. Elimina prima le righe oppure annulla il contratto e creane uno nuovo.",
     "E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE": "Il contratto e' ATTIVO: listino, versione listino, variazione globale ed eccezioni sono congelati. Per modifiche sostanziali creare un nuovo contratto.",
     "E_CONTRATTO_CATEGORIA_SNAPSHOT_IMMUTABILE": "Categoria cliente congelata alla creazione del contratto: non modificabile.",
+    "E_CONTRATTO_CESSAZIONE_SENZA_DATA": "Per cessare il contratto serve la data di fine.",
     "E_CONTRATTO_CLASSE_TIPO_INCOERENTE": "La classe utenza scelta non appartiene al tipo utenza indicato.",
     "E_CONTRATTO_EMITTENTE_BA_INCOERENTE": "Emittente fiscale non coerente col cliente selezionato.",
     "E_CONTRATTO_EMITTENTE_NON_RISOLTO": "Nessun emittente fiscale attivo: selezionalo in alto o indicalo nella richiesta.",
@@ -332,6 +333,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_DDT_PREZZO_NON_RISOLVIBILE": "Causale fatturabile ma una riga del DDT non ha un prezzo risolvibile (proprio o ereditato dall'ordine).",
     "E_DDT_RIGA_IVA_MANCANTE": "Una riga del DDT ha un prezzo ma nessuna aliquota IVA: sceglila, oppure togli il prezzo se la merce non si valorizza.",
     "E_DDT_RIGA_NON_TROVATA": "Riga DDT non trovata.",
+    # Ritirato il 2026-10-25 (porta comune, E_DOC_STATO_SOLO_DAL_VERBO): resta per il diario.
     "E_DDT_STATO_SOLO_DA_VERBO": "La bolla muove merce: il cambio di stato si fa solo dall'operazione della bolla, che registra i movimenti di magazzino.",
     "E_DDT_STATO_TRANSIZIONE": "Operazione non ammessa nello stato corrente del DDT.",
     "E_DDT_VALIDAZIONE": "Parametri DDT non validi.",
@@ -355,7 +357,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     # brief-db-annullo-documento-con-legami (2026-10-11): l'avviso unico
     # dell'annullo di un documento con legami (bolla, ordine, preventivo,
     # contratto). Sostituisce E_DDT_ANNULLO_CON_LEGAMI, che resta per il diario.
-    "E_DOC_ANNULLO_CON_LEGAMI": "Annullando il documento si riaprono i suoi legami con altri documenti: quantita' da spedire, righe da ordinare, righe di commessa o l'offerta da cui nasce. Serve una conferma.",
+    "E_DOC_ANNULLO_CON_LEGAMI": "Annullando il documento si riaprono i suoi legami con altri documenti: quantita' da spedire, righe da ordinare o da mandare in commessa, accrediti di reso, l'offerta da cui nasce o la revisione precedente di un'offerta. Serve una conferma.",
     "E_DOC_CLIENTE_DIVERSO_DA_BA": "Il cliente o la utility non corrispondono al billing account del documento: lasciali vuoti, li mette il billing account.",
     "E_DOC_CLIENTE_DIVERSO_DA_SORGENTE": "Il cliente deve essere quello del documento da cui nasce.",
     "E_DOC_DATA_OLTRE_CONSEGNA_RIGHE": "La data del documento non puo' andare oltre una data di consegna gia' scritta su una riga.",
@@ -364,6 +366,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     # brief-db-testata-dopo-emissione (fase 2, 2026-10-10): la testata dopo la
     # bozza, un codice per famiglia di colonne. Il lock e' il BB di testata.
     "E_DOC_EMITTENTE_IMMUTABILE": "L'azienda che emette il documento si sceglie alla creazione e non si cambia, nemmeno in bozza.",
+    "E_DOC_GIA_NELLO_STATO": "Il documento e' gia' nello stato chiesto: non c'e' niente da cambiare.",
     "E_DOC_IDENTITA_FUORI_BOZZA": "Data, valuta e numerazione del documento si scelgono solo in bozza.",
     "E_DOC_CONDIZIONI_FUORI_BOZZA": "In questo stato le condizioni commerciali del documento non si cambiano piu': annulla il documento e rifallo, oppure creane una nuova revisione.",
     "E_DOC_CLIENTE_FUORI_BOZZA": "Il cliente del documento si sceglie solo in bozza: se e' sbagliato, annulla il documento e creane uno nuovo.",
@@ -372,6 +375,11 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     # brief-modello-documento-vendita §4-bis (2026-10-24): un documento nasce solo
     # nel suo stato iniziale. TECNICO: nessuna maschera crea un documento gia' avanti.
     "E_DOC_STATO_INIZIALE_NON_VALIDO": "Un documento nuovo nasce solo nel suo stato iniziale: segnalalo all'assistenza.",
+    # brief-modello-documento-vendita §7 (2026-10-25): lo stato di un documento sul
+    # modello si scrive solo dal suo verbo, e i passaggi di processo li fa solo il
+    # verbo che ne e' la causa. Due codici TECNICI: nessuna maschera li provoca.
+    "E_DOC_STATO_SOLO_DAL_VERBO": "Lo stato del documento si cambia solo dalle sue operazioni (emetti, conferma, annulla...), non con una modifica diretta: segnalalo all'assistenza.",
+    "E_DOC_PASSAGGIO_DI_PROCESSO": "Questo passaggio di stato lo fa il sistema, come conseguenza di un'altra operazione: non si chiede a mano.",
     # brief-db-indirizzi-documento-seguono-il-cliente (2026-10-12): la scheda di
     # fornitura segue la coppia della testata. Due codici TECNICI.
     "E_DOC_FORNITURA_FUORI_TESTATA": "La scheda di fornitura indicata non e' della fornitura del documento: segnalalo all'assistenza.",
@@ -609,7 +617,13 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_ID_FISCALI_DIVERSI": "Il parent account appartiene a un identificativo fiscale diverso.",
     "E_INDIRIZZO_CAMPO_ALTRA_FORMA": "Per questo indirizzo comune e CAP vengono dall'elenco: localita', codice postale e regione non si compilano.",
     "E_INDIRIZZO_CAP_ALTRO_COMUNE": "Il CAP scelto non e' del comune dell'indirizzo.",
+    # brief-db-unicita-civico-indirizzi-dettaglio (2026-10-25): la chiave
+    # dell'indirizzo fisico, il «trova o crea» e la modifica per tutti.
+    "E_INDIRIZZO_CIVICO_NON_POSITIVO": "Il numero civico deve essere maggiore di zero. Per un indirizzo senza numero civico si lascia vuoto il campo.",
     "E_INDIRIZZO_COMUNE_ALTRO_STATO": "Il comune scelto non e' dello stato dell'indirizzo.",
+    "E_INDIRIZZO_DETTAGLIO_DUPLICATO": "Esiste gia' un indirizzo uguale: la modifica ne creerebbe un doppione.",
+    "E_INDIRIZZO_DETTAGLIO_NON_RILETTO": "L'indirizzo risulta gia' presente, ma non si riesce a rileggerlo. Riprovare l'operazione.",
+    "E_INDIRIZZO_DETTAGLIO_SENZA_LETTERE": "Estensione, palazzina, scala, piano e interno vogliono almeno una lettera o una cifra.",
     # brief-db-indirizzi-documento-seguono-il-cliente (2026-10-11): l'indirizzo
     # preso dall'anagrafica non e' del cliente del documento.
     "E_INDIRIZZO_DOC_NON_DEL_CLIENTE": "Un indirizzo del documento non e' del suo cliente: viene dall'anagrafica di un altro cliente, o di una fornitura diversa. Sceglilo fra quelli del cliente del documento.",
@@ -618,6 +632,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_INDIRIZZO_LIBERO_INCOMPLETO": "Indirizzo incompleto: manca un campo della sua forma (via, stato, e poi comune e CAP oppure la localita').",
     "E_INDIRIZZO_OBBLIGATORIO_MANCANTE": "Indirizzo obbligatorio mancante per questo tipo soggetto.",
     "E_INDIRIZZO_SNAPSHOT_NOT_FOUND": "Indirizzo anagrafico non trovato: ricaricare gli indirizzi del cliente.",
+    "E_INDIRIZZO_VIA_NON_RISOLTA": "La via scelta non e' completa nell'elenco delle vie: manca il comune, la provincia o il CAP.",
     "E_INVALID_ID": "ID non valido.",
     "E_INVITO_OPERATORE": "Operatore non invitabile.",
     "E_INVITO_PORTALE": "Invito portale non inviabile.",
@@ -941,6 +956,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO": "Impossibile emettere l'offerta: il listino di riferimento non ha una versione in vigore oggi.",
     "E_OFFERTA_EMISSIONE_VERSIONE_LISTINO_NON_ATTIVA": "Impossibile emettere: la versione di listino non è attiva.",
     "E_OFFERTA_EMITTENTE_BA_INCOERENTE": "Emittente fiscale non coerente col cliente selezionato.",
+    "E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA": "Per rifiutare o annullare l'offerta serve una motivazione.",
     "E_OFFERTA_NON_TROVATA": "Offerta non trovata.",
     "E_OFFERTA_ORDINE_GIA_GENERATO": "Questa offerta ha già generato un ordine.",
     "E_OFFERTA_PUSH_STATO_NON_AMMESSO": "Push a contratto non ammesso: l'offerta deve essere ACCETTATA.",
@@ -980,6 +996,8 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_PANNELLO_TABELLA_NON_AMMESSA": "Tabella non gestita dal pannello di configurazione.",
     "E_PARAMETER_DEFAULT_VALUE_INVALID": "Valore di default parametro non valido: deve esistere nella tabella di catalogo associata.",
     "E_PARAMETER_NOT_FOUND": "Parametro di sistema non trovato.",
+    "E_PARAMETER_OVERRIDE_NON_AMMESSO": "Questo parametro vale per tutti e non si personalizza: lo stabilisce la configurazione del sistema, per cambiarlo ci si rivolge all'amministratore.",
+    "E_PARAMETER_OVERRIDE_PRESENTI": "Il parametro ha ancora personalizzazioni: non puo' diventare uguale per tutti.",
     "E_PARAMETER_OVERRIDE_VALUE_INVALID": "Override parametro non valido: il valore deve esistere nella tabella di catalogo associata.",
     "E_PARAMETER_VALIDATION": "Valore parametro non valido.",
     "E_PARAMETRI_TABELLA": "Il valore indicato non corrisponde a nessun record.",
@@ -1158,6 +1176,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_RESO_SENZA_RIGHE": "Il reso non ha righe: aggiungere almeno una riga prima della conferma.",
     "E_RESO_STATO_NON_ANNULLABILE": "Il reso non e' in uno stato che ammette l'annullo.",
     "E_RESO_STATO_NON_CONFERMABILE": "Il reso non e' in bozza: non e' confermabile.",
+    # Ritirato il 2026-10-25 (porta comune, E_DOC_STATO_SOLO_DAL_VERBO): resta per il diario.
     "E_RESO_STATO_SOLO_DA_VERBO": "Il reso fa rientrare merce: il cambio di stato si fa solo dall'operazione del reso, che registra i movimenti di magazzino.",
     "E_RESO_STATO_TRANSIZIONE": "Operazione non ammessa nello stato corrente del reso.",
     "E_RESO_VALIDAZIONE": "Parametri reso non validi.",

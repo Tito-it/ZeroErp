@@ -4,6 +4,8 @@
 // e consente all'operatore di impostare il valore. L'utente admin puo' scegliere
 // se applicare l'override a livello personale o a livello emittente (default per
 // tutti gli utenti dell'azienda).
+// Un parametro che vale per tutti (`ammette_override` false) si apre in sola
+// consultazione: il DB rifiuterebbe l'override, qui non lo si offre.
 import { ref, watch, computed, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../core/composables/useApiHandler'
@@ -13,6 +15,7 @@ import { PARAMETER_SCOPE } from '../../core/composables/useParameterSettings'
 import { useImpostazioniStore } from '../stores/impostazioni'
 import { useAuthStore } from '../../stores/auth'
 import { DRAWER_WIDTH } from '../../core/constants'
+import { ammettePersonalizzazione } from '../../core/utils/parameterLevel'
 import ParameterFallback from '../../core/components/ParameterFallback.vue'
 import AppDrawer from '../../core/components/AppDrawer.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
@@ -48,6 +51,7 @@ const formDaSalvare = computed(() => ({
 const { fissa, modificato, chiudiConConferma } =
   useDrawerFormPreserve(formDaSalvare, { visibile: () => props.visible })
 
+const personalizzabile = computed(() => ammettePersonalizzazione(props.parameter))
 const isEmittenteScope = computed(() => scope.value === PARAMETER_SCOPE.EMITTENTE)
 const isCategoriaScope = computed(() => scope.value === PARAMETER_SCOPE.CATEGORIA_CLIENTE)
 
@@ -144,12 +148,13 @@ function close() {
   <AppDrawer
     :visible="visible"
     :title="t('config.impostazioni.override_title')"
-    :action="isEdit ? t('common.edit') : t('common.new')"
+    :action="personalizzabile ? (isEdit ? t('common.edit') : t('common.new')) : t('common.view')"
     :width="DRAWER_WIDTH.SIMPLE"
     :modificato="modificato"
     :conferma-uscita="chiudiConConferma"
     :loading="loading"
     :save-disabled="!canSave"
+    :footer="personalizzabile ? 'form' : 'chiudi'"
     @update:visible="(v) => emit('update:visible', v)"
     @cancel="emit('cancelled')"
     @save="handleSave"
@@ -171,6 +176,11 @@ function close() {
           <ParameterFallback :parameter="parameter" />
         </div>
 
+        <div v-if="!personalizzabile" class="form-field app-field-hint">
+          {{ t('config.impostazioni.per_tutti_hint') }}
+        </div>
+
+        <template v-else>
         <div v-if="auth.isSuperAdmin" class="form-field">
           <label>{{ t('config.impostazioni.scope_label') }}</label>
           <Select v-model="scope" :options="scopeOptions"
@@ -195,6 +205,7 @@ function close() {
           <InputText v-model="overrideValue" :disabled="isReadonly"
             :placeholder="t('config.impostazioni.override_placeholder')" />
         </div>
+        </template>
       </div>
     </template>
   </AppDrawer>

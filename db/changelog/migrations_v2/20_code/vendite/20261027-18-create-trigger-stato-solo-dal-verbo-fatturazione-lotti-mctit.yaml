@@ -1,0 +1,64 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA PORTA SUL LOTTO DI FATTURAZIONE
+#   Brief: brief-modello-documento-vendita §15 (giro 11; S-1 b di Tid).
+#   Stampo: la porta della commessa (20261026-34).
+#
+#   Lo stato fiscale del lotto si cambia solo dai suoi verbi, che scrivono
+#   con script.fn_doc_scrivi_stato: vendite.fn_cambia_stato_lotto (-08, i
+#   passaggi manuali, dalle madri riporta in bozza e annullo) e
+#   vendite.fn_lotto_proietta_stato_step (-09, il giro della pipeline e la
+#   chiusura del giornaliero). Un UPDATE diretto: E_DOC_STATO_SOLO_DAL_VERBO.
+#   ⚠️ Il backend scriveva lo stato dello step con un UPDATE
+#   (pipeline_repository.update_lotto_stato_doc): dopo l'apply il giro si
+#   ferma finche' il runner non chiama -09 (richiesta al BE del §15).
+#   La GUC di manutenzione zeroerp.maintenance_reset_lotto_draft scavalca il
+#   guard di transizione, non la porta: nessuna funzione viva la accende per
+#   scrivere lo stato del lotto (la accende solo la pulizia,
+#   fn_cleanup_fatture_by_ids, che lo stato non lo tocca).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261027-18-create-trigger-stato-solo-dal-verbo-fatturazione-lotti-mctit.yaml
+
+  - changeSet:
+      id: 20261027-18-create-trigger-stato-solo-dal-verbo-fatturazione-lotti
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Monta script.trgfn_doc_stato_solo_dal_verbo (BEFORE UPDATE OF colonna di stato, _a05_)
+        su vendite.fatturazione_lotti. Brief: brief-modello-documento-vendita §15 (S-1 b).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'trgfn_doc_stato_solo_dal_verbo';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_fatturazione_lotti_a05_stato_solo_dal_verbo_upd
+                  BEFORE UPDATE OF stato_doc_fiscale_id ON vendite.fatturazione_lotti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_doc_stato_solo_dal_verbo();
+
+              COMMENT ON TRIGGER trg_fatturazione_lotti_a05_stato_solo_dal_verbo_upd ON vendite.fatturazione_lotti IS
+                  'La porta (BB script.trgfn_doc_stato_solo_dal_verbo): lo stato fiscale del lotto si cambia solo dai suoi verbi, vendite.fn_cambia_stato_lotto (passaggi manuali: riporta in bozza, annullo della bozza) e vendite.fn_lotto_proietta_stato_step (il giro della pipeline, la chiusura del giornaliero), che scrivono con script.fn_doc_scrivi_stato. Un UPDATE diretto: E_DOC_STATO_SOLO_DAL_VERBO. Fascia _a05_. Brief: brief-modello-documento-vendita §15 (S-1 b, Tid 2026-10-25/27).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_fatturazione_lotti_a05_stato_solo_dal_verbo_upd ON vendite.fatturazione_lotti;

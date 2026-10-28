@@ -11,6 +11,8 @@
 --       ⚠️ rev 2026-10-19 (20261019-22, brief-db-grammatica-unica-documenti
 --       lotto 1): p_documento ancorato a config.sorgenti.codice_interno, la
 --       firma passa da text a character varying (test 2).
+-- rev 2026-10-26 (brief-modello-documento-vendita §11): l'attivazione del contratto (19, 20a, 21a) dal verbo vendite.fn_cambia_stato_contratto, non piu' con l'UPDATE diretto dello stato che la porta ora rifiuta; prima del 18 si concede emetti_contratto, senza la quale la capability nasconde «Attiva». Nessuna attesa cambiata.
+-- rev 2026-10-26 (brief-modello-documento-vendita §13, giro 9): lo stato dell'offerta dal verbo — l'emissione (9, 13, 15a, 17) con vendite.fn_cambia_stato_offerta, non piu' con l'UPDATE diretto dello stato che la porta ora rifiuta; in testa si concede emetti_offerta, senza la quale la capability nasconde «Emetti» (8, 11, 12, 16). Nessuna attesa cambiata.
 --
 --       ⭐ Il test 8 e' il difetto del collaudo: un'offerta in BOZZA senza
 --       versione fissata, su un listino che una versione in vigore ce l'ha,
@@ -65,6 +67,11 @@ SET CONSTRAINTS ALL IMMEDIATE;
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(25);
+
+-- ⚠️ rev 2026-10-26 (giro 9): «Emetti» e' dell'azione emetti_offerta: senza, la
+--   capability lo nasconde e il verbo risponde E_PERMESSO_NEGATO. Il test prova
+--   i motivi del listino (8, 11, 12, 16), non il permesso: l'azione si concede.
+SELECT dbops.fn_pgtap_concedi_azione(current_setting('app.current_user_id')::integer, 'emetti_offerta');
 
 -- Scopo: esegue uno statement che deve essere rifiutato e ne rende il codice,
 --   dal canale CONSTRAINT dell'eccezione ('NESSUN ERRORE' se passa).
@@ -204,8 +211,7 @@ SELECT is(
     '8) BOZZA senza versione su un listino in vigore: «Emetti» acceso (era spento: LISTINO_VERSIONE_MANCANTE)');
 
 SELECT lives_ok(
-    format('UPDATE vendite.offerte_commerciali SET stato_doc_offerta_id = %s WHERE id = %s',
-           (SELECT stato_emessa_id FROM tmp_cl_ctx),
+    format($q$SELECT * FROM vendite.fn_cambia_stato_offerta(%s, 'EMESSA', NULL)$q$,
            (SELECT offerta_id FROM tmp_cl_off WHERE slot = 'A')),
     '9) …e l''emissione passa, senza che nessuno fissi prima la versione');
 
@@ -232,8 +238,7 @@ SELECT is(
 
 SELECT is(
     pg_temp.codice(format(
-        'UPDATE vendite.offerte_commerciali SET stato_doc_offerta_id = %s WHERE id = %s',
-        (SELECT stato_emessa_id FROM tmp_cl_ctx),
+        $q$SELECT * FROM vendite.fn_cambia_stato_offerta(%s, 'EMESSA', NULL)$q$,
         (SELECT offerta_id FROM tmp_cl_off WHERE slot = 'B'))),
     'E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO',
     '13) …e il guard rifiuta l''emissione con lo stesso motivo');
@@ -255,8 +260,7 @@ SELECT is(
 --   la fotografia di prima del verbo.
 SELECT is(
     pg_temp.codice(format(
-        'UPDATE vendite.offerte_commerciali SET stato_doc_offerta_id = %s WHERE id = %s',
-        (SELECT stato_emessa_id FROM tmp_cl_ctx),
+        $q$SELECT * FROM vendite.fn_cambia_stato_offerta(%s, 'EMESSA', NULL)$q$,
         (SELECT offerta_id FROM tmp_cl_off WHERE slot = 'A2'))),
     'NESSUN ERRORE',
     '15a) la revisione si emette');
@@ -287,8 +291,7 @@ SELECT is(
 
 SELECT is(
     pg_temp.codice(format(
-        'UPDATE vendite.offerte_commerciali SET stato_doc_offerta_id = %s WHERE id = %s',
-        (SELECT stato_emessa_id FROM tmp_cl_ctx),
+        $q$SELECT * FROM vendite.fn_cambia_stato_offerta(%s, 'EMESSA', NULL)$q$,
         (SELECT offerta_id FROM tmp_cl_off WHERE slot = 'D'))),
     'E_OFFERTA_EMISSIONE_VERSIONE_LISTINO_NON_ATTIVA',
     '17) …e il guard rifiuta l''emissione con lo stesso motivo');
@@ -327,6 +330,10 @@ DO $fx$ BEGIN
                                     (SELECT versione_scad FROM tmp_cl_ctx));
 END $fx$;
 
+-- ⚠️ «Attiva» e' dell'azione emetti_contratto: senza, la capability lo
+--   nasconde e il verbo risponde E_PERMESSO_NEGATO (giro 8).
+SELECT dbops.fn_pgtap_concedi_azione(current_setting('app.current_user_id')::integer, 'emetti_contratto');
+
 SELECT is(
     pg_temp.azione(script.fn_available_actions_contratto(
         (SELECT contratto_id FROM tmp_cl_ctr WHERE slot = 'C1')), 'ATTIVO') ->> 'reason_key',
@@ -335,8 +342,7 @@ SELECT is(
 
 SELECT is(
     pg_temp.codice(format(
-        'UPDATE vendite.contratti SET stato_doc_contratto_id = %s WHERE id = %s',
-        (SELECT stato_attivo_id FROM tmp_cl_ctx),
+        $$SELECT * FROM vendite.fn_cambia_stato_contratto(%s, 'ATTIVO')$$,
         (SELECT contratto_id FROM tmp_cl_ctr WHERE slot = 'C1'))),
     'E_CONTRATTO_ATTIVAZIONE_SENZA_VERSIONE_LISTINO',
     '19) …e l''attivazione e'' rifiutata: prima passava con la versione NULL');
@@ -345,8 +351,7 @@ SELECT is(
 --   la fotografia di prima del verbo.
 SELECT is(
     pg_temp.codice(format(
-        'UPDATE vendite.contratti SET stato_doc_contratto_id = %s WHERE id = %s',
-        (SELECT stato_attivo_id FROM tmp_cl_ctx),
+        $$SELECT * FROM vendite.fn_cambia_stato_contratto(%s, 'ATTIVO')$$,
         (SELECT contratto_id FROM tmp_cl_ctr WHERE slot = 'C2'))),
     'NESSUN ERRORE',
     '20a) listino in vigore: l''attivazione passa');
@@ -361,8 +366,7 @@ SELECT is(
 --   la fotografia di prima del verbo.
 SELECT is(
     pg_temp.codice(format(
-        'UPDATE vendite.contratti SET stato_doc_contratto_id = %s WHERE id = %s',
-        (SELECT stato_attivo_id FROM tmp_cl_ctx),
+        $$SELECT * FROM vendite.fn_cambia_stato_contratto(%s, 'ATTIVO')$$,
         (SELECT contratto_id FROM tmp_cl_ctr WHERE slot = 'C3'))),
     'NESSUN ERRORE',
     '21a) versione gia'' fissata, anche CHIUSA: l''attivazione passa');

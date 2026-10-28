@@ -1,0 +1,84 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LO STATO DEL JOB DEL LOTTO SI LEGA AL SUO VOCABOLARIO
+#   Brief: brief-modello-documento-vendita §15 (giro 11; F-4, P-1 di Tid,
+#   2026-10-27).
+#
+#   vendite.fatturazione_lotti.stato_lotto resta il CODICE (P-1: i lettori in
+#   DB, backend e frontend non si toccano) e prende una FK su
+#   config.stati_lotto_job.codice_interno: la stessa garanzia del CHECK
+#   chk_fatturazione_lotti_stato_job, che si ritira (i valori ammessi ora li
+#   dice il vocabolario, non un elenco nel DDL).
+#
+#   In 90_end perche' gira dopo il seed del vocabolario (80_data,
+#   20261027-03): su un database con lotti la FK valida le righe che ci sono.
+#   ⚠️ Difensivo: un lotto con un codice fuori vocabolario lo dice con una
+#   frase, non con un 23503 nudo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261027-05-fk-fatturazione-lotti-stato-lotto-vocabolario-mctit.yaml
+
+  - changeSet:
+      id: 20261027-05-fk-fatturazione-lotti-stato-lotto-vocabolario
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        FK fk_fatturazione_lotti_stato_lotto (vendite.fatturazione_lotti.stato_lotto ->
+        config.stati_lotto_job.codice_interno) al posto del CHECK chk_fatturazione_lotti_stato_job.
+        In 90_end, dopo il seed. Brief: brief-modello-documento-vendita §15 (F-4, P-1).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists: { schemaName: config, tableName: stati_lotto_job }
+            - columnExists: { schemaName: vendite, tableName: fatturazione_lotti, columnName: stato_lotto }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $fk$
+              DECLARE
+                  -- un elenco di codici per il messaggio: nessuna colonna di cui sia il riflesso
+                  v_fuori text;
+              BEGIN
+                  SELECT string_agg(DISTINCT l.stato_lotto, ', ') INTO v_fuori
+                    FROM vendite.fatturazione_lotti l
+                   WHERE NOT EXISTS (SELECT 1 FROM config.stati_lotto_job s
+                                      WHERE s.codice_interno = l.stato_lotto);
+                  IF v_fuori IS NOT NULL THEN
+                      RAISE EXCEPTION
+                        'Impossibile legare vendite.fatturazione_lotti.stato_lotto al vocabolario: codici fuori da config.stati_lotto_job (%). '
+                        'Aggiungerli al CSV 80_data/sql/config/stati_lotto_job.csv o correggere i lotti.',
+                        v_fuori;
+                  END IF;
+              END
+              $fk$;
+
+              ALTER TABLE vendite.fatturazione_lotti
+                  DROP CONSTRAINT IF EXISTS chk_fatturazione_lotti_stato_job;
+
+              ALTER TABLE vendite.fatturazione_lotti
+                  ADD CONSTRAINT fk_fatturazione_lotti_stato_lotto
+                      FOREIGN KEY (stato_lotto)
+                      REFERENCES config.stati_lotto_job (codice_interno);
+
+              COMMENT ON COLUMN vendite.fatturazione_lotti.stato_lotto IS
+                  'Lo stato del JOB del lotto (l''asse del lavoro della pipeline, non quello fiscale): il CODICE di uno stato di config.stati_lotto_job (FK su codice_interno, P-1). I passaggi ammessi in config.transizioni_stati_lotto_job, giudicati dal guard vendite.trgfn_fatturazione_lotti_guard_stato_job. Lo scrive il runner del backend negli stessi momenti di sempre: avvio del giro, fine, errore. Brief: brief-modello-documento-vendita §15 (F-4, P-1, Tid 2026-10-27).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.fatturazione_lotti DROP CONSTRAINT IF EXISTS fk_fatturazione_lotti_stato_lotto;
+              ALTER TABLE vendite.fatturazione_lotti
+                  ADD CONSTRAINT chk_fatturazione_lotti_stato_job
+                      CHECK (stato_lotto = ANY (ARRAY['IN_ESECUZIONE'::text, 'COMPLETATO'::text, 'ERRORE'::text]));

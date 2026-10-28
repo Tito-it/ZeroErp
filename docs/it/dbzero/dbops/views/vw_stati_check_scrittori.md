@@ -5,6 +5,8 @@
 >
 > PRESIDIO C1 — uno stato previsto dal modello (nel CHECK a lista di una colonna di stato) e mai scritto. Una riga per (colonna, valore) con il suo esito: SCRITTO (una funzione scrive la tabella e nomina il letterale, oppure lo passa a uno scrittore posizionale: il secondo salto), SCRITTO_DA_DEFAULT, DICHIARATO_APPLICAZIONE / ESENTE (sta in dbops.stati_check_dichiarazioni), NON_DICHIARATO (il debito da sanare) e DEBITO_ESTINTO nei due versi. ⚠️ Il criterio e' TESTUALE e ha due limiti, dichiarati nel suo pgTAP: nominare non e' scrivere (test 6) e a tre salti il letterale non si segue piu' (test 9). ⭐ Rev 2026-09-22: stessa misura, estratta UNA volta invece che provata per coppia — i nomi scritti da ogni funzione e i letterali citati si ricavano con un passaggio solo, poi si confrontano per uguaglianza. Output identico riga per riga (EXCEPT nei due versi su dbdev), costo per chiamata da ~535 ms a ~230 ms. ⛔ Rev 2026-09-23: le funzioni di fixture pgTAP (prefisso fn_pgtap_ in dbops e script) NON contano, ne' come scrittori ne' come chiamanti: il presidio misura il sistema, non le fixture che lo collaudano. Brief: brief-db-presidio-stati-mai-scritti §3-bis; brief-db-fixture-che-costruiscono-giro-2 §11.
 
+> 🔐 **Sicurezza**: definer (default delle viste) — le tabelle sotto si leggono con i privilegi dell'owner `zeroerp_owner`, e la RLS che vale e' la sua, non quella di chi interroga.
+
 <div data-search-exclude markdown>
 
 ```sql

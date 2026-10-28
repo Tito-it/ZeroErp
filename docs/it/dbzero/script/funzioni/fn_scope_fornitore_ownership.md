@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_scope_fornitore_ownership(p_identita_id bigint, p_fornitore_sr_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

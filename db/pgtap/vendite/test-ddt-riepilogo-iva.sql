@@ -23,6 +23,10 @@
 --   11. DDT interamente non valorizzato -> 0 righe riepilogo
 --   12. La view riepilogo non espone id tecnico
 --   13. BoM: la view base non legge ddt_righe_componenti
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): le due testate in bozza da
+--   dbops.fn_pgtap_crea_ddt (VENDITA, p_data) sul cliente di dbops.fn_pgtap_crea_mondo_cliente:
+--   curata la pesca del «primo emittente attivo» (destinatario = l'emittente stesso, senza BA).
+--   Le righe prezzate e non prezzate restano a mano: sono il caso.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -77,6 +81,13 @@ SELECT has_view(
 -- ============================================================
 -- Setup riferimenti minimi
 -- ============================================================
+-- ⛔ rev 2026-10-25 (giro D-4): il cliente e l'emittente si COSTRUISCONO. Prima
+--   l'emittente era «il primo emittente attivo per id», e il destinatario il suo
+--   stesso soggetto: pescato, e verde solo dove il primo emittente e' quello
+--   dell'operatore. Il mondo riusa l'azienda di chi agisce (contesto aperto).
+CREATE TEMP TABLE tmp_ddtiva_mondo AS
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('pgTAP riepilogo IVA DDT');
+
 CREATE TEMP TABLE tmp_ddtiva_refs AS
 WITH iva1 AS (
   SELECT i.id, i.aliquota_iva
@@ -94,21 +105,17 @@ iva2 AS (
    ORDER BY i.id
    LIMIT 1
 ),
-ef AS (
-  SELECT ef1.id AS ef1_id,
-         ef1.soggetto_ruolo_id
-    FROM anagrafiche.emittenti_fiscali ef1
-   WHERE ef1.attivo IS TRUE
-   ORDER BY ef1.id
-   LIMIT 1
+m AS (
+  SELECT * FROM tmp_ddtiva_mondo
 )
 SELECT
-  (SELECT soggetto_ruolo_id FROM ef)  AS soggetto_ruolo_id,
-  (SELECT ef1_id FROM ef)             AS emittente_fiscale_id,
+  (SELECT cliente_soggetto_ruolo_id FROM m) AS soggetto_ruolo_id,
+  (SELECT billing_account_id FROM m)        AS billing_account_id,
+  (SELECT emittente_fiscale_id FROM m)      AS emittente_fiscale_id,
   -- stato dell'emittente (per aliquota effettiva via fn_get_aliquota_iva)
   (SELECT s.stato_id
-     FROM ef
-     JOIN anagrafiche.emittenti_fiscali ef1 ON ef1.id = ef.ef1_id
+     FROM m
+     JOIN anagrafiche.emittenti_fiscali ef1 ON ef1.id = m.emittente_fiscale_id
      JOIN anagrafiche.soggetti_ruoli sr     ON sr.id = ef1.soggetto_ruolo_id
      JOIN anagrafiche.soggetti s            ON s.id = sr.soggetto_id
   )                                   AS stato_emittente_id,
@@ -116,9 +123,6 @@ SELECT
      FROM config.stati_doc_ddt s
     WHERE s.attivo IS TRUE
     ORDER BY s.id LIMIT 1)            AS stato_doc_ddt_id,
-  (SELECT v.id
-     FROM config.valute v
-    ORDER BY v.id LIMIT 1)            AS valuta_id,
 -- 🔴 rev 2026-10-13 (brief-db-articoli-ammessi-per-documento D-1/D-2): l'articolo si
 --   COSTRUISCE. Prima si pescava dal catalogo (il primo per id, o il piu' recente):
 --   il primo per id e' l'onere del seed ONERE_SENZA_CONTRATTO (natura servizio), e
@@ -143,32 +147,20 @@ SELECT ok(
 );
 
 -- ============================================================
--- Crea DDT di test (emittente esplicito -> normalize lo preserva via COALESCE)
+-- Crea DDT di test (l'emittente e' quello dell'operatore, dal builder)
 -- ============================================================
 CREATE TEMP TABLE tmp_ddtiva_ddt(id bigint);
 
-WITH ins AS (
-  INSERT INTO vendite.ddt (
-    destinatario_soggetto_ruolo_id,
-    stato_doc_ddt_id, data,
-    emittente_fiscale_id, valuta_id,
-    storicizza, meta
-  )
-  SELECT
-    r.soggetto_ruolo_id,
-    r.stato_doc_ddt_id, DATE '2080-06-01',
-    r.emittente_fiscale_id, r.valuta_id,
-    false, jsonb_build_object('test_scope', 'pgtap_ddt_riepilogo_iva')
-  FROM tmp_ddtiva_refs r
-  WHERE r.soggetto_ruolo_id IS NOT NULL
-    AND r.emittente_fiscale_id IS NOT NULL
-    AND r.stato_doc_ddt_id IS NOT NULL
-    AND r.articolo_id IS NOT NULL
-    AND r.iva1_id IS NOT NULL
-  RETURNING id
-)
+-- La testata in bozza dal builder (causale VENDITA, indirizzi), alla sua data.
 INSERT INTO tmp_ddtiva_ddt(id)
-SELECT id FROM ins;
+SELECT dbops.fn_pgtap_crea_ddt(r.billing_account_id, r.soggetto_ruolo_id, 'VENDITA',
+                               p_data => DATE '2080-06-01')
+  FROM tmp_ddtiva_refs r
+ WHERE r.soggetto_ruolo_id IS NOT NULL
+   AND r.emittente_fiscale_id IS NOT NULL
+   AND r.stato_doc_ddt_id IS NOT NULL
+   AND r.articolo_id IS NOT NULL
+   AND r.iva1_id IS NOT NULL;
 
 -- ============================================================
 -- Inserisce tre righe stessa IVA: 3 * 0.333 = 0.999 -> ROUND(SUM) = 1.00
@@ -350,25 +342,12 @@ END;
 -- ============================================================
 CREATE TEMP TABLE tmp_ddtiva_novalore(id bigint);
 
-WITH ins AS (
-  INSERT INTO vendite.ddt (
-    destinatario_soggetto_ruolo_id,
-    stato_doc_ddt_id, data,
-    emittente_fiscale_id, valuta_id,
-    storicizza, meta
-  )
-  SELECT
-    r.soggetto_ruolo_id,
-    r.stato_doc_ddt_id, DATE '2080-06-02',
-    r.emittente_fiscale_id, r.valuta_id,
-    false, jsonb_build_object('test_scope', 'pgtap_ddt_riepilogo_iva', 'case', 'novalore')
-  FROM tmp_ddtiva_refs r
-  WHERE r.emittente_fiscale_id IS NOT NULL
-    AND r.stato_doc_ddt_id IS NOT NULL
-  RETURNING id
-)
 INSERT INTO tmp_ddtiva_novalore(id)
-SELECT id FROM ins;
+SELECT dbops.fn_pgtap_crea_ddt(r.billing_account_id, r.soggetto_ruolo_id, 'VENDITA',
+                               p_data => DATE '2080-06-02')
+  FROM tmp_ddtiva_refs r
+ WHERE r.emittente_fiscale_id IS NOT NULL
+   AND r.stato_doc_ddt_id IS NOT NULL;
 
 INSERT INTO vendite.ddt_righe (
   ddt_id, riga_nr, articolo_id, descrizione,

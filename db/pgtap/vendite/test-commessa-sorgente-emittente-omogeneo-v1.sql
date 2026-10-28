@@ -59,22 +59,20 @@ SELECT plan(7);
 -- =========================================================
 -- 0) Riferimenti
 -- =========================================================
--- ⚠️ Il BA e' uno su cui l'operatore SCRIVE davvero (emittente derivato =
---   emittente di contesto): una fixture che scrive dove l'applicazione non
---   scrive non e' una fixture.
--- ⚠️ ORDER BY esplicito: un LIMIT 1 senza non verifica, scommette.
+-- rev 2026-10-27 (lotto 4 di D7): il cliente si COSTRUISCE
+--   (dbops.fn_pgtap_crea_cliente_ba, BA gia' legato all'azienda di chi
+--   agisce: uno su cui l'operatore SCRIVE davvero). Prima si pescava con
+--   LIMIT 1, e su un database ricostruito da zero non c'era.
+CREATE TEMP TABLE tmp_cli_sorg_emitt AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('sorgente emittente omogeneo');
+
 CREATE TEMP TABLE tmp_refs_sorg_emitt AS
 SELECT
-    ba.id         AS billing_account_id,
-    ba.utility_id AS utility_id,
+    c.billing_account_id AS billing_account_id,
+    c.utility_id         AS utility_id,
     (SELECT s.id FROM config.sorgenti s
       WHERE s.codice_interno = 'COMMESSA' AND s.attivo IS TRUE) AS sorgente_tipo_id
-  FROM anagrafiche.billing_account ba
- WHERE ba.utility_id IS NOT NULL
-   AND anagrafiche.fn_get_emittente_fiscale_id(ba.id)
-       = script.fn_pgtap_emittente_sr_operatore()
- ORDER BY ba.id
- LIMIT 1;
+  FROM tmp_cli_sorg_emitt c;
 
 SELECT ok(
     (SELECT billing_account_id IS NOT NULL
@@ -88,16 +86,17 @@ SELECT ok(
 -- 1) Fixture: due commesse sullo stesso billing account.
 --    La prima fara' da SORGENTE della seconda.
 -- =========================================================
-INSERT INTO vendite.commesse (codice, billing_account_id, utility_id)
-SELECT 'TST-SORG-EMITT-ROOT', r.billing_account_id, r.utility_id FROM tmp_refs_sorg_emitt r;
-
-INSERT INTO vendite.commesse (codice, billing_account_id, utility_id)
-SELECT 'TST-SORG-EMITT-DEST', r.billing_account_id, r.utility_id FROM tmp_refs_sorg_emitt r;
-
+-- rev 2026-10-27 (lotto 4 di D7): le due commesse le apre la madre
+--   (dbops.fn_pgtap_crea_commessa sul BA costruito), non piu' due INSERT
+--   a mano: sono fixture, non il caso sotto test.
 CREATE TEMP TABLE tmp_ids_sorg_emitt AS
 SELECT
-    (SELECT c.id FROM vendite.commesse c WHERE c.codice = 'TST-SORG-EMITT-ROOT') AS root_id,
-    (SELECT c.id FROM vendite.commesse c WHERE c.codice = 'TST-SORG-EMITT-DEST') AS dest_id;
+    (SELECT c.commessa_id FROM dbops.fn_pgtap_crea_commessa(
+         'sorg emitt root', NULL,
+         (SELECT billing_account_id FROM tmp_refs_sorg_emitt)) c) AS root_id,
+    (SELECT c.commessa_id FROM dbops.fn_pgtap_crea_commessa(
+         'sorg emitt dest', NULL,
+         (SELECT billing_account_id FROM tmp_refs_sorg_emitt)) c) AS dest_id;
 
 -- =========================================================
 -- 2) Il risolutore dice CHI EMETTE il documento
@@ -111,7 +110,7 @@ SELECT is(
     (SELECT script.fn_get_sorgente_emittente_sr_id(r.sorgente_tipo_id, t.root_id::text)
        FROM tmp_refs_sorg_emitt r, tmp_ids_sorg_emitt t),
     (SELECT c.emittente_soggetto_ruolo_id
-       FROM vendite.commesse c WHERE c.codice = 'TST-SORG-EMITT-ROOT'),
+       FROM vendite.commesse c, tmp_ids_sorg_emitt t WHERE c.id = t.root_id),
     'Il risolutore restituisce l''emittente del documento sorgente'
 );
 

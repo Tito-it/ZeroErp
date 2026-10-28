@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_ricalcola_valore_giacenza(p_magazzino_id bigint, p_articolo_id uuid)
 ```
 
+> 🔐 **Sicurezza**: `SECURITY DEFINER` — gira con i privilegi dell'owner `zeroerp_owner`: GRANT e RLS sono i suoi, non quelli di chi la chiama.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

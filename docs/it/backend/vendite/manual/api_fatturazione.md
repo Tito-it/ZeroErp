@@ -85,7 +85,9 @@ oneri di una commessa. Un solo verbo, due perimetri: il processo è identico
 
 ### 3. «Rendi definitive competenza» (C-4 perimetro, non bloccante)
 
-- `POST /api/v1/vendite/fatturazione/numera/` · permesso `numera_fatture_lotti`
+- `POST /api/v1/vendite/fatturazione/numera/` · permesso `numera_fatture_lotti`,
+  dichiarato sulla view: la numerazione di perimetro non ha **un** documento da cui
+  leggere la riga del passaggio. È la stessa azione della riga EMESSA → DEFINITIVA.
 - Body: `{ "competenza_mese": "YYYY-MM-DD" [, "lotti": [<int>, …]] [, "data_documento": "YYYY-MM-DD"] }`
 - Accoda un job `FATTURAZIONE_NUMERA`: esegue lo step DEFINITIVA sui **lotti
   EMESSA** del mese. Polling via `run/<job_id>/`.
@@ -168,7 +170,12 @@ Dettagli: [api_pipeline_task.md](api_pipeline_task.md).
 
 ### 4. «Rendi definitive» singolo lotto (C-4, sincrono)
 
-- `POST /api/v1/vendite/fatturazione/lotti/<lotto_id>/numera/` · permesso `numera_fatture_lotti`
+- `POST /api/v1/vendite/fatturazione/lotti/<lotto_id>/numera/` · permesso dalla **riga del
+  passaggio** EMESSA → DEFINITIVA (oggi `numera_fatture_lotti`), col BB `PassaggioDocumento`:
+  è la stessa riga che leggono la capability del lotto (che nasconde «Numera» a chi non
+  ha l'azione) e il verbo DB. Da un lotto non EMESSA la riga non c'è: decide il livello
+  sul documento e il guard qui sotto risponde 409 (brief-modello-documento-vendita
+  §15.8, 2026-10-27).
 - Body: `{}` oppure `{ "data_documento": "YYYY-MM-DD" }`. Guard scope (404 fuori
   scope) + guard **EMESSA** (409 se non EMESSA).
 

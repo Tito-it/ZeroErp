@@ -18,6 +18,9 @@
 -- ⚠️ I codici si leggono dai canali dell'eccezione (CONSTRAINT = codice, COLUMN =
 --   campo), non dalla frase. Il test 12 legge il catalogo: rosso nella prova
 --   pre-apply (il CSV si carica in 80_data), verde dopo l'apply.
+-- rev 2026-10-26 (brief-modello-documento-vendita §13, giro 9): lo stato
+--   dell'offerta del push dalla fixture dbops.fn_pgtap_porta_a_stato (il verbo),
+--   non piu' con due UPDATE diretti: la porta li rifiuta.
 --
 -- Indice test (1..12):
 --   La check, sui valori (F-2.1)
@@ -259,12 +262,9 @@ INSERT INTO vendite.offerte_commerciali_eccezioni
        (offerta_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa)
 VALUES ((SELECT id FROM tmp_dl_off), (SELECT id FROM tmp_dl_art), 'AGGIUNTA', 10, 1);
 
-UPDATE vendite.offerte_commerciali
-   SET stato_doc_offerta_id = (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'EMESSA')
- WHERE id = (SELECT id FROM tmp_dl_off);
-UPDATE vendite.offerte_commerciali
-   SET stato_doc_offerta_id = (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'ACCETTATA')
- WHERE id = (SELECT id FROM tmp_dl_off);
+-- Lo stato dell'offerta dal verbo (la porta rifiuta l'UPDATE diretto): la
+-- fixture cammina BOZZA → EMESSA → ACCETTATA e concede da se' emetti_offerta.
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', (SELECT id FROM tmp_dl_off), 'ACCETTATA');
 
 CREATE TEMP TABLE tmp_dl_push AS
 SELECT vendite.fn_push_offerta_a_contratto((SELECT id FROM tmp_dl_off), NULL::bigint, false) AS contratto_id;

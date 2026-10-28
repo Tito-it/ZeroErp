@@ -8,6 +8,8 @@
 --       ordine» e' un verbo DB; da ACCETTATA si esce anche annullando.
 --       Brief: brief-db-offerta-emissione-ed-erogazione §I (decisioni I-D2…I-D5 di
 --       Tid del 2026-10-21; H-R1…H-R4 del §H), changeSet 20261021-52 … -61.
+-- rev 2026-10-26 (brief-modello-documento-vendita §11): l'attivazione del contratto (22) dal verbo vendite.fn_cambia_stato_contratto, non piu' con l'UPDATE diretto dello stato che la porta ora rifiuta; prima del 21 si concede emetti_contratto, senza la quale la capability nasconde «Attiva». Nessuna attesa cambiata.
+-- rev 2026-10-26 (brief-modello-documento-vendita §13, giro 9): lo stato dell'offerta dal verbo — accettazione della fixture con dbops.fn_pgtap_porta_a_stato, emissione (8) con vendite.fn_cambia_stato_offerta, annullo (18, 20) con vendite.fn_annulla_offerta, invece degli UPDATE di stato che la porta ora rifiuta; si concede emetti_offerta, senza la quale la capability nasconde «Emetti» (7) e «Annulla» da ACCETTATA (17, 19). Nessuna attesa cambiata.
 --
 -- ⭐ Il caso del §H.1, costruito: righe scritte quando erano ammesse, che escono
 --   dal perimetro per un dato che sta FUORI dalla riga (qui il vocabolario della
@@ -73,6 +75,12 @@ SET CONSTRAINTS ALL IMMEDIATE;
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(25);
+
+-- ⚠️ rev 2026-10-26 (giro 9): «Emetti» (da BOZZA) e «Annulla» (da ACCETTATA)
+--   sono dell'azione emetti_offerta: senza, la capability li nasconde e il verbo
+--   risponde E_PERMESSO_NEGATO. Il test prova i motivi di stato (7, 17, 19), non
+--   il permesso: l'azione si concede all'utente del contesto.
+SELECT dbops.fn_pgtap_concedi_azione(current_setting('app.current_user_id')::integer, 'emetti_offerta');
 
 -- Scopo: esegue uno statement che deve essere rifiutato e ne rende il codice,
 --   dal canale CONSTRAINT dell'eccezione ('NESSUN ERRORE' se passa).
@@ -165,12 +173,11 @@ RETURNS bigint LANGUAGE sql STABLE AS $fx$
 $fx$;
 
 -- Scopo: porta un'offerta da BOZZA ad ACCETTATA (le righe sono ancora ammesse).
+-- rev 2026-10-26 (giro 9): dal verbo, con la fixture della matrice, non piu' con
+--   due UPDATE di stato che la porta ora rifiuta.
 CREATE OR REPLACE FUNCTION pg_temp.accetta(p_slot text)
 RETURNS void LANGUAGE sql AS $fx$
-    UPDATE vendite.offerte_commerciali SET stato_doc_offerta_id = (SELECT st_emessa FROM tmp_ra_ctx)
-     WHERE id = pg_temp.doc(p_slot);
-    UPDATE vendite.offerte_commerciali SET stato_doc_offerta_id = (SELECT st_accettata FROM tmp_ra_ctx)
-     WHERE id = pg_temp.doc(p_slot);
+    SELECT dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', pg_temp.doc(p_slot), 'ACCETTATA');
 $fx$;
 
 -- Le offerte. EM resta in bozza; PUSH, SERV e ORD vanno in ACCETTATA mentre le
@@ -282,10 +289,11 @@ SELECT ok(
               WHERE a ->> 'target_state' = 'EMESSA') x),
     '7) «Emetti» spento col motivo RIGA_NON_AMMESSA');
 
+-- rev 2026-10-26 (giro 9): l'emissione si chiede al verbo, non con un UPDATE.
 SELECT is(
     pg_temp.codice(format(
-        $$UPDATE vendite.offerte_commerciali SET stato_doc_offerta_id = %s WHERE id = %s$$,
-        (SELECT st_emessa FROM tmp_ra_ctx), pg_temp.doc('EM'))),
+        $q$SELECT * FROM vendite.fn_cambia_stato_offerta(%s, 'EMESSA', NULL)$q$,
+        pg_temp.doc('EM'))),
     'E_DOC_RIGA_NON_AMMESSA',
     '8) …e l''emissione e'' rifiutata con E_DOC_RIGA_NON_AMMESSA');
 
@@ -364,12 +372,11 @@ SELECT is(
     'false DOCUMENTI_VIVI true',
     '17) con l''ordine vivo: «Annulla» proposto e spento col motivo DOCUMENTI_VIVI');
 
+-- rev 2026-10-26 (giro 9): l'annullo dal verbo vendite.fn_annulla_offerta, con
+--   la motivazione (nessun legame: l'offerta non e' una revisione).
 SELECT is(
     pg_temp.codice(format(
-        $$UPDATE vendite.offerte_commerciali
-             SET stato_doc_offerta_id = %s, motivazione_rifiuto = 'pgtap'
-           WHERE id = %s$$,
-        (SELECT st_annullata FROM tmp_ra_ctx), pg_temp.doc('ORD'))),
+        $q$SELECT vendite.fn_annulla_offerta(%s, 'pgtap', NULL)$q$, pg_temp.doc('ORD'))),
     'E_OFFERTA_ANNULLO_CON_DOCUMENTI_VIVI',
     '18) …e l''annullo e'' rifiutato con E_OFFERTA_ANNULLO_CON_DOCUMENTI_VIVI');
 
@@ -388,16 +395,17 @@ SELECT is(
 
 SELECT is(
     pg_temp.codice(format(
-        $$UPDATE vendite.offerte_commerciali
-             SET stato_doc_offerta_id = %s, motivazione_rifiuto = 'pgtap'
-           WHERE id = %s$$,
-        (SELECT st_annullata FROM tmp_ra_ctx), pg_temp.doc('ORD'))),
+        $q$SELECT vendite.fn_annulla_offerta(%s, 'pgtap', NULL)$q$, pg_temp.doc('ORD'))),
     'NESSUN ERRORE',
     '20) …e l''offerta si annulla');
 
 -- ============================================================
 -- 21-22) Attivazione del contratto
 -- ============================================================
+-- ⚠️ «Attiva» e' dell'azione emetti_contratto: senza, la capability lo
+--   nasconde e il verbo risponde E_PERMESSO_NEGATO (giro 8).
+SELECT dbops.fn_pgtap_concedi_azione(current_setting('app.current_user_id')::integer, 'emetti_contratto');
+
 SELECT ok(
     (SELECT (a ->> 'enabled')::boolean IS FALSE
             AND a -> 'reasons' @> '[{"reason": "RIGA_NON_AMMESSA"}]'::jsonb
@@ -408,8 +416,7 @@ SELECT ok(
 
 SELECT is(
     pg_temp.codice(format(
-        $$UPDATE vendite.contratti SET stato_doc_contratto_id = %s WHERE id = %s$$,
-        (SELECT st_attivo FROM tmp_ra_ctx), pg_temp.doc('CTR'))),
+        $q$SELECT * FROM vendite.fn_cambia_stato_contratto(%s, 'ATTIVO')$q$, pg_temp.doc('CTR'))),
     'E_DOC_RIGA_NON_AMMESSA',
     '22) …e l''attivazione e'' rifiutata con E_DOC_RIGA_NON_AMMESSA');
 

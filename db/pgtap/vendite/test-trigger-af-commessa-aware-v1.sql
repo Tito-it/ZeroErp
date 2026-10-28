@@ -13,6 +13,10 @@
 --  6) Normalize: competenza_mese AF corretta (non sovrascritta)
 --  7) Normalize: tipo_doc_fiscale_id risolto anche su riga da commessa
 --  8) Normalize: valuta_id risolta anche su riga da commessa
+-- rev 2026-10-26 (brief-modello-documento-vendita §14, giro 10): la porta sulla
+--   commessa rifiuta l'UPDATE diretto dello stato; la commessa va a
+--   PRONTA_FATTURAZIONE con dbops.fn_pgtap_porta_a_stato (il verbo, l'azione la
+--   concede la fixture). Attese invariate.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -61,35 +65,18 @@ SELECT ok(
 -- SETUP DATI TEST
 -- ============================================================
 
+-- rev 2026-10-27 (lotto 4 di D7): il cliente si COSTRUISCE
+--   (dbops.fn_pgtap_crea_cliente_ba, BA legato all'azienda di chi agisce):
+--   prima il BA si pescava con LIMIT 1, e da zero non c'era. La commessa resta
+--   aperta dalla madre, il preventivo resta scritto qui.
+CREATE TEMP TABLE tmp_cli_tca AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('trigger af commessa aware');
+
 CREATE TEMP TABLE tmp_refs_tca AS
 SELECT
-  (
-    SELECT ba.id
-    FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id
-    LIMIT 1
-  ) AS billing_account_id,
-  (
-    SELECT ba.utility_id
-    FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id
-    LIMIT 1
-  ) AS utility_id,
-  (
-    SELECT ba.istanza_utility_id
-    FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id
-    LIMIT 1
-  ) AS istanza_utility_id,
+  (SELECT billing_account_id FROM tmp_cli_tca) AS billing_account_id,
+  (SELECT utility_id FROM tmp_cli_tca) AS utility_id,
+  (SELECT istanza_utility_id FROM tmp_cli_tca) AS istanza_utility_id,
   (
     SELECT a.id
     FROM catalogo.articoli a
@@ -208,9 +195,8 @@ SELECT vendite.fn_link_commessa_sorgente(
 );
 
 -- Porta commessa in stato PRONTA_FATTURAZIONE (emittibile=true)
-UPDATE vendite.commesse
-SET stato_commessa_id = 4
-WHERE id = (SELECT commessa_id FROM tmp_commessa_tca);
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.commesse', (SELECT commessa_id FROM tmp_commessa_tca),
+                                     'PRONTA_FATTURAZIONE');
 
 -- Esegui emit: crea righe AF con commessa_attivita_id NOT NULL
 CREATE TEMP TABLE tmp_emit_tca AS

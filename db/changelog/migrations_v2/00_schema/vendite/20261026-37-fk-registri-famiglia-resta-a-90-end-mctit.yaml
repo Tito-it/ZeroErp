@@ -1,0 +1,65 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DA ZERO, LA FK DEI REGISTRI TORNA A NASCERE IN 90_end
+#   Scritto il 2026-10-26, insieme a 20261019-13.
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────
+#   00_schema/vendite/20261020-32, dopo la conversione, RIMETTE
+#   fk_registri_fatturazione_famiglia. Su dbdev e' giusto. Da zero no: la FK
+#   resterebbe accesa durante 80_data, dove i seed dei registri (20260127-57,
+#   20260818-45, 20260819-05, 20260825-05) girano PRIMA del seed delle famiglie
+#   (20260830-14), e il primo registro ('FATTURA' di default) non troverebbe la
+#   sua famiglia. E' esattamente il motivo per cui la FK sta in
+#   90_end/20260830-16 (vedi il suo commento).
+#
+# ── IL RIMEDIO ──────────────────────────────────────────────────────
+#   Dopo il -32 (da zero tutto 00_schema gira prima di 80_data): se 20260830-16 non e' ancora passato su questo database
+#   (cioe' da zero), la FK si toglie, e la rimette 20260830-16 a fine migrate,
+#   col catalogo seminato. Su dbdev 20260830-16 e' gia' registrato: non fa niente.
+#   La condizione legge la STORIA del migrate (databasechangelog), non il
+#   contenuto di 80_data (linee-guida-sql §11.4).
+#
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261026-37-fk-registri-famiglia-resta-a-90-end-mctit.yaml
+
+  - changeSet:
+      id: 20261026-37-fk-registri-famiglia-resta-a-90-end
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Da zero (90_end/20260830-16 non ancora registrato), toglie fk_registri_fatturazione_famiglia
+        che 20261020-32 rimette: la crea 20260830-16 dopo i seed. Su dbdev non fa niente. Brief:
+        brief-modello-documento-vendita (nota del giro 10).
+      preConditions:
+        - onFail: HALT
+        - tableExists: { schemaName: vendite, tableName: registri_fatturazione }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $fk$
+              BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM databasechangelog
+                                  WHERE id = '20260830-16-fk-registri-fatturazione-famiglia-documento') THEN
+                      ALTER TABLE vendite.registri_fatturazione
+                        DROP CONSTRAINT IF EXISTS fk_registri_fatturazione_famiglia;
+                  END IF;
+              END
+              $fk$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              SELECT 1;

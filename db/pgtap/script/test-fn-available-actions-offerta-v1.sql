@@ -10,6 +10,10 @@
 --   da ACCETTATA si esce anche annullando (transizione ACCETTATA->ANNULLATA). I test 8
 --   e 12 non vedono piu' available_actions=[]: c'e' «annulla», SPENTA col motivo
 --   DOCUMENTI_VIVI perche' l'offerta vive nel contratto o nell'ordine generato.
+-- rev 2026-10-26 (brief-modello-documento-vendita §13, giro 9): lo slot EMESSA dal verbo
+--   (dbops.fn_pgtap_porta_a_stato), non con un UPDATE diretto dello stato: la porta lo rifiuta.
+--   emetti_offerta concessa in testa, esplicita: la capability nasconde «Emetti» da BOZZA e
+--   «Annulla» da ACCETTATA a chi non ha il permesso. Nessuna attesa cambiata.
 -- pgTAP test per Zero ERP
 -- Test: script.fn_available_actions_offerta — capability layer offerte commerciali
 -- ------------------------------------------------------------
@@ -139,6 +143,13 @@ SELECT
     (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
     (SELECT emittente_fiscale_id FROM tmp_aa_ctx) AS emittente_fiscale_id;
 
+-- ⚠️ rev 2026-10-26 (giro 9): la capability nasconde il passaggio senza il suo
+--   permesso (permesso => nascondi). «Emetti» da BOZZA (test 2, 16, 17) e
+--   «Annulla» da ACCETTATA (test 8, 12) vogliono emetti_offerta: la si concede
+--   all'utente del contesto, esplicita. Il file prova i motivi di stato, non il
+--   permesso (lo concederebbe comunque dbops.fn_pgtap_porta_a_stato, piu' sotto).
+SELECT dbops.fn_pgtap_concedi_azione(current_setting('app.current_user_id')::integer, 'emetti_offerta');
+
 -- Tabella di appoggio: slot -> offerta_id
 CREATE TEMP TABLE tmp_aa_ids (
     slot       text PRIMARY KEY,
@@ -159,7 +170,8 @@ WITH ins AS (
 )
 INSERT INTO tmp_aa_ids SELECT 'BOZZA', id FROM ins;
 
--- Slot EMESSA: BOZZA->EMESSA tramite trigger guard (test 4-6)
+-- Slot EMESSA: BOZZA->EMESSA dal verbo, con la fixture (test 4-6). rev 2026-10-26:
+--   prima un UPDATE diretto dello stato, che la porta dell'offerta ora rifiuta.
 WITH ins AS (
     INSERT INTO vendite.offerte_commerciali (
         emittente_fiscale_id, billing_account_id, istanza_utility_id, utility_id,
@@ -173,9 +185,9 @@ WITH ins AS (
 )
 INSERT INTO tmp_aa_ids SELECT 'EMESSA', id FROM ins;
 
-UPDATE vendite.offerte_commerciali
-   SET stato_doc_offerta_id = (SELECT stato_emessa_id FROM tmp_aa_ctx)
- WHERE id = (SELECT offerta_id FROM tmp_aa_ids WHERE slot = 'EMESSA');
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', i.offerta_id, 'EMESSA')
+  FROM tmp_aa_ids i
+ WHERE i.slot = 'EMESSA';
 
 -- Slot ACCT-1: ACCETTATA senza contratto (test 7). Nasce in BOZZA e
 -- arriva ad ACCETTATA per la matrice (rev 2026-10-24).

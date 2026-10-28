@@ -1,0 +1,165 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL VERBO DI STATO DEL CONTRATTO
+#   Brief: brief-modello-documento-vendita §11 (giro 8; M-1, M-3, M-4, Y-1 di
+#   Tid, 2026-10-24/26). Stampo: il verbo dell'ordine (20261025-75).
+#
+# ── CHE COSA FA ─────────────────────────────────────────────────────
+#   Ogni cambio di stato manuale di un contratto passa da qui (guida del
+#   modello §5). Prima il contratto non aveva un verbo: lo stato lo scriveva il
+#   backend con un UPDATE (ContrattiRepository.update_stato), che si ritira
+#   nella richiesta al team BE.
+#   - il permesso del passaggio lo dice la riga della matrice
+#     (config.transizioni_stati_contratti.azione_processo_codename:
+#     emetti_contratto sull'attivazione e sulla cessazione) e lo applica la
+#     prima riga comune, script.fn_guard_passaggio (anche lo stato che il
+#     contratto ha gia': E_DOC_GIA_NELLO_STATO);
+#   - lo stato si scrive con la scrittura comune, script.fn_doc_scrivi_stato,
+#     attraverso la porta (montata in 20261026-10);
+#   - SECURITY DEFINER con search_path bloccato: la porta vuole il
+#     proprietario. La testata si prende FOR UPDATE col predicato della policy
+#     nella WHERE (fuori perimetro E_CONTRATTO_NON_TROVATO, no-leak: lo stampo
+#     di vendite.fn_annulla_contratto).
+#
+# ── CHE COSA NON FA ─────────────────────────────────────────────────
+#   Matrice e condizioni (prezzi, indirizzi, righe, sovrapposto; la data
+#   arrivata della cessazione) le giudica il guard di transizione
+#   (vendite.trgfn_contratti_guard_transizione_stato), all'UPDATE: un giudice
+#   solo. I legami dell'annullo li ritira vendite.fn_annulla_contratto, la data
+#   della cessazione la scrive vendite.fn_cessa_contratto: tutti e due poi
+#   passano dalla prima riga e dalla scrittura comune.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261026-05-create-fn-cambia-stato-contratto-mctit.yaml
+
+  - changeSet:
+      id: 20261026-05-create-fn-cambia-stato-contratto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        NUOVO vendite.fn_cambia_stato_contratto(id, stato): il verbo di ogni cambio di stato
+        manuale di un contratto, sul verbo comune (script.fn_guard_passaggio +
+        script.fn_doc_scrivi_stato), SECURITY DEFINER col predicato della policy. Brief:
+        brief-modello-documento-vendita §11.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "3"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname IN ('fn_guard_passaggio', 'fn_doc_scrivi_stato', 'fn_doc_stato_id');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION vendite.fn_cambia_stato_contratto(
+                  p_contratto_id vendite.contratti.id%TYPE,
+                  p_stato        config.stati_doc_contratti.codice_interno%TYPE)
+               RETURNS TABLE(contratto_id     vendite.contratti.id%TYPE,
+                             stato_precedente config.stati_doc_contratti.codice_interno%TYPE,
+                             stato_nuovo      config.stati_doc_contratti.codice_interno%TYPE)
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente      config.user_override_azioni.auth_user_id%TYPE;
+                  v_stato_da    config.stati_doc_contratti.codice_interno%TYPE;
+                  v_stato_da_id vendite.contratti.stato_doc_contratto_id%TYPE;
+                  v_stato_a_id  config.stati_doc_contratti.id%TYPE;
+              BEGIN
+                  -- ==========================================================
+                  -- Scopo: il verbo di ogni cambio di stato manuale di un
+                  --   contratto (modello del documento: prima riga comune,
+                  --   scrittura comune). Matrice e condizioni dei passaggi le
+                  --   giudica il guard di transizione, all'UPDATE.
+                  -- Ritorna: contratto_id, stato_precedente, stato_nuovo
+                  --   (codice_interno).
+                  -- ==========================================================
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+
+                  -- 1. Parametri.
+                  IF p_contratto_id IS NULL OR p_contratto_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_cambia_stato_contratto',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_contratto_id', p_contratto_id),
+                          NULL::uuid, 'vendite.fn_cambia_stato_contratto',
+                          'p_contratto_id (obbligatorio, maggiore di zero)');
+                  END IF;
+
+                  -- 2. La testata FOR UPDATE, nel perimetro (predicato della
+                  --    policy: DEFINER). Fuori perimetro come inesistente.
+                  SELECT c.stato_doc_contratto_id, s.codice_interno
+                    INTO v_stato_da_id, v_stato_da
+                    FROM vendite.contratti c
+                    JOIN config.stati_doc_contratti s ON s.id = c.stato_doc_contratto_id
+                   WHERE c.id = p_contratto_id
+                     AND script.fn_scope_ef_whitelist_via_contratto(v_utente, c.id)
+                     FOR UPDATE OF c;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_cambia_stato_contratto',
+                          'E_CONTRATTO_NON_TROVATO', jsonb_build_object('id', p_contratto_id), NULL::uuid,
+                          p_contratto_id::text);
+                  END IF;
+
+                  -- 3. Lo stato chiesto: il codice di uno stato attivo.
+                  v_stato_a_id := script.fn_doc_stato_id('vendite.contratti'::regclass, p_stato);
+                  IF v_stato_a_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_cambia_stato_contratto',
+                          'E_STATO_WORKFLOW_NON_TROVATO',
+                          jsonb_build_object('codice', p_stato),
+                          NULL::uuid,
+                          COALESCE(p_stato, 'NULL'));
+                  END IF;
+
+                  -- 4. Prima riga comune: lo stato che ha gia', passaggio di
+                  --    processo, azione.
+                  PERFORM script.fn_guard_passaggio(v_utente, 'vendite.contratti'::regclass,
+                                                    v_stato_da_id, v_stato_a_id);
+
+                  -- 5. Lo stato, attraverso la porta. Il guard di transizione
+                  --    giudica matrice, prezzi, indirizzi, righe, sovrapposto
+                  --    all'attivazione e la data arrivata della cessazione.
+                  PERFORM script.fn_doc_scrivi_stato('vendite.contratti'::regclass,
+                                                     p_contratto_id, v_stato_a_id);
+
+                  RETURN QUERY SELECT p_contratto_id, v_stato_da, p_stato;
+              END;
+              $function$;
+
+              -- DEFINER: EXECUTE solo all'applicazione, come vendite.fn_annulla_contratto.
+              REVOKE EXECUTE ON FUNCTION vendite.fn_cambia_stato_contratto(
+                  vendite.contratti.id%TYPE, config.stati_doc_contratti.codice_interno%TYPE) FROM PUBLIC;
+              GRANT EXECUTE ON FUNCTION vendite.fn_cambia_stato_contratto(
+                  vendite.contratti.id%TYPE, config.stati_doc_contratti.codice_interno%TYPE) TO zeroerp_app;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.fn_cambia_stato_contratto(
+                  vendite.contratti.id%TYPE, config.stati_doc_contratti.codice_interno%TYPE)
+                IS 'VERBO di ogni cambio di stato manuale di un contratto (modello del documento, brief-modello-documento-vendita §11). Permesso: dalla riga del passaggio (config.transizioni_stati_contratti.azione_processo_codename: emetti_contratto su DRAFT -> ATTIVO e ATTIVO -> CESSATO) con script.fn_guard_passaggio, prima di ogni scrittura (lo stato che il contratto ha gia'': E_DOC_GIA_NELLO_STATO); l''annullo della bozza al permesso sul documento, che controlla il backend. SECURITY DEFINER con search_path bloccato: la testata si prende FOR UPDATE col predicato della policy nella WHERE (script.fn_scope_ef_whitelist_via_contratto; fuori perimetro E_CONTRATTO_NON_TROVATO, no-leak). Lo stato chiesto per codice_interno (script.fn_doc_stato_id; nessuno stato attivo: E_STATO_WORKFLOW_NON_TROVATO). Lo stato lo scrive script.fn_doc_scrivi_stato attraverso la porta (script.trgfn_doc_stato_solo_dal_verbo), e il guard di transizione (vendite.trgfn_contratti_guard_transizione_stato) giudica matrice (E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA) e condizioni: prezzi, indirizzi, righe e sovrapposto all''attivazione; alla cessazione la data di fine valorizzata e arrivata. La cessazione con la data passa da vendite.fn_cessa_contratto, l''annullo con legami da vendite.fn_annulla_contratto: tutti e due finiscono qui o nella scrittura comune. Ritorna contratto_id, stato_precedente, stato_nuovo (codice_interno). EXECUTE solo all''applicazione. Brief: brief-modello-documento-vendita §11 (Y-1, Tid 2026-10-26).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_cambia_stato_contratto(
+                  vendite.contratti.id%TYPE, config.stati_doc_contratti.codice_interno%TYPE);

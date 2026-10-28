@@ -1,0 +1,59 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA GRAMMATICA SOLA PER I TIPI DI DOCUMENTO — lotto 3 (le note): il validatore di acquisti
+#   montato DUE volte sui database nati da zero.
+#   Brief: brief-db-grammatica-unica-documenti §14.8.2 (rosso del pgTAP nuovo sullo scratch, 2026-10-25).
+#
+#   Il 20251021-03 monta il validatore delle note di acquisti come trg_note_ddt_ins_upd_validate e
+#   trg_note_ordini_ins_upd_validate. Il 20251119-42 doveva rinominarli in *_validate_ins_upd, ma la
+#   sua preCondition cerca in pg_proc una FUNZIONE chiamata trg_ddt_a10_upd_a_protect_num, che e' il
+#   nome di un TRIGGER: non la trova mai, e con onFail: MARK_RAN la rinomina salta in silenzio.
+#   Su dbdev e' girata (RERAN), sui database nati da zero (scratch, CI) no.
+#   Il 20261025-68 rimonta il validatore sul nome nuovo con DROP IF EXISTS + CREATE: da zero il nome
+#   nuovo non c'era, quindi si e' AGGIUNTO accanto al vecchio. Risultato sullo scratch: due
+#   validatori per partizione, il vecchio ancora col terzo argomento ritirato (L3-4). L'ha trovato il
+#   test 7 di config/test-grammatica-note-target-tipo-v1.
+#
+#   Qui si tolgono i due montaggi col nome vecchio: resta quello del -68, uguale in tutto salvo il
+#   terzo argomento. DROP IF EXISTS: su dbdev non ci sono (rinominati nel 2025), e il changeSet non fa
+#   niente. Trigger scritti a mano, non dal framework (linee-guida-sql §11.5 non li riguarda).
+#   ⚠️ Il 20251119-42 non si tocca (mergiato): il suo difetto vale anche per gli altri trigger che
+#   rinominava, ma quelli sullo scratch hanno gia' il nome giusto (rimontati da changeSet successivi,
+#   verificato su pg_trigger il 2026-10-25).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/acquisti/20261025-69-drop-trg-acquisti-note-validate-nome-vecchio-mctit.yaml
+
+  - changeSet:
+      id: 20261025-69-drop-trg-acquisti-note-validate-nome-vecchio
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Toglie da acquisti.note_ddt e acquisti.note_ordini i montaggi del validatore col nome vecchio
+        (*_ins_upd_validate), che da zero restavano accanto a quelli del 20261025-68 perche' la
+        rinomina del 20251119-42 non scatta mai. Grammatica unica, lotto 3.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_note_ddt_ins_upd_validate ON acquisti.note_ddt;
+              DROP TRIGGER IF EXISTS trg_note_ordini_ins_upd_validate ON acquisti.note_ordini;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Non si rimettono: erano doppioni del validatore del 20261025-68, e su dbdev non
+              -- c'erano. Un rollback che ricrea un doppione rifarebbe il difetto.
+              SELECT 1;

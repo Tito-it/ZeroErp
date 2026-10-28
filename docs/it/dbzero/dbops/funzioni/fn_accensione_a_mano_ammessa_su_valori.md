@@ -4,6 +4,8 @@
 CREATE FUNCTION fn_accensione_a_mano_ammessa_su_valori(p_acceso_a_mano boolean, p_accendibile_in_produzione boolean, p_ambiente text)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

@@ -17,8 +17,9 @@ Endpoint di sola lettura che interroga direttamente `vendite.fatturazione_lotti`
   - `competenza_mese` (date `YYYY-MM-DD`) — filtro mese di competenza
   - `utility_id` (int) — filtro per utility
   - `stato_lotto` (string) — filtro stato del job del lotto, vocabolario
-    `IN_ESECUZIONE` · `COMPLETATO` · `ERRORE` (specchio del CHECK
-    `chk_fatturazione_lotti_stato_job`). Fuori vocabolario → `400`
+    `config.stati_lotto_job` (oggi `IN_ESECUZIONE` · `COMPLETATO` · `ERRORE`), letto
+    dalla tabella e non da una costante (dal 2026-10-27: la colonna è legata al
+    vocabolario con la FK `fk_fatturazione_lotti_stato_lotto`). Fuori vocabolario → `400`
     `E_VENDITE_VALIDATION` col campo (2026-10-20: prima rispondeva lista vuota)
   - `area_geografica_id` (int) — filtro per area geografica fatturazione
   - `tipo_doc_fiscale_id` (int) — filtro per tipo documento fiscale
@@ -82,7 +83,9 @@ Endpoint di sola lettura che interroga direttamente `vendite.fatturazione_lotti`
         "ha_errori_gravi": false,
         "riaperto": false,
         "data_documento": null,
-        "stato_congela_fiscale": false
+        "stato_congela_fiscale": false,
+        "azioni_permesse": ["numera", "riporta_a_draft"],
+        "ristampabile": false
       }
     ]
   },
@@ -162,6 +165,28 @@ Endpoint di sola lettura che interroga direttamente `vendite.fatturazione_lotti`
   ⛔ **Non ha una colonna a catalogo e non deve averla**: è un campo di *payload*
   per il gate delle azioni, non una colonna da mostrare. La regola in «Note di
   migrazione» vale nell'altro verso (catalogo ⇒ proiezione), non in questo.
+- ⭐ `azioni_permesse` (2026-10-27, brief-modello-documento-vendita §15.14) = le
+  `action_key` dei passaggi manuali che **l'operatore della sessione** può fare
+  dallo stato del lotto: `script.fn_doc_azioni_permesse('vendite.fatturazione_lotti',
+  stato_doc_fiscale_id)`. Il permesso è quello della riga del passaggio (chi non
+  ha l'azione non vede il passaggio; un passaggio senza azione resta, perché
+  decide il livello sul documento), e le capability del dettaglio leggono lo
+  **stesso** lettore: lista e dettaglio rispondono allo stesso modo.
+  Il kebab della lista propone un verbo di stato (`numera`, `riporta_a_draft`,
+  `annulla`) **solo** se compare qui; se il campo manca, non lo propone.
+  ⚠️ È il **permesso**, non il verdetto: le precondizioni (`fn_check_*`) le
+  legge il click, dal dettaglio. Mai `null`: senza stato, o senza passaggi
+  permessi, è `[]`.
+  ⚠️ *Fatto datato 2026-10-27* (pgTAP del team DB): EMESSA senza
+  `numera_fatture_lotti` → `[]`; EMESSA con → `numera`, `riporta_a_draft`;
+  DRAFT → `annulla`. È il contenuto della matrice, non la regola.
+- `ristampabile` (2026-10-27) = il lotto si ristampa da qui: lo **stesso**
+  predicato con cui `POST …/ristampa/` accetta o rifiuta (stato fiscale
+  `STATO_DEFINITIVA`, una sede in `vendite_repository`). La ristampa non è un
+  passaggio di stato (stampare è leggere, I-4), quindi non sta in
+  `azioni_permesse`. Il kebab propone «Ristampa» **solo** se è `true`; prima
+  confrontava il codice dello stato con un letterale nel frontend. Lotto senza
+  stato → `false`, mai `null`.
 - LEFT JOIN su tutte le tabelle di decodifica: lotti con FK nullable restituiscono `null` nei campi descrizione corrispondenti.
 - La JOIN su `area_geografica_id` punta a `vendite.area_geografica_fatturazione` (non `config.aree_geografiche`).
 - `is_search_endpoint = True` sulla view: attiva throttling `SearchBurstRateThrottle`.
@@ -176,6 +201,7 @@ Endpoint di sola lettura che interroga direttamente `vendite.fatturazione_lotti`
 - `config.tipi_doc_fiscale` (LEFT JOIN decodifica tipo doc fiscale)
 - `vendite.area_geografica_fatturazione` (LEFT JOIN decodifica area geografica)
 - `anagrafiche.soggetti_ruoli` + `anagrafiche.soggetti` (ragione sociale emittente)
+- `script.fn_doc_azioni_permesse` (passaggi permessi dallo stato, `azioni_permesse`)
 - `vendite.fatturazione_lotti_fatture` + `vendite.fatture` (conteggio, totale,
   spia errori gravi — sotto-query, non JOIN: un JOIN sul ponte moltiplicherebbe
   la riga del lotto per il numero delle sue fatture)

@@ -189,7 +189,10 @@ class ParameterSettingsView(DomainAPIView):
         description=(
             "Restituisce tutti i parametri di sistema con i valori a ogni livello "
             "(default, emittente, gruppo, categoria_cliente, utente) e il valore "
-            "risolto finale. Cascata: user > categoria_cliente > group > emittente > default."
+            "risolto finale. Cascata: user > categoria_cliente > group > emittente > default. "
+            "`ammette_override` dice la famiglia: a false il parametro vale per tutti, i "
+            "livelli sono null, il valore risolto e' il default e l'override e' rifiutato "
+            "(400 E_PARAMETER_OVERRIDE_NON_AMMESSO)."
         ),
         parameters=[
             OpenApiParameter(
@@ -300,7 +303,11 @@ class ParameterOverrideView(DomainAPIView):
             name="ParameterOverrideRequest",
             fields={
                 "parameter_code": serializers.CharField(
-                    help_text="Codice del parametro da sovrascrivere",
+                    help_text=(
+                        "Codice del parametro da sovrascrivere. Un parametro che "
+                        "vale per tutti (ammette_override false nella lista) e' "
+                        "rifiutato dal DB: 400 E_PARAMETER_OVERRIDE_NON_AMMESSO."
+                    ),
                 ),
                 "value": serializers.CharField(
                     help_text="Nuovo valore dell'override",

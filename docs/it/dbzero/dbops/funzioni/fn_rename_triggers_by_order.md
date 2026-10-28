@@ -4,6 +4,8 @@
 CREATE FUNCTION fn_rename_triggers_by_order(p_order_token text, p_dry_run boolean, p_schema text)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

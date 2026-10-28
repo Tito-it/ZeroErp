@@ -57,7 +57,7 @@ Nessun parametro.
   escluso a monte dalla vista) dà lista vuota, mai 400.
 - `area` (opzionale): `PREVENTIVO | ORDINE_VENDITA | DDT_VENDITA |
   OFFERTA_COMMERCIALE | CONTRATTO | COMMESSA | RESO_VENDITA`
-> ⭐ **Dal 2026-10-20 l'`area` è il codice della sorgente** (`config.sorgenti.codice_interno`): `PREVENTIVO`, `ORDINE_VENDITA`, `DDT_VENDITA`, `OFFERTA_COMMERCIALE`, `CONTRATTO`, `COMMESSA`, `RESO_VENDITA`. Il plurale (`ORDINI`, `RESI`…) è ritirato col sotto-giro 2d di [brief-db-grammatica-unica-documenti](../../../dev/work-in-progress/brief-db-grammatica-unica-documenti.md) (G-6).
+> ⭐ **Dal 2026-10-20 l'`area` è il codice della sorgente** (`config.sorgenti.codice_interno`): `PREVENTIVO`, `ORDINE_VENDITA`, `DDT_VENDITA`, `OFFERTA_COMMERCIALE`, `CONTRATTO`, `COMMESSA`, `RESO_VENDITA`. Il plurale (`ORDINI`, `RESI`…) è ritirato col sotto-giro 2d di [brief-db-grammatica-unica-documenti](../../../dev/work-done/brief-db-grammatica-unica-documenti.md) (G-6).
 
   (case-insensitive; fuori whitelist → `E_VENDITE_VALIDATION`; assente = tutte).
 - `ritardo_giorni` (opzionale, intero > 0; assente = nessuna soglia): «fermi da

@@ -55,29 +55,24 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(9);
 
--- Le madri/viste sono SECURITY INVOKER: dai un ruolo applicativo.
-SET LOCAL app.ruolo_applicativo = 'OPERATORE';
-SET LOCAL app.current_user_id = '1';
+-- rev 2026-10-27 (lotto 4 di D7): via il vecchio «SET LOCAL app.current_user_id
+--   = '1'» (con ruolo OPERATORE): l'utente 1 da zero non esiste, e su dev e' un
+--   super admin senza azienda. Chi agisce e' l'operatore del contesto qui sopra
+--   (le madri/viste sono SECURITY INVOKER: il ruolo applicativo lo da' lui).
+--   Il cliente si COSTRUISCE con dbops.fn_pgtap_crea_cliente_ba (BA legato
+--   all'azienda di chi agisce): prima si pescava il primo BA con emittente, e
+--   da zero non c'era. L'emittente si deriva dal BA costruito. Restano letture
+--   di catalogo di SEED: tipi_doc_fiscale, sorgenti, articoli-onere.
+CREATE TEMP TABLE tmp_cli_ogc AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('porta oneri giro completo');
 
 -- ===== riferimenti =====
 CREATE TEMP TABLE tmp_refs AS
 SELECT
-  (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1) AS billing_account_id,
-  (SELECT ba.utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1) AS utility_id,
-  (SELECT ba.istanza_utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1) AS istanza_utility_id,
-  (SELECT anagrafiche.fn_get_emittente_fiscale_id(ba.id) FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1) AS emittente_soggetto_ruolo_id,
+  (SELECT billing_account_id FROM tmp_cli_ogc) AS billing_account_id,
+  (SELECT utility_id FROM tmp_cli_ogc) AS utility_id,
+  (SELECT istanza_utility_id FROM tmp_cli_ogc) AS istanza_utility_id,
+  (SELECT anagrafiche.fn_get_emittente_fiscale_id(billing_account_id) FROM tmp_cli_ogc) AS emittente_soggetto_ruolo_id,
   (SELECT id FROM config.tipi_doc_fiscale WHERE attivo IS TRUE ORDER BY id LIMIT 1) AS tipo_doc_fiscale_id,
   -- Sorgente ROOT: COMMESSA (target vendite.commesse, key_selector='id') con uid =
   -- id della commessa stessa -> la riga esiste per costruzione (passa il guard
@@ -124,6 +119,10 @@ SELECT ok(
   '2) commessa con ROOT source');
 
 -- ===== emissione: PRONTA_FATTURAZIONE + pull =====
+-- rev 2026-10-27: il verbo della commessa chiede cambia_stato_commessa
+-- all'operatore del test (giro 10); senza, su un db dove l'operatore non ce l'ha,
+-- si ferma qui con E_PERMESSO_NEGATO.
+SELECT dbops.fn_pgtap_concedi_azione(current_setting('app.current_user_id')::integer, 'cambia_stato_commessa');
 SELECT vendite.fn_cambia_stato_commessa((SELECT commessa_id FROM tmp_com), 'PRONTA_FATTURAZIONE');
 CREATE TEMP TABLE tmp_emit AS
 SELECT * FROM vendite.fn_emit_attivita_fatturabili_da_commessa((SELECT commessa_id FROM tmp_com));

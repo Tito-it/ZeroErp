@@ -25,6 +25,10 @@
 -- ⚠️ I test 11 e 12 dipendono dal trigger di lock, che lo genera l'automazione
 --   (ci_apply in CI; su dev il job automations_lock_columns): se non porta
 --   ancora la colonna fanno skip() dichiarato, non un verde per sottrazione.
+-- rev 2026-10-26 (brief-modello-documento-vendita §13, giro 9): lo stato
+--   dell'offerta dal verbo — rev.1 e rev.2 si emettono con
+--   dbops.fn_pgtap_porta_a_stato invece dell'UPDATE di stato, che la porta ora
+--   rifiuta.
 --
 -- Indice test (1..13):
 --   1)  revisione_radice_id NOT NULL
@@ -149,9 +153,9 @@ SELECT is(
 -- ============================================================
 -- 6) rev.2 dalla madre: radice = rev.1
 -- ============================================================
-UPDATE vendite.offerte_commerciali
-   SET stato_doc_offerta_id = (SELECT stato_emessa_id FROM tmp_rr_ctx)
- WHERE id = (SELECT id FROM tmp_rr_rev1);
+-- rev 2026-10-26 (giro 9): l'emissione dal verbo, non con un UPDATE di stato.
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', r.id, 'EMESSA')
+  FROM tmp_rr_rev1 r;
 
 CREATE TEMP TABLE tmp_rr_rev2 AS
 SELECT vendite.fn_crea_revisione_offerta((SELECT id FROM tmp_rr_rev1), 'pgtap') AS id;
@@ -166,9 +170,9 @@ SELECT is(
 -- ============================================================
 -- 7) rev.3: la radice della rev.1, non l'id del padre
 -- ============================================================
-UPDATE vendite.offerte_commerciali
-   SET stato_doc_offerta_id = (SELECT stato_emessa_id FROM tmp_rr_ctx)
- WHERE id = (SELECT id FROM tmp_rr_rev2);
+-- rev 2026-10-26 (giro 9): l'emissione dal verbo, non con un UPDATE di stato.
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', r.id, 'EMESSA')
+  FROM tmp_rr_rev2 r;
 
 CREATE TEMP TABLE tmp_rr_rev3 AS
 SELECT vendite.fn_crea_revisione_offerta((SELECT id FROM tmp_rr_rev2), 'pgtap') AS id;

@@ -89,7 +89,7 @@ per l'operatore c'era `script.fn_get_emittenti_scope_pk_ids`).
 * **P-1** ✅ (Tid, 2026-10-21) — le tre righe «operatore» per prime, con la forma già pronta. Poi le
   altre famiglie.
   ⚠️ Le due `fn_scope_note_*` dell'operatore stanno anche nel perimetro del **lotto 3** di
-  [brief-db-grammatica-unica-documenti](../work-in-progress/brief-db-grammatica-unica-documenti.md) (V6, i codici di
+  [brief-db-grammatica-unica-documenti](../work-done/brief-db-grammatica-unica-documenti.md) (V6, i codici di
   `target_tipo`). Non c'è conflitto, ma chi arriva per secondo riparte dal corpo della doc
   auto-generata, non dal proprio YAML. La nota è scritta anche in quel brief (2026-10-21, §5.4).
 * **P-2** ✅ (Tid, 2026-10-21) — tutte le famiglie si curano **in questo brief**. Il lavoro DB si
@@ -188,7 +188,7 @@ prende. Il test 4 del presidio guarda il piano col `FORCE` acceso, quindi la for
   quelle delle due ritirate (`fn_scope_note_magazzino_ef_whitelist`, `fn_scope_ef_whitelist_via_coppia`).
   Aggiornati i rimandi in sette pagine `via_*`, in `istanze_dati_precontrattuali` e in
   `fn_storico_risolvi_scope`. ⚠️ Le pagine auto-generate si allineano alla prossima rigenerazione.
-* La nota per il lotto 3 è in [brief-db-grammatica-unica-documenti](../work-in-progress/brief-db-grammatica-unica-documenti.md)
+* La nota per il lotto 3 è in [brief-db-grammatica-unica-documenti](../work-done/brief-db-grammatica-unica-documenti.md)
   §11.3 (le note), e la voce D36 del registro è aggiornata.
 
 ## 6. Giro 2 — il cliente portale (2026-10-21)

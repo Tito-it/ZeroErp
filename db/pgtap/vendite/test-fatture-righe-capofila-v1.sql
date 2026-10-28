@@ -57,61 +57,32 @@ SELECT plan(10);
 -- ============================================================
 -- Fixture
 -- ============================================================
--- ⚠️ Si parte DALLA configurazione (emittente, utility): emittente e billing
---   account non si scelgono in modo indipendente, o i guard rifiutano.
-CREATE TEMP TABLE tmp_cf_refs AS
-WITH cfg AS (
-  SELECT efu.emittente_soggetto_ruolo_id, efu.utility_id
-    FROM anagrafiche.emittenti_fiscali_utilities efu
-   WHERE efu.attivo IS TRUE
-     AND EXISTS (SELECT 1 FROM anagrafiche.billing_account ba
-                  WHERE ba.utility_id = efu.utility_id)
-   ORDER BY efu.emittente_soggetto_ruolo_id, efu.utility_id
-   LIMIT 1
-)
-SELECT (SELECT emittente_soggetto_ruolo_id FROM cfg) AS emittente_soggetto_ruolo_id,
-       (SELECT utility_id FROM cfg)                  AS utility_id,
-       (SELECT ba.id FROM anagrafiche.billing_account ba
-         WHERE ba.utility_id = (SELECT utility_id FROM cfg)
-         ORDER BY ba.id LIMIT 1)                     AS billing_account_id,
-       (SELECT i.id FROM config.iva i
-         WHERE i.attivo IS TRUE AND i.aliquota_iva > 0
-         ORDER BY i.id LIMIT 1)                      AS iva_id,
-       (SELECT id FROM config.tipi_doc_fiscale WHERE attivo IS TRUE
-         ORDER BY id LIMIT 1)                        AS tipo_doc_fiscale_id,
-       -- ⚠️ Lo stato si sceglie leggendo `congela_fiscale`, non per nome: la
-       --   soglia e' un DATO dal 2026-08-30 (D33), e scrivere 'DRAFT' qui
-       --   rimetterebbe una copia della lista che quel cantiere ha tolto.
-       (SELECT s.id FROM config.stati_doc_fiscale s
-         WHERE s.congela_fiscale IS FALSE
-         ORDER BY s.ordine, s.id LIMIT 1)            AS stato_doc_fiscale_id,
-       (SELECT id FROM config.valute ORDER BY id LIMIT 1) AS valuta_id;
+-- rev 2026-10-27 (lotto 4 di D7): le DUE fatture si COSTRUISCONO
+--   (dbops.fn_pgtap_crea_fattura: azienda di chi agisce, cliente, registro
+--   coerente, testata nello stato iniziale — che non congela), la seconda
+--   sullo stesso billing account. Prima la coppia (emittente, utility) si
+--   pescava da emittenti_fiscali_utilities, il BA col primo id, e registro e
+--   testate si INSERIVANO a mano: da zero non c'era niente. Dal catalogo di
+--   seed resta solo l'IVA.
+CREATE TEMP TABLE tmp_cf_f1 AS
+SELECT * FROM dbops.fn_pgtap_crea_fattura('capofila 1');
 
-CREATE TEMP TABLE tmp_cf_reg AS
-WITH ins AS (
-  INSERT INTO vendite.registri_fatturazione (codice, descrizione, reset_policy, attivo,
-          emittente_soggetto_ruolo_id, meta)
-  VALUES ('REGCAPO_PGTAP', 'Registro test capofila', 'ANNUALE', true,
-          (SELECT emittente_soggetto_ruolo_id FROM tmp_cf_refs),
-          jsonb_build_object('test_scope', 'pgtap_capofila'))
-  RETURNING id)
-SELECT * FROM ins;
+CREATE TEMP TABLE tmp_cf_f2 AS
+SELECT * FROM dbops.fn_pgtap_crea_fattura(
+  'capofila 2', 'DRAFT', (SELECT billing_account_id FROM tmp_cf_f1));
+
+CREATE TEMP TABLE tmp_cf_refs AS
+SELECT (SELECT i.id FROM config.iva i
+         WHERE i.attivo IS TRUE AND i.aliquota_iva > 0
+         ORDER BY i.id LIMIT 1)                      AS iva_id;
 
 -- ⚠️ DUE fatture: la seconda serve al caso 4. Senza un secondo documento quel
 --   caso non e' COSTRUIBILE, e la FK composita resterebbe non verificata — che
 --   e' la forma classica del verde per sottrazione.
 CREATE TEMP TABLE tmp_cf_fatt AS
-WITH ins AS (
-  INSERT INTO vendite.fatture
-      (registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
-       tipo_doc_fiscale_id, stato_doc_fiscale_id, valuta_id, utility_id, meta)
-  SELECT (SELECT id FROM tmp_cf_reg), script.fn_data_operativa(),
-         r.emittente_soggetto_ruolo_id, r.billing_account_id,
-         r.tipo_doc_fiscale_id, r.stato_doc_fiscale_id, r.valuta_id, r.utility_id,
-         jsonb_build_object('test_scope', 'pgtap_capofila', 'n', n)
-    FROM tmp_cf_refs r, generate_series(1, 2) AS n
-  RETURNING id, (meta ->> 'n')::int AS n)
-SELECT * FROM ins;
+SELECT fattura_id AS id, 1 AS n FROM tmp_cf_f1
+UNION ALL
+SELECT fattura_id AS id, 2 AS n FROM tmp_cf_f2;
 
 -- Le capofila: una per fattura. Nascono senza `riga_capofila_id`, come ogni
 -- riga ordinaria — la capofila E' essa stessa la prima parte.

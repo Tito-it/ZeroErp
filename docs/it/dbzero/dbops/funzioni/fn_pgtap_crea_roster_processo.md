@@ -4,6 +4,8 @@
 CREATE FUNCTION fn_pgtap_crea_roster_processo(p_processo_codice text, p_sigla character varying)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

@@ -1,5 +1,8 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): l'ordine aperto con B da
+--   dbops.fn_pgtap_crea_ordine_con_righe (DRAFT, la riga con l'IVA del test); le righe dei
+--   preventivi restano a mano (nessun builder di righe di preventivo).
 -- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2b, 20261019-87 … -99):
 --   la natura merce ha destinazione ORDINE_VENDITA, il codice della sorgente (era ORDINE).
 -- pgTAP test per Zero ERP
@@ -63,7 +66,11 @@ SELECT dbops.fn_pgtap_crea_articolo('PGT-ACR-A', false, p_natura_vendita_id => (
 CREATE TEMP TABLE _p1 AS SELECT * FROM dbops.fn_pgtap_crea_preventivo('pgTAP correzione righe aperte 1');
 CREATE TEMP TABLE _p2 AS SELECT * FROM dbops.fn_pgtap_crea_preventivo('pgTAP correzione righe aperte 2');
 CREATE TEMP TABLE _p3 AS SELECT * FROM dbops.fn_pgtap_crea_preventivo('pgTAP correzione righe aperte 3');
-CREATE TEMP TABLE _ord AS SELECT * FROM dbops.fn_pgtap_crea_ordine('pgTAP correzione righe aperte');
+CREATE TEMP TABLE _ord AS
+SELECT * FROM dbops.fn_pgtap_crea_ordine_con_righe('pgTAP correzione righe aperte', 'DRAFT',
+    p_righe => jsonb_build_array(jsonb_build_object(
+        'articolo_id', (SELECT b FROM _art), 'quantita', 1, 'prezzo', 10,
+        'iva_id', (SELECT id FROM _iva), 'descrizione', 'pgTAP B')));
 
 INSERT INTO vendite.preventivi_righe (preventivo_id, articolo_id, iva_id, prezzo_unitario, qta_operativa)
 SELECT (SELECT preventivo_id FROM _p1), x.art, (SELECT id FROM _iva), 10, 1
@@ -76,9 +83,6 @@ INSERT INTO vendite.preventivi_righe (preventivo_id, articolo_id, iva_id, prezzo
 SELECT (SELECT preventivo_id FROM _p3), (SELECT d FROM _art), (SELECT id FROM _iva), 10, 1;
 UPDATE vendite.preventivi_righe SET attivo = false
  WHERE preventivo_id = (SELECT preventivo_id FROM _p3);
-
-INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione, iva_id, prezzo_unitario, qta_operativa)
-SELECT (SELECT ordine_id FROM _ord), 1, (SELECT b FROM _art), 'pgTAP B', (SELECT id FROM _iva), 10, 1;
 
 SELECT dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT preventivo_id FROM _p2), 'ANNULLATO');
 

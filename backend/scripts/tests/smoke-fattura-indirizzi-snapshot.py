@@ -194,9 +194,13 @@ with transaction.atomic():
 
     # 2b) Guard uscita DRAFT (I.4, brief intestazione §10.9): la fattura e'
     #     incompleta PER COSTRUZIONE proprio adesso (niente FATT, niente
-    #     intestazione) — un UPDATE diretto verso EMESSA deve essere respinto
-    #     con E_FATTURA_NON_EMETTIBILE_INCOMPLETA. Savepoint dedicato: il
-    #     RAISE del trigger non deve avvelenare la transazione dello smoke.
+    #     intestazione) — il passaggio verso EMESSA deve essere respinto con
+    #     E_FATTURA_NON_EMETTIBILE_INCOMPLETA. Savepoint dedicato: il RAISE del
+    #     trigger non deve avvelenare la transazione dello smoke.
+    # ⛔ Dal verbo della fattura (`vendite.fn_fattura_proietta_stato`), non con
+    #    un `UPDATE` (2026-10-27, brief-modello-documento-vendita §15.8): la
+    #    porta del DB lo fermerebbe PRIMA del guard, con un altro codice, e il
+    #    caso non proverebbe piu' il guard dell'emissione.
     from django.db import DatabaseError
     guard_msg = ""
     try:
@@ -204,11 +208,10 @@ with transaction.atomic():
             with connection.cursor() as cur:
                 cur.execute(
                     """
-                    UPDATE vendite.fatture
-                       SET stato_doc_fiscale_id =
-                           (SELECT id FROM config.stati_doc_fiscale
-                             WHERE codice_interno = 'EMESSA')
-                     WHERE id = %s
+                    SELECT vendite.fn_fattura_proietta_stato(
+                               %s,
+                               (SELECT id FROM config.stati_doc_fiscale
+                                 WHERE codice_interno = 'EMESSA'))
                     """, [fattura_ids[0]],
                 )
     except DatabaseError as exc:

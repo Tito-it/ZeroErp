@@ -37,6 +37,67 @@ SELECT plan(7);
 -- Il BA deve essere su utility SENZA dimensione tipo/classe: il trigger
 -- di snapshot contratti_utilities scatterebbe il guard tipo/classe se la
 -- utility avesse tipi_utenze popolata.
+-- rev 2026-10-27 (lotto 4 di D7): BA, listino, articolo e riga di listino si
+--   COSTRUISCONO. Prima si pescavano (BA x articolo x listino esistenti, con
+--   ORDER BY ... LIMIT 1): da zero non c'era niente e il file moriva con
+--   «parametri resolver pricing v2 non validi». Le condizioni che la pesca
+--   chiedeva ai dati restano, ma come SCELTA della utility sul catalogo:
+--   * senza dimensione tipo/classe (config.tipi_utenze);
+--   * con una tipologia di listino ammessa (config.listini_tipologie_utilities);
+--   * 🔴 compatibile con l'emittente di chi agisce secondo la matrice
+--     config.utilities_tipi_ruolo (aggiunto il 2026-08-18: la coppia utility 4
+--     + tipo ruolo 7 moriva su «Tipo ruolo 7 non ammesso per utility 4»). La
+--     matrice e' fail-open come il guard script.fn_guard_utility_tipo_ruolo:
+--     una utility senza righe attive non pone vincoli. ⚠️ Si legge dalla
+--     matrice, non si fissa una utility a mano: la fixture segue la
+--     configurazione invece di scommetterci contro.
+--   Il resto lo garantisce la costruzione: il BA nuovo e' legato all'emittente
+--   di chi agisce e non ha contratti sull'istanza (un contratto «modalita' C»
+--   porterebbe il resolver sullo STADIO 1 con «articolo non negoziato»); il
+--   listino (dbops.fn_pgtap_crea_listino) e' di quell'emittente e di quella
+--   utility (§F.2, 2026-10-08), con la prima tipologia ammessa; l'articolo
+--   (dbops.fn_pgtap_crea_articolo) ha la tipologia del listino, cosi'
+--   trgfn_listini_righe_guard_tipologia e il guard del perimetro della riga
+--   di contratto (giro B3) lo ammettono.
+CREATE TEMP TABLE tmp_utility AS
+SELECT u.id AS utility_id
+  FROM config.utilities u
+ WHERE NOT EXISTS (SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = u.id)
+   AND EXISTS (SELECT 1 FROM config.listini_tipologie_utilities ltu
+                WHERE ltu.utility_id = u.id AND ltu.attivo)
+   AND (NOT EXISTS (SELECT 1 FROM config.utilities_tipi_ruolo utr
+                     WHERE utr.utility_id = u.id AND utr.attivo IS TRUE
+                       AND utr.validita @> script.fn_data_operativa())
+        OR EXISTS (SELECT 1
+                     FROM config.utilities_tipi_ruolo utr
+                     JOIN anagrafiche.soggetti_ruoli sr
+                       ON sr.id = script.fn_pgtap_emittente_sr_operatore()
+                    WHERE utr.utility_id = u.id
+                      AND utr.tipo_ruolo_id = sr.tipo_ruolo_id
+                      AND utr.attivo IS TRUE
+                      AND utr.validita @> script.fn_data_operativa()))
+ ORDER BY u.id
+ LIMIT 1;
+
+CREATE TEMP TABLE tmp_cli AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba(
+    'resolver v2', (SELECT utility_id FROM tmp_utility));
+
+CREATE TEMP TABLE tmp_ctx_versione AS
+SELECT l.listino_versione_id AS versione_id, l.listino_id, l.tipologia_id
+  FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM tmp_utility), 'resolver v2') l;
+
+CREATE TEMP TABLE tmp_ctx_listino AS
+SELECT v.listino_id FROM tmp_ctx_versione v;
+
+CREATE TEMP TABLE tmp_art AS
+SELECT b.articolo_id
+  FROM dbops.fn_pgtap_crea_articolo(
+           'PGTAP_V5_ART', false,
+           p_listino_tipologia_id => (SELECT tipologia_id FROM tmp_ctx_versione)) AS b(articolo_id);
+
+-- In un'istruzione a parte dai builder: le righe che scrivono non sono
+-- visibili a una JOIN nella stessa istruzione che li chiama.
 CREATE TEMP TABLE tmp_ctx AS
 SELECT
     ba.id                       AS ba_id,
@@ -51,121 +112,34 @@ SELECT
     a.id                        AS articolo_id,
     a.uom_id                    AS uom_id,
     a.listino_tipologia_id      AS tipologia_id
-  FROM anagrafiche.billing_account ba
-  JOIN catalogo.articoli a
-    ON a.attivo IS TRUE
-   AND a.listino_tipologia_id IS NOT NULL
-   -- rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.9, giro B3): la riga di
-   --   contratto del test 3 vuole la tipologia dell'articolo fra quelle della utility del
-   --   cliente (guard del perimetro).
-   AND EXISTS (SELECT 1 FROM config.listini_tipologie_utilities ltu
-                WHERE ltu.utility_id = ba.utility_id
-                  AND ltu.tipologia_id = a.listino_tipologia_id
-                  AND ltu.attivo)
- WHERE ba.categoria_cliente_id IS NOT NULL
-   AND NOT EXISTS (
-       SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = ba.utility_id
-   )
-   -- 🔴 UTILITY COMPATIBILE CON L'EMITTENTE, aggiunto il 2026-08-18.
-   --   `config.utilities_tipi_ruolo` e' una matrice: non tutte le utility
-   --   ammettono tutti i tipi di ruolo. La fixture sceglieva il billing account
-   --   e l'emittente in modo INDIPENDENTE, e la coppia che ne usciva —
-   --   utility 4 + tipo ruolo 7 — la matrice non la ammette. Il guard
-   --   rispondeva «Tipo ruolo 7 non ammesso per utility 4» e il file moriva
-   --   nella fixture.
-   --   ⚠️ La condizione si legge dalla matrice, non si fissa una utility a
-   --   mano: cosi' la fixture segue la configurazione invece di scommetterci
-   --   contro, e non torna rossa il giorno che la matrice cambia.
-   AND EXISTS (
-       SELECT 1
-         FROM config.utilities_tipi_ruolo utr
-         JOIN anagrafiche.soggetti_ruoli sr
-           ON sr.id = (SELECT ef.soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali ef
-                        WHERE ef.id = anagrafiche.fn_get_emittente_fiscale_pk(ba.id))
-        WHERE utr.utility_id = ba.utility_id
-          AND utr.tipo_ruolo_id = sr.tipo_ruolo_id
-          AND utr.attivo IS TRUE
-   )
-   -- ⚠️ E senza contratti sull'istanza. Spostando la scelta sulla utility
-   --   compatibile si finiva su un billing account la cui istanza ha un
-   --   contratto «modalita' C», che pretende l'articolo negoziato e fa fallire
-   --   la risoluzione con «articolo .../uom 1 non negoziato».
-   --   Questo file verifica la risoluzione del prezzo **da listino**: un
-   --   contratto di mezzo e' un'altra strada del resolver, e un'altra storia.
-   --   Escluderlo non indebolisce il test — lo mette sul percorso che dichiara
-   --   di verificare. (Candidati che soddisfano tutte le condizioni: 3.)
-   AND NOT EXISTS (
-       SELECT 1 FROM vendite.contratti c
-        WHERE c.istanza_utility_id = ba.istanza_utility_id
-   )
-   -- 2026-10-08 (§F.2): e un listino della tipologia dell'articolo, della utility e
-   --   dell'emittente del BA (quello che tmp_ctx_listino sceglie qui sotto).
-   AND EXISTS (
-       SELECT 1 FROM vendite.listini l
-         JOIN anagrafiche.emittenti_fiscali ef ON ef.soggetto_ruolo_id = l.emittente_soggetto_ruolo_id
-        WHERE l.attivo IS TRUE
-          AND l.tipologia_id = a.listino_tipologia_id
-          AND l.utility_id   = ba.utility_id
-          AND ef.id = anagrafiche.fn_get_emittente_fiscale_pk(ba.id)
-   )
- ORDER BY ba.id, a.id
- LIMIT 1;
+  FROM tmp_cli c
+  JOIN anagrafiche.billing_account ba ON ba.id = c.billing_account_id
+  CROSS JOIN tmp_art t
+  JOIN catalogo.articoli a ON a.id = t.articolo_id;
 
--- Listino di test: tipologia coerente con l'articolo (il guard
--- trgfn_listini_righe_guard_tipologia verifica articolo.listino_tipologia_id =
--- listino.tipologia_id).
--- ⚠️ 2026-10-08, brief-db-offerta-emissione-ed-erogazione §F.2: qui c'era scritto
---   «l'utility del listino puo' essere qualsiasi». Non e' piu' vero: il listino di
---   un contratto e' della sua utility e del suo emittente (guard nuovo). Articolo e
---   tipologia vengono dai dati e sono il soggetto del test, quindi si FILTRA invece
---   di ricostruire: stessa utility ed emittente del BA.
-CREATE TEMP TABLE tmp_ctx_listino AS
-SELECT l.id AS listino_id
-  FROM vendite.listini l, tmp_ctx t
- WHERE l.tipologia_id = t.tipologia_id
-   AND l.attivo       = TRUE
-   AND l.utility_id   = t.utility_id
-   AND l.emittente_soggetto_ruolo_id = t.emittente_srid
- ORDER BY l.id
- LIMIT 1;
-
--- Se non esiste un listino coerente, creiamo condizioni minime (non facciamo
--- insert su listini in questo test: richiede FK a emittente + tipologia +
--- utility, si tratta di dato master; assumiamo disponibile in dev). In mancanza,
--- i test falliranno in modo diagnosticabile.
+-- La precondizione resta, sul listino costruito: dev'essere dell'emittente,
+-- della utility e della tipologia del contesto (§F.2). Se il legame del BA
+-- cadesse su un altro emittente, il test lo dice qui invece di fallire piu'
+-- sotto su un guard.
 SELECT isnt(
-    (SELECT COUNT(*)::int FROM tmp_ctx_listino),
+    (SELECT COUNT(*)::int
+       FROM tmp_ctx_listino tl
+       JOIN vendite.listini l ON l.id = tl.listino_id AND l.attivo
+       JOIN tmp_ctx t ON t.emittente_srid = l.emittente_soggetto_ruolo_id
+                     AND t.utility_id     = l.utility_id
+                     AND t.tipologia_id   = l.tipologia_id),
     0,
     '(precondizione) esiste almeno un listino attivo coerente con utility/tipologia dell''articolo di test'
 );
 
--- Riduce a 1 test + 5 da qui; aggiorno plan a posteriori nei commenti se mancano setup.
--- Creo la versione attiva del listino (se non c'e' gia' una che copre oggi).
-INSERT INTO vendite.listini_versioni(listino_id, codice_versione, valido_dal, valido_al, stato, attivo)
-SELECT l.listino_id, 'PGTAP_V5_VER', script.fn_data_operativa(), script.fn_data_operativa() + 365, 'ATTIVA', TRUE
-  FROM tmp_ctx_listino l
-WHERE NOT EXISTS (
-    SELECT 1 FROM vendite.listini_versioni lv
-     WHERE lv.listino_id = l.listino_id
-       AND lv.attivo = TRUE
-       AND lv.validita @> script.fn_data_operativa()
-)
-ON CONFLICT DO NOTHING;
-
-CREATE TEMP TABLE tmp_ctx_versione AS
-SELECT lv.id AS versione_id, lv.listino_id
-  FROM vendite.listini_versioni lv, tmp_ctx_listino l
- WHERE lv.listino_id = l.listino_id
-   AND lv.attivo IS TRUE
-   AND lv.validita @> script.fn_data_operativa()
- ORDER BY lv.id DESC
- LIMIT 1;
-
--- Riga listino con prezzo base 100.
-INSERT INTO vendite.listini_righe(listino_versione_id, articolo_id, uom_id, prezzo)
-SELECT v.versione_id, t.articolo_id, t.uom_id, 100
-  FROM tmp_ctx_versione v, tmp_ctx t
-ON CONFLICT DO NOTHING;
+-- Riga listino con prezzo base 100 (builder: una riga con la UoM base).
+-- In un DO: una SELECT nuda stamperebbe una riga in mezzo al flusso TAP.
+DO $riga$ BEGIN
+    PERFORM dbops.fn_pgtap_listino_aggiungi_articoli(
+        (SELECT versione_id FROM tmp_ctx_versione),
+        ARRAY[(SELECT articolo_id FROM tmp_ctx)],
+        100);
+END $riga$;
 
 -- Matrice categoria -> listino: classe specifica + variazione PERCENTUALE -10%
 INSERT INTO anagrafiche.categorie_clienti_listini(
@@ -237,18 +211,21 @@ SELECT is(
 --   `chk_contrighe_prezzo_per_tipo_eccezione` pretende un prezzo valorizzato per
 --   OVERRIDE/AGGIUNTA, e qui il prezzo (42) e' proprio il punto del test —
 --   e' un prezzo che SCAVALCA il listino, che e' la definizione di OVERRIDE.
-INSERT INTO vendite.contratti(
-    numero, billing_account_id, istanza_utility_id, utility_id, stato_doc_contratto_id,
-    valido_dal, valido_al, listino_id, tipo_variazione_globale, valore_variazione_globale)
-SELECT 'PGTAP_V5_CONTR', t.ba_id, t.istanza_utility_id, t.utility_id,
-       (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'DRAFT'),
-       script.fn_data_operativa(), script.fn_data_operativa(), v.listino_id, NULL, NULL
-  FROM tmp_ctx t, tmp_ctx_versione v;
+-- rev 2026-10-27 (lotto 4 di D7): la testata DRAFT la scrive il builder
+--   (dbops.fn_pgtap_crea_contratto, dalla madre vendite.fn_create_contratto),
+--   sul BA costruito, col listino del test e valida solo oggi (prima un INSERT
+--   a mano col numero fisso).
+CREATE TEMP TABLE tmp_contratto AS
+SELECT k.contratto_id
+  FROM dbops.fn_pgtap_crea_contratto(
+           'resolver v2', 'DRAFT', (SELECT ba_id FROM tmp_ctx), NULL,
+           script.fn_data_operativa(), script.fn_data_operativa(), NULL,
+           (SELECT listino_id FROM tmp_ctx_listino)) k;
 
 -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
 INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, prezzo_unitario,
                                     tipo_eccezione, attivo, qta_operativa, tipo_erogazione)
-SELECT c.id, t.articolo_id, 42,
+SELECT c.contratto_id, t.articolo_id, 42,
        -- rev 2026-10-07 (giro B3): erogazione VUOTA, la riga la eredita dalla tipologia
        --   dell'articolo (era CANONE scritto a mano).
        -- rev 2026-10-07 (§D.4 punto 2, 20261007-28/-30): la quantita' solo se la fonte
@@ -258,13 +235,16 @@ SELECT c.id, t.articolo_id, 42,
        (SELECT 1 FROM vendite.fn_articolo_erogazioni(t.articolo_id) e
          WHERE e.e_default AND e.fonte_quantita_attesa = 'FISSA'),
        NULL
-  FROM vendite.contratti c, tmp_ctx t
- WHERE c.numero = 'PGTAP_V5_CONTR';
+  FROM tmp_contratto c, tmp_ctx t;
 
-UPDATE vendite.contratti
-   SET stato_doc_contratto_id = (SELECT id FROM config.stati_doc_contratti
-                                  WHERE codice_interno = 'ATTIVO')
- WHERE numero = 'PGTAP_V5_CONTR';
+-- rev 2026-10-27 (brief-modello-documento-vendita §11, debito del giro 8): il contratto ha la
+--   porta sulla colonna di stato; l'attivazione passa dal verbo, che la fixture chiama con
+--   emetti_contratto concessa (prima un UPDATE diretto, ora fermato dalla porta).
+--   In un DO: una SELECT nuda stamperebbe lo stato in mezzo al flusso TAP.
+DO $attiva$ BEGIN
+    PERFORM dbops.fn_pgtap_porta_a_stato('vendite.contratti'::regclass, c.contratto_id, 'ATTIVO')
+       FROM tmp_contratto c;
+END $attiva$;
 
 SELECT is(
     (SELECT origine FROM vendite.fn_resolve_prezzo_listino_v2(
@@ -335,7 +315,7 @@ DELETE FROM anagrafiche.categorie_clienti_listini
 -- in STADIO 2 risale al resolver comunque -> la promo non "salva" nulla).
 DELETE FROM vendite.promo_articoli WHERE codice = 'PGTAP_V5_PROMO';
 
-SELECT throws_ok(
+SELECT throws_like(
     $$SELECT * FROM vendite.fn_resolve_prezzo_listino_v2(
         (SELECT articolo_id FROM tmp_ctx),
         (SELECT uom_id FROM tmp_ctx),
@@ -345,13 +325,14 @@ SELECT throws_ok(
         (SELECT emittente_srid FROM tmp_ctx),
         NULL
     )$$,
-    'P0001',
-    NULL,
+    -- rev 2026-10-27 (lotto 4 di D7): discriminante sulla frase del registro
+    --   (prima P0001 senza messaggio: qualunque errore di dominio passava).
+    '%Nessuna mappa categoria % -> listino per utility%',
     'Nessun match in matrice -> E_CATEGORIA_LISTINO_NON_MAPPATA'
 );
 
 -- 6) BA inesistente -> E_PARAMETRO_INVALIDO
-SELECT throws_ok(
+SELECT throws_like(
     $$SELECT * FROM vendite.fn_resolve_prezzo_listino_v2(
         (SELECT articolo_id FROM tmp_ctx),
         (SELECT uom_id FROM tmp_ctx),
@@ -361,8 +342,8 @@ SELECT throws_ok(
         (SELECT emittente_srid FROM tmp_ctx),
         NULL
     )$$,
-    'P0001',
-    NULL,
+    -- rev 2026-10-27 (lotto 4 di D7): discriminante sulla frase.
+    '%billing_account inesistente: 999999999%',
     'BA inesistente -> E_PARAMETRO_INVALIDO'
 );
 

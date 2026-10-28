@@ -100,9 +100,9 @@ const { isAllowed: canNumerareFatture } = useActionPermission('numera_fatture_lo
 
 // Permesso del verbo che sblocca DAVVERO la commessa («Rendi pronta», dentro il
 // drawer di governo). Serve qui, non solo là: senza, «Sblocca commessa»
-// porterebbe in un drawer dove il verbo non compare — il gate FE lo NASCONDE a
-// chi non ha l'azione — e la chiave (`SBLOCCA`) prometterebbe una via d'uscita che non
-// esiste. Misurato in app il 2026-08-16: peggio di non offrire niente, perche'
+// porterebbe in un drawer dove il verbo non compare — la capability lo NASCONDE
+// a chi non ha l'azione della riga, `cambia_stato_commessa` — e la chiave
+// (`SBLOCCA`) prometterebbe una via d'uscita che non esiste. Misurato in app il 2026-08-16: peggio di non offrire niente, perche'
 // il vicolo cieco lo si scopre solo dopo averlo imboccato.
 const { isAllowed: canCambiareStatoCommessa } = useActionPermission('cambia_stato_commessa')
 const canNumerare = computed(() => canNumerareFatture.value && !areaReadonly.value)

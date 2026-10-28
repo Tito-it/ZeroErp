@@ -1,5 +1,10 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-26 (brief-modello-documento-vendita §11): pg_temp.lr_mk_contratto porta lo stato dal verbo
+--   (la porta ferma l'UPDATE diretto): ATTIVO da dbops.fn_pgtap_porta_a_stato, CESSATO da
+--   vendite.fn_cessa_contratto con la data di oggi; il contratto cessato (test 18) nasce nell'anno della
+--   data operativa invece del 2072 (la cessazione vuole valido_al arrivata). Nessuna attesa cambiata.
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): il DDT in bozza da dbops.fn_pgtap_crea_ddt_senza_ordine (DRAFT), gli ordini in bozza/confermato da dbops.fn_pgtap_crea_ordine_con_righe (pg_temp.lr_mk_ordine); l'attivita' ALLOCATA del test 8 da dbops.fn_pgtap_crea_commessa (con la ROOT) e dbops.fn_pgtap_crea_commessa_attivita con la sorgente vera DDT_VENDITA (E-3: ritirata la forma ibrida sorgente COMMESSA + chiave della bolla scritta a mano); restano a mano i contratti e le prove sulle righe (sono il caso).
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine (DDT emesso e consegnato); restano scritti a mano il DDT in bozza senza ordine, gli ordini in bozza/confermato e i contratti (sono il caso: le porte delle righe per stato).
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2d/2e): chiavi del push e ambito degli indirizzi col codice della sorgente.
 -- pgTAP test per Zero ERP
@@ -198,56 +203,29 @@ SELECT
   c.billing_account_id,
   c.utility_id,
   c.istanza_utility_id,
-  c.soggetto_ruolo_id,
   script.fn_pgtap_emittente_operatore()    AS emittente_fiscale_id,
   -- ⚠️ NON gestito a magazzino: il ciclo DDT non tocca il ledger.
   dbops.fn_pgtap_crea_articolo('PGT-LR-ART', false)                                                  AS articolo_id,
   -- Un secondo articolo per le righe di contratto aggiunte nei test: una sola AGGIUNTA per articolo.
   dbops.fn_pgtap_crea_articolo('PGT-LR-ART2', false)                                                 AS articolo2_id,
-  (SELECT u.id FROM catalogo.unita_misura u WHERE u.attivo IS TRUE ORDER BY u.id LIMIT 1)             AS uom_id,
-  (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)                                            AS valuta_id,
-  (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1)                        AS iva_id,
-  (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='DRAFT'      AND s.attivo ORDER BY s.id LIMIT 1) AS stato_ord_draft_id,
-  (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='CONFERMATO' AND s.attivo ORDER BY s.id LIMIT 1) AS stato_ord_conf_id,
-  (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='DRAFT'      AND s.attivo ORDER BY s.id LIMIT 1)    AS stato_ddt_draft_id,
   (SELECT s.id FROM config.stati_doc_contratti s WHERE s.codice_interno='DRAFT'   ORDER BY s.id LIMIT 1)              AS stato_con_draft_id,
   (SELECT s.id FROM config.stati_doc_contratti s WHERE s.codice_interno='ATTIVO'  ORDER BY s.id LIMIT 1)              AS stato_con_attivo_id,
-  (SELECT s.id FROM config.stati_doc_contratti s WHERE s.codice_interno='CESSATO' ORDER BY s.id LIMIT 1)              AS stato_con_cessato_id,
-  (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='COMMESSA' AND s.attivo ORDER BY s.id LIMIT 1)           AS sorgente_root_id,
-  (SELECT t.id FROM config.tipi_doc_fiscale t WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1)                           AS tipo_doc_fiscale_id
+  (SELECT s.id FROM config.stati_doc_contratti s WHERE s.codice_interno='CESSATO' ORDER BY s.id LIMIT 1)              AS stato_con_cessato_id
 FROM tmp_cli_lr c;
 
 CREATE TEMP TABLE tmp_fix(chiave text PRIMARY KEY, id bigint);
 CREATE TEMP TABLE tmp_esito(caso text PRIMARY KEY, sqlstate text, messaggio text, righe int);
 
--- Un ordine (DRAFT o CONFERMATO) con una riga: e' il caso dei test 12-14.
-CREATE OR REPLACE FUNCTION pg_temp.lr_mk_ordine(p_stato_id bigint, p_qta numeric)
+-- Un ordine (DRAFT o CONFERMATO) con una riga di p_qta a 20, del 2026-08-05,
+-- dal builder: le porte delle sue righe sono il caso dei test 12-14.
+CREATE OR REPLACE FUNCTION pg_temp.lr_mk_ordine(p_stato text, p_qta numeric)
 RETURNS TABLE(ordine_id bigint, ordine_riga_id bigint) AS $$
-DECLARE r RECORD; v_ord bigint; v_orr bigint;
-BEGIN
-  SELECT * INTO r FROM tmp_refs_lr;
-  -- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): l'ordine
-  --   nasce DRAFT, prende la riga, poi passa allo stato chiesto per le
-  --   transizioni (dbops.fn_pgtap_porta_a_stato). Fino a quel giorno nasceva
-  --   gia' nello stato e la riga entrava lo stesso, perche' il BB sugli ordini
-  --   era montato sul solo DELETE; da 20261008-90 le porte sono tre.
-  INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
-    valuta_id, data, emittente_fiscale_id, storicizza, meta)
-  VALUES (r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_draft_id, r.valuta_id,
-          DATE '2026-08-05', r.emittente_fiscale_id, false,
-          jsonb_build_object('test_scope','pgtap_lock_righe'))
-  RETURNING id INTO v_ord;
-  INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
-    qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
-  VALUES (v_ord, 1, r.articolo_id, 'Riga lock pgTAP', p_qta, p_qta, 20, r.iva_id,
-          true, false, jsonb_build_object('test_scope','pgtap_lock_righe'))
-  RETURNING id INTO v_orr;
-  IF p_stato_id <> r.stato_ord_draft_id THEN
-    PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', v_ord,
-              (SELECT s.codice_interno FROM config.stati_doc_ordini s WHERE s.id = p_stato_id));
-  END IF;
-  RETURN QUERY SELECT v_ord, v_orr;
-END $$ LANGUAGE plpgsql;
+  SELECT o.ordine_id, o.ordine_riga_id
+    FROM dbops.fn_pgtap_crea_ordine_con_righe('pgtap_lock_righe', p_stato,
+           (SELECT r.billing_account_id FROM tmp_refs_lr r),
+           p_quantita => p_qta, p_prezzo => 20, p_articolo_id => (SELECT r.articolo_id FROM tmp_refs_lr r),
+           p_data_ordine => DATE '2026-08-05') o
+$$ LANGUAGE sql;
 
 -- Un contratto con una riga AGGIUNTA, portato allo stato chiesto (DRAFT ->
 -- ATTIVO -> CESSATO): la ricetta di test-contratti-step23-v1.
@@ -266,11 +244,16 @@ BEGIN
   INSERT INTO vendite.contratti_righe (contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa, tipo_erogazione)
   VALUES (v_con, r.articolo_id, 'AGGIUNTA', 99.00, 1.00, 'UNA_TANTUM')
   RETURNING id INTO v_riga;
+  -- rev 2026-10-26 (brief-modello-documento-vendita §11): lo stato dal verbo (la
+  --   porta ferma l'UPDATE diretto). L'attivazione da porta_a_stato; la
+  --   cessazione da vendite.fn_cessa_contratto con la data di oggi (verso
+  --   CESSATO il guard vuole valido_al arrivata: il contratto cessato nasce
+  --   quindi nell'anno della data operativa, vedi la chiamata).
   IF p_fino_a IN ('ATTIVO', 'CESSATO') THEN
-    UPDATE vendite.contratti SET stato_doc_contratto_id = r.stato_con_attivo_id WHERE id = v_con;
+    PERFORM dbops.fn_pgtap_porta_a_stato('vendite.contratti'::regclass, v_con, 'ATTIVO');
   END IF;
   IF p_fino_a = 'CESSATO' THEN
-    UPDATE vendite.contratti SET stato_doc_contratto_id = r.stato_con_cessato_id WHERE id = v_con;
+    PERFORM 1 FROM vendite.fn_cessa_contratto(v_con, script.fn_data_operativa());
   END IF;
   RETURN QUERY SELECT v_con, v_riga;
 END $$ LANGUAGE plpgsql;
@@ -302,25 +285,13 @@ $$ LANGUAGE sql;
 DO $fix$
 DECLARE
   r RECORD; o RECORD; d RECORD; c RECORD;
-  v_id bigint;
 BEGIN
   SELECT * INTO r FROM tmp_refs_lr;
 
-  -- DDT in bozza, standalone (test 6 e 11)
-  INSERT INTO vendite.ddt (data, stato_doc_ddt_id, destinatario_soggetto_ruolo_id,
-                           billing_account_id, utility_id, valuta_id,
-                           emittente_fiscale_id, storicizza, meta)
-  VALUES (script.fn_data_operativa(), r.stato_ddt_draft_id, r.soggetto_ruolo_id, r.billing_account_id,
-          r.utility_id, r.valuta_id, r.emittente_fiscale_id, false,
-          jsonb_build_object('test_scope','pgtap_lock_righe'))
-  RETURNING id INTO v_id;
-  INSERT INTO tmp_fix VALUES ('ddt_bozza', v_id);
-  INSERT INTO vendite.ddt_righe (ddt_id, riga_nr, articolo_id, descrizione,
-                                 qta_operativa, quantita, storicizza, meta)
-  VALUES (v_id, 1, r.articolo_id, 'riga in bozza', 1, 1, false,
-          jsonb_build_object('test_scope','pgtap_lock_righe'))
-  RETURNING id INTO v_id;
-  INSERT INTO tmp_fix VALUES ('ddt_bozza_riga', v_id);
+  -- DDT in bozza, standalone, con una riga (test 6 e 11): dal builder.
+  SELECT * INTO d FROM dbops.fn_pgtap_crea_ddt_senza_ordine('pgtap_lock_righe', 'DRAFT',
+      r.billing_account_id, p_quantita => 1, p_articolo_id => r.articolo_id);
+  INSERT INTO tmp_fix VALUES ('ddt_bozza', d.ddt_id), ('ddt_bozza_riga', d.ddt_riga_id);
 
   -- DDT EMESSO da ordine, con fulfillment (test 7, 9, 10): dal builder,
   -- una riga di 5 a 20 del cliente e dell'articolo del file.
@@ -336,9 +307,9 @@ BEGIN
   INSERT INTO tmp_fix VALUES ('ddt_cons', d.ddt_id), ('ddt_cons_riga', d.ddt_riga_id);
 
   -- Ordine in bozza e ordine confermato (test 12-14)
-  SELECT * INTO o FROM pg_temp.lr_mk_ordine(r.stato_ord_draft_id, 1);
+  SELECT * INTO o FROM pg_temp.lr_mk_ordine('DRAFT', 1);
   INSERT INTO tmp_fix VALUES ('ord_bozza_riga', o.ordine_riga_id);
-  SELECT * INTO o FROM pg_temp.lr_mk_ordine(r.stato_ord_conf_id, 1);
+  SELECT * INTO o FROM pg_temp.lr_mk_ordine('CONFERMATO', 1);
   INSERT INTO tmp_fix VALUES ('ord_conf_riga', o.ordine_riga_id);
 
   -- Contratti: bozza, attivo, cessato (test 15-18)
@@ -346,60 +317,47 @@ BEGIN
   INSERT INTO tmp_fix VALUES ('con_bozza', c.contratto_id);
   SELECT * INTO c FROM pg_temp.lr_mk_contratto('PGTAP_LR_ATTIVO', 'ATTIVO', 2071);
   INSERT INTO tmp_fix VALUES ('con_attivo', c.contratto_id), ('con_attivo_riga', c.contratto_riga_id);
-  SELECT * INTO c FROM pg_temp.lr_mk_contratto('PGTAP_LR_CESSATO', 'CESSATO', 2072);
+  -- rev 2026-10-26 (§11): l'anno della data operativa, non 2072 — la cessazione
+  --   vuole valido_al arrivata, e valido_dal non puo' seguirla. Disgiunto dal
+  --   2070 e 2071 degli altri due (ex_contratti_no_overlap).
+  SELECT * INTO c FROM pg_temp.lr_mk_contratto('PGTAP_LR_CESSATO', 'CESSATO',
+                                               extract(year FROM script.fn_data_operativa())::int);
   INSERT INTO tmp_fix VALUES ('con_cessato_riga', c.contratto_riga_id);
 END $fix$;
 
 -- ── L'attivita' ALLOCATA sul segmento della riga consegnata (test 8) ──
--- La commessa e la sua ROOT, poi l'attivita' NON_EMESSA sul segmento
--- 'DDT_VENDITA:<uid>:R:<id>': e' cio' che fn_get_stato_push_segment legge come
--- ALLOCATA, cioe' «merce instradata a fatturazione».
+-- La commessa con la sua ROOT, poi l'attivita' NON_EMESSA che dichiara la
+-- sorgente vera, la riga della bolla consegnata (E-3): la chiave
+-- 'DDT_VENDITA:<uid>:R:<id>' la compone script.fn_segment_key. E' cio' che
+-- fn_get_stato_push_segment legge come ALLOCATA, cioe' «merce instradata a
+-- fatturazione».
 CREATE TEMP TABLE tmp_com_lr AS
-SELECT vendite.fn_get_or_create_commessa(
-  p_billing_account_id     => (SELECT billing_account_id FROM tmp_refs_lr),
-  p_utility_id             => (SELECT utility_id FROM tmp_refs_lr),
-  p_tipo_commessa          => 'AUTO',
-  p_policy_fatturazione    => 'DA_DOCUMENTO',
-  p_fatturazione_immediata => false,
-  p_priorita_operativa     => 'NORMALE',
-  p_competenza_dal         => DATE '2026-08-01',
-  p_competenza_al          => DATE '2026-08-31',
-  p_meta                   => jsonb_build_object('test_scope','pgtap_lock_righe'),
-  p_force_new              => true) AS commessa_id;
+SELECT c.commessa_id
+  FROM dbops.fn_pgtap_crea_commessa('pgtap_lock_righe',
+         p_billing_account_id => (SELECT billing_account_id FROM tmp_refs_lr),
+         p_con_sorgente_root  => true) c;
 
-SELECT vendite.fn_link_commessa_sorgente(
-  p_commessa_id      => (SELECT commessa_id FROM tmp_com_lr),
-  p_sorgente_tipo_id => (SELECT sorgente_root_id FROM tmp_refs_lr),
-  p_sorgente_uid     => (SELECT commessa_id FROM tmp_com_lr)::text,
-  p_sorgente_riga    => 1,
-  p_meta             => '{}'::jsonb);
+CREATE TEMP TABLE tmp_att_lr AS
+SELECT a.attivita_id
+  FROM dbops.fn_pgtap_crea_commessa_attivita(
+         p_commessa_id        => (SELECT commessa_id FROM tmp_com_lr),
+         p_prezzo_snapshot    => 20,
+         p_articolo_id        => (SELECT articolo_id FROM tmp_refs_lr),
+         p_sorgente_codice    => 'DDT_VENDITA',
+         p_sorgente_uid       => (SELECT d.uid::text FROM vendite.ddt d
+                                   WHERE d.id = (SELECT id FROM tmp_fix WHERE chiave = 'ddt_cons')),
+         p_sorgente_riga_id   => (SELECT id FROM tmp_fix WHERE chiave = 'ddt_cons_riga'),
+         p_quantita           => 3,
+         p_stato_approvazione => 'APPROVATA',
+         p_stato_emissione    => 'NON_EMESSA',
+         p_competenza_dal     => DATE '2026-08-01',
+         p_competenza_al      => DATE '2026-08-31') a;
 
+-- Il segmento si legge dall'attivita' scritta, non si ricompone.
 CREATE TEMP TABLE tmp_seg_lr AS
-SELECT ('DDT_VENDITA:' || d.uid::text || ':R:' || dr.id::text)::varchar AS segment_key
-  FROM vendite.ddt d
-  JOIN vendite.ddt_righe dr ON dr.ddt_id = d.id
- WHERE d.id = (SELECT id FROM tmp_fix WHERE chiave = 'ddt_cons');
-
-SELECT vendite.fn_upsert_commessa_attivita(
-    p_commessa_id => (SELECT commessa_id FROM tmp_com_lr),
-    -- La riga NORMALE ha la sua sorgente (vincolo 20261012-27).
-    p_sorgente_tipo_id => (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
-    p_sorgente_uid => ((SELECT commessa_id FROM tmp_com_lr))::text,
-    p_segment_key => (SELECT segment_key FROM tmp_seg_lr),
-    p_articolo_id => r.articolo_id,
-    p_istanza_utility_id => r.istanza_utility_id, p_data_attivita => DATE '2026-08-15',
-    p_uom_id => r.uom_id, p_quantita => 3,
-    p_competenza_mese => DATE '2026-08-01',
-    p_competenza_dal => DATE '2026-08-01', p_competenza_al => DATE '2026-08-31',
-    p_prezzo_snapshot => 20, p_prezzo_base_snapshot => NULL, p_origine_prezzo => NULL,
-    p_tipo_variazione_applicata => NULL, p_valore_variazione_applicata => NULL,
-    p_promo_id => NULL, p_contratto_id => NULL,
-    p_categoria_cliente_id_snapshot => NULL, p_classe_utenza_id_snapshot => NULL,
-    p_tipo_doc_fiscale_id => r.tipo_doc_fiscale_id, p_valuta_id => r.valuta_id,
-    p_stato_approvazione => 'APPROVATA', p_stato_emissione => 'NON_EMESSA',
-    p_tipo_movimento => 'NORMALE')
-  FROM tmp_refs_lr r
- WHERE EXISTS (SELECT 1 FROM tmp_seg_lr);
+SELECT ca.segment_key
+  FROM vendite.commesse_attivita ca
+ WHERE ca.id = (SELECT attivita_id FROM tmp_att_lr);
 
 -- ============================================================
 -- Le prove, con l'esito catturato

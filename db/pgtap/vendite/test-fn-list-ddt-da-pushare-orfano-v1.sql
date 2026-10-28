@@ -2,6 +2,7 @@
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine, col trigger e lo stato finale del caso (ritirata pg_temp.mk_caso); resta a mano l'annullo di C col verbo vendite.fn_annulla_ddt, che e' la strada del caso.
+-- rev 2026-10-25 (brief-modello-documento-vendita §7, giro 5): la bolla RESO (caso D) non si chiede piu' al builder (CONSEGNATO->RESO e' un passaggio di processo, la porta_a_stato non ci arriva): si costruisce CONSEGNATA e si conferma un reso totale con dbops.fn_pgtap_crea_reso.
 -- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2a, 20261019-40 … -79):
 --   il documento passato ai lettori delle testate, ai legami e ai montaggi del
 --   lock e' il codice della sorgente (DDT_VENDITA, ORDINE_VENDITA,
@@ -99,10 +100,19 @@ SELECT vendite.fn_annulla_ddt(c.ddt_id,
     (SELECT count(*)::integer FROM vendite.fn_documento_legami('DDT_VENDITA', c.ddt_id) l))
   FROM tmp_c c;
 -- D: trigger SPEDITO, DDT RESO -> merce tornata tutta indietro
+-- ⭐ rev 2026-10-25 (§7, giro 5): CONSEGNATO->RESO e' un passaggio di PROCESSO
+--   (E_DOC_PASSAGGIO_DI_PROCESSO al verbo): la bolla si porta a CONSEGNATA e
+--   diventa RESO perche' si conferma un reso TOTALE, cioe' di tutta la riga.
 CREATE TEMP TABLE tmp_d AS
-SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('orfano D', 'RESO',
+SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('orfano D', 'CONSEGNATO',
     (SELECT billing_account_id FROM tmp_refs), p_quantita => 10, p_prezzo => 25,
     p_articolo_id => (SELECT articolo_id FROM tmp_refs), p_fatturazione_trigger => 'SPEDITO');
+CREATE TEMP TABLE tmp_d_reso AS
+SELECT r.*
+  FROM tmp_d d
+ CROSS JOIN LATERAL dbops.fn_pgtap_crea_reso('orfano D', d.ddt_id,
+    (SELECT dr.qta_operativa FROM vendite.ddt_righe dr WHERE dr.id = d.ddt_riga_id),
+    p_ddt_riga_id => d.ddt_riga_id) r;
 -- E: trigger CONFERMATO, DDT CONSEGNATO -> fattura l'ORDINE, non il DDT
 CREATE TEMP TABLE tmp_e AS
 SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('orfano E', 'CONSEGNATO',

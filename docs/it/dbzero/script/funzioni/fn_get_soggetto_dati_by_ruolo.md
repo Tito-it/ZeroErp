@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_get_soggetto_dati_by_ruolo(p_soggetto_ruolo_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

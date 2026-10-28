@@ -4,6 +4,8 @@
 CREATE FUNCTION fn_titolo_iva_vigente_su_natura_esiste(p_tipo_titolo_iva_id bigint, p_tipo_soggetto_dettaglio_id bigint)
 ```
 
+> 🔐 **Sicurezza**: `SECURITY DEFINER` — gira con i privilegi dell'owner `zeroerp_owner`: GRANT e RLS sono i suoi, non quelli di chi la chiama.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

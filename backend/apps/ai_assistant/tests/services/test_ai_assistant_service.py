@@ -39,6 +39,7 @@ from apps.core.api.base_views import DomainAPIView
 from apps.core.services.auth_constants import RUOLO_APPLICATIVO_OPERATORE
 from apps.ai_assistant.types import ToolCall
 from apps.core.services.service_errors import ServiceError
+from apps.core.tests._helpers.operatore_di_prova import operatore_di_prova
 
 
 # Gemello fabbricato: il permesso dei tool di test e' quello di questa view,
@@ -108,12 +109,7 @@ class TestAIAssistantService(unittest.TestCase):
             patcher.start()
             self.addCleanup(patcher.stop)
 
-        self.user = MagicMock()
-        self.user.id = 1
-        # Operatore, non superuser: un MagicMock nudo avrebbe `is_superuser`
-        # vero e passerebbe ogni permesso, anche nei test che provano un rifiuto.
-        self.user.is_authenticated = True
-        self.user.is_superuser = False
+        self.user = operatore_di_prova(user_id=1)
         self.user.first_name = "Test"
         self.user.last_name = "User"
         self.user.username = "testuser"

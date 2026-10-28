@@ -1,5 +1,17 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-26 (brief-modello-documento-vendita §14, giro 10):
+--   la commessa del caso 7 nasce APERTA con l'attivita' del builder (p_con_attivita
+--   => true, prima false): BOZZA -> APERTA e' spenta, APERTA si raggiunge solo da
+--   PRONTA_FATTURAZIONE («riapri»), che vuole una riga APPROVATA e non emessa.
+--   La prova legge solo l'attivita' fatturabile della riga DDT (_af7 filtra per
+--   commessa_attivita_id). Attese invariate.
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): le righe e la conferma dei due
+--   ordini da dbops.fn_pgtap_crea_ordine_con_righe (p_ordine_id, 2 x 10): la testata col suo
+--   termine resta a mano, e' la premessa del caso. Il test 7 non pesca piu' «un'attivita' nata
+--   da un DDT, se il database ne ha una»: la COSTRUISCE (dbops.fn_pgtap_crea_ddt_senza_ordine,
+--   dbops.fn_pgtap_crea_commessa con la sorgente ROOT, dbops.fn_pgtap_crea_commessa_attivita
+--   con la sorgente DDT_VENDITA, emissione dalla madre): da SKIP diventa una prova vera.
 -- pgTAP test per Zero ERP
 -- Copyright (C) 2026 Tid (Michele Carlo Titini)
 --
@@ -195,6 +207,7 @@ BEGIN
     SELECT * INTO k FROM _k;
 
     FOR i IN 1..2 LOOP
+        -- La testata nasce in bozza COL SUO termine: e' la premessa del caso.
         INSERT INTO vendite.ordini
             (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
              fatturazione_trigger, emittente_fiscale_id, valuta_id, data,
@@ -206,11 +219,10 @@ BEGIN
              CASE i WHEN 1 THEN k.tp_ordine END, CASE i WHEN 1 THEN k.mp_ordine END)
         RETURNING id INTO v_id;
 
-        INSERT INTO vendite.ordini_righe
-            (ordine_id, riga_nr, articolo_id, descrizione, quantita, qta_operativa, prezzo_unitario, iva_id)
-        VALUES (v_id, 1, (SELECT id FROM _art), 'Riga pgTAP', 2, 2, 10, k.iva_id);
-
-        PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', v_id, 'CONFERMATO');
+        -- La riga e la conferma: la strada dell'ordine, dal builder.
+        PERFORM dbops.fn_pgtap_crea_ordine_con_righe('termini dalla sorgente', 'CONFERMATO',
+            p_quantita => 2, p_prezzo => 10, p_articolo_id => (SELECT id FROM _art),
+            p_ordine_id => v_id);
         INSERT INTO _doc VALUES (CASE i WHEN 1 THEN 'ORD' ELSE 'ORD0' END, v_id);
     END LOOP;
 
@@ -367,24 +379,36 @@ SELECT is(
 --    `commesse_attivita.sorgente_uid` e' TEXT e per convenzione contratti e
 --    consumi vi mettono `id::text`, non un uuid; `attivita_fatturabili.
 --    sorgente_uid` e' invece UUID. Assegnare senza filtrare farebbe fallire
---    il cast. Il DDT e' il tipo non gestito: si prende un'attivita' nata da
---    un DDT se il database ne ha una, altrimenti il caso non si puo'
---    costruire qui (servirebbe tutta la catena della bolla) e si dichiara.
+--    il cast. Il DDT e' il tipo non gestito: l'attivita' nata da una bolla si
+--    COSTRUISCE (bolla senza ordine consegnata, commessa con la sorgente ROOT,
+--    attivita' sul segmento della bolla con la sorgente DDT_VENDITA, emissione
+--    dalla madre), non si pesca dal database.
 -- ============================================================
-SELECT CASE
-  WHEN NOT EXISTS (SELECT 1 FROM vendite.attivita_fatturabili a
-                     JOIN vendite.commesse_attivita ca ON ca.id = a.commessa_attivita_id
-                     JOIN config.sorgenti s ON s.id = ca.sorgente_tipo_id
-                    WHERE s.codice_interno = 'DDT_VENDITA')
-  THEN skip('7) nessuna attivita'' nata da un DDT su questo database: il caso del tipo non gestito non si costruisce qui', 1)
-  ELSE lives_ok(
-    $$ SELECT * FROM vendite.fn_resolve_termini_pagamento(
-         (SELECT min(a.id) FROM vendite.attivita_fatturabili a
-            JOIN vendite.commesse_attivita ca ON ca.id = a.commessa_attivita_id
-            JOIN config.sorgenti s ON s.id = ca.sorgente_tipo_id
-           WHERE s.codice_interno = 'DDT_VENDITA')) $$,
-    '7) sorgente non gestita dal livello 1: risolve senza errore di cast')
-END;
+CREATE TEMP TABLE _ddt7 AS
+SELECT * FROM dbops.fn_pgtap_crea_ddt_senza_ordine('termini ddt',
+    p_billing_account_id => (SELECT billing_account_id FROM _m));
+CREATE TEMP TABLE _com7 AS
+SELECT * FROM dbops.fn_pgtap_crea_commessa('termini ddt', 'APERTA',
+    (SELECT billing_account_id FROM _m), true, p_con_sorgente_root => true);
+CREATE TEMP TABLE _ca7 AS
+SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita(
+    p_commessa_id      => (SELECT commessa_id FROM _com7),
+    p_sorgente_codice  => 'DDT_VENDITA',
+    p_sorgente_uid     => (SELECT ddt_uid::text FROM _ddt7),
+    p_sorgente_riga_id => (SELECT ddt_riga_id FROM _ddt7),
+    p_quantita         => (SELECT quantita FROM _ddt7));
+SELECT vendite.fn_emit_attivita_fatturabili_da_commessa(
+    p_commessa_id   => (SELECT commessa_id FROM _com7),
+    p_only_approved => false);
+CREATE TEMP TABLE _af7 AS
+SELECT a.id
+  FROM vendite.attivita_fatturabili a
+ WHERE a.commessa_attivita_id = (SELECT attivita_id FROM _ca7);
+
+SELECT lives_ok(
+    format($$ SELECT * FROM vendite.fn_resolve_termini_pagamento(%s) $$,
+           (SELECT a.id FROM _af7 a WHERE (SELECT count(*) FROM _af7) = 1)),
+    '7) sorgente non gestita dal livello 1: risolve senza errore di cast');
 
 -- ============================================================
 -- 8-9) T.1 — il contratto delle fn di push.

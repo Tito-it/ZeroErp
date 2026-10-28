@@ -1,0 +1,45 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# SI RITIRA LA SECONDA COPIA DELLA REGOLA DELLO STATO DEL JOB
+#   Brief: brief-modello-documento-vendita §15 (giro 11; F-4 di Tid,
+#   2026-10-27).
+#
+#   vendite.fn_set_fatturazione_lotto_stato non la chiama nessuna funzione
+#   viva ne' il backend (solo due pgTAP, portati nello stesso giro), e i suoi
+#   passaggi DISSENTIVANO da quelli del backend (rifiutava COMPLETATO ->
+#   ERRORE). La regola ora sta una volta sola: matrice
+#   config.transizioni_stati_lotto_job + guard (20261027-06). Una funzione
+#   ritirata si cancella, insieme alla sua pagina manuale.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261027-07-drop-fn-set-fatturazione-lotto-stato-mctit.yaml
+
+  - changeSet:
+      id: 20261027-07-drop-fn-set-fatturazione-lotto-stato
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        DROP vendite.fn_set_fatturazione_lotto_stato: nessun chiamante vivo, i passaggi dissentivano
+        dal backend; la regola sta in config.transizioni_stati_lotto_job col suo guard. Brief:
+        brief-modello-documento-vendita §15 (F-4).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_set_fatturazione_lotto_stato(bigint, text, text);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              SELECT 1;

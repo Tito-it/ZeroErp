@@ -82,22 +82,24 @@ SELECT plan(5);
 -- ============================================================
 -- Riferimenti
 -- ============================================================
+-- rev 2026-10-27 (lotto 4 di D7): il cliente si COSTRUISCE. Prima si pescava
+--   il primo BA con un emittente risolvibile: da zero non c'era, e il primo
+--   INSERT moriva su «p_billing_account_id obbligatorio». Il BA costruito e'
+--   legato all'azienda di chi agisce; il ruolo del cliente e' il suo. Gli
+--   INSERT a mano negli ordini RESTANO: sono il caso sotto test (il trigger
+--   sull'INSERT). Valuta e stato DRAFT sono catalogo di seed.
 -- ⚠️ ORDER BY su ogni scelta: senza, la fixture non verifica — scommette su
 --   quale riga il planner restituisce per prima.
+CREATE TEMP TABLE tmp_cli_ft AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('ordini fatturazione trigger');
+
 CREATE TEMP TABLE tmp_refs AS
 SELECT
-  (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)                                                AS billing_account_id,
+  (SELECT billing_account_id FROM tmp_cli_ft)                              AS billing_account_id,
   -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-4/D-5): il ruolo del cliente
-  --   e' quello del BA scelto qui (prima: il primo ruolo del database,
-  --   scollegato dal BA; le FK composte verso il BA lo rifiutano).
-  (SELECT b_sr.soggetto_ruolo_id FROM anagrafiche.billing_account b_sr
-    WHERE b_sr.id = (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)) AS soggetto_ruolo_id,
+  --   e' quello del BA scelto qui (le FK composte verso il BA lo rifiutano
+  --   scollegato).
+  (SELECT soggetto_ruolo_id FROM tmp_cli_ft)                               AS soggetto_ruolo_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)                 AS valuta_id,
   (SELECT s.id FROM config.stati_doc_ordini s
     WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE

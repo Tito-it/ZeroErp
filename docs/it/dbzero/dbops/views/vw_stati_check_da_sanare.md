@@ -5,6 +5,8 @@
 >
 > La lista di lavoro del presidio C1: i valori di una colonna di stato che nessuno scrive e nessuno ha dichiarato (NON_DICHIARATO), e le righe del registro dbops.stati_check_dichiarazioni che non servono piu' (DEBITO_ESTINTO). DEVE restare vuota, ed e' un CANCELLO: la fa rossa in CI db/pgtap/dbops/test-stati-check-scrittori-v1.sql, e sul lato Python il test del backend verifica le righe DICHIARATO_APPLICAZIONE della misura. Non e' un filtro da allargare per farla tacere: si allarga il registro, con la ragione. Brief: brief-db-presidio-stati-mai-scritti §2.4.
 
+> 🔐 **Sicurezza**: definer (default delle viste) — le tabelle sotto si leggono con i privilegi dell'owner `zeroerp_owner`, e la RLS che vale e' la sua, non quella di chi interroga.
+
 <div data-search-exclude markdown>
 
 ```sql

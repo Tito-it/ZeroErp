@@ -1,5 +1,7 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): la commessa da dbops.fn_pgtap_crea_commessa (sorgente ROOT), la fattura dei componenti da dbops.fn_pgtap_fattura_attivita (ritirato pg_temp.kit_fattura); resta a mano pg_temp.kit_mk_componente (il meta del kit e il segmento #CMP: sono il caso), con la sorgente DDT_VENDITA della bolla (E-3).
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito): il reso dal builder dbops.fn_pgtap_crea_reso (che concede da se' conferma_reso); resta scritto a mano il kit sulla commessa, che e' il caso del test.
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine; resta scritto a mano il reso (giro 2) e il kit sulla commessa, che e' il caso del test.
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
 -- pgTAP test per Zero ERP
@@ -70,20 +72,10 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_
 
 SELECT plan(9);
 
--- Dal 2026-09-28 conferma e annullo del reso sono verbi che applicano
--- l'azione conferma_reso (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-f):
--- l'operatore di fixture non ha azioni, si concede qui.
-DO $az$ BEGIN
-    PERFORM dbops.fn_pgtap_concedi_azione(
-        NULLIF(current_setting('app.current_user_id', true), '')::integer, 'conferma_reso');
-END $az$;
-
 CREATE TEMP TABLE tmp_refs_kit AS
 SELECT
   ba.id                                        AS billing_account_id,
-  ba.utility_id                                AS utility_id,
   ba.istanza_utility_id                        AS istanza_utility_id,
-  script.fn_pgtap_emittente_sr_operatore()     AS emittente_sr_id,
   -- Tre articoli DISTINTI: il padre e i due componenti. Il suffisso #CMP: e'
   -- una stringa libera, ma usare articoli veri tiene la fixture vicina a
   -- quello che scrive il push.
@@ -94,32 +86,27 @@ SELECT
   dbops.fn_pgtap_crea_articolo('PGTAP-ACC-KIT-C2', false)                AS art_c2_id,
   (SELECT u.id FROM catalogo.unita_misura u WHERE u.attivo IS TRUE ORDER BY u.id LIMIT 1) AS uom_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)                                AS valuta_id,
-  (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1)            AS iva_id,
-  (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='DDT_VENDITA' AND s.attivo ORDER BY s.id LIMIT 1)            AS sorgente_ddt_id,
-  (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='COMMESSA'    AND s.attivo ORDER BY s.id LIMIT 1)            AS sorgente_root_id,
-  (SELECT s.id FROM config.stati_doc_reso s WHERE s.codice_interno='DRAFT' AND s.attivo ORDER BY s.id LIMIT 1)            AS stato_reso_draft_id,
-  (SELECT t.id FROM config.tipi_reso t WHERE t.codice_interno='RESO_A_CREDITO' AND t.attivo ORDER BY t.id LIMIT 1)        AS tipo_credito_id,
-  (SELECT t.id FROM config.tipi_doc_fiscale t WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1)                               AS tipo_doc_fiscale_id,
-  (SELECT s.id FROM config.stati_doc_fiscale s WHERE s.codice_interno='DRAFT' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1) AS stato_fatt_draft_id,
-  script.fn_pgtap_registro_fattura()                         AS registro_id
+  (SELECT t.id FROM config.tipi_doc_fiscale t WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1)                               AS tipo_doc_fiscale_id
 -- ⛔ rev 2026-10-13: il BA e' quello del mondo costruito, non il primo del database.
 FROM tmp_mondo_kit m
 JOIN anagrafiche.billing_account ba ON ba.id = m.billing_account_id;
 
 -- Un COMPONENTE di kit: l'attivita' con il segmento #CMP: e il meta del
--- contratto. p_meta_padre NULL = il caso rotto del test 8.
+-- contratto. p_padre NULL = il caso rotto del test 8. Torna l'attivita'.
+-- ⭐ rev 2026-10-25 (E-3): la sorgente e' la bolla (DDT_VENDITA, la sua
+--   chiave), come la scrive il push; era la commessa con la chiave della bolla.
 CREATE OR REPLACE FUNCTION pg_temp.kit_mk_componente(
   p_segment varchar, p_articolo uuid, p_qta numeric, p_prezzo numeric,
-  p_coeff numeric, p_padre text)
-RETURNS void AS $$
-DECLARE r RECORD;
+  p_coeff numeric, p_padre text, p_ddt_uid uuid)
+RETURNS bigint AS $$
+DECLARE r RECORD; v_att bigint;
 BEGIN
   SELECT * INTO r FROM tmp_refs_kit;
-  PERFORM vendite.fn_upsert_commessa_attivita(
+  SELECT u.attivita_id INTO v_att FROM vendite.fn_upsert_commessa_attivita(
     p_commessa_id                   => (SELECT commessa_id FROM tmp_com_kit),
     -- La riga NORMALE ha la sua sorgente (vincolo 20261012-27).
-    p_sorgente_tipo_id => (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
-    p_sorgente_uid => ((SELECT commessa_id FROM tmp_com_kit))::text,
+    p_sorgente_tipo_id => (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'DDT_VENDITA'),
+    p_sorgente_uid => p_ddt_uid::text,
     p_segment_key                   => p_segment,
     p_articolo_id                   => p_articolo,
     p_istanza_utility_id            => r.istanza_utility_id,
@@ -152,92 +139,17 @@ BEGIN
                                           'coeff_qta',           p_coeff,
                                           'componente_di',       p_padre,
                                           'esposizione',         'DESCRITTIVO',
-                                          'qta_padre',           p_qta / p_coeff)));
+                                          'qta_padre',           p_qta / p_coeff))) u;
+  RETURN v_att;
 END $$ LANGUAGE plpgsql;
 
--- Emette le attivita' della commessa e aggancia ognuna a una riga di fattura
--- vera: senza `fattura_riga_id` l'accredito e' impossibile per costruzione.
-CREATE OR REPLACE FUNCTION pg_temp.kit_fattura(p_kit_key varchar)
-RETURNS void AS $$
-DECLARE r RECORD; v_fatt bigint; v_riga bigint; v_af RECORD; v_nr integer := 0;
-BEGIN
-  SELECT * INTO r FROM tmp_refs_kit;
-  PERFORM vendite.fn_emit_attivita_fatturabili_da_commessa(
-      (SELECT commessa_id FROM tmp_com_kit), true, false);
-
-  INSERT INTO vendite.fatture (registro_id, data, tipo_doc_fiscale_id, stato_doc_fiscale_id,
-      emittente_soggetto_ruolo_id, billing_account_id, utility_id, valuta_id, tasso_cambio, meta)
-  VALUES (r.registro_id, DATE '2026-07-31', r.tipo_doc_fiscale_id, r.stato_fatt_draft_id,
-      r.emittente_sr_id, r.billing_account_id, r.utility_id, r.valuta_id, 1,
-      jsonb_build_object('test_scope','pgtap_accredito_kit'))
-  RETURNING id INTO v_fatt;
-
-  FOR v_af IN
-      SELECT af.id, af.quantita, ca.articolo_id
-        FROM vendite.attivita_fatturabili af
-        JOIN vendite.commesse_attivita ca ON ca.id = af.commessa_attivita_id
-       WHERE split_part(ca.segment_key::text, '#CMP:', 1) = p_kit_key::text
-         AND ca.tipo_movimento::text = 'NORMALE'
-         AND af.fattura_riga_id IS NULL
-       ORDER BY ca.segment_key
-  LOOP
-      v_nr := v_nr + 1;
-      INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, articolo_id, descrizione,
-          uom_id, qta, prezzo_unitario, iva_id, imponibile_riga, competenza_dal, competenza_al)
-      VALUES (v_fatt, v_nr, v_af.articolo_id, 'Riga kit pgTAP', r.uom_id,
-              v_af.quantita, 2.50, r.iva_id, v_af.quantita * 2.50, script.fn_data_operativa(), script.fn_data_operativa())
-      RETURNING id INTO v_riga;
-
-      UPDATE vendite.attivita_fatturabili
-         SET fattura_riga_id = v_riga
-       WHERE id = v_af.id;
-  END LOOP;
-END $$ LANGUAGE plpgsql;
-
-CREATE OR REPLACE FUNCTION pg_temp.kit_mk_reso(p_ddt_riga bigint, p_ddt_uid uuid, p_qta numeric)
-RETURNS bigint AS $$
-DECLARE r RECORD; v_reso bigint; v_riga bigint;
-BEGIN
-  SELECT * INTO r FROM tmp_refs_kit;
-  INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_uid, storicizza, meta)
-  VALUES (r.stato_reso_draft_id, r.sorgente_ddt_id, p_ddt_uid, false,
-          jsonb_build_object('test_scope','pgtap_accredito_kit'))
-  RETURNING id INTO v_reso;
-
-  INSERT INTO vendite.resi_righe (reso_id, riga_nr, ddt_riga_id, ordine_riga_id,
-      articolo_id, descrizione, qta_operativa, uom_operativa_id, factor_to_base,
-      tipo_reso_id, storicizza)
-  SELECT v_reso, 1, dr.id,
-         (SELECT f.ordine_riga_id FROM vendite.ordini_righe_fulfillment f
-           WHERE f.ddt_riga_id = dr.id ORDER BY f.id LIMIT 1),
-         dr.articolo_id, dr.descrizione, p_qta, dr.uom_operativa_id, dr.factor_to_base,
-         r.tipo_credito_id, false
-    FROM vendite.ddt_righe dr WHERE dr.id = p_ddt_riga
-  RETURNING id INTO v_riga;
-
-  PERFORM vendite.fn_conferma_reso(v_reso);
-  RETURN v_riga;
-END $$ LANGUAGE plpgsql;
-
+-- I componenti si emettono e si agganciano a una fattura vera, una riga per
+-- componente, da dbops.fn_pgtap_fattura_attivita: senza `fattura_riga_id`
+-- l'accredito e' impossibile per costruzione.
 CREATE TEMP TABLE tmp_com_kit AS
-SELECT vendite.fn_get_or_create_commessa(
-  p_billing_account_id     => (SELECT billing_account_id FROM tmp_refs_kit),
-  p_utility_id             => (SELECT utility_id FROM tmp_refs_kit),
-  p_tipo_commessa          => 'AUTO',
-  p_policy_fatturazione    => 'DA_DOCUMENTO',
-  p_fatturazione_immediata => false,
-  p_priorita_operativa     => 'NORMALE',
-  p_competenza_dal         => DATE '2026-07-01',
-  p_competenza_al          => DATE '2026-07-31',
-  p_meta                   => '{}'::jsonb,
-  p_force_new              => true) AS commessa_id;
-
-SELECT vendite.fn_link_commessa_sorgente(
-  p_commessa_id      => (SELECT commessa_id FROM tmp_com_kit),
-  p_sorgente_tipo_id => (SELECT sorgente_root_id FROM tmp_refs_kit),
-  p_sorgente_uid     => (SELECT commessa_id FROM tmp_com_kit)::text,
-  p_sorgente_riga    => 1,
-  p_meta             => '{}'::jsonb);
+SELECT c.commessa_id
+  FROM dbops.fn_pgtap_crea_commessa('accredito kit', NULL,
+           (SELECT billing_account_id FROM tmp_refs_kit), p_con_sorgente_root => true) c;
 
 -- ============================================================
 -- KIT A — sano: 10 unita' padre, due componenti a coefficiente 2 e 3
@@ -249,7 +161,7 @@ SELECT vendite.fn_link_commessa_sorgente(
 -- La partita: la bolla CONSEGNATA dell'articolo padre, 10 a 12.50, trigger
 --   CONSEGNATO, dal cliente del mondo.
 CREATE TEMP TABLE tmp_ka AS
-SELECT b.ddt_uid, b.ddt_riga_id
+SELECT b.ddt_id, b.ddt_uid, b.ddt_riga_id
   FROM dbops.fn_pgtap_crea_ddt_da_ordine('accredito kit',
            p_billing_account_id   => (SELECT billing_account_id FROM tmp_refs_kit),
            p_quantita             => 10,
@@ -259,17 +171,26 @@ SELECT b.ddt_uid, b.ddt_riga_id
 CREATE TEMP TABLE tmp_ka_key AS
 SELECT script.fn_segment_key('DDT_VENDITA', (SELECT ddt_uid FROM tmp_ka)::text, (SELECT ddt_riga_id FROM tmp_ka)) AS kit_key;
 
+CREATE TEMP TABLE tmp_ka_c1 AS
 SELECT pg_temp.kit_mk_componente(
   ((SELECT kit_key FROM tmp_ka_key) || '#CMP:' || (SELECT art_c1_id FROM tmp_refs_kit)::text)::varchar,
-  (SELECT art_c1_id FROM tmp_refs_kit), 20, 2.50, 2, (SELECT art_padre_id FROM tmp_refs_kit)::text);
+  (SELECT art_c1_id FROM tmp_refs_kit), 20, 2.50, 2, (SELECT art_padre_id FROM tmp_refs_kit)::text,
+  (SELECT ddt_uid FROM tmp_ka)) AS attivita_id;
+CREATE TEMP TABLE tmp_ka_c2 AS
 SELECT pg_temp.kit_mk_componente(
   ((SELECT kit_key FROM tmp_ka_key) || '#CMP:' || (SELECT art_c2_id FROM tmp_refs_kit)::text)::varchar,
-  (SELECT art_c2_id FROM tmp_refs_kit), 30, 2.50, 3, (SELECT art_padre_id FROM tmp_refs_kit)::text);
+  (SELECT art_c2_id FROM tmp_refs_kit), 30, 2.50, 3, (SELECT art_padre_id FROM tmp_refs_kit)::text,
+  (SELECT ddt_uid FROM tmp_ka)) AS attivita_id;
 
-SELECT pg_temp.kit_fattura((SELECT kit_key FROM tmp_ka_key));
+CREATE TEMP TABLE tmp_ka_fatt AS
+SELECT * FROM dbops.fn_pgtap_fattura_attivita('accredito kit',
+           ARRAY[(SELECT attivita_id FROM tmp_ka_c1), (SELECT attivita_id FROM tmp_ka_c2)]);
 
+-- Il reso a credito di 3 unita' padre, confermato.
 CREATE TEMP TABLE tmp_ka_reso AS
-SELECT pg_temp.kit_mk_reso((SELECT ddt_riga_id FROM tmp_ka), (SELECT ddt_uid FROM tmp_ka), 3) AS resi_riga_id;
+SELECT x.resi_riga_id
+  FROM dbops.fn_pgtap_crea_reso('accredito kit', (SELECT ddt_id FROM tmp_ka), 3,
+           p_ddt_riga_id => (SELECT ddt_riga_id FROM tmp_ka)) x;
 
 SELECT is(
   (SELECT q.accredito_dovuto FROM vendite.vw_resi_da_accreditare q
@@ -353,7 +274,7 @@ SELECT is(
 -- La partita: la bolla CONSEGNATA dell'articolo padre, 10 a 12.50, trigger
 --   CONSEGNATO, dal cliente del mondo.
 CREATE TEMP TABLE tmp_kb AS
-SELECT b.ddt_uid, b.ddt_riga_id
+SELECT b.ddt_id, b.ddt_uid, b.ddt_riga_id
   FROM dbops.fn_pgtap_crea_ddt_da_ordine('accredito kit',
            p_billing_account_id   => (SELECT billing_account_id FROM tmp_refs_kit),
            p_quantita             => 10,
@@ -363,17 +284,25 @@ SELECT b.ddt_uid, b.ddt_riga_id
 CREATE TEMP TABLE tmp_kb_key AS
 SELECT script.fn_segment_key('DDT_VENDITA', (SELECT ddt_uid FROM tmp_kb)::text, (SELECT ddt_riga_id FROM tmp_kb)) AS kit_key;
 
+CREATE TEMP TABLE tmp_kb_c1 AS
 SELECT pg_temp.kit_mk_componente(
   ((SELECT kit_key FROM tmp_kb_key) || '#CMP:' || (SELECT art_c1_id FROM tmp_refs_kit)::text)::varchar,
-  (SELECT art_c1_id FROM tmp_refs_kit), 20, 2.50, 2, NULL);
+  (SELECT art_c1_id FROM tmp_refs_kit), 20, 2.50, 2, NULL,
+  (SELECT ddt_uid FROM tmp_kb)) AS attivita_id;
+CREATE TEMP TABLE tmp_kb_c2 AS
 SELECT pg_temp.kit_mk_componente(
   ((SELECT kit_key FROM tmp_kb_key) || '#CMP:' || (SELECT art_c2_id FROM tmp_refs_kit)::text)::varchar,
-  (SELECT art_c2_id FROM tmp_refs_kit), 30, 2.50, 3, NULL);
+  (SELECT art_c2_id FROM tmp_refs_kit), 30, 2.50, 3, NULL,
+  (SELECT ddt_uid FROM tmp_kb)) AS attivita_id;
 
-SELECT pg_temp.kit_fattura((SELECT kit_key FROM tmp_kb_key));
+CREATE TEMP TABLE tmp_kb_fatt AS
+SELECT * FROM dbops.fn_pgtap_fattura_attivita('accredito kit',
+           ARRAY[(SELECT attivita_id FROM tmp_kb_c1), (SELECT attivita_id FROM tmp_kb_c2)]);
 
 CREATE TEMP TABLE tmp_kb_reso AS
-SELECT pg_temp.kit_mk_reso((SELECT ddt_riga_id FROM tmp_kb), (SELECT ddt_uid FROM tmp_kb), 3) AS resi_riga_id;
+SELECT x.resi_riga_id
+  FROM dbops.fn_pgtap_crea_reso('accredito kit', (SELECT ddt_id FROM tmp_kb), 3,
+           p_ddt_riga_id => (SELECT ddt_riga_id FROM tmp_kb)) x;
 
 SELECT throws_like(
   format($$ SELECT * FROM vendite.fn_accredita_riga_reso(%s) $$,

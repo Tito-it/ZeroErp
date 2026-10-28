@@ -2,6 +2,8 @@
 
 > Questo file è pensato per essere letto all'inizio di ogni sessione Claude Code,
 > su qualsiasi server (DB o backend). Integra AGENTS.md con lo stato corrente del progetto.
+>
+> Ultima revisione: 2026-10-25.
 
 ## Identità del Progetto
 
@@ -173,14 +175,22 @@ def nome_metodo(self, ...):
 > Lo stato reale sta nei documenti di `docs/it/dev/work-in-progress/` e nel repo; qui solo
 > le decisioni di rotta e una riga per cantiere aperto.
 
-### ⛔ Fermo dei temi trasversali sui documenti di vendita (Tid, 2026-10-21)
+### ⛔ Fermo dei temi trasversali sui documenti di vendita (Tid, 2026-10-21; allentato il 2026-10-25)
 
-Finché il modello del documento di vendita non è scritto
-(`work-in-progress/brief-modello-documento-vendita.md`), **nessun tema nuovo che tocca tutti i
-documenti di vendita** (preventivo, offerta, contratto, ordine, DDT, reso, commessa, fattura,
-listino). Si correggono i difetti; i brief già in esecuzione arrivano in fondo; i temi trasversali
-in coda aspettano il modello. Il perché, con i fatti datati, sta nel §1 di quel brief. La regola
-generale «un tema, un brief» è in `.codex/AGENTS.md`.
+Il modello del documento di vendita è scritto:
+[guida del modello](../docs/it/guide/modello-documento-di-vendita.md). Il fermo resta, **allentato**
+(Tid, 2026-10-25, scelta C):
+
+- ✅ un tema nuovo che tocca tutti i documenti di vendita (preventivo, offerta, contratto, ordine,
+  DDT, reso, commessa, fattura, listino) è ammesso **se poggia su un pezzo comune già fatto** (un
+  building block montato su tutte le testate, come la nascita nello stato iniziale) e rispetta la
+  guida;
+- ⛔ resta fermo il tema che andrebbe **ricopiato documento per documento** (nelle capability, nei
+  guard, nei verbi di ciascuno): aspetta che il cantiere porti quei documenti al modello.
+
+Si correggono i difetti; i brief già in esecuzione arrivano in fondo. Il perché, con i fatti datati,
+sta nel §1 di `work-in-progress/brief-modello-documento-vendita.md`. La regola generale «un tema, un
+brief» è in `.codex/AGENTS.md`.
 
 ### 🔵 Il cantiere principale — `acquisti` e `magazzino` (decisione di Tid, 2026-09-11)
 
@@ -227,17 +237,21 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 
 ### 🟡 Altri cantieri aperti
 
-- **Il reso costruito nei pgTAP** (aperto il 2026-10-25, `work-in-progress/brief-db-pgtap-reso-costruito.md`):
-  il builder di fixture del reso confermato, con la bolla di ri-consegna, e il ritiro delle ~20 copie scritte a
-  mano. È il seguito di `work-done/brief-db-pgtap-bolla-e-reso-costruiti` (chiuso il 2026-10-25: la bolla da
-  ordine ha il suo builder, `dbops.fn_pgtap_crea_ddt_da_ordine`, e 36 pgTAP non ricopiano più la sua strada).
-- **Una sola grammatica per i tipi di documento** (aperto il 2026-10-18,
-  `work-in-progress/brief-db-grammatica-unica-documenti.md`): lo stesso tipo di documento ha più nomi
-  (`config.tipi_entita`, `config.sorgenti`, la grammatica delle testate, le partizioni delle note) e chi passa
-  dall'uno all'altro traduce. Direzione decisa da Tid (strada 3 dell'A-8-ter): un vocabolario solo, nessun ponte.
-  Lotti 0, 1 e 2a (le testate: `DDT_VENDITA`, `ORDINE_VENDITA`, `OFFERTA_COMMERCIALE`…) chiusi su DB, BE e FE
-  il 2026-10-19; restano i sotto-giri 2b … 2e, il lotto 3 (note) e il 4 (chiusura). Lo stato è nel blocco
-  «Chi riparte» del brief.
+- ✅ **Il reso costruito nei pgTAP: chiuso il 2026-10-25** (`work-done/brief-db-pgtap-reso-costruito.md`,
+  seguito di `work-done/brief-db-pgtap-bolla-e-reso-costruiti`): i pgTAP non ricopiano più la strada del reso
+  confermato, della bolla di ri-consegna, dell'ordine con righe, della bolla senza ordine e dell'attività fatturata;
+  ognuna ha il suo builder in `dbops` (`fn_pgtap_crea_reso`, `_ddt_riconsegna`, `_ordine_con_righe`,
+  `_ddt_senza_ordine`, `fn_pgtap_fattura_attivita`). DB `20261025-05`, `-06`, `-31…-36`; pgTAP portati: 29 nel
+  giro del reso, 64 nel D-4; verdi come app.
+- ✅ **Una sola grammatica per i tipi di documento: chiuso il 2026-10-25**
+  (`work-done/brief-db-grammatica-unica-documenti.md`): un tipo di documento ha un nome solo, il codice di
+  `config.sorgenti` (e di `config.tipi_entita` per ciò che si può indicare, come le note), senza ponti né
+  traduzioni. Lotti 0 … 3 su DB, BE e FE (testate, origine e destinazione, numeratori, aree, chiavi del push, le
+  quattro tabelle delle note con `target_tipo` lungo e la FK). Lotto 4, il presidio:
+  `config/test-grammatica-presidio-tipo-documento-v1` — ogni colonna che porta un tipo di documento (riconosciuta
+  dal nome) ha la FK verso il catalogo, è lunga come il codice e non ha un `CHECK` con l'elenco; le eccezioni
+  stanno nel test col motivo. L4-1 (Tid): la FK lega il nome, non l'accensione, e resta così. I due residui
+  passati al brief del modello del documento (§10, D-G1 e D-G2).
 - **Type checker del backend (D2-b): chiuso il 2026-10-09** (`work-done/piano-be-type-checker.md`;
   `0ffe7b7c3`, `ebc54fc56`): mypy col plugin Django in CI, a cricchetto (`backend/mypy.ini`,
   `backend/mypy.baseline.json`, `scripts/check_mypy_baseline.py`; sede `docs/it/dev/sicurezza-e-qualita-statica.md`
@@ -400,10 +414,6 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   contratti manda solo le righe UNA_TANTUM, col giorno di attivazione (`20261013-24`, D-1/D-2 di Tid); la
   generazione per periodo del canone e le quantità di orario e consumo dalle loro fonti: aperto, non
   iniziato (G-1…G-4). Nello stesso giorno `tipo_consumo` ritirato dalla catena del push (`20261013-16…-23`).
-- 📝 **Un documento nasce nel suo stato iniziale** (`work-in-progress/brief-db-documento-nasce-nello-stato-iniziale.md`,
-  D32, 2026-10-13): le regole dell'uscita dalla bozza sono solo sull'UPDATE, e una bolla inserita già EMESSA
-  nasce numerata e vuota. Trovato nel giro del `20261013-53` (i lettori dell'emittente della bolla dopo il
-  normalize). Aperto, non iniziato: decisioni N-1…N-3.
 - 📝 **Dove si addebita il trasporto di un ordine fatturato alla conferma**
   (`work-in-progress/brief-db-addebito-trasporto-ordine.md`, da A-9 del brief sopra): aperto, non iniziato.
 - ✅ **Codici d'errore per email, «accesso riservato» e «non trovato» del dettaglio ricerca: chiuso il 2026-10-10**

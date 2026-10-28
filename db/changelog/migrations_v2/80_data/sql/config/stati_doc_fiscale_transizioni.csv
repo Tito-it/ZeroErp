@@ -1,12 +1,12 @@
-id,stato_from_id,stato_to_id,ammesso,solo_lotto,solo_fattura,meta,data_insert,user_insert,data_update,user_update
-1,1,2,t,t,f,{},2026-02-10 09:00:00+01,titodb,2026-06-19 00:00:00+02,mctit
-2,2,1,t,t,f,"{""action_key"":""riporta_a_draft"",""label_key"":""vendite.lotti.azione_riporta_a_draft"",""requires_confirm"":true,""outlined"":true,""manuale"":true}",2026-02-10 09:00:00+01,titodb,2026-08-04 00:00:00+02,mctit
-3,2,8,t,t,f,"{""action_key"":""numera"",""label_key"":""vendite.lotti.azione_numera"",""requires_confirm"":true,""outlined"":false,""manuale"":true}",2026-02-10 09:00:00+01,titodb,2026-08-04 00:00:00+02,mctit
-4,1,8,f,t,f,"{""tipo_lotto"": ""GIORNALIERO""}",2026-02-10 09:00:00+01,titodb,2026-06-19 00:00:00+02,mctit
-5,8,3,t,t,f,{},2026-02-10 09:00:00+01,titodb,2026-02-17 09:46:27.064058+01,titodb
-6,1,2,t,f,t,{},2026-02-10 09:00:00+01,titodb,2026-02-17 09:46:27.064058+01,titodb
-7,2,3,t,f,t,{},2026-02-10 09:00:00+01,titodb,2026-02-17 09:46:27.064058+01,titodb
-8,2,8,t,f,t,{},2026-02-10 09:00:00+01,titodb,2026-02-17 09:46:27.064058+01,titodb
-9,8,3,t,f,t,{},2026-02-10 09:00:00+01,titodb,2026-02-17 09:46:27.064058+01,titodb
-10,3,6,t,f,t,{},2026-02-10 09:00:00+01,titodb,2026-02-17 09:46:27.064058+01,titodb
-11,1,7,t,t,f,"{""action_key"":""annulla"",""label_key"":""vendite.lotti.azione_annulla"",""requires_confirm"":true,""outlined"":true,""manuale"":true}",2026-08-02 00:00:00+02,mctit,2026-08-04 00:00:00+02,mctit
+id,stato_from_id,stato_to_id,ammesso,solo_lotto,solo_fattura,meta,data_insert,user_insert,data_update,user_update,azione_processo_codename
+1,1,2,t,t,f,"{""manuale"":false}",2026-02-10 09:00:00+01,titodb,2026-10-27 00:00:00+01,mctit,NULL
+2,2,1,t,t,f,"{""action_key"":""riporta_a_draft"",""label_key"":""vendite.lotti.azione_riporta_a_draft"",""requires_confirm"":true,""outlined"":true,""manuale"":true}",2026-02-10 09:00:00+01,titodb,2026-10-27 00:00:00+01,mctit,numera_fatture_lotti
+3,2,8,t,t,f,"{""action_key"":""numera"",""label_key"":""vendite.lotti.azione_numera"",""requires_confirm"":true,""outlined"":false,""manuale"":true}",2026-02-10 09:00:00+01,titodb,2026-10-27 00:00:00+01,mctit,numera_fatture_lotti
+4,1,8,f,t,f,"{""tipo_lotto"": ""GIORNALIERO"",""manuale"":false}",2026-02-10 09:00:00+01,titodb,2026-10-27 00:00:00+01,mctit,NULL
+5,8,3,t,t,f,"{""manuale"":false}",2026-02-10 09:00:00+01,titodb,2026-10-27 00:00:00+01,mctit,NULL
+6,1,2,t,f,t,"{""manuale"":false}",2026-02-10 09:00:00+01,titodb,2026-10-27 00:00:00+01,mctit,NULL
+7,2,3,t,f,t,"{""manuale"":false}",2026-02-10 09:00:00+01,titodb,2026-10-27 00:00:00+01,mctit,NULL
+8,2,8,t,f,t,"{""manuale"":false}",2026-02-10 09:00:00+01,titodb,2026-10-27 00:00:00+01,mctit,NULL
+9,8,3,t,f,t,"{""manuale"":false}",2026-02-10 09:00:00+01,titodb,2026-10-27 00:00:00+01,mctit,NULL
+10,3,6,t,f,t,"{""manuale"":false}",2026-02-10 09:00:00+01,titodb,2026-10-27 00:00:00+01,mctit,NULL
+11,1,7,t,t,f,"{""action_key"":""annulla"",""label_key"":""vendite.lotti.azione_annulla"",""requires_confirm"":true,""outlined"":true,""manuale"":true}",2026-08-02 00:00:00+02,mctit,2026-08-04 00:00:00+02,mctit,NULL

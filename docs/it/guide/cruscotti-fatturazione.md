@@ -1,6 +1,6 @@
 # Guida — Cruscotti fatturazione (le tre lenti)
 
-> **Ultimo aggiornamento**: 19 settembre 2026
+> **Ultimo aggiornamento**: 27 ottobre 2026
 >
 > **Destinatari**: analisti funzionali, operatori vendite/amministrazione,
 > sviluppatori backend/frontend.
@@ -505,6 +505,13 @@ si arriva anche dal pannello errori della Lente 1 (§7.5).
 se il problema è un documento solo, *Elimina dal lotto*; *Annulla lotto* è per
 un giro partito per sbaglio, che non deve produrre nulla.
 
+**Chi le può usare.** *Riporta in lavorazione* chiede lo **stesso permesso** di
+*Rendi definitive* (Numerazione fatture/lotti): chi può numerare può anche
+disfare ciò che non è ancora numerato. *Annulla lotto* chiede solo il permesso
+sui lotti, perché su un lotto in bozza non c'è niente di fiscale da disfare. Chi
+non ha il permesso **non vede** il pulsante. Il motivo per cui *Elimina dal lotto*
+è spento su una fattura compare sulla sua riga.
+
 > ⚠️ **Le due strade rimettono in coda allo stesso modo** — tutto il lotto, oppure
 > un documento solo — e la scelta fra loro è quella descritta qui sopra.
 >
@@ -635,13 +642,22 @@ separato dalla fattura, con il legame riga↔riga verso ciò che corregge.
 | Verbo                   | Dove                                   | Cosa fa                                                                                                                                         |
 | ----------------------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Accredita**           | riga della coda · drawer del reso      | registra l'accredito dovuto: la riga esce dalla coda, la rettifica entra in commessa                                                            |
-| **Annulla l'accredito** | drawer del reso (riga già accreditata) | il caso «ho cliccato la riga sbagliata»: toglie la rettifica, l'accredito torna dovuto. Richiede un **motivo**, ed è l'unica traccia del perché |
+| **Annulla l'accredito** | drawer del reso (riga già accreditata) · riga della coda (accredito parziale) | il caso «ho cliccato la riga sbagliata»: toglie la rettifica, l'accredito torna dovuto. Richiede un **motivo**, ed è l'unica traccia del perché |
 
 ⚠️ **«Annulla l'accredito» e «annulla il documento» non sono la stessa cosa**, e
 confonderle manda sulla strada sbagliata: il primo agisce **a monte** del
 documento; per disfare una nota di credito già emessa si riporta il lotto in
 bozza — e la nota **viene rigenerata** al giro successivo, perché la merce resa
 non è cambiata.
+
+⛔ **L'accredito si annulla solo finché nessuna delle sue rettifiche è entrata in
+fatturazione**: presa da un lotto, agganciata a una riga di fattura o emessa.
+Basta una rettifica per bloccarlo tutto, perché un annullo a metà lascerebbe in
+coda un residuo che nessuno può più soddisfare. Da quel momento — ed è lo stato
+finale di ogni accredito — il pulsante è **spento** e dice perché («L'accredito è
+già stato emesso in fattura…»). Se la nota di credito non è ancora numerata, la
+strada è riportare il lotto in bozza: le rettifiche escono dalla fatturazione e
+l'accredito torna annullabile.
 
 ⛔ **Finché il reso ha un accredito registrato, il reso non si annulla**: il
 pulsante resta acceso ma spiega il perché. Prima si annulla l'accredito.

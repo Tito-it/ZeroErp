@@ -21,7 +21,19 @@ Linee guida:
 
 ### 🎯 Scopo Principale
 
-(latest review 24-09-2026 — il prezzo non autorizzato dal building block; 12-05-2026 — aggiunto check PENDING componenti BoM CASO A)
+(latest review 26-10-2026 — i passaggi dalla matrice, la GUC della cessazione automatica ritirata; 24-09-2026 — il prezzo non autorizzato dal building block; 12-05-2026 — aggiunto check PENDING componenti BoM CASO A)
+
+> ⭐ **Dal 26-10-2026** (brief `brief-modello-documento-vendita` §11) il guard legge i
+> passaggi ammessi dalla matrice `config.transizioni_stati_contratti` (prima erano
+> scritti negli `IF`), e verso `CESSATO` chiede a chiunque scriva lo stato una data
+> di fine valorizzata e **arrivata** (`valido_al <= script.fn_data_operativa()`). La
+> GUC `app.cessazione_automatica` è ritirata: la data passata la rifiuta il verbo
+> della cessazione [`vendite.fn_cessa_contratto`](/dbzero/vendite/funzioni/fn_cessa_contratto),
+> l'unico che la scrive; i contratti scaduti li cessa
+> [`vendite.fn_cessa_contratti_scaduti`](/dbzero/vendite/funzioni/fn_cessa_contratti_scaduti).
+> Lo stato lo scrivono solo i verbi (la porta). La tabella qui sotto e il testo che
+> segue descrivono la forma di prima dove parlano di `valido_al < CURRENT_DATE` e
+> della GUC.
 
 La trigger function **`vendite.trgfn_contratti_guard_transizione_stato()`**
 blocca le transizioni di stato non ammesse sul workflow contratti

@@ -1,0 +1,135 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE FATTURE SEGUONO IL LOTTO DAL VERBO DELLA FATTURA
+#   Brief: brief-modello-documento-vendita §15 (giro 11; F-1, Q-F3).
+#
+#   vendite.fn_sync_lotto_fatture_stato allineava le fatture del lotto con
+#   un UPDATE: con la porta sulla fattura (20261027-17) non passa piu'. Ogni
+#   fattura (non critical, con lo stato diverso) passa dal verbo della
+#   fattura, vendite.fn_fattura_proietta_stato (20261027-10), una per una,
+#   nell'ordine degli id. Il resto e' invariato: il ponte, la chiusura del
+#   giornaliero a INVIATA.
+#   ⚠️ Il letterale 'INVIATA' resta: nessuna colonna del vocabolario dice
+#   «lo stato dell'invio» (debito dichiarato nel §15 del brief).
+#   Corpo dalla definizione viva (doc auto-generata, 2026-10-27). Firma invariata.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261027-11-update-fn-sync-lotto-fatture-stato-verbo-fattura-mctit.yaml
+
+  - changeSet:
+      id: 20261027-11-update-fn-sync-lotto-fatture-stato-verbo-fattura
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_sync_lotto_fatture_stato: le fatture del lotto si allineano col verbo della
+        fattura (vendite.fn_fattura_proietta_stato), non con un UPDATE. Brief:
+        brief-modello-documento-vendita §15.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite' AND p.proname = 'fn_fattura_proietta_stato';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_sync_lotto_fatture_stato(
+                  p_lotto_id                    vendite.fatturazione_lotti.id%TYPE,
+                  p_target_stato_doc_fiscale_id config.stati_doc_fiscale.id%TYPE DEFAULT NULL::bigint)
+               RETURNS void
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- rev 2026-08-04 (D-M): via il predicato su lf.esclusa (sempre
+              --   vero) e l'argomento p_esclusa all'helper.
+              -- rev 2026-10-27 (20261027-11, brief-modello-documento-vendita
+              --   §15): le fatture seguono il lotto dal verbo della fattura
+              --   (vendite.fn_fattura_proietta_stato), una per una: la porta
+              --   non lascia passare l'UPDATE.
+              DECLARE
+                  v_stato_lotto vendite.fatturazione_lotti.stato_doc_fiscale_id%TYPE;
+                  v_target      config.stati_doc_fiscale.id%TYPE;
+                  v_tipo_lotto  vendite.fatturazione_lotti.tipo_lotto%TYPE;
+                  v_inviata_id  config.stati_doc_fiscale.id%TYPE;
+                  v_fattura_id  vendite.fatture.id%TYPE;
+              BEGIN
+                  IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_sync_lotto_fatture_stato', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_lotto_id', 'valore', p_lotto_id), NULL::uuid, 'p_lotto_id obbligatorio e > 0');
+                  END IF;
+
+                  IF p_target_stato_doc_fiscale_id IS NOT NULL AND p_target_stato_doc_fiscale_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_sync_lotto_fatture_stato', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_target_stato_doc_fiscale_id', 'valore', p_target_stato_doc_fiscale_id), NULL::uuid, 'p_target_stato_doc_fiscale_id se fornito deve essere > 0');
+                  END IF;
+
+                  SELECT tipo_lotto, stato_doc_fiscale_id INTO v_tipo_lotto, v_stato_lotto
+                    FROM vendite.fatturazione_lotti WHERE id = p_lotto_id FOR UPDATE;
+
+                  IF v_stato_lotto IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_sync_lotto_fatture_stato', 'E_LOTTO_NON_TROVATO',
+                          jsonb_build_object('lotto_id', p_lotto_id), NULL::uuid, p_lotto_id::text);
+                  END IF;
+
+                  v_target := COALESCE(p_target_stato_doc_fiscale_id, v_stato_lotto);
+
+                  IF v_target IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_sync_lotto_fatture_stato', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'stato_doc_fiscale_target', 'lotto_id', p_lotto_id), NULL::uuid, concat('stato_doc_fiscale target obbligatorio per lotto ', p_lotto_id));
+                  END IF;
+
+                  -- Allinea stato fatture (escluse le critical), dal verbo
+                  -- della fattura: una per una, nell'ordine degli id.
+                  FOR v_fattura_id IN
+                      SELECT f.id
+                        FROM vendite.fatture f
+                        JOIN vendite.fatturazione_lotti_fatture lf ON lf.fattura_id = f.id
+                       WHERE lf.lotto_id = p_lotto_id
+                         AND COALESCE(f.critical, FALSE) IS FALSE
+                         AND f.stato_doc_fiscale_id IS DISTINCT FROM v_target
+                       ORDER BY f.id
+                  LOOP
+                      PERFORM vendite.fn_fattura_proietta_stato(v_fattura_id, v_target);
+                  END LOOP;
+
+                  -- Sync stato_esecuzione sul ponte
+                  UPDATE vendite.fatturazione_lotti_fatture lf
+                     SET stato_doc_fiscale_id = f.stato_doc_fiscale_id,
+                         stato_esecuzione = vendite.fn_resolve_stato_esecuzione(
+                             p_stato_source => 'COMPLETATO',
+                             p_has_critical => COALESCE(f.critical, FALSE),
+                             p_fatturato => FALSE, p_default_stato_esecuzione => 'COMPLETED'),
+                         data_update = now(), user_update = current_user
+                    FROM vendite.fatture f WHERE lf.lotto_id = p_lotto_id AND lf.fattura_id = f.id;
+
+                  -- GIORNALIERO + INVIATA → chiusura lotto
+                  IF v_tipo_lotto = 'GIORNALIERO' THEN
+                      SELECT id INTO v_inviata_id FROM config.stati_doc_fiscale WHERE codice_interno = 'INVIATA' AND attivo IS TRUE ORDER BY ordine LIMIT 1;
+                      IF v_inviata_id IS NOT NULL AND v_target = v_inviata_id THEN
+                          UPDATE vendite.fatturazione_lotti SET stato_operativo = 'CHIUSO', data_update = now(), user_update = current_user WHERE id = p_lotto_id;
+                      END IF;
+                  END IF;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_sync_lotto_fatture_stato(bigint, bigint)
+                IS 'Allinea stato fatture del lotto e sincronizza stato_esecuzione. GIORNALIERO+INVIATA chiude lotto. rev 2026-08-04 (D-M): via il predicato su lf.esclusa, che era una condizione sempre vera, e via l''argomento p_esclusa all''helper. rev 2026-10-27 (20261027-11, brief-modello-documento-vendita §15): le fatture (non critical, con lo stato diverso dal bersaglio) seguono il lotto dal verbo della fattura, vendite.fn_fattura_proietta_stato, una per una nell''ordine degli id: la porta della fattura non lascia passare l''UPDATE. Il letterale INVIATA resta (nessuna colonna del vocabolario dice lo stato dell''invio: debito dichiarato nel brief).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              SELECT 1;

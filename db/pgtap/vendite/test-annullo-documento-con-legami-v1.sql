@@ -1,5 +1,22 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-26 (brief-modello-documento-vendita §13, giro 9): l'offerta della fixture
+--   (pg_temp.al_mk_offerta) arriva ACCETTATA dal verbo, con dbops.fn_pgtap_porta_a_stato, non con
+--   due UPDATE diretti dello stato: la porta dell'offerta li ferma. Attese invariate.
+-- rev 2026-10-26 (brief-modello-documento-vendita §11, giro 8): il test 14 («13) …») annullava il
+--   contratto con un UPDATE diretto dello stato, che ora la porta ferma (E_DOC_STATO_SOLO_DAL_VERBO).
+--   Passa dal verbo di stato vendite.fn_cambia_stato_contratto (DRAFT -> ANNULLATO: nessuna
+--   azione); il guard dell'annullo da' lo stesso rifiuto. Attesa invariata.
+-- rev 2026-10-25 (brief-modello-documento-vendita §9, giro 7): il test 7 annullava l'ordine
+--   con un UPDATE diretto dello stato, che ora la porta ferma (E_DOC_STATO_SOLO_DAL_VERBO).
+--   Passa dal verbo di stato vendite.fn_cambia_stato_ordine (DRAFT -> ANNULLATO: nessuna
+--   azione); il guard dell'annullo da' lo stesso rifiuto. Attesa invariata.
+-- rev 2026-10-25 (brief-modello-documento-vendita §8, giro 6): il test 25
+--   («23) il verbo di stato del preventivo…») chiama vendite.fn_cambia_stato_preventivo
+--   con la firma nuova a DUE argomenti (id, stato): p_user e' uscito, user_update
+--   lo scrive il trigger di audit. L'attesa non cambia: l'annullo della bozza
+--   con un legame e' rifiutato dal guard dell'annullo (E_DOC_ANNULLO_CON_LEGAMI,
+--   «Serve una conferma»); dalla bozza non serve l'azione emetti_preventivo.
 -- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2b, 20261019-87 … -99):
 --   l'ordine da offerta porta documento_origine_tipo = OFFERTA_COMMERCIALE, e il legame di
 --   provenienza ha origine OFFERTA_COMMERCIALE (il codice della sorgente, era OFFERTA).
@@ -29,14 +46,14 @@
 --   5) i due indici unici valgono sui soli vivi
 --  B — caso 2: preventivo -> ordine (D-2)
 --   6) il push: ordine in bozza, preventivo EVASO, un legame PREVENTIVO di consumo
---   7) l'annullo diretto dell'ordine e' rifiutato: E_DOC_ANNULLO_CON_LEGAMI
+--   7) l'annullo dal verbo di stato, senza la conferma dei legami, e' rifiutato: E_DOC_ANNULLO_CON_LEGAMI
 --   8) il verbo con una conferma che non corrisponde: stesso rifiuto
 --   9) confermato: ordine ANNULLATO, riga staccata, preventivo ACCETTATO, riga di nuovo smistabile
 --  10) un secondo push dallo stesso preventivo riesce (il UNIQUE sulla riga regge)
 --  11) ordine CONFERMATO: il verbo stacca la riga anche fuori bozza (la porta nel lock)
 --  C — caso 3: offerta -> contratto (D-3, D-6)
 --  12) il legame del contratto e' l'offerta, di PROVENIENZA
---  13) l'annullo diretto del contratto e' rifiutato
+--  13) l'annullo dal verbo di stato, senza la conferma dei legami, e' rifiutato
 --  14) confermato: contratto ANNULLATO, offerta_id resta, snapshot abortito
 --  15) l'offerta torna trasformabile: documenti vivi zero, capability accesa
 --  16) un secondo push dalla stessa offerta crea il contratto
@@ -268,8 +285,8 @@ BEGIN
             WHERE e.e_default AND e.fonte_quantita_attesa = 'FISSA' LIMIT 1));
   INSERT INTO vendite.offerte_commerciali_utilities (offerta_id, istanza_utility_id, utility_id)
   VALUES (v_off, r.istanza_utility_id, r.utility_id);
-  UPDATE vendite.offerte_commerciali SET stato_doc_offerta_id = r.off_emessa_id WHERE id = v_off;
-  UPDATE vendite.offerte_commerciali SET stato_doc_offerta_id = r.off_accettata_id WHERE id = v_off;
+  -- rev 2026-10-26 (giro 9): lo stato dal verbo, con la fixture (la porta rifiuta l'UPDATE).
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', v_off, 'ACCETTATA');
   INSERT INTO tmp_al_fix VALUES (p_chiave || '_off', v_off);
 END $$ LANGUAGE plpgsql;
 
@@ -304,10 +321,9 @@ SELECT ok(
   '6) il push: ordine in bozza, preventivo EVASO, un legame PREVENTIVO di consumo');
 
 SELECT pg_temp.al_prova('7_ord_diretto',
-  format('UPDATE vendite.ordini SET stato_doc_ordine_id = %s WHERE id = %s',
-         (SELECT ord_annullato_id FROM tmp_al_refs), pg_temp.al_fix('b1_ord')));
+  format($q$SELECT * FROM vendite.fn_cambia_stato_ordine(%s, 'ANNULLATO')$q$, pg_temp.al_fix('b1_ord')));
 SELECT ok(pg_temp.al_rifiuto('7_ord_diretto', 'Serve una conferma'),
-  '7) l''annullo diretto dell''ordine e'' rifiutato: E_DOC_ANNULLO_CON_LEGAMI');
+  '7) l''annullo dell''ordine dal verbo di stato, senza la conferma dei legami, e'' rifiutato: E_DOC_ANNULLO_CON_LEGAMI');
 
 SELECT pg_temp.al_prova('8_ord_conferma_errata',
   format('SELECT vendite.fn_annulla_ordine(%s, 0)', pg_temp.al_fix('b1_ord')));
@@ -360,10 +376,9 @@ SELECT ok(
   '12) il legame del contratto e'' l''offerta da cui nasce, di PROVENIENZA');
 
 SELECT pg_temp.al_prova('13_contr_diretto',
-  format('UPDATE vendite.contratti SET stato_doc_contratto_id = %s WHERE id = %s',
-         (SELECT contr_annullato_id FROM tmp_al_refs), pg_temp.al_fix('c1_contr')));
+  format($q$SELECT * FROM vendite.fn_cambia_stato_contratto(%s, 'ANNULLATO')$q$, pg_temp.al_fix('c1_contr')));
 SELECT ok(pg_temp.al_rifiuto('13_contr_diretto', 'Serve una conferma'),
-  '13) l''annullo diretto del contratto e'' rifiutato: E_DOC_ANNULLO_CON_LEGAMI');
+  '13) l''annullo del contratto dal verbo di stato, senza la conferma dei legami, e'' rifiutato: E_DOC_ANNULLO_CON_LEGAMI');
 
 SELECT vendite.fn_annulla_contratto(pg_temp.al_fix('c1_contr'), 1);
 SELECT ok(
@@ -455,7 +470,7 @@ SELECT ok(
   '22) il legame del preventivo e'' la riga di commessa NON_EMESSA che ha spinto');
 
 SELECT pg_temp.al_prova('23_prev_verbo_stato',
-  format('SELECT * FROM vendite.fn_cambia_stato_preventivo(%s, ''ANNULLATO'', NULL)', pg_temp.al_fix('e_prev')));
+  format('SELECT * FROM vendite.fn_cambia_stato_preventivo(%s, ''ANNULLATO'')', pg_temp.al_fix('e_prev')));
 SELECT ok(pg_temp.al_rifiuto('23_prev_verbo_stato', 'Serve una conferma'),
   '23) il verbo di stato del preventivo (la strada del backend) e'' rifiutato: niente ritiro silenzioso');
 

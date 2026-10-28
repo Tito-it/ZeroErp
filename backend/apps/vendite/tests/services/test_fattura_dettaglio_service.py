@@ -42,6 +42,14 @@ _RIGHE = [{"id": 1, "riga_nr": 1, "descrizione": "Canone", "importo_riga": "1000
 _RIEPILOGO = [{"iva_id": 1, "iva_aliquota": "22.00", "imponibile": "1000.00", "imposta": "220.00"}]
 _SCADENZE = [{"numero_rata": 1, "data_scadenza": "2026-08-31", "importo": "1220.00"}]
 
+# Le origini come le consegna `vendite.fn_fattura_origini` (BE-1, §15.11.1).
+_ORIGINI = [
+    {"livello": 1, "tipo_id": 3, "tipo_codice_interno": "DDT_VENDITA",
+     "etichetta": "DDT", "uid": "12", "codice": "DDT-12"},
+    {"livello": 2, "tipo_id": 5, "tipo_codice_interno": "ORDINE_VENDITA",
+     "etichetta": "Ordine", "uid": "7", "codice": "ORD-7"},
+]
+
 
 class FatturaDettaglioServiceTests(TestCase):
     """Dettaglio fattura per il drawer di consultazione
@@ -52,12 +60,13 @@ class FatturaDettaglioServiceTests(TestCase):
     IVA, kit) vivono nelle query del repository e NON sono testate qui.
     """
 
-    # Il conteggio note passa dal service del BB note (`count_per_target`):
-    # si patcha la classe nel namespace del service sotto test, così nessun
-    # test tocca il DB reale per il contatore del badge.
+    # Il conteggio note passa dal BB `contatori_documento`, che chiama il
+    # service del BB note (`count_per_target`): si patcha la classe nel modulo
+    # del BB, dove la si risolve, così nessun test tocca il DB reale per il
+    # contatore del badge.
     def setUp(self):
         patcher = patch(
-            "apps.vendite.services.vendite_service.PartitionedNoteService",
+            "apps.core.services.partitioned_note_service.PartitionedNoteService",
         )
         note_svc_cls = patcher.start()
         self.addCleanup(patcher.stop)
@@ -76,6 +85,7 @@ class FatturaDettaglioServiceTests(TestCase):
         repo.get_fattura_testata.return_value = dict(testata) if testata else None
         repo.list_fattura_riepilogo_iva.return_value = list(_RIEPILOGO)
         repo.list_fattura_scadenze.return_value = list(_SCADENZE)
+        repo.list_fattura_origini.return_value = list(_ORIGINI)
         repo.get_giornale_errore_vivo.return_value = None
         return repo
 
@@ -139,6 +149,9 @@ class FatturaDettaglioServiceTests(TestCase):
         # esporrebbe NUMERO e DATA di un documento di un altro emittente — cioe'
         # il leak che le policy sui satelliti hanno chiuso altrove.
         repo.get_fattura_rettifiche.assert_not_called()
+        # Le origini le legge una funzione INVOKER: fuori scope risponderebbe
+        # vuoto, ma anche qui la domanda non va fatta prima del cancello.
+        repo.list_fattura_origini.assert_not_called()
         # Il giornale e' una vista `security_invoker`: fuori scope risponderebbe
         # «nessun errore» — ma la domanda non va nemmeno fatta.
         repo.get_giornale_errore_vivo.assert_not_called()
@@ -164,8 +177,10 @@ class FatturaDettaglioServiceTests(TestCase):
         self.assertEqual(
             set(result.keys()),
             {"fattura", "righe", "riepilogo_iva", "scadenze", "contatori",
-             "rettifiche", "errore_vivo"},
+             "rettifiche", "errore_vivo", "origini"},
         )
+        # Le origini come le consegna il lettore, nel suo ordine (BE-1).
+        self.assertEqual(result["origini"], _ORIGINI)
         self.assertEqual(result["fattura"]["numero"], 123)
         self.assertEqual(result["righe"], _RIGHE)
         self.assertEqual(result["riepilogo_iva"], _RIEPILOGO)

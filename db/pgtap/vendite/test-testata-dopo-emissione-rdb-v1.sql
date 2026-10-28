@@ -1,5 +1,12 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-26 (brief-modello-documento-vendita §13, giro 9): l'emissione di OFF_EMETTI (prima del 13) dal
+--   verbo vendite.fn_cambia_stato_offerta, con emetti_offerta concessa all'utente del contesto, non con
+--   un UPDATE dello stato: la porta dell'offerta lo ferma. Nessuna attesa cambiata.
+-- rev 2026-10-26 (brief-modello-documento-vendita §11): l'attivazione del contratto CON_ATTIVA passa da
+--   dbops.fn_pgtap_porta_a_stato (il verbo del contratto), non da un UPDATE dello stato: la porta lo
+--   ferma. Nessuna attesa cambiata.
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): i due ordini da dbops.fn_pgtap_crea_ordine_con_righe in bozza (2 x 10 sull'articolo X, trigger SPEDITO); a mano restano l'indirizzo scritto in bozza (premessa dei satelliti) e la conferma che lo segue, il preventivo (fuori dalle tre strade del giro) e il listino.
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2d): gli ambiti degli indirizzi col codice della sorgente (ORDINE_VENDITA, PREVENTIVO, CONTRATTO); 'DDT' in pg_temp.righe e' un argomento della grammatica dei montaggi e resta.
 -- pgTAP test per Zero ERP
 -- rev 2026-10-24 (brief-modello-documento-vendita N-1): i documenti nascono in
@@ -242,6 +249,24 @@ LANGUAGE sql STABLE AS $f$
      WHERE a.ambito = p_ambito AND a.attivo ORDER BY a.tipo_indirizzo_id LIMIT 1
 $f$;
 
+-- Gli ordini: in bozza con una riga 2 x 10 sull'articolo X (fuori listino) e
+--   il trigger SPEDITO. Quello da confermare esce dalla bozza piu' sotto, dopo
+--   aver preso l'indirizzo: la conferma non sta nel builder.
+CREATE TEMP TABLE _o_conf AS
+SELECT * FROM dbops.fn_pgtap_crea_ordine_con_righe('testata dopo emissione R-DB conf', 'DRAFT',
+    p_billing_account_id => (SELECT billing_account_id FROM _m),
+    p_quantita => 2, p_prezzo => 10, p_articolo_id => pg_temp.art('X'),
+    p_fatturazione_trigger => 'SPEDITO', p_data_ordine => script.fn_data_operativa());
+CREATE TEMP TABLE _o_draft AS
+SELECT * FROM dbops.fn_pgtap_crea_ordine_con_righe('testata dopo emissione R-DB draft', 'DRAFT',
+    p_billing_account_id => (SELECT billing_account_id FROM _m),
+    p_quantita => 2, p_prezzo => 10, p_articolo_id => pg_temp.art('X'),
+    p_fatturazione_trigger => 'SPEDITO', p_data_ordine => script.fn_data_operativa());
+INSERT INTO _doc
+SELECT 'ORD_CONF', ordine_id FROM _o_conf
+UNION ALL
+SELECT 'ORD_DRAFT', ordine_id FROM _o_draft;
+
 DO $fixture$
 DECLARE
     c    record;
@@ -250,23 +275,6 @@ DECLARE
 BEGIN
     SELECT * INTO c FROM _m;
     SELECT * INTO k FROM _k;
-
-    FOR i IN 1..2 LOOP
-        INSERT INTO vendite.ordini
-            (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
-             fatturazione_trigger, emittente_fiscale_id, valuta_id, data)
-        VALUES
-            (c.cliente_soggetto_ruolo_id, c.billing_account_id,
-             (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno = 'DRAFT'),
-             'SPEDITO', c.emittente_fiscale_id, k.valuta_id, script.fn_data_operativa())
-        RETURNING id INTO v_id;
-
-        INSERT INTO vendite.ordini_righe
-            (ordine_id, riga_nr, articolo_id, descrizione, quantita, qta_operativa, prezzo_unitario, iva_id)
-        VALUES (v_id, 1, pg_temp.art('X'), 'Riga pgTAP', 2, 2, 10, k.iva_id);
-
-        INSERT INTO _doc VALUES (CASE i WHEN 1 THEN 'ORD_CONF' ELSE 'ORD_DRAFT' END, v_id);
-    END LOOP;
 
     INSERT INTO vendite.preventivi
         (numero, stato_doc_preventivo_id, utility_id, istanza_utility_id,
@@ -394,9 +402,11 @@ SELECT is(
     '12) offerta BOZZA: fornitura e indirizzi modificabili, motivazione_rifiuto non fra i non modificabili (R-DB-2)'
 );
 
-UPDATE vendite.offerte_commerciali
-   SET stato_doc_offerta_id = (SELECT s.id FROM config.stati_doc_offerte s WHERE s.codice_interno = 'EMESSA')
- WHERE id = pg_temp.doc('OFF_EMETTI');
+-- L'emissione dal verbo dell'offerta (rev 2026-10-26, giro 9: la porta rifiuta
+-- l'UPDATE diretto); l'azione emetti_offerta all'utente del contesto: il test
+-- prova il congelamento, non il permesso.
+SELECT dbops.fn_pgtap_concedi_azione(current_setting('app.current_user_id')::integer, 'emetti_offerta');
+SELECT * FROM vendite.fn_cambia_stato_offerta(pg_temp.doc('OFF_EMETTI'), 'EMESSA', NULL);
 
 SELECT is(
     (SELECT o.listino_versione_id FROM vendite.offerte_commerciali o WHERE o.id = pg_temp.doc('OFF_EMETTI')),
@@ -465,9 +475,9 @@ BEGIN
 END
 $con$;
 
-UPDATE vendite.contratti
-   SET stato_doc_contratto_id = (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'ATTIVO')
- WHERE id = pg_temp.doc('CON_ATTIVA');
+-- rev 2026-10-26 (brief-modello-documento-vendita §11): l'attivazione dal verbo
+--   (la porta ferma l'UPDATE diretto dello stato).
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.contratti'::regclass, pg_temp.doc('CON_ATTIVA'), 'ATTIVO');
 
 SELECT is(
     (SELECT c.listino_versione_id FROM vendite.contratti c WHERE c.id = pg_temp.doc('CON_ATTIVA')),

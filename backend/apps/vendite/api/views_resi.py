@@ -23,6 +23,7 @@ from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import get_scope_user_id, handle_post_json
+from apps.core.api.permissions import PassaggioDocumento
 from apps.core.api.payload_validators import (
     corpo_oggetto,
     optional_iso_date,
@@ -553,11 +554,11 @@ class ApiResoDetail(DomainAPIView):
         responses={200: _RESO_RESPONSE},
     )
     # Scopo: Aggiorna testata reso (data, note, magazzino di rientro; quali in
-    #        quale stato lo decide il lock di testata del DB). PATCH usa
-    #        request.data (DRF ha gia' parsato il body).
+    #        quale stato lo decide il lock di testata del DB). Corpo da
+    #        `corpo_oggetto` (api.md §«Quando usare handle_post_json»).
     def patch(self, request: Request, reso_id: int) -> JsonResponse:
         return success_response(
-            resi_service.aggiorna_reso(int(reso_id), dict(corpo_oggetto(request))),
+            resi_service.aggiorna_reso(int(reso_id), corpo_oggetto(request)),
         )
 
     @extend_schema(
@@ -575,12 +576,13 @@ class ApiResoConferma(DomainAPIView):
 
     area_funzionale = "vendite"
     model_permission = ("vendite", "reso")
-    # ⛔ L'azione di processo del verbo DB (`fn_conferma_reso`/`fn_annulla_reso`
-    #    la applicano con `fn_guard_azione`), dichiarata anche qui come sul
-    #    gemello preventivo (`cambia_stato_preventivi`): chi non ce l'ha riceve
-    #    il 403 del backend, non il rifiuto del DB dopo il livello d'area
-    #    (brief-be-verifica-documentazione-api §A5, 2026-10-20).
-    post_permission = "conferma_reso"
+    # ⭐ L'azione dalla riga del passaggio, la stessa che legge il verbo (M-3):
+    #    oggi `conferma_reso` per la conferma e per l'annullo di un confermato;
+    #    l'annullo di una bozza chiede il solo livello sul documento (M-4).
+    post_passaggio = PassaggioDocumento(
+        testata=resi_service.TESTATA_RESO, documento_kwarg="reso_id",
+        stato_chiesto=resi_service.STATO_CONFERMATO,
+    )
 
     @extend_schema(
         request=None,
@@ -600,12 +602,15 @@ class ApiResoAnnulla(DomainAPIView):
 
     area_funzionale = "vendite"
     model_permission = ("vendite", "reso")
-    # ⛔ L'azione di processo del verbo DB (`fn_conferma_reso`/`fn_annulla_reso`
-    #    la applicano con `fn_guard_azione`), dichiarata anche qui come sul
-    #    gemello preventivo (`cambia_stato_preventivi`): chi non ce l'ha riceve
-    #    il 403 del backend, non il rifiuto del DB dopo il livello d'area
-    #    (brief-be-verifica-documentazione-api §A5, 2026-10-20).
-    post_permission = "conferma_reso"
+    # ⭐ L'azione dalla riga del passaggio, la stessa che legge il verbo (M-3):
+    #    oggi `conferma_reso` per la conferma e per l'annullo di un confermato;
+    #    l'annullo di una bozza chiede il solo livello sul documento (M-4).
+    #    Lo stato d'annullo lo dice il vocabolario a ogni richiesta (§9.8), non
+    #    un letterale fissato qui.
+    post_passaggio = PassaggioDocumento(
+        testata=resi_service.TESTATA_RESO, documento_kwarg="reso_id",
+        stato_del_modello="annullo",
+    )
 
     @extend_schema(
         request=None,
@@ -863,7 +868,7 @@ class ApiResoRigaRientroDetail(DomainAPIView):
     ) -> JsonResponse:
         return success_response(
             resi_service.aggiorna_rientro(
-                int(reso_id), int(riga_id), int(rientro_id), dict(corpo_oggetto(request)),
+                int(reso_id), int(riga_id), int(rientro_id), corpo_oggetto(request),
             ),
         )
 
@@ -891,7 +896,7 @@ class ApiResoRigaDetail(DomainAPIView):
     def patch(self, request: Request, reso_id: int, riga_id: int) -> JsonResponse:
         return success_response(
             resi_service.aggiorna_riga(
-                int(reso_id), int(riga_id), dict(corpo_oggetto(request)),
+                int(reso_id), int(riga_id), corpo_oggetto(request),
             ),
         )
 

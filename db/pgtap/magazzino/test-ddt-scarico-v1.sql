@@ -7,6 +7,10 @@
 --   (D-L3-b, D-L3-d), crea da se' il prelievo della merce semplice, si ferma
 --   sulla giacenza e sul blocco di un altro, e all'annullo storna.
 --   Brief: brief-db-magazzino-lotto-3-scarico-da-ddt, sezioni 3 e 5.
+-- rev 2026-10-25 (brief-modello-documento-vendita §7, giro 5): ATTESE CAMBIATE dei test 4 e 16, per
+--   regola ritirata: la porta sullo stato (E_DOC_STATO_SOLO_DAL_VERBO) vale per OGNI bolla, quindi il 4
+--   aspetta la frase nuova (non piu' E_DDT_STATO_SOLO_DA_VERBO, «muove merce») e il 16 aspetta il rifiuto
+--   anche per la bolla senza merce (prima passava dall'UPDATE diretto).
 --
 -- Il mondo: un magazzino senza ubicazioni, tre articoli costruiti —
 --   SEMPLICE (gestito), A_LOTTI (gestito, requires_lotto), NON_GESTITO —
@@ -16,7 +20,7 @@
 --    1) prelievi incompleti (A_LOTTI: 5 su 8) -> fn_check_ddt_merce dice E_DDT_PRELIEVI_INCOMPLETI
 --    2) ...e la capability di emissione lo porta (fn_check_ddt_emittibile)
 --    3) prelievi completi -> fn_check_ddt_merce e' vuota (la SEMPLICE non ha prelievi: e' automatica)
---    4) UPDATE diretto a EMESSO di una bolla che muove merce -> E_DDT_STATO_SOLO_DA_VERBO
+--    4) UPDATE diretto a EMESSO di una bolla che muove merce -> E_DOC_STATO_SOLO_DAL_VERBO
 --    5) il verbo emette: tre scarichi SCARICO_VEN (uno automatico, due per lotto)
 --    6) il prelievo automatico della SEMPLICE esiste, per l'intera quantita'
 --    7) ogni scarico ha per sorgente il suo prelievo (DDT_VENDITA_PRELIEVO)
@@ -28,7 +32,7 @@
 --   13) liberato il blocco, la stessa bolla si emette
 --   14) annullo della bolla emessa: tre storni, al costo dell'originale
 --   15) giacenze dopo l'annullo: SEMPLICE 7, A_LOTTI 12
---   16) una bolla che NON muove merce (solo NON_GESTITO) passa ancora dall'UPDATE diretto
+--   16) anche una bolla che NON muove merce (solo NON_GESTITO): l'UPDATE diretto e' rifiutato
 -- ------------------------------------------------------------
 BEGIN;
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
@@ -113,8 +117,8 @@ SELECT is(
 SELECT throws_like(
     format('UPDATE vendite.ddt SET stato_doc_ddt_id = (SELECT id FROM config.stati_doc_ddt WHERE codice_interno = %L) WHERE id = %s',
            'EMESSO', (SELECT ddt FROM _d1)),
-    '%muove merce%',
-    '4) UPDATE diretto a EMESSO di una bolla che muove merce: E_DDT_STATO_SOLO_DA_VERBO');
+    '%si cambia solo dalle sue operazioni%',
+    '4) UPDATE diretto a EMESSO di una bolla che muove merce: E_DOC_STATO_SOLO_DAL_VERBO');
 
 -- 5) il verbo emette
 CREATE TEMP TABLE _em1 AS SELECT * FROM vendite.fn_cambia_stato_ddt((SELECT ddt FROM _d1), 'EMESSO');
@@ -215,7 +219,9 @@ SELECT is(
     '12,7',
     '15) giacenze dopo l''annullo: A_LOTTI 12, SEMPLICE 7 (6 - 3 della bolla n.3 + 4 stornati)');
 
--- 16) una bolla che non muove merce: l'UPDATE diretto resta ammesso (porta del registro, D-L3-e)
+-- 16) una bolla che non muove merce: l'UPDATE diretto e' rifiutato anch'esso.
+--   ⚠️ Attesa cambiata 2026-10-25 (§7, giro 5): fino al giro 5 passava (porta del registro, D-L3-e);
+--   ora la porta sullo stato vale per ogni bolla.
 CREATE TEMP TABLE _d4 (ddt bigint);
 DO $d$
 DECLARE v_ddt bigint; v_iva integer;
@@ -227,10 +233,11 @@ BEGIN
     SELECT v_ddt, 1, art_n, 'solo non gestiti', 1, 1, 10, v_iva FROM _fix;
     INSERT INTO _d4 VALUES (v_ddt);
 END $d$;
-SELECT lives_ok(
+SELECT throws_like(
     format('UPDATE vendite.ddt SET stato_doc_ddt_id = (SELECT id FROM config.stati_doc_ddt WHERE codice_interno = %L) WHERE id = %s',
            'EMESSO', (SELECT ddt FROM _d4)),
-    '16) una bolla senza merce da muovere passa ancora dall''UPDATE diretto');
+    '%si cambia solo dalle sue operazioni%',
+    '16) anche una bolla senza merce da muovere: l''UPDATE diretto e'' rifiutato (E_DOC_STATO_SOLO_DAL_VERBO)');
 
 SELECT * FROM finish();
 ROLLBACK;

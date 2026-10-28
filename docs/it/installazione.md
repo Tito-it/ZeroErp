@@ -1,5 +1,7 @@
 # Installazione
 
+> **Ultimo aggiornamento**: 25 ottobre 2026
+
 Questa pagina dice **in che ordine** si tira su ZeroErp su una macchina nuova e
 rimanda alle pagine che spiegano ogni passo. Ciò che si configura **dentro** il
 programma (azienda, operatori, posta, timer) sta in
@@ -58,8 +60,21 @@ password: i ruoli valgono per tutto il server PostgreSQL, non per un database so
 Sul server PostgreSQL devono essere installati i pacchetti di: PostGIS (con
 `postgis_topology`), `plpgsql_check`, pgAgent, e per i test pgTAP. Le estensioni
 del pacchetto base (`dblink`, `pg_trgm`, `pgcrypto`, `btree_gist`, `unaccent`,
-`uuid-ossp`) ci sono già. Le crea nel database il primo passo di Liquibase, da
-superuser.
+`uuid-ossp`) ci sono già.
+
+Nel database le creano tre momenti diversi:
+
+- **il passo 2** (`changelog-provision-pre.yaml`, da superuser): `btree_gist`,
+  `dblink`, `pgcrypto`, `postgis`, `postgis_topology`, `unaccent`, `pg_trgm`,
+  `plpgsql_check` e `pgagent`. `pgagent` solo se il pacchetto c'è: senza, si
+  prosegue e i lavori a orario non esistono;
+- **il passo 4** (lo schema, come `zeroerp_owner`): `uuid-ossp`, dalla baseline
+  `010-tables-config`. Il proprietario può crearla perché è un'estensione
+  *trusted*;
+- **la suite dei test**: `pgtap`, che non è di Liquibase. In CI la crea il passo
+  dei pgTAP, sullo scratch `scripts/ci-local.sh`.
+
+A che cosa serve ciascuna: [Estensioni utilizzate](postgresql/estensioni-utilizzate.md).
 
 ### L'ordine dei passi
 

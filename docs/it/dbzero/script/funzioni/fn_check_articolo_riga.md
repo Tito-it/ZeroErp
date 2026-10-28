@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_check_articolo_riga(p_documento text, p_documento_id bigint, p_articolo_id uuid, p_natura_vendita_id bigint, p_tipo_eccezione vendite.tipo_eccezione_contratto, p_articolo_padre_id uuid)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

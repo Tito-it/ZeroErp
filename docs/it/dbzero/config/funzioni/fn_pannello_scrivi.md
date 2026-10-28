@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_pannello_scrivi(p_tabella text, p_id bigint, p_dati jsonb)
 ```
 
+> 🔐 **Sicurezza**: `SECURITY DEFINER` — gira con i privilegi dell'owner `zeroerp_owner`: GRANT e RLS sono i suoi, non quelli di chi la chiama.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_posta_contabile(p_contabile_id bigint, p_righe_attese integer, p_totale_atteso numeric)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

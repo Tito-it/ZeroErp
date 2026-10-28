@@ -4,8 +4,9 @@
 -->
 <script setup>
 // Scopo: LA CONFERMA DELL'ANNULLO DI UN DOCUMENTO CON LEGAMI — bolla, ordine,
-//        preventivo, contratto (brief-db-annullo-documento-con-legami R-1) e
-//        commessa (brief-db-annullo-a-valle-riapre-a-monte D-2).
+//        preventivo, contratto (brief-db-annullo-documento-con-legami R-1),
+//        commessa (brief-db-annullo-a-valle-riapre-a-monte D-2) e offerta
+//        (brief-modello-documento-vendita §13, O-4).
 //        Annullare un documento che ha consumato qualcosa di altri documenti
 //        (la merce di un ordine o di un reso, le righe di un preventivo, righe
 //        di commessa da emettere) o che nasce da un'offerta riapre quelle
@@ -39,6 +40,11 @@
 //    che l'operatore conosca, quindi si contano per documento d'origine
 //    invece di elencarle una a una; il NUMERO DICHIARATO resta quello del
 //    lettore (`legami`), non quello delle voci a video.
+// ⭐ L'OFFERTA: il legame e' la revisione precedente, superata, che torna
+//    emessa quando si annulla l'ultima revisione viva. E' una PROVENIENZA come
+//    l'offerta d'origine di un ordine, ma cio' che succede e' un altro: non
+//    «torna trasformabile», «torna emessa». La revisione precedente non e' un
+//    nodo del lineage: la riga mostra il solo tipo, senza link.
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
@@ -98,6 +104,8 @@ const righe = computed(() => dati.value?.righe ?? [])
 // La forma della commessa: la decide il documento della risposta, non la
 // forma delle righe (riga_nr nullo vale anche per i legami di testata).
 const daCommessa = computed(() => dati.value?.documento === SORGENTE_CODES.COMMESSA)
+// Idem per l'offerta: la sua PROVENIENZA e' la revisione precedente.
+const daOfferta = computed(() => dati.value?.documento === SORGENTE_CODES.OFFERTA_COMMERCIALE)
 
 // Scopo: le voci della finestra. Documento qualunque: una voce per legame,
 //        com'e' sempre stato. Commessa: le righe che si riaprono contate per
@@ -143,14 +151,17 @@ function documentoLabel(l) {
 //        natura e dalla riga: la PROVENIENZA (l'offerta torna trasformabile),
 //        il consumo di una RIGA (quantita' da spedire, righe da ordinare), il
 //        consumo SENZA riga (righe di commessa da emettere). Per la commessa,
-//        quante righe tornano da mandare (o da accreditare, per il reso).
+//        quante righe tornano da mandare (o da accreditare, per il reso); per
+//        l'offerta, la revisione precedente che torna emessa.
 function cosaSiRiapre(l, n) {
   if (daCommessa.value) {
     return l.origine === SORGENTE_CODES.RESO_VENDITA
       ? t('vendite.annullo_legami.commessa_da_accreditare', { n })
       : t('vendite.annullo_legami.commessa_da_mandare', { n })
   }
-  if (l.natura === NATURA_LEGAME.PROVENIENZA) return t('vendite.annullo_legami.provenienza')
+  if (l.natura === NATURA_LEGAME.PROVENIENZA) {
+    return t(daOfferta.value ? 'vendite.annullo_legami.revisione_precedente' : 'vendite.annullo_legami.provenienza')
+  }
   if (l.riga_nr == null) return t('vendite.annullo_legami.commessa')
   if (l.qta == null) return t('vendite.annullo_legami.riga_senza_qta', { riga: l.riga_nr })
   return t('vendite.annullo_legami.riga', {
@@ -220,7 +231,9 @@ function onConferma() {
       </div>
 
       <small v-if="!senzaLegami" class="app-field-hint">
-        {{ t(daCommessa ? 'vendite.annullo_legami.spiegazione_commessa' : 'vendite.annullo_legami.spiegazione') }}
+        {{ t(daCommessa ? 'vendite.annullo_legami.spiegazione_commessa'
+          : daOfferta ? 'vendite.annullo_legami.spiegazione_offerta'
+            : 'vendite.annullo_legami.spiegazione') }}
       </small>
     </div>
   </AppDialog>

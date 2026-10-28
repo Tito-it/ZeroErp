@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-26 (brief-modello-documento-vendita §14, giro 10): il passaggio a PRONTA_FATTURAZIONE del caso 8 non e' piu' un UPDATE della colonna di stato, che la porta ferma (E_DOC_STATO_SOLO_DAL_VERBO): passa da dbops.fn_pgtap_porta_a_stato (il verbo, con l'azione concessa dalla fixture). Attese invariate.
 -- pgTAP test per Zero ERP
 --
 -- Test: la riga di listino che ha dato il prezzo a una commessa e' «propagata»
@@ -224,10 +225,9 @@ SELECT vendite.fn_link_commessa_sorgente(
                             WHERE s.codice_interno = 'COMMESSA' AND s.attivo),
     p_sorgente_uid     => (SELECT commessa_id FROM t_c)::text);
 
-UPDATE vendite.commesse
-   SET stato_commessa_id = (SELECT s.id FROM vendite.stati_commessa s
-                             WHERE s.codice_interno = 'PRONTA_FATTURAZIONE')
- WHERE id = (SELECT commessa_id FROM t_c);
+-- Lo stato dal verbo (la porta rifiuta l'UPDATE): la fixture cammina la matrice
+-- e concede da se' l'azione cambia_stato_commessa.
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.commesse', (SELECT commessa_id FROM t_c), 'PRONTA_FATTURAZIONE');
 
 CREATE TEMP TABLE t_emit AS
 SELECT * FROM vendite.fn_emit_attivita_fatturabili_da_commessa(

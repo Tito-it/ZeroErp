@@ -55,8 +55,9 @@
 --   `dbops.fn_pgtap_crea_emittente_operatore()` e due clienti fatturabili con
 --   `dbops.fn_pgtap_crea_cliente_ba()`. Cosi' il file misura la stessa cosa su
 --   dbdev e su un database ricostruito dai changelog.
---   ⚠️ Articoli, stati, stili nota e tipi indirizzo si CERCANO, e va bene:
+--   ⚠️ Stati, stili nota e tipi indirizzo si CERCANO, e va bene:
 --   stanno in `80_data`, cioe' sono catalogo e ci sono ovunque.
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): le due bolle in bozza con la riga dal builder dbops.fn_pgtap_crea_ddt_senza_ordine ('DRAFT'), ciascuna sotto il contesto del suo mondo; restano scritte a mano la nota, l'indirizzo (preteso) e la riga d'intrusione del test 7, che sono il caso.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -82,65 +83,60 @@ SELECT m.lato, m.emittente_fiscale_id, c.*
   --   mondo. Il documento porta ora il BA, e il guard emittente <-> BA lo guarda.
   CROSS JOIN LATERAL dbops.fn_pgtap_crea_cliente_ba('RLS ddt ' || m.lato, NULL, m.soggetto_ruolo_id) c;
 
--- ⚠️ Stato `DRAFT` nominato per `codice_interno`, non preso col primo id: a
---   `EMESSO` scatterebbe `trgfn_ddt_gen_numero_emesso`, che pretende un
---   registro di numerazione per l'emittente — roba che questa slice non ha
---   motivo di costruire.
-CREATE TEMP TABLE _ddt AS
-WITH d AS (
-    -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia): il BA del cliente, non la sola
-    --   utility — chk_ddt_ba_utility_insieme vuole tutti e due o nessuno.
-    INSERT INTO vendite.ddt
-        (destinatario_soggetto_ruolo_id, stato_doc_ddt_id, emittente_fiscale_id, utility_id,
-         billing_account_id)
-    SELECT c.soggetto_ruolo_id,
-           (SELECT st.id FROM config.stati_doc_ddt st WHERE st.codice_interno = 'DRAFT'),
-           c.emittente_fiscale_id,
-           c.utility_id,
-           c.billing_account_id
-      FROM _clienti c
-    RETURNING id, emittente_fiscale_id
-)
-SELECT c.lato, d.id AS ddt_id, d.emittente_fiscale_id
-  FROM d JOIN _clienti c ON c.emittente_fiscale_id = d.emittente_fiscale_id;
-
--- ⚠️ `qta_operativa` va valorizzata: `trgfn_qta_from_operativa` ne deriva
---   `quantita`, e il CHECK `k_ddt_righe_qta_operativa_pos` la vuole positiva.
 -- 🔴 rev 2026-10-13 (brief-db-articoli-ammessi-per-documento D-1/D-2): l'articolo si
 --   COSTRUISCE. Prima si pescava dal catalogo (il primo per id, o il piu' recente):
 --   il primo per id e' l'onere del seed ONERE_SENZA_CONTRATTO (natura servizio), e
 --   da 20261013-42 ordine e bolla portano solo merce. Un articolo costruito ha solo
---   le proprieta' che il test gli da' (merce, non gestito a magazzino).
+--   le proprieta' che il test gli da' (merce, non gestito a magazzino). Serve
+--   anche alla riga d'intrusione del test 7.
 CREATE TEMP TABLE _art_fix AS
 SELECT dbops.fn_pgtap_crea_articolo('PGT-RLSDS-ART', false) AS id;
 
+-- La bolla di ogni mondo, IN BOZZA, con la sua riga: dal builder della bolla
+-- senza ordine. ⚠️ `DRAFT` e non oltre: a `EMESSO` scatterebbe la numerazione,
+-- che pretende un registro per l'emittente — roba che questa slice non ha
+-- motivo di costruire. ⛔ Ogni bolla si costruisce sotto il contesto del SUO
+-- operatore: la bolla e' dell'azienda di chi agisce, e il BA del suo cliente.
+CREATE TEMP TABLE _ddt (lato text, ddt_id bigint, riga_id bigint, emittente_fiscale_id bigint);
+DO $bolle$
+DECLARE m record;
+BEGIN
+    FOR m IN SELECT x.lato, x.auth_user_id, c.billing_account_id
+               FROM _mondi x JOIN _clienti c ON c.lato = x.lato
+              ORDER BY x.lato LOOP
+        PERFORM script.fn_pgtap_set_contesto_operatore(m.auth_user_id);
+        INSERT INTO _ddt
+        SELECT m.lato, b.ddt_id, b.ddt_riga_id, b.emittente_fiscale_id
+          FROM dbops.fn_pgtap_crea_ddt_senza_ordine('RLS ddt ' || m.lato, 'DRAFT',
+                   p_billing_account_id => m.billing_account_id,
+                   p_quantita           => 1,
+                   p_prezzo             => 100.00,
+                   p_articolo_id        => (SELECT id FROM _art_fix)) b;
+    END LOOP;
+END
+$bolle$;
+
 CREATE TEMP TABLE _righe AS
-WITH r AS (
-    INSERT INTO vendite.ddt_righe
-        (ddt_id, riga_nr, articolo_id, descrizione, quantita, qta_operativa, prezzo_unitario)
-    SELECT d.ddt_id, 1,
-           (SELECT id FROM _art_fix),
-           'Riga pgTAP RLS', 1, 1, 100.00
-      FROM _ddt d
-    RETURNING id, ddt_id
-)
-SELECT d.lato, r.id AS riga_id, r.ddt_id FROM r JOIN _ddt d ON d.ddt_id = r.ddt_id;
+SELECT d.lato, d.riga_id, d.ddt_id FROM _ddt d;
 
 -- ⭐ Una nota e un indirizzo per lato: sono le due tabelle la cui chiave NON si
 --   chiama `ddt_id`, e sono quindi le due in cui un refuso nella policy non
 --   farebbe rumore. `note_ddt` risale da `target_id`.
 INSERT INTO vendite.note_ddt
     (target_tipo, target_id, anchor_tipo, posizione, testo, id_stile)
-SELECT 'DDT', d.ddt_id, 'DOCUMENTO', 'HEADER', 'Nota pgTAP RLS',
+SELECT 'DDT_VENDITA', d.ddt_id, 'DOCUMENTO', 'HEADER', 'Nota pgTAP RLS',
        (SELECT s.id FROM config.note_stili s WHERE s.codice_interno = 'NORMALE')
   FROM _ddt d;
 
 -- ⚠️ Per l'ambito DDT `config.tipi_indirizzi_allowed` ammette il solo `CON`.
+--   Il builder lo scrive gia' (e' obbligatorio): qui lo si PRETENDE, perche' il
+--   test 6 non passi a vuoto se un giorno il builder smettesse di scriverlo.
 INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
 SELECT d.ddt_id,
        (SELECT ti.id FROM config.tipi_indirizzi ti WHERE ti.codice_interno = 'CON'),
        '{"pgtap": true}'::jsonb
-  FROM _ddt d;
+  FROM _ddt d
+ON CONFLICT DO NOTHING;
 
 -- ============================================================
 -- 1..2. La struttura: policy E armamento

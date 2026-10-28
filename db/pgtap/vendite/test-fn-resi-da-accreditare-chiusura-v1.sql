@@ -1,5 +1,7 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): l'ordine B2 da dbops.fn_pgtap_crea_ordine_con_righe, la commessa da dbops.fn_pgtap_crea_commessa (sorgente ROOT), le attivita' fatturate da dbops.fn_pgtap_crea_commessa_attivita con la sorgente DDT_VENDITA (E-3) e dbops.fn_pgtap_fattura_attivita; helper ca_mk_ordine, ca_mk_af e ca_fattura ritirati. Resta a mano il legame della riga MULTIPLA (il caso del 7).
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito): i resi dal builder dbops.fn_pgtap_crea_reso (i due resi A e B sulla stessa riga, nell'ordine che decide la greedy; il tipo per codice); helper ca_mk_reso ritirato, l'azione conferma_reso la concede il builder.
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, D-1): gli ordini costruiti dal builder nascono al 2026-08-05 (p_data_ordine), come gli ordini scritti a mano prima del giro 1: nessuna bolla piu' vecchia del suo ordine.
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): le bolle da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine (data con p_data); restano scritti a mano l'ordine B2 senza bolla e il legame della riga MULTIPLA (in bozza, il caso del 7) e i resi (giro 2).
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
@@ -56,14 +58,6 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
--- Dal 2026-09-28 conferma e annullo del reso sono verbi che applicano
--- l'azione conferma_reso (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-f):
--- l'operatore di fixture non ha azioni, si concede qui.
-DO $az$ BEGIN
-    PERFORM dbops.fn_pgtap_concedi_azione(
-        NULLIF(current_setting('app.current_user_id', true), '')::integer, 'conferma_reso');
-END $az$;
-
 SELECT plan(12);
 
 -- ============================================================
@@ -110,154 +104,36 @@ SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('pgtap_coda_accrediti');
 CREATE TEMP TABLE tmp_refs_ca AS
 SELECT
   c.billing_account_id,
-  c.utility_id,
-  c.istanza_utility_id,
-  script.fn_pgtap_emittente_operatore()    AS emittente_fiscale_id,
-  script.fn_pgtap_emittente_sr_operatore() AS emittente_sr_id,
-  c.soggetto_ruolo_id,
-  dbops.fn_pgtap_crea_articolo('PGT-CA-ART', false)                                                  AS articolo_id,
-  (SELECT u.id FROM catalogo.unita_misura u WHERE u.attivo IS TRUE ORDER BY u.id LIMIT 1)             AS uom_id,
-  (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)                                            AS valuta_id,
-  (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1)                        AS iva_id,
-  -- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata d'ordine nasce DRAFT,
-  --   prende le righe, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
-  --   righe non si scrivono piu' (20261008-90).
-  (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='DRAFT'      AND s.attivo ORDER BY s.id LIMIT 1) AS stato_ord_draft_id,
-  (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='DDT_VENDITA' AND s.attivo ORDER BY s.id LIMIT 1)        AS sorgente_ddt_id,
-  (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='COMMESSA'    AND s.attivo ORDER BY s.id LIMIT 1)        AS sorgente_root_id,
-  (SELECT s.id FROM config.stati_doc_reso s WHERE s.codice_interno='DRAFT' AND s.attivo ORDER BY s.id LIMIT 1)        AS stato_reso_draft_id,
-  (SELECT t.id FROM config.tipi_reso t WHERE t.codice_interno='RESO_A_CREDITO'      AND t.attivo ORDER BY t.id LIMIT 1) AS tipo_credito_id,
-  (SELECT t.id FROM config.tipi_reso t WHERE t.codice_interno='RESO_PER_RICONSEGNA' AND t.attivo ORDER BY t.id LIMIT 1) AS tipo_riconsegna_id,
-  (SELECT t.id FROM config.tipi_doc_fiscale t WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1)                           AS tipo_doc_fiscale_id,
-  (SELECT s.id FROM config.stati_doc_fiscale s WHERE s.codice_interno='DRAFT' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1) AS stato_fatt_draft_id,
-  script.fn_pgtap_registro_fattura()                     AS registro_id
+  dbops.fn_pgtap_crea_articolo('PGT-CA-ART', false) AS articolo_id
 FROM tmp_cli_ca c;
 
--- Commessa + ROOT: serve alle attivita' fatturabili (corsia DDT).
+-- Commessa + ROOT, dal builder: serve alle attivita' fatturabili (corsia DDT).
 CREATE TEMP TABLE tmp_com_ca AS
-SELECT vendite.fn_get_or_create_commessa(
-  p_billing_account_id     => (SELECT billing_account_id FROM tmp_refs_ca),
-  p_utility_id             => (SELECT utility_id FROM tmp_refs_ca),
-  p_tipo_commessa          => 'AUTO',
-  p_policy_fatturazione    => 'DA_DOCUMENTO',
-  p_fatturazione_immediata => false,
-  p_priorita_operativa     => 'NORMALE',
-  p_competenza_dal         => DATE '2026-08-01',
-  p_competenza_al          => DATE '2026-08-31',
-  p_meta                   => jsonb_build_object('test_scope','pgtap_coda_accrediti'),
-  p_force_new              => true) AS commessa_id;
-
-SELECT vendite.fn_link_commessa_sorgente(
-  p_commessa_id      => (SELECT commessa_id FROM tmp_com_ca),
-  p_sorgente_tipo_id => (SELECT sorgente_root_id FROM tmp_refs_ca),
-  p_sorgente_uid     => (SELECT commessa_id FROM tmp_com_ca)::text,
-  p_sorgente_riga    => 1,
-  p_meta             => '{}'::jsonb);
+SELECT commessa_id
+  FROM dbops.fn_pgtap_crea_commessa('pgtap_coda_accrediti', NULL, (SELECT billing_account_id FROM tmp_refs_ca),
+                                    p_con_sorgente_root => true);
 
 -- ============================================================
 -- Helper (padre e figlio in due istruzioni: le CTE che scrivono condividono
 -- la snapshot e le policy negano fail-closed)
 -- ============================================================
 
--- Un ordine CONFERMATO con una riga da p_qta, SENZA bolla: serve all'ordine B2
--- del caso 2, che la bolla la riceve solo per legame. Le bolle da ordine
--- vengono dal builder dbops.fn_pgtap_crea_ddt_da_ordine (cliente e articolo
--- del file, riga a 20, trigger CONSEGNATO, la data scelta).
-CREATE OR REPLACE FUNCTION pg_temp.ca_mk_ordine(p_qta numeric)
-RETURNS TABLE(ordine_id bigint, ordine_uid uuid, ordine_riga_id bigint) AS $$
-DECLARE r RECORD; v_ord bigint; v_uid uuid; v_orr bigint;
-BEGIN
-  SELECT * INTO r FROM tmp_refs_ca;
-  INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
-    valuta_id, data, fatturazione_trigger, emittente_fiscale_id, storicizza, meta)
-  VALUES (r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_draft_id, r.valuta_id,
-          DATE '2026-08-05', 'CONSEGNATO', r.emittente_fiscale_id, false,
-          jsonb_build_object('test_scope','pgtap_coda_accrediti'))
-  RETURNING id, uid INTO v_ord, v_uid;
-  INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
-    qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
-  VALUES (v_ord, 1, r.articolo_id, 'Riga coda accrediti pgTAP', p_qta, p_qta, 20, r.iva_id,
-          true, false, jsonb_build_object('test_scope','pgtap_coda_accrediti'))
-  RETURNING id INTO v_orr;
-  -- ⚠️ rev 2026-10-08 (D-1): righe scritte in bozza, ora la conferma vera (20261008-90).
-  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', v_ord, 'CONFERMATO');
-  RETURN QUERY SELECT v_ord, v_uid, v_orr;
-END $$ LANGUAGE plpgsql;
-
--- Un'attivita' fatturabile NORMALE sul segmento dato.
-CREATE OR REPLACE FUNCTION pg_temp.ca_mk_af(p_segment varchar, p_qta numeric)
-RETURNS void AS $$
-DECLARE r RECORD;
-BEGIN
-  SELECT * INTO r FROM tmp_refs_ca;
-  PERFORM vendite.fn_upsert_commessa_attivita(
-    p_commessa_id => (SELECT commessa_id FROM tmp_com_ca),
-    -- La riga NORMALE ha la sua sorgente (vincolo 20261012-27).
-    p_sorgente_tipo_id => (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
-    p_sorgente_uid => ((SELECT commessa_id FROM tmp_com_ca))::text,
-    p_segment_key => p_segment, p_articolo_id => r.articolo_id,
-    p_istanza_utility_id => r.istanza_utility_id, p_data_attivita => DATE '2026-08-15',
-    p_uom_id => r.uom_id, p_quantita => p_qta,
-    p_competenza_mese => DATE '2026-08-01',
-    p_competenza_dal => DATE '2026-08-01', p_competenza_al => DATE '2026-08-31',
-    p_prezzo_snapshot => 20, p_prezzo_base_snapshot => NULL, p_origine_prezzo => NULL,
-    p_tipo_variazione_applicata => NULL, p_valore_variazione_applicata => NULL,
-    p_promo_id => NULL, p_contratto_id => NULL,
-    p_categoria_cliente_id_snapshot => NULL, p_classe_utenza_id_snapshot => NULL,
-    p_tipo_doc_fiscale_id => r.tipo_doc_fiscale_id, p_valuta_id => r.valuta_id,
-    p_stato_approvazione => 'APPROVATA', p_stato_emissione => 'NON_EMESSA',
-    p_tipo_movimento => 'NORMALE');
-  PERFORM vendite.fn_emit_attivita_fatturabili_da_commessa((SELECT commessa_id FROM tmp_com_ca), true, false);
-END $$ LANGUAGE plpgsql;
-
--- Una FATTURA sul segmento DDT (l'accredito copia il prezzo da fatture_righe).
-CREATE OR REPLACE FUNCTION pg_temp.ca_fattura(p_segment varchar, p_qta numeric)
+-- Una FATTURA sul segmento DDT (l'accredito copia il prezzo da fatture_righe):
+-- l'attivita' sulla riga della bolla (sorgente DDT_VENDITA, E-3), emessa e
+-- agganciata dal builder. Restituisce la riga di fattura.
+CREATE OR REPLACE FUNCTION pg_temp.ca_fattura(p_ddt_uid uuid, p_ddt_riga_id bigint, p_qta numeric)
 RETURNS bigint AS $$
-DECLARE r RECORD; v_af bigint; v_fatt bigint; v_riga bigint;
+DECLARE v_att bigint; v_riga bigint;
 BEGIN
-  SELECT * INTO r FROM tmp_refs_ca;
-  PERFORM pg_temp.ca_mk_af(p_segment, p_qta);
-  SELECT af.id INTO v_af
-    FROM vendite.attivita_fatturabili af
-    JOIN vendite.commesse_attivita ca ON ca.id = af.commessa_attivita_id
-   WHERE ca.segment_key = p_segment ORDER BY af.id DESC LIMIT 1;
-  INSERT INTO vendite.fatture (registro_id, data, tipo_doc_fiscale_id, stato_doc_fiscale_id,
-      emittente_soggetto_ruolo_id, billing_account_id, utility_id, valuta_id, tasso_cambio, meta)
-  VALUES (r.registro_id, DATE '2026-08-31', r.tipo_doc_fiscale_id, r.stato_fatt_draft_id,
-      r.emittente_sr_id, r.billing_account_id, r.utility_id, r.valuta_id, 1,
-      jsonb_build_object('test_scope','pgtap_coda_accrediti'))
-  RETURNING id INTO v_fatt;
-  INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, articolo_id, descrizione,
-      uom_id, qta, prezzo_unitario, iva_id, imponibile_riga, competenza_dal, competenza_al)
-  VALUES (v_fatt, 1, r.articolo_id, 'Riga fattura pgTAP', r.uom_id, p_qta, 20,
-      r.iva_id, p_qta * 20, script.fn_data_operativa(), script.fn_data_operativa())
-  RETURNING id INTO v_riga;
-  UPDATE vendite.attivita_fatturabili SET fattura_riga_id = v_riga WHERE id = v_af;
+  SELECT a.attivita_id INTO v_att
+    FROM dbops.fn_pgtap_crea_commessa_attivita((SELECT commessa_id FROM tmp_com_ca), 20,
+           (SELECT articolo_id FROM tmp_refs_ca),
+           p_sorgente_codice => 'DDT_VENDITA', p_sorgente_uid => p_ddt_uid::text,
+           p_sorgente_riga_id => p_ddt_riga_id, p_quantita => p_qta,
+           p_competenza_dal => DATE '2026-08-01', p_competenza_al => DATE '2026-08-31') a;
+  SELECT f.fattura_riga_id INTO v_riga
+    FROM dbops.fn_pgtap_fattura_attivita('pgtap_coda_accrediti', ARRAY[v_att]) f;
   RETURN v_riga;
-END $$ LANGUAGE plpgsql;
-
--- Un reso del tipo dato, confermato.
-CREATE OR REPLACE FUNCTION pg_temp.ca_mk_reso(p_ddt_riga bigint, p_ddt_uid uuid, p_qta numeric, p_tipo_id bigint)
-RETURNS TABLE(reso_id bigint, resi_riga_id bigint) AS $$
-DECLARE r RECORD; v_reso bigint; v_riga bigint;
-BEGIN
-  SELECT * INTO r FROM tmp_refs_ca;
-  INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_uid, storicizza, meta)
-  VALUES (r.stato_reso_draft_id, r.sorgente_ddt_id, p_ddt_uid, false,
-          jsonb_build_object('test_scope','pgtap_coda_accrediti'))
-  RETURNING id INTO v_reso;
-  INSERT INTO vendite.resi_righe (reso_id, riga_nr, ddt_riga_id, ordine_riga_id,
-      articolo_id, descrizione, qta_operativa, uom_operativa_id, factor_to_base,
-      tipo_reso_id, storicizza)
-  SELECT v_reso, 1, dr.id,
-         (SELECT f.ordine_riga_id FROM vendite.ordini_righe_fulfillment f
-           WHERE f.ddt_riga_id = dr.id ORDER BY f.id LIMIT 1),
-         dr.articolo_id, dr.descrizione, p_qta, dr.uom_operativa_id, dr.factor_to_base,
-         p_tipo_id, false
-    FROM vendite.ddt_righe dr WHERE dr.id = p_ddt_riga
-  RETURNING id INTO v_riga;
-  PERFORM vendite.fn_conferma_reso(v_reso);
-  RETURN QUERY SELECT v_reso, v_riga;
 END $$ LANGUAGE plpgsql;
 
 -- Il confronto fn(seme) = vista filtrata COME LA FILTRA IL BACKEND (il BB
@@ -299,14 +175,25 @@ SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('coda accrediti 1', 'DRAFT', p_b
          p_quantita => 10, p_data => DATE '2026-08-13',
          p_data_ordine => DATE '2026-08-05');
 CREATE TEMP TABLE tmp_o1 AS SELECT ordine_id, ordine_uid, ordine_riga_id FROM tmp_p;
-CREATE TEMP TABLE tmp_ob AS SELECT * FROM pg_temp.ca_mk_ordine(10);
+-- L'ordine B2, confermato e SENZA bolla: la bolla la riceve solo per legame.
+CREATE TEMP TABLE tmp_ob AS
+SELECT ordine_id, ordine_uid, ordine_riga_id
+  FROM dbops.fn_pgtap_crea_ordine_con_righe('coda accrediti B2', 'CONFERMATO',
+         (SELECT billing_account_id FROM tmp_refs_ca), p_quantita => 10, p_prezzo => 20,
+         p_articolo_id => (SELECT articolo_id FROM tmp_refs_ca), p_fatturazione_trigger => 'CONSEGNATO',
+         p_data_ordine => DATE '2026-08-05');
 INSERT INTO vendite.ordini_righe_fulfillment (ordine_riga_id, ddt_riga_id, qta_evasa, storicizza)
 SELECT (SELECT ordine_riga_id FROM tmp_ob), p.ddt_riga_id, p.quantita, false
   FROM tmp_p p;
 SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', (SELECT ddt_id FROM tmp_p), 'CONSEGNATO');
-CREATE TEMP TABLE tmp_fr AS SELECT pg_temp.ca_fattura(script.fn_segment_key('DDT_VENDITA', (SELECT ddt_uid FROM tmp_p)::text, (SELECT ddt_riga_id FROM tmp_p)), 6) AS fattura_riga_id;
-CREATE TEMP TABLE tmp_ra AS SELECT * FROM pg_temp.ca_mk_reso((SELECT ddt_riga_id FROM tmp_p), (SELECT ddt_uid FROM tmp_p), 4, (SELECT tipo_credito_id FROM tmp_refs_ca));
-CREATE TEMP TABLE tmp_rb AS SELECT * FROM pg_temp.ca_mk_reso((SELECT ddt_riga_id FROM tmp_p), (SELECT ddt_uid FROM tmp_p), 3, (SELECT tipo_credito_id FROM tmp_refs_ca));
+CREATE TEMP TABLE tmp_fr AS SELECT pg_temp.ca_fattura((SELECT ddt_uid FROM tmp_p), (SELECT ddt_riga_id FROM tmp_p), 6) AS fattura_riga_id;
+-- I due resi a credito, confermati, dal builder: A prima di B (la greedy va per resi_riga_id).
+CREATE TEMP TABLE tmp_ra AS
+SELECT * FROM dbops.fn_pgtap_crea_reso('coda accrediti 1', (SELECT ddt_id FROM tmp_p), 4, 'RESO_A_CREDITO',
+         p_ddt_riga_id => (SELECT ddt_riga_id FROM tmp_p));
+CREATE TEMP TABLE tmp_rb AS
+SELECT * FROM dbops.fn_pgtap_crea_reso('coda accrediti 1', (SELECT ddt_id FROM tmp_p), 3, 'RESO_A_CREDITO',
+         p_ddt_riga_id => (SELECT ddt_riga_id FROM tmp_p));
 
 SELECT results_eq(
   $q$SELECT q.resi_riga_id = (SELECT resi_riga_id FROM tmp_ra), q.accredito_dovuto, q.etichetta::text, q.tenuti, q.fatturati
@@ -368,8 +255,10 @@ SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('coda accrediti 4', p_stato_codi
          p_fatturazione_trigger => 'CONSEGNATO',
          p_quantita => 5, p_data => DATE '2026-08-14',
          p_data_ordine => DATE '2026-08-05');
-SELECT pg_temp.ca_fattura(script.fn_segment_key('DDT_VENDITA', (SELECT ddt_uid FROM tmp_p3)::text, (SELECT ddt_riga_id FROM tmp_p3)), 5);
-CREATE TEMP TABLE tmp_rc AS SELECT * FROM pg_temp.ca_mk_reso((SELECT ddt_riga_id FROM tmp_p3), (SELECT ddt_uid FROM tmp_p3), 2, (SELECT tipo_riconsegna_id FROM tmp_refs_ca));
+SELECT pg_temp.ca_fattura((SELECT ddt_uid FROM tmp_p3), (SELECT ddt_riga_id FROM tmp_p3), 5);
+CREATE TEMP TABLE tmp_rc AS
+SELECT * FROM dbops.fn_pgtap_crea_reso('coda accrediti 4', (SELECT ddt_id FROM tmp_p3), 2, 'RESO_PER_RICONSEGNA',
+         p_ddt_riga_id => (SELECT ddt_riga_id FROM tmp_p3));
 
 SELECT results_eq(
   $q$SELECT q.accredito_dovuto, q.etichetta::text, q.blocco_codice IS NULL, pg_temp.ca_diff_ddt((SELECT ddt_id FROM tmp_p3))
@@ -387,7 +276,9 @@ SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('coda accrediti 5', p_stato_codi
          p_fatturazione_trigger => 'CONSEGNATO',
          p_quantita => 5, p_data => DATE '2026-08-15',
          p_data_ordine => DATE '2026-08-05');
-CREATE TEMP TABLE tmp_rd AS SELECT * FROM pg_temp.ca_mk_reso((SELECT ddt_riga_id FROM tmp_p4), (SELECT ddt_uid FROM tmp_p4), 2, (SELECT tipo_credito_id FROM tmp_refs_ca));
+CREATE TEMP TABLE tmp_rd AS
+SELECT * FROM dbops.fn_pgtap_crea_reso('coda accrediti 5', (SELECT ddt_id FROM tmp_p4), 2, 'RESO_A_CREDITO',
+         p_ddt_riga_id => (SELECT ddt_riga_id FROM tmp_p4));
 
 SELECT is(
   (SELECT count(*) FROM vendite.fn_resi_da_accreditare(ARRAY[(SELECT ddt_id FROM tmp_p4)], NULL))::text

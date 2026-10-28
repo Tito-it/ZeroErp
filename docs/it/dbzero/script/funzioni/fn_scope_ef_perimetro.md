@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_scope_ef_perimetro(p_perimetro bigint[], p_emittente_fiscale_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

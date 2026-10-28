@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): CURATO — sceglieva dal DB un lotto pre-fiscale con fatture e uno con righe accreditate, e saltava 10 asserzioni su 14. Ora i due lotti si costruiscono: commessa (dbops.fn_pgtap_crea_commessa), lotto DRAFT (dbops.fn_pgtap_crea_lotto), fattura agganciata nel lotto (dbops.fn_pgtap_fattura_attivita con p_lotto_id), una corsa COMPLETATA dalle primitive della pipeline; per il 13 bolla, reso a credito e accredito (dbops.fn_pgtap_crea_ddt_da_ordine, fn_pgtap_crea_reso, vendite.fn_accredita_riga_reso). Gli skip del 4, 8 e 13 ritirati: a fixture costruita un'assenza e' un rosso. Il lotto resta DRAFT: a EMESSA la fattura della madre del lotto non arriva (indirizzi FATT, intestazione).
 -- pgTAP test per Zero ERP
 -- Test: ritorno di un lotto a DRAFT (piano-db-ritorno-lotto-a-draft.md, A4)
 -- ------------------------------------------------------------
@@ -21,13 +22,14 @@
 --   riemettere. Lo stesso campo decide lo stadio nel cruscotto competenza,
 --   che non guarda mai lo stato fiscale della fattura.
 --
--- ⚠️ FIXTURE NON COSTRUIBILE DA ZERO, e detto invece che nascosto.
---   Un lotto EMESSA con fatture, righe e attivita' agganciate e' il
---   prodotto di due step di pipeline: non si fabbrica in un pgTAP senza
---   riscrivere la pipeline. Il file quindi SCEGLIE un lotto pre-fiscale
---   reale e lavora dentro BEGIN/ROLLBACK. Se non ce ne sono, i test di
---   comportamento si SALTANO invece di fallire: un rosso da assenza di dati
---   non dice niente a nessuno. I test 1-3 sono strutturali e girano sempre.
+-- ⭐ FIXTURE COSTRUITA (rev 2026-10-25). Fino a oggi il file SCEGLIEVA un
+--   lotto pre-fiscale reale e, se non c'era, saltava i test di comportamento:
+--   su un database da zero (CI) e sullo scratch passava muto. Ora il lotto
+--   pre-fiscale con la fattura, la riga e l'attivita' agganciate lo danno i
+--   builder di dbops e le madri che chiamano. ⚠️ Il lotto e' DRAFT, non
+--   EMESSA: la fattura in bozza della madre del lotto non e' emettibile senza
+--   indirizzi e intestazione, che nessun builder scrive; il criterio del file
+--   (DRAFT o EMESSA) lo ha sempre ammesso. I test 1-3 sono strutturali.
 -- ------------------------------------------------------------
 -- Indice test
 -- 1) Seed: la transizione EMESSA -> DRAFT del LOTTO non ha vincolo di tipo
@@ -121,6 +123,42 @@ SELECT ok(
 --   test 11: e' il solo dato del payload che dopo l'UPDATE non sarebbe piu'
 --   ricostruibile, quindi e' anche il solo che un'asserzione «dice il vero»
 --   deve catturare prima.
+-- ⭐ rev 2026-10-25 (giro D-4): il lotto si COSTRUISCE. Una commessa emittibile
+--   con la sorgente ROOT (dbops.fn_pgtap_crea_commessa), il lotto DRAFT del suo
+--   cliente (dbops.fn_pgtap_crea_lotto), la fattura in bozza nel lotto con la
+--   riga, il lucchetto e l'aggancio (dbops.fn_pgtap_fattura_attivita), poi il
+--   lotto a EMESSA per la matrice (dbops.fn_pgtap_porta_a_stato): il caso reale
+--   che ha aperto il disegno. Una corsa COMPLETATA dalle primitive della
+--   pipeline (fn_start_lotto_task_run / fn_complete_lotto_task_run): senza, il
+--   10 sarebbe verde per sottrazione.
+CREATE TEMP TABLE tmp_comm_rld AS
+SELECT c.* FROM dbops.fn_pgtap_crea_commessa('riporta lotto', 'PRONTA_FATTURAZIONE',
+                                             p_con_sorgente_root => true) c;
+
+CREATE TEMP TABLE tmp_lotto_mk_rld AS
+SELECT l.lotto_id, l.lock_batch_id
+  FROM tmp_comm_rld c
+  JOIN vendite.commesse_attivita ca ON ca.id = c.attivita_id,
+       dbops.fn_pgtap_crea_lotto('riporta lotto', 'DRAFT', c.billing_account_id,
+                                 ca.tipo_doc_fiscale_id, p_del_cliente => true) l;
+
+CREATE TEMP TABLE tmp_fatt_rld AS
+SELECT * FROM dbops.fn_pgtap_fattura_attivita('riporta lotto',
+         ARRAY[(SELECT attivita_id FROM tmp_comm_rld)], (SELECT lotto_id FROM tmp_lotto_mk_rld));
+
+
+CREATE TEMP TABLE tmp_run_mk_rld AS
+SELECT r.task_run_id AS id
+  FROM vendite.fn_start_lotto_task_run(
+         p_lotto_id             => (SELECT lotto_id FROM tmp_lotto_mk_rld),
+         p_pipeline_id          => (SELECT p.id FROM vendite.fatturazione_pipeline p ORDER BY p.id LIMIT 1),
+         p_stato_doc_fiscale_id => (SELECT fl.stato_doc_fiscale_id FROM vendite.fatturazione_lotti fl
+                                     WHERE fl.id = (SELECT lotto_id FROM tmp_lotto_mk_rld)),
+         p_task_code            => 'pull_attivita_da_commessa') AS r;
+SELECT vendite.fn_complete_lotto_task_run((SELECT id FROM tmp_run_mk_rld));
+
+-- Il soggetto, con lo stesso criterio di prima: pre-fiscale, con fatture, e
+-- riportabile per la funzione che il test collauda.
 CREATE TEMP TABLE tmp_lotto_rld AS
 SELECT fl.id,
        fl.lock_batch_id,
@@ -128,21 +166,12 @@ SELECT fl.id,
        (SELECT count(*) FROM vendite.fatturazione_lotti_fatture lf WHERE lf.lotto_id = fl.id) AS n_fatture
   FROM vendite.fatturazione_lotti fl
   JOIN config.stati_doc_fiscale s ON s.id = fl.stato_doc_fiscale_id
- WHERE s.codice_interno IN ('DRAFT', 'EMESSA')
+ WHERE fl.id = (SELECT lotto_id FROM tmp_lotto_mk_rld)
+   AND s.codice_interno IN ('DRAFT', 'EMESSA')
    AND EXISTS (SELECT 1 FROM vendite.fatturazione_lotti_fatture lf WHERE lf.lotto_id = fl.id)
-   -- ⭐ rev 2026-08-22: la fixture NON ri-elenca i motivi ostativi, li CHIEDE.
-   --   Prima qui c'era la copia a mano di uno solo di essi (fatture numerate),
-   --   e ha smesso di bastare il giorno in cui ne e' nato un quarto — righe
-   --   gia' rettificate: la fixture sceglieva un lotto che la funzione
-   --   legittimamente rifiuta, e il test diventava rosso accusando il codice
-   --   invece della propria selezione.
-   --   Chiedendolo alla stessa funzione che il test collauda, un motivo nuovo
-   --   non rompe piu' la scelta del soggetto. ⚠️ E non rende il test cieco:
-   --   cio' che si verifica sotto e' il COMPORTAMENTO del ritorno in bozza,
-   --   non l'elenco dei motivi — quello ha i suoi test.
-   AND script.fn_check_lotto_riportabile_a_draft(fl.id) = '[]'::jsonb
- ORDER BY fl.id DESC
- LIMIT 1;
+   -- ⭐ rev 2026-08-22: la fixture NON ri-elenca i motivi ostativi, li CHIEDE
+   --   alla stessa funzione che il test collauda.
+   AND script.fn_check_lotto_riportabile_a_draft(fl.id) = '[]'::jsonb;
 
 -- Le commesse_attivita che il ritorno dovra' rimettere in coda: si fotografano
 -- ADESSO, perche' dopo la pulizia il legame (fattura_riga_id) non esiste piu'.
@@ -164,12 +193,9 @@ SELECT count(*) AS n
   FROM vendite.fatturazione_lotti_task_runs
  WHERE lotto_id = (SELECT id FROM tmp_lotto_rld);
 
-SELECT CASE
-  WHEN NOT EXISTS (SELECT 1 FROM tmp_lotto_rld)
-    THEN skip('nessun lotto pre-fiscale con fatture su questo DB', 9)
-  ELSE ok((SELECT n_fatture FROM tmp_lotto_rld) > 0,
-          '4) Fixture: lotto pre-fiscale con almeno una fattura')
-END;
+-- ⛔ Niente skip: il lotto e' costruito, e un'assenza qui e' un rosso.
+SELECT ok((SELECT n_fatture FROM tmp_lotto_rld) > 0,
+          '4) Fixture: lotto pre-fiscale con almeno una fattura');
 
 -- ============================================================
 -- 5) Il guard sul numero
@@ -255,8 +281,6 @@ END;
 -- passerebbe anche se il ritorno ne dimenticasse meta'.
 SELECT CASE
   WHEN NOT EXISTS (SELECT 1 FROM tmp_lotto_rld) THEN NULL
-  WHEN NOT EXISTS (SELECT 1 FROM tmp_ca_rld)
-    THEN skip('il lotto scelto non ha commesse_attivita agganciate', 1)
   ELSE ok(
     (SELECT count(*) FROM vendite.commesse_attivita ca
       WHERE ca.id IN (SELECT id FROM tmp_ca_rld) AND ca.stato_emissione = 'EMESSA') = 0,
@@ -416,13 +440,52 @@ END;
 --   scelto contro `throws_ok('P0001')`: non «e' un errore di dominio» ma
 --   QUALE — `E_LOTTO_NON_RIPORTABILE_A_DRAFT` e `E_FATTURE_RIGHE_RETTIFICATE`
 --   sono due codici diversi, mentre erano lo stesso SQLSTATE.
+-- ⭐ rev 2026-10-25 (giro D-4): il soggetto si COSTRUISCE. Una bolla consegnata
+--   (dbops.fn_pgtap_crea_ddt_da_ordine), l'attivita' sulla sua riga (sorgente
+--   DDT_VENDITA) fatturata nel lotto DRAFT del cliente
+--   (dbops.fn_pgtap_fattura_attivita con p_lotto_id), un reso a credito
+--   confermato (dbops.fn_pgtap_crea_reso) e l'accredito col verbo vero
+--   (vendite.fn_accredita_riga_reso): la riga di fattura e' RETTIFICATA.
+CREATE TEMP TABLE tmp_ddt_rett_rld AS
+SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('riporta lotto rettificato', 'CONSEGNATO');
+
+CREATE TEMP TABLE tmp_comm_rett_rld AS
+SELECT c.* FROM dbops.fn_pgtap_crea_commessa('riporta lotto rettificato', NULL,
+                  (SELECT billing_account_id FROM tmp_ddt_rett_rld), p_con_sorgente_root => true) c;
+
+CREATE TEMP TABLE tmp_att_rett_rld AS
+SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita((SELECT commessa_id FROM tmp_comm_rett_rld), 25,
+         (SELECT articolo_id FROM tmp_ddt_rett_rld),
+         p_sorgente_codice  => 'DDT_VENDITA',
+         p_sorgente_uid     => (SELECT ddt_uid FROM tmp_ddt_rett_rld)::text,
+         p_sorgente_riga_id => (SELECT ddt_riga_id FROM tmp_ddt_rett_rld),
+         p_quantita         => 10);
+
+CREATE TEMP TABLE tmp_lotto_mk_rett_rld AS
+SELECT l.lotto_id
+  FROM tmp_comm_rett_rld c, tmp_att_rett_rld a
+  JOIN vendite.commesse_attivita ca ON ca.id = a.attivita_id,
+       dbops.fn_pgtap_crea_lotto('riporta lotto rettificato', 'DRAFT', c.billing_account_id,
+                                 ca.tipo_doc_fiscale_id, p_del_cliente => true) l;
+
+CREATE TEMP TABLE tmp_fatt_rett_rld AS
+SELECT * FROM dbops.fn_pgtap_fattura_attivita('riporta lotto rettificato',
+         ARRAY[(SELECT attivita_id FROM tmp_att_rett_rld)], (SELECT lotto_id FROM tmp_lotto_mk_rett_rld));
+
+CREATE TEMP TABLE tmp_reso_rett_rld AS
+SELECT * FROM dbops.fn_pgtap_crea_reso('riporta lotto rettificato', (SELECT ddt_id FROM tmp_ddt_rett_rld), 4,
+         'RESO_A_CREDITO', p_ddt_riga_id => (SELECT ddt_riga_id FROM tmp_ddt_rett_rld));
+
+CREATE TEMP TABLE tmp_acc_rett_rld AS
+SELECT * FROM vendite.fn_accredita_riga_reso((SELECT resi_riga_id FROM tmp_reso_rett_rld));
+
+-- Il soggetto, col criterio di prima: il PRIMO motivo ostativo e' l'accredito.
 CREATE TEMP TABLE tmp_lotto_rett_rld AS
 SELECT fl.id
   FROM vendite.fatturazione_lotti fl
- WHERE script.fn_check_lotto_riportabile_a_draft(fl.id) -> 0 ->> 'reason'
-       = 'RIGHE_RETTIFICATE'
- ORDER BY fl.id DESC
- LIMIT 1;
+ WHERE fl.id = (SELECT lotto_id FROM tmp_lotto_mk_rett_rld)
+   AND script.fn_check_lotto_riportabile_a_draft(fl.id) -> 0 ->> 'reason'
+       = 'RIGHE_RETTIFICATE';
 
 -- Il verbo in una funzione a parte, che restituisce il CODICE: cosi'
 -- l'asserzione confronta due stringhe e non dipende da come e' scritta la
@@ -438,14 +501,11 @@ EXCEPTION WHEN OTHERS THEN
   RETURN COALESCE(NULLIF(v_cod, ''), 'SQLSTATE:' || SQLSTATE);
 END $$ LANGUAGE plpgsql;
 
-SELECT CASE
-  WHEN NOT EXISTS (SELECT 1 FROM tmp_lotto_rett_rld)
-    THEN skip('nessun lotto il cui PRIMO motivo ostativo sia l''accredito: caso non riproducibile sui dati presenti', 1)
-  ELSE is(
+-- ⛔ Niente skip: il lotto e' costruito, e un'assenza qui e' un rosso.
+SELECT is(
          pg_temp.rld_codice((SELECT id FROM tmp_lotto_rett_rld)),
          'E_FATTURE_RIGHE_RETTIFICATE',
-         '13) un lotto con righe gia accreditate viene rifiutato, e col codice giusto')
-END;
+         '13) un lotto con righe gia accreditate viene rifiutato, e col codice giusto');
 
 
 -- ============================================================

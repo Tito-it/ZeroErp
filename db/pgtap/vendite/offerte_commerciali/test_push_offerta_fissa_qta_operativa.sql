@@ -1,6 +1,9 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
+-- rev 2026-10-26 (brief-modello-documento-vendita §13, giro 9): lo stato dell'offerta si
+--   cambia solo dal verbo; la fixture arriva ad ACCETTATA con dbops.fn_pgtap_porta_a_stato
+--   invece dei due UPDATE di stato.
 --
 -- Test: regressione smoke 8b del refactor quantita/qta_operativa.
 --       Prima del refactor un'offerta FISSA aveva qta_operativa NULL: al push
@@ -83,13 +86,10 @@ SELECT o.id, ctx.articolo_id, 'AGGIUNTA', 'UNA_TANTUM', 'FISSA', 100, 3
   FROM vendite.offerte_commerciali o, tmp_pf_ctx ctx
  WHERE o.meta->>'pgtap_pushfissa'='1';
 
--- Transizioni BOZZA -> EMESSA -> ACCETTATA
-UPDATE vendite.offerte_commerciali
-   SET stato_doc_offerta_id = (SELECT stato_emessa_id FROM tmp_pf_ctx)
- WHERE meta->>'pgtap_pushfissa'='1';
-UPDATE vendite.offerte_commerciali
-   SET stato_doc_offerta_id = (SELECT stato_accettata_id FROM tmp_pf_ctx)
- WHERE meta->>'pgtap_pushfissa'='1';
+-- Transizioni BOZZA -> EMESSA -> ACCETTATA, dal verbo (rev 2026-10-26, giro 9)
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', o.id, 'ACCETTATA')
+  FROM vendite.offerte_commerciali o
+ WHERE o.meta->>'pgtap_pushfissa'='1';
 
 SELECT ok(
     EXISTS(SELECT 1 FROM vendite.offerte_commerciali o

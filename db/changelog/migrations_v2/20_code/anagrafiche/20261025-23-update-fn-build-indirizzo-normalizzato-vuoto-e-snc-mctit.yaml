@@ -1,0 +1,144 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA NORMALIZZAZIONE DELL'INDIRIZZO: IL VUOTO E' NULL, L'SNC E' SOLO IL CIVICO NULL
+#   Brief: brief-db-unicita-civico-indirizzi-dettaglio §4 (D2-a e D3-a di Tid,
+#   2026-10-25).
+#
+#   * D3-a: l'indice unico passa alle colonne nude NULLS NOT DISTINCT
+#     (20261025-26). La stringa vuota diventa NULL qui (NULLIF), cosi' «vuoto»
+#     ha una forma sola: prima '' e NULL erano la stessa chiave solo grazie ai
+#     COALESCE dell'indice vecchio;
+#   * D2-a: SNC = civico NULL, una forma sola. Il civico <= 0 lo rifiuta il
+#     guard 20261025-24 (il CHECK 20261025-27 e' la rete): il ramo «civico = 0
+#     vale SNC» si ritira.
+#
+#   E' l'unica sorgente della normalizzazione: la usano il trigger
+#   trgfn_indirizzi_dettaglio_normalize, il BB fn_get_or_create_indirizzo_dettaglio
+#   (20261025-25) e script.fn_check_indirizzo_duplicato. Firma e OUT invariati,
+#   ancorati come in 20260317-03; corpo dalla doc auto-generata.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261025-23-update-fn-build-indirizzo-normalizzato-vuoto-e-snc-mctit.yaml
+
+  - changeSet:
+      id: 20261025-23-update-fn-build-indirizzo-normalizzato-vuoto-e-snc
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.fn_build_indirizzo_normalizzato: le colonne strutturali vuote diventano NULL
+        (NULLIF, D3-a) e l'SNC nasce solo dal civico NULL (D2-a, il ramo civico = 0 si ritira).
+        Brief: brief-db-unicita-civico-indirizzi-dettaglio §4.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_build_indirizzo_normalizzato(
+                p_stradario_id  config.stradario.id%TYPE,
+                p_civico        anagrafiche.indirizzi_dettaglio.civico%TYPE           DEFAULT NULL,
+                p_estensione    anagrafiche.indirizzi_dettaglio.estensione_civico%TYPE DEFAULT NULL,
+                p_palazzina     anagrafiche.indirizzi_dettaglio.palazzina%TYPE        DEFAULT NULL,
+                p_scala         anagrafiche.indirizzi_dettaglio.scala%TYPE            DEFAULT NULL,
+                p_piano         anagrafiche.indirizzi_dettaglio.piano%TYPE            DEFAULT NULL,
+                p_interno       anagrafiche.indirizzi_dettaglio.interno%TYPE          DEFAULT NULL,
+                -- OUT params: tutti i campi calcolati
+                OUT o_estensione_civico       anagrafiche.indirizzi_dettaglio.estensione_civico%TYPE,
+                OUT o_palazzina               anagrafiche.indirizzi_dettaglio.palazzina%TYPE,
+                OUT o_scala                   anagrafiche.indirizzi_dettaglio.scala%TYPE,
+                OUT o_piano                   anagrafiche.indirizzi_dettaglio.piano%TYPE,
+                OUT o_interno                 anagrafiche.indirizzi_dettaglio.interno%TYPE,
+                OUT o_via_norm                anagrafiche.indirizzi_dettaglio.via_norm%TYPE,
+                OUT o_civico_norm             anagrafiche.indirizzi_dettaglio.civico_norm%TYPE,
+                OUT o_indirizzo_normalizzato  anagrafiche.indirizzi_dettaglio.indirizzo_normalizzato%TYPE
+              )
+              RETURNS record
+              LANGUAGE plpgsql
+              STABLE
+              PARALLEL SAFE
+              SECURITY INVOKER
+              AS $function$
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Centralizza TUTTA la logica di normalizzazione indirizzi.
+                --   Riceve i campi raw, ritorna tutti i campi calcolati.
+                --   Unica source of truth: il trigger, il BB
+                --   fn_get_or_create_indirizzo_dettaglio e
+                --   fn_check_indirizzo_duplicato la chiamano.
+                --
+                -- OUT params:
+                --   o_estensione_civico:      normalizzata (UPPER+BTRIM, vuoto -> NULL, prefisso '/')
+                --   o_palazzina:              normalizzata (UPPER+BTRIM, vuoto -> NULL)
+                --   o_scala:                  normalizzata (UPPER+BTRIM, vuoto -> NULL)
+                --   o_piano:                  normalizzato (UPPER+BTRIM, vuoto -> NULL)
+                --   o_interno:                normalizzato (UPPER+BTRIM, vuoto -> NULL)
+                --   o_via_norm:               UPPER(tipo_toponimo + nome_strada)
+                --   o_civico_norm:            civico + estensione oppure 'SNC' (civico NULL)
+                --   o_indirizzo_normalizzato: stringa completa
+                --
+                -- ⚠️ Via non risolta in vw_indirizzo_completo: TUTTI gli OUT
+                --   restano NULL, anche le colonne strutturali. Chi cerca con
+                --   questi valori deve fermarsi su o_via_norm NULL (D4).
+                -- =========================================================
+
+                -- Guard
+                IF p_stradario_id IS NULL OR p_stradario_id <= 0 THEN
+                  RETURN;
+                END IF;
+
+                -- 1. Lookup via_norm
+                SELECT UPPER(TRIM(iv.tipo_toponimo || ' ' || iv.nome_strada))
+                  INTO o_via_norm
+                  FROM script.vw_indirizzo_completo iv
+                 WHERE iv.id_stradario = p_stradario_id
+                 LIMIT 1;
+
+                IF o_via_norm IS NULL THEN
+                  RETURN;
+                END IF;
+
+                -- 2. Normalizza colonne strutturali: il vuoto e' NULL, una forma
+                --    sola per «non c'e'» (l'indice e' NULLS NOT DISTINCT)
+                o_estensione_civico := NULLIF(UPPER(BTRIM(p_estensione)), '');
+                o_palazzina         := NULLIF(UPPER(BTRIM(p_palazzina)), '');
+                o_scala             := NULLIF(UPPER(BTRIM(p_scala)), '');
+                o_piano             := NULLIF(UPPER(BTRIM(p_piano)), '');
+                o_interno           := NULLIF(UPPER(BTRIM(p_interno)), '');
+
+                -- 3. Prefisso '/' su estensione
+                IF o_estensione_civico IS NOT NULL
+                   AND LEFT(o_estensione_civico, 1) <> '/' THEN
+                  o_estensione_civico := '/' || o_estensione_civico;
+                END IF;
+
+                -- 4. Civico norm: SNC = civico NULL (il civico <= 0 lo rifiuta
+                --    il guard trgfn_indirizzi_dettaglio_guard_chiave)
+                IF p_civico IS NOT NULL THEN
+                  o_civico_norm := p_civico::text || COALESCE(o_estensione_civico, '');
+                ELSE
+                  o_civico_norm := 'SNC';
+                END IF;
+
+                -- 5. Indirizzo normalizzato
+                o_indirizzo_normalizzato := TRIM(BOTH ' ' FROM (
+                    o_via_norm
+                  || ', ' || o_civico_norm
+                  || CASE WHEN o_palazzina IS NOT NULL THEN ', Pal.'   || o_palazzina ELSE '' END
+                  || CASE WHEN o_scala     IS NOT NULL THEN ', Scala ' || o_scala     ELSE '' END
+                  || CASE WHEN o_piano     IS NOT NULL THEN ', Piano ' || o_piano     ELSE '' END
+                  || CASE WHEN o_interno   IS NOT NULL THEN ', Int.'   || o_interno   ELSE '' END
+                ));
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_build_indirizzo_normalizzato
+                IS 'Centralizza TUTTA la logica di normalizzazione indirizzi. Ritorna record con colonne strutturali normalizzate (UPPER+BTRIM, vuoto -> NULL, prefisso / sull''estensione) + via_norm + civico_norm (SNC = civico NULL) + indirizzo_normalizzato. Via non risolta in script.vw_indirizzo_completo: tutti gli OUT NULL. Usata dal trigger trgfn_indirizzi_dettaglio_normalize, dal BB fn_get_or_create_indirizzo_dettaglio (lookup coi valori come li salva il trigger) e da script.fn_check_indirizzo_duplicato. Rev 2026-10-25 (20261025-23, brief-db-unicita-civico-indirizzi-dettaglio D2-a e D3-a): vuoto -> NULL, ritirato il ramo civico = 0 vale SNC.';

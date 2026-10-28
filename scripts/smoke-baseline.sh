@@ -223,10 +223,11 @@ attendi_freno() {
   sleep "$secondi"
 }
 
-# Gli smoke bash leggono utente, password e secondo fattore da `backend/env.sh`.
-if echo "$FILES" | grep -q '\.sh$'; then
-  set -a; source "$ROOT_DIR/backend/env.sh" >/dev/null 2>&1; set +a
-fi
+# Gli smoke bash leggono utente, password e secondo fattore da `backend/env.sh`,
+# e anche uno smoke `.py` legge l'utente da li' (`smoke-c9-…`, SMOKE_USER dal
+# 2026-10-18). ⛔ Si carica SEMPRE: fino al 2026-10-26 si caricava solo se nel
+# giro c'era un bash, e `smoke-baseline.sh c9` falliva sull'utente mancante.
+set -a; source "$ROOT_DIR/backend/env.sh" >/dev/null 2>&1; set +a
 
 ESCLUSI=""
 # TEMPI: una riga per smoke, «secondi attesa_freno nome». Serve a scegliere sui

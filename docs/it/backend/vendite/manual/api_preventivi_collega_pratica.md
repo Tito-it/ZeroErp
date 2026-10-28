@@ -41,7 +41,10 @@ Idempotente (ON CONFLICT). Direzione dipendenze `vendite→pratiche`, import laz
 ## Regole
 
 - Idempotente: ri-chiamata sullo stesso `(pratica, preventivo, ROOT)` = no-op.
-- Permission: `cambia_stato_preventivi` (area `vendite`).
+- Permission: livello sul preventivo (`model_permission = ("vendite", "preventivo")`,
+  area `vendite`): non è un cambio di stato, è una modifica del preventivo. Fino al
+  2026-10-25 chiedeva `cambia_stato_preventivi`, spenta col giro 6 del modello del
+  documento.
 - La FE lo chiama al primo `saved` del `PreventiviDrawer` aperto in contesto
   pratica (guard con flag per non ripetere sui salvataggi successivi).
 

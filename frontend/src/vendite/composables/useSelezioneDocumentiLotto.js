@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Tid (Michele Carlo Titini)
 // ------------------------------------------------------------
-import { useI18n } from 'vue-i18n'
 import { useSelezioneLista } from '../../core/composables/useSelezioneLista'
-import { motivoUscitaBloccata } from '../uscitaDalGiro'
+import { useAzioneRiga } from '../../core/composables/useAzioneRiga'
+import { AZIONE_RIGA_USCITA_DAL_GIRO } from '../uscitaDalGiro'
 
 // Scopo: quali DOCUMENTI di un lotto si possono togliere dal giro in un colpo
 //        solo — la selezione della scheda «Documenti presi in carico».
@@ -17,22 +17,22 @@ import { motivoUscitaBloccata } from '../uscitaDalGiro'
 //    spuntato nelle pagine precedenti.
 //
 // ⛔ IL PREDICATO NON SI RISCRIVE: «si può togliere?» lo dice il database in
-//    riga (`uscita_blocco_reason`, dalla stessa `fn_check_*` con cui rifiuta).
-//    Qui si legge, non si ricalcola — altrimenti la casella e il rifiuto
-//    direbbero due cose diverse.
+//    riga, dalla stessa `fn_check_*` con cui rifiuta, nelle colonne che il
+//    registro delle azioni di riga nomina (`useAzioneRiga`). Qui si legge, non
+//    si ricalcola — altrimenti la casella e il rifiuto direbbero due cose
+//    diverse.
 export function useSelezioneDocumentiLotto({ righeVisibili, abilitata }) {
-  const { t, te } = useI18n()
+  const uscita = useAzioneRiga(AZIONE_RIGA_USCITA_DAL_GIRO)
 
   // Sede UNICA del predicato: il telaio lo gira alle caselle, al
   // seleziona-tutto, al guard del toggle e al prune.
-  const selezionabile = (row) => !row?.uscita_blocco_reason
+  const selezionabile = (row) => !uscita.bloccata(row)
 
-  // ⛔ E NEMMENO IL MOTIVO SI RISCRIVE: la traduzione della riga sta in
-  //    `motivoUscitaBloccata`, che è la stessa sorgente da cui le due azioni di
-  //    riga prendono il loro tooltip. Casella spenta e voce spenta devono dire
-  //    la stessa frase, e l'unico modo perché non possano divergere è che la
-  //    frase sia una.
-  const motivoNonSelezionabile = (row) => motivoUscitaBloccata(t, te, row)
+  // ⛔ E NEMMENO IL MOTIVO SI RISCRIVE: la frase la da' lo stesso BB da cui le
+  //    due azioni di riga prendono il loro tooltip. Casella spenta e voce
+  //    spenta devono dire la stessa frase, e l'unico modo perché non possano
+  //    divergere è che la frase sia una.
+  const motivoNonSelezionabile = (row) => uscita.motivo(row)
 
   // ⛔ Niente `escludiOvunque` né `sorveglia`: qui non c'è stato FUORI dalla
   //    riga — la selezionabilità è un campo che il backend consegna, quindi il

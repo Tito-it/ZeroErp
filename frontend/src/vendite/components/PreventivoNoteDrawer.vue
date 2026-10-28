@@ -13,6 +13,8 @@ defineProps({
   // il select RIGA del form note. Shape attesa: [{ id, codice_articolo, descrizione, ... }].
   righe: { type: Array, default: () => [] },
 })
+// `saved` porta il TOTALE note aggiornato (dal BB `NoteDrawer`): il padre ci
+// aggiorna il pulsante «Gestisci note» (`useContatoreNote`).
 const emit = defineEmits(['update:visible', 'saved'])
 </script>
 
@@ -24,6 +26,6 @@ const emit = defineEmits(['update:visible', 'saved'])
     :id="preventivoId"
     :title="t('vendite.preventivi.note_titolo')"
     :righe="righe"
-    @saved="emit('saved')"
+    @saved="(total) => emit('saved', total)"
   />
 </template>

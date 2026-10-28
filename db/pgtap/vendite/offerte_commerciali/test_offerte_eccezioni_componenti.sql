@@ -1,6 +1,9 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
+-- rev 2026-10-26 (brief-modello-documento-vendita §13, giro 9): lo stato dell'offerta si
+--   cambia solo dal verbo; l'offerta COMPOSITA del test 20 arriva ad ACCETTATA con
+--   dbops.fn_pgtap_porta_a_stato invece dei due UPDATE di stato.
 -- Test: vendite.offerte_commerciali_eccezioni_componenti
 --       + fn_offerta_eccezione_componenti_init
 --       + fn_offerta_eccezione_componenti_preview
@@ -570,12 +573,9 @@ BEGIN
 
     -- rev 2026-10-04 (R5a): righe e componenti si scrivono in BOZZA; il push vuole
     -- un'offerta ACCETTATA, e ci arriva per la sua strada: BOZZA -> EMESSA -> ACCETTATA.
-    UPDATE vendite.offerte_commerciali
-       SET stato_doc_offerta_id = (SELECT stato_emessa_id FROM tmp_oce_ctx)
-     WHERE id = (SELECT offerta_id FROM tmp_oce_ids WHERE slot = 'COMPOSITA');
-    UPDATE vendite.offerte_commerciali
-       SET stato_doc_offerta_id = (SELECT stato_accettata_id FROM tmp_oce_ctx)
-     WHERE id = (SELECT offerta_id FROM tmp_oce_ids WHERE slot = 'COMPOSITA');
+    --   rev 2026-10-26 (giro 9): ci arriva dal verbo, non con l'UPDATE di stato.
+    PERFORM dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali',
+        (SELECT offerta_id FROM tmp_oce_ids WHERE slot = 'COMPOSITA'), 'ACCETTATA');
 
     PERFORM vendite.fn_push_offerta_a_contratto(
         (SELECT offerta_id FROM tmp_oce_ids WHERE slot = 'COMPOSITA'),

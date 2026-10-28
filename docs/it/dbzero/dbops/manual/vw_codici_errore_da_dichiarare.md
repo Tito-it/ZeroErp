@@ -13,7 +13,9 @@ Approfondimento funzioni:
 ---
 ### 🎯 Scopo Principale
 
-(rev 2026-08-21)
+(rev 2026-10-27)
+
+> ⛔ **Il numero di questa vista NON è il debito.** È la **misura**: conta ogni codice `E_*` che un corpo PL/pgSQL vivo può nominare, e cresce a ogni regola nuova e legittima. Il debito è il suo registro, [`dbops.codici_errore_senza_policy`](/dbzero/dbops/tabelle/codici_errore_senza_policy), **a zero dal 2026-08-07** e tenuto lì dal cancello `test_error_codes_db_policy_guardrail`. Il catalogo dei presidi la classifica `CANCELLO`, non registro. Contarla come registro di debito è un errore già fatto tre volte (08-09, 20-09, 23-10).
 
 **Misura canonica del «terzo lato»** del presidio sui codici errore: quali codici `E_*` il
 codice PL/pgSQL vivo può effettivamente nominare.

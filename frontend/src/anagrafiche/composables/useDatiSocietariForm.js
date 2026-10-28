@@ -21,9 +21,13 @@ export function useDatiSocietariForm(options = {}) {
     id_prov_iscri_rea: null,
     iscrizione_rea: '',
     capitale_sociale: null,
-    // Enumerati
-    socio_unico: 'SU',
-    liquidazione: 'LN',
+    // Enumerati. ⛔ Vuoti finche' non li sceglie l'operatore: a NULL il verbo
+    //    DB prende il default di `config.parameters` con la cascata (l'override
+    //    dell'emittente in sessione, brief-db-parametri-senza-override D-2-bis).
+    //    Un valore scritto qui sarebbe una seconda copia del default, e il
+    //    parametro dalla UI non agirebbe mai.
+    socio_unico: null,
+    liquidazione: null,
     // Fatturazione elettronica
     destinatario_fe: null,
     pec_fatturazione: '',
@@ -77,8 +81,8 @@ export function useDatiSocietariForm(options = {}) {
     form.id_prov_iscri_rea = null
     form.iscrizione_rea = ''
     form.capitale_sociale = null
-    form.socio_unico = 'SU'
-    form.liquidazione = 'LN'
+    form.socio_unico = null
+    form.liquidazione = null
     form.destinatario_fe = null
     form.pec_fatturazione = ''
     form.codice_sdi = ''
@@ -91,8 +95,8 @@ export function useDatiSocietariForm(options = {}) {
     form.id_prov_iscri_rea = data.id_prov_iscri_rea ?? null
     form.iscrizione_rea = data.iscrizione_rea || ''
     form.capitale_sociale = data.capitale_sociale ?? null
-    form.socio_unico = data.socio_unico || 'SU'
-    form.liquidazione = data.liquidazione || 'LN'
+    form.socio_unico = data.socio_unico ?? null
+    form.liquidazione = data.liquidazione ?? null
     form.destinatario_fe = data.destinatario_fe ?? null
     form.pec_fatturazione = data.pec_fatturazione || ''
     form.codice_sdi = data.codice_sdi || ''

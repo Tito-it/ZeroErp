@@ -25,6 +25,8 @@ Indice test eseguiti:
 5) DdtCambiaStatoDbTests.test_il_prelievo_dal_lotto_e_lo_scarico_di_quel_lotto — B1
 6) DdtCambiaStatoDbTests.test_i_rifiuti_dei_prelievi_hanno_il_loro_codice — B1
 7) DdtCambiaStatoDbTests.test_il_reso_fa_rientrare_dal_prelievo_scelto — B2
+8) DdtCambiaStatoDbTests.test_il_secondo_emetti_e_rifiutato_e_non_riscarica — §9.10
+9) DdtCambiaStatoDbTests.test_lo_stato_che_non_c_e_lo_dice_il_verbo — §9.10
 """
 from __future__ import annotations
 
@@ -160,6 +162,35 @@ class DdtCambiaStatoDbTests(unittest.TestCase):
         self.assertEqual(out["movimenti_scritti"], 0)
         self.assertEqual(self._giacenza(), 10)
 
+    # Un secondo «Emetti» lo rifiuta la prima riga del verbo, prima dei
+    # controlli della merce: il codice e' quello del documento gia' nello
+    # stato, non un motivo di giacenza, e il magazzino non si muove di nuovo
+    # (brief-modello-documento-vendita §9.10). Il PDF non nasce perche' la
+    # view genera il documento solo dopo il verbo, nella stessa transazione
+    # (test_ddt_api `test_emetti_rifiutato_non_genera_il_documento`).
+    def test_il_secondo_emetti_e_rifiutato_e_non_riscarica(self) -> None:
+        ddt_id = self._bolla(self.art_g, 4)
+        ddt_service.emetti(ddt_id)
+
+        with self.assertRaises(ServiceError) as cm, transaction.atomic():
+            ddt_service.emetti(ddt_id)
+
+        self.assertEqual(cm.exception.code, "E_DOC_GIA_NELLO_STATO")
+        self.assertEqual(self._stato(ddt_id), "EMESSO")
+        self.assertEqual(self._giacenza(), 6)
+
+    # Lo stato che il vocabolario della bolla non ha: il verbo risponde come i
+    # gemelli, non piu' con la chiamata malformata (un 500), e il service non
+    # ne ha una copia (§9.10).
+    def test_lo_stato_che_non_c_e_lo_dice_il_verbo(self) -> None:
+        ddt_id = self._bolla(self.art_g, 1)
+
+        with self.assertRaises(ServiceError) as cm, transaction.atomic():
+            ddt_service.cambia_stato(ddt_id, "INESISTENTE")
+
+        self.assertEqual(cm.exception.code, "E_STATO_WORKFLOW_NON_TROVATO")
+        self.assertEqual(self._stato(ddt_id), "DRAFT")
+
     def test_oltre_la_giacenza_il_rifiuto_ha_il_codice_del_db(self) -> None:
         ddt_id = self._bolla(self.art_g, 100)
         # Il codice atteso lo dice il DB (la stessa check che alimenta la
@@ -271,7 +302,8 @@ class DdtCambiaStatoDbTests(unittest.TestCase):
         ddt_id = self._bolla(self.art_l, 4)
         riga_ddt = ddt_service.get_prelievi(ddt_id)["voci"][0]["ddt_riga_id"]
         prelievo = ddt_service.crea_prelievo(ddt_id, riga_ddt, {"qta": "4", "lotto_id": self.lotto_b})
-        for stato in ("EMESSO", "SPEDITO", "CONSEGNATO"):
+        ddt_service.emetti(ddt_id)
+        for stato in ("SPEDITO", "CONSEGNATO"):
             ddt_service.cambia_stato(ddt_id, stato)
         with connection.cursor() as cur:
             cur.execute("SELECT id FROM config.tipi_reso WHERE codice_interno = 'RESO_A_CREDITO'")

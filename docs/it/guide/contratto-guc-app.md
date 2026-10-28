@@ -1,6 +1,6 @@
 # Guida — Contratto GUC `app.*`
 
-> **Ultimo aggiornamento**: 19 settembre 2026
+> **Ultimo aggiornamento**: 26 ottobre 2026
 >
 > **Destinatari**: backend Django (authentication class, middleware), autori di funzioni DB e policy RLS
 >
@@ -48,8 +48,8 @@ Il backend Django li scrive nella authentication class, a ogni richiesta autenti
 
 > ⚠️ Nel namespace `app.*` **convivono altre GUC che non fanno parte di questo contratto**:
 > le scrive una funzione o un processo per il tempo della propria transazione, come parametri
-> di contesto (`app.cessazione_automatica`, `app.registrazione_tardiva_riga_id`). Non sono
-> identità e non vanno confuse con quelle della tabella qui sotto.
+> di contesto (`app.registrazione_tardiva_riga_id`). Non sono identità e non vanno confuse
+> con quelle della tabella qui sotto.
 
 ---
 
@@ -216,7 +216,7 @@ reloggare.
 
 > **Importante:** non si puo' affidarsi a `auth_user.is_active = true` per
 > questo check. `is_active` e' OR sulle identita dell'user (vedi
-> [Multi-Face Auth §9](/guide/architettura-multi-face-auth#9-sync-auth_useris_active-generalizzata)):
+> [Multi-Face Auth §9](/guide/architettura-multi-face-auth#9-il-flag-di-login-di-django-auth_useris_active)):
 > l'user potrebbe essere globalmente attivo ma con la veste specifica
 > disattivata.
 
@@ -268,7 +268,7 @@ righe**, in silenzio.
 Ogni policy legge i GUC con `NULLIF(current_setting(..., true), '')::tipo` e li passa alle
 funzioni di sopra ([esempio](#area-tecnica-esempi)). **Quante siano e dove stiano è stato, non
 contratto**: si interroga `pg_policies`, non si tiene a mano qui. Il disegno d'insieme è in
-[Multi-Face Auth §6.4](/guide/architettura-multi-face-auth#64-tracciabilita-canale-sui-dati-transazionali).
+[Multi-Face Auth §6.4](/guide/architettura-multi-face-auth#64-il-canale-di-origine-sui-dati-transazionali).
 
 ### 7.4 Trigger audit
 

@@ -17,11 +17,14 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
+| azione_processo_codename | character varying(100) | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | ck_transizioni_stati_contratti_meta_manuale_dichiarato |  |
 | CHECK | ck_tsc_da_diverso_a |  |
+| FOREIGN KEY | fk_transizioni_stati_contratti_azioni_processo | azione_processo_codename |
 | FOREIGN KEY | fk_tsc_a | stato_a_id |
 | FOREIGN KEY | fk_tsc_da | stato_da_id |
 | PRIMARY KEY | pk_transizioni_stati_contratti | id |

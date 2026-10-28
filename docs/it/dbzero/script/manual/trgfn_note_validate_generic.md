@@ -32,8 +32,22 @@ tabelle note — `note_contratto`, `note_ddt`, `note_fatture`,
 `note_offerte_commerciali`, `note_ordini`, `note_preventivo` — ed evita che una
 nota resti agganciata a una riga che appartiene a un altro documento.
 
-La tabella righe e la colonna FK si passano per `TG_ARGV`, quindi la stessa
+La tabella righe e la colonna FK si passano per `TG_ARGV` (i due soli argomenti), quindi la stessa
 funzione serve domini diversi senza sapere niente di loro.
+
+### Il dominio dell'errore
+
+> Ultima revisione: 2026-10-25 (brief-db-grammatica-unica-documenti, lotto 3), L3-4.
+
+In `E_NOTE_RIGA_MISMATCH` il dominio viene dalla riga, non da un argomento del trigger:
+
+* nel payload (`p_context ->> 'dominio'`, per la macchina) c'è `NEW.target_tipo`, il codice;
+* nella frase per l'operatore («…al documento di dominio %s…») c'è la parola che una persona riconosce,
+  `config.sorgenti.etichetta` di quel codice («DDT», «Ordine»), o il codice se il tipo non è una sorgente.
+
+Fino al 2026-10-25 il dominio era un terzo argomento (`'DDT'`, `'ORDINE'`, `'OFFERTA'`…) che ripeteva a mano il
+confine della partizione: ritirato dal `20261025-66`, e i montaggi lo hanno perso (`-67`, `-68`). Il pgTAP
+`config/test-grammatica-note-target-tipo-v1` presidia i due argomenti e la frase.
 
 ---
 

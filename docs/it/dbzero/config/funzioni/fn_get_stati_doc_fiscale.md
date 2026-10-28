@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_get_stati_doc_fiscale(p_target text, p_from_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

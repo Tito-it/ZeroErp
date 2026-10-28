@@ -31,7 +31,27 @@
 --   3) Una transizione FUORI matrice viene rifiutata
 --   4) Una transizione IN matrice passa
 --   5) Un UPDATE che non tocca lo stato non viene disturbato dal guard
---   6) La porta e il guard sollevano lo STESSO codice (una regola, una voce)
+--   6) Una regola, una voce: il codice lo solleva il SOLO guard, il verbo non
+--      ne tiene una copia
+--
+-- rev 2026-10-25 (brief-modello-documento-vendita §8, giro 6): lo stato del
+--   preventivo si cambia solo dal verbo vendite.fn_cambia_stato_preventivo; un
+--   UPDATE diretto lo ferma la porta (E_DOC_STATO_SOLO_DAL_VERBO, P0001) prima
+--   del guard _a10_. Quindi:
+--   - 3 e 4 chiedono il passaggio al VERBO, che arriva al guard. Il 3 asserisce
+--     la FRASE di E_PREV_TRANSIZIONE_NON_AMMESSA e non piu' il solo P0001: con
+--     la porta, P0001 lo solleverebbe anche lei, e il test sarebbe verde per la
+--     ragione sbagliata;
+--   - la destinazione ammessa si sceglie fra i passaggi MANUALI (il verbo e' la
+--     strada dei soli passaggi manuali), e il preventivo si COSTRUISCE in bozza
+--     con una riga valida (dbops.fn_pgtap_crea_preventivo_con_righe): prima si
+--     pescava un DRAFT dal database, e l'emissione ora chiede almeno una riga
+--     attiva. L'operatore riceve emetti_preventivo, il permesso dell'emissione:
+--     il file prova la matrice, non il permesso;
+--   - il 6 cambia attesa: dal 20261025-42 il verbo non ricopia la matrice
+--     (ritirata dal suo corpo la copia), quindi E_PREV_TRANSIZIONE_NON_AMMESSA
+--     sta nel solo guard. «Una regola, una voce» si prova ora cosi': il guard lo
+--     solleva, il verbo no (e il 3 mostra che dal verbo arriva quello del guard).
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -78,11 +98,14 @@ CREATE TEMP TABLE _t_gt AS
 SELECT
     (SELECT id FROM config.stati_doc_preventivi WHERE codice_interno = 'DRAFT' LIMIT 1) AS stato_draft_id,
     -- destinazione AMMESSA da DRAFT
-    (SELECT t.stato_a_id
+    -- ⚠️ fra i passaggi MANUALI: sono i soli che il verbo accetta.
+    (SELECT sa.codice_interno
        FROM config.transizioni_stati_preventivi t
        JOIN config.stati_doc_preventivi sd ON sd.id = t.stato_da_id
+       JOIN config.stati_doc_preventivi sa ON sa.id = t.stato_a_id
       WHERE sd.codice_interno = 'DRAFT' AND t.attivo IS TRUE
-      ORDER BY t.stato_a_id LIMIT 1) AS stato_ammesso_id,
+        AND COALESCE((t.meta ->> 'manuale')::boolean, true)
+      ORDER BY t.stato_a_id LIMIT 1) AS stato_ammesso,
     -- destinazione NON ammessa da DRAFT: uno stato attivo qualunque per cui
     -- la coppia non compare in matrice
     (SELECT s.id
@@ -95,21 +118,32 @@ SELECT
             WHERE sd.codice_interno = 'DRAFT'
               AND t.stato_a_id = s.id
               AND t.attivo IS TRUE)
-      ORDER BY s.id LIMIT 1) AS stato_vietato_id;
+      ORDER BY s.id LIMIT 1) AS stato_vietato_id,
+    (SELECT s.codice_interno
+       FROM config.stati_doc_preventivi s
+      WHERE s.attivo IS TRUE
+        AND s.codice_interno <> 'DRAFT'
+        AND NOT EXISTS (
+            SELECT 1 FROM config.transizioni_stati_preventivi t
+             JOIN config.stati_doc_preventivi sd ON sd.id = t.stato_da_id
+            WHERE sd.codice_interno = 'DRAFT'
+              AND t.stato_a_id = s.id
+              AND t.attivo IS TRUE)
+      ORDER BY s.id LIMIT 1) AS stato_vietato;
 
--- ⚠️ Nessuna fixture costruita a mano, e non e' pigrizia. Un preventivo nuovo
--- va soddisfatto in una dozzina di colonne obbligatorie e in altrettanti
--- trigger (emittente, istanza utility, valuta...): la fixture diventerebbe piu'
--- fragile della cosa che deve verificare, e ogni colonna aggiunta domani la
--- romperebbe. Qui serve solo un preventivo IN DRAFT, e nel database ce ne sono;
--- l'intera prova sta dentro una transazione annullata. Se non ce ne fosse
--- nessuno, i test lo DICONO invece di passare a vuoto.
+-- ⭐ rev 2026-10-25 (giro 6): il preventivo si COSTRUISCE, in DRAFT con una
+--   riga valida, dal builder (che tiene le colonne obbligatorie e i trigger in
+--   un posto solo). Prima si pescava un DRAFT dal database: la fixture a mano
+--   sarebbe stata piu' fragile della cosa da verificare. Il «nessun
+--   preventivo» dei test resta come rete, se il builder smettesse di darne.
 CREATE TEMP TABLE _t_gt_prev AS
-SELECT p.id AS preventivo_id
-  FROM vendite.preventivi p, _t_gt c
- WHERE p.stato_doc_preventivo_id = c.stato_draft_id
- ORDER BY p.id
- LIMIT 1;
+SELECT p.preventivo_id
+  FROM dbops.fn_pgtap_crea_preventivo_con_righe('pgTAP guard transizione', 'DRAFT') p;
+
+-- Si prova la matrice, non il permesso: l'emissione chiede emetti_preventivo.
+DO $az$ BEGIN
+  PERFORM dbops.fn_pgtap_concedi_azione(NULLIF(current_setting('app.current_user_id', true), '')::integer, 'emetti_preventivo');
+END $az$;
 
 -- ============================================================
 -- 3) Fuori matrice -> rifiutata. E' il cuore del cantiere.
@@ -120,11 +154,11 @@ SELECT CASE WHEN (SELECT count(*) FROM _t_gt_prev) = 0
   THEN fail('3) nessun preventivo in DRAFT nel database: il test non ha misurato nulla')
   WHEN (SELECT stato_vietato_id FROM _t_gt) IS NULL
   THEN fail('3) nessuna coppia fuori matrice da DRAFT: il test non ha misurato nulla, verificare la matrice')
-  ELSE throws_ok(
-    format($sql$ UPDATE vendite.preventivi SET stato_doc_preventivo_id = %L::bigint WHERE id = %L::bigint $sql$,
-           (SELECT stato_vietato_id FROM _t_gt),
-           (SELECT preventivo_id FROM _t_gt_prev)),
-    'P0001', NULL,
+  ELSE throws_like(
+    format($sql$ SELECT * FROM vendite.fn_cambia_stato_preventivo(%L::bigint, %L) $sql$,
+           (SELECT preventivo_id FROM _t_gt_prev),
+           (SELECT stato_vietato FROM _t_gt)),
+    '%Transizione del preventivo non ammessa%',
     '3) transizione FUORI matrice rifiutata dal database, non solo dalla UI')
 END;
 
@@ -135,9 +169,9 @@ END;
 SELECT CASE WHEN (SELECT count(*) FROM _t_gt_prev) = 0
   THEN fail('4) nessun preventivo in DRAFT nel database: il test non ha misurato nulla')
   ELSE lives_ok(
-    format($sql$ UPDATE vendite.preventivi SET stato_doc_preventivo_id = %L::bigint WHERE id = %L::bigint $sql$,
-           (SELECT stato_ammesso_id FROM _t_gt),
-           (SELECT preventivo_id FROM _t_gt_prev)),
+    format($sql$ SELECT * FROM vendite.fn_cambia_stato_preventivo(%L::bigint, %L) $sql$,
+           (SELECT preventivo_id FROM _t_gt_prev),
+           (SELECT stato_ammesso FROM _t_gt)),
     '4) transizione IN matrice ammessa')
 END;
 
@@ -155,21 +189,24 @@ SELECT CASE WHEN (SELECT count(*) FROM _t_gt_prev) = 0
 END;
 
 -- ============================================================
--- 6) Una regola, una voce: la porta e il guard devono sollevare lo STESSO
---    codice. E' la lezione del §7.3 — due sedi per la stessa domanda
---    producono due messaggi diversi, e un giorno divergono davvero.
---    Si confronta il sorgente delle due funzioni, non il comportamento:
---    il codice della porta non e' raggiungibile due volte nello stesso test.
+-- 6) Una regola, una voce. E' la lezione del §7.3 — due sedi per la stessa
+--    domanda producono due messaggi diversi, e un giorno divergono davvero.
+--    Fino al 2026-10-25 il verbo ricopiava la matrice e il test chiedeva che
+--    le due copie sollevassero lo STESSO codice. Dal 20261025-42 la copia nel
+--    verbo e' ritirata: il codice sta nel SOLO guard, e il verbo lo riceve da
+--    lui (test 3). Si confronta il sorgente: il guard lo nomina, il verbo no.
+--    ⚠️ Se il verbo tornasse a nominarlo, sarebbe una seconda sede: rosso.
 -- ============================================================
 SELECT is(
-    (SELECT count(*)::int
+    (SELECT string_agg(p.proname || '=' ||
+                       (p.prosrc LIKE '%''E_PREV_TRANSIZIONE_NON_AMMESSA''%')::text,
+                       ',' ORDER BY p.proname)
        FROM pg_proc p
        JOIN pg_namespace n ON n.oid = p.pronamespace
       WHERE n.nspname = 'vendite'
-        AND p.proname IN ('fn_cambia_stato_preventivo', 'trgfn_preventivi_guard_transizione')
-        AND p.prosrc LIKE '%''E_PREV_TRANSIZIONE_NON_AMMESSA''%'),
-    2,
-    '6) porta e guard sollevano lo stesso codice E_PREV_TRANSIZIONE_NON_AMMESSA');
+        AND p.proname IN ('fn_cambia_stato_preventivo', 'trgfn_preventivi_guard_transizione')),
+    'fn_cambia_stato_preventivo=false,trgfn_preventivi_guard_transizione=true',
+    '6) E_PREV_TRANSIZIONE_NON_AMMESSA lo solleva il solo guard: il verbo non ne tiene una copia');
 
 SELECT * FROM finish();
 ROLLBACK;

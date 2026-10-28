@@ -10,7 +10,7 @@
 > * [pgTAP — come si scrive un test, «Girano in CI?»](/guide/pgtap-come-si-scrive-un-test) — quando gira la suite DB e la sua baseline
 > * [Linee guida SQL, §11](/linee-guida-sql) — i divieti dei changeSet che si rompono solo in CI
 > * [Sicurezza e qualità statica](/dev/sicurezza-e-qualita-statica) — gli strumenti che la CI lancia (pre-commit, gitleaks, pip-audit, mypy, `check --deploy`)
-> * [Presidi e registri del debito, §5](/guide/presidi-e-registri-del-debito) — che cosa fare se un cancello della CI diventa rosso
+> * [Presidi e registri del debito, §6](/guide/presidi-e-registri-del-debito) — che cosa fare se un cancello della CI diventa rosso
 
 ---
 
@@ -202,7 +202,7 @@ repository. Dettaglio in [Generatore della documentazione DB](/dbzero/tools/gen_
    ragione scritta ([pgTAP — come si scrive un test](/guide/pgtap-come-si-scrive-un-test)).
 4. Un rosso che non riguarda il proprio lato (per esempio un test backend rosso su una PR solo DB)
    si segnala a chi tocca invece di forzare il merge: il metodo è in
-   [Presidi e registri del debito, §5](/guide/presidi-e-registri-del-debito).
+   [Presidi e registri del debito, §6](/guide/presidi-e-registri-del-debito).
 
 ---
 

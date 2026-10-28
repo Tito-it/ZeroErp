@@ -14,6 +14,29 @@
 
 ---
 
+### Il tipo della nota (`target_tipo`)
+
+> Ultima revisione: 2026-10-25 (brief-db-grammatica-unica-documenti, lotto 3).
+
+`target_tipo` nomina la cosa a cui la nota è ancorata col **codice di `config.tipi_entita`**, che per un
+documento è il `codice_interno` della sua sorgente. È `varchar(50)` e ha la **FK** `fk_vendite_note_target_tipo` verso
+`config.tipi_entita(codice)`: non c'è più un CHECK con l'elenco. Ogni valore ha la sua partizione; un codice
+senza partizione è rifiutato dal routing.
+
+| Partizione | `target_tipo` | Fino al 2026-10-25 |
+| --- | --- | --- |
+| `vendite.note_preventivo` | `PREVENTIVO` | uguale |
+| `vendite.note_contratto` | `CONTRATTO` | uguale |
+| `vendite.note_fatture` | `FATTURA` | uguale |
+| `vendite.note_ordini` | `ORDINE_VENDITA` | `ORDINE` |
+| `vendite.note_ddt` | `DDT_VENDITA` | `DDT` |
+| `vendite.note_attivita_fatturabili` | `ATTIVITA` | `ATTIVITAFT` |
+| `vendite.note_offerte_commerciali` | `OFFERTA_COMMERCIALE` | `OFFERTA` |
+
+Un tipo nuovo di nota è una riga di `tipi_entita.csv` più la sua partizione.
+
+---
+
 ### Struttura (padre)
 
 * **Partizionamento**: `PARTITION BY LIST (target_tipo)`.
@@ -43,7 +66,7 @@ Ogni partizione applica **FK** coerenti con il dominio e un **CHECK combinato** 
    * CHECK: se `anchor_tipo='DOCUMENTO'` → `target_riga_id IS NULL` e `posizione ∈ {HEADER, FOOTER, SEZIONE}`; se `anchor_tipo='RIGA'` → `target_riga_id IS NOT NULL` e `posizione ∈ {BEFORE, AFTER}`.
    * Trigger: `trg_note_contratto_ins_upd_contnote_validate()`.
 
-2. **`vendite.note_ddt`** – `FOR VALUES IN ('DDT')`
+2. **`vendite.note_ddt`** – `FOR VALUES IN ('DDT_VENDITA')`
 
    * FK: `target_id → vendite.ddt(id)`, `target_riga_id → vendite.ddt_righe(id)`.
    * CHECK analogo a `CONTRATTO`.
@@ -55,7 +78,7 @@ Ogni partizione applica **FK** coerenti con il dominio e un **CHECK combinato** 
    * CHECK analogo a `CONTRATTO`.
    * Indice dedicato `ix_fatture_note_render`.
 
-4. **`vendite.note_ordini`** – `FOR VALUES IN ('ORDINE')`
+4. **`vendite.note_ordini`** – `FOR VALUES IN ('ORDINE_VENDITA')`
 
    * FK: `target_id → vendite.ordini(id)`, `target_riga_id → vendite.ordini_righe(id)`.
    * CHECK analogo a `CONTRATTO`.
@@ -78,7 +101,7 @@ query/cleanup **target-specifiche** (es. rebuild di tutte le note fatture) sono 
 ### Esempi d’uso
 
 * **Nota di piede FATTURA** (documento): `anchor_tipo='DOCUMENTO'`, `posizione='FOOTER'`, `target_riga_id=NULL`, `seq=10`.
-* **Nota “prima della riga” ORDINE**: `anchor_tipo='RIGA'`, `posizione='BEFORE'`, `target_riga_id=<id_riga>`, `seq=5`.
+* **Nota “prima della riga” ORDINE_VENDITA**: `anchor_tipo='RIGA'`, `posizione='BEFORE'`, `target_riga_id=<id_riga>`, `seq=5`.
 * **Condizioni generali** su **HEADER PREVENTIVO** in `testo_md`.
 
 ---

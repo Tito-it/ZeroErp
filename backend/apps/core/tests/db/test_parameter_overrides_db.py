@@ -17,6 +17,8 @@
 #        upsert concorrenti potevano creare un doppione. Un codice inesistente
 #        era un `E_DATABASE` (E-9). La SQL e' la stessa per ogni livello: la
 #        prova per livello e' `test_parameter_repository_dimensioni`.
+#        ⭐ Anche il PARAMETRO si costruisce, con la sua famiglia (BB di test
+#        `crea_parametro_di_prova`, brief-db-parametri-senza-override BE-3).
 # ------------------------------------------------------------
 
 """
@@ -27,6 +29,7 @@ Indice test eseguiti:
 4) ParameterOverridesDbTests.test_delete_non_tocca_l_override_di_un_altro
 5) ParameterOverridesDbTests.test_upsert_riattiva_la_riga_spenta
 6) ParameterOverridesDbTests.test_lettura_facoltativa_di_un_codice_non_dichiarato
+7) ParameterOverridesDbTests.test_parametro_per_tutti_non_si_personalizza
 """
 
 from __future__ import annotations
@@ -38,9 +41,11 @@ from django.db import DatabaseError, IntegrityError, connection, transaction
 
 from apps.core.db.parameter_repository import ParameterRepository
 from apps.core.services.db_error_fields import db_error_code
+from apps.core.tests._helpers.parametro_di_prova import crea_parametro_di_prova
 from apps.core.tests.db_e2e import richiedi_db_provvisto
 
 _CODICE_INESISTENTE = "ZZ_PARAMETRO_CHE_NON_ESISTE_TEST"
+_CODICE_DI_PROVA = "ZZ_TEST_PARAMETRI_PURI"
 _SQLSTATE_CHECK = "23514"
 
 
@@ -50,18 +55,18 @@ class ParameterOverridesDbTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         richiedi_db_provvisto()
 
-    # Scopo: esegue `azione(cur, codice, uid)` in una transazione SEMPRE
-    # annullata, con un parametro del seed e un utente creato qui.
-    def _nel_mondo(self, azione) -> None:
+    # Scopo: esegue `azione(cur, param_id, codice, uid)` in una transazione
+    # SEMPRE annullata, con un parametro e un utente creati qui. Il parametro
+    # dichiara la sua famiglia: `ammette_override` (default: si personalizza).
+    def _nel_mondo(self, azione, *, ammette_override: bool = True) -> None:
         with transaction.atomic():
             try:
                 with connection.cursor() as cur:
-                    cur.execute("SELECT id, code FROM config.parameters ORDER BY id LIMIT 1")
-                    riga = cur.fetchone()
-                    self.assertIsNotNone(riga, "config.parameters vuota: il seed manca")
-                    assert riga is not None
+                    param_id, codice = crea_parametro_di_prova(
+                        cur, codice=_CODICE_DI_PROVA, ammette_override=ammette_override,
+                    )
                     uid = User.objects.create(username="zz_test_parametri_puri").id
-                    azione(cur, riga[0], riga[1], uid)
+                    azione(cur, param_id, codice, uid)
             finally:
                 transaction.set_rollback(True)
 
@@ -178,3 +183,20 @@ class ParameterOverridesDbTests(unittest.TestCase):
                     repo.get_parameter(_CODICE_INESISTENTE)
             self.assertEqual(db_error_code(ctx.exception), "E_ERRORE_PARAMETRI_TABELLA")
         self._nel_mondo(azione)
+
+    # Scopo: ⭐ Un parametro che vale per tutti (`ammette_override` false) non
+    # si personalizza: l'upsert del repository riceve il rifiuto del guard
+    # (`E_PARAMETER_OVERRIDE_NON_AMMESSO`, DATO_ERRATO → 400) e non nasce
+    # nessuna riga. Prima del 2026-10-25 l'override nasceva e il lettore del
+    # default lo ignorava in silenzio.
+    def test_parametro_per_tutti_non_si_personalizza(self):
+        def azione(cur, param_id, code, uid):
+            with self.assertRaises(DatabaseError) as ctx, transaction.atomic():
+                ParameterRepository().upsert_user_override(code, uid, "mio")
+            self.assertEqual(db_error_code(ctx.exception), "E_PARAMETER_OVERRIDE_NON_AMMESSO")
+            cur.execute(
+                "SELECT count(*) FROM config.parameter_overrides WHERE parameter_id = %s",
+                [param_id],
+            )
+            self.assertEqual(cur.fetchone()[0], 0)
+        self._nel_mondo(azione, ammette_override=False)

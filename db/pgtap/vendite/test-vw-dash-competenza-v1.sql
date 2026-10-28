@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): il file pescava dal database BA, articolo, emittente, registro e un operatore (rosso in partenza: «billing_account_id nullo» sulla commessa); ora il mondo da dbops.fn_pgtap_crea_mondo_cliente, la commessa da dbops.fn_pgtap_crea_commessa, la fattura da dbops.fn_pgtap_crea_fattura; il reset del test 13 e' il verbo vero vendite.fn_cleanup_fatture_by_ids (E-4: attesa dichiarata, test spostato in coda). Restano a mano le attivita' nei loro stati, le attivita' fatturabili col data_insert, la riga di fattura e i lotti: sono il caso.
 -- pgTAP test per Zero ERP
 --
 -- Test: viste Lente 1 Competenza (20260706-09..11 + indice -14):
@@ -8,12 +9,13 @@
 --       vw_dash_competenza_mensile (aggregata formato lungo),
 --       vw_dash_competenza_errori (task run ERRORE vivi + fatture critical).
 --       Brief: brief-db-fatturazione-due-lenti §4 e §7.
---       Fixture: commessa (emittente A) con 4 attivita' 2080-01 nei 4 stadi
+--       Fixture (costruita: mondo, commessa e fattura dai builder): commessa
+--       (emittente A) con 4 attivita' 2080-01 nei 4 stadi
 --       (10/20/30/40) + 1 void ANNULLATA; fattura BOZZA collegata; lotto
 --       2080-04 con task run in ERRORE.
 --
 -- Indice test (0..16):
---   0)  Precondizioni (refs: BA, articoli, stati, registro, emittente A)
+--   0)  Precondizioni (refs costruiti: BA, articolo, stati, emittente A)
 --   1)  Le 3 viste vw_dash_competenza_* esistono
 --   2)  Setup: operatore OPERATORE non-super trovato (scope fail-closed)
 --   3)  Stadio DA_APPROVARE (BOZZA/NON_EMESSA, valore 10)
@@ -27,10 +29,12 @@
 --   10) ERRORI: retry COMPLETATO successivo spegne il TASK_ERRORE
 --   11) ERRORI: fattura critical -> FATTURA_CRITICA con competenza dai mesi AF
 --   12) ERRORI: critical=false spegne la FATTURA_CRITICA
---   13) SENTINELLA C1/reset (DL-5): dopo unlink stile fn_cleanup_fatture_by_ids
---       data_insert INVARIATA, stadio torna EMESSA_NON_FATTURATA, ritardo resta
 --   14) commessa_stato_descrizione sul dettaglio (20260815-24)
 --   15) commessa_stato_descrizione e documento_id sui gruppi (20260815-25)
+--   15-bis..septies) il documento trattenuto da un lotto vivo
+--   13) SENTINELLA C1/reset (DL-5): dopo il reset vero
+--       (vendite.fn_cleanup_fatture_by_ids) data_insert INVARIATA, stadio
+--       torna DA_EMETTERE, ritardo resta (in coda dal 2026-10-25, E-4)
 --   16) FAIL-CLOSED: GUC vuota -> 0 righe in dettaglio e mensile
 -- ------------------------------------------------------------
 
@@ -48,59 +52,50 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
 -- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- ⛔ rev 2026-10-25 (giro D-4): il mondo si COSTRUISCE (azienda, operatore
+--   OPERATORE non-super, cliente BA): il file pescava BA, articolo, emittente
+--   e operatore dal database, ed era rosso in partenza su un DB senza dati.
+--   Il builder apre da se' il contesto sul suo operatore: la riga lo dichiara.
+CREATE TEMP TABLE tmp_dc_mondo AS
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('pgTAP dash competenza');
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM tmp_dc_mondo)); END $ctx$;
 
 SELECT plan(23);
 
 -- ============================================================
 -- 0) Riferimenti minimi
 -- ============================================================
+-- La commessa del cliente, dalla madre: codice, emittente e stato li decide
+-- il dominio (prima: INSERT a mano col primo stato e il primo emittente).
+CREATE TEMP TABLE tmp_dc_cm AS
+SELECT * FROM dbops.fn_pgtap_crea_commessa('dash competenza', NULL,
+                  (SELECT billing_account_id FROM tmp_dc_mondo));
+
 CREATE TEMP TABLE tmp_dc_refs AS
 SELECT
-  (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND ba.soggetto_ruolo_id IS NOT NULL ORDER BY ba.id LIMIT 1) AS billing_account_id,
-  (SELECT ba.utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND ba.soggetto_ruolo_id IS NOT NULL ORDER BY ba.id LIMIT 1) AS utility_id,
-  (SELECT ba.istanza_utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND ba.soggetto_ruolo_id IS NOT NULL ORDER BY ba.id LIMIT 1) AS istanza_utility_id,
-  (SELECT a.id FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE AND a.is_composito = FALSE ORDER BY a.id LIMIT 1) AS articolo_id,
-  (SELECT u.id FROM catalogo.unita_misura u WHERE u.attivo IS TRUE
-    ORDER BY u.id LIMIT 1) AS uom_id,
+  m.billing_account_id,
+  m.istanza_utility_id,
+  dbops.fn_pgtap_crea_articolo('PGTAP-DC-ART', false) AS articolo_id,
   (SELECT t.id FROM config.tipi_doc_fiscale t WHERE t.attivo IS TRUE
     ORDER BY t.id LIMIT 1) AS tipo_doc_fiscale_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
-  (SELECT sc.id FROM vendite.stati_commessa sc
-    WHERE sc.attivo IS TRUE AND sc.codice_interno <> 'ANNULLATA'
-    ORDER BY sc.id LIMIT 1) AS stato_commessa_id,
-  (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef WHERE ef.attivo IS TRUE
-    ORDER BY ef.id LIMIT 1) AS emittente_fiscale_id,
-  (SELECT ef.soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali ef
-    WHERE ef.attivo IS TRUE ORDER BY ef.id LIMIT 1) AS ef_a_sr,
-  (SELECT s.id FROM config.sorgenti s
-    WHERE s.codice_interno = 'PREVENTIVO' AND s.attivo IS TRUE LIMIT 1) AS sorg_preventivo_id,
-  (SELECT r.id FROM vendite.registri_fatturazione r WHERE r.attivo IS TRUE
-    ORDER BY r.id LIMIT 1) AS registro_id,
-  (SELECT s.id FROM config.stati_doc_fiscale s WHERE s.attivo IS TRUE
-    ORDER BY COALESCE(s.ordine, 32767), s.id LIMIT 1) AS stato_fiscale_id,
-  (SELECT s.codice_interno FROM config.stati_doc_fiscale s WHERE s.attivo IS TRUE
-    ORDER BY COALESCE(s.ordine, 32767), s.id LIMIT 1) AS stato_fiscale_ci;
+  -- Lo stato e l'emittente della commessa costruita (i test 14-15 li leggono).
+  c.stato_commessa_id,
+  c.emittente_soggetto_ruolo_id AS ef_a_sr,
+  -- La fattura nasce in bozza dal builder.
+  (SELECT s.id FROM config.stati_doc_fiscale s WHERE s.codice_interno = 'DRAFT') AS stato_fiscale_id,
+  'DRAFT'::varchar AS stato_fiscale_ci
+FROM tmp_dc_mondo m, tmp_dc_cm c;
 
+-- L'unita' di misura e' quella dell'articolo costruito.
+ALTER TABLE tmp_dc_refs ADD COLUMN uom_id bigint;
+UPDATE tmp_dc_refs r SET uom_id = (SELECT a.uom_id FROM catalogo.articoli a WHERE a.id = r.articolo_id);
 
--- ⛔ IL REGISTRO SI ALLINEA ALL'EMITTENTE, e prima non lo faceva: la riga sopra
---   lo sceglieva indipendentemente, e dal 2026-08-30
---   vendite.trgfn_fatture_guard_registro_emittente non ammette piu' la
---   coincidenza. L'helper risponde con il registro di QUESTO emittente,
---   creandolo se non ce n'e' uno.
-UPDATE tmp_dc_refs SET registro_id = script.fn_pgtap_registro_fattura((SELECT ef.soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali ef WHERE ef.id = tmp_dc_refs.emittente_fiscale_id));
 SELECT ok(
   (SELECT billing_account_id IS NOT NULL AND articolo_id IS NOT NULL
       AND uom_id IS NOT NULL AND tipo_doc_fiscale_id IS NOT NULL
       AND stato_commessa_id IS NOT NULL AND ef_a_sr IS NOT NULL
-      AND registro_id IS NOT NULL AND stato_fiscale_id IS NOT NULL
+      AND stato_fiscale_id IS NOT NULL
      FROM tmp_dc_refs),
   '0. Precondizioni soddisfatte'
 );
@@ -122,10 +117,13 @@ SELECT is(
 -- 2) Setup scope: le viste della Lente 1 sono FAIL-CLOSED (senza GUC
 --    operatore -> 0 righe). Operatore OPERATORE non-super whitelistato su A.
 -- ============================================================
+-- L'operatore e' quello del mondo costruito, gia' abilitato sul suo emittente:
+-- la condizione resta quella di prima (OPERATORE, attivo, non super).
 CREATE TEMP TABLE tmp_dc_op AS
 SELECT id.auth_user_id AS user_id
   FROM anagrafiche.identita_digitali id
- WHERE id.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
+ WHERE id.auth_user_id = (SELECT auth_user_id FROM tmp_dc_mondo)
+   AND id.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
    AND id.attivo = true
    AND NOT EXISTS (
        SELECT 1 FROM config.profili_accesso_bindings pab
@@ -140,33 +138,12 @@ SELECT ok(
   '2. Trovato un operatore OPERATORE non-super per lo scope'
 );
 
-SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on';
-DELETE FROM config.user_emittenti_fiscali
- WHERE auth_user_id = (SELECT user_id FROM tmp_dc_op);
-SET LOCAL zeroerp.allow_user_emittente_delete_override = '';
-
-INSERT INTO config.user_emittenti_fiscali (auth_user_id, emittente_fiscale_id, meta)
-SELECT o.user_id, r.emittente_fiscale_id,
-       '{"test_scope":"pgtap_dash_competenza"}'::jsonb
-  FROM tmp_dc_op o, tmp_dc_refs r
- WHERE o.user_id IS NOT NULL;
-
-SELECT set_config('app.current_user_id',
-    (SELECT user_id::text FROM tmp_dc_op), true);
-
 -- ============================================================
 -- Fixture: commessa (emittente A) + 4 attivita' 2080-01 (una per stadio)
 -- + 1 void ANNULLATA. Valori 10/20/30/40 (+999 void).
 -- ============================================================
 CREATE TEMP TABLE tmp_dc_commessa AS
-WITH ins AS (
-  INSERT INTO vendite.commesse (codice, billing_account_id, utility_id,
-                                emittente_soggetto_ruolo_id, stato_commessa_id)
-  SELECT 'PGTAP-DC-CMD-' || substr(md5(clock_timestamp()::text), 1, 8),
-         r.billing_account_id, r.utility_id, r.ef_a_sr, r.stato_commessa_id
-    FROM tmp_dc_refs r
-  RETURNING id)
-SELECT id FROM ins;
+SELECT c.commessa_id AS id FROM tmp_dc_cm c;
 
 -- Le 4 attivita' + la void, con slot per il lookup nei test.
 CREATE TEMP TABLE tmp_dc_att (slot text, attivita_id bigint);
@@ -261,20 +238,12 @@ WITH ins AS (
   RETURNING id)
 INSERT INTO tmp_dc_att SELECT 'A5_VOID', id FROM ins;
 
--- Fattura BOZZA (senza numero) + riga: destinazione dell'AF di A4.
+-- Fattura BOZZA (senza numero) dal builder + la riga a mano: destinazione
+-- dell'AF di A4, scritta a mano col suo data_insert (il ritardo e' il caso).
 CREATE TEMP TABLE tmp_dc_fattura AS
-WITH ins AS (
-  INSERT INTO vendite.fatture (
-    registro_id, data, tipo_doc_fiscale_id, stato_doc_fiscale_id,
-    emittente_soggetto_ruolo_id, billing_account_id, utility_id, meta)
-  SELECT r.registro_id, DATE '2080-03-15', r.tipo_doc_fiscale_id, r.stato_fiscale_id,
-         r.ef_a_sr, r.billing_account_id,
-         -- utility dal BA, come la testata vera (R-3, 20261021-15)
-         (SELECT ba.utility_id FROM anagrafiche.billing_account ba WHERE ba.id = r.billing_account_id),
-         jsonb_build_object('test_scope','pgtap_dash_competenza')
-    FROM tmp_dc_refs r
-  RETURNING id)
-SELECT id FROM ins;
+SELECT f.fattura_id AS id
+  FROM dbops.fn_pgtap_crea_fattura('dash competenza', 'DRAFT',
+           (SELECT billing_account_id FROM tmp_dc_refs)) f;
 
 CREATE TEMP TABLE tmp_dc_fattura_riga AS
 WITH ins AS (
@@ -485,36 +454,6 @@ SELECT is(
 );
 
 -- ============================================================
--- 13) SENTINELLA C1/reset (DL-5): unlink della riga AF stile
---     fn_cleanup_fatture_by_ids (solo UPDATE, mai DELETE+reinsert).
---     data_insert deve restare INVARIATA -> il flag ritardo non cambia.
--- ============================================================
-CREATE TEMP TABLE tmp_dc_af_before AS
-SELECT af.id, af.data_insert
-  FROM vendite.attivita_fatturabili af
- WHERE af.commessa_attivita_id = (SELECT attivita_id FROM tmp_dc_att WHERE slot = 'A4_FATTURATA');
-
--- Bypass del guard fatturato (stesso GUC usato dal cleanup di produzione).
-SELECT set_config('zeroerp.maintenance_reset_lotto_draft', 'on', true);
-UPDATE vendite.attivita_fatturabili
-   SET fattura_riga_id = NULL, stato_esecuzione = NULL,
-       lock_in_fatturazione = false, lock_batch_id = NULL, data_update = now()
- WHERE id = (SELECT id FROM tmp_dc_af_before);
-SELECT set_config('zeroerp.maintenance_reset_lotto_draft', '', true);
-
-SELECT ok(
-  (SELECT af.data_insert = b.data_insert
-     FROM vendite.attivita_fatturabili af, tmp_dc_af_before b
-    WHERE af.id = b.id)
-  AND
-  (SELECT v.stadio = 'EMESSA_NON_FATTURATA' AND v.emessa_in_ritardo = true
-      AND v.data_emissione = TIMESTAMPTZ '2080-03-15 10:00:00+00'
-     FROM vendite.vw_dash_competenza_attivita v
-    WHERE v.commessa_attivita_id = (SELECT attivita_id FROM tmp_dc_att WHERE slot = 'A4_FATTURATA')),
-  '13. Sentinella reset (DL-5): data_insert INVARIATA dopo l''unlink, stadio torna EMESSA_NON_FATTURATA, ritardo conservato'
-);
-
--- ============================================================
 -- 14-15) Decodifica di display dello stato commessa e id del documento
 --        sorgente (20260815-24 / -25, richieste BE §8.3 e §9 F3 di
 --        brief-db-emittibilita-visibile-e-sbloccabile). La convenzione del
@@ -670,10 +609,9 @@ SELECT results_eq(
 -- ⭐ IL VERSO OPPOSTO. Annullato il lotto, il documento torna fatturabile: e'
 --   il caso in cui `ultimo_esito` (rimasto COMPLETED) non cambia di una virgola
 --   e il verdetto invece si ribalta.
-UPDATE vendite.fatturazione_lotti
-   SET stato_doc_fiscale_id = (SELECT s.id FROM config.stati_doc_fiscale s
-                                WHERE s.codice_interno = 'ANNULLATA')
- WHERE id = (SELECT id FROM tmp_dc_lotto_vivo);
+-- rev 2026-10-27 (brief-modello-documento-vendita §15): con la porta sul lotto
+-- lo stato si scrive dal verbo del lotto (l'annullo della bozza, nessuna azione).
+SELECT * FROM vendite.fn_cambia_stato_lotto((SELECT id FROM tmp_dc_lotto_vivo), 'ANNULLATA');
 
 SELECT ok(
   (SELECT g.emissione_blocco_reason IS NULL
@@ -697,6 +635,41 @@ SELECT results_eq(
       WHERE g.gruppo_key = t.gruppo_key AND g.stadio = t.stadio $$,
   $$ VALUES ('ANNULLATA', false, true) $$,
   '15-septies. annullato: pre_fiscale falso (il gesto si spegne) ma il codice RESTA (la traccia non si perde)'
+);
+
+-- ============================================================
+-- 13) SENTINELLA C1/reset (DL-5): il reset della fattura di A4 col verbo
+--     vero, vendite.fn_cleanup_fatture_by_ids (solo UPDATE sull'attivita'
+--     fatturabile, mai DELETE+reinsert). data_insert deve restare
+--     INVARIATA -> il flag ritardo non cambia.
+-- ⚠️ ATTESA CAMBIATA (E-4, rev 2026-10-25): lo sgancio scritto a mano (UPDATE
+--   con la GUC) lasciava la riga di commessa EMESSA, e lo stadio tornava
+--   EMESSA_NON_FATTURATA. Il verbo vero libera anche la riga di commessa
+--   (RD-4: torna NON_EMESSA, vendite.fn_libera_attivita_fatturabili): lo
+--   stadio torna DA_EMETTERE, con la data di emissione e il ritardo
+--   dell'attivita' fatturabile sopravvissuta.
+-- ⚠️ In coda, prima del 16, e non piu' fra il 12 e il 14: A4 tornata
+--   DA_EMETTERE entrerebbe nei gruppi DA_EMETTERE della commessa che i test
+--   15..15-septies leggono come il solo gruppo sourceless.
+-- ============================================================
+CREATE TEMP TABLE tmp_dc_af_before AS
+SELECT af.id, af.data_insert
+  FROM vendite.attivita_fatturabili af
+ WHERE af.commessa_attivita_id = (SELECT attivita_id FROM tmp_dc_att WHERE slot = 'A4_FATTURATA');
+
+CREATE TEMP TABLE tmp_dc_reset AS
+SELECT * FROM vendite.fn_cleanup_fatture_by_ids(ARRAY[(SELECT id FROM tmp_dc_fattura)], NULL);
+
+SELECT ok(
+  (SELECT af.data_insert = b.data_insert AND af.fattura_riga_id IS NULL
+     FROM vendite.attivita_fatturabili af, tmp_dc_af_before b
+    WHERE af.id = b.id)
+  AND
+  (SELECT v.stadio = 'DA_EMETTERE' AND v.emessa_in_ritardo = true
+      AND v.data_emissione = TIMESTAMPTZ '2080-03-15 10:00:00+00'
+     FROM vendite.vw_dash_competenza_attivita v
+    WHERE v.commessa_attivita_id = (SELECT attivita_id FROM tmp_dc_att WHERE slot = 'A4_FATTURATA')),
+  '13. Sentinella reset (DL-5): data_insert INVARIATA dopo il reset vero, stadio torna DA_EMETTERE, ritardo conservato'
 );
 
 -- ============================================================

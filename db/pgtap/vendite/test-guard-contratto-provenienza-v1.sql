@@ -9,6 +9,10 @@
 -- Riferimento: richiesta BE del 2026-10-21 (smoke-group-attivita-contratto,
 --   Q-1), decisione di Tid D-1 dello stesso giorno. changeSet
 --   20261021-64/-65/-66; codice E_ATTIVITA_CONTRATTO_INCOERENTE.
+-- rev 2026-10-26 (brief-modello-documento-vendita §14, giro 10): la commessa
+--   va a PRONTA_FATTURAZIONE con dbops.fn_pgtap_porta_a_stato (dal verbo, con
+--   l'azione cambia_stato_commessa concessa dalla fixture), non piu' con un
+--   UPDATE dello stato, che la porta rifiuta (E_DOC_STATO_SOLO_DAL_VERBO).
 --
 -- Semantica attesa (il contratto, non l'implementazione):
 --   - il prezzo il contratto lo prende da vendite.fn_get_contratto_attivo(BA,
@@ -170,10 +174,10 @@ SELECT vendite.fn_link_commessa_sorgente(
                             WHERE s.codice_interno = 'COMMESSA' AND s.attivo),
     p_sorgente_uid     => (SELECT commessa_id FROM t_c)::text);
 
-UPDATE vendite.commesse
-   SET stato_commessa_id = (SELECT s.id FROM vendite.stati_commessa s
-                             WHERE s.codice_interno = 'PRONTA_FATTURAZIONE')
- WHERE id = (SELECT commessa_id FROM t_c);
+-- rev 2026-10-26 (giro 10): lo stato non si scrive piu' (la porta,
+-- E_DOC_STATO_SOLO_DAL_VERBO): la fixture cammina la matrice dal verbo e
+-- concede da se' l'azione cambia_stato_commessa.
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.commesse', (SELECT commessa_id FROM t_c), 'PRONTA_FATTURAZIONE');
 
 CREATE TEMP TABLE t_emit AS
 SELECT * FROM vendite.fn_emit_attivita_fatturabili_da_commessa(

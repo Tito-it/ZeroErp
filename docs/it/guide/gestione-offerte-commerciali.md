@@ -1,6 +1,6 @@
 # Guida — Gestione Offerte commerciali
 
-> **Ultimo aggiornamento**: 21 ottobre 2026
+> **Ultimo aggiornamento**: 26 ottobre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend/frontend, DBA.
 >
@@ -26,6 +26,7 @@
 >
 > **Vedi anche** — guide correlate:
 >
+> * [Il modello del documento di vendita](/guide/modello-documento-di-vendita) — **le regole comuni a tutti i documenti**: nascita, cambio di stato, permesso sul passaggio, emissione, annullo
 > * [Gestione Contratti](/guide/gestione-contratti) — la destinazione dell'offerta accettata; modello simmetrico
 > * [Gestione Preventivi](/guide/gestione-preventivi) — proposta puntuale (→ commessa); confronto in §1.2
 > * [Gestione Listini e Pricing v5](/guide/gestione-listini) — cascata promo → contratto → categoria
@@ -202,6 +203,8 @@ copiati nel contratto al push.
 
 ## 3. Ciclo di vita e stati
 
+⭐ Le regole comuni a tutti i documenti — in che stato si nasce, chi cambia lo stato, quale permesso chiede un passaggio, l'emissione, l'annullo — stanno nel [modello del documento di vendita](/guide/modello-documento-di-vendita), che al §10 dice anche a che punto è l'offerta rispetto al modello. Qui ci sono gli stati e i passaggi che sono suoi.
+
 ### 3.1 Stati e transizioni
 
 Gli stati sono governati da `config.stati_doc_offerte` e le transizioni ammesse da
@@ -219,13 +222,21 @@ Gli stati sono governati da `config.stati_doc_offerte` e le transizioni ammesse 
 Le transizioni permesse:
 
 ```text
-BOZZA     → EMESSA     (emetti)    controlli dell'emissione: §3.2
-BOZZA     → ANNULLATA  (annulla)   richiede motivazione_rifiuto
+BOZZA     → EMESSA     (emetti)    azione emetti_offerta; controlli dell'emissione: §3.2
+BOZZA     → ANNULLATA  (annulla)   richiede la motivazione
 EMESSA    → ACCETTATA  (accetta)
-EMESSA    → RIFIUTATA  (rifiuta)   richiede motivazione_rifiuto
+EMESSA    → RIFIUTATA  (rifiuta)   richiede la motivazione
 EMESSA    → SUPERATA   (automatica) quando nasce la revisione successiva
-ACCETTATA → ANNULLATA  (annulla)   richiede motivazione_rifiuto; solo senza contratto o ordine vivo
+SUPERATA  → EMESSA     (automatica) quando si annulla l'ultima revisione viva (§4.4)
+ACCETTATA → ANNULLATA  (annulla)   azione emetti_offerta; richiede la motivazione; solo senza contratto o ordine vivo
 ```
+
+Lo stato lo cambia il verbo dell'offerta, come per ogni documento (modello §5). I due passaggi
+automatici li fa il sistema e non si chiedono a mano. L'emissione e l'annullo di un'offerta
+accettata chiedono l'azione di processo `emetti_offerta`, gli altri passaggi il solo permesso
+sull'offerta (modello §6). La **motivazione** la chiede il database, dove il passaggio la prevede
+(`E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA`): una motivazione vuota o di soli spazi conta come assente, e
+quella data resta sull'offerta.
 
 Da **ACCETTATA** si esce trasformando l'offerta (contratto *o* ordine, §8 e §8.bis) oppure,
 se non si può trasformare, **annullandola**. L'annullo è ammesso solo se dall'offerta non vive
@@ -277,9 +288,13 @@ senza perdere lo storico.
 
 Una revisione si crea **solo da uno stato EMESSA**, tramite
 `fn_crea_revisione_offerta`. La nuova revisione nasce in **BOZZA** e diventa quella
-viva; appena nasce, il trigger `trgfn_offerte_commerciali_revisione` porta
-automaticamente la rev precedente a **SUPERATA**. Tentare la revisione da uno stato
-diverso da EMESSA dà `E_OFFERTA_REVISIONE_STATO_NON_AMMESSO`.
+viva; appena nasce, la rev precedente passa automaticamente a **SUPERATA**. Tentare la
+revisione da uno stato diverso da EMESSA dà `E_OFFERTA_REVISIONE_STATO_NON_AMMESSO`.
+
+Lo stato della rev precedente è la conseguenza delle sue revisioni vive (non annullate):
+superata finché una ce n'è, di nuovo emessa quando non ne resta nessuna. Lo scrive
+[`vendite.fn_offerta_proietta_stato_revisione`](/dbzero/vendite/funzioni/fn_offerta_proietta_stato_revisione),
+qualunque sia la strada che crea o annulla una revisione.
 
 ### 4.2 Il predicato `is_attiva` derivato
 
@@ -316,6 +331,16 @@ romperebbe proprio questo ritorno. Dettaglio nella
 Sui cruscotti entrambi i modelli sono corretti: le offerte escludono la SUPERATA
 (è un esito negativo), i preventivi escludono le revisioni non valide tramite
 `is_attiva`.
+
+### 4.4 Annullare una revisione
+
+Annullare l'ultima revisione viva fa tornare **emessa** la precedente: è un annullo che riapre
+un altro documento, e come tale si conferma (modello §8). La rev precedente è il **legame**
+della revisione che si annulla: senza la conferma l'annullo è rifiutato con
+`E_DOC_ANNULLO_CON_LEGAMI`, che ne dice il numero. Dopo la conferma l'annullo passa dal verbo
+[`vendite.fn_annulla_offerta`](/dbzero/vendite/funzioni/fn_annulla_offerta), con la sua
+motivazione. Una revisione la cui precedente resta superata da un'altra revisione viva non ha
+legami, e si annulla senza conferma.
 
 ---
 
@@ -601,6 +626,9 @@ Codici sollevati dal dominio offerte (registrati in `config.messaggi_errore`):
 | `E_ORD_ORIGINE_NON_CONVERTIBILE`                  | Genera ordine da un'offerta che non è ACCETTATA                                                                                                     |
 | `E_DOC_RIGA_NON_AMMESSA`                          | Emissione, genera ordine (o attivazione del contratto) con una riga che non è più ammessa: nomina l'articolo                                        |
 | `E_OFFERTA_ANNULLO_CON_DOCUMENTI_VIVI`            | Annullo di un'offerta accettata da cui vive ancora un contratto o un ordine                                                                         |
+| `E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA`              | Rifiuto o annullo senza motivazione (o con una di soli spazi)                                                                                       |
+| `E_DOC_ANNULLO_CON_LEGAMI`                        | Annullo, senza conferma, di una revisione che fa tornare emessa la precedente                                                                       |
+| `E_OFFERTA_RIENTRO_CON_REVISIONE_VIVA`            | La rev precedente torna emessa mentre una sua revisione è ancora viva                                                                               |
 | `E_DOC_COMPOSITO_BOM_VUOTA`                       | Articolo composito senza componenti validi alla data                                                                                                |
 | `E_CONFIG_MANCANTE`                               | Configurazione mancante (valuta non risolvibile, stato/sorgente assenti)                                                                            |
 

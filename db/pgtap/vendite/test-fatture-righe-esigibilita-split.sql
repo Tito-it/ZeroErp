@@ -75,21 +75,22 @@ SELECT ba.id, ba.utility_id
   JOIN config.tipi_soggetto_dettaglio tsd     ON tsd.id = s.tipo_soggetto_dettaglio_id
  WHERE tsd.split_payment_ammesso;
 
+-- rev 2026-10-27 (lotto 4 di D7): il cliente si COSTRUISCE
+--   (dbops.fn_pgtap_crea_cliente_ba, BA dell'azienda di chi agisce) e
+--   l'emittente e' quello dell'operatore di contesto. Prima la coppia
+--   (emittente, utility) si pescava da emittenti_fiscali_utilities e il BA era
+--   il primo scindibile del DB: da zero non c'era niente. Il filtro
+--   ba_scindibili resta, sul BA costruito: e' la premessa del caso 3, e se il
+--   builder cambiasse natura al cliente il test 1 lo direbbe. Registro e
+--   fattura restano scritti a mano, coi valori da qui.
+CREATE TEMP TABLE tmp_es_cli AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('esigibilita split');
+
 CREATE TEMP TABLE tmp_es_refs AS
-WITH cfg AS (
-  SELECT efu.emittente_soggetto_ruolo_id, efu.utility_id
-    FROM anagrafiche.emittenti_fiscali_utilities efu
-   WHERE efu.attivo IS TRUE
-     AND EXISTS (SELECT 1 FROM pg_temp.ba_scindibili b
-                  WHERE b.utility_id = efu.utility_id)
-   ORDER BY efu.emittente_soggetto_ruolo_id, efu.utility_id
-   LIMIT 1
-)
-SELECT (SELECT emittente_soggetto_ruolo_id FROM cfg) AS emittente_soggetto_ruolo_id,
-       (SELECT utility_id FROM cfg)                  AS utility_id,
+SELECT script.fn_pgtap_emittente_sr_operatore()      AS emittente_soggetto_ruolo_id,
+       (SELECT utility_id FROM tmp_es_cli)           AS utility_id,
        (SELECT b.id FROM pg_temp.ba_scindibili b
-         WHERE b.utility_id = (SELECT utility_id FROM cfg)
-         ORDER BY b.id LIMIT 1)                      AS billing_account_id,
+         WHERE b.id = (SELECT billing_account_id FROM tmp_es_cli)) AS billing_account_id,
        -- ⭐ un codice IVA con aliquota > 0: una prova fra zeri passerebbe
        --   anche con il riepilogo rotto
        (SELECT i.id FROM config.iva i

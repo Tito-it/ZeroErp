@@ -1,0 +1,120 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA GRAMMATICA SOLA PER I TIPI DI DOCUMENTO — lotto 3 (le note), L3-4: i trigger di validazione
+#   delle note di vendite perdono il terzo argomento.
+#   Brief: brief-db-grammatica-unica-documenti §14 (Tid, 2026-10-25: ok alle proposte, via).
+#
+#   Dal 20261025-66 script.trgfn_note_validate_generic prende il dominio da NEW.target_tipo e non
+#   legge piu' TG_ARGV[2]: un argomento che resta montato e non si legge fa credere a chi legge
+#   pg_trigger che conti, e porta il codice vecchio. Si rimontano uguali, con i soli due
+#   argomenti che la funzione usa (tabella delle righe, colonna verso la testata):
+#     vendite.note_preventivo            (vendite.preventivi_righe, preventivo_id) — era 'PREVENTIVO'
+#     vendite.note_contratto             (vendite.contratti_righe, contratto_id) — era 'CONTRATTO'
+#     vendite.note_fatture               (vendite.fatture_righe, fattura_id) — era 'FATTURA'
+#     vendite.note_ordini                (vendite.ordini_righe, ordine_id) — era 'ORDINE'
+#     vendite.note_ddt                   (vendite.ddt_righe, ddt_id) — era 'DDT'
+#     vendite.note_offerte_commerciali   (vendite.offerte_commerciali_eccezioni, offerta_id) — era 'OFFERTA'
+#   Trigger scritti a mano (non dal framework): DROP IF EXISTS + CREATE e' la forma (§11.5 non
+#   li riguarda). Stesso nome, stessa fase, stessi eventi. Da zero esistono gia' (20251020-03,
+#   20251021-02/-03, 20260524-08, prima per numero).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261025-67-remount-trg-vendite-note-validate-senza-dominio-mctit.yaml
+
+  - changeSet:
+      id: 20261025-67-remount-trg-vendite-note-validate-senza-dominio
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        I 6 trigger di validazione delle note di vendite rimontati senza il terzo argomento,
+        che script.trgfn_note_validate_generic non legge piu' (20261025-66). Grammatica unica, lotto 3, L3-4.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_note_preventivo_validate_ins_upd ON vendite.note_preventivo;
+              CREATE TRIGGER trg_note_preventivo_validate_ins_upd
+              BEFORE INSERT OR UPDATE ON vendite.note_preventivo
+              FOR EACH ROW
+              EXECUTE FUNCTION script.trgfn_note_validate_generic('vendite.preventivi_righe', 'preventivo_id');
+
+              DROP TRIGGER IF EXISTS trg_note_contratto_validate_ins_upd ON vendite.note_contratto;
+              CREATE TRIGGER trg_note_contratto_validate_ins_upd
+              BEFORE INSERT OR UPDATE ON vendite.note_contratto
+              FOR EACH ROW
+              EXECUTE FUNCTION script.trgfn_note_validate_generic('vendite.contratti_righe', 'contratto_id');
+
+              DROP TRIGGER IF EXISTS trg_note_fatture_validate_ins_upd ON vendite.note_fatture;
+              CREATE TRIGGER trg_note_fatture_validate_ins_upd
+              BEFORE INSERT OR UPDATE ON vendite.note_fatture
+              FOR EACH ROW
+              EXECUTE FUNCTION script.trgfn_note_validate_generic('vendite.fatture_righe', 'fattura_id');
+
+              DROP TRIGGER IF EXISTS trg_note_ordini_validate_ins_upd ON vendite.note_ordini;
+              CREATE TRIGGER trg_note_ordini_validate_ins_upd
+              BEFORE INSERT OR UPDATE ON vendite.note_ordini
+              FOR EACH ROW
+              EXECUTE FUNCTION script.trgfn_note_validate_generic('vendite.ordini_righe', 'ordine_id');
+
+              DROP TRIGGER IF EXISTS trg_note_ddt_validate_ins_upd ON vendite.note_ddt;
+              CREATE TRIGGER trg_note_ddt_validate_ins_upd
+              BEFORE INSERT OR UPDATE ON vendite.note_ddt
+              FOR EACH ROW
+              EXECUTE FUNCTION script.trgfn_note_validate_generic('vendite.ddt_righe', 'ddt_id');
+
+              DROP TRIGGER IF EXISTS trg_note_offerte_commerciali_validate_ins_upd ON vendite.note_offerte_commerciali;
+              CREATE TRIGGER trg_note_offerte_commerciali_validate_ins_upd
+              BEFORE INSERT OR UPDATE ON vendite.note_offerte_commerciali
+              FOR EACH ROW
+              EXECUTE FUNCTION script.trgfn_note_validate_generic('vendite.offerte_commerciali_eccezioni', 'offerta_id');
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_note_preventivo_validate_ins_upd ON vendite.note_preventivo;
+              CREATE TRIGGER trg_note_preventivo_validate_ins_upd
+              BEFORE INSERT OR UPDATE ON vendite.note_preventivo
+              FOR EACH ROW
+              EXECUTE FUNCTION script.trgfn_note_validate_generic('vendite.preventivi_righe', 'preventivo_id', 'PREVENTIVO');
+
+              DROP TRIGGER IF EXISTS trg_note_contratto_validate_ins_upd ON vendite.note_contratto;
+              CREATE TRIGGER trg_note_contratto_validate_ins_upd
+              BEFORE INSERT OR UPDATE ON vendite.note_contratto
+              FOR EACH ROW
+              EXECUTE FUNCTION script.trgfn_note_validate_generic('vendite.contratti_righe', 'contratto_id', 'CONTRATTO');
+
+              DROP TRIGGER IF EXISTS trg_note_fatture_validate_ins_upd ON vendite.note_fatture;
+              CREATE TRIGGER trg_note_fatture_validate_ins_upd
+              BEFORE INSERT OR UPDATE ON vendite.note_fatture
+              FOR EACH ROW
+              EXECUTE FUNCTION script.trgfn_note_validate_generic('vendite.fatture_righe', 'fattura_id', 'FATTURA');
+
+              DROP TRIGGER IF EXISTS trg_note_ordini_validate_ins_upd ON vendite.note_ordini;
+              CREATE TRIGGER trg_note_ordini_validate_ins_upd
+              BEFORE INSERT OR UPDATE ON vendite.note_ordini
+              FOR EACH ROW
+              EXECUTE FUNCTION script.trgfn_note_validate_generic('vendite.ordini_righe', 'ordine_id', 'ORDINE');
+
+              DROP TRIGGER IF EXISTS trg_note_ddt_validate_ins_upd ON vendite.note_ddt;
+              CREATE TRIGGER trg_note_ddt_validate_ins_upd
+              BEFORE INSERT OR UPDATE ON vendite.note_ddt
+              FOR EACH ROW
+              EXECUTE FUNCTION script.trgfn_note_validate_generic('vendite.ddt_righe', 'ddt_id', 'DDT');
+
+              DROP TRIGGER IF EXISTS trg_note_offerte_commerciali_validate_ins_upd ON vendite.note_offerte_commerciali;
+              CREATE TRIGGER trg_note_offerte_commerciali_validate_ins_upd
+              BEFORE INSERT OR UPDATE ON vendite.note_offerte_commerciali
+              FOR EACH ROW
+              EXECUTE FUNCTION script.trgfn_note_validate_generic('vendite.offerte_commerciali_eccezioni', 'offerta_id', 'OFFERTA');

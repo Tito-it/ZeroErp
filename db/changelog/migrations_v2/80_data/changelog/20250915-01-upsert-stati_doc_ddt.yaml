@@ -58,6 +58,9 @@ databaseChangeLog:
               # 2026-10-24 (20261024-07, brief-modello-documento-vendita P-1): lo stato in cui
               # un documento nasce. Va dichiarata qui, o la cella del CSV non la governa.
               - column: { name: iniziale, type: BOOLEAN }
+              # 2026-10-25 (20261025-37, brief-modello-documento-vendita §8): lo stato di
+              # emissione. Va dichiarata qui, o la cella del CSV non la governa.
+              - column: { name: emissione, type: BOOLEAN }
 
 
   - changeSet:

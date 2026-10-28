@@ -1,0 +1,63 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'AZIONE DELL'ORDINE STA SULLA RIGA DEL PASSAGGIO (M-3)
+#   Brief: brief-modello-documento-vendita §9 (giro 7; Z-1 di Tid,
+#   2026-10-25). Stessa colonna di bolla, reso (20261025-08) e preventivo
+#   (20261025-38).
+#
+# ── LA REGOLA ───────────────────────────────────────────────────────
+#   Una sola azione per documento, sui passaggi pesanti (M-4): l'emissione
+#   (DRAFT -> CONFERMATO) e l'annullo di un ordine confermato
+#   (CONFERMATO -> ANNULLATO). L'azione e' NUOVA, emetti_ordine (Z-1). Gli
+#   altri passaggi (l'annullo della bozza) chiedono solo il permesso sul
+#   documento; quelli di processo (l'evasione) non li sceglie l'operatore.
+#
+# ── LA COLONNA ──────────────────────────────────────────────────────
+#   azione_processo_codename, FK verso config.azioni_processo.permission_codename.
+#   NULL = nessuna azione. I valori stanno nel CSV della matrice (80_data,
+#   mirror 20260605-11), non qui (§11.2).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261025-73-alter-transizioni-ordini-azione-processo-mctit.yaml
+
+  - changeSet:
+      id: 20261025-73-alter-transizioni-ordini-azione-processo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Colonna azione_processo_codename (FK a config.azioni_processo.permission_codename,
+        NULL = nessuna azione) su config.transizioni_stati_ordini: l'azione di processo che
+        il passaggio chiede (M-3). Brief: brief-modello-documento-vendita §9.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists: { schemaName: config, tableName: transizioni_stati_ordini }
+            - tableExists: { schemaName: config, tableName: azioni_processo }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.transizioni_stati_ordini
+                  ADD COLUMN azione_processo_codename varchar(100),
+                  ADD CONSTRAINT fk_transizioni_stati_ordini_azioni_processo
+                      FOREIGN KEY (azione_processo_codename)
+                      REFERENCES config.azioni_processo (permission_codename);
+
+              COMMENT ON COLUMN config.transizioni_stati_ordini.azione_processo_codename IS
+                  'L''azione di processo che questo passaggio chiede (config.azioni_processo.permission_codename); NULL = basta il permesso sul documento, che controlla il backend. La leggono il verbo (script.fn_guard_passaggio, E_PERMESSO_NEGATO), il backend (403 prima della transazione) e la capability (il bottone si nasconde a chi non ha l''azione), tutti da script.fn_doc_passaggio. Una sola azione per documento, sui passaggi pesanti: emissione (DRAFT -> CONFERMATO) e annullo del confermato (M-4). Il valore sta nel CSV della matrice. Brief: brief-modello-documento-vendita §9 (M-3, Z-1, Tid 2026-10-24/25).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.transizioni_stati_ordini DROP COLUMN IF EXISTS azione_processo_codename;

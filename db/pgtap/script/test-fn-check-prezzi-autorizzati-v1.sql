@@ -1,5 +1,21 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-26 (brief-modello-documento-vendita §13, giro 9): l'offerta ha la porta sulla colonna
+--   di stato e l'emissione chiede emetti_offerta. Concessa all'operatore del contesto prima del 22
+--   (senza, «Emetti» e' nascosta e la reason esce NULL); 23 e 24 passano dal verbo
+--   vendite.fn_cambia_stato_offerta (prima UPDATE diretti, ora fermati dalla porta). Stessi
+--   esiti attesi.
+-- rev 2026-10-26 (brief-modello-documento-vendita §11): il contratto ha la porta sulla colonna di
+--   stato e l'attivazione chiede emetti_contratto. Concessa all'operatore del contesto prima del 18
+--   (senza, «Attiva» e' nascosta e la reason esce NULL); 19 e 20 passano dal verbo
+--   vendite.fn_cambia_stato_contratto (prima UPDATE diretti, ora fermati dalla porta). Stessi
+--   esiti attesi.
+-- rev 2026-10-25 (brief-modello-documento-vendita §9): l'ordine ha la porta sulla colonna di stato
+--   e la conferma chiede emetti_ordine. Concessa all'operatore del contesto prima del 28 (senza,
+--   «Conferma» e' nascosta e la reason esce NULL); 29 e 30 passano dal verbo
+--   vendite.fn_cambia_stato_ordine (prima UPDATE diretti, ora fermati dalla porta); il 31 porta
+--   l'ordine in EVASO evadendolo davvero (dbops.fn_pgtap_crea_ddt_da_ordine): EVASO e' un
+--   passaggio di processo, non si scrive a mano. Stessi esiti attesi.
 -- pgTAP test per Zero ERP
 --
 -- Test: script.fn_check_prezzi_autorizzati — «un prezzo che nessuno ha
@@ -7,7 +23,7 @@
 --   documenti di vendita. Riferimenti: 20260924-20 … -32.
 -- Brief: docs/it/dev/work-in-progress/brief-db-preventivi-congelamento-pricing.md
 --
--- Elenco test (plan 44):
+-- Elenco test (plan 45):
 --  Il building block
 --   1) una testata che non conosce e' un errore, non un «niente da dire»
 --   2) un id nullo e' un errore
@@ -48,6 +64,7 @@
 --  28) «Conferma» spento col motivo, dalla bozza
 --  29) DRAFT -> CONFERMATO con un componente rifiutato: BLOCCA
 --  30) DRAFT -> CONFERMATO con prezzi autorizzati: PASSA
+--  30b) l'ordine evaso davvero dalla bolla (fixture del 31; rev 2026-10-25)
 --  31) EVASO: un componente non diventa rifiutato (componenti fuori bozza)
 --      (rev 2026-10-08, brief-db-righe-e-componenti-le-altre-famiglie §2.2:
 --      prima «il RIENTRO EVASO -> CONFERMATO con un componente rifiutato
@@ -84,6 +101,19 @@
 --    i guard di transizione sanno sollevare anche altro, e P0001 direbbe solo
 --    «errore di dominio», non quale.
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2c/2d): l'ambito degli indirizzi della bolla e' DDT_VENDITA.
+-- rev 2026-10-25 (brief-modello-documento-vendita §7, giro 5): «Emetti» del DDT porta il permesso
+--   emetti_ddt e si nasconde a chi non l'ha; il file prova il prezzo, non il permesso, quindi
+--   l'operatore riceve emetti_ddt prima del test 33. Il 35 emette con dbops.fn_pgtap_porta_a_stato
+--   al posto dell'UPDATE diretto, che la porta ora rifiuta prima del guard. Attese invariate.
+-- rev 2026-10-25 (brief-modello-documento-vendita §8, giro 6): anche «Emetti» del preventivo porta
+--   il permesso emetti_preventivo e si nasconde a chi non l'ha: l'operatore lo riceve prima del
+--   test 9. L'11 e il 12 chiedono il passaggio al verbo vendite.fn_cambia_stato_preventivo al
+--   posto dell'UPDATE diretto, che la porta ora rifiuta prima del guard: il verbo arriva al guard
+--   di transizione, che solleva il suo motivo. Il preventivo «rev» (39-42, skip) si emette con
+--   dbops.fn_pgtap_porta_a_stato. Attese invariate.
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): le due testate della bolla (VENDITA,
+--   CONTO_VISIONE, con gli indirizzi) da dbops.fn_pgtap_crea_ddt; restano a mano le righe kit col
+--   componente di ogni documento (il caso) e le testate degli ordini, che portano la riga kit.
 -- ------------------------------------------------------------
 
 -- ⚠️ Rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.9, giro B3): le righe di
@@ -101,7 +131,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 -- arriva mai.
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(44);
+SELECT plan(45);
 
 -- =========================================================
 -- Il mondo: azienda di chi agisce + cliente fatturabile legato a lei.
@@ -289,6 +319,13 @@ SELECT is(
 -- =========================================================
 -- 9-16) Preventivo: capability e guard di transizione
 -- =========================================================
+-- rev 2026-10-25 (giro 6): si prova il prezzo, non il permesso — l'operatore
+--   in sessione riceve emetti_preventivo, senza il quale «Emetti» non
+--   comparirebbe (9) e il verbo rifiuterebbe col permesso (11-12).
+DO $az$ BEGIN
+  PERFORM dbops.fn_pgtap_concedi_azione(NULLIF(current_setting('app.current_user_id', true), '')::integer, 'emetti_preventivo');
+END $az$;
+
 SELECT is(
     (SELECT a ->> 'reason_key'
        FROM jsonb_array_elements(script.fn_available_actions_preventivo(
@@ -308,16 +345,14 @@ SELECT is(
 );
 
 SELECT throws_like(
-    format('UPDATE vendite.preventivi SET stato_doc_preventivo_id = %s WHERE id = %s',
-           (SELECT s.id FROM config.stati_doc_preventivi s WHERE s.codice_interno = 'EMESSO'),
+    format($$SELECT * FROM vendite.fn_cambia_stato_preventivo(%s, 'EMESSO')$$,
            (SELECT prev_id FROM _p WHERE tag = 'pendente')),
     '%prezzi ancora in attesa di approvazione%',
     '11) DRAFT -> EMESSO con un prezzo in attesa: BLOCCA'
 );
 
 SELECT lives_ok(
-    format('UPDATE vendite.preventivi SET stato_doc_preventivo_id = %s WHERE id = %s',
-           (SELECT s.id FROM config.stati_doc_preventivi s WHERE s.codice_interno = 'EMESSO'),
+    format($$SELECT * FROM vendite.fn_cambia_stato_preventivo(%s, 'EMESSO')$$,
            (SELECT prev_id FROM _p WHERE tag = 'emesso')),
     '12) DRAFT -> EMESSO con prezzi autorizzati: PASSA (controllo dell''11)'
 );
@@ -409,6 +444,9 @@ SELECT is(
     '17) contratto: una RIGA con prezzo in attesa (prima contavano solo i componenti) da'' un motivo'
 );
 
+-- rev 2026-10-26 (§11): permesso => nascondi; con l'azione «Attiva» c'e', spento dal motivo.
+SELECT dbops.fn_pgtap_concedi_azione(current_setting('app.current_user_id')::integer, 'emetti_contratto');
+
 SELECT is(
     (SELECT (a ->> 'reason_key') || ' / reasons=' || jsonb_typeof(a -> 'reasons')
        FROM jsonb_array_elements(script.fn_available_actions_contratto(
@@ -419,16 +457,14 @@ SELECT is(
 );
 
 SELECT throws_like(
-    format('UPDATE vendite.contratti SET stato_doc_contratto_id = %s WHERE id = %s',
-           (SELECT s.id FROM config.stati_doc_contratti s WHERE s.codice_interno = 'ATTIVO'),
+    format($q$SELECT * FROM vendite.fn_cambia_stato_contratto(%s, 'ATTIVO')$q$,
            (SELECT contratto_id FROM _c WHERE tag = 'rifiutato')),
     '%prezzi rifiutati dal responsabile%',
     '19) DRAFT -> ATTIVO con una riga REJECTED: BLOCCA (prima passava)'
 );
 
 SELECT lives_ok(
-    format('UPDATE vendite.contratti SET stato_doc_contratto_id = %s WHERE id = %s',
-           (SELECT s.id FROM config.stati_doc_contratti s WHERE s.codice_interno = 'ATTIVO'),
+    format($q$SELECT * FROM vendite.fn_cambia_stato_contratto(%s, 'ATTIVO')$q$,
            (SELECT contratto_id FROM _c WHERE tag = 'pulito')),
     '20) DRAFT -> ATTIVO con prezzi autorizzati: PASSA (controllo del 19)'
 );
@@ -509,6 +545,9 @@ SELECT is(
     '21) offerta: un''eccezione col prezzo in attesa da'' un motivo'
 );
 
+-- rev 2026-10-26 (§13): permesso => nascondi; con l'azione «Emetti» c'e', spento dal motivo.
+SELECT dbops.fn_pgtap_concedi_azione(current_setting('app.current_user_id')::integer, 'emetti_offerta');
+
 SELECT is(
     (SELECT a ->> 'reason_key'
        FROM jsonb_array_elements(script.fn_available_actions_offerta(
@@ -519,16 +558,14 @@ SELECT is(
 );
 
 SELECT throws_like(
-    format('UPDATE vendite.offerte_commerciali SET stato_doc_offerta_id = %s WHERE id = %s',
-           (SELECT s.id FROM config.stati_doc_offerte s WHERE s.codice_interno = 'EMESSA'),
+    format($q$SELECT * FROM vendite.fn_cambia_stato_offerta(%s, 'EMESSA', NULL)$q$,
            (SELECT offerta_id FROM _o WHERE tag = 'pendente')),
     '%prezzi ancora in attesa di approvazione%',
     '23) BOZZA -> EMESSA con un prezzo in attesa: BLOCCA (prima passava)'
 );
 
 SELECT lives_ok(
-    format('UPDATE vendite.offerte_commerciali SET stato_doc_offerta_id = %s WHERE id = %s',
-           (SELECT s.id FROM config.stati_doc_offerte s WHERE s.codice_interno = 'EMESSA'),
+    format($q$SELECT * FROM vendite.fn_cambia_stato_offerta(%s, 'EMESSA', NULL)$q$,
            (SELECT offerta_id FROM _o WHERE tag = 'kit')),
     '24) BOZZA -> EMESSA con prezzi autorizzati: PASSA (controllo del 23)'
 );
@@ -618,6 +655,9 @@ SELECT is(
     '27) ordine: un componente rifiutato da'' un motivo'
 );
 
+-- rev 2026-10-25 (§9): permesso => nascondi; con l'azione «Conferma» c'e', spento dal motivo.
+SELECT dbops.fn_pgtap_concedi_azione(current_setting('app.current_user_id')::integer, 'emetti_ordine');
+
 SELECT is(
     (SELECT a ->> 'reason_key'
        FROM jsonb_array_elements(script.fn_available_actions_ordine(
@@ -628,16 +668,14 @@ SELECT is(
 );
 
 SELECT throws_like(
-    format('UPDATE vendite.ordini SET stato_doc_ordine_id = %s WHERE id = %s',
-           (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno = 'CONFERMATO'),
+    format($q$SELECT * FROM vendite.fn_cambia_stato_ordine(%s, 'CONFERMATO')$q$,
            (SELECT ordine_id FROM _or WHERE tag = 'rifiutato')),
     '%prezzi rifiutati dal responsabile%',
     '29) DRAFT -> CONFERMATO con un componente rifiutato: BLOCCA (prima passava)'
 );
 
 SELECT lives_ok(
-    format('UPDATE vendite.ordini SET stato_doc_ordine_id = %s WHERE id = %s',
-           (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno = 'CONFERMATO'),
+    format($q$SELECT * FROM vendite.fn_cambia_stato_ordine(%s, 'CONFERMATO')$q$,
            (SELECT ordine_id FROM _or WHERE tag = 'pulito')),
     '30) DRAFT -> CONFERMATO con prezzi autorizzati: PASSA (controllo del 29)'
 );
@@ -651,9 +689,18 @@ SELECT lives_ok(
 --   autorizzati (29), e dopo la conferma i componenti si toccano solo in bozza.
 --   Quindi un prezzo non diventa rifiutato su un ordine EVASO: il test prova
 --   questo. Stessa riscrittura dei test 26 e 44 sull'offerta (rev 2026-10-04).
-UPDATE vendite.ordini
-   SET stato_doc_ordine_id = (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno = 'EVASO')
- WHERE id = (SELECT ordine_id FROM _or WHERE tag = 'pulito');
+-- rev 2026-10-25 (§9): EVASO e' di processo: l'ordine si evade davvero, con una
+--   bolla che porta tutta la riga.
+SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('prezzi autorizzati evaso', 'EMESSO',
+           p_ordine_id => (SELECT ordine_id FROM _or WHERE tag = 'pulito'));
+
+SELECT is(
+    (SELECT s.codice_interno::text FROM vendite.ordini o
+       JOIN config.stati_doc_ordini s ON s.id = o.stato_doc_ordine_id
+      WHERE o.id = (SELECT ordine_id FROM _or WHERE tag = 'pulito')),
+    'EVASO',
+    '30b) l''ordine evaso davvero (la fixture del 31)'
+);
 
 SELECT throws_like(
     format($$UPDATE vendite.ordini_righe_componenti
@@ -684,19 +731,12 @@ BEGIN
     -- 'vende':  causale fatturabile — il prezzo si chiede;
     -- 'visione': conto visione — il documento non vende, il prezzo no.
     FOREACH v_tag IN ARRAY ARRAY['vende', 'visione'] LOOP
-        -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia): col BA del cliente — la
-        --   causale vuole un cliente (D-2) e la utility senza BA viola
-        --   chk_ddt_ba_utility_insieme.
-        INSERT INTO vendite.ddt
-            (destinatario_soggetto_ruolo_id, stato_doc_ddt_id, emittente_fiscale_id,
-             utility_id, billing_account_id, causale_trasporto_id)
-        VALUES
-            (c.cliente_soggetto_ruolo_id,
-             (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno = 'DRAFT'),
-             c.emittente_fiscale_id, c.utility_id, c.billing_account_id,
-             (SELECT ct.id FROM config.causali_trasporto ct
-               WHERE ct.codice = CASE v_tag WHEN 'vende' THEN 'VENDITA' ELSE 'CONTO_VISIONE' END))
-        RETURNING id INTO v_ddt;
+        -- La testata in bozza dal builder, col BA del cliente (la causale vuole
+        --   un cliente, D-2) e gli indirizzi che l'emissione pretende: senza, il
+        --   guard solleverebbe quelli e coprirebbe il motivo del prezzo (test 35).
+        --   La riga kit e il componente PENDING sono il caso: restano qui.
+        v_ddt := dbops.fn_pgtap_crea_ddt(c.billing_account_id, c.cliente_soggetto_ruolo_id,
+                                         CASE v_tag WHEN 'vende' THEN 'VENDITA' ELSE 'CONTO_VISIONE' END);
 
         INSERT INTO vendite.ddt_righe
             (ddt_id, riga_nr, articolo_id, descrizione, quantita, qta_operativa,
@@ -716,13 +756,6 @@ BEGIN
            SET stato_approvazione_prezzo = 'PENDING'
          WHERE id = v_comp;
 
-        -- Gli indirizzi che l'emissione pretende: senza, il guard solleverebbe
-        -- quelli e coprirebbe il motivo del prezzo (test 35).
-        INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
-        SELECT v_ddt, ti.id, '{"pgtap": true}'::jsonb
-          FROM config.tipi_indirizzi ti
-         WHERE ti.codice_interno = ANY (script.fn_indirizzi_obbligatori_mancanti('DDT_VENDITA', ARRAY[]::integer[]));
-
         INSERT INTO _d VALUES (v_tag, v_ddt, v_comp);
     END LOOP;
 END
@@ -736,6 +769,12 @@ SELECT is(
     '["E_DOC_PREZZO_PENDENTE"]'::jsonb,
     '32) DDT che vende, componente PENDING: il motivo e'' E_DOC_PREZZO_PENDENTE (non piu'' E_COMPONENTE_PREZZO_PENDENTE)'
 );
+
+-- rev 2026-10-25 (giro 5): si prova il prezzo, non il permesso — l'operatore
+--   in sessione riceve emetti_ddt, senza il quale «Emetti» non comparirebbe.
+DO $az$ BEGIN
+  PERFORM dbops.fn_pgtap_concedi_azione(NULLIF(current_setting('app.current_user_id', true), '')::integer, 'emetti_ddt');
+END $az$;
 
 SELECT ok(
     (SELECT a -> 'reasons' @> '[{"reason": "PREZZO_PENDENTE"}]'::jsonb
@@ -757,8 +796,7 @@ SELECT is(
 );
 
 SELECT throws_like(
-    format('UPDATE vendite.ddt SET stato_doc_ddt_id = %s WHERE id = %s',
-           (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno = 'EMESSO'),
+    format($$SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', %s, 'EMESSO')$$,
            (SELECT ddt_id FROM _d WHERE tag = 'vende')),
     '%prezzi ancora in attesa di approvazione%',
     '35) DRAFT -> EMESSO del DDT che vende con un prezzo in attesa: il guard solleva il codice nuovo'
@@ -799,9 +837,9 @@ SELECT is(
 --   sulla nuova l'attesa non finiva piu'. Decisione di Tid del 2026-09-24:
 --   prima l'esito, poi la revisione. Approvato e rifiutato si ricopiano.
 -- =========================================================
-UPDATE vendite.preventivi
-   SET stato_doc_preventivo_id = (SELECT s.id FROM config.stati_doc_preventivi s WHERE s.codice_interno = 'EMESSO')
- WHERE id = (SELECT prev_id FROM _p WHERE tag = 'rev');
+-- rev 2026-10-25 (giro 6): l'emissione col verbo (fn_pgtap_porta_a_stato), non
+--   con un UPDATE diretto, che la porta rifiuta.
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT prev_id FROM _p WHERE tag = 'rev'), 'EMESSO');
 
 -- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui §4.5, decisione
 --   di Tid): SKIP MOTIVATO dei test 39-42. Il caso si costruiva scrivendo

@@ -4,8 +4,8 @@
 # Doc: Python
 # Scopo: L'annullo di un documento con legami, lato backend: la lettura dei
 #        legami per la finestra di conferma e la dichiarazione che la conferma
-#        porta al verbo. Per bolla, ordine, preventivo, contratto e
-#        commessa.
+#        porta al verbo. Per bolla, ordine, preventivo, contratto,
+#        commessa e offerta.
 # ------------------------------------------------------------
 
 # PERCHE' ESISTE (brief-db-annullo-documento-con-legami, D-4 di Tid, 2026-10-11).
@@ -26,6 +26,13 @@
 #    e annullarla riapre a monte (il documento o il consumo tornano da mandare,
 #    il reso da accreditare) o annulla (gli oneri). Stesso lettore, stesso
 #    avviso, stessa finestra: un meccanismo solo.
+# ⭐ L'offerta e' entrata con brief-modello-documento-vendita §13 (O-4 di Tid,
+#    2026-10-26): il suo legame e' la revisione precedente, superata, che torna
+#    emessa quando si annulla l'ultima revisione viva (Regola 6: un annullo che
+#    riapre altro si conferma). ⚠️ La revisione precedente non e' un nodo del
+#    lineage (nessun arco offerta -> offerta): il suo nome resta None, e la
+#    finestra mostra il solo tipo, senza link — com'e' scritto qui sotto per
+#    ogni legame che il lineage non vede.
 # ⛔ La regola non sta qui: che cosa e' un legame, quanti sono, se la conferma
 #    corrisponde lo dice il DB (`vendite.fn_documento_legami`, lo stesso lettore
 #    di avviso e verbo). Qui si legge e si trasporta.
@@ -54,15 +61,15 @@ from apps.core.services.payload_helpers import PayloadValidator
 #    elenco o un codice corto (che il DB rifiuterebbe solo a runtime).
 DocumentoLegami = Literal[
     "DDT_VENDITA", "ORDINE_VENDITA", "PREVENTIVO", "CONTRATTO", "COMMESSA",
+    "OFFERTA_COMMERCIALE",
 ]
 
-# Lo stato di destinazione dei verbi di annullo. ⚠️ L'avviso del DB scatta
-# entrando in uno stato ABORTITO del vocabolario (`is_abortito`): in bolla,
-# ordine, preventivo e contratto l'unico e' ANNULLATO, nella commessa e'
-# ANNULLATA (femminile, `vendite.stati_commessa`). Sono anche dove portano i
-# verbi. Uno stato abortito nuovo vorrebbe il suo verbo, a DB.
-STATO_ANNULLATO = "ANNULLATO"
-STATO_ANNULLATA = "ANNULLATA"
+# ⛔ Lo stato di destinazione dei verbi di annullo NON si scrive qui: fino al
+#    2026-10-25 c'erano `STATO_ANNULLATO` / `STATO_ANNULLATA`, letterali con cui
+#    i service riconoscevano l'annullo. Quale stato sia l'annullo lo dice il
+#    vocabolario (`is_abortito`, uno solo e attivo, Z-3), letto dal BB
+#    `core/services/documento_modello.e_stato_di_annullo`
+#    (brief-modello-documento-vendita §9.8).
 
 # Le ORIGINI di un legame che sono un documento del lineage: per queste
 # l'`origine` del lettore e' anche il tipo del lineage, e serve al gesto «vai al

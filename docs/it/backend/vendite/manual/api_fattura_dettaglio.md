@@ -239,7 +239,11 @@ video sembra sano, senza nessun errore.
 ### `contatori` — i badge senza un secondo round-trip
 
 `contatori` alimenta i badge della barra azioni del drawer. Oggi una sola voce,
-`note`: il sub-drawer note è separato e il padre non ne carica la lista, quindi
+`note`, il numero sul pulsante «Gestisci note». Dal 2026-10-25 la compone il BB
+`contatori_documento` (`apps/core/services/partitioned_note_service.py`), e la
+danno uguale i dettagli di **tutti** i documenti con note partizionate
+(preventivo, contratto, offerta, ordine, DDT, fattura): il frontend la legge in
+un posto solo (`useContatoreNote`). Il sub-drawer note è separato e il padre non ne carica la lista, quindi
 senza questo campo il badge costerebbe una seconda chiamata all'apertura di ogni
 fattura — cioè l'opposto del principio di questo endpoint.
 
@@ -340,8 +344,10 @@ comune (payload, filtri, `Idempotency-Key`, errori, permessi) sta in
 - `GET/PATCH/DELETE /api/v1/vendite/fatture/<fattura_id>/note/<note_id>/`
 
 Partizione `vendite.note_fatture` (`FOR VALUES IN ('FATTURA')`), trigger di
-validazione `trg_note_fatture_validate_ins_upd` presente, `"FATTURA"` già in
-`TARGET_TIPI_AMMESSI`: **solo cablaggio**, nessuna migration.
+validazione `trg_note_fatture_validate_ins_upd` presente: **solo cablaggio**,
+nessuna migration. `FATTURA` è un codice di `config.tipi_entita` (FK del padre
+`vendite.note`); fino al 2026-10-25 il backend lo ripeteva nella whitelist
+`TARGET_TIPI_AMMESSI`, ritirata col lotto 3 di brief-db-grammatica-unica-documenti.
 
 Note di riga ancorate a `vendite.fatture_righe` via `target_riga_id`.
 ⚠️ Le righe `KIT_PADRE` non sono ancorabili (non esistono in tabella): il

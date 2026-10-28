@@ -1,0 +1,58 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'AVVISO DELL'ANNULLO SULL'OFFERTA
+#   Brief: brief-modello-documento-vendita §13 (giro 9; O-4 di Tid,
+#   2026-10-26). Stessa forma dei montaggi di bolla, ordine, preventivo,
+#   contratto e commessa (20261019-68).
+#
+#   Fascia _m10_: dopo il guard di transizione (_a10_), che solleva prima
+#   cio' che vieta (un contratto o un ordine vivo nato dall'offerta); poi cio'
+#   che chiede conferma (la revisione precedente che torna emessa).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261026-24-create-trigger-guard-annullo-con-legami-offerte-mctit.yaml
+
+  - changeSet:
+      id: 20261026-24-create-trigger-guard-annullo-con-legami-offerte
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Monta vendite.trgfn_doc_guard_annullo_con_legami (BEFORE UPDATE, _m10_) su
+        vendite.offerte_commerciali. Brief: brief-modello-documento-vendita §13 (O-4).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite' AND p.proname = 'trgfn_doc_guard_annullo_con_legami';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_offerte_commerciali_m10_guard_annullo_con_legami_upd
+                  BEFORE UPDATE ON vendite.offerte_commerciali
+                  FOR EACH ROW
+                  WHEN (OLD.stato_doc_offerta_id IS DISTINCT FROM NEW.stato_doc_offerta_id)
+                  EXECUTE FUNCTION vendite.trgfn_doc_guard_annullo_con_legami(
+                      'OFFERTA_COMMERCIALE', 'stato_doc_offerta_id', 'config.stati_doc_offerte');
+
+              COMMENT ON TRIGGER trg_offerte_commerciali_m10_guard_annullo_con_legami_upd ON vendite.offerte_commerciali IS
+                  'L''avviso dell''annullo (BB vendite.trgfn_doc_guard_annullo_con_legami): un''offerta che entra nello stato d''annullo con legami (vendite.fn_documento_legami: la revisione precedente che torna emessa) senza la conferma del verbo vendite.fn_annulla_offerta: E_DOC_ANNULLO_CON_LEGAMI. Fascia _m10_, dopo il guard di transizione. Brief: brief-modello-documento-vendita §13 (O-4, Tid 2026-10-26).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_offerte_commerciali_m10_guard_annullo_con_legami_upd ON vendite.offerte_commerciali;

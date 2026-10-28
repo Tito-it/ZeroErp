@@ -25,23 +25,14 @@ from __future__ import annotations
 
 import unittest
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from apps.ai_assistant.api.views import AIQueryView
 from apps.ai_assistant.services import tool_registry
 from apps.core.api.permissions import valuta_accesso_endpoint
 from apps.core.services.auth_constants import RUOLO_APPLICATIVO_OPERATORE
 from apps.core.services.permissions_resolver import PermissionResolver
-
-
-# Scopo: un operatore autenticato, non superuser (un MagicMock nudo avrebbe
-#        `is_superuser` vero e passerebbe tutto per il bypass).
-def _operatore() -> MagicMock:
-    user = MagicMock()
-    user.id = 11
-    user.is_authenticated = True
-    user.is_superuser = False
-    return user
+from apps.core.tests._helpers.operatore_di_prova import operatore_di_prova
 
 
 class TestLivelliAssistente(unittest.TestCase):
@@ -86,7 +77,7 @@ class TestLivelliAssistente(unittest.TestCase):
         self.assertTrue(self.crea.scrive)
 
     def _puo(self, tool: Any) -> bool:
-        return tool_registry.is_tool_allowed_for_user(_operatore(), tool)
+        return tool_registry.is_tool_allowed_for_user(operatore_di_prova(user_id=11), tool)
 
     # 1) Crea pratiche dalla UI, non tramite l'assistente.
     def test_lettura_sull_assistente_consulta_ma_non_crea(self) -> None:
@@ -110,7 +101,7 @@ class TestLivelliAssistente(unittest.TestCase):
     # 4) Nessun tool, qualunque livello sul dominio.
     def test_bloccato_sull_assistente_nessun_tool(self) -> None:
         self.livelli = {"ai_assistant": "BLOCCATO", "pratiche": "TUTTO"}
-        self.assertEqual(tool_registry.get_tools_for_user(_operatore()), [])
+        self.assertEqual(tool_registry.get_tools_for_user(operatore_di_prova(user_id=11)), [])
 
     # 5) La domanda e' una lettura: `post_accesso = "view"` su `AIQueryView`.
     #    Senza, la POST chiederebbe `add` e LETTURA non entrerebbe.
@@ -119,7 +110,7 @@ class TestLivelliAssistente(unittest.TestCase):
             with self.subTest(livello=livello):
                 self.livelli = {"ai_assistant": livello}
                 esito = valuta_accesso_endpoint(
-                    _operatore(), AIQueryView, method="POST", cache={},
+                    operatore_di_prova(user_id=11), AIQueryView, method="POST", cache={},
                 )
                 self.assertIs(esito.consentito, atteso)
 

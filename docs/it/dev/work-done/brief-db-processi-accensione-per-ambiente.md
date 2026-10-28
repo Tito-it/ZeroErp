@@ -723,7 +723,7 @@ Scelte dichiarate:
   con uno stato indicato le date sono di chi chiama, e le pretende `trgfn_clienti_guard_stato_date`. I
   builder fanno nascere clienti anche `PR` e `CH`, e il grafo degli stati non ammette `AT → PR`: la madre
   deve accettare lo stato. ⚠️ **Il modello non dice in quali stati un cliente può nascere**: è lo stesso
-  buco di D32 ([brief-db-documento-nasce-nello-stato-iniziale](../work-in-progress/brief-db-documento-nasce-nello-stato-iniziale.md),
+  buco di D32 ([brief-db-documento-nasce-nello-stato-iniziale](brief-db-documento-nasce-nello-stato-iniziale.md),
   decisione N aperta). La madre non lo allarga né lo chiude: lo rende visibile in un punto solo;
 * **il legame all'emittente**: con un operatore in sessione lo scrive `z90`; senza sessione (provisioning,
   owner) lo scrive il BB. Un legame discorde è una chiamata sbagliata: `E_SCRIPT_CHIAMATA_NON_VALIDA`, nessun

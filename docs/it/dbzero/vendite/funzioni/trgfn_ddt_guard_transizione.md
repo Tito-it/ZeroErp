@@ -5,6 +5,8 @@
 CREATE FUNCTION trgfn_ddt_guard_transizione()
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>
@@ -21,12 +23,14 @@ AS $function$
 --   ordini (trgfn_ordini_guard_transizione).
 --   rev 2026-07-19: la Regola 2 (righe) delega a
 --   script.fn_check_ddt_emittibile — single source con la capability.
+--   rev 2026-10-25 (20261025-22: i segnaposto della frase; 20261025-14, brief-modello-documento-vendita §7):
+--   la Regola 3 (porta del registro) si ritira; ogni cambio di stato
+--   della bolla passa dalla porta comune
+--   script.trgfn_doc_stato_solo_dal_verbo (trg_ddt_a05_stato_solo_dal_verbo_upd).
 DECLARE
     v_codice_da config.stati_doc_ddt.codice_interno%TYPE;
     v_codice_a  config.stati_doc_ddt.codice_interno%TYPE;
     v_ammessa   boolean := false;
-    v_guc          text;
-    v_dentro_verbo boolean;
 BEGIN
     -- No-op se lo stato non cambia davvero (UPDATE su altre colonne).
     IF NEW.stato_doc_ddt_id IS NOT DISTINCT FROM OLD.stato_doc_ddt_id THEN
@@ -61,7 +65,9 @@ BEGIN
                 'stato_a',  v_codice_a
             ),
             NEW.tx_id,
-            NEW.id::text,
+            -- La frase ha due segnaposto (da, a): fino al 2026-10-25 qui c'era
+            -- anche NEW.id, e a video usciva «da <id> a <stato da>». L'id resta
+            -- nel contesto.
             coalesce(v_codice_da, 'NULL'),
             coalesce(v_codice_a,  'NULL')
         );
@@ -88,45 +94,11 @@ BEGIN
         );
     END IF;
 
-    -- Regola 3 — LA PORTA DEL REGISTRO (rev 2026-09-28,
-    --   brief-db-magazzino-lotto-3-scarico-da-ddt, D-L3-e affinata da Tid).
-    --   I passaggi che toccano il registro di magazzino — l'emissione, l'annullo
-    --   di una bolla emessa, la consegna di una bolla di trasferimento — di una
-    --   bolla che muove merce davvero (vendite.fn_ddt_muove_merce, sulla riga
-    --   NUOVA: causale e magazzino possono cambiare nello stesso UPDATE) si fanno
-    --   solo dal verbo vendite.fn_cambia_stato_ddt, che nella stessa transazione
-    --   scrive i movimenti. Due condizioni, come la porta POSTED dei documenti
-    --   interni (D-V1): la GUC transazionale porta NEW.id E chi esegue e' il
-    --   proprietario della tabella (un verbo DEFINER, non l'app che accende la
-    --   GUC da se').
-    --   ⚠️ Sulle bolle che NON muovono merce l'UPDATE diretto resta ammesso: e' la
-    --   porta del registro, non ancora quella del permesso su tutta la bolla.
-    IF ((v_codice_da = 'DRAFT'  AND v_codice_a = 'EMESSO')
-        OR (v_codice_da = 'EMESSO' AND v_codice_a = 'ANNULLATO')
-        OR (v_codice_a = 'CONSEGNATO' AND vendite.fn_ddt_causale_magazzino(NEW) = 'TRASF_OUT'))
-       AND vendite.fn_ddt_muove_merce(NEW) THEN
-        v_guc          := current_setting('zeroerp.ddt_cambio_stato', true);
-        v_dentro_verbo := script.fn_is_proprietario_tabella(TG_RELID);
-        IF v_guc IS DISTINCT FROM NEW.id::text OR NOT v_dentro_verbo THEN
-            PERFORM script.fn_log_and_raise_error(
-                'database',
-                TG_NAME::text,
-                'E_DDT_STATO_SOLO_DA_VERBO',
-                jsonb_build_object(
-                    'ddt_id',       NEW.id,
-                    'numero',       NEW.numero,
-                    'stato_da',     v_codice_da,
-                    'stato_a',      v_codice_a,
-                    'guc_valore',   v_guc,
-                    'dentro_verbo', v_dentro_verbo,
-                    'db_user',      current_user
-                ),
-                NEW.tx_id,
-                coalesce(NEW.numero, NEW.id::text),
-                coalesce(v_codice_a, 'NULL')
-            );
-        END IF;
-    END IF;
+    -- Regola 3 — RITIRATA (rev 2026-10-25, 20261025-14). La porta del
+    --   registro (solo i passaggi di magazzino delle bolle che muovono
+    --   merce) e' contenuta nella porta comune
+    --   script.trgfn_doc_stato_solo_dal_verbo, che chiude ogni cambio di
+    --   stato della bolla al suo verbo (E_DOC_STATO_SOLO_DAL_VERBO).
 
     -- Regola 4 — RITIRATA (rev 2026-10-11, D-4 di
     --   brief-db-annullo-documento-con-legami). L'avviso dell'annullo con
@@ -141,7 +113,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_ddt_guard_transizione()
-IS 'Trigger function: enforcement grafo transizioni stato DDT letto da config.transizioni_stati_ddt (E_STATO_DDT_TRANSIZIONE_NON_VALIDA). Regola 2: DRAFT->EMESSO richiede almeno una riga attiva (E_DDT_EMISSIONE_SENZA_RIGHE) — verdetto delegato a script.fn_check_ddt_emittibile (single source con fn_available_actions_ddt). Mirror di trgfn_ordini_guard_transizione. rev 2026-07-19 (brief-db-guard-righe-avanzamento-stato Rev 2). rev 2026-09-28 (brief-db-magazzino-lotto-3-scarico-da-ddt, D-L3-e): Regola 3, la PORTA DEL REGISTRO. DRAFT->EMESSO, EMESSO->ANNULLATO e ->CONSEGNATO di una bolla di trasferimento, su una bolla che muove merce (vendite.fn_ddt_muove_merce sulla riga NUOVA), passano solo dal verbo vendite.fn_cambia_stato_ddt: GUC transazionale zeroerp.ddt_cambio_stato = NEW.id E chi esegue e'' il proprietario della tabella (script.fn_is_proprietario_tabella), altrimenti E_DDT_STATO_SOLO_DA_VERBO. Le bolle che non muovono merce restano all''UPDATE diretto. rev 2026-10-11 (brief-db-ddt-righe-evase-dall-ordine, D-8): Regola 4, L''ANNULLO CON LEGAMI CHIEDE CONFERMA. Verso ANNULLATO, una bolla che porta legami con ordini o resi (vendite.fn_ddt_legami: fulfillment e ponti di ri-consegna) e'' rifiutata con E_DDT_ANNULLO_CON_LEGAMI (CONFLITTO_STATO; valori: etichetta della bolla, numero di righe legate): e'' l''avviso, su ogni strada. L''annullo vero passa dal verbo vendite.fn_annulla_ddt, che riceve la conferma, ritira i legami (vendite.fn_ddt_riga_ritira_legami) e poi cambia lo stato: qui arriva senza legami e passa. rev 2026-10-11 (20261011-83, brief-db-annullo-documento-con-legami D-4): la Regola 4 si RITIRA. L''avviso dell''annullo con legami vale per bolla, ordine, preventivo e contratto e sta nel BB vendite.trgfn_doc_guard_annullo_con_legami (trg_ddt_m10_guard_annullo_con_legami_upd), con il codice E_DOC_ANNULLO_CON_LEGAMI; E_DDT_ANNULLO_CON_LEGAMI e vendite.fn_ddt_legami si ritirano.';
+IS 'Trigger function: enforcement grafo transizioni stato DDT letto da config.transizioni_stati_ddt (E_STATO_DDT_TRANSIZIONE_NON_VALIDA). Regola 2: DRAFT->EMESSO richiede almeno una riga attiva (E_DDT_EMISSIONE_SENZA_RIGHE) — verdetto delegato a script.fn_check_ddt_emittibile (single source con fn_available_actions_ddt). Mirror di trgfn_ordini_guard_transizione. rev 2026-07-19 (brief-db-guard-righe-avanzamento-stato Rev 2). rev 2026-10-11 (20261011-83, brief-db-annullo-documento-con-legami D-4): la Regola 4 (annullo con legami) si ritira nel BB vendite.trgfn_doc_guard_annullo_con_legami. rev 2026-10-25 (20261025-14, brief-modello-documento-vendita §7): la Regola 3 (porta del registro, E_DDT_STATO_SOLO_DA_VERBO, GUC zeroerp.ddt_cambio_stato) si ritira: ogni cambio di stato della bolla passa dalla porta comune script.trgfn_doc_stato_solo_dal_verbo (trg_ddt_a05_stato_solo_dal_verbo_upd, E_DOC_STATO_SOLO_DAL_VERBO). rev 2026-10-25 (20261025-22): la frase del rifiuto di matrice riceve i due valori che ha (stato da, stato a); prima riceveva anche l''id del documento e a video usciva «da <id> a <stato da>».';
 ```
 
 </div>

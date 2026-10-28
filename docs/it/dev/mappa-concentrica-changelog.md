@@ -1,5 +1,7 @@
 # Mappa Concentrica — Changelog
 
+> **Ultimo aggiornamento**: 27 ottobre 2026
+
 > Cronologia datata degli aggiornamenti della [Mappa Concentrica](../mappa-concentrica.md).
 > La mappa mostra solo lo **stato corrente** per anello; questo documento conserva la storia,
 > per non gonfiare il documento principale.
@@ -32,9 +34,217 @@
 
 ---
 
-## 23 ottobre 2026 — voce singola
+## 26 ottobre 2026
 
-**Qualità BE/FE — la valutazione chiude, gli indicatori restano.** La
+> Copre il periodo **14 – 26 ottobre**, fotografato al 26-10 alle 23:59 (commit
+> `54c439012`, PR #1961, l'ultimo del giorno). Tredici giorni, **624 changeSet**
+> datati fra il 14 e il 26 (200 in `vendite`, 130 in `script`, 115 in `dbops`,
+> 58 in `anagrafiche`, 36 in `config`, 20 in `documenti`, 16 in `maintenance`,
+> 14 in `catalogo`, 14 in `80_data`), **trenta documenti entrati in
+> `work-done`** e **100 PR** (dalla #1858 alla #1961). Si scrive per **temi**:
+> sono nove. La voce singola del 23 ottobre (gli indicatori di qualità) è
+> confluita qui, nell'ultimo tema, con il suo testo.
+>
+> ⚠️ Fuori da questa voce, perché del **27 ottobre**: il giro 10 del modello
+> (la commessa) oltre la ricognizione, e i changeSet `20261027-*` del lotto di
+> fatturazione.
+>
+> ⭐ **Il tema portante è *un documento alla volta, tutto intero, su un modello
+> scritto una volta*.** Fino al 13-10 si portava un tema alla volta su nove
+> documenti; la ricostruzione del 21-10 trova che non c'erano revoche, c'erano
+> **copie**: 11 capability, 11 guard di transizione, 8 verbi d'annullo, ognuno
+> con la sua variante. Da lì le regole stanno in **una guida**, e i documenti ci
+> entrano uno per giro. *«Non mi sto più fidando… una volta in un modo, poi in un
+> altro, poi si torna al precedente»* (Tid, 21-10) — e la regola che ne esce: *da
+> lì una proposta che non è nella guida, o la contraddice, si dichiara come
+> revoca*.
+
+**Anello 3 (`vendite`) — Il modello del documento di vendita: una guida, un
+giro per documento.** Il cantiere apre il 21-10 e il 24-10 Tid decide il
+modello: ogni cambio di stato passa da **un verbo DB** (M-1); si emette solo da
+`/emetti/`, con numero e PDF nella stessa transazione (M-2, **revoca
+dichiarata** delle scelte del 05-06 sull'ordine e dell'11-07 sul DDT); l'azione
+sta sulla riga della matrice (M-3), una sola azione sui passaggi pesanti — *chi
+fa disfa* (M-4) —, e le matrici scritte nel codice passano in tabella (M-5). Il
+25-10: la porta è un guard sulla colonna di stato, il verbo un BB comune. Le
+regole vivono nella [guida del modello](../guide/modello-documento-di-vendita.md),
+approvata il 25-10. Si ottimizza per la velocità: le rotture BE sono accettate
+fino alla chiusura del giro BE, e *acquisti nasce sul modello, non lo rincorre*.
+Al 26-10: giri 1-4 (nascita in bozza, builder, debiti, pezzo comune) e i giri
+del **DDT** (con il DDT d'acquisto), del **preventivo**, dell'**ordine** e del
+**contratto** (il passaggio X → X ha un codice, `E_DOC_GIA_NELLO_STATO`) chiusi
+DB e BE; l'**offerta** (giro 9) applicata e verde, BE committato
+con la PR #1961; la **commessa** (giro 10) alla ricognizione, con C-2 e C-3 aperte. Dentro
+il primo giro è confluito D32: **un documento nasce nel suo stato iniziale** —
+un `INSERT` già avanti è rifiutato da un BB unico su testate di vendita e
+d'acquisto, e la bolla nata EMESSA, numerata e vuota, non è più possibile. Sul
+lotto di fatturazione la regola R-1: *«non può esistere un documento definitivo
+se un altro dello stesso lotto è in errore»*. ⚠️ Aperti: i giri di fattura e
+listino, D-N1 (i gate delle azioni per riga), D-G1 e D-G2 ereditati dalla
+grammatica, i profili su dbdev che non hanno `emetti_offerta`/`emetti_contratto`/
+`emetti_ordine`, la scadenza dei preventivi (brief nuovo, E-1…E-3 a Tid). Vedi
+[brief-modello-documento-vendita.md](work-in-progress/brief-modello-documento-vendita.md),
+[brief-db-documento-nasce-nello-stato-iniziale.md](work-done/brief-db-documento-nasce-nello-stato-iniziale.md),
+[brief-db-scadenza-preventivi.md](work-in-progress/brief-db-scadenza-preventivi.md).
+
+**Anello 3 (trasversale) — Un nome per ogni tipo di documento, e l'offerta che
+genera l'ordine.** La **grammatica unica** (18 → 25-10) dà al tipo di documento
+un nome solo per DB e backend, senza ponti: vince il `codice_interno` di
+`config.sorgenti`, i nomi corti (`DDT`, `ORDINE`, `OFFERTA`, `RESO`) si
+ritirano, `config.tipi_entita` resta il catalogo dei bersagli legato da un
+vincolo; righe, varianti, `acquisti`, `magazzino` ed `EMAIL_BOZZA` dentro. In
+cinque lotti — catalogo, eccezioni, lettori di testate/indirizzi/origine/chiavi
+del push, note, presidio —; la chiave id/uid resta doppia, e la FK lega il nome,
+non l'accensione. L'**offerta** (21/22-10) si emette e si eroga come le altre:
+la riga `DERIVATA_COMPONENTI` si ritira (i componenti seguono la quantità del
+padre), un kit si vende a quantità fissa, «Genera ordine» diventa il verbo
+`vendite.fn_genera_ordine_da_offerta` con il motivo spento prima del clic, e il
+BE ritira la sua copia. Vedi
+[brief-db-grammatica-unica-documenti.md](work-done/brief-db-grammatica-unica-documenti.md),
+[brief-db-offerta-emissione-ed-erogazione.md](work-done/brief-db-offerta-emissione-ed-erogazione.md).
+
+**Anello 2/3 (`documenti`, `catalogo`, `vendite`) — Il modello di stampa
+standard, gli articoli che una riga può usare, il listino della commessa.** Un
+emittente nuovo **emette dal primo giorno** (21-10): sei modelli standard nascono
+dal seed già pubblicati, la risoluzione va prima al modello dell'emittente e poi
+allo standard — conta solo un modello che può stampare —, «Personalizza» copia
+lo standard e la coda di stampa stampa la versione risolta — *«la cosa
+migliorativa è fornire un set di modelli standard»* (Tid, 18-10). **Quali
+articoli può usare una riga lo dice il DB una volta sola**, per il picker e per
+il guard (23-10; la struttura di un articolo con righe aperte si corregge in un
+salvataggio solo). La **riga di commessa** (15→17-10) non contraddice la
+provenienza del suo prezzo: la riga di listino porta la sua versione, il listino
+è dell'emittente, mai un prezzo da una versione in BOZZA (nemmeno dal percorso
+rapido del risolutore), e il guard non giudica più su un'assenza dovuta alla
+RLS. ⚠️ Aperti: la numerazione della versione nuova (B-8), le righe d'acquisto
+(nel cantiere `acquisti`), *quando* si scrive `listino_riga_id` (brief della
+provenienza del prezzo). Vedi
+[brief-db-modelli-documento-standard.md](work-done/brief-db-modelli-documento-standard.md),
+[brief-db-articoli-ammessi-per-documento.md](work-done/brief-db-articoli-ammessi-per-documento.md),
+[brief-db-coerenza-listino-della-riga-di-commessa.md](work-done/brief-db-coerenza-listino-della-riga-di-commessa.md),
+[brief-db-provenienza-prezzo-segue-il-prezzo.md](work-in-progress/brief-db-provenienza-prezzo-segue-il-prezzo.md).
+
+### Anagrafiche, indirizzi e magazzino — 26 ottobre
+
+**Anello 1 (`anagrafiche`) — Il soggetto dice una cosa sola.** I **dati
+fiscali e societari** si archiviano il 14-10 (PA e split payment per natura, un
+verbo unico, la forma giuridica nella matrice della natura, i titoli IVA solo
+dove la natura li ammette), e il loro erede (D34, 19→22-10) porta la stessa
+regola alla **creazione**: le porte di nascita scrivono la sezione intera, la
+ditta individuale non perde più in silenzio la sua, e una sezione passata a
+una natura che non la prevede è rifiutata, non scartata. **Un cliente manuale
+per soggetto e utility** (D33, 15-10): un solo cliente attivo per soggetto +
+utility + emittente, misurato sul periodo; un cliente chiuso non si riapre, si
+apre una catena nuova; il cliente ha il suo grafo di stati — *«va impedito»*
+(Tid). **Un indirizzo fisico, una riga** (25-10): «senza civico» si scrive in un
+modo solo, il trova-o-crea cerca sui valori normalizzati e riattiva una riga
+spenta, una modifica che collide ha il suo codice. ⚠️ Aperti: D-4
+(`COOPERATIVA`) e i titoli IVA fuori regola (PROJECT_CONTEXT § «Aperto»), il
+cambio di natura, la catena delle istanze sul PDP (D18), il trasloco di uno
+solo (D6 del civico, senza brief). Vedi
+[brief-db-dati-fiscali-e-societari-del-soggetto.md](work-done/brief-db-dati-fiscali-e-societari-del-soggetto.md),
+[brief-db-dati-societari-in-creazione.md](work-done/brief-db-dati-societari-in-creazione.md),
+[brief-db-cliente-manuale-uno-per-soggetto-e-utility.md](work-done/brief-db-cliente-manuale-uno-per-soggetto-e-utility.md),
+[brief-db-unicita-civico-indirizzi-dettaglio.md](work-done/brief-db-unicita-civico-indirizzi-dettaglio.md),
+[brief-db-cambio-natura-soggetto-conferma-e-pulizia.md](work-in-progress/brief-db-cambio-natura-soggetto-conferma-e-pulizia.md),
+[brief-db-catena-istanze-pdp.md](work-in-progress/brief-db-catena-istanze-pdp.md).
+
+**Anello 3 (`vendite`, `magazzino`) — Il documento segue il suo cliente, la
+merce segue il documento.** Gli **indirizzi del documento** appartengono al
+cliente del documento (D27, 19-10): se il cliente cambia in bozza il DB rifà lo
+slot di default, restano solo gli una-tantum, e il controllo è un motivo del
+gate d'emissione; slot e ripiego diventano un dato, la scheda di fornitura
+segue il cliente, ed emittente e utility sono fermi in modifica su preventivo,
+offerta e contratto. In `magazzino` i **Lotti 3 e 3-bis** si archiviano il 14-10
+(lato DB applicato a fine settembre, BE/FE del 12/13-10): la merce esce
+all'emissione della bolla e rientra alla conferma del reso, al costo
+dell'uscita d'origine e sullo stesso lotto e seriale. Lo stesso giorno i motivi
+della conferma del reso portano **i numeri**, come la bolla, e il copione del
+collaudo a video è scritto. Il 24-10 passa a video il collaudo della
+**capability annidata e dei prezzi autorizzati**. ⚠️ Aperti: il collaudo a video
+della bolla e del reso (scritto, da eseguire) e dell'inventario, la CI da zero
+del magazzino, la merce in viaggio; il reset del rifiuto del prezzo, che sta
+solo nel BE del preventivo. Vedi
+[brief-db-indirizzi-documento-seguono-il-cliente.md](work-done/brief-db-indirizzi-documento-seguono-il-cliente.md),
+[brief-db-magazzino-lotto-3-scarico-da-ddt.md](work-done/brief-db-magazzino-lotto-3-scarico-da-ddt.md),
+[brief-db-magazzino-lotto-3-bis-carico-da-reso.md](work-done/brief-db-magazzino-lotto-3-bis-carico-da-reso.md),
+[brief-db-reso-motivi-conferma-con-valori.md](work-done/brief-db-reso-motivi-conferma-con-valori.md),
+[collaudo-in-app-magazzino-bolla-e-reso.md](work-in-progress/collaudo-in-app-magazzino-bolla-e-reso.md),
+[collaudo-in-app-capability-annidata-e-prezzi-autorizzati.md](work-done/collaudo-in-app-capability-annidata-e-prezzi-autorizzati.md),
+[piano-be-fe-magazzino-lotto-3.md](work-in-progress/piano-be-fe-magazzino-lotto-3.md).
+
+### Nucleo, contratto delle API e verifica — 26 ottobre
+
+**Anello 0 — L'installazione è un dato: ruoli fissi, ambiente dichiarato,
+processi accesi per ambiente.** I **ruoli di sistema** (15-10) fanno parte del
+prodotto — `zeroerp_owner`, `zeroerp_app`, `zeroerp_job`, `zeroerp_log` — creati
+da un solo script idempotente per CI, scratch e installazione, senza password
+di default: chi vuole personalizzare *aggiunge un membro, non rinomina*, e *si
+controlla che cosa può fare il ruolo, non come si chiama*. `zeroerp_log` nasce
+nella fase dei ruoli (D35, lo stesso giorno), e le tre sedi a mano spariscono.
+L'**ambiente** (`SVILUPPO`/`PRODUZIONE`) è un dato scelto all'installazione e
+senza default — *SVILUPPO non capita per caso* —, l'accensione dei processi ha
+un default per ambiente con l'accensione a mano da interfaccia, sette processi
+non si spengono mai, e i BB-madre del provisioning (emittente, BA, cliente,
+fornitore, veste, indirizzi, profili) sostituiscono le copie del BE (19-10). Gli
+**utenti di sviluppo** sono un insieme fisso creato da un verbo che **rifiuta
+di partire in produzione** (22-10). Le **statistiche** di tutte le tabelle hanno
+un job notturno con autoverifica (D15, 15-10), e gli **smoke girano ogni notte**
+sul DB di sviluppo, dove ci sono i dati (D9-a, 14-10). I presidi dei job
+parlano a chi tocca: ogni processo dichiara una **causa di fallimento**
+(ambiente → sistemista, programma → sviluppo, configurazione →
+amministratore), una corsa con elementi falliti chiude rossa, e dove ogni corsa
+rifà tutto il verde di oggi spegne il rosso rientrato (18-10). ⚠️ Aperti: i 2
+smoke non verdi su 51 (resi-vendita, nota-credito-resi, senza brief), il
+`%TYPE` del primo giro del presidio (PROJECT_CONTEXT § «Aperto»). Vedi
+[brief-db-ruoli-di-sistema.md](work-done/brief-db-ruoli-di-sistema.md),
+[brief-db-zeroerp-log-nella-fase-ruoli.md](work-done/brief-db-zeroerp-log-nella-fase-ruoli.md),
+[brief-db-processi-accensione-per-ambiente.md](work-done/brief-db-processi-accensione-per-ambiente.md),
+[brief-be-utenti-di-sviluppo.md](work-done/brief-be-utenti-di-sviluppo.md),
+[brief-db-statistiche-tabelle-job-notturno.md](work-done/brief-db-statistiche-tabelle-job-notturno.md),
+[brief-db-presidio-job-run-a-chi-tocca.md](work-done/brief-db-presidio-job-run-a-chi-tocca.md),
+[brief-db-intermittente-e-verdetto-completo.md](work-done/brief-db-intermittente-e-verdetto-completo.md).
+
+**Anello 0/1 — Chi guarda si calcola una volta, e un parametro uguale per tutti
+lo è davvero.** **D-3b chiude il 18-10** e con lei il brief delle forme dei
+piani (D26-2): il verbo dell'accredito passa da circa 115 a **50,6 ms**, il
+perimetro dell'operatore si calcola **una volta per istruzione** in tutte le
+policy ef_whitelist (linee-guida-sql §10.3, con un presidio), il `tx_id` va
+sulla connessione di log persistente. Il 21-10 (D36) la stessa regola copre le
+famiglie rimaste — cliente, portale, shop, fornitore, email e note — e il
+debito del presidio va a zero. I **parametri senza override** (26-10) smettono
+di esistere solo come frase di una descrizione: una colonna
+`ammette_override`, un guard nei due versi con il suo codice, la lista
+dell'amministratore che non mostra più come effettivo un override che nessuno
+usa; i dati societari di default restano per emittente. Vedi
+[brief-db-plancache-funzioni-con-query-incorporate.md](work-done/brief-db-plancache-funzioni-con-query-incorporate.md),
+[brief-db-perimetro-una-volta-famiglie-residue.md](work-done/brief-db-perimetro-una-volta-famiglie-residue.md),
+[brief-db-parametri-senza-override.md](work-done/brief-db-parametri-senza-override.md).
+
+**Backend — La documentazione delle API è uguale al codice.** La verifica
+(20→24-10) copre **721 rotte su 721** in 17 aree: `order_by` fuori whitelist,
+PATCH vuota e paginazione sbagliata danno 400 ovunque, i parametri hanno un
+nome solo e niente alias, e l'**Idempotency-Key è obbligatoria su ogni POST che
+scrive**, con la soglia letta dal DB — il BE non ricopia la regola — e le chiavi
+nella pulizia; nasce la guida delle
+[operazioni che non si ripetono](../guide/operazioni-che-non-si-ripetono.md).
+PATCH e PUT parlano un dialetto solo (25-10). L'analisi dei difetti di `core`
+chiude il 14-10 con tutte le voci. ⚠️ Non bloccanti: due lettori non migrati al
+BB. Vedi
+[brief-be-verifica-documentazione-api.md](work-done/brief-be-verifica-documentazione-api.md),
+[analisi-be-difetti-emersi-verifica-doc-api-core.md](work-done/analisi-be-difetti-emersi-verifica-doc-api-core.md).
+
+**Verifica e qualità — Le fixture passano per le strade vere, gli indicatori
+hanno una sede.** I pgTAP smettono di ricopiare la strada «bolla consegnata da
+ordine» (36 file) e quella del reso: **nove builder** nuovi — ordine con righe,
+bolla senza ordine, reso, ri-consegna, fattura dell'attività — e un centinaio di
+file portati senza regressioni (25-10); il criterio: *entra in un builder ciò
+che ha una trappola d'ordine, non ciò che serve spesso*. Per strada due «verdi
+per sottrazione» chiusi. Vedi
+[brief-db-pgtap-bolla-e-reso-costruiti.md](work-done/brief-db-pgtap-bolla-e-reso-costruiti.md),
+[brief-db-pgtap-reso-costruito.md](work-done/brief-db-pgtap-reso-costruito.md).
+
+**Qualità BE/FE (23-10) — la valutazione chiude, gli indicatori restano.** La
 valutazione dello strato applicativo, aperta il 09-09, chiude con la sola D12
 (i portali) aperta, che vive nel suo cantiere. Esce da «In corso» e lascia una
 sede viva: [qualita-be-fe-indicatori.md](qualita-be-fe-indicatori.md), con le
@@ -42,7 +252,7 @@ lezioni, gli indicatori stampati da `scripts/indicatori-qualita-be-fe.sh` e la
 scorecard pesata; il punto d'incontro con il lato DB è la mappa §4. Vedi
 [migliorie-generali-BE-FE-da-test-valutazione.md](work-done/migliorie-generali-BE-FE-da-test-valutazione.md).
 
-**Qualità del database — gli indicatori hanno la loro sede.** Lo stesso giorno
+**Qualità del database (23-10) — gli indicatori hanno la loro sede.** Lo stesso giorno
 il lato DB prende il documento gemello:
 [qualita-db-indicatori.md](qualita-db-indicatori.md), con le lezioni della
 valutazione DB, gli indicatori stampati da `scripts/indicatori-qualita-db.sh`
@@ -52,13 +262,26 @@ pesata. La valutazione resta aperta in
 è la lettura zero, e ha ancora voci aperte. La riga «Database» della mappa §4
 è agganciata.
 
+**In breve, senza un tema proprio** — due brief nuovi: il `tx_id` inventato
+nel giornale delle sospensioni delle pratiche, pronto per il team DB
+([brief](work-in-progress/brief-db-pratiche-giornale-tx-id-senza-ripiego.md)),
+e la scadenza dei preventivi, che aspetta le decisioni di Tid. pgTAP: **6 rossi** nel registro di dev (erano 7),
+**360** nel registro della CI (fermo a 361 dal 22-09: il divario resta il
+debito vero), **104** in quello dello scratch (erano 165), su **910 file**
+(826 al 13-10). `DataTable` grezze ferme a **28** (9 senza motivazione); il
+perimetro dei dati resta a **6 righe**.
+
 ## 13 ottobre 2026
 
-> Copre il periodo **1 – 13 ottobre**, fotografato al 13-10 alle 23:59 (commit
-> `2bda3ee3b`). Tredici giorni, **662 changeSet** datati fra l'1 e il 13 (275 in
-> `vendite`, 172 in `script`, 78 in `anagrafiche`, 36 in `dbops`, 25 in `config`,
-> 21 in `catalogo`, 21 in `80_data`), **sessantacinque documenti entrati in
-> `work-done`** e **114 PR** (dalla #1738 alla #1857). Si scrive per **temi**:
+> Copre il periodo **1 – 13 ottobre**, fotografato al 13-10 alle 23:59. Tredici
+> giorni, **676 changeSet** datati fra l'1 e il 13 (283 in `vendite`, 177 in
+> `script`, 78 in `anagrafiche`, 36 in `dbops`, 25 in `config`, 22 in
+> `catalogo`, 21 in `80_data`), **sessantacinque documenti entrati in
+> `work-done`** e **114 PR** (dalla #1738 alla #1857). *(Corretto il 27-10: la
+> prima stesura contava 662 changeSet perché fotografava il commit `2bda3ee3b`
+> del ramo BE, che non conteneva i 14 changeSet del 13-10 entrati dal ramo DB
+> con le PR #1856 e #1857 — `20261013-59 → -72`, articoli ammessi per documento
+> e legami della lineage — pur contando quelle PR.)* Si scrive per **temi**:
 > sono nove. Le due voci brevi del 1° e del 4 ottobre, qui sotto, restano: sono
 > il dettaglio di due temi (il registro di magazzino, le righe come liste).
 >

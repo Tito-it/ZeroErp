@@ -26,6 +26,7 @@ from django.core.cache import cache
 from django.test import Client
 
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
+from apps.core.tests._helpers.operatore_di_prova import operatore_di_prova
 
 # v2: perimetro aperti-non-chiusi lato vista -> niente n_aperti/valore_transitato.
 _RIEPILOGO_RESPONSE = {
@@ -191,10 +192,7 @@ class DashboardApertoDocumentiApiTests(JwtMockedApiTest):
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate")
     @patch("apps.vendite.api.views_dashboard_aperto.fn_dash_aperto_documenti")
     def test_documenti_scope_db_side_no_auth_user(self, mocked_fn, mock_auth, _mock_perm):
-        user = Mock()
-        user.id = 42
-        user.is_superuser = False
-        user.is_authenticated = True
+        user = operatore_di_prova(user_id=42)
         mock_auth.return_value = (user, None)
         mocked_fn.return_value = _DOCUMENTI_RESPONSE
         self.client.get(self._URL)

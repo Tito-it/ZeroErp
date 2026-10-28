@@ -11,6 +11,16 @@
 --   costruiti, nascita in bozza); prima billing account, istanza e utility
 --   erano quelli del primo billing account del database, che su uno
 --   ricostruito non c'e'.
+-- rev 2026-10-25 (brief-modello-documento-vendita §8, giro 6): il caso della
+--   riga inattiva (test 7). Lo stato ora passa dal verbo sotto la porta, e
+--   l'emissione chiede almeno una riga ATTIVA (guard di transizione): un
+--   preventivo ACCETTATO con la sola riga inattiva non e' piu' costruibile
+--   (la fixture si fermava su E_PREV_NESSUNA_RIGA_ATTIVA). Il preventivo prende
+--   accanto alla riga inattiva una riga attiva da
+--   dbops.fn_pgtap_crea_preventivo_con_righe (stesso articolo di commessa,
+--   p_preventivo_id: e' il builder a portarlo ad ACCETTATO), e l'esclusione si
+--   asserisce sulla RIGA: la riga inattiva non c'e', quella attiva dello stesso
+--   preventivo si' (cosi' l'assenza non puo' venire dal preventivo intero).
 -- pgTAP test per Zero ERP
 -- Test: vendite.fn_list_preventivi_da_pushare
 -- ------------------------------------------------------------
@@ -21,7 +31,7 @@
 -- 4) Segment key formato corretto (PREVENTIVO:<uid>:R:<riga_id>)
 -- 5) prezzo_bloccato coerente con fatturazione_immediata
 -- 6) Preventivo non ACCETTATO escluso
--- 7) Riga con quantita zero esclusa
+-- 7) Riga con quantita zero esclusa (riga inattiva, rev 2026-10-25: per riga)
 -- 8) Filtro p_billing_account_id rispettato
 -- ------------------------------------------------------------
 
@@ -246,18 +256,29 @@ SELECT b.preventivo_id AS id, b.preventivo_uid AS uid
 -- Riga con quantita = 0 (dovrebbe essere esclusa dalla fn_list)
 -- NB: il check constraint potrebbe impedire qta=0; in tal caso la riga non esiste
 -- e il test passa comunque. Usiamo qta > 0 ma attivo = false come alternativa.
-INSERT INTO vendite.preventivi_righe (
-  preventivo_id, articolo_id, qta_operativa, quantita, prezzo_unitario,
-  iva_id, attivo, meta
+CREATE TEMP TABLE tmp_prev_zero_riga AS
+WITH ins AS (
+  INSERT INTO vendite.preventivi_righe (
+    preventivo_id, articolo_id, qta_operativa, quantita, prezzo_unitario,
+    iva_id, attivo, meta
+  )
+  SELECT
+    pz.id, r.articolo_id, 5.000000, 5.000000, 10.000000,
+    r.iva_id, false, jsonb_build_object('test_scope', 'pgtap_fn_list_prev', 'case', 'zero_qta')
+  FROM tmp_prev_zero pz, tmp_refs_prev r
+  RETURNING id
 )
-SELECT
-  pz.id, r.articolo_id, 5.000000, 5.000000, 10.000000,
-  r.iva_id, false, jsonb_build_object('test_scope', 'pgtap_fn_list_prev', 'case', 'zero_qta')
-FROM tmp_prev_zero pz, tmp_refs_prev r;
+SELECT * FROM ins;
 
-DO $porta$ BEGIN
-  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_prev_zero), 'ACCETTATO');
-END $porta$;
+-- ⭐ rev 2026-10-25 (giro 6): la riga attiva che l'emissione pretende, e lo
+--   stato ACCETTATO, li scrive il builder sulla testata del test (in bozza).
+--   Stesso articolo di commessa: e' il ramo che il lister serve.
+CREATE TEMP TABLE tmp_prev_zero_attiva AS
+SELECT b.preventivo_riga_id AS id
+  FROM dbops.fn_pgtap_crea_preventivo_con_righe(
+         'list prev riga inattiva', 'ACCETTATO',
+         p_preventivo_id => (SELECT id FROM tmp_prev_zero),
+         p_articolo_id   => (SELECT articolo_id FROM tmp_refs_prev)) b;
 
 CREATE TEMP TABLE tmp_result_prev_zero AS
 SELECT *
@@ -272,8 +293,15 @@ SELECT ok(
     SELECT 1
     FROM tmp_result_prev_zero rp
     WHERE rp.preventivo_id = (SELECT id FROM tmp_prev_zero)
+      AND rp.riga_id = (SELECT id FROM tmp_prev_zero_riga)
+  )
+  AND EXISTS (
+    SELECT 1
+    FROM tmp_result_prev_zero rp
+    WHERE rp.preventivo_id = (SELECT id FROM tmp_prev_zero)
+      AND rp.riga_id = (SELECT id FROM tmp_prev_zero_attiva)
   ),
-  'Riga con attivo=false esclusa'
+  'Riga con attivo=false esclusa (la riga attiva dello stesso preventivo ACCETTATO c''e'')'
 );
 
 -- ============================================================

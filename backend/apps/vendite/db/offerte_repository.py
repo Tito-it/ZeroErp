@@ -331,6 +331,11 @@ _FROM_JOINS_UTILITY = """
 """
 
 
+# La testata nella mappa del modello del documento (`script.fn_doc_stato_modello`):
+# la leggono il repository, il service e la catena dei permessi.
+TESTATA_OFFERTE = "vendite.offerte_commerciali"
+
+
 class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryMixin):
     """Accesso DB a `vendite.offerte_commerciali` + eccezioni + utility 1:1.
 
@@ -626,40 +631,57 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
         return int(riga["id"])
 
     # Scopo: Aggiorna testata offerta. `codice`/`uid`/`stato_doc_offerta_id`
-    #        immutabili tramite questo metodo (per lo stato c'e' update_stato).
+    #        immutabili tramite questo metodo (lo stato lo scrivono i verbi:
+    #        `cambia_stato`, `annulla`).
     def update_offerta(self, offerta_id: int, data: dict[str, Any]) -> bool:
         return execute_dynamic_update(
             "vendite.offerte_commerciali", offerta_id, data,
             allowed=self.TESTATA_UPDATE_COLUMNS, jsonb=_JSONB_COLS,
         )
 
-    # Scopo: Cambia lo stato documentale dell'offerta. Il trigger DB
-    #        trgfn_offerte_commerciali_guard_transizione verifica che la
-    #        transizione sia ammessa in config.stati_doc_offerte_transizioni
-    #        e valorizza i timestamp `data_emissione`/`data_accettazione`/
-    #        `data_rifiuto`/`data_annullamento`. La `motivazione_rifiuto` si
-    #        aggiorna nello stesso UPDATE quando arriva da RIFIUTATA/ANNULLATA.
-    def update_stato(
-        self,
-        offerta_id: int,
-        stato_doc_offerta_id: int,
-        *,
-        motivazione_rifiuto: str | None = None,
-    ) -> bool:
-        set_parts = ["stato_doc_offerta_id = %s"]
-        vals: list[Any] = [stato_doc_offerta_id]
-        if motivazione_rifiuto is not None:
-            set_parts.append("motivazione_rifiuto = %s")
-            vals.append(motivazione_rifiuto)
-        vals.append(offerta_id)
-        sql = f"""
-            UPDATE vendite.offerte_commerciali
-               SET {", ".join(set_parts)}
-             WHERE id = %s
-        """  # noqa: S608
+    # Scopo: Cambia lo stato dell'offerta dal suo verbo
+    #        `vendite.fn_cambia_stato_offerta` (brief-modello-documento-vendita
+    #        §13, giro 9), gemello di `ContrattiRepository.cambia_stato`:
+    #        permesso dalla riga del passaggio, perimetro, prima riga (anche lo
+    #        stato che ha gia', E_DOC_GIA_NELLO_STATO), la motivazione (O-3:
+    #        scritta in `motivazione_rifiuto` prima dello stato, obbligatoria
+    #        dove la riga ha `requires_motivazione`), porta, e il guard di
+    #        transizione per matrice e condizioni. Lo stato chiesto e' il
+    #        `codice_interno`; la motivazione arriva com'e' (vuota = assente lo
+    #        decide il verbo).
+    #        ⛔ Fino al 2026-10-26 un UPDATE diretto della colonna
+    #        (`update_stato`): ora la porta lo rifiuta (E_DOC_STATO_SOLO_DAL_VERBO).
+    # Ritorna: {offerta_id, stato_precedente, stato_nuovo} (codici).
+    def cambia_stato(
+        self, offerta_id: int, stato_codice: str, motivazione: str | None,
+    ) -> dict[str, Any]:
         with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            return cursor.rowcount > 0
+            cursor.execute(
+                "SELECT * FROM vendite.fn_cambia_stato_offerta(%s, %s, %s)",
+                [int(offerta_id), stato_codice, motivazione],
+            )
+            result = row_to_dict(cursor)
+            assert result is not None
+            return result
+
+    # Scopo: Annulla l'offerta via il verbo DB `vendite.fn_annulla_offerta`
+    #        (O-4): prima cio' che vieta (un contratto o un ordine vivo nato
+    #        dall'offerta), poi la conferma dei legami (la revisione
+    #        precedente, superata, che torna emessa): `legami_confermati`
+    #        dichiara quanti l'operatore ne ha visti, e se non corrisponde
+    #        E_DOC_ANNULLO_CON_LEGAMI. Lo stato d'annullo lo sceglie il verbo dal
+    #        vocabolario, con la motivazione.
+    # Ritorna: i legami confermati (0 se non ce n'erano).
+    def annulla(
+        self, offerta_id: int, motivazione: str | None, legami_confermati: int | None,
+    ) -> int:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT vendite.fn_annulla_offerta(%s, %s, %s)",
+                [int(offerta_id), motivazione, legami_confermati],
+            )
+            row = cursor.fetchone()
+            return int(row[0]) if row and row[0] is not None else 0
 
     # Scopo: Cancella un'offerta (hard delete). Guard di stato (solo BOZZA)
     #        responsabilita' del service.
@@ -971,22 +993,6 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
     # Lookup di supporto
     # =================================================================
 
-    # Scopo: Risolve l'id di uno stato documento offerta dal codice_interno.
-    #        Usato dal service per impostare stato iniziale (BOZZA) e per
-    #        risolvere lo stato target nelle transizioni manuali (annulla,
-    #        registra_esito, emetti).
-    def get_stato_id_by_codice(self, codice_interno: str) -> int | None:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT id FROM config.stati_doc_offerte
-                 WHERE codice_interno = %s
-                """,
-                [codice_interno],
-            )
-            row = cursor.fetchone()
-            return None if row is None else int(row[0])
-
     # Scopo: La COPPIA della fornitura sulla testata (cliente, istanza,
     #        utility): serve a sapere se un aggiornamento la cambia, perche'
     #        allora la scheda di fornitura la rifa' il DB (D-5 di
@@ -1002,8 +1008,10 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
             return row_to_dict(cursor)
 
     # Scopo: Legge il `codice_interno` dello stato corrente di un'offerta.
-    #        Usato dal service per validare le pre-condizioni dei cambi stato
-    #        (emetti SOLO da BOZZA, registra_esito SOLO da EMESSA, ecc.).
+    #        Lettore leggero della testata: al service basta sapere che
+    #        l'offerta esiste (404 del dominio) o, per la sola eliminazione,
+    #        che e' in bozza. Gli stati di partenza dei passaggi li giudica il
+    #        DB (matrice e guard), non questo lettore.
     def get_stato_codice(self, offerta_id: int) -> str | None:
         with connection.cursor() as cursor:
             cursor.execute(

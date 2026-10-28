@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): i due ordini CONFERMATI da dbops.fn_pgtap_crea_ordine_con_righe (10 x 25, trigger CONFERMATO, data 2026-07-19), ritirato l'helper pg_temp.mk_ordine; restano a mano la commessa ospite e le attivita' con le chiavi del caso.
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
 -- pgTAP test per Zero ERP
 -- Test: predicato "gia' inviato" delle push-list + reason capability
@@ -74,15 +75,10 @@ SELECT
   (SELECT m.billing_account_id FROM tmp_gi_mondo m)                      AS billing_account_id,
   (SELECT m.utility_id FROM tmp_gi_mondo m)                              AS utility_id,
   (SELECT m.istanza_utility_id FROM tmp_gi_mondo m)                      AS istanza_utility_id,
-  (SELECT m.cliente_soggetto_ruolo_id FROM tmp_gi_mondo m)               AS soggetto_ruolo_id,
   (SELECT t.id FROM tmp_gi_art t)                                        AS articolo_id,
   (SELECT u.id FROM catalogo.unita_misura u WHERE u.attivo IS TRUE ORDER BY u.id LIMIT 1) AS uom_id,
   (SELECT t.id FROM config.tipi_doc_fiscale t WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1) AS tipo_doc_fiscale_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)              AS valuta_id,
-  (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
-  (SELECT m.emittente_fiscale_id FROM tmp_gi_mondo m)                   AS emittente_fiscale_id,  -- rev 2026-10-13: l'azienda del mondo
-  (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='CONFERMATO' AND s.attivo LIMIT 1) AS stato_ord_conf_id,
-  (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='DRAFT' AND s.attivo LIMIT 1)      AS stato_ord_draft_id,
   (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='ORDINE_VENDITA' AND s.attivo LIMIT 1) AS src_ordine_id;
 
 -- ============================================================
@@ -105,33 +101,22 @@ WITH ins AS (
 )
 SELECT id FROM ins;
 
-CREATE OR REPLACE FUNCTION pg_temp.mk_ordine(p_tag text)
-RETURNS TABLE(ordine_id bigint, ordine_uid uuid, riga_id bigint) AS $$
-DECLARE r RECORD; v_ord bigint; v_uid uuid; v_riga bigint;
-BEGIN
-  SELECT * INTO r FROM tmp_gi_refs;
-  INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
-    valuta_id, data, fatturazione_trigger, emittente_fiscale_id, storicizza, meta)
-  -- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT,
-  --   prende la riga, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza
-  --   le righe non si scrivono piu' (20261008-90).
-  VALUES (r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_draft_id, r.valuta_id,
-          DATE '2026-07-19', 'CONFERMATO', r.emittente_fiscale_id, false,
-          jsonb_build_object('test_scope', 'pgtap_gia_inviato_' || p_tag))
-  RETURNING id, uid INTO v_ord, v_uid;
-  INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
-    qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
-  VALUES (v_ord, 1, r.articolo_id, 'Riga push ' || p_tag, 10, 10, 25, r.iva_id, true, false,
-          jsonb_build_object('test_scope', 'pgtap_gia_inviato_' || p_tag))
-  RETURNING id INTO v_riga;
-  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', v_ord, 'CONFERMATO');
-  RETURN QUERY SELECT v_ord, v_uid, v_riga;
-END $$ LANGUAGE plpgsql;
+-- I due ordini: CONFERMATI con una riga 10 x 25, trigger CONFERMATO.
+CREATE TEMP TABLE tmp_gi_ord_a AS
+SELECT * FROM dbops.fn_pgtap_crea_ordine_con_righe('gia_inviato_A', 'CONFERMATO',
+    p_billing_account_id => (SELECT billing_account_id FROM tmp_gi_refs),
+    p_quantita => 10, p_prezzo => 25, p_articolo_id => (SELECT articolo_id FROM tmp_gi_refs),
+    p_fatturazione_trigger => 'CONFERMATO', p_data_ordine => DATE '2026-07-19');
+CREATE TEMP TABLE tmp_gi_ord_b AS
+SELECT * FROM dbops.fn_pgtap_crea_ordine_con_righe('gia_inviato_B', 'CONFERMATO',
+    p_billing_account_id => (SELECT billing_account_id FROM tmp_gi_refs),
+    p_quantita => 10, p_prezzo => 25, p_articolo_id => (SELECT articolo_id FROM tmp_gi_refs),
+    p_fatturazione_trigger => 'CONFERMATO', p_data_ordine => DATE '2026-07-19');
 
 CREATE TEMP TABLE tmp_gi_ord AS
-SELECT a.ordine_id AS ord_a, a.ordine_uid AS uid_a, a.riga_id AS riga_a,
-       b.ordine_id AS ord_b, b.ordine_uid AS uid_b, b.riga_id AS riga_b
-  FROM pg_temp.mk_ordine('A') a, pg_temp.mk_ordine('B') b;
+SELECT a.ordine_id AS ord_a, a.ordine_uid AS uid_a, a.ordine_riga_id AS riga_a,
+       b.ordine_id AS ord_b, b.ordine_uid AS uid_b, b.ordine_riga_id AS riga_b
+  FROM tmp_gi_ord_a a, tmp_gi_ord_b b;
 
 -- Helper: inserisce un'attivita' in commessa con segment_key arbitraria.
 CREATE OR REPLACE FUNCTION pg_temp.mk_attivita(p_segment text, p_stato_emissione text)

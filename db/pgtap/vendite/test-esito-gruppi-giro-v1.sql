@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): CURATO — pescava il billing account «il primo per id» e moriva sulla commessa (billing_account_id nullo), un'asserzione su dodici. Ora il mondo si costruisce: la commessa da dbops.fn_pgtap_crea_commessa (sorgente ROOT), le tre righe sui tre gruppi da dbops.fn_pgtap_crea_commessa_attivita con la sorgente ORDINE_VENDITA di tre ordini veri (dbops.fn_pgtap_crea_ordine_con_righe; prima tre uid PREVENTIVO inventati, che la madre della riga rifiuta), i due lotti da dbops.fn_pgtap_crea_lotto, emissione, fatture, righe e aggancio da dbops.fn_pgtap_fattura_attivita (p_lotto_id: G1 su L1, G3 su L2). Resta a mano il PERIMETRO del giro su L1 (fatturazione_lotti_gruppi, lo scrive il backend): con la distribuzione dei gruppi nei lotti e' il caso.
 -- pgTAP test per Zero ERP
 --
 -- Test: vendite.vw_lotti_gruppi_serviti (20260815-26)
@@ -13,8 +14,8 @@
 -- gruppo, e l'esito legge pieno successo. Queste asserzioni presidiano la
 -- misura fatta DOPO, che e' l'unica che sa distinguere i tre casi.
 --
--- Fixture costruita dentro il test (non pescata dai dati): una commessa con
--- tre gruppi sorgente distinti, due lotti, due fatture.
+-- Fixture costruita dentro il test (non pescata dai dati) dai builder di dbops:
+-- una commessa con tre gruppi sorgente distinti, due lotti, due fatture.
 --   G1 -> attivita' EMESSA fatturata dal lotto L1   -> atteso SERVITO
 --   G2 -> attivita' NON_EMESSA, mai fatturata       -> atteso NON_SERVITO
 --   G3 -> attivita' EMESSA fatturata dal lotto L2   -> atteso FATTURATO_ALTROVE
@@ -58,41 +59,71 @@ SELECT plan(12);
 -- ⚠️ L'emittente non si pesca, si DERIVA dall'operatore corrente: le policy
 --   ef_whitelist lo pretendono, e una fixture scritta su un emittente altrui
 --   non passerebbe la RLS in scrittura.
+-- ⚠️ Il mondo si COSTRUISCE: la commessa (con la sorgente ROOT, che il pull
+--   pretende) di un cliente dell'azienda di chi agisce, e UN articolo per le
+--   tre righe. La riga G1 nasce subito: il tipo documento dei lotti e' il suo.
+CREATE TEMP TABLE tmp_eg_commessa AS
+SELECT c.commessa_id AS id, c.billing_account_id, c.utility_id,
+       c.emittente_soggetto_ruolo_id AS ef_sr, c.stato_commessa_id
+  FROM dbops.fn_pgtap_crea_commessa('esito gruppi giro', NULL, NULL, p_con_sorgente_root => true) c;
+
+CREATE TEMP TABLE tmp_eg_articolo AS
+SELECT dbops.fn_pgtap_crea_articolo('PGT-EG-ART', false) AS articolo_id;
+
+-- I tre DOCUMENTI sorgente, uno per gruppo: tre ordini confermati dello
+-- stesso cliente, ciascuno con la sua riga. ⚠️ Fino al 2026-10-25 erano tre
+-- uid inventati con sorgente PREVENTIVO scritti a mano nella riga di
+-- commessa; la madre della riga (fn_upsert_commessa_attivita) pretende che la
+-- sorgente esista, e il builder dei preventivi costruisce un cliente suo. La
+-- forma della chiave di gruppo ('<sorgente>:<uid>') e' la stessa.
+CREATE TEMP TABLE tmp_eg_uid AS
+SELECT 'G1'::text AS slot, o.ordine_uid::text AS uid, o.ordine_riga_id
+  FROM dbops.fn_pgtap_crea_ordine_con_righe('esito gruppi G1', 'CONFERMATO',
+         (SELECT billing_account_id FROM tmp_eg_commessa),
+         p_articolo_id => (SELECT articolo_id FROM tmp_eg_articolo)) o;
+INSERT INTO tmp_eg_uid
+SELECT 'G2', o.ordine_uid::text, o.ordine_riga_id
+  FROM dbops.fn_pgtap_crea_ordine_con_righe('esito gruppi G2', 'CONFERMATO',
+         (SELECT billing_account_id FROM tmp_eg_commessa),
+         p_articolo_id => (SELECT articolo_id FROM tmp_eg_articolo)) o;
+INSERT INTO tmp_eg_uid
+SELECT 'G3', o.ordine_uid::text, o.ordine_riga_id
+  FROM dbops.fn_pgtap_crea_ordine_con_righe('esito gruppi G3', 'CONFERMATO',
+         (SELECT billing_account_id FROM tmp_eg_commessa),
+         p_articolo_id => (SELECT articolo_id FROM tmp_eg_articolo)) o;
+
+-- Le righe di commessa, una per gruppo (sorgente ORDINE_VENDITA, tre ordini),
+-- APPROVATE e NON_EMESSE: l'emissione la fa la madre dentro il builder della
+-- fattura. ⚠️ Nascono UNA per volta, appena prima del loro giro: la madre
+-- emette TUTTE le righe approvate della commessa, e G3 emessa col marchio di
+-- L1, o G2 emessa del tutto, non sarebbero piu' i casi del test.
+CREATE TEMP TABLE tmp_eg_att (slot text, attivita_id bigint);
+
+INSERT INTO tmp_eg_att
+SELECT 'G1', a.attivita_id
+  FROM dbops.fn_pgtap_crea_commessa_attivita((SELECT id FROM tmp_eg_commessa), 10,
+         (SELECT articolo_id FROM tmp_eg_articolo),
+         p_sorgente_codice  => 'ORDINE_VENDITA',
+         p_sorgente_uid     => (SELECT uid FROM tmp_eg_uid WHERE slot = 'G1'),
+         p_sorgente_riga_id => (SELECT ordine_riga_id FROM tmp_eg_uid WHERE slot = 'G1')) a;
+
 CREATE TEMP TABLE tmp_eg_refs AS
 SELECT
-  (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND ba.soggetto_ruolo_id IS NOT NULL ORDER BY ba.id LIMIT 1) AS billing_account_id,
-  (SELECT ba.utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND ba.soggetto_ruolo_id IS NOT NULL ORDER BY ba.id LIMIT 1) AS utility_id,
-  (SELECT ba.istanza_utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND ba.soggetto_ruolo_id IS NOT NULL ORDER BY ba.id LIMIT 1) AS istanza_utility_id,
-  (SELECT a.id FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE AND a.is_composito = FALSE ORDER BY a.id LIMIT 1) AS articolo_id,
-  (SELECT u.id FROM catalogo.unita_misura u WHERE u.attivo IS TRUE
-    ORDER BY u.id LIMIT 1) AS uom_id,
-  (SELECT t.id FROM config.tipi_doc_fiscale t WHERE t.attivo IS TRUE
-    ORDER BY t.id LIMIT 1) AS tipo_doc_fiscale_id,
+  c.billing_account_id,
+  c.utility_id,
+  ca.istanza_utility_id,
+  ca.articolo_id,
+  ca.uom_id,
+  ca.tipo_doc_fiscale_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
-  (SELECT sc.id FROM vendite.stati_commessa sc
-    WHERE sc.attivo IS TRUE AND sc.codice_interno <> 'ANNULLATA'
-    ORDER BY sc.id LIMIT 1) AS stato_commessa_id,
-  script.fn_pgtap_emittente_sr_operatore()                          AS ef_sr,
-  (SELECT s.id FROM config.sorgenti s
-    WHERE s.codice_interno = 'PREVENTIVO' AND s.attivo IS TRUE
-    ORDER BY s.id LIMIT 1) AS sorgente_tipo_id,
+  c.stato_commessa_id,
+  c.ef_sr,
+  ca.sorgente_tipo_id,
   script.fn_pgtap_registro_fattura() AS registro_id,
   (SELECT s.id FROM config.stati_doc_fiscale s WHERE s.attivo IS TRUE
-    ORDER BY COALESCE(s.ordine, 32767), s.id LIMIT 1) AS stato_fiscale_id;
-
--- I tre UID sorgente si scelgono UNA volta: due sotto-select indipendenti
--- darebbero valori diversi a ogni valutazione.
-CREATE TEMP TABLE tmp_eg_uid AS
-SELECT 'G1'::text AS slot, uuidv7()::text AS uid
-UNION ALL SELECT 'G2', uuidv7()::text
-UNION ALL SELECT 'G3', uuidv7()::text;
+    ORDER BY COALESCE(s.ordine, 32767), s.id LIMIT 1) AS stato_fiscale_id
+  FROM tmp_eg_commessa c
+  JOIN vendite.commesse_attivita ca ON ca.id = (SELECT attivita_id FROM tmp_eg_att WHERE slot = 'G1');
 
 SELECT ok(
   (SELECT billing_account_id IS NOT NULL AND articolo_id IS NOT NULL
@@ -116,73 +147,54 @@ SELECT ok(
 );
 
 -- ============================================================
--- Fixture: commessa + tre attivita' su tre gruppi sorgente distinti
+-- Fixture: due lotti, e i tre gruppi distribuiti
+--   G1 -> fatturato dal lotto L1 (il giro che stiamo consuntivando)
+--   G3 -> fatturato da un ALTRO lotto, L2 («lavoro rubato da un altro giro»)
+--   G2 -> resta NON_EMESSA: il lavoro fermo che il consuntivo deve vedere
 -- ============================================================
-CREATE TEMP TABLE tmp_eg_commessa AS
-WITH ins AS (
-  INSERT INTO vendite.commesse (codice, billing_account_id, utility_id,
-                                emittente_soggetto_ruolo_id, stato_commessa_id)
-  SELECT 'PGTAP-EG-CMD-' || substr(md5(clock_timestamp()::text), 1, 8),
-         r.billing_account_id, r.utility_id, r.ef_sr, r.stato_commessa_id
-    FROM tmp_eg_refs r
-  RETURNING id)
-SELECT id FROM ins;
+-- I lotti dalla loro madre, DRAFT, massivi, col tipo documento delle righe.
+CREATE TEMP TABLE tmp_eg_lotto AS
+SELECT 'L1'::text AS slot, l.lotto_id
+  FROM tmp_eg_refs r,
+       dbops.fn_pgtap_crea_lotto('esito gruppi L1', 'DRAFT', r.billing_account_id, r.tipo_doc_fiscale_id) l;
 
-CREATE TEMP TABLE tmp_eg_att (slot text, attivita_id bigint);
+INSERT INTO tmp_eg_lotto
+SELECT 'L2', l.lotto_id
+  FROM tmp_eg_refs r,
+       dbops.fn_pgtap_crea_lotto('esito gruppi L2', 'DRAFT', r.billing_account_id, r.tipo_doc_fiscale_id) l;
 
--- G1: sara' fatturata dal lotto L1 (il giro che stiamo consuntivando).
-WITH ins AS (
-  INSERT INTO vendite.commesse_attivita (
-    commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita,
-    uom_id, quantita, competenza_mese, competenza_dal, competenza_al,
-    tipo_doc_fiscale_id, valuta_id, prezzo_snapshot, pricing_mode,
-    stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
-  SELECT (SELECT id FROM tmp_eg_commessa),
-         'PGTAP-EG-G1-' || substr(md5(clock_timestamp()::text), 1, 8),
-         r.articolo_id, r.istanza_utility_id, DATE '2081-01-01', r.uom_id, 1,
-         DATE '2081-01-01', DATE '2081-01-01', DATE '2081-01-31',
-         r.tipo_doc_fiscale_id, r.valuta_id, 10.000000, 'FIXED',
-         'APPROVATA', 'EMESSA', r.sorgente_tipo_id,
-         (SELECT uid FROM tmp_eg_uid WHERE slot = 'G1')
-    FROM tmp_eg_refs r
-  RETURNING id)
-INSERT INTO tmp_eg_att SELECT 'G1', id FROM ins;
+-- G1 nel giro L1: emissione col marchio del lotto, testata della madre, riga,
+-- lucchetto e aggancio (fattura_riga_id valorizzato: «questa riga E' stata
+-- fatturata»).
+CREATE TEMP TABLE tmp_eg_fatt AS
+SELECT 'G1'::text AS slot, f.*
+  FROM dbops.fn_pgtap_fattura_attivita('esito gruppi G1',
+         ARRAY[(SELECT attivita_id FROM tmp_eg_att WHERE slot = 'G1')],
+         (SELECT lotto_id FROM tmp_eg_lotto WHERE slot = 'L1')) f;
 
--- G2: resta NON_EMESSA. E' il lavoro fermo che il consuntivo deve saper vedere.
-WITH ins AS (
-  INSERT INTO vendite.commesse_attivita (
-    commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita,
-    uom_id, quantita, competenza_mese, competenza_dal, competenza_al,
-    tipo_doc_fiscale_id, valuta_id, prezzo_snapshot, pricing_mode,
-    stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
-  SELECT (SELECT id FROM tmp_eg_commessa),
-         'PGTAP-EG-G2-' || substr(md5(clock_timestamp()::text), 1, 8),
-         r.articolo_id, r.istanza_utility_id, DATE '2081-01-01', r.uom_id, 1,
-         DATE '2081-01-01', DATE '2081-01-01', DATE '2081-01-31',
-         r.tipo_doc_fiscale_id, r.valuta_id, 20.000000, 'FIXED',
-         'APPROVATA', 'NON_EMESSA', r.sorgente_tipo_id,
-         (SELECT uid FROM tmp_eg_uid WHERE slot = 'G2')
-    FROM tmp_eg_refs r
-  RETURNING id)
-INSERT INTO tmp_eg_att SELECT 'G2', id FROM ins;
+-- G3 nel giro L2.
+INSERT INTO tmp_eg_att
+SELECT 'G3', a.attivita_id
+  FROM dbops.fn_pgtap_crea_commessa_attivita((SELECT id FROM tmp_eg_commessa), 30,
+         (SELECT articolo_id FROM tmp_eg_articolo),
+         p_sorgente_codice  => 'ORDINE_VENDITA',
+         p_sorgente_uid     => (SELECT uid FROM tmp_eg_uid WHERE slot = 'G3'),
+         p_sorgente_riga_id => (SELECT ordine_riga_id FROM tmp_eg_uid WHERE slot = 'G3')) a;
 
--- G3: fatturata da un ALTRO lotto. E' il «lavoro rubato da un altro giro».
-WITH ins AS (
-  INSERT INTO vendite.commesse_attivita (
-    commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita,
-    uom_id, quantita, competenza_mese, competenza_dal, competenza_al,
-    tipo_doc_fiscale_id, valuta_id, prezzo_snapshot, pricing_mode,
-    stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
-  SELECT (SELECT id FROM tmp_eg_commessa),
-         'PGTAP-EG-G3-' || substr(md5(clock_timestamp()::text), 1, 8),
-         r.articolo_id, r.istanza_utility_id, DATE '2081-01-01', r.uom_id, 1,
-         DATE '2081-01-01', DATE '2081-01-01', DATE '2081-01-31',
-         r.tipo_doc_fiscale_id, r.valuta_id, 30.000000, 'FIXED',
-         'APPROVATA', 'EMESSA', r.sorgente_tipo_id,
-         (SELECT uid FROM tmp_eg_uid WHERE slot = 'G3')
-    FROM tmp_eg_refs r
-  RETURNING id)
-INSERT INTO tmp_eg_att SELECT 'G3', id FROM ins;
+INSERT INTO tmp_eg_fatt
+SELECT 'G3', f.*
+  FROM dbops.fn_pgtap_fattura_attivita('esito gruppi G3',
+         ARRAY[(SELECT attivita_id FROM tmp_eg_att WHERE slot = 'G3')],
+         (SELECT lotto_id FROM tmp_eg_lotto WHERE slot = 'L2')) f;
+
+-- G2 per ultima: nessun giro la emette.
+INSERT INTO tmp_eg_att
+SELECT 'G2', a.attivita_id
+  FROM dbops.fn_pgtap_crea_commessa_attivita((SELECT id FROM tmp_eg_commessa), 20,
+         (SELECT articolo_id FROM tmp_eg_articolo),
+         p_sorgente_codice  => 'ORDINE_VENDITA',
+         p_sorgente_uid     => (SELECT uid FROM tmp_eg_uid WHERE slot = 'G2'),
+         p_sorgente_riga_id => (SELECT ordine_riga_id FROM tmp_eg_uid WHERE slot = 'G2')) a;
 
 -- Le chiavi di gruppo si prendono dalla SOLA fonte di verita': ricostruirle a
 -- mano nel test significherebbe verificare la copia, non l'originale.
@@ -193,133 +205,11 @@ SELECT a.slot,
   FROM tmp_eg_att a
   JOIN vendite.commesse_attivita ca ON ca.id = a.attivita_id;
 
--- ------------------------------------------------------------
--- Due lotti e due fatture. stato_doc_fiscale_id resta NULL sui lotti: il
--- guard di coerenza lotto/fatture esce subito quando il lotto non ha stato,
--- e qui la coerenza degli stati non e' l'oggetto del test.
--- ------------------------------------------------------------
-CREATE TEMP TABLE tmp_eg_lotto (slot text, lotto_id bigint);
-
-WITH ins AS (
-  INSERT INTO vendite.fatturazione_lotti (
-    codice, competenza_mese, tipo_doc_fiscale_id, emittente_soggetto_ruolo_id, meta)
-  SELECT 'PGTAP-EG-L1-' || substr(md5(clock_timestamp()::text), 1, 8),
-         DATE '2081-01-01', r.tipo_doc_fiscale_id, r.ef_sr,
-         jsonb_build_object('test_scope', 'pgtap_esito_gruppi_giro')
-    FROM tmp_eg_refs r
-  RETURNING id)
-INSERT INTO tmp_eg_lotto SELECT 'L1', id FROM ins;
-
-WITH ins AS (
-  INSERT INTO vendite.fatturazione_lotti (
-    codice, competenza_mese, tipo_doc_fiscale_id, emittente_soggetto_ruolo_id, meta)
-  SELECT 'PGTAP-EG-L2-' || substr(md5(clock_timestamp()::text), 1, 8),
-         DATE '2081-01-01', r.tipo_doc_fiscale_id, r.ef_sr,
-         jsonb_build_object('test_scope', 'pgtap_esito_gruppi_giro')
-    FROM tmp_eg_refs r
-  RETURNING id)
-INSERT INTO tmp_eg_lotto SELECT 'L2', id FROM ins;
-
 -- Il PERIMETRO del giro, scritto come lo scrive pipeline_repository:
 -- l'intera tupla richiesta su OGNI lotto del giro. Qui il giro e' un lotto solo.
 INSERT INTO vendite.fatturazione_lotti_gruppi (lotto_id, gruppo_key)
 SELECT (SELECT lotto_id FROM tmp_eg_lotto WHERE slot = 'L1'), k.gruppo_key
   FROM tmp_eg_key k;
-
-CREATE TEMP TABLE tmp_eg_fattura (slot text, fattura_id bigint);
-
-WITH inf AS (
-  INSERT INTO vendite.fatture (
-    registro_id, data, tipo_doc_fiscale_id, stato_doc_fiscale_id,
-    emittente_soggetto_ruolo_id, billing_account_id, utility_id, meta)
-  SELECT r.registro_id, DATE '2081-02-15', r.tipo_doc_fiscale_id, r.stato_fiscale_id,
-         r.ef_sr, r.billing_account_id,
-         (SELECT ba.utility_id FROM anagrafiche.billing_account ba WHERE ba.id = r.billing_account_id),
-         jsonb_build_object('test_scope', 'pgtap_esito_gruppi_giro')
-    FROM tmp_eg_refs r
-  RETURNING id)
-INSERT INTO tmp_eg_fattura SELECT 'F1', id FROM inf;
-
-WITH inf AS (
-  INSERT INTO vendite.fatture (
-    registro_id, data, tipo_doc_fiscale_id, stato_doc_fiscale_id,
-    emittente_soggetto_ruolo_id, billing_account_id, utility_id, meta)
-  SELECT r.registro_id, DATE '2081-02-16', r.tipo_doc_fiscale_id, r.stato_fiscale_id,
-         r.ef_sr, r.billing_account_id,
-         (SELECT ba.utility_id FROM anagrafiche.billing_account ba WHERE ba.id = r.billing_account_id),
-         jsonb_build_object('test_scope', 'pgtap_esito_gruppi_giro')
-    FROM tmp_eg_refs r
-  RETURNING id)
-INSERT INTO tmp_eg_fattura SELECT 'F2', id FROM inf;
-
--- ⚠️ Padre e figlio in DUE istruzioni: le CTE che scrivono condividono la
---   stessa snapshot, e una policy che risolve il perimetro dal padre non lo
---   troverebbe.
-CREATE TEMP TABLE tmp_eg_riga (slot text, riga_id bigint);
-
-WITH ins AS (
-  INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, descrizione, qta,
-                                     prezzo_unitario, imponibile_riga, competenza_dal, competenza_al)
-  SELECT (SELECT fattura_id FROM tmp_eg_fattura WHERE slot = 'F1'), 1,
-         'PGTAP esito gruppi giro G1', 1, 10.000000, 10.000000, script.fn_data_operativa(), script.fn_data_operativa()
-  RETURNING id)
-INSERT INTO tmp_eg_riga SELECT 'F1', id FROM ins;
-
-WITH ins AS (
-  INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, descrizione, qta,
-                                     prezzo_unitario, imponibile_riga, competenza_dal, competenza_al)
-  SELECT (SELECT fattura_id FROM tmp_eg_fattura WHERE slot = 'F2'), 1,
-         'PGTAP esito gruppi giro G3', 1, 30.000000, 30.000000, script.fn_data_operativa(), script.fn_data_operativa()
-  RETURNING id)
-INSERT INTO tmp_eg_riga SELECT 'F2', id FROM ins;
-
-INSERT INTO vendite.fatturazione_lotti_fatture (lotto_id, fattura_id)
-SELECT (SELECT lotto_id FROM tmp_eg_lotto WHERE slot = 'L1'),
-       (SELECT fattura_id FROM tmp_eg_fattura WHERE slot = 'F1');
-
-INSERT INTO vendite.fatturazione_lotti_fatture (lotto_id, fattura_id)
-SELECT (SELECT lotto_id FROM tmp_eg_lotto WHERE slot = 'L2'),
-       (SELECT fattura_id FROM tmp_eg_fattura WHERE slot = 'F2');
-
--- Le attivita' fatturabili che chiudono la catena: e' `fattura_riga_id`
--- valorizzato a dire «questa riga E' stata fatturata».
-INSERT INTO vendite.attivita_fatturabili (
-  articolo_id, istanza_utility_id, data_attivita, quantita,
-  competenza_mese, competenza_dal, competenza_al,
-  uom_id, valuta_id, prezzo_unitario, tipo_doc_fiscale_id,
-  commessa_id, commessa_attivita_id, fattura_riga_id,
-  -- ⭐ billing_account_id: NOT NULL dal changeSet 20260910-25. Si deriva
-  --   dalla COMMESSA, che e' la rotta portante (commessa_id NOT NULL ->
-  --   commesse.billing_account_id NOT NULL): la fixture non lo inventa.
-  billing_account_id)
-SELECT r.articolo_id, r.istanza_utility_id, DATE '2081-01-01', 1,
-       DATE '2081-01-01', DATE '2081-01-01', DATE '2081-01-31',
-       r.uom_id, r.valuta_id, 10.000000, r.tipo_doc_fiscale_id,
-       (SELECT id FROM tmp_eg_commessa),
-       (SELECT attivita_id FROM tmp_eg_att WHERE slot = 'G1'),
-       (SELECT riga_id FROM tmp_eg_riga WHERE slot = 'F1'),
-       (SELECT c.billing_account_id FROM vendite.commesse c
-         WHERE c.id = (SELECT id FROM tmp_eg_commessa))
-       FROM tmp_eg_refs r;
-
-INSERT INTO vendite.attivita_fatturabili (
-  articolo_id, istanza_utility_id, data_attivita, quantita,
-  competenza_mese, competenza_dal, competenza_al,
-  uom_id, valuta_id, prezzo_unitario, tipo_doc_fiscale_id,
-  commessa_id, commessa_attivita_id, fattura_riga_id,
-  -- ⭐ billing_account_id: NOT NULL dal changeSet 20260910-25. Si deriva
-  --   dalla COMMESSA, che e' la rotta portante (commessa_id NOT NULL ->
-  --   commesse.billing_account_id NOT NULL): la fixture non lo inventa.
-  billing_account_id)
-SELECT r.articolo_id, r.istanza_utility_id, DATE '2081-01-01', 1,
-       DATE '2081-01-01', DATE '2081-01-01', DATE '2081-01-31',
-       r.uom_id, r.valuta_id, 30.000000, r.tipo_doc_fiscale_id,
-       (SELECT id FROM tmp_eg_commessa),
-       (SELECT attivita_id FROM tmp_eg_att WHERE slot = 'G3'),
-       (SELECT riga_id FROM tmp_eg_riga WHERE slot = 'F2'),
-       (SELECT c.billing_account_id FROM vendite.commesse c
-         WHERE c.id = (SELECT id FROM tmp_eg_commessa))
-       FROM tmp_eg_refs r;
 
 -- L'esito del giro L1 si calcola UNA volta e si interroga: cosi' le sei
 -- asserzioni parlano della stessa fotografia, non di sei chiamate diverse.

@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): emissione, fattura in bozza, riga e legame da dbops.fn_pgtap_fattura_attivita, la sorgente ROOT da dbops.fn_pgtap_crea_commessa (p_con_sorgente_root); ritirato l'UPDATE diretto dello stato della commessa a PRONTA_FATTURAZIONE (aggirava la matrice; l'emissione non lo chiede). Della catena non resta niente a mano.
 -- pgtap-contesto: escluso — la ragione e' scritta per esteso piu' sotto in
 --   questo stesso file. Dichiarazione leggibile dal cancello
 --   scripts/guardrail_pgtap_preambolo.py: distingue «escluso apposta» da
@@ -49,9 +50,9 @@
 -- conta. Ora la catena intera, ciascun passo dal dominio: commessa e attivita'
 -- (dbops.fn_pgtap_crea_commessa / _attivita), emissione delle attivita'
 -- fatturabili (vendite.fn_emit_attivita_fatturabili_da_commessa), fattura
--- dello stesso cliente con la sua riga (dbops.fn_pgtap_crea_fattura), e il
--- legame attivita' -> riga di fattura, che in esercizio scrive il backend
--- (pipeline di fatturazione) e qui scrive la fixture con lo stesso UPDATE.
+-- dello stesso cliente con la sua riga e il legame attivita' -> riga di
+-- fattura, che in esercizio scrive il backend (pipeline di fatturazione): oggi
+-- tutti e tre da dbops.fn_pgtap_fattura_attivita (rev 2026-10-25).
 -- Il caso 0 dice che il caso del test 2 ESISTE prima di confrontarlo.
 -- ------------------------------------------------------------
 -- Indice test (0..4):
@@ -95,56 +96,19 @@ SELECT plan(5);
 -- Fixture: la catena commessa -> attivita' -> fattura dell'azienda A
 -- =========================================================
 -- Il builder apre il contesto sul SUO operatore (tecnico) di A: la catena gira
--- nei panni di chi lavora per A, come la gira l'applicazione.
+-- nei panni di chi lavora per A, come la gira l'applicazione. La commessa
+-- nasce con la sorgente ROOT.
 CREATE TEMP TABLE _a AS
-SELECT * FROM dbops.fn_pgtap_crea_commessa('rls viste fattura');
+SELECT * FROM dbops.fn_pgtap_crea_commessa('rls viste fattura', p_con_sorgente_root => true);
 
 CREATE TEMP TABLE _att AS
 SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita((SELECT commessa_id FROM _a));
 
--- L'emissione: la commessa legata alla sorgente, pronta alla fatturazione, e
--- la madre che scrive le attivita' fatturabili.
-SELECT vendite.fn_link_commessa_sorgente(
-    p_commessa_id      => (SELECT commessa_id FROM _a),
-    p_sorgente_tipo_id => (SELECT s.id FROM config.sorgenti s
-                            WHERE s.codice_interno = 'COMMESSA' AND s.attivo),
-    p_sorgente_uid     => (SELECT commessa_id FROM _a)::text);
-
-UPDATE vendite.commesse
-   SET stato_commessa_id = (SELECT s.id FROM vendite.stati_commessa s
-                             WHERE s.codice_interno = 'PRONTA_FATTURAZIONE')
- WHERE id = (SELECT commessa_id FROM _a);
-
-CREATE TEMP TABLE _emit AS
-SELECT * FROM vendite.fn_emit_attivita_fatturabili_da_commessa(
-    p_commessa_id   => (SELECT commessa_id FROM _a),
-    p_only_approved => true,
-    p_dry_run       => false);
-
--- La fattura dello STESSO cliente (terzo parametro) e la sua riga.
+-- L'emissione, la fattura dello STESSO cliente in bozza con la sua riga e il
+-- legame attivita' -> riga di fattura (in esercizio lo scrive il backend):
+-- dal builder.
 CREATE TEMP TABLE _f AS
-SELECT * FROM dbops.fn_pgtap_crea_fattura(
-    'rls viste fattura', 'DRAFT', (SELECT billing_account_id FROM _a));
-
-CREATE TEMP TABLE _fr AS
-WITH ins AS (
-    INSERT INTO vendite.fatture_righe (
-        fattura_id, riga_nr, descrizione, qta, prezzo_unitario, imponibile_riga,
-        competenza_dal, competenza_al, iva_id)
-    SELECT f.fattura_id, 1, 'Riga pgTAP viste fattura', 1, 10, 10,
-           t.competenza_dal, t.competenza_al,
-           (SELECT i.id FROM config.iva i WHERE i.attivo ORDER BY i.id LIMIT 1)
-      FROM _f f, _att t
-    RETURNING id)
-SELECT id AS fattura_riga_id FROM ins;
-
--- ⚠️ Il legame attivita' -> riga di fattura in esercizio lo scrive il BACKEND
---   (la pipeline di fatturazione), non una funzione del database: la fixture
---   fa quel passo con lo stesso UPDATE, come il builder dell'operatore fa
---   quello dell'invito accettato.
-UPDATE vendite.attivita_fatturabili
-   SET fattura_riga_id = (SELECT fattura_riga_id FROM _fr)
- WHERE commessa_attivita_id = (SELECT attivita_id FROM _att);
+SELECT * FROM dbops.fn_pgtap_fattura_attivita('rls viste fattura', ARRAY[(SELECT attivita_id FROM _att)]);
 
 -- Da qui l'identita' la dichiara il file: si riparte da «nessuno».
 SELECT set_config('app.ruolo_applicativo', '', false),

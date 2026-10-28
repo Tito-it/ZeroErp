@@ -392,12 +392,22 @@ class TestResiApi(JwtMockedApiTest):
 
 
 class ResiPermessoAzioneTests(SimpleTestCase):
-    # Scopo: conferma e annullo del reso chiedono l'azione di processo che il
-    #        verbo DB applica (`conferma_reso`), come il gemello preventivo
-    #        chiede `cambia_stato_preventivi` (2026-10-20, §A5 del brief).
-    def test_conferma_e_annullo_dichiarano_conferma_reso(self) -> None:
+    # Scopo: conferma e annullo del reso non dichiarano piu' l'azione: la legge
+    #        la catena dalla riga del passaggio, la stessa del verbo (M-3,
+    #        brief-modello-documento-vendita §7.6). Con M-4 l'annullo di una
+    #        bozza non chiede `conferma_reso`, e un `post_permission` fisso lo
+    #        avrebbe rifiutato.
+    def test_conferma_e_annullo_dichiarano_il_passaggio(self) -> None:
+        from apps.core.api.permissions import PassaggioDocumento
         from apps.vendite.api.views_resi import ApiResoAnnulla, ApiResoConferma
 
+        self.assertEqual(ApiResoConferma.post_passaggio, PassaggioDocumento(
+            testata="vendite.resi", documento_kwarg="reso_id", stato_chiesto="CONFERMATO",
+        ))
+        # L'annullo: lo stato d'annullo dal vocabolario, non un letterale (§9.8).
+        self.assertEqual(ApiResoAnnulla.post_passaggio, PassaggioDocumento(
+            testata="vendite.resi", documento_kwarg="reso_id", stato_del_modello="annullo",
+        ))
         for view in (ApiResoConferma, ApiResoAnnulla):
             with self.subTest(view=view.__name__):
-                self.assertEqual(view.post_permission, "conferma_reso")
+                self.assertIsNone(getattr(view, "post_permission", None))

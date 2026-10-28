@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_crea_revisione_preventivo(p_preventivo_id bigint, p_user text)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

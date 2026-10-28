@@ -43,6 +43,14 @@
 --
 --   Piano: brief-db-be-iva-risolutore-e-regime-cliente.md
 --     I9 / §R-3 · changeSet 20260829-09 (fn pura), -10 (guard), -11 (capability)
+--
+--   rev 2026-10-25 (brief-modello-documento-vendita §8, giro 6): lo stato del
+--   preventivo si cambia solo dal verbo vendite.fn_cambia_stato_preventivo: i
+--   test 6-7 chiedono DRAFT -> EMESSO al verbo, che arriva al guard e prende la
+--   sua frase (un UPDATE diretto lo ferma prima la porta,
+--   E_DOC_STATO_SOLO_DAL_VERBO). L'operatore riceve emetti_preventivo prima del
+--   test 5: senza, «Emetti» e' nascosto e il verbo rifiuta col permesso.
+--   Attese invariate.
 -- ------------------------------------------------------------
 
 -- ⚠️ 1. TRANSAZIONE: senza, un fallimento a meta' lascia la fixture nel database.
@@ -60,36 +68,32 @@ SELECT plan(9);
 -- ============================================================
 -- 0) Riferimenti
 -- ============================================================
--- ⚠️ L'emittente si DERIVA dal BA (come per l'ordine): il guard
---   trgfn_preventivi_guard_emittente_ba pretende la coerenza, e sceglierlo per
---   conto proprio farebbe fallire il test su un errore che non c'entra.
--- ⚠️ Il BA si sceglie UNA volta in una CTE e sotto la veste dell'operatore:
---   due sotto-select indipendenti potrebbero pescarne due diversi.
+-- rev 2026-10-27 (lotto 4 di D7): il preventivo si COSTRUISCE
+--   (dbops.fn_pgtap_crea_preventivo: azienda di chi agisce, cliente col suo
+--   BA, emittente coerente col BA, testata in bozza senza righe) e l'articolo
+--   pure (dbops.fn_pgtap_crea_articolo, merce semplice, non composito). Prima
+--   si pescavano col primo id un BA «con emittente» e un articolo non
+--   composito, e la testata si INSERIVA a mano: da zero non c'era niente.
+--   Dal catalogo di seed restano valuta, IVA e stati.
+CREATE TEMP TABLE tmp_pi_pb AS
+SELECT * FROM dbops.fn_pgtap_crea_preventivo('emissione iva');
+
 CREATE TEMP TABLE tmp_pi_refs AS
-WITH ba AS (
-  SELECT b.id, b.istanza_utility_id, b.utility_id
-    FROM anagrafiche.billing_account b
-   WHERE b.utility_id IS NOT NULL
-     AND b.istanza_utility_id IS NOT NULL
-     AND anagrafiche.fn_get_emittente_fiscale_pk(b.id) IS NOT NULL
-   ORDER BY b.id
-   LIMIT 1
-)
-SELECT (SELECT id FROM ba)                                    AS billing_account_id,
-       (SELECT istanza_utility_id FROM ba)                    AS istanza_utility_id,
-       (SELECT utility_id FROM ba)                            AS utility_id,
-       anagrafiche.fn_get_emittente_fiscale_pk((SELECT id FROM ba)) AS emittente_fiscale_id,
-       (SELECT a.id FROM catalogo.articoli a
-         WHERE a.attivo IS TRUE
-           AND COALESCE(a.is_composito, FALSE) IS FALSE
-         ORDER BY a.id LIMIT 1)                               AS articolo_id,
-       (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
+SELECT pb.billing_account_id,
+       pb.istanza_utility_id,
+       pb.utility_id,
+       pb.emittente_fiscale_id,
+       dbops.fn_pgtap_crea_articolo(
+         ('PGT-PIVA-' || substr(md5(clock_timestamp()::text), 1, 12))::varchar, false
+       )                                                      AS articolo_id,
+       pb.valuta_id,
        (SELECT i.id FROM config.iva i
          WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1)        AS iva_id,
        (SELECT s.id FROM config.stati_doc_preventivi s
          WHERE s.codice_interno = 'DRAFT'  ORDER BY s.id LIMIT 1) AS stato_draft_id,
        (SELECT s.id FROM config.stati_doc_preventivi s
-         WHERE s.codice_interno = 'EMESSO' ORDER BY s.id LIMIT 1) AS stato_emesso_id;
+         WHERE s.codice_interno = 'EMESSO' ORDER BY s.id LIMIT 1) AS stato_emesso_id
+  FROM tmp_pi_pb pb;
 
 SELECT ok(
     (SELECT billing_account_id IS NOT NULL AND emittente_fiscale_id IS NOT NULL
@@ -105,21 +109,10 @@ SELECT ok(
 -- ⚠️ Padre e figlio in DUE istruzioni, non in una CTE sola: le CTE che scrivono
 --   condividono la stessa snapshot e una policy che risolve il perimetro dal
 --   padre non lo troverebbe.
+-- rev 2026-10-27 (lotto 4 di D7): la testata e' quella del builder (sopra),
+--   non piu' un INSERT a mano; la riga resta scritta qui, e' il caso.
 CREATE TEMP TABLE tmp_pi_prev AS
-WITH ins AS (
-  INSERT INTO vendite.preventivi (
-      numero, rev, billing_account_id, istanza_utility_id, utility_id,
-      validita_dal, validita_al, valuta_id,
-      stato_doc_preventivo_id, data, emittente_fiscale_id, storicizza, meta)
-  SELECT 'PGTAP-PREV-IVA', 0,
-         r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id,
-         r.stato_draft_id, DATE '2080-01-01', r.emittente_fiscale_id, false,
-         jsonb_build_object('test_scope', 'pgtap_preventivo_emissione_iva')
-    FROM tmp_pi_refs r
-  RETURNING id
-)
-SELECT * FROM ins;
+SELECT preventivo_id AS id FROM tmp_pi_pb;
 
 INSERT INTO vendite.preventivi_righe (
     preventivo_id, articolo_id, descrizione, quantita, qta_operativa,
@@ -221,6 +214,13 @@ UPDATE vendite.preventivi_righe
 -- ============================================================
 -- ⭐ Senza questo, l'operatore vedrebbe un bottone acceso e prenderebbe un
 --   errore al click: guard e capability devono leggere la STESSA funzione.
+-- ⚠️ rev 2026-10-25 (giro 6): «Emetti» porta il permesso emetti_preventivo e si
+--   nasconde a chi non l'ha. Il file prova l'aliquota, non il permesso:
+--   l'operatore lo riceve qui, e serve anche al verbo dei test 6-7.
+DO $az$ BEGIN
+  PERFORM dbops.fn_pgtap_concedi_azione(NULLIF(current_setting('app.current_user_id', true), '')::integer, 'emetti_preventivo');
+END $az$;
+
 SELECT is(
     (SELECT a ->> 'reason'
        FROM jsonb_array_elements(
@@ -238,9 +238,11 @@ SELECT is(
 --   sollevare anche E_PREV_TRANSIZIONE_NON_AMMESSA, e P0001 direbbe solo «e' un
 --   errore di dominio», non QUALE. Il discriminante e' la frase.
 -- ⚠️ Il pattern non attraversa i segnaposto.
+-- ⚠️ rev 2026-10-25 (giro 6): il passaggio si chiede al VERBO
+--   vendite.fn_cambia_stato_preventivo, che arriva al guard: un UPDATE diretto
+--   lo fermerebbe prima la porta (E_DOC_STATO_SOLO_DAL_VERBO).
 SELECT throws_like(
-    format('UPDATE vendite.preventivi SET stato_doc_preventivo_id = %s WHERE id = %s',
-           (SELECT stato_emesso_id FROM tmp_pi_refs),
+    format($$SELECT * FROM vendite.fn_cambia_stato_preventivo(%s, 'EMESSO')$$,
            (SELECT id FROM tmp_pi_prev)),
     '%prezzo ma nessuna aliquota IVA%',
     'DRAFT->EMESSO con una riga senza aliquota: BLOCCA'
@@ -252,8 +254,7 @@ UPDATE vendite.preventivi_righe
  WHERE preventivo_id = (SELECT id FROM tmp_pi_prev);
 
 SELECT lives_ok(
-    format('UPDATE vendite.preventivi SET stato_doc_preventivo_id = %s WHERE id = %s',
-           (SELECT stato_emesso_id FROM tmp_pi_refs),
+    format($$SELECT * FROM vendite.fn_cambia_stato_preventivo(%s, 'EMESSO')$$,
            (SELECT id FROM tmp_pi_prev)),
     'DRAFT->EMESSO con l''aliquota: PASSA'
   );

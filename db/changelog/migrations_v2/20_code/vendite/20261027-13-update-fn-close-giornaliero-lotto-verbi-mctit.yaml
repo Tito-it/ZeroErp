@@ -1,0 +1,151 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA CHIUSURA DEL GIORNALIERO SCRIVE GLI STATI DAI VERBI
+#   Brief: brief-modello-documento-vendita §15 (giro 11; F-1, F-4).
+#
+#   vendite.fn_close_giornaliero_lotto portava lotto e fatture a INVIATA con
+#   due UPDATE. Con le porte (20261027-17, -18): il lotto dal verbo di
+#   processo del lotto (20261027-09), le fatture dal verbo della fattura
+#   (20261027-10). Lo stato operativo resta un UPDATE (non e' sotto porta).
+#   Conteggi restituiti invariati. Corpo dalla definizione viva (doc
+#   auto-generata, 2026-10-27). Firma invariata.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261027-13-update-fn-close-giornaliero-lotto-verbi-mctit.yaml
+
+  - changeSet:
+      id: 20261027-13-update-fn-close-giornaliero-lotto-verbi
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_close_giornaliero_lotto: lo stato del lotto dal verbo di processo del lotto, quello
+        delle fatture dal verbo della fattura, non con due UPDATE. Brief:
+        brief-modello-documento-vendita §15.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "2"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite'
+                 AND p.proname IN ('fn_fattura_proietta_stato', 'fn_lotto_proietta_stato_step');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_close_giornaliero_lotto(
+                  p_lotto_id                     vendite.fatturazione_lotti.id%TYPE,
+                  p_inviata_stato_doc_fiscale_id config.stati_doc_fiscale.id%TYPE)
+               RETURNS TABLE(updated_lotti integer, updated_fatture integer)
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- rev 2026-10-27 (20261027-13, brief-modello-documento-vendita §15): lo
+              --   stato del lotto lo scrive il verbo di processo del lotto
+              --   (vendite.fn_lotto_proietta_stato_step), quello delle fatture il verbo
+              --   della fattura (vendite.fn_fattura_proietta_stato), una per una: la
+              --   porta non lascia passare gli UPDATE. I due conteggi restano quelli di
+              --   prima (il lotto chiuso; tutte le fatture del lotto).
+              DECLARE
+                  v_updated_lotti   INTEGER := 0;
+                  v_updated_fatture INTEGER := 0;
+                  v_tipo_lotto      vendite.fatturazione_lotti.tipo_lotto%TYPE;
+                  v_fattura_id      vendite.fatture.id%TYPE;
+              BEGIN
+                  -- Guard: parametri obbligatori
+                  IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_close_giornaliero_lotto', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_lotto_id', 'valore', p_lotto_id),
+                          NULL::uuid, 'p_lotto_id obbligatorio e > 0'
+                      );
+                  END IF;
+
+                  IF p_inviata_stato_doc_fiscale_id IS NULL OR p_inviata_stato_doc_fiscale_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_close_giornaliero_lotto', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_inviata_stato_doc_fiscale_id', 'valore', p_inviata_stato_doc_fiscale_id),
+                          NULL::uuid, 'p_inviata_stato_doc_fiscale_id obbligatorio e > 0'
+                      );
+                  END IF;
+
+                  -- Recupera tipo lotto
+                  SELECT fl.tipo_lotto
+                    INTO v_tipo_lotto
+                    FROM vendite.fatturazione_lotti fl
+                   WHERE fl.id = p_lotto_id;
+
+                  IF v_tipo_lotto IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_close_giornaliero_lotto', 'E_VALORE_MANCANTE',
+                          jsonb_build_object('lotto_id', p_lotto_id),
+                          NULL::uuid, concat('lotto_id ', p_lotto_id)
+                      );
+                  END IF;
+
+                  -- Guard: solo lotti giornalieri
+                  IF v_tipo_lotto <> 'GIORNALIERO' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_close_giornaliero_lotto', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object(
+                              'parametro', 'tipo_lotto',
+                              'valore', v_tipo_lotto,
+                              'lotto_id', p_lotto_id
+                          ),
+                          NULL::uuid,
+                          concat('Lotto ', p_lotto_id, ' tipo=', v_tipo_lotto, ' (richiesto GIORNALIERO)')
+                      );
+                  END IF;
+
+                  -- Chiudi lotto: lo stato operativo qui, lo stato fiscale dal verbo di
+                  -- processo del lotto (INVIATA e' uno step della pipeline giornaliera).
+                  UPDATE vendite.fatturazione_lotti
+                     SET stato_operativo = 'CHIUSO',
+                         data_update = now(),
+                         user_update = current_user
+                   WHERE id = p_lotto_id;
+
+                  GET DIAGNOSTICS v_updated_lotti = ROW_COUNT;
+
+                  PERFORM vendite.fn_lotto_proietta_stato_step(p_lotto_id, p_inviata_stato_doc_fiscale_id);
+
+                  -- Allinea stato fatture, dal verbo della fattura (no-op su chi c'e' gia').
+                  FOR v_fattura_id IN
+                      SELECT lf.fattura_id
+                        FROM vendite.fatturazione_lotti_fatture lf
+                       WHERE lf.lotto_id = p_lotto_id
+                       ORDER BY lf.fattura_id
+                  LOOP
+                      PERFORM vendite.fn_fattura_proietta_stato(v_fattura_id, p_inviata_stato_doc_fiscale_id);
+                      v_updated_fatture := v_updated_fatture + 1;
+                  END LOOP;
+
+                  RETURN QUERY SELECT v_updated_lotti, v_updated_fatture;
+              END;
+              $function$;
+
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.fn_close_giornaliero_lotto(bigint, bigint)
+                IS 'Chiude lotto giornaliero e allinea stato doc fiscale su tutte le fatture collegate. rev 2026-10-27 (20261027-13, brief-modello-documento-vendita §15): lo stato fiscale del lotto lo scrive il verbo di processo del lotto (vendite.fn_lotto_proietta_stato_step: INVIATA e'' uno step della pipeline giornaliera), quello di ogni fattura del lotto il verbo della fattura (vendite.fn_fattura_proietta_stato, no-op su chi e'' gia'' nello stato): le porte non lasciano passare gli UPDATE. Lo stato operativo CHIUSO resta un UPDATE. updated_lotti e updated_fatture contano come prima (il lotto; tutte le fatture del lotto).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              SELECT 1;

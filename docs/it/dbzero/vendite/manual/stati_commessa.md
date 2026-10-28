@@ -14,7 +14,7 @@
 > • [vendite.fn_list_commesse_emittibili](/dbzero/vendite/funzioni/fn_list_commesse_emittibili)  
 >
 ### 🎯 Scopo Principale
-(latest review 26-02-2026)  
+(latest review 26-10-2026)  
 `vendite.stati_commessa` e` la lookup centrale degli stati lifecycle della commessa.
 
 Oltre al codice stato, espone tre flag operativi usati in runtime:
@@ -41,7 +41,7 @@ Seed iniziale previsto:
 
 * `BOZZA`
 * `APERTA`
-* `IN_ESECUZIONE`
+* `IN_ESECUZIONE` — ⛔ ritirato il 2026-10-26 (`attivo = false`, `brief-modello-documento-vendita` §14): «una lavorazione in corso» è lo stato del processo, non della commessa
 * `PRONTA_FATTURAZIONE`
 * `CHIUSA`
 * `ANNULLATA`

@@ -1,5 +1,12 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-modello-documento-vendita §9, giro 7): i test 2 e 4 chiudevano
+--   l'ordine con un UPDATE nudo della testata, che ora la porta ferma prima di ogni
+--   altro guard (E_DOC_STATO_SOLO_DAL_VERBO). La chiusura passa dal verbo di stato
+--   vendite.fn_cambia_stato_ordine (DRAFT -> ANNULLATO: nessuna azione), che non conosce
+--   ne' il freno ne' i legami: i rifiuti restano dei guard sulla tabella, e il test
+--   lo prova ancora. Attese invariate. Il test 7 resta un UPDATE: riscrive lo stesso
+--   stato, e la porta lo lascia passare.
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2d/2e): chiavi del push e ambito degli indirizzi col codice della sorgente.
 -- pgTAP test per Zero ERP
 -- Test: l'AGGANCIO del ritiro — freno e ritiro sulla chiusura del documento
@@ -14,7 +21,8 @@
 -- ⭐ IL VERO SOGGETTO E' CHE NESSUNO DEVE RICORDARSELO (Q-10)
 --   La regola sta sulla tabella, non nei servizi: lo stato di una testata si
 --   cambia da molti posti, e con la chiamata esplicita basta UNO distratto
---   perche' il buco torni. Il test 4 fa un UPDATE nudo sulla testata.
+--   perche' il buco torni. Il test 4 cambia lo stato dal verbo di stato, che i due
+--   guard non li conosce (rev 2026-10-25: dal giro 7 l'UPDATE nudo lo ferma la porta).
 -- ⭐ rev 2026-10-11 (brief-db-annullo-documento-con-legami D-5): il ritiro
 --   NON e' piu' silenzioso. Fino a qui un trigger _z90_ ritirava le righe
 --   NON_EMESSA all'annullo, senza che chi annullava lo vedesse. Ora le righe
@@ -42,8 +50,8 @@
 -- 1) Fixture: un ordine con due righe di commessa spinte (NON_EMESSA + EMESSA)
 -- 2) ⛔ Il freno: con una riga EMESSA l annullamento e RIFIUTATO, col suo codice
 -- 3) La check di dominio nomina lo stesso motivo (le due meta non si separano)
--- 4) 🔴 Tolta la riga emessa, l'UPDATE nudo e' rifiutato: le NON_EMESSA sono
---    legami e chiedono conferma (E_DOC_ANNULLO_CON_LEGAMI)
+-- 4) 🔴 Tolta la riga emessa, il cambio di stato (anche dal verbo di stato) e'
+--    rifiutato: le NON_EMESSA sono legami e chiedono conferma (E_DOC_ANNULLO_CON_LEGAMI)
 -- 5) 🔴 Il verbo confermato annulla e RITIRA: righe ANNULLATA, traccia col motivo
 -- 6) ⛔ Le righe di ALTRI documenti non sono state toccate
 -- 7) Un secondo UPDATE sullo stesso stato non ritira niente (nessun doppione)
@@ -188,9 +196,13 @@ SELECT ok(
 CREATE OR REPLACE FUNCTION pg_temp.rc_chiudi() RETURNS text AS $$
 DECLARE v_cod text;
 BEGIN
-  UPDATE vendite.ordini
-     SET stato_doc_ordine_id = (SELECT stato_abortito_id FROM tmp_rc_refs)
-   WHERE id = (SELECT id FROM tmp_rc_ordine);
+  -- rev 2026-10-25: dal verbo di stato (la porta ferma l'UPDATE nudo); lo stato
+  --   d'annullo e' quello del vocabolario (tmp_rc_refs), tradotto nel suo codice.
+  PERFORM 1
+     FROM vendite.fn_cambia_stato_ordine(
+            (SELECT id FROM tmp_rc_ordine),
+            script.fn_doc_stato_codice('vendite.ordini'::regclass,
+                                       (SELECT stato_abortito_id FROM tmp_rc_refs)));
   RETURN 'NESSUN ERRORE';
 EXCEPTION WHEN OTHERS THEN
   GET STACKED DIAGNOSTICS v_cod = CONSTRAINT_NAME;
@@ -217,7 +229,7 @@ SELECT is(
 );
 
 -- ============================================================
--- 4) 🔴 Tolta la riga emessa, l'UPDATE nudo e' rifiutato: conferma
+-- 4) 🔴 Tolta la riga emessa, il cambio di stato e' rifiutato: conferma
 -- ============================================================
 -- ⭐ E' cio' che «Riporta da emettere» fa nella vita vera: riporta la riga a
 --   NON_EMESSA, e da li' il ritiro la prende. Qui si simula quello stato.
@@ -225,14 +237,15 @@ UPDATE vendite.commesse_attivita
    SET stato_emissione = 'NON_EMESSA'
  WHERE id = (SELECT attivita_id FROM tmp_rc_ca WHERE slot = 'EMESSA');
 
--- ⚠️ UPDATE NUDO sulla testata: nessuna funzione di dominio, nessun servizio.
+-- ⚠️ Il cambio di stato dal verbo di stato, che non conosce i legami: lo ferma il
+--   guard sulla tabella (rev 2026-10-25: prima era un UPDATE nudo, ora fermato dalla porta).
 --   ⭐ rev 2026-10-11 (D-5): le due righe NON_EMESSA sono legami, e annullare
 --   senza conferma e' rifiutato. Il freno sulle EMESSA (test 2) ha parlato
 --   prima: questo e' il secondo rifiuto, quello che chiede conferma.
 SELECT is(
   pg_temp.rc_chiudi(),
   'E_DOC_ANNULLO_CON_LEGAMI',
-  '4) senza righe emesse l''UPDATE nudo e'' rifiutato: le NON_EMESSA sono legami e chiedono conferma'
+  '4) senza righe emesse il cambio di stato, anche dal verbo di stato, e'' rifiutato: le NON_EMESSA sono legami e chiedono conferma'
 );
 
 -- ============================================================

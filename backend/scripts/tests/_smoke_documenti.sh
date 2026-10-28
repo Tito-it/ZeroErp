@@ -3,15 +3,15 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Bash
 # Scopo: L'emissione di un documento di vendita negli smoke bash, in un posto
-#        solo. Contratto (DRAFT -> ATTIVO), preventivo (BOZZA -> EMESSO) e bolla
-#        (-> EMESSO) passano da `POST /api/v1/vendite/<documento>/<id>/emetti/`,
+#        solo. Contratto (DRAFT -> ATTIVO), preventivo (BOZZA -> EMESSO), ordine
+#        (DRAFT -> CONFERMATO) e bolla (-> EMESSO) passano da `POST /api/v1/vendite/<documento>/<id>/emetti/`,
 #        multipart: stato, documento e allegati in una transazione. Il cambio di
 #        stato diretto verso quegli stati risponde 400 «Usare l'endpoint
 #        /emetti/» (o, per una bolla che muove merce, E_DDT_STATO_SOLO_DA_VERBO).
 #        Prima la stessa chiamata curl era copiata in ogni smoke che emetteva.
 # Uso (dopo `source .../_smoke_auth.sh` e `smoke_login`):
 #   source "$(dirname "${BASH_SOURCE[0]}")/_smoke_documenti.sh"
-#   smoke_emetti contratti "$CONTRATTO_ID"   # o: preventivi, ddt
+#   smoke_emetti contratti "$CONTRATTO_ID"   # o: preventivi, ordini, ddt
 #   # -> LAST_STATUS, LAST_BODY (come il do_curl degli smoke)
 #   # -> SMOKE_EMETTI_SENZA_MODELLO=1 se manca il modello di documento
 #   smoke_chiudi_contratti "$BA_ID" COMMODITY   # i contratti vivi che lo smoke ha lasciato

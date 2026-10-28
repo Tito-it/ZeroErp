@@ -13,7 +13,7 @@ Indice test eseguiti:
  1) test_list_richiede_jwt — 401 senza Authorization header
  2) test_list_ok_envelope — 200 envelope paginato (mock service)
  3) test_create_ok — 200 create ordine (mock service)
- 4) test_conferma_ok — 200 conferma (mock service)
+ 4) test_conferma_senza_emetti_ritirata — 404: `/conferma/` ritirata (Z-2)
  5) test_push_ok — 200 push singolo a commessa (mock service)
  5b) test_cambia_stato_ok — 200 transizione generica (mock service)
  6) test_riepilogo_iva_ok — 200 riepilogo IVA aggregato (mock service)
@@ -22,11 +22,14 @@ Indice test eseguiti:
  9) test_emetti_route_ok — POST emetti (multipart) DRAFT->CONFERMATO route OK
 10) test_emetti_integration_atomic_conferma_genera_allegati — POST emetti
     orchestra conferma + genera_documento(allegati=...) in transazione atomica
+11) test_emetti_e_cambia_stato_dichiarano_il_passaggio — l'azione dalla riga
+    del passaggio; «Emetti» con lo stato di emissione dal vocabolario
 """
 
 from unittest.mock import ANY, Mock, patch
 
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import SimpleTestCase
 
 from apps.core.tests._helpers.jwt_mock import ClientApi
 
@@ -84,15 +87,14 @@ class TestOrdiniApi(JwtMockedApiTest):
         self.assertEqual(resp.json()["data"]["numero"], "ORD0007")
         mock_crea.assert_called_once()
 
+    # Z-2 (brief-modello-documento-vendita §9.6 C-4): la conferma senza PDF e'
+    # ritirata, l'ordine si conferma solo da «Emetti». La rotta non c'e' piu'.
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(f"{_SVC}.conferma")
-    def test_conferma_ok(self, mock_conf, _auth) -> None:
-        mock_conf.return_value = {"ordine_id": 7, "stato": "CONFERMATO"}
+    def test_conferma_senza_emetti_ritirata(self, mock_conf, _auth) -> None:
         resp = self.client.post(f"{_BASE}7/conferma/", content_type="application/json")
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.json()["data"]["stato"], "CONFERMATO")
-        # user propagato dal JWT (audit del completamento step CONFERMA_ORDINE).
-        mock_conf.assert_called_once_with(7, user=ANY)
+        self.assertEqual(resp.status_code, 404)
+        mock_conf.assert_not_called()
 
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(f"{_SVC}.push_a_commessa")
@@ -256,8 +258,9 @@ class TestOrdineEmissione(JwtMockedApiTest):
         body = resp.json()["data"]
         self.assertEqual(body["ordine"]["stato"], "CONFERMATO")
         self.assertEqual(body["documento"]["nome_file"], "ordine.pdf")
-        # conferma chiamata una sola volta con l'ordine_id corretto
-        svc_mod.conferma.assert_called_once_with(7)
+        # conferma chiamata una sola volta con l'ordine_id corretto e l'utente
+        # della richiesta (chiude lo step della pratica)
+        svc_mod.conferma.assert_called_once_with(7, user=ANY)
         # genera_documento riceve i parametri estratti dall'ordine + l'allegato
         kwargs = doc_svc_cls.return_value.genera_documento.call_args.kwargs
         self.assertEqual(kwargs["emittente_fiscale_id"], 11)
@@ -269,3 +272,24 @@ class TestOrdineEmissione(JwtMockedApiTest):
         self.assertEqual(len(kwargs["allegati"]), 1)
         self.assertEqual(kwargs["allegati"][0]["mime_type"], "application/pdf")
         self.assertEqual(kwargs["allegati"][0]["file_name"], "allegato.pdf")
+
+
+class OrdinePassaggioPermessoTests(SimpleTestCase):
+    # Scopo: «Emetti» e il cambio stato dell'ordine leggono l'azione dalla riga
+    #        del passaggio (M-3, brief-modello-documento-vendita §9.6 C-5), non
+    #        la dichiarano: nessun `post_permission` accanto. «Emetti» chiede
+    #        lo stato di emissione al vocabolario a ogni richiesta (§8.11 B-2).
+    def test_emetti_e_cambia_stato_dichiarano_il_passaggio(self) -> None:
+        from apps.core.api.permissions import PassaggioDocumento
+        from apps.vendite.api.ordini_documenti_views import ApiOrdineEmetti
+        from apps.vendite.api.views_ordini import ApiOrdineCambiaStato
+
+        self.assertEqual(ApiOrdineEmetti.post_passaggio, PassaggioDocumento(
+            testata="vendite.ordini", documento_kwarg="sorgente_id", stato_del_modello="emissione",
+        ))
+        self.assertEqual(ApiOrdineCambiaStato.post_passaggio, PassaggioDocumento(
+            testata="vendite.ordini", documento_kwarg="ordine_id",
+        ))
+        for view in (ApiOrdineEmetti, ApiOrdineCambiaStato):
+            with self.subTest(view=view.__name__):
+                self.assertIsNone(getattr(view, "post_permission", None))

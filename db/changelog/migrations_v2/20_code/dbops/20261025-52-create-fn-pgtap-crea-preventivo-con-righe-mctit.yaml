@@ -1,0 +1,184 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# BUILDER: IL PREVENTIVO CON UNA RIGA, NELLO STATO CHIESTO
+#   Brief: brief-modello-documento-vendita §8 (giro 6). Gemello di
+#   dbops.fn_pgtap_crea_ordine_con_righe (20261025-31).
+#
+# ── PERCHE' ─────────────────────────────────────────────────────────
+#   Con la porta sul preventivo (20261025-46) lo stato si cambia solo dal
+#   verbo, e l'emissione chiede almeno una riga attiva (guard di transizione,
+#   20261025-49). Prima la fixture dbops.fn_pgtap_porta_a_stato scriveva lo
+#   stato con un UPDATE e la regola stava solo nel verbo: quattordici pgTAP
+#   emettevano un preventivo SENZA righe, uno stato che il modello non ammette.
+#   Ognuno dovrebbe ora scrivere una riga valida per l'emissione (articolo,
+#   aliquota, prezzo): e' la regola del dominio che il criterio dei builder
+#   (brief §4-octies) non lascia ricopiare.
+#
+# ── CHE COSA FA ─────────────────────────────────────────────────────
+#   Una riga sola (articolo di merce costruito, prima aliquota positiva del
+#   catalogo, quantita 1, prezzo 10 o p_prezzo), poi lo stato chiesto per la
+#   matrice con dbops.fn_pgtap_porta_a_stato (default EMESSO). La testata e'
+#   nuova (dbops.fn_pgtap_crea_preventivo, che resta senza righe) o quella del
+#   test (p_preventivo_id, in bozza: le righe si scrivono in bozza).
+#   ⚠️ L'emissione passa dal verbo: serve un utente di contesto che veda il
+#   preventivo; l'azione emetti_preventivo la concede la fixture.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261025-52-create-fn-pgtap-crea-preventivo-con-righe-mctit.yaml
+
+  - changeSet:
+      id: 20261025-52-create-fn-pgtap-crea-preventivo-con-righe
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_pgtap_crea_preventivo_con_righe: il preventivo di fixture con una riga valida
+        per l'emissione, nello stato chiesto (default EMESSO); compone
+        dbops.fn_pgtap_crea_preventivo, che resta senza righe. Brief:
+        brief-modello-documento-vendita §8.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "3"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops'
+                 AND p.proname IN ('fn_pgtap_crea_preventivo', 'fn_pgtap_crea_articolo',
+                                   'fn_pgtap_porta_a_stato');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION dbops.fn_pgtap_crea_preventivo_con_righe(
+                  p_etichetta            text DEFAULT 'pgTAP',
+                  p_stato_codice_interno config.stati_doc_preventivi.codice_interno%TYPE DEFAULT 'EMESSO',
+                  p_preventivo_id        vendite.preventivi.id%TYPE DEFAULT NULL,
+                  p_prezzo               vendite.preventivi_righe.prezzo_unitario%TYPE DEFAULT NULL,
+                  p_articolo_id          catalogo.articoli.id%TYPE DEFAULT NULL)
+               RETURNS TABLE(preventivo_id             vendite.preventivi.id%TYPE,
+                             preventivo_uid            vendite.preventivi.uid%TYPE,
+                             preventivo_riga_id        vendite.preventivi_righe.id%TYPE,
+                             articolo_id               catalogo.articoli.id%TYPE,
+                             billing_account_id        vendite.preventivi.billing_account_id%TYPE,
+                             emittente_fiscale_id      vendite.preventivi.emittente_fiscale_id%TYPE,
+                             auth_user_id              anagrafiche.identita_digitali.auth_user_id%TYPE,
+                             stato_doc_preventivo_id   vendite.preventivi.stato_doc_preventivo_id%TYPE)
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: dare a una fixture pgTAP un PREVENTIVO con una riga
+              --   valida per l'emissione, nello stato chiesto (default
+              --   EMESSO), per la strada vera.
+              -- Uso:
+              --   CREATE TEMP TABLE tmp_p AS
+              --   SELECT * FROM dbops.fn_pgtap_crea_preventivo_con_righe('dash');
+              --   -- la testata del test, gia' in bozza, portata ad ACCETTATO:
+              --   SELECT * FROM dbops.fn_pgtap_crea_preventivo_con_righe('rif',
+              --              'ACCETTATO', p_preventivo_id => (SELECT id FROM tmp_t));
+              -- ⚠️ Senza contesto aperto, il mondo lo apre sull'operatore che
+              --   costruisce. Esce con i vincoli IMMEDIATE, come ogni helper.
+              DECLARE
+                  v_stato_id   config.stati_doc_preventivi.id%TYPE;
+                  v_preventivo vendite.preventivi.id%TYPE;
+                  v_ba_id      vendite.preventivi.billing_account_id%TYPE;
+                  v_ef_id      vendite.preventivi.emittente_fiscale_id%TYPE;
+                  v_user_id    anagrafiche.identita_digitali.auth_user_id%TYPE;
+                  v_iva_id     config.iva.id%TYPE;
+                  v_natura_id  config.nature_vendita.id%TYPE;
+                  v_articolo   catalogo.articoli.id%TYPE;
+                  v_riga_id    vendite.preventivi_righe.id%TYPE;
+              BEGIN
+                  -- 0. I parametri si giudicano PRIMA di costruire.
+                  v_stato_id := script.fn_doc_stato_id('vendite.preventivi'::regclass, p_stato_codice_interno);
+                  IF v_stato_id IS NULL THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_crea_preventivo_con_righe: nessuno stato attivo del preventivo con codice_interno = %',
+                          coalesce(p_stato_codice_interno::text, 'NULL');
+                  END IF;
+
+                  -- 1. La testata: quella del test, in bozza, o una nuova.
+                  IF p_preventivo_id IS NOT NULL THEN
+                      SELECT p.id, p.billing_account_id, p.emittente_fiscale_id
+                        INTO v_preventivo, v_ba_id, v_ef_id
+                        FROM vendite.preventivi p
+                       WHERE p.id = p_preventivo_id
+                         AND p.stato_doc_preventivo_id
+                             = script.fn_stato_iniziale_id('config.stati_doc_preventivi'::regclass);
+                      IF NOT FOUND THEN
+                          RAISE EXCEPTION
+                              'fn_pgtap_crea_preventivo_con_righe: preventivo id = % inesistente, invisibile o fuori bozza — le righe si scrivono in bozza',
+                              p_preventivo_id;
+                      END IF;
+                      v_user_id := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  ELSE
+                      SELECT p.preventivo_id, p.billing_account_id, p.emittente_fiscale_id, p.auth_user_id
+                        INTO v_preventivo, v_ba_id, v_ef_id, v_user_id
+                        FROM dbops.fn_pgtap_crea_preventivo(p_etichetta, 'DRAFT') p;
+                  END IF;
+
+                  -- 2. La riga, in bozza. Il catalogo di sistema si SCEGLIE,
+                  --    col suo ORDER BY; l'articolo si costruisce (da zero il
+                  --    catalogo e' vuoto), di merce.
+                  SELECT i.id INTO v_iva_id
+                    FROM config.iva i
+                   WHERE i.attivo IS TRUE AND i.aliquota_iva > 0
+                   ORDER BY i.id
+                   LIMIT 1;
+
+                  IF p_articolo_id IS NULL THEN
+                      SELECT nv.id INTO v_natura_id
+                        FROM config.nature_vendita nv
+                       WHERE nv.destinazione_tipo = 'ORDINE_VENDITA' AND nv.attivo IS TRUE
+                       ORDER BY nv.id
+                       LIMIT 1;
+                  END IF;
+
+                  v_articolo := COALESCE(p_articolo_id, dbops.fn_pgtap_crea_articolo(
+                      ('PGT-PRV-' || substr(md5(clock_timestamp()::text || v_preventivo::text), 1, 12))::varchar,
+                      false, p_natura_vendita_id => v_natura_id));
+
+                  INSERT INTO vendite.preventivi_righe (preventivo_id, articolo_id, iva_id,
+                                                        prezzo_unitario, qta_operativa)
+                  VALUES (v_preventivo, v_articolo, v_iva_id, COALESCE(p_prezzo, 10), 1)
+                  RETURNING id INTO v_riga_id;
+
+                  -- 3. Lo stato chiesto, per la matrice.
+                  IF v_stato_id IS DISTINCT FROM script.fn_stato_iniziale_id('config.stati_doc_preventivi'::regclass) THEN
+                      PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi'::regclass, v_preventivo,
+                                                           p_stato_codice_interno);
+                  END IF;
+
+                  -- Contratto dichiarato, non fiducia nel chiamato.
+                  SET CONSTRAINTS ALL IMMEDIATE;
+
+                  RETURN QUERY
+                  SELECT p.id, p.uid, v_riga_id, v_articolo, v_ba_id, v_ef_id, v_user_id,
+                         p.stato_doc_preventivo_id
+                    FROM vendite.preventivi p
+                   WHERE p.id = v_preventivo;
+              END;
+              $function$;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION dbops.fn_pgtap_crea_preventivo_con_righe(text, config.stati_doc_preventivi.codice_interno%TYPE, vendite.preventivi.id%TYPE, vendite.preventivi_righe.prezzo_unitario%TYPE, catalogo.articoli.id%TYPE)
+              IS 'Fixture pgTAP: un PREVENTIVO con una riga valida per l''emissione (articolo di merce costruito o p_articolo_id, prima aliquota positiva del catalogo, quantita 1, prezzo 10 o p_prezzo), nello stato chiesto (secondo parametro, default EMESSO), per la strada vera: la riga in bozza, poi lo stato per la matrice con dbops.fn_pgtap_porta_a_stato (il verbo, sotto la porta). ⭐ Esiste per la REGOLA DEL DOMINIO che i test ricopiavano: l''emissione chiede almeno una riga attiva (vendite.trgfn_preventivi_guard_transizione), e prima della porta i test emettevano preventivi senza righe. La testata e'' nuova (dbops.fn_pgtap_crea_preventivo, che resta senza righe) o quella del test (p_preventivo_id: in bozza, altrimenti solleva). Restituisce testata, la riga scritta, articolo, BA, emittente, utente di contesto e stato. ⚠️ Senza contesto aperto lo apre sull''operatore che costruisce; esce con i vincoli IMMEDIATE. Gemello di dbops.fn_pgtap_crea_ordine_con_righe. Brief: brief-modello-documento-vendita §8.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_pgtap_crea_preventivo_con_righe(text, character varying, bigint, numeric, uuid);

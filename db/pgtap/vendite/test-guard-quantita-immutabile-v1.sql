@@ -58,26 +58,24 @@ SELECT has_trigger('vendite', 'attivita_fatturabili',
     'trg_attivita_fatturabili_a10_guard_quantita_immutabile_upd',
     '4) trigger guard quantita AF presente');
 
--- ===== fixture: riferimenti reali seedati =====
+-- ===== fixture: riferimenti =====
+-- rev 2026-10-27 (lotto 4 di D7): il cliente e l'articolo si COSTRUISCONO.
+--   Prima si pescavano il primo BA con emittente e l'ultimo articolo attivo, e
+--   su un database ricostruito da zero non c'erano: ora il BA viene da
+--   dbops.fn_pgtap_crea_cliente_ba (legato all'azienda di chi agisce, emittente
+--   derivato dal BA) e l'articolo da dbops.fn_pgtap_crea_articolo (servizio,
+--   non gestito a magazzino). Restano letture di catalogo di SEED:
+--   unita_misura, tipi_doc_fiscale, valute, sorgenti.
+CREATE TEMP TABLE tmp_cli_gq AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('guard quantita immutabile');
+
 CREATE TEMP TABLE tmp_refs AS
 SELECT
-  (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1) AS billing_account_id,
-  (SELECT ba.utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1) AS utility_id,
-  (SELECT ba.istanza_utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1) AS istanza_utility_id,
-  (SELECT anagrafiche.fn_get_emittente_fiscale_id(ba.id) FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1) AS emittente_soggetto_ruolo_id,
-  (SELECT id FROM catalogo.articoli WHERE attivo IS TRUE ORDER BY data_insert DESC NULLS LAST LIMIT 1) AS articolo_id,
+  (SELECT billing_account_id FROM tmp_cli_gq) AS billing_account_id,
+  (SELECT utility_id FROM tmp_cli_gq) AS utility_id,
+  (SELECT istanza_utility_id FROM tmp_cli_gq) AS istanza_utility_id,
+  (SELECT anagrafiche.fn_get_emittente_fiscale_id(billing_account_id) FROM tmp_cli_gq) AS emittente_soggetto_ruolo_id,
+  dbops.fn_pgtap_crea_articolo('PGTAP-GQ-ART', false) AS articolo_id,
   (SELECT id FROM catalogo.unita_misura WHERE attivo IS TRUE ORDER BY id LIMIT 1) AS uom_id,
   (SELECT id FROM config.tipi_doc_fiscale WHERE attivo IS TRUE ORDER BY id LIMIT 1) AS tipo_doc_fiscale_id,
   (SELECT id FROM config.valute ORDER BY id LIMIT 1) AS valuta_id;

@@ -44,6 +44,11 @@ class ContrattoAttivaSovrappostoDbTests(unittest.TestCase):
             mondo = row_to_dict(cur)
             assert mondo is not None
             cur.execute("SELECT script.fn_pgtap_set_contesto_operatore(%s)", [mondo["auth_user_id"]])
+            # «Attiva» chiede `emetti_contratto` dalla riga del passaggio, e la
+            # capability la nasconde a chi non ce l'ha (§11.6).
+            cur.execute(
+                "SELECT dbops.fn_pgtap_concedi_azione(%s, 'emetti_contratto')", [mondo["auth_user_id"]],
+            )
             cur.execute("SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('attiva sovrapposto')")
             cliente = row_to_dict(cur)
             assert cliente is not None

@@ -304,6 +304,19 @@ _FROM_JOINS_UTILITY = """
 """
 
 
+# La testata nella mappa del modello del documento (`script.fn_doc_stato_modello`):
+# la leggono il repository, il service e la catena dei permessi.
+TESTATA_CONTRATTI = "vendite.contratti"
+
+# Lo stato della cessazione: quello che `vendite.fn_cessa_contratto` scrive, e
+# per cui il cambio stato chiama quel verbo invece del verbo di stato.
+# ⚠️ E' il letterale che il verbo ha nel corpo (`v_cessato := 'CESSATO'`): il
+#    vocabolario non ha ancora un lettore dello stato di cessazione, come lo
+#    ha per l'emissione e l'annullo. Richiesta al team DB in
+#    brief-modello-documento-vendita §11.7: col lettore questa costante si ritira.
+STATO_CESSATO = "CESSATO"
+
+
 class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryMixin):
     """Accesso DB a `vendite.contratti` + righe + utility 1:1.
 
@@ -663,8 +676,8 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
             return int(row[0])
 
     # Scopo: Aggiorna una testata contratto. `numero` immutabile (trigger
-    #        lock_columns). stato_doc_contratto_id si aggiorna via
-    #        update_stato() per leggibilita'.
+    #        lock_columns). Lo stato non passa da qui: lo scrivono i verbi
+    #        (`cambia_stato`, `cessa`, `annulla`).
     # Colonne scrivibili dalla PATCH di testata: ULTIMO dei tre anelli della
     # catena `UPDATE_KEYS_TESTATA` → `_build_update_data_testata` → qui. Fino
     # al 2026-09-26 una colonna mancante in uno dei tre non veniva scritta e
@@ -708,27 +721,41 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
             allowed=self.TESTATA_UPDATE_COLUMNS, jsonb=_JSONB_COLS,
         )
 
-    # Scopo: Cambia lo stato documentale del contratto. Il fail-fast e' a DB,
-    #        su due trigger di `vendite.contratti`:
-    #          - trgfn_contratti_guard_transizione_stato: transizione ammessa
-    #            dalla matrice `config.transizioni_stati_contratti`;
-    #          - trgfn_doc_testata_lock_fuori_bozza: le colonne della testata
-    #            ferme fuori bozza, colonna per colonna e per stato (dal
-    #            2026-10-10 assorbe trgfn_contratti_lock_post_attivazione).
-    #        (Fino al 2026-08-04 qui era nominato
-    #        trgfn_contratti_guard_modalita_c_activation, droppato con il
-    #        modello di pricing a modalita' A/B/C il 2026-05-15.)
-    def update_stato(self, contratto_id: int, stato_doc_contratto_id: int) -> bool:
+    # Scopo: Cambia lo stato del contratto dal suo verbo
+    #        `vendite.fn_cambia_stato_contratto` (brief-modello-documento-vendita
+    #        §11, giro 8), gemello di `OrdiniRepository.cambia_stato`: permesso
+    #        dalla riga del passaggio, perimetro, prima riga (anche lo stato che
+    #        ha gia', E_DOC_GIA_NELLO_STATO), porta, e il guard di transizione
+    #        per matrice e condizioni. Lo stato chiesto e' il `codice_interno`.
+    #        ⛔ Fino al 2026-10-26 un UPDATE diretto della colonna
+    #        (`update_stato`): ora la porta lo rifiuta (E_DOC_STATO_SOLO_DAL_VERBO).
+    # Ritorna: {contratto_id, stato_precedente, stato_nuovo} (codici).
+    def cambia_stato(self, contratto_id: int, stato_codice: str) -> dict[str, Any]:
         with connection.cursor() as cursor:
             cursor.execute(
-                """
-                UPDATE vendite.contratti
-                   SET stato_doc_contratto_id = %s
-                 WHERE id = %s
-                """,
-                [stato_doc_contratto_id, contratto_id],
+                "SELECT * FROM vendite.fn_cambia_stato_contratto(%s, %s)",
+                [int(contratto_id), stato_codice],
             )
-            return cursor.rowcount > 0
+            result = row_to_dict(cursor)
+            assert result is not None
+            return result
+
+    # Scopo: Cessa il contratto alla data `valido_al` dal verbo
+    #        `vendite.fn_cessa_contratto` (Y-3): decide lui. Senza data
+    #        E_CONTRATTO_CESSAZIONE_SENZA_DATA; data passata
+    #        E_CONTRATTO_VALIDO_AL_RETROATTIVO; oggi scrive data e stato;
+    #        futura scrive solo la data (`programmata`), e lo stato lo chiude
+    #        il job sugli scaduti.
+    # Ritorna: {contratto_id, stato_precedente, stato_nuovo, programmata}.
+    def cessa(self, contratto_id: int, valido_al: date | None) -> dict[str, Any]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT * FROM vendite.fn_cessa_contratto(%s, %s)",
+                [int(contratto_id), valido_al],
+            )
+            result = row_to_dict(cursor)
+            assert result is not None
+            return result
 
     # Scopo: Annulla il contratto via il verbo DB `vendite.fn_annulla_contratto`
     #        (brief-db-annullo-documento-con-legami): con legami (offerta
@@ -1130,20 +1157,6 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
     # =================================================================
     # Lookup tecnici usati dal service
     # =================================================================
-
-    # Scopo: Risolve stato DRAFT (o lo stato richiesto) dal codice_interno.
-    #        Usato in create per impostare stato iniziale standard.
-    def get_stato_id_by_codice(self, codice_interno: str) -> int | None:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT id FROM config.stati_doc_contratti
-                 WHERE codice_interno = %s
-                """,
-                [codice_interno],
-            )
-            row = cursor.fetchone()
-            return None if row is None else int(row[0])
 
     # Scopo: Ritorna il codice_interno dello stato corrente del contratto.
     def get_stato_codice(self, contratto_id: int) -> str | None:

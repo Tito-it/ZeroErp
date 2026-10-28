@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_crea_veste_portale(p_auth_user_id integer, p_soggetto_ruolo_id bigint, p_ruolo_applicativo config.ruolo_applicativo, p_attivo boolean)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

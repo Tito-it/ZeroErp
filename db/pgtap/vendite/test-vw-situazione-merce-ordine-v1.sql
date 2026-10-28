@@ -1,5 +1,9 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-26 (brief-modello-documento-vendita §14, giro 10): la commessa passa a PRONTA_FATTURAZIONE dal verbo vendite.fn_cambia_stato_commessa, che ora chiede l'azione cambia_stato_commessa: il test prova la vista, non il permesso, e la concede all'utente del contesto (dbops.fn_pgtap_concedi_azione). Attese invariate (l'11 resta rosso da owner, come prima).
+-- rev 2026-10-25 (brief-modello-documento-vendita §9, giro 7): l'annullo dell'ordine H (test 13) non e' piu' un UPDATE diretto dello stato, che la porta ferma (E_DOC_STATO_SOLO_DAL_VERBO): passa dal verbo d'annullo vendite.fn_annulla_ordine, con emetti_ordine concessa all'utente del contesto (l'annullo di un confermato la chiede). Attese invariate.
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): gli ordini senza bolla (A, G, H) da dbops.fn_pgtap_crea_ordine_con_righe in pg_temp.mk_ordine (lo stato per parametro: ritirata la copia pg_temp.mk_ordine_stato); restano a mano l'annullo di H (il percorso del 13) e l'attivita' del kit di F (il caso del 10).
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito): il reso dal builder dbops.fn_pgtap_crea_reso, la ri-consegna da dbops.fn_pgtap_crea_ddt_riconsegna (tutto il reso, consegnata); l'azione conferma_reso la concede il builder.
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine (le spedizioni parziali con p_qta_da_evadere e p_ordine_id); restano a mano gli ordini SENZA bolla (A, G, H: il caso del 4/5/12/13), la bolla di ri-consegna (indirizzo e causale; gli stati per dbops.fn_pgtap_porta_a_stato) e il reso (giro 2).
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
 -- pgTAP test per Zero ERP
@@ -102,14 +106,6 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_
 
 SELECT plan(17);
 
--- Dal 2026-09-28 conferma e annullo del reso sono verbi che applicano
--- l'azione conferma_reso (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-f):
--- l'operatore di fixture non ha azioni, si concede qui.
-DO $az$ BEGIN
-    PERFORM dbops.fn_pgtap_concedi_azione(
-        NULLIF(current_setting('app.current_user_id', true), '')::integer, 'conferma_reso');
-END $az$;
-
 -- ============================================================
 -- 1-3) Struttura
 -- ============================================================
@@ -137,52 +133,29 @@ SELECT columns_are('vendite', 'vw_situazione_merce_ordine',
 -- ============================================================
 CREATE TEMP TABLE tmp_refs AS
 SELECT
-  -- ⛔ rev 2026-10-13: BA, utility, istanza, ruolo del cliente ed emittente dal
+  -- ⛔ rev 2026-10-13: BA, utility e istanza del cliente dal
   --   mondo costruito; l'articolo si costruisce (merce, non gestito: il test non
   --   misura il magazzino). La sua UoM base e' la prima attiva del seed, la
   --   stessa che uom_id legge qui sotto.
   (SELECT billing_account_id FROM _m)                                    AS billing_account_id,
   (SELECT utility_id FROM _m)                                            AS utility_id,
   (SELECT istanza_utility_id FROM _m)                                    AS istanza_utility_id,
-  (SELECT cliente_soggetto_ruolo_id FROM _m)                             AS soggetto_ruolo_id,
   dbops.fn_pgtap_crea_articolo('PGTAP-SITUAZ-MERCE', false)              AS articolo_id,
   (SELECT u.id FROM catalogo.unita_misura u WHERE u.attivo IS TRUE ORDER BY u.id LIMIT 1) AS uom_id,
-  (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)               AS valuta_id,
-  (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
-  (SELECT emittente_fiscale_id FROM _m)                                  AS emittente_fiscale_id,
-  (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='DDT_VENDITA' AND s.attivo LIMIT 1)     AS sorgente_ddt_id,
   (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='COMMESSA' AND s.attivo LIMIT 1)        AS sorgente_root_id,
-  (SELECT s.id FROM config.stati_doc_reso s WHERE s.codice_interno='DRAFT' AND s.attivo LIMIT 1)     AS stato_reso_draft_id,
-  (SELECT t.id FROM config.tipi_reso t WHERE t.codice_interno='RESO_PER_RICONSEGNA' AND t.attivo LIMIT 1) AS tipo_riconsegna_id,
-  (SELECT t.id FROM config.tipi_doc_fiscale t WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1) AS tipo_doc_fiscale_id,
-  (SELECT c.id FROM config.causali_trasporto c WHERE c.codice='VENDITA' LIMIT 1)       AS causale_vendita_id,
-  (SELECT id FROM config.tipi_indirizzi WHERE codice_interno='CON')      AS tipo_ind_con_id;
+  (SELECT t.id FROM config.tipi_doc_fiscale t WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1) AS tipo_doc_fiscale_id;
 
--- Helper: crea l'ordine confermato (una riga da p_qta) SENZA bolla e ritorna
--- gli id: serve alle righe mai spedite (A, H). Le bolle vengono dal builder.
--- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT, prende la riga, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le righe non si scrivono piu' (20261008-90).
-CREATE OR REPLACE FUNCTION pg_temp.mk_ordine(p_qta numeric)
+-- Helper: l'ordine (una riga da p_qta a 25, trigger SPEDITO, del 2026-08-15)
+-- SENZA bolla, nello stato chiesto (default CONFERMATO), dal builder: serve
+-- alle righe mai spedite (A, G, H). Le bolle vengono dal builder della bolla.
+CREATE OR REPLACE FUNCTION pg_temp.mk_ordine(p_qta numeric, p_stato text DEFAULT 'CONFERMATO')
 RETURNS TABLE(ordine_id bigint, ordine_uid uuid, ordine_riga_id bigint) AS $$
-DECLARE r RECORD; v_ord bigint; v_uid uuid; v_orr bigint;
-BEGIN
-  SELECT * INTO r FROM tmp_refs;
-  INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
-    valuta_id, data, fatturazione_trigger, emittente_fiscale_id, storicizza, meta)
-  VALUES (r.soggetto_ruolo_id, r.billing_account_id,
-          (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE),
-          r.valuta_id,
-          DATE '2026-08-15', 'SPEDITO', r.emittente_fiscale_id, false,
-          jsonb_build_object('test_scope','pgtap_situazione_ordine'))
-  RETURNING id, uid INTO v_ord, v_uid;
-  UPDATE vendite.ordini SET fatturazione_trigger='SPEDITO' WHERE id=v_ord;
-  INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
-    qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
-  VALUES (v_ord, 1, r.articolo_id, 'Riga situazione', p_qta, p_qta, 25, r.iva_id, true, false,
-          jsonb_build_object('test_scope','pgtap_situazione_ordine'))
-  RETURNING id INTO v_orr;
-  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', v_ord, 'CONFERMATO');
-  RETURN QUERY SELECT v_ord, v_uid, v_orr;
-END $$ LANGUAGE plpgsql;
+  SELECT o.ordine_id, o.ordine_uid, o.ordine_riga_id
+    FROM dbops.fn_pgtap_crea_ordine_con_righe('situazione_ordine', p_stato,
+           (SELECT r.billing_account_id FROM tmp_refs r),
+           p_quantita => p_qta, p_prezzo => 25, p_articolo_id => (SELECT r.articolo_id FROM tmp_refs r),
+           p_fatturazione_trigger => 'SPEDITO', p_data_ordine => DATE '2026-08-15') o
+$$ LANGUAGE sql;
 
 -- Le spedizioni: dbops.fn_pgtap_crea_ddt_da_ordine, col cliente del mondo,
 -- l'articolo del file, trigger SPEDITO e la causale per codice (VENDITA o
@@ -252,22 +225,11 @@ CREATE TEMP TABLE tmp_d AS
 SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('situazione D',
          p_billing_account_id => (SELECT billing_account_id FROM tmp_refs), p_quantita => 10,
          p_articolo_id => (SELECT articolo_id FROM tmp_refs), p_fatturazione_trigger => 'SPEDITO');
--- La bolla e' quella di tmp_d (il builder torna ordine e bolla insieme).
-CREATE TEMP TABLE tmp_d_ddt AS SELECT ddt_id, ddt_uid, ddt_riga_id FROM tmp_d;
+-- Il reso per ri-consegna di 3, confermato, sulla bolla di tmp_d: dal builder.
 CREATE TEMP TABLE tmp_d_reso AS
-WITH t AS (
-  INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_uid, storicizza, meta)
-  SELECT r.stato_reso_draft_id, r.sorgente_ddt_id, (SELECT ddt_uid FROM tmp_d_ddt), false,
-         jsonb_build_object('test_scope','pgtap_situazione_ordine')
-  FROM tmp_refs r RETURNING id
-) SELECT id AS reso_id FROM t;
-INSERT INTO vendite.resi_righe (reso_id, riga_nr, ddt_riga_id, ordine_riga_id,
-  articolo_id, descrizione, qta_operativa, uom_operativa_id, factor_to_base, tipo_reso_id, storicizza)
-SELECT (SELECT reso_id FROM tmp_d_reso), 1, dr.id, (SELECT ordine_riga_id FROM tmp_d),
-       dr.articolo_id, dr.descrizione, 3, dr.uom_operativa_id, dr.factor_to_base,
-       (SELECT tipo_riconsegna_id FROM tmp_refs), false
-FROM vendite.ddt_righe dr WHERE dr.id = (SELECT ddt_riga_id FROM tmp_d_ddt);
-SELECT vendite.fn_conferma_reso((SELECT reso_id FROM tmp_d_reso));
+SELECT * FROM dbops.fn_pgtap_crea_reso('situazione D', (SELECT ddt_id FROM tmp_d), 3, 'RESO_PER_RICONSEGNA',
+         p_ddt_riga_id => (SELECT ddt_riga_id FROM tmp_d),
+         p_ordine_riga_id => (SELECT ordine_riga_id FROM tmp_d));
 
 SELECT results_eq(
   $q$SELECT ordinato, consegnato, da_spedire FROM vendite.vw_situazione_merce_ordine
@@ -279,16 +241,9 @@ SELECT results_eq(
 -- E) La RI-CONSEGNA emessa — test 9
 --    I 3 pezzi rispediti tornano nel consegnato dell'ORIGINE, non aprono una
 --    partita nuova, e il residuo si chiude.
---    ⚠️ La bolla di ri-consegna nasce dal reso, non da un ordine: indirizzo e
---    causale a mano, gli stati per la matrice.
 -- ============================================================
 CREATE TEMP TABLE tmp_e AS
-SELECT vendite.fn_genera_ddt_riconsegna((SELECT reso_id FROM tmp_d_reso)) AS ddt_id;
-INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
-SELECT (SELECT ddt_id FROM tmp_e), (SELECT tipo_ind_con_id FROM tmp_refs),
-       '{"display":"CON"}'::jsonb ON CONFLICT DO NOTHING;
-UPDATE vendite.ddt SET causale_trasporto_id=(SELECT causale_vendita_id FROM tmp_refs) WHERE id=(SELECT ddt_id FROM tmp_e);
-SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', (SELECT ddt_id FROM tmp_e), 'CONSEGNATO');
+SELECT * FROM dbops.fn_pgtap_crea_ddt_riconsegna((SELECT reso_id FROM tmp_d_reso));
 
 SELECT results_eq(
   $q$SELECT partite_merce, consegnato, da_spedire FROM vendite.vw_situazione_merce_ordine
@@ -343,6 +298,8 @@ BEGIN
     p_tipo_movimento => 'NORMALE', 
     p_meta => '{}'::jsonb, p_causale_onere_id => NULL);
 END $mk$;
+-- Il test prova la vista, non il permesso: l'azione «rendi pronta» all'utente del contesto.
+SELECT dbops.fn_pgtap_concedi_azione(current_setting('app.current_user_id')::integer, 'cambia_stato_commessa');
 SELECT vendite.fn_cambia_stato_commessa((SELECT commessa_id FROM tmp_com), 'PRONTA_FATTURAZIONE');
 SELECT vendite.fn_emit_attivita_fatturabili_da_commessa((SELECT commessa_id FROM tmp_com));
 
@@ -380,36 +337,13 @@ SELECT is(
 -- ⛔ rev 2026-10-13: si torna all'operatore del mondo costruito, non all'utente 1.
 SELECT set_config('app.current_user_id', (SELECT auth_user_id FROM _m)::text, true);
 
--- Helper: come mk_ordine, ma con lo stato scelto per codice_interno.
--- ⚠️ Per codice_interno e non per id: la chiave stabile (§6d linee guida SQL).
-CREATE OR REPLACE FUNCTION pg_temp.mk_ordine_stato(p_qta numeric, p_stato_codice text)
-RETURNS TABLE(ordine_id bigint, ordine_uid uuid, ordine_riga_id bigint) AS $$
-DECLARE r RECORD; v_ord bigint; v_uid uuid; v_orr bigint; v_stato bigint;
-BEGIN
-  SELECT * INTO r FROM tmp_refs;
-  SELECT s.id INTO v_stato FROM config.stati_doc_ordini s
-   WHERE s.codice_interno = p_stato_codice AND s.attivo IS TRUE;
-  INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
-    valuta_id, data, fatturazione_trigger, emittente_fiscale_id, storicizza, meta)
-  VALUES (r.soggetto_ruolo_id, r.billing_account_id, v_stato, r.valuta_id,
-          DATE '2026-08-15', 'SPEDITO', r.emittente_fiscale_id, false,
-          jsonb_build_object('test_scope','pgtap_situazione_ordine'))
-  RETURNING id, uid INTO v_ord, v_uid;
-  INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
-    qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
-  VALUES (v_ord, 1, r.articolo_id, 'Riga sotto soglia', p_qta, p_qta, 25, r.iva_id, true, false,
-          jsonb_build_object('test_scope','pgtap_situazione_ordine'))
-  RETURNING id INTO v_orr;
-  RETURN QUERY SELECT v_ord, v_uid, v_orr;
-END $$ LANGUAGE plpgsql;
-
 -- ============================================================
 -- G) Ordine in BOZZA — test 12
 --    Prima della soglia questa riga diceva «10 da spedire»: nessuno aspetta
 --    quei 10, l'ordine non e' ancora stato confermato.
 --    ⚠️ La riga deve ESSERCI: il pannello e' per ordine.
 -- ============================================================
-CREATE TEMP TABLE tmp_g AS SELECT * FROM pg_temp.mk_ordine_stato(10, 'DRAFT');
+CREATE TEMP TABLE tmp_g AS SELECT * FROM pg_temp.mk_ordine(10, 'DRAFT');
 
 SELECT results_eq(
   $q$SELECT ordinato, partite_merce, da_spedire, differenza, stato::text
@@ -427,10 +361,10 @@ SELECT results_eq(
 --    SEMPRE: nessuna azione avrebbe potuto azzerarla.
 -- ============================================================
 CREATE TEMP TABLE tmp_h AS SELECT * FROM pg_temp.mk_ordine(7);
-UPDATE vendite.ordini
-   SET stato_doc_ordine_id = (SELECT s.id FROM config.stati_doc_ordini s
-                               WHERE s.codice_interno = 'ANNULLATO' AND s.attivo IS TRUE)
- WHERE id = (SELECT ordine_id FROM tmp_h);
+-- rev 2026-10-25 (giro 7): l'annullo dal verbo d'annullo (la porta ferma
+--   l'UPDATE diretto); l'annullo di un confermato chiede emetti_ordine.
+SELECT dbops.fn_pgtap_concedi_azione(current_setting('app.current_user_id')::integer, 'emetti_ordine');
+SELECT vendite.fn_annulla_ordine((SELECT ordine_id FROM tmp_h));
 
 SELECT results_eq(
   $q$SELECT ordinato, partite_merce, da_spedire, stato::text

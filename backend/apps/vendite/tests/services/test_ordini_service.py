@@ -16,6 +16,7 @@ from unittest.mock import MagicMock, patch
 from django.db import DatabaseError, IntegrityError
 from django.test import SimpleTestCase
 
+from apps.core.tests._helpers.modello_documento_mockato import ModelloDocumentoMockatoMixin
 from apps.core.services.error_manager import ServiceError
 from apps.core.services.error_policies import ErrorPolicyRegistry
 from apps.vendite.services import ordini_service
@@ -29,7 +30,7 @@ _COMPLETA_STEP = "apps.vendite.services.ordini_service._completa_flusso_ordine_p
 
 
 def _patch_atomic_noop(testcase) -> None:
-    # conferma avvolge update_stato + completamento step in transaction.atomic:
+    # conferma avvolge il verbo + completamento step in transaction.atomic:
     # no-op in SimpleTestCase (no connessione DB), come test_preventivi_service.
     patcher = patch("apps.vendite.services.ordini_service.transaction.atomic")
     mock_atomic = patcher.start()
@@ -38,10 +39,11 @@ def _patch_atomic_noop(testcase) -> None:
     testcase.addCleanup(patcher.stop)
 
 
-class OrdiniServiceGuardsTests(SimpleTestCase):
+class OrdiniServiceGuardsTests(ModelloDocumentoMockatoMixin, SimpleTestCase):
     """Guard di stato e not-found (mock repository)."""
 
     def setUp(self) -> None:
+        super().setUp()
         _patch_atomic_noop(self)
 
     @patch(_REPO)
@@ -51,37 +53,66 @@ class OrdiniServiceGuardsTests(SimpleTestCase):
             ordini_service.get_ordine(99)
         self.assertEqual(cm.exception.code, "E_ORD_NOT_FOUND")
 
-    @patch(_REPO)
-    def test_conferma_stato_errato(self, repo_cls) -> None:
-        # Ordine gia' CONFERMATO: la conferma non e' ammessa.
-        repo_cls.return_value.get_stato_codice.return_value = "CONFERMATO"
-        with self.assertRaises(ServiceError) as cm:
-            ordini_service.conferma(7)
-        self.assertEqual(cm.exception.code, "E_ORD_STATO_TRANSIZIONE")
-
-    @patch(_REPO)
-    def test_conferma_senza_righe(self, repo_cls) -> None:
-        repo = repo_cls.return_value
-        repo.get_stato_codice.return_value = "DRAFT"
-        # Contano solo le righe ATTIVE (guard DB, Regola 2 rev 2026-07-16):
-        # il filtro sta nel conteggio del BB (`count_righe`, presidiato in
-        # tests/db/test_righe_documento_lista), qui arriva gia' zero.
-        repo.count_righe.return_value = 0
-        with self.assertRaises(ServiceError) as cm:
-            ordini_service.conferma(7)
-        self.assertEqual(cm.exception.code, "E_ORD_NESSUNA_RIGA")
-        repo.count_righe.assert_called_once_with(7)
-
+    # Ordine gia' CONFERMATO: la seconda conferma la rifiuta il verbo, dalla
+    # prima riga (brief-modello-documento-vendita §9.10); il service non la
+    # pre-valida e non chiude lo step.
     @patch(_COMPLETA_STEP)
     @patch(_REPO)
-    def test_conferma_ok_deriva_stato(self, repo_cls, _mock_step) -> None:
+    def test_conferma_due_volte_dal_verbo(self, repo_cls, mock_step) -> None:
+        repo = repo_cls.return_value
+        self.emissione_del_documento("CONFERMATO")
+        repo.cambia_stato.side_effect = DatabaseError(
+            "E_DOC_GIA_NELLO_STATO: Il documento è già nello stato CONFERMATO",
+        )
+        with self.assertRaises(ServiceError) as cm:
+            ordini_service.conferma(7)
+        self.assertEqual(cm.exception.code, "E_DOC_GIA_NELLO_STATO")
+        repo.get_stato_codice.assert_not_called()
+        mock_step.assert_not_called()
+
+    # La conferma e' lo stato di emissione letto dal vocabolario, scritto dal
+    # verbo (§9.6 C-1, C-2): nessun letterale, nessun UPDATE, e le righe le
+    # conta il guard del DB (E_ORDINE_CONFERMA_SENZA_RIGHE), non il service.
+    @patch(_COMPLETA_STEP)
+    @patch(_REPO)
+    def test_conferma_dal_verbo_con_lo_stato_di_emissione(self, repo_cls, _mock_step) -> None:
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "DRAFT"
-        repo.count_righe.return_value = 1
-        repo.get_stato_id_by_codice.return_value = 2
+        self.emissione_del_documento("CONFERMATO")
+        # Lo stato precedente lo dice il verbo.
+        repo.cambia_stato.return_value = {
+            "ordine_id": 7, "stato_precedente": "DRAFT", "stato_nuovo": "CONFERMATO",
+        }
         out = ordini_service.conferma(7)
-        self.assertEqual(out["stato"], "CONFERMATO")
-        repo.update_stato.assert_called_once_with(7, 2)
+        self.assertEqual(out, {"ordine_id": 7, "stato_precedente": "DRAFT", "stato": "CONFERMATO"})
+        self.modello_documento.stato_di_emissione.assert_called_once_with("vendite.ordini")
+        repo.cambia_stato.assert_called_once_with(7, "CONFERMATO")
+        repo.count_righe.assert_not_called()
+
+    # Il rifiuto delle righe arriva dal guard del DB, tradotto col suo codice.
+    @patch(_COMPLETA_STEP)
+    @patch(_REPO)
+    def test_conferma_senza_righe_dal_guard(self, repo_cls, mock_step) -> None:
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "DRAFT"
+        self.emissione_del_documento("CONFERMATO")
+        repo.cambia_stato.side_effect = DatabaseError(
+            "E_ORDINE_CONFERMA_SENZA_RIGHE: ordine senza righe attive",
+        )
+        with self.assertRaises(ServiceError) as cm:
+            ordini_service.conferma(7)
+        self.assertEqual(cm.exception.code, "E_ORDINE_CONFERMA_SENZA_RIGHE")
+        mock_step.assert_not_called()
+
+    # Un vocabolario senza stato di emissione e' un errore di cablaggio.
+    @patch(_REPO)
+    def test_conferma_senza_stato_di_emissione(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "DRAFT"
+        with self.assertRaises(ServiceError) as cm:
+            ordini_service.conferma(7)
+        self.assertEqual(cm.exception.code, "E_CONFIG_MANCANTE")
+        repo.cambia_stato.assert_not_called()
 
     @patch(_REPO)
     def test_crea_ordine_lascia_le_copie_al_db(self, repo_cls) -> None:
@@ -99,7 +130,6 @@ class OrdiniServiceGuardsTests(SimpleTestCase):
         # Lo stato non si passa: lo mette il DB, lo stato iniziale del
         # vocabolario (brief-modello-documento-vendita P-2).
         self.assertNotIn("stato_doc_ordine_id", kwargs)
-        repo.get_stato_id_by_codice.assert_not_called()
         # ⛔ E chi le manda riceve un 400, non uno scarto silenzioso (2026-10-20).
         for copia in ({"utility_id": 1}, {"soggetto_ruolo_id": 555}):
             with self.subTest(copia=copia), self.assertRaises(ServiceError) as cm:
@@ -147,8 +177,9 @@ class OrdiniServiceGuardsTests(SimpleTestCase):
         self.assertEqual(cm.exception.context.get("field"), "billing_account_id")
         repo.update_ordine.assert_not_called()
 
+    @patch("apps.vendite.services.ordini_service.contatori_documento", return_value={"note": 2})
     @patch(_REPO)
-    def test_get_ordine_capabilities_annidate(self, repo_cls) -> None:
+    def test_get_ordine_capabilities_annidate(self, repo_cls, contatori) -> None:
         # get_ordine trasporta le capability di fn_available_actions_ordine
         # (available_actions, can_edit_*, ...) SOTTO `capabilities`, senza
         # fonderle nella testata (api.md §«Il blob sta SOTTO `capabilities`»).
@@ -167,33 +198,52 @@ class OrdiniServiceGuardsTests(SimpleTestCase):
         self.assertEqual(caps, repo.get_capabilities.return_value)
         self.assertEqual(caps["available_actions"][0]["key"], "conferma")
         self.assertEqual(out["righe_count"], 1)
+        # I badge del drawer (pulsante «Gestisci note»), dal BB dei contatori.
+        self.assertEqual(out["contatori"], {"note": 2})
+        self.assertEqual(contatori.call_args.args[1], 7)
         for chiave in caps:
             self.assertNotIn(chiave, out)
         self.assertNotIn("can_conferma", caps)
 
     @patch(_REPO)
     def test_cambia_stato_ok(self, repo_cls) -> None:
-        # Transizione generica: risolve il codice stato e delega
-        # l'enforcement al trigger DB.
+        # Transizione generica: delega al verbo DB.
         repo = repo_cls.return_value
-        repo.get_ordine.return_value = {"stato_codice_interno": "CONFERMATO"}
-        repo.get_stato_id_by_codice.return_value = 8
+        repo.get_stato_codice.return_value = "CONFERMATO"
         out = ordini_service.cambia_stato(7, "EVASO")
         self.assertEqual(out["stato"], "EVASO")
         self.assertEqual(out["stato_precedente"], "CONFERMATO")
-        repo.update_stato.assert_called_once_with(7, 8)
+        # Dal verbo, col codice (§9.6 C-3): passaggio di processo e matrice li
+        # rifiuta il DB.
+        repo.cambia_stato.assert_called_once_with(7, "EVASO")
         repo.annulla.assert_not_called()
+
+    # M-2 (brief-modello-documento-vendita §8.7 punto 4, revoca l'opzione (i)
+    # del 2026-06-05): lo stato di emissione, letto dal vocabolario, dal cambio
+    # stato generico e' un 400 col campo; l'ordine si emette da «Emetti».
+    @patch(_REPO)
+    def test_cambia_stato_rifiuta_lo_stato_di_emissione(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "DRAFT"
+        self.stato_chiesto_di_emissione()
+        with self.assertRaises(ServiceError) as cm:
+            ordini_service.cambia_stato(7, "CONFERMATO")
+        self.assertEqual(cm.exception.code, "E_ORD_VALIDAZIONE")
+        self.assertEqual(cm.exception.context.get("field"), "stato_codice")
+        self.modello_documento.e_stato_di_emissione.assert_called_once_with(
+            "vendite.ordini", "CONFERMATO",
+        )
+        repo.cambia_stato.assert_not_called()
 
     # brief-db-annullo-documento-con-legami: ANNULLATO passa SEMPRE dal verbo,
     # con la dichiarazione della conferma (assente al primo tentativo).
     @patch(_REPO)
     def test_annullo_passa_dal_verbo(self, repo_cls) -> None:
         repo = repo_cls.return_value
-        repo.get_ordine.return_value = {"stato_codice_interno": "DRAFT"}
-        repo.get_stato_id_by_codice.return_value = 6
+        repo.get_stato_codice.return_value = "DRAFT"
         out = ordini_service.cambia_stato(7, "ANNULLATO")
         repo.annulla.assert_called_once_with(7, None)
-        repo.update_stato.assert_not_called()
+        repo.cambia_stato.assert_not_called()
         self.assertEqual(out["stato"], "ANNULLATO")
         ordini_service.cambia_stato(7, "ANNULLATO", legami_confermati="3")
         repo.annulla.assert_called_with(7, 3)
@@ -201,8 +251,7 @@ class OrdiniServiceGuardsTests(SimpleTestCase):
     @patch(_REPO)
     def test_annullo_dichiarazione_non_numerica(self, repo_cls) -> None:
         repo = repo_cls.return_value
-        repo.get_ordine.return_value = {"stato_codice_interno": "DRAFT"}
-        repo.get_stato_id_by_codice.return_value = 6
+        repo.get_stato_codice.return_value = "DRAFT"
         with self.assertRaises(ServiceError) as cm:
             ordini_service.cambia_stato(7, "ANNULLATO", legami_confermati="tre")
         self.assertEqual(cm.exception.code, "E_ORD_VALIDAZIONE")
@@ -222,26 +271,42 @@ class OrdiniServiceGuardsTests(SimpleTestCase):
         ordini_service.get_legami(7)
         bb.assert_called_once_with("ORDINE_VENDITA", 7)
 
+    # Uno stato che il vocabolario non ha lo rifiuta il verbo, col suo codice:
+    # il service non ne ha piu' una copia (brief-modello-documento-vendita §9.9).
     @patch(_REPO)
     def test_cambia_stato_codice_inesistente(self, repo_cls) -> None:
         repo = repo_cls.return_value
-        repo.get_ordine.return_value = {"stato_codice_interno": "DRAFT"}
-        repo.get_stato_id_by_codice.return_value = None
+        repo.get_stato_codice.return_value = "DRAFT"
+        repo.cambia_stato.side_effect = DatabaseError(
+            "E_STATO_WORKFLOW_NON_TROVATO: INESISTENTE",
+        )
         with self.assertRaises(ServiceError) as cm:
             ordini_service.cambia_stato(7, "INESISTENTE")
-        self.assertEqual(cm.exception.code, "E_ORD_VALIDAZIONE")
-        repo.update_stato.assert_not_called()
+        self.assertEqual(cm.exception.code, "E_STATO_WORKFLOW_NON_TROVATO")
+        repo.annulla.assert_not_called()
+
+    # L'ordine che non c'e' (o fuori perimetro) lo rifiuta il verbo, col suo
+    # codice (regola del 1, 2026-10-27): nessuna lettura della testata prima.
+    @patch(_REPO)
+    def test_cambia_stato_ordine_inesistente_dal_verbo(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = None
+        repo.cambia_stato.side_effect = DatabaseError("E_ORD_NOT_FOUND: ordine 99")
+        with self.assertRaises(ServiceError) as cm:
+            ordini_service.cambia_stato(99, "EVASO")
+        self.assertEqual(cm.exception.code, "E_ORD_NOT_FOUND")
+        repo.get_ordine.assert_not_called()
 
     # Un numero nel JSON al posto del codice e' un 400 (stato mancante), non un
     # 500 da `.strip()` su un int (2026-10-09, trovato da mypy).
     @patch(_REPO)
     def test_cambia_stato_codice_non_testo(self, repo_cls) -> None:
         repo = repo_cls.return_value
-        repo.get_ordine.return_value = {"stato_codice_interno": "DRAFT"}
+        repo.get_stato_codice.return_value = "DRAFT"
         with self.assertRaises(ServiceError) as cm:
             ordini_service.cambia_stato(7, 5)  # type: ignore[arg-type]
         self.assertEqual(cm.exception.code, "E_ORD_VALIDAZIONE")
-        repo.update_stato.assert_not_called()
+        repo.cambia_stato.assert_not_called()
 
     @patch(_REPO)
     def test_elimina_ordine_con_righe_rifiutato(self, repo_cls) -> None:
@@ -615,8 +680,7 @@ class OrdiniPushCommessaTests(SimpleTestCase):
         }
         out = ordini_service.push_a_commessa(55)
         self.assertEqual(out["stato"], "COMPLETATO")
-        repo.get_stato_id_by_codice.assert_not_called()
-        repo.update_stato.assert_not_called()
+        repo.cambia_stato.assert_not_called()
 
     @patch(_COMPLETA_STEP)
     @patch(_PUSH_ONE)
@@ -631,7 +695,7 @@ class OrdiniPushCommessaTests(SimpleTestCase):
             "stato": "COMPLETATO", "push_log_id": 8, "durata_ms": 5, "handlers": [],
         }
         ordini_service.push_a_commessa(56)
-        repo.update_stato.assert_not_called()
+        repo.cambia_stato.assert_not_called()
 
     @patch(_COMPLETA_STEP)
     @patch(_PUSH_ONE)
@@ -672,15 +736,17 @@ class OrdiniPushCommessaTests(SimpleTestCase):
             "stato": "PARZIALE", "push_log_id": 7, "durata_ms": 5, "handlers": [],
         }
         ordini_service.push_a_commessa(55)
-        repo.update_stato.assert_not_called()
+        repo.cambia_stato.assert_not_called()
 
 
-class OrdiniStepPraticaTests(SimpleTestCase):
+class OrdiniStepPraticaTests(ModelloDocumentoMockatoMixin, SimpleTestCase):
     """Auto-completamento step pratica CONFERMA_ORDINE/INVIO_COMMESSA all'azione
     standalone del programma base (conferma / push a commessa) — bivio rev.3."""
 
     def setUp(self) -> None:
+        super().setUp()
         _patch_atomic_noop(self)
+        self.emissione_del_documento("CONFERMATO")
 
     # L'auto-completamento delega al BB motore completa_step_pratica (mockato qui,
     # testato in pratiche): questi test verificano il CABLAGGIO — risoluzione
@@ -696,8 +762,6 @@ class OrdiniStepPraticaTests(SimpleTestCase):
     def test_conferma_completa_step_conferma_ordine(self, ord_cls, MockPrat, mock_step) -> None:
         repo = ord_cls.return_value
         repo.get_stato_codice.return_value = "DRAFT"
-        repo.count_righe.return_value = 1
-        repo.get_stato_id_by_codice.return_value = 2
         MockPrat.return_value.get_pratica_id_by_sorgente.return_value = 290
 
         ordini_service.conferma(7, user="op")
@@ -713,8 +777,6 @@ class OrdiniStepPraticaTests(SimpleTestCase):
     def test_conferma_senza_pratica_noop(self, ord_cls, MockPrat, mock_step) -> None:
         repo = ord_cls.return_value
         repo.get_stato_codice.return_value = "DRAFT"
-        repo.count_righe.return_value = 1
-        repo.get_stato_id_by_codice.return_value = 2
         MockPrat.return_value.get_pratica_id_by_sorgente.return_value = None
 
         ordini_service.conferma(7)
@@ -731,7 +793,6 @@ class OrdiniStepPraticaTests(SimpleTestCase):
         repo = ord_cls.return_value
         repo.get_ordine.return_value = {"stato_codice_interno": "CONFERMATO"}
         repo.count_righe_pushable.return_value = 2
-        repo.get_stato_id_by_codice.return_value = 8
         mock_push_one.return_value = {
             "stato": "COMPLETATO", "push_log_id": 7, "durata_ms": 5, "handlers": [],
         }
@@ -781,7 +842,6 @@ class OrdiniFatturazioneImmediataTests(SimpleTestCase):
     @patch(_REPO)
     def test_crea_ordine_porta_il_flag(self, repo_cls) -> None:
         repo = repo_cls.return_value
-        repo.get_stato_id_by_codice.return_value = 1
         repo.create_ordine.return_value = {"id": 7, "uid": "u", "numero": "ORD0007"}
         ordini_service.crea_ordine({
             "billing_account_id": 3, "fatturazione_immediata": True,
@@ -797,7 +857,6 @@ class OrdiniFatturazioneImmediataTests(SimpleTestCase):
     @patch(_REPO)
     def test_crea_ordine_senza_flag_lascia_il_default(self, repo_cls) -> None:
         repo = repo_cls.return_value
-        repo.get_stato_id_by_codice.return_value = 1
         repo.create_ordine.return_value = {"id": 7, "uid": "u", "numero": "ORD0007"}
         ordini_service.crea_ordine({"billing_account_id": 3})
         self.assertIsNone(

@@ -14,7 +14,7 @@
 
 (rev 2026-05-24)
 
-`vendite.note_offerte_commerciali` e' la **partizione `'OFFERTA'`** della tabella
+`vendite.note_offerte_commerciali` e' la **partizione `'OFFERTA_COMMERCIALE'`** della tabella
 partizionata `vendite.note`. Gestisce le note testuali associate all'offerta commerciale
 (testata) e alle singole eccezioni (righe).
 
@@ -25,9 +25,12 @@ vedi la documentazione principale [vendite.note](/dbzero/vendite/tabelle/note).
 
 ### Partizione e `target_tipo`
 
-Il valore di partizione e' `'OFFERTA'` (7 caratteri) — il tipo `target_tipo` e'
-`varchar(16)` e non ammette il codice lungo `'OFFERTA_COMMERCIALE'` (19 caratteri).
-Il codice breve e' registrato anche nella tabella `config.sorgenti` (scope `PIPELINE_MARKER`).
+> Ultima revisione: 2026-10-25 (brief-db-grammatica-unica-documenti, lotto 3).
+
+Il valore di partizione e' `'OFFERTA_COMMERCIALE'`, il codice di `config.tipi_entita` (e della sorgente).
+Fino al 2026-10-25 era `'OFFERTA'`: `target_tipo` era `varchar(16)` e il codice lungo (19 caratteri) non ci
+stava. G-3 ha allargato il vincolo invece di accorciare il nome: ora `target_tipo` e' `varchar(50)`, con la
+FK verso `config.tipi_entita`.
 
 ---
 

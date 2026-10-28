@@ -4,6 +4,8 @@
 CREATE FUNCTION fn_regexp_occorrenze(p_testo text, p_pattern text)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

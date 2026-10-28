@@ -35,26 +35,16 @@ SELECT plan(6);
 -- ============================================================
 -- SETUP
 -- ============================================================
+-- Il cliente si COSTRUISCE (rev 2026-10-27, lotto 4 di D7): prima il BA si
+--   pescava con LIMIT 1, e su un database ricostruito da zero non c'era.
+CREATE TEMP TABLE tmp_cli_aa AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('available actions commessa');
+
 CREATE TEMP TABLE tmp_refs_aa AS
 SELECT
-  (
-    SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1
-  ) AS billing_account_id,
-  (
-    SELECT ba.utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1
-  ) AS utility_id,
-  (
-    SELECT ba.istanza_utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1
-  ) AS istanza_utility_id,
+  (SELECT billing_account_id FROM tmp_cli_aa) AS billing_account_id,
+  (SELECT utility_id FROM tmp_cli_aa) AS utility_id,
+  (SELECT istanza_utility_id FROM tmp_cli_aa) AS istanza_utility_id,
   (
     SELECT a.id FROM catalogo.articoli a
     WHERE a.attivo IS TRUE ORDER BY a.data_insert DESC NULLS LAST LIMIT 1
@@ -86,6 +76,13 @@ SELECT vendite.fn_get_or_create_commessa(
   p_meta => jsonb_build_object('test_scope', 'pgtap_aa_commessa'),
   p_force_new => true
 ) AS commessa_id;
+
+-- rev 2026-10-27: l'operatore del test riceve cambia_stato_commessa (giro 10).
+-- Serve due volte: il verbo lo chiede (senza, E_PERMESSO_NEGATO), e dal 20261026-35
+-- fn_available_actions_commessa NASCONDE il passaggio a chi non ha l'azione, quindi
+-- senza permesso il test 2 vedrebbe {annulla} e non {annulla, rendi_pronta}.
+-- Qui, prima dei test di BOZZA: le capability si misurano su chi PUO' agire.
+SELECT dbops.fn_pgtap_concedi_azione(current_setting('app.current_user_id')::integer, 'cambia_stato_commessa');
 
 -- ============================================================
 -- STATO BOZZA (1)

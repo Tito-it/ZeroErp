@@ -252,7 +252,7 @@ class ApiFamigliaDetail(AdminAPIView):
     #    dei registri e' il guard `..._guard_struttura` — non un secondo elenco
     #    scritto qui.
     def patch(self, request: Request, famiglia_id: int) -> JsonResponse:
-        payload = dict(corpo_oggetto(request))
+        payload = corpo_oggetto(request)
         return success_response(
             FamiglieDocumentoService().update_famiglia(famiglia_id, payload),
         )

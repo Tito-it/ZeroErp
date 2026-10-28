@@ -5,6 +5,8 @@
 CREATE FUNCTION trgfn_fatture_guard_stato()
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>
@@ -15,37 +17,25 @@ CREATE OR REPLACE FUNCTION vendite.trgfn_fatture_guard_stato()
  LANGUAGE plpgsql
 AS $function$
 -- Scopo: le transizioni di stato della fattura (matrice
---   config.stati_doc_fiscale_transizioni, nessuna retrocessione di un
---   GIORNALIERO) e, entrando in EMESSA, i motivi di
---   script.fn_check_fattura_emettibile.
+--   config.stati_doc_fiscale_transizioni) e, entrando in EMESSA, i motivi
+--   di script.fn_check_fattura_emettibile.
 -- Rev 2026-10-22 (20261022-07, D-3 di Tid; §9.9 di
 --   brief-be-utenti-di-sviluppo): il cancello IVA all'emissione.
+-- Rev 2026-10-27 (20261027-16, brief-modello-documento-vendita §15): via il
+--   «blocco retrocessione GIORNALIERO», che decideva «indietro» confrontando
+--   la colonna ordine (R-1 vuole avanti/indietro dal vocabolario, non da un
+--   ordine) ed era gia' coperto dalla matrice: nessuna riga della fattura
+--   (solo_lotto = false) torna indietro, per nessun tipo di lotto. Un
+--   passaggio all'indietro lo rifiuta la matrice, qui sotto, con lo stesso
+--   codice (parametro transizione_stato).
 DECLARE
     v_ok BOOLEAN;
-    v_tipo_lotto vendite.fatturazione_lotti.tipo_lotto%TYPE;
-    v_old_ordine config.stati_doc_fiscale.ordine%TYPE;
-    v_new_ordine config.stati_doc_fiscale.ordine%TYPE;
     v_codice_a   config.stati_doc_fiscale.codice_interno%TYPE;
 BEGIN
     IF TG_OP = 'UPDATE'
        AND NEW.stato_doc_fiscale_id IS NOT NULL
        AND NEW.stato_doc_fiscale_id IS DISTINCT FROM OLD.stato_doc_fiscale_id
     THEN
-        -- Blocco retrocessione per lotti giornalieri
-        SELECT l.tipo_lotto, s_old.ordine, s_new.ordine
-          INTO v_tipo_lotto, v_old_ordine, v_new_ordine
-          FROM vendite.fatturazione_lotti_fatture lf
-          JOIN vendite.fatturazione_lotti l ON l.id = lf.lotto_id
-          LEFT JOIN config.stati_doc_fiscale s_old ON s_old.id = OLD.stato_doc_fiscale_id
-          LEFT JOIN config.stati_doc_fiscale s_new ON s_new.id = NEW.stato_doc_fiscale_id
-         WHERE lf.fattura_id = NEW.id ORDER BY l.id LIMIT 1;
-
-        IF v_tipo_lotto = 'GIORNALIERO' AND v_old_ordine IS NOT NULL AND v_new_ordine IS NOT NULL AND v_new_ordine < v_old_ordine THEN
-            PERFORM script.fn_log_and_raise_error(TG_TABLE_SCHEMA, TG_NAME, 'E_LOTTO_PARAMETRO_NON_COERENTE',
-                jsonb_build_object('parametro', 'retrocessione_giornaliero', 'atteso', concat('ordine>=', v_old_ordine), 'ricevuto', v_new_ordine),
-                NULL::uuid, concat('retrocessione ', OLD.stato_doc_fiscale_id, '→', NEW.stato_doc_fiscale_id), 'GIORNALIERO');
-        END IF;
-
         IF OLD.stato_doc_fiscale_id IS NULL THEN
             -- Prima assegnazione
             SELECT s.applica_fattura INTO v_ok FROM config.stati_doc_fiscale s WHERE s.id = NEW.stato_doc_fiscale_id AND s.attivo;
@@ -100,7 +90,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_fatture_guard_stato()
-IS 'Guard transizioni stato fatture via config.stati_doc_fiscale_transizioni. Blocco retrocessione GIORNALIERO. Rev 2026-10-22 (20261022-07, D-3 di Tid; §9.9 di brief-be-utenti-di-sviluppo): entrando in EMESSA, da qualunque stato, solleva il primo motivo di script.fn_check_fattura_emettibile (E_FATTURA_RIGA_IVA_MANCANTE: una riga senza aliquota IVA) con script.fn_raise_primo_motivo_se_presente. La bozza resta libera; la guardia del riepilogo e'' in vendite.fn_ricalcola_riepilogo_iva_fattura.';
+IS 'Guard transizioni stato fatture via config.stati_doc_fiscale_transizioni (righe solo_lotto = false). Rev 2026-10-22 (20261022-07, D-3 di Tid; §9.9 di brief-be-utenti-di-sviluppo): entrando in EMESSA, da qualunque stato, solleva il primo motivo di script.fn_check_fattura_emettibile (E_FATTURA_RIGA_IVA_MANCANTE: una riga senza aliquota IVA) con script.fn_raise_primo_motivo_se_presente. La bozza resta libera; la guardia del riepilogo e'' in vendite.fn_ricalcola_riepilogo_iva_fattura. Rev 2026-10-27 (20261027-16, brief-modello-documento-vendita §15, R-1): via il blocco della retrocessione di un GIORNALIERO, che decideva «indietro» dalla colonna ordine ed era gia'' coperto dalla matrice (nessuna riga della fattura torna indietro). Lo stato lo scrivono i verbi (porta script.trgfn_doc_stato_solo_dal_verbo): vendite.fn_fattura_proietta_stato.';
 ```
 
 </div>

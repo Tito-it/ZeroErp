@@ -8,7 +8,7 @@
 > • [config.esiti_flussi_pratiche](/dbzero/config/tabelle/esiti_flussi_pratiche)
 >
 ### 🎯 Scopo Principale
-(latest review 2026-07-02)
+(latest review 2026-10-26)
 `config.stati_doc_offerte` definisce gli **stati documento** del ciclo di vita
 delle offerte commerciali, dalla bozza fino all'accettazione, al rifiuto o al
 superamento.
@@ -39,7 +39,7 @@ niente a che vedere l'una con l'altra**:
 | Colonna | Stato marcato | Domanda a cui risponde | Chi la scrive |
 | --- | --- | --- | --- |
 | `is_abortito` | `ANNULLATA` | «è stata **annullata**?» | l'operatore, con l'azione di annullamento |
-| `is_superato` | `SUPERATA` | «è stata **rimpiazzata** da una revisione successiva?» | il trigger `vendite.trgfn_offerte_commerciali_revisione`, sul padre, all'inserimento della revisione successiva — e lo **toglie** `vendite.trgfn_offerte_commerciali_rientro_padre` quando quella revisione viene annullata |
+| `is_superato` | `SUPERATA` | «è stata **rimpiazzata** da una revisione successiva?» | la proiezione `vendite.fn_offerta_proietta_stato_revisione`, sul padre, all'inserimento della revisione successiva — e lo **toglie** la stessa proiezione quando l'ultima revisione viva viene annullata (la chiamano i trigger `vendite.trgfn_offerte_commerciali_revisione` e `vendite.trgfn_offerte_commerciali_rientro_padre`, dal 2026-10-26) |
 
 ⚠️ **`SUPERATA` non è più uno stato senza uscite** (dal 2026-08-28): ha la sola
 transizione `SUPERATA -> EMESSA`, seedata con `manuale: false` perché è un

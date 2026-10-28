@@ -6,6 +6,7 @@
 --   — e un operatore dentro un perimetro non crea l'azienda in cui lavora.
 --   E' il criterio 2 di scripts/testpgtap.sh. Dal contesto in poi si lavora
 --   nei panni dell'operatore costruito.
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): la testata dell'ordine da dbops.fn_pgtap_crea_ordine (DRAFT, senza righe), col contesto dell'operatore aperto prima; restano a mano le righe d'ordine (il caso dei test 7-14) e i preventivi.
 -- pgTAP test — una DATA DI CONSEGNA non viene prima della DATA DEL DOCUMENTO
 -- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2a, 20261019-40 … -79):
 --   il documento passato ai lettori delle testate, ai legami e ai montaggi del
@@ -182,8 +183,6 @@ SELECT id AS articolo_id FROM a;
 CREATE TEMP TABLE _refs AS
 SELECT (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1)        AS iva_id,
        (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)                            AS valuta_id,
-       (SELECT s.id FROM config.stati_doc_ordini s
-         WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE)                            AS stato_ord_draft_id,
        (SELECT s.id FROM config.stati_doc_preventivi s
          WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE)                            AS stato_prev_draft_id;
 
@@ -191,17 +190,19 @@ SELECT (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT
 -- IL LETTORE, dalla riga: le righe come jsonb, nessuna DDL
 -- (serve una testata vera: il lettore ne legge la data)
 -- ============================================================
+-- ⭐ Da qui nei panni dell'operatore costruito: la testata la scrive il
+--    builder, che lavora nell'azienda di chi agisce (il lettore dei test 5-6
+--    giudica righe passate come jsonb: il contesto non lo tocca).
+DO $ctx$ BEGIN
+    PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo));
+END $ctx$;
+
+-- La testata dell'ordine, DRAFT con la data di oggi (il default della
+-- colonna), senza righe: le righe sono il caso.
 CREATE TEMP TABLE _ord AS
-WITH o AS (
-    INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, utility_id, stato_doc_ordine_id,
-                                valuta_id, data, emittente_fiscale_id, meta)
-    SELECT c.soggetto_ruolo_id, c.billing_account_id, c.utility_id, r.stato_ord_draft_id,
-           r.valuta_id, pg_temp.gg(0), m.emittente_fiscale_id,
-           jsonb_build_object('test_scope', 'pgtap_consegna_vs_documento')
-      FROM _cliente c, _mondo m, _refs r
-    RETURNING id
-)
-SELECT id AS ordine_id FROM o;
+SELECT o.ordine_id
+  FROM dbops.fn_pgtap_crea_ordine('pgtap_consegna_vs_documento', 'DRAFT',
+         (SELECT c.billing_account_id FROM _cliente c)) o;
 
 -- Una riga «di prima della regola»: la richiesta e' di ieri.
 CREATE TEMP TABLE _j AS
@@ -238,11 +239,6 @@ SELECT is(
                       j.riga || '{"attivo": false}'::jsonb, NULL) a) x),
   'a_cambiata=1, b_riaccesa=1, c_spenta=0',
   '6) cambiata si rigiudica; la riga che torna attiva si rigiudica tutta; una riga spenta non si giudica');
-
--- ⭐ Da qui nei panni dell'operatore costruito.
-DO $ctx$ BEGIN
-    PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo));
-END $ctx$;
 
 -- ============================================================
 -- RIGHE DELL'ORDINE (DRAFT, data di oggi)

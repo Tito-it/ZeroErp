@@ -29,12 +29,16 @@ from apps.config.sorgenti import (
 )
 from apps.core.db._helpers import richiedi_codice_a_vocabolario
 from apps.core.api.constants import MAX_LIMIT
+from apps.core.services.documento_modello import (
+    e_stato_di_annullo,
+    rifiuta_stato_di_emissione,
+    stato_di_emissione,
+)
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.services._cliente_dal_ba import FK_CLIENTE_DIVERSO_DA_BA
 from apps.vendite.services._righe_bozza_guard import richiedi_righe_in_bozza
 from apps.vendite.services._date_consegna_righe import aggiorna_date_consegna_righe
 from apps.vendite.services._annullo_con_legami import (
-    STATO_ANNULLATO,
     legami_del_documento,
     legami_confermati as dichiarazione_legami,
 )
@@ -46,7 +50,9 @@ from apps.core.services.testata_guard import (
     testata_o_not_found,
 )
 from apps.core.services.value_normalizer import empty_to_none
-from apps.vendite.db.ordini_repository import OrdiniRepository
+from apps.core.services.partitioned_note_service import contatori_documento
+from apps.vendite.db.note_repositories import NOTE_REPO_ORDINE
+from apps.vendite.db.ordini_repository import TESTATA_ORDINI, OrdiniRepository
 from apps.vendite.services._componenti_service_helpers import (
     dati_patch_componente,
     normalize_componenti_overrides,
@@ -109,7 +115,6 @@ _CHECK_CONSTRAINTS: dict[str, tuple[str, str]] = {
 
 # ── Costanti di dominio ──
 _FN = "vendite.ordini_service"
-_STATO_CONFERMATO = "CONFERMATO"
 _STATI_MODIFICABILI: frozenset[str] = frozenset({"DRAFT"})
 # Stati che ammettono il push a commessa (fix orfano 2026-07-10, brief DB §16:
 # decoupling fatturazione/spedizione). Per trigger CONFERMATO l'eleggibilita'
@@ -283,6 +288,7 @@ def get_ordine(ordine_id: int) -> dict[str, Any]:
         **testata,
         "capabilities": capabilities,
         "righe_count": righe_count,
+        "contatori": contatori_documento(NOTE_REPO_ORDINE, ordine_id),
     }
 
 
@@ -597,41 +603,36 @@ def elimina_ordine(ordine_id: int) -> dict[str, Any]:
     return {"ordine_id": ordine_id, "deleted": deleted}
 
 
-# Scopo: Conferma ordine (DRAFT → CONFERMATO). La transizione e' validata dal
-#        trigger DB; qui si applica solo il guard di stato + righe presenti.
+# Scopo: Conferma l'ordine: il passaggio allo stato di emissione, dal verbo.
+#        La chiama solo «Emetti» (`/emetti/`, numero e PDF nella stessa
+#        transazione: M-2; `POST /conferma/` ritirato il 2026-10-25, Z-2).
+#        Lo stato lo dice il vocabolario (BB `stato_di_emissione`); permesso,
+#        matrice, righe attive, aliquote e prezzi li giudica il DB (verbo e
+#        guard di transizione).
+#        ⛔ Fino al 2026-10-25 qui c'era il fail-fast «nessuna riga»
+#        (E_ORD_NESSUNA_RIGA), copia della Regola 2 del guard
+#        (E_ORDINE_CONFERMA_SENZA_RIGHE): ritirato, una regola in un livello
+#        solo (brief-modello-documento-vendita §9.6 C-2).
+#        Anche la seconda conferma la rifiuta il verbo, dalla sua prima riga
+#        (`E_DOC_GIA_NELLO_STATO`, brief-modello-documento-vendita §9.10), e
+#        l'ordine che non c'e' (`E_ORD_NOT_FOUND`): qui non ce n'e' una copia.
 def conferma(ordine_id: int, *, user: str | None = None) -> dict[str, Any]:
     repo = OrdiniRepository()
-    stato = _assert_stato(repo, ordine_id, _STATI_MODIFICABILI, op="conferma")
-    # Fail-fast allineato al guard DB (trgfn_ordini_guard_transizione, Regola
-    # 2 rev 2026-07-16): contano solo le righe ATTIVE — un ordine con sole
-    # righe disattivate non e' confermabile. Il guard autorevole resta il
-    # trigger (E_ORDINE_CONFERMA_SENZA_RIGHE); qui si evita solo il round-trip.
-    ErrorManager.require(
-        repo.count_righe(ordine_id) > 0,
-        code="E_ORD_NESSUNA_RIGA",
-        message="Impossibile confermare un ordine senza righe attive.",
-        detail=f"ordine_id={ordine_id}",
-        function_name=f"{_FN}.conferma",
-    )
-    stato_conf_id = repo.get_stato_id_by_codice(_STATO_CONFERMATO)
-    ErrorManager.require(
-        stato_conf_id is not None,
-        code="E_ORD_VALIDAZIONE",
-        message="Stato CONFERMATO non configurato in config.stati_doc_ordini.",
-        function_name=f"{_FN}.conferma",
-    )
-    assert stato_conf_id is not None
+    emissione = stato_di_emissione(TESTATA_ORDINI, function_name=f"{_FN}.conferma")
     # Atomico: conferma ordine + completamento dello step CONFERMA_ORDINE del
     # percorso pratica sono un'unita' di lavoro (o entrambi o nessuno).
     with _db_errors("conferma"), transaction.atomic():
-        repo.update_stato(ordine_id, int(stato_conf_id))
+        esito = repo.cambia_stato(ordine_id, emissione.codice)
         # Percorso pratica: la conferma dell'ordine E' il successo dello step
         # CONFERMA_ORDINE → lo completa POSITIVO (sblocca INVIO_COMMESSA). No-op
         # se l'ordine non nasce da una pratica o lo step e' gia' chiuso.
         _completa_flusso_ordine_pratica(
             ordine_id, codice_flusso=_CODICE_CONFERMA_ORDINE, user=user,
         )
-    return {"ordine_id": ordine_id, "stato_precedente": stato, "stato": _STATO_CONFERMATO}
+    return {
+        "ordine_id": ordine_id, "stato_precedente": esito["stato_precedente"],
+        "stato": esito["stato_nuovo"],
+    }
 
 
 # Scopo: Esegue una transizione di stato data-driven dell'ordine (es. annulla
@@ -639,9 +640,10 @@ def conferma(ordine_id: int, *, user: str | None = None) -> dict[str, Any]:
 #        interno (`available_actions[].target_state` della fn capabilities).
 #        L'ammissibilita' della transizione e' validata dal trigger DB
 #        `trgfn_ordini_guard_transizione` (matrice config.transizioni_stati_ordini):
-#        il service non duplica il grafo. La conferma (DRAFT->CONFERMATO) ha un
-#        endpoint dedicato (`conferma`) per le sue precondizioni; questa copre le
-#        altre transizioni manuali esposte.
+#        il service non duplica il grafo. La conferma (lo stato di emissione)
+#        la rifiuta (M-2): passa da «Emetti». Gli altri passaggi dal verbo
+#        `vendite.fn_cambia_stato_ordine` (C-3): oggi la matrice non ne ha
+#        altri manuali, il ramo resta per quelli che potra' avere.
 #        ⭐ ANNULLATO passa SEMPRE dal verbo `vendite.fn_annulla_ordine`
 #        (brief-db-annullo-documento-con-legami): con legami il DB rifiuta
 #        (E_DOC_ANNULLO_CON_LEGAMI, `confirm_and_retry`) finche' la richiesta
@@ -650,8 +652,11 @@ def cambia_stato(
     ordine_id: int, stato_codice: str | None, *, legami_confermati: Any = None,
 ) -> dict[str, Any]:
     repo = OrdiniRepository()
-    testata = _get_testata_or_raise(repo, ordine_id, op="cambia_stato")
-    stato_prec = testata.get("stato_codice_interno")
+    # ⛔ Nessun controllo «l'ordine c'e'» qui (regola del 1, Tid 2026-10-27):
+    #    i verbi prendono la testata nel perimetro e rifiutano da se'
+    #    (E_ORD_NOT_FOUND). Lo stato di partenza serve solo alla risposta, e
+    #    il suo None (ordine che non c'e') non arriva al client.
+    stato_prec = repo.get_stato_codice(ordine_id)
     # Un valore non testuale (un numero nel JSON) e' «stato mancante», un 400:
     # fino al 2026-10-09 `.strip()` su un int era un 500.
     target = stato_codice.strip() if isinstance(stato_codice, str) else ""
@@ -661,15 +666,21 @@ def cambia_stato(
         message="stato_codice obbligatorio per il cambio stato.",
         function_name=f"{_FN}.cambia_stato",
     )
-    stato_id = repo.get_stato_id_by_codice(target)
-    ErrorManager.require(
-        stato_id is not None,
-        code="E_ORD_VALIDAZIONE",
-        message=f"Stato '{target}' non configurato in config.stati_doc_ordini.",
-        function_name=f"{_FN}.cambia_stato",
+    # ⛔ Lo stato di emissione (CONFERMATO) NO (M-2, che revoca l'opzione (i)
+    #    del 2026-06-05): l'ordine si emette da «Emetti» (`/emetti/`), che
+    #    produce numero e PDF nella stessa transazione. Quale stato sia
+    #    l'emissione lo dice il vocabolario (BB `rifiuta_stato_di_emissione`,
+    #    brief-modello-documento-vendita §8.7 punto 4).
+    rifiuta_stato_di_emissione(
+        TESTATA_ORDINI, target, campo="stato_codice",
+        validation_code="E_ORD_VALIDAZIONE", function_name=f"{_FN}.cambia_stato",
     )
-    assert stato_id is not None
-    if target == STATO_ANNULLATO:
+    # ⛔ Nessun controllo «lo stato esiste» qui: lo fa il verbo
+    #    (E_STATO_WORKFLOW_NON_TROVATO), che prende il codice. Fino al
+    #    2026-10-25 c'era una lettura dell'id per un 400 del dominio, con l'id
+    #    non piu' usato: la stessa regola in due livelli (brief §9.9).
+    # L'annullo (lo stato d'annullo del vocabolario) dal suo verbo.
+    if e_stato_di_annullo(TESTATA_ORDINI, target):
         confermati = dichiarazione_legami(
             legami_confermati, validation_code="E_ORD_VALIDAZIONE",
             function_name=f"{_FN}.cambia_stato",
@@ -677,10 +688,11 @@ def cambia_stato(
         with _db_errors("cambia_stato"):
             repo.annulla(ordine_id, confermati)
         return {"ordine_id": ordine_id, "stato_precedente": stato_prec, "stato": target}
-    # La transizione (stato_prec -> target) e' validata dal trigger guard DB;
-    # eventuale errore tradotto da _db_errors (E_ORDINE_TRANSIZIONE_NON_AMMESSA).
+    # Ogni altro passaggio dal verbo: permesso dalla riga, passaggio di
+    # processo (E_DOC_PASSAGGIO_DI_PROCESSO), matrice del guard
+    # (E_ORDINE_TRANSIZIONE_NON_AMMESSA), tradotti da _db_errors.
     with _db_errors("cambia_stato"):
-        repo.update_stato(ordine_id, int(stato_id))
+        repo.cambia_stato(ordine_id, target)
     return {"ordine_id": ordine_id, "stato_precedente": stato_prec, "stato": target}
 
 

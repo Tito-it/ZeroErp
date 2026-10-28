@@ -1,6 +1,6 @@
 # Guida — Gestione Preventivi vendita
 
-> **Ultimo aggiornamento**: 12 ottobre 2026
+> **Ultimo aggiornamento**: 25 ottobre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend/frontend, DBA.
 >
@@ -29,6 +29,7 @@
 >
 > **Vedi anche** — guide correlate:
 >
+> * [Il modello del documento di vendita](/guide/modello-documento-di-vendita) — **le regole comuni a tutti i documenti**: nascita, cambio di stato, permesso sul passaggio, emissione, annullo
 > * [Gestione Listini e Pricing v5](/guide/gestione-listini)
 > * [Fatturazione end-to-end](/guide/fatturazione) — il push commessa attiva la pipeline fatturazione
 > * [Documenti e stampe](/guide/documenti-e-stampe) — generazione PDF preventivo
@@ -237,6 +238,8 @@ Vedi [documenti e stampe](/guide/documenti-e-stampe) per i template e il motore.
 
 ## 3. Ciclo di vita e stati
 
+⭐ Le regole comuni a tutti i documenti — in che stato si nasce, chi cambia lo stato, quale permesso chiede un passaggio, l'emissione, l'annullo — stanno nel [modello del documento di vendita](/guide/modello-documento-di-vendita), che al §10 dice anche a che punto è il preventivo rispetto al modello. Qui ci sono gli stati e i passaggi che sono suoi.
+
 ### 3.1 Stati e transizioni
 
 Gli stati sono governati da `config.stati_doc_preventivi` e le transizioni
@@ -268,10 +271,24 @@ ACCETTATO  → ANNULLATO  (annulla)
 > lo ha emesso. Annullare un preventivo che ha già spinto lavoro in commessa
 > chiede una conferma (§3.2).
 
-`EMESSO → SCADUTO` è automatica (job notturno quando supera `validita_al`).
+`EMESSO → SCADUTO` è un passaggio **di processo**: non lo chiede l'operatore, e il
+verbo lo rifiuta se chiesto a mano. ⚠️ Oggi nessuno lo scrive: il job notturno che
+dovrebbe farlo al superamento di `validita_al` non esiste ancora (verificato il 25
+ottobre 2026).
 `ACCETTATO ↔ EVASO` è automatica, nei due versi, e la fa il database: il preventivo
 è `EVASO` quando non resta residuo su **nessun** ramo, e torna `ACCETTATO` appena uno
 dei due ne ha di nuovo (vedi §8); non c'è un pulsante.
+
+**Chi cambia lo stato.** Ogni passaggio manuale passa dal verbo
+[`vendite.fn_cambia_stato_preventivo`](/dbzero/vendite/funzioni/fn_cambia_stato_preventivo)
+(l'annullo da [`vendite.fn_annulla_preventivo`](/dbzero/vendite/funzioni/fn_annulla_preventivo),
+che lo chiama); `ACCETTATO ↔ EVASO` lo scrive la proiezione dello smistamento. Un cambio
+di stato diretto è rifiutato (la porta del modello, §5 della guida comune).
+
+**Quale permesso.** L'emissione e l'annullo di un preventivo emesso o accettato chiedono
+l'azione `emetti_preventivo`; gli altri passaggi (accetta, rifiuta, annulla la bozza)
+solo il permesso sul preventivo. L'azione sta sulla riga della matrice: per cambiarla
+si cambia la riga. Per emettere serve almeno una riga attiva, qualunque sia il totale.
 
 Le azioni disponibili in ogni momento sono esposte dal backend tramite
 [`fn_available_actions_preventivo`](/dbzero/script/funzioni/fn_available_actions_preventivo)

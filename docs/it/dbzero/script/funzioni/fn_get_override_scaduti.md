@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_get_override_scaduti(p_giorni_tolleranza integer)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

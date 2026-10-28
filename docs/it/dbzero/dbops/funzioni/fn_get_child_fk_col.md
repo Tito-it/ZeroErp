@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_get_child_fk_col(p_conoid oid)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

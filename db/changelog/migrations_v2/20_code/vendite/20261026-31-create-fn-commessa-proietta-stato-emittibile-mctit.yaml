@@ -1,0 +1,152 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL PASSAGGIO A PRONTA DELLA PUSH: UNA PROIEZIONE
+#   Brief: brief-modello-documento-vendita §14 (giro 10; C-2 di Tid,
+#   2026-10-26). Gemella delle proiezioni di preventivo (20261025-45),
+#   ordine (20261025-79) e offerta (20261026-17).
+#
+# ── CHE COSA FA ─────────────────────────────────────────────────────
+#   Dopo un invio riuscito la push approva le righe di quel giro, e la
+#   commessa diventa emittibile: e' la conseguenza dell'invio, non una scelta
+#   di chi lancia la push. Lo stesso passaggio l'operatore lo chiede con
+#   «rendi pronta», sulla stessa riga della matrice, e li' chiede l'azione
+#   cambia_stato_commessa (C-1). Qui no (C-2): il permesso e' quello della
+#   push (run_commesse_push, push_commessa_preventivi), che controlla chi la
+#   lancia.
+#   - lo stato emittibile si legge dal vocabolario (emittibile = true, uno
+#     solo: guard sull'arita'), non dal letterale 'PRONTA_FATTURAZIONE';
+#   - gia' emittibile: niente;
+#   - altrimenti scrive con la sola seconda meta' del verbo comune
+#     (script.fn_doc_scrivi_stato), attraverso la porta. La matrice e le
+#     condizioni (almeno una riga approvata da emettere; da CHIUSA o ANNULLATA
+#     il passaggio non c'e') le giudica il guard di transizione, come prima.
+#
+# ── PERCHE' SECURITY DEFINER, E SENZA PERIMETRO ─────────────────────
+#   La porta vuole il proprietario. Come le gemelle, non applica il perimetro:
+#   lo stato e' la conseguenza delle righe approvate, e la chiamano solo dopo
+#   l'approvazione, che chi chiama ha fatto coi suoi diritti
+#   (vendite.fn_rendi_commessa_emittibile, INVOKER). Chiamata direttamente,
+#   porta a pronta una commessa che il guard ammette a pronta: la stessa
+#   esposizione delle proiezioni gemelle, dichiarata.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261026-31-create-fn-commessa-proietta-stato-emittibile-mctit.yaml
+
+  - changeSet:
+      id: 20261026-31-create-fn-commessa-proietta-stato-emittibile
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        NUOVO vendite.fn_commessa_proietta_stato_emittibile(commessa): il passaggio della push allo
+        stato emittibile, con la scrittura comune (script.fn_doc_scrivi_stato), SECURITY DEFINER.
+        Brief: brief-modello-documento-vendita §14 (C-2).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_doc_scrivi_stato';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION vendite.fn_commessa_proietta_stato_emittibile(
+                  p_commessa_id vendite.commesse.id%TYPE)
+               RETURNS void
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              -- =========================================================
+              -- Scopo: dopo un invio riuscito, portare la commessa nello
+              --   stato emittibile (vocabolario, emittibile = true).
+              --   Gia' emittibile: niente. La matrice e le condizioni le
+              --   giudica il guard di transizione, all'UPDATE.
+              -- Consumatori: vendite.fn_rendi_commessa_emittibile (il ponte
+              --   della push).
+              -- Brief: brief-modello-documento-vendita §14 (C-2).
+              -- =========================================================
+              DECLARE
+                  v_emittibile vendite.stati_commessa.emittibile%TYPE;
+                  v_target_id  vendite.stati_commessa.id%TYPE;
+                  -- Un conteggio: nessuna colonna da ancorare.
+                  v_n_stati    integer;
+              BEGIN
+                  IF p_commessa_id IS NULL OR p_commessa_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_commessa_proietta_stato_emittibile',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_commessa_id', p_commessa_id),
+                          NULL::uuid, 'vendite.fn_commessa_proietta_stato_emittibile',
+                          'p_commessa_id (obbligatorio, maggiore di zero)');
+                  END IF;
+
+                  -- Lo stato di oggi. Commessa assente: niente.
+                  SELECT s.emittibile
+                    INTO v_emittibile
+                    FROM vendite.commesse c
+                    JOIN vendite.stati_commessa s ON s.id = c.stato_commessa_id
+                   WHERE c.id = p_commessa_id;
+
+                  IF NOT FOUND OR v_emittibile THEN
+                      RETURN;
+                  END IF;
+
+                  -- ⛔ Guard sull'ARITA': zero righe e due righe sono lo stesso
+                  --   difetto, il catalogo non dice quale.
+                  SELECT count(*), min(s.id)
+                    INTO v_n_stati, v_target_id
+                    FROM vendite.stati_commessa s
+                   WHERE s.emittibile IS TRUE
+                     AND s.attivo     IS TRUE;
+
+                  IF v_n_stati <> 1 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_commessa_proietta_stato_emittibile',
+                          'E_CONFIG_MANCANTE',
+                          jsonb_build_object('tabella', 'vendite.stati_commessa',
+                                             'colonna', 'emittibile',
+                                             'attesi',  1,
+                                             'trovati', v_n_stati),
+                          NULL::uuid,
+                          'vendite.stati_commessa: atteso esattamente uno stato attivo '
+                          || 'con emittibile = true, trovati ' || v_n_stati::text);
+                  END IF;
+
+                  PERFORM script.fn_doc_scrivi_stato('vendite.commesse'::regclass,
+                                                     p_commessa_id, v_target_id);
+              END;
+              $function$;
+
+              -- DEFINER: EXECUTE all'applicazione, perche' la chiama la madre
+              -- INVOKER del ponte della push.
+              REVOKE EXECUTE ON FUNCTION vendite.fn_commessa_proietta_stato_emittibile(
+                  vendite.commesse.id%TYPE) FROM PUBLIC;
+              GRANT EXECUTE ON FUNCTION vendite.fn_commessa_proietta_stato_emittibile(
+                  vendite.commesse.id%TYPE) TO zeroerp_app;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.fn_commessa_proietta_stato_emittibile(vendite.commesse.id%TYPE)
+                IS 'BB del passaggio della push allo stato emittibile della commessa, brief-modello-documento-vendita §14 (C-2, Tid 2026-10-26): dopo un invio riuscito, porta la commessa nello stato che il vocabolario dichiara emittibile (vendite.stati_commessa.emittibile, guard sull''arita'': E_CONFIG_MANCANTE); gia'' emittibile: niente. Scrive con script.fn_doc_scrivi_stato attraverso la porta, senza la prima riga del verbo: il passaggio e'' la conseguenza dell''invio, e il permesso e'' quello della push (run_commesse_push, push_commessa_preventivi), non l''azione cambia_stato_commessa che l''operatore chiede con «rendi pronta». Matrice e condizioni (E_COMMESSA_STATO_TRANSIZIONE_INVALIDA, almeno una riga approvata da emettere) le giudica il guard di transizione. La chiama vendite.fn_rendi_commessa_emittibile. SECURITY DEFINER senza perimetro, come vendite.fn_preventivo_proietta_stato_smistamento e vendite.fn_offerta_proietta_stato_revisione; EXECUTE all''applicazione.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_commessa_proietta_stato_emittibile(vendite.commesse.id%TYPE);

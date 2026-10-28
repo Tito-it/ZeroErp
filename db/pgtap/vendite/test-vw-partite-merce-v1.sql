@@ -1,5 +1,7 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-26 (brief-modello-documento-vendita §14, giro 10): la commessa passa a PRONTA_FATTURAZIONE dal verbo vendite.fn_cambia_stato_commessa, che ora chiede l'azione cambia_stato_commessa: il test prova la vista, non il permesso, e la concede all'utente del contesto (dbops.fn_pgtap_concedi_azione). Attese invariate.
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito): i resi dal builder dbops.fn_pgtap_crea_reso (quello sulla riga a mano con p_ddt_riga_id: la riga d'ordine resta NULL perche' non c'e' legame); resta scritto a mano il legame resi_righe_riconsegne verso la bolla in bozza (il caso del 7).
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine; restano scritti a mano la riga aggiunta alla bolla in bozza (il caso del 4/5/11) e i resi (giro 2).
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
 -- pgTAP test per Zero ERP
@@ -54,14 +56,6 @@ SELECT plan(11);
 SET LOCAL app.ruolo_applicativo = 'OPERATORE';
 -- ⛔ rev 2026-10-13: niente app.current_user_id = '1' (in CI l'utente 1 non
 --   esiste): l'operatore e' quello del contesto aperto qui sopra.
-
--- Dal 2026-09-28 conferma e annullo del reso sono verbi che applicano
--- l'azione conferma_reso (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-f):
--- l'operatore di fixture non ha azioni, si concede qui.
-DO $az$ BEGIN
-    PERFORM dbops.fn_pgtap_concedi_azione(
-        NULLIF(current_setting('app.current_user_id', true), '')::integer, 'conferma_reso');
-END $az$;
 
 -- ============================================================
 -- 1-3) Struttura della vista
@@ -125,11 +119,7 @@ SELECT
   (SELECT t.id FROM tmp_art t)                                           AS articolo_id,
   (SELECT u.id FROM catalogo.unita_misura u WHERE u.attivo IS TRUE ORDER BY u.id LIMIT 1) AS uom_id,
   (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
-  (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='DDT_VENDITA' AND s.attivo LIMIT 1)     AS sorgente_ddt_id,
   (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='COMMESSA' AND s.attivo LIMIT 1)        AS sorgente_root_id,
-  (SELECT s.id FROM config.stati_doc_reso s WHERE s.codice_interno='DRAFT' AND s.attivo LIMIT 1)     AS stato_reso_draft_id,
-  (SELECT t.id FROM config.tipi_reso t WHERE t.codice_interno='RESO_A_CREDITO' AND t.attivo LIMIT 1) AS tipo_credito_id,
-  (SELECT t.id FROM config.tipi_reso t WHERE t.codice_interno='RESO_PER_RICONSEGNA' AND t.attivo LIMIT 1) AS tipo_riconsegna_id,
   (SELECT t.id FROM config.tipi_doc_fiscale t WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1) AS tipo_doc_fiscale_id;
 
 -- Le partite nascono dal builder della bolla da ordine, col cliente del mondo e
@@ -151,28 +141,6 @@ BEGIN
           true, false, jsonb_build_object('test_scope','pgtap_partite'))
   RETURNING id INTO v_id;
   RETURN v_id;
-END $$ LANGUAGE plpgsql;
-
--- Helper: reso confermato su una riga di DDT. `ordine_riga_id` si ricava dal
--- fulfillment se c'e' — sulla riga manuale resta NULL, ed e' il punto.
-CREATE OR REPLACE FUNCTION pg_temp.mk_reso(p_ddt_riga bigint, p_ddt_uid uuid,
-                                           p_qta numeric, p_tipo bigint)
-RETURNS void AS $$
-DECLARE r RECORD; v_reso bigint;
-BEGIN
-  SELECT * INTO r FROM tmp_refs;
-  INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_uid, storicizza, meta)
-  VALUES (r.stato_reso_draft_id, r.sorgente_ddt_id, p_ddt_uid, false,
-          jsonb_build_object('test_scope','pgtap_partite'))
-  RETURNING id INTO v_reso;
-  INSERT INTO vendite.resi_righe (reso_id, riga_nr, ddt_riga_id, ordine_riga_id,
-    articolo_id, descrizione, qta_operativa, uom_operativa_id, factor_to_base, tipo_reso_id, storicizza)
-  SELECT v_reso, 1, dr.id,
-         (SELECT f.ordine_riga_id FROM vendite.ordini_righe_fulfillment f WHERE f.ddt_riga_id = dr.id LIMIT 1),
-         dr.articolo_id, dr.descrizione, p_qta, dr.uom_operativa_id, dr.factor_to_base,
-         p_tipo, false
-  FROM vendite.ddt_righe dr WHERE dr.id = p_ddt_riga;
-  PERFORM vendite.fn_conferma_reso(v_reso);
 END $$ LANGUAGE plpgsql;
 
 -- Commessa + ROOT per gli AF.
@@ -262,14 +230,20 @@ SELECT pg_temp.mk_af(script.fn_segment_key('ORDINE_VENDITA', (SELECT ordine_uid 
 SELECT pg_temp.mk_af(script.fn_segment_key('DDT_VENDITA', (SELECT ddt_uid FROM tmp_p1)::text, (SELECT ddt_riga_id FROM tmp_p2)), 6);
 SELECT pg_temp.mk_af(script.fn_segment_key('ORDINE_VENDITA', (SELECT ordine_uid FROM tmp_p5)::text, (SELECT ordine_riga_id FROM tmp_p5)), 3);
 
+-- Il test prova la vista, non il permesso: l'azione «rendi pronta» all'utente del contesto.
+SELECT dbops.fn_pgtap_concedi_azione(current_setting('app.current_user_id')::integer, 'cambia_stato_commessa');
 SELECT vendite.fn_cambia_stato_commessa((SELECT commessa_id FROM tmp_com), 'PRONTA_FATTURAZIONE');
 SELECT vendite.fn_emit_attivita_fatturabili_da_commessa((SELECT commessa_id FROM tmp_com));
 
--- I resi: 4 su P1 (a credito), 2 sulla riga manuale P2 (a credito).
-SELECT pg_temp.mk_reso((SELECT ddt_riga_id FROM tmp_p1), (SELECT ddt_uid FROM tmp_p1), 4,
-                       (SELECT tipo_credito_id FROM tmp_refs));
-SELECT pg_temp.mk_reso((SELECT ddt_riga_id FROM tmp_p2), (SELECT ddt_uid FROM tmp_p1), 2,
-                       (SELECT tipo_credito_id FROM tmp_refs));
+-- I resi, confermati: 4 su P1 (a credito), 2 sulla riga manuale P2 (a
+-- credito). La riga d'ordine il builder la ricava dal legame: sulla riga
+-- manuale resta NULL, ed e' il punto.
+CREATE TEMP TABLE tmp_reso_p1 AS
+SELECT * FROM dbops.fn_pgtap_crea_reso('partite P1', (SELECT ddt_id FROM tmp_p1), 4,
+         p_ddt_riga_id => (SELECT ddt_riga_id FROM tmp_p1));
+CREATE TEMP TABLE tmp_reso_p2 AS
+SELECT * FROM dbops.fn_pgtap_crea_reso('partite P2', (SELECT ddt_id FROM tmp_p1), 2,
+         p_ddt_riga_id => (SELECT ddt_riga_id FROM tmp_p2));
 
 -- ============================================================
 -- 4-5) La merce senza origine: il buco che questo cantiere chiude
@@ -300,13 +274,14 @@ SELECT is(
 --    Reso per ri-consegna su P4, agganciato alla riga del DDT in bozza di P3.
 --    Senza questa colonna quei pezzi non sarebbero ne' dal cliente ne' in coda.
 -- ============================================================
-SELECT pg_temp.mk_reso((SELECT ddt_riga_id FROM tmp_p4), (SELECT ddt_uid FROM tmp_p4), 2,
-                       (SELECT tipo_riconsegna_id FROM tmp_refs));
+CREATE TEMP TABLE tmp_reso_p4 AS
+SELECT * FROM dbops.fn_pgtap_crea_reso('partite P4', (SELECT ddt_id FROM tmp_p4), 2,
+         'RESO_PER_RICONSEGNA');
+-- Il legame a mano verso la bolla in BOZZA di P3: e' il caso del 7 (la madre
+-- della ri-consegna farebbe una bolla sua).
 INSERT INTO vendite.resi_righe_riconsegne (resi_riga_id, ddt_riga_id, qta, storicizza)
-SELECT rr.id, (SELECT ddt_riga_id FROM tmp_p3), 2, false
-  FROM vendite.resi_righe rr
- WHERE rr.ddt_riga_id = (SELECT ddt_riga_id FROM tmp_p4)
- ORDER BY rr.id DESC LIMIT 1;
+SELECT r.resi_riga_id, (SELECT ddt_riga_id FROM tmp_p3), 2, false
+  FROM tmp_reso_p4 r;
 
 SELECT is(
   (SELECT in_riconsegna FROM vendite.vw_partite_merce

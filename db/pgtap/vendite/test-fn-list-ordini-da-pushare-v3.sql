@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): gli ordini D (DRAFT) e E (ANNULLATO) da dbops.fn_pgtap_crea_ordine_con_righe (5 x 15, data 2026-07-08); il BA e' costruito, quindi via i ripieghi «OR push_ba_id IS NULL» (e «stato ANNULLATO assente»: il builder solleva) e le colonne dei riferimenti rimaste senza lettori.
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): le bolle da ordine (A, B, C) dal builder dbops.fn_pgtap_crea_ddt_da_ordine, col trigger e lo stato finale del caso; restano a mano gli ordini D (DRAFT) e E (ANNULLATO), che non hanno bolla.
 -- pgTAP test per Zero ERP
 -- Test: vendite.fn_list_ordini_da_pushare — fix «orfano da push»
@@ -27,8 +28,6 @@
 --   billing_account su INSERT: il BA costruito ha fatturazione_ordini =
 --   'CONFERMATO'; le bolle A, B, C dichiarano comunque al builder il trigger
 --   del caso (lo scrive sull'ordine in bozza).
--- Nota skip-tolerance: se il DB di test non ha un BA pushabile, i test
---   degradano a pass con fallback OR (pattern test-fn-available-actions-v1).
 
 BEGIN;
 -- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
@@ -71,15 +70,8 @@ SELECT
   m.billing_account_id                               AS push_ba_id,
   m.cliente_soggetto_ruolo_id                        AS soggetto_ruolo_id,
   dbops.fn_pgtap_crea_articolo('PGTAP-LIST-ORD-V3', false) AS articolo_id,
-  (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
-  (SELECT i.id FROM config.iva i
-    WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1)    AS iva_id,
   (SELECT s.id FROM config.stati_doc_ordini s
     WHERE s.codice_interno = 'CONFERMATO' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1) AS stato_ord_conf_id,
-  (SELECT s.id FROM config.stati_doc_ordini s
-    WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1)      AS stato_ord_draft_id,
-  (SELECT s.id FROM config.stati_doc_ordini s
-    WHERE s.codice_interno = 'ANNULLATO' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1)  AS stato_ord_annullato_id,
   (SELECT s.id FROM config.stati_doc_ddt s
     WHERE s.codice_interno = 'EMESSO' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1)     AS stato_ddt_emesso_id,
   (SELECT s.id FROM config.stati_doc_ddt s
@@ -115,8 +107,7 @@ SELECT ok(
   (SELECT sdo.codice_interno = 'EVASO'
      FROM vendite.ordini o
      JOIN config.stati_doc_ordini sdo ON sdo.id = o.stato_doc_ordine_id
-    WHERE o.id = (SELECT id FROM tmp_ord_a3))
-  OR (SELECT push_ba_id IS NULL FROM tmp_refs_v3),
+    WHERE o.id = (SELECT id FROM tmp_ord_a3)),
   '2) sanity: evasione full -> ordine EVASO (C5 invariata)'
 );
 
@@ -125,8 +116,7 @@ SELECT ok(
 SELECT ok(
   (SELECT count(*) >= 1
      FROM vendite.fn_list_ordini_da_pushare(
-            p_ordine_id => (SELECT id FROM tmp_ord_a3)))
-  OR (SELECT push_ba_id IS NULL FROM tmp_refs_v3),
+            p_ordine_id => (SELECT id FROM tmp_ord_a3))),
   '3) caso 7: ordine EVASO trigger CONFERMATO eleggibile al push (orfano recuperato)'
 );
 
@@ -135,8 +125,7 @@ SELECT ok(
 SELECT ok(
   (SELECT count(*) = 0
      FROM vendite.fn_list_ddt_da_pushare(
-            p_ddt_id => (SELECT ddt_id FROM tmp_ddt_a3)))
-  OR (SELECT push_ba_id IS NULL FROM tmp_refs_v3),
+            p_ddt_id => (SELECT ddt_id FROM tmp_ddt_a3))),
   '4) caso 8: DDT src_trigger=CONFERMATO a SPEDITO escluso da fn_list_ddt_da_pushare (XOR)'
 );
 
@@ -156,6 +145,7 @@ SELECT vendite.fn_get_or_create_commessa(
          p_meta => jsonb_build_object('test_scope','pgtap_list_ordini_v3')
        ) AS commessa_id
   FROM tmp_pushrow_a3 pr
+ ORDER BY pr.segment_key
  LIMIT 1;
 
 SELECT vendite.fn_upsert_commessa_attivita(
@@ -194,8 +184,7 @@ SELECT vendite.fn_upsert_commessa_attivita(
 SELECT ok(
   (SELECT count(*) = 0
      FROM vendite.fn_list_ordini_da_pushare(
-            p_ordine_id => (SELECT id FROM tmp_ord_a3)))
-  OR (SELECT push_ba_id IS NULL FROM tmp_refs_v3),
+            p_ordine_id => (SELECT id FROM tmp_ord_a3))),
   '5) caso 10: dopo push simulato (EMESSA) la re-list = 0 (no doppione)'
 );
 
@@ -219,8 +208,7 @@ SELECT ok(
      WHERE o.id = (SELECT id FROM tmp_ord_b3))
    AND (SELECT count(*) >= 1
           FROM vendite.fn_list_ordini_da_pushare(
-                 p_ordine_id => (SELECT id FROM tmp_ord_b3))))
-  OR (SELECT push_ba_id IS NULL FROM tmp_refs_v3),
+                 p_ordine_id => (SELECT id FROM tmp_ord_b3)))),
   '6) caso 7b: ordine PARZIALMENTE_EVASO trigger CONFERMATO eleggibile al push'
 );
 
@@ -240,8 +228,7 @@ CREATE TEMP TABLE tmp_ddt_c3 AS SELECT ddt_id FROM tmp_c3;
 SELECT ok(
   (SELECT count(*) = 0
      FROM vendite.fn_list_ordini_da_pushare(
-            p_ordine_id => (SELECT id FROM tmp_ord_c3)))
-  OR (SELECT push_ba_id IS NULL FROM tmp_refs_v3),
+            p_ordine_id => (SELECT id FROM tmp_ord_c3))),
   '7) caso 9: ordine trigger SPEDITO evaso escluso da fn_list_ordini_da_pushare'
 );
 
@@ -249,8 +236,7 @@ SELECT ok(
 SELECT ok(
   (SELECT count(*) >= 1
      FROM vendite.fn_list_ddt_da_pushare(
-            p_ddt_id => (SELECT ddt_id FROM tmp_ddt_c3)))
-  OR (SELECT push_ba_id IS NULL FROM tmp_refs_v3),
+            p_ddt_id => (SELECT ddt_id FROM tmp_ddt_c3))),
   '8) caso 9b: DDT dell''ordine trigger SPEDITO (a SPEDITO) eleggibile in fn_list_ddt_da_pushare'
 );
 
@@ -258,81 +244,32 @@ SELECT ok(
 -- 9-10) Predicato stato: DRAFT e ANNULLATO restano esclusi
 -- ============================================================
 CREATE TEMP TABLE tmp_ord_d3 AS
-WITH ins AS (
-  INSERT INTO vendite.ordini (
-    soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
-    stato_doc_ordine_id, valuta_id, data, storicizza, meta)
-  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia): il cliente e' il ruolo del BA
-  --   (fk_ordini_ba_cliente), non il ruolo scelto a parte dai riferimenti.
-  SELECT (SELECT b.soggetto_ruolo_id FROM anagrafiche.billing_account b WHERE b.id = r.push_ba_id),
-         r.push_ba_id,
-         anagrafiche.fn_get_emittente_fiscale_pk(r.push_ba_id),
-         r.stato_ord_draft_id, r.valuta_id, DATE '2026-07-08', false,
-         jsonb_build_object('test_scope','pgtap_list_ordini_v3','fix','draft_d')
-  FROM tmp_refs_v3 r
-  WHERE r.push_ba_id IS NOT NULL
-  RETURNING id)
-SELECT * FROM ins;
-
-INSERT INTO vendite.ordini_righe (
-  ordine_id, riga_nr, articolo_id, descrizione,
-  qta_operativa, quantita, prezzo_unitario, iva_id,
-  attivo, storicizza, meta)
-SELECT o.id, 1, r.articolo_id, 'Riga draft D (v3)',
-       5.000000, 5.000000, 15.000000, r.iva_id,
-       true, false, jsonb_build_object('test_scope','pgtap_list_ordini_v3')
-FROM tmp_ord_d3 o, tmp_refs_v3 r;
+SELECT * FROM dbops.fn_pgtap_crea_ordine_con_righe('list ordini v3 D', 'DRAFT',
+    p_billing_account_id => (SELECT push_ba_id FROM tmp_refs_v3),
+    p_quantita => 5, p_prezzo => 15,
+    p_articolo_id => (SELECT articolo_id FROM tmp_refs_v3),
+    p_data_ordine => DATE '2026-07-08');
 
 SELECT ok(
   (SELECT count(*) = 0
      FROM vendite.fn_list_ordini_da_pushare(
-            p_ordine_id => (SELECT id FROM tmp_ord_d3)))
-  OR (SELECT push_ba_id IS NULL FROM tmp_refs_v3),
+            p_ordine_id => (SELECT ordine_id FROM tmp_ord_d3))),
   '9) DRAFT escluso dal push (non-regressione predicato stato)'
 );
 
+-- L'annullo per la matrice, sotto i guard veri: lo fa il builder.
 CREATE TEMP TABLE tmp_ord_e3 AS
-WITH ins AS (
-  INSERT INTO vendite.ordini (
-    soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
-    stato_doc_ordine_id, valuta_id, data, storicizza, meta)
-  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia): il cliente e' il ruolo del BA
-  --   (fk_ordini_ba_cliente), non il ruolo scelto a parte dai riferimenti.
-  SELECT (SELECT b.soggetto_ruolo_id FROM anagrafiche.billing_account b WHERE b.id = r.push_ba_id),
-         r.push_ba_id,
-         anagrafiche.fn_get_emittente_fiscale_pk(r.push_ba_id),
-         r.stato_ord_draft_id, r.valuta_id, DATE '2026-07-08', false,
-         jsonb_build_object('test_scope','pgtap_list_ordini_v3','fix','annullato_e')
-  FROM tmp_refs_v3 r
-  WHERE r.push_ba_id IS NOT NULL
-    AND r.stato_ord_annullato_id IS NOT NULL
-  RETURNING id)
-SELECT * FROM ins;
-
-INSERT INTO vendite.ordini_righe (
-  ordine_id, riga_nr, articolo_id, descrizione,
-  qta_operativa, quantita, prezzo_unitario, iva_id,
-  attivo, storicizza, meta)
-SELECT o.id, 1, r.articolo_id, 'Riga annullato E (v3)',
-       5.000000, 5.000000, 15.000000, r.iva_id,
-       true, false, jsonb_build_object('test_scope','pgtap_list_ordini_v3')
-FROM tmp_ord_e3 o, tmp_refs_v3 r;
-
--- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT,
--- prende le righe, poi passa a ANNULLATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
--- righe non si scrivono piu' (20261008-90). PERFORM ... FROM: tabella vuota se il BA manca.
-DO $x$ BEGIN
-  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', o.id, 'ANNULLATO') FROM tmp_ord_e3 o;
-END $x$;
+SELECT * FROM dbops.fn_pgtap_crea_ordine_con_righe('list ordini v3 E', 'ANNULLATO',
+    p_billing_account_id => (SELECT push_ba_id FROM tmp_refs_v3),
+    p_quantita => 5, p_prezzo => 15,
+    p_articolo_id => (SELECT articolo_id FROM tmp_refs_v3),
+    p_data_ordine => DATE '2026-07-08');
 
 SELECT ok(
   (SELECT count(*) = 0
      FROM vendite.fn_list_ordini_da_pushare(
-            p_ordine_id => (SELECT id FROM tmp_ord_e3)))
-  OR (SELECT push_ba_id IS NULL FROM tmp_refs_v3)
-  OR (SELECT stato_ord_annullato_id IS NULL FROM tmp_refs_v3),
+            p_ordine_id => (SELECT ordine_id FROM tmp_ord_e3))),
   '10) ANNULLATO escluso dal push (predicato stato)'
 );
-
 SELECT * FROM finish();
 ROLLBACK;

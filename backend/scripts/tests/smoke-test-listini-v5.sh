@@ -190,11 +190,11 @@ echo "-- 1.5 Cleanup residui SMK-V5-* --"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 
+# ⛔ I contratti NON si chiudono qui: lo stato lo scrivono solo i verbi (la
+#    porta del DB rifiuta l'UPDATE della colonna, brief-modello-documento-
+#    vendita §11.6), e un rifiuto in questo `-c` annullerebbe tutte le
+#    pulizie della transazione. Li chiude `smoke_chiudi_contratti`, alla fine del passo 2.
 "${BACKEND_DIR}/manage-env.sh" dbshell -- -q -c "
-    UPDATE vendite.contratti SET stato_doc_contratto_id = (
-        SELECT id FROM config.stati_doc_contratti WHERE codice_interno='CESSATO' LIMIT 1
-    ) WHERE numero LIKE 'CNT%' AND meta->>'smoke_v5' = 'true'
-      AND stato_doc_contratto_id <> (SELECT id FROM config.stati_doc_contratti WHERE codice_interno='CESSATO' LIMIT 1);
     UPDATE vendite.promo_articoli SET attivo = false WHERE codice LIKE 'SMK-V5-%';
     UPDATE anagrafiche.categorie_clienti_listini SET attivo = false
       WHERE categoria_cliente_id IN (SELECT id FROM anagrafiche.categorie_clienti WHERE codice LIKE 'SMK-V5-%');
@@ -677,12 +677,9 @@ fi
 echo ""
 echo "-- 29. Cleanup finale --"
 
-# Disattivo contratti smoke
-for cid in ${CONTRATTO_A_ID} ${CONTRATTO_B_ID:-} ${CONTRATTO_C_ID} ${CONTRATTO_SNAP_ID}; do
-    [[ -z "$cid" ]] && continue
-    do_curl POST "/api/v1/vendite/contratti/${cid}/cambia-stato/" "{\"codice_interno\":\"CESSATO\"}" >/dev/null 2>&1 || true
-done
-log_info "Contratti smoke cessati"
+# I contratti dello smoke li chiude il `trap` di uscita (smoke_chiudi_contratti):
+# una bozza si annulla, un attivo si cessa con la sua data. Qui c'era una
+# cessazione senza data, che il cambio stato rifiuta (data obbligatoria).
 
 # Promo: PATCH attivo=false
 do_curl PATCH "/api/v1/vendite/promo-articoli/${PROMO_ID}/" "{\"attivo\":false}" >/dev/null 2>&1 || true

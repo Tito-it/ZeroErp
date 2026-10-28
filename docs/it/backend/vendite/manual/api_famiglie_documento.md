@@ -28,7 +28,7 @@ quel sezionale **fa**. Il modello e le decisioni stanno in
 | `GET` | `/api/v1/vendite/famiglie/sorgenti/` | Le sorgenti fra cui si sceglie la famiglia da creare (dal 2026-10-20): i tipi di documento di `config.sorgenti` con la loro tabella, `famiglia_esistente` e `tabella_numerata_da` (`AdminAPIView`, envelope `{"results": [...]}`) |
 
 ⭐ **Una famiglia è quella di una sorgente** (dal 2026-10-20,
-[brief-db-grammatica-unica-documenti](../../../dev/work-in-progress/brief-db-grammatica-unica-documenti.md)
+[brief-db-grammatica-unica-documenti](../../../dev/work-done/brief-db-grammatica-unica-documenti.md)
 2c, G-5): il suo `codice_interno` è il `codice_interno` di `config.sorgenti`
 (FK `fk_famiglie_documento_sorgenti`) e la tabella dei documenti è la
 `target_table` della sorgente. `schema_tabella` e `nome_tabella` non sono più

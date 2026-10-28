@@ -1,0 +1,127 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# BB: LA RIGA DEL PASSAGGIO — il lettore unico della matrice
+#   Brief: brief-modello-documento-vendita §7 (M-3, S-2).
+#
+# ── CHE COSA DICE ───────────────────────────────────────────────────
+#   Per una testata e una coppia di stati (da, a): la riga viva della sua
+#   matrice, se c'e', con le due cose che il modello ci legge:
+#   - manuale: false = passaggio di PROCESSO (lo fa un altro verbo, per
+#     esempio la bolla che passa a RESO quando il reso e' totale); non si
+#     chiede a mano;
+#   - azione_processo_codename: l'azione che il passaggio chiede (M-3), NULL se
+#     basta il permesso sul documento.
+#   Nessuna riga: il passaggio non e' nella matrice (lo rifiuta il guard di
+#   transizione del documento, all'UPDATE).
+#
+# ── CHI LA LEGGE ────────────────────────────────────────────────────
+#   La prima riga del verbo (script.fn_guard_passaggio, 20261025-10), le
+#   capability di bolla e reso (20261025-20/-21) e il backend, per il 403
+#   prima della transazione: tre lettori, una sede.
+#
+# ── IL DOCUMENTO NON ANCORA SUL MODELLO ─────────────────────────────
+#   Una matrice senza la colonna azione_processo_codename e' di un documento
+#   che non e' stato portato al modello: E_SCRIPT_CHIAMATA_NON_VALIDA, come una
+#   testata che la mappa (script.fn_doc_stato_modello) non conosce.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261025-09-create-fn-doc-passaggio-mctit.yaml
+
+  - changeSet:
+      id: 20261025-09-create-fn-doc-passaggio
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        BB script.fn_doc_passaggio(regclass, bigint, bigint): la riga viva della matrice di
+        una testata per il passaggio (da, a), con manuale e azione_processo_codename. Lettore
+        unico per verbo, capability e backend. Brief: brief-modello-documento-vendita §7 (M-3).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_doc_stato_modello';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION script.fn_doc_passaggio(
+                  p_testata     regclass,
+                  p_stato_da_id bigint,
+                  p_stato_a_id  bigint)
+               RETURNS TABLE(manuale boolean,
+                             azione_processo_codename config.azioni_processo.permission_codename%TYPE)
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  -- Gli stati arrivano da uno qualunque dei vocabolari della
+                  -- mappa: bigint in tutti, nessuna colonna comune a cui
+                  -- ancorarli. I nomi vengono dalla mappa.
+                  v_matrice regclass;
+                  v_col_da  text;
+                  v_col_a   text;
+                  v_vivo    text;
+                  v_filtro  text;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo: la riga viva della matrice per il passaggio
+                  --   (da, a) di una testata. Zero righe: il passaggio non e'
+                  --   nella matrice. manuale = false: passaggio di processo.
+                  -- =========================================================
+                  SELECT m.matrice, m.colonna_da, m.colonna_a, m.colonna_vivo, m.filtro
+                    INTO v_matrice, v_col_da, v_col_a, v_vivo, v_filtro
+                    FROM script.fn_doc_stato_modello(p_testata) m;
+
+                  IF v_matrice IS NULL
+                     OR NOT EXISTS (SELECT 1
+                                      FROM pg_catalog.pg_attribute a
+                                     WHERE a.attrelid = v_matrice
+                                       AND a.attname  = 'azione_processo_codename'
+                                       AND a.attnum   > 0
+                                       AND NOT a.attisdropped) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_doc_passaggio', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('testata', p_testata::text,
+                                             'matrice', v_matrice::text),
+                          NULL::uuid,
+                          'script.fn_doc_passaggio',
+                          'p_testata: una testata portata al modello del documento (matrice con azione_processo_codename)');
+                  END IF;
+
+                  RETURN QUERY EXECUTE format(
+                      'SELECT COALESCE((t.meta ->> ''manuale'')::boolean, true),'
+                      '       t.azione_processo_codename'
+                      '  FROM %s t'
+                      ' WHERE t.%I = $1 AND t.%I = $2 AND t.%I IS TRUE %s',
+                      v_matrice, v_col_da, v_col_a, v_vivo, v_filtro)
+                    USING p_stato_da_id, p_stato_a_id;
+              END;
+              $function$;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION script.fn_doc_passaggio(p_testata regclass, p_stato_da_id bigint, p_stato_a_id bigint)
+                IS 'BB del modello del documento: la riga VIVA della matrice di una testata per il passaggio (stato da, stato a), con manuale (false = passaggio di processo, lo fa un altro verbo: non si chiede a mano) e azione_processo_codename (l''azione che il passaggio chiede, NULL = basta il permesso sul documento). Zero righe: il passaggio non e'' nella matrice. Lettore unico per il verbo (script.fn_guard_passaggio), le capability (fn_available_actions_ddt / _reso) e il backend (403 prima della transazione). Testata fuori mappa o matrice senza la colonna dell''azione (documento non ancora portato al modello): E_SCRIPT_CHIAMATA_NON_VALIDA. Brief: brief-modello-documento-vendita §7 (M-3, S-2).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_doc_passaggio(regclass, bigint, bigint);

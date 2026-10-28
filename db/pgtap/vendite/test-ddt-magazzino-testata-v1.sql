@@ -18,6 +18,15 @@
 --   7) prelievo con seriale e quantita' diversa da 1 -> 23514
 --   8) vendite.ddt_righe non ha piu' la colonna lotto
 --   9) vendite.ddt_righe non ha piu' la colonna seriale
+--
+-- rev 2026-10-25 (brief-modello-documento-vendita §7, giro 5): l'emissione
+--   della bolla «senza» passa da dbops.fn_pgtap_porta_a_stato (il verbo): lo
+--   stato della bolla non si cambia piu' con un UPDATE diretto, per nessuna
+--   bolla (E_DOC_STATO_SOLO_DAL_VERBO).
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): la bolla emessa del test 5 dal
+--   builder dbops.fn_pgtap_crea_ddt_senza_ordine (EMESSO, articolo non gestito, magazzino
+--   «altro»), separata dalla «senza» del test 4 che resta in bozza; le testate dei test 2-3
+--   (il default e' il caso) e le righe dei prelievi (6-7) restano a mano.
 -- ------------------------------------------------------------
 BEGIN;
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
@@ -68,22 +77,23 @@ SELECT is(
     (SELECT mag_x FROM _fix),
     '3) nata con un magazzino: tiene il suo (il default non sovrascrive)');
 
--- 4-5) immutabile fuori bozza. La bolla «senza» si emette con una riga di un
---      articolo NON gestito: non muove merce, quindi l'UPDATE diretto e' ammesso.
+-- 4-5) immutabile fuori bozza. In bozza si cambia sulla bolla «senza»; fuori
+--      bozza lo si prova su una bolla EMESSA dal builder della bolla senza
+--      ordine (riga di un articolo NON gestito, emissione col verbo), nata sul
+--      magazzino «altro»: l'UPDATE verso il predefinito e' un cambio vero.
 SELECT lives_ok(
     format('UPDATE vendite.ddt SET magazzino_id = %s WHERE id = %s', (SELECT mag_x FROM _fix), (SELECT senza FROM _d)),
     '4) in bozza il magazzino si cambia');
-DO $e$
-DECLARE v_iva integer;
-BEGIN
-    SELECT i.id INTO v_iva FROM config.iva i WHERE i.attivo ORDER BY i.id LIMIT 1;
-    INSERT INTO vendite.ddt_righe (ddt_id, riga_nr, articolo_id, descrizione, qta_operativa, quantita, prezzo_unitario, iva_id)
-    SELECT (SELECT senza FROM _d), 1, art_n, 'non gestito', 1, 1, 10, v_iva FROM _fix;
-    UPDATE vendite.ddt SET stato_doc_ddt_id = (SELECT id FROM config.stati_doc_ddt WHERE codice_interno = 'EMESSO')
-     WHERE id = (SELECT senza FROM _d);
-END $e$;
+CREATE TEMP TABLE _em AS
+SELECT b.ddt_id
+  FROM dbops.fn_pgtap_crea_ddt_senza_ordine('L3TE emessa', 'EMESSO',
+           p_billing_account_id => (SELECT billing_account_id FROM _m),
+           p_quantita           => 1,
+           p_prezzo             => 10,
+           p_articolo_id        => (SELECT art_n FROM _fix),
+           p_magazzino_id       => (SELECT mag_x FROM _fix)) b;
 SELECT throws_like(
-    format('UPDATE vendite.ddt SET magazzino_id = %s WHERE id = %s', (SELECT mag_p FROM _fix), (SELECT senza FROM _d)),
+    format('UPDATE vendite.ddt SET magazzino_id = %s WHERE id = %s', (SELECT mag_p FROM _fix), (SELECT ddt_id FROM _em)),
     '%si sceglie solo in bozza%',
     '5) fuori bozza il magazzino non si cambia: E_DDT_MAGAZZINO_IMMUTABILE');
 

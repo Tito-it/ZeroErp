@@ -1,0 +1,90 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA NASCITA DI UNA REVISIONE CHIAMA LA PROIEZIONE
+#   Brief: brief-modello-documento-vendita §13 (giro 9; O-2 di Tid,
+#   2026-10-26).
+#
+#   Il trigger resta (AFTER INSERT, _z90_): prende la causa su ogni strada,
+#   vendite.fn_crea_revisione_offerta o un INSERT di una revisione da
+#   qualunque altra parte. Perde il suo UPDATE del padre, che la porta
+#   fermerebbe (il trigger gira come chi scrive, la porta vuole il
+#   proprietario): lo stato del padre lo scrive la proiezione,
+#   vendite.fn_offerta_proietta_stato_revisione (20261026-17), che porta con
+#   se' anche il guard sull'arita' dello stato di superamento.
+#
+#   Corpo dalla doc auto-generata (vendite/funzioni/trgfn_offerte_commerciali_
+#   revisione). Trigger invariato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261026-18-update-trgfn-offerte-revisione-proiezione-mctit.yaml
+
+  - changeSet:
+      id: 20261026-18-update-trgfn-offerte-revisione-proiezione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.trgfn_offerte_commerciali_revisione: alla nascita di una revisione chiama la
+        proiezione vendite.fn_offerta_proietta_stato_revisione invece dell'UPDATE del padre.
+        Brief: brief-modello-documento-vendita §13 (O-2).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite' AND p.proname = 'fn_offerta_proietta_stato_revisione';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_offerte_commerciali_revisione()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: alla nascita di una rev.N+1 (revisione_padre_id NOT NULL)
+              --   il padre passa nello stato di superamento. Lo scrive la
+              --   proiezione vendite.fn_offerta_proietta_stato_revisione, che
+              --   guarda le revisioni vive; la matrice la giudica il guard _a10_
+              --   di transizione, sul padre.
+              -- rev 2026-08-28: lookup dal catalogo (is_superato) + guard sull'arita'.
+              -- rev 2026-10-26 (20261026-18, brief-modello-documento-vendita §13,
+              --   O-2): l'UPDATE del padre e il guard sull'arita' passano alla
+              --   proiezione, che scrive attraverso la porta. Il trigger resta come
+              --   chiamante: prende la causa su ogni strada.
+              BEGIN
+                  -- Se non e' una revisione (prima rev.), niente da fare.
+                  IF NEW.revisione_padre_id IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  PERFORM vendite.fn_offerta_proietta_stato_revisione(NEW.revisione_padre_id);
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.trgfn_offerte_commerciali_revisione()
+              IS 'AFTER INSERT su vendite.offerte_commerciali (_z90_): alla nascita di una revisione (revisione_padre_id NOT NULL) chiama la proiezione vendite.fn_offerta_proietta_stato_revisione sul padre, che lo porta nello stato di superamento (is_superato, guard sull''arita'') attraverso la porta; la matrice la giudica il guard di transizione. rev 2026-10-26 (20261026-18, brief-modello-documento-vendita §13, O-2): prima scriveva il padre con un UPDATE suo, che la porta sullo stato ferma.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              SELECT 1;

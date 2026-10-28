@@ -95,15 +95,20 @@ SELECT ok(
 --   ricostruito da zero misura le stesse cose.
 --   ⚠️ La competenza e' spostata nel futuro per non incrociare i lotti veri
 --   ne' la fixture del test «annulla lotto vuoto», che usa +2 mesi.
+-- rev 2026-10-27 (lotto 4 di D7): il cliente si COSTRUISCE
+--   (dbops.fn_pgtap_crea_cliente_ba) e l'emittente e' quello di chi agisce
+--   (script.fn_pgtap_emittente_sr_operatore). Prima utility ed emittente si
+--   pescavano dal primo BA e dalla prima fattura: da zero non c'erano.
+CREATE TEMP TABLE tmp_cli_ann AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('annulla lotto task runs');
+
 CREATE TEMP TABLE tmp_lotto_ann AS
 SELECT vendite.fn_get_or_create_lotto(
          p_competenza_mese             => (date_trunc('month', script.fn_data_operativa()) + interval '4 month')::date,
          p_tipo_doc_fiscale_id         => (SELECT id FROM config.tipi_doc_fiscale
                                             WHERE attivo IS TRUE ORDER BY id LIMIT 1),
-         p_utility_id                  => (SELECT ba.utility_id FROM anagrafiche.billing_account ba
-                                            ORDER BY ba.id LIMIT 1),
-         p_emittente_soggetto_ruolo_id => (SELECT f.emittente_soggetto_ruolo_id FROM vendite.fatture f
-                                            ORDER BY f.id LIMIT 1),
+         p_utility_id                  => (SELECT utility_id FROM tmp_cli_ann),
+         p_emittente_soggetto_ruolo_id => script.fn_pgtap_emittente_sr_operatore(),
          p_tipo_lotto                  => 'MASSIVO') AS id;
 
 -- La corsa: aperta con la primitiva della pipeline, non con un INSERT a mano.

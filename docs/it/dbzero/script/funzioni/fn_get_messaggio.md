@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_get_messaggio(p_codice text, p_valore text, p_lingua text)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

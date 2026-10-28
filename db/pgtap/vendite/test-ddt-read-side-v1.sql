@@ -1,6 +1,10 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine (in bozza); resta scritta a mano l'emissione del test 11, che e' l'asserzione.
+-- rev 2026-10-25 (brief-modello-documento-vendita §7, giro 5): lo stato si cambia solo dal verbo
+--   (la porta rifiuta l'UPDATE diretto) e «emetti» si nasconde a chi non ha emetti_ddt. Il file
+--   prova la lettura, non il permesso: l'operatore riceve emetti_ddt, e il test 11 emette col
+--   verbo vendite.fn_cambia_stato_ddt. Attese invariate.
 -- pgTAP test per Zero ERP
 -- Test: read-side DDT (brief §13)
 --   vendite.vw_ddt_lista + script.fn_available_actions_ddt + seed lista ui
@@ -83,6 +87,11 @@ SELECT cmp_ok(
 CREATE TEMP TABLE _az AS SELECT * FROM dbops.fn_pgtap_crea_emittente_operatore();
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _az)); END $ctx$;
 CREATE TEMP TABLE _m AS SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('pgTAP ddt read-side');
+-- rev 2026-10-25 (giro 5): si prova la lettura, non il permesso — l'operatore
+--   in sessione riceve emetti_ddt (azione «emetti» e verbo del test 11).
+DO $az$ BEGIN
+  PERFORM dbops.fn_pgtap_concedi_azione(NULLIF(current_setting('app.current_user_id', true), '')::integer, 'emetti_ddt');
+END $az$;
 
 CREATE TEMP TABLE tmp_refs AS
 SELECT
@@ -163,10 +172,10 @@ SELECT ok(
 -- 11) Emissione DRAFT->EMESSO
 -- ============================================================
 -- La transizione e' il caso: resta scritta qui, sotto i guard veri
--- (causale e CON dal builder).
+-- (causale e CON dal builder). rev 2026-10-25 (giro 5): dal verbo, non
+-- dall'UPDATE diretto che la porta ora rifiuta.
 SELECT lives_ok(
-  format($q$UPDATE vendite.ddt SET stato_doc_ddt_id=
-             (SELECT stato_ddt_emesso_id FROM tmp_refs) WHERE id=%s$q$,
+  format($q$SELECT * FROM vendite.fn_cambia_stato_ddt(%s, 'EMESSO')$q$,
          (SELECT ddt_id FROM tmp_ddt)),
   '11) emissione DRAFT->EMESSO consentita'
 );

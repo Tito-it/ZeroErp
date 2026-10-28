@@ -1,0 +1,158 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL VERBO DELLA FATTURA: LA PIPELINE LA MUOVE DA QUI
+#   Brief: brief-modello-documento-vendita §15 (giro 11; F-1, Q-F3 di Tid,
+#   2026-10-27).
+#
+# ── PERCHE' ─────────────────────────────────────────────────────────
+#   F-1: la fattura cambia stato anche da sola, non solo col lotto. Q-F3: il
+#   giro scrive il verbo della fattura sulle righe solo_fattura che ci sono,
+#   e la pipeline lo chiama al posto degli UPDATE; nessuno stato nuovo (lo
+#   scarto e la registrazione dello SDI li aggiunge il cantiere dell'invio,
+#   sulla matrice e su questo verbo).
+#   Oggi le righe della fattura sono TUTTE di processo (manuale = false nel
+#   CSV): le scrive la pipeline, che ne e' la causa. Per questo il verbo e'
+#   di processo: la sola scrittura comune, senza la prima riga.
+#
+# ── LA REGOLA ───────────────────────────────────────────────────────
+#   * lo stato che la fattura ha gia': no-op;
+#   * un passaggio MANUALE della matrice (riga con manuale = true) non si
+#     scrive da qui: e' di un verbo con la prima riga (oggi non ce ne sono;
+#     li portera' l'esito SDI): E_LOTTO_PARAMETRO_NON_COERENTE (parametro
+#     passaggio_manuale);
+#   * il resto lo giudica il guard di transizione della fattura
+#     (vendite.trgfn_fatture_guard_stato) all'UPDATE.
+#   Chiamanti: vendite.fn_sync_lotto_fatture_stato (la fattura segue il
+#   lotto), vendite.fn_numera_fattura_opz_emessa, vendite.fn_close_giornaliero_lotto.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261027-10-create-fn-fattura-proietta-stato-mctit.yaml
+
+  - changeSet:
+      id: 20261027-10-create-fn-fattura-proietta-stato
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_fattura_proietta_stato(id fattura, id stato): il verbo di processo della fattura,
+        con la scrittura comune; lo chiamano la sync col lotto, la numerazione e la chiusura del
+        giornaliero. Brief: brief-modello-documento-vendita §15 (F-1, Q-F3).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "3"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname IN ('fn_doc_scrivi_stato', 'fn_doc_passaggio',
+                                   'fn_scope_ef_whitelist_via_fattura');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION vendite.fn_fattura_proietta_stato(
+                  p_fattura_id           vendite.fatture.id%TYPE,
+                  p_stato_doc_fiscale_id config.stati_doc_fiscale.id%TYPE)
+               RETURNS void
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente   config.user_override_azioni.auth_user_id%TYPE;
+                  v_stato_da vendite.fatture.stato_doc_fiscale_id%TYPE;
+                  v_manuale  boolean;  -- la riga del passaggio e' manuale (script.fn_doc_passaggio)
+              BEGIN
+                  -- ==========================================================
+                  -- Scopo: lo stato fiscale di una fattura, scritto dalla
+                  --   pipeline che ne e' la causa (passaggio di processo,
+                  --   scrittura comune).
+                  -- rev 2026-10-27 (20261027-10, brief-modello-documento-
+                  --   vendita §15): nasce, al posto degli UPDATE della pipeline.
+                  -- ==========================================================
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+
+                  IF p_fattura_id IS NULL OR p_fattura_id <= 0 OR p_stato_doc_fiscale_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_fattura_proietta_stato',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_fattura_id', p_fattura_id,
+                                             'p_stato_doc_fiscale_id', p_stato_doc_fiscale_id),
+                          NULL::uuid, 'vendite.fn_fattura_proietta_stato',
+                          'p_fattura_id (maggiore di zero) e p_stato_doc_fiscale_id obbligatori');
+                  END IF;
+
+                  -- La fattura FOR UPDATE, nel perimetro (predicato della policy).
+                  SELECT f.stato_doc_fiscale_id
+                    INTO v_stato_da
+                    FROM vendite.fatture f
+                   WHERE f.id = p_fattura_id
+                     AND script.fn_scope_ef_whitelist_via_fattura(v_utente, f.id)
+                     FOR UPDATE OF f;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_fattura_proietta_stato',
+                          'E_FATTURA_NON_TROVATA', jsonb_build_object('fattura_id', p_fattura_id),
+                          NULL::uuid, p_fattura_id::text);
+                  END IF;
+
+                  -- Lo stato che ha gia': niente da scrivere.
+                  IF v_stato_da IS NOT DISTINCT FROM p_stato_doc_fiscale_id THEN
+                      RETURN;
+                  END IF;
+
+                  -- Un passaggio manuale non e' di processo: non si scrive da qui.
+                  SELECT p.manuale INTO v_manuale
+                    FROM script.fn_doc_passaggio('vendite.fatture'::regclass,
+                                                 v_stato_da, p_stato_doc_fiscale_id) p;
+                  IF v_manuale IS TRUE THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_fattura_proietta_stato',
+                          'E_LOTTO_PARAMETRO_NON_COERENTE',
+                          jsonb_build_object('parametro', 'passaggio_manuale',
+                                             'fattura_id', p_fattura_id,
+                                             'stato_da_id', v_stato_da,
+                                             'stato_a_id', p_stato_doc_fiscale_id),
+                          NULL::uuid,
+                          concat('il passaggio ', v_stato_da, ' -> ', p_stato_doc_fiscale_id,
+                                 ' della fattura e'' manuale: non lo scrive la pipeline'),
+                          p_fattura_id::text);
+                  END IF;
+
+                  -- La scrittura comune, attraverso la porta: il guard di
+                  -- transizione della fattura giudica la matrice.
+                  PERFORM script.fn_doc_scrivi_stato('vendite.fatture'::regclass,
+                                                     p_fattura_id, p_stato_doc_fiscale_id);
+              END;
+              $function$;
+
+              -- DEFINER: EXECUTE solo all'applicazione (la pipeline gira come app).
+              REVOKE EXECUTE ON FUNCTION vendite.fn_fattura_proietta_stato(
+                  vendite.fatture.id%TYPE, config.stati_doc_fiscale.id%TYPE) FROM PUBLIC;
+              GRANT EXECUTE ON FUNCTION vendite.fn_fattura_proietta_stato(
+                  vendite.fatture.id%TYPE, config.stati_doc_fiscale.id%TYPE) TO zeroerp_app;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.fn_fattura_proietta_stato(
+                  vendite.fatture.id%TYPE, config.stati_doc_fiscale.id%TYPE)
+                IS 'Il verbo della FATTURA (F-1, Q-F3): lo stato fiscale di una fattura, scritto dalla pipeline che ne e'' la causa. Oggi le righe della fattura in config.stati_doc_fiscale_transizioni (solo_fattura) sono tutte di processo, quindi il verbo e'' di processo: la sola scrittura comune (script.fn_doc_scrivi_stato, attraverso la porta), senza la prima riga. Regola: lo stato che la fattura ha gia'' = no-op; un passaggio la cui riga e'' manuale (script.fn_doc_passaggio) non si scrive da qui (E_LOTTO_PARAMETRO_NON_COERENTE, parametro passaggio_manuale): e'' di un verbo con la prima riga, che arrivera'' con l''esito SDI; il resto lo giudica il guard di transizione vendite.trgfn_fatture_guard_stato. Chiamanti: vendite.fn_sync_lotto_fatture_stato (la fattura segue il lotto), vendite.fn_numera_fattura_opz_emessa, vendite.fn_close_giornaliero_lotto. SECURITY DEFINER con search_path bloccato: la fattura FOR UPDATE col predicato della policy (script.fn_scope_ef_whitelist_via_fattura; fuori perimetro E_FATTURA_NON_TROVATA). EXECUTE solo all''applicazione. Brief: brief-modello-documento-vendita §15 (F-1, Q-F3, Tid 2026-10-27).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_fattura_proietta_stato(bigint, bigint);

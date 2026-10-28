@@ -42,6 +42,7 @@ from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.openapi_params import param_ricerca_full
+from apps.core.api.permissions import PassaggioDocumento
 from apps.core.api.payload_validators import (
     corpo_oggetto,
     optional_int,
@@ -73,8 +74,17 @@ from apps.documenti.api.multipart_helpers import extract_allegati
 #         - emetti_response_key: chiave del risultato transizione nella
 #                             response emetti (es. "ordine", "ddt"). Ignorato se
 #                             emetti_call is None.
-#         - emetti_post_permission: azione di processo per emetti (opzionale,
-#                             es. "cambia_stato_preventivi")
+#         - emetti_passaggio: la testata di un documento sul modello (es.
+#                             "vendite.ddt"): l'azione la dice la riga del
+#                             passaggio verso lo stato di emissione, letto dal
+#                             vocabolario a ogni richiesta (`PassaggioDocumento`
+#                             con `stato_del_modello="emissione"`, M-3; B-2 di
+#                             brief-modello-documento-vendita §8.11, che ritira
+#                             lo stato fissato qui). Senza, l'emissione chiede il livello sul
+#                             documento. ⛔ `emetti_post_permission` (l'azione
+#                             dichiarata a mano) e' ritirato il 2026-10-25: il
+#                             suo ultimo consumatore, il preventivo, e' passato
+#                             al modello (brief-modello-documento-vendita §8.7)
 #         - area_funzionale:  area delle view (default "vendite")
 #         - model_permission: oggetto del catalogo permessi della sorgente
 #                             (es. ("vendite", "preventivo")): i documenti sono
@@ -92,7 +102,7 @@ def build_documenti_sorgente_views(
     doc_service: Callable[[], Any],
     emetti_call: Callable[[Request, int], dict[str, Any]] | None = None,
     emetti_response_key: str | None = None,
-    emetti_post_permission: str | None = None,
+    emetti_passaggio: str | None = None,
     area_funzionale: str = "vendite",
     model_permission: tuple[str, str] | None = None,
 ) -> SimpleNamespace:
@@ -177,8 +187,10 @@ def build_documenti_sorgente_views(
             })
 
     Emetti.__doc__ = f"`POST .../<sorgente_id>/emetti/` (multipart) — {schema_prefix}."
-    if emetti_post_permission is not None:
-        Emetti.post_permission = emetti_post_permission
+    if emetti_passaggio is not None:
+        Emetti.post_passaggio = PassaggioDocumento(
+            testata=emetti_passaggio, documento_kwarg="sorgente_id", stato_del_modello="emissione",
+        )
     # Sorgenti senza emissione manuale (FATTURA): la view emetti non viene
     # esposta (namespace.emetti = None) → il dominio non ne cabla la rotta.
     # La classe resta definita ma inerte (closure su emetti_call=None mai chiamata).

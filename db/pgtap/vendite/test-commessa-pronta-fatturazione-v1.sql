@@ -23,11 +23,20 @@
 --   6. La transizione, quando il check e' pulito, passa davvero
 --   7. La transizione, quando il check non e' pulito, viene RIFIUTATA
 --
+-- rev 2026-10-26 (brief-modello-documento-vendita §14, giro 10): la porta sulla
+--   commessa rifiuta l'UPDATE diretto dello stato. I test 6 e 7 passano dal verbo
+--   vendite.fn_cambia_stato_commessa, con l'azione cambia_stato_commessa
+--   all'utente del contesto (il file prova la regola delle righe pronte, non il
+--   permesso).
+-- ⚠️ Attesa precisata: test 7 da throws_ok sul solo P0001 a throws_like sulla
+--   frase di E_COMMESSA_NESSUNA_RIGA_APPROVATA: col solo P0001 sarebbe verde
+--   anche per la porta o per il permesso, cioe' per la ragione sbagliata.
 -- FIXTURE COSTRUITA, NON PESCATA. Le due commesse di prova nascono qui dentro
--- copiando i riferimenti di una commessa esistente (billing account, utility,
--- emittente): cosi' i sei casi valgono anche su un database appena creato, e
--- non passano in silenzio per assenza di dati. Il preflight fallisce forte se
--- manca il minimo indispensabile.
+-- dai builder dbops (rev 2026-10-27, lotto 4 di D7: prima copiavano i
+-- riferimenti di una commessa esistente, che da zero non c'era): cosi' i sei
+-- casi valgono anche su un database appena creato, e non passano in silenzio
+-- per assenza di dati. Il preflight fallisce forte se la riga di A non e'
+-- tipizzata.
 --
 -- IMPORTANTE: nessun SAVEPOINT/ROLLBACK TO SAVEPOINT (rompe state pgTAP).
 -- ------------------------------------------------------------
@@ -51,77 +60,54 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SELECT plan(7);
 
 -- vw_dash_competenza_attivita filtra per scope emittente leggendo la GUC
--- app.current_user_id: senza, fn_get_emittenti_scope_sr_ids risponde '{}' e la
--- vista non mostra NULLA. Si impersona un super admin (scope = tutto), che e'
--- il contesto in cui la dashboard viene guardata davvero.
-DO $$
-DECLARE v_sa integer;
-BEGIN
-  SELECT au.id INTO v_sa
-    FROM django.auth_user au
-   WHERE au.is_active AND script.fn_is_super_admin(au.id)
-   ORDER BY au.id LIMIT 1;
-  PERFORM set_config('app.current_user_id', coalesce(v_sa::text, ''), true);
-END $$;
+-- app.current_user_id. rev 2026-10-27 (lotto 4 di D7): non si impersona piu'
+-- «il primo super admin» di django.auth_user. Era una pesca anche quella:
+-- sullo scratch non ce n'e' nessuno (la GUC restava vuota e il builder apriva
+-- un mondo suo), su dev e' l'utente 1, che non ha un'azienda, e il builder si
+-- ferma. Le commesse sono dell'azienda dell'operatore del test, e il suo scope
+-- le vede: e' il contesto giusto.
 
 -- ============================================================
 -- Fixture
 -- ============================================================
+-- rev 2026-10-27 (lotto 4 di D7): le due commesse si COSTRUISCONO
+--   (dbops.fn_pgtap_crea_commessa, madre vendite.fn_get_or_create_commessa,
+--   in BOZZA; la riga pronta di A da dbops.fn_pgtap_crea_commessa_attivita,
+--   APPROVATA + NON_EMESSA). Prima copiavano BA, emittente e riga da una
+--   commessa esistente pescata con LIMIT 1: su un database ricostruito da
+--   zero non ce n'era nessuna. B riusa il cliente di A.
+CREATE TEMP TABLE _fx_cm_a AS
+SELECT * FROM dbops.fn_pgtap_crea_commessa('pronta fatturazione A', NULL, NULL, true);
+
+CREATE TEMP TABLE _fx_cm_b AS
+SELECT * FROM dbops.fn_pgtap_crea_commessa(
+    'pronta fatturazione B', NULL, (SELECT billing_account_id FROM _fx_cm_a), false);
+
 CREATE TEMP TABLE _fx_src AS
-SELECT c.id            AS commessa_id,
-       c.billing_account_id,
-       c.utility_id,
-       c.emittente_soggetto_ruolo_id,
+SELECT a.commessa_id,
+       a.billing_account_id,
+       a.utility_id,
+       a.emittente_soggetto_ruolo_id,
        ca.id           AS riga_id
-  FROM vendite.commesse c
-  JOIN vendite.commesse_attivita ca ON ca.commessa_id = c.id
- WHERE ca.tipo_doc_fiscale_id IS NOT NULL
- ORDER BY c.id, ca.id
- LIMIT 1;
+  FROM _fx_cm_a a
+  JOIN vendite.commesse_attivita ca ON ca.id = a.attivita_id
+ WHERE ca.tipo_doc_fiscale_id IS NOT NULL;
 
 SELECT ok(
     (SELECT count(*) FROM _fx_src) = 1,
     '1. Preflight: esiste almeno una commessa con una riga tipizzata da cui copiare i riferimenti'
 );
 
--- Commessa A: BOZZA, con una riga pronta (APPROVATA + NON_EMESSA + tipo_doc).
-INSERT INTO vendite.commesse (codice, billing_account_id, utility_id,
-                              emittente_soggetto_ruolo_id, stato_commessa_id)
-SELECT 'PGTAP-PRONTA-A', s.billing_account_id, s.utility_id,
-       s.emittente_soggetto_ruolo_id,
-       (SELECT id FROM vendite.stati_commessa WHERE codice_interno = 'BOZZA')
-  FROM _fx_src s;
-
--- Commessa B: BOZZA, senza alcuna riga.
-INSERT INTO vendite.commesse (codice, billing_account_id, utility_id,
-                              emittente_soggetto_ruolo_id, stato_commessa_id)
-SELECT 'PGTAP-PRONTA-B', s.billing_account_id, s.utility_id,
-       s.emittente_soggetto_ruolo_id,
-       (SELECT id FROM vendite.stati_commessa WHERE codice_interno = 'BOZZA')
-  FROM _fx_src s;
-
 CREATE TEMP TABLE _fx AS
-SELECT (SELECT id FROM vendite.commesse WHERE codice = 'PGTAP-PRONTA-A') AS com_a,
-       (SELECT id FROM vendite.commesse WHERE codice = 'PGTAP-PRONTA-B') AS com_b;
+SELECT (SELECT commessa_id FROM _fx_cm_a) AS com_a,
+       (SELECT commessa_id FROM _fx_cm_b) AS com_b;
 
--- La riga di A: copia integrale di una riga reale, riagganciata alla commessa A
--- e forzata nello stato che il motore raccoglie.
-INSERT INTO vendite.commesse_attivita (
-    commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita,
-    uom_id, quantita, competenza_mese, competenza_dal, competenza_al,
-    prezzo_snapshot, tipo_doc_fiscale_id, stato_approvazione, stato_emissione,
-    sorgente_tipo_id, sorgente_uid)
--- La copia e' una riga NORMALE e ha una sorgente (vincolo 20261012-27): quella
--- della commessa di test, non la sorgente della riga reale (che puntando a un
--- documento vero ne riproietterebbe lo stato).
-SELECT (SELECT com_a FROM _fx), ca.segment_key, ca.articolo_id, ca.istanza_utility_id,
-       ca.data_attivita, ca.uom_id, ca.quantita, ca.competenza_mese,
-       ca.competenza_dal, ca.competenza_al, ca.prezzo_snapshot,
-       ca.tipo_doc_fiscale_id, 'APPROVATA', 'NON_EMESSA',
-       (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
-       (SELECT com_a FROM _fx)::text
-  FROM vendite.commesse_attivita ca
- WHERE ca.id = (SELECT riga_id FROM _fx_src);
+-- rev 2026-10-27 (lotto 4 di D7): l'azione cambia_stato_commessa si concede
+--   QUI, prima dei test 2-4, non piu' prima del 6: da 20261026-35 /
+--   20261027-47 fn_available_actions_commessa NASCONDE «rendi pronta» a chi
+--   non ha l'azione (permesso => nascondi). Il file prova la regola delle
+--   righe pronte, non il permesso (rev 2026-10-26 in testa).
+SELECT dbops.fn_pgtap_concedi_azione(current_setting('app.current_user_id')::integer, 'cambia_stato_commessa');
 
 -- ============================================================
 -- 2) BOZZA con righe pronte -> rendi_pronta abilitata
@@ -195,9 +181,7 @@ SELECT is(
 -- ============================================================
 -- 6) La transizione lecita passa e rende la commessa emittibile
 -- ============================================================
-UPDATE vendite.commesse
-   SET stato_commessa_id = (SELECT id FROM vendite.stati_commessa WHERE codice_interno = 'PRONTA_FATTURAZIONE')
- WHERE id = (SELECT com_a FROM _fx);
+SELECT * FROM vendite.fn_cambia_stato_commessa((SELECT com_a FROM _fx), 'PRONTA_FATTURAZIONE');
 
 SELECT ok(
     (SELECT sc.codice_interno = 'PRONTA_FATTURAZIONE' AND sc.emittibile IS TRUE
@@ -210,12 +194,10 @@ SELECT ok(
 -- ============================================================
 -- 7) La transizione non lecita viene rifiutata dal guard
 -- ============================================================
-SELECT throws_ok(
-    format($$UPDATE vendite.commesse
-                SET stato_commessa_id = (SELECT id FROM vendite.stati_commessa WHERE codice_interno = 'PRONTA_FATTURAZIONE')
-              WHERE id = %s$$, (SELECT com_b FROM _fx)),
-    'P0001',
-    NULL,
+SELECT throws_like(
+    format($$SELECT * FROM vendite.fn_cambia_stato_commessa(%s, 'PRONTA_FATTURAZIONE')$$,
+           (SELECT com_b FROM _fx)),
+    '%impossibile passare a PRONTA_FATTURAZIONE senza almeno una riga approvata%',
     '7. Commessa senza righe pronte: il guard rifiuta il passaggio a PRONTA_FATTURAZIONE'
 );
 

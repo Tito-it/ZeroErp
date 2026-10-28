@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_check_ba_coppia_emittente_omogenea(p_figlio_id bigint, p_padre_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

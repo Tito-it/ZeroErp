@@ -223,14 +223,12 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     "E_CONTRATTO_NON_TROVATO": "show_error_banner",  # classe NON_TROVATO
     "E_CONTRATTO_RIGA_NON_TROVATA": "show_error_banner",  # classe NON_TROVATO
     # Guard DB transizione stato contratti (trgfn_contratti_a10_guard_
-    # transizione_stato, landed 2026-04-26). Rifiuta transizioni non
-    # ammesse: DRAFT->ATTIVO consentita; ATTIVO->CESSATO consentita
-    # SOLO con valido_al < oggi; CESSATO terminale; altre vietate.
-    # Il service applicativo ha la stessa regola fail-safe data-driven:
-    # se l'utente sceglie data futura nel dialog "Cessa contratto", il
-    # service NON chiama update_stato (cessazione programmata) — il job
-    # notturno applica CESSATO quando la data scade. Questo trigger
-    # interviene su bypass del service (UPDATE diretto via psql).
+    # transizione_stato, landed 2026-04-26): rifiuta le transizioni che la
+    # matrice non ammette. Dal 2026-10-26 lo stato lo scrivono solo i verbi
+    # (fn_cambia_stato_contratto, fn_cessa_contratto, fn_annulla_contratto);
+    # la regola della data di cessazione (obbligatoria, non retroattiva,
+    # futura = programmata) sta nel verbo della cessazione, non qui
+    # (brief-modello-documento-vendita §11.6).
     "E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA": "show_toast_error",  # classe CONFLITTO_STATO
     "E_CONTRATTO_UTILITY_SENZA_DIMENSIONE_TIPO_CLASSE_VIETATI": "highlight_form_fields",  # classe DATO_ERRATO
     "E_CONTRATTO_UTILITY_TIPO_CLASSE_OBBLIGATORI": "highlight_form_fields",  # classe DATO_ERRATO
@@ -367,6 +365,13 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     "E_IDEMPOTENCY_IN_PROGRESS": "show_retry_dialog",  # classe CONFLITTO_STATO
     "E_IDENTITA_NON_ATTIVA": "redirect_login",  # classe NON_AUTENTICATO
     "E_ID_FISCALI_DIVERSI": "highlight_form_fields",  # classe DATO_ERRATO
+    # trgfn_indirizzi_dettaglio_guard_chiave (brief-db-unicita-civico-
+    # indirizzi-dettaglio, 2026-10-25): il guard dice il campo, ed e' un
+    # input del form indirizzo (civico, estensione, palazzina, scala, piano,
+    # interno). Il doppione (D6) e la via non risolta (D4) restano al banner:
+    # il primo e' l'indirizzo intero, la seconda si corregge nell'elenco vie.
+    "E_INDIRIZZO_CIVICO_NON_POSITIVO": "highlight_form_fields",  # classe DATO_ERRATO
+    "E_INDIRIZZO_DETTAGLIO_SENZA_LETTERE": "highlight_form_fields",  # classe DATO_ERRATO
     # Indirizzi documento (BB _indirizzi_documento_helpers, 5 domini):
     # sollevato da script.fn_snapshot_indirizzo (flusso picker) quando
     # origine_indirizzo_id non esiste piu' in anagrafiche.indirizzi.
@@ -392,7 +397,8 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     "E_NOTA_CHECK_VIOLATION": "highlight_form_fields",  # classe DATO_ERRATO
     "E_NOTA_FK": "highlight_form_fields",  # classe DATO_ERRATO
     # Codici cross-area: il service in apps/core/ scrive su qualunque partizione
-    # di vendite.note (PREVENTIVO/CONTRATTO/ORDINE/DDT/FATTURA/ATTIVITAFT) e in
+    # di vendite.note (PREVENTIVO/CONTRATTO/ORDINE_VENDITA/DDT_VENDITA/
+    # OFFERTA_COMMERCIALE/FATTURA/ATTIVITA) e in
     # prospettiva su tabelle note di altri schemi che adotteranno lo stesso pattern.
     "E_NOTA_VALIDATION": "highlight_form_fields",  # classe DATO_ERRATO
     "E_OFFERTA_ECCEZIONE_NON_TROVATA": "show_error_banner",  # classe NON_TROVATO

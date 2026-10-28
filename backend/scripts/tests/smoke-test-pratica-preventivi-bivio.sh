@@ -302,10 +302,16 @@ run_scenario() {
     [[ -n "$ORDINE_ID" && "$ORDINE_ID" != "None" ]] && log_ok "ordine agganciato alla pratica (id=$ORDINE_ID)" \
         || { log_fail "nessun ordine COLLEGATO alla pratica (handler post_smistamento)"; return 1; }
 
-    # 9013 CONFERMA_ORDINE: crea+avvia flusso, poi conferma ordine (auto-completa 9013)
+    # 9013 CONFERMA_ORDINE: crea+avvia flusso, poi conferma ordine (auto-completa 9013).
+    # ⭐ La conferma passa da «Emetti» (multipart): `POST /conferma/` e'
+    #    ritirato dal 2026-10-25 (Z-2, brief-modello-documento-vendita §9.6).
     crea_e_avvia_flusso "$T_CONF" "CONFERMA_ORDINE" || return 1
-    do_curl POST "/api/v1/vendite/ordini/${ORDINE_ID}/conferma/" "{}"
-    check "POST conferma ordine -> CONFERMATO (auto-completa 9013)" 200 || true
+    smoke_emetti ordini "${ORDINE_ID}"   # BB _smoke_documenti.sh
+    if [[ "$SMOKE_EMETTI_SENZA_MODELLO" == "1" ]]; then
+        log_skip "conferma ordine: nessun modello di documento per l'ordine, salto 9013/9014"
+        return 0
+    fi
+    check "POST emetti ordine -> CONFERMATO (auto-completa 9013)" 200 || true
     do_curl GET "/api/v1/pratiche/${PRATICA_ID}/flussi/${FLUSSO_ID}/"
     [[ "$(json_get "$LAST_BODY" "data.stato_codice_interno")" == "COMPLETATO" ]] \
         && log_ok "flusso CONFERMA_ORDINE COMPLETATO (auto su conferma)" || log_fail "CONFERMA_ORDINE non COMPLETATO"

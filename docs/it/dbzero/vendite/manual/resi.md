@@ -62,8 +62,10 @@ che non aveva mosso merce (articoli non gestiti, causale che non muove merce) no
 niente.
 
 **Quando** — alla conferma: la conferma è la presa in carico della merce, alla data del reso.
-Per questo la conferma e l'annullo sono due **operazioni del database** con un permesso proprio,
-*Conferma reso* (`conferma_reso`), chiesto sempre:
+Per questo la conferma e l'annullo sono due **operazioni del database**. Il permesso lo dice la riga
+del passaggio nella matrice: *Conferma reso* (`conferma_reso`) per la conferma e per l'annullo di un
+reso confermato; l'annullo di una bozza chiede solo il permesso sul reso (guida
+[Il modello del documento di vendita](/guide/modello-documento-di-vendita) §6):
 
 * [vendite.fn_conferma_reso](/dbzero/vendite/funzioni/fn_conferma_reso) — controlla la merce (il
   pulsante «Conferma» è spento col motivo quando manca qualcosa), crea da sé i rientri dove non
@@ -73,8 +75,7 @@ Per questo la conferma e l'annullo sono due **operazioni del database** con un p
   scrive gli storni dei carichi. Se la merce nel frattempo è già uscita di nuovo, l'annullo è
   rifiutato: il magazzino non va sotto zero per un annullo.
 
-Un reso che fa rientrare merce non si conferma né si annulla con una modifica diretta dello
-stato: lo impedisce la porta di
-[trgfn_resi_guard_transizione](/dbzero/vendite/funzioni/trgfn_resi_guard_transizione). Se un
+Nessun reso cambia stato con una modifica diretta: lo impedisce la porta comune
+[script.trgfn_doc_stato_solo_dal_verbo](/dbzero/script/funzioni/trgfn_doc_stato_solo_dal_verbo). Se un
 reso confermato restasse senza carico, lo segnala il presidio
 [dbops.vw_resi_confermati_senza_carico](/dbzero/dbops/views/vw_resi_confermati_senza_carico).

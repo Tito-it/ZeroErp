@@ -1,0 +1,111 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UN DOCUMENTO HA UN SOLO STATO D'ANNULLO, ED E' ATTIVO
+#   Brief: brief-modello-documento-vendita §9 (giro 7; Z-3 di Tid,
+#   2026-10-25). Stessa forma di iniziale (20261024-07) ed emissione
+#   (20261025-37).
+#
+# ── LA REGOLA ───────────────────────────────────────────────────────
+#   Quale stato e' l'annullo lo dice il vocabolario (is_abortito), non il
+#   nome 'ANNULLATO' scritto nel codice (guida del modello §8). Perche' un
+#   lettore possa rispondere «lo stato d'annullo di questo documento»
+#   (script.fn_stato_abortito_id, 20261025-74), il vocabolario ne dichiara
+#   al massimo uno, ed e' attivo: indice unico parziale
+#   uq_<vocabolario>_abortito e CHECK chk_<vocabolario>_abortito_attivo,
+#   sugli otto vocabolari della mappa (script.fn_doc_stato_modello).
+#
+#   La colonna c'e' gia', NOT NULL, in tutti e otto. Fatto letto il
+#   2026-10-25 (dbdev, CSV): ognuno ne ha uno solo, attivo; la regola e'
+#   sul modello, non su quel conteggio.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261025-72-alter-stati-doc-abortito-unico-mctit.yaml
+
+  - changeSet:
+      id: 20261025-72-alter-stati-doc-abortito-unico
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Al massimo uno stato d'annullo (is_abortito) per vocabolario degli stati, ed e' attivo:
+        indice unico parziale e CHECK sugli otto vocabolari dei documenti di vendita. Brief:
+        brief-modello-documento-vendita §9 (Z-3).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists: { schemaName: config,  tableName: stati_doc_preventivi, columnName: is_abortito }
+            - columnExists: { schemaName: config,  tableName: stati_doc_offerte,    columnName: is_abortito }
+            - columnExists: { schemaName: config,  tableName: stati_doc_contratti,  columnName: is_abortito }
+            - columnExists: { schemaName: config,  tableName: stati_doc_ordini,     columnName: is_abortito }
+            - columnExists: { schemaName: config,  tableName: stati_doc_ddt,        columnName: is_abortito }
+            - columnExists: { schemaName: config,  tableName: stati_doc_reso,       columnName: is_abortito }
+            - columnExists: { schemaName: config,  tableName: stati_doc_fiscale,    columnName: is_abortito }
+            - columnExists: { schemaName: vendite, tableName: stati_commessa,       columnName: is_abortito }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.stati_doc_preventivi
+                  ADD CONSTRAINT chk_stati_doc_preventivi_abortito_attivo CHECK (NOT is_abortito OR attivo);
+              ALTER TABLE config.stati_doc_offerte
+                  ADD CONSTRAINT chk_stati_doc_offerte_abortito_attivo CHECK (NOT is_abortito OR attivo);
+              ALTER TABLE config.stati_doc_contratti
+                  ADD CONSTRAINT chk_stati_doc_contratti_abortito_attivo CHECK (NOT is_abortito OR attivo);
+              ALTER TABLE config.stati_doc_ordini
+                  ADD CONSTRAINT chk_stati_doc_ordini_abortito_attivo CHECK (NOT is_abortito OR attivo);
+              ALTER TABLE config.stati_doc_ddt
+                  ADD CONSTRAINT chk_stati_doc_ddt_abortito_attivo CHECK (NOT is_abortito OR attivo);
+              ALTER TABLE config.stati_doc_reso
+                  ADD CONSTRAINT chk_stati_doc_reso_abortito_attivo CHECK (NOT is_abortito OR attivo);
+              ALTER TABLE config.stati_doc_fiscale
+                  ADD CONSTRAINT chk_stati_doc_fiscale_abortito_attivo CHECK (NOT is_abortito OR attivo);
+              ALTER TABLE vendite.stati_commessa
+                  ADD CONSTRAINT chk_stati_commessa_abortito_attivo CHECK (NOT is_abortito OR attivo);
+
+              CREATE UNIQUE INDEX uq_stati_doc_preventivi_abortito ON config.stati_doc_preventivi (is_abortito) WHERE is_abortito;
+              CREATE UNIQUE INDEX uq_stati_doc_offerte_abortito ON config.stati_doc_offerte (is_abortito) WHERE is_abortito;
+              CREATE UNIQUE INDEX uq_stati_doc_contratti_abortito ON config.stati_doc_contratti (is_abortito) WHERE is_abortito;
+              CREATE UNIQUE INDEX uq_stati_doc_ordini_abortito ON config.stati_doc_ordini (is_abortito) WHERE is_abortito;
+              CREATE UNIQUE INDEX uq_stati_doc_ddt_abortito ON config.stati_doc_ddt (is_abortito) WHERE is_abortito;
+              CREATE UNIQUE INDEX uq_stati_doc_reso_abortito ON config.stati_doc_reso (is_abortito) WHERE is_abortito;
+              CREATE UNIQUE INDEX uq_stati_doc_fiscale_abortito ON config.stati_doc_fiscale (is_abortito) WHERE is_abortito;
+              CREATE UNIQUE INDEX uq_stati_commessa_abortito ON vendite.stati_commessa (is_abortito) WHERE is_abortito;
+
+              COMMENT ON INDEX config.uq_stati_doc_preventivi_abortito IS 'Al massimo uno stato d''annullo nel vocabolario: lo legge script.fn_stato_abortito_id. Brief: brief-modello-documento-vendita §9 (Z-3).';
+              COMMENT ON INDEX config.uq_stati_doc_offerte_abortito IS 'Al massimo uno stato d''annullo nel vocabolario: lo legge script.fn_stato_abortito_id. Brief: brief-modello-documento-vendita §9 (Z-3).';
+              COMMENT ON INDEX config.uq_stati_doc_contratti_abortito IS 'Al massimo uno stato d''annullo nel vocabolario: lo legge script.fn_stato_abortito_id. Brief: brief-modello-documento-vendita §9 (Z-3).';
+              COMMENT ON INDEX config.uq_stati_doc_ordini_abortito IS 'Al massimo uno stato d''annullo nel vocabolario: lo legge script.fn_stato_abortito_id. Brief: brief-modello-documento-vendita §9 (Z-3).';
+              COMMENT ON INDEX config.uq_stati_doc_ddt_abortito IS 'Al massimo uno stato d''annullo nel vocabolario: lo legge script.fn_stato_abortito_id. Brief: brief-modello-documento-vendita §9 (Z-3).';
+              COMMENT ON INDEX config.uq_stati_doc_reso_abortito IS 'Al massimo uno stato d''annullo nel vocabolario: lo legge script.fn_stato_abortito_id. Brief: brief-modello-documento-vendita §9 (Z-3).';
+              COMMENT ON INDEX config.uq_stati_doc_fiscale_abortito IS 'Al massimo uno stato d''annullo nel vocabolario: lo legge script.fn_stato_abortito_id. Brief: brief-modello-documento-vendita §9 (Z-3).';
+              COMMENT ON INDEX vendite.uq_stati_commessa_abortito IS 'Al massimo uno stato d''annullo nel vocabolario: lo legge script.fn_stato_abortito_id. Brief: brief-modello-documento-vendita §9 (Z-3).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP INDEX IF EXISTS config.uq_stati_doc_preventivi_abortito;
+              DROP INDEX IF EXISTS config.uq_stati_doc_offerte_abortito;
+              DROP INDEX IF EXISTS config.uq_stati_doc_contratti_abortito;
+              DROP INDEX IF EXISTS config.uq_stati_doc_ordini_abortito;
+              DROP INDEX IF EXISTS config.uq_stati_doc_ddt_abortito;
+              DROP INDEX IF EXISTS config.uq_stati_doc_reso_abortito;
+              DROP INDEX IF EXISTS config.uq_stati_doc_fiscale_abortito;
+              DROP INDEX IF EXISTS vendite.uq_stati_commessa_abortito;
+              ALTER TABLE config.stati_doc_preventivi DROP CONSTRAINT IF EXISTS chk_stati_doc_preventivi_abortito_attivo;
+              ALTER TABLE config.stati_doc_offerte    DROP CONSTRAINT IF EXISTS chk_stati_doc_offerte_abortito_attivo;
+              ALTER TABLE config.stati_doc_contratti  DROP CONSTRAINT IF EXISTS chk_stati_doc_contratti_abortito_attivo;
+              ALTER TABLE config.stati_doc_ordini     DROP CONSTRAINT IF EXISTS chk_stati_doc_ordini_abortito_attivo;
+              ALTER TABLE config.stati_doc_ddt        DROP CONSTRAINT IF EXISTS chk_stati_doc_ddt_abortito_attivo;
+              ALTER TABLE config.stati_doc_reso       DROP CONSTRAINT IF EXISTS chk_stati_doc_reso_abortito_attivo;
+              ALTER TABLE config.stati_doc_fiscale    DROP CONSTRAINT IF EXISTS chk_stati_doc_fiscale_abortito_attivo;
+              ALTER TABLE vendite.stati_commessa      DROP CONSTRAINT IF EXISTS chk_stati_commessa_abortito_attivo;

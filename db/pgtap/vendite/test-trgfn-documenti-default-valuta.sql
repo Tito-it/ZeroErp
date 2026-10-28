@@ -54,31 +54,43 @@ CREATE TEMP TABLE _t_stato AS
 SELECT id AS stato_id FROM config.stati_doc_preventivi
  WHERE attivo = true ORDER BY id LIMIT 1;
 
-CREATE TEMP TABLE _t_ba AS
-SELECT ba.id AS ba_id, ba.istanza_utility_id, ba.utility_id
-  FROM anagrafiche.billing_account ba
- WHERE ba.istanza_utility_id IS NOT NULL
-   AND ba.utility_id IS NOT NULL
- ORDER BY ba.id LIMIT 1;
+-- rev 2026-10-27 (lotto 4 di D7): cliente, emittente e gestore si COSTRUISCONO.
+--   Prima si pescavano il primo BA, il primo utente django con un emittente
+--   (e il contesto veniva ripuntato su di lui) e il primo gestore: da zero non
+--   c'era nessuno dei tre e il primo INSERT moriva su E_CONFIG_MANCANTE.
+--   Ora: BA costruito (legato all'azienda di chi agisce), emittente =
+--   quello dell'operatore del contesto (lo stesso che il trigger emittente
+--   assegna al preventivo), gestore = singleton prendi-o-costruisci.
+--   Le valute v1/v2 si leggono dal catalogo di seed config.valute.
+CREATE TEMP TABLE _t_cli AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('default valuta documenti');
 
--- Utente con EF: il trigger emittente assegnera' questo ef al preventivo.
+CREATE TEMP TABLE _t_ba AS
+SELECT billing_account_id AS ba_id, istanza_utility_id, utility_id
+  FROM _t_cli;
+
+-- Utente con EF: l'operatore del contesto; il trigger emittente assegnera'
+-- il suo ef al preventivo.
 CREATE TEMP TABLE _t_user_with_ef AS
-SELECT au.id AS user_id, uef.emittente_fiscale_id AS ef_id
-  FROM django.auth_user au
-  JOIN config.user_emittenti_fiscali uef ON uef.auth_user_id = au.id
- WHERE au.is_active = true
- ORDER BY au.id LIMIT 1;
+SELECT current_setting('app.current_user_id')::integer AS user_id,
+       script.fn_pgtap_emittente_operatore() AS ef_id;
+
+CREATE TEMP TABLE _t_gestore AS
+SELECT * FROM dbops.fn_pgtap_crea_gestore('default valuta documenti');
 
 -- Valute: gestore (fallback) + due valute distinte da esso per discriminare
 -- i livelli BA/emittente dal fallback gestore.
 CREATE TEMP TABLE _t_v AS
 SELECT
-  (SELECT g.valuta_id FROM anagrafiche.gestori g ORDER BY g.id LIMIT 1) AS gestore_valuta,
+  (SELECT g.valuta_id FROM anagrafiche.gestori g
+                  WHERE g.id = (SELECT gestore_id FROM _t_gestore)) AS gestore_valuta,
   (SELECT v.id FROM config.valute v
-     WHERE v.id <> (SELECT g.valuta_id FROM anagrafiche.gestori g ORDER BY g.id LIMIT 1)
+     WHERE v.id <> (SELECT g.valuta_id FROM anagrafiche.gestori g
+                  WHERE g.id = (SELECT gestore_id FROM _t_gestore))
      ORDER BY v.id LIMIT 1) AS v1,
   (SELECT v.id FROM config.valute v
-     WHERE v.id <> (SELECT g.valuta_id FROM anagrafiche.gestori g ORDER BY g.id LIMIT 1)
+     WHERE v.id <> (SELECT g.valuta_id FROM anagrafiche.gestori g
+                  WHERE g.id = (SELECT gestore_id FROM _t_gestore))
      ORDER BY v.id OFFSET 1 LIMIT 1) AS v2;
 
 -- Baseline pulita: azzera valuta su BA e sull'EF dell'utente.
@@ -89,9 +101,9 @@ UPDATE anagrafiche.emittenti_fiscali
    SET valuta_id = NULL
  WHERE id = (SELECT ef_id FROM _t_user_with_ef);
 
--- GUC operatore: necessaria al trigger emittente (che ordina prima).
-SELECT set_config('app.current_user_id',
-                  (SELECT user_id::text FROM _t_user_with_ef), true);
+-- GUC operatore: necessaria al trigger emittente (che ordina prima). La mette
+-- gia' il contesto in testa (rev 2026-10-27: non si ripunta piu' su un utente
+-- pescato).
 
 -- ============================================================
 -- 1) Preflight: i tre trigger esistono.

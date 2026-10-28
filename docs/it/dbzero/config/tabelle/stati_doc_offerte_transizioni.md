@@ -17,13 +17,16 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
+| azione_processo_codename | character varying(100) | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | ck_sdot_da_diverso_a |  |
+| CHECK | ck_stati_doc_offerte_transizioni_meta_manuale_dichiarato |  |
 | FOREIGN KEY | fk_sdot_a | stato_a_id |
 | FOREIGN KEY | fk_sdot_da | stato_da_id |
+| FOREIGN KEY | fk_stati_doc_offerte_transizioni_azioni_processo | azione_processo_codename |
 | PRIMARY KEY | pk_stati_doc_offerte_transizioni | id |
 | UNIQUE | uq_stati_doc_offerte_transizioni | stato_da_id, stato_a_id |
 

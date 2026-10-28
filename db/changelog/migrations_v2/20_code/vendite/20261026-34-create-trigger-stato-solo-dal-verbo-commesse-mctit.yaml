@@ -1,0 +1,57 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA PORTA SULLA COMMESSA
+#   Brief: brief-modello-documento-vendita §14 (giro 10; S-1 b di Tid).
+#   Stampo: la porta dell'offerta (20261026-26).
+#
+#   Lo stato della commessa si cambia solo dai suoi verbi, che scrivono con
+#   script.fn_doc_scrivi_stato: vendite.fn_cambia_stato_commessa (-30),
+#   l'annullo vendite.fn_annulla_commessa (-33), il passaggio della push
+#   vendite.fn_commessa_proietta_stato_emittibile (-31). Un UPDATE diretto:
+#   E_DOC_STATO_SOLO_DAL_VERBO.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261026-34-create-trigger-stato-solo-dal-verbo-commesse-mctit.yaml
+
+  - changeSet:
+      id: 20261026-34-create-trigger-stato-solo-dal-verbo-commesse
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Monta script.trgfn_doc_stato_solo_dal_verbo (BEFORE UPDATE OF colonna di stato, _a05_)
+        su vendite.commesse. Brief: brief-modello-documento-vendita §14 (S-1 b).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'trgfn_doc_stato_solo_dal_verbo';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_commesse_a05_stato_solo_dal_verbo_upd
+                  BEFORE UPDATE OF stato_commessa_id ON vendite.commesse
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_doc_stato_solo_dal_verbo();
+
+              COMMENT ON TRIGGER trg_commesse_a05_stato_solo_dal_verbo_upd ON vendite.commesse IS
+                  'La porta (BB script.trgfn_doc_stato_solo_dal_verbo): lo stato della commessa si cambia solo dai suoi verbi (vendite.fn_cambia_stato_commessa, vendite.fn_annulla_commessa; il passaggio della push allo stato emittibile da vendite.fn_commessa_proietta_stato_emittibile), che scrivono con script.fn_doc_scrivi_stato. Un UPDATE diretto: E_DOC_STATO_SOLO_DAL_VERBO. Fascia _a05_. Brief: brief-modello-documento-vendita §14 (S-1 b, Tid 2026-10-25/26).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_commesse_a05_stato_solo_dal_verbo_upd ON vendite.commesse;

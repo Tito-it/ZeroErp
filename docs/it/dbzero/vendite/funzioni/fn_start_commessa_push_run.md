@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_start_commessa_push_run(p_dry_run boolean, p_source_types text[], p_correlation_id uuid)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

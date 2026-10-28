@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_audit_log_once(p_function_name text, p_status text, p_params jsonb, p_message text, p_exec_mode text, p_parts text[], p_rule_type text, p_dry_run boolean, p_sqlstate text, p_error_context text, p_rows_affected integer, p_result jsonb, p_host text, p_app_version text)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

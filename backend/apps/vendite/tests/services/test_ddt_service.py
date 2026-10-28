@@ -50,8 +50,9 @@ DdtEliminaTests
 DdtCambiaStatoTests
 14) test_cambia_stato_ok                    — valida il codice, poi il verbo col codice
 15) test_cambia_stato_codice_vuoto          — E_DDT_VALIDAZIONE
-16) test_cambia_stato_codice_inesistente    — E_DDT_VALIDAZIONE
-17) test_emetti_transita_a_emesso_light      — cambia_stato(EMESSO), ritorno light (no reload)
+16) test_cambia_stato_codice_inesistente    — E_STATO_WORKFLOW_NON_TROVATO dal verbo
+16b) test_cambia_stato_emesso_rifiutato     — EMESSO solo da «Emetti» (M-2): 400, nessun verbo
+17) test_emetti_transita_a_emesso_light      — la stessa transizione a EMESSO, ritorno light (no reload)
 
 DdtCreaDaOrdineTests
 18) test_crea_ddt_da_ordine_delega_e_ritorna — push_da_ordine + ritorno mappato
@@ -96,6 +97,7 @@ from unittest.mock import patch
 from django.db import DatabaseError, IntegrityError
 from django.test import SimpleTestCase
 
+from apps.core.tests._helpers.modello_documento_mockato import ModelloDocumentoMockatoMixin
 from apps.core.services.error_manager import ServiceError
 from apps.core.services.error_policies import ErrorPolicyRegistry
 from apps.vendite.services import ddt_service
@@ -109,7 +111,7 @@ _ATOMIC = "apps.vendite.services.ddt_service.transaction.atomic"
 _PUSH_ONE = "apps.vendite.services.commesse_service.pr_run_commesse_push_one"
 
 
-class DdtServiceGuardsTests(SimpleTestCase):
+class DdtServiceGuardsTests(ModelloDocumentoMockatoMixin, SimpleTestCase):
     """Guard di stato (E_DDT_STATO_TRANSIZIONE sulla testata, E_RIGA_DOC_NON_BOZZA
     sulle righe — lo stesso codice del BB a DB, decisione B del 2026-09-22) e
     not-found (E_DDT_NOT_FOUND)."""
@@ -125,8 +127,9 @@ class DdtServiceGuardsTests(SimpleTestCase):
     #        `capabilities`, e nessuna sua chiave sale nella testata (api.md
     #        §«Il blob sta SOTTO `capabilities`», 2026-09-23). Fino a quel
     #        giorno nessun test del DDT guardava la forma del dettaglio.
+    @patch(f"{_SVC}.contatori_documento", return_value={"note": 2})
     @patch(_REPO)
-    def test_get_ddt_capabilities_annidate(self, repo_cls) -> None:
+    def test_get_ddt_capabilities_annidate(self, repo_cls, contatori) -> None:
         repo = repo_cls.return_value
         repo.get_ddt.return_value = {"id": 7, "stato_codice_interno": "DRAFT"}
         repo.get_capabilities.return_value = {
@@ -142,14 +145,21 @@ class DdtServiceGuardsTests(SimpleTestCase):
         for chiave in repo.get_capabilities.return_value:
             self.assertNotIn(chiave, out)
         self.assertEqual(out["righe_count"], 3)
+        # I badge del drawer (pulsante «Gestisci note»), dal BB dei contatori.
+        self.assertEqual(out["contatori"], {"note": 2})
+        self.assertEqual(contatori.call_args.args[1], 7)
 
     @patch(_REPO)
     def test_cambia_stato_ddt_not_found(self, repo_cls) -> None:
-        # Guard esistenza leggero: stato corrente None -> E_DDT_NOT_FOUND.
-        repo_cls.return_value.get_stato_codice.return_value = None
+        # La bolla che non c'e' (o fuori perimetro) la rifiuta il verbo, col
+        # suo codice (regola del 1, 2026-10-27): il service non lo ridice.
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = None
+        repo.cambia_stato.side_effect = DatabaseError("E_DDT_NOT_FOUND: ddt 99")
         with self.assertRaises(ServiceError) as cm:
             ddt_service.cambia_stato(99, "SPEDITO")
         self.assertEqual(cm.exception.code, "E_DDT_NOT_FOUND")
+        repo.cambia_stato.assert_called_once_with(99, "SPEDITO")
 
     @patch(_REPO)
     def test_aggiorna_ddt_fuori_bozza_decide_il_db(self, repo_cls) -> None:
@@ -271,7 +281,6 @@ class DdtCreaTests(SimpleTestCase):
         # Lo stato non si passa: lo mette il DB, lo stato iniziale del
         # vocabolario (brief-modello-documento-vendita P-2).
         self.assertNotIn("stato_doc_ddt_id", kwargs)
-        repo.get_stato_id_by_codice.assert_not_called()
         # Lo slot di default lo riempie il DB, sul DDT appena nato (R-BE-1).
         repo.riempi_indirizzo_default.assert_called_once_with(7)
 
@@ -285,7 +294,6 @@ class DdtCreaTests(SimpleTestCase):
             ddt_service.crea_ddt({"billing_account_id": 3, "utility_id": 1})
         self.assertEqual(cm.exception.code, "E_DDT_VALIDAZIONE")
         self.assertEqual(cm.exception.context.get("unknown_keys"), ["utility_id"])
-        repo.get_stato_id_by_codice.assert_not_called()
         repo.create_ddt.assert_not_called()
 
     @patch(_REPO)
@@ -445,7 +453,7 @@ class DdtEliminaTests(SimpleTestCase):
         repo.delete_ddt.assert_called_once_with(7)
 
 
-class DdtCambiaStatoTests(SimpleTestCase):
+class DdtCambiaStatoTests(ModelloDocumentoMockatoMixin, SimpleTestCase):
     """cambia_stato data-driven + emetti (DRAFT->EMESSO)."""
 
     @patch(_REPO)
@@ -454,14 +462,12 @@ class DdtCambiaStatoTests(SimpleTestCase):
         # (get_stato_codice), non la testata completa.
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "DRAFT"
-        repo.get_stato_id_by_codice.return_value = 6
         repo.cambia_stato.return_value = []
         out = ddt_service.cambia_stato(7, "SPEDITO")
         self.assertEqual(out["stato"], "SPEDITO")
         self.assertEqual(out["stato_precedente"], "DRAFT")
         self.assertEqual(out["movimenti_scritti"], 0)
         repo.get_ddt.assert_not_called()
-        repo.get_stato_id_by_codice.assert_called_once_with("SPEDITO")
         # Il verbo prende il CODICE dello stato (Lotto 3 R-1), non l'id.
         repo.cambia_stato.assert_called_once_with(7, "SPEDITO")
 
@@ -486,24 +492,59 @@ class DdtCambiaStatoTests(SimpleTestCase):
 
     @patch(_REPO)
     def test_cambia_stato_codice_inesistente(self, repo_cls) -> None:
+        # Lo stato che il vocabolario non ha lo dice il verbo, col codice dei
+        # gemelli (brief-modello-documento-vendita §9.10): il service non ne ha
+        # una copia, e il codice del catalogo passa com'e'.
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "DRAFT"
-        repo.get_stato_id_by_codice.return_value = None
+        repo.cambia_stato.side_effect = DatabaseError(
+            "E_STATO_WORKFLOW_NON_TROVATO: stato INESISTENTE",
+        )
         with self.assertRaises(ServiceError) as cm:
             ddt_service.cambia_stato(7, "INESISTENTE")
+        self.assertEqual(cm.exception.code, "E_STATO_WORKFLOW_NON_TROVATO")
+        repo.cambia_stato.assert_called_once_with(7, "INESISTENTE")
+
+    # M-2 (brief-modello-documento-vendita §7.6): la bolla si emette solo da
+    # «Emetti», che produce numero e PDF insieme. Dal cambio stato generico
+    # lo stato di emissione (letto dal vocabolario, §8.7) e' un 400 col campo,
+    # e il verbo non parte.
+    @patch(_REPO)
+    def test_cambia_stato_emesso_rifiutato(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "DRAFT"
+        self.stato_chiesto_di_emissione()
+        with self.assertRaises(ServiceError) as cm:
+            ddt_service.cambia_stato(7, "EMESSO")
         self.assertEqual(cm.exception.code, "E_DDT_VALIDAZIONE")
+        self.assertEqual(cm.exception.context.get("field"), "stato_codice")
+        self.modello_documento.e_stato_di_emissione.assert_called_once_with(
+            "vendite.ddt", "EMESSO",
+        )
         repo.cambia_stato.assert_not_called()
+
+    # «Emetti» e' l'unica strada: la domanda sull'emissione non si fa.
+    @patch(_REPO)
+    def test_emetti_non_chiede_il_rifiuto(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "DRAFT"
+        self.emissione_del_documento("EMESSO")
+        repo.cambia_stato.return_value = []
+        ddt_service.emetti(7)
+        self.modello_documento.e_stato_di_emissione.assert_not_called()
+        repo.cambia_stato.assert_called_once_with(7, "EMESSO")
 
     @patch(_REPO)
     def test_emetti_transita_a_emesso_light(self, repo_cls) -> None:
-        # emetti = cambia_stato(EMESSO, guard leggero get_stato_codice) con
+        # emetti = la transizione a EMESSO (guard leggero get_stato_codice) con
         # ritorno LIGHT {ddt_id, stato_precedente, stato} — parita' con
         # ordini_service.conferma: NIENTE reload del detail pesante (vista +
         # capabilities + count) dentro la sezione atomica dell'emissione
         # documentale; il FE ricarica il detail dopo.
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "DRAFT"
-        repo.get_stato_id_by_codice.return_value = 2
+        # Lo stato di emissione dal vocabolario (§8.11 B-3), non un letterale.
+        self.emissione_del_documento("EMESSO")
         # Una bolla che muove merce: il verbo ritorna le uscite scritte.
         repo.cambia_stato.return_value = [
             {"movimento_id": 501, "prelievo_id": 11, "qta": 3},
@@ -511,7 +552,7 @@ class DdtCambiaStatoTests(SimpleTestCase):
 
         out = ddt_service.emetti(7)
 
-        repo.get_stato_id_by_codice.assert_called_once_with("EMESSO")
+        self.modello_documento.stato_di_emissione.assert_called_once_with("vendite.ddt")
         repo.cambia_stato.assert_called_once_with(7, "EMESSO")
         self.assertEqual(out["movimenti_scritti"], 1)
         repo.get_ddt.assert_not_called()
@@ -970,12 +1011,11 @@ class DdtSatellitiTestataTests(SimpleTestCase):
 # lettura dei legami per la finestra. ⚠️ Le regole (bozza, riga evasa, residuo,
 # conteggio della conferma) sono del DB e qui sono mockate: questi test provano
 # il trasporto, non la regola.
-class DdtRigheEvaseTests(SimpleTestCase):
+class DdtRigheEvaseTests(ModelloDocumentoMockatoMixin, SimpleTestCase):
     @patch(_REPO)
     def test_annullo_passa_dal_verbo_senza_dichiarazione(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "EMESSO"
-        repo.get_stato_id_by_codice.return_value = 9
         out = ddt_service.cambia_stato(7, "ANNULLATO")
         repo.annulla.assert_called_once_with(7, None)
         repo.cambia_stato.assert_not_called()
@@ -986,7 +1026,6 @@ class DdtRigheEvaseTests(SimpleTestCase):
     def test_annullo_con_dichiarazione(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "DRAFT"
-        repo.get_stato_id_by_codice.return_value = 9
         ddt_service.cambia_stato(7, "ANNULLATO", legami_confermati="2")
         repo.annulla.assert_called_once_with(7, 2)
 
@@ -994,7 +1033,6 @@ class DdtRigheEvaseTests(SimpleTestCase):
     def test_annullo_dichiarazione_non_numerica(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "DRAFT"
-        repo.get_stato_id_by_codice.return_value = 9
         with self.assertRaises(ServiceError) as cm:
             ddt_service.cambia_stato(7, "ANNULLATO", legami_confermati="due")
         self.assertEqual(cm.exception.code, "E_DDT_VALIDAZIONE")
@@ -1005,7 +1043,6 @@ class DdtRigheEvaseTests(SimpleTestCase):
     def test_annullo_con_legami_codice_del_db(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "EMESSO"
-        repo.get_stato_id_by_codice.return_value = 9
         repo.annulla.side_effect = DatabaseError(
             "E_DOC_ANNULLO_CON_LEGAMI: annullando DDT 12 si riaprono 2 legami",
         )

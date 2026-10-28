@@ -40,6 +40,10 @@
 -- rev 2026-10-24 (brief-modello-documento-vendita N-1): i preventivi nascono in
 --   bozza e si portano avanti con dbops.fn_pgtap_porta_a_stato (prima nascevano
 --   gia' ACCETTATO/EMESSO).
+-- rev 2026-10-25 (brief-modello-documento-vendita §8, giro 6): i preventivi
+--   degli scenari si portano allo stato con una riga (merce, 1 x 10) da
+--   dbops.fn_pgtap_crea_preventivo_con_righe (p_preventivo_id): l'emissione
+--   senza righe e' rifiutata. Nessuna attesa conta righe o importi.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -162,8 +166,10 @@ VALUES ((SELECT tf_id FROM tmp_tb_w1), NULL),
 -- ⚠️ rev 2026-10-24 (brief-modello-documento-vendita N-1): nascono in bozza
 --   (lo stato non si scrive: lo mette il trigger della nascita) e vanno allo
 --   stato bersaglio con dbops.fn_pgtap_porta_a_stato, per la matrice e sotto
---   i guard veri, PRIMA di ogni aggancio a una pratica. Senza righe i guard di
---   EMESSO/ACCETTATO non trovano motivi.
+--   i guard veri, PRIMA di ogni aggancio a una pratica.
+-- ⚠️ rev 2026-10-25 (§8, giro 6): ognuno con una riga (merce, 1 x 10) scritta
+--   in bozza da dbops.fn_pgtap_crea_preventivo_con_righe, che poi porta lo
+--   stato: senza righe l'emissione e' rifiutata (E_PREV_NESSUNA_RIGA_ATTIVA).
 -- ============================================================
 CREATE TEMP TABLE tmp_tb_prev AS
 WITH ins AS (
@@ -193,8 +199,9 @@ DECLARE
   r record;
 BEGIN
   FOR r IN SELECT p.id, p.tag FROM tmp_tb_prev p ORDER BY p.id LOOP
-    PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', r.id,
-              CASE r.tag WHEN 'C6' THEN 'EMESSO' ELSE 'ACCETTATO' END);
+    PERFORM dbops.fn_pgtap_crea_preventivo_con_righe('tie-break ' || r.tag,
+              CASE r.tag WHEN 'C6' THEN 'EMESSO' ELSE 'ACCETTATO' END,
+              p_preventivo_id => r.id);
   END LOOP;
 END
 $porta$;

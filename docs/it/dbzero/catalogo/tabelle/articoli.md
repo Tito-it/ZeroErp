@@ -29,7 +29,7 @@
 | tx_id | uuid | YES |  |
 | storicizza | boolean | YES | true |
 | attivo | boolean | NO | true |
-| note_target_tipo | character varying(32) | YES |  |
+| note_target_tipo | character varying(50) | YES |  |
 | note_id | bigint | YES |  |
 | is_solo_componente | boolean | NO | false |
 | listino_tipologia_id | smallint | YES |  |

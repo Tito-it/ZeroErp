@@ -45,8 +45,26 @@ conversioni semantiche.
   creazione: se inviato viene rifiutato come `unknown_key`. Lookup
   `script.fn_generate_codice('offerta_commerciale')` con prefisso `OFC`
   e lunghezza 7.
-- Lo **stato iniziale** di ogni offerta e' `BOZZA` (risolto dal service via
-  `config.stati_doc_offerte.codice_interno`).
+- Lo **stato iniziale** di ogni offerta e' `BOZZA`: lo mette il DB alla nascita
+  (`script.trgfn_doc_stato_iniziale`), il service non lo passa.
+- ⭐ **Lo stato lo scrivono solo i verbi** (dal 2026-10-26,
+  brief-modello-documento-vendita §13, giro 9): `vendite.fn_cambia_stato_offerta`
+  per «Emetti» e l'esito, `vendite.fn_annulla_offerta` per l'annullo. Un `UPDATE`
+  diretto della colonna di stato lo rifiuta la porta
+  (`E_DOC_STATO_SOLO_DAL_VERBO`). Il verbo giudica, prima di scrivere: il
+  perimetro (fuori perimetro = `E_OFFERTA_NON_TROVATA`), lo stato che l'offerta
+  ha gia' (`E_DOC_GIA_NELLO_STATO`), l'azione dalla riga del passaggio e la
+  motivazione dove la riga la chiede. Il service non ripete nessuno stato di
+  partenza.
+- **Permessi del passaggio** (O-1, guida del modello §6): la riga della matrice
+  `config.stati_doc_offerte_transizioni` dichiara l'azione. `emetti_offerta` su
+  `BOZZA -> EMESSA` («Emetti») e `ACCETTATA -> ANNULLATA` (l'annullo
+  dell'accettata); accetta, rifiuta e l'annullo della bozza chiedono il solo
+  livello sul documento. La view risponde 403 `E_PERMESSO_NEGATO` prima della
+  transazione (`PassaggioDocumento`: `emetti_passaggio` della factory documenti,
+  `post_passaggio` su `/registra-esito/` e `/annulla/`); la capability nasconde
+  le azioni a chi non ha l'azione. ⚠️ `emetti_offerta` non la riceve nessun
+  profilo dai seed: va concessa.
 - La **state machine** e' autoritativa lato DB tramite il trigger
   `trgfn_offerte_commerciali_guard_transizione` che:
   - verifica che la transizione sia in `config.stati_doc_offerte_transizioni`
@@ -75,15 +93,15 @@ conversioni semantiche.
 
 ### State machine
 
-| Da     | A         | Chi la innesca                | Effetto laterale                                                |
-| ------ | --------- | ----------------------------- | --------------------------------------------------------------- |
-| BOZZA  | EMESSA    | operatore (`/emetti/`)        | Congela versione listino; valorizza `data_emissione`            |
-| BOZZA  | ANNULLATA | operatore (`/annulla/`)       | Valorizza `data_annullamento` + `motivazione_rifiuto`           |
-| EMESSA | ACCETTATA | operatore (`/registra-esito/`) | Valorizza `data_accettazione`                                  |
-| EMESSA | RIFIUTATA | operatore (`/registra-esito/`) | Valorizza `data_rifiuto` + `motivazione_rifiuto`               |
-| EMESSA | SUPERATA  | trigger revisione (Step 7 DB) | Stato terminale tecnico; rev.N+1 diventa la nuova offerta corrente |
-| ACCETTATA | ANNULLATA | operatore (`/annulla/`)    | Solo senza contratti o ordini vivi a valle (dal 2026-10-21); valorizza `data_annullamento` + `motivazione_rifiuto` |
-| SUPERATA | EMESSA   | DB (non manuale)              | Rientro del padre quando l'ultima revisione viva si annulla |
+| Da     | A         | Chi la innesca                | Azione            | Effetto laterale                                                |
+| ------ | --------- | ----------------------------- | ----------------- | --------------------------------------------------------------- |
+| BOZZA  | EMESSA    | operatore (`/emetti/`)        | `emetti_offerta`  | Congela versione listino; valorizza `data_emissione`            |
+| BOZZA  | ANNULLATA | operatore (`/annulla/`)       | —                 | Valorizza `data_annullamento` + `motivazione_rifiuto` (obbligatoria) |
+| EMESSA | ACCETTATA | operatore (`/registra-esito/`) | —                | Valorizza `data_accettazione`                                  |
+| EMESSA | RIFIUTATA | operatore (`/registra-esito/`) | —                | Valorizza `data_rifiuto` + `motivazione_rifiuto` (obbligatoria) |
+| EMESSA | SUPERATA  | DB, alla revisione (processo) | —                 | Stato terminale tecnico; rev.N+1 diventa la nuova offerta corrente |
+| ACCETTATA | ANNULLATA | operatore (`/annulla/`)    | `emetti_offerta`  | Solo senza contratti o ordini vivi a valle (dal 2026-10-21); valorizza `data_annullamento` + `motivazione_rifiuto` (obbligatoria) |
+| SUPERATA | EMESSA   | DB, all'annullo dell'ultima revisione viva (processo) | — | Rientro del padre; l'annullo che lo causa si conferma (vedi `/annulla/`) |
 
 Stati terminali: **RIFIUTATA**, **ANNULLATA**. **ACCETTATA** si chiude
 trasformandola (contratto o ordine) o, quando non si puo' trasformare,
@@ -110,7 +128,7 @@ Tutti gli endpoint cablati:
 - Suite pgTAP (step 9) confermata da team DB
 - `GET/POST /<id>/note/` + `GET/PATCH/DELETE /<id>/note/<note_id>/` —
   cablaggio building block `PartitionedNoteRepository` per
-  `target_tipo='OFFERTA'` (2026-05-26). Contratto comune in
+  `target_tipo='OFFERTA'` (2026-05-26; `'OFFERTA_COMMERCIALE'` dal 2026-10-25). Contratto comune in
   [api_note_documento](../../core/manual/api_note_documento.md)
 
 ### Perimetro D7 — capability layer + refactor atomico (2026-05-26)
@@ -317,7 +335,7 @@ Note:
 ### Detail `GET /api/v1/vendite/offerte/<id>/`
 
 Output: testata + display fields + `eccezioni[]` + `utility` (1:1, null se
-non ancora compilato).
+non ancora compilato) + `capabilities`. `contatori` (dal 2026-10-25): `{"note": <n>}`, il numero sul pulsante «Gestisci note» del drawer, dal BB `contatori_documento` — contato **dopo** il cancello di testata, con lo stesso perimetro della lista note. Forma e ragioni in [api_fattura_dettaglio §`contatori`](/backend/vendite/manual/api_fattura_dettaglio).
 
 ```json
 {
@@ -481,7 +499,9 @@ testata) e' ammesso ed esegue solo l'upsert utility.
 ### Delete `DELETE /api/v1/vendite/offerte/<id>/`
 
 Solo in stato BOZZA (pre-check del service: altrimenti 400
-`E_VENDITE_VALIDATION`). Hard delete dell'offerta + cascade su
+`E_VENDITE_VALIDATION`). ⚠️ E' l'unico stato scritto nel service, e resta: la
+cancellazione non e' un passaggio della matrice e la tabella non ha un guard
+sul DELETE. Hard delete dell'offerta + cascade su
 `offerte_commerciali_eccezioni` e `offerte_commerciali_utilities` via FK.
 
 **Annullamento di processo**: per "ritirare" un'offerta gia' presentata
@@ -502,6 +522,15 @@ unificato cross-dominio).
   - `tipo_documento_output_id` (int, opzionale)
   - `allegati` (file ripetuto, opzionale) — file secondari persistiti
     assieme al PDF principale
+
+⭐ **Permesso e stato dal modello** (dal 2026-10-26, brief-modello-documento-vendita
+§13.6): la view chiede `emetti_offerta` dalla riga del passaggio verso lo stato
+di emissione, letto dal vocabolario a ogni richiesta (403 `E_PERMESSO_NEGATO`
+prima della transazione); `OfferteService.emetti` chiama il verbo
+`vendite.fn_cambia_stato_offerta` con lo stato di emissione del vocabolario. Un
+secondo «Emetti» e' il 409 `E_DOC_GIA_NELLO_STATO` del verbo, e il PDF non nasce.
+⛔ Fino al 2026-10-26: un pre-check Python «solo da BOZZA» e un `UPDATE` diretto
+dello stato.
 
 ⭐ **La versione di listino la congela il DB** (dal 2026-10-07,
 brief-db-offerta-emissione-ed-erogazione A-R1/A-R2). `OfferteService.emetti` fa
@@ -573,25 +602,60 @@ oppure
 {"esito": "RIFIUTATA", "motivazione": "Cliente preferisce concorrente X."}
 ```
 
-- `esito = "ACCETTATA"`: valorizza `data_accettazione`. `motivazione`
-  opzionale.
+- `esito = "ACCETTATA"`: valorizza `data_accettazione`. **Nessuna
+  motivazione**: una `motivazione` non vuota e' un 400 `E_VENDITE_VALIDATION`
+  col campo `motivazione` (l'accettazione non ha una colonna che la tenga);
+  assente, `null` o vuota passa. ⛔ Fino al 2026-10-26 era scartata in
+  silenzio.
 - `esito = "RIFIUTATA"`: valorizza `data_rifiuto` +
-  `motivazione_rifiuto`. **Motivazione obbligatoria** (stringa non
-  vuota): assenza solleva `E_VENDITE_VALIDATION` pre-DB.
-- `esito` non valido → `E_VENDITE_VALIDATION` con detail "Atteso uno tra
-  ['ACCETTATA', 'RIFIUTATA']".
+  `motivazione_rifiuto`. **Motivazione obbligatoria**: lo dice la riga del
+  passaggio (`requires_motivazione` nel `meta`), e la fa rispettare il verbo →
+  400 `E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA` col campo `motivazione` (il verbo
+  nomina la colonna `motivazione_rifiuto`, il service la traduce nel campo
+  della richiesta). Vuota
+  o di soli spazi vale assente. Una `motivazione` che non e' una stringa e' un
+  400 `E_VENDITE_VALIDATION` col campo. ⛔ Fino al 2026-10-26 l'obbligo era una
+  copia Python (`guard_non_empty_string`, `E_VENDITE_VALIDATION`).
+- `esito` non valido → `E_VENDITE_VALIDATION` col campo `esito` e detail
+  "Atteso uno tra ['ACCETTATA', 'RIFIUTATA']": e' la validazione del campo in
+  ingresso, non lo stato di partenza.
+- Da quale stato si registra un esito lo dice la matrice: da uno stato diverso
+  da EMESSA e' il 409 `E_OFFERTA_TRANSIZIONE_NON_AMMESSA` (⛔ fino al
+  2026-10-26 un pre-check Python, 400).
 
-Routing per esito implementato nel service (`registra_esito`), la view e'
-sottile.
+Permesso: il livello sul documento (accetta e rifiuta non hanno un'azione
+sulla riga del passaggio); la view lo legge comunque dalla riga
+(`post_passaggio`, campo `esito`), cosi' un'azione aggiunta domani alla matrice
+vale senza toccare il codice. Routing per esito nel service (`registra_esito`),
+la view e' sottile.
 
 ### Cambio stato -> ANNULLATA `POST /api/v1/vendite/offerte/<id>/annulla/`
 
 ```json
-{"motivazione": "Riscontrato errore nel listino di riferimento."}
+{"motivazione": "Riscontrato errore nel listino di riferimento.", "legami_confermati": 1}
 ```
 
-Motivazione obbligatoria. Salvata in `motivazione_rifiuto` (colonna
-condivisa con RIFIUTATA). Il trigger DB valorizza `data_annullamento`.
+Dal verbo `vendite.fn_annulla_offerta(id, motivazione, legami_confermati)` (dal
+2026-10-26, O-4). Motivazione obbligatoria, dal verbo:
+`E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA` (400, campo `motivazione`; ⛔ fino
+al 2026-10-26 una copia Python). Salvata in `motivazione_rifiuto` (colonna
+condivisa con RIFIUTATA). Il trigger DB valorizza `data_annullamento`. Lo stato
+d'annullo lo sceglie il verbo dal vocabolario (`is_abortito`).
+
+Permesso: l'annullo dell'accettata chiede `emetti_offerta` dalla riga del
+passaggio (403 prima della transazione), quello della bozza il solo livello sul
+documento.
+
+⭐ **L'annullo di una revisione si conferma** (Regola 6 della guida del
+modello): annullare l'ultima revisione viva fa tornare EMESSA la revisione
+precedente (superata), e non in silenzio. Il primo tentativo, senza
+`legami_confermati`, risponde 409 `E_DOC_ANNULLO_CON_LEGAMI`
+(`ui_action: confirm_and_retry`); la finestra legge i legami da
+`GET /<id>/legami/` (sotto) e la conferma ripete la richiesta dichiarando
+`legami_confermati` = il numero letto. Se nel frattempo i legami sono cambiati,
+il DB chiede di nuovo. Una revisione il cui padre non torna emesso (un'altra
+revisione viva lo tiene superato, o non c'e' padre) si annulla al primo colpo.
+`legami_confermati` non intero → 400 `E_VENDITE_VALIDATION` col campo.
 
 Annullamento ammesso da **BOZZA** e da **ACCETTATA** (dal 2026-10-21, H-R3):
 da ACCETTATA solo se l'offerta non ha generato un contratto o un ordine ancora
@@ -601,8 +665,34 @@ dicono le transizioni del DB, e un tentativo da un altro stato e' il 409
 `E_OFFERTA_TRANSIZIONE_NON_AMMESSA` del guard. Fino al 2026-10-21 c'era un
 pre-check «solo da BOZZA» (400 `E_VENDITE_VALIDATION`), che avrebbe rifiutato
 l'annullo da ACCETTATA. Offerta inesistente o fuori perimetro → 404
-`E_VENDITE_NOT_FOUND`. Il pre-check di stato resta su `/emetti/` (da BOZZA) e
-`/registra-esito/` (da EMESSA).
+`E_OFFERTA_NON_TROVATA`, dal verbo, come su `/emetti/`, `/registra-esito/` e
+`/push-contratto/`: dal 2026-10-27 il service non lo ridice col suo codice
+(regola del 1, Tid: i verbi prendono la testata nel perimetro). `/legami/` legge
+ancora prima la testata (404 `E_VENDITE_NOT_FOUND`: il lettore dei legami non
+applica il perimetro), e così `/crea-revisione/` finché la sua fn risponde
+all'offerta che non c'è con un 400 `E_PARAMETRO_INVALIDO` (richiesta al team DB). ⛔ Dal 2026-10-26 nessun pre-check di stato nemmeno su
+`/emetti/`, `/registra-esito/`, `/crea-revisione/` e `/push-contratto/`: li
+giudicano verbi e funzioni del DB.
+
+### Legami dell'annullo `GET /api/v1/vendite/offerte/<id>/legami/`
+
+La finestra di conferma dell'annullo (factory `build_legami_view`, BB
+`legami_del_documento`, lettore `vendite.fn_documento_legami('OFFERTA_COMMERCIALE', id)`).
+Prima la testata: offerta inesistente o fuori perimetro → 404
+`E_VENDITE_NOT_FOUND`.
+
+```json
+{"data": {"documento": "OFFERTA_COMMERCIALE", "id": 42, "legami": 1, "righe": [
+  {"riga_id": null, "riga_nr": null, "origine": "OFFERTA_COMMERCIALE", "natura": "PROVENIENZA",
+   "origine_id": 41, "origine_riga_id": null, "qta": null,
+   "origine_tipo_codice_interno": "OFFERTA_COMMERCIALE", "origine_codice": null}
+]}}
+```
+
+Il legame dell'offerta e' la revisione precedente (`origine_id`) che torna
+emessa. ⚠️ La revisione precedente non e' un nodo del lineage (nessun arco
+offerta → offerta): `origine_codice` resta `null`, e la finestra mostra il solo
+tipo, senza link. `legami` e' il numero da dichiarare in `legami_confermati`.
 
 ### Crea revisione `POST /api/v1/vendite/offerte/<id>/crea-revisione/`
 
@@ -627,9 +717,9 @@ Body vuoto. Crea rev.N+1 in stato `BOZZA` a partire dall'offerta corrente
 
 Guard:
 
-- Stato corrente diverso da `EMESSA` → 400 `E_VENDITE_VALIDATION` dal
-  pre-check del service. La fn DB resta la rete
-  (`E_OFFERTA_REVISIONE_STATO_NON_AMMESSO`, 409).
+- Stato corrente diverso da `EMESSA` → 409
+  `E_OFFERTA_REVISIONE_STATO_NON_AMMESSO` dalla fn DB. ⛔ Fino al 2026-10-26 lo
+  anticipava un pre-check del service (400 `E_VENDITE_VALIDATION`).
 - Offerta inesistente → 404.
 
 `user` di audit: il service prende `request.user.username` se autenticato
@@ -1126,7 +1216,11 @@ Per il dettaglio vedi §Detail; le liste paginate (offerte, revisioni) hanno
 
 | Codice                                              | HTTP                | Origine                                                                                                | Trigger DB                                          |
 | --------------------------------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------ | --------------------------------------------------- |
-| `E_VENDITE_VALIDATION`                              | 400                 | Service: struttura payload, chiave fuori contratto (anche `quantita` sulle eccezioni, dal 2026-10-21), payload vuoto in PATCH, motivazione obbligatoria, esito non valido, filtro di stato fuori vocabolario, stato errato per delete/emetti/registra-esito/crea-revisione/push (pre-check) | —                                                   |
+| `E_VENDITE_VALIDATION`                              | 400                 | Service: struttura payload, chiave fuori contratto (anche `quantita` sulle eccezioni, dal 2026-10-21), payload vuoto in PATCH, motivazione non stringa, `legami_confermati` non intero, esito non valido, filtro di stato fuori vocabolario, stato errato per il delete (pre-check: l'unico rimasto dal 2026-10-26) | —                                                   |
+| `E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA`                | 400                 | DB P0001 (2026-10-26, O-3) — rifiuto o annullo senza motivazione (vuota = assente): lo chiede la riga del passaggio (`requires_motivazione`). Il DB nomina la colonna `motivazione_rifiuto`, al client esce il campo della richiesta `motivazione` (`OfferteService._db_errors`); valori: codice dell'offerta, stato chiesto | `vendite.fn_cambia_stato_offerta` |
+| `E_PERMESSO_NEGATO`                                 | 403                 | «Emetti» o l'annullo dell'accettata senza `emetti_offerta` (dalla riga del passaggio: view, poi verbo) | `script.fn_guard_passaggio` |
+| `E_DOC_GIA_NELLO_STATO`                             | 409                 | DB P0001 — il passaggio allo stato che l'offerta ha gia' (un secondo «Emetti») | `vendite.fn_cambia_stato_offerta` |
+| `E_DOC_ANNULLO_CON_LEGAMI`                          | 409 (`confirm_and_retry`) | DB P0001 (2026-10-26, O-4) — annullo di una revisione che fa tornare emessa la precedente, senza conferma o con una conferma che non corrisponde | `vendite.trgfn_doc_guard_annullo_con_legami` / `vendite.fn_documento_ritira_legami` |
 | `E_VALIDATION_INPUT`                                | 400                 | `chiudi_esistente` del push non booleano JSON                                                           | —                                                   |
 | `E_PRICING_OVERRIDE_NON_AUTORIZZATO`                | 403                 | Prezzo manuale (eccezione o componente) senza `prezzo_override_manuale`                                  | —                                                   |
 | `E_PRICING_SCONTO_ECCESSIVO` / `E_PRICING_MAGGIORAZIONE_ECCESSIVA` | 403  | Gate L2 oltre soglia senza `richiesta_approvazione` (`retryable=true`)                                  | —                                                   |
@@ -1143,10 +1237,10 @@ Per il dettaglio vedi §Detail; le liste paginate (offerte, revisioni) hanno
 | `E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO`        | 409                 | DB P0001 — `BOZZA -> EMESSA` su un listino che non ha una versione in vigore oggi (dal 2026-10-07: prima «versione NULL», che il guard ora congela da sé) | `trgfn_offerte_commerciali_guard_transizione`        |
 | `E_OFFERTA_EMISSIONE_VERSIONE_LISTINO_NON_ATTIVA`   | 409                 | DB P0001 — `BOZZA -> EMESSA` con una versione già fissata che non è più `ATTIVA`                         | `trgfn_offerte_commerciali_guard_transizione`        |
 | `E_OFFERTA_TRANSIZIONE_NON_AMMESSA`                 | 409                 | DB P0001 — transizione non presente in `config.stati_doc_offerte_transizioni` (es. EMESSA -> ANNULLATA, EMESSA -> BOZZA, qualsiasi uscita da stato terminale) | `trgfn_offerte_commerciali_guard_transizione`        |
-| `E_OFFERTA_REVISIONE_STATO_NON_AMMESSO`             | 409                 | DB P0001 — `crea_revisione` da stato != EMESSA. Il service applica anche pre-check applicativo (`E_VENDITE_VALIDATION`) | `fn_crea_revisione_offerta`                          |
-| `E_OFFERTA_PUSH_STATO_NON_AMMESSO`                  | 409                 | DB P0001 — `push_a_contratto` da stato ≠ ACCETTATA. Il service applica anche pre-check applicativo (`E_VENDITE_VALIDATION`) | `fn_push_offerta_a_contratto`                        |
+| `E_OFFERTA_REVISIONE_STATO_NON_AMMESSO`             | 409                 | DB P0001 — `crea_revisione` da stato != EMESSA (dal 2026-10-26 senza pre-check del service) | `fn_crea_revisione_offerta`                          |
+| `E_OFFERTA_PUSH_STATO_NON_AMMESSO`                  | 409                 | DB P0001 — `push_a_contratto` da stato ≠ ACCETTATA (dal 2026-10-26 senza pre-check del service) | `fn_push_offerta_a_contratto`                        |
 | `E_OFFERTA_CONTRATTO_GIA_GENERATO`                  | 409                 | Conflitto "già materializzato" (registrato in `error_policies`): push idempotente (pattern A, UNIQUE `uq_contratti_offerta_id`) **e** mutua esclusività XOR — blocca la generazione ordine se l'offerta ha già un contratto vivo | `fn_push_offerta_a_contratto` / `fn_genera_ordine_da_offerta` |
-| `E_OFFERTA_NON_TROVATA`                             | 404                 | DB P0001 — offerta inesistente o fuori perimetro per il push o la generazione dell'ordine | `fn_push_offerta_a_contratto` / `fn_genera_ordine_da_offerta` |
+| `E_OFFERTA_NON_TROVATA`                             | 404                 | DB P0001 — offerta inesistente o fuori perimetro per il push, la generazione dell'ordine o un verbo di stato (il service legge prima la testata: di norma esce il suo 404 `E_VENDITE_NOT_FOUND`) | `fn_push_offerta_a_contratto` / `fn_genera_ordine_da_offerta` / `fn_cambia_stato_offerta` / `fn_annulla_offerta` |
 | `E_ORD_ORIGINE_NON_CONVERTIBILE`                    | 409                 | DB P0001 — genera ordine da un'offerta non `ACCETTATA` | `fn_genera_ordine_da_offerta` |
 | `E_ORD_OFFERTA_GIA_CONVERTITA`                      | 409                 | DB P0001 — genera ordine quando un ordine vivo è già nato dall'offerta (rete: UNIQUE `uq_ordini_v_documento_origine_offerta`) | `fn_genera_ordine_da_offerta` |
 | `E_DOC_RIGA_NON_AMMESSA`                            | 400                 | DB P0001 (2026-10-21) — una riga che la regola intera non ammette più: all'emissione (articolo, erogazione, fonte) o nella generazione dell'ordine (riga d'ordine). Campo `articolo_id`; valori: documento, articolo; `motivo_riga` nel contesto | `trgfn_offerte_commerciali_guard_transizione` / `fn_genera_ordine_da_offerta` |
@@ -1170,13 +1264,24 @@ diverso da "transizione non ammessa generica").
 - `vendite.offerte_commerciali_eccezioni` — mirror di `contratti_righe`
 - `vendite.offerte_commerciali_utilities` — estensione 1:1 (UNIQUE `offerta_id`)
 - `vendite.note_offerte_commerciali` — partizione del sistema note generico
-  (`target_tipo = 'OFFERTA'`), cablata via building block
+  (`target_tipo = 'OFFERTA_COMMERCIALE'`, fino al 2026-10-25 `'OFFERTA'`), cablata via building block
   `apps.core.db.PartitionedNoteRepository` (cablaggio differito, vedi piano BE/FE)
 
 **Funzioni**:
 
 - `script.fn_generate_codice('offerta_commerciale')` — generazione codice
   `OFC-*` (step 5 atterrato 2026-05-25, invocata dal trigger BEFORE INSERT).
+- `vendite.fn_cambia_stato_offerta(p_offerta_id, p_stato, p_motivazione)` — il
+  verbo di ogni cambio di stato manuale (dal 2026-10-26): «Emetti» e l'esito.
+  SECURITY DEFINER col predicato del perimetro; azione dalla riga del passaggio,
+  motivazione dove la riga la chiede, scrittura attraverso la porta. Ritorna
+  `offerta_id, stato_precedente, stato_nuovo`. Repository: `cambia_stato`.
+- `vendite.fn_annulla_offerta(p_offerta_id, p_motivazione, p_legami_confermati)` —
+  il verbo d'annullo (dal 2026-10-26, O-4): prima cio' che vieta, poi la
+  conferma dei legami (la revisione precedente), poi lo stato dal verbo di
+  stato. Ritorna i legami confermati. Repository: `annulla`.
+- `vendite.fn_documento_legami('OFFERTA_COMMERCIALE', id)` — i legami per la
+  finestra di conferma (`GET /<id>/legami/`).
 - `vendite.fn_crea_revisione_offerta(p_offerta_id, p_user)` — step 7
   atterrato 2026-05-25. Crea rev.N+1 da offerta EMESSA copiando testata +
   eccezioni attive + utility 1:1. Ritorna `BIGINT` (id nuova rev).

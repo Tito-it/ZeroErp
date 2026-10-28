@@ -53,31 +53,42 @@ SELECT plan(7);
 --   riferimenti che avrebbero nel giro reale. Nessuna fattura attaccata: il
 --   lotto vuoto e' annullabile dal 2026-08-01, ed e' la fixture piu' leggera
 --   che esercita la stessa strada.
+-- rev 2026-10-27 (lotto 4 di D7): il cliente si COSTRUISCE
+--   (dbops.fn_pgtap_crea_cliente_ba) e l'emittente e' quello di chi agisce
+--   (script.fn_pgtap_emittente_sr_operatore). Prima utility ed emittente si
+--   pescavano dal primo BA e dalla prima fattura: da zero non c'erano. La
+--   madre vendite.fn_get_or_create_lotto resta: e' il percorso vero.
+CREATE TEMP TABLE tmp_cli_arw AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('annulla lotto non riscrive stato');
+
 CREATE TEMP TABLE tmp_lotto_arw AS
 SELECT vendite.fn_get_or_create_lotto(
          p_competenza_mese             => (date_trunc('month', script.fn_data_operativa()) + interval '7 month')::date,
          p_tipo_doc_fiscale_id         => (SELECT id FROM config.tipi_doc_fiscale WHERE attivo IS TRUE ORDER BY id LIMIT 1),
-         p_utility_id                  => (SELECT ba.utility_id FROM anagrafiche.billing_account ba ORDER BY ba.id LIMIT 1),
-         p_emittente_soggetto_ruolo_id => (SELECT f.emittente_soggetto_ruolo_id FROM vendite.fatture f ORDER BY f.id LIMIT 1),
+         p_utility_id                  => (SELECT utility_id FROM tmp_cli_arw),
+         p_emittente_soggetto_ruolo_id => script.fn_pgtap_emittente_sr_operatore(),
          p_tipo_lotto                  => 'MASSIVO') AS id;
 
 CREATE TEMP TABLE tmp_lotto_sano_arw AS
 SELECT vendite.fn_get_or_create_lotto(
          p_competenza_mese             => (date_trunc('month', script.fn_data_operativa()) + interval '8 month')::date,
          p_tipo_doc_fiscale_id         => (SELECT id FROM config.tipi_doc_fiscale WHERE attivo IS TRUE ORDER BY id LIMIT 1),
-         p_utility_id                  => (SELECT ba.utility_id FROM anagrafiche.billing_account ba ORDER BY ba.id LIMIT 1),
-         p_emittente_soggetto_ruolo_id => (SELECT f.emittente_soggetto_ruolo_id FROM vendite.fatture f ORDER BY f.id LIMIT 1),
+         p_utility_id                  => (SELECT utility_id FROM tmp_cli_arw),
+         p_emittente_soggetto_ruolo_id => script.fn_pgtap_emittente_sr_operatore(),
          p_tipo_lotto                  => 'MASSIVO') AS id;
 
--- ⭐ Lo stato si porta a ERRORE dalla PORTA UFFICIALE, non con un UPDATE: se un
---   domani la macchina a stati cambiasse, questa fixture lo direbbe invece di
---   costruire di nascosto uno stato che il dominio non ammette piu'.
-DO $rompi$
-BEGIN
-    PERFORM vendite.fn_set_fatturazione_lotto_stato(
-        (SELECT id FROM tmp_lotto_arw), 'ERRORE');
-END
-$rompi$;
+-- ⭐ Lo stato si porta a ERRORE sotto la REGOLA UFFICIALE: se un domani la
+--   macchina a stati cambiasse, questa fixture lo direbbe invece di costruire di
+--   nascosto uno stato che il dominio non ammette piu'.
+-- rev 2026-10-27 (brief-modello-documento-vendita §15, F-4): la regola non e' piu'
+--   in vendite.fn_set_fatturazione_lotto_stato (ritirata, 20261027-07) ma nella
+--   matrice config.transizioni_stati_lotto_job, che il guard
+--   vendite.trgfn_fatturazione_lotti_guard_stato_job applica a ogni scrittura:
+--   l'UPDATE e' la scrittura di sempre del runner, e IN_ESECUZIONE -> ERRORE e'
+--   ammesso. Attese invariate.
+UPDATE vendite.fatturazione_lotti
+   SET stato_lotto = 'ERRORE'
+ WHERE id = (SELECT id FROM tmp_lotto_arw);
 
 SELECT is(
     (SELECT stato_lotto FROM vendite.fatturazione_lotti

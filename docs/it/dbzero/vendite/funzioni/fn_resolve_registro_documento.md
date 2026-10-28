@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_resolve_registro_documento(p_billing_account_id_riga bigint, p_tipo_doc_fiscale_id bigint, p_natura_doc_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

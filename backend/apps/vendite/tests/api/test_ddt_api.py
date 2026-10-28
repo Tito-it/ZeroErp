@@ -28,6 +28,7 @@ Indice test eseguiti:
 15) test_cambia_stato_annullo_con_conferma — legami_confermati propagato al service
 16) test_legami_ok                — 200 GET legami della bolla (mock service)
 17) test_riga_qta_evasa_ok        — 200 POST verbo quantita' evasa, payload propagato
+18) test_emetti_rifiutato_non_genera_il_documento — 409 dal verbo, nessun PDF
 """
 
 from unittest.mock import ANY, Mock, patch
@@ -35,9 +36,11 @@ from unittest.mock import ANY, Mock, patch
 from django.test import SimpleTestCase
 
 
+from apps.core.services.service_errors import ServiceError
 from apps.core.tests._helpers.jwt_mock import ClientApi
 
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
+from apps.core.tests._helpers.operatore_di_prova import operatore_di_prova
 
 _AUTH = "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate"
 _SVC = "apps.vendite.services.ddt_service"
@@ -151,6 +154,25 @@ class TestDdtApi(JwtMockedApiTest):
         kwargs = doc_svc_cls.return_value.genera_documento.call_args.kwargs
         self.assertEqual(kwargs["emittente_fiscale_id"], 11)
         self.assertEqual(kwargs["sorgente_tipo_id"], 5)
+
+    # Il secondo «Emetti» lo rifiuta il verbo (E_DOC_GIA_NELLO_STATO,
+    # brief-modello-documento-vendita §9.10): la view genera il documento solo
+    # DOPO il verbo, quindi un rifiuto non lascia un secondo PDF. La view e' la
+    # factory comune di `sorgente_documenti_views`: vale per ogni documento.
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(_VIEW_ATOMIC)
+    @patch(_DOC_GEN_SVC)
+    @patch(_DOC_VIEW_SVC)
+    def test_emetti_rifiutato_non_genera_il_documento(
+        self, svc_mod, doc_svc_cls, _atomic, _auth,
+    ) -> None:
+        svc_mod.emetti.side_effect = ServiceError(
+            code="E_DOC_GIA_NELLO_STATO", message="Il documento e' gia' nello stato EMESSO",
+        )
+        resp = self.client.post(f"{_BASE}7/emetti/", data={})
+        self.assertEqual(resp.status_code, 409)
+        self.assertEqual(resp.json()["error"]["code"], "E_DOC_GIA_NELLO_STATO")
+        doc_svc_cls.return_value.genera_documento.assert_not_called()
 
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(f"{_SVC}.cambia_stato")
@@ -333,9 +355,88 @@ class TestOrdineGeneraDdtApi(JwtMockedApiTest):
 
 
 class DdtEmettiPermessoTests(SimpleTestCase):
-    # Scopo: l'emissione chiede l'azione di processo che il verbo DB applica
-    #        (`emetti_ddt`), come il preventivo chiede la sua (2026-10-20, §A5).
-    def test_emetti_dichiara_emetti_ddt(self) -> None:
+    # Scopo: emissione e cambio stato della bolla leggono l'azione dalla riga
+    #        del passaggio (M-3, brief-modello-documento-vendita §7.6), non la
+    #        dichiarano: nessun `post_permission` accanto.
+    def test_emetti_e_cambia_stato_dichiarano_il_passaggio(self) -> None:
+        from apps.core.api.permissions import PassaggioDocumento
         from apps.vendite.api.ddt_documenti_views import ApiDdtEmetti
+        from apps.vendite.api.views_ddt import ApiDdtCambiaStato
 
-        self.assertEqual(ApiDdtEmetti.post_permission, "emetti_ddt")
+        self.assertEqual(ApiDdtEmetti.post_passaggio, PassaggioDocumento(
+            testata="vendite.ddt", documento_kwarg="sorgente_id", stato_del_modello="emissione",
+        ))
+        self.assertEqual(ApiDdtCambiaStato.post_passaggio, PassaggioDocumento(
+            testata="vendite.ddt", documento_kwarg="ddt_id",
+        ))
+        for view in (ApiDdtEmetti, ApiDdtCambiaStato):
+            with self.subTest(view=view.__name__):
+                self.assertIsNone(getattr(view, "post_permission", None))
+
+
+class DdtCambiaStatoPermessoDelPassaggioTests(JwtMockedApiTest):
+    """Il 403 dalla riga del passaggio arriva prima del service (M-3)."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.client = ClientApi()
+
+    # Senza l'azione della riga: 403, e il service non parte.
+    @patch(_AUTH, return_value=(operatore_di_prova(user_id=31), None))
+    @patch("apps.core.api.permissions.DocumentoModelloRepository")
+    @patch("apps.core.api.permissions.PermissionResolver")
+    @patch(f"{_SVC}.cambia_stato")
+    def test_azione_negata_e_403_prima_del_service(self, mock_cs, resolver, repo_cls, _auth) -> None:
+        resolver.is_super_admin.return_value = False
+        resolver.check_azione.return_value = False
+        repo_cls.return_value.azione_del_passaggio.return_value = "emetti_ddt"
+
+        resp = self.client.post(
+            f"{_BASE}7/cambia-stato/", data={"stato_codice": "ANNULLATO"},
+            content_type="application/json",
+        )
+
+        self.assertEqual(resp.status_code, 403)
+        repo_cls.return_value.azione_del_passaggio.assert_called_once_with(
+            "vendite.ddt", 7, "ANNULLATO",
+        )
+        mock_cs.assert_not_called()
+
+    # Con l'azione: passa, e il livello d'area non si guarda.
+    @patch(_AUTH, return_value=(operatore_di_prova(user_id=31), None))
+    @patch("apps.core.api.permissions.DocumentoModelloRepository")
+    @patch("apps.core.api.permissions.PermissionResolver")
+    @patch(f"{_SVC}.cambia_stato")
+    def test_azione_concessa_arriva_al_service(self, mock_cs, resolver, repo_cls, _auth) -> None:
+        resolver.is_super_admin.return_value = False
+        resolver.check_azione.return_value = True
+        repo_cls.return_value.azione_del_passaggio.return_value = "emetti_ddt"
+        mock_cs.return_value = {"ddt_id": 7, "stato": "ANNULLATO"}
+
+        resp = self.client.post(
+            f"{_BASE}7/cambia-stato/", data={"stato_codice": "ANNULLATO"},
+            content_type="application/json",
+        )
+
+        self.assertEqual(resp.status_code, 200)
+        resolver.get_livello_oggetto.assert_not_called()
+        mock_cs.assert_called_once_with(7, "ANNULLATO", legami_confermati=None)
+
+    # Il corpo illeggibile lo legge la catena per prima: deve restare il 400
+    # di sempre (`invalid_json`), non diventare un 403 o un 500.
+    @patch(_AUTH, return_value=(operatore_di_prova(user_id=31), None))
+    @patch("apps.core.api.permissions.DocumentoModelloRepository")
+    @patch("apps.core.api.permissions.PermissionResolver")
+    @patch(f"{_SVC}.cambia_stato")
+    def test_corpo_illeggibile_resta_400(self, mock_cs, resolver, repo_cls, _auth) -> None:
+        resolver.is_super_admin.return_value = False
+
+        resp = self.client.post(
+            f"{_BASE}7/cambia-stato/", data="{non json", content_type="application/json",
+        )
+
+        self.assertEqual(resp.status_code, 400)
+        errore = resp.json()["error"]
+        self.assertEqual(errore["code"], "E_VALIDATION_INPUT")
+        repo_cls.return_value.azione_del_passaggio.assert_not_called()
+        mock_cs.assert_not_called()

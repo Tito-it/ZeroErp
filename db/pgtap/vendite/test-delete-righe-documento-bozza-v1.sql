@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): i DDT in bozza da dbops.fn_pgtap_crea_ddt_senza_ordine (DRAFT), gli ordini in bozza e confermato da dbops.fn_pgtap_crea_ordine_con_righe; restano a mano i sei DELETE (sono il caso).
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine (test 5 e 6); restano scritti a mano i DDT in bozza senza ordine e gli ordini in bozza/confermato (sono il caso: righe che si tolgono o no), e i DELETE.
 -- pgTAP test per Zero ERP
 --
@@ -48,7 +49,9 @@
 --   giorno il file pescava billing account, soggetto e articolo dai dati
 --   esistenti — su un database da zero anagrafiche.* e' vuoto, e il file
 --   era in baseline-rossi-ci come ERRORE_FIXTURE. Cliente e articolo li
---   fabbricano dbops.fn_pgtap_crea_cliente_ba / fn_pgtap_crea_articolo.
+--   fabbricano dbops.fn_pgtap_crea_cliente_ba / fn_pgtap_crea_articolo; i
+--   documenti dbops.fn_pgtap_crea_ddt_senza_ordine, fn_pgtap_crea_ddt_da_ordine
+--   e fn_pgtap_crea_ordine_con_righe (rev 2026-10-25, giro D-4).
 --
 -- ⭐ IL PERIMETRO E' NELLE CHIAVI ESTERNE, non in questo trigger: il
 --   test 9 lo presidia. Se un domani qualcuno degradasse
@@ -127,103 +130,52 @@ SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('pgtap_delete_righe_bozza');
 CREATE TEMP TABLE tmp_refs_dr AS
 SELECT
   c.billing_account_id,
-  c.utility_id,
-  c.soggetto_ruolo_id,
-  script.fn_pgtap_emittente_operatore()                                                              AS emittente_fiscale_id,
   -- ⚠️ NON composito (un kit farebbe nascere figlie in CASCADE) e NON gestito a magazzino.
-  dbops.fn_pgtap_crea_articolo('PGT-DR-ART', false)                                                  AS articolo_id,
-  (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)                                            AS valuta_id,
-  (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1)                        AS iva_id,
-  (SELECT s.id FROM config.stati_doc_ddt s    WHERE s.codice_interno='DRAFT'      AND s.attivo ORDER BY s.id LIMIT 1) AS stato_ddt_draft_id,
-  (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='DRAFT'      AND s.attivo ORDER BY s.id LIMIT 1) AS stato_ord_draft_id
+  dbops.fn_pgtap_crea_articolo('PGT-DR-ART', false)                                                  AS articolo_id
 FROM tmp_cli_dr c;
 
 DO $fix$
 DECLARE
   r       RECORD;
   v_id    bigint;
-  v_ord   bigint;
-  v_ddr   bigint;
+  v_riga  bigint;
 BEGIN
   SELECT * INTO r FROM tmp_refs_dr;
 
-  -- ── DDT in bozza (test 3 e 4) ───────────────────────────────────
-  INSERT INTO vendite.ddt (data, stato_doc_ddt_id, destinatario_soggetto_ruolo_id,
-                           billing_account_id, utility_id, valuta_id,
-                           emittente_fiscale_id, storicizza, meta)
-  VALUES (script.fn_data_operativa(), r.stato_ddt_draft_id, r.soggetto_ruolo_id, r.billing_account_id,
-          r.utility_id, r.valuta_id, r.emittente_fiscale_id, false,
-          jsonb_build_object('test_scope','pgtap_delete_righe_bozza'))
-  RETURNING id INTO v_id;
-  INSERT INTO tmp_fix VALUES ('ddt_bozza', v_id);
-
-  INSERT INTO vendite.ddt_righe (ddt_id, riga_nr, articolo_id, descrizione,
-                                 qta_operativa, quantita, storicizza, meta)
-  VALUES (v_id, 1, r.articolo_id, 'riga togliibile', 1.000000, 1.000000, false,
-          jsonb_build_object('test_scope','pgtap_delete_righe_bozza'))
-  RETURNING id INTO v_id;
-  INSERT INTO tmp_fix VALUES ('ddt_bozza_riga', v_id);
+  -- ── DDT senza ordine in bozza, con una riga (test 3 e 4), dal builder ──
+  SELECT b.ddt_id, b.ddt_riga_id INTO v_id, v_riga
+    FROM dbops.fn_pgtap_crea_ddt_senza_ordine('pgtap_delete_righe_bozza', 'DRAFT', r.billing_account_id,
+           p_quantita => 1, p_articolo_id => r.articolo_id) b;
+  INSERT INTO tmp_fix VALUES ('ddt_bozza', v_id), ('ddt_bozza_riga', v_riga);
 
   -- Secondo DDT in bozza, per provare il cascade sulla testata senza
   -- consumare quello del test 3.
-  INSERT INTO vendite.ddt (data, stato_doc_ddt_id, destinatario_soggetto_ruolo_id,
-                           billing_account_id, utility_id, valuta_id,
-                           emittente_fiscale_id, storicizza, meta)
-  VALUES (script.fn_data_operativa(), r.stato_ddt_draft_id, r.soggetto_ruolo_id, r.billing_account_id,
-          r.utility_id, r.valuta_id, r.emittente_fiscale_id, false,
-          jsonb_build_object('test_scope','pgtap_delete_righe_bozza'))
-  RETURNING id INTO v_id;
+  SELECT b.ddt_id INTO v_id
+    FROM dbops.fn_pgtap_crea_ddt_senza_ordine('pgtap_delete_righe_bozza', 'DRAFT', r.billing_account_id,
+           p_quantita => 1, p_articolo_id => r.articolo_id) b;
   INSERT INTO tmp_fix VALUES ('ddt_bozza2', v_id);
-  INSERT INTO vendite.ddt_righe (ddt_id, riga_nr, articolo_id, descrizione,
-                                 qta_operativa, quantita, storicizza, meta)
-  VALUES (v_id, 1, r.articolo_id, 'riga che muore col padre', 1.000000, 1.000000, false,
-          jsonb_build_object('test_scope','pgtap_delete_righe_bozza'));
 
   -- ── DDT EMESSO nel verso vero (test 5 e 6): dal builder, ordine del
   --    cliente del file con una riga di 2 a 10, bolla emessa per la matrice ─
-  SELECT b.ddt_id, b.ddt_riga_id INTO v_id, v_ddr
+  SELECT b.ddt_id, b.ddt_riga_id INTO v_id, v_riga
     FROM dbops.fn_pgtap_crea_ddt_da_ordine('pgtap_delete_righe_bozza', 'EMESSO',
            p_billing_account_id => r.billing_account_id,
            p_articolo_id        => r.articolo_id,
            p_quantita           => 2,
            p_prezzo             => 10) b;
-  INSERT INTO tmp_fix VALUES ('ddt_emesso', v_id), ('ddt_emesso_riga', v_ddr);
+  INSERT INTO tmp_fix VALUES ('ddt_emesso', v_id), ('ddt_emesso_riga', v_riga);
 
-  -- ── Ordine in bozza e ordine confermato (test 7 e 8) ────────────
-  INSERT INTO vendite.ordini (data, stato_doc_ordine_id, soggetto_ruolo_id,
-                              billing_account_id, utility_id, valuta_id,
-                              emittente_fiscale_id, storicizza, meta)
-  VALUES (script.fn_data_operativa(), r.stato_ord_draft_id, r.soggetto_ruolo_id, r.billing_account_id,
-          r.utility_id, r.valuta_id, r.emittente_fiscale_id, false,
-          jsonb_build_object('test_scope','pgtap_delete_righe_bozza'))
-  RETURNING id INTO v_id;
-  INSERT INTO tmp_fix VALUES ('ord_bozza', v_id);
-  INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
-                                    qta_operativa, quantita, prezzo_unitario, storicizza, meta)
-  VALUES (v_id, 1, r.articolo_id, 'riga ordine togliibile', 1.000000, 1.000000, 10.000000, false,
-          jsonb_build_object('test_scope','pgtap_delete_righe_bozza'))
-  RETURNING id INTO v_id;
-  INSERT INTO tmp_fix VALUES ('ord_bozza_riga', v_id);
+  -- ── Ordine in bozza e ordine confermato, una riga di 1 a 10 (test 7 e 8),
+  --    dal builder: la conferma passa per dbops.fn_pgtap_porta_a_stato ──
+  SELECT o.ordine_id, o.ordine_riga_id INTO v_id, v_riga
+    FROM dbops.fn_pgtap_crea_ordine_con_righe('pgtap_delete_righe_bozza', 'DRAFT', r.billing_account_id,
+           p_quantita => 1, p_prezzo => 10, p_articolo_id => r.articolo_id) o;
+  INSERT INTO tmp_fix VALUES ('ord_bozza', v_id), ('ord_bozza_riga', v_riga);
 
-  -- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la porta aperta sulle
-  --   righe d'ordine (20260922-04) e' chiusa — il BB copre ora INSERT/UPDATE/DELETE
-  --   (20261008-90). L'ordine nasce DRAFT, prende la riga (con l'aliquota che la conferma
-  --   pretende), poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato.
-  INSERT INTO vendite.ordini (data, stato_doc_ordine_id, soggetto_ruolo_id,
-                              billing_account_id, utility_id, valuta_id,
-                              emittente_fiscale_id, storicizza, meta)
-  VALUES (script.fn_data_operativa(), r.stato_ord_draft_id, r.soggetto_ruolo_id, r.billing_account_id,
-          r.utility_id, r.valuta_id, r.emittente_fiscale_id, false,
-          jsonb_build_object('test_scope','pgtap_delete_righe_bozza'))
-  RETURNING id INTO v_ord;
-  INSERT INTO tmp_fix VALUES ('ord_conf', v_ord);
-  INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
-                                    qta_operativa, quantita, prezzo_unitario, iva_id, storicizza, meta)
-  VALUES (v_ord, 1, r.articolo_id, 'riga ordine intoccabile', 1.000000, 1.000000, 10.000000, r.iva_id, false,
-          jsonb_build_object('test_scope','pgtap_delete_righe_bozza'))
-  RETURNING id INTO v_id;
-  INSERT INTO tmp_fix VALUES ('ord_conf_riga', v_id);
-  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', v_ord, 'CONFERMATO');
+  SELECT o.ordine_id, o.ordine_riga_id INTO v_id, v_riga
+    FROM dbops.fn_pgtap_crea_ordine_con_righe('pgtap_delete_righe_bozza', 'CONFERMATO', r.billing_account_id,
+           p_quantita => 1, p_prezzo => 10, p_articolo_id => r.articolo_id) o;
+  INSERT INTO tmp_fix VALUES ('ord_conf', v_id), ('ord_conf_riga', v_riga);
 END $fix$;
 
 -- ============================================================

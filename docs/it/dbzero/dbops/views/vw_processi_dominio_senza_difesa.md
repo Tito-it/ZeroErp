@@ -5,6 +5,8 @@
 >
 > Tabelle di dominio in cui si SA dove sta l'emittente ma nessuno lo usa per filtrare: manca la policy RLS, manca il write-guard, o entrambi. ⛔ Una policy conta solo se la ROW LEVEL SECURITY e' ATTIVA sulla tabella (rev 2026-09-05): PostgreSQL conserva le policy di una tabella con la RLS disabilitata e non le applica, quindi prima bastava SCRIVERE una policy per far sparire la riga da qui lasciando la tabella aperta a tutti. ⭐ Non e' nato da una misura — nessun bersaglio era in quello stato — ma dalla scorciatoia che si stava per prendere sulla policy di config.email_outbox: un presidio che si spegne con una decorazione e' peggio di nessun presidio. ⚠️ FORCE ROW LEVEL SECURITY NON entra nel criterio: in questo database nessuna tabella lo usa, perche' l'owner deve poter leggere fuori dalla row security per le SECURITY DEFINER che derivano il perimetro. ⚠️ La regola resta «deve restare VUOTA», ma l'invariante verificabile e' «nessuna riga NON_DICHIARATO»: dichiarare un debito dice «sappiamo perche' e' qui», non «va bene che ci sia».
 
+> 🔐 **Sicurezza**: definer (default delle viste) — le tabelle sotto si leggono con i privilegi dell'owner `zeroerp_owner`, e la RLS che vale e' la sua, non quella di chi interroga.
+
 <div data-search-exclude markdown>
 
 ```sql

@@ -14,6 +14,8 @@
 #   2) numera_richiede_idempotency_key — 400
 #   3) numera_ok_accoda_operatore_scope_business_key — 200 + kwargs accoda
 #   4) numera_senza_identita_400 — JWT senza claim identita_id
+#   5) numera_lotto_dichiara_il_passaggio — l'azione dalla riga EMESSA -> DEFINITIVA
+#   6) numera_perimetro_tiene_il_permesso — nessun documento da cui leggere la riga
 # ------------------------------------------------------------
 
 import json
@@ -126,3 +128,27 @@ class FatturazioneNumeraApiTests(JwtMockedApiTest):
         )
         self.assertEqual(resp.status_code, 400)
         repo_cls.return_value.accoda.assert_not_called()
+
+
+class NumeraPermessiTests(JwtMockedApiTest):
+    # 5) «Numera» di UN lotto chiede l'azione dalla riga del passaggio
+    #    EMESSA -> DEFINITIVA (M-3, brief-modello-documento-vendita §15.8
+    #    punto 3), la stessa della capability e del verbo; nessun
+    #    `post_permission` accanto.
+    def test_numera_lotto_dichiara_il_passaggio(self) -> None:
+        from apps.core.api.permissions import PassaggioDocumento
+        from apps.vendite.api.views import ApiFatturazioneNumeraLotto
+
+        self.assertEqual(ApiFatturazioneNumeraLotto.post_passaggio, PassaggioDocumento(
+            testata="vendite.fatturazione_lotti", documento_kwarg="lotto_id",
+            stato_chiesto="DEFINITIVA",
+        ))
+        self.assertIsNone(getattr(ApiFatturazioneNumeraLotto, "post_permission", None))
+
+    # 6) La numerazione di PERIMETRO (tutti i lotti EMESSA del mese) non ha un
+    #    documento da cui leggere la riga: tiene l'azione dichiarata, la stessa
+    #    della riga (Q-F1).
+    def test_numera_perimetro_tiene_il_permesso(self) -> None:
+        from apps.vendite.api.views import ApiFatturazioneNumera
+
+        self.assertEqual(ApiFatturazioneNumera.post_permission, "numera_fatture_lotti")

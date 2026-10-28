@@ -1,0 +1,167 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL VERBO DI STATO DEL LOTTO SUL VERBO COMUNE
+#   Brief: brief-modello-documento-vendita §15 (giro 11; M-1, M-3, F-2,
+#   Q-F1, Q-F2 di Tid, 2026-10-24/27). Stampo: il verbo della commessa
+#   (20261026-30).
+#
+# ── CHE COSA FA ─────────────────────────────────────────────────────
+#   I passaggi MANUALI dello stato fiscale di un lotto (i pulsanti del
+#   lotto): riporta in bozza (EMESSA -> DRAFT), annullo della bozza
+#   (DRAFT -> ANNULLATA); numera (EMESSA -> DEFINITIVA) e' una riga manuale,
+#   ma la scrittura la fa il giro della pipeline (P-2, verbo di processo
+#   vendite.fn_lotto_proietta_stato_step).
+#   - la prima riga comune, script.fn_guard_passaggio: l'azione della riga
+#     (numera_fatture_lotti su numera e riporta in bozza, Q-F1; niente
+#     sull'annullo della bozza, Q-F2), il passaggio di processo chiesto a
+#     mano (E_DOC_PASSAGGIO_DI_PROCESSO), lo stato che il lotto ha gia'
+#     (E_DOC_GIA_NELLO_STATO);
+#   - lo stato si scrive con script.fn_doc_scrivi_stato, attraverso la porta
+#     (20261027-18);
+#   - SECURITY DEFINER con search_path bloccato: la porta vuole il
+#     proprietario. Il lotto si prende FOR UPDATE col predicato della policy
+#     nella WHERE (fuori perimetro E_LOTTO_NON_TROVATO, no-leak).
+#
+# ── CHE COSA NON FA ─────────────────────────────────────────────────
+#   La pulizia (fatture cancellate, attivita' liberate, corse annullate) e'
+#   delle madri vendite.fn_riporta_lotto_a_draft e
+#   vendite.fn_annulla_lotto_da_draft, che chiamano questo verbo alla fine.
+#   Chiamato da solo, il passaggio lo giudicano lo stesso il guard di
+#   transizione (vendite.trgfn_fatturazione_lotti_guard_stato) e la coerenza
+#   lotto <-> fatture (vendite.trgfn_lotto_fatture_guard_stato_coerente):
+#   un lotto non torna in bozza ne' si annulla con le fatture avanti.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261027-08-create-fn-cambia-stato-lotto-verbo-comune-mctit.yaml
+
+  - changeSet:
+      id: 20261027-08-create-fn-cambia-stato-lotto-verbo-comune
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_cambia_stato_lotto(id, stato): il verbo dei passaggi manuali dello stato fiscale
+        di un lotto, sul verbo comune (script.fn_guard_passaggio + script.fn_doc_scrivi_stato),
+        SECURITY DEFINER col predicato della policy. Brief: brief-modello-documento-vendita §15.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "4"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname IN ('fn_guard_passaggio', 'fn_doc_scrivi_stato', 'fn_doc_stato_id',
+                                   'fn_scope_ef_whitelist_via_lotto');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION vendite.fn_cambia_stato_lotto(
+                  p_lotto_id vendite.fatturazione_lotti.id%TYPE,
+                  p_stato    config.stati_doc_fiscale.codice_interno%TYPE)
+               RETURNS TABLE(lotto_id vendite.fatturazione_lotti.id%TYPE,
+                             stato_da config.stati_doc_fiscale.codice_interno%TYPE,
+                             stato_a  config.stati_doc_fiscale.codice_interno%TYPE)
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente      config.user_override_azioni.auth_user_id%TYPE;
+                  v_stato_da    config.stati_doc_fiscale.codice_interno%TYPE;
+                  v_stato_da_id vendite.fatturazione_lotti.stato_doc_fiscale_id%TYPE;
+                  v_stato_a_id  config.stati_doc_fiscale.id%TYPE;
+              BEGIN
+                  -- ==========================================================
+                  -- Scopo: il verbo dei passaggi manuali dello stato fiscale
+                  --   di un lotto (modello del documento: prima riga comune,
+                  --   scrittura comune). La matrice la giudica il guard di
+                  --   transizione, all'UPDATE.
+                  -- Ritorna: lotto_id, stato_da, stato_a (codice_interno).
+                  -- rev 2026-10-27 (20261027-08, brief-modello-documento-
+                  --   vendita §15): nasce.
+                  -- ==========================================================
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+
+                  -- 1. Parametri.
+                  IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_cambia_stato_lotto',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_lotto_id', p_lotto_id),
+                          NULL::uuid, 'vendite.fn_cambia_stato_lotto',
+                          'p_lotto_id (obbligatorio, maggiore di zero)');
+                  END IF;
+
+                  -- 2. Il lotto FOR UPDATE, nel perimetro (predicato della
+                  --    policy: DEFINER). Fuori perimetro come inesistente.
+                  SELECT l.stato_doc_fiscale_id, s.codice_interno
+                    INTO v_stato_da_id, v_stato_da
+                    FROM vendite.fatturazione_lotti l
+                    JOIN config.stati_doc_fiscale s ON s.id = l.stato_doc_fiscale_id
+                   WHERE l.id = p_lotto_id
+                     AND script.fn_scope_ef_whitelist_via_lotto(v_utente, l.id)
+                     FOR UPDATE OF l;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_cambia_stato_lotto',
+                          'E_LOTTO_NON_TROVATO', jsonb_build_object('lotto_id', p_lotto_id),
+                          NULL::uuid, p_lotto_id::text);
+                  END IF;
+
+                  -- 3. Lo stato chiesto: il codice di uno stato attivo.
+                  v_stato_a_id := script.fn_doc_stato_id('vendite.fatturazione_lotti'::regclass, p_stato);
+                  IF v_stato_a_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_cambia_stato_lotto',
+                          'E_STATO_WORKFLOW_NON_TROVATO',
+                          jsonb_build_object('p_nuovo_stato', p_stato),
+                          NULL::uuid,
+                          COALESCE(p_stato, 'NULL'));
+                  END IF;
+
+                  -- 4. Prima riga comune: lo stato che ha gia', passaggio di
+                  --    processo, azione.
+                  PERFORM script.fn_guard_passaggio(v_utente, 'vendite.fatturazione_lotti'::regclass,
+                                                    v_stato_da_id, v_stato_a_id);
+
+                  -- 5. Lo stato, attraverso la porta. Il guard di transizione
+                  --    giudica la matrice; la coerenza lotto <-> fatture le
+                  --    fatture.
+                  PERFORM script.fn_doc_scrivi_stato('vendite.fatturazione_lotti'::regclass,
+                                                     p_lotto_id, v_stato_a_id);
+
+                  RETURN QUERY SELECT p_lotto_id, v_stato_da, p_stato;
+              END;
+              $function$;
+
+              -- DEFINER: EXECUTE solo all'applicazione, come gli altri verbi di stato.
+              REVOKE EXECUTE ON FUNCTION vendite.fn_cambia_stato_lotto(
+                  vendite.fatturazione_lotti.id%TYPE, config.stati_doc_fiscale.codice_interno%TYPE) FROM PUBLIC;
+              GRANT EXECUTE ON FUNCTION vendite.fn_cambia_stato_lotto(
+                  vendite.fatturazione_lotti.id%TYPE, config.stati_doc_fiscale.codice_interno%TYPE) TO zeroerp_app;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.fn_cambia_stato_lotto(
+                  vendite.fatturazione_lotti.id%TYPE, config.stati_doc_fiscale.codice_interno%TYPE)
+                IS 'VERBO dei passaggi manuali dello stato fiscale di un lotto di fatturazione (modello del documento, brief-modello-documento-vendita §15): riporta in bozza (EMESSA -> DRAFT) e annullo della bozza (DRAFT -> ANNULLATA), chiamato in fondo dalle madri vendite.fn_riporta_lotto_a_draft e vendite.fn_annulla_lotto_da_draft, che fanno la pulizia. Numera (EMESSA -> DEFINITIVA) e'' una riga manuale (il pulsante e il permesso), ma lo stato lo scrive il giro della pipeline con vendite.fn_lotto_proietta_stato_step (P-2). Permesso: dalla riga del passaggio (config.stati_doc_fiscale_transizioni.azione_processo_codename: numera_fatture_lotti su numera e riporta in bozza; nessuna azione sull''annullo della bozza) con script.fn_guard_passaggio, prima di ogni scrittura (lo stato che il lotto ha gia'': E_DOC_GIA_NELLO_STATO; un passaggio di processo chiesto a mano: E_DOC_PASSAGGIO_DI_PROCESSO). SECURITY DEFINER con search_path bloccato: il lotto si prende FOR UPDATE col predicato della policy nella WHERE (script.fn_scope_ef_whitelist_via_lotto; fuori perimetro E_LOTTO_NON_TROVATO, no-leak). Lo stato chiesto per codice_interno (script.fn_doc_stato_id; nessuno stato attivo: E_STATO_WORKFLOW_NON_TROVATO). Lo stato lo scrive script.fn_doc_scrivi_stato attraverso la porta (script.trgfn_doc_stato_solo_dal_verbo); il guard di transizione (vendite.trgfn_fatturazione_lotti_guard_stato) giudica la matrice e il fermo, la coerenza lotto <-> fatture (vendite.trgfn_lotto_fatture_guard_stato_coerente) le fatture: chiamato senza la pulizia della madre, un passaggio con le fatture avanti e'' rifiutato. Ritorna lotto_id, stato_da, stato_a (codice_interno). EXECUTE solo all''applicazione. Brief: brief-modello-documento-vendita §15 (M-1, M-3, F-2, Q-F1, Q-F2, Tid 2026-10-24/27).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_cambia_stato_lotto(bigint, character varying);

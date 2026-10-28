@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_get_uom_factor(p_articolo_id uuid, p_uom_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

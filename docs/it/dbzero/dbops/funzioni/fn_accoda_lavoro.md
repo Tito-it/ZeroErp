@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_accoda_lavoro(p_job_type text, p_payload jsonb, p_run_as text, p_scope jsonb, p_idempotency_key text, p_priorita smallint, p_run_after timestamp with time zone, p_max_tentativi integer, p_origine text)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

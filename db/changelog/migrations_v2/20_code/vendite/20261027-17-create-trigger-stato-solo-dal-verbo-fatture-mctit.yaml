@@ -1,0 +1,58 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA PORTA SULLA FATTURA
+#   Brief: brief-modello-documento-vendita §15 (giro 11; S-1 b di Tid).
+#   Stampo: la porta della commessa (20261026-34).
+#
+#   Lo stato fiscale della fattura si cambia solo dal suo verbo,
+#   vendite.fn_fattura_proietta_stato (20261027-10), che scrive con
+#   script.fn_doc_scrivi_stato; lo chiamano la sync col lotto (-11), la
+#   numerazione (-12) e la chiusura del giornaliero (-13). Un UPDATE
+#   diretto: E_DOC_STATO_SOLO_DAL_VERBO. La nascita (INSERT) non passa da
+#   qui: la porta e' BEFORE UPDATE.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261027-17-create-trigger-stato-solo-dal-verbo-fatture-mctit.yaml
+
+  - changeSet:
+      id: 20261027-17-create-trigger-stato-solo-dal-verbo-fatture
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Monta script.trgfn_doc_stato_solo_dal_verbo (BEFORE UPDATE OF colonna di stato, _a05_)
+        su vendite.fatture. Brief: brief-modello-documento-vendita §15 (S-1 b).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'trgfn_doc_stato_solo_dal_verbo';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_fatture_a05_stato_solo_dal_verbo_upd
+                  BEFORE UPDATE OF stato_doc_fiscale_id ON vendite.fatture
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_doc_stato_solo_dal_verbo();
+
+              COMMENT ON TRIGGER trg_fatture_a05_stato_solo_dal_verbo_upd ON vendite.fatture IS
+                  'La porta (BB script.trgfn_doc_stato_solo_dal_verbo): lo stato fiscale della fattura si cambia solo dal suo verbo, vendite.fn_fattura_proietta_stato (chiamato dalla sync col lotto, dalla numerazione e dalla chiusura del giornaliero), che scrive con script.fn_doc_scrivi_stato. Un UPDATE diretto: E_DOC_STATO_SOLO_DAL_VERBO. Fascia _a05_. Brief: brief-modello-documento-vendita §15 (S-1 b, Tid 2026-10-25/27).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_fatture_a05_stato_solo_dal_verbo_upd ON vendite.fatture;

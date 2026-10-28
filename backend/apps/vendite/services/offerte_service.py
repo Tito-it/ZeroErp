@@ -7,13 +7,15 @@
 #
 #        L'offerta commerciale e' il documento pre-contrattuale: vive nel
 #        ciclo BOZZA -> EMESSA -> (ACCETTATA | RIFIUTATA | SUPERATA) +
-#        terminale di ritiro BOZZA | ACCETTATA -> ANNULLATA. La state
-#        machine e' enforced dal trigger DB
-#        trgfn_offerte_commerciali_guard_transizione; il service applica
-#        solo pre-validazioni applicative (stato corrente, payload
-#        obbligatorio motivazione su RIFIUTATA/ANNULLATA) e lascia
-#        al DB le invarianti complesse (listino_versione_id NULL in
-#        emissione, listino non ATTIVO, transizione non ammessa, ecc.).
+#        terminale di ritiro BOZZA | ACCETTATA -> ANNULLATA.
+#        ⭐ Dal 2026-10-26 l'offerta e' sul modello del documento
+#        (brief-modello-documento-vendita §13, giro 9): lo stato lo scrivono
+#        solo i verbi DB `vendite.fn_cambia_stato_offerta` (con la
+#        motivazione, obbligatoria dove la riga della matrice la chiede) e
+#        `vendite.fn_annulla_offerta` (con la conferma dei legami: la
+#        revisione precedente che torna emessa). Stati di partenza, permesso
+#        del passaggio, motivazione e condizioni li giudica il DB; qui niente
+#        copie Python della matrice.
 #
 #        Stato 2026-05-25: tutti gli step DB 1-9 atterrati. Il service
 #        espone l'intero ciclo dell'offerta commerciale: create -> emetti ->
@@ -36,7 +38,9 @@ from django.db import transaction
 from apps.config.sorgenti import SORGENTE_OFFERTA_COMMERCIALE
 from apps.core.db._helpers import richiedi_codice_a_vocabolario
 from apps.core.api.constants import DEFAULT_LIMIT
+from apps.core.services.documento_modello import stato_di_emissione
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.service_errors import ServiceError
 from apps.core.services.capability_blob import capabilities_o_vuoto
 from apps.core.services.testata_guard import (
     pagina_dopo_testata,
@@ -47,6 +51,8 @@ from apps.core.services.payload_helpers import (
     PayloadValidator,
     translate_db_errors,
 )
+from apps.core.services.partitioned_note_service import contatori_documento
+from apps.vendite.db.note_repositories import NOTE_REPO_OFFERTA
 from apps.vendite.db._documento_eccezioni_repo import (
     list_erogazioni_riga,
     listino_versione_operativa,
@@ -54,6 +60,7 @@ from apps.vendite.db._documento_eccezioni_repo import (
 from apps.vendite.db.contratti_repository import ContrattiRepository
 from apps.vendite.db.offerte_repository import (
     _ORDER_COLS_OFFERTE,
+    TESTATA_OFFERTE,
     OffertaRigheListaRepository,
     OfferteRepository,
 )
@@ -61,6 +68,10 @@ from apps.vendite.services._cliente_coppia_documento import (
     coppia_cambiata,
     rifiuta_colonne_ferme,
     risolvi_cliente_coppia,
+)
+from apps.vendite.services._annullo_con_legami import (
+    legami_del_documento,
+    legami_confermati as dichiarazione_legami,
 )
 from apps.vendite.services._indirizzi_documento_helpers import (
     IndirizziDocumentoConfig,
@@ -96,6 +107,13 @@ E_VENDITE_VALIDATION = "E_VENDITE_VALIDATION"
 E_VENDITE_NOT_FOUND = "E_VENDITE_NOT_FOUND"
 E_VENDITE_DUPLICATO = "E_VENDITE_DUPLICATO"
 E_VENDITE_FK = "E_VENDITE_FK"
+# Il rifiuto del verbo di stato quando la riga del passaggio chiede la
+# motivazione e manca (O-3): il service lo riconosce per dire al client il
+# campo della SUA richiesta (vedi `_db_errors`).
+E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA = "E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA"
+
+# Il campo della richiesta che porta la motivazione (rifiuto e annullo).
+_CAMPO_MOTIVAZIONE = "motivazione"
 
 
 # Pattern per estrarre il codice errore applicativo dal MESSAGE dei trigger
@@ -104,38 +122,32 @@ E_VENDITE_FK = "E_VENDITE_FK"
 
 
 # Codici stato documento (chiavi naturali `codice_interno` in
-# config.stati_doc_offerte). Usate per:
-#  - lookup id stato target via `get_stato_id_by_codice`
-#  - assertion di stato corrente nelle transizioni
-#  - test (fixtures + asserzioni)
+# config.stati_doc_offerte) che il service nomina: la bozza dell'eliminazione e
+# i due esiti del cliente. ⛔ Non l'emissione ne' l'annullo, che li dice il
+# vocabolario (`stato_di_emissione`; lo stato d'annullo lo sceglie
+# `vendite.fn_annulla_offerta`), e non gli stati di partenza dei passaggi.
 class StatoOfferta:
     BOZZA = "BOZZA"
-    EMESSA = "EMESSA"
     ACCETTATA = "ACCETTATA"
     RIFIUTATA = "RIFIUTATA"
-    ANNULLATA = "ANNULLATA"
-    SUPERATA = "SUPERATA"
 
 
-# Gli stati da cui si ELIMINA l'offerta e si passa alle transizioni manuali
-# che partono dalla bozza. ⛔ Non governa piu' testata, utility ne' eccezioni:
-# quali colonne e quali righe si cambiano in quale stato lo dicono i lock del DB
+# Gli stati da cui si ELIMINA l'offerta (hard delete). ⚠️ Resta, dichiarato
+# (brief-modello-documento-vendita §13.6 punto 4): non ripete la matrice, che
+# l'eliminazione non la attraversa, e la tabella non ha un guard sul DELETE.
+# ⛔ Non governa piu' testata, utility ne' eccezioni: quali colonne e quali righe
+# si cambiano in quale stato lo dicono i lock del DB
 # (`trgfn_doc_testata_lock_fuori_bozza`, `trgfn_doc_righe_lock_fuori_bozza`).
 _STATI_EDITABILI: frozenset[str] = frozenset({StatoOfferta.BOZZA})
 
 
-# Set "azionabili da EMESSA": registra_accettazione, registra_rifiuto,
-# crea_revisione partono tutti da stato EMESSA. Estratto come costante per
-# evitare 3 allocazioni `frozenset({EMESSA})` ad ogni chiamata di guard.
-_STATI_DA_EMESSA: frozenset[str] = frozenset({StatoOfferta.EMESSA})
-
-
-# Set "pushabili a contratto": solo ACCETTATA (Step 8 brief DB).
-_STATI_PUSHABILI: frozenset[str] = frozenset({StatoOfferta.ACCETTATA})
-
-
-# Set di esiti cliente da EMESSA (used by registra_esito routing).
-_ESITI_AMMESSI_DA_EMESSA: frozenset[str] = frozenset(
+# Gli esiti che la rotta dell'esito accetta in ingresso: e' la validazione del
+# campo `esito` (un 400 col campo), non lo stato di partenza. Da quale stato si
+# registra un esito lo dice la matrice, al verbo. ⛔ Fino al 2026-10-26 si
+# chiamava `_ESITI_AMMESSI_DA_EMESSA` e insieme a `_STATI_DA_EMESSA`,
+# `_STATI_PUSHABILI` e `_STATI_TERMINALI` ripeteva la matrice e i guard delle
+# madri (revisione, push): ritirati (§13.6 punto 4).
+_ESITI: frozenset[str] = frozenset(
     {StatoOfferta.ACCETTATA, StatoOfferta.RIFIUTATA}
 )
 
@@ -150,25 +162,6 @@ _ESITI_AMMESSI_DA_EMESSA: frozenset[str] = frozenset(
 # la chiave passa la validazione e poi il repository ripiega in silenzio.
 # `revisione_numero` ASSENTE: non ordinabile (decisione §7.3).
 _ORDER_BY_OFFERTE: frozenset[str] = frozenset(_ORDER_COLS_OFFERTE)
-
-
-# Stati in cui l'offerta non si modifica e non offre azioni all'operatore.
-#
-# ⛔ NON piu' «senza transizioni uscenti», e la differenza e' del 2026-08-28:
-#    `SUPERATA` una transizione uscente ORA CE L'HA — `SUPERATA -> EMESSA`, che
-#    il database percorre da se' quando l'ultima revisione viva viene annullata
-#    e il padre deve tornare a essere l'offerta del lineage. E' seedata
-#    `manuale: false`, quindi non compare fra le azioni disponibili e nessun
-#    pulsante la propone: per chi guarda lo stato resta chiuso, ma dire «non ha
-#    uscite» era vero fino a ieri e adesso non lo e' piu'.
-#
-# ⚠️ COSTANTE NON USATA: nessuno la legge, in tutto il backend. Resta perche'
-#    cancellarla e' una decisione di chi possiede le offerte, non di chi passava
-#    di qui — ma una costante morta che dichiara anche una cosa falsa e' il
-#    peggio dei due casi, e la dichiarazione e' stata corretta.
-_STATI_TERMINALI: frozenset[str] = frozenset(
-    {"ACCETTATA", "RIFIUTATA", "ANNULLATA", "SUPERATA"}
-)
 
 
 # UNIQUE constraints catalogati per mappare violazioni IntegrityError.
@@ -386,6 +379,12 @@ class OfferteService:
     #        Delega al BB condiviso `translate_db_errors` (core
     #        payload_helpers, estratto 2026-07-13 — regola del 2 alla 5a
     #        copia); resta la firma context-based per i call site del service.
+    # ⭐ Il campo di E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA: il verbo nomina la
+    #    COLONNA (`motivazione_rifiuto`, canale `COLUMN`), la richiesta porta
+    #    `motivazione`. `error.fields` promette un input della richiesta
+    #    (api.md §Envelope): qui il nome si traduce, per questo codice soltanto.
+    #    ⛔ Non con `context={"field": ...}`: vincerebbe su OGNI errore del
+    #    blocco, e un E_DOC_GIA_NELLO_STATO accenderebbe la motivazione.
     @contextmanager
     def _db_errors(
         self,
@@ -393,14 +392,19 @@ class OfferteService:
         *,
         fallback_message: str = "Violazione vincolo DB su offerta.",
     ) -> Iterator[None]:
-        with translate_db_errors(
-            context=context,
-            fallback_code=E_VENDITE_VALIDATION,
-            fallback_message=fallback_message,
-            unique_constraints=_UNIQUE_CONSTRAINTS,
-            fk_constraints=_FK_CONSTRAINTS,
-        ):
-            yield
+        try:
+            with translate_db_errors(
+                context=context,
+                fallback_code=E_VENDITE_VALIDATION,
+                fallback_message=fallback_message,
+                unique_constraints=_UNIQUE_CONSTRAINTS,
+                fk_constraints=_FK_CONSTRAINTS,
+            ):
+                yield
+        except ServiceError as exc:
+            if exc.code == E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA:
+                exc.fields = (_CAMPO_MOTIVAZIONE,)
+            raise
 
     # =================================================================
     # Lista e dettaglio
@@ -534,6 +538,7 @@ class OfferteService:
             lambda: self._repo.get_available_actions(offerta_id),
             funzione="fn_available_actions_offerta", entita_id=offerta_id, logger=logger,
         )
+        row["contatori"] = contatori_documento(NOTE_REPO_OFFERTA, offerta_id)
         return row
 
     # =================================================================
@@ -782,53 +787,66 @@ class OfferteService:
     #        ⛔ Fino al 2026-10-07 il congelamento era qui, in Python, PRIMA del
     #        cambio stato: la capability spegneva «Emetti» proprio perche' quel
     #        passo non c'era ancora stato, e un'offerta nuova non si emetteva.
+    #        Lo stato di arrivo dal vocabolario (V-2, brief-modello-documento-
+    #        vendita §8.11 B-4), non `StatoOfferta.EMESSA`, scritto dal verbo di
+    #        stato (§13.6 punto 1): permesso dalla riga del passaggio
+    #        (`emetti_offerta`), un secondo «Emetti» (E_DOC_GIA_NELLO_STATO) e
+    #        lo stato di partenza li giudica il DB; l'offerta che non c'e' e' il
+    #        404 del service (`_cambia_stato`).
     def emetti(self, offerta_id: int) -> dict[str, Any]:
-        return self._cambia_stato_manuale(
-            offerta_id,
-            target_codice=StatoOfferta.EMESSA,
-            expected_from=_STATI_EDITABILI,
-        )
+        stato = stato_di_emissione(TESTATA_OFFERTE, function_name="offerte_service.emetti")
+        return self._cambia_stato(offerta_id, stato_codice=stato.codice)
 
     # Scopo: EMESSA -> ACCETTATA (esito cliente positivo). Il trigger DB
     #        valorizza `data_accettazione`.
     def registra_accettazione(self, offerta_id: int) -> dict[str, Any]:
-        return self._cambia_stato_manuale(
-            offerta_id,
-            target_codice=StatoOfferta.ACCETTATA,
-            expected_from=_STATI_DA_EMESSA,
-        )
+        return self._cambia_stato(offerta_id, stato_codice=StatoOfferta.ACCETTATA)
 
-    # Scopo: EMESSA -> RIFIUTATA (esito cliente negativo). Motivazione
-    #        obbligatoria. Il trigger DB valorizza `data_rifiuto` +
+    # Scopo: EMESSA -> RIFIUTATA (esito cliente negativo). Il trigger DB
+    #        valorizza `data_rifiuto`; la motivazione la scrive il verbo in
     #        `motivazione_rifiuto`.
+    #        ⭐ Che la motivazione sia obbligatoria lo dice la riga del passaggio
+    #        (`requires_motivazione`), al verbo:
+    #        E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA, al client col campo
+    #        `motivazione` (O-3, `_db_errors`). ⛔ Fino al 2026-10-26 era una copia Python
+    #        (`guard_non_empty_string`).
     def registra_rifiuto(
-        self, offerta_id: int, *, motivazione: str
+        self, offerta_id: int, *, motivazione: Any
     ) -> dict[str, Any]:
-        self._v.guard_non_empty_string(motivazione, field="motivazione")
-        return self._cambia_stato_manuale(
-            offerta_id,
-            target_codice=StatoOfferta.RIFIUTATA,
-            expected_from=_STATI_DA_EMESSA,
-            motivazione=motivazione.strip(),
+        return self._cambia_stato(
+            offerta_id, stato_codice=StatoOfferta.RIFIUTATA,
+            motivazione=self._motivazione(motivazione),
         )
 
     # Scopo: Esito cliente unificato (ACCETTATA o RIFIUTATA, da EMESSA). La
     #        view si limita a passare il payload, il routing per esito vive
     #        qui — coerente con i due metodi specifici sopra (mantenuti per
     #        chi vuole l'API esplicita).
+    #        ⛔ L'accettazione non porta una motivazione: la sola colonna che la
+    #        terrebbe e' `motivazione_rifiuto`, e scartarla in silenzio direbbe
+    #        al client che e' stata presa (stesso criterio di `valido_al` nel
+    #        cambio stato del contratto). Una motivazione con ACCETTATA e' un
+    #        400 col campo; assente, null o vuota passa. Fino al 2026-10-26 si
+    #        perdeva qui senza dirlo.
     def registra_esito(
-        self, offerta_id: int, *, esito: str, motivazione: str | None = None
+        self, offerta_id: int, *, esito: str, motivazione: Any = None
     ) -> dict[str, Any]:
         ErrorManager.require(
-            esito in _ESITI_AMMESSI_DA_EMESSA,
+            esito in _ESITI,
             code=E_VENDITE_VALIDATION,
             message="Esito non valido.",
-            detail=f"Atteso uno tra {sorted(_ESITI_AMMESSI_DA_EMESSA)}, ricevuto {esito!r}.",
-            context={"offerta_id": offerta_id, "esito": esito},
+            detail=f"Atteso uno tra {sorted(_ESITI)}, ricevuto {esito!r}.",
+            context={"offerta_id": offerta_id, "esito": esito, "field": "esito"},
         )
         if esito == StatoOfferta.ACCETTATA:
+            ErrorManager.require(
+                self._motivazione(motivazione) is None,
+                code=E_VENDITE_VALIDATION,
+                message="La motivazione si indica solo per rifiutare o annullare l'offerta.",
+                context={"offerta_id": offerta_id, "esito": esito, "field": _CAMPO_MOTIVAZIONE},
+            )
             return self.registra_accettazione(offerta_id)
-        return self.registra_rifiuto(offerta_id, motivazione=motivazione or "")
+        return self.registra_rifiuto(offerta_id, motivazione=motivazione)
 
     # Scopo: Crea rev.N+1 di un'offerta in stato EMESSA invocando la fn DB
     #        `vendite.fn_crea_revisione_offerta`. La fn copia testata +
@@ -837,14 +855,20 @@ class OfferteService:
     #        la rev.N corrente come SUPERATA. Ritorna la nuova rev.N+1
     #        (BOZZA) come dettaglio completo.
     #
-    #        Guard di stato (EMESSA obbligatorio) gia' nel DB con codice
-    #        `E_OFFERTA_REVISIONE_STATO_NON_AMMESSO`; replichiamo lato
-    #        applicativo per fail-fast con messaggio strutturato.
+    #        Lo stato di partenza (EMESSA) lo dice il DB
+    #        (`E_OFFERTA_REVISIONE_STATO_NON_AMMESSO`); qui solo l'esistenza
+    #        (404). ⛔ Fino al 2026-10-26 lo ripeteva `_assert_stato_corrente`
+    #        (brief-modello-documento-vendita §13.6 punto 4).
+    #        ⚠️ L'esistenza resta qui, a differenza del push (regola del 1),
+    #        perche' la fn sull'offerta che non c'e' risponde
+    #        E_PARAMETRO_INVALIDO, un 400: si toglie quando il DB rispondera'
+    #        E_OFFERTA_NON_TROVATA (richiesta al team DB, brief-modello-
+    #        documento-vendita §14.8).
     def crea_revisione(
         self, offerta_id: int, *, user: str | None = None
     ) -> dict[str, Any]:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
-        self._assert_stato_corrente(offerta_id, expected=_STATI_DA_EMESSA)
+        self._get_offerta_or_raise(offerta_id, op="crea_revisione", getter=self._repo.get_stato_codice)
         with self._db_errors(
             {"offerta_id": offerta_id},
             fallback_message="Errore creazione revisione offerta.",
@@ -868,6 +892,12 @@ class OfferteService:
     #        e' False (il FE intercetta il codice, mostra il contratto in
     #        conflitto via `get_contratto_sovrapposto` e ri-chiama con
     #        `chiudi_esistente=True`, che chiude il vecchio per successione).
+    #
+    #        Lo stato di partenza (ACCETTATA) lo dice il verbo
+    #        (`E_OFFERTA_PUSH_STATO_NON_AMMESSO`), e anche l'esistenza: la fn
+    #        e' INVOKER sotto la RLS dell'offerta e risponde
+    #        E_OFFERTA_NON_TROVATA (404). ⛔ Nessun controllo qui (regola del
+    #        1, Tid 2026-10-27).
     def push_a_contratto(
         self,
         offerta_id: int,
@@ -878,7 +908,6 @@ class OfferteService:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
         if pratica_id is not None:
             self._v.guard_positive_int(pratica_id, field="pratica_id")
-        self._assert_stato_corrente(offerta_id, expected=_STATI_PUSHABILI)
         with self._db_errors(
             {
                 "offerta_id": offerta_id,
@@ -939,25 +968,48 @@ class OfferteService:
             limit=limit, offset=offset, order_by=order_by, order_dir=order_dir,
         )
 
-    # Scopo: -> ANNULLATA, da BOZZA (ritiro prima dell'emissione) o da
-    #        ACCETTATA (l'offerta che non si trasforma piu'). Motivazione
-    #        obbligatoria. Il trigger DB valorizza `data_annullamento` +
-    #        `motivazione_rifiuto`.
-    #        ⛔ Nessuno stato di partenza scritto qui: da quali stati si annulla
-    #        lo dicono le transizioni (`config.stati_doc_offerte_transizioni`) e
-    #        il guard, che da ACCETTATA rifiuta se dall'offerta vive un
-    #        contratto o un ordine (`E_OFFERTA_ANNULLO_CON_DOCUMENTI_VIVI`).
-    #        Fino al 2026-10-21 c'era un «solo da BOZZA», specchio della state
-    #        machine: avrebbe rifiutato l'annullo da ACCETTATA che il DB ammette
-    #        (brief-db-offerta-emissione-ed-erogazione H-R3).
-    def annulla(self, offerta_id: int, *, motivazione: str) -> dict[str, Any]:
-        self._v.guard_non_empty_string(motivazione, field="motivazione")
-        return self._cambia_stato_manuale(
-            offerta_id,
-            target_codice=StatoOfferta.ANNULLATA,
-            expected_from=None,
-            motivazione=motivazione.strip(),
+    # Scopo: -> lo stato d'annullo, da BOZZA (ritiro prima dell'emissione) o
+    #        da ACCETTATA (l'offerta che non si trasforma piu'), dal verbo
+    #        `vendite.fn_annulla_offerta` (O-4, brief-modello-documento-vendita
+    #        §13.6 punto 3): prima cio' che vieta (da ACCETTATA, un contratto o
+    #        un ordine vivo nato dall'offerta), poi la conferma dei legami — la
+    #        revisione precedente, superata, che torna emessa: senza
+    #        `legami_confermati` il DB rifiuta (E_DOC_ANNULLO_CON_LEGAMI,
+    #        `confirm_and_retry`), e il numero lo legge `get_legami` —, poi lo
+    #        stato dal verbo di stato con la motivazione, obbligatoria
+    #        (E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA). Il trigger DB valorizza
+    #        `data_annullamento`. Il permesso dell'annullo dell'accettata
+    #        (`emetti_offerta`) dalla riga del passaggio.
+    #        ⛔ Nessuno stato di partenza ne' stato d'annullo scritto qui: li
+    #        dicono la matrice e il vocabolario. Fino al 2026-10-26 lo stato
+    #        passava da un UPDATE diretto e la motivazione da una copia Python.
+    def annulla(
+        self, offerta_id: int, *, motivazione: Any, legami_confermati: Any = None,
+    ) -> dict[str, Any]:
+        self._v.guard_positive_int(offerta_id, field="offerta_id")
+        motivo = self._motivazione(motivazione)
+        confermati = dichiarazione_legami(
+            legami_confermati, validation_code=E_VENDITE_VALIDATION,
+            function_name="offerte_service.annulla",
         )
+        # «L'offerta c'e'» lo dice il verbo (E_OFFERTA_NON_TROVATA, regola del
+        # 1): qui nessuna copia.
+        with self._db_errors(
+            {"offerta_id": offerta_id},
+            fallback_message="Annullo offerta non consentito.",
+        ):
+            with transaction.atomic():
+                self._repo.annulla(offerta_id, motivo, confermati)
+        return self.get_offerta(offerta_id)
+
+    # Scopo: I legami dell'offerta per la finestra di conferma dell'annullo
+    #        (BB `legami_del_documento`): la revisione precedente, superata,
+    #        che torna emessa se si annulla questa (O-4). Prima la testata: il
+    #        lettore del DB non applica il perimetro.
+    def get_legami(self, offerta_id: int) -> dict[str, Any]:
+        self._v.guard_positive_int(offerta_id, field="offerta_id")
+        self._get_offerta_or_raise(offerta_id, op="get_legami", getter=self._repo.get_stato_codice)
+        return legami_del_documento(SORGENTE_OFFERTA_COMMERCIALE, offerta_id)
 
     # =================================================================
     # CRUD eccezioni (solo in BOZZA)
@@ -1569,7 +1621,9 @@ class OfferteService:
         return {**payload, "meta": self._v.optional_meta(payload)}
 
     # Scopo: Verifica che l'offerta esista e sia in uno degli stati attesi.
-    #        Solleva 404 se offerta inesistente, 422 se stato fuori scope.
+    #        Solleva 404 se offerta inesistente, 400 se stato fuori scope.
+    #        ⚠️ Solo per l'eliminazione (`_STATI_EDITABILI`): i passaggi di
+    #        stato li giudica il DB, e non si torna a ripeterli qui.
     def _assert_stato_corrente(
         self, offerta_id: int, *, expected: set[str] | frozenset[str]
     ) -> str:
@@ -1589,44 +1643,40 @@ class OfferteService:
         )
         return stato
 
-    # Scopo: Esegue una transizione di stato manuale. Il guard pre-condizione
-    #        (`expected_from`) e' difesa applicativa; il trigger DB rifinisce
-    #        ulteriormente (es. BOZZA->EMESSA fallisce se listino_versione_id
-    #        NULL o versione non ATTIVA). `expected_from=None`: nessuno stato di
-    #        partenza qui, solo l'esistenza (404); la transizione la giudica il DB.
-    def _cambia_stato_manuale(
-        self,
-        offerta_id: int,
-        *,
-        target_codice: str,
-        expected_from: set[str] | frozenset[str] | None,
-        motivazione: str | None = None,
+    # Scopo: La motivazione dal corpo della richiesta: una stringa o niente
+    #        (assente, null o vuota = None). Solo la FORMA: un non-stringa e' un
+    #        400 col campo, non un 500 dal cast del DB. Se serve lo dice il verbo.
+    def _motivazione(self, valore: Any) -> str | None:
+        return self._v.optional_string(
+            {_CAMPO_MOTIVAZIONE: valore}, _CAMPO_MOTIVAZIONE,
+            function_name="offerte_service._motivazione",
+        )
+
+    # Scopo: Un cambio di stato manuale dal verbo `vendite.fn_cambia_stato_offerta`
+    #        (§13.6 punti 1-2), nella transazione del chiamante se c'e' (la
+    #        factory di «Emetti» ci mette il PDF). Perimetro, stato di
+    #        partenza, permesso del passaggio, motivazione e condizioni li
+    #        giudica il DB.
+    #        ⛔ Nessun controllo «l'offerta c'e'» qui (regola del 1, Tid
+    #        2026-10-27): il verbo prende la testata nel perimetro e rifiuta
+    #        da se' (E_OFFERTA_NON_TROVATA, 404). Fino al 2026-10-27 un
+    #        lettore lo ridiceva col codice del service (E_VENDITE_NOT_FOUND),
+    #        per avere «un codice da ogni rotta»: lo stesso fatto in due sedi,
+    #        e il frontend legge la classe, non il codice.
+    #        ⛔ Fino al 2026-10-26 era `_cambia_stato_manuale`: uno stato di
+    #        partenza scritto in Python (`expected_from`), l'id dello stato dal
+    #        lettore e un UPDATE diretto (`update_stato`), che la porta ora
+    #        rifiuta (E_DOC_STATO_SOLO_DAL_VERBO).
+    def _cambia_stato(
+        self, offerta_id: int, *, stato_codice: str, motivazione: str | None = None,
     ) -> dict[str, Any]:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
-        if expected_from is None:
-            self._get_offerta_or_raise(
-                offerta_id, op="_cambia_stato_manuale", getter=self._repo.get_stato_codice,
-            )
-        else:
-            self._assert_stato_corrente(offerta_id, expected=expected_from)
-        target_stato_id = self._repo.get_stato_id_by_codice(target_codice)
-        ErrorManager.require(
-            target_stato_id is not None,
-            code=E_VENDITE_VALIDATION,
-            message=f"Stato '{target_codice}' non configurato.",
-            context={"target_codice": target_codice},
-        )
-        assert target_stato_id is not None
         with self._db_errors(
-            {"offerta_id": offerta_id, "target_codice": target_codice},
+            {"offerta_id": offerta_id, "stato_codice": stato_codice},
             fallback_message="Cambio stato offerta non consentito.",
         ):
             with transaction.atomic():
-                self._repo.update_stato(
-                    offerta_id,
-                    target_stato_id,
-                    motivazione_rifiuto=motivazione,
-                )
+                self._repo.cambia_stato(offerta_id, stato_codice, motivazione)
         return self.get_offerta(offerta_id)
 
 

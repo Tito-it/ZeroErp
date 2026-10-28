@@ -4,6 +4,8 @@
 CREATE FUNCTION fn_codice_registro_provisionato(p_famiglia_documento character varying, p_emittente_soggetto_ruolo_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

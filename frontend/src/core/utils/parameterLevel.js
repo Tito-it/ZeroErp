@@ -29,3 +29,12 @@ export function resolveParameterLevel(parameter) {
 export function parameterLevelSeverity(level) {
   return SEVERITY_MAP[level] || 'secondary'
 }
+
+// Scopo: la famiglia del parametro (`ammette_override` di
+// `fn_list_parameters_for_user`, brief-db-parametri-senza-override). Dove e'
+// false il DB rifiuta l'override (`E_PARAMETER_OVERRIDE_NON_AMMESSO`): la UI
+// non lo offre. ⚠️ Solo `false` lo esclude: un campo che manca e' un difetto
+// del contratto, e il rifiuto resta del DB.
+export function ammettePersonalizzazione(parameter) {
+  return parameter?.ammette_override !== false
+}

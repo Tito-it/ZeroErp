@@ -42,11 +42,15 @@ from django.db import transaction
 from apps.config.sorgenti import SORGENTE_DDT_VENDITA
 from apps.core.db._helpers import richiedi_codice_a_vocabolario
 from apps.core.api.constants import MAX_LIMIT
+from apps.core.services.documento_modello import (
+    e_stato_di_annullo,
+    rifiuta_stato_di_emissione,
+    stato_di_emissione,
+)
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.services._cliente_dal_ba import FK_CLIENTE_DIVERSO_DA_BA
 from apps.vendite.services._righe_bozza_guard import richiedi_righe_in_bozza
 from apps.vendite.services._annullo_con_legami import (
-    STATO_ANNULLATO,
     legami_del_documento,
     legami_confermati as dichiarazione_legami,
 )
@@ -59,7 +63,9 @@ from apps.core.services.testata_guard import (
     testata_o_not_found,
 )
 from apps.core.services.value_normalizer import empty_to_none
-from apps.vendite.db.ddt_repository import DdtRepository
+from apps.core.services.partitioned_note_service import contatori_documento
+from apps.vendite.db.note_repositories import NOTE_REPO_DDT
+from apps.vendite.db.ddt_repository import TESTATA_DDT, DdtRepository
 from apps.vendite.services._componenti_service_helpers import (
     dati_patch_componente,
     normalize_componenti_overrides,
@@ -131,7 +137,6 @@ _V = PayloadValidator(validation_code="E_DDT_VALIDAZIONE")
 # Gli id della controparte che il payload puo' portare: si coerciscono a
 # intero (un valore non numerico e' un 400 col campo, non un 500 da `int()`).
 _ID_CONTROPARTE: tuple[str, ...] = ("billing_account_id", "destinatario_soggetto_ruolo_id")
-_STATO_EMESSO = "EMESSO"
 _STATI_MODIFICABILI: frozenset[str] = frozenset({"DRAFT"})
 
 # Whitelist campi testata accettati in create (null_vs_empty -> None).
@@ -287,6 +292,7 @@ def get_ddt(ddt_id: int) -> dict[str, Any]:
         # COUNT dedicato: l'elenco righe completo (JOIN + EXISTS per riga)
         # sarebbe materializzato solo per contarlo.
         "righe_count": repo.count_righe(ddt_id),
+        "contatori": contatori_documento(NOTE_REPO_DDT, ddt_id),
     }
 
 
@@ -474,8 +480,8 @@ def elimina_ddt(ddt_id: int) -> dict[str, Any]:
     return {"ddt_id": ddt_id, "deleted": deleted}
 
 
-# Scopo: Esegue una transizione di stato data-driven del DDT (es. EMESSO,
-#        SPEDITO, CONSEGNATO, RESO, ANNULLATO). Generico: lo stato destinazione
+# Scopo: Esegue una transizione di stato data-driven del DDT (SPEDITO,
+#        CONSEGNATO, ANNULLATO). Generico: lo stato destinazione
 #        arriva dal codice interno (`available_actions[].target_state` della fn
 #        capabilities). Ogni passaggio va al DB per un verbo
 #        (`vendite.fn_cambia_stato_ddt`, Lotto 3 R-1): l'ammissibilita' la
@@ -492,18 +498,30 @@ def elimina_ddt(ddt_id: int) -> dict[str, Any]:
 #        il DB risponde E_DOC_ANNULLO_CON_LEGAMI (`confirm_and_retry`). Una
 #        bolla senza legami si annulla senza dichiarazione. Il verbo ritira i
 #        legami e passa da `fn_cambia_stato_ddt` (matrice, permesso, storno).
+#        ⛔ EMESSO NO (M-2, brief-modello-documento-vendita §7.6): la bolla si
+#        emette solo da `emetti`, cioe' da «Emetti», che produce numero e PDF
+#        nella stessa transazione. Dal cambio stato generico e' un 400.
 def cambia_stato(
     ddt_id: int, stato_codice: str | None,
     *, legami_confermati: Any = None,
 ) -> dict[str, Any]:
-    repo = DdtRepository()
-    # Guard esistenza leggero: serve solo lo stato corrente, non la testata
-    # completa (vista + JOIN); la validazione della coppia e' del trigger DB.
-    stato_prec = testata_o_not_found(
-        repo.get_stato_codice, ddt_id,
-        code="E_DDT_NOT_FOUND", message="DDT non trovato.",
-        id_name="ddt_id", function_name=f"{_FN}.cambia_stato",
+    return _passa_a(
+        ddt_id, stato_codice, legami_confermati=legami_confermati, emissione=False,
     )
+
+
+# Scopo: Il corpo comune di `cambia_stato` ed `emetti`. `emissione` dice se la
+#        chiamata viene da «Emetti», l'unica strada che porta a EMESSO.
+def _passa_a(
+    ddt_id: int, stato_codice: str | None,
+    *, legami_confermati: Any, emissione: bool,
+) -> dict[str, Any]:
+    repo = DdtRepository()
+    # ⛔ Nessun controllo «la bolla c'e'» qui (regola del 1, Tid 2026-10-27):
+    #    i verbi prendono la testata nel perimetro e rifiutano da se'
+    #    (E_DDT_NOT_FOUND). Lo stato di partenza serve solo alla risposta, e
+    #    il suo None (bolla che non c'e') non arriva al client.
+    stato_prec = repo.get_stato_codice(ddt_id)
     # Un valore non testuale (un numero nel JSON) e' «stato mancante», un 400:
     # fino al 2026-10-09 `.strip()` su un int era un 500.
     target = stato_codice.strip() if isinstance(stato_codice, str) else ""
@@ -514,15 +532,15 @@ def cambia_stato(
         context={"field": "stato_codice"},
         function_name=f"{_FN}.cambia_stato",
     )
-    stato_id = repo.get_stato_id_by_codice(target)
-    ErrorManager.require(
-        stato_id is not None,
-        code="E_DDT_VALIDAZIONE",
-        message=f"Stato '{target}' non configurato in config.stati_doc_ddt.",
-        function_name=f"{_FN}.cambia_stato",
-    )
-    assert stato_id is not None
-    if target == STATO_ANNULLATO:
+    if not emissione:
+        rifiuta_stato_di_emissione(
+            TESTATA_DDT, target, campo="stato_codice",
+            validation_code="E_DDT_VALIDAZIONE", function_name=f"{_FN}.cambia_stato",
+        )
+    # «Lo stato esiste?» lo dice il verbo (E_STATO_WORKFLOW_NON_TROVATO, come
+    # i gemelli: brief-modello-documento-vendita §9.10): qui non ce n'e' una copia.
+    # L'annullo (lo stato d'annullo del vocabolario) dal suo verbo.
+    if e_stato_di_annullo(TESTATA_DDT, target):
         confermati = dichiarazione_legami(
             legami_confermati, validation_code="E_DDT_VALIDAZIONE",
             function_name=f"{_FN}.cambia_stato",
@@ -550,8 +568,12 @@ def cambia_stato(
 #        dentro `transaction.atomic()` e il detail pesante (vista + capability
 #        + count righe) non va materializzato nella sezione critica — il FE
 #        ricarica comunque il detail dopo l'emissione.
+#        Lo stato che scrive lo dice il vocabolario (BB `stato_di_emissione`,
+#        brief-modello-documento-vendita §8.11 B-3): fino al 2026-10-25 era il
+#        letterale `STATO_EMESSO`.
 def emetti(ddt_id: int) -> dict[str, Any]:
-    return cambia_stato(ddt_id, _STATO_EMESSO)
+    stato = stato_di_emissione(TESTATA_DDT, function_name=f"{_FN}.emetti")
+    return _passa_a(ddt_id, stato.codice, legami_confermati=None, emissione=True)
 
 
 # ══════════════════════════════════════════════════════════

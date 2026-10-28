@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_gruppi_trascinati_da_uscita(p_lotto_id bigint, p_gruppo_key text)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Catalogo stati documento per vendite.offerte_commerciali. Cinque stati: BOZZA (editabile), EMESSA (proposta al cliente), ACCETTATA (terminale positivo), RIFIUTATA (terminale negativo), SUPERATA (terminale tecnico, set dal trigger trgfn_offerte_commerciali_revisione). codice_interno e' immutabile (lock via script.trgfn_lock_columns). Le transizioni ammesse sono configurate in config.stati_doc_offerte_transizioni (creata in Step 4). Pattern identico a config.stati_doc_contratti; senza is_abortito perche' le offerte non usano temporal-UNIQUE ne' is_abortito_snapshot. rev 2026-05-24.
+> Vocabolario degli stati di vendite.offerte_commerciali: BOZZA (iniziale, modificabile), EMESSA (emissione: proposta al cliente), ACCETTATA, RIFIUTATA (terminale), SUPERATA (terminale, is_superato: una revisione l'ha rimpiazzata) e ANNULLATA (terminale, is_abortito). I verbi leggono dal vocabolario lo stato iniziale, quello d'emissione, quello d'annullo e quello di superamento (iniziale, emissione, is_abortito, is_superato), non i codici. codice_interno e' immutabile (script.trgfn_lock_columns). I passaggi ammessi sono la matrice config.stati_doc_offerte_transizioni. Brief: brief-modello-documento-vendita §13 (rev 2026-10-26; prima del giro il commento diceva cinque stati e nessun is_abortito).
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
@@ -27,10 +27,13 @@
 | is_abortito | boolean | NO | false |
 | is_superato | boolean | NO | false |
 | iniziale | boolean | NO | false |
+| emissione | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_stati_doc_offerte_abortito_attivo |  |
+| CHECK | chk_stati_doc_offerte_emissione_attivo |  |
 | CHECK | chk_stati_doc_offerte_fase |  |
 | CHECK | chk_stati_doc_offerte_iniziale_attivo |  |
 | CHECK | chk_stati_doc_offerte_pdf_mode |  |
@@ -45,8 +48,10 @@
 |------|-------------|
 | ix_stati_doc_offerte_attivo | `CREATE INDEX ix_stati_doc_offerte_attivo ON config.stati_doc_offerte USING btree (attivo)` |
 | pk_stati_doc_offerte | `CREATE UNIQUE INDEX pk_stati_doc_offerte ON config.stati_doc_offerte USING btree (id)` |
+| uq_stati_doc_offerte_abortito | `CREATE UNIQUE INDEX uq_stati_doc_offerte_abortito ON config.stati_doc_offerte USING btree (is_abortito) WHERE is_abortito` |
 | uq_stati_doc_offerte_codice | `CREATE UNIQUE INDEX uq_stati_doc_offerte_codice ON config.stati_doc_offerte USING btree (codice)` |
 | uq_stati_doc_offerte_codice_interno | `CREATE UNIQUE INDEX uq_stati_doc_offerte_codice_interno ON config.stati_doc_offerte USING btree (codice_interno)` |
+| uq_stati_doc_offerte_emissione | `CREATE UNIQUE INDEX uq_stati_doc_offerte_emissione ON config.stati_doc_offerte USING btree (emissione) WHERE emissione` |
 | uq_stati_doc_offerte_iniziale | `CREATE UNIQUE INDEX uq_stati_doc_offerte_iniziale ON config.stati_doc_offerte USING btree (iniziale) WHERE iniziale` |
 
 ## 🚨 Trigger

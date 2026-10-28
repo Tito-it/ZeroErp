@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_create_indirizzo(p_stradario_id integer, p_toponomastica_id integer, p_descrizione_via character varying, p_comune_id integer, p_codice_postale_id integer, p_civico integer, p_estensione_civico character varying, p_palazzina character varying, p_scala character varying, p_piano character varying, p_interno character varying)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

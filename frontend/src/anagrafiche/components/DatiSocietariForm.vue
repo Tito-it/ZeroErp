@@ -132,6 +132,7 @@ const destinatarioFeOptions = computed(() => [
           :options="socioUnicoOptions"
           option-label="label"
           option-value="value"
+          :placeholder="t('dati_societari.proposto_default')"
           :disabled="disabled"
         />
       </div>
@@ -142,6 +143,7 @@ const destinatarioFeOptions = computed(() => [
           :options="liquidazioneOptions"
           option-label="label"
           option-value="value"
+          :placeholder="t('dati_societari.proposto_default')"
           :disabled="disabled"
         />
       </div>

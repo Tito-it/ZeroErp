@@ -39,6 +39,7 @@ from apps.amm_software.api.views import (
     OperatoriListView,
 )
 from apps.core.services.invito_veste import PORTA_OPERATORE
+from apps.core.tests._helpers.operatore_di_prova import operatore_di_prova
 
 
 SAMPLE_OPERATORE = {
@@ -86,10 +87,7 @@ def _operativo_request() -> MagicMock:
     request = MagicMock()
     request.method = "GET"
     request.path = "/api/v1/amm-software/operatori/"
-    user = MagicMock()
-    user.id = 50
-    user.is_authenticated = True
-    user.is_superuser = False
+    user = operatore_di_prova(user_id=50)
     request.user = user
     request.query_params = {}
     # Simula assenza cache per-request

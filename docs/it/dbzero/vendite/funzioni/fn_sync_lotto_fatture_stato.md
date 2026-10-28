@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_sync_lotto_fatture_stato(p_lotto_id bigint, p_target_stato_doc_fiscale_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>
@@ -16,11 +18,16 @@ CREATE OR REPLACE FUNCTION vendite.fn_sync_lotto_fatture_stato(p_lotto_id bigint
 AS $function$
 -- rev 2026-08-04 (D-M): via il predicato su lf.esclusa (sempre
 --   vero) e l'argomento p_esclusa all'helper.
+-- rev 2026-10-27 (20261027-11, brief-modello-documento-vendita
+--   §15): le fatture seguono il lotto dal verbo della fattura
+--   (vendite.fn_fattura_proietta_stato), una per una: la porta
+--   non lascia passare l'UPDATE.
 DECLARE
     v_stato_lotto vendite.fatturazione_lotti.stato_doc_fiscale_id%TYPE;
     v_target      config.stati_doc_fiscale.id%TYPE;
     v_tipo_lotto  vendite.fatturazione_lotti.tipo_lotto%TYPE;
     v_inviata_id  config.stati_doc_fiscale.id%TYPE;
+    v_fattura_id  vendite.fatture.id%TYPE;
 BEGIN
     IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
         PERFORM script.fn_log_and_raise_error('vendite', 'fn_sync_lotto_fatture_stato', 'E_PARAMETRO_INVALIDO',
@@ -47,11 +54,19 @@ BEGIN
             jsonb_build_object('parametro', 'stato_doc_fiscale_target', 'lotto_id', p_lotto_id), NULL::uuid, concat('stato_doc_fiscale target obbligatorio per lotto ', p_lotto_id));
     END IF;
 
-    -- Allinea stato fatture (escluse le critical)
-    UPDATE vendite.fatture f SET stato_doc_fiscale_id = v_target, data_update = now(), user_update = current_user
-      FROM vendite.fatturazione_lotti_fatture lf
-     WHERE lf.lotto_id = p_lotto_id AND lf.fattura_id = f.id
-       AND COALESCE(f.critical, FALSE) IS FALSE AND f.stato_doc_fiscale_id IS DISTINCT FROM v_target;
+    -- Allinea stato fatture (escluse le critical), dal verbo
+    -- della fattura: una per una, nell'ordine degli id.
+    FOR v_fattura_id IN
+        SELECT f.id
+          FROM vendite.fatture f
+          JOIN vendite.fatturazione_lotti_fatture lf ON lf.fattura_id = f.id
+         WHERE lf.lotto_id = p_lotto_id
+           AND COALESCE(f.critical, FALSE) IS FALSE
+           AND f.stato_doc_fiscale_id IS DISTINCT FROM v_target
+         ORDER BY f.id
+    LOOP
+        PERFORM vendite.fn_fattura_proietta_stato(v_fattura_id, v_target);
+    END LOOP;
 
     -- Sync stato_esecuzione sul ponte
     UPDATE vendite.fatturazione_lotti_fatture lf
@@ -74,7 +89,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_sync_lotto_fatture_stato(p_lotto_id bigint, p_target_stato_doc_fiscale_id bigint)
-IS 'Allinea stato fatture del lotto e sincronizza stato_esecuzione. GIORNALIERO+INVIATA chiude lotto. rev 2026-08-04 (D-M): via il predicato su lf.esclusa, che era una condizione sempre vera, e via l''argomento p_esclusa all''helper.';
+IS 'Allinea stato fatture del lotto e sincronizza stato_esecuzione. GIORNALIERO+INVIATA chiude lotto. rev 2026-08-04 (D-M): via il predicato su lf.esclusa, che era una condizione sempre vera, e via l''argomento p_esclusa all''helper. rev 2026-10-27 (20261027-11, brief-modello-documento-vendita §15): le fatture (non critical, con lo stato diverso dal bersaglio) seguono il lotto dal verbo della fattura, vendite.fn_fattura_proietta_stato, una per una nell''ordine degli id: la porta della fattura non lascia passare l''UPDATE. Il letterale INVIATA resta (nessuna colonna del vocabolario dice lo stato dell''invio: debito dichiarato nel brief).';
 ```
 
 </div>

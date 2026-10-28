@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_doc_lock_colonna_bloccata(p_regola jsonb, p_stato text, p_colonne text[])
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

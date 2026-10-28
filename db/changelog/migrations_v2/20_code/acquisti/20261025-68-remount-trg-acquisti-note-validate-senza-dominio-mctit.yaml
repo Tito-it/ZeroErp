@@ -1,0 +1,68 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA GRAMMATICA SOLA PER I TIPI DI DOCUMENTO — lotto 3 (le note), L3-4: i trigger di validazione
+#   delle note di acquisti perdono il terzo argomento.
+#   Brief: brief-db-grammatica-unica-documenti §14 (Tid, 2026-10-25: ok alle proposte, via).
+#
+#   Dal 20261025-66 script.trgfn_note_validate_generic prende il dominio da NEW.target_tipo e non
+#   legge piu' TG_ARGV[2]: un argomento che resta montato e non si legge fa credere a chi legge
+#   pg_trigger che conti, e porta il codice vecchio. Si rimontano uguali, con i soli due
+#   argomenti che la funzione usa (tabella delle righe, colonna verso la testata):
+#     acquisti.note_ordini                (acquisti.ordini_righe, ordine_id) — era 'ORDINE'
+#     acquisti.note_ddt                   (acquisti.ddt_righe, ddt_id) — era 'DDT'
+#   Trigger scritti a mano (non dal framework): DROP IF EXISTS + CREATE e' la forma (§11.5 non
+#   li riguarda). Stesso nome, stessa fase, stessi eventi. Da zero esistono gia' (20251020-03,
+#   20251021-02/-03, 20260524-08, prima per numero).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/acquisti/20261025-68-remount-trg-acquisti-note-validate-senza-dominio-mctit.yaml
+
+  - changeSet:
+      id: 20261025-68-remount-trg-acquisti-note-validate-senza-dominio
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        I 2 trigger di validazione delle note di acquisti rimontati senza il terzo argomento,
+        che script.trgfn_note_validate_generic non legge piu' (20261025-66). Grammatica unica, lotto 3, L3-4.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_note_ordini_validate_ins_upd ON acquisti.note_ordini;
+              CREATE TRIGGER trg_note_ordini_validate_ins_upd
+              BEFORE INSERT OR UPDATE ON acquisti.note_ordini
+              FOR EACH ROW
+              EXECUTE FUNCTION script.trgfn_note_validate_generic('acquisti.ordini_righe', 'ordine_id');
+
+              DROP TRIGGER IF EXISTS trg_note_ddt_validate_ins_upd ON acquisti.note_ddt;
+              CREATE TRIGGER trg_note_ddt_validate_ins_upd
+              BEFORE INSERT OR UPDATE ON acquisti.note_ddt
+              FOR EACH ROW
+              EXECUTE FUNCTION script.trgfn_note_validate_generic('acquisti.ddt_righe', 'ddt_id');
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_note_ordini_validate_ins_upd ON acquisti.note_ordini;
+              CREATE TRIGGER trg_note_ordini_validate_ins_upd
+              BEFORE INSERT OR UPDATE ON acquisti.note_ordini
+              FOR EACH ROW
+              EXECUTE FUNCTION script.trgfn_note_validate_generic('acquisti.ordini_righe', 'ordine_id', 'ORDINE');
+
+              DROP TRIGGER IF EXISTS trg_note_ddt_validate_ins_upd ON acquisti.note_ddt;
+              CREATE TRIGGER trg_note_ddt_validate_ins_upd
+              BEFORE INSERT OR UPDATE ON acquisti.note_ddt
+              FOR EACH ROW
+              EXECUTE FUNCTION script.trgfn_note_validate_generic('acquisti.ddt_righe', 'ddt_id', 'DDT');

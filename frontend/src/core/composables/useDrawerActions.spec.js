@@ -31,7 +31,7 @@
 //   4) chiave i18n mancante -> si vede il CODICE, mai il path della chiave
 //   5) `reasons[]` (piu' motivi) -> tooltip multi-riga
 //   6) readonly -> nessuna azione di stato
-//   7) `permission` -> stampata su OGNI azione, per il gate del BB
+//   7) nessun gate di permesso: la chiave `action` non nasce (permesso ⇒ nascondi, dal DB)
 //   8) senza `key` la chiave si deriva dallo stato di destinazione
 //   9) `onAction` riceve l'azione INTERA (il chiamante decide conferme/dialog)
 //  10) un'azione senza `enabled` degrada ad ABILITATA (domini piu' vecchi)
@@ -154,18 +154,13 @@ describe('mapAvailableActionsToDrawerActions', () => {
     })).toEqual([])
   })
 
-  it('7) il permesso di processo si stampa su OGNI azione', () => {
-    const azioni = mapAvailableActionsToDrawerActions({
-      availableActions: [voceDb(), voceDb({ key: 'conferma', target_state: 'CONFIRM' })],
-      t, te: teCon(), permission: 'registra_magazzino',
-    })
-    expect(azioni.map((a) => a.action)).toEqual(['registra_magazzino', 'registra_magazzino'])
-    // ⛔ Senza `permission` la chiave NON c'e': un `action: undefined` sarebbe
-    //    un gate dichiarato e mai applicato.
-    const senza = mapAvailableActionsToDrawerActions({
+  it('7) nessun gate di permesso: la chiave `action` non nasce', () => {
+    // ⛔ Il permesso lo applica la capability del DB (permesso ⇒ nascondi):
+    //    un `action` stampato qui sarebbe una seconda sede del permesso.
+    const [a] = mapAvailableActionsToDrawerActions({
       availableActions: [voceDb()], t, te: teCon(),
     })
-    expect('action' in senza[0]).toBe(false)
+    expect('action' in a).toBe(false)
   })
 
   it('8) senza `key` la chiave si deriva dallo stato di destinazione', () => {

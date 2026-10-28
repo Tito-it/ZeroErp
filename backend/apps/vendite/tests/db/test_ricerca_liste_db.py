@@ -120,7 +120,9 @@ _FIXTURE: tuple[str, ...] = (
     # sarebbero provate separatamente).
     # ⭐ Il preventivo NASCE in bozza (lo stato lo mette il DB, BB
     #    `script.trgfn_doc_stato_iniziale`) e va a EMESSO per la matrice, sotto
-    #    i guard veri: brief-modello-documento-vendita N-1.
+    #    i guard veri: brief-modello-documento-vendita N-1. L'emissione
+    #    chiede almeno una riga attiva (guard di transizione, giro 6 §8.5): la
+    #    riga e il passaggio li fa il builder, non una copia qui.
     """
     CREATE TEMP TABLE _prev AS
     WITH ins AS (
@@ -136,7 +138,8 @@ _FIXTURE: tuple[str, ...] = (
     )
     SELECT * FROM ins
     """,
-    "SELECT dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM _prev), 'EMESSO')",
+    "SELECT dbops.fn_pgtap_crea_preventivo_con_righe("
+    "'be_ricerca_liste_vendite', 'EMESSO', p_preventivo_id => (SELECT id FROM _prev))",
     """
     CREATE TEMP TABLE _comm AS
     SELECT vendite.fn_get_or_create_commessa(

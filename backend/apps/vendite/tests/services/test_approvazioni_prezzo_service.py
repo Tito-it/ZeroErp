@@ -28,6 +28,7 @@ from unittest.mock import MagicMock, patch
 
 from apps.core.services.service_errors import ServiceError
 from apps.vendite.services import approvazioni_prezzo_service as svc
+from apps.core.tests._helpers.operatore_di_prova import operatore_di_prova
 
 
 class CreaRichiestaApprovazioneTests(TestCase):
@@ -160,7 +161,7 @@ class ApprovaRifiutaTests(TestCase):
         mock_cambia, mock_nota,
     ):
         self._mock_cursor_riga_pending(mock_conn)
-        mock_user = MagicMock(); mock_user.is_superuser = False
+        mock_user = operatore_di_prova()
         mock_get_user.return_value = mock_user
         mock_perm.check_azione.return_value = True
         repo = MagicMock(); mock_repo_cls.return_value = repo
@@ -185,7 +186,7 @@ class ApprovaRifiutaTests(TestCase):
     ):
         # Permesso check passa per primo (defense-in-depth post-review F1):
         # serve mock utente + check_azione=True per arrivare al lookup riga.
-        mock_user = MagicMock(); mock_user.is_superuser = False
+        mock_user = operatore_di_prova()
         mock_get_user.return_value = mock_user
         mock_perm.check_azione.return_value = True
         self._mock_cursor_riga_pending(mock_conn, stato="APPROVED")
@@ -201,7 +202,7 @@ class ApprovaRifiutaTests(TestCase):
         self, mock_conn, mock_get_user, mock_perm
     ):
         self._mock_cursor_riga_pending(mock_conn)
-        mock_user = MagicMock(); mock_user.is_superuser = False
+        mock_user = operatore_di_prova()
         mock_get_user.return_value = mock_user
         mock_perm.check_azione.return_value = False  # nessun permesso
 
@@ -239,7 +240,7 @@ class ApprovaRifiutaTests(TestCase):
         mock_cambia, mock_nota,
     ):
         self._mock_cursor_riga_pending(mock_conn)
-        mock_user = MagicMock(); mock_user.is_superuser = False
+        mock_user = operatore_di_prova()
         mock_get_user.return_value = mock_user
         mock_perm.check_azione.return_value = True
         repo = MagicMock(); mock_repo_cls.return_value = repo
@@ -276,7 +277,7 @@ class ApprovaRifiutaTests(TestCase):
         mock_cambia, mock_nota,
     ):
         self._mock_cursor_riga_pending(mock_conn)
-        mock_user = MagicMock(); mock_user.is_superuser = False
+        mock_user = operatore_di_prova()
         mock_get_user.return_value = mock_user
         mock_perm.check_azione.return_value = True
         mock_repo_cls.return_value = MagicMock()
@@ -310,7 +311,7 @@ class ApprovaRifiutaTests(TestCase):
         # non PreventiviRepository. Verifica anche che la query _get_riga_pending
         # legga da `vendite.contratti_righe` (via mock cursor inspect).
         self._mock_cursor_riga_pending(mock_conn)
-        mock_user = MagicMock(); mock_user.is_superuser = False
+        mock_user = operatore_di_prova()
         mock_get_user.return_value = mock_user
         mock_perm.check_azione.return_value = True
         contr_repo = MagicMock(); mock_contr_repo_cls.return_value = contr_repo
@@ -346,7 +347,7 @@ class ApprovaRifiutaTests(TestCase):
     ):
         # Scopo: rifiuta contratto popola meta motivazione su contratti_righe.
         self._mock_cursor_riga_pending(mock_conn, meta={})
-        mock_user = MagicMock(); mock_user.is_superuser = False
+        mock_user = operatore_di_prova()
         mock_get_user.return_value = mock_user
         mock_perm.check_azione.return_value = True
         contr_repo = MagicMock(); mock_contr_repo_cls.return_value = contr_repo

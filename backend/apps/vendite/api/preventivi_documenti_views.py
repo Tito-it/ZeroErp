@@ -8,8 +8,8 @@
 #        (apps/documenti/api/sorgente_documenti_views.py — estrazione
 #        regola-del-2 dei 5 cloni `*_documenti_views`); qui vivono SOLO i
 #        delta di dominio: sorgente PREVENTIVO, repo/service preventivi,
-#        chiave response `preventivo`, `post_permission` sull'emissione
-#        (cambia_stato_preventivi, come il cambio stato).
+#        chiave response `preventivo`, il permesso dell'emissione dalla riga
+#        del passaggio (`emetti_passaggio`, modello del documento).
 #
 #        Emissione (`POST emetti/`, multipart): BOZZA->EMESSO + genera
 #        documento + allegati in transazione atomica. Se la generazione
@@ -29,7 +29,7 @@ from apps.documenti.api.sorgente_documenti_views import (
 from apps.documenti.services.document_generation_service import (
     DocumentGenerationService,
 )
-from apps.vendite.db.preventivi_repository import PreventiviRepository
+from apps.vendite.db.preventivi_repository import TESTATA_PREVENTIVI, PreventiviRepository
 from apps.vendite.services import preventivi_service
 
 
@@ -66,8 +66,11 @@ _views = build_documenti_sorgente_views(
     doc_service=_doc_service,
     emetti_call=_emetti_call,
     emetti_response_key="preventivo",
-    # Cambia stato del preventivo: usa lo stesso permesso del cambio stato.
-    emetti_post_permission="cambia_stato_preventivi",
+    # ⭐ L'azione dell'emissione la dice la riga della matrice verso lo stato
+    #    di emissione (oggi `emetti_preventivo`), non questa view: il 403 arriva
+    #    dalla stessa riga che legge il verbo (M-3, brief-modello-documento-
+    #    vendita §8.7); lo stato lo dice il vocabolario a ogni richiesta (§8.11 B-2).
+    emetti_passaggio=TESTATA_PREVENTIVI,
     model_permission=("vendite", "preventivo"),
 )
 

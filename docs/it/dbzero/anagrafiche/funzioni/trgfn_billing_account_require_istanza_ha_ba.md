@@ -5,6 +5,8 @@
 CREATE FUNCTION trgfn_billing_account_require_istanza_ha_ba()
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_list_lotto_task_runs(p_lotto_id bigint, p_stato_doc_fiscale_id bigint, p_task_code character varying, p_solo_attivi boolean, p_limit integer, p_offset integer, p_order_by text, p_order_dir text, p_solo_giro_corrente boolean, p_task_stato text[])
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

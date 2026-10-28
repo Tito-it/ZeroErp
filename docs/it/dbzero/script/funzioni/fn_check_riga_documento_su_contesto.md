@@ -4,6 +4,8 @@
 CREATE FUNCTION fn_check_riga_documento_su_contesto(p_contesto jsonb, p_articolo_id uuid, p_natura_vendita_id bigint, p_tipo_erogazione character varying, p_fonte character varying)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

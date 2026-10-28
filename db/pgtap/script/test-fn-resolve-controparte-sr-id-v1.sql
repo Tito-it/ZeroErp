@@ -8,6 +8,9 @@
 --   (changeSet 20261021-30, -33, -37; prende il posto di
 --   script/test-fn-scope-ba-ownership-via-fattura, ritirato con la funzione dal
 --   20261021-40, che i casi li PESCAVA fra le fatture esistenti).
+-- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): la riga di ciascun ordine da
+--   dbops.fn_pgtap_crea_ordine_con_righe (p_ordine_id, DRAFT); le due testate restano a
+--   mano: il canale nasce con l'ordine ed e' la premessa del caso.
 --
 -- ⛔ SI COSTRUISCE TUTTO: un cliente con due billing account (uno nato da
 --   ADMIN, uno dallo SHOP), una fattura con il suo invio SDI, due ordini (uno
@@ -89,10 +92,6 @@ SELECT id AS billing_account_id FROM nuovo;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
--- ⛔ L'articolo si COSTRUISCE: su un database ricostruito il catalogo non ha merce.
-CREATE TEMP TABLE _art AS
-SELECT dbops.fn_pgtap_crea_articolo('PGTAP-CONTROPARTE', false) AS id;
-
 -- Due ordini del cliente: uno da ADMIN, uno dallo SHOP (canale immutabile:
 -- nasce cosi').
 CREATE TEMP TABLE _ord AS
@@ -109,16 +108,12 @@ WITH o AS (
 )
 SELECT o.canale_origine AS canale, o.id AS ordine_id FROM o;
 
+-- La riga di ciascun ordine, in bozza: il builder la scrive sulla testata del test.
 CREATE TEMP TABLE _righe AS
-WITH r AS (
-    INSERT INTO vendite.ordini_righe
-        -- ⚠️ `qta_operativa` va valorizzata insieme a `quantita`: un guard la pretende.
-        (ordine_id, riga_nr, articolo_id, descrizione, quantita, qta_operativa, prezzo_unitario)
-    SELECT o.ordine_id, 1, (SELECT id FROM _art), 'Riga pgTAP controparte', 1, 1, 10.00
-      FROM _ord o
-    RETURNING id, ordine_id
-)
-SELECT o.canale, r.id AS riga_id FROM r JOIN _ord o ON o.ordine_id = r.ordine_id;
+SELECT o.canale, b.ordine_riga_id AS riga_id
+  FROM _ord o
+ CROSS JOIN LATERAL dbops.fn_pgtap_crea_ordine_con_righe('controparte ' || o.canale, 'DRAFT',
+           p_quantita => 1, p_prezzo => 10, p_ordine_id => o.ordine_id) b;
 
 -- ============================================================
 -- 1..3. Il billing account

@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_crea_bozza_da_versione(p_versione_origine_id bigint, p_template_documento_id bigint, p_derivata_da_versione_id bigint, p_titolo text, p_valido_dal date, p_valido_al date, p_attivo boolean, p_meta jsonb)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

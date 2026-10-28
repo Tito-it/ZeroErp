@@ -23,7 +23,7 @@
 | tx_id | uuid | YES |  |
 | storicizza | boolean | YES | true |
 | attivo | boolean | NO | true |
-| note_target_tipo | character varying(32) | YES |  |
+| note_target_tipo | character varying(50) | YES |  |
 | note_id | bigint | YES |  |
 | esposizione_in_fattura | character varying(40) | NO | 'NASCOSTO'::character varying |
 | validita | daterange | NO |  |

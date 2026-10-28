@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_scope_ef_whitelist_via_evento_asset(p_auth_user_id integer, p_evento_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

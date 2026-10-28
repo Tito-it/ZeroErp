@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_riporta_lotto_a_draft(p_lotto_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>
@@ -14,6 +16,12 @@ CREATE OR REPLACE FUNCTION vendite.fn_riporta_lotto_a_draft(p_lotto_id bigint)
  RETURNS TABLE(updated_lotti integer, updated_attivita integer, deleted_fatture integer, deleted_righe integer, riemesse_attivita integer, annullati_task_run integer)
  LANGUAGE plpgsql
 AS $function$
+-- rev 2026-10-27 (20261027-14, brief-modello-documento-vendita §15): lo
+--   stato fiscale lo scrive il verbo del lotto, vendite.fn_cambia_stato_lotto,
+--   DOPO la pulizia (la porta non lascia passare l'UPDATE): il permesso del
+--   passaggio dalla sua riga (numera_fatture_lotti, Q-F1). Su un lotto gia'
+--   nello stato iniziale non c'e' passaggio: si fa la pulizia e basta. Lo
+--   stato iniziale dal vocabolario (iniziale), non dal letterale 'DRAFT'.
 -- Scopo: rollback di un lotto PRE-FISCALE verso DRAFT — delega la
 --        pulizia alla primitiva, azzera lo STATO DI ESECUZIONE del
 --        lotto (task_run ad ANNULLATO), lo marca come riaperto e
@@ -36,6 +44,7 @@ AS $function$
 DECLARE
     v_lock_batch_id        vendite.fatturazione_lotti.lock_batch_id%TYPE;
     v_draft_id             config.stati_doc_fiscale.id%TYPE;
+    v_draft_codice         config.stati_doc_fiscale.codice_interno%TYPE;
     v_stato_precedente     config.stati_doc_fiscale.codice_interno%TYPE;
     v_motivi               jsonb;
     v_fatture_ids          BIGINT[];
@@ -80,10 +89,14 @@ BEGIN
       LEFT JOIN config.stati_doc_fiscale sdf ON sdf.id = fl.stato_doc_fiscale_id
      WHERE fl.id = p_lotto_id;
 
-    SELECT s.id INTO v_draft_id FROM config.stati_doc_fiscale s WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE LIMIT 1;
+    -- Lo stato iniziale dal vocabolario (rev 2026-10-27).
+    SELECT s.id, s.codice_interno INTO v_draft_id, v_draft_codice
+      FROM config.stati_doc_fiscale s
+     WHERE s.iniziale IS TRUE AND s.attivo IS TRUE
+     ORDER BY s.id LIMIT 1;
     IF v_draft_id IS NULL THEN
         PERFORM script.fn_log_and_raise_error('vendite', 'fn_riporta_lotto_a_draft', 'E_CONFIG_MANCANTE',
-            jsonb_build_object('codice_interno', 'DRAFT'), NULL::uuid, 'stato DRAFT non configurato');
+            jsonb_build_object('stati_doc_fiscale', 'iniziale'), NULL::uuid, 'stato iniziale del vocabolario fiscale non configurato');
     END IF;
 
     SELECT array_agg(lf.fattura_id) INTO v_fatture_ids
@@ -140,9 +153,14 @@ BEGIN
     -- in Python e da COMPLETATO come da ERRORE l'unica transizione
     -- ammessa e' verso IN_ESECUZIONE, che e' quello che fara' il giro
     -- successivo.
+    -- rev 2026-10-27: lo stato fiscale dal verbo del lotto (la porta), il
+    -- resto con l'UPDATE di sempre.
+    IF v_stato_precedente IS DISTINCT FROM v_draft_codice THEN
+        PERFORM 1 FROM vendite.fn_cambia_stato_lotto(p_lotto_id, v_draft_codice);
+    END IF;
+
     UPDATE vendite.fatturazione_lotti
-       SET stato_doc_fiscale_id = v_draft_id,
-           stato_operativo      = 'APERTO',
+       SET stato_operativo      = 'APERTO',
            riaperto_il          = now(),
            data_update          = now(),
            user_update          = current_user
@@ -193,7 +211,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_riporta_lotto_a_draft(p_lotto_id bigint)
-IS 'Rollback di un lotto PRE-FISCALE (DRAFT o EMESSA) verso DRAFT, per MASSIVO e GIORNALIERO. Delega TUTTA la pulizia delle tabelle a fn_cleanup_fatture_by_ids (RD-4) e si occupa dello stato del LOTTO: stato fiscale a DRAFT, stato_operativo APERTO, riaperto_il (RD-2) e stato di ESECUZIONE. 🔴 RD-6: chiude ad ANNULLATO tutti i task_run attivi del lotto, perche'' fn_resolve_lotto_task_execution_mode legge l''ultimo task_run e su COMPLETATO risponde SKIP — senza questo passo il lotto riaperto rilancia A VUOTO, senza errori e senza task_run nuovi. ⚠️ Non basterebbe attivo = false: quella SELECT non filtra su attivo. Le corse non si cancellano: si chiudono con esito, e il giro nuovo apre tentativo = MAX+1, quindi la storia resta leggibile per intero. 🔴 RD-7 (rev 2026-08-31): l''atto entra nel GIORNALE — LOTTO_RIAPERTO in vendite.event_log via fn_log_event, severity WARN, payload coi contatori e con lo stato fiscale di partenza. Prima la riapertura si leggeva solo DI RIMBALZO dai task_run passati ad ANNULLATO. Registro scelto per DUE proprieta'' strutturali che fatturazione_lotti_log non ha: append-only per trigger e codice a catalogo (li'' c''e'' disabilitato, e un atto che distrugge documenti non deve poter essere silenziato). WARN e non INFO perche'' vw_giornale_entita mappa gia'' TASK_RUN ANNULLATO -> WARN: la causa non puo'' stare piu'' in basso del proprio effetto. ⛔ Terza ragione della scelta, ed e'' di comportamento: le segnalazioni si compongono da fatture_log UNION fatturazione_lotti_log e da event_log si legge la sola ancora PIPELINE_STARTED, quindi questa riga NON entra nel conteggio su cui il runner decide l''avanzamento — un atto registrato non deve diventare un atto che blocca. ⚠️ La scrittura non introduce un ramo di fallimento: emittente_soggetto_ruolo_id e'' NOT NULL su fatturazione_lotti e l''esistenza del lotto e'' gia'' garantita dal check. RD-1: si torna indietro per QUALSIASI motivo; cio'' che resta vietato e'' numerare un documento incoerente (guard D-K). Sorella di fn_annulla_lotto_da_draft, che invece CHIUDE il lotto portandolo ad ANNULLATA. rev 2026-08-04: le precondizioni non sono piu'' scritte qui — arrivano da script.fn_check_lotto_riportabile_a_draft, la STESSA che alimenta enabled/reasons di script.fn_available_actions_lotto, cosi'' il pulsante e la funzione non possono divergere. ⚠️ Rifiuta ancora se una sola fattura e'' gia'' NUMERATA (ora E_LOTTO_FATTURE_NUMERATE): il controllo guarda il numero e non lo stato. Il pg_advisory_xact_lock resta DOPO le validazioni: una chiamata invalida non deve serializzare gli altri chiamanti.';
+IS 'Rollback di un lotto PRE-FISCALE (DRAFT o EMESSA) verso DRAFT, per MASSIVO e GIORNALIERO. Delega TUTTA la pulizia delle tabelle a fn_cleanup_fatture_by_ids (RD-4) e si occupa dello stato del LOTTO: stato fiscale a DRAFT, stato_operativo APERTO, riaperto_il (RD-2) e stato di ESECUZIONE. 🔴 RD-6: chiude ad ANNULLATO tutti i task_run attivi del lotto, perche'' fn_resolve_lotto_task_execution_mode legge l''ultimo task_run e su COMPLETATO risponde SKIP — senza questo passo il lotto riaperto rilancia A VUOTO, senza errori e senza task_run nuovi. ⚠️ Non basterebbe attivo = false: quella SELECT non filtra su attivo. Le corse non si cancellano: si chiudono con esito, e il giro nuovo apre tentativo = MAX+1, quindi la storia resta leggibile per intero. 🔴 RD-7 (rev 2026-08-31): l''atto entra nel GIORNALE — LOTTO_RIAPERTO in vendite.event_log via fn_log_event, severity WARN, payload coi contatori e con lo stato fiscale di partenza. Prima la riapertura si leggeva solo DI RIMBALZO dai task_run passati ad ANNULLATO. Registro scelto per DUE proprieta'' strutturali che fatturazione_lotti_log non ha: append-only per trigger e codice a catalogo (li'' c''e'' disabilitato, e un atto che distrugge documenti non deve poter essere silenziato). WARN e non INFO perche'' vw_giornale_entita mappa gia'' TASK_RUN ANNULLATO -> WARN: la causa non puo'' stare piu'' in basso del proprio effetto. ⛔ Terza ragione della scelta, ed e'' di comportamento: le segnalazioni si compongono da fatture_log UNION fatturazione_lotti_log e da event_log si legge la sola ancora PIPELINE_STARTED, quindi questa riga NON entra nel conteggio su cui il runner decide l''avanzamento — un atto registrato non deve diventare un atto che blocca. ⚠️ La scrittura non introduce un ramo di fallimento: emittente_soggetto_ruolo_id e'' NOT NULL su fatturazione_lotti e l''esistenza del lotto e'' gia'' garantita dal check. RD-1: si torna indietro per QUALSIASI motivo; cio'' che resta vietato e'' numerare un documento incoerente (guard D-K). Sorella di fn_annulla_lotto_da_draft, che invece CHIUDE il lotto portandolo ad ANNULLATA. rev 2026-08-04: le precondizioni non sono piu'' scritte qui — arrivano da script.fn_check_lotto_riportabile_a_draft, la STESSA che alimenta enabled/reasons di script.fn_available_actions_lotto, cosi'' il pulsante e la funzione non possono divergere. ⚠️ Rifiuta ancora se una sola fattura e'' gia'' NUMERATA (ora E_LOTTO_FATTURE_NUMERATE): il controllo guarda il numero e non lo stato. Il pg_advisory_xact_lock resta DOPO le validazioni: una chiamata invalida non deve serializzare gli altri chiamanti. rev 2026-10-27 (20261027-14, brief-modello-documento-vendita §15): lo stato fiscale lo scrive il verbo del lotto, vendite.fn_cambia_stato_lotto, DOPO la pulizia (la porta non lascia passare l''UPDATE), col permesso della riga del passaggio (numera_fatture_lotti, Q-F1; prima solo il backend, con reset_lotto_draft, ritirata); su un lotto gia'' nello stato iniziale non c''e'' passaggio e si fa la sola pulizia. Lo stato iniziale dal vocabolario (config.stati_doc_fiscale.iniziale), non dal letterale DRAFT.';
 ```
 
 </div>

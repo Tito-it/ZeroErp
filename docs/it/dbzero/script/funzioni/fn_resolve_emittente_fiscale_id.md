@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_resolve_emittente_fiscale_id(p_modo text, p_valore bigint)
 ```
 
+> 🔐 **Sicurezza**: `SECURITY DEFINER` — gira con i privilegi dell'owner `zeroerp_owner`: GRANT e RLS sono i suoi, non quelli di chi la chiama.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

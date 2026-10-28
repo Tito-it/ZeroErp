@@ -14,6 +14,7 @@ from rest_framework import serializers
 from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
+from apps.core.api.permissions import PassaggioDocumento
 from apps.core.api.endpoint_helpers import get_actor_user_id, get_scope_user_id, handle_post_json
 from apps.core.api.payload_validators import (
     corpo_oggetto,
@@ -36,7 +37,7 @@ from apps.vendite.api.indirizzi_documento_views import (
 from apps.vendite.api.riepilogo_iva_views import build_riepilogo_iva_view
 from apps.vendite.services import preventivi_service
 from apps.ui.api.lista_figlia_views import EMITTENTE_DOCUMENTO_PARAM, build_lista_figlia_views
-from apps.vendite.db.preventivi_repository import PreventiviRepository
+from apps.vendite.db.preventivi_repository import TESTATA_PREVENTIVI, PreventiviRepository
 from apps.core.api.openapi_params import param_ricerca_full
 from apps.vendite.api._date_consegna_schema import DATE_CONSEGNA_REQUEST, DATE_CONSEGNA_RESPONSE
 from apps.vendite.api._schema_da_contratto import schema_da_contratto
@@ -51,6 +52,8 @@ from apps.vendite.api._componenti_schema import (
 # Codice lista configurabile (catalogo ui.lista_definizione id=5). Usato
 # dall'export per risolvere colonne visibili/ordine/permessi dell'utente.
 _LISTA_CODICE_PREVENTIVI = "vendite.preventivi"
+# Il validatore dei corpi letti nelle view, col codice del dominio.
+_V = PayloadValidator(validation_code="E_PREV_VALIDAZIONE")
 
 
 # Scopo: normalizza `righe_ids` dal body degli endpoint di smistamento
@@ -343,7 +346,11 @@ class ApiPreventivoDetail(DomainAPIView):
 def _parse_cambio_stato_payload(
     payload: dict[str, Any],
 ) -> tuple[str, bool | None, date | None]:
-    nuovo_stato = str(payload.get("nuovo_stato", ""))
+    # Dal BB, ripulito: lo stesso valore che legge la catena dei permessi
+    # (`PassaggioDocumento`, che fa lo strip). Fino al 2026-10-25 era
+    # `str(payload.get(...))`: `null` diventava "None", e " EMESSO " arrivava
+    # al rifiuto dell'emissione diverso da come l'aveva letto il permesso.
+    nuovo_stato = _V.require_string(payload, "nuovo_stato")
     raw_fi = payload.get("fatturazione_immediata")
     fatturazione_immediata = (
         None if raw_fi is None else optional_bool(payload, "fatturazione_immediata")
@@ -352,9 +359,23 @@ def _parse_cambio_stato_payload(
     return nuovo_stato, fatturazione_immediata, competenza_mese
 
 
+# Scopo: il preventivo ROOT della pratica, per il permesso del passaggio di
+#        `ApiPreventivoStatoDaPratica` (la rotta porta il `pratica_id`). La
+#        stessa lettura del service: None = nessun preventivo, e il 4xx lo da'
+#        il service.
+def _preventivo_della_pratica(pratica_id: int) -> int | None:
+    return PreventiviRepository().get_preventivo_id_by_pratica_root(pratica_id)
+
+
 class ApiPreventivoStato(DomainAPIView):
     area_funzionale = "vendite"
-    post_permission = "cambia_stato_preventivi"
+    model_permission = ("vendite", "preventivo")
+    # L'azione del passaggio (stato corrente -> `nuovo_stato`) dalla riga della
+    # matrice: l'annullo di un preventivo emesso o accettato chiede
+    # `emetti_preventivo`, gli altri il solo livello sul documento (M-3, M-4).
+    post_passaggio = PassaggioDocumento(
+        testata=TESTATA_PREVENTIVI, documento_kwarg="preventivo_id", campo_stato="nuovo_stato",
+    )
 
     @extend_schema(
         request=inline_serializer(
@@ -407,7 +428,12 @@ class ApiPreventivoStatoDaPratica(DomainAPIView):
     di `ApiPreventivoStato`, ma la view risolve il preventivo dal `pratica_id`."""
 
     area_funzionale = "vendite"
-    post_permission = "cambia_stato_preventivi"
+    model_permission = ("vendite", "preventivo")
+    # Come `ApiPreventivoStato`, sul preventivo ROOT della pratica.
+    post_passaggio = PassaggioDocumento(
+        testata=TESTATA_PREVENTIVI, documento_kwarg="pratica_id", campo_stato="nuovo_stato",
+        risolvi_documento=_preventivo_della_pratica,
+    )
 
     @extend_schema(
         request=inline_serializer(
@@ -518,7 +544,10 @@ class ApiPreventivoCollegaPratica(DomainAPIView):
     sul percorso pratica-first. Idempotente."""
 
     area_funzionale = "vendite"
-    post_permission = "cambia_stato_preventivi"
+    # Non e' un cambio di stato: aggancia il preventivo a una pratica, cioe' lo
+    # modifica, e chiede il livello sul documento (brief-modello-documento-
+    # vendita §8.7 punto 2; fino al giro 6 `cambia_stato_preventivi`, spenta).
+    model_permission = ("vendite", "preventivo")
 
     @extend_schema(
         request=inline_serializer(
@@ -533,11 +562,10 @@ class ApiPreventivoCollegaPratica(DomainAPIView):
     def post(self, request: Request, preventivo_id: int) -> JsonResponse:
         # Dal BB: `payload["pratica_id"]` assente era un KeyError, cioe' un 500.
         def _handler(payload: dict[str, Any]) -> dict[str, Any]:
-            v = PayloadValidator(validation_code="E_PREV_VALIDAZIONE")
             return preventivi_service.collega_pratica(
                 preventivo_id,
-                pratica_id=v.require_positive_int(payload, "pratica_id"),
-                flusso_id=v.optional_positive_int(payload, "flusso_id"),
+                pratica_id=_V.require_positive_int(payload, "pratica_id"),
+                flusso_id=_V.optional_positive_int(payload, "flusso_id"),
             )
         return handle_post_json(request, handler=_handler)
 
@@ -1199,11 +1227,10 @@ class ApiPreventivoGeneraPratica(DomainAPIView):
     def post(self, request: Request, preventivo_id: int) -> JsonResponse:
         # Dal BB: un campo assente era un KeyError, cioe' un 500.
         def _handler(payload: dict[str, Any]) -> dict[str, Any]:
-            v = PayloadValidator(validation_code="E_PREV_VALIDAZIONE")
             return preventivi_service.genera_pratica(
                 preventivo_id,
-                tipo_prestazione_id=v.require_positive_int(payload, "tipo_prestazione_id"),
-                priorita_id=v.require_positive_int(payload, "priorita_id"),
+                tipo_prestazione_id=_V.require_positive_int(payload, "tipo_prestazione_id"),
+                priorita_id=_V.require_positive_int(payload, "priorita_id"),
                 descrizione=payload.get("descrizione"),
             )
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)

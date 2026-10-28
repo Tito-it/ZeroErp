@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_pgtap_crea_commessa(p_etichetta text, p_stato_codice_interno character varying, p_billing_account_id bigint, p_con_attivita boolean, p_con_sorgente_root boolean)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>
@@ -51,7 +53,7 @@ DECLARE
 BEGIN
     -- 0. Lo stato si giudica PRIMA di costruire: un codice che
     --    non c'e' parla qui, nominando il builder.
-    v_iniziale := script.fn_stato_iniziale_id('vendite.stati_commessa'::regclass);
+    v_iniziale := script.fn_doc_stato_iniziale_id('vendite.commesse'::regclass);
     IF p_stato_codice_interno IS NOT NULL THEN
         SELECT s.id INTO v_target
           FROM vendite.stati_commessa s
@@ -131,7 +133,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_commessa(p_etichetta text, p_stato_codice_interno character varying, p_billing_account_id bigint, p_con_attivita boolean, p_con_sorgente_root boolean)
-IS 'Fixture pgTAP: una COMMESSA del mondo in una chiamata: azienda, operatore e cliente (dbops.fn_pgtap_crea_mondo_cliente) e la commessa aperta dalla madre vendite.fn_get_or_create_commessa (p_force_new), con competenza nel mese corrente. Codice, emittente e stato iniziale li decide la madre, come in produzione. ⭐ Secondo parametro: lo stato da raggiungere (NULL o l''iniziale: resta li''), per la matrice con dbops.fn_pgtap_porta_a_stato, sotto i guard veri. ⚠️ Terzo parametro: il billing account di un cliente gia'' costruito, verificato da dbops.fn_pgtap_cliente_ba_del_mondo (un BA di un''altra azienda solleva). Quarto parametro: scrive UN''attivita'' APPROVATA e NON_EMESSA (dbops.fn_pgtap_crea_commessa_attivita) prima del passaggio; NULL = solo se lo stato chiesto non e'' l''iniziale, perche'' l''uscita dalla bozza la pretende. Quinto parametro: scrive la sorgente ROOT (sorgente COMMESSA, chiave l''id della commessa), quella che il pull della fatturazione pretende. ⛔ Le altre attivita'' e le altre sorgenti sono il caso del test. Ritorna le chiavi, l''attivita'' scritta (o NULL) e lo stato raggiunto. ⚠️ Senza contesto aperto lo apre sull''operatore che costruisce; esce con i vincoli IMMEDIATE. Brief: brief-db-fixture-rls-documenti-costruiti. Rev 2026-10-24 (20261024-26, brief-modello-documento-vendita Q-2): stato, billing account e attivita'', DROP + CREATE; 20261024-32 (R-3): la sorgente ROOT. Rev 2026-10-24 (20261024-40, §4-octies): col billing account del test non costruisce piu'' un cliente in piu'' (dbops.fn_pgtap_cliente_del_builder).';
+IS 'Fixture pgTAP: una COMMESSA del mondo in una chiamata: azienda, operatore e cliente (dbops.fn_pgtap_crea_mondo_cliente) e la commessa aperta dalla madre vendite.fn_get_or_create_commessa (p_force_new), con competenza nel mese corrente. Codice, emittente e stato iniziale li decide la madre, come in produzione. ⭐ Secondo parametro: lo stato da raggiungere (NULL o l''iniziale: resta li''), per la matrice con dbops.fn_pgtap_porta_a_stato, sotto i guard veri. ⚠️ Terzo parametro: il billing account di un cliente gia'' costruito, verificato da dbops.fn_pgtap_cliente_ba_del_mondo (un BA di un''altra azienda solleva). Quarto parametro: scrive UN''attivita'' APPROVATA e NON_EMESSA (dbops.fn_pgtap_crea_commessa_attivita) prima del passaggio; NULL = solo se lo stato chiesto non e'' l''iniziale, perche'' l''uscita dalla bozza la pretende. Quinto parametro: scrive la sorgente ROOT (sorgente COMMESSA, chiave l''id della commessa), quella che il pull della fatturazione pretende. ⛔ Le altre attivita'' e le altre sorgenti sono il caso del test. Ritorna le chiavi, l''attivita'' scritta (o NULL) e lo stato raggiunto. ⚠️ Senza contesto aperto lo apre sull''operatore che costruisce; esce con i vincoli IMMEDIATE. Brief: brief-db-fixture-rls-documenti-costruiti. Rev 2026-10-24 (20261024-26, brief-modello-documento-vendita Q-2): stato, billing account e attivita'', DROP + CREATE; 20261024-32 (R-3): la sorgente ROOT. Rev 2026-10-24 (20261024-40, §4-octies): col billing account del test non costruisce piu'' un cliente in piu'' (dbops.fn_pgtap_cliente_del_builder). Rev 2026-10-27 (20261027-37, brief-modello-documento-vendita §15.13): lo stato iniziale dalla testata (vendite.commesse) con script.fn_doc_stato_iniziale_id, non dal vocabolario.';
 ```
 
 </div>

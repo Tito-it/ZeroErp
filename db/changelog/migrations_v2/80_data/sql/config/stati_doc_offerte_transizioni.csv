@@ -1,8 +1,8 @@
-id,stato_da_id,stato_a_id,attivo,meta,data_insert,user_insert,data_update,user_update
-1,1,2,t,"{""action_key"":""emetti"",""label_key"":""vendite.offerte.azione_emetti"",""requires_confirm"":false,""requires_motivazione"":false,""manuale"":true}",2026-05-24 00:00:00+02,SEED,2026-05-28 00:00:00+02,SEED
-2,1,6,t,"{""action_key"":""annulla"",""label_key"":""vendite.offerte.azione_annulla"",""requires_confirm"":true,""requires_motivazione"":true,""outlined"":true,""manuale"":true}",2026-05-24 00:00:00+02,SEED,2026-08-06 00:00:00+02,mctit
-3,2,3,t,"{""action_key"":""accetta"",""label_key"":""vendite.offerte.azione_accetta"",""requires_confirm"":true,""requires_motivazione"":false,""manuale"":true}",2026-05-24 00:00:00+02,SEED,2026-05-24 00:00:00+02,SEED
-4,2,4,t,"{""action_key"":""rifiuta"",""label_key"":""vendite.offerte.azione_rifiuta"",""requires_confirm"":true,""requires_motivazione"":true,""manuale"":true}",2026-05-24 00:00:00+02,SEED,2026-05-24 00:00:00+02,SEED
-5,2,5,t,"{""manuale"":false}",2026-05-24 00:00:00+02,SEED,2026-05-24 00:00:00+02,SEED
-6,5,2,t,"{""manuale"":false}",2026-08-28 00:00:00+02,mctit,2026-08-28 00:00:00+02,mctit
-7,3,6,t,"{""action_key"":""annulla"",""label_key"":""vendite.offerte.azione_annulla"",""requires_confirm"":true,""requires_motivazione"":true,""outlined"":true,""manuale"":true}",2026-10-21 00:00:00+02,mctit,2026-10-21 00:00:00+02,mctit
+id,stato_da_id,stato_a_id,attivo,meta,data_insert,user_insert,data_update,user_update,azione_processo_codename
+1,1,2,t,"{""action_key"":""emetti"",""label_key"":""vendite.offerte.azione_emetti"",""requires_confirm"":false,""requires_motivazione"":false,""manuale"":true}",2026-05-24 00:00:00+02,SEED,2026-10-26 00:00:00+01,mctit,emetti_offerta
+2,1,6,t,"{""action_key"":""annulla"",""label_key"":""vendite.offerte.azione_annulla"",""requires_confirm"":true,""requires_motivazione"":true,""outlined"":true,""manuale"":true}",2026-05-24 00:00:00+02,SEED,2026-08-06 00:00:00+02,mctit,NULL
+3,2,3,t,"{""action_key"":""accetta"",""label_key"":""vendite.offerte.azione_accetta"",""requires_confirm"":true,""requires_motivazione"":false,""manuale"":true}",2026-05-24 00:00:00+02,SEED,2026-05-24 00:00:00+02,SEED,NULL
+4,2,4,t,"{""action_key"":""rifiuta"",""label_key"":""vendite.offerte.azione_rifiuta"",""requires_confirm"":true,""requires_motivazione"":true,""manuale"":true}",2026-05-24 00:00:00+02,SEED,2026-05-24 00:00:00+02,SEED,NULL
+5,2,5,t,"{""manuale"":false}",2026-05-24 00:00:00+02,SEED,2026-05-24 00:00:00+02,SEED,NULL
+6,5,2,t,"{""manuale"":false}",2026-08-28 00:00:00+02,mctit,2026-08-28 00:00:00+02,mctit,NULL
+7,3,6,t,"{""action_key"":""annulla"",""label_key"":""vendite.offerte.azione_annulla"",""requires_confirm"":true,""requires_motivazione"":true,""outlined"":true,""manuale"":true}",2026-10-21 00:00:00+02,mctit,2026-10-26 00:00:00+01,mctit,emetti_offerta

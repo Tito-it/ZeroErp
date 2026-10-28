@@ -87,6 +87,11 @@ _ORDER_COLS_RIGHE: dict[str, str] = {
 }
 
 
+# La testata nella mappa del modello del documento (`script.fn_doc_stato_modello`):
+# la leggono il repository, il service e la catena dei permessi.
+TESTATA_DDT = "vendite.ddt"
+
+
 class DdtRepository(
     RigheDocumentoRepositoryMixin,
     ComponentiRepositoryMixin,
@@ -468,13 +473,14 @@ class DdtRepository(
             return cursor.rowcount > 0
 
     # Scopo: Cambia stato della bolla dal verbo DB `vendite.fn_cambia_stato_ddt`
-    #        (Lotto 3 D-L3-e): permesso (`emetti_ddt` per l'emissione e
-    #        l'annullo di una bolla emessa, `registra_magazzino` per la consegna
-    #        di un trasferimento), matrice e guard di sempre, e — se la bolla
+    #        (Lotto 3 D-L3-e, sul verbo comune dal 2026-10-25): il permesso del
+    #        passaggio dalla riga della matrice (`emetti_ddt` per l'emissione e
+    #        l'annullo di una bolla emessa), `registra_magazzino` per la consegna
+    #        di un trasferimento, matrice e guard di sempre, e — se la bolla
     #        muove merce — prelievi automatici e movimenti di magazzino nella
-    #        stessa transazione. ⛔ Mai un `UPDATE` diretto dello stato: su una
-    #        bolla che muove merce la porta del registro lo rifiuta
-    #        (E_DDT_STATO_SOLO_DA_VERBO). Fuori perimetro: E_DDT_NOT_FOUND.
+    #        stessa transazione. ⛔ Mai un `UPDATE` diretto dello stato: la porta
+    #        comune lo rifiuta su ogni bolla (E_DOC_STATO_SOLO_DAL_VERBO). Fuori
+    #        perimetro: E_DDT_NOT_FOUND.
     # Ritorna: i movimenti scritti (movimento_id, prelievo_id, qta); nessuno se
     #          il passaggio non tocca il registro.
     def cambia_stato(self, ddt_id: int, stato_codice: str) -> list[dict[str, Any]]:
@@ -858,14 +864,3 @@ class DdtRepository(
     #    `script.fn_cliente_dal_billing_account` (brief-db-esecutivi-ba-coppia
     #    §9.6, §10.2 domanda 2). Derivarlo qui era la quarta copia della regola.
 
-    # Scopo: id di uno stato DDT via codice_interno (immutabile).
-    def get_stato_id_by_codice(self, codice_interno: str) -> int | None:
-        sql = """
-            SELECT id FROM config.stati_doc_ddt
-             WHERE codice_interno = %s AND attivo = true
-             LIMIT 1
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [codice_interno])
-            row = cursor.fetchone()
-            return row[0] if row else None

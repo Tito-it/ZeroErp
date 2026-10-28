@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_check_fondo_fattura_capiente(p_capienza numeric, p_importo numeric)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

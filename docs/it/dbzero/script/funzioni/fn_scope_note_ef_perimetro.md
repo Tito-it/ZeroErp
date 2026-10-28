@@ -4,6 +4,8 @@
 CREATE FUNCTION fn_scope_note_ef_perimetro(p_perimetro bigint[], p_target_tipo character varying, p_target_id bigint)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>
@@ -23,21 +25,22 @@ AS $function$
     --   dal risolutore DEFINER con lo stesso modo della partizione.
     -- ⛔ L'ELSE false e' la riga che conta: un target_tipo nuovo e non
     --   gestito rende quelle note INVISIBILI dal padre, non visibili a
-    --   tutti (neanche al super admin). Presidio: rls/test-rls-note-padre.
+    --   tutti (neanche al super admin). Presidio: rls/test-rls-note-padre,
+    --   contro i confini delle partizioni.
     SELECT CASE p_target_tipo
-        WHEN 'PREVENTIVO' THEN script.fn_scope_ef_perimetro(p_perimetro, script.fn_resolve_emittente_fiscale_id('preventivo', p_target_id))
-        WHEN 'ORDINE'     THEN script.fn_scope_ef_perimetro(p_perimetro, script.fn_resolve_emittente_fiscale_id('ordine', p_target_id))
-        WHEN 'DDT'        THEN script.fn_scope_ef_perimetro(p_perimetro, script.fn_resolve_emittente_fiscale_id('ddt', p_target_id))
-        WHEN 'CONTRATTO'  THEN script.fn_scope_ef_perimetro(p_perimetro, script.fn_resolve_emittente_fiscale_id('contratto', p_target_id))
-        WHEN 'FATTURA'    THEN script.fn_scope_ef_perimetro(p_perimetro, script.fn_resolve_emittente_fiscale_id('fattura', p_target_id))
-        WHEN 'OFFERTA'    THEN script.fn_scope_ef_perimetro(p_perimetro, script.fn_resolve_emittente_fiscale_id('offerta', p_target_id))
-        WHEN 'ATTIVITAFT' THEN script.fn_scope_ef_perimetro(p_perimetro, script.fn_resolve_emittente_fiscale_id('attivita_fatturabile', p_target_id))
+        WHEN 'PREVENTIVO'          THEN script.fn_scope_ef_perimetro(p_perimetro, script.fn_resolve_emittente_fiscale_id('preventivo', p_target_id))
+        WHEN 'ORDINE_VENDITA'      THEN script.fn_scope_ef_perimetro(p_perimetro, script.fn_resolve_emittente_fiscale_id('ordine', p_target_id))
+        WHEN 'DDT_VENDITA'         THEN script.fn_scope_ef_perimetro(p_perimetro, script.fn_resolve_emittente_fiscale_id('ddt', p_target_id))
+        WHEN 'CONTRATTO'           THEN script.fn_scope_ef_perimetro(p_perimetro, script.fn_resolve_emittente_fiscale_id('contratto', p_target_id))
+        WHEN 'FATTURA'             THEN script.fn_scope_ef_perimetro(p_perimetro, script.fn_resolve_emittente_fiscale_id('fattura', p_target_id))
+        WHEN 'OFFERTA_COMMERCIALE' THEN script.fn_scope_ef_perimetro(p_perimetro, script.fn_resolve_emittente_fiscale_id('offerta', p_target_id))
+        WHEN 'ATTIVITA'            THEN script.fn_scope_ef_perimetro(p_perimetro, script.fn_resolve_emittente_fiscale_id('attivita_fatturabile', p_target_id))
         ELSE false
     END
 $function$
 
 COMMENT ON FUNCTION script.fn_scope_note_ef_perimetro(p_perimetro bigint[], p_target_tipo character varying, p_target_id bigint)
-IS 'Smistatore di scope per il PADRE partizionato vendite.note, veste OPERATORE: la nota sta nel perimetro? Il perimetro lo passa la policy, calcolato UNA volta per istruzione da script.fn_get_emittenti_scope_pk_ids in una sottoquery non correlata (InitPlan); per riga resta l''emittente, da script.fn_resolve_emittente_fiscale_id con lo stesso modo della partizione, confrontato da script.fn_scope_ef_perimetro (linee-guida-sql §10.3). Esiste perche'' le policy delle PARTIZIONI non risalgono al padre. ⛔ ELSE false: un target_tipo non gestito rende quelle note invisibili dal padre, anche al super admin; i rami contro chk_note_target_tipo li presidia rls/test-rls-note-padre. Rev 2026-10-21 (20261021-25, P-1 di brief-db-perimetro-una-volta-famiglie-residue): prende il posto di fn_scope_note_ef_whitelist, che calcolava il perimetro per riga.';
+IS 'Smistatore di scope per il PADRE partizionato vendite.note, veste OPERATORE: la nota sta nel perimetro? Il perimetro lo passa la policy, calcolato UNA volta per istruzione da script.fn_get_emittenti_scope_pk_ids in una sottoquery non correlata (InitPlan); per riga resta l''emittente, da script.fn_resolve_emittente_fiscale_id con lo stesso modo della partizione, confrontato da script.fn_scope_ef_perimetro (linee-guida-sql §10.3). Esiste perche'' le policy delle PARTIZIONI non risalgono al padre. ⛔ ELSE false: un target_tipo non gestito rende quelle note invisibili dal padre, anche al super admin; che ogni confine di partizione abbia il suo ramo lo presidia rls/test-rls-note-padre. Rev 2026-10-21 (20261021-25, P-1 di brief-db-perimetro-una-volta-famiglie-residue): prende il posto di fn_scope_note_ef_whitelist, che calcolava il perimetro per riga. Rev 2026-10-25 (20261025-62, brief-db-grammatica-unica-documenti lotto 3): i rami parlano i codici di config.tipi_entita (ORDINE_VENDITA, DDT_VENDITA, OFFERTA_COMMERCIALE, ATTIVITA); i modi del risolutore restano.';
 ```
 
 </div>

@@ -54,6 +54,7 @@ from apps.amm_software.services.amm_software_service import AmmSoftwareService
 from apps.core.services.db_error_fields import structured_db_error_code
 from apps.core.services.service_errors import ServiceError
 from apps.core.tests.db_e2e import apri_transazione_annullata, richiedi_db_provvisto
+from apps.core.tests._helpers.parametro_di_prova import crea_parametro_di_prova
 from apps.portale.db.portale_repository import PortaleRepository
 
 
@@ -301,10 +302,13 @@ class AccessiDbTests(unittest.TestCase):
     #        parametro a suo nome, FK NO ACTION) non si elimina, e il rifiuto
     #        nomina la tabella; senza il ponte e' il fail-closed.
     def test_la_credenziale_con_storia_non_si_elimina(self):
+        # Il parametro si costruisce: quello col primo id del seed vale per
+        # tutti, e il guard ne rifiuta l'override (brief-db-parametri-senza-override).
+        param_id, _ = crea_parametro_di_prova(self.cur, codice="ZZ_TEST_ACCESSI_STORIA")
         self.cur.execute(
             "INSERT INTO config.parameter_overrides (parameter_id, overridden_value, django_user_id) "
-            "SELECT min(p.id), 'test accessi', %s FROM config.parameters p",
-            [self.nuda],
+            "VALUES (%s, 'test accessi', %s)",
+            [param_id, self.nuda],
         )
         ponte = self._ponte_django()
         cred = AccessiService().get_credenziale(self.nuda)

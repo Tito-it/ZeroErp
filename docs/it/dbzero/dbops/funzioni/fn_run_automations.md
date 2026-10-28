@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_run_automations(p_exec_mode text, p_schemas text[], p_dry_run boolean, p_parts text[])
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

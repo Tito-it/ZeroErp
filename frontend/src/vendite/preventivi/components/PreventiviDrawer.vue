@@ -6,6 +6,7 @@ import { ref, watch, computed, nextTick, provide } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { usePreventiviStore } from '../stores/preventivi'
 import { useApiHandler } from '../../../core/composables/useApiHandler'
+import { useContatoreNote } from '../../../core/composables/useContatoreNote'
 import { useInjectReadonly, READONLY_KEY } from '../../../core/composables/useReadonlyMode'
 import { useConfirmAction } from '../../../core/composables/useConfirmAction'
 import { useForzaturaConfermata } from '../../../core/composables/useForzaturaConfermata'
@@ -196,6 +197,9 @@ const showRiepilogoIva = computed(
 // PreventiviRigheTable): per ora la nota-di-riga si crea conoscendo l'id;
 // quando arrivera' il drawer note dalla singola riga il dropdown sara' popolato.
 const noteDrawerVisible = ref(false)
+// Il pulsante «Gestisci note» standard, col numero delle note del documento
+// (BB `useContatoreNote`: dal dettaglio, poi dal sotto-drawer dopo un salvataggio).
+const contatoreNote = useContatoreNote(() => detail.value)
 // Auto-save bozza: in CREATE, appena utility + istanza sono valorizzati, il
 // drawer crea il preventivo in BOZZA e si comporta da "edit-evolved" (mostra
 // righe + integrazione, salvataggi successivi diventano UPDATE). createdId
@@ -968,13 +972,10 @@ const drawerActions = computed(() => {
     })
   }
   list.push(...dateConsegnaAzione.value)
-  list.push({
-    key: 'manage-note',
-    kind: 'manage',
+  list.push(contatoreNote.azione({
     label: t('vendite.preventivi.gestisci_note'),
-    icon: MANAGE_ICONS.NOTE,
     command: () => { noteDrawerVisible.value = true },
-  })
+  }))
   return list
 })
 
@@ -1200,6 +1201,7 @@ const drawerActions = computed(() => {
   <PreventivoNoteDrawer
     v-if="effectivePreventivoId"
     v-model:visible="noteDrawerVisible"
+    @saved="contatoreNote.aggiorna"
     :preventivo-id="effectivePreventivoId"
   />
 

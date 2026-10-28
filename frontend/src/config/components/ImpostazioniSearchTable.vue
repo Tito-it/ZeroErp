@@ -10,7 +10,7 @@ import { MANAGE_ICONS } from '../../core/constants'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
-import { resolveParameterLevel, parameterLevelSeverity } from '../../core/utils/parameterLevel'
+import { resolveParameterLevel, parameterLevelSeverity, ammettePersonalizzazione } from '../../core/utils/parameterLevel'
 // eslint-disable-next-line no-restricted-imports -- eccezione nel registro DataTable (scripts/datatable.baseline.json)
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
@@ -39,7 +39,8 @@ function levelLabel(level) {
   return t(`config.impostazioni.level_${level}`)
 }
 
-// Scopo: click riga = modifica override (pattern standard liste).
+// Scopo: click riga = modifica override (pattern standard liste). Su un
+// parametro che vale per tutti il drawer si apre in sola consultazione.
 function onRowClick(event) {
   if (isReadonly.value) return
   emit('edit-override', event.data)
@@ -152,6 +153,8 @@ onMounted(() => store.fetchList())
             <span class="app-mono font-bold">{{ data.resolved_value ?? '—' }}</span>
             <Tag :value="levelLabel(resolveParameterLevel(data))" :severity="parameterLevelSeverity(resolveParameterLevel(data))"
               class="parameter-level-tag" />
+            <Tag v-if="!ammettePersonalizzazione(data)" :value="t('config.impostazioni.per_tutti')"
+              severity="contrast" class="parameter-level-tag" />
           </span>
         </template>
       </Column>

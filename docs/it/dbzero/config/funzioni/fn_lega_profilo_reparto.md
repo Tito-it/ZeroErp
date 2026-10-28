@@ -5,6 +5,8 @@
 CREATE FUNCTION fn_lega_profilo_reparto(p_profilo_accesso_id integer, p_unita_organizzativa_id integer)
 ```
 
+> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+
 **Definizione completa:**
 
 <div data-search-exclude markdown>

@@ -5,8 +5,8 @@
 # Scopo: Repository generico per partizioni della tabella vendite.note
 #        (LIST PARTITION su target_tipo). Una sola implementazione
 #        riusabile da qualunque dominio sorgente (PREVENTIVO, CONTRATTO,
-#        ORDINE, DDT, FATTURA, ATTIVITAFT) e da futuri schemi che
-#        adotteranno lo stesso pattern partizionato.
+#        ORDINE_VENDITA, DDT_VENDITA, OFFERTA_COMMERCIALE, FATTURA, ATTIVITA)
+#        e da futuri schemi che adotteranno lo stesso pattern partizionato.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -75,12 +75,12 @@ _NOTE_UPDATE_COLUMNS: frozenset[str] = frozenset({
     "meta",
 })
 
-# Whitelist valori CHECK partizione note (vendite).
-# Allineata a chk_note_target_tipo / chk_note_anchor_tipo / chk_note_posizione.
-TARGET_TIPI_AMMESSI: frozenset[str] = frozenset({
-    "PREVENTIVO", "CONTRATTO", "OFFERTA",
-    "ORDINE", "DDT", "FATTURA", "ATTIVITAFT",
-})
+# Whitelist valori CHECK delle note (vendite).
+# Allineate a chk_note_anchor_tipo / chk_note_posizione.
+# ⛔ Il `target_tipo` NON ha una whitelist qui: e' un codice di
+#    `config.tipi_entita` (FK del padre) e il confine di una partizione. Fino al
+#    2026-10-25 c'era `TARGET_TIPI_AMMESSI`, copia del CHECK `chk_note_target_tipo`
+#    ritirato dal lotto 3 di brief-db-grammatica-unica-documenti: decide il DB.
 ANCHOR_TIPI_AMMESSI: frozenset[str] = frozenset({"DOCUMENTO", "RIGA"})
 POSIZIONI_AMMESSE: frozenset[str] = frozenset({
     "HEADER", "SEZIONE", "FOOTER", "BEFORE", "AFTER",
@@ -151,11 +151,6 @@ class PartitionedNoteRepository:
         child_table: str | None = None,
         child_parent_fk: str | None = None,
     ) -> None:
-        if target_tipo not in TARGET_TIPI_AMMESSI:
-            raise ValueError(
-                f"target_tipo='{target_tipo}' non ammesso "
-                f"(consentiti: {sorted(TARGET_TIPI_AMMESSI)})"
-            )
         if (child_table is None) != (child_parent_fk is None):
             raise ValueError(
                 "child_table e child_parent_fk vanno valorizzati entrambi o nessuno"
@@ -177,6 +172,10 @@ class PartitionedNoteRepository:
     @property
     def target_tipo(self) -> str:
         return self._target_tipo
+
+    @property
+    def partition_table(self) -> str:
+        return self._partition_table
 
     @property
     def supports_riga(self) -> bool:

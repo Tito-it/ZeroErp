@@ -22,9 +22,12 @@ Convenzioni identiche ad api_ordini.md (envelope, lista configurabile
 `vendite.ddt`, export via `ListaExportService`, note via
 `PartitionedNoteRepository`, documenti/stampa via factory
 `build_documenti_sorgente_views` sorgente `DDT_VENDITA`). Permesso: area
-`vendite` + `model_permission = ("vendite", "ddt")` su tutte le view (nessun
-`post_permission`; i permessi di processo del cambio stato li verifica il DB →
-`E_PERMESSO_NEGATO`, 403).
+`vendite` + `model_permission = ("vendite", "ddt")` su tutte le view. Emissione e
+cambio stato non dichiarano l'azione: la legge la catena dei permessi dalla **riga
+del passaggio** della matrice (`post_passaggio`, guida del modello §6) e risponde
+403 prima della transazione; il verbo la ricontrolla. Oggi la chiedono emissione e
+annullo di una bolla emessa (`emetti_ddt`); gli altri passaggi chiedono il livello
+sul documento.
 
 ⛔ **Corpo a whitelist chiusa** ovunque (testata, righe, componenti, prelievi):
 una chiave fuori contratto è `400 E_DDT_VALIDAZIONE` con le chiavi ignote
@@ -66,7 +69,8 @@ scartava in silenzio).
   cliente (CON, fallback FATT); mai bloccante.
 - Detail `GET /api/v1/vendite/ddt/<id>/` — testata + capabilities data-driven
   (`fn_available_actions_ddt`) nella chiave `capabilities`, non fuse nella
-  testata (api.md §«Il blob sta SOTTO `capabilities`», 2026-09-23).
+  testata (api.md §«Il blob sta SOTTO `capabilities`», 2026-09-23). Accanto,
+  `contatori` (dal 2026-10-25): `{"note": <n>}`, il numero sul pulsante «Gestisci note» del drawer, dal BB `contatori_documento` — contato **dopo** il cancello di testata, con lo stesso perimetro della lista note. Forma e ragioni in [api_fattura_dettaglio §`contatori`](/backend/vendite/manual/api_fattura_dettaglio).
 - Update `PATCH /api/v1/vendite/ddt/<id>/` — in bozza tutti i campi; quali colonne si cambiano fuori bozza lo dice il lock di testata del DB (`trgfn_doc_testata_lock_fuori_bozza`, dal 2026-10-10, [brief-db-testata-dopo-emissione](/dev/work-done/brief-db-testata-dopo-emissione)); il 409 del lock (`E_DOC_*`) passa com'e': a bolla emessa restano aperti trasporto, tracciamento e note (D-0, D-1), fermi a bolla resa o annullata. Cliente e
   destinatario **si scelgono in bozza** (`billing_account_id`,
   `destinatario_soggetto_ruolo_id`; `utility_id` ed `emittente_fiscale_id`
@@ -90,12 +94,14 @@ scartava in silenzio).
 - Emetti `POST /api/v1/vendite/ddt/<sorgente_id>/emetti/` (multipart) —
   DRAFT→EMESSO + genera PDF accompagnatorio + allegati, atomico (factory
   documenti). Il trigger assegna `numero` e valida componenti BoM + indirizzi
-  obbligatori.
+  obbligatori. È **l'unica strada** verso EMESSO (M-2).
 - Cambia stato `POST /api/v1/vendite/ddt/<id>/cambia-stato/` — body
   `{stato_codice}` (matrice `config.transizioni_stati_ddt`). Risposta
   `{ddt_id, stato_precedente, stato, movimenti_scritti}` (`movimenti_scritti`
   = movimenti di magazzino scritti dal verbo se la bolla muove merce; assente
-  sull'annullo). Stato mancante o non configurato → `400 E_DDT_VALIDAZIONE`. Verso `ANNULLATO`
+  sull'annullo). Stato mancante o non configurato → `400 E_DDT_VALIDAZIONE`;
+  `EMESSO` → `400 E_DDT_VALIDAZIONE` (si emette solo da «Emetti»); un passaggio di
+  processo (`RESO`) → `E_DOC_PASSAGGIO_DI_PROCESSO`. Verso `ANNULLATO`
   passa sempre dal verbo `vendite.fn_annulla_ddt`: su una bolla con legami
   (ordini, resi, righe di commessa da emettere) risponde
   `E_DOC_ANNULLO_CON_LEGAMI` (409, `confirm_and_retry`) finché il body non
@@ -152,7 +158,7 @@ scartava in silenzio).
     ≠ 1 su un seriale → `400 E_VENDITE_VALIDATION` col campo).
 - Note `GET/POST /<id>/note/` + `GET/PATCH/DELETE /<id>/note/<note_id>/` —
   building block, contratto comune in [api_note_documento](../../core/manual/api_note_documento.md)
-  (partizione `vendite.note_ddt`, `target_tipo='DDT'`).
+  (partizione `vendite.note_ddt`, `target_tipo='DDT_VENDITA'`).
 - Documenti/Stampa `…/<id>/documenti/…` — vedi api_ordini.md §Documenti.
 
 ### Lineage / genealogia (brief-be-fe-lineage, 2026-07-15)
@@ -242,7 +248,9 @@ solleva con la frase a catalogo),
 cliente, destinatario, IVA, emittente), `E_VENDITE_VALIDATION` (400, ripiego
 dei vincoli DB non mappati e regole dei prelievi), `E_PERMESSO_NEGATO` (403,
 permesso di processo verificato dal DB nel cambio stato),
-`E_PRICING_OVERRIDE_NON_AUTORIZZATO` (403, prezzo manuale sul componente).
+`E_PRICING_OVERRIDE_NON_AUTORIZZATO` (403, prezzo manuale sul componente),
+`E_DOC_STATO_SOLO_DAL_VERBO` e `E_DOC_PASSAGGIO_DI_PROCESSO` (TECNICI: lo stato
+scritto senza il verbo, un passaggio di processo chiesto a mano).
 
 ## Riferimenti
 
