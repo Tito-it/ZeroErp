@@ -1,0 +1,241 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL MODELLO STANDARD DELLA FATTURA STAMPA I DOCUMENTI DI ORIGINE
+#   Brief: brief-modello-documento-vendita §15.16 (D-S1 = forma 6, Tid
+#   2026-10-27) e §15.17 (K-S1). Forma dell'evoluzione:
+#   brief-db-modelli-documento-standard §4.1 Q-5 (i changeSet di evoluzione
+#   scrivono SOLO sullo standard). Precedente: 20261020-25 (l'ordine, forma 3).
+#
+# -- IL CASO --------------------------------------------------------------
+#   Il riquadro «Origine documento» leggeva `fattura.origine` ({tipo,
+#   codice}), una chiave che il builder porta sempre vuota (D-G1): il
+#   riquadro non si stampava mai. La versione 2 stampa «Documenti di
+#   origine», l'elenco `fattura.origini` che il builder legge da
+#   vendite.fn_fattura_origini (la stessa catena del dettaglio): ogni
+#   elemento ha etichetta e codice. La nota di credito si stampa con questo
+#   modello: le sue origini (fattura rettificata, reso) arrivano dalla
+#   stessa chiave. Nient'altro cambia.
+#
+# -- LA FORMA DEI DATI: 6 ----------------------------------------------------
+#   `origini` e' una chiave nuova e `origine` sparisce: il render gira con
+#   StrictUndefined, quindi e' una forma nuova (patto di
+#   documenti.fn_guard_versione_contesto). Il backend porta FATTURA_VENDITA
+#   a CONTEXT_VERSION = 6 DOPO questo apply (§15.16.3).
+#   ⚠️ Fra questo apply e il giro BE lo standard della fattura non stampa
+#   (409 E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA, non un PDF sbagliato); dopo
+#   il giro BE non stampano le copie degli emittenti ancora in forma 5,
+#   finche' non passa lo script una tantum del §15.17 (K-S2).
+#
+# -- COME ------------------------------------------------------------------
+#   * Lo standard si cerca per (standard, tipo di output, sorgente,
+#     codice_interno), la chiave con cui il 20261020-18 lo ha creato.
+#   * La versione nuova si COPIA dalla pubblicata valida oggi. A differenza
+#     dell'ordine si sostituisce un BLOCCO, non una parola (un `if` su un
+#     campo diventa un `for` su un elenco): il blocco vecchio e' il testo
+#     esatto del seed, e deve comparire UNA volta. Sul risultato: zero
+#     `fattura.origine.` e una `fattura.origini` nel `for`. Un modello
+#     ritoccato nel riquadro ferma il changeSet invece di pubblicare una
+#     copia a meta'.
+#   * I due blocchi sono composti riga per riga (array_to_string): spazi e
+#     a capo sono scritti nei letterali, non dipendono dall'indentazione
+#     di questo YAML.
+#   * Pubblicata da script.fn_data_operativa(), la data con cui il backend
+#     sceglie la versione da stampare: fn_pubblica_template_documento_versione
+#     chiude la versione 1 al giorno prima. Le ristampe dei documenti gia'
+#     generati non cambiano: rileggono la versione e il contesto di allora.
+#   * Idempotente: se la pubblicata valida oggi legge gia' `fattura.origini`
+#     e non `fattura.origine.`, non fa niente. Una BOZZA gia' presente lo
+#     ferma. Scritto dal proprietario della tabella (il migrate): il guard
+#     di sola lettura dello standard (20261020-07) lo lascia passare.
+#   * Le copie degli emittenti NON si toccano (Q-5): sono dati
+#     dell'applicazione (script una tantum del brief, K-S2).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261028-01-template-standard-fattura-vendita-origini-forma-6-mctit.yaml
+
+  - changeSet:
+      id: 20261028-01-template-standard-fattura-vendita-origini-forma-6
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Modello standard «Fattura di vendita»: versione 2, il riquadro «Origine documento»
+        (fattura.origine, sempre vuoto) diventa «Documenti di origine» (l'elenco fattura.origini,
+        da vendite.fn_fattura_origini); forma dei dati 6. Pubblicata dalla data operativa.
+        Brief: brief-modello-documento-vendita §15.16 (D-S1), §15.17 (K-S1).
+      preConditions:
+        - onFail: HALT
+        - and:
+            # Lo standard della fattura c'e' (20261020-18): e' lui che si fa evolvere.
+            - sqlCheck:
+                expectedResult: "1"
+                sql: |
+                  SELECT count(*)
+                    FROM documenti.template_documenti t
+                    JOIN config.sorgenti s ON s.id = t.sorgente_tipo_id
+                    JOIN documenti.tipi_documento_output o ON o.id = t.tipo_documento_output_id
+                   WHERE t.standard
+                     AND s.codice_interno = 'FATTURA'
+                     AND o.codice_interno = 'FATTURA_VENDITA'
+                     AND t.codice_interno = 'fattura_vendita';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $evolve$
+              DECLARE
+                  -- un valore di meta (jsonb): nessuna colonna di cui sia il riflesso
+                  c_brief     CONSTANT text := 'brief-modello-documento-vendita';
+                  -- Il riquadro del seed 20261020-18, testo esatto: pezzi di html_template.
+                  c_vecchio   CONSTANT documenti.template_documenti_versioni.html_template%TYPE := array_to_string(ARRAY[
+                      '{% if fattura.origine.tipo or fattura.origine.codice %}',
+                      '      <section class="section">',
+                      '        <div class="label">Origine documento</div>',
+                      '        <div class="box">',
+                      '          <strong>{{ fattura.origine.tipo or "Documento origine" }}</strong>',
+                      '          {% if fattura.origine.codice %}',
+                      '            <span class="muted"> - {{ fattura.origine.codice }}</span>',
+                      '          {% endif %}',
+                      '        </div>',
+                      '      </section>',
+                      '    {% endif %}'], E'\n');
+                  c_nuovo     CONSTANT documenti.template_documenti_versioni.html_template%TYPE := array_to_string(ARRAY[
+                      '{% if fattura.origini %}',
+                      '      <section class="section">',
+                      '        <div class="label">Documenti di origine</div>',
+                      '        <div class="box">',
+                      '          {% for o in fattura.origini %}',
+                      '            <div><strong>{{ o.etichetta }}</strong>{% if o.codice %}<span class="muted"> - {{ o.codice }}</span>{% endif %}</div>',
+                      '          {% endfor %}',
+                      '        </div>',
+                      '      </section>',
+                      '    {% endif %}'], E'\n');
+                  c_chiave_vecchia CONSTANT documenti.template_documenti_versioni.html_template%TYPE := 'fattura.origine.';
+                  c_chiave_nuova   CONSTANT documenti.template_documenti_versioni.html_template%TYPE := 'in fattura.origini';
+                  -- La forma dei dati che la versione nuova legge (vedi l'intestazione).
+                  c_forma     CONSTANT documenti.template_documenti_versioni.versione_contesto%TYPE := 6;
+                  v_oggi      CONSTANT documenti.template_documenti_versioni.valido_dal%TYPE := script.fn_data_operativa();
+                  v_tpl       documenti.template_documenti.id%TYPE;
+                  v_src       documenti.template_documenti_versioni%ROWTYPE;
+                  v_html      documenti.template_documenti_versioni.html_template%TYPE;
+                  -- un conteggio di sottostringhe: nessuna colonna di cui sia il riflesso
+                  v_occorrenze integer;
+                  v_versione_id documenti.template_documenti_versioni.id%TYPE;
+                  v_esito     record;
+              BEGIN
+                  SELECT t.id INTO v_tpl
+                    FROM documenti.template_documenti t
+                    JOIN config.sorgenti s ON s.id = t.sorgente_tipo_id
+                    JOIN documenti.tipi_documento_output o ON o.id = t.tipo_documento_output_id
+                   WHERE t.standard
+                     AND s.codice_interno = 'FATTURA'
+                     AND o.codice_interno = 'FATTURA_VENDITA'
+                     AND t.codice_interno = 'fattura_vendita';
+
+                  -- Sorgente: la versione che la stampa sceglie oggi.
+                  SELECT v.* INTO v_src
+                    FROM documenti.template_documenti_versioni v
+                   WHERE v.template_documento_id = v_tpl
+                     AND v.stato = 'PUBBLICATA'
+                     AND v.attivo IS TRUE
+                     AND v.validita @> v_oggi
+                   ORDER BY v.versione DESC, v.id DESC
+                   LIMIT 1;
+
+                  IF NOT FOUND THEN
+                      RAISE EXCEPTION
+                        'Standard fattura_vendita senza versione PUBBLICATA valida al %: non c''e'' da cosa partire.', v_oggi;
+                  END IF;
+
+                  -- Idempotente: la versione di oggi legge gia' le origini.
+                  IF strpos(v_src.html_template, c_chiave_vecchia) = 0
+                     AND strpos(v_src.html_template, c_chiave_nuova) > 0 THEN
+                      RAISE NOTICE 'standard fattura_vendita: la versione % legge gia'' fattura.origini, niente da fare.',
+                          v_src.versione;
+                      RETURN;
+                  END IF;
+
+                  -- Lo standard si cambia solo coi changeSet: una bozza lasciata
+                  -- in giro e' un'anomalia da guardare, non da sovrascrivere.
+                  IF EXISTS (SELECT 1 FROM documenti.template_documenti_versioni b
+                              WHERE b.template_documento_id = v_tpl AND b.stato = 'BOZZA') THEN
+                      RAISE EXCEPTION 'Standard fattura_vendita con una BOZZA gia'' presente: rivederla prima di pubblicare.';
+                  END IF;
+
+                  v_occorrenze := (length(v_src.html_template)
+                                   - length(replace(v_src.html_template, c_vecchio, '')))
+                                  / length(c_vecchio);
+
+                  IF v_occorrenze <> 1 THEN
+                      RAISE EXCEPTION
+                        'Riquadro «Origine documento» trovato % volte invece di 1 nella versione % dello standard fattura_vendita: il template e'' stato ritoccato, rivedere il changeSet.',
+                        v_occorrenze, v_src.versione;
+                  END IF;
+
+                  v_html := replace(v_src.html_template, c_vecchio, c_nuovo);
+
+                  -- Le due meta' della modifica, verificate sul risultato.
+                  IF strpos(v_html, c_chiave_vecchia) > 0 THEN
+                      RAISE EXCEPTION 'Nell''HTML risultante resta %: il riquadro non era l''unico lettore.', c_chiave_vecchia;
+                  END IF;
+                  IF (length(v_html) - length(replace(v_html, c_chiave_nuova, ''))) / length(c_chiave_nuova) <> 1 THEN
+                      RAISE EXCEPTION 'Nell''HTML risultante «%» non compare 1 volta.', c_chiave_nuova;
+                  END IF;
+
+                  INSERT INTO documenti.template_documenti_versioni (
+                      template_documento_id, versione, stato, titolo,
+                      formato_template, html_template, css_template,
+                      markdown_template, render_engine_id, page_format,
+                      page_orientation, margin_top_mm, margin_right_mm,
+                      margin_bottom_mm, margin_left_mm, context_schema,
+                      storicizza, versione_contesto, meta)
+                  SELECT v_tpl,
+                         -- Numero successivo PER TEMPLATE.
+                         (SELECT max(v2.versione) + 1
+                            FROM documenti.template_documenti_versioni v2
+                           WHERE v2.template_documento_id = v_tpl),
+                         'BOZZA',
+                         v_src.titolo,
+                         v_src.formato_template,
+                         v_html,
+                         v_src.css_template,
+                         v_src.markdown_template,
+                         v_src.render_engine_id,
+                         v_src.page_format,
+                         v_src.page_orientation,
+                         v_src.margin_top_mm, v_src.margin_right_mm,
+                         v_src.margin_bottom_mm, v_src.margin_left_mm,
+                         v_src.context_schema,
+                         v_src.storicizza,
+                         c_forma,
+                         v_src.meta || jsonb_build_object(
+                             'brief',               c_brief,
+                             'origine',             'D-S1 / K-S1',
+                             'origine_versione_id', v_src.id,
+                             'motivo',              'forma 6: la fattura stampa i documenti di origine (fattura.origini) al posto di fattura.origine')
+                  RETURNING id INTO v_versione_id;
+
+                  SELECT * INTO v_esito
+                    FROM documenti.fn_pubblica_template_documento_versione(v_versione_id, v_oggi, c_forma, NULL);
+
+                  RAISE NOTICE 'standard fattura_vendita: pubblicata la versione id % dal % (forma %), versioni rese obsolete: %',
+                      v_versione_id, v_oggi, c_forma, v_esito.versioni_obsolete;
+              END
+              $evolve$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Le versioni non si cancellano (trgfn_template_documenti_versioni_block_delete):
+              -- per tornare indietro si pubblica una versione nuova con un changeSet nuovo.
+              SELECT 1;

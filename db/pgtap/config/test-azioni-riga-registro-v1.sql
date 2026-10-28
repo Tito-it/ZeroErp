@@ -4,7 +4,7 @@
 -- Test: il PRESIDIO del registro delle azioni di riga (config.azioni_riga,
 --   20261027-23) e la prima superficie, vendite.vw_lotti_gruppi_azioni (20261027-24).
 --   Brief: brief-modello-documento-vendita §15.10 (D-N1, F-5, Q-F5 = vista DB di
---   Tid, 2026-10-27).
+--   Tid, 2026-10-27); §15.17 (D-S2 = (b), Tid 2026-10-28: test 8, 20261028-02).
 -- ------------------------------------------------------------
 -- Un pulsante di riga ha tre pezzi che devono dire la stessa cosa: il verbo che
 --   RIFIUTA (col primo motivo della sua fn_check), la superficie che il frontend
@@ -14,7 +14,7 @@
 -- ⚠️ Il registro porta TEXT, non regclass/regprocedure: un reg* salva l'OID e
 --   stampa un numero quando l'oggetto sparisce, senza errore. Che puntino a
 --   oggetti vivi lo dice questo file.
--- Indice test (1..7):
+-- Indice test (1..8):
 --   1) il registro non e' vuoto (altrimenti 2-6 sarebbero verdi per sottrazione)
 --   2) ogni superficie e' una VISTA viva, security_invoker
 --   3) ogni superficie ha le due colonne del motivo, di tipo text
@@ -23,6 +23,10 @@
 --   6) ogni verbo CHIAMA la sua fn_check (definizione della funzione)
 --   7) vw_lotti_gruppi_azioni: su un lotto costruito, il motivo della vista e'
 --      il primo motivo della fn_check, riga per riga
+--   8) la scheda Critiche: ogni segnalazione che nomina un documento
+--      (fn_list_lotto_segnalazioni.gruppo_key) ha la sua riga nella vista, col
+--      motivo della fn_check, anche se il documento non e' ne' nel perimetro
+--      ne' negli esiti (D-S2, 20261028-02)
 -- ------------------------------------------------------------
 BEGIN;
 
@@ -33,7 +37,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 -- ⚠️ Vincoli DIFFERITI: in un test che chiude in ROLLBACK non scatterebbero mai.
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(7);
+SELECT plan(8);
 
 CREATE TEMP TABLE t_reg AS
 SELECT r.codice_interno, r.superficie, r.colonna_motivo, r.colonna_motivo_chiave,
@@ -139,6 +143,33 @@ SELECT is(
     '2/2',
     '7) vw_lotti_gruppi_azioni: il motivo di ogni riga e'' il primo della fn_check (perimetro unito agli esiti)'
 );
+
+-- ============================================================
+-- 8) La scheda Critiche legge la stessa superficie (D-S2)
+-- ============================================================
+-- Una segnalazione del giornale che nomina un documento fuori dal perimetro e
+-- dagli esiti: senza il ramo del giornale la LEFT JOIN della scheda sarebbe
+-- vuota, cioe' «si puo' togliere». Una del GIRO (gruppo_key NULL) non conta:
+-- li' il verbo non ha oggetto.
+INSERT INTO vendite.fatturazione_lotti_log (lotto_id, messaggio, status, gruppo_key)
+SELECT (SELECT lotto_id FROM t_lotto), 'segnalazione costruita dal test', 'C', g.k
+  FROM (VALUES ('PGTAP:azioni-riga-giornale'), (NULL)) g(k);
+
+SELECT is(
+    (SELECT count(*) FILTER (WHERE v.gruppo_key IS NOT NULL
+                               AND v.uscita_blocco_reason_key IS NOT DISTINCT FROM
+                                   (script.fn_check_documento_escludibile_da_giro(s.lotto_id, s.gruppo_key)
+                                      -> 0 ->> 'reason_key'))
+            || '/' || count(*)
+       FROM (SELECT (SELECT lotto_id FROM t_lotto) AS lotto_id, x.gruppo_key
+               FROM vendite.fn_list_lotto_segnalazioni(
+                        p_lotto_id    => (SELECT lotto_id FROM t_lotto),
+                        p_solo_attive => false) x
+              WHERE x.gruppo_key IS NOT NULL) s
+       LEFT JOIN vendite.vw_lotti_gruppi_azioni v
+              ON v.lotto_id = s.lotto_id AND v.gruppo_key = s.gruppo_key),
+    '1/1',
+    '8) ogni segnalazione che nomina un documento ha la sua riga nella vista, col motivo della fn_check');
 
 SELECT * FROM finish();
 ROLLBACK;
