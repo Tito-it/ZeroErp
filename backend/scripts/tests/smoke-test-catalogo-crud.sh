@@ -23,6 +23,7 @@ set -euo pipefail
 BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
 # Login degli smoke (HTTPS come Nginx, secondo fattore, refresh, SMOKE_TOKEN): un BB.
 source "$(dirname "${BASH_SOURCE[0]}")/_smoke_auth.sh" "$@"
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_errori.sh"   # smoke_check_codice
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -247,12 +248,7 @@ log_info "Codice errore: ${EXTRACTED:-n/d}"
 echo ""
 echo "-- 7a. Disattiva articolo con UoM operativa attiva (atteso 409) --"
 do_curl POST "/api/v1/catalogo/articoli/${ART_ID}/disattiva/" "{}"
-check "Disattiva con figlio attivo rifiutata" "409" ".error.code"
-if [[ "$EXTRACTED" == "E_ATTIVO_BLOCK_CHILDREN_ACTIVE" ]]; then
-    log_ok "Codice corretto: E_ATTIVO_BLOCK_CHILDREN_ACTIVE"
-else
-    log_fail "Codice atteso E_ATTIVO_BLOCK_CHILDREN_ACTIVE, ricevuto '${EXTRACTED:-<vuoto>}'"
-fi
+smoke_check_codice "Disattiva con figlio attivo rifiutata" 409 E_ATTIVO_BLOCK_CHILDREN_ACTIVE
 
 echo ""
 echo "-- 7b. Disattiva prima l'UoM operativa base (figlio) --"

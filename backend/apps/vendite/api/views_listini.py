@@ -43,6 +43,7 @@ from apps.vendite.services.listini_service import (
     fn_list_tipologie_per_utility,
     fn_list_versioni,
     fn_preview_bundle,
+    fn_programma_chiusura_versione,
     fn_save_bundle,
     fn_update_listino,
     fn_update_riga,
@@ -136,6 +137,13 @@ _VERSIONE_CLONA_REQUEST = inline_serializer(
         "codice_versione": serializers.CharField(required=True),
         "valido_dal": serializers.DateField(required=True),
         "valido_al": serializers.DateField(required=False, allow_null=True),
+    },
+)
+_VERSIONE_CHIUSURA_REQUEST = inline_serializer(
+    name="VenditeListinoVersioneChiusuraRequest",
+    fields={
+        # Obbligatorio anche quando e' null: null toglie la chiusura.
+        "valido_al": serializers.DateField(required=True, allow_null=True),
     },
 )
 _RIGA_CREATE_REQUEST = inline_serializer(
@@ -384,6 +392,35 @@ class ApiListinoVersioneStato(DomainAPIView):
         )
 
 
+class ApiListinoVersioneChiusura(DomainAPIView):
+    area_funzionale = "vendite"
+    model_permission = ("vendite", "listino")
+    # Nessun `post_passaggio`: «Chiudi» non e' un passaggio di stato (la
+    # versione resta ATTIVA, CHIUSA la scrive il job). Il permesso e' quello
+    # d'area, come per il PATCH che sostituisce.
+    # ⚠️ `post_accesso = "change"` lo rende vero per costruzione: senza, la
+    #    POST chiederebbe `add` (METHOD_REQUIRES), e «Chiudi» modifica una
+    #    versione che c'e', non ne crea una.
+    post_accesso = "change"
+
+    @extend_schema(
+        request=_VERSIONE_CHIUSURA_REQUEST,
+        responses={
+            200: inline_serializer(
+                name="VenditeListinoVersioneChiusuraResponse",
+                fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
+            )
+        },
+    )
+    # Scopo: «Chiudi» / «Rimuovi chiusura» della versione ATTIVA dal verbo del
+    #        DB: fissa la fine della validita', o la toglie con `valido_al` null.
+    def post(self, request: Request, listino_id: int, ver_id: int) -> JsonResponse:
+        return handle_post_json(
+            request,
+            handler=lambda payload: fn_programma_chiusura_versione(listino_id, ver_id, payload),
+        )
+
+
 class ApiListinoVersioneClona(DomainAPIView):
     area_funzionale = "vendite"
     model_permission = ("vendite", "listino")
@@ -397,8 +434,9 @@ class ApiListinoVersioneClona(DomainAPIView):
             )
         },
     )
-    # Scopo: Clona una versione esistente in una nuova versione BOZZA dello
-    #        stesso listino, copiando le righe attive. Workflow "cambio prezzi".
+    # Scopo: Clona una versione esistente (da qualunque stato) in una nuova
+    #        versione BOZZA dello stesso listino, dal verbo del DB. Workflow
+    #        "cambio prezzi".
     def post(self, request: Request, listino_id: int, src_ver_id: int) -> JsonResponse:
         return handle_post_json(
             request,

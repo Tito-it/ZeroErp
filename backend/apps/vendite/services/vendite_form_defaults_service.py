@@ -602,8 +602,10 @@ def fn_get_versione_new_defaults(*, listino_id: int, auth_user_id: int | None = 
 #        codice di partenza dalla sorgente, applica il suffisso configurato
 #        (parameter VENDITE_LISTINI_CLONE_VERSIONE_CODICE_SUFFIX, default
 #        "-clone") e calcola valido_dal default = oggi + lead_gg.
-#        min_valido_dal = sorgente.valido_dal (vincolo D2 backend: target
-#        non puo' essere antecedente alla sorgente).
+#        ⛔ Niente `min_valido_dal` dal 2026-10-29 (BE-C3 di
+#        brief-modello-documento-vendita §16.16): era una copia di D2 («la copia
+#        non comincia prima della sorgente»), che dice il verbo del DB
+#        (`vendite.fn_clona_versione_listino`) sul campo `valido_dal`.
 def fn_get_versione_clone_defaults(
     *,
     listino_id: int,
@@ -648,10 +650,8 @@ def fn_get_versione_clone_defaults(
         "default_codice_versione": f"{src_codice}{suffix}" if src_codice else "",
         "default_valido_dal": default_valido_dal.isoformat(),
         "default_valido_al": None,
-        "min_valido_dal": src_valido_dal.isoformat() if isinstance(src_valido_dal, date) else src_valido_dal,
-        # Retroattivo se il default proposto cade nel passato. Indipendente
-        # dalla sorgente (sorgente puo' essere senza valido_dal: il vincolo
-        # min_valido_dal viene gestito separatamente).
+        # Retroattivo se il default proposto cade nel passato: un avviso, non
+        # un vincolo (la decorrenza passata e' ammessa, D2).
         "is_retroactive_default": default_valido_dal < today,
         "retroactive_warning_key": "listini.warning_retroattivo",
     }
@@ -664,10 +664,13 @@ def fn_get_versione_clone_defaults(
 
 # Scopo: Defaults per la chiusura programmata/immediata di una versione.
 #        Se la versione ha gia' una valido_al (chiusura programmata),
-#        il default e' quello esistente (UX di "modifica chiusura"); altrimenti
-#        oggi + lead_gg. Espone `current_valido_al` per il flag UX
-#        "ha_gia_chiusura". `min_valido_al` = oggi (no chiusura nel passato:
-#        la chiusura nel passato sarebbe immediata e va gestita con cautela).
+#        il default e' quello esistente (UX di "modifica chiusura"), se non e'
+#        gia' passato; altrimenti oggi + lead_gg. Espone `current_valido_al` per il flag UX
+#        "ha_gia_chiusura".
+#        ⛔ Niente `min_valido_al` dal 2026-10-29: era una copia di C-2 («la fine
+#        di una ATTIVA non sta nel passato»), che dice il verbo «Chiudi»
+#        (`vendite.fn_programma_chiusura_versione_listino`) sul campo
+#        `valido_al` (brief-modello-documento-vendita §16.16).
 def fn_get_versione_close_defaults(
     *,
     listino_id: int,
@@ -697,7 +700,11 @@ def fn_get_versione_close_defaults(
     lead_gg = _param_int(param_defaults_raw, _PARAM_LISTINI_CLOSE_VERSIONE_LEAD_GG, 0)
     today = oggi_aziendale()
     current_valido_al = versione.get("valido_al")
-    if isinstance(current_valido_al, date):
+    # ⚠️ Una fine gia' passata (la versione resta ATTIVA fino al job) non si
+    #    ripropone: «Conferma» la manderebbe al verbo, che la rifiuta (C-2), e
+    #    il pulsante sembrerebbe rotto. Si propone la fine nuova di default. Non
+    #    e' un limite del campo: il rifiuto resta del verbo.
+    if isinstance(current_valido_al, date) and current_valido_al >= today:
         default_valido_al = current_valido_al
     else:
         default_valido_al = today + timedelta(days=lead_gg)
@@ -708,5 +715,4 @@ def fn_get_versione_close_defaults(
         "current_valido_al": current_valido_al.isoformat() if isinstance(current_valido_al, date) else current_valido_al,
         "has_existing_chiusura": current_valido_al is not None,
         "default_valido_al": default_valido_al.isoformat() if isinstance(default_valido_al, date) else default_valido_al,
-        "min_valido_al": today.isoformat(),
     }

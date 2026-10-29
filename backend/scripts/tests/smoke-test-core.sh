@@ -31,6 +31,7 @@ set -euo pipefail
 BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
 # Login degli smoke (HTTPS come Nginx, secondo fattore, refresh, SMOKE_TOKEN): un BB.
 source "$(dirname "${BASH_SOURCE[0]}")/_smoke_auth.sh" "$@"
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_errori.sh"   # smoke_check_codice
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -205,10 +206,7 @@ echo "-- 4. Permessi utente inesistente --"
 # Un utente che non esiste e' un 404 col suo codice (E_AMM_UTENTE_NOT_FOUND):
 # fino al 2026-10-12 lo smoke si aspettava un 400 generico.
 do_curl GET "/api/v1/core/users/999999/permessi-effettivi/"
-if check "GET permessi user 999999 → 404" 404 ".error.code"; then
-    [[ "$EXTRACTED" == "E_AMM_UTENTE_NOT_FOUND" ]] && log_ok "codice E_AMM_UTENTE_NOT_FOUND" \
-        || log_fail "codice atteso E_AMM_UTENTE_NOT_FOUND, ricevuto '${EXTRACTED:-<vuoto>}'"
-fi
+smoke_check_codice "GET permessi user 999999 → 404" 404 E_AMM_UTENTE_NOT_FOUND || true
 
 # ================================================================
 # PERMESSI AUDIT
@@ -353,17 +351,6 @@ fi
 echo ""
 echo "-- 13. Password chiesta dentro la sessione --"
 
-# Scopo: lo status atteso E il codice d'errore dell'envelope.
-check_codice() {
-    local label="$1" atteso="$2" codice="$3"
-    check "$label" "$atteso" ".error.code" || return 0
-    if [[ "$EXTRACTED" == "$codice" ]]; then
-        log_ok "  codice $codice"
-    else
-        log_fail "  atteso codice $codice, ricevuto '${EXTRACTED}'"
-    fi
-}
-
 # ⛔ UN tentativo sbagliato per endpoint, mai fino al blocco. Un tentativo
 #    sbagliato conta sul freno della credenziale (D-T2) e non c'e' un'API che
 #    azzeri il freno dei tentativi: arrivare al blocco fermerebbe per
@@ -375,10 +362,10 @@ check_codice() {
 SBAGLIATA="smoke-sbagliata-$(date +%s)"
 
 do_curl POST "/api/v1/auth/secondo-fattore/registra/" '{}'
-check_codice "registra/ senza password → 400" 400 "E_TOTP_PASSWORD_NON_VALIDA"
+smoke_check_codice "registra/ senza password → 400" 400 E_TOTP_PASSWORD_NON_VALIDA || true
 
 do_curl POST "/api/v1/auth/secondo-fattore/registra/" "{\"password\":\"$SBAGLIATA\"}"
-check_codice "registra/ con la password sbagliata → 400 (non 401)" 400 "E_TOTP_PASSWORD_NON_VALIDA"
+smoke_check_codice "registra/ con la password sbagliata → 400 (non 401)" 400 E_TOTP_PASSWORD_NON_VALIDA || true
 
 # La password giusta passa il cancello. Solo con un device ATTIVO, che il DB
 # rifiuta di sostituire (409): cosi' la prova non tocca lo stato dell'utente.
@@ -387,20 +374,20 @@ do_curl GET "/api/v1/auth/secondo-fattore/"
 STATO_SF=$(json_get "$LAST_BODY" ".data.stato")
 if [[ "$STATO_SF" == "ATTIVO" ]]; then
     do_curl POST "/api/v1/auth/secondo-fattore/registra/" "{\"password\":\"$PASSWORD\"}"
-    check_codice "registra/ con la password giusta → oltre il cancello (409, device attivo)" 409 "E_TOTP_DEVICE_GIA_ATTIVO"
+    smoke_check_codice "registra/ con la password giusta → oltre il cancello (409, device attivo)" 409 E_TOTP_DEVICE_GIA_ATTIVO || true
 else
     log_info "registra/ con la password giusta saltato: device '${STATO_SF:-?}', avvierebbe una configurazione vera"
 fi
 
 do_curl POST "/api/v1/auth/change-password/" \
     "{\"new_password\":\"Smoke-Nuova-2026!\",\"new_password_confirm\":\"Smoke-Nuova-2026!\"}"
-check_codice "change-password/ senza password attuale → 400" 400 "E_CHANGE_PASSWORD"
+smoke_check_codice "change-password/ senza password attuale → 400" 400 E_CHANGE_PASSWORD || true
 
 # Con una nuova password DEBOLE: la verifica dell'attuale viene prima, quindi
 # risponde l'attuale sbagliata (e il tentativo conta) e non la nuova.
 do_curl POST "/api/v1/auth/change-password/" \
     "{\"old_password\":\"$SBAGLIATA\",\"new_password\":\"x\",\"new_password_confirm\":\"x\"}"
-check_codice "change-password/ con l'attuale sbagliata → 400 (non 401)" 400 "E_CHANGE_PASSWORD"
+smoke_check_codice "change-password/ con l'attuale sbagliata → 400 (non 401)" 400 E_CHANGE_PASSWORD || true
 if [[ "$(json_get "$LAST_BODY" ".error.message")" == *"attuale"* ]]; then
     log_ok "  risponde la password attuale, non la nuova debole"
 else

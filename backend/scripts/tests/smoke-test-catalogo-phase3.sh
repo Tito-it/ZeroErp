@@ -28,6 +28,7 @@ set -euo pipefail
 BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
 # Login degli smoke (HTTPS come Nginx, secondo fattore, refresh, SMOKE_TOKEN): un BB.
 source "$(dirname "${BASH_SOURCE[0]}")/_smoke_auth.sh" "$@"
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_errori.sh"   # smoke_check_codice
 NOTE_STYLE_ID="${NOTE_STYLE_ID:-}"
 
 RED='\033[0;31m'
@@ -268,9 +269,7 @@ OGGI=$(date +%F); DOMANI=$(date -d tomorrow +%F)
 echo ""
 echo "-- 11a. PATCH coeff_qta (struttura: atteso 409) --"
 do_curl PATCH "/api/v1/catalogo/articoli/${PARENT_ID}/componenti/${COMP_ROW_ID}/" "{\"coeff_qta\":\"3\"}"
-check "PATCH struttura BoM rifiutata" "409" ".error.code"
-[[ "$EXTRACTED" == "E_BOM_MODIFICA_VIETATA" ]] && log_ok "Codice corretto: E_BOM_MODIFICA_VIETATA" \
-    || log_fail "Codice atteso E_BOM_MODIFICA_VIETATA, ricevuto '${EXTRACTED:-<vuoto>}'"
+smoke_check_codice "PATCH struttura BoM rifiutata" 409 E_BOM_MODIFICA_VIETATA
 echo ""
 echo "-- 11b. Chiudi la riga (valido_al = oggi) --"
 do_curl PATCH "/api/v1/catalogo/articoli/${PARENT_ID}/componenti/${COMP_ROW_ID}/" "{\"valido_al\":\"${OGGI}\"}"
