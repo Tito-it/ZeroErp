@@ -1,0 +1,156 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL VERBO DELL'ELIMINAZIONE DI UNA VERSIONE DI LISTINO
+#   Brief: brief-modello-documento-vendita §16.11 (opzione a di Tid,
+#   2026-10-28: un verbo, non la FK ON DELETE CASCADE; E-1, E-2, E-3).
+#
+# ── PERCHE' ─────────────────────────────────────────────────────────
+#   Una versione in BOZZA si elimina con le sue righe (decisione O2 di
+#   sviluppo-listini-v3). Lo faceva il backend con tre DELETE
+#   (listini_repository.delete_versione: componenti, righe, versione): una
+#   scrittura su tre tabelle, e la regola «si elimina solo una BOZZA»
+#   arrivava al primo DELETE che la incontrava, col codice di una riga.
+#   Una scrittura = un verbo: qui, in una transazione, con la regola prima.
+#
+# ── IL PERCORSO ─────────────────────────────────────────────────────
+#   1. Parametro; la versione FOR UPDATE (chi cita la versione o le aggiunge
+#      righe aspetta: le FK prendono KEY SHARE). Non trovata o fuori
+#      perimetro: E_VENDITE_LISTINO_VERSIONE_NOT_FOUND.
+#   2. Prima cio' che vieta: il primo motivo di
+#      script.fn_check_versione_listino_eliminabile (non in bozza; citata da
+#      un documento), lo stesso che il pulsante mostra.
+#   3. Componenti, righe, versione. I guard di ciascuna tabella restano la
+#      difesa di chi scrive a mano (tutti accettano il DELETE in BOZZA).
+#   Ritorna la versione e quante righe e quanti componenti ha cancellato.
+#
+# ── SECURITY INVOKER ────────────────────────────────────────────────
+#   Le quattro tabelle del listino hanno la RLS: il verbo vede e cancella
+#   solo nel perimetro di chi lo chiama, come i tre DELETE di oggi.
+#   L'applicazione ha gia' DELETE sulle tre tabelle; il permesso d'area resta
+#   al backend (nessuna capability di passaggio: non e' un cambio di stato).
+#   Chi cita la versione fuori perimetro lo vede la check (BB DEFINER).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261028-39-create-fn-elimina-versione-listino-mctit.yaml
+
+  - changeSet:
+      id: 20261028-39-create-fn-elimina-versione-listino
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_elimina_versione_listino: il verbo che elimina una versione di listino in BOZZA
+        con i suoi componenti e le sue righe, dopo la check. Brief:
+        brief-modello-documento-vendita §16.11.
+      preConditions:
+        - onFail: HALT
+        - not:
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_proc p
+                    JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite' AND p.proname = 'fn_elimina_versione_listino';
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_check_versione_listino_eliminabile';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION vendite.fn_elimina_versione_listino(
+                  p_versione_id vendite.listini_versioni.id%TYPE)
+               RETURNS TABLE(versione_id          vendite.listini_versioni.id%TYPE,
+                             -- CONTEGGI delle righe cancellate.
+                             righe_eliminate      integer,
+                             componenti_eliminati integer)
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_listino_id vendite.listini_versioni.listino_id%TYPE;
+                  v_stato      config.stati_doc_listino_versioni.codice_interno%TYPE;
+                  v_tx_id      vendite.listini_versioni.tx_id%TYPE;
+                  -- CONTEGGI delle righe cancellate.
+                  v_righe      integer;
+                  v_componenti integer;
+              BEGIN
+                  -- ==========================================================
+                  -- Scopo: eliminare una versione di listino in BOZZA con i
+                  --   suoi componenti e le sue righe, in una transazione.
+                  --   Vedi l'intestazione del changeSet 20261028-39.
+                  -- ==========================================================
+
+                  -- 1. Parametro e versione, nel perimetro (RLS).
+                  IF p_versione_id IS NULL OR p_versione_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_elimina_versione_listino',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_versione_id', p_versione_id),
+                          NULL::uuid, 'vendite.fn_elimina_versione_listino',
+                          'p_versione_id (obbligatorio, maggiore di zero)');
+                  END IF;
+
+                  SELECT lv.listino_id, s.codice_interno, lv.tx_id
+                    INTO v_listino_id, v_stato, v_tx_id
+                    FROM vendite.listini_versioni lv
+                    JOIN config.stati_doc_listino_versioni s ON s.id = lv.stato_doc_listino_versione_id
+                   WHERE lv.id = p_versione_id
+                     FOR UPDATE OF lv;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_elimina_versione_listino',
+                          'E_VENDITE_LISTINO_VERSIONE_NOT_FOUND',
+                          -- Frase chiusa: nessun segnaposto, il variadico vuoto e' esplicito.
+                          jsonb_build_object('id', p_versione_id), NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  -- 2. Prima cio' che vieta, prima di toccare righe e componenti.
+                  PERFORM script.fn_raise_primo_motivo_se_presente(
+                      'vendite', 'vendite.fn_elimina_versione_listino',
+                      script.fn_check_versione_listino_eliminabile(p_versione_id),
+                      NULL,
+                      v_tx_id,
+                      jsonb_build_object('versione_id', p_versione_id,
+                                         'listino_id', v_listino_id, 'stato', v_stato));
+
+                  -- 3. Componenti, righe, versione.
+                  DELETE FROM vendite.listini_righe_componenti c
+                   WHERE c.listino_versione_id = p_versione_id;
+                  GET DIAGNOSTICS v_componenti = ROW_COUNT;
+
+                  DELETE FROM vendite.listini_righe r
+                   WHERE r.listino_versione_id = p_versione_id;
+                  GET DIAGNOSTICS v_righe = ROW_COUNT;
+
+                  DELETE FROM vendite.listini_versioni lv
+                   WHERE lv.id = p_versione_id;
+
+                  RETURN QUERY SELECT p_versione_id, v_righe, v_componenti;
+              END;
+              $function$;
+
+              REVOKE EXECUTE ON FUNCTION vendite.fn_elimina_versione_listino(bigint) FROM PUBLIC;
+              GRANT EXECUTE ON FUNCTION vendite.fn_elimina_versione_listino(bigint) TO zeroerp_app;
+
+              COMMENT ON FUNCTION vendite.fn_elimina_versione_listino(bigint) IS
+                  'VERBO dell''eliminazione di una versione di listino, in una transazione: la versione FOR UPDATE nel perimetro (SECURITY INVOKER, la RLS delle tabelle del listino; non trovata E_VENDITE_LISTINO_VERSIONE_NOT_FOUND); prima cio'' che vieta (il primo motivo di script.fn_check_versione_listino_eliminabile: E_LISTINO_VERSIONE_NON_ELIMINABILE fuori dalla BOZZA, E_LISTINO_VERSIONE_CITATA se un documento la tiene); poi componenti, righe e versione. Ritorna la versione e quante righe e quanti componenti ha cancellato. Prende il posto dei tre DELETE del backend (listini_repository.delete_versione). Il permesso d''area resta al backend. EXECUTE solo all''applicazione. Brief: brief-modello-documento-vendita §16.11 (opzione a, E-1, E-2, E-3, Tid 2026-10-28).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_elimina_versione_listino(bigint);

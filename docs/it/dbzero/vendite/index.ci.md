@@ -136,6 +136,7 @@ search:
 - [fn_chiudi_versioni_listino_scadute](manual/fn_chiudi_versioni_listino_scadute.md)
 - [fn_classe_emittibilita_per_giro](manual/fn_classe_emittibilita_per_giro.md) — (latest review 12-09-2026)
 - [fn_cleanup_fatture_by_ids](manual/fn_cleanup_fatture_by_ids.md) — (latest review 03-08-2026)  
+- [fn_clona_versione_listino](manual/fn_clona_versione_listino.md)
 - [fn_close_commessa_push_run](manual/fn_close_commessa_push_run.md) — `vendite.fn_close_commessa_push_run` **chiude** il giro aperto in testa alla corsa: gli scrive sopra l'esito, il risultato per handler e la durata.
 - [fn_close_giornaliero_lotto](manual/fn_close_giornaliero_lotto.md) — (latest review 03-02-2026) La funzione **`vendite.fn_close_giornaliero_lotto()`** chiude operativamente un lotto di tipo **GIORNALIERO** e allinea lo stato documentale delle fatture collegate al valore passato (tipicamente stato `INVIATA`).
 - [fn_commessa_proietta_stato_emittibile](manual/fn_commessa_proietta_stato_emittibile.md)
@@ -168,6 +169,7 @@ search:
 - [fn_documento_righe_eccezione](manual/fn_documento_righe_eccezione.md) — (funzione nata il 2026-10-04, `20261004-70`)
 - [fn_documento_righe_preview](manual/fn_documento_righe_preview.md) — (funzione nata il 2026-10-04, `20261004-71`, dal corpo di `fn_contratto_righe_preview`)
 - [fn_elimina_fattura_da_lotto](manual/fn_elimina_fattura_da_lotto.md) — (latest review 04-08-2026)   Toglie **una sola fattura** da un lotto **cancellandola**, senza toccare il lotto né le altre fatture. È il verbo per il caso in cui un documento è sbagliato e va rifatto, mentre il resto del giro è sano.
+- [fn_elimina_versione_listino](manual/fn_elimina_versione_listino.md)
 - [fn_emit_attivita_fatturabili_da_commessa](manual/fn_emit_attivita_fatturabili_da_commessa.md) — (latest review 16-06-2026) Esegue il pull da `commesse_attivita` verso `attivita_fatturabili` (step 0 pipeline attività fatturabili).
 - [fn_escludi_documento_da_giro](manual/fn_escludi_documento_da_giro.md) — (latest review 2026-09-08)
 - [fn_esigibilita_iva_fattura](manual/fn_esigibilita_iva_fattura.md)
@@ -253,6 +255,7 @@ search:
 - [fn_preventivo_proietta_stato_smistamento](manual/fn_preventivo_proietta_stato_smistamento.md) — (2026-10-12, brief-db-annullo-a-valle-riapre-a-monte, D-1 e D-10)
 - [fn_preventivo_riga_componenti_init](manual/fn_preventivo_riga_componenti_init.md)
 - [fn_preventivo_riga_componenti_preview](manual/fn_preventivo_riga_componenti_preview.md)
+- [fn_programma_chiusura_versione_listino](manual/fn_programma_chiusura_versione_listino.md)
 - [fn_provision_registri](manual/fn_provision_registri.md) — *(rev 2026-09-01 — funzione nata il 2026-09-01)*
 - [fn_provision_registri_emittente](manual/fn_provision_registri_emittente.md) — (latest review 31-08-2026)
 - [fn_provision_registri_famiglia](manual/fn_provision_registri_famiglia.md) — *(rev 2026-09-01 — funzione nata il 2026-09-01)*

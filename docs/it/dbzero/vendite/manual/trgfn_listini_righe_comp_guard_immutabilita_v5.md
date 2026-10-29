@@ -9,7 +9,9 @@
 
 ## Scopo
 
-Applica la policy di immutabilità v5 dei listini alle righe bundle in `vendite.listini_righe_componenti`. Una versione listino in stato diverso da `BOZZA` è immutabile: non si possono aggiungere nuove righe bundle, non si possono modificare prezzo, IVA o validità delle righe esistenti, e il DELETE è sempre bloccato (usare `attivo = FALSE`). Il trigger replica esattamente la policy già applicata alle righe listino standard (`trgfn_listini_righe_guard_stato`), estendendola alla tabella bundle.
+Applica la policy di immutabilità v5 dei listini alle righe bundle in `vendite.listini_righe_componenti`. Una versione listino in stato diverso da `BOZZA` è immutabile: non si possono aggiungere nuove righe bundle, non si possono modificare prezzo, IVA o validità delle righe esistenti, e non si cancellano righe (usare `attivo = FALSE`). In una versione `BOZZA` le righe bundle si cancellano, come le righe normali: così una bozza si elimina con tutto quello che contiene ([vendite.fn_elimina_versione_listino](/dbzero/vendite/funzioni/fn_elimina_versione_listino)). Il trigger replica la policy già applicata alle righe listino standard (`trgfn_listini_righe_guard_stato`), estendendola alla tabella bundle.
+
+> ⚠️ **Revoca parziale (28-10-2026, E-1 di Tid, brief `brief-modello-documento-vendita` §16.11).** Fino a quella data il DELETE era bloccato **sempre**, anche in bozza (regola del 13-05-2026, `brief-db-componenti-modello-unificato` §8.2). Una bozza con un composito non si poteva eliminare, contro la decisione O2 di `sviluppo-listini-v3`. Da `20261028-38` il DELETE in BOZZA si accetta; fuori dalla bozza resta bloccato.
 
 ---
 
@@ -41,13 +43,18 @@ LANGUAGE plpgsql
 
 Il trigger gestisce tre casi in base a `TG_OP`:
 
-### DELETE — sempre bloccato
+### DELETE — solo su versione BOZZA
 
 ```
-IF TG_OP = 'DELETE'
+stato della versione di OLD.listino_versione_id
+
+IF TG_OP = 'DELETE' AND v_stato IS DISTINCT FROM 'BOZZA'
     → raise E_RIGA_LISTINO_VERSIONE_CHIUSA (362)
-       context: { operazione: 'DELETE', hint: 'Usare attivo=FALSE', riga_id }
+       context: { operazione: 'DELETE', hint: 'Usare attivo=FALSE', stato_versione,
+                  listino_versione_id, riga_id }
 ```
+
+Una versione che non si legge non è una bozza: il DELETE si rifiuta.
 
 ### INSERT — solo su versione BOZZA
 
@@ -91,7 +98,7 @@ Gli altri campi (es. `attivo`, `meta`) rimangono modificabili anche su versioni 
 
 | Codice | ID | Quando |
 |---|---|---|
-| `E_RIGA_LISTINO_VERSIONE_CHIUSA` | 362 | DELETE, INSERT su versione non-BOZZA, UPDATE campi core su versione non-BOZZA |
+| `E_RIGA_LISTINO_VERSIONE_CHIUSA` | 362 | DELETE, INSERT o UPDATE dei campi core su versione non-BOZZA |
 
 Il campo `operazione` nel contesto JSON distingue i tre scenari: `DELETE`, `INSERT`, `UPDATE_CAMPI_CORE`.
 
@@ -114,6 +121,6 @@ Questo trigger replica la policy di `trgfn_listini_righe_guard_stato` applicata 
 
 ## Note operative
 
-- Il `COALESCE(v_stato, 'BOZZA')` è conservativo: se la versione non viene trovata (improbabile per vincolo FK), il trigger non blocca l'operazione.
+- Su INSERT e UPDATE il `COALESCE(v_stato, 'BOZZA')` lascia passare: se la versione non viene trovata (improbabile per vincolo FK), il trigger non blocca l'operazione. Sul DELETE no: una versione che non si legge non è una bozza.
 - Per modificare una riga bundle in una versione attiva o chiusa, è necessario creare una nuova versione listino in stato `BOZZA` e replicare la riga con i nuovi valori.
-- Migration di riferimento: `20260513-20`.
+- Migration di riferimento: `20260513-20`; stato dal vocabolario `20261028-22`; DELETE in BOZZA `20261028-38`.
