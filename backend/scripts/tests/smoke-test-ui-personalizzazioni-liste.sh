@@ -25,6 +25,7 @@ set -euo pipefail
 BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
 # Login degli smoke (HTTPS come Nginx, secondo fattore, refresh, SMOKE_TOKEN): un BB.
 source "$(dirname "${BASH_SOURCE[0]}")/_smoke_auth.sh" "$@"
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_errori.sh"   # smoke_check_codice
 LISTA_CODICE="${SMOKE_LISTA_CODICE:-anagrafiche.clienti}"
 
 RED='\033[0;31m'
@@ -117,19 +118,6 @@ check() {
     return 0
 }
 
-check_error_code() {
-    local label="$1" expected_code="$2"
-    local code
-    code=$(json_get "$LAST_BODY" ".error.code")
-    if [[ "$code" == "$expected_code" ]]; then
-        log_ok "$label — error.code='$code'"
-    else
-        log_fail "$label — atteso error.code='$expected_code', ricevuto '$code'"
-        echo "       Body: $(echo "$LAST_BODY" | head -c 300)"
-        return 1
-    fi
-}
-
 # Generate UUIDv4-like string for Idempotency-Key. python3 uuid e' robusto.
 gen_uuid() {
     python3 -c "import uuid; print(uuid.uuid4())"
@@ -187,8 +175,7 @@ fi
 echo ""
 echo "-- 3. GET /config con codice inesistente --"
 do_curl GET "/api/v1/ui/liste/non.esiste.smoke/config/"
-check "GET config codice fittizio" "404"
-check_error_code "Codice errore lista inesistente" "E_UI_LISTA_NON_TROVATA"
+smoke_check_codice "GET config codice fittizio" 404 E_UI_LISTA_NON_TROVATA
 
 # --- 4. GET /catalogo ---
 echo ""
@@ -245,8 +232,7 @@ echo "-- 8. PUT /preferenza con chiave non whitelisted (atteso 400) --"
 IDEM_KEY=$(gen_uuid)
 do_curl PUT "/api/v1/ui/liste/$LISTA_CODICE/preferenza/" \
     '{"colonne":[],"chiave_maliziosa":"<script>"}' "Idempotency-Key: $IDEM_KEY"
-check "PUT preferenza con chiave extra" "400"
-check_error_code "Codice errore validazione" "E_UI_PREFERENZA_VALIDAZIONE"
+smoke_check_codice "PUT preferenza con chiave extra" 400 E_UI_PREFERENZA_VALIDAZIONE
 
 # --- 9. DELETE /preferenza + idempotenza ---
 echo ""

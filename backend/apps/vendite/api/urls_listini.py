@@ -11,6 +11,7 @@ from apps.vendite.api.views_listini import (
     ApiListinoDetail,
     ApiListinoVersioneApplicaVariazione,
     ApiListinoVersioneBundleDetail,
+    ApiListinoVersioneChiusura,
     ApiListinoVersioneClona,
     ApiListinoVersioneRigaRettificaControllata,
     ApiListinoVersioneDetail,
@@ -39,6 +40,7 @@ urlpatterns = [
     ),
     path("<int:listino_id>/versioni/<int:ver_id>/applica-variazione/", ApiListinoVersioneApplicaVariazione.as_view(), name="vendite-listino-versione-applica-variazione"),
     path("<int:listino_id>/versioni/<int:ver_id>/stato/", ApiListinoVersioneStato.as_view(), name="vendite-listino-versione-stato"),
+    path("<int:listino_id>/versioni/<int:ver_id>/chiusura/", ApiListinoVersioneChiusura.as_view(), name="vendite-listino-versione-chiusura"),
     # Form-defaults (Fase 2.B5b/c refactor frontend vendite). Specifici PRIMA
     # di clone-defaults/close-defaults per non collidere con il pattern <int:>.
     path(

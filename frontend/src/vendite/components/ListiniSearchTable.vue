@@ -18,7 +18,7 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
 import { MANAGE_ICONS, TAB_ENTITIES, STATUS_ICONS } from '../../core/constants'
-import { PASSAGGI_VERSIONE_LISTINO, PRICING_ACTIONS, STATO_VERSIONE_LISTINO } from '../constants'
+import { PASSAGGI_VERSIONE_LISTINO, PRICING_ACTIONS } from '../constants'
 import { passaggioPermesso } from '../../core/utils/azioniPermesse'
 import { statoVersioneListinoSeverity } from '../../core/utils/severity'
 import { displayDate } from '../../core/utils/date'
@@ -78,6 +78,15 @@ const { confirmDelete } = useConfirmAction()
 //    una copia della regola, che non sapeva della versione spenta.
 const AZIONE_RIGA_ATTIVA_VERSIONE = 'ATTIVA_VERSIONE_LISTINO'
 const attivazione = useAzioneRiga(AZIONE_RIGA_ATTIVA_VERSIONE)
+// ⭐ «Elimina» e «Chiudi» allo stesso modo (§16.13 FE-E1, §16.16 FE-C1): spenti
+//    col motivo dal registro, non più dal codice dello stato (R-L4 del §16.9).
+//    Il motivo è il primo della `fn_check` con cui il verbo rifiuta (non in
+//    bozza, usata da un documento; non attiva). «Clona» non ha motivo: si
+//    clona da qualunque stato (C-1 = a), e la voce è sempre accesa.
+const AZIONE_RIGA_ELIMINA_VERSIONE = 'ELIMINA_VERSIONE_LISTINO'
+const AZIONE_RIGA_CHIUDI_VERSIONE = 'CHIUDI_VERSIONE_LISTINO'
+const eliminazione = useAzioneRiga(AZIONE_RIGA_ELIMINA_VERSIONE)
+const chiusura = useAzioneRiga(AZIONE_RIGA_CHIUDI_VERSIONE)
 // Fase 5.F2: TestResolverDialog e' uno strumento DIAGNOSTICO (sviluppatori
 // + admin). Non e' azione operativa: gate rigido su SUPER_ADMIN per non
 // confondere gli operatori. Future: estendere a un'azione processo dedicata
@@ -187,7 +196,8 @@ async function onAttivaConfirmed({ listinoId }) {
   await store.invalidateVersioniListino(listinoId)
 }
 
-// O2: elimina una versione in stato BOZZA con conferma utente.
+// O2: elimina una versione in stato BOZZA con conferma utente (il verbo del DB
+// cancella anche righe e componenti, e rifiuta col suo codice).
 function onEliminaVersione(versione, listino) {
   confirmDelete(versione.codice_versione, async () => {
     const result = await execute(
@@ -262,8 +272,6 @@ function buildListinoActions(data) {
 //        ⛔ Ritirato lo «stato visibile» (`statoVersioneVisibile`), che la
 //        dichiarava CHIUSA dalla data: una seconda regola della chiusura.
 function buildVersioneActions(ver, listino) {
-  const isBozza = ver.stato === STATO_VERSIONE_LISTINO.BOZZA
-  const isAttiva = ver.stato === STATO_VERSIONE_LISTINO.ATTIVA
   return [
     {
       key: 'attiva',
@@ -280,16 +288,14 @@ function buildVersioneActions(ver, listino) {
       label: t('vendite.listini.chiudi'),
       icon: MANAGE_ICONS.CLOSE,
       severity: 'warn',
-      visible: isAttiva,
+      disabled: chiusura.bloccata(ver),
+      tooltip: chiusura.motivo(ver),
       command: () => onChiudiVersione(ver, listino.id),
     },
     {
       key: 'clona',
       label: t('vendite.listini.clona_versione'),
       icon: MANAGE_ICONS.CLONE,
-      // Disabilitato in BOZZA: la versione e' ancora editabile, non ha
-      // senso clonarla — l'admin lavora direttamente sulla BOZZA stessa.
-      disabled: isBozza,
       command: () => emit('open-clona-versione', ver, listino),
     },
     {
@@ -303,7 +309,8 @@ function buildVersioneActions(ver, listino) {
       label: t('vendite.listini.elimina_versione'),
       icon: MANAGE_ICONS.DELETE,
       severity: 'danger',
-      visible: isBozza,
+      disabled: eliminazione.bloccata(ver),
+      tooltip: eliminazione.motivo(ver),
       command: () => onEliminaVersione(ver, listino),
     },
   ]

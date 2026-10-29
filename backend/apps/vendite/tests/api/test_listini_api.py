@@ -18,6 +18,7 @@ Indice test eseguiti:
 9) VenditeListiniApiTests.test_get_versione_ok
 10) VenditeListiniApiTests.test_patch_versione_ok
 11) VenditeListiniApiTests.test_change_versione_state_ok
+11bis) VenditeListiniApiTests.test_programma_chiusura_versione_ok
 12) VenditeListiniApiTests.test_list_righe_ok
 13) VenditeListiniApiTests.test_create_riga_ok
 14) VenditeListiniApiTests.test_patch_riga_ok
@@ -193,7 +194,8 @@ class VenditeListiniApiTests(JwtMockedApiTest):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["data"]["codice_versione"], "2026-Q2")
 
-    # Scopo: Verifica patch versione (PATCH valido_al ammesso anche su ATTIVA).
+    # Scopo: Verifica patch versione (il routing: la fine di una ATTIVA la
+    #        rifiuta il DB, C-4 = a, e si cambia dalla rotta `chiusura/`).
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     @patch("apps.vendite.api.views_listini.fn_update_versione")
     def test_patch_versione_ok(self, mocked_update, _mock_auth):
@@ -218,6 +220,28 @@ class VenditeListiniApiTests(JwtMockedApiTest):
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["data"]["stato"], "ATTIVA")
+
+    # Scopo: «Chiudi» ha la sua rotta (§16.16, BE-C2): il corpo arriva al
+    #        service com'e', compreso `valido_al` null (toglie la chiusura).
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    @patch("apps.vendite.api.views_listini.fn_programma_chiusura_versione")
+    def test_programma_chiusura_versione_ok(self, mocked_chiusura, _mock_auth):
+        mocked_chiusura.return_value = {**_VERSIONE_DETAIL, "valido_al": None}
+        response = self.client.post(
+            "/api/v1/vendite/listini/10/versioni/101/chiusura/",
+            data=self._json({"valido_al": None}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        mocked_chiusura.assert_called_once_with(10, 101, {"valido_al": None})
+        # Il permesso del PATCH che sostituisce (`change`), non quello di una
+        # creazione (`add`, il default della POST).
+        from apps.core.api.permissions import ZeroERPPermission
+        from apps.vendite.api.views_listini import ApiListinoVersioneChiusura
+
+        self.assertEqual(
+            ZeroERPPermission.tipo_accesso(ApiListinoVersioneChiusura, method="POST"), "change",
+        )
 
     # Scopo: Verifica lista righe paginata.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))

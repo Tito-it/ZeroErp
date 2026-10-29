@@ -238,7 +238,7 @@ class ApiListinoVersioneNewDefaults(DomainAPIView):
 
 class ApiListinoVersioneCloneDefaults(DomainAPIView):
     # Scopo: Defaults form clone versione listino (default_codice_versione con
-    #        suffisso configurato, default_valido_dal, min_valido_dal,
+    #        suffisso configurato, default_valido_dal,
     #        is_retroactive_default). Sostituisce derivazioni cablate in
     #        CloneVersioneDrawer.
     area_funzionale = "vendite"

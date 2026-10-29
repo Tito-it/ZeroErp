@@ -65,6 +65,10 @@ STATO_VERSIONE_BOZZA = "BOZZA"
 #    (`vendite.vw_listini_versioni_azioni`, il primo motivo della stessa
 #    `fn_check` con cui il verbo rifiuta). Prima il frontend lo deduceva da
 #    `righe_count`.
+# ⭐ `eliminazione_blocco_reason` / `_key` e `chiusura_blocco_reason` / `_key`:
+#    la stessa cosa per «Elimina» (`ELIMINA_VERSIONE_LISTINO`, §16.11) e per
+#    «Chiudi» (`CHIUDI_VERSIONE_LISTINO`, §16.14), dalla stessa vista. Prima il
+#    frontend li decideva dal codice dello stato (R-L4 del §16.9).
 # ⭐ `chiusura_programmata`: la versione e' ATTIVA con la fine scritta, quindi
 #    il job la chiude quando la fine passa (L-2). Fra la fine e il passaggio del
 #    job la versione e' ATTIVA con `valido_al` passato: la lista la mostra cosi',
@@ -100,6 +104,10 @@ _SELECT_VERSIONE = f"""
         ) AS azioni_permesse,
         az.attivazione_blocco_reason,
         az.attivazione_blocco_reason_key,
+        az.eliminazione_blocco_reason,
+        az.eliminazione_blocco_reason_key,
+        az.chiusura_blocco_reason,
+        az.chiusura_blocco_reason_key,
         (s.codice_interno = '{STATO_VERSIONE_ATTIVA}' AND v.valido_al IS NOT NULL)
             AS chiusura_programmata
       FROM vendite.listini_versioni v
@@ -455,159 +463,71 @@ class ListiniRepository:
             )
             return cursor.rowcount > 0
 
-    # Scopo: Clona una versione esistente in una nuova versione BOZZA dello stesso
-    #        listino, copiando tutte le righe attive della sorgente. La nuova versione
-    #        prende i dati di testata dal payload (codice_versione, valido_dal,
-    #        valido_al); meta e attivo derivano dai default DB, lo stato dal guard
-    #        della nascita (lo stato iniziale del vocabolario, N-1). Restituisce
-    #        l'id della nuova versione. Esegue tutto in transazione gestita dal caller.
+    # Scopo: Clona la versione dal verbo `vendite.fn_clona_versione_listino`
+    #        (§16.14, C-1 = a: da qualunque stato): in una transazione la
+    #        versione nuova dello stesso listino (nasce BOZZA), le righe attive
+    #        della sorgente e i componenti attivi con la validita' ricalcolata
+    #        sul periodo comune alla distinta e alla versione nuova. Prima della
+    #        copia il primo motivo di `script.fn_check_versione_listino_clonabile`
+    #        (D2: la copia non comincia prima della sorgente).
+    #        ⛔ Ritirate il 2026-10-29 (BE-C1) le tre INSERT che il backend
+    #        faceva da se': la stessa copia, ora nel DB.
+    # Ritorna: {versione_id, righe_copiate, componenti_copiati, componenti_saltati}.
+    #        ⭐ Parametri espliciti e non un dict: attivo, meta e stato non si
+    #        clonano, e una chiave in piu' non ha dove andare.
     def clone_versione(
         self,
-        listino_id: int,
         src_versione_id: int,
-        target_data: dict[str, Any],
-    ) -> int:
-        # Guardrail atomicità (review 2026-07-08): INSERT testata + INSERT righe clonate
-        # resi self-atomici (o versione+righe complete o rollback). Nested=savepoint.
-        with transaction.atomic(), connection.cursor() as cursor:
-            # 1) INSERT testata nuova versione: nasce BOZZA dal guard della
-            #    nascita, lo stato non si scrive (giro 12, BE-L3).
-            #    ⛔ Whitelist RIGIDA (BB `execute_dynamic_insert`): attivo/meta
-            #    NON si clonano, e il payload li ha gia' tolti il service
-            #    (`fn_clone_versione`, `clonable_fields`). Qui non si scartano
-            #    in silenzio: se arrivassero sarebbe un errore del chiamante.
-            target_versione_id = int(
-                execute_dynamic_insert(
-                    "vendite.listini_versioni",
-                    {"listino_id": listino_id, **target_data},
-                    allowed={"listino_id", "codice_versione", "valido_dal", "valido_al"},
-                )["id"]
-            )
-
-            # 2) Copy delle righe ATTIVE della sorgente nella nuova versione.
-            #    Pricing v5: le dimensioni contesto (BA/utility/emittente)
-            #    sono state droppate da listini_righe (F1-DB-25). La riga
-            #    e' (articolo, uom, prezzo, meta). Forziamo attivo=TRUE sulla
-            #    copia. user_insert/data_insert sono gestiti dai default audit.
+        *,
+        codice_versione: str,
+        valido_dal: date,
+        valido_al: date | None,
+    ) -> dict[str, Any]:
+        with connection.cursor() as cursor:
             cursor.execute(
-                """
-                INSERT INTO vendite.listini_righe (
-                    listino_versione_id,
-                    articolo_id,
-                    uom_id,
-                    prezzo,
-                    meta,
-                    attivo
-                )
-                SELECT
-                    %s,
-                    articolo_id,
-                    uom_id,
-                    prezzo,
-                    meta,
-                    TRUE
-                  FROM vendite.listini_righe
-                 WHERE listino_versione_id = %s
-                   AND attivo IS TRUE
-                """,
-                [target_versione_id, src_versione_id],
+                "SELECT * FROM vendite.fn_clona_versione_listino(%s, %s, %s, %s)",
+                [src_versione_id, codice_versione, valido_dal, valido_al],
             )
+            result = row_to_dict(cursor)
+            assert result is not None
+            return result
 
-            # 3) Copy delle righe bundle compositi ATTIVE
-            #    (`listini_righe_componenti`) della sorgente nella nuova
-            #    versione (modello unificato BoM 2026-05-13). Ricalcolo
-            #    `valido_dal`/`valido_al` come intersezione fra validita'
-            #    della BoM (`articoli_componenti`) e validita' della versione
-            #    target (NON della sorgente: l'admin si aspetta prezzi validi
-            #    per il nuovo range).
-            #
-            #    `GREATEST`/`LEAST` sono NULL-safe in PG: NULL viene ignorato
-            #    nel calcolo. Quindi `LEAST(NULL, date)=date`, `LEAST(NULL,NULL)=NULL`.
-            #    NULL su `valido_al` significa "open-ended" e la formula lo
-            #    propaga correttamente (post-fix DB 2026-05-15 il trigger
-            #    `trgfn_listini_righe_comp_guard_coerenza_bom` coalesce
-            #    simmetricamente vs STORED su listini_versioni.validita).
-            #
-            #    Skip riga se intersezione vuota (es. BoM scaduta o non
-            #    coperta dalla versione target): il WHERE finale lo intercetta
-            #    via COALESCE→'infinity'. Senza lo skip la riga arriverebbe al
-            #    guard comune delle date (`script.trgfn_guard_date_validita`,
-            #    dal 2026-09-23) con `E_DATA_AL_MINORE_DAL`, e l'intera copia
-            #    fallirebbe per una sola riga fuori periodo.
+    # Scopo: Elimina la versione dal verbo `vendite.fn_elimina_versione_listino`
+    #        (§16.11): in una transazione la versione bloccata, prima il primo
+    #        motivo di `script.fn_check_versione_listino_eliminabile` (non in
+    #        bozza, citata da un documento), poi componenti, righe e versione.
+    #        ⛔ Ritirata il 2026-10-29 (BE-E1) la cascata del backend: tre DELETE
+    #        che fuori dalla BOZZA facevano rifiutare per primi i guard delle
+    #        righe, col codice di un'altra regola (§16.8).
+    # Ritorna: {versione_id, righe_eliminate, componenti_eliminati}.
+    def delete_versione(self, versione_id: int) -> dict[str, Any]:
+        with connection.cursor() as cursor:
             cursor.execute(
-                f"""
-                INSERT INTO vendite.listini_righe_componenti (
-                    listino_versione_id,
-                    articolo_componente_id,
-                    articolo_padre_id,
-                    articolo_figlio_id,
-                    prezzo,
-                    iva_id,
-                    valido_dal,
-                    valido_al,
-                    attivo
-                )
-                SELECT
-                    %s,
-                    lrc.articolo_componente_id,
-                    lrc.articolo_padre_id,
-                    lrc.articolo_figlio_id,
-                    lrc.prezzo,
-                    lrc.iva_id,
-                    GREATEST(ac.valido_dal, target_v.valido_dal) AS v_dal,
-                    LEAST(ac.valido_al, target_v.valido_al) AS v_al,
-                    TRUE
-                  FROM vendite.listini_righe_componenti lrc
-                  JOIN catalogo.articoli_componenti ac
-                       ON ac.id = lrc.articolo_componente_id
-                  JOIN vendite.listini_versioni target_v
-                       ON target_v.id = %s
-                 WHERE lrc.listino_versione_id = %s
-                   AND lrc.attivo IS TRUE
-                   AND GREATEST(ac.valido_dal, target_v.valido_dal) <=
-                       LEAST(
-                           COALESCE(ac.valido_al, {_SQL_DATE_INFINITY}),
-                           COALESCE(target_v.valido_al, {_SQL_DATE_INFINITY})
-                       )
-                """,  # noqa: S608 — costante di modulo _SQL_DATE_INFINITY, valori come parametri
-                [target_versione_id, target_versione_id, src_versione_id],
-            )
-
-        return target_versione_id
-
-    # Scopo: Elimina una versione e le sue righe in cascata. Se si puo' eliminare
-    #        lo dice il DB (L-5, giro 12): il guard per stato della versione
-    #        (`trgfn_listini_versioni_guard_per_stato`, E_LISTINO_VERSIONE_NON_ELIMINABILE
-    #        fuori dalla BOZZA) e i guard delle righe; prima la regola stava nel
-    #        service. La cascade sulle righe e` esplicita perche' le FK sono
-    #        NO ACTION. Cascade su 2 tabelle figlie:
-    #          - `listini_righe` (standalone)
-    #          - `listini_righe_componenti` (compositi, modello unificato 2026-05-13)
-    #        ⚠️ Le righe si cancellano PRIMA della versione, quindi fuori dalla
-    #        BOZZA rifiutano per primi i guard delle righe, coi loro codici
-    #        (brief-modello-documento-vendita §16.8: richiesta al team DB).
-    def delete_versione(self, listino_id: int, versione_id: int) -> bool:
-        # Guardrail atomicità (review 2026-07-08): 3 DELETE a cascata (componenti +
-        # righe + versione) resi self-atomici. Nested=savepoint se caller ha atomic.
-        with transaction.atomic(), connection.cursor() as cursor:
-            cursor.execute(
-                "DELETE FROM vendite.listini_righe_componenti "
-                "WHERE listino_versione_id = %s",
+                "SELECT * FROM vendite.fn_elimina_versione_listino(%s)",
                 [versione_id],
             )
+            result = row_to_dict(cursor)
+            assert result is not None
+            return result
+
+    # Scopo: Fissa (o toglie, `valido_al` None) la fine di una versione ATTIVA
+    #        dal verbo «Chiudi» `vendite.fn_programma_chiusura_versione_listino`
+    #        (§16.14, C-2 = a): perimetro, il primo motivo di
+    #        `script.fn_check_versione_listino_chiudibile` (non attiva, fine nel
+    #        passato) sul campo `valido_al`, poi la fine con la porta aperta. Lo
+    #        stato non cambia: CHIUSA la scrive il job a scadenza.
+    #        ⛔ Il PATCH generico della fine di una ATTIVA lo rifiuta il DB
+    #        (C-4 = a, E_LISTINO_VERSIONE_FINE_SOLO_DAL_VERBO).
+    # Ritorna: {versione_id, valido_al_prima, valido_al_dopo}.
+    def programma_chiusura(self, versione_id: int, valido_al: date | None) -> dict[str, Any]:
+        with connection.cursor() as cursor:
             cursor.execute(
-                "DELETE FROM vendite.listini_righe WHERE listino_versione_id = %s",
-                [versione_id],
+                "SELECT * FROM vendite.fn_programma_chiusura_versione_listino(%s, %s)",
+                [versione_id, valido_al],
             )
-            cursor.execute(
-                """
-                DELETE FROM vendite.listini_versioni
-                 WHERE listino_id = %s
-                   AND id = %s
-                """,
-                [listino_id, versione_id],
-            )
-            return cursor.rowcount > 0
+            result = row_to_dict(cursor)
+            assert result is not None
+            return result
 
     # Scopo: Le versioni che l'attivazione di `versione_id` chiuderebbe, con la
     #        fine che prenderebbero: l'anteprima del dialogo di conferma (`dry_run`).

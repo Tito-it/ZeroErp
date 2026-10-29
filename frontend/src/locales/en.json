@@ -3378,6 +3378,7 @@
       "clona_versione": "Clone version",
       "versione_sorgente": "Source version",
       "versione_clonata": "Version cloned to DRAFT",
+      "clona_componenti_saltati": "{count} composite component(s) not copied: the bill of materials does not include them in the new version's period.",
       "clona_help": "The new version is created in DRAFT status with active rows copied from the source. You can edit it freely before activation.",
       "warning_retroattivo": "Warning: you are creating a version with retroactive start. Invoices already issued in the period will not be automatically updated. A dedicated adjustment is required to correct them.",
       "attiva_versione_titolo": "Confirm version activation",
@@ -3389,7 +3390,12 @@
       "chiusura_programmata_al": "Closing scheduled: the version stays active until {data} inclusive, then the job closes it.",
       "azione_reason": {
         "versione_spenta": "The version is switched off: switch it back on before activating it.",
-        "versione_senza_righe": "The version has no prices: add at least one row before activating it."
+        "versione_senza_righe": "The version has no prices: add at least one row before activating it.",
+        "versione_non_in_bozza": "Only a draft version can be deleted: this one has been used for prices.",
+        "versione_citata": "The version is used by other documents: remove it from those documents before deleting it.",
+        "versione_non_attiva": "Only an active version can be closed: change a draft's dates instead; a closed version no longer changes.",
+        "fine_nel_passato": "The end cannot be before today: choose today or a future date.",
+        "clone_prima_della_sorgente": "The new version cannot start before the version it is copied from."
       },
       "elimina_versione": "Delete version",
       "versione_eliminata": "Version deleted",

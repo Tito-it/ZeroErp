@@ -4,10 +4,14 @@
 //        Il cambio di stato a CHIUSA e' sincronizzato dal DB (trigger/job)
 //        quando valido_al scende sotto la data corrente. Mostra warning
 //        sulle conseguenze della chiusura.
+// Note: ⭐ Il verbo «Chiudi» del DB (`fn_programma_chiusura_versione_listino`,
+//        brief-modello-documento-vendita §16.16, FE-C1): la fine nel passato la
+//        rifiuta il DB sul campo `valido_al`. ⛔ Ritirato il `:min-date` del
+//        DatePicker: era la sola sede della regola, ora copia di quella del DB.
 import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../core/composables/useApiHandler'
-import { updateVersione } from '../api/listini'
+import { programmaChiusuraVersione } from '../api/listini'
 import { getVersioneCloseDefaults } from '../api/formDefaults'
 import { displayDate, toDateString, giornoDi, parseIsoDate, oggiAziendale } from '../../core/utils/date'
 import AppDialog from '../../core/components/AppDialog.vue'
@@ -19,7 +23,7 @@ import { useFotografiaDialog } from '../../core/composables/useFotografiaDialog'
 import { DATE_FORMAT } from '../../core/constants'
 
 const { t } = useI18n()
-const { execute, loading } = useApiHandler()
+const { execute, loading, campiErrati } = useApiHandler()
 
 const props = defineProps({
   visible: Boolean,
@@ -50,8 +54,12 @@ async function loadDefaults() {
     { silent: true },
   )
   if (res === null) {
-    // Fallback resiliente: se il BE fallisce, parti da oggi.
-    dataChiusura.value = parseIsoDate(props.versione?.valido_al) ?? oggiAziendale()
+    // Fallback resiliente: se il BE fallisce, la fine attuale se non e' gia'
+    // passata (come il service dei defaults: il verbo la rifiuterebbe),
+    // altrimenti oggi.
+    const attuale = parseIsoDate(props.versione?.valido_al)
+    const oggi = oggiAziendale()
+    dataChiusura.value = attuale && attuale >= oggi ? attuale : oggi
     return
   }
   dataChiusura.value = parseIsoDate(res.default_valido_al) ?? oggiAziendale()
@@ -71,7 +79,7 @@ async function conferma() {
   if (loading.value) return
   const valido_al = dataChiusura.value ? toDateString(dataChiusura.value) : null
   const res = await execute(
-    () => updateVersione(props.listinoId, props.versione.id, { valido_al }),
+    () => programmaChiusuraVersione(props.listinoId, props.versione.id, valido_al),
     { successMessage: valido_al
         ? t('vendite.listini.chiudi_versione_successo', { data: displayDate(dataChiusura.value) })
         : t('vendite.listini.chiudi_versione_rimossa')
@@ -88,7 +96,7 @@ async function conferma() {
 async function rimuoviChiusura() {
   if (loading.value) return
   const res = await execute(
-    () => updateVersione(props.listinoId, props.versione.id, { valido_al: null }),
+    () => programmaChiusuraVersione(props.listinoId, props.versione.id, null),
     { successMessage: t('vendite.listini.chiudi_versione_rimossa') }
   )
   if (res !== null) {
@@ -116,7 +124,8 @@ const fotografia = useFotografiaDialog(() => ({ dataChiusura: dataChiusura.value
       <div class="form-field">
         <label>{{ t('vendite.listini.chiudi_versione_data') }}</label>
         <DatePicker v-model="dataChiusura" :date-format="DATE_FORMAT"
-          show-icon show-button-bar :min-date="oggiAziendale()" />
+          show-icon show-button-bar
+          :invalid="campiErrati.includes('valido_al')" />
       </div>
     </div>
 

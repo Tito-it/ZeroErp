@@ -3378,6 +3378,7 @@
       "clona_versione": "Clona versione",
       "versione_sorgente": "Versione sorgente",
       "versione_clonata": "Versione clonata in BOZZA",
+      "clona_componenti_saltati": "{count} componente/i dei compositi non copiato/i: la distinta non li prevede nel periodo della nuova versione.",
       "clona_help": "La nuova versione viene creata in stato BOZZA con le righe attive copiate dalla sorgente. Puoi modificarla liberamente prima dell'attivazione.",
       "warning_retroattivo": "Attenzione: stai creando una versione con decorrenza retroattiva. Le fatturazioni gia' emesse nel periodo non verranno modificate automaticamente. Per correggerle e' necessaria una rettifica dedicata.",
       "attiva_versione_titolo": "Conferma attivazione versione",
@@ -3389,7 +3390,12 @@
       "chiusura_programmata_al": "Chiusura programmata: la versione resta attiva fino al {data} compreso, poi il job la chiude.",
       "azione_reason": {
         "versione_spenta": "La versione è spenta: riaccenderla prima di attivarla.",
-        "versione_senza_righe": "La versione non ha prezzi: aggiungere almeno una riga prima di attivarla."
+        "versione_senza_righe": "La versione non ha prezzi: aggiungere almeno una riga prima di attivarla.",
+        "versione_non_in_bozza": "Si elimina solo una versione in bozza: questa è stata usata per i prezzi.",
+        "versione_citata": "La versione è usata da altri documenti: toglierla da quei documenti prima di eliminarla.",
+        "versione_non_attiva": "Si chiude solo una versione attiva: di una bozza si modificano le date, una chiusa non cambia più.",
+        "fine_nel_passato": "La fine non può essere prima di oggi: scegliere oggi o una data futura.",
+        "clone_prima_della_sorgente": "La nuova versione non può cominciare prima della versione da cui si copia."
       },
       "elimina_versione": "Elimina versione",
       "versione_eliminata": "Versione eliminata",
