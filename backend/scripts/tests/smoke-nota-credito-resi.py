@@ -216,33 +216,21 @@ def chiudi_per_numerazione(repo, lotto_id):
 def mappa_sezionale_nc(cur, t, natura_nc):
     cur.execute("SELECT script.fn_pgtap_registro_fattura(%s)", [t["emittente_sr_id"]])
     registro_nc = int(cur.fetchone()[0])
-    # ⚠️ Scollegare e POI collegare, non un UPDATE del registro: il guard della
-    #    coppia unica (BEFORE UPDATE) vede ancora la riga stessa sul registro
-    #    vecchio e la conta come occupante (E_REGISTRO_COPPIA_GIA_COPERTA). La
-    #    strada e' quella che indica il suo hint.
     cur.execute(
         """
-        DELETE FROM vendite.tipi_doc_fiscale_registri m
-         USING vendite.registri_fatturazione r
+        UPDATE vendite.tipi_doc_fiscale_registri m
+           SET registro_id = %s
+          FROM vendite.registri_fatturazione r
          WHERE r.id = m.registro_id
            AND r.emittente_soggetto_ruolo_id = %s
            AND m.natura_doc_id = %s
-        RETURNING m.tipo_doc_fiscale_id, m.serie
         """,
-        [t["emittente_sr_id"], natura_nc],
+        [registro_nc, t["emittente_sr_id"], natura_nc],
     )
-    coppie = cur.fetchall()
-    if not coppie:
+    if cur.rowcount == 0:
         raise SystemExit(
             "SENZA_CONTESTO: l'emittente di prova non ha una mappatura per la "
             "natura NOTA_CREDITO da spostare (provisioning C2-12).")
-    for tipo_doc_id, serie in coppie:
-        cur.execute(
-            "INSERT INTO vendite.tipi_doc_fiscale_registri"
-            " (tipo_doc_fiscale_id, registro_id, natura_doc_id, serie, meta)"
-            " VALUES (%s, %s, %s, %s, '{\"smoke\": \"nota-credito-resi\"}'::jsonb)",
-            [tipo_doc_id, registro_nc, natura_nc, serie],
-        )
     return registro_nc
 
 
