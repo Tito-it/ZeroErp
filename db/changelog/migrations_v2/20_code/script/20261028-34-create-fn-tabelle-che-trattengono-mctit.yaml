@@ -1,0 +1,167 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# QUALI TABELLE TRATTENGONO DELLE RIGHE: IL BB COMUNE
+#   Brief: brief-modello-documento-vendita §16.11 (E-3 di Tid, 2026-10-28).
+#
+# ── PERCHE' ─────────────────────────────────────────────────────────
+#   «Questa riga si puo' cancellare, o qualcuno la tiene con una FK?» lo
+#   chiedeva gia' script.fn_check_credenziale_eliminabile (20261006-13, il
+#   motivo CON_STORIA), con l'elenco delle tabelle derivato da pg_constraint
+#   scritto nel suo corpo. Lo chiede ora anche la cancellazione di una
+#   versione di listino in BOZZA (motivo CITATA di
+#   script.fn_check_versione_listino_eliminabile, 20261028-36): e' la seconda
+#   volta, e la regola del 2 la porta qui. La copia della credenziale si
+#   ritira nello stesso giro (20261028-35).
+#
+# ── LA REGOLA (quella della credenziale, resa generale) ─────────────
+#   * Le FK verso p_tabella a una colonna sulla sua chiave primaria, con
+#     ON DELETE RESTRICT ('r') o NO ACTION ('a'): sono quelle che rifiutano
+#     il DELETE. Le CASCADE e le SET NULL/DEFAULT non trattengono.
+#   * Escluse le tabelle di p_escluse: chi chiama le cancella prima lui (le
+#     righe di una versione) o le giudica con un altro motivo (le vesti di
+#     una credenziale).
+#   * Le righe della STESSA tabella che seguono la riga in CASCADE se ne
+#     vanno con lei: non trattengono (config.credenziali.bloccata_da).
+#   * L'elenco non e' scritto: la prossima FK entra da sola.
+#   ⛔ Un nipote (FK RESTRICT verso una tabella che segue p_tabella in
+#   CASCADE) qui non si vede: lo pretende il pgTAP della credenziale (test 9).
+#
+# ── SECURITY DEFINER ────────────────────────────────────────────────
+#   Chi trattiene una riga sta anche in tabelle con la RLS: da INVOKER la
+#   risposta dipenderebbe da chi guarda, e il DELETE rifiuterebbe cio' che
+#   il pulsante dice possibile. Restituisce solo nomi di tabelle. search_path
+#   bloccato, ogni nome qualificato, SQL dinamico con format(%I) e un
+#   parametro.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261028-34-create-fn-tabelle-che-trattengono-mctit.yaml
+
+  - changeSet:
+      id: 20261028-34-create-fn-tabelle-che-trattengono
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_tabelle_che_trattengono(p_tabella, p_ids, p_escluse): le tabelle che tengono
+        delle righe con una FK RESTRICT o NO ACTION, derivate da pg_constraint. BB comune della
+        credenziale (CON_STORIA) e della versione di listino (CITATA). Brief:
+        brief-modello-documento-vendita §16.11 (E-3).
+      preConditions:
+        - onFail: HALT
+        - not:
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_proc p
+                    JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script' AND p.proname = 'fn_tabelle_che_trattengono';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION script.fn_tabelle_che_trattengono(
+                  p_tabella regclass,
+                  -- Valori della chiave primaria di p_tabella (bigint copre
+                  -- anche le chiavi integer).
+                  p_ids     bigint[],
+                  p_escluse regclass[] DEFAULT ARRAY[]::regclass[])
+               RETURNS text[]
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  -- Nudi: una riga del catalogo (pg_constraint), non una
+                  -- tabella di dominio.
+                  v_fk      record;
+                  v_cascata text;
+                  v_esiste  boolean;
+                  -- Le tabelle che trattengono, `schema.tabella`.
+                  v_dove    text[] := ARRAY[]::text[];
+              BEGIN
+                  -- =========================================================
+                  -- Scopo: le tabelle che tengono almeno una delle righe
+                  --   p_ids di p_tabella con una FK RESTRICT o NO ACTION, in
+                  --   ordine di nome, una volta ciascuna. '{}' = nessuna.
+                  --   Vedi l'intestazione del changeSet 20261028-34.
+                  -- =========================================================
+                  IF p_tabella IS NULL OR COALESCE(cardinality(p_ids), 0) = 0 THEN
+                      RETURN v_dove;
+                  END IF;
+
+                  FOR v_fk IN
+                      SELECT c.conrelid,
+                             n.nspname AS schema_nome,
+                             t.relname AS tabella_nome,
+                             a.attname AS colonna_nome
+                        FROM pg_catalog.pg_constraint c
+                        JOIN pg_catalog.pg_class t     ON t.oid = c.conrelid
+                        JOIN pg_catalog.pg_namespace n ON n.oid = t.relnamespace
+                        JOIN pg_catalog.pg_attribute a ON a.attrelid = c.conrelid
+                                                      AND a.attnum   = c.conkey[1]
+                        JOIN pg_catalog.pg_index pk    ON pk.indrelid = c.confrelid
+                                                      AND pk.indisprimary
+                       WHERE c.contype     = 'f'
+                         AND c.confrelid   = p_tabella
+                         AND c.confdeltype IN ('r', 'a')
+                         AND cardinality(c.conkey) = 1
+                         -- Sulla chiave primaria (a una colonna): i valori sono p_ids.
+                         AND pk.indnatts   = 1
+                         AND c.confkey[1]  = pk.indkey[0]
+                         AND c.conrelid   <> ALL (COALESCE(array_remove(p_escluse, NULL), ARRAY[]::regclass[])::oid[])
+                       ORDER BY n.nspname, t.relname, a.attname
+                  LOOP
+                      -- Le righe della stessa tabella che seguono p_tabella in
+                      -- CASCADE se ne vanno con lei: non trattengono.
+                      SELECT string_agg(format('%I = ANY ($1)', a2.attname), ' OR ' ORDER BY a2.attname)
+                        INTO v_cascata
+                        FROM pg_catalog.pg_constraint c2
+                        JOIN pg_catalog.pg_attribute a2 ON a2.attrelid = c2.conrelid
+                                                       AND a2.attnum   = c2.conkey[1]
+                       WHERE c2.contype     = 'f'
+                         AND c2.conrelid    = v_fk.conrelid
+                         AND c2.confrelid   = p_tabella
+                         AND c2.confdeltype = 'c';
+
+                      EXECUTE format('SELECT EXISTS (SELECT 1 FROM %I.%I WHERE %I = ANY ($1)%s)',
+                                     v_fk.schema_nome, v_fk.tabella_nome, v_fk.colonna_nome,
+                                     CASE WHEN v_cascata IS NULL THEN ''
+                                          ELSE format(' AND NOT (%s)', v_cascata) END)
+                         INTO v_esiste
+                        USING p_ids;
+
+                      -- Una tabella con due colonne si nomina una volta.
+                      IF v_esiste
+                         AND NOT (format('%s.%s', v_fk.schema_nome, v_fk.tabella_nome) = ANY (v_dove)) THEN
+                          v_dove := array_append(v_dove, format('%s.%s', v_fk.schema_nome, v_fk.tabella_nome));
+                      END IF;
+                  END LOOP;
+
+                  RETURN v_dove;
+              END;
+              $function$;
+
+              -- DEFINER: dice se una riga e' citata anche fuori perimetro. La
+              -- chiama l'applicazione (la check INVOKER della versione) e il
+              -- proprietario (la check DEFINER della credenziale).
+              REVOKE EXECUTE ON FUNCTION script.fn_tabelle_che_trattengono(regclass, bigint[], regclass[]) FROM PUBLIC;
+              GRANT EXECUTE ON FUNCTION script.fn_tabelle_che_trattengono(regclass, bigint[], regclass[]) TO zeroerp_app;
+
+              COMMENT ON FUNCTION script.fn_tabelle_che_trattengono(regclass, bigint[], regclass[]) IS
+                  'Le tabelle (`schema.tabella`, in ordine di nome, una volta ciascuna) che TRATTENGONO almeno una delle righe p_ids di p_tabella: una FK a una colonna verso la sua chiave primaria con ON DELETE RESTRICT o NO ACTION, derivata da pg_constraint (la prossima FK entra da sola). Escluse le tabelle di p_escluse (chi chiama le cancella prima o le giudica a parte); le righe della stessa tabella che seguono p_tabella in CASCADE non contano. ''{}'' = nessuna (anche con p_tabella o p_ids NULL o vuoti). Un nipote (RESTRICT verso una tabella che segue in CASCADE) non si vede. BB comune di script.fn_check_credenziale_eliminabile (motivo CON_STORIA, prima scritto nel suo corpo) e script.fn_check_versione_listino_eliminabile (motivo CITATA). SECURITY DEFINER del proprietario, search_path bloccato: chi trattiene sta anche sotto RLS, e il motivo e'' uno stato, non una visibilita''; restituisce solo nomi di tabelle. STABLE. Brief: brief-modello-documento-vendita §16.11 (E-3, Tid 2026-10-28).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_tabelle_che_trattengono(regclass, bigint[], regclass[]);

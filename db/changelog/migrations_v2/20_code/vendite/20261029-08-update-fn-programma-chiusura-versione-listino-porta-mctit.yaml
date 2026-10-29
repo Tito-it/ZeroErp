@@ -1,0 +1,195 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL VERBO «CHIUDI» APRE LA PORTA DELLA FINE
+#   Brief: brief-modello-documento-vendita §16.15 (C-4 = a di Tid,
+#   2026-10-29). Corpo di partenza: il 20261029-02.
+#
+# ── PERCHE' ─────────────────────────────────────────────────────────
+#   Da 20261029-07 il guard per stato accetta la fine di una ATTIVA solo con
+#   la porta (GUC zeroerp.listino_versione_fine = id della versione) aperta
+#   dal proprietario della tabella. Il verbo la apre: per farlo scrive come
+#   proprietario.
+#
+# ── CHE COSA CAMBIA ─────────────────────────────────────────────────
+#   * SECURITY INVOKER -> SECURITY DEFINER, search_path bloccato. La RLS non
+#     c'e' piu' per il proprietario: il perimetro passa nella WHERE
+#     (script.fn_scope_ef_whitelist_via_listino_versione), come in
+#     vendite.fn_attiva_versione_listino. Fuori perimetro: NOT_FOUND, come
+#     prima.
+#   * L'UPDATE fra l'apertura e la chiusura della porta.
+#   Percorso, motivi, firma e ritorno restano quelli del 20261029-02.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261029-08-update-fn-programma-chiusura-versione-listino-porta-mctit.yaml
+
+  - changeSet:
+      id: 20261029-08-update-fn-programma-chiusura-versione-listino-porta
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_programma_chiusura_versione_listino: SECURITY DEFINER col perimetro nella WHERE,
+        apre la porta della fine (C-4). Brief: brief-modello-documento-vendita §16.15.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite' AND p.proname = 'fn_programma_chiusura_versione_listino';
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_scope_ef_whitelist_via_listino_versione';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_programma_chiusura_versione_listino(
+                  p_versione_id vendite.listini_versioni.id%TYPE,
+                  p_valido_al   vendite.listini_versioni.valido_al%TYPE)
+               RETURNS TABLE(versione_id     vendite.listini_versioni.id%TYPE,
+                             valido_al_prima vendite.listini_versioni.valido_al%TYPE,
+                             valido_al_dopo  vendite.listini_versioni.valido_al%TYPE)
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente     config.user_override_azioni.auth_user_id%TYPE;
+                  v_listino_id vendite.listini_versioni.listino_id%TYPE;
+                  v_prima      vendite.listini_versioni.valido_al%TYPE;
+                  v_stato      config.stati_doc_listino_versioni.codice_interno%TYPE;
+                  v_tx_id      vendite.listini_versioni.tx_id%TYPE;
+              BEGIN
+                  -- ==========================================================
+                  -- Scopo: fissare (o togliere, p_valido_al NULL) la fine
+                  --   della validita' di una versione di listino ATTIVA.
+                  --   Vedi l'intestazione dei changeSet 20261029-02 e -08.
+                  -- ==========================================================
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+
+                  -- 1. Parametro e versione, nel perimetro.
+                  IF p_versione_id IS NULL OR p_versione_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_programma_chiusura_versione_listino',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_versione_id', p_versione_id),
+                          NULL::uuid, 'vendite.fn_programma_chiusura_versione_listino',
+                          'p_versione_id (obbligatorio, maggiore di zero)');
+                  END IF;
+
+                  SELECT lv.listino_id, lv.valido_al, s.codice_interno, lv.tx_id
+                    INTO v_listino_id, v_prima, v_stato, v_tx_id
+                    FROM vendite.listini_versioni lv
+                    JOIN config.stati_doc_listino_versioni s ON s.id = lv.stato_doc_listino_versione_id
+                   WHERE lv.id = p_versione_id
+                     AND script.fn_scope_ef_whitelist_via_listino_versione(v_utente, lv.id)
+                     FOR UPDATE OF lv;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_programma_chiusura_versione_listino',
+                          'E_VENDITE_LISTINO_VERSIONE_NOT_FOUND',
+                          -- Frase chiusa: nessun segnaposto, il variadico vuoto e' esplicito.
+                          jsonb_build_object('id', p_versione_id), NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  -- 2. Prima cio' che vieta.
+                  PERFORM script.fn_raise_primo_motivo_se_presente(
+                      'vendite', 'vendite.fn_programma_chiusura_versione_listino',
+                      script.fn_check_versione_listino_chiudibile(p_versione_id, p_valido_al),
+                      'valido_al',
+                      v_tx_id,
+                      jsonb_build_object('versione_id', p_versione_id,
+                                         'listino_id', v_listino_id, 'stato', v_stato,
+                                         'valido_al_prima', v_prima, 'valido_al', p_valido_al));
+
+                  -- 3. La fine, con la porta aperta per questa versione. Lo
+                  --    stato non cambia: CHIUSA la scrive il job.
+                  IF p_valido_al IS DISTINCT FROM v_prima THEN
+                      PERFORM set_config('zeroerp.listino_versione_fine', p_versione_id::text, true);
+                      UPDATE vendite.listini_versioni lv
+                         SET valido_al = p_valido_al
+                       WHERE lv.id = p_versione_id;
+                      PERFORM set_config('zeroerp.listino_versione_fine', '', true);
+                  END IF;
+
+                  RETURN QUERY SELECT p_versione_id, v_prima, p_valido_al;
+              END;
+              $function$;
+
+              REVOKE EXECUTE ON FUNCTION vendite.fn_programma_chiusura_versione_listino(bigint, date) FROM PUBLIC;
+              GRANT EXECUTE ON FUNCTION vendite.fn_programma_chiusura_versione_listino(bigint, date) TO zeroerp_app;
+
+              COMMENT ON FUNCTION vendite.fn_programma_chiusura_versione_listino(bigint, date) IS
+                  'VERBO «Chiudi» di una versione di listino: fissa la fine della validita'' (la chiusura programmata) o la toglie (p_valido_al NULL). La versione FOR UPDATE nel perimetro (script.fn_scope_ef_whitelist_via_listino_versione: DEFINER, la RLS non c''e''; non trovata o fuori perimetro E_VENDITE_LISTINO_VERSIONE_NOT_FOUND); prima cio'' che vieta, sul campo valido_al (il primo motivo di script.fn_check_versione_listino_chiudibile: E_LISTINO_VERSIONE_NON_CHIUDIBILE se non e'' ATTIVA, E_LISTINO_VERSIONE_FINE_NEL_PASSATO se la fine precede la data operativa); poi valido_al, con la porta aperta (GUC transazionale zeroerp.listino_versione_fine = id della versione: la onora vendite.trgfn_listini_versioni_guard_per_stato insieme al proprietario della tabella; senza, E_LISTINO_VERSIONE_FINE_SOLO_DAL_VERBO). Fine prima dell''inizio: il guard comune delle date (E_DATA_AL_MINORE_DAL); due ATTIVA sovrapposte: l''esclusione. Lo stato non cambia: CHIUSA la scrive vendite.fn_chiudi_versioni_listino_scadute. Ritorna la versione, la fine di prima e quella di adesso. Prende il posto del PATCH di valido_al del backend. Il permesso d''area resta al backend. SECURITY DEFINER con search_path bloccato; EXECUTE solo all''applicazione. Brief: brief-modello-documento-vendita §16.14 (C-2 = a, C-3) e §16.15 (C-4 = a, Tid 2026-10-29).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- La forma del 20261029-02: SECURITY INVOKER, la RLS decide il perimetro, senza porta.
+              CREATE OR REPLACE FUNCTION vendite.fn_programma_chiusura_versione_listino(
+                  p_versione_id vendite.listini_versioni.id%TYPE,
+                  p_valido_al   vendite.listini_versioni.valido_al%TYPE)
+               RETURNS TABLE(versione_id     vendite.listini_versioni.id%TYPE,
+                             valido_al_prima vendite.listini_versioni.valido_al%TYPE,
+                             valido_al_dopo  vendite.listini_versioni.valido_al%TYPE)
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_listino_id vendite.listini_versioni.listino_id%TYPE;
+                  v_prima      vendite.listini_versioni.valido_al%TYPE;
+                  v_stato      config.stati_doc_listino_versioni.codice_interno%TYPE;
+                  v_tx_id      vendite.listini_versioni.tx_id%TYPE;
+              BEGIN
+                  IF p_versione_id IS NULL OR p_versione_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_programma_chiusura_versione_listino',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_versione_id', p_versione_id),
+                          NULL::uuid, 'vendite.fn_programma_chiusura_versione_listino',
+                          'p_versione_id (obbligatorio, maggiore di zero)');
+                  END IF;
+                  SELECT lv.listino_id, lv.valido_al, s.codice_interno, lv.tx_id
+                    INTO v_listino_id, v_prima, v_stato, v_tx_id
+                    FROM vendite.listini_versioni lv
+                    JOIN config.stati_doc_listino_versioni s ON s.id = lv.stato_doc_listino_versione_id
+                   WHERE lv.id = p_versione_id
+                     FOR UPDATE OF lv;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_programma_chiusura_versione_listino',
+                          'E_VENDITE_LISTINO_VERSIONE_NOT_FOUND',
+                          jsonb_build_object('id', p_versione_id), NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+                  PERFORM script.fn_raise_primo_motivo_se_presente(
+                      'vendite', 'vendite.fn_programma_chiusura_versione_listino',
+                      script.fn_check_versione_listino_chiudibile(p_versione_id, p_valido_al),
+                      'valido_al', v_tx_id,
+                      jsonb_build_object('versione_id', p_versione_id,
+                                         'listino_id', v_listino_id, 'stato', v_stato,
+                                         'valido_al_prima', v_prima, 'valido_al', p_valido_al));
+                  IF p_valido_al IS DISTINCT FROM v_prima THEN
+                      UPDATE vendite.listini_versioni lv
+                         SET valido_al = p_valido_al
+                       WHERE lv.id = p_versione_id;
+                  END IF;
+                  RETURN QUERY SELECT p_versione_id, v_prima, p_valido_al;
+              END;
+              $function$;

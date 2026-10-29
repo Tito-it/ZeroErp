@@ -9,7 +9,9 @@
 --   (-09), la nascita (-10), il lettore delle precedenti (-11), il verbo
 --   dell'attivazione (-12), la chiusura a scadenza (-13) e il suo registro
 --   (-05, -14), la superficie della lista (-15), la fixture (-24, -25), la
---   porta (-26); il ramo «inesistente» del verbo (-32).
+--   porta (-26); il ramo «inesistente» del verbo (-32); la porta della fine
+--   di una ATTIVA (20261029-07 … -09: il caso 11 chiude V1 dall'attivazione,
+--   la chiusura programmata di V2 passa dal verbo «Chiudi»).
 --   Brief: brief-modello-documento-vendita §16 (giro 12; L-1 … L-5 di Tid,
 --   2026-10-28).
 --
@@ -222,10 +224,10 @@ SELECT throws_like(
     pg_temp.msg('E_LISTINO_VERSIONE_NON_ELIMINABILE'),
     '14) una ATTIVA non si cancella: E_LISTINO_VERSIONE_NON_ELIMINABILE');
 
--- V2 prende la fine nel futuro: una chiusura programmata (di una ATTIVA si
--- cambia la fine).
-UPDATE vendite.listini_versioni SET valido_al = (SELECT d + 10 FROM t_oggi)
- WHERE id = (SELECT id FROM t_v2);
+-- V2 prende la fine nel futuro: una chiusura programmata, dal verbo «Chiudi»
+-- (la fine di una ATTIVA cambia solo dai verbi, 20261029-07).
+SELECT * FROM vendite.fn_programma_chiusura_versione_listino(
+    (SELECT id FROM t_v2), (SELECT d + 10 FROM t_oggi));
 
 CREATE TEMP TABLE t_chiuse AS SELECT vendite.fn_chiudi_versioni_listino_scadute() AS n;
 

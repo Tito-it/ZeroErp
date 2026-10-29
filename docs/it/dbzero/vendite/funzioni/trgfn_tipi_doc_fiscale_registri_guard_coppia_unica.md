@@ -30,7 +30,9 @@ BEGIN
     --   - uscita sul no-op: un UPDATE che non cambia tipo,
     --     natura ne' registro non e' un collegamento nuovo;
     --   - lock consultivo per emittente, lo stesso del guard
-    --     sul registro, prima di guardare.
+    --     sul registro, prima di guardare;
+    --   - sull'UPDATE la riga stessa non conta: la tabella la
+    --     mostra ancora com'era (OLD), sul registro di partenza.
     -- =========================================================
     IF TG_OP = 'UPDATE'
        AND NEW.tipo_doc_fiscale_id = OLD.tipo_doc_fiscale_id
@@ -55,7 +57,8 @@ BEGIN
 
     v_occupante := vendite.fn_registro_che_copre_coppia(
         NEW.tipo_doc_fiscale_id, NEW.natura_doc_id,
-        v_emittente, v_utility, NEW.registro_id);
+        v_emittente, v_utility, NEW.registro_id,
+        CASE WHEN TG_OP = 'UPDATE' THEN OLD.id END);
 
     IF v_occupante IS NOT NULL THEN
         PERFORM script.fn_log_and_raise_error(
@@ -80,7 +83,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_tipi_doc_fiscale_registri_guard_coppia_unica()
-IS 'Guard BEFORE INSERT OR UPDATE OF tipo_doc_fiscale_id, natura_doc_id, registro_id su vendite.tipi_doc_fiscale_registri (2026-10-18): rifiuta un collegamento che affianca, sulla stessa coppia (tipo documento, natura), un altro registro dello stesso emittente e della stessa utility (E_REGISTRO_COPPIA_GIA_COPERTA, campo registro_id). Senza, vendite.fn_lookup_registro_id sceglieva il primo per id. Il gemello sul registro e'' vendite.trgfn_registri_fatturazione_guard_coppia_unica; la chiave la dice vendite.fn_registro_che_copre_coppia. Lock consultivo per emittente (namespace vendite.coppia_registro_fattura) prima di guardare. Uscita sul no-op. R-BE-14, D-14d di Tid, brief-db-processi-accensione-per-ambiente §6.14.';
+IS 'Guard BEFORE INSERT OR UPDATE OF tipo_doc_fiscale_id, natura_doc_id, registro_id su vendite.tipi_doc_fiscale_registri (2026-10-18, rev 2026-10-28): rifiuta un collegamento che affianca, sulla stessa coppia (tipo documento, natura), un altro registro dello stesso emittente e della stessa utility (E_REGISTRO_COPPIA_GIA_COPERTA, campo registro_id). Senza, vendite.fn_lookup_registro_id sceglieva il primo per id. Sull''UPDATE passa OLD.id al lettore: la riga che si sposta non conta come occupante (rev 2026-10-28; prima lo spostamento fra due registri dello stesso emittente e utility era rifiutato sempre). Il gemello sul registro e'' vendite.trgfn_registri_fatturazione_guard_coppia_unica; la chiave la dice vendite.fn_registro_che_copre_coppia. Lock consultivo per emittente (namespace vendite.coppia_registro_fattura) prima di guardare. Uscita sul no-op. R-BE-14, D-14d di Tid, brief-db-processi-accensione-per-ambiente §6.14.';
 ```
 
 </div>

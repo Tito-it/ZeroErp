@@ -1,0 +1,148 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# CHE COSA VIETA DI CHIUDERE UNA VERSIONE DI LISTINO
+#   Brief: brief-modello-documento-vendita §16.14 (C-2 = a, C-3 di Tid,
+#   2026-10-29). Gemella di script.fn_check_versione_listino_eliminabile
+#   (20261028-36).
+#
+# ── PERCHE' ─────────────────────────────────────────────────────────
+#   «Chiudi» fissa la fine della validita' di una versione ATTIVA (la
+#   chiusura programmata: lo stato CHIUSA lo scrive poi il job a scadenza,
+#   vendite.fn_chiudi_versioni_listino_scadute). Il pulsante si accendeva
+#   nel frontend sullo stato, e «la fine non sta nel passato» c'era solo nel
+#   calendario del dialogo (min-date = oggi): il DB accettava una ATTIVA
+#   chiusa a ieri, che toglie il prezzo ai documenti gia' datati dopo quella
+#   fine. Una regola, due lettori: il verbo
+#   vendite.fn_programma_chiusura_versione_listino (20261029-02) e la
+#   superficie vendite.vw_listini_versioni_azioni (20261029-05, registro
+#   config.azioni_riga).
+#
+# ── I MOTIVI (il primo e' quello che si solleva) ────────────────────
+#   1. NON_ATTIVA — la versione e' in BOZZA (la sua fine si decide con le
+#      altre date) o CHIUSA (non cambia piu'). Con questo motivo si esce.
+#   2. FINE_NEL_PASSATO — la fine proposta precede oggi (data operativa,
+#      script.fn_data_operativa: la stessa del job che chiude). Oggi e'
+#      ammesso: la versione vale fino a stasera.
+#   Con p_valido_al NULL non c'e' il motivo 2: dice se il pulsante si
+#   accende, ed e' anche la rimozione della chiusura.
+#   ⛔ Una fine prima dell'inizio non e' un motivo di qui: la rifiuta il guard
+#   comune delle date (script.trgfn_guard_date_validita, E_DATA_AL_MINORE_DAL).
+#   ⛔ Non e' nel guard per stato: l'attivazione (D3 di sviluppo-listini-v2)
+#   chiude la precedente a decorrenza - 1, anche nel passato (D2), e il guard
+#   non distingue il verbo dell'attivazione da una scrittura a mano.
+#   Versione inesistente o fuori perimetro: nessun motivo (il verbo la cerca
+#   prima).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261029-01-create-fn-check-versione-listino-chiudibile-mctit.yaml
+
+  - changeSet:
+      id: 20261029-01-create-fn-check-versione-listino-chiudibile
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_check_versione_listino_chiudibile: perche' una versione di listino non si chiude
+        (non e' ATTIVA; la fine proposta e' nel passato). Brief: brief-modello-documento-vendita §16.14.
+      preConditions:
+        - onFail: HALT
+        - not:
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_proc p
+                    JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script' AND p.proname = 'fn_check_versione_listino_chiudibile';
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_data_operativa';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION script.fn_check_versione_listino_chiudibile(
+                  p_versione_id vendite.listini_versioni.id%TYPE,
+                  p_valido_al   vendite.listini_versioni.valido_al%TYPE DEFAULT NULL)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_versione vendite.listini_versioni%ROWTYPE;
+                  v_stato    config.stati_doc_listino_versioni.codice_interno%TYPE;
+                  v_oggi     vendite.listini_versioni.valido_al%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo: dire perche' una versione di listino NON si chiude
+                  --   alla data p_valido_al (NULL: se il pulsante si accende,
+                  --   o la rimozione della chiusura). '[]' = si chiude. Non
+                  --   solleva: sollevare e' del verbo, che la chiama, come la
+                  --   superficie della lista (linee-guida-sql §12.5.2).
+                  --   Vedi l'intestazione del changeSet 20261029-01.
+                  -- =========================================================
+                  SELECT lv.* INTO v_versione
+                    FROM vendite.listini_versioni lv
+                   WHERE lv.id = p_versione_id;
+                  IF NOT FOUND THEN
+                      RETURN jsonb_build_array();
+                  END IF;
+
+                  SELECT s.codice_interno INTO v_stato
+                    FROM config.stati_doc_listino_versioni s
+                   WHERE s.id = v_versione.stato_doc_listino_versione_id;
+
+                  -- 1. Si chiude solo una ATTIVA.
+                  IF v_stato IS DISTINCT FROM 'ATTIVA' THEN
+                      RETURN jsonb_build_array(jsonb_build_object(
+                          'codice',     'E_LISTINO_VERSIONE_NON_CHIUDIBILE',
+                          'reason',     'VERSIONE_NON_ATTIVA',
+                          'reason_key', 'vendite.listini.azione_reason.versione_non_attiva',
+                          'dettaglio',  jsonb_build_object('listino_versione_id', v_versione.id,
+                                                           'listino_id', v_versione.listino_id,
+                                                           'stato', v_stato),
+                          'valori',     jsonb_build_array(v_versione.codice_versione,
+                                                          COALESCE(v_stato, 'NULL'))));
+                  END IF;
+
+                  -- 2. La fine non sta nel passato: i documenti gia' datati
+                  --    dopo quella fine perderebbero il prezzo.
+                  v_oggi := script.fn_data_operativa();
+                  IF p_valido_al < v_oggi THEN
+                      RETURN jsonb_build_array(jsonb_build_object(
+                          'codice',     'E_LISTINO_VERSIONE_FINE_NEL_PASSATO',
+                          'reason',     'FINE_NEL_PASSATO',
+                          'reason_key', 'vendite.listini.azione_reason.fine_nel_passato',
+                          'dettaglio',  jsonb_build_object('listino_versione_id', v_versione.id,
+                                                           'listino_id', v_versione.listino_id,
+                                                           'valido_al', p_valido_al,
+                                                           'oggi', v_oggi),
+                          'valori',     jsonb_build_array(v_versione.codice_versione,
+                                                          to_char(p_valido_al, 'DD/MM/YYYY'),
+                                                          to_char(v_oggi, 'DD/MM/YYYY'))));
+                  END IF;
+
+                  RETURN jsonb_build_array();
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_check_versione_listino_chiudibile(bigint, date) IS
+                  'Perche'' una versione di listino NON si chiude alla data p_valido_al: jsonb array di motivi (codice, reason, reason_key, dettaglio, valori), il primo e'' quello che si solleva; ''[]'' = si chiude. Motivi: 1. E_LISTINO_VERSIONE_NON_CHIUDIBILE (VERSIONE_NON_ATTIVA: in BOZZA la fine si decide con le altre date, una CHIUSA non cambia piu''; con questo motivo esce); 2. E_LISTINO_VERSIONE_FINE_NEL_PASSATO (FINE_NEL_PASSATO: p_valido_al precede la data operativa, script.fn_data_operativa; oggi e'' ammesso). p_valido_al NULL: niente motivo 2 (se il pulsante si accende; la rimozione della chiusura). Una fine prima dell''inizio la rifiuta il guard comune delle date, non questa. Versione inesistente o fuori perimetro: ''[]''. Non solleva. La chiamano il verbo vendite.fn_programma_chiusura_versione_listino e la superficie vendite.vw_listini_versioni_azioni (registro config.azioni_riga, CHIUDI_VERSIONE_LISTINO). Non sta nel guard per stato: l''attivazione chiude la precedente anche nel passato (D3 e D2 di sviluppo-listini-v2). Prima la regola stava solo nel frontend (min-date del dialogo). SECURITY INVOKER, STABLE. Brief: brief-modello-documento-vendita §16.14 (C-2 = a, Tid 2026-10-29).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_check_versione_listino_chiudibile(bigint, date);

@@ -45,7 +45,9 @@ usa per rifiutare. Se la credenziale ha vesti, la storia non si cerca nemmeno.
 
 * Non rifiuta niente da sola: **elenca**. A rifiutare è il verbo.
 * **Dove sta la storia non è scritto a mano**: la funzione lo legge dai legami del
-  database. Una tabella nuova che nomina una credenziale entra da sola.
+  database, con il building block comune
+  [fn_tabelle_che_trattengono](/dbzero/script/funzioni/fn_tabelle_che_trattengono). Una tabella
+  nuova che nomina una credenziale entra da sola.
 * Risponde allo stesso modo **chiunque la chieda**: la storia si cerca anche
   dove chi guarda non vedrebbe le righe. Restituisce solo i nomi delle tabelle.
 
@@ -54,5 +56,8 @@ usa per rifiutare. Se la credenziale ha vesti, la storia non si cerca nemmeno.
 ### Storia
 
 * 2026-10-06 — nasce (`20261006-13`). Brief: brief-db-elimina-credenziale-senza-veste.
+* 2026-10-28 — la ricerca della storia passa al building block comune
+  `script.fn_tabelle_che_trattengono`, che serve anche all'eliminazione di una versione di
+  listino (`20261028-35`). La regola non cambia.
 
 {% include-markdown "signature-core.md" %}

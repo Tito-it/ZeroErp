@@ -1,16 +1,16 @@
 # Brief — Il modello del documento di vendita, scritto una volta
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-28 (giro 11, la fattura: DB tutto committato, `-01` … `-50`; il passaggio BE/FE del §15.8, di BE-1 … BE-3, FE-1, di «riporta in bozza» e di `azioni_permesse` committato su `dev/backend-tid`, §15.15; la stampa delle origini decisa, forma 6, richiesta al team DB, §15.16; K-S1 … K-S5 applicati e verdi, §15.17.1; tocca al BE. Giro 12, il listino: `-03` … `-32` applicati, §16.6, §16.7; un pgTAP non portato, corretto, §16.8; tocca al BE e al FE, §16.5)
+## ⏭️ Chi riparte — aggiornato al 2026-10-29 (giro 11, la fattura: DB tutto committato, `-01` … `-50`; il passaggio BE/FE del §15.8, di BE-1 … BE-3, FE-1, di «riporta in bozza» e di `azioni_permesse` committato su `dev/backend-tid`, §15.15; la stampa delle origini decisa, forma 6, richiesta al team DB, §15.16; K-S1 … K-S5 applicati e verdi, §15.17.1; BE-S1, BE-S2 e lo script K-S2 fatti, §15.17.2; i jsonb dai lettori comuni, §15.17.3. Giro 12, il listino: `-03` … `-32` applicati, §16.6, §16.7; passaggio BE/FE fatto, rivisto e committato, §16.8, §16.9; un pgTAP non portato, corretto e verde come app, §16.10; la cancellazione della versione come verbo: E-1 … E-3 decise, §16.11; `-34` … `-40` scritti, provati, applicati e verdi come app, §16.12; richiesta BE/FE, §16.13; «Chiudi» e «Clona», ricognizione e domande, §16.14; C-1 … C-3 decise, `20261029-01` … `-05` scritti e provati, §16.15; richiesta BE/FE, §16.16; C-4 decisa, la porta `-07` … `-09` scritta e provata, §16.15; tutto applicato e verde come app, §16.15)
 
-**Riparte: Tid**, sul giro 12 (la versione di listino, §16): corsa come app di
-`vendite/test-listini-righe-comp-guard-coerenza-bom-v1`, portato dopo l'apply (§16.8). `20261028-03` … `-31` (con i
-CSV) e la correzione `-32` sono applicati su dbdev (Tid, 2026-10-28, §16.6, §16.7). Poi il **team BE e FE**: tocca a BE-L1 … BE-L7, FE-L1, FE-L2
-(§16.5, elenco chiuso: finché il backend non segue, l'attivazione dall'applicazione è rifiutata dalla porta e la
-colonna `stato` non c'è più). **Tid**, col dato `attiva_listino` ai profili su dbdev: letto il 2026-10-28 dopo
-l'apply, nessun profilo l'ha. E il **team BE**, sul giro 11: `20261028-01` (lo standard «Fattura di vendita» v2 in forma 6) e `-02` (la vista delle
-azioni di riga copre le segnalazioni, D-S2 = (b)) sono applicati su dbdev e i pgTAP come app sono verdi (Tid,
-2026-10-28, §15.17.1). Il **team BE** (BE-S1, il builder della fattura in forma 6, nella sequenza del §15.16.3: non prima dell'apply; BE-S2,
-la scheda Critiche dalla vista). Il passaggio
+**Riparte: il team BE/FE**, sul giro 12 (la versione di listino, §16). Il DB è tutto applicato e verde come app:
+`20261029-01` … `-05` e `-07` … `-09` (il `-06` è di un'altra sessione) e i tre CSV, 2026-10-29. Un passaggio solo: BE-E1 … BE-E3, FE-E1 (§16.13) più BE-C1 … BE-C3, FE-C1,
+FE-C2 (§16.16). C-1 = (a), C-2 = (a), C-3 = il verbo, C-4 = (a) (Tid, 2026-10-29). `-34` … `-40` e i tre CSV sono applicati su dbdev, i pgTAP del §16.12 verdi come
+app (2026-10-28). E-1 (sì) è una revoca parziale di una regola
+del 2026-05-13, scritta come tale. **Tid**: il dato `attiva_listino` ai
+profili su dbdev (nessun profilo l'ha: senza, nessuno attiva una versione). Il passaggio BE/FE (BE-L1 … BE-L7,
+FE-L1, FE-L2) è fatto, rivisto (§16.9) e committato (§16.8, PR #1975); `vendite/test-listini-righe-comp-guard-coerenza-bom-v1`
+verde come app (§16.10). Il giro 11 lato BE
+è chiuso e committato (§15.17). **Tid**: l'ok alla correzione di `gunicorn.conf.py` (§15.17.3). Il passaggio
 BE/FE del giro 11 è committato (§15.15; suite Django sul DB provvisto 7013 test, vitest 988, verdi). Il **team DB**
 ha in più richieste a priorità bassa: ritirare `E_COMMESSA_AZIONE_NON_AMMESSA` (§14.7); R-1 e R-2 (§14.8); il
 lettore dello stato di cessazione (§11.7). **Tid**, coi dati `emetti_offerta`, `emetti_contratto`, `emetti_ordine`
@@ -141,9 +141,20 @@ contratto né conferma un ordine (§11.7). Giri 5-10: chiusi e committati (detta
 | 4-bis-duodecies-trigies-septies | ✅ team DB | Giro 12 scritto e provato: `20261028-03` … `-31`, CSV, pgTAP nuovo 20/20, 23 pgTAP portati, uno ritirato; regressione 271 file (§16.6) | §16.4 … §16.6 | 4-bis-duodecies-trigies-sexies |
 | 4-bis-duodecies-trigies-octies | ✅ **Tid** | Apply del giro 12 (2026-10-28, 14:36) e pgTAP come app: verdi tranne `test-riferimenti-morti-v1` test 3, un difetto di `-12` (§16.7). Resta il dato `attiva_listino` ai profili su dbdev (nessun profilo l'ha, letto dopo l'apply) | §16.6 | 4-bis-duodecies-trigies-septies |
 | 4-bis-duodecies-trigies-octies-bis | ✅ **Tid** | Apply di `20261028-32` (correzione del verbo dell'attivazione, emersa da `test-riferimenti-morti-v1` come app; 2026-10-28, 15:38) e i due pgTAP come app: verdi | §16.7 | 4-bis-duodecies-trigies-octies |
+| 4-bis-duodecies-trigies-octies-ter | ✅ **Tid** | Corsa come app di `vendite/test-listini-righe-comp-guard-coerenza-bom-v1` (scriveva ancora `stato`; sullo scratch saltava, §16.10): verde (2026-10-28) | §16.10 | 4-bis-duodecies-trigies-octies-bis |
 | 4-bis-duodecies-trigies-novies | ✅ team BE → FE | BE-L1 … BE-L7, FE-L1, FE-L2 (2026-10-28) | §16.8 | 4-bis-duodecies-trigies-octies |
-| 4-bis-duodecies-trigies-novies-bis | **Tid** ⏭️ | Commit del passaggio BE/FE del giro 12 (con la revisione critica, §16.9); il dato `attiva_listino` ai profili su dbdev | §16.8, §16.9 | 4-bis-duodecies-trigies-novies |
-| 4-bis-duodecies-trigies-decies | team DB ⏭️ | La cancellazione di una versione come verbo: una BOZZA con un composito oggi non si cancella, e fuori dalla bozza rifiutano prima i guard delle righe | §16.8 | — |
+| 4-bis-duodecies-trigies-novies-bis | **Tid** ⏭️ | ✅ Commit del passaggio BE/FE del giro 12 con la revisione critica (PR #1975, 2026-10-28, §16.9). Resta il dato `attiva_listino` ai profili su dbdev | §16.8, §16.9 | 4-bis-duodecies-trigies-novies |
+| 4-bis-duodecies-trigies-decies | ✅ team DB | La cancellazione di una versione come verbo (scelta di Tid: il verbo, non la cascata sulle FK, 2026-10-28): ricognizione, piano e domande | §16.8, §16.11 | — |
+| 4-bis-duodecies-trigies-decies-bis | ✅ **Tid** | E-1 (revoca parziale della §8.2 del 2026-05-13: i componenti di una BOZZA si cancellano), E-2 («Elimina» dalla superficie), E-3 (la BOZZA citata da un documento): tutte sì (2026-10-28) | §16.11 | 4-bis-duodecies-trigies-decies |
+| 4-bis-duodecies-trigies-decies-ter | ✅ team DB | Scrittura (`-34` … `-40`, tre CSV, il pgTAP nuovo, le pagine manuali) e prova dell'SQL estratto su dbdev, tutti i casi come attesi; la richiesta al BE/FE | §16.12, §16.13 | 4-bis-duodecies-trigies-decies-bis |
+| 4-bis-duodecies-trigies-decies-quater | ✅ **Tid** | L'apply di `-34` … `-40` e dei CSV su dbdev (2026-10-28 22:35, `databasechangelog`); i pgTAP del §16.12 come app: verdi (2026-10-28) | §16.12 | 4-bis-duodecies-trigies-decies-ter |
+| 4-bis-duodecies-trigies-decies-quinquies | team BE/FE ⏭️ | BE-E1 … BE-E3, FE-E1 e BE-C1 … BE-C3, FE-C1, FE-C2: un passaggio solo per il listino | §16.13, §16.16 | 4-bis-duodecies-trigies-decies-quater, 4-bis-duodecies-trigies-decies-undecies |
+| 4-bis-duodecies-trigies-decies-sexies | ✅ team DB | «Chiudi» e «Clona» di una versione: ricognizione, storia (O1, D2, D3), piano e domande | §16.14 | — |
+| 4-bis-duodecies-trigies-decies-septies | ✅ **Tid** | C-1 = (a) (si clona da qualunque stato, O1 resta), C-2 = (a) (la fine nel passato la rifiuta il verbo), C-3 = il verbo «Chiudi» (2026-10-29) | §16.14 | 4-bis-duodecies-trigies-decies-sexies |
+| 4-bis-duodecies-trigies-decies-octies | ✅ team DB | Scrittura (`20261029-01` … `-05`, tre CSV, il pgTAP nuovo, le pagine manuali) e prova dell'SQL estratto su dbdev, tutti i casi come attesi; la richiesta al BE/FE; la domanda C-4 | §16.15, §16.16 | 4-bis-duodecies-trigies-decies-septies |
+| 4-bis-duodecies-trigies-decies-nonies | ✅ **Tid** | C-4 = (a) e il via allo sviluppo della porta (2026-10-29) | §16.15 | 4-bis-duodecies-trigies-decies-octies |
+| 4-bis-duodecies-trigies-decies-decies | ✅ team DB | La porta: `-07` … `-09`, codice e messaggio, i due pgTAP, le pagine manuali; prova dell'SQL estratto, tutti i casi come attesi | §16.15 | 4-bis-duodecies-trigies-decies-nonies |
+| 4-bis-duodecies-trigies-decies-undecies | ✅ **Tid** | L'apply di `20261029-01` … `-05`, `-07` … `-09` e dei CSV su dbdev (2026-10-29 07:26, `databasechangelog`); i pgTAP del §16.15 come app: verdi (2026-10-29) | §16.15 | 4-bis-duodecies-trigies-decies-decies |
 | 4-ter | ✅ team DB | Il lettore codice → id dello stato e la domanda intera, la colonna `emissione` col suo lettore: fatti nel giro 6 (`-37` … `-41`) | §8.4 | 4-bis |
 | 4-quater | ✅ team BE | Ritirata la composizione SQL del repository, sui lettori nuovi; `STATO_EMESSO` passa a 4-bis-octies | §8.10 | 4-ter |
 | 5 | ✅ **Tid** | Fermo dei temi trasversali **allentato** (2026-10-25, scelta C): ammesso il tema che poggia su un pezzo comune già fatto, fermo quello da ricopiare documento per documento; scritto in PROJECT_CONTEXT | — | 3-bis |
@@ -4117,7 +4128,7 @@ Il dato su dbdev (Tid): l'azione `attiva_listino` ai profili che oggi gestiscono
   all'inserimento): lo ha mostrato un test che cambia tipologia dopo la riga d'appoggio della fixture. Tema del
   modello delle righe, preesistente, fuori dal giro.
 * `test-fn-contratto-righe-preview-nuovi-campi-v1`, `test-guard-esclusione-figlio-bundle-v1` e
-  `test-offerta-righe-espanse` (e `test-listini-righe-comp-guard-coerenza-bom-v1`, §16.8) leggono ancora listini dal database invece di costruirli (rossi o saltati sullo
+  `test-offerta-righe-espanse` (e `test-listini-righe-comp-guard-coerenza-bom-v1`, §16.10) leggono ancora listini dal database invece di costruirli (rossi o saltati sullo
   scratch, come prima del giro): debito di fixture preesistente.
 
 ### 16.7 Correzione dopo l'apply: il ramo «inesistente» del verbo (2026-10-28)
@@ -4215,3 +4226,397 @@ nuovo `test_l_anteprima_non_scrive` (V2 resta BOZZA, V1 resta aperta). FE: `azio
 modello, creazione e scadenze verdi; mypy pulito sui due file; vitest `src/vendite` + `src/core/utils` 269 verdi;
 ESLint pulito sui file toccati. Non rigirati: la suite Django completa, ruff (non installato nel venv locale),
 build e in-app.
+
+### 16.10 Correzione dopo l'apply: un pgTAP non portato (2026-10-28)
+
+* **Che cosa ha visto Tid**: `vendite/test-listini-righe-comp-guard-coerenza-bom-v1`, come app su dbdev, si ferma
+  nel setup: `la colonna "stato" della relazione "listini_versioni" non esiste` (l'`INSERT` della versione BOZZA
+  scriveva ancora `stato = 'BOZZA'`).
+* **Perché il porting e la regressione non l'hanno visto**: il file era nella regressione (§16.6) e dava 7/7 prima
+  e dopo il giro, ma sullo scratch **salta tutti e sette i test**: pesca «il primo listino attivo» dal database, e
+  lo scratch non ne ha. Un `skip` pgTAP si conta come `ok`. Il censimento dei file da portare guardava i rossi, non i
+  salti.
+* **Correzione**: l'`INSERT` senza la colonna (la versione nasce BOZZA dal trigger), riga di revisione in testa.
+  Nessuna attesa cambia. Su dbdev, come owner, in transazione annullata: 7/7, nessun salto.
+* **Il censimento rifatto, per non dipendere dai salti**:
+  * statico su tutto `db/pgtap/`: ogni `INSERT` su `vendite.listini_versioni` con `stato` nelle colonne, ogni `UPDATE …
+    SET stato`, ogni lettura `<alias>.stato` su un alias della versione, le letture senza alias. Resta solo
+    questo file, ora corretto;
+  * di corsa: i 90 file che nominano versioni, righe di listino, la fixture, il verbo o la chiusura a scadenza,
+    sullo scratch; i 12 che vi saltano o vi sono rossi, ripassati su dbdev come owner. Tutti arrivano in fondo;
+    i rossi sono quelli da owner già dichiarati (`[rosso da owner]`, RLS, GUC del ritiro), nessuno sul listino.
+    I sette salti di `script/test-fn-check-prezzi-autorizzati-v1` sono voluti e precedenti al giro (casi non
+    costruibili dalle porte del preventivo).
+* Il file si aggiunge al debito di fixture del §16.6 (legge listini dal database invece di costruirli: in CI e
+  sullo scratch non misura niente).
+* Numerata §16.10 e non §16.8: scritta in parallelo al passaggio BE/FE (§16.8, §16.9), il merge del 2026-10-28
+  l'aveva persa insieme alla riga `4-bis-duodecies-trigies-octies-ter`; ripristinate dal commit `6a0a52a1c`.
+* **Come app (Tid, 2026-10-28)**: `vendite/test-listini-righe-comp-guard-coerenza-bom-v1` verde.
+
+### 16.11 La cancellazione di una versione come verbo — ricognizione e domande (2026-10-28)
+
+La richiesta è del team BE (§16.8, riga `4-bis-duodecies-trigies-decies`). Tid ha scelto la strada del **verbo**
+(`vendite.fn_elimina_versione_listino`) e non la cascata sulle FK (2026-10-28). Brief vicini verificati: nessun
+altro brief in `work-in-progress/` tocca la cancellazione di versioni, righe o componenti di listino.
+
+**Com'è oggi (doc auto-generata e catalogo di dbdev, 2026-10-28).**
+
+* La regola «si cancella solo una BOZZA» sta nel guard della versione
+  (`vendite.trgfn_listini_versioni_guard_per_stato`, ramo DELETE, L-5): `E_LISTINO_VERSIONE_NON_ELIMINABILE`.
+* La cascata la fa il backend (`listini_repository.delete_versione`): componenti, righe, poi la versione. Le FK
+  verso la versione sono tutte NO ACTION (`fk_listini_righe_versione`,
+  `listini_righe_componenti_listino_versione_id_fkey`, e quelle dei documenti: `fk_contratti_listino_versione`,
+  `fk_offerte_commerciali_listino_versione`, `fk_commesse_attivita_listino_versione`); verso la riga
+  `attivita_fatturabili_listino_riga_id_fkey` e `commesse_attivita_listino_riga_id_fkey`, NO ACTION.
+* Le righe: `vendite.trgfn_listini_righe_guard_stato` lascia cancellare in BOZZA, in ATTIVA solo una riga non
+  propagata, in CHIUSA mai.
+* I componenti: `vendite.trgfn_listini_righe_comp_guard_immutabilita_v5` blocca la DELETE **sempre**, in qualunque
+  stato («usare attivo = FALSE»).
+
+**La storia delle due regole che si contraddicono.**
+
+* **O2** (`work-done/sviluppo-listini-v3.md`, «DELETE versione BOZZA»): una versione in BOZZA si elimina **con le
+  sue righe**, in cascata. Allora le righe erano solo `listini_righe`.
+* **§8.2 di `work-done/brief-db-componenti-modello-unificato.md`** (2026-05-13, il modello unificato dei compositi):
+  sui componenti «DELETE bloccato sempre → usare `attivo = FALSE`». La pagina manuale del guard dice che
+  «replica esattamente la policy delle righe standard», ma quelle in BOZZA si cancellano: la DELETE in BOZZA è la
+  sola cosa in cui le due regole divergono. Nessun testo dice perché un componente di una bozza non si possa
+  cancellare: una BOZZA non è operativa e nessun documento ci ha preso un prezzo
+  (`vendite.fn_listino_ha_storia`, D-1 di Tid del 2026-10-22).
+
+**Il piano proposto.**
+
+| Pezzo | Che cosa |
+| --- | --- |
+| la `fn_check` | `script.fn_check_versione_listino_eliminabile(p_versione_id)`: i motivi per cui una versione non si cancella, nella forma di `fn_check_versione_listino_attivabile`. Motivo 1: non è in BOZZA (`E_LISTINO_VERSIONE_NON_ELIMINABILE`, codice già a catalogo). Motivo 2, se E-3 = sì: la BOZZA è citata da un documento |
+| il guard della versione | il ramo DELETE di `trgfn_listini_versioni_guard_per_stato` solleva il primo motivo della `fn_check` invece di valutare lo stato per conto suo (regola del 2: guard, verbo e superficie leggono la stessa regola) |
+| il verbo | `vendite.fn_elimina_versione_listino(p_versione_id)`, `SECURITY INVOKER` (la RLS dell'operatore resta; nessun passaggio di stato, quindi niente verbo comune né azione di processo: il permesso resta il livello sul documento, come oggi). Una transazione: la versione `FOR UPDATE`, inesistente o fuori perimetro `E_VENDITE_LISTINO_VERSIONE_NOT_FOUND`; **prima** il primo motivo della `fn_check`, così fuori dalla BOZZA il rifiuto è quello della versione e non quello di una riga; poi componenti, righe, versione. Ritorna quante righe e quanti componenti ha cancellato |
+| il guard dei componenti | la DELETE ammessa in BOZZA, rifiutata fuori (E-1) |
+| la superficie | `vendite.vw_listini_versioni_azioni` con `eliminazione_blocco_reason` / `_key`; la riga `ELIMINA_VERSIONE_LISTINO` in `config.azioni_riga` (E-2) |
+| pgTAP | nuovo `vendite/test-fn-elimina-versione-listino-v1`, tutto costruito: una BOZZA con una riga e un composito si cancella intera; ATTIVA e CHIUSA rifiutano col codice della versione, non con quello di una riga; versione inesistente; rollback totale se l'ultima DELETE fallisce; il componente di una ATTIVA resta non cancellabile. Censiti i pgTAP che cancellano componenti o versioni |
+| richiesta BE/FE | `delete_versione` chiama il verbo e la cascata si ritira; «Elimina» dalla superficie (se E-2) |
+
+**Domande per Tid.**
+
+* **E-1. I componenti di una BOZZA si cancellano.** ⚠️ È una **revoca parziale** della §8.2 del 2026-05-13
+  («DELETE bloccato sempre»): la DELETE di un componente diventa ammessa in BOZZA, come per le righe; fuori dalla
+  BOZZA resta rifiutata. Senza questa revoca, nemmeno il verbo può cancellare una bozza con un composito.
+  Alternativa: la regola resta, e solo il verbo passa. Il guard però dovrebbe distinguere «chiama il verbo» da
+  «chiama l'applicazione», e l'unico segnale a disposizione è uno che l'applicazione può falsificare (una GUC) o
+  un verbo DEFINER con la DELETE tolta all'app: è la postura «scrive solo il verbo», più larga del difetto.
+* **E-2. «Elimina» dalla superficie del DB.** Proposta: sì, nello stesso giro. La `fn_check` serve comunque al
+  guard e al verbo; la superficie costa una colonna nella vista e una riga di registro, e toglie una delle tre
+  decisioni prese ancora dal codice dello stato nel frontend (R-L4 del §16.9). Alternativa: solo il verbo, e il
+  frontend resta com'è.
+* **E-3. Una BOZZA citata da un documento.** Un contratto, un'offerta o una riga di commessa possono avere la
+  versione fissata (`listino_versione_id`), e una colonna nullable che punta a una versione qualsiasi può puntare
+  anche a una bozza: il modello lo ammette finché un guard non lo vieta (da verificare documento per documento
+  in scrittura). Oggi la cancellazione cadrebbe sulla FK, cioè su un errore tecnico (`23503`). Proposta: un
+  motivo nella `fn_check` con un codice nuovo (`E_LISTINO_VERSIONE_CITATA`), che arriva anche al pulsante.
+  Alternativa: resta la FK.
+
+**Decisioni di Tid (2026-10-28): E-1 sì, E-2 sì, E-3 sì (la proposta).** E-1 è la revoca parziale della §8.2 del
+2026-05-13, scritta come tale nel changeSet e nella pagina manuale del guard.
+
+### 16.12 Scritto e provato (2026-10-28)
+
+**I changeSet** (`-33` è di un'altra sessione, sul registro della fattura).
+
+| NN | Che cosa |
+| --- | --- |
+| `20_code/script/-34` | `script.fn_tabelle_che_trattengono(p_tabella, p_ids, p_escluse)`: le tabelle che tengono delle righe con una FK `RESTRICT`/`NO ACTION`, derivate da `pg_constraint`. `SECURITY DEFINER`, `EXECUTE` solo all'app. **Regola del 2**: la stessa ricerca stava scritta dentro `script.fn_check_credenziale_eliminabile` (motivo `CON_STORIA`); il motivo `CITATA` era la seconda volta |
+| `20_code/script/-35` | `script.fn_check_credenziale_eliminabile`: il passo 3 chiama il BB, la copia si ritira. La regola non cambia |
+| `20_code/script/-36` | `script.fn_check_versione_listino_eliminabile`: motivo 1 `E_LISTINO_VERSIONE_NON_ELIMINABILE` (`VERSIONE_NON_IN_BOZZA`, gli stessi valori del guard di prima); motivo 2 `E_LISTINO_VERSIONE_CITATA` (`VERSIONE_CITATA`, `dettaglio.dove`): la versione, una sua riga o un suo componente tenuti da un documento. Righe e componenti della versione sono esclusi: il verbo li cancella con lei |
+| `20_code/vendite/-37` | `trgfn_listini_versioni_guard_per_stato`: il ramo DELETE solleva il primo motivo della check |
+| `20_code/vendite/-38` | `trgfn_listini_righe_comp_guard_immutabilita_v5`: DELETE ammesso in BOZZA (E-1); fuori, e su una versione che non si legge, rifiutato; terzo valore = lo stato (prima la parola `PROTETTA`) |
+| `20_code/vendite/-39` | `vendite.fn_elimina_versione_listino(p_versione_id)`, `SECURITY INVOKER` (le quattro tabelle del listino hanno la RLS): parametro, versione `FOR UPDATE`, il primo motivo, poi componenti, righe, versione; ritorna `versione_id`, `righe_eliminate`, `componenti_eliminati`. `EXECUTE` solo all'app |
+| `20_code/vendite/-40` | `vendite.vw_listini_versioni_azioni`: `eliminazione_blocco_reason` / `_reason_key` in coda (E-2); `security_invoker` riscritto nel `WITH` |
+| CSV | `config.azioni_riga` riga 3 `ELIMINA_VERSIONE_LISTINO`; `config.codici_errore` `E_LISTINO_VERSIONE_CITATA` (`CONFLITTO_STATO`) e la nota di `E_LISTINO_VERSIONE_NON_ELIMINABILE`; `config.messaggi_errore` id 1406. I loader `runOnChange` esistenti li caricano |
+
+`%TYPE` in firma, `RETURNS TABLE` e `DECLARE` dove c'è una colonna; nudi e commentati i tipi senza colonna (i nomi di
+tabella, le chiavi generiche del BB, i conteggi). Pagine manuali: tre nuove (il BB, la check, il verbo) e quattro
+aggiornate (la check della credenziale, il guard per stato, il guard dei componenti, la vista).
+
+**Il pgTAP nuovo:** `vendite/test-fn-elimina-versione-listino-v1` (plan 15, tutto costruito: mondo, listino,
+bundle, contratto DRAFT dai builder). Copre il registro, la superficie (accesa, spenta per stato, spenta per
+citazione), il verbo e il DELETE diretto su una ATTIVA, il componente di una ATTIVA e quello di una BOZZA, la BOZZA
+citata (check, superficie, verbo, guard), l'eliminazione intera e la versione che non c'è più. Il caso «rollback
+totale se l'ultima DELETE fallisce» del piano non c'è: con la check **prima** delle DELETE non c'è un'ultima DELETE
+che fallisce dopo le altre, e l'atomicità è quella della funzione. La CHIUSA non ha un caso suo: passa dallo stesso
+ramo della ATTIVA (motivo 1).
+
+**La prova (dbdev, come owner, SQL estratto dai changeSet in una transazione annullata, 2026-10-28).** Tutti i casi
+come attesi:
+
+* la check della credenziale prima e dopo, su tutte le 37 credenziali: 0 differenze. La vecchia ricerca inline
+  contro il BB: 0 differenze, con 7 credenziali che hanno storia;
+* BOZZA con 3 righe e 8 componenti: check `[]`, «Elimina» acceso, il verbo restituisce `(140,3,8)` e non resta
+  niente;
+* ATTIVA: check e superficie `VERSIONE_NON_IN_BOZZA` coi valori `[codice, ATTIVA]`; il verbo e il DELETE diretto
+  rifiutano con `E_LISTINO_VERSIONE_NON_ELIMINABILE` e i componenti restano; il DELETE diretto di un componente
+  rifiuta con `E_RIGA_LISTINO_VERSIONE_CHIUSA`;
+* **E-3 confermata sui dati**: un contratto DRAFT accetta di fissare una versione in BOZZA (il modello lo ammette
+  davvero). Allora la check dà `VERSIONE_CITATA`, `dove = vendite.contratti`, la superficie lo mostra, e il verbo
+  e il DELETE diretto rifiutano col messaggio di dominio invece della FK. Una riga citata (una tabella con FK
+  creata nella transazione) dà lo stesso motivo;
+* versione inesistente: `E_VENDITE_LISTINO_VERSIONE_NOT_FOUND`; id NULL: `E_VENDITE_CHIAMATA_NON_VALIDA`;
+* la vista su tutte le 134 versioni: 128 con «Elimina» spento, cioè le 126 uscite dalla bozza (116 ATTIVA, 10
+  CHIUSA) più le due bozze citate dalla prova stessa (il contratto e la tabella di prova).
+
+⚠️ Il seed di codice e messaggio nella prova era simulato (INSERT nella transazione): il loader del CSV si prova
+solo all'apply. La prova come owner non esercita la RLS: quella la misura il pgTAP come app.
+
+**Applicati** su dbdev da Tid (2026-10-28 22:35, `databasechangelog`, dopo la prova). Lettura come app, nel
+contesto dell'operatore: la vista dà 32 versioni nel perimetro, 27 con «Elimina» spento; una versione fuori
+perimetro dà `[]`, come la gemella dell'attivazione.
+
+**Come app (Tid, 2026-10-28): verdi** tutti i pgTAP qui sotto.
+
+**Corsi da Tid:**
+
+* il pgTAP nuovo `vendite/test-fn-elimina-versione-listino-v1`, come app;
+* quelli che passano dagli oggetti toccati: `config/test-elimina-credenziale-v1` (la check della credenziale),
+  `vendite/test-listino-versione-al-modello-v1` (test 14 e 18, il ramo DELETE del guard per stato),
+  `config/test-azioni-riga-registro-v1` (la riga nuova del registro),
+  `vendite/test-listini-righe-comp-guard-coerenza-bom-v1` (il guard dei componenti). Nessun pgTAP pretendeva il
+  DELETE dei componenti sempre bloccato (censiti con grep il 2026-10-28).
+
+### 16.13 Richiesta al team BE e FE (elenco chiuso, dopo l'apply di `-34` … `-40`)
+
+| # | Lato | Che cosa |
+| --- | --- | --- |
+| BE-E1 | BE | `listini_repository.delete_versione` chiama `SELECT * FROM vendite.fn_elimina_versione_listino(%s)` al posto dei tre DELETE; la cascata nel backend si ritira. Il permesso d'area resta dov'è |
+| BE-E2 | BE | Il controllo «solo BOZZA» del backend (se resta qualcosa di `fn_delete_versione`) si ritira: lo dice la check. I codici nuovi o cambiati da mappare: `E_LISTINO_VERSIONE_CITATA` (`CONFLITTO_STATO`, 409); `E_LISTINO_VERSIONE_NON_ELIMINABILE` arriva ora anche dal verbo |
+| BE-E3 | BE | La lista delle versioni espone `eliminazione_blocco_reason` / `_reason_key` da `vendite.vw_listini_versioni_azioni`, come già fa per le colonne dell'attivazione (§16.8) |
+| FE-E1 | FE | «Elimina» si spegne dal registro (`ELIMINA_VERSIONE_LISTINO` in `config.azioni_riga`, il BB del pulsante di riga), non più dal codice dello stato (R-L4 del §16.9). Le chiavi i18n nuove: `vendite.listini.azione_reason.versione_non_in_bozza`, `vendite.listini.azione_reason.versione_citata` |
+
+### 16.14 «Chiudi» e «Clona» di una versione — ricognizione e domande (2026-10-28)
+
+Gli ultimi due pulsanti della lista delle versioni che il frontend decide dal codice dello stato (R-L4 del
+§16.9). Tid: chiuderli lato DB prima di passare al BE, così il team BE fa un passaggio solo per il listino
+(§16.13 più questo). Brief vicini: in `work-in-progress/` solo `sviluppo-listini-v5-test-ui.md` nomina «chiudi», ma
+per le righe della distinta, non per la versione.
+
+**Com'è oggi (codice e catalogo di dbdev, 2026-10-28).**
+
+* **«Chiudi»**: il pulsante si vede solo su una ATTIVA (`ListiniSearchTable.buildVersioneActions`, `isAttiva`).
+  Il dialogo (`ChiudiVersioneDialog.vue`) fa un PATCH di `valido_al` (`fn_update_versione`): una data scrive la
+  chiusura programmata, «Rimuovi chiusura» la riporta a NULL. Lo stato CHIUSA lo scrive il job a scadenza
+  (`vendite.fn_chiudi_versioni_listino_scadute`). Nel DB: fuori dalla BOZZA il guard per stato lascia cambiare
+  alla ATTIVA solo `valido_al` (L-5); il guard comune delle date rifiuta una fine prima dell'inizio;
+  l'esclusione rifiuta due ATTIVA sovrapposte. ⚠️ **«La fine non sta nel passato» c'è solo nel frontend**
+  (`:min-date="oggiAziendale()"` del DatePicker): il DB accetta una ATTIVA chiusa a ieri, e il PATCH diretto la
+  scrive.
+* **«Clona»**: spento su una BOZZA nel frontend (commit `b8f358b9c7` del 2026-05-14, col commento «non ha senso
+  clonarla»). La scrittura la fa il backend su tre tabelle (`listini_repository.clone_versione`): la versione
+  nuova (nasce BOZZA), le righe attive della sorgente, i componenti attivi con le date ricalcolate
+  (l'intersezione fra la distinta e la versione nuova; quelli senza intersezione si saltano). La regola D2 sta
+  nel service (`fn_clone_versione`, `E_VENDITE_VALIDATION`); il drawer la ripete come proposta
+  (`min_valido_dal` dai form defaults).
+
+**La storia.**
+
+* **O1** (`work-done/sviluppo-listini-v2.md` e `-v3.md`): il pulsante «Clona» è «disponibile per qualsiasi
+  stato sorgente». Il frontend lo spegne sulla BOZZA dal 2026-05-14 **senza una decisione scritta**: nessun
+  brief lo dice, c'è solo il commento nel componente. Su dbdev esiste `v1-clone-clone`, una bozza clonata da una
+  bozza prima di quel commit.
+* **D2** (`sviluppo-listini-v2.md`, ripresa in `-v3` §4.9): la clonazione retroattiva è ammessa, ma la nuova
+  decorrenza non precede quella della sorgente; con una decorrenza passata il dialogo avvisa che i documenti già
+  emessi non si correggono.
+* **«Chiudi»**: nessuna decisione sulla fine nel passato. La sola chiusura retroattiva scritta è quella
+  **dell'attivazione** (D3 di `sviluppo-listini-v2`: la precedente prende decorrenza - 1, e con D2 la decorrenza
+  può stare nel passato). Quindi una regola «la fine di una ATTIVA non sta nel passato» non può stare nel guard,
+  che non distingue il verbo dell'attivazione da un PATCH.
+
+**Il piano proposto.**
+
+| Pezzo | Che cosa |
+| --- | --- |
+| verbo «Clona» | `vendite.fn_clona_versione_listino(p_sorgente_id, p_codice_versione, p_valido_dal, p_valido_al)`, `SECURITY INVOKER`: la sorgente nel perimetro (`NOT_FOUND`), il primo motivo della check, poi versione, righe e componenti come fa oggi il backend (stessa intersezione delle date). Ritorna la versione nuova, quante righe e quanti componenti ha copiato e quanti componenti ha saltato |
+| check «Clona» | `script.fn_check_versione_listino_clonabile(p_sorgente_id, p_valido_dal)`: motivo D2 con un codice nuovo (`E_LISTINO_VERSIONE_CLONE_PRIMA_DELLA_SORGENTE`, oggi è `E_VENDITE_VALIDATION`); più il motivo sulla BOZZA se C-1 = (b) |
+| verbo «Chiudi» (se C-2 = a) | `vendite.fn_programma_chiusura_versione_listino(p_versione_id, p_valido_al)` (NULL = rimuove la chiusura): la versione `FOR UPDATE`, il primo motivo della check, poi l'UPDATE |
+| check «Chiudi» | `script.fn_check_versione_listino_chiudibile(p_versione_id, p_valido_al)`: motivo 1, la versione non è ATTIVA (un codice nuovo); se C-2 = (a), motivo 2, la fine nel passato (un codice nuovo). Con `p_valido_al` NULL la check dice solo se il pulsante si accende |
+| superficie | `vendite.vw_listini_versioni_azioni`: `chiusura_blocco_reason` / `_key`, più quelle della clonazione se C-1 = (b); le righe `CHIUDI_VERSIONE_LISTINO` (e `CLONA_VERSIONE_LISTINO`) in `config.azioni_riga` |
+| pgTAP | uno nuovo, tutto costruito, per i due verbi: la copia (righe, componenti, il componente saltato), D2, la chiusura programmata e la sua rimozione, la ATTIVA chiusa nel passato (se C-2 = a), i rifiuti fuori stato |
+| richiesta BE/FE | il repository chiama i due verbi; la copia e D2 si ritirano dal backend, `min-date` e `isBozza`/`isAttiva` dal frontend, i pulsanti dal registro |
+
+**Domande per Tid.**
+
+* **C-1. «Clona» da una BOZZA.** (a) Si clona da **qualunque stato**, come dice O1: il DB non ha un motivo di
+  stato, e il frontend toglie lo spegnimento del 2026-05-14, che non ha una decisione dietro. Due bozze dello
+  stesso listino possono convivere (le BOZZA si sovrappongono per scelta, `brief-db-listini-versioni-bozza-non-operativa`).
+  (b) Una BOZZA non si clona, come fa oggi il frontend: il motivo va nel DB, ed è una **revoca di O1**. Proposta:
+  (a), perché copiare una bozza per provarne una variante non rompe niente, e la regola di oggi non ha un perché
+  scritto.
+* **C-2. La fine di una ATTIVA nel passato.** (a) La rifiuta il **verbo «Chiudi»**, con un motivo e il pulsante; il
+  PATCH diretto di `valido_al` resta possibile per l'applicazione (il guard non distingue il verbo
+  dell'attivazione, che chiude legittimamente nel passato), quindi il BE deve passare dal verbo. (b) Resta com'è:
+  il DB accetta, il limite resta nel frontend. ⚠️ Una fine nel passato toglie il prezzo ai documenti già
+  datati dopo quella fine, che non si correggono da soli (lo stesso avviso di D2). Proposta: (a), perché
+  è una regola sui prezzi già usati e oggi la conosce solo il frontend.
+* **C-3. «Chiudi» come verbo anche se C-2 = (b).** Senza la regola del passato il verbo farebbe un solo
+  UPDATE di un campo che il guard già giudica. Proposta: se C-2 = (b), niente verbo, solo la check per il
+  pulsante (motivo «non è ATTIVA»); se C-2 = (a), il verbo.
+
+**Decise da Tid (2026-10-29):** C-1 = (a), C-2 = (a), C-3 = il verbo. Si clona da qualunque stato (O1 resta, nessuna
+revoca); la fine di una ATTIVA nel passato la rifiuta il verbo «Chiudi»; «Clona» non ha un motivo di stato, quindi non
+ha superficie né riga nel registro.
+
+### 16.15 Scritto e provato (2026-10-29)
+
+**I changeSet.**
+
+| NN | Che cosa |
+| --- | --- |
+| `20_code/script/20261029-01` | `script.fn_check_versione_listino_chiudibile(p_versione_id, p_valido_al DEFAULT NULL)`: motivo 1 `E_LISTINO_VERSIONE_NON_CHIUDIBILE` (`VERSIONE_NON_ATTIVA`, valori `[codice, stato]`, esce); motivo 2 `E_LISTINO_VERSIONE_FINE_NEL_PASSATO` (`FINE_NEL_PASSATO`, `p_valido_al < script.fn_data_operativa()`, la data del job che chiude; oggi ammesso; valori `[codice, fine, oggi]`). Senza data solo il motivo 1. La fine prima dell'inizio resta al guard comune delle date |
+| `20_code/vendite/20261029-02` | `vendite.fn_programma_chiusura_versione_listino(p_versione_id, p_valido_al)`, `SECURITY INVOKER`: parametro, versione `FOR UPDATE`, il primo motivo sul campo `valido_al`, poi l'UPDATE (solo se cambia; NULL = toglie la chiusura). Ritorna `versione_id`, `valido_al_prima`, `valido_al_dopo`. Lo stato non cambia: CHIUSA la scrive il job. `EXECUTE` solo all'app |
+| `20_code/script/20261029-03` | `script.fn_check_versione_listino_clonabile(p_sorgente_id, p_valido_dal DEFAULT NULL)`: motivo D2 `E_LISTINO_VERSIONE_CLONE_PRIMA_DELLA_SORGENTE` (`CLONE_PRIMA_DELLA_SORGENTE`, valori `[decorrenza, codice sorgente, sua decorrenza]`). Nessun motivo di stato (C-1 = a) |
+| `20_code/vendite/20261029-04` | `vendite.fn_clona_versione_listino(p_sorgente_id, p_codice_versione, p_valido_dal, p_valido_al DEFAULT NULL)`, `SECURITY INVOKER`: parametri (`E_VENDITE_CHIAMATA_NON_VALIDA` per id, codice vuoto, decorrenza mancante), sorgente `FOR KEY SHARE`, il primo motivo sul campo `valido_dal`, poi versione (nasce BOZZA), righe attive, componenti attivi con l'intersezione delle date: **la stessa copia di `listini_repository.clone_versione`**. Ritorna `versione_id`, `righe_copiate`, `componenti_copiati`, `componenti_saltati`. `EXECUTE` solo all'app |
+| `20_code/vendite/20261029-05` | `vendite.vw_listini_versioni_azioni`: `chiusura_blocco_reason` / `_reason_key` in coda, dalla check senza data; `security_invoker` riscritto nel `WITH` |
+| CSV | `config.azioni_riga` riga 4 `CHIUDI_VERSIONE_LISTINO`; `config.codici_errore` i tre codici (`CONFLITTO_STATO`, `DATO_ERRATO`, `DATO_ERRATO`); `config.messaggi_errore` id 1407 … 1409. I loader `runOnChange` esistenti li caricano |
+
+`%TYPE` in firma, `RETURNS TABLE` e `DECLARE` dove c'è una colonna; nudi e commentati i conteggi. Pagine manuali:
+quattro nuove (le due check, i due verbi), la vista aggiornata.
+
+ℹ️ **Un filtro che non ho messo.** Avevo aggiunto al verbo «Clona» lo scarto dei componenti la cui riga di distinta è
+spenta. L'ho tolto: il modello non ammette il caso. Una riga di `catalogo.articoli_componenti` non si spegne finché
+un componente di listino attivo la usa (`trg_articoli_componenti_a10_listini_righe_componenti_blo_*`, block_deact),
+e la prova l'ha confermato (rifiuto allo spegnimento).
+
+**Il pgTAP nuovo:** `vendite/test-fn-chiudi-clona-versione-listino-v1` (plan 16, tutto costruito: mondo, listino,
+articoli dai builder; versioni, distinta, righe e componenti scritti nel test). Una ATTIVA con un composito di due
+componenti, uno dei quali la distinta chiude a oggi+100, una riga accesa e una spenta; una BOZZA. Copre il registro,
+la superficie (accesa sulla ATTIVA, spenta sulla BOZZA), la check e il verbo a ieri, la BOZZA, la chiusura a oggi+30
+(lo stato resta ATTIVA), la rimozione, oggi ammesso; la clonazione prima della sorgente, la copia da oggi+200 (1 riga,
+1 componente, 1 saltato, la sorgente intatta, le date della copia), la copia da una BOZZA, la sorgente che non c'è.
+
+**La prova (dbdev, come owner, SQL estratto dai cinque changeSet in una transazione annullata, 2026-10-29).** Tutti
+i casi come attesi:
+
+* check «Chiudi»: ATTIVA senza data e a oggi `[]`; a ieri `FINE_NEL_PASSATO` coi valori `[v1-clone, 28/10/2026,
+  29/10/2026]`; BOZZA e CHIUSA `VERSIONE_NON_ATTIVA`; inesistente `[]`;
+* la vista: «Chiudi» acceso sulla ATTIVA, spento con motivo e chiave su BOZZA e CHIUSA; `security_invoker=true`;
+* verbo «Chiudi»: a ieri rifiuta col messaggio di dominio; a oggi+30 `(128,,2026-11-28)`, la versione resta ATTIVA;
+  la stessa data di nuovo passa senza scrivere; la rimozione `(128,2026-11-28,)`; BOZZA e CHIUSA
+  `E_LISTINO_VERSIONE_NON_CHIUDIBILE`; inesistente `NOT_FOUND`; id NULL `E_VENDITE_CHIAMATA_NON_VALIDA`;
+* check «Clona»: prima della sorgente `CLONE_PRIMA_DELLA_SORGENTE`; dalla stessa decorrenza e senza data `[]`;
+* verbo «Clona»: prima della sorgente rifiuta; dalla ATTIVA `3 righe, 3 componenti, 0 saltati`, la copia è BOZZA coi
+  componenti da oggi+1; **da una BOZZA** (C-1 = a) `3, 5, 0`; codice doppio: il vincolo univoco (23505, come oggi);
+  codice vuoto e decorrenza mancante `E_VENDITE_CHIAMATA_NON_VALIDA`; sorgente inesistente `NOT_FOUND`.
+
+⚠️ Il seed di codici, messaggi e registro nella prova era simulato (INSERT nella transazione): i loader dei CSV si
+provano solo all'apply. La prova come owner non esercita la RLS: quella la misura il pgTAP come app. Il componente
+saltato non c'è sui dati di dbdev (le distinte usate sono aperte): lo copre il pgTAP.
+
+**Da correre, Tid (dopo l'apply):**
+
+* il pgTAP nuovo `vendite/test-fn-chiudi-clona-versione-listino-v1`, come app;
+* quelli che passano dagli oggetti toccati: `config/test-azioni-riga-registro-v1` (la riga nuova del registro),
+  `vendite/test-fn-elimina-versione-listino-v1` e `vendite/test-listino-versione-al-modello-v1` (la vista; il secondo
+  anche la porta, casi 11 e 15-17), `vendite/test-listino-versione-in-vigore-v1` (il guard per stato su una CHIUSA,
+  casi 6-7), `script/test-rubinetto-primo-motivo-v1` (chiama l'attivazione);
+* l'attivazione passa anche da `dbops.fn_pgtap_porta_a_stato(..., 'ATTIVA')` e da `dbops.fn_pgtap_crea_listino`:
+  **tutti** i pgTAP che costruiscono un listino (18 file sotto `db/pgtap`, censiti con grep il 2026-10-29) passano dal
+  ciclo nuovo del `-09`. Nessuno scrive a mano la fine di una ATTIVA (censiti gli UPDATE di `valido_al` su
+  `vendite.listini_versioni`: solo casi su una CHIUSA, invariati, e quello portato al verbo).
+
+**Applicati** su dbdev da Tid (2026-10-29 07:26, `databasechangelog`): `20261029-01` … `-05` e `-07` … `-09`. I
+loader hanno caricato i CSV: i quattro codici con le loro classi, i messaggi 1407 … 1410, la riga 4
+`CHIUDI_VERSIONE_LISTINO` del registro.
+
+**Come app (Tid, 2026-10-29): verdi** i pgTAP qui sopra.
+
+ℹ️ **Debito piccolo, sul builder** (non in questo giro): il commento di `dbops.fn_pgtap_porta_a_stato` dice che per
+CHIUSA «il test scrive prima `valido_al` passata (la versione ATTIVA la accetta)». Con la porta non è più vero: la
+fine passata si dà alla nascita (`dbops.fn_pgtap_crea_listino(..., p_valido_al)`, un INSERT, che la porta non
+guarda) o dall'attivazione di una successiva. Oggi nessun test usa quella strada. Si corregge al prossimo changeSet
+sul builder.
+
+**C-4, domanda per Tid: chiudere il PATCH diretto della fine di una ATTIVA.** Il guard per stato lascia cambiare
+`valido_al` di una ATTIVA a chiunque scriva la tabella. L'attivazione deve poterlo fare: chiude la precedente, e
+anche nel passato. Così il verbo «Chiudi» si può aggirare con un PATCH, e il backend ha due strade:
+
+* tenere una regola sua «su una ATTIVA `valido_al` solo dal verbo», cioè una copia della regola di stato, quella
+  che L-5 aveva tolto dal backend;
+* lasciare il buco.
+
+(a) **La porta**, nel modello che esiste già (`vendite.fn_ddt_riga_correggi_qta_evasa`: una GUC transazionale più il
+proprietario della tabella, `script.fn_is_proprietario_tabella`). Il guard per stato accetta `valido_al` di una
+ATTIVA solo con la porta aperta. La aprono i due verbi che la scrivono: «Chiudi», che diventa `SECURITY DEFINER` con
+il perimetro nella WHERE come `fn_attiva_versione_listino`, e l'attivazione, già `DEFINER`. Il PATCH riceve
+`E_LISTINO_VERSIONE_CAMPO_NON_MODIFICABILE` dal guard, e il backend non tiene nessuna regola. È una **stretta** di
+L-5 («ATTIVA: solo `valido_al`» diventa «ATTIVA: `valido_al` solo dai verbi»), non una revoca. Costa tre changeSet
+(il guard, i due verbi) e dei casi nel pgTAP.
+(b) Resta com'è: il backend passa dal verbo per disciplina, e il PATCH resta aperto.
+**Proposta: (a)**, perché senza la porta la regola C-2 vale solo per chi passa dal verbo.
+
+**Decisa da Tid (2026-10-29): C-4 = (a).** È una stretta di L-5, non una revoca: di una ATTIVA si cambia ancora solo la
+fine, ma solo dai verbi.
+
+**Ricognizione: chi scrive oggi `valido_al` di una ATTIVA (2026-10-29).**
+
+* Funzioni DB: solo `vendite.fn_attiva_versione_listino`, che chiude le precedenti (censite col corpo di tutte le
+  funzioni, `pg_get_functiondef`). Il job a scadenza scrive solo lo stato. I builder pgTAP creano le versioni con un
+  INSERT, e la porta guarda solo l'UPDATE.
+* pgTAP: ⛔ `vendite/test-listino-versione-al-modello-v1` (riga 227) fissa la fine di V2, ATTIVA, con un UPDATE diretto
+  come app, per preparare i casi 15-16 della chiusura a scadenza. Con la porta quell'UPDATE viene rifiutato: passa al
+  verbo «Chiudi» nello stesso giro. `vendite/test-listino-versione-in-vigore-v1` (casi 6-7) tocca solo una CHIUSA: non
+  cambia.
+* Backend: il PATCH generico (`fn_update_versione`, `listini_repository.update_versione`) su una ATTIVA. È proprio la
+  strada che si chiude: da qui riceve `E_LISTINO_VERSIONE_FINE_SOLO_DAL_VERBO` (BE-C2; un codice suo, vedi sotto).
+
+**Il piano (tre changeSet più il pgTAP).**
+
+| Pezzo | Che cosa |
+| --- | --- |
+| guard per stato | `trgfn_listini_versioni_guard_per_stato`: su una ATTIVA `valido_al` resta libero solo con la porta aperta (una GUC transazionale con l'id della versione) **e** con il proprietario della tabella che scrive (`script.fn_is_proprietario_tabella`), come `vendite.trgfn_ddt_righe_guard_riga_evasa`. Senza la porta, `valido_al` diventa un campo come gli altri: `E_LISTINO_VERSIONE_CAMPO_NON_MODIFICABILE` |
+| verbo «Chiudi» | `fn_programma_chiusura_versione_listino` diventa `SECURITY DEFINER` con `search_path` bloccato, e il perimetro nella WHERE (`script.fn_scope_ef_whitelist_via_listino_versione`, come l'attivazione) al posto della RLS. Apre la porta sulla sua versione attorno all'UPDATE e la richiude |
+| verbo di attivazione | `fn_attiva_versione_listino` apre la porta per ogni precedente che chiude: una sola GUC con l'id vale per una riga, quindi un ciclo sul lettore `fn_versioni_listino_da_chiudere` |
+| pgTAP | `test-listino-versione-al-modello-v1` riga 227 sul verbo; in `test-fn-chiudi-clona-versione-listino-v1` due casi: l'UPDATE diretto della fine di una ATTIVA è rifiutato, l'attivazione chiude ancora la precedente |
+
+⚠️ Da verificare scrivendo: il verbo diventa DEFINER e chiama la check, che è INVOKER, e la data operativa (il fuso):
+lo stesso caso dell'attivazione, che lo fa già.
+
+**La porta, scritta e provata (2026-10-29).** Il `-06` di oggi è di un'altra sessione (il template delle
+intestazioni): la porta usa `-07` … `-09`.
+
+| NN | Che cosa |
+| --- | --- |
+| `20_code/vendite/20261029-07` | `trgfn_listini_versioni_guard_per_stato`: su una ATTIVA, dopo il controllo dei campi (invariato), una fine cambiata senza la porta (GUC transazionale `zeroerp.listino_versione_fine` = id della versione **e** `script.fn_is_proprietario_tabella`) solleva `E_LISTINO_VERSIONE_FINE_SOLO_DAL_VERBO`. `SECURITY INVOKER` ora scritto. DELETE, BOZZA e CHIUSA invariati |
+| `20_code/vendite/20261029-08` | `fn_programma_chiusura_versione_listino`: `SECURITY DEFINER` con `search_path` bloccato, perimetro nella WHERE (`script.fn_scope_ef_whitelist_via_listino_versione`), porta aperta attorno all'UPDATE e richiusa |
+| `20_code/vendite/20261029-09` | `fn_attiva_versione_listino`: il passo 4 diventa un ciclo sul lettore delle precedenti, una porta per versione; corpo di partenza il `-32`, uguale al vivo (md5 confrontato nella prova) |
+| CSV | `config.codici_errore` `E_LISTINO_VERSIONE_FINE_SOLO_DAL_VERBO` (`TECNICO`, come `E_DDT_LEGAME_EVASIONE_SOLO_DA_VERBO`); `config.messaggi_errore` id 1410 |
+
+Un codice nuovo invece di `E_LISTINO_VERSIONE_CAMPO_NON_MODIFICABILE`: il messaggio di quello dice «il campo non si
+può più cambiare», e la sua soluzione dice «di una versione attiva si cambia solo la fine». Per la fine di una ATTIVA
+sarebbero false tutte e due. `TECNICO`: se il backend passa dal verbo, nessuna interfaccia lo produce.
+
+**pgTAP:** `vendite/test-listino-versione-al-modello-v1`: la fine di V2 (prima dei casi 15-16) dal verbo «Chiudi» al
+posto dell'UPDATE diretto; il caso 11 (l'attivazione chiude V1) diventa il presidio della porta dell'attivazione.
+`vendite/test-fn-chiudi-clona-versione-listino-v1`: caso 17, l'UPDATE diretto della fine di una ATTIVA rifiutato
+(plan 17).
+
+**La prova (dbdev, come owner nel contesto dell'operatore, SQL estratto da `-01` … `-05` e `-07` … `-09` in una
+transazione annullata).** Tutti i casi come attesi:
+
+* il corpo del `-32` è il vivo; i due verbi `DEFINER` col `search_path` bloccato;
+* UPDATE diretto della fine di una ATTIVA, anche come proprietario: rifiutato col messaggio nuovo; con la porta
+  aperta su un'altra versione, rifiutato; codice e fine insieme: prima `E_LISTINO_VERSIONE_CAMPO_NON_MODIFICABILE`;
+  la fine di una BOZZA a mano passa; la stessa fine di una CHIUSA passa;
+* «Chiudi»: a ieri rifiuta; a oggi+30 scrive, e la porta torna chiusa (GUC vuota); la rimozione passa; la BOZZA
+  `NON_CHIUDIBILE`;
+* l'attivazione della BOZZA 140 chiude la ATTIVA 128 a `2026-06-02`, come l'anteprima, `versioni_chiuse = 1`, porta
+  richiusa.
+
+### 16.16 Richiesta al team BE e FE (elenco chiuso, dopo l'apply di `20261029-01` … `-05`)
+
+Si fa nello stesso passaggio di BE-E1 … FE-E1 (§16.13). C-4 = (a) (2026-10-29): la porta è scritta (`-07` … `-09`,
+§16.15), e il passaggio parte dopo il suo apply.
+
+| # | Lato | Che cosa |
+| --- | --- | --- |
+| BE-C1 | BE | `listini_repository.clone_versione` chiama `SELECT * FROM vendite.fn_clona_versione_listino(%s, %s, %s, %s)` (sorgente, codice, decorrenza, fine) al posto delle tre INSERT; la copia nel backend si ritira. In `fn_clone_versione` si ritira il controllo D2 (`E_VENDITE_VALIDATION`): lo dice il verbo con `E_LISTINO_VERSIONE_CLONE_PRIMA_DELLA_SORGENTE` sul campo `valido_dal`. La validazione dei campi obbligatori del payload resta. La risposta può portare `componenti_saltati` |
+| BE-C2 | BE | «Chiudi» e «Rimuovi chiusura» chiamano `SELECT * FROM vendite.fn_programma_chiusura_versione_listino(%s, %s)` (un'azione sua, non il PATCH generico). Il PATCH di `valido_al` su una ATTIVA lo rifiuta il DB (`E_LISTINO_VERSIONE_FINE_SOLO_DAL_VERBO`, C-4 = a): il backend non aggiunge nessuna regola di stato |
+| BE-C3 | BE | I codici nuovi da mappare: `E_LISTINO_VERSIONE_FINE_SOLO_DAL_VERBO` (`TECNICO`), `E_LISTINO_VERSIONE_NON_CHIUDIBILE` (`CONFLITTO_STATO`, 409), `E_LISTINO_VERSIONE_FINE_NEL_PASSATO` (`DATO_ERRATO`, campo `valido_al`), `E_LISTINO_VERSIONE_CLONE_PRIMA_DELLA_SORGENTE` (`DATO_ERRATO`, campo `valido_dal`). La lista delle versioni espone `chiusura_blocco_reason` / `_reason_key` da `vendite.vw_listini_versioni_azioni`. Il `min_valido_dal` dei form defaults del clone è una copia di D2: si ritira |
+| FE-C1 | FE | «Chiudi» si spegne dal registro (`CHIUDI_VERSIONE_LISTINO`), non più da `isAttiva`; il `:min-date="oggiAziendale()"` di `ChiudiVersioneDialog` si ritira: l'errore arriva dal DB sul campo `valido_al`. Chiave i18n nuova: `vendite.listini.azione_reason.versione_non_attiva`; messaggi per `fine_nel_passato` e `clone_prima_della_sorgente` |
+| FE-C2 | FE | «Clona» sempre acceso (C-1 = a): si ritira lo spegnimento `isBozza` del 2026-05-14 in `ListiniSearchTable.buildVersioneActions`. Il drawer può dire quanti componenti non sono stati copiati (`componenti_saltati`) |

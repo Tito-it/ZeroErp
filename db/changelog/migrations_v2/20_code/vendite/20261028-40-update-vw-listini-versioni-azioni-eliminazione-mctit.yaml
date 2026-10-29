@@ -1,0 +1,95 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'AZIONE DI RIGA «ELIMINA» DELLE VERSIONI DI LISTINO
+#   Brief: brief-modello-documento-vendita §16.11 (E-2 di Tid, 2026-10-28).
+#   Vista di partenza: 20261028-15, uguale alla viva.
+#
+# ── PERCHE' ─────────────────────────────────────────────────────────
+#   Il pulsante «Elimina» della lista delle versioni si accendeva nel
+#   frontend sullo stato (BOZZA), una copia della regola (R-L4 della
+#   revisione BE). Ora la regola e' script.fn_check_versione_listino_eliminabile
+#   (20261028-36) e il suo primo motivo si legge da qui: la riga
+#   ELIMINA_VERSIONE_LISTINO del registro config.azioni_riga (80_data) nomina
+#   questa vista e le due colonne nuove.
+#
+# ── CHE COSA CAMBIA ─────────────────────────────────────────────────
+#   Due colonne in coda, eliminazione_blocco_reason / _reason_key (NULL =
+#   niente vieta l'eliminazione). Le colonne di prima restano dove sono.
+#   ⛔ CREATE OR REPLACE VIEW azzera security_invoker: si riscrive nel WITH.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261028-40-update-vw-listini-versioni-azioni-eliminazione-mctit.yaml
+
+  - changeSet:
+      id: 20261028-40-update-vw-listini-versioni-azioni-eliminazione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.vw_listini_versioni_azioni: il motivo per cui «Elimina» e' spento
+        (script.fn_check_versione_listino_eliminabile), superficie dell'azione
+        ELIMINA_VERSIONE_LISTINO. Brief: brief-modello-documento-vendita §16.11 (E-2).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_check_versione_listino_eliminabile';
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_class c
+                JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+               WHERE n.nspname = 'vendite' AND c.relname = 'vw_listini_versioni_azioni';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_listini_versioni_azioni
+              WITH (security_invoker = true) AS
+              SELECT lv.id         AS versione_id,
+                     lv.listino_id,
+                     -- Il PRIMO motivo: il verbo e il guard sollevano quello.
+                     chk.motivi -> 0 ->> 'reason'     AS attivazione_blocco_reason,
+                     chk.motivi -> 0 ->> 'reason_key' AS attivazione_blocco_reason_key,
+                     eli.motivi -> 0 ->> 'reason'     AS eliminazione_blocco_reason,
+                     eli.motivi -> 0 ->> 'reason_key' AS eliminazione_blocco_reason_key
+                FROM vendite.listini_versioni lv
+                CROSS JOIN LATERAL (
+                    SELECT script.fn_check_versione_listino_attivabile(lv.id) AS motivi
+                ) chk
+                CROSS JOIN LATERAL (
+                    SELECT script.fn_check_versione_listino_eliminabile(lv.id) AS motivi
+                ) eli;
+
+              COMMENT ON VIEW vendite.vw_listini_versioni_azioni IS
+                  'Le AZIONI DI RIGA delle versioni di listino: una riga per versione (versione_id, listino_id). attivazione_blocco_reason / attivazione_blocco_reason_key: il PRIMO motivo di script.fn_check_versione_listino_attivabile (la stessa fn_check che vendite.fn_attiva_versione_listino e il guard di transizione sollevano; NULL = niente vieta l''attivazione). eliminazione_blocco_reason / eliminazione_blocco_reason_key: il PRIMO motivo di script.fn_check_versione_listino_eliminabile (la stessa che vendite.fn_elimina_versione_listino e il guard per stato sollevano: non in bozza, citata da un documento; NULL = si elimina). Lo stato non c''e'': chi puo'' attivare da quale stato lo dice la riga lista (script.fn_doc_azioni_permesse). E'' la superficie delle azioni ATTIVA_VERSIONE_LISTINO ed ELIMINA_VERSIONE_LISTINO nel registro config.azioni_riga. security_invoker: i soli listini del proprio perimetro. Si filtra per listino_id o versione_id. Prima i pulsanti si decidevano nel frontend (conteggio delle righe, stato). Brief: brief-modello-documento-vendita §16 (L-4) e §16.11 (E-2, Tid 2026-10-28).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Una vista non perde colonne con CREATE OR REPLACE: si ricrea quella del 20261028-15.
+              DROP VIEW IF EXISTS vendite.vw_listini_versioni_azioni;
+              CREATE VIEW vendite.vw_listini_versioni_azioni
+              WITH (security_invoker = true) AS
+              SELECT lv.id         AS versione_id,
+                     lv.listino_id,
+                     chk.motivi -> 0 ->> 'reason'     AS attivazione_blocco_reason,
+                     chk.motivi -> 0 ->> 'reason_key' AS attivazione_blocco_reason_key
+                FROM vendite.listini_versioni lv
+                CROSS JOIN LATERAL (
+                    SELECT script.fn_check_versione_listino_attivabile(lv.id) AS motivi
+                ) chk;
+              GRANT SELECT ON vendite.vw_listini_versioni_azioni TO zeroerp_app;
