@@ -177,8 +177,9 @@ chiave operativa; `sorgente_uid` è la chiave di integrazione cross-dominio.
 
 | Codice                              | Quando                                                            |
 | ----------------------------------- | ----------------------------------------------------------------- |
-| `E_PARAMETRO_INVALIDO`              | `p_offerta_id` NULL o <= 0; offerta non trovata.                  |
-| `E_OFFERTA_PUSH_STATO_NON_AMMESSO`  | Stato offerta diverso da `ACCETTATA`.                             |
+| `E_PARAMETRO_INVALIDO`              | `p_offerta_id` NULL o <= 0.                                       |
+| `E_OFFERTA_NON_TROVATA`             | L'offerta non c'è, o è fuori perimetro (404).                     |
+| `E_OFFERTA_PUSH_STATO_NON_AMMESSO`  | Lo stato dell'offerta non è quello di accettazione (`ACCETTATA`, colonna `accettazione` del vocabolario). |
 | `E_OFFERTA_CONTRATTO_GIA_GENERATO`  | Esiste già un contratto con `offerta_id = p_offerta_id`.          |
 | `E_OFFERTA_ORDINE_GIA_GENERATO`     | Esiste già un ordine generato dall'offerta (`documento_origine ('OFFERTA', p_offerta_id)`) — mutua esclusività contratto/ordine (rev6). |
 | `E_CONTRATTO_OVERLAP_ESISTENTE`     | Esiste un contratto attivo sovrapposto e `p_chiudi_contratto_esistente = false` (caso B), oppure conflitto residuo intercettato dal backstop. |

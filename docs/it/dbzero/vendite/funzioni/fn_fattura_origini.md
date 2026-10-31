@@ -125,7 +125,9 @@ BEGIN
             WITH RECURSIVE e AS (
                 SELECT l.from_tipo_id, l.from_uid, l.to_tipo_id, l.to_uid
                   FROM vendite.fn_documento_lineage(v_semi_t[i], v_semi_u[i], 'indietro') l
-                 WHERE l.arco <> 'G'
+                 -- Ne' G ne' V (rev 2026-10-31, 20261031-26): la revisione
+                 -- dell'offerta non e' un'origine, la superata non si cita.
+                 WHERE l.arco NOT IN ('G', 'V')
                    AND l.is_legame_ritirato IS NOT TRUE
             ), r(t, u, dist) AS (
                 SELECT v_semi_t[i], v_semi_u[i], 0
@@ -170,7 +172,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_fattura_origini(p_fattura_id bigint)
-IS 'Le ORIGINI di una fattura (D-G1 = c, Q-F6 = b, Q-F7): i documenti a monte che la fattura cita, di qualunque tipo — DDT, ordine, contratto, offerta, preventivo; per la nota di credito la fattura rettificata e il reso —, non la commessa, che per il cliente e'' un contenitore interno. Livello 1 = i genitori diretti della fattura nel lineage; l''arco G (commessa -> fattura), a grana di commessa, e'' sostituito dai documenti delle righe FATTURATE (la riga di commessa di ogni attivita'' fatturabile porta il suo documento, chiave <testata>.uid tradotta nella chiave del nodo con config.sorgenti.key_selector e un join alla tabella del documento). Poi la risalita del lineage all''indietro (vendite.fn_documento_lineage) da ogni documento di livello 1, solo per legami vivi e mai attraverso G: dalla fattura rettificata si tornerebbe alla commessa intera, e una fattura citata porta gia'' i suoi riferimenti. Tiene i soli tipi con config.sorgenti.citato_in_fattura: quali tipi si citano e'' un dato del registro. Ogni documento una volta, col livello piu'' vicino (P-3, l''unione); fuori gli annullati (stato abortito) e i documenti che chi legge non vede (INVOKER, come il lineage). Ordine: livello, tipo, codice. Una fattura senza documenti a monte risponde zero righe. La leggono la stampa e il dettaglio della fattura. Brief: brief-modello-documento-vendita §15.10, §15.11 (Tid 2026-10-27).';
+IS '⭐ rev 2026-10-31 (20261031-26, brief-modello-documento-vendita §17.7): la risalita non passa dall''arco V (la revisione dell''offerta), come non passa da G. Le ORIGINI di una fattura (D-G1 = c, Q-F6 = b, Q-F7): i documenti a monte che la fattura cita, di qualunque tipo — DDT, ordine, contratto, offerta, preventivo; per la nota di credito la fattura rettificata e il reso —, non la commessa, che per il cliente e'' un contenitore interno. Livello 1 = i genitori diretti della fattura nel lineage; l''arco G (commessa -> fattura), a grana di commessa, e'' sostituito dai documenti delle righe FATTURATE (la riga di commessa di ogni attivita'' fatturabile porta il suo documento, chiave <testata>.uid tradotta nella chiave del nodo con config.sorgenti.key_selector e un join alla tabella del documento). Poi la risalita del lineage all''indietro (vendite.fn_documento_lineage) da ogni documento di livello 1, solo per legami vivi e mai attraverso G: dalla fattura rettificata si tornerebbe alla commessa intera, e una fattura citata porta gia'' i suoi riferimenti. Tiene i soli tipi con config.sorgenti.citato_in_fattura: quali tipi si citano e'' un dato del registro. Ogni documento una volta, col livello piu'' vicino (P-3, l''unione); fuori gli annullati (stato abortito) e i documenti che chi legge non vede (INVOKER, come il lineage). Ordine: livello, tipo, codice. Una fattura senza documenti a monte risponde zero righe. La leggono la stampa e il dettaglio della fattura. Brief: brief-modello-documento-vendita §15.10, §15.11 (Tid 2026-10-27).';
 ```
 
 </div>

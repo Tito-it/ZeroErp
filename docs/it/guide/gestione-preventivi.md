@@ -1,6 +1,6 @@
 # Guida — Gestione Preventivi vendita
 
-> **Ultimo aggiornamento**: 25 ottobre 2026
+> **Ultimo aggiornamento**: 31 ottobre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend/frontend, DBA.
 >
@@ -445,8 +445,8 @@ ragione precisa.
 
 | Aspetto                                                         | **Preventivi**                                                                                        | **Offerte**                                                                                            |
 | --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| Cosa succede alla versione precedente quando nasce la revisione | **resta EMESSA/viva**; il sistema calcola "qual è la versione valida" senza chiudere la precedente    | passa **subito a SUPERATA** (stato chiuso e definitivo, imposto in automatico)                         |
-| Se abbandono/annullo la revisione appena iniziata               | la precedente **torna automaticamente la versione valida**: si può accettarla o revisionarla di nuovo | la precedente **resta chiusa** (SUPERATA): non torna indietro. Per riprovare si fa una nuova revisione |
+| Cosa succede alla versione precedente quando nasce la revisione | **resta EMESSA/viva**; il sistema calcola "qual è la versione valida" senza chiudere la precedente    | passa **subito a SUPERATA** (stato chiuso, imposto in automatico)                                   |
+| Se abbandono/annullo la revisione appena iniziata               | la precedente **torna automaticamente la versione valida**: si può accettarla o revisionarla di nuovo | se non resta un'altra revisione viva, la precedente **torna EMESSA**; l'annullo lo dice prima e si conferma ([guida offerte §4.4](gestione-offerte-commerciali.md#44-annullare-una-revisione)) |
 | Come nasce il concetto di "versione valida"                     | da un **calcolo** (`is_attiva`), non da uno stato dedicato                                            | dallo **stato** (SUPERATA/ANNULLATA = non valida)                                                      |
 
 Il preventivo **è lo stesso documento** (stesso numero, più revisioni) e il flusso
@@ -457,8 +457,8 @@ casi limite in §4.3). **Non** esiste uno stato "SUPERATO" sui preventivi propri
 perché chiuderebbe la precedente e romperebbe questo ritorno.
 
 L'offerta invece è un **documento a sé** per ogni revisione (OFC-… diversi in
-catena): chiudere la precedente non crea problemi, perché se serve si emette una
-nuova offerta. Dettaglio nella
+catena): la precedente si chiude come superata, e torna emessa solo se la
+revisione che l'ha superata si annulla. Dettaglio nella
 [guida offerte §4.3](gestione-offerte-commerciali.md).
 
 Sui cruscotti entrambi i modelli sono corretti: i preventivi escludono le

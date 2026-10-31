@@ -97,8 +97,9 @@ attive coi loro componenti e utility (1:1). Il pattern riusa concettualmente
 
 | Codice                                  | Quando                                                          |
 | --------------------------------------- | --------------------------------------------------------------- |
-| `E_PARAMETRO_INVALIDO`                  | `p_offerta_id` NULL o <= 0; offerta non trovata.                |
-| `E_OFFERTA_REVISIONE_STATO_NON_AMMESSO` | Stato corrente diverso da `EMESSA`.                             |
+| `E_PARAMETRO_INVALIDO`                  | `p_offerta_id` NULL o <= 0.                                     |
+| `E_OFFERTA_NON_TROVATA`                 | L'offerta non c'è, o è fuori perimetro (404; dal 31-10-2026, prima `E_PARAMETRO_INVALIDO`). |
+| `E_OFFERTA_REVISIONE_STATO_NON_AMMESSO` | Lo stato corrente non è quello di emissione (`EMESSA`, colonna `emissione` del vocabolario). |
 | `E_CONFIG_MANCANTE`                     | Stato `BOZZA` non trovato in `config.stati_doc_offerte`.        |
 
 ---

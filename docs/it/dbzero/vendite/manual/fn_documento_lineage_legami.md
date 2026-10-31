@@ -36,6 +36,7 @@ la funzione non conosce: «non so», mai «vivo».
 | R | bolla → reso | nessuna riga **attiva** del reso viene da una riga della bolla | ✅ sì: il reso in bozza perde le righe |
 | H | ordine → bolla | nessuna riga **attiva** della bolla evade una riga dell'ordine | calcolato, ma oggi solo col ritiro della bolla: una riga evasa non si spegne né si cancella |
 | C, D | offerta → contratto / ordine | — `false` | ⛔ no: il legame è solo di testata |
+| V | revisione d'offerta: madre → figlia (dal 31-10-2026) | — `false` | ⛔ no: il legame è solo di testata (`revisione_padre_id`) |
 | G, N, S, T | commessa → fattura, fattura → nota di credito, reso → fattura, reso → riconsegna | — `false` | ⛔ no: l'arco nasce dalle righe di legame e sparisce con loro |
 
 ⚠️ **Una riga EMESSA è viva.** Lì il documento è stato fatturato, e quella è

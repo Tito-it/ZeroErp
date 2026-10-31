@@ -58,6 +58,12 @@ deriva: cammino, frontiera, discendenti, «transitato», sorgenti e radice. Un
 arco non censito resta, come prima. Il pannello «Passaggi» lo mostra ancora,
 come storia.
 
+### 🔄 rev 2026-10-31 — la revisione dell'offerta non è un passaggio
+
+`20261031-25`. Nello stesso punto si scarta l'arco `V`, la revisione dell'offerta: una revisione
+superata non è «transitata» nella figlia, e la figlia non ha la madre per sorgente. La sintesi resta
+quella di prima; il pannello «Passaggi» mostra l'arco.
+
 Esempio: un preventivo evaso il cui ordine è stato annullato torna «non
 transitato». È giusto: si può smistare di nuovo.
 

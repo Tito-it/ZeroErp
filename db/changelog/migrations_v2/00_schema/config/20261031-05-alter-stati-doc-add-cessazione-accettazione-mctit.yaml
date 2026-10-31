@@ -1,0 +1,97 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL VOCABOLARIO DICE QUALE STATO E' LA CESSAZIONE E QUALE L'ACCETTAZIONE
+#   Brief: brief-modello-documento-vendita §17 (richieste 4-bis-nonies-octies
+#   e R-2 del §14.8; ok di Tid 2026-10-31).
+#
+# ── LA REGOLA ───────────────────────────────────────────────────────
+#   Il vocabolario degli stati dice gia' quale stato e' l'inizio (iniziale),
+#   l'emissione (emissione) e l'annullo (is_abortito). Non diceva due altri
+#   stati che il codice nomina per il loro significato, e non per la loro
+#   posizione in un passaggio:
+#   - la CESSAZIONE del contratto: lo stato in cui il contratto ha finito il
+#     suo corso (oggi CESSATO). La scrivono il verbo della cessazione e il
+#     job delle scadenze, la leggono la generazione dei canoni e il cruscotto;
+#   - l'ACCETTAZIONE di preventivo e offerta: lo stato in cui il cliente ha
+#     detto si' (oggi ACCETTATO, ACCETTATA). Da li' partono la push a
+#     commessa, la push a ordine, il passaggio a contratto.
+#   Tutti lo scrivevano come letterale, e il backend con loro
+#   (contratti_repository.STATO_CESSATO, preventivi_service, StatoOfferta).
+#
+# ── LE COLONNE ──────────────────────────────────────────────────────
+#   cessazione (contratti) e accettazione (preventivi, offerte): boolean NOT
+#   NULL DEFAULT false, al piu' una riga per vocabolario (indice unico
+#   parziale) e solo su uno stato attivo (CHECK), come emissione
+#   (20261025-37). Le leggono script.fn_stato_cessazione_id e
+#   script.fn_stato_accettazione_id, o il chiamante che ha gia' la riga del
+#   vocabolario in mano. I valori stanno nei CSV dei vocabolari (80_data),
+#   non qui (§11.2).
+#
+# ── DUE COLONNE, NON UNA ────────────────────────────────────────────
+#   Non sono lo stesso significato: l'accettazione non chiude il preventivo
+#   (da ACCETTATO si va a EVASO), la cessazione chiude il contratto. Una
+#   colonna sola («l'esito positivo») direbbe due cose diverse col nome di
+#   una. Ogni colonna sta solo sui vocabolari dove lo stato esiste: un
+#   vocabolario senza la colonna risponde NULL al suo lettore, come per
+#   emissione.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261031-05-alter-stati-doc-add-cessazione-accettazione-mctit.yaml
+
+  - changeSet:
+      id: 20261031-05-alter-stati-doc-add-cessazione-accettazione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Colonne cessazione (config.stati_doc_contratti) e accettazione (config.stati_doc_preventivi,
+        config.stati_doc_offerte), NOT NULL DEFAULT false, con un indice unico parziale (al massimo
+        uno stato per vocabolario) e il CHECK «e'' attivo». Valori dai CSV di 80_data. Brief:
+        brief-modello-documento-vendita §17.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists: { schemaName: config, tableName: stati_doc_contratti }
+            - tableExists: { schemaName: config, tableName: stati_doc_preventivi }
+            - tableExists: { schemaName: config, tableName: stati_doc_offerte }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.stati_doc_contratti
+                  ADD COLUMN cessazione BOOLEAN NOT NULL DEFAULT false,
+                  ADD CONSTRAINT chk_stati_doc_contratti_cessazione_attivo CHECK (NOT cessazione OR attivo);
+              ALTER TABLE config.stati_doc_preventivi
+                  ADD COLUMN accettazione BOOLEAN NOT NULL DEFAULT false,
+                  ADD CONSTRAINT chk_stati_doc_preventivi_accettazione_attivo CHECK (NOT accettazione OR attivo);
+              ALTER TABLE config.stati_doc_offerte
+                  ADD COLUMN accettazione BOOLEAN NOT NULL DEFAULT false,
+                  ADD CONSTRAINT chk_stati_doc_offerte_accettazione_attivo CHECK (NOT accettazione OR attivo);
+
+              CREATE UNIQUE INDEX uq_stati_doc_contratti_cessazione ON config.stati_doc_contratti (cessazione) WHERE cessazione;
+              CREATE UNIQUE INDEX uq_stati_doc_preventivi_accettazione ON config.stati_doc_preventivi (accettazione) WHERE accettazione;
+              CREATE UNIQUE INDEX uq_stati_doc_offerte_accettazione ON config.stati_doc_offerte (accettazione) WHERE accettazione;
+
+              COMMENT ON COLUMN config.stati_doc_contratti.cessazione IS
+                  'true = lo stato in cui il contratto e'' CESSATO: ha finito il suo corso, alla sua data di fine (valido_al). Ci arrivano il verbo della cessazione (vendite.fn_cessa_contratto) e il job delle scadenze (vendite.fn_cessa_contratti_scaduti); lo leggono la generazione dei canoni e il cruscotto della fatturazione. Al massimo uno per vocabolario (uq_stati_doc_contratti_cessazione) ed e'' attivo (chk_stati_doc_contratti_cessazione_attivo). Lo legge script.fn_stato_cessazione_id, non un letterale ''CESSATO''. Il valore sta nel CSV del vocabolario in 80_data. Brief: brief-modello-documento-vendita §17 (Tid, 2026-10-31).';
+              COMMENT ON COLUMN config.stati_doc_preventivi.accettazione IS
+                  'true = lo stato in cui il preventivo e'' ACCETTATO dal cliente: da qui partono la push a commessa e la push a ordine. Non chiude il documento (da li'' si va a EVASO). Al massimo uno per vocabolario (uq_stati_doc_preventivi_accettazione) ed e'' attivo (chk_stati_doc_preventivi_accettazione_attivo). Lo legge script.fn_stato_accettazione_id, non un letterale ''ACCETTATO''. Il valore sta nel CSV del vocabolario in 80_data. Brief: brief-modello-documento-vendita §17 (Tid, 2026-10-31).';
+              COMMENT ON COLUMN config.stati_doc_offerte.accettazione IS
+                  'true = lo stato in cui l''offerta e'' ACCETTATA dal cliente: da qui partono il passaggio a contratto e la generazione dell''ordine. Al massimo uno per vocabolario (uq_stati_doc_offerte_accettazione) ed e'' attivo (chk_stati_doc_offerte_accettazione_attivo). Lo legge script.fn_stato_accettazione_id, non un letterale ''ACCETTATA''. Il valore sta nel CSV del vocabolario in 80_data. Brief: brief-modello-documento-vendita §17 (Tid, 2026-10-31).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.stati_doc_contratti DROP COLUMN IF EXISTS cessazione;
+              ALTER TABLE config.stati_doc_preventivi DROP COLUMN IF EXISTS accettazione;
+              ALTER TABLE config.stati_doc_offerte DROP COLUMN IF EXISTS accettazione;

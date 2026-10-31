@@ -16,6 +16,8 @@ CREATE OR REPLACE FUNCTION vendite.fn_list_preventivi_da_pushare(p_competenza_me
  RETURNS TABLE(preventivo_id bigint, preventivo_uid uuid, riga_id bigint, billing_account_id bigint, utility_id integer, emittente_soggetto_ruolo_id bigint, competenza_dal date, competenza_al date, fatturazione_immediata boolean, sorgente_tipo_id bigint, sorgente_uid text, segment_key character varying, articolo_id uuid, istanza_utility_id bigint, data_attivita date, uom_id bigint, quantita numeric, qta_operativa numeric, uom_operativa_id bigint, factor_to_base numeric, competenza_mese date, prezzo_snapshot numeric, prezzo_bloccato boolean, pricing_mode character varying, tipo_movimento character varying, valuta_id integer, meta jsonb, tipo_doc_fiscale_id bigint, termine_pagamento_id bigint, modalita_pagamento_id integer)
  LANGUAGE plpgsql
 AS $function$
+-- rev 2026-10-31 (20261031-15, brief-modello-documento-vendita §17):
+--   lo stato di accettazione dal vocabolario, non 'ACCETTATO'.
 -- rev 2026-10-20 (20261020-93, brief-db-grammatica-unica-documenti, 2e G-8):
 --   la chiave e' PREVENTIVO:<uid>:R:<riga>, composta da
 --   script.fn_segment_key (era PREV:...). Firma e RETURNS ancorati.
@@ -105,18 +107,16 @@ BEGIN
     );
   END IF;
 
-  SELECT s.id INTO v_stato_accettato_id
-  FROM config.stati_doc_preventivi s
-  WHERE s.codice_interno = 'ACCETTATO' AND s.attivo IS TRUE LIMIT 1;
+  v_stato_accettato_id := script.fn_stato_accettazione_id('vendite.preventivi'::regclass);
 
   -- Senza lo stato il filtro non ha un valore: si ferma, come
   -- per la sorgente (rev 2026-10-10, D-2). Prima il filtro era
   -- `IS NULL OR` e cadeva: preventivi in qualunque stato.
   IF v_stato_accettato_id IS NULL THEN
     PERFORM script.fn_log_and_raise_error(
-      'vendite', 'fn_list_preventivi_da_pushare', 'E_CODICE',
-      jsonb_build_object('codice', 'ACCETTATO'),
-      NULL::uuid, 'ACCETTATO', 'config.stati_doc_preventivi'
+      'vendite', 'fn_list_preventivi_da_pushare', 'E_CONFIG_MANCANTE',
+      jsonb_build_object('config', 'config.stati_doc_preventivi.accettazione'),
+      NULL::uuid, 'stato di accettazione (config.stati_doc_preventivi.accettazione)'
     );
   END IF;
 
@@ -191,7 +191,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_list_preventivi_da_pushare(p_competenza_mese date, p_billing_account_id bigint, p_limit integer, p_preventivo_id bigint, p_righe_ids bigint[])
-IS 'Righe preventivo pronte per il push su commessa (stato ACCETTATO; predicato di riga dalla vista unica vw_preventivi_righe_smistabili_commessa). p_preventivo_id: push singolo UI-driven. p_righe_ids (rev 12-06-2026, brief smistamento): sottoinsieme righe del pannello, richiede p_preventivo_id (E_PUSH_RIGHE_IDS_SENZA_PREVENTIVO), righe non eleggibili skippate in silenzio (D5). NULL = batch invariato. rev 2026-06-28: sorgente/stato per codice_interno (analisi-hardcoded-codice §3a). Espone termine_pagamento_id del preventivo; modalita_pagamento_id e'' NULL perche'' i preventivi non la portano (rev 2026-08-03, T.1). rev 2026-10-10 (20261010-52): via il filtro di testata completa (billing_account_id, utility_id NOT NULL), che non toglieva niente: le due colonne sono NOT NULL dal 2026-10-08. Lo stato ACCETTATO assente dal catalogo solleva E_CODICE (config.stati_doc_preventivi) invece di far cadere il filtro di stato (prima `IS NULL OR`: preventivi in qualunque stato). Brief: brief-db-istanza-nasce-col-ba-residui (R-3, D-2). rev 2026-10-13 (20261013-23): tipo_consumo RITIRATO in tutta la catena del push (madre, batch, cinque lister, builder pgTAP). Non aveva un lettore, e il vocabolario della madre (ACCONTO/CONGUAGLIO/STORNO) non lo produceva nessuna sorgente con un significato: preventivi, ordini e DDT scrivevano la costante CONGUAGLIO, contratti (l''erogazione della riga) e consumi (CONSUMO) un valore che la madre rifiutava, quindi il loro push falliva sempre (E_PARAMETRO_INVALIDO). L''erogazione resta dove gia'' stava, in meta.tipo_erogazione. Decisione A di Tid, 2026-10-13. Colonna tipo_consumo tolta dal RETURNS TABLE (DROP + CREATE). Rev 2026-10-20 (20261020-93, brief-db-grammatica-unica-documenti 2e, G-8): la chiave e'' PREVENTIVO:<uid>:R:<riga>, composta da script.fn_segment_key (era PREV:...).';
+IS 'Righe preventivo pronte per il push su commessa (stato di accettazione, script.fn_stato_accettazione_id dal 2026-10-31, §17, oggi ACCETTATO; predicato di riga dalla vista unica vw_preventivi_righe_smistabili_commessa). p_preventivo_id: push singolo UI-driven. p_righe_ids (rev 12-06-2026, brief smistamento): sottoinsieme righe del pannello, richiede p_preventivo_id (E_PUSH_RIGHE_IDS_SENZA_PREVENTIVO), righe non eleggibili skippate in silenzio (D5). NULL = batch invariato. rev 2026-06-28: sorgente/stato per codice_interno (analisi-hardcoded-codice §3a). Espone termine_pagamento_id del preventivo; modalita_pagamento_id e'' NULL perche'' i preventivi non la portano (rev 2026-08-03, T.1). rev 2026-10-10 (20261010-52): via il filtro di testata completa (billing_account_id, utility_id NOT NULL), che non toglieva niente: le due colonne sono NOT NULL dal 2026-10-08. Lo stato ACCETTATO assente dal catalogo solleva E_CODICE (config.stati_doc_preventivi) invece di far cadere il filtro di stato (prima `IS NULL OR`: preventivi in qualunque stato). Brief: brief-db-istanza-nasce-col-ba-residui (R-3, D-2). rev 2026-10-13 (20261013-23): tipo_consumo RITIRATO in tutta la catena del push (madre, batch, cinque lister, builder pgTAP). Non aveva un lettore, e il vocabolario della madre (ACCONTO/CONGUAGLIO/STORNO) non lo produceva nessuna sorgente con un significato: preventivi, ordini e DDT scrivevano la costante CONGUAGLIO, contratti (l''erogazione della riga) e consumi (CONSUMO) un valore che la madre rifiutava, quindi il loro push falliva sempre (E_PARAMETRO_INVALIDO). L''erogazione resta dove gia'' stava, in meta.tipo_erogazione. Decisione A di Tid, 2026-10-13. Colonna tipo_consumo tolta dal RETURNS TABLE (DROP + CREATE). Rev 2026-10-20 (20261020-93, brief-db-grammatica-unica-documenti 2e, G-8): la chiave e'' PREVENTIVO:<uid>:R:<riga>, composta da script.fn_segment_key (era PREV:...).';
 ```
 
 </div>

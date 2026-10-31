@@ -51,7 +51,7 @@ search:
 - [modalita_addebito_trasporto](tabelle/modalita_addebito_trasporto.md) — * Centralizzare le **modalità di addebito del trasporto** utilizzabili nei DDT e nelle fatture. * Permettere una gestione coerente delle regole di **chi paga il trasporto** (mittente, destinatario, terzi) e di come questo impatta:
 - [modalita_pagamento](tabelle/modalita_pagamento.md) — * Definire un elenco **normalizzato e univoco** delle modalità di pagamento disponibili nel sistema. * Fornire un **codice interno stabile** (`codice`) utilizzabile in configurazioni, mapping e integrazioni. * Supportare la definizione di **regole di incasso** e gestionali (es. tracciabilità, obbligo di IBAN, circuiti bancari).
 - [modi_approvvigionamento](tabelle/modi_approvvigionamento.md) — (rev 2026-09-13 — nata con `20260913-04`, seminata da `20260913-09`)
-- [motivi_fermo](tabelle/motivi_fermo.md) — (latest review 06-07-2026) Vocabolario dei **motivi di fermo** della dashboard fatturazione (cruscotti a due lenti) con la **classe di azionabilità**: la gravità di un fermo non si deriva dallo stato grezzo del documento ma dal `motivo_fermo` che i resolver `vw_dash_fatturazione_*` già producono; la classe è una **mappatura statica** decisa dal dominio (decisione DL-6, Tid 2026-07-04), collocata qui DB-first.
+- [motivi_fermo](tabelle/motivi_fermo.md) — > **Ultimo aggiornamento**: 31 ottobre 2026
 - [nature_doc_fiscale](tabelle/nature_doc_fiscale.md) — (rev 2026-08-18)
 - [nature_vendita](tabelle/nature_vendita.md) — (rev 2026-08-21)
 - [nature_vendita_erogazioni](tabelle/nature_vendita_erogazioni.md)

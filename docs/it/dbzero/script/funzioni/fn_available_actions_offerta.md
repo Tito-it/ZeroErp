@@ -17,8 +17,9 @@ CREATE OR REPLACE FUNCTION script.fn_available_actions_offerta(p_offerta_id bigi
  LANGUAGE plpgsql
  STABLE
 AS $function$
-
-
+-- rev 2026-10-31 (20261031-20, brief-modello-documento-vendita §17):
+--   accettazione ed emissione dal vocabolario (accettazione, emissione),
+--   non 'ACCETTATA' ed 'EMESSA'.
 -- Scopo: capability offerta commerciale per detail API (data-driven,
 --   specchio di fn_available_actions_preventivo). push_contratto e
 --   genera_ordine mutuamente esclusive (ACCETTATA).
@@ -88,6 +89,9 @@ DECLARE
     -- motivi e chiavi i18n composti): nessuna colonna di cui siano il riflesso.
     v_stato_id    vendite.offerte_commerciali.stato_doc_offerta_id%TYPE;
     v_stato_cod   config.stati_doc_offerte.codice_interno%TYPE;
+    -- Lo stato di oggi e' l'accettazione? l'emissione? Dal vocabolario.
+    v_accettazione config.stati_doc_offerte.accettazione%TYPE;
+    v_emissione    config.stati_doc_offerte.emissione%TYPE;
     v_stato_info_key      text;
     v_pdf_mode    config.stati_doc_offerte.pdf_mode%TYPE;
     v_pdf_allow   config.stati_doc_offerte.pdf_allow_allegati%TYPE;
@@ -162,10 +166,12 @@ DECLARE
 BEGIN
     -- Stato corrente + versione listino + capability PDF.
     SELECT o.stato_doc_offerta_id, sdo.codice_interno,
+           sdo.accettazione, sdo.emissione,
            sdo.pdf_mode, sdo.pdf_allow_allegati,
            o.listino_id, o.listino_versione_id,
            sdo.meta->>'nessuna_azione_key'
-      INTO v_stato_id, v_stato_cod, v_pdf_mode, v_pdf_allow,
+      INTO v_stato_id, v_stato_cod, v_accettazione, v_emissione,
+           v_pdf_mode, v_pdf_allow,
            v_listino_id, v_listino_versione_id, v_stato_info_key
       FROM vendite.offerte_commerciali o
       JOIN config.stati_doc_offerte sdo ON sdo.id = o.stato_doc_offerta_id
@@ -244,7 +250,7 @@ BEGIN
         -- vocabolario (emissione, is_abortito), non il codice.
         SELECT CASE WHEN sa.emissione
                     THEN v_mot_emetti ELSE '[]'::jsonb END
-            || CASE WHEN sa.codice_interno = 'ACCETTATA'
+            || CASE WHEN sa.accettazione
                     THEN v_mot_prezzi ELSE '[]'::jsonb END
             || CASE WHEN sa.is_abortito
                     THEN v_mot_annulla ELSE '[]'::jsonb END AS motivi
@@ -252,7 +258,7 @@ BEGIN
     WHERE t.meta ? 'action_key'
       AND t.meta ? 'label_key';
 
-    v_can_rev := (v_stato_cod = 'EMESSA');
+    v_can_rev := v_emissione;
     -- «Crea revisione» (rev 2026-09-24): proposta da EMESSA, SPENTA col
     -- motivo se il documento ha un prezzo IN ATTESA — lo stesso
     -- script.fn_check_prezzi_in_attesa con cui la madre
@@ -280,7 +286,7 @@ BEGIN
       INTO v_has_contratto, v_has_ordine
       FROM vendite.fn_offerta_documenti_vivi(p_offerta_id) AS d;
 
-    v_enabled := (v_stato_cod = 'ACCETTATA'
+    v_enabled := (v_accettazione
                   AND NOT v_has_contratto
                   AND NOT v_has_ordine);
 

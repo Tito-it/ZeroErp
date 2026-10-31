@@ -1,0 +1,227 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL LEGAME DEGLI ARCHI: LA REVISIONE E' UN LEGAME DI SOLA TESTATA
+#   Brief: brief-modello-documento-vendita §17.7 e §18.
+#
+#   L'arco V (la revisione dell'offerta, 20261031-23) nasce da
+#   revisione_padre_id, una colonna della testata della figlia: come C e D non
+#   ha righe di legame da ritirare, quindi con i due nodi vivi non e' mai
+#   ritirato (false). Senza questa riga sarebbe «non censito» (NULL): il
+#   risultato per i lettori sarebbe lo stesso, ma il censimento arco per arco
+#   resta completo, come chiede la testata di 20261013-69. Il resto e'
+#   invariato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261031-24-update-fn-documento-lineage-legami-arco-revisione-mctit.yaml
+
+  - changeSet:
+      id: 20261031-24-update-fn-documento-lineage-legami-arco-revisione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_documento_lineage_legami: l'arco V (la revisione) e' un legame di sola testata,
+        mai ritirato con i due nodi vivi. Brief: brief-modello-documento-vendita §17.7.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE (n.nspname, p.proname) IN (('vendite', 'fn_documento_lineage_legami'));
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_documento_lineage_legami(
+                  -- ⚠️ Tipi nudi DICHIARATI: la lettera nasce in
+                  --   fn_documento_lineage_archi; tipi e chiavi sono quelle POLIMORFE
+                  --   dei nodi (config.sorgenti.id, chiave resa a text). Array
+                  --   paralleli, un arco per posizione.
+                  p_archi         text[],
+                  p_from_tipo_ids bigint[],
+                  p_from_uids     text[],
+                  p_to_tipo_ids   bigint[],
+                  p_to_uids       text[])
+              RETURNS TABLE(arco text, from_tipo_id bigint, from_uid text,
+                            to_tipo_id bigint, to_uid text, is_legame_ritirato boolean)
+              LANGUAGE sql
+              STABLE SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              SET jit TO 'off'
+              AS $function$
+                  -- Scopo: per ogni arco chiesto, il suo legame e' ritirato con i due
+                  --   nodi vivi? true / false; NULL per una lettera non censita.
+                  --   Il censimento, arco per arco, e' nell'intestazione del changeSet
+                  --   20261013-69 e nel COMMENT.
+                  WITH a AS (
+                      SELECT DISTINCT x.arco, x.ft, x.fu, x.tt, x.tu
+                        FROM unnest(p_archi, p_from_tipo_ids, p_from_uids,
+                                    p_to_tipo_ids, p_to_uids) AS x(arco, ft, fu, tt, tu)
+                  )
+                  SELECT a.arco, a.ft, a.fu, a.tt, a.tu,
+                         CASE
+                           -- Documento -> commessa: nessuna riga NON annullata di quel
+                           -- documento nella commessa. La chiave delle righe e'
+                           -- <testata>.uid::text (quella di vendite.fn_documento_legami).
+                           WHEN a.arco IN ('B', 'E', 'F', 'U') THEN NOT EXISTS (
+                             SELECT 1
+                               FROM vendite.commesse_attivita ca
+                              WHERE ca.commessa_id      = script.fn_sorgente_chiave_id(a.tu)
+                                AND ca.sorgente_tipo_id = a.ft
+                                AND ca.stato_emissione <> 'ANNULLATA'
+                                AND ca.sorgente_uid = CASE a.arco
+                                      WHEN 'B' THEN (SELECT p.uid::text FROM vendite.preventivi p
+                                                      WHERE p.uid = script.fn_sorgente_chiave_uuid(a.fu))
+                                      WHEN 'E' THEN (SELECT o.uid::text FROM vendite.ordini o
+                                                      WHERE o.id = script.fn_sorgente_chiave_id(a.fu))
+                                      WHEN 'F' THEN (SELECT c.uid::text FROM vendite.contratti c
+                                                      WHERE c.id = script.fn_sorgente_chiave_id(a.fu))
+                                      WHEN 'U' THEN (SELECT d.uid::text FROM vendite.ddt d
+                                                      WHERE d.id = script.fn_sorgente_chiave_id(a.fu))
+                                    END)
+                           -- Preventivo -> ordine: nessuna riga ATTIVA dell'ordine viene
+                           -- da una riga del preventivo.
+                           WHEN a.arco = 'A' THEN NOT EXISTS (
+                             SELECT 1
+                               FROM vendite.ordini_righe orr
+                               JOIN vendite.preventivi_righe pr ON pr.id = orr.preventivo_riga_id
+                               JOIN vendite.preventivi p        ON p.id  = pr.preventivo_id
+                              WHERE orr.ordine_id = script.fn_sorgente_chiave_id(a.tu)
+                                AND p.uid         = script.fn_sorgente_chiave_uuid(a.fu)
+                                AND orr.attivo)
+                           -- Ordine -> bolla: nessuna riga ATTIVA della bolla evade una
+                           -- riga dell'ordine.
+                           WHEN a.arco = 'H' THEN NOT EXISTS (
+                             SELECT 1
+                               FROM vendite.ordini_righe_fulfillment f
+                               JOIN vendite.ordini_righe orr ON orr.id = f.ordine_riga_id
+                               JOIN vendite.ddt_righe dr     ON dr.id  = f.ddt_riga_id
+                              WHERE orr.ordine_id = script.fn_sorgente_chiave_id(a.fu)
+                                AND dr.ddt_id     = script.fn_sorgente_chiave_id(a.tu)
+                                AND dr.attivo)
+                           -- Bolla -> reso: nessuna riga ATTIVA del reso viene da una riga
+                           -- della bolla.
+                           WHEN a.arco = 'R' THEN NOT EXISTS (
+                             SELECT 1
+                               FROM vendite.resi_righe rr
+                               JOIN vendite.ddt_righe dr ON dr.id = rr.ddt_riga_id
+                              WHERE rr.reso_id = script.fn_sorgente_chiave_id(a.tu)
+                                AND dr.ddt_id  = script.fn_sorgente_chiave_id(a.fu)
+                                AND rr.attivo)
+                           -- Legame solo di testata (C, D; V, la revisione dell'offerta,
+                           -- dal 2026-10-31), o arco che nasce dalle righe di legame e
+                           -- sparisce con loro (G, N, S, T): nessun ritiro con i due nodi vivi.
+                           WHEN a.arco IN ('C', 'D', 'G', 'N', 'S', 'T', 'V') THEN false
+                         END
+                    FROM a;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_documento_lineage_legami(text[], bigint[], text[], bigint[], text[]) IS
+                  '⭐ rev 2026-10-31 (20261031-24, brief-modello-documento-vendita §17.7): l''arco V (la revisione dell''offerta) e'' un legame di sola testata, come C e D: false. Decoratore SECURITY DEFINER degli ARCHI della lineage (2026-10-13, R-17/R-18 del BE, collaudo PRV0000144), gemello di vendite.fn_documento_lineage_nodi: i nodi danno lo stato, questo il LEGAME. Per ogni arco (array paralleli: lettera, tipo e chiave dei due estremi) dice se il legame e'' ritirato con i due nodi vivi: true / false; NULL per una lettera non censita («non so», non «vivo»). Censimento: B, E, F, U (documento -> commessa) ritirato se nella commessa non resta nessuna riga di quel documento con stato_emissione <> ANNULLATA — una riga EMESSA e'' viva; chiave delle righe <testata>.uid::text, quella di vendite.fn_documento_legami; commessa annullata -> true insieme a to_is_abortito. A (preventivo -> ordine) ritirato se nessuna riga ATTIVA dell''ordine viene da una riga del preventivo (bozza svuotata, o righe staccate all''annullo). H (ordine -> bolla) se nessuna riga ATTIVA della bolla evade una riga dell''ordine (ordini_righe_fulfillment): calcolato, ma oggi coincide con l''annullo della bolla, perche'' una riga evasa non si spegne ne'' si cancella. R (bolla -> reso) se nessuna riga ATTIVA del reso viene da una riga della bolla. C, D (offerta -> contratto/ordine): false, il legame e'' solo di testata. G, N, S, T: false per costruzione, l''arco nasce dalle righe di legame e sparisce con loro. ⛔ SECURITY DEFINER: righe di commessa, ordine, bolla e reso hanno la RLS, e righe vive fuori perimetro farebbero dire «ritirato» a torto; restituisce un booleano per un arco che chi legge ha gia''. Consumatore: vendite.fn_documento_lineage (colonna is_legame_ritirato).';
+
+              GRANT EXECUTE ON FUNCTION vendite.fn_documento_lineage_legami(text[], bigint[], text[], bigint[], text[]) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_documento_lineage_legami(
+                  -- ⚠️ Tipi nudi DICHIARATI: la lettera nasce in
+                  --   fn_documento_lineage_archi; tipi e chiavi sono quelle POLIMORFE
+                  --   dei nodi (config.sorgenti.id, chiave resa a text). Array
+                  --   paralleli, un arco per posizione.
+                  p_archi         text[],
+                  p_from_tipo_ids bigint[],
+                  p_from_uids     text[],
+                  p_to_tipo_ids   bigint[],
+                  p_to_uids       text[])
+              RETURNS TABLE(arco text, from_tipo_id bigint, from_uid text,
+                            to_tipo_id bigint, to_uid text, is_legame_ritirato boolean)
+              LANGUAGE sql
+              STABLE SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              SET jit TO 'off'
+              AS $function$
+                  -- Scopo: per ogni arco chiesto, il suo legame e' ritirato con i due
+                  --   nodi vivi? true / false; NULL per una lettera non censita.
+                  --   Il censimento, arco per arco, e' nell'intestazione del changeSet
+                  --   20261013-69 e nel COMMENT.
+                  WITH a AS (
+                      SELECT DISTINCT x.arco, x.ft, x.fu, x.tt, x.tu
+                        FROM unnest(p_archi, p_from_tipo_ids, p_from_uids,
+                                    p_to_tipo_ids, p_to_uids) AS x(arco, ft, fu, tt, tu)
+                  )
+                  SELECT a.arco, a.ft, a.fu, a.tt, a.tu,
+                         CASE
+                           -- Documento -> commessa: nessuna riga NON annullata di quel
+                           -- documento nella commessa. La chiave delle righe e'
+                           -- <testata>.uid::text (quella di vendite.fn_documento_legami).
+                           WHEN a.arco IN ('B', 'E', 'F', 'U') THEN NOT EXISTS (
+                             SELECT 1
+                               FROM vendite.commesse_attivita ca
+                              WHERE ca.commessa_id      = script.fn_sorgente_chiave_id(a.tu)
+                                AND ca.sorgente_tipo_id = a.ft
+                                AND ca.stato_emissione <> 'ANNULLATA'
+                                AND ca.sorgente_uid = CASE a.arco
+                                      WHEN 'B' THEN (SELECT p.uid::text FROM vendite.preventivi p
+                                                      WHERE p.uid = script.fn_sorgente_chiave_uuid(a.fu))
+                                      WHEN 'E' THEN (SELECT o.uid::text FROM vendite.ordini o
+                                                      WHERE o.id = script.fn_sorgente_chiave_id(a.fu))
+                                      WHEN 'F' THEN (SELECT c.uid::text FROM vendite.contratti c
+                                                      WHERE c.id = script.fn_sorgente_chiave_id(a.fu))
+                                      WHEN 'U' THEN (SELECT d.uid::text FROM vendite.ddt d
+                                                      WHERE d.id = script.fn_sorgente_chiave_id(a.fu))
+                                    END)
+                           -- Preventivo -> ordine: nessuna riga ATTIVA dell'ordine viene
+                           -- da una riga del preventivo.
+                           WHEN a.arco = 'A' THEN NOT EXISTS (
+                             SELECT 1
+                               FROM vendite.ordini_righe orr
+                               JOIN vendite.preventivi_righe pr ON pr.id = orr.preventivo_riga_id
+                               JOIN vendite.preventivi p        ON p.id  = pr.preventivo_id
+                              WHERE orr.ordine_id = script.fn_sorgente_chiave_id(a.tu)
+                                AND p.uid         = script.fn_sorgente_chiave_uuid(a.fu)
+                                AND orr.attivo)
+                           -- Ordine -> bolla: nessuna riga ATTIVA della bolla evade una
+                           -- riga dell'ordine.
+                           WHEN a.arco = 'H' THEN NOT EXISTS (
+                             SELECT 1
+                               FROM vendite.ordini_righe_fulfillment f
+                               JOIN vendite.ordini_righe orr ON orr.id = f.ordine_riga_id
+                               JOIN vendite.ddt_righe dr     ON dr.id  = f.ddt_riga_id
+                              WHERE orr.ordine_id = script.fn_sorgente_chiave_id(a.fu)
+                                AND dr.ddt_id     = script.fn_sorgente_chiave_id(a.tu)
+                                AND dr.attivo)
+                           -- Bolla -> reso: nessuna riga ATTIVA del reso viene da una riga
+                           -- della bolla.
+                           WHEN a.arco = 'R' THEN NOT EXISTS (
+                             SELECT 1
+                               FROM vendite.resi_righe rr
+                               JOIN vendite.ddt_righe dr ON dr.id = rr.ddt_riga_id
+                              WHERE rr.reso_id = script.fn_sorgente_chiave_id(a.tu)
+                                AND dr.ddt_id  = script.fn_sorgente_chiave_id(a.fu)
+                                AND rr.attivo)
+                           -- Legame solo di testata (C, D), o arco che nasce dalle righe di
+                           -- legame e sparisce con loro (G, N, S, T): nessun ritiro con i
+                           -- due nodi vivi.
+                           WHEN a.arco IN ('C', 'D', 'G', 'N', 'S', 'T') THEN false
+                         END
+                    FROM a;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_documento_lineage_legami(text[], bigint[], text[], bigint[], text[]) IS
+                  'Decoratore SECURITY DEFINER degli ARCHI della lineage (2026-10-13, R-17/R-18 del BE, collaudo PRV0000144), gemello di vendite.fn_documento_lineage_nodi: i nodi danno lo stato, questo il LEGAME. Per ogni arco (array paralleli: lettera, tipo e chiave dei due estremi) dice se il legame e'' ritirato con i due nodi vivi: true / false; NULL per una lettera non censita («non so», non «vivo»). Censimento: B, E, F, U (documento -> commessa) ritirato se nella commessa non resta nessuna riga di quel documento con stato_emissione <> ANNULLATA — una riga EMESSA e'' viva; chiave delle righe <testata>.uid::text, quella di vendite.fn_documento_legami; commessa annullata -> true insieme a to_is_abortito. A (preventivo -> ordine) ritirato se nessuna riga ATTIVA dell''ordine viene da una riga del preventivo (bozza svuotata, o righe staccate all''annullo). H (ordine -> bolla) se nessuna riga ATTIVA della bolla evade una riga dell''ordine (ordini_righe_fulfillment): calcolato, ma oggi coincide con l''annullo della bolla, perche'' una riga evasa non si spegne ne'' si cancella. R (bolla -> reso) se nessuna riga ATTIVA del reso viene da una riga della bolla. C, D (offerta -> contratto/ordine): false, il legame e'' solo di testata. G, N, S, T: false per costruzione, l''arco nasce dalle righe di legame e sparisce con loro. ⛔ SECURITY DEFINER: righe di commessa, ordine, bolla e reso hanno la RLS, e righe vive fuori perimetro farebbero dire «ritirato» a torto; restituisce un booleano per un arco che chi legge ha gia''. Consumatore: vendite.fn_documento_lineage (colonna is_legame_ritirato).';
+
+              GRANT EXECUTE ON FUNCTION vendite.fn_documento_lineage_legami(text[], bigint[], text[], bigint[], text[]) TO zeroerp_app;

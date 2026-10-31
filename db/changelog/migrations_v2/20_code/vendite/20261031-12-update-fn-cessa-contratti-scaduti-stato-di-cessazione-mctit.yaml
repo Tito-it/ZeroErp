@@ -1,0 +1,164 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA CESSAZIONE AUTOMATICA: LO STATO DI CESSAZIONE DAL VOCABOLARIO
+#   Brief: brief-modello-documento-vendita §17 (4-bis-nonies-octies, ok di
+#   Tid 2026-10-31).
+#
+#   Il job leggeva lo stato di emissione dal vocabolario e la cessazione dal
+#   letterale 'CESSATO' (20261026-07). Ora anche la cessazione viene dal
+#   vocabolario (cessazione, 20261031-05), con script.fn_stato_cessazione_id.
+#   Il resto e' invariato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261031-12-update-fn-cessa-contratti-scaduti-stato-di-cessazione-mctit.yaml
+
+  - changeSet:
+      id: 20261031-12-update-fn-cessa-contratti-scaduti-stato-di-cessazione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_cessa_contratti_scaduti: lo stato di cessazione dal lettore
+        script.fn_stato_cessazione_id; ritirato il letterale 'CESSATO'. Brief: brief-modello-
+        documento-vendita §17.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "2"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE (n.nspname, p.proname) IN (('script', 'fn_stato_cessazione_id'), ('vendite', 'fn_cessa_contratti_scaduti'));
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_cessa_contratti_scaduti()
+               RETURNS integer
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente     config.user_override_azioni.auth_user_id%TYPE;
+                  v_attivo_id  config.stati_doc_contratti.id%TYPE;
+                  v_cessato_id config.stati_doc_contratti.id%TYPE;
+                  v_id         vendite.contratti.id%TYPE;
+                  -- CONTEGGIO dei contratti cessati.
+                  v_n          integer := 0;
+              BEGIN
+                  -- ==========================================================
+                  -- Scopo: cessare i contratti attivi scaduti del perimetro.
+                  --   Vedi l'intestazione del changeSet.
+                  --   rev 2026-10-31 (20261031-12, brief-modello-documento-vendita §17): anche lo
+                  --   stato di cessazione dal vocabolario, non 'CESSATO'.
+                  -- Ritorna: quanti contratti sono stati cessati.
+                  -- ==========================================================
+                  v_utente     := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  v_attivo_id  := script.fn_stato_emissione_id('vendite.contratti'::regclass);
+                  v_cessato_id := script.fn_stato_cessazione_id('vendite.contratti'::regclass);
+
+                  IF v_attivo_id IS NULL OR v_cessato_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_cessa_contratti_scaduti',
+                          'E_CONFIG_MANCANTE',
+                          jsonb_build_object('config', 'config.stati_doc_contratti',
+                                             'attivo_id', v_attivo_id, 'cessato_id', v_cessato_id),
+                          NULL::uuid, 'stato di emissione e di cessazione (config.stati_doc_contratti)');
+                  END IF;
+
+                  FOR v_id IN
+                      SELECT c.id
+                        FROM vendite.contratti c
+                       WHERE c.stato_doc_contratto_id = v_attivo_id
+                         AND c.valido_al IS NOT NULL
+                         AND c.valido_al < (SELECT script.fn_data_operativa())
+                         AND script.fn_scope_ef_whitelist_via_contratto(v_utente, c.id)
+                       ORDER BY c.id
+                         FOR UPDATE OF c
+                  LOOP
+                      PERFORM script.fn_doc_scrivi_stato('vendite.contratti'::regclass, v_id, v_cessato_id);
+                      v_n := v_n + 1;
+                  END LOOP;
+
+                  RETURN v_n;
+              END;
+              $function$;
+
+              -- DEFINER: EXECUTE solo all'applicazione (il drenatore della coda gira come lei).
+              REVOKE EXECUTE ON FUNCTION vendite.fn_cessa_contratti_scaduti() FROM PUBLIC;
+              GRANT EXECUTE ON FUNCTION vendite.fn_cessa_contratti_scaduti() TO zeroerp_app;
+
+              COMMENT ON FUNCTION vendite.fn_cessa_contratti_scaduti()
+                IS 'VERBO della cessazione automatica dei contratti (brief-modello-documento-vendita §11, Y-2 di Tid 2026-10-26): i contratti nello stato di emissione (ATTIVO, script.fn_stato_emissione_id) con valido_al passata (< script.fn_data_operativa()), nel perimetro dell''utente della sessione (script.fn_scope_ef_whitelist_via_contratto: DEFINER, la RLS non c''e''), presi FOR UPDATE, passano allo stato di cessazione (script.fn_stato_cessazione_id, dal 2026-10-31, §17; oggi CESSATO) dalla scrittura comune (script.fn_doc_scrivi_stato, attraverso la porta; il guard di transizione giudica matrice e data arrivata). Passaggio di processo per causa (la data): niente prima riga. Nessun parametro: cessa solo cio'' che la chiusura per scadenza cesserebbe. La chiama dbops.fn_apply_chiusura_scadenze per il bersaglio vendite.contratti (sotto la porta). Prende il posto dell''UPDATE dinamico del framework e della GUC app.cessazione_automatica. Ritorna quanti contratti ha cessato. EXECUTE solo all''applicazione.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_cessa_contratti_scaduti()
+               RETURNS integer
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente     config.user_override_azioni.auth_user_id%TYPE;
+                  v_attivo_id  config.stati_doc_contratti.id%TYPE;
+                  v_cessato_id config.stati_doc_contratti.id%TYPE;
+                  v_id         vendite.contratti.id%TYPE;
+                  -- CONTEGGIO dei contratti cessati.
+                  v_n          integer := 0;
+              BEGIN
+                  -- ==========================================================
+                  -- Scopo: cessare i contratti attivi scaduti del perimetro.
+                  --   Vedi l'intestazione del changeSet.
+                  -- Ritorna: quanti contratti sono stati cessati.
+                  -- ==========================================================
+                  v_utente     := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  v_attivo_id  := script.fn_stato_emissione_id('vendite.contratti'::regclass);
+                  v_cessato_id := script.fn_doc_stato_id('vendite.contratti'::regclass, 'CESSATO');
+
+                  IF v_attivo_id IS NULL OR v_cessato_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_cessa_contratti_scaduti',
+                          'E_CONFIG_MANCANTE',
+                          jsonb_build_object('config', 'config.stati_doc_contratti',
+                                             'attivo_id', v_attivo_id, 'cessato_id', v_cessato_id),
+                          NULL::uuid, 'stato di emissione e CESSATO (config.stati_doc_contratti)');
+                  END IF;
+
+                  FOR v_id IN
+                      SELECT c.id
+                        FROM vendite.contratti c
+                       WHERE c.stato_doc_contratto_id = v_attivo_id
+                         AND c.valido_al IS NOT NULL
+                         AND c.valido_al < (SELECT script.fn_data_operativa())
+                         AND script.fn_scope_ef_whitelist_via_contratto(v_utente, c.id)
+                       ORDER BY c.id
+                         FOR UPDATE OF c
+                  LOOP
+                      PERFORM script.fn_doc_scrivi_stato('vendite.contratti'::regclass, v_id, v_cessato_id);
+                      v_n := v_n + 1;
+                  END LOOP;
+
+                  RETURN v_n;
+              END;
+              $function$;
+
+              -- DEFINER: EXECUTE solo all'applicazione (il drenatore della coda gira come lei).
+              REVOKE EXECUTE ON FUNCTION vendite.fn_cessa_contratti_scaduti() FROM PUBLIC;
+              GRANT EXECUTE ON FUNCTION vendite.fn_cessa_contratti_scaduti() TO zeroerp_app;
+
+              COMMENT ON FUNCTION vendite.fn_cessa_contratti_scaduti()
+                IS 'VERBO della cessazione automatica dei contratti (brief-modello-documento-vendita §11, Y-2 di Tid 2026-10-26): i contratti nello stato di emissione (ATTIVO, script.fn_stato_emissione_id) con valido_al passata (< script.fn_data_operativa()), nel perimetro dell''utente della sessione (script.fn_scope_ef_whitelist_via_contratto: DEFINER, la RLS non c''e''), presi FOR UPDATE, passano a CESSATO dalla scrittura comune (script.fn_doc_scrivi_stato, attraverso la porta; il guard di transizione giudica matrice e data arrivata). Passaggio di processo per causa (la data): niente prima riga. Nessun parametro: cessa solo cio'' che la chiusura per scadenza cesserebbe. La chiama dbops.fn_apply_chiusura_scadenze per il bersaglio vendite.contratti (sotto la porta). Prende il posto dell''UPDATE dinamico del framework e della GUC app.cessazione_automatica. Ritorna quanti contratti ha cessato. EXECUTE solo all''applicazione.';

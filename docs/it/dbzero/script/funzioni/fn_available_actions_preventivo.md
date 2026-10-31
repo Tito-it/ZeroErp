@@ -17,6 +17,9 @@ CREATE OR REPLACE FUNCTION script.fn_available_actions_preventivo(p_preventivo_i
  LANGUAGE plpgsql
  STABLE
 AS $function$
+-- rev 2026-10-31 (20261031-19, brief-modello-documento-vendita §17):
+--   accettazione, annullo ed emissione dal vocabolario (accettazione,
+--   is_abortito, emissione), non 'ACCETTATO', 'ANNULLATO', 'EMESSO'.
 -- Scopo: capability preventivo per detail API (pattern data-driven).
 --   rev 2026-07-11: + blocco pdf {mode, allow_allegati} da
 --   config.stati_doc_preventivi (bottone PDF data-driven via capabilities).
@@ -96,6 +99,9 @@ DECLARE
     -- accettato" da "chiuso", che il solo codice_interno
     -- confondeva in un unico ramo per negazione.
     v_fase              config.stati_doc_preventivi.fase%TYPE;
+    -- Lo stato di oggi e' l'accettazione? l'emissione? Dal vocabolario.
+    v_accettazione      config.stati_doc_preventivi.accettazione%TYPE;
+    v_emissione         config.stati_doc_preventivi.emissione%TYPE;
     v_pdf_mode          config.stati_doc_preventivi.pdf_mode%TYPE;
     v_pdf_allow         config.stati_doc_preventivi.pdf_allow_allegati%TYPE;
     v_stato_info_key       text;
@@ -172,6 +178,7 @@ BEGIN
     -- (pdf_mode/allow_allegati) + la chiave "nessuna azione"
     -- dello stato (dato, non codice).
     SELECT p.stato_doc_preventivo_id, sdp.codice_interno, sdp.fase,
+           sdp.accettazione, sdp.emissione,
            sdp.pdf_mode, sdp.pdf_allow_allegati,
            -- ⚠️ La PROPRIETA' nel meta resta `nessuna_azione_key` mentre il
            -- campo del blob si chiama ora `stato_info_key`. L'asimmetria e'
@@ -179,6 +186,7 @@ BEGIN
            -- i18n si aggancia a QUESTO nome.
            sdp.meta->>'nessuna_azione_key'
       INTO v_stato_id, v_stato_cod, v_fase,
+           v_accettazione, v_emissione,
            v_pdf_mode, v_pdf_allow, v_stato_info_key
       FROM vendite.preventivi p
       JOIN config.stati_doc_preventivi sdp ON sdp.id = p.stato_doc_preventivo_id
@@ -249,12 +257,12 @@ BEGIN
     -- generico "documento vuoto"; il primo e' quello che il FE
     -- mostra nel caso singolare.
     CROSS JOIN LATERAL (
-        SELECT CASE WHEN sa.codice_interno = 'ANNULLATO'
+        SELECT CASE WHEN sa.is_abortito
                     THEN v_mot_annulla ELSE '[]'::jsonb END
             -- Lo stato di emissione dal vocabolario (rev 2026-10-25).
             || CASE WHEN sa.emissione
                     THEN v_mot_emetti ELSE '[]'::jsonb END
-            || CASE WHEN sa.codice_interno = 'ACCETTATO'
+            || CASE WHEN sa.accettazione
                     THEN v_mot_accetta ELSE '[]'::jsonb END
             || CASE WHEN COALESCE((t.meta->>'requires_righe')::boolean, false)
                          AND NOT v_ha_righe
@@ -264,12 +272,12 @@ BEGIN
       AND t.meta ? 'label_key';
 
     v_can_edit := (v_stato_cod = 'DRAFT');
-    v_can_rev  := (v_stato_cod = 'EMESSO');
+    v_can_rev  := v_emissione;
 
-    v_can_push := (v_stato_cod = 'ACCETTATO')
+    v_can_push := v_accettazione
         AND vendite.fn_preventivo_ha_residuo_commessa(p_preventivo_id);
 
-    v_can_ordine := (v_stato_cod = 'ACCETTATO')
+    v_can_ordine := v_accettazione
         AND vendite.fn_preventivo_ha_residuo_ordine(p_preventivo_id);
 
     -- «Crea revisione» (rev 2026-09-24): proposta da EMESSO, SPENTA col
@@ -300,7 +308,7 @@ BEGIN
 
     -- Motivo del push a commessa. ⚠️ L'ORDINE DEI RAMI E'
     -- PORTANTE: "chiuso" viene prima di "non accettato".
-    -- `v_stato_cod <> 'ACCETTATO'` copre per negazione due
+    -- `NOT v_accettazione` copre per negazione due
     -- situazioni opposte — prima dell'accettazione la frase
     -- «sara' disponibile dopo l'accettazione» istruisce, dopo o
     -- fuori mente (l'EVASO e' evaso PERCHE' e' stato accettato e
@@ -313,7 +321,7 @@ BEGIN
     ELSIF v_fase = 'CHIUSO' THEN
         v_push_reason     := 'PREVENTIVO_STATO_CHIUSO';
         v_push_reason_key := 'vendite.preventivi.push_commessa_reason.stato_chiuso';
-    ELSIF v_stato_cod <> 'ACCETTATO' THEN
+    ELSIF NOT v_accettazione THEN
         v_push_reason     := 'PREVENTIVO_NON_ACCETTATO';
         v_push_reason_key := 'vendite.preventivi.push_commessa_reason.non_accettato';
     ELSE
@@ -329,7 +337,7 @@ BEGIN
     ELSIF v_fase = 'CHIUSO' THEN
         v_ordine_reason     := 'PREVENTIVO_STATO_CHIUSO';
         v_ordine_reason_key := 'vendite.preventivi.genera_ordine_reason.stato_chiuso';
-    ELSIF v_stato_cod <> 'ACCETTATO' THEN
+    ELSIF NOT v_accettazione THEN
         v_ordine_reason     := 'PREVENTIVO_NON_ACCETTATO';
         v_ordine_reason_key := 'vendite.preventivi.genera_ordine_reason.non_accettato';
     ELSE

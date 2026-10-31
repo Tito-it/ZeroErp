@@ -58,6 +58,9 @@ databaseChangeLog:
                         # 2026-10-25 (20261025-37, brief-modello-documento-vendita §8): lo stato di
                         # emissione. Va dichiarata qui, o la cella del CSV non la governa.
                         - column: { name: emissione, type: BOOLEAN }
+                        # 2026-10-31 (20261031-05, brief-modello-documento-vendita §17): lo stato di
+                        # accettazione del cliente. Va dichiarata qui, o la cella del CSV non la governa.
+                        - column: { name: accettazione, type: BOOLEAN }
 
     - changeSet:
           id: 20250917-90-upsert-stati_doc_preventivi

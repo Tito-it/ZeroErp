@@ -12,8 +12,13 @@
 (rev 2026-10-11)
 
 I **passaggi** fra documenti — preventivo → ordine → DDT → commessa → fattura,
-offerta → contratto, resi, note di credito: i 13 tipi di arco — **per i soli
+offerta → contratto, resi, note di credito: i 14 tipi di arco — **per i soli
 documenti che si chiedono**, non per tutti.
+
+**La revisione dell'offerta** (arco `V`, dal 31-10-2026) va dalla revisione madre alla figlia. Non è
+un passaggio di un documento a un altro: la mostra il pannello «Passaggi» (e da lì la finestra
+dell'annullo di una revisione prende il nome di quella che torna emessa), ma non ha rango e la
+scartano la [sintesi](fn_documento_lineage_sintesi.md) e le [origini della fattura](fn_fattura_origini.md).
 
 La vista [`vw_documento_lineage_archi`](vw_documento_lineage_archi.md) costruisce
 il grafo **intero**: chi voleva i passaggi di un documento pagava quelli di tutti
