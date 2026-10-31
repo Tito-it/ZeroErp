@@ -2,21 +2,20 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-31
 
-**Riparte: Tid**, con la decisione E-1 (§4): la scadenza la scrive un processo del database, oppure SCADUTO
-esce dal modello del preventivo. Nessuno sviluppo prima del via. **Prima di decidere leggere il §6**: il
-2026-10-31 il brief è stato riverificato, e il framework delle chiusure per scadenza nato il 2026-10-28 cambia
-la forma dell'opzione (a) e la domanda E-3.
+**Riparte: Tid**, col via allo sviluppo. Le decisioni sono prese (E-1 a, E-2 guard, E-3 ii: §7); il giro
+è scritto nel §6.5. Nessuno sviluppo prima del via.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
 | 1 | ✅ team DB | Il caso, i fatti, le domande | §1-§4 | — |
 | 2 | ✅ team DB | Riverifica contro i giri 13-16 del modello (2026-10-31) | §6 | 1 |
-| 3 | **Tid** ⏭️ | E-1 … E-3 | §4, §6 | 2 |
-| 4 | team DB | Il giro, dopo il via | §5 | 3 |
-| 5 | team BE/FE | Solo se E-1 tocca l'interfaccia (lo stato in lista, un filtro) | — | 4 |
+| 3 | ✅ Tid | E-1 … E-3, decise il 2026-10-31 | §7 | 2 |
+| 4 | **Tid** ⏭️ | Il via allo sviluppo | — | 3 |
+| 5 | team DB | Il giro | §6.5, §7 | 4 |
+| 6 | team BE/FE | La revisione da SCADUTO e il rifiuto per data arrivano all'interfaccia (§7) | — | 5 |
 
-Decisioni aperte di Tid: E-1 … E-3. Lavoro da committare: la riverifica del §6 (il brief del 2026-10-25 è
-già committato).
+Decisioni aperte di Tid: nessuna; manca il via allo sviluppo. Lavoro da committare: la riverifica del §6 e
+le decisioni del §7 (il brief del 2026-10-25 è già committato).
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-25. **A chi:** Tid, poi il team DB.
 > **Origine:** W-3 di [brief-modello-documento-vendita](../work-done/brief-modello-documento-vendita.md) §8.12 (debito X-2,
@@ -59,7 +58,8 @@ emesso con la validità superata resta EMESSO, e si può ancora accettare.
 
 ## 4. Decisioni per Tid
 
-⚠️ *La forma di (a) in E-1 e il presupposto di E-3 sono corretti nel §6.2 e nel §6.4.*
+⚠️ *La forma di (a) in E-1 e il presupposto di E-3 sono corretti nel §6.2 e nel §6.4. ✅ Decise da Tid il
+2026-10-31: §7.*
 
 * **E-1. Chi scrive la scadenza.** (a) un processo del database (job pgAgent giornaliero) che porta in SCADUTO
   i preventivi EMESSI con `validita_al` superata, con un verbo di processo; (b) SCADUTO esce dal modello: la
@@ -152,7 +152,7 @@ data» urta il lock: `validita_al` è ferma fuori bozza (`trg_preventivi_a05_loc
 * **(iii)** un passaggio SCADUTO → EMESSO, che chiede di riaprire `validita_al` fuori bozza: rompe il lock
   delle condizioni, **sconsigliato**.
 
-Consiglio (ii), da confermare: è la strada che già esiste per riproporre un EMESSO, e così la scadenza non
+Consiglio (ii) (✅ decisa da Tid il 2026-10-31, §7): è la strada che già esiste per riproporre un EMESSO, e così la scadenza non
 toglie all'operatore una strada che il preventivo «scaduto per data» oggi ha.
 
 ### 6.5 Il giro, con (a)
@@ -162,3 +162,22 @@ chiusura, gemello di `fn_cessa_contratti_scaduti`; il guard di E-2, se deciso; l
 E-3 (ii); pgTAP che costruiscono il caso (preventivo EMESSO con `validita_al` di ieri, di oggi, NULL) e il
 `dbops/test-fn-apply-chiusura-scadenze-v1` portato alla terza riga; guida dei preventivi §3.1 (tabella degli
 stati) e pagine manuali del framework.
+
+## 7. Decisioni di Tid (2026-10-31)
+
+✅ **Decise da Tid il 2026-10-31: E-1 (a), E-2 si rifiuta, E-3 (ii). Il via allo sviluppo non è ancora
+dato.**
+
+* **E-1 = (a).** SCADUTO resta uno stato scritto, da un processo del database: la terza riga di
+  `dbops.automazione_chiusura_scadenze` (`classe = DOMINIO`) e il verbo di chiusura del preventivo, gemello di
+  `fn_cessa_contratti_scaduti` (§6.2). Completa il modello attuale, non lo revoca.
+* **E-2 = si rifiuta anche per data.** L'accettazione (EMESSO → ACCETTATO) di un preventivo con
+  `validita_al < script.fn_data_operativa()` si rifiuta nel guard di transizione, così la regola non dipende
+  dall'ora del job. Stesso confronto del framework (§6.3.3): il giorno di `validita_al` è ancora valido;
+  `validita_al` NULL non scade mai. Codice d'errore nuovo, da registrare (nome da fissare nel giro, es.
+  `E_PREVENTIVO_VALIDITA_SCADUTA`). Ricaduta BE: il codice nella tassonomia degli errori.
+* **E-3 = (ii).** La revisione si apre anche da SCADUTO: `fn_crea_revisione_preventivo` ammette EMESSO e
+  SCADUTO. Nel giro si fissa se la regola si legge dal vocabolario invece che dai letterali, e cosa succede
+  allo SCADUTO di origine (oggi la revisione da EMESSO lo supera: lo stesso trattamento, da verificare sul
+  corpo). La nuova revisione nasce in bozza, con `validita_al` di nuovo modificabile. Ricaduta BE/FE: l'azione
+  «Crea revisione» visibile anche su uno SCADUTO.
