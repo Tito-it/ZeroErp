@@ -244,8 +244,11 @@ search:
 - [fn_sorgente_chiave_uuid](manual/fn_sorgente_chiave_uuid.md) — (scritta il 05-10-2026)
 - [fn_sqlstate_di_ambiente](manual/fn_sqlstate_di_ambiente.md) — (latest review 16-10-2026)
 - [fn_stato_abortito_id](manual/fn_stato_abortito_id.md)
+- [fn_stato_accettazione_id](manual/fn_stato_accettazione_id.md)
+- [fn_stato_cessazione_id](manual/fn_stato_cessazione_id.md)
 - [fn_stato_emissione_id](manual/fn_stato_emissione_id.md)
 - [fn_stato_id_da_iso2](manual/fn_stato_id_da_iso2.md) — (18-10-2026 — decisione D-1 di Tid)
+- [fn_stato_per_colonna_id](manual/fn_stato_per_colonna_id.md)
 - [fn_stato_proposto_id](manual/fn_stato_proposto_id.md) — (18-10-2026 — decisione D-1 di Tid, richiesta del backend in `brief-db-processi-accensione-per-ambiente` §6.11)
 - [fn_stato_veste](manual/fn_stato_veste.md)
 - [fn_subentro_cliente](manual/fn_subentro_cliente.md) — (latest review 01-03-26)
@@ -293,7 +296,7 @@ search:
 - [trgfn_notify_permessi_catalogo](manual/trgfn_notify_permessi_catalogo.md) — (scritta il 04-10-2026)
 - [trgfn_prevent_modification_generic](manual/trgfn_prevent_modification_generic.md) — * **Proteggere dati di audit**   Garantire l’inalterabilità delle cronologie storiche registrate in tabelle dedicate (es. `config.parameters_audit`). * **Centralizzare la gestione degli errori**   Usare un wrapper di logging e exception unificato per fornire messaggi coerenti e tracce in log.
 - [trgfn_qta_from_operativa](manual/trgfn_qta_from_operativa.md) — Calcolare e garantire la **coerenza della quantità in UoM base (`NEW.qta`)** a partire dalla **sorgente operativa** (`NEW.uom_operativa_id`, `NEW.qta_operativa`) sulle righe documentali (es. `vendite.ddt_righe`). La funzione:
-- [trgfn_righe_default_fonte_qta](manual/trgfn_righe_default_fonte_qta.md) — (rev 2026-08-21)
+- [trgfn_righe_default_fonte_qta](manual/trgfn_righe_default_fonte_qta.md) — > **Ultimo aggiornamento**: 31 ottobre 2026
 - [trgfn_righe_guard_articolo_ammesso](manual/trgfn_righe_guard_articolo_ammesso.md) — (latest review 2026-10-14, brief-db-articoli-ammessi-per-documento A-2, A-6, D-6; Lotti 3b e 3c, `20261013-56/-57/-61`; Lotto 4, `20261014-05`: la promo)
 - [trgfn_righe_guard_erogazione_obbligatoria](manual/trgfn_righe_guard_erogazione_obbligatoria.md) — (funzione nata il 2026-10-04, `20261004-31`; trigger `20261004-32`)
 - [trgfn_righe_guard_esclusione_immutabile](manual/trgfn_righe_guard_esclusione_immutabile.md) — (funzione nata il 2026-10-04, `20261004-46`; trigger `20261004-48` e `-49`)

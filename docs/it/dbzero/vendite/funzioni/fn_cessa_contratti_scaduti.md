@@ -29,11 +29,13 @@ BEGIN
     -- ==========================================================
     -- Scopo: cessare i contratti attivi scaduti del perimetro.
     --   Vedi l'intestazione del changeSet.
+    --   rev 2026-10-31 (20261031-12, brief-modello-documento-vendita §17): anche lo
+    --   stato di cessazione dal vocabolario, non 'CESSATO'.
     -- Ritorna: quanti contratti sono stati cessati.
     -- ==========================================================
     v_utente     := NULLIF(current_setting('app.current_user_id', true), '')::integer;
     v_attivo_id  := script.fn_stato_emissione_id('vendite.contratti'::regclass);
-    v_cessato_id := script.fn_doc_stato_id('vendite.contratti'::regclass, 'CESSATO');
+    v_cessato_id := script.fn_stato_cessazione_id('vendite.contratti'::regclass);
 
     IF v_attivo_id IS NULL OR v_cessato_id IS NULL THEN
         PERFORM script.fn_log_and_raise_error(
@@ -41,7 +43,7 @@ BEGIN
             'E_CONFIG_MANCANTE',
             jsonb_build_object('config', 'config.stati_doc_contratti',
                                'attivo_id', v_attivo_id, 'cessato_id', v_cessato_id),
-            NULL::uuid, 'stato di emissione e CESSATO (config.stati_doc_contratti)');
+            NULL::uuid, 'stato di emissione e di cessazione (config.stati_doc_contratti)');
     END IF;
 
     FOR v_id IN
@@ -63,7 +65,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_cessa_contratti_scaduti()
-IS 'VERBO della cessazione automatica dei contratti (brief-modello-documento-vendita §11, Y-2 di Tid 2026-10-26): i contratti nello stato di emissione (ATTIVO, script.fn_stato_emissione_id) con valido_al passata (< script.fn_data_operativa()), nel perimetro dell''utente della sessione (script.fn_scope_ef_whitelist_via_contratto: DEFINER, la RLS non c''e''), presi FOR UPDATE, passano a CESSATO dalla scrittura comune (script.fn_doc_scrivi_stato, attraverso la porta; il guard di transizione giudica matrice e data arrivata). Passaggio di processo per causa (la data): niente prima riga. Nessun parametro: cessa solo cio'' che la chiusura per scadenza cesserebbe. La chiama dbops.fn_apply_chiusura_scadenze per il bersaglio vendite.contratti (sotto la porta). Prende il posto dell''UPDATE dinamico del framework e della GUC app.cessazione_automatica. Ritorna quanti contratti ha cessato. EXECUTE solo all''applicazione.';
+IS 'VERBO della cessazione automatica dei contratti (brief-modello-documento-vendita §11, Y-2 di Tid 2026-10-26): i contratti nello stato di emissione (ATTIVO, script.fn_stato_emissione_id) con valido_al passata (< script.fn_data_operativa()), nel perimetro dell''utente della sessione (script.fn_scope_ef_whitelist_via_contratto: DEFINER, la RLS non c''e''), presi FOR UPDATE, passano allo stato di cessazione (script.fn_stato_cessazione_id, dal 2026-10-31, §17; oggi CESSATO) dalla scrittura comune (script.fn_doc_scrivi_stato, attraverso la porta; il guard di transizione giudica matrice e data arrivata). Passaggio di processo per causa (la data): niente prima riga. Nessun parametro: cessa solo cio'' che la chiusura per scadenza cesserebbe. La chiama dbops.fn_apply_chiusura_scadenze per il bersaglio vendite.contratti (sotto la porta). Prende il posto dell''UPDATE dinamico del framework e della GUC app.cessazione_automatica. Ritorna quanti contratti ha cessato. EXECUTE solo all''applicazione.';
 ```
 
 </div>

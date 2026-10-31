@@ -142,6 +142,17 @@ BEGIN ATOMIC
               JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'ORDINE_VENDITA'::text) AND (s_to.attivo IS TRUE))))
            WHERE (((o.documento_origine_tipo)::text = 'OFFERTA_COMMERCIALE'::text) AND (fn_documento_lineage_archi.p_tipo_ids IS NULL) AND (fn_documento_lineage_archi.p_uids IS NULL))
          UNION ALL
+          SELECT s_off.id,
+             (padre.uid)::text AS uid,
+             s_off.id,
+             (figlia.uid)::text AS uid,
+             NULL::character varying AS "varchar",
+             'V'::text
+            FROM ((vendite.offerte_commerciali figlia
+              JOIN vendite.offerte_commerciali padre ON ((padre.id = figlia.revisione_padre_id)))
+              JOIN config.sorgenti s_off ON ((((s_off.codice_interno)::text = 'OFFERTA_COMMERCIALE'::text) AND (s_off.attivo IS TRUE))))
+           WHERE ((figlia.revisione_padre_id IS NOT NULL) AND (fn_documento_lineage_archi.p_tipo_ids IS NULL) AND (fn_documento_lineage_archi.p_uids IS NULL))
+         UNION ALL
           SELECT s_from.id,
              o.id,
              s_to.id,
@@ -370,6 +381,31 @@ BEGIN ATOMIC
               JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'ORDINE_VENDITA'::text) AND (s_to.attivo IS TRUE))))
            WHERE ((NOT ((fn_documento_lineage_archi.p_tipo_ids IS NULL) AND (fn_documento_lineage_archi.p_uids IS NULL))) AND ((o.documento_origine_tipo)::text = 'OFFERTA_COMMERCIALE'::text) AND (o.id = ANY (( SELECT k.ord_ids
                     FROM chiavi k)::bigint[])) AND ((oc.uid = ANY (( SELECT k.off_uids
+                    FROM chiavi k)::uuid[])) IS NOT TRUE))
+         UNION ALL
+          SELECT s_off.id,
+             (padre.uid)::text AS uid,
+             s_off.id,
+             (figlia.uid)::text AS uid,
+             NULL::character varying AS "varchar",
+             'V'::text
+            FROM ((vendite.offerte_commerciali figlia
+              JOIN vendite.offerte_commerciali padre ON ((padre.id = figlia.revisione_padre_id)))
+              JOIN config.sorgenti s_off ON ((((s_off.codice_interno)::text = 'OFFERTA_COMMERCIALE'::text) AND (s_off.attivo IS TRUE))))
+           WHERE ((NOT ((fn_documento_lineage_archi.p_tipo_ids IS NULL) AND (fn_documento_lineage_archi.p_uids IS NULL))) AND (figlia.revisione_padre_id = ANY (( SELECT k.off_ids
+                    FROM chiavi k)::bigint[])))
+         UNION ALL
+          SELECT s_off.id,
+             (padre.uid)::text AS uid,
+             s_off.id,
+             (figlia.uid)::text AS uid,
+             NULL::character varying AS "varchar",
+             'V'::text
+            FROM ((vendite.offerte_commerciali figlia
+              JOIN vendite.offerte_commerciali padre ON ((padre.id = figlia.revisione_padre_id)))
+              JOIN config.sorgenti s_off ON ((((s_off.codice_interno)::text = 'OFFERTA_COMMERCIALE'::text) AND (s_off.attivo IS TRUE))))
+           WHERE ((NOT ((fn_documento_lineage_archi.p_tipo_ids IS NULL) AND (fn_documento_lineage_archi.p_uids IS NULL))) AND (figlia.id = ANY (( SELECT k.off_ids
+                    FROM chiavi k)::bigint[])) AND ((padre.uid = ANY (( SELECT k.off_uids
                     FROM chiavi k)::uuid[])) IS NOT TRUE))
          UNION ALL
           SELECT s_from.id,
@@ -671,7 +707,7 @@ BEGIN ATOMIC
 END
 
 COMMENT ON FUNCTION vendite.fn_documento_lineage_archi(p_tipo_ids bigint[], p_uids text[])
-IS '⭐ rev 2026-10-19 (20261019-89, brief-db-grammatica-unica-documenti lotto 2b): ricreata dopo l''allargamento di vendite.ordini.documento_origine_tipo; l''origine dell''offerta e'' OFFERTA_COMMERCIALE, il codice della sorgente (era OFFERTA). ⭐ rev 2026-10-11 (20261011-92): nei rami polimorfi B, E, F, U il join verso il documento e'' un confronto fra colonne dello stesso tipo (cs_semi porta la chiave gia'' convertita): un cast nel join non e'' leakproof, e sotto RLS faceva leggere l''intera tabella dell''altro capo per ogni sorgente. ⭐ rev 2026-10-11 (20261011-67): SET jit = off e SET plan_cache_mode = force_generic_plan sulla funzione. Con un seme non costante il piano tiene i rami dei due modi e il JIT ne compilava le espressioni a ogni chiamata; le clausole la rendono non incorporabile e la pianificano una volta per sessione: chi la chiama non deve dichiarare niente. Gli ARCHI della lineage dei documenti, GREZZI (chiavi, ruolo, lettera A…U, is_ramo_inverso, rango_origine), per CHIAVE DEL NODO. Seme come fn_documento_lineage_nodi: (tipo_id, uid::text) in due array paralleli; entrambi NULL = tutti gli archi (vw_documento_lineage_archi ne e'' la proiezione decorata). Col seme: gli archi USCENTI da un nodo del seme e quelli ENTRANTI il cui from non sta nel seme, cioe'' gli archi incidenti, ciascuno una volta, con gli stessi DISTINCT della vista. Il seme scende come array (`= ANY`) sulla prima tabella di ogni ramo: passato come JOIN, sotto RLS il planner partiva dal lato sbagliato. Chi la chiama in un ciclo plpgsql dichiara SET plan_cache_mode = force_generic_plan: il corpo e'' grande e la pianificazione costa. Il vocabolario delle 13 lettere e'' quello di vw_documento_lineage_archi: un arco nuovo si aggiunge QUI, nei due modi. BEGIN ATOMIC, INVOKER. Brief: brief-db-lineage-seminata-per-chiave §8.2.';
+IS '⭐ rev 2026-10-31 (20261031-23, brief-modello-documento-vendita §17.7): l''arco V, la revisione dell''offerta (dalla madre alla figlia, revisione_padre_id), nei due modi: lo legge il pannello «Passaggi» e da li'' la finestra dell''annullo prende il nome della revisione che torna emessa. Non ha rango (non e'' un''origine); la sintesi e le origini della fattura lo scartano. ⭐ rev 2026-10-19 (20261019-89, brief-db-grammatica-unica-documenti lotto 2b): ricreata dopo l''allargamento di vendite.ordini.documento_origine_tipo; l''origine dell''offerta e'' OFFERTA_COMMERCIALE, il codice della sorgente (era OFFERTA). ⭐ rev 2026-10-11 (20261011-92): nei rami polimorfi B, E, F, U il join verso il documento e'' un confronto fra colonne dello stesso tipo (cs_semi porta la chiave gia'' convertita): un cast nel join non e'' leakproof, e sotto RLS faceva leggere l''intera tabella dell''altro capo per ogni sorgente. ⭐ rev 2026-10-11 (20261011-67): SET jit = off e SET plan_cache_mode = force_generic_plan sulla funzione. Con un seme non costante il piano tiene i rami dei due modi e il JIT ne compilava le espressioni a ogni chiamata; le clausole la rendono non incorporabile e la pianificano una volta per sessione: chi la chiama non deve dichiarare niente. Gli ARCHI della lineage dei documenti, GREZZI (chiavi, ruolo, lettera A…V, is_ramo_inverso, rango_origine), per CHIAVE DEL NODO. Seme come fn_documento_lineage_nodi: (tipo_id, uid::text) in due array paralleli; entrambi NULL = tutti gli archi (vw_documento_lineage_archi ne e'' la proiezione decorata). Col seme: gli archi USCENTI da un nodo del seme e quelli ENTRANTI il cui from non sta nel seme, cioe'' gli archi incidenti, ciascuno una volta, con gli stessi DISTINCT della vista. Il seme scende come array (`= ANY`) sulla prima tabella di ogni ramo: passato come JOIN, sotto RLS il planner partiva dal lato sbagliato. Chi la chiama in un ciclo plpgsql dichiara SET plan_cache_mode = force_generic_plan: il corpo e'' grande e la pianificazione costa. Il vocabolario delle 14 lettere e'' quello di vw_documento_lineage_archi: un arco nuovo si aggiunge QUI, nei due modi. BEGIN ATOMIC, INVOKER. Brief: brief-db-lineage-seminata-per-chiave §8.2.';
 ```
 
 </div>

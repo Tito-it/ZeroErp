@@ -16,6 +16,10 @@ CREATE OR REPLACE FUNCTION vendite.fn_crea_revisione_offerta(p_offerta_id bigint
  RETURNS bigint
  LANGUAGE plpgsql
 AS $function$
+-- rev 2026-10-31 (20261031-21, brief-modello-documento-vendita §17), R-1):
+--   l'offerta che non c'e' e' E_OFFERTA_NON_TROVATA (404), non
+--   E_PARAMETRO_INVALIDO; lo stato da cui si revisiona e' l'emissione
+--   del vocabolario, non 'EMESSA'.
 -- rev 2026-10-24 (20261024-18, brief-modello-documento-vendita N-1/P-2):
 --   lo stato iniziale non si scrive piu' qui: lo mette il trigger della
 --   nascita (script.trgfn_doc_stato_iniziale), letto dal vocabolario.
@@ -51,6 +55,7 @@ AS $function$
 --   p_user       : utente che esegue l'operazione (audit)
 DECLARE
     v_stato_corrente_cod  config.stati_doc_offerte.codice_interno%TYPE;
+    v_emissione           config.stati_doc_offerte.emissione%TYPE;
     v_new_id              vendite.offerte_commerciali.id%TYPE;
     v_ecc                 vendite.offerte_commerciali_eccezioni%ROWTYPE;
     v_new_ecc_id          vendite.offerte_commerciali_eccezioni.id%TYPE;
@@ -67,27 +72,29 @@ BEGIN
     END IF;
 
     -- Recupera stato corrente dell'offerta da revisionare.
-    SELECT sdo.codice_interno
-      INTO v_stato_corrente_cod
+    SELECT sdo.codice_interno, sdo.emissione
+      INTO v_stato_corrente_cod, v_emissione
       FROM vendite.offerte_commerciali oc
       JOIN config.stati_doc_offerte sdo ON sdo.id = oc.stato_doc_offerta_id
      WHERE oc.id = p_offerta_id;
 
-    -- Guard: offerta non trovata.
+    -- Guard: offerta non trovata (o fuori perimetro): un 404, come nel
+    -- push a contratto e nella generazione dell'ordine.
     IF v_stato_corrente_cod IS NULL THEN
         PERFORM script.fn_log_and_raise_error(
             'vendite', 'fn_crea_revisione_offerta',
-            'E_PARAMETRO_INVALIDO',
+            'E_OFFERTA_NON_TROVATA',
             jsonb_build_object('offerta_id', p_offerta_id),
             NULL::uuid,
-            'offerta non trovata: ' || p_offerta_id::text
+            p_offerta_id::text
         );
     END IF;
 
-    -- Guard: revisione ammessa SOLO da stato EMESSA.
+    -- Guard: revisione ammessa SOLO dallo stato di emissione (EMESSA),
+    -- dal vocabolario.
     -- BOZZA si modifica direttamente; ACCETTATA/RIFIUTATA/SUPERATA/ANNULLATA
     -- sono terminali immutabili.
-    IF v_stato_corrente_cod <> 'EMESSA' THEN
+    IF NOT v_emissione THEN
         PERFORM script.fn_log_and_raise_error(
             'vendite', 'fn_crea_revisione_offerta',
             'E_OFFERTA_REVISIONE_STATO_NON_AMMESSO',

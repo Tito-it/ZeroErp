@@ -34,7 +34,10 @@ scrivesse una copia.
 | `p_billing_account_id` | NULL | solo i contratti di quel billing account |
 | `p_contratto_id` | NULL | un contratto solo; `<= 0` → `E_PUSH_SORGENTE_ID_INVALIDO` |
 
-Se `CESSATO` o `ATTIVO` mancano in `config.stati_doc_contratti` → `E_CODICE`.
+Gli stati letti sono quelli di emissione e di cessazione del vocabolario
+([`script.fn_stato_emissione_id`](/dbzero/script/funzioni/fn_stato_emissione_id),
+[`script.fn_stato_cessazione_id`](/dbzero/script/funzioni/fn_stato_cessazione_id); oggi `ATTIVO` e
+`CESSATO`). Se il vocabolario non ne marca uno → `E_CONFIG_MANCANTE` (fino al 31-10-2026 `E_CODICE`).
 
 ---
 

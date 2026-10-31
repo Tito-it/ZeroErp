@@ -4,6 +4,7 @@
 >
 > [script.fn_stato_emissione_id](/dbzero/script/funzioni/fn_stato_emissione_id) ·
 > [script.fn_doc_stato_codice](/dbzero/script/funzioni/fn_doc_stato_codice) ·
+> [script.fn_stato_per_colonna_id](/dbzero/script/funzioni/fn_stato_per_colonna_id) (la logica comune, dal 31-10-2026) ·
 > [script.fn_doc_stato_modello](/dbzero/script/funzioni/fn_doc_stato_modello) ·
 > guida [Il modello del documento di vendita](/guide/modello-documento-di-vendita) §8
 
@@ -29,5 +30,7 @@ suo stato d'annullo. Quale sia lo dice il vocabolario degli stati, con la colonn
 
 ### Chi la legge
 
-I verbi d'annullo dell'ordine e del preventivo, e il verbo della bolla per riconoscere
-l'annullo di una bolla emessa (che storna i movimenti di magazzino).
+I verbi d'annullo di preventivo, offerta, contratto, ordine, commessa e lotto di
+fatturazione, il verbo della bolla per riconoscere l'annullo di una bolla emessa (che
+storna i movimenti di magazzino) e il backend, per mandare l'annullo chiesto dal cambio di
+stato al verbo d'annullo.

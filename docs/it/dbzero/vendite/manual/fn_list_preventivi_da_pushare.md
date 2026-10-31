@@ -17,9 +17,10 @@ per l’handler di acquisizione.
 
 ### Regole principali
 
-* considera preventivi in stato documento `ACCETTATO`. Se lo stato non si trova
-  nel catalogo (riga assente o spenta) la funzione solleva `E_CODICE`, come per
-  la sorgente: non lista mai preventivi in uno stato qualunque (fino al
+* considera preventivi nello stato di accettazione (`ACCETTATO`, dal lettore
+  [`script.fn_stato_accettazione_id`](/dbzero/script/funzioni/fn_stato_accettazione_id)
+  dal 31-10-2026). Se il vocabolario non ne marca uno la funzione solleva
+  `E_CONFIG_MANCANTE` (prima `E_CODICE`): non lista mai preventivi in uno stato qualunque (fino al
   2026-10-10 il filtro era `IS NULL OR` e in quel caso cadeva; D-2 di
   `brief-db-istanza-nasce-col-ba-residui`). Nessun filtro sulla
   testata: `billing_account_id` e `utility_id` sono `NOT NULL` (il filtro di

@@ -25,7 +25,10 @@ verbo e lo stato lo scriveva il backend con un aggiornamento diretto.
 * **La motivazione**: dove la riga del passaggio la chiede (il rifiuto e i due annulli) è
   obbligatoria, e una vuota o di soli spazi conta come assente
   (`E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA`, campo `motivazione_rifiuto`). Quando c'è, si scrive
-  sull'offerta prima dello stato, nella stessa operazione.
+  sull'offerta prima dello stato, nella stessa operazione. E **solo lì** (dal 31-10-2026): su un
+  passaggio che non la chiede (l'emissione, l'accettazione) una motivazione è rifiutata con
+  `E_OFFERTA_MOTIVAZIONE_NON_AMMESSA` (stesso campo), non scritta: la colonna è il motivo di una
+  chiusura negativa.
 * **Le condizioni** del passaggio le giudica il guard di transizione dell'offerta: la matrice;
   all'emissione il listino da congelare, i prezzi autorizzati, gli indirizzi del cliente e le
   righe ammesse; all'accettazione i prezzi; all'annullo nessun contratto o ordine vivo nato

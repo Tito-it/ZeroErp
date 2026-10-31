@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Resolver area CONTRATTO (famiglia dash fatturazione / situazione aperta): 1 riga per contratto vivo (esito &lt;&gt; NEGATIVO), DE-ESPLOSO (niente asse mese, DL-12). Giudizio di transito RIACCESO dal 20261031-04 (brief-db-contratto-righe-periodiche-in-commessa §6.13, F-12 … F-15) per i contratti ATTIVO e CESSATO, dalla sede del push vendite.fn_contratti_addebiti_maturati: fermo se ha un addebito maturato non in commessa (motivo CANONE_NON_GENERATO, RECUPERABILE) o un canone che non puo' partire (CANONE_NON_GENERABILE, ANOMALIA, vince sul primo); altrimenti is_transitato = true e il contratto esce dalla situazione aperta. La bozza resta sospesa: is_transitato/unita_transitate/motivo_fermo NULL. unita_totali = 1. data_riferimento = valido_dal (in essere da); se fermo, l'addebito piu' vecchio che aspetta (fonte scartata: valido_dal), mai dopo oggi. Area a conteggi: valore_* NULL. Consumata da vw_dash_fatturazione_documenti (union), e attraverso questa da vw_dash_aperto_documenti e vw_dash_backlog_documenti. Rev 2026-10-20 (20261020-84): l'area CONTRATTI diventa CONTRATTO.
+> Resolver area CONTRATTO (famiglia dash fatturazione / situazione aperta): 1 riga per contratto vivo (esito &lt;&gt; NEGATIVO), DE-ESPLOSO (niente asse mese, DL-12). Giudizio di transito RIACCESO dal 20261031-04 (brief-db-contratto-righe-periodiche-in-commessa §6.13, F-12 … F-15) per i contratti nello stato di emissione o di cessazione (colonne emissione e cessazione del vocabolario, dal 20261031-14; oggi ATTIVO e CESSATO), dalla sede del push vendite.fn_contratti_addebiti_maturati: fermo se ha un addebito maturato non in commessa (motivo CANONE_NON_GENERATO, RECUPERABILE) o un canone che non puo' partire (CANONE_NON_GENERABILE, ANOMALIA, vince sul primo); altrimenti is_transitato = true e il contratto esce dalla situazione aperta. La bozza resta sospesa: is_transitato/unita_transitate/motivo_fermo NULL. unita_totali = 1. data_riferimento = valido_dal (in essere da); se fermo, l'addebito piu' vecchio che aspetta (fonte scartata: valido_dal), mai dopo oggi. Area a conteggi: valore_* NULL. Consumata da vw_dash_fatturazione_documenti (union), e attraverso questa da vw_dash_aperto_documenti e vw_dash_backlog_documenti. Rev 2026-10-20 (20261020-84): l'area CONTRATTI diventa CONTRATTO.
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
@@ -54,7 +54,7 @@ SELECT 'CONTRATTO'::character varying AS area,
             COALESCE(x.da_mandare, false) AS da_mandare,
             COALESCE((x.non_generabile OR x.da_mandare), false) AS fermo,
             x.dal
-           FROM ( SELECT ((sdc.codice_interno)::text = ANY (ARRAY['ATTIVO'::text, 'CESSATO'::text])) AS giudicato,
+           FROM ( SELECT (sdc.emissione OR sdc.cessazione) AS giudicato,
                     bool_or((a.scarto IS NOT NULL)) AS non_generabile,
                     bool_or((a.scarto IS NULL)) AS da_mandare,
                         CASE
@@ -62,7 +62,7 @@ SELECT 'CONTRATTO'::character varying AS area,
                             ELSE NULL::date
                         END AS dal
                    FROM vendite.fn_contratti_addebiti_maturati(NULL::date, NULL::bigint, c.id) a(contratto_id, contratto_uid, riga_id, billing_account_id, utility_id, emittente_soggetto_ruolo_id, competenza_dal, competenza_al, fatturazione_immediata, segment_key, articolo_id, istanza_utility_id, data_attivita, uom_id, quantita, qta_operativa, uom_operativa_id, factor_to_base, competenza_mese, prezzo_snapshot, prezzo_bloccato, meta, ramo, scarto)
-                  WHERE ((sdc.codice_interno)::text = ANY (ARRAY['ATTIVO'::text, 'CESSATO'::text]))) x) g);
+                  WHERE (sdc.emissione OR sdc.cessazione)) x) g);
 ```
 
 </div>

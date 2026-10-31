@@ -84,8 +84,9 @@ BEGIN
                                       v_stato_da_id, v_stato_a_id);
 
     -- 5. La motivazione (O-3): obbligatoria dove la riga del
-    --    passaggio la chiede. Un passaggio fuori matrice non la
-    --    chiede: lo rifiuta il guard di transizione, al punto 6.
+    --    passaggio la chiede, e AMMESSA solo li' (rev 2026-10-31,
+    --    20261031-22, §17.8 (b)). Un passaggio fuori matrice non ha
+    --    riga: lo rifiuta il guard di transizione, al punto 6.
     SELECT COALESCE((t.meta ->> 'requires_motivazione')::boolean, false)
       INTO v_richiesta
       FROM config.stati_doc_offerte_transizioni t
@@ -101,6 +102,25 @@ BEGIN
         PERFORM script.fn_log_and_raise_error(
             'vendite', 'vendite.fn_cambia_stato_offerta',
             'E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA',
+            jsonb_build_object('campo',      'motivazione_rifiuto',
+                               'offerta_id', p_offerta_id,
+                               'stato_da',   v_stato_da,
+                               'stato_a',    p_stato),
+            NULL::uuid,
+            COALESCE(v_codice, p_offerta_id::text),
+            COALESCE(v_stato_a_desc, p_stato));
+    END IF;
+
+    -- La riga c'e' e non la chiede: la motivazione non si scrive, si
+    -- rifiuta (scartarla direbbe al chiamante che e' stata presa).
+    IF v_richiesta IS FALSE AND v_motivazione IS NOT NULL THEN
+        SELECT s.descrizione INTO v_stato_a_desc
+          FROM config.stati_doc_offerte s
+         WHERE s.id = v_stato_a_id;
+
+        PERFORM script.fn_log_and_raise_error(
+            'vendite', 'vendite.fn_cambia_stato_offerta',
+            'E_OFFERTA_MOTIVAZIONE_NON_AMMESSA',
             jsonb_build_object('campo',      'motivazione_rifiuto',
                                'offerta_id', p_offerta_id,
                                'stato_da',   v_stato_da,
@@ -130,7 +150,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_cambia_stato_offerta(p_offerta_id bigint, p_stato character varying, p_motivazione text)
-IS 'VERBO di ogni cambio di stato manuale di un''offerta (modello del documento, brief-modello-documento-vendita §13). Permesso: dalla riga del passaggio (config.stati_doc_offerte_transizioni.azione_processo_codename: emetti_offerta su BOZZA -> EMESSA e ACCETTATA -> ANNULLATA) con script.fn_guard_passaggio, prima di ogni scrittura (lo stato che l''offerta ha gia'': E_DOC_GIA_NELLO_STATO); accetta, rifiuta e l''annullo della bozza al permesso sul documento, che controlla il backend. Motivazione (O-3): scritta in motivazione_rifiuto prima dello stato quando c''e''; obbligatoria dove la riga del passaggio dichiara requires_motivazione nel meta (rifiuto e annulli): senza, o vuota, E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA (campo motivazione_rifiuto). SECURITY DEFINER con search_path bloccato: la testata si prende FOR UPDATE col predicato della policy nella WHERE (script.fn_scope_ef_whitelist_via_offerta; fuori perimetro E_OFFERTA_NON_TROVATA, no-leak). Lo stato chiesto per codice_interno (script.fn_doc_stato_id; nessuno stato attivo: E_STATO_WORKFLOW_NON_TROVATO). Lo stato lo scrive script.fn_doc_scrivi_stato attraverso la porta (script.trgfn_doc_stato_solo_dal_verbo), e il guard di transizione (vendite.trgfn_offerte_commerciali_guard_transizione) giudica matrice (E_OFFERTA_TRANSIZIONE_NON_AMMESSA) e condizioni; l''annullo con legami (la revisione precedente che torna emessa) passa da vendite.fn_annulla_offerta. Ritorna offerta_id, stato_precedente, stato_nuovo (codice_interno). EXECUTE solo all''applicazione. Brief: brief-modello-documento-vendita §13 (O-1, O-3, Tid 2026-10-26).';
+IS 'VERBO di ogni cambio di stato manuale di un''offerta (modello del documento, brief-modello-documento-vendita §13). Permesso: dalla riga del passaggio (config.stati_doc_offerte_transizioni.azione_processo_codename: emetti_offerta su BOZZA -> EMESSA e ACCETTATA -> ANNULLATA) con script.fn_guard_passaggio, prima di ogni scrittura (lo stato che l''offerta ha gia'': E_DOC_GIA_NELLO_STATO); accetta, rifiuta e l''annullo della bozza al permesso sul documento, che controlla il backend. Motivazione (O-3): scritta in motivazione_rifiuto prima dello stato quando c''e''; obbligatoria dove la riga del passaggio dichiara requires_motivazione nel meta (rifiuto e annulli): senza, o vuota, E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA (campo motivazione_rifiuto); e solo li'': su un passaggio della matrice che non la chiede, E_OFFERTA_MOTIVAZIONE_NON_AMMESSA (stesso campo; dal 2026-10-31, §17.8 (b), prima la scriveva su ogni passaggio). SECURITY DEFINER con search_path bloccato: la testata si prende FOR UPDATE col predicato della policy nella WHERE (script.fn_scope_ef_whitelist_via_offerta; fuori perimetro E_OFFERTA_NON_TROVATA, no-leak). Lo stato chiesto per codice_interno (script.fn_doc_stato_id; nessuno stato attivo: E_STATO_WORKFLOW_NON_TROVATO). Lo stato lo scrive script.fn_doc_scrivi_stato attraverso la porta (script.trgfn_doc_stato_solo_dal_verbo), e il guard di transizione (vendite.trgfn_offerte_commerciali_guard_transizione) giudica matrice (E_OFFERTA_TRANSIZIONE_NON_AMMESSA) e condizioni; l''annullo con legami (la revisione precedente che torna emessa) passa da vendite.fn_annulla_offerta. Ritorna offerta_id, stato_precedente, stato_nuovo (codice_interno). EXECUTE solo all''applicazione. Brief: brief-modello-documento-vendita §13 (O-1, O-3, Tid 2026-10-26).';
 ```
 
 </div>

@@ -96,3 +96,6 @@ databaseChangeLog:
               # 2026-10-25 (20261025-37, brief-modello-documento-vendita §8): lo stato di
               # emissione. Va dichiarata qui, o la cella del CSV non la governa.
               - column: { name: emissione, type: BOOLEAN }
+              # 2026-10-31 (20261031-05, brief-modello-documento-vendita §17): lo stato di
+              # cessazione del contratto. Va dichiarata qui, o la cella del CSV non la governa.
+              - column: { name: cessazione, type: BOOLEAN }

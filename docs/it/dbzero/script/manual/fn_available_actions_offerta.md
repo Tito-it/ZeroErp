@@ -162,13 +162,15 @@ Risultato per stato:
      AND documento_origine_id = p_offerta_id`.
    «Esiste» = in qualsiasi stato (esclusività permanente).
 4. **Abilitazione condivisa** —
-   `v_enabled = (stato = 'ACCETTATA' AND NOT v_has_contratto AND NOT v_has_ordine)`.
+   `v_enabled = (stato di accettazione AND NOT v_has_contratto AND NOT v_has_ordine)`;
+   accettazione ed emissione dalle colonne del vocabolario (`accettazione`, `emissione`),
+   non dal codice *(rev 31-10-2026)*.
 5. **Azioni speciali** — aggiunte hardcoded in coda a `v_actions`:
-   - `crea_revisione` se `v_stato_cod = 'EMESSA'`.
+   - `crea_revisione` se lo stato è quello di emissione.
    - `push_contratto` **e** `genera_ordine` se `v_enabled` (entrambe o nessuna).
 6. **Capability derivate**:
    - `can_edit_*` = `(stato = 'BOZZA')`.
-   - `can_create_revisione` = `(stato = 'EMESSA')`.
+   - `can_create_revisione` = `(stato di emissione)`.
    - `can_push_contratto` = `can_genera_ordine` = `v_enabled`. Reason con priorità
      own-doc first quando bloccate (contratto>ordine per push; ordine>contratto
      per genera; poi `OFFERTA_NON_ACCETTATA`).

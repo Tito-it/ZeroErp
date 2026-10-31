@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/fn_contratti_addebiti_maturati.md" %}
 # ⚙️ Funzione `fn_contratti_addebiti_maturati`
 
 ```sql
@@ -38,6 +39,8 @@ AS $function$
 --     chiave, quantita' NULL);
 --   · SENZA_PREZZO: un pezzo (o la una tantum) senza prezzo alla data.
 -- Nasce il 2026-10-31 (20261031-02) dal corpo del lister del 20261031-01.
+-- rev 2026-10-31 (20261031-13, brief-modello-documento-vendita §17): gli stati del push
+--   (emissione, cessazione) dal vocabolario, non 'ATTIVO' e 'CESSATO'.
 DECLARE
   v_stato_attivo_id     config.stati_doc_contratti.id%TYPE;
   v_stato_cessato_id    config.stati_doc_contratti.id%TYPE;
@@ -53,30 +56,26 @@ BEGIN
     );
   END IF;
 
-  SELECT s.id INTO v_stato_attivo_id
-  FROM config.stati_doc_contratti s
-  WHERE s.codice_interno = 'ATTIVO' AND s.attivo IS TRUE LIMIT 1;
+  v_stato_attivo_id := script.fn_stato_emissione_id('vendite.contratti'::regclass);
 
   -- Senza lo stato il filtro non ha un valore: si ferma, come per la
   -- sorgente. Il push non lista mai contratti in uno stato qualunque.
   IF v_stato_attivo_id IS NULL THEN
     PERFORM script.fn_log_and_raise_error(
-      'vendite', 'fn_contratti_addebiti_maturati', 'E_CODICE',
-      jsonb_build_object('codice', 'ATTIVO'),
-      NULL::uuid, 'ATTIVO', 'config.stati_doc_contratti'
+      'vendite', 'fn_contratti_addebiti_maturati', 'E_CONFIG_MANCANTE',
+      jsonb_build_object('config', 'config.stati_doc_contratti.emissione'),
+      NULL::uuid, 'stato di emissione (config.stati_doc_contratti.emissione)'
     );
   END IF;
 
   -- I CESSATO generano i periodi mancanti fino a valido_al, e gli storni (G-2).
-  SELECT s.id INTO v_stato_cessato_id
-  FROM config.stati_doc_contratti s
-  WHERE s.codice_interno = 'CESSATO' AND s.attivo IS TRUE LIMIT 1;
+  v_stato_cessato_id := script.fn_stato_cessazione_id('vendite.contratti'::regclass);
 
   IF v_stato_cessato_id IS NULL THEN
     PERFORM script.fn_log_and_raise_error(
-      'vendite', 'fn_contratti_addebiti_maturati', 'E_CODICE',
-      jsonb_build_object('codice', 'CESSATO'),
-      NULL::uuid, 'CESSATO', 'config.stati_doc_contratti'
+      'vendite', 'fn_contratti_addebiti_maturati', 'E_CONFIG_MANCANTE',
+      jsonb_build_object('config', 'config.stati_doc_contratti.cessazione'),
+      NULL::uuid, 'stato di cessazione (config.stati_doc_contratti.cessazione)'
     );
   END IF;
 

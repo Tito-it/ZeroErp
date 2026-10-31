@@ -16,6 +16,8 @@ CREATE OR REPLACE FUNCTION vendite.fn_push_preventivo_a_ordine(p_preventivo_id b
  RETURNS bigint
  LANGUAGE plpgsql
 AS $function$
+-- rev 2026-10-31 (20261031-16, brief-modello-documento-vendita §17):
+--   lo stato di accettazione dal vocabolario, non 'ACCETTATO'.
 -- rev 2026-10-24 (20261024-20, brief-modello-documento-vendita N-1/P-2):
 --   lo stato iniziale non si scrive piu' qui: lo mette il trigger della
 --   nascita (script.trgfn_doc_stato_iniziale), letto dal vocabolario.
@@ -38,6 +40,7 @@ DECLARE
     v_emittente_sr_id      anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE;
     v_fatt_trigger         vendite.ordini.fatturazione_trigger%TYPE;
     v_data                 vendite.ordini.data%TYPE := script.fn_data_operativa();
+    -- CONTEGGIO delle righe con residuo: nessuna colonna dietro.
     v_n_residue            integer;
     v_ordine_id            vendite.ordini.id%TYPE;
     v_new_riga_id          vendite.ordini_righe.id%TYPE;
@@ -54,10 +57,9 @@ BEGIN
             NULL::uuid, 'p_preventivo_id deve essere > 0');
     END IF;
 
-    -- 2) Stato ACCETTATO obbligatorio + lettura testata preventivo.
-    SELECT id INTO v_stato_accettato_id
-      FROM config.stati_doc_preventivi
-     WHERE codice_interno = 'ACCETTATO' AND attivo IS TRUE;
+    -- 2) Stato di accettazione obbligatorio (dal vocabolario) +
+    --    lettura testata preventivo.
+    v_stato_accettato_id := script.fn_stato_accettazione_id('vendite.preventivi'::regclass);
 
     SELECT p.billing_account_id, p.utility_id, p.emittente_fiscale_id,
            p.valuta_id, p.termine_pagamento_id, p.uid

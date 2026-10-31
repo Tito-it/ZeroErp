@@ -32,6 +32,9 @@ le cui righe sono finite in un'altra fattura (una commessa che raccoglie le boll
 nota citerebbe tutto ciò che sta nella commessa della fattura che corregge. Una fattura citata porta già
 i suoi riferimenti. Lo hanno mostrato i pgTAP.
 
+⭐ **E non passa dalla revisione dell'offerta** (arco `V`, dal 31-10-2026): un contratto nato dalla
+revisione 2 citerebbe anche la revisione 1, che il cliente non ha accettato.
+
 ⚠️ **La chiave.** La riga di commessa porta l'`uid` della testata; il nodo del lineage la chiave che
 il registro dichiara (`key_selector`: `id` per ordine, contratto e bolla, `uid` per preventivo e
 offerta). La traduzione passa dalla tabella del documento, letta dal registro: nessun tipo è scritto

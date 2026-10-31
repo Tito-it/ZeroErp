@@ -1,10 +1,12 @@
 # Brief — Il modello del documento di vendita, scritto una volta
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-29 (giro 11, la fattura: DB tutto committato, `-01` … `-50`; il passaggio BE/FE del §15.8, di BE-1 … BE-3, FE-1, di «riporta in bozza» e di `azioni_permesse` committato su `dev/backend-tid`, §15.15; la stampa delle origini decisa, forma 6, richiesta al team DB, §15.16; K-S1 … K-S5 applicati e verdi, §15.17.1; BE-S1, BE-S2 e lo script K-S2 fatti, §15.17.2; i jsonb dai lettori comuni, §15.17.3. Giro 12, il listino: `-03` … `-32` applicati, §16.6, §16.7; passaggio BE/FE fatto, rivisto e committato, §16.8, §16.9; un pgTAP non portato, corretto e verde come app, §16.10; la cancellazione della versione come verbo: E-1 … E-3 decise, §16.11; `-34` … `-40` scritti, provati, applicati e verdi come app, §16.12; richiesta BE/FE, §16.13; «Chiudi» e «Clona», ricognizione e domande, §16.14; C-1 … C-3 decise, `20261029-01` … `-05` scritti e provati, §16.15; richiesta BE/FE, §16.16; C-4 decisa, la porta `-07` … `-09` scritta e provata, §16.15; tutto applicato e verde come app, §16.15; il passaggio BE/FE di §16.13 e §16.16 fatto, da committare, §16.17)
+## ⏭️ Chi riparte — aggiornato al 2026-10-31 (giro 11, la fattura: DB tutto committato, `-01` … `-50`; il passaggio BE/FE del §15.8, di BE-1 … BE-3, FE-1, di «riporta in bozza» e di `azioni_permesse` committato su `dev/backend-tid`, §15.15; la stampa delle origini decisa, forma 6, richiesta al team DB, §15.16; K-S1 … K-S5 applicati e verdi, §15.17.1; BE-S1, BE-S2 e lo script K-S2 fatti, §15.17.2; i jsonb dai lettori comuni, §15.17.3. Giro 12, il listino: `-03` … `-32` applicati, §16.6, §16.7; passaggio BE/FE fatto, rivisto e committato, §16.8, §16.9; un pgTAP non portato, corretto e verde come app, §16.10; la cancellazione della versione come verbo: E-1 … E-3 decise, §16.11; `-34` … `-40` scritti, provati, applicati e verdi come app, §16.12; richiesta BE/FE, §16.13; «Chiudi» e «Clona», ricognizione e domande, §16.14; C-1 … C-3 decise, `20261029-01` … `-05` scritti e provati, §16.15; richiesta BE/FE, §16.16; C-4 decisa, la porta `-07` … `-09` scritta e provata, §16.15; tutto applicato e verde come app, §16.15; il passaggio BE/FE di §16.13 e §16.16 fatto, da committare, §16.17; il passaggio BE/FE del §16.17 committato, PR #1980; il giro 13, gli stati con un significato dal vocabolario e le richieste a priorità bassa del team DB: `20261031-05` … `-21` scritti, provati, applicati e verdi, §17; il giro 14, l'arco della revisione e la motivazione dell'offerta: `20261031-22` … `-26` scritti, provati, applicati e verdi, §18; tocca al BE/FE, §17.6 e §18.3)
 
-**Riparte: Tid**, sul giro 12 (la versione di listino, §16): il commit del passaggio BE/FE di BE-E1 … BE-E3, FE-E1
-(§16.13) e BE-C1 … BE-C3, FE-C1, FE-C2 (§16.16), fatto su `dev/backend-tid` il 2026-10-29 (§16.17), e la prova in-app
-dopo il riavvio del backend. Il DB è tutto applicato e verde come app:
+**Riparte: il team BE/FE**, con le richieste del §17.6 (BE-T1 … BE-T5) e del §18.3 (BE-T6, BE-T7). Il DB dei giri 13
+e 14 è applicato su dbdev e i pgTAP sono verdi come app (Tid, 2026-10-31: `-05` … `-21` alle 11:40, `-22` … `-26`
+alle 11:53). Le richieste a priorità bassa del team DB sono tutte chiuse. La motivazione dell'offerta è decisa, (b) (§17.8, Tid
+2026-10-31). Il giro 12 (la versione di listino, §16) è committato (PR #1980 e #1981);
+resta la prova in-app del §16.17, dopo il riavvio del backend. Il DB del giro 12 è tutto applicato e verde come app:
 `20261029-01` … `-05` e `-07` … `-09` (il `-06` è di un'altra sessione) e i tre CSV, 2026-10-29. C-1 = (a), C-2 = (a), C-3 = il verbo, C-4 = (a) (Tid, 2026-10-29). `-34` … `-40` e i tre CSV sono applicati su dbdev, i pgTAP del §16.12 verdi come
 app (2026-10-28). E-1 (sì) è una revoca parziale di una regola
 del 2026-05-13, scritta come tale. **Tid**: il dato `attiva_listino` ai
@@ -12,9 +14,9 @@ profili su dbdev (nessun profilo l'ha: senza, nessuno attiva una versione). Il p
 FE-L1, FE-L2) è fatto, rivisto (§16.9) e committato (§16.8, PR #1975); `vendite/test-listini-righe-comp-guard-coerenza-bom-v1`
 verde come app (§16.10). Il giro 11 lato BE
 è chiuso e committato (§15.17). **Tid**: l'ok alla correzione di `gunicorn.conf.py` (§15.17.3). Il passaggio
-BE/FE del giro 11 è committato (§15.15; suite Django sul DB provvisto 7013 test, vitest 988, verdi). Il **team DB**
-ha in più richieste a priorità bassa: ritirare `E_COMMESSA_AZIONE_NON_AMMESSA` (§14.7); R-1 e R-2 (§14.8); il
-lettore dello stato di cessazione (§11.7). **Tid**, coi dati `emetti_offerta`, `emetti_contratto`, `emetti_ordine`
+BE/FE del giro 11 è committato (§15.15; suite Django sul DB provvisto 7013 test, vitest 988, verdi). Le richieste a priorità bassa
+del team DB (§11.7, §13.9, §14.7, §14.8) sono nel giro 13 (§17), tranne l'arco della revisione nel lineage, disegnato
+nel §17.7 per il giro dopo. **Tid**, coi dati `emetti_offerta`, `emetti_contratto`, `emetti_ordine`
 ai profili su dbdev: letto il 2026-10-26, nessun profilo le ha, quindi in collaudo nessuno attiva o cessa un
 contratto né conferma un ordine (§11.7). Giri 5-10: chiusi e committati (dettaglio nelle righe della tabella).
 
@@ -69,7 +71,7 @@ contratto né conferma un ordine (§11.7). Giri 5-10: chiusi e committati (detta
 | 4-bis-nonies-sexies | ✅ team BE | Richiesta del §11.6 (sette punti), insieme a quella del §9.10 (2026-10-26); fuori elenco il messaggio della cessazione nel frontend e la pulizia dello smoke dei listini | §11.7 | 4-bis-nonies-quinquies |
 | 4-bis-nonies-septies | ✅ **Tid** | Commit del passaggio BE (`fe041a1a1`, `0a08565be`, PR #1956), 2026-10-26 | §11.7 | 4-bis-nonies-sexies |
 | 4-bis-nonies-septies-bis | **Tid** ⏭️ | Il dato `emetti_contratto` ed `emetti_ordine` ai profili su dbdev: letto il 2026-10-26, nessun profilo le ha | §11.7 | — |
-| 4-bis-nonies-octies | team DB | Il lettore dello stato di cessazione (priorità bassa); poi il BE ritira `STATO_CESSATO` | §11.7 | — |
+| 4-bis-nonies-octies | ✅ team DB | Il lettore dello stato di cessazione: colonna `cessazione` e `script.fn_stato_cessazione_id`, scritti e provati nel giro 13 (2026-10-31); il BE ritira `STATO_CESSATO` col §17.6 | §11.7, §17 | — |
 | 4-bis-decies | ✅ **Tid** → team DB | Il via al giro 9: l'offerta (ordine dei giri di W-1), 2026-10-26. Non aspetta il BE (§5) | §5 | 4-bis-nonies-quinquies |
 | 4-bis-decies-bis | ✅ team DB | Giro 9, l'offerta: ricognizione, piano, domande; corretta la lettura dell'annullo del §8.12 (D-4) | §13 | 4-bis-decies |
 | 4-bis-decies-ter | ✅ **Tid** | O-1 … O-6 come da proposta, e il via allo sviluppo (2026-10-26); D-N1 non entra nel giro | §13.3 | 4-bis-decies-bis |
@@ -77,9 +79,9 @@ contratto né conferma un ordine (§11.7). Giri 5-10: chiusi e committati (detta
 | 4-bis-decies-quinquies | ✅ **Tid** | Apply del giro 9 e corsa pgTAP come app: verdi (2026-10-26) | §13.7 | 4-bis-decies-quater |
 | 4-bis-decies-sexies | ✅ team BE | Richiesta del §13.6 (nove punti) fatta il 2026-10-26: verbi, legami, 403 dalla riga, policy, frontend, test, doc | §13.8 | 4-bis-decies-quinquies |
 | 4-bis-decies-sexies-bis | ✅ **Tid** | Commit del passaggio BE del giro 9 (il lettore `stato_id` ritirato, ok di Tid 2026-10-26): su `Tito-dev`, PR #1961 | §13.8 | 4-bis-decies-sexies |
-| 4-bis-decies-septies-bis | team DB | Richiesta (priorità bassa, ok di Tid 2026-10-26): numero e link della revisione precedente nella finestra dell'annullo dell'offerta | §13.9 | — |
-| 4-bis-decies-septies-ter | team DB | Richiesta (priorità bassa): dove la motivazione è AMMESSA sulla riga del passaggio, e il verbo dell'offerta rifiuta il resto (oggi la scrive su ogni passaggio) | §13.9 | — |
-| 4-bis-decies-septies-quater | team DB | Proposta (§13.9): la guida del modello dichiara decisa l'asimmetria offerta/preventivo sulla revisione (scelta di Tid del 2026-07-16), col rimando | §13.9 | — |
+| 4-bis-decies-septies-bis | ✅ team DB | Richiesta (priorità bassa, ok di Tid 2026-10-26): numero e link della revisione precedente nella finestra dell'annullo dell'offerta. Tid, 2026-10-31: l'arco compare anche in «Passaggi». Disegno nel §17.7, scritto e provato nel giro 14 (`-23` … `-26`): non entra nella sintesi né nelle origini della fattura | §13.9, §17.7, §18 | 4-bis-terdecies-bis |
+| 4-bis-decies-septies-ter | ✅ **Tid** → team DB | La motivazione sui passaggi dell'offerta: decisa (b) da Tid il 2026-10-31; scritta e provata nel giro 14 (`20261031-22`, `E_OFFERTA_MOTIVAZIONE_NON_AMMESSA`) | §13.9, §17.8, §18 | — |
+| 4-bis-decies-septies-quater | ✅ team DB | La guida del modello dichiara decisa l'asimmetria offerta/preventivo sulla revisione, col rimando (2026-10-31); corretta nello stesso giro la tabella di confronto delle due guide, che diceva «la superata non torna» | §13.9, §17.4 | — |
 | 4-bis-decies-septies | **Tid** | Il dato `emetti_offerta` (ed `emetti_contratto`, `emetti_ordine`) ai profili su dbdev | §13.7 | — |
 | 4-bis-undecies | ✅ **Tid** → team DB | Il via al giro 10: la commessa, ricognizione (2026-10-26). Non aspetta il BE (§5) | §14 | 4-bis-decies-quinquies |
 | 4-bis-undecies-bis | ✅ team DB | Giro 10, la commessa: ricognizione, piano, domande | §14 | 4-bis-undecies |
@@ -90,9 +92,9 @@ contratto né conferma un ordine (§11.7). Giri 5-10: chiusi e committati (detta
 | 4-bis-undecies-sexies | ✅ team BE | Richiesta del §14.6 (sette punti) fatta il 2026-10-27: firma, 403 dalla riga, difesa ritirata, IN_ESECUZIONE, test, doc; fuori elenco il gate del drawer | §14.7 | 4-bis-undecies-quinquies |
 | 4-bis-undecies-septies | ✅ **Tid** | Commit del passaggio BE del giro 10 (PR #1963, su `Tito-dev`) | §14.7 | 4-bis-undecies-sexies |
 | 4-bis-undecies-octies | ✅ **Tid** / team BE | Il parametro `permission` di `mapAvailableActionsToDrawerActions`: ritirato (ok Tid, 2026-10-27) | §14.7, §15.15 | 4-bis-undecies-sexies |
-| 4-bis-undecies-nonies | team DB | Richiesta (priorità bassa): ritirare `E_COMMESSA_AZIONE_NON_AMMESSA` (`obsoleto_dal`); poi il BE toglie policy e ripiego | §14.7 | 4-bis-undecies-sexies |
+| 4-bis-undecies-nonies | ✅ team DB | `E_COMMESSA_AZIONE_NON_AMMESSA` ritirato (`obsoleto_dal` 2026-10-31, CSV); il BE toglie policy e ripiego col §17.6 | §14.7, §17.3 | 4-bis-undecies-sexies |
 | 4-bis-undecies-decies | ✅ team BE | Revisione del giro: regola del 1 sui sei documenti, BB `operatore_di_prova`; da provare e committare col §14.7 | §14.8 | 4-bis-undecies-sexies |
-| 4-bis-undecies-undecies | team DB | Richieste (priorità bassa): R-1 `fn_crea_revisione_offerta` risponde 404 all'offerta che non c'è; R-2 lo stato d'accettazione nel vocabolario | §14.8 | — |
+| 4-bis-undecies-undecies | ✅ team DB | R-1 (`E_OFFERTA_NON_TROVATA` e l'emissione dal vocabolario in `fn_crea_revisione_offerta`) e R-2 (colonna `accettazione` e `script.fn_stato_accettazione_id`), scritti e provati nel giro 13 (2026-10-31) | §14.8, §17 | — |
 | 4-bis-duodecies | ✅ **Tid** → team DB | Il via alla ricognizione del giro 11: la fattura (2026-10-27); come lavora (il lotto guida gli stati e la stampa) | §15.1 | — |
 | 4-bis-duodecies-bis | ✅ team DB | Giro 11: ricognizione (quattro assi di stato, scrittori, azioni esistenti) | §15.2 | 4-bis-duodecies |
 | 4-bis-duodecies-ter | ✅ **Tid** | F-0 (D-G1 = c) … F-5 (D-N1 nel giro, con un pezzo standard) | §15.3 | 4-bis-duodecies-bis |
@@ -156,14 +158,20 @@ contratto né conferma un ordine (§11.7). Giri 5-10: chiusi e committati (detta
 | 4-bis-duodecies-trigies-decies-nonies | ✅ **Tid** | C-4 = (a) e il via allo sviluppo della porta (2026-10-29) | §16.15 | 4-bis-duodecies-trigies-decies-octies |
 | 4-bis-duodecies-trigies-decies-decies | ✅ team DB | La porta: `-07` … `-09`, codice e messaggio, i due pgTAP, le pagine manuali; prova dell'SQL estratto, tutti i casi come attesi | §16.15 | 4-bis-duodecies-trigies-decies-nonies |
 | 4-bis-duodecies-trigies-decies-undecies | ✅ **Tid** | L'apply di `20261029-01` … `-05`, `-07` … `-09` e dei CSV su dbdev (2026-10-29 07:26, `databasechangelog`); i pgTAP del §16.15 come app: verdi (2026-10-29) | §16.15 | 4-bis-duodecies-trigies-decies-decies |
-| 4-bis-duodecies-trigies-decies-duodecies | **Tid** ⏭️ | Commit del passaggio BE/FE del §16.17; la prova in-app (prima `sudo systemctl restart zeroerp-gunicorn`: un `kill -HUP` non carica il codice nuovo, §15.17.3): «Elimina», «Chiudi» e «Clona» dalla lista delle versioni, e `scripts/smoke-baseline.sh listini-v5` (passi 28b … 28h) | §16.17 | 4-bis-duodecies-trigies-decies-quinquies |
+| 4-bis-duodecies-trigies-decies-duodecies | **Tid** ⏭️ | ✅ Commit del passaggio BE/FE del §16.17 (PR #1980). Resta la prova in-app (prima `sudo systemctl restart zeroerp-gunicorn`: un `kill -HUP` non carica il codice nuovo, §15.17.3): «Elimina», «Chiudi» e «Clona» dalla lista delle versioni, e `scripts/smoke-baseline.sh listini-v5` (passi 28b … 28h) | §16.17 | 4-bis-duodecies-trigies-decies-quinquies |
+| 4-bis-terdecies | ✅ team DB | Giro 13: gli stati con un significato dal vocabolario (cessazione, accettazione; un lettore comune per i quattro), i consumatori riscritti, R-1, il codice ritirato, la guida; prova dell'SQL estratto sullo scratch, pgTAP prima/dopo, equivalenza delle capability (2026-10-31) | §17 | ok di Tid 2026-10-31 |
+| 4-bis-terdecies-bis | ✅ **Tid** | L'apply di `20261031-05` … `-21` e dei CSV su dbdev (2026-10-31 11:40, `databasechangelog`; marche dei tre vocabolari e `obsoleto_dal` letti dopo l'apply); i pgTAP del §17.5 come app: verdi | §17.5 | 4-bis-terdecies |
+| 4-bis-terdecies-quater | ✅ team DB | Giro 14: l'arco della revisione (§17.7) e la motivazione dell'offerta (§17.8, (b)), `20261031-22` … `-26`, scritti e provati (2026-10-31) | §18 | 4-bis-terdecies-bis |
+| 4-bis-terdecies-quinquies | ✅ **Tid** | L'apply di `20261031-22` … `-26` e dei due CSV d'errore su dbdev (2026-10-31 11:53, `databasechangelog`; codice e messaggio 1411 letti dopo l'apply, tre archi V nel lineage di dbdev); i pgTAP del §18.2 come app: verdi | §18.2 | 4-bis-terdecies-quater |
+| 4-bis-terdecies-sexies | team BE/FE ⏭️ | La richiesta del §18.3 (BE-T6, BE-T7), insieme al §17.6 | §18.3 | 4-bis-terdecies-quinquies |
+| 4-bis-terdecies-ter | team BE/FE ⏭️ | La richiesta del §17.6: `STATO_CESSATO`, i letterali d'accettazione dei service, la lettura prima di `crea_revisione`, policy e ripiego del codice ritirato | §17.6 | 4-bis-terdecies-bis |
 | 4-ter | ✅ team DB | Il lettore codice → id dello stato e la domanda intera, la colonna `emissione` col suo lettore: fatti nel giro 6 (`-37` … `-41`) | §8.4 | 4-bis |
 | 4-quater | ✅ team BE | Ritirata la composizione SQL del repository, sui lettori nuovi; `STATO_EMESSO` passa a 4-bis-octies | §8.10 | 4-ter |
 | 5 | ✅ **Tid** | Fermo dei temi trasversali **allentato** (2026-10-25, scelta C): ammesso il tema che poggia su un pezzo comune già fatto, fermo quello da ricopiare documento per documento; scritto in PROJECT_CONTEXT | — | 3-bis |
 | 5-bis | **Tid** | Ereditati dalla grammatica unica (chiusa il 2026-10-25): D-G1 ✅ deciso (c) nel giro 11 (§15.3); D-G2, la prova a video del lotto 2b | §10 | — |
 | 5-ter | ✅ **Tid** → team DB + FE | Ereditato dalla nota di credito (2026-10-26): D-N1, le azioni per riga: nel giro 11, con un pezzo standard (F-5, 2026-10-27); la forma del pezzo è Q-F5 | §12, §15 | — |
 
-Decisioni aperte di Tid: nessuna. Da committare: il passaggio BE/FE del §16.17 (`dev/backend-tid`, 2026-10-29); il §15.17 del brief e il giro K-S1 … K-S5, applicato e verde, e il giro 12, applicato e verde (`20261028-03` … `-32`, CSV, pgTAP, doc; §16) (`20261028-01`, `-02`, lo script una tantum, due pgTAP, una pagina manuale). W-3 è passata a [brief-db-scadenza-preventivi](brief-db-scadenza-preventivi.md) (E-1 … E-3). Da sapere (§8.10, §9.7, §11.7): il cambio stato generico dell'ordine rifiuta CONFERMATO (M-2); `POST /ordini/<id>/conferma/` non c'è più (Z-2); senza `emetti_ordine` nessuno conferma un ordine, e senza `emetti_contratto` nessuno attiva o cessa un contratto (su dbdev nessun profilo le ha, letto il 2026-10-26). Committati: il passaggio BE/FE del giro 11 (§15.15, `dev/backend-tid`, 2026-10-27), il giro DB 11 (fino a `-26` PR #1964; `-27` … `-39` in `6455df27f`; `-40` … `-50` in `241279d23`, PR #1966; tutto in `dev/backend-tid`), il passaggio BE del giro 10 (§14.7, §14.8, `7901c668a`, PR #1963), il giro DB 10 coi due passi per lo scratch da zero (PR #1962), il passaggio BE del giro 9 (§13.8, PR #1961), il giro DB 9 (`52e18d887`, PR #1960), il giro BE del §9.10 e del §11.6 (`fe041a1a1`, `0a08565be`, PR #1956), il §13 del brief (`a1fd65979`), il giro DB del §9.10 e il giro 8 (`7feb19970`, PR #1955), il giro BE del §9.7 … §9.9 (`8023974de`), il giro DB del §8.11 e il giro 7 (`2f66ca7bc`), il giro BE 6 (`dad26c37b`), il giro BE 5 (`4351164c1`), il giro DB 5 (`c3e34be02`), i giri 2-4 lato DB (`498cc8275`).
+Decisioni aperte di Tid: nessuna (la motivazione dell'offerta decisa (b) il 2026-10-31, §17.8); il via allo sviluppo del §17.7 e del §17.8 dato il 2026-10-31 (giro 14, §18). Da committare: il giro 13, applicato e verde (§17: `20261031-05` … `-21`, i CSV, due pgTAP, le pagine manuali, tre guide), e il giro 14, applicato e verde (§18: `20261031-22` … `-26`, due CSV, due pgTAP nuovi e uno portato, cinque pagine manuali, due guide), e questo brief. Committati il 2026-10-29 / 2026-10-31: il passaggio BE/FE del §16.17 (PR #1980) e il DB dei giri 11 e 12 (`19fc5932e`). W-3 è passata a [brief-db-scadenza-preventivi](brief-db-scadenza-preventivi.md) (E-1 … E-3). Da sapere (§8.10, §9.7, §11.7): il cambio stato generico dell'ordine rifiuta CONFERMATO (M-2); `POST /ordini/<id>/conferma/` non c'è più (Z-2); senza `emetti_ordine` nessuno conferma un ordine, e senza `emetti_contratto` nessuno attiva o cessa un contratto (su dbdev nessun profilo le ha, letto il 2026-10-26). Committati: il passaggio BE/FE del giro 11 (§15.15, `dev/backend-tid`, 2026-10-27), il giro DB 11 (fino a `-26` PR #1964; `-27` … `-39` in `6455df27f`; `-40` … `-50` in `241279d23`, PR #1966; tutto in `dev/backend-tid`), il passaggio BE del giro 10 (§14.7, §14.8, `7901c668a`, PR #1963), il giro DB 10 coi due passi per lo scratch da zero (PR #1962), il passaggio BE del giro 9 (§13.8, PR #1961), il giro DB 9 (`52e18d887`, PR #1960), il giro BE del §9.10 e del §11.6 (`fe041a1a1`, `0a08565be`, PR #1956), il §13 del brief (`a1fd65979`), il giro DB del §9.10 e il giro 8 (`7feb19970`, PR #1955), il giro BE del §9.7 … §9.9 (`8023974de`), il giro DB del §8.11 e il giro 7 (`2f66ca7bc`), il giro BE 6 (`dad26c37b`), il giro BE 5 (`4351164c1`), il giro DB 5 (`c3e34be02`), i giri 2-4 lato DB (`498cc8275`).
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-21. **A chi:** Tid; poi team DB e BE.
 > **Origine:** D2 e D3 di [brief-be-verifica-documentazione-api](../work-done/brief-be-verifica-documentazione-api.md)
@@ -4657,3 +4665,232 @@ verbi nuovi): i casi 5 e 6 portati al verbo «Chiudi» (il PATCH della fine di V
 file toccati, guard del frontend e build puliti. Non rigirati: la suite Django completa e ruff (non installato nel venv
 locale). Non provato: in-app (serve il riavvio del backend).
 
+
+## 17. Giro 13: gli stati con un significato dal vocabolario, e le richieste a priorità bassa (team DB, 2026-10-31)
+
+### 17.1 Le decisioni di Tid (2026-10-31)
+
+Sulle sei richieste aperte del team DB (righe 4-bis-nonies-octies, 4-bis-decies-septies-bis … -quater,
+4-bis-undecies-nonies, 4-bis-undecies-undecies):
+
+| # | Richiesta | Decisione |
+| --- | --- | --- |
+| 1 | Il lettore dello stato di cessazione (§11.7) | ok come proposto: una colonna sul vocabolario, come `emissione`, col suo lettore; si censiscono e si sostituiscono i letterali |
+| 2 | La revisione precedente nella finestra dell'annullo dell'offerta (§13.9) | ok, e l'arco compare anche nel pannello «Passaggi» |
+| 3 | La motivazione ammessa sul passaggio dell'offerta (§13.9) | spiegata nel §17.8; decisa **(b)** da Tid il 2026-10-31 |
+| 4 | L'asimmetria offerta/preventivo nella guida del modello (§13.9) | ok |
+| 5 | Il ritiro di `E_COMMESSA_AZIONE_NON_AMMESSA` (§14.7) | procedi |
+| 6 | R-1 e R-2 (§14.8) | procedi |
+
+### 17.2 Ricognizione: dove il codice nomina uno stato per il suo significato
+
+Letto su dbdev il 2026-10-31 (`pg_get_functiondef` e `pg_get_viewdef`, che vedono anche i corpi `BEGIN ATOMIC`):
+quindici funzioni e una vista nominano `'CESSATO'`, `'ACCETTATO'` o `'ACCETTATA'`. Dal 26 ottobre, quando la
+richiesta è stata scritta, i letterali della cessazione sono aumentati: oltre ai due verbi li scrivono la sede della
+regola del push dei contratti (`vendite.fn_contratti_addebiti_maturati`, 2026-10-31) e il cruscotto dei contratti. È
+un fatto datato, non il motivo: la regola (lo stato con un significato lo dice il vocabolario, guida del modello §4)
+vale anche per un solo letterale.
+
+**Due colonne, non una.** La richiesta parlava di «esito positivo terminale». Lette sul modello, cessazione e
+accettazione sono due cose diverse: l'accettazione non chiude il preventivo (da ACCETTATO si va a EVASO), la cessazione
+chiude il contratto. Una colonna sola direbbe due cose col nome di una. Quindi `cessazione` sul vocabolario dei
+contratti, `accettazione` su quelli di preventivo e offerta.
+
+**Il lettore comune.** `fn_stato_emissione_id` e `fn_stato_abortito_id` erano già la stessa logica su due colonne; con
+le due nuove sarebbero state quattro copie. Regola del 2: la logica sta in `script.fn_stato_per_colonna_id`, e i
+quattro lettori con il nome restano la porta (la guida e i consumatori parlano di «stato di emissione», non di una
+colonna).
+
+**Che cosa si sostituisce e che cosa resta**, consumatore per consumatore:
+
+| Consumatore | Letterale | Esito |
+| --- | --- | --- |
+| `vendite.fn_cessa_contratto`, `vendite.fn_cessa_contratti_scaduti` | `'CESSATO'` (la destinazione) | dal lettore della cessazione |
+| `vendite.fn_contratti_addebiti_maturati` | `'ATTIVO'`, `'CESSATO'` (gli stati del push) | dai lettori di emissione e cessazione |
+| `vendite.vw_dash_fatturazione_contratti` | `('ATTIVO', 'CESSATO')` (i contratti giudicati) | dalle colonne `emissione`, `cessazione` della riga del vocabolario |
+| `vendite.fn_list_preventivi_da_pushare`, `vendite.fn_push_preventivo_a_ordine` | `'ACCETTATO'` | dal lettore dell'accettazione |
+| `vendite.fn_push_offerta_a_contratto`, `vendite.fn_genera_ordine_da_offerta` | `'ACCETTATA'` | dalla colonna `accettazione` della riga che leggono già |
+| `script.fn_available_actions_preventivo` | `'ACCETTATO'`, `'ANNULLATO'`, `'EMESSO'` | dalle colonne `accettazione`, `is_abortito`, `emissione` |
+| `script.fn_available_actions_offerta` | `'ACCETTATA'`, `'EMESSA'` | dalle colonne `accettazione`, `emissione` |
+| `vendite.fn_crea_revisione_offerta` (R-1) | `'EMESSA'` | dalla colonna `emissione` |
+| i guard di transizione di contratto, preventivo, offerta | `'CESSATO'`, `'ACCETTATO'`, `'ACCETTATA'` | **restano**: sono la condizione del passaggio verso quello stato (guida del modello §7), lo stesso criterio del giro 7 per `'ANNULLATO'` (`20261025-74`) |
+| `vendite.fn_preventivo_proietta_stato_smistamento` | `'ACCETTATO'` ↔ `'EVASO'` | **resta**: è la proiezione fra due stati nominati, ed EVASO non ha una colonna |
+| `dbops.fn_pgtap_crea_preventivo_con_righe` | `'ACCETTATO'` in un commento | niente da fare |
+
+⚠️ **Debito dichiarato, non di questo giro**: `vendite.fn_crea_revisione_preventivo` scrive ancora `'EMESSO'` per lo
+stato da cui si revisiona; la capability del preventivo, riscritta qui, lo legge già dalla colonna `emissione`.
+Pulsante e madre oggi coincidono (lo stesso stato), ma la regola sta in due forme. Restano anche i `'DRAFT'` /
+`'BOZZA'` di `can_edit` nelle capability: sono la regola di modifica della bozza, non lo stato iniziale.
+
+### 17.3 Scritto (2026-10-31)
+
+| changeSet | Che cosa |
+| --- | --- |
+| `20261031-05` (00_schema) | colonne `cessazione` (contratti) e `accettazione` (preventivi, offerte): `NOT NULL DEFAULT false`, indice unico parziale, CHECK «è attivo», COMMENT |
+| `20261031-06` | NUOVO `script.fn_stato_per_colonna_id(testata, colonna, lettore)`: il lettore comune. Colonna che manca: NULL; colonna non boolean o testata fuori mappa: `E_SCRIPT_CHIAMATA_NON_VALIDA`, che nomina il lettore chiamato |
+| `20261031-07`, `-08` | `fn_stato_emissione_id`, `fn_stato_abortito_id` dal lettore comune; firma e risposte invariate, COMMENT coi consumatori di oggi |
+| `20261031-09`, `-10` | NUOVI `script.fn_stato_cessazione_id`, `script.fn_stato_accettazione_id` |
+| `20261031-11` … `-21` | i consumatori del §17.2, ciascuno dal suo YAML di base (verificato uguale al vivo prima di partire), con le sostituzioni dichiarate e il corpo precedente nel rollback. Nel `-21` anche R-1: l'offerta che non c'è è `E_OFFERTA_NON_TROVATA` (404), non `E_PARAMETRO_INVALIDO` |
+
+Nei consumatori che si fermano senza lo stato (`fn_contratti_addebiti_maturati`, `fn_list_preventivi_da_pushare`) il
+rifiuto passa da `E_CODICE` a `E_CONFIG_MANCANTE`: non c'è più un codice da non trovare, manca la marca nel
+vocabolario. Firme ancorate dove c'è una colonna (anche nei COMMENT di `-15`, `-19`, `-20`, che avevano tipi nudi);
+i tipi nudi rimasti hanno la ragione accanto.
+
+**CSV (80_data).** I tre vocabolari con la colonna nuova (`t` su CESSATO, ACCETTATO, ACCETTATA), dichiarata nei quattro
+mirror (`20260806-14`, `20260520-08`, `20250917-01`, `20260524-04`); colonna con default, nessuna cella vuota.
+`codici_errore.csv`: `E_COMMESSA_AZIONE_NON_AMMESSA` con `obsoleto_dal` 2026-10-31 e la nota (richiesta 5).
+`messaggi_errore.csv`: la nota di `E_OFFERTA_NON_TROVATA` nomina il consumatore nuovo.
+
+### 17.4 Documentazione
+
+Pagine manuali nuove: `fn_stato_per_colonna_id`, `fn_stato_cessazione_id`, `fn_stato_accettazione_id`; aggiornate
+quelle dei due lettori riscritti e dei consumatori che dicevano il letterale o il codice vecchio
+(`fn_crea_revisione_offerta`, `fn_push_offerta_a_contratto`, che diceva ancora `E_PARAMETRO_INVALIDO` per l'offerta
+che non c'è, corretta il 2026-08-06; `fn_contratti_addebiti_maturati`, `fn_list_preventivi_da_pushare`, le due
+capability, `vw_dash_fatturazione_contratti`). Guida del modello: i due lettori in testa, il §4 (gli stati con un
+significato), e nel §10 l'asimmetria della revisione (richiesta 4) con il rimando alla guida dei preventivi §4.5.
+⚠️ Trovato scrivendola: la tabella di confronto, ricopiata nelle guide di preventivi (§4.5) e offerte (§4.3), diceva
+che un'offerta superata «non torna indietro» se si annulla la revisione, e che lo stato è «definitivo». Dal giro 9
+(2026-10-26) torna emessa, e la guida delle offerte lo dice due righe sotto (§4.4). Corrette entrambe.
+
+### 17.5 Prova (2026-10-31)
+
+Sullo scratch `zeroerp_ruoli`, come `zeroerp_owner`, con l'SQL **estratto** dai changeSet (le preCondition eseguite a
+parte: tutte vere) in transazioni annullate. Il seed dei CSV simulato con un `UPDATE`: **la prova non copre il loader
+di Liquibase**.
+
+* **Firme**: le dodici funzioni esistenti hanno argomenti, risultato e `SECURITY` byte-identici prima e dopo; una sola
+  funzione per nome; `security_invoker` della vista conservato.
+* **pgTAP, prima e dopo**: i 76 file che chiamano un oggetto toccato, ciascuno senza e con l'SQL estratto in testa.
+  Nessuna regressione: i rossi di prima restano gli stessi, nel contenuto (capability annullo, lettori dello stato
+  del preventivo n. 23, competenza gruppi, annullo con legami n. 30, contratto n. 22, ordine n. 17, cruscotti aperto e
+  fatturazione). ⚠️ Una regressione trovata e corretta: la testata fuori mappa diceva «Chiamata non valida a
+  `script.fn_stato_per_colonna_id`» invece del lettore chiamato (`test-ordine-al-modello-v1` n. 4); ora il lettore
+  comune riceve il nome della porta.
+* **pgTAP nuovo** `script/test-doc-stati-dal-vocabolario-v1` (13/13): le risposte dei quattro lettori sulle otto
+  testate, la marca spostata, il secondo stato marcato e lo stato spento rifiutati, i tre confini del lettore comune,
+  R-1, e due presidi dichiarati sulla forma (i letterali ritirati).
+* **pgTAP riscritto** `vendite/test-push-list-stato-obbligatorio-v1` (4/4): leggeva il testo del corpo
+  (`'E_CODICE' … 'ACCETTATO'`). Ora **costruisce** il caso (la marca tolta al vocabolario) e si aspetta
+  `E_CONFIG_MANCANTE`, per il preventivo e per i due stati del contratto. Il suo test 3 era già rosso prima del giro:
+  la regola del lister dei contratti era passata a `fn_contratti_addebiti_maturati` (2026-10-31), e il test leggeva
+  ancora il lister.
+* **Equivalenza delle capability**: dodici documenti costruiti in ogni stato raggiungibile coi passaggi (sette
+  offerte, compresa la superata con la sua revisione; cinque preventivi; EVASO e SCADUTO non si raggiungono a mano),
+  blob di `fn_available_actions_offerta` / `_preventivo` prima e dopo: 0 diversi.
+
+**Apply e pgTAP come app (Tid, 2026-10-31)**: `20261031-05` … `-21` applicati alle 11:40 (`databasechangelog`); il loader ha scritto le marche (CESSATO, ACCETTATO, ACCETTATA) e `obsoleto_dal`, letti dopo l'apply; i pgTAP verdi.
+
+### 17.6 Richiesta al team BE/FE
+
+| # | Chi | Che cosa |
+| --- | --- | --- |
+| BE-T1 | BE | `contratti_repository.STATO_CESSATO` si ritira: la cessazione si riconosce dal lettore (`script.fn_doc_stato_codice(t, script.fn_stato_cessazione_id(t))`, come «Emetti» con l'emissione) |
+| BE-T2 | BE | I letterali dell'accettazione: `preventivi_service` (`_STATI_FATTURABILI`, `_STATI_GENERA_PRATICA`, il ramo `nuovo_stato == "ACCETTATO"` della modalità di fatturazione) e `offerte_service` (`StatoOfferta.ACCETTATA`) leggono `script.fn_stato_accettazione_id`. ⚠️ Nello stesso ramo del preventivo c'è `"EMESSO"`: è l'emissione, dal suo lettore (§8.7) |
+| BE-T3 | BE | `offerte_service.crea_revisione`: si toglie la lettura della testata prima della chiamata; il 404 (`E_OFFERTA_NON_TROVATA`) arriva dal verbo |
+| BE-T4 | BE | `E_COMMESSA_AZIONE_NON_AMMESSA` ritirato: policy rigenerata dal catalogo e ripiego tolto da `error_messages_fallback.py` |
+| BE-T5 | BE | Da sapere: i lister del push dei preventivi e dei contratti, senza lo stato nel vocabolario, si fermano con `E_CONFIG_MANCANTE` (classe `TECNICO`, 500) invece di `E_CODICE` (`DATO_ERRATO`, 400). È voluto: una marca che manca nel vocabolario è configurazione rotta, non un dato dell'operatore. Nessun codice nuovo da mappare |
+
+### 17.7 L'arco della revisione nel lineage — il disegno (richiesta 2, giro dopo)
+
+La finestra dell'annullo di una revisione d'offerta prende il nome della revisione precedente dal lineage, che non ha
+un arco offerta → offerta. Tid (2026-10-31): l'arco si aggiunge, e compare anche in «Passaggi». Scrivendolo è emerso
+che il lineage ha altri due lettori, e per loro l'arco **non deve contare**:
+
+* **la sintesi** (`vendite.fn_documento_lineage_sintesi`: frontiera, discendenti, transitato, radice). Una revisione
+  superata avrebbe un «discendente», e i cruscotti delle offerte la conterebbero come transitata, mentre oggi la
+  superata è un esito negativo;
+* **le origini della fattura** (`vendite.fn_fattura_origini`, che risale il lineage escludendo già l'arco G). Un
+  contratto nato dalla revisione 2 citerebbe in fattura anche la revisione 1.
+
+Il disegno: un arco nuovo (lettera `V`, revisione) in `vendite.fn_documento_lineage_archi` (il ramo del grafo intero e i
+due dai semi, come gli archi C e D), dalla revisione padre (`revisione_padre_id`) alla figlia; in
+`vendite.fn_documento_lineage_legami` è un legame di sola testata (mai ritirato); la sintesi lo scarta come scarta il
+legame ritirato (D-15, 2026-10-13); `fn_fattura_origini` lo esclude come G. Sono quattro funzioni grandi, di cui una
+`BEGIN ATOMIC` da 650 righe: un giro a sé, dopo l'apply di questo, con la sua prova (le finestre d'annullo, il pannello,
+la sintesi invariata, le origini della fattura invariate). Nessuna domanda aperta: la sintesi e la fattura restano come
+sono oggi.
+
+### 17.8 La motivazione sui passaggi dell'offerta, in modo semplice (richiesta 3, per Tid)
+
+**Che cosa succede oggi.** Quando un'offerta cambia stato, il verbo (`vendite.fn_cambia_stato_offerta`) può ricevere
+un testo di motivazione e lo salva nella colonna `motivazione_rifiuto`, che per definizione è «il motivo di una
+chiusura negativa» (rifiutata o annullata). La matrice dei passaggi dice dove la motivazione è **obbligatoria**:
+rifiuto e annulli sì, emissione e accettazione no. Non dice niente su dove è **permessa**. Così il verbo la salva su
+qualunque passaggio: un'offerta **accettata** può finire con una «motivazione del rifiuto» scritta. Oggi non succede
+solo perché il backend rifiuta il campo prima: la regola sta in Python, e il database la lascia passare.
+
+**Le due strade.**
+
+* **(a) Una seconda colonna sul passaggio**, «motivazione ammessa», accanto a «motivazione obbligatoria». Permette
+  passaggi con una motivazione **facoltativa**: per esempio un'accettazione con una nota libera. Ma la colonna dove si
+  scrive si chiama «motivo della chiusura negativa»: una nota sull'accettazione non c'entra, e andrebbe in un'altra
+  colonna.
+* **(b) Nessuna colonna nuova**: la motivazione si accetta solo dove il passaggio la chiede. Altrove il verbo la
+  **rifiuta con un errore** (non la scarta in silenzio, che direbbe al chiamante che è stata presa: lo stesso criterio
+  di `valido_al` sulla cessazione, §11.7).
+
+**Raccomandazione: (b).** Il significato della colonna (il motivo di un rifiuto o di un annullo) coincide già coi
+passaggi che la chiedono: «ammessa» e «obbligatoria» sono la stessa lista. La (a) servirebbe solo per una nota
+facoltativa, che oggi il modello non prevede e che comunque andrebbe in un altro campo. Con la (b) il backend toglie
+il suo controllo (`registra_esito`), e la regola resta una sola, nel verbo.
+
+**Decisione di Tid (2026-10-31): (b).** Da scrivere insieme al §17.7, col via allo sviluppo.
+
+## 18. Giro 14: l'arco della revisione nel lineage e la motivazione dell'offerta (team DB, 2026-10-31)
+
+Via di Tid (2026-10-31, «migrazione applicata test verdi aggiorna il brief e procedi»), dopo l'apply del giro 13. Le
+decisioni: l'arco anche in «Passaggi» (§17.1, punto 2); la motivazione (b) (§17.8).
+
+### 18.1 Scritto
+
+| changeSet | Che cosa |
+| --- | --- |
+| `20261031-22` | `vendite.fn_cambia_stato_offerta`: su un passaggio della matrice che non chiede la motivazione, una motivazione non vuota è rifiutata con il codice nuovo `E_OFFERTA_MOTIVAZIONE_NON_AMMESSA` (`DATO_ERRATO`, campo `motivazione_rifiuto`), e niente si scrive. Soli spazi = nessuna motivazione; un passaggio fuori matrice resta al guard di transizione. I chiamanti di oggi (`fn_annulla_offerta`, `dbops.fn_pgtap_porta_a_stato`) la passano solo dove serve |
+| `20261031-23` | `vendite.fn_documento_lineage_archi`: l'arco **V**, dalla revisione madre alla figlia (`revisione_padre_id`), nei due modi come C e D (un ramo per il grafo intero, due col seme). Nessun rango: non è un'origine. `BEGIN ATOMIC` da solo nel suo `sql:`; base `20261019-89`, verificata uguale al vivo ricreandola in transazione annullata |
+| `20261031-24` | `vendite.fn_documento_lineage_legami`: V è un legame di sola testata, `false` con i due nodi vivi (censito, non NULL) |
+| `20261031-25` | `vendite.fn_documento_lineage_sintesi`: V si scarta alla lettura degli archi, dove si scarta il legame ritirato (D-15): niente transito, discendenti, sorgenti, radice per una revisione. La sintesi resta quella di prima |
+| `20261031-26` | `vendite.fn_fattura_origini`: la risalita non passa da V, come non passa da G. Il livello 1 non lo tocca: V arriva solo su un'offerta, mai genitore diretto di una fattura |
+
+CSV: `E_OFFERTA_MOTIVAZIONE_NON_AMMESSA` in `codici_errore.csv` (con la nota) e in `messaggi_errore.csv` (id 1411:
+«Per portare l'offerta %s nello stato %s non si indica una motivazione.»).
+
+**Il nome nella finestra dell'annullo arriva da solo.** Il backend compone il nome di un legame come
+`(tipo, id) → codice` dai passaggi del lineage (`_annullo_con_legami._nomi_dal_lineage`); il legame della revisione è
+`('OFFERTA_COMMERCIALE', revisione_padre_id)` (`vendite.fn_documento_legami`), e il lineage traduce l'uid dell'offerta
+nel suo id (`from_doc_id`). Con V indietro dalla figlia c'è la madre: numero e link senza toccare il backend, come
+attendeva il §13.9. Né backend né frontend leggono le lettere degli archi (letto il 2026-10-31).
+
+Pagine manuali aggiornate: `fn_cambia_stato_offerta`, `fn_documento_lineage_archi` (14 archi), `_legami` (la riga di
+V nel censimento), `_sintesi`, `fn_fattura_origini`.
+
+### 18.2 Prova (2026-10-31)
+
+Sullo scratch `zeroerp_ruoli` (giro 13 già applicato, la stessa base di dbdev), come `zeroerp_owner`, con l'SQL
+**estratto** dai changeSet in transazioni annullate; preCondition tutte vere. Il seed dei due CSV simulato con un
+`INSERT`: la prova non copre il loader.
+
+* **Firme**: le cinque funzioni hanno argomenti, risultato, `SECURITY`, volatilità e clausole `SET` (`jit`,
+  `plan_cache_mode` del lineage) identici prima e dopo.
+* **pgTAP, prima e dopo**: i 58 file che toccano lineage, sintesi, origini della fattura, legami, il verbo o le
+  revisioni dell'offerta. Nessuna regressione: i rossi di prima restano gli stessi (capability DDT n. 18, annullo con
+  legami n. 30, righe evase dall'ordine n. 43, cruscotto fatturazione n. 13-14). Un rosso **voluto**:
+  `vendite/test-lineage-legame-ritirato-v1` n. 2, il presidio del censimento, vede la quattordicesima lettera (V) col
+  suo ramo nel decoratore; aggiornato l'atteso (`A … U,V`), 18/18.
+* **pgTAP nuovi**: `vendite/test-offerta-revisione-nel-lineage-v1` (9/9: l'arco nei tre modi, una volta sola col seme
+  doppio; «Passaggi» indietro dalla figlia porta la madre col suo numero; il legame censito e vivo; la sintesi della
+  madre senza discendenti e non transitata, della figlia senza sorgenti né radice; un presidio dichiarato sulla forma
+  per la fattura) e `vendite/test-offerta-motivazione-solo-dove-chiesta-v1` (5/5: la motivazione sull'accettazione
+  rifiutata e non scritta; soli spazi passano; il rifiuto la scrive; il codice a catalogo).
+
+**Apply e pgTAP come app (Tid, 2026-10-31)**: `20261031-22` … `-26` applicati alle 11:53 (`databasechangelog`); il loader ha scritto il codice (`DATO_ERRATO`) e il messaggio 1411, letti dopo l'apply; i pgTAP verdi.
+
+**Documentazione collegata** (2026-10-31): guida delle offerte (la colonna `motivazione_rifiuto`, la motivazione «solo lì» nel §3, la finestra dell'annullo e «Passaggi» nel §4.4); guida del modello (la riga dell'offerta nel §10, le origini della fattura nel §7, l'asimmetria della revisione).
+
+### 18.3 Richiesta al team BE/FE
+
+| # | Chi | Che cosa |
+| --- | --- | --- |
+| BE-T6 | BE | `offerte_service.registra_esito`: si ritira il controllo «La motivazione si indica solo per rifiutare o annullare l'offerta» (`E_VENDITE_VALIDATION`): lo dice il verbo, con `E_OFFERTA_MOTIVAZIONE_NON_AMMESSA` sul campo `motivazione_rifiuto`. Policy rigenerata dal catalogo (codice nuovo `DATO_ERRATO`) e ripiego in `error_messages_fallback.py` |
+| BE-T7 | BE/FE | Da provare a video: l'annullo dell'ultima revisione viva di un'offerta mostra il numero e il link della revisione che torna emessa; il pannello «Passaggi» dell'offerta mostra la revisione. Nessun codice da cambiare atteso |

@@ -121,7 +121,7 @@ Contiene il contesto commerciale e i parametri di pricing:
 * **date evento** (`data_emissione`, `data_accettazione`, `data_rifiuto`,
   `data_annullamento`) — popolate dai trigger di transizione
 * **`motivazione_rifiuto`** — testo libero, valorizzato alla chiusura negativa
-  (RIFIUTATA o ANNULLATA)
+  (RIFIUTATA o ANNULLATA), e solo lì (§3)
 
 ### 2.2 Eccezioni `offerte_commerciali_eccezioni`
 
@@ -243,7 +243,9 @@ automatici li fa il sistema e non si chiedono a mano. L'emissione e l'annullo di
 accettata chiedono l'azione di processo `emetti_offerta`, gli altri passaggi il solo permesso
 sull'offerta (modello §6). La **motivazione** la chiede il database, dove il passaggio la prevede
 (`E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA`): una motivazione vuota o di soli spazi conta come assente, e
-quella data resta sull'offerta.
+quella data resta sull'offerta. E solo lì: una motivazione su un passaggio che non la prevede
+(l'emissione, l'accettazione) è rifiutata (`E_OFFERTA_MOTIVAZIONE_NON_AMMESSA`), perché è il motivo
+di una chiusura negativa.
 
 Da **ACCETTATA** si esce trasformando l'offerta (contratto *o* ordine, §8 e §8.bis) oppure,
 se non si può trasformare, **annullandola**. L'annullo è ammesso solo se dall'offerta non vive
@@ -322,8 +324,8 @@ pena conoscerli perché il comportamento visibile cambia.
 
 | Aspetto                                                         | **Offerte**                                                                                            | **Preventivi**                                                                                        |
 | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
-| Cosa succede alla versione precedente quando nasce la revisione | passa **subito a SUPERATA** (stato chiuso e definitivo, imposto in automatico)                         | **resta EMESSA/viva**; il sistema calcola "qual è la versione valida" senza chiudere la precedente    |
-| Se abbandono/annullo la revisione appena iniziata               | la precedente **resta chiusa** (SUPERATA): non torna indietro. Per riprovare si fa una nuova revisione | la precedente **torna automaticamente la versione valida**: si può accettarla o revisionarla di nuovo |
+| Cosa succede alla versione precedente quando nasce la revisione | passa **subito a SUPERATA** (stato chiuso, imposto in automatico)                                   | **resta EMESSA/viva**; il sistema calcola "qual è la versione valida" senza chiudere la precedente    |
+| Se abbandono/annullo la revisione appena iniziata               | se non resta un'altra revisione viva, la precedente **torna EMESSA**; l'annullo lo dice prima e si conferma (offerte §4.4) | la precedente **torna automaticamente la versione valida**: si può accettarla o revisionarla di nuovo |
 | Come nasce il concetto di "versione valida"                     | dallo **stato** (SUPERATA/ANNULLATA = non valida)                                                      | da un **calcolo** (`is_attiva`), non da uno stato dedicato                                            |
 
 Il motivo della differenza: un'offerta è un **documento a sé** per ogni revisione
@@ -348,6 +350,11 @@ della revisione che si annulla: senza la conferma l'annullo è rifiutato con
 [`vendite.fn_annulla_offerta`](/dbzero/vendite/funzioni/fn_annulla_offerta), con la sua
 motivazione. Una revisione la cui precedente resta superata da un'altra revisione viva non ha
 legami, e si annulla senza conferma.
+
+La finestra della conferma mostra il numero e il link della revisione che torna emessa: la
+revisione è un passaggio del lineage (madre → figlia), e il pannello «Passaggi» dell'offerta la
+mostra. Non conta invece come passaggio di un documento a un altro: un'offerta superata non risulta
+«transitata» nei cruscotti, e una fattura non cita le revisioni superate.
 
 ---
 

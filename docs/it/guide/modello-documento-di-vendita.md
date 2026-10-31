@@ -1,6 +1,6 @@
 # Guida — Il modello del documento di vendita
 
-> **Ultimo aggiornamento**: 28 ottobre 2026
+> **Ultimo aggiornamento**: 31 ottobre 2026
 >
 > **Destinatari**: chi lavora su un documento di vendita o d'acquisto — sviluppatori database,
 > backend, frontend e analisti funzionali. Prima di cambiare come un documento nasce, cambia stato,
@@ -22,6 +22,8 @@
 > * [script.fn_doc_stato_iniziale_id](/dbzero/script/funzioni/fn_doc_stato_iniziale_id) — lo stesso, a partire dal documento
 > * [script.fn_stato_emissione_id](/dbzero/script/funzioni/fn_stato_emissione_id) — l'unico lettore dello stato di emissione di un documento
 > * [script.fn_stato_abortito_id](/dbzero/script/funzioni/fn_stato_abortito_id) — l'unico lettore dello stato d'annullo di un documento
+> * [script.fn_stato_cessazione_id](/dbzero/script/funzioni/fn_stato_cessazione_id) — l'unico lettore dello stato di cessazione (il contratto)
+> * [script.fn_stato_accettazione_id](/dbzero/script/funzioni/fn_stato_accettazione_id) — l'unico lettore dello stato di accettazione (preventivo e offerta)
 > * [script.fn_doc_stato_id](/dbzero/script/funzioni/fn_doc_stato_id) — dal codice di uno stato al suo id, per ogni documento
 > * [script.fn_doc_stato_codice](/dbzero/script/funzioni/fn_doc_stato_codice) — il gemello inverso: dall'id di uno stato al suo codice
 > * [script.fn_doc_azione_passaggio](/dbzero/script/funzioni/fn_doc_azione_passaggio) — la domanda del backend: che cosa chiede questo passaggio?
@@ -103,7 +105,8 @@ scattare.
 Ogni documento ha due tabelle di configurazione:
 
 * il **vocabolario degli stati** (`config.stati_doc_*`): quali stati esistono, e per ognuno se è
-  quello iniziale, se è quello di emissione, se è terminale, se è un annullo;
+  quello iniziale, se è quello di emissione, se è terminale, se è un annullo e, dove il documento li
+  ha, se è quello di cessazione (il contratto) o di accettazione (preventivo e offerta);
 * la **matrice dei passaggi** (`config.transizioni_stati_*`): **una riga = un passaggio ammesso**,
   da uno stato a un altro.
 
@@ -118,6 +121,15 @@ La matrice è **l'unica fonte** dei passaggi, e la leggono tutti:
 ⛔ Un passaggio scritto nel codice (un `IF` nel trigger, un elenco di stati in Python) è una seconda
 matrice: prima o poi le due rispondono in modo diverso. I passaggi si aggiungono, si tolgono e si
 spengono **nella tabella**.
+
+Lo stesso vale per **gli stati che hanno un significato**: l'inizio, l'emissione, l'annullo, la
+cessazione, l'accettazione. Il codice non scrive `'CESSATO'` o `'ACCETTATO'` per dire «lo stato di
+cessazione» o «lo stato di accettazione»: lo dice una colonna del vocabolario (al più uno stato per
+documento, ed è attivo), e lo legge il suo lettore —
+[`script.fn_stato_cessazione_id`](/dbzero/script/funzioni/fn_stato_cessazione_id),
+[`script.fn_stato_accettazione_id`](/dbzero/script/funzioni/fn_stato_accettazione_id) e gli altri
+elencati in testa. Un documento che quello stato non lo ha (il preventivo non cessa) riceve un valore
+vuoto. Chi ha già in mano la riga del vocabolario legge la colonna direttamente.
 
 ---
 
@@ -249,7 +261,8 @@ bolla, l'ordine, il contratto, l'offerta, il preventivo; per una nota di credito
 il reso —, non la commessa, che è un contenitore interno. Sono tutte sorgenti, di tipo diverso, e la
 regola è una sola. Li dà [`vendite.fn_fattura_origini`](/dbzero/vendite/funzioni/fn_fattura_origini), a
 stampa e dettaglio: parte dai genitori diretti del documento (al posto della commessa, i documenti delle
-righe fatturate) e ne risale la catena, senza mai ripassare dalla commessa. Quali tipi si citano lo dice
+righe fatturate) e ne risale la catena, senza mai ripassare dalla commessa né dalla revisione di un'offerta
+(una fattura non cita le revisioni superate). Quali tipi si citano lo dice
 il registro delle sorgenti, colonna `citato_in_fattura` ([`config.sorgenti`](/dbzero/config/tabelle/sorgenti)).
 
 ---
@@ -309,7 +322,7 @@ chiama il verbo dell'attivazione, l'attivazione dall'applicazione è rifiutata d
 | Documento | Nasce in bozza (§3) | Matrice in tabella (§4) | Verbo di stato (§5) | Azione sul passaggio (§6) | Emissione (§7) | Annullo (§8) |
 | --- | --- | --- | --- | --- | --- | --- |
 | Preventivo | ✅ | ✅ | ✅ `fn_cambia_stato_preventivo` sul verbo comune, con la porta; ACCETTATO ↔ EVASO dalla proiezione dello smistamento | ✅ `emetti_preventivo` su emissione e annullo dell'emesso e dell'accettato (backend allineato il 2026-10-25: il 403 dalla riga del passaggio) | ✅ solo da «Emetti»; le righe sul passaggio, nel guard | ✅ `fn_annulla_preventivo` → verbo di stato |
-| Offerta | ✅ | ✅ (tabella `config.stati_doc_offerte_transizioni`: il nome fuori serie è una divergenza dichiarata, nessuna regola dipende dal nome) | ✅ `fn_cambia_stato_offerta` sul verbo comune, con la porta, e con la motivazione obbligatoria dove la riga del passaggio la chiede (rifiuto, annulli); il superamento e il ritorno della revisione precedente dalla proiezione delle revisioni vive | ✅ `emetti_offerta` sull'emissione e sull'annullo dell'accettata | ✅ solo da «Emetti». ⚠️ Il numero si assegna alla nascita, non all'emissione: divergenza dichiarata, tema a parte | ✅ `fn_annulla_offerta` → verbo di stato; prima ciò che vieta (un contratto o un ordine vivo, `fn_check_offerta_annullabile`), poi la conferma: la revisione precedente che torna emessa è un legame |
+| Offerta | ✅ | ✅ (tabella `config.stati_doc_offerte_transizioni`: il nome fuori serie è una divergenza dichiarata, nessuna regola dipende dal nome) | ✅ `fn_cambia_stato_offerta` sul verbo comune, con la porta, e con la motivazione obbligatoria dove la riga del passaggio la chiede (rifiuto, annulli), e ammessa solo lì; il superamento e il ritorno della revisione precedente dalla proiezione delle revisioni vive | ✅ `emetti_offerta` sull'emissione e sull'annullo dell'accettata | ✅ solo da «Emetti». ⚠️ Il numero si assegna alla nascita, non all'emissione: divergenza dichiarata, tema a parte | ✅ `fn_annulla_offerta` → verbo di stato; prima ciò che vieta (un contratto o un ordine vivo, `fn_check_offerta_annullabile`), poi la conferma: la revisione precedente che torna emessa è un legame |
 | Contratto | ✅ | ✅ | ✅ `fn_cambia_stato_contratto` sul verbo comune, con la porta; la cessazione con la sua data da `fn_cessa_contratto` (oggi: cessa; futura: programmata), quella per scadenza da `fn_cessa_contratti_scaduti` | ✅ `emetti_contratto` sull'attivazione e sulla cessazione | ✅ solo da «Emetti». ⚠️ Il numero si assegna alla nascita, non all'emissione: divergenza dichiarata, tema a parte | ✅ `fn_annulla_contratto` → verbo di stato |
 | Ordine | ✅ | ✅ | ✅ `fn_cambia_stato_ordine` sul verbo comune, con la porta; l'evasione (confermato ↔ parzialmente evaso ↔ evaso) dalla proiezione delle bolle | ✅ `emetti_ordine` sulla conferma e sull'annullo del confermato | ✅ solo da «Emetti» (la conferma senza PDF è ritirata dal 2026-10-25). ⚠️ Il numero si assegna alla nascita, non all'emissione: divergenza dichiarata, tema a parte | ✅ `fn_annulla_ordine` → verbo di stato |
 | DDT | ✅ | ✅ | ✅ `fn_cambia_stato_ddt` sul verbo comune, con la porta | ✅ `emetti_ddt` sulla riga di emissione e annullo dell'emesso; `registra_magazzino` nel verbo, per l'operazione di magazzino | ✅ solo da «Emetti»: il cambio stato generico rifiuta emesso | ✅ `fn_annulla_ddt` → verbo di stato |
@@ -322,6 +335,13 @@ chiama il verbo dell'attivazione, l'attivazione dall'applicazione è rifiutata d
 Le azioni a catalogo che nessuno usava — `genera_fattura`, `approva_fattura`, `emetti_fattura` — sono
 ritirate col giro della fattura, insieme a `reset_lotto_draft` («riporta in bozza» chiede
 `numera_fatture_lotti`).
+
+**La revisione di offerta e preventivo** si dice in due modi, ed è una scelta: l'offerta mette la
+revisione precedente nello stato *superata* (e la riporta a *emessa* se l'ultima revisione viva si
+annulla, con la conferma dei legami del §8, che mostra il numero della revisione che torna emessa), il preventivo la **calcola** (la revisione valida è
+l'ultima emessa, e la precedente resta *emesso*). Non è una divergenza da correggere: l'offerta è un
+documento per revisione, il preventivo versiona lo stesso numero. Il perché sta nella
+[guida dei preventivi, §4.5](/guide/gestione-preventivi#45-differenza-col-modello-offerte).
 
 Lo stato del **job** del lotto (in esecuzione, completato, errore: com'è andato il lavoro della pipeline)
 non è lo stato del documento, ma segue la stessa idea: i valori nel vocabolario

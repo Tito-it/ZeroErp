@@ -4,6 +4,7 @@
 >
 > [script.fn_stato_iniziale_id](/dbzero/script/funzioni/fn_stato_iniziale_id) ·
 > [script.fn_doc_azione_passaggio](/dbzero/script/funzioni/fn_doc_azione_passaggio) ·
+> [script.fn_stato_per_colonna_id](/dbzero/script/funzioni/fn_stato_per_colonna_id) (la logica comune, dal 31-10-2026) ·
 > guida [Il modello del documento di vendita](/guide/modello-documento-di-vendita) §7
 
 ### 🎯 Scopo
@@ -38,4 +39,5 @@ cui il documento nasce. Questa funzione la legge.
 Il backend (il cambio di stato generico rifiuta l'emissione di qualunque documento,
 senza un nome di stato scritto per documento), la domanda intera
 [`script.fn_doc_azione_passaggio`](/dbzero/script/funzioni/fn_doc_azione_passaggio)
-e i verbi di preventivo e bolla.
+i verbi di preventivo e bolla, il job della cessazione dei contratti scaduti
+(i contratti attivi) e la proiezione delle revisioni dell'offerta (il ritorno a emessa).
