@@ -8,6 +8,9 @@
 import { computed, onActivated, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
+// ⛔ DEBITO, non eccezione: e' una lista vera (rotta e store propri, una riga
+// per edizione di workflow) e va su `<ListaConfigurabile>` appena il suo
+// codice e' seminato in `ui.lista_definizione`.
 // eslint-disable-next-line no-restricted-imports -- eccezione nel registro DataTable (scripts/datatable.baseline.json)
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'

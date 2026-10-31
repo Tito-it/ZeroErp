@@ -25,7 +25,7 @@ djangorestframework-stubs==3.18.1
     # via -r ../requirements-dev.in
 librt==0.16.0
     # via mypy
-mypy==2.4.0
+mypy==2.4.1
     # via -r ../requirements-dev.in
 mypy-extensions==1.1.0
     # via mypy
@@ -41,7 +41,7 @@ types-html5lib==1.1.11.20260518
     # via types-bleach
 types-openpyxl==3.1.5.20261017
     # via -r ../requirements-dev.in
-types-pyyaml==6.0.12.20260906
+types-pyyaml==6.0.12.20261030
     # via
     #   django-stubs
     #   djangorestframework-stubs

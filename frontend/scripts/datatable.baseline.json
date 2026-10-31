@@ -7,14 +7,12 @@
   },
   "grezze": [
     "amministrazione/components/CollectionEditorPanel.vue",
-    "amministrazione/components/EmittenteFiscaleUtilitiesTab.vue",
-    "amministrazione/components/RepartoProfiloEditor.vue",
     "amministrazione/views/DefinizioneEditorView.vue",
     "amministrazione/views/DefinizioniWorkflowListView.vue",
     "catalogo/components/ArticoloUomDrawer.vue",
     "config/components/ImpostazioniSearchTable.vue",
     "core/components/ConfigTablePanel.vue",
-    "core/components/MatriceOverride.vue",
+    "core/components/MatriceCatalogo.vue",
     "core/components/NoteDrawer.vue",
     "core/components/RiepilogoIvaTable.vue",
     "core/components/ScadenzeSintesi.vue",
@@ -24,25 +22,20 @@
     "ui/components/ListaPresetColonneDrawer.vue",
     "vendite/_shared/componenti/ComponentiDialog.vue",
     "vendite/_shared/componenti/ComponentiPanel.vue",
+    "vendite/_shared/righe/TabellaSelezioneRighe.vue",
     "vendite/_shared/situazioneMerce/SituazioneMerceContenuto.vue",
     "vendite/components/AlertScadenzeWidget.vue",
     "vendite/components/ApplicaVariazioneDialog.vue",
     "vendite/components/AttivaVersioneDialog.vue",
     "vendite/components/ListiniSearchTable.vue",
-    "vendite/ddt/components/DdtResoDialog.vue",
-    "vendite/ordini/components/dialogs/OrdineEvasioneDialog.vue",
     "vendite/preventivi/components/dialogs/PreventiviSmistamentoDialog.vue",
-    "vendite/resi/components/AccreditoEsitoDialog.vue",
-    "vendite/resi/components/dialogs/ResoRiconsegnaDialog.vue"
+    "vendite/resi/components/AccreditoEsitoDialog.vue"
   ],
   "senza_motivazione": [
-    "amministrazione/components/EmittenteFiscaleUtilitiesTab.vue",
-    "amministrazione/components/RepartoProfiloEditor.vue",
     "catalogo/components/ArticoloUomDrawer.vue",
     "config/components/ImpostazioniSearchTable.vue",
     "core/components/NoteDrawer.vue",
     "core/components/SearchDrawer.vue",
-    "pratiche/components/PraticaFlussiTab.vue",
     "vendite/components/AlertScadenzeWidget.vue",
     "vendite/components/ListiniSearchTable.vue"
   ]

@@ -25,13 +25,8 @@ import { useNotify } from '../../../../core/composables/useNotify'
 import { useRigheSelezioneQta } from '../../../_shared/righe/useRigheSelezioneQta'
 import { useOrdiniStore } from '../../stores/ordini'
 import { formatNumber } from '../../../../core/utils/format'
-import Checkbox from 'primevue/checkbox'
-// DataTable grezza: sono le RIGHE dell'ordine (store.loadRighe) su cui si sceglie
-// cosa evadere, nel dialog d'azione — dettaglio del documento, non una lista.
-// eslint-disable-next-line no-restricted-imports -- eccezione nel registro DataTable (scripts/datatable.baseline.json)
-import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
-import InputNumber from 'primevue/inputnumber'
+import TabellaSelezioneRighe from '../../../_shared/righe/TabellaSelezioneRighe.vue'
 
 const { t } = useI18n()
 const store = useOrdiniStore()
@@ -58,14 +53,7 @@ function residuoDi(r) {
 // Macchina selezione/quantità (BB): le righe gia' completamente evase restano
 // visibili come consuntivo (ordinata/evasa), le evadibili sono preselezionate
 // con qta = residuo.
-const {
-  righe, loadingRighe, selected, qtaMap,
-  righeSelezionabili: righeEvadibili,
-  coversAllResiduo: evadeTuttoResiduo,
-  loadRighe, buildPayloadRighe,
-  isSelectable, isSelected, toggleRow, toggleAll, allSelected, anySelected,
-  chiudiConConferma,
-} = useRigheSelezioneQta({
+const selezione = useRigheSelezioneQta({
   fetchRighe: async () => {
     if (!props.ordineId) return []
     return (await store.loadRighe(props.ordineId)) || []
@@ -75,6 +63,14 @@ const {
   // La fotografia (D-14) e' del BB, fissata a ogni caricamento delle righe.
   visibile: () => props.visible,
 })
+const {
+  selected,
+  righeSelezionabili: righeEvadibili,
+  coversAllResiduo: evadeTuttoResiduo,
+  loadRighe,
+  buildPayloadRighe,
+  chiudiConConferma,
+} = selezione
 
 // Fetch lazy: all'apertura (e a ogni riapertura, cosi' i residui restano
 // freschi dopo un DDT appena generato). Non al mount: la dialog vive montata
@@ -169,55 +165,27 @@ function onGenera() {
         {{ t('vendite.ordini.evasione_intro') }}
       </p>
 
-      <DataTable v-if="righe.length" :value="righe"
-        data-key="id" striped-rows size="small" class="app-datatable"
-        :loading="loadingRighe" scrollable scrollHeight="360px">
-        <!-- Checkbox custom (no selectionMode: PrimeVue 4 renderebbe spuntabili
-             anche le righe già evase): disabled per riga da isSelectable, colonna
-             nascosta quando non resta nulla da evadere (solo consuntivo). -->
-        <Column v-if="!readonly && righeEvadibili.length" headerStyle="width: 3rem">
-          <template #header>
-            <Checkbox :model-value="allSelected" binary
-              :indeterminate="anySelected" @update:model-value="toggleAll" />
-          </template>
-          <template #body="{ data }">
-            <Checkbox :model-value="isSelected(data)" binary
-              :disabled="!isSelectable(data)" @update:model-value="toggleRow(data)" />
-          </template>
-        </Column>
-        <Column :header="t('vendite.ordini.riga_articolo')">
-          <template #body="{ data }">
-            {{ data.articolo_codice }} — {{ data.descrizione }}
-          </template>
-        </Column>
-        <Column :header="t('vendite.ordini.evasione_col_qta_ordinata')" style="width: 120px;">
-          <template #body="{ data }">
-            {{ formatNumber(data.qta_operativa) }} {{ data.uom_codice }}
-          </template>
-        </Column>
-        <Column :header="t('vendite.ordini.evasione_col_qta_evasa')" style="width: 110px;">
-          <template #body="{ data }">
-            {{ formatNumber(data.qta_evasa_operativa) }}
-          </template>
-        </Column>
-        <Column :header="t('vendite.ordini.evasione_col_qta_residua')" style="width: 110px;">
-          <template #body="{ data }">
-            {{ formatNumber(data.qta_residua_operativa) }}
-          </template>
-        </Column>
-        <Column :header="t('vendite.ordini.evasione_col_qta_da_evadere')" style="width: 160px;">
-          <template #body="{ data }">
-            <InputNumber v-if="!readonly && residuoDi(data) > 0"
-              v-model="qtaMap[data.id]" :min="0" :max="residuoDi(data)"
-              :min-fraction-digits="0" :max-fraction-digits="6"
-              input-style="width: 7rem;" />
-            <span v-else>{{ formatNumber(qtaMap[data.id]) }}</span>
-          </template>
-        </Column>
-      </DataTable>
-      <div v-else-if="!loadingRighe" style="color: var(--app-text-muted); font-style: italic;">
-        {{ t('vendite.ordini.evasione_nessuna_riga') }}
-      </div>
+      <TabellaSelezioneRighe :macchina="selezione"
+        :etichetta-qta="t('vendite.ordini.evasione_col_qta_da_evadere')" larghezza-qta="160px"
+        :testo-vuoto="t('vendite.ordini.evasione_nessuna_riga')">
+        <template #colonne>
+          <Column :header="t('vendite.ordini.evasione_col_qta_ordinata')" style="width: 120px;">
+            <template #body="{ data }">
+              {{ formatNumber(data.qta_operativa) }} {{ data.uom_codice }}
+            </template>
+          </Column>
+          <Column :header="t('vendite.ordini.evasione_col_qta_evasa')" style="width: 110px;">
+            <template #body="{ data }">
+              {{ formatNumber(data.qta_evasa_operativa) }}
+            </template>
+          </Column>
+          <Column :header="t('vendite.ordini.evasione_col_qta_residua')" style="width: 110px;">
+            <template #body="{ data }">
+              {{ formatNumber(data.qta_residua_operativa) }}
+            </template>
+          </Column>
+        </template>
+      </TabellaSelezioneRighe>
     </div>
   </AppDialog>
 </template>

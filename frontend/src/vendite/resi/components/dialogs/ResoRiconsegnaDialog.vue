@@ -23,13 +23,8 @@
 import { watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
-import Checkbox from 'primevue/checkbox'
-// DataTable grezza: sono le RIGHE del reso da ri-consegnare (store.loadRighe),
-// scelte e quantificate nel dialog d'azione — dettaglio del documento.
-// eslint-disable-next-line no-restricted-imports -- eccezione nel registro DataTable (scripts/datatable.baseline.json)
-import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
-import InputNumber from 'primevue/inputnumber'
+import TabellaSelezioneRighe from '../../../_shared/righe/TabellaSelezioneRighe.vue'
 
 import AppDialog from '../../../../core/components/AppDialog.vue'
 import RowActionsMenu from '../../../../core/components/RowActionsMenu.vue'
@@ -62,12 +57,7 @@ const emit = defineEmits(['update:visible', 'aggiornato'])
 
 // Macchina selezione/quantità (BB): righe = solo RESO_PER_RICONSEGNA;
 // residuo = copertura residua in unità BASE.
-const {
-  righe, loadingRighe, selected, qtaMap, righeSelezionabili,
-  coversAllResiduo, loadRighe, buildPayloadRighe,
-  isSelectable, isSelected, toggleRow, toggleAll, allSelected, anySelected,
-  chiudiConConferma,
-} = useRigheSelezioneQta({
+const selezione = useRigheSelezioneQta({
   fetchRighe: async () => {
     if (!props.resoId) return []
     const rows = await store.loadRighe(props.resoId)
@@ -81,6 +71,15 @@ const {
   // La fotografia (D-14) e' del BB, fissata a ogni caricamento delle righe.
   visibile: () => props.visible,
 })
+const {
+  righe,
+  selected,
+  righeSelezionabili,
+  coversAllResiduo,
+  loadRighe,
+  buildPayloadRighe,
+  chiudiConConferma,
+} = selezione
 
 // Fetch lazy: all'apertura (e a ogni riapertura, cosi' la copertura residua
 // resta fresca dopo una ri-spedizione parziale appena generata).
@@ -245,77 +244,51 @@ function onRiapri(riga) {
         {{ t('vendite.resi.riconsegna_intro') }}
       </p>
 
-      <DataTable v-if="righe.length" :value="righe"
-        data-key="id" striped-rows size="small" class="app-datatable"
-        :loading="loadingRighe" scrollable scrollHeight="360px">
-        <!-- Checkbox custom (no selectionMode: PrimeVue 4 renderebbe spuntabili
-             anche le righe esaurite): disabled per riga da isSelectable, colonna
-             nascosta quando non resta nulla da selezionare (solo consuntivo). -->
-        <Column v-if="!readonly && righeSelezionabili.length" headerStyle="width: 3rem">
-          <template #header>
-            <Checkbox :model-value="allSelected" binary
-              :indeterminate="anySelected" @update:model-value="toggleAll" />
-          </template>
-          <template #body="{ data }">
-            <Checkbox :model-value="isSelected(data)" binary
-              :disabled="!isSelectable(data)" @update:model-value="toggleRow(data)" />
-          </template>
-        </Column>
-        <Column :header="t('vendite.resi.riga_articolo')">
-          <template #body="{ data }">
-            {{ data.articolo_codice }} — {{ data.descrizione }}
-          </template>
-        </Column>
-        <Column :header="t('vendite.resi.riconsegna_col_resa')" style="width: 100px;">
-          <template #body="{ data }">{{ formatNumber(data.quantita) }}</template>
-        </Column>
-        <Column :header="t('vendite.resi.riconsegna_col_riconsegnata')" style="width: 120px;">
-          <template #body="{ data }">{{ formatNumber(data.qta_riconsegnata) }}</template>
-        </Column>
-        <!-- Le due uscite affiancate: quanto e' tornato al cliente e quanto e'
-             stato dichiarato definitivo. Il "—" a zero tiene la colonna
-             leggibile quando non ci sono rinunce (il caso normale). -->
-        <Column :header="t('vendite.resi.rinuncia_col_rinunciata')" style="width: 120px;">
-          <template #body="{ data }">
-            <span v-if="(Number(data.qta_rinunciata) || 0) > 0" class="app-rinuncia-qta">
-              {{ formatNumber(data.qta_rinunciata) }}
-            </span>
-            <span v-else>—</span>
-          </template>
-        </Column>
-        <Column :header="t('vendite.resi.riconsegna_col_residua')" style="width: 100px;">
-          <template #body="{ data }">{{ formatNumber(data.qta_residua) }}</template>
-        </Column>
-        <Column :header="t('vendite.resi.riconsegna_col_qta')" style="width: 170px;">
-          <template #body="{ data }">
-            <InputNumber v-if="!readonly && (Number(data.qta_residua) || 0) > 0"
-              v-model="qtaMap[data.id]" :min="0" :max="Number(data.qta_residua) || 0"
-              :min-fraction-digits="0" :max-fraction-digits="6"
-              input-style="width: 7rem;" />
-            <span v-else>{{ formatNumber(qtaMap[data.id]) }}</span>
-          </template>
-        </Column>
-        <!-- Riapertura: solo sulle righe con una rinuncia da annullare.
-             Kebab per riga (MANAGE_ICONS.KEBAB), non un pulsante inline: e'
-             un rimedio, non un'azione del flusso normale. -->
-        <Column v-if="!readonly && righeRinunciate.length"
-          class="app-col-actions" style="width: 4rem;">
-          <template #body="{ data }">
-            <RowActionsMenu
-              v-if="(Number(data.qta_rinunciata) || 0) > 0"
-              :row="data"
-              :actions="[{
-                key: 'riapri',
-                label: t('vendite.resi.rinuncia_riapri'),
-                icon: MANAGE_ICONS.UNDO,
-                command: () => onRiapri(data),
-              }]" />
-          </template>
-        </Column>
-      </DataTable>
-      <div v-else-if="!loadingRighe" style="color: var(--app-text-muted); font-style: italic;">
-        {{ t('vendite.resi.riconsegna_nessuna_riga') }}
-      </div>
+      <TabellaSelezioneRighe :macchina="selezione"
+        :etichetta-qta="t('vendite.resi.riconsegna_col_qta')" larghezza-qta="170px"
+        :testo-vuoto="t('vendite.resi.riconsegna_nessuna_riga')">
+        <template #colonne>
+          <Column :header="t('vendite.resi.riconsegna_col_resa')" style="width: 100px;">
+            <template #body="{ data }">{{ formatNumber(data.quantita) }}</template>
+          </Column>
+          <Column :header="t('vendite.resi.riconsegna_col_riconsegnata')" style="width: 120px;">
+            <template #body="{ data }">{{ formatNumber(data.qta_riconsegnata) }}</template>
+          </Column>
+          <!-- Le due uscite affiancate: quanto e' tornato al cliente e quanto e'
+               stato dichiarato definitivo. Il "—" a zero tiene la colonna
+               leggibile quando non ci sono rinunce (il caso normale). -->
+          <Column :header="t('vendite.resi.rinuncia_col_rinunciata')" style="width: 120px;">
+            <template #body="{ data }">
+              <span v-if="(Number(data.qta_rinunciata) || 0) > 0" class="app-rinuncia-qta">
+                {{ formatNumber(data.qta_rinunciata) }}
+              </span>
+              <span v-else>—</span>
+            </template>
+          </Column>
+          <Column :header="t('vendite.resi.riconsegna_col_residua')" style="width: 100px;">
+            <template #body="{ data }">{{ formatNumber(data.qta_residua) }}</template>
+          </Column>
+        </template>
+        <template #colonne-dopo>
+          <!-- Riapertura: solo sulle righe con una rinuncia da annullare.
+               Kebab per riga (MANAGE_ICONS.KEBAB), non un pulsante inline: e'
+               un rimedio, non un'azione del flusso normale. -->
+          <Column v-if="!readonly && righeRinunciate.length"
+            class="app-col-actions" style="width: 4rem;">
+            <template #body="{ data }">
+              <RowActionsMenu
+                v-if="(Number(data.qta_rinunciata) || 0) > 0"
+                :row="data"
+                :actions="[{
+                  key: 'riapri',
+                  label: t('vendite.resi.rinuncia_riapri'),
+                  icon: MANAGE_ICONS.UNDO,
+                  command: () => onRiapri(data),
+                }]" />
+            </template>
+          </Column>
+        </template>
+      </TabellaSelezioneRighe>
 
       <!-- Nota esplicita sul parziale: una quantita' inferiore al residuo NON
            perde il resto — o lo ri-spedisci dopo, o lo dichiari definitivo.

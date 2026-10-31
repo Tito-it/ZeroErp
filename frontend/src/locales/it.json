@@ -468,7 +468,7 @@
       "aliquota_iva": "Aliquota IVA",
       "applica_fattura": "Si applica alla fattura",
       "applica_lotto": "Si applica al lotto",
-        "apribile": "Apribile (ha una sua pagina)",
+      "apribile": "Apribile (ha una sua pagina)",
       "area": "Area",
       "arrotondamento_decimali": "Decimali di arrotondamento",
       "arrotondamento_metodo": "Metodo di arrotondamento",
@@ -512,7 +512,7 @@
       "entita_tabella": "Tabella entità",
       "esito": "Esito",
       "esito_default": "Esito predefinito",
-        "etichetta": "Etichetta",
+      "etichetta": "Etichetta",
       "extra_country": "Dati paese (JSON)",
       "fase": "Fase",
       "fatturabile": "Fatturabile",
@@ -1615,7 +1615,6 @@
       "ut_col_stato": "Stato",
       "ut_stato_configurata": "Configurata",
       "ut_stato_non_configurata": "Non configurata",
-      "ut_col_codice": "Cod.",
       "ut_col_descrizione": "Utility",
       "ut_col_soglia_min": "Soglia min",
       "ut_col_soglia_max": "Soglia max",
@@ -3437,7 +3436,8 @@
       "righe_filtra_ba": "Filtra per BA...",
       "righe_filtra_utility": "Filtra per utility...",
       "variazione_short": "Variazione",
-      "aggiungi_prezzo_hint": "Aggiungi prezzo"
+      "aggiungi_prezzo_hint": "Aggiungi prezzo",
+      "alert_scadenze_non_verificabili": "Scadenze dei listini non verificabili: clic per riprovare"
     },
     "lotti": {
       "seleziona_pagina": "Seleziona tutti i lotti di questa pagina",
@@ -4620,6 +4620,9 @@
       "col_stato": "Stato",
       "col_attiva": "Attiva",
       "col_totale": "Totale"
+    },
+    "righe_selezione": {
+      "col_articolo": "Articolo"
     }
   },
   "pagamenti": {
@@ -6433,13 +6436,11 @@
     "affina": "Mostrate {shown} di {total}: affina la ricerca"
   },
   "matrice_override": {
-    "cerca": "Cerca…",
     "col_ereditato": "Ereditato",
     "col_override": "Override",
     "col_stato": "Stato",
     "stato_override": "Override",
     "stato_ereditato": "Ereditato",
-    "reset_tooltip": "Togli l'override: la voce torna a seguire il valore ereditato",
-    "nessuna_voce": "Nessuna voce"
+    "reset_tooltip": "Togli l'override: la voce torna a seguire il valore ereditato"
   }
 }

@@ -13,6 +13,9 @@
 //     <template #form> <div class="form-field"> ... </div> </template>
 //   </CollectionEditorPanel>
 import { useI18n } from 'vue-i18n'
+// ⛔ DEBITO, non eccezione: le sotto-collezioni di step e archi (6 tab) sono
+// master-detail inline; questa e' la sede unica della loro tabella, quindi la
+// conversione si fa qui, una volta per tutti e sei.
 // eslint-disable-next-line no-restricted-imports -- eccezione nel registro DataTable (scripts/datatable.baseline.json)
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'

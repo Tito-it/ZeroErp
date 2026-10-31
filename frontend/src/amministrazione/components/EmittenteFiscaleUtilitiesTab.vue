@@ -17,9 +17,8 @@ import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
 import { ROUNDING_DECIMALI_RANGE } from '../constants'
-// eslint-disable-next-line no-restricted-imports -- eccezione nel registro DataTable (scripts/datatable.baseline.json)
-import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
+import MatriceCatalogo from '../../core/components/MatriceCatalogo.vue'
 import InputNumber from 'primevue/inputnumber'
 import ToggleSwitch from 'primevue/toggleswitch'
 import Button from 'primevue/button'
@@ -232,142 +231,134 @@ watch(() => props.emittenteId, async (id) => {
       {{ t('amministrazione.emittenti_fiscali.ut_parent_inactive_warn') }}
     </Message>
 
-    <DataTable
-      :value="store.utilitiesRecords"
-      striped-rows
-      scrollable
-      class="app-datatable ut-matrix-table"
-      data-key="utility_id"
-      table-style="min-width: 1260px"
+    <!-- Matrice limitata dal catalogo (`MatriceCatalogo`, dal 2026-10-31): tutte
+         le utility ammesse per il ruolo, configurate o no. NON `MatriceOverride`:
+         una utility non configurata non eredita un valore da nessuno — e' solo
+         da configurare. Modifica e salvataggio sono PER RIGA, nello slot azioni. -->
+    <MatriceCatalogo
+      :voci="store.utilitiesRecords"
+      :chiave="r => r.utility_id"
+      :label-voce="t('amministrazione.emittenti_fiscali.ut_col_descrizione')"
+      class="ut-matrix-table"
     >
-      <Column :header="t('amministrazione.emittenti_fiscali.ut_col_stato')" style="width: 140px; min-width: 140px;">
-        <template #body="{ data }">
-          <Tag
-            v-if="isConfigured(data)"
-            :value="t('amministrazione.emittenti_fiscali.ut_stato_configurata')"
-            severity="success"
-          />
-          <Tag
-            v-else
-            :value="t('amministrazione.emittenti_fiscali.ut_stato_non_configurata')"
-            severity="secondary"
-          />
-        </template>
-      </Column>
-
-      <Column field="utility_codice" :header="t('amministrazione.emittenti_fiscali.ut_col_codice')" style="width: 100px; min-width: 100px;" />
-      <Column field="utility_descrizione" :header="t('amministrazione.emittenti_fiscali.ut_col_descrizione')" style="min-width: 180px;" />
-
-      <Column :header="t('amministrazione.emittenti_fiscali.ut_col_soglia_min')" style="width: 150px; min-width: 150px;">
-        <template #body="{ data }">
-          <InputNumber
-            v-if="isEditing(data)"
-            v-model="editing[data.utility_id].minimo_soglia_min"
-            :min-fraction-digits="2" :max-fraction-digits="6"
-            fluid
-            class="ut-cell-input"
-            :input-class="'ut-cell-input-el'"
-          />
-          <span v-else>{{ data.minimo_soglia_min ?? '—' }}</span>
-        </template>
-      </Column>
-
-      <Column :header="t('amministrazione.emittenti_fiscali.ut_col_soglia_max')" style="width: 150px; min-width: 150px;">
-        <template #body="{ data }">
-          <InputNumber
-            v-if="isEditing(data)"
-            v-model="editing[data.utility_id].minimo_soglia_max"
-            :min-fraction-digits="2" :max-fraction-digits="6"
-            fluid
-            class="ut-cell-input"
-            :input-class="'ut-cell-input-el'"
-          />
-          <span v-else>{{ data.minimo_soglia_max ?? '—' }}</span>
-        </template>
-      </Column>
-
-      <Column :header="t('amministrazione.emittenti_fiscali.ut_col_dec')" style="width: 120px; min-width: 120px;">
-        <template #body="{ data }">
-          <InputNumber
-            v-if="isEditing(data)"
-            v-model="editing[data.utility_id].arrotondamento_importi_dec"
-            :min="ROUNDING_DECIMALI_RANGE.MIN" :max="ROUNDING_DECIMALI_RANGE.MAX"
-            showButtons
-            buttonLayout="stacked"
-            fluid
-            class="ut-cell-input"
-            :input-class="'ut-cell-input-el'"
-          />
-          <span v-else>{{ data.arrotondamento_importi_dec ?? '—' }}</span>
-        </template>
-      </Column>
-
-      <Column :header="t('amministrazione.emittenti_fiscali.ut_col_metodo')" style="width: 170px; min-width: 170px;">
-        <template #body="{ data }">
-          <EmittenteRoundingModeSelect
-            v-if="isEditing(data)"
-            v-model="editing[data.utility_id].metodo_arrotondamento_importi"
-            class="ut-cell-input"
-          />
-          <span v-else>{{ data.metodo_arrotondamento_importi ?? '—' }}</span>
-        </template>
-      </Column>
-
-      <Column :header="t('amministrazione.emittenti_fiscali.ut_col_attivo')" style="width: 90px; min-width: 90px;">
-        <template #body="{ data }">
-          <ToggleSwitch
-            v-if="isEditing(data)"
-            v-model="editing[data.utility_id].attivo"
-            :disabled="!emittenteAttivo"
-            v-tooltip.bottom="!emittenteAttivo ? t('amministrazione.emittenti_fiscali.ut_parent_inactive_tooltip') : null"
-          />
-          <Tag
-            v-else-if="data.record_attivo === true"
-            :value="t('amministrazione.stato_attivo')"
-            severity="success"
-          />
-          <Tag
-            v-else-if="data.record_attivo === false"
-            :value="t('amministrazione.stato_inattivo')"
-            severity="danger"
-          />
-          <span v-else>—</span>
-        </template>
-      </Column>
-
-      <Column
-        v-if="!isReadonly"
-        :header="t('common.col_azioni')"
-        class="app-col-actions"
-        :exportable="false"
-        frozen
-        alignFrozen="right"
-      >
-        <template #body="{ data }">
-          <!-- Editing in corso: Salva + Annulla restano inline (form affordance,
-               non azioni di riga). Devono essere sempre visibili su ogni device. -->
-          <template v-if="isEditing(data)">
-            <Button
-              :icon="MANAGE_ICONS.CONFIRM"
-              text rounded size="small"
+      <template #voce="{ voce }">
+        {{ voce.utility_codice }} — {{ voce.utility_descrizione }}
+      </template>
+      <template #colonne>
+        <Column :header="t('amministrazione.emittenti_fiscali.ut_col_stato')" style="width: 140px; min-width: 140px;">
+          <template #body="{ data }">
+            <Tag
+              v-if="isConfigured(data)"
+              :value="t('amministrazione.emittenti_fiscali.ut_stato_configurata')"
               severity="success"
-              :disabled="!isRowValid(data)"
-              v-tooltip.bottom="t('amministrazione.emittenti_fiscali.ut_action_salva_riga')"
-              @click="saveRow(data)"
             />
-            <Button
-              :icon="MANAGE_ICONS.CANCEL"
-              text rounded size="small"
+            <Tag
+              v-else
+              :value="t('amministrazione.emittenti_fiscali.ut_stato_non_configurata')"
               severity="secondary"
-              v-tooltip.bottom="t('amministrazione.emittenti_fiscali.ut_action_annulla')"
-              @click="cancelEdit(data)"
             />
           </template>
-          <!-- Stato normale: azioni standard via RowActionsMenu. -->
-          <RowActionsMenu v-else :row="data" :actions="buildRowActions(data)" />
-        </template>
-      </Column>
+        </Column>
+        <Column :header="t('amministrazione.emittenti_fiscali.ut_col_soglia_min')" style="width: 150px; min-width: 150px;">
+          <template #body="{ data }">
+            <InputNumber
+              v-if="isEditing(data)"
+              v-model="editing[data.utility_id].minimo_soglia_min"
+              :min-fraction-digits="2" :max-fraction-digits="6"
+              fluid
+              class="ut-cell-input"
+              :input-class="'ut-cell-input-el'"
+            />
+            <span v-else>{{ data.minimo_soglia_min ?? '—' }}</span>
+          </template>
+        </Column>
 
+        <Column :header="t('amministrazione.emittenti_fiscali.ut_col_soglia_max')" style="width: 150px; min-width: 150px;">
+          <template #body="{ data }">
+            <InputNumber
+              v-if="isEditing(data)"
+              v-model="editing[data.utility_id].minimo_soglia_max"
+              :min-fraction-digits="2" :max-fraction-digits="6"
+              fluid
+              class="ut-cell-input"
+              :input-class="'ut-cell-input-el'"
+            />
+            <span v-else>{{ data.minimo_soglia_max ?? '—' }}</span>
+          </template>
+        </Column>
+
+        <Column :header="t('amministrazione.emittenti_fiscali.ut_col_dec')" style="width: 120px; min-width: 120px;">
+          <template #body="{ data }">
+            <InputNumber
+              v-if="isEditing(data)"
+              v-model="editing[data.utility_id].arrotondamento_importi_dec"
+              :min="ROUNDING_DECIMALI_RANGE.MIN" :max="ROUNDING_DECIMALI_RANGE.MAX"
+              showButtons
+              buttonLayout="stacked"
+              fluid
+              class="ut-cell-input"
+              :input-class="'ut-cell-input-el'"
+            />
+            <span v-else>{{ data.arrotondamento_importi_dec ?? '—' }}</span>
+          </template>
+        </Column>
+
+        <Column :header="t('amministrazione.emittenti_fiscali.ut_col_metodo')" style="width: 170px; min-width: 170px;">
+          <template #body="{ data }">
+            <EmittenteRoundingModeSelect
+              v-if="isEditing(data)"
+              v-model="editing[data.utility_id].metodo_arrotondamento_importi"
+              class="ut-cell-input"
+            />
+            <span v-else>{{ data.metodo_arrotondamento_importi ?? '—' }}</span>
+          </template>
+        </Column>
+
+        <Column :header="t('amministrazione.emittenti_fiscali.ut_col_attivo')" style="width: 90px; min-width: 90px;">
+          <template #body="{ data }">
+            <ToggleSwitch
+              v-if="isEditing(data)"
+              v-model="editing[data.utility_id].attivo"
+              :disabled="!emittenteAttivo"
+              v-tooltip.bottom="!emittenteAttivo ? t('amministrazione.emittenti_fiscali.ut_parent_inactive_tooltip') : null"
+            />
+            <Tag
+              v-else-if="data.record_attivo === true"
+              :value="t('amministrazione.stato_attivo')"
+              severity="success"
+            />
+            <Tag
+              v-else-if="data.record_attivo === false"
+              :value="t('amministrazione.stato_inattivo')"
+              severity="danger"
+            />
+            <span v-else>—</span>
+          </template>
+        </Column>
+      </template>
+      <template #azioni="{ voce: data }">
+        <!-- Editing in corso: Salva + Annulla restano inline (form affordance,
+             non azioni di riga). Devono essere sempre visibili su ogni device. -->
+        <template v-if="isEditing(data)">
+          <Button
+            :icon="MANAGE_ICONS.CONFIRM"
+            text rounded size="small"
+            severity="success"
+            :disabled="!isRowValid(data)"
+            v-tooltip.bottom="t('amministrazione.emittenti_fiscali.ut_action_salva_riga')"
+            @click="saveRow(data)"
+          />
+          <Button
+            :icon="MANAGE_ICONS.CANCEL"
+            text rounded size="small"
+            severity="secondary"
+            v-tooltip.bottom="t('amministrazione.emittenti_fiscali.ut_action_annulla')"
+            @click="cancelEdit(data)"
+          />
+        </template>
+        <!-- Stato normale: azioni standard via RowActionsMenu. -->
+        <RowActionsMenu v-else :row="data" :actions="buildRowActions(data)" />
+      </template>
       <template #empty>
         <div class="app-empty-state">
           <i class="ut-empty-icon" :class="STATUS_ICONS.VUOTO" />
@@ -383,7 +374,7 @@ watch(() => props.emittenteId, async (id) => {
           />
         </div>
       </template>
-    </DataTable>
+    </MatriceCatalogo>
   </div>
 </template>
 

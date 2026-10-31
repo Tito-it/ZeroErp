@@ -21,6 +21,9 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Column from 'primevue/column'
+// DataTable grezza: sono le righe RIFIUTATE del giro appena fatto (`falliti`,
+// dal report del verbo), mostrate per intero in un dialog consultivo — non
+// paginata, non configurabile, e non sopravvive alla chiusura.
 // eslint-disable-next-line no-restricted-imports -- eccezione nel registro DataTable (scripts/datatable.baseline.json)
 import DataTable from 'primevue/datatable'
 import Tag from 'primevue/tag'

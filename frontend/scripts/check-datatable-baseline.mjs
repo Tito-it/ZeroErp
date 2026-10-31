@@ -54,8 +54,6 @@ const REGISTRO = resolve(QUI, 'datatable.baseline.json')
 //    smetterebbe di vederlo — cieco in silenzio, che e' il solo modo in cui un
 //    cricchetto si allenta senza che nessuno lo decida.
 const IMPORT_GREZZO = /from\s+['"]primevue\/datatable['"]/
-// Quante righe sopra l'import si guardano per dire «e' motivata».
-const FINESTRA_COMMENTO = 4
 // Una direttiva di lint (`// eslint-disable…`, `/* oxlint-disable… */`): marca
 // l'eccezione per lo strumento, non la motiva per chi legge.
 const DIRETTIVA_LINT = /^\s*(\/\/|\/\*)\s*(eslint|oxlint)-(disable|enable)/
@@ -111,32 +109,31 @@ for (const p of fileVue(SRC)) {
   const rel = relative(SRC, p).split(sep).join('/')
   if (STANDARD.has(rel)) { standardTrovati.add(rel); continue }
   grezze.push(rel)
-  // ⚠️ «Motivata» = c'e' un commento in una delle QUATTRO righe immediatamente
-  //    sopra l'import. Non si prova a capire cosa dica: un criterio che giudica
-  //    il contenuto di una frase boccia a caso, e dopo due blocchi sbagliati
+  // ⚠️ «Motivata» = la riga IMMEDIATAMENTE sopra l'import (saltate le
+  //    direttive di lint) e' un commento: il motivo sta attaccato a cio' che
+  //    motiva. Non si prova a capire cosa dica: un criterio che giudica il
+  //    contenuto di una frase boccia a caso, e dopo due blocchi sbagliati
   //    qualcuno lo spegne (stessa ragione per cui il progetto NON ha un cancello
   //    automatico sui messaggi d'errore: `.codex/AGENTS.md`).
-  // ⛔ FINESTRA DICHIARATA, e il numero ci dipende: con tre righe invece di
-  //    quattro il conto cambia. Un registro il cui valore dipende da un dettaglio
-  //    non scritto e' un registro che nessuno puo' riprodurre.
   // ⛔ Una DIRETTIVA di lint non e' una motivazione, e si salta (2026-10-03):
   //    dal giorno in cui `no-restricted-imports` ferma l'import, ogni eccezione
   //    ha un `// eslint-disable-next-line` subito sopra. Contato come commento,
   //    avrebbe reso «motivati» in un colpo gli 11 file che non lo sono — un
-  //    cricchetto che si allenta senza che nessuno lo decida. La finestra parte
-  //    sopra le direttive, cosi' il motivo scritto prima resta dentro.
+  //    cricchetto che si allenta senza che nessuno lo decida. Si guarda sopra
+  //    le direttive, cosi' il motivo scritto prima resta dentro.
+  // ⛔ ADIACENTE, non «in una finestra» (2026-10-31). Fino a quel giorno
+  //    bastava un commento in una delle QUATTRO righe sopra, fermandosi alla
+  //    prima riga vuota: ma l'intestazione del file (`// Scopo: …`) arriva
+  //    spesso agli import SENZA riga vuota, e allora due o tre import piu' su
+  //    la finestra la trovava e la dava per motivo. Dieci file risultavano
+  //    «motivati» dalla sola intestazione — un registro che cala senza che
+  //    nessuno abbia scritto niente (la stessa forma del caso `NoteDrawer` del
+  //    2026-10-03, che la riga vuota aveva chiuso solo a meta').
   const righe = s.split('\n')
   let rigaImport = s.slice(0, i).split('\n').length - 1
   while (rigaImport > 0 && DIRETTIVA_LINT.test(righe[rigaImport - 1])) rigaImport--
-  // ⛔ E la finestra si ferma alla prima riga VUOTA (2026-10-03): oltre, c'e'
-  //    l'intestazione del file, non il motivo di un import. Togliendo un import
-  //    sopra (`primevue/drawer`, migrazione ad AppDrawer) la finestra di
-  //    `NoteDrawer` arrivava al commento di testa e lo dava per «motivato»:
-  //    il registro calava per un caso, senza che nessuno avesse scritto niente.
-  const righeSopra = righe.slice(Math.max(0, rigaImport - FINESTRA_COMMENTO), rigaImport)
-  const vuota = righeSopra.findLastIndex((r) => r.trim() === '')
-  if (vuota !== -1) righeSopra.splice(0, vuota + 1)
-  if (!righeSopra.some((r) => /^\s*(\/\/|\/\*|\*)/.test(r) && !DIRETTIVA_LINT.test(r))) {
+  const sopra = rigaImport > 0 ? righe[rigaImport - 1] : ''
+  if (!/^\s*(\/\/|\/\*|\*)/.test(sopra)) {
     senzaMotivazione.push(rel)
   }
 }

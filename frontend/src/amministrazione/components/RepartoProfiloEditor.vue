@@ -2,6 +2,11 @@
 // Scopo: drawer editor profilo permessi di un reparto.
 // Aree: griglia con Select livello (TUTTO/LETTURA/BLOCCATO).
 // Azioni: lista con ToggleSwitch.
+// ⭐ Le due griglie sono matrici limitate dal catalogo (`MatriceCatalogo`, dal
+//    2026-10-31): tutte le aree e tutte le azioni, ognuna col suo valore. NON
+//    `MatriceOverride`: il profilo di un reparto e' COMPLETO
+//    (`config.fn_scrivi_profilo_accesso` lo sostituisce intero) e non eredita
+//    da niente — e' la sorgente da cui eredita l'operatore.
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRepartiStore } from '../stores/reparti'
@@ -13,14 +18,14 @@ import { LIVELLO_ACCESSO, buildLivelloOptions } from '../constants'
 import { DRAWER_WIDTH } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
+import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import AppDrawer from '../../core/components/AppDrawer.vue'
 import Accordion from 'primevue/accordion'
 import AccordionPanel from 'primevue/accordionpanel'
 import AccordionHeader from 'primevue/accordionheader'
 import AccordionContent from 'primevue/accordioncontent'
-// eslint-disable-next-line no-restricted-imports -- eccezione nel registro DataTable (scripts/datatable.baseline.json)
-import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
+import MatriceCatalogo from '../../core/components/MatriceCatalogo.vue'
 import Select from 'primevue/select'
 import ToggleSwitch from 'primevue/toggleswitch'
 
@@ -36,13 +41,22 @@ const azioniProcesso = useLookup(listAzioniProcesso, { immediate: true })
 const props = defineProps({
   visible: Boolean,
   uoId: { type: Number, default: null },
-  uoNome: { type: String, default: '' }
+  uoNome: { type: String, default: '' },
+  // Sola lettura locale: si somma (OR) a quella ereditata dalla vista
+  // (`useReadonlyMode(AMM_SOFTWARE)`), non la sostituisce.
+  readonly: { type: Boolean, default: false },
 })
 
 
 const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 
 const livelloOptions = buildLivelloOptions(t)
+
+// ⚠️ La catena del dominio arriva gia' ad AppDrawer (corpo `app-readonly`,
+// niente Salva), ma i controlli si spengono QUI: un Select che sembra
+// attivo dice all'operatore che puo' cambiare cio' che non salvera'.
+const isReadonlyEreditato = useInjectReadonly()
+const isReadOnlyEffective = computed(() => props.readonly || isReadonlyEreditato.value)
 
 const localAree = ref([])
 const localAzioni = ref([])
@@ -113,6 +127,7 @@ function onSave() {
     :modificato="modificato"
     :conferma-uscita="chiudiConConferma"
     :loading="loading"
+    :readonly="isReadOnlyEffective"
     @update:visible="(v) => emit('update:visible', v)"
     @cancel="emit('cancelled')"
     @save="onSave"
@@ -120,7 +135,8 @@ function onSave() {
     <div class="form-field">
       <label for="tg-richiede-secondo-fattore">{{ t('amministrazione.secondo_fattore.richiesto_dal_profilo') }}</label>
       <div class="app-form-inline-toggle">
-        <ToggleSwitch v-model="localRichiedeSecondoFattore" input-id="tg-richiede-secondo-fattore" />
+        <ToggleSwitch v-model="localRichiedeSecondoFattore" input-id="tg-richiede-secondo-fattore"
+          :disabled="isReadOnlyEffective" />
         <small class="app-field-hint">{{ t('amministrazione.secondo_fattore.richiesto_dal_profilo_aiuto') }}</small>
       </div>
     </div>
@@ -128,30 +144,38 @@ function onSave() {
       <AccordionPanel value="aree">
         <AccordionHeader>{{ t('amministrazione.aree_funzionali') }}</AccordionHeader>
         <AccordionContent>
-          <DataTable :value="localAree" size="small">
-            <Column field="area_descrizione" :header="t('amministrazione.col_area')" />
-            <Column :header="t('amministrazione.col_livello')" style="width: 12rem">
-              <template #body="{ data }">
-                <Select v-model="data.livello" :options="livelloOptions"
-                  option-label="label" option-value="value" />
-              </template>
-            </Column>
-          </DataTable>
+          <MatriceCatalogo :voci="localAree" :chiave="a => a.area_id"
+            :label-voce="t('amministrazione.col_area')" :readonly="isReadOnlyEffective">
+            <template #voce="{ voce }">{{ voce.area_descrizione }}</template>
+            <template #colonne>
+              <Column :header="t('amministrazione.col_livello')" style="width: 12rem">
+                <template #body="{ data }">
+                  <Select v-model="data.livello" :options="livelloOptions"
+                    option-label="label" option-value="value" :disabled="isReadOnlyEffective" />
+                </template>
+              </Column>
+            </template>
+          </MatriceCatalogo>
         </AccordionContent>
       </AccordionPanel>
 
       <AccordionPanel value="azioni">
         <AccordionHeader>{{ t('amministrazione.azioni_processo') }}</AccordionHeader>
         <AccordionContent>
-          <DataTable :value="localAzioni" size="small">
-            <Column field="azione_descrizione" :header="t('amministrazione.col_azione')" />
-            <Column field="area_codice" :header="t('amministrazione.col_area')" style="width: 8rem" />
-            <Column :header="t('amministrazione.col_abilitata')" style="width: 6rem">
-              <template #body="{ data }">
-                <ToggleSwitch v-model="data.abilitata" />
-              </template>
-            </Column>
-          </DataTable>
+          <!-- Le azioni di processo sono tante: la ricerca filtra la VISTA, e il
+               Salva manda comunque tutto `localAzioni`. -->
+          <MatriceCatalogo :voci="localAzioni" :chiave="a => a.azione_id"
+            :label-voce="t('amministrazione.col_azione')" ricerca :readonly="isReadOnlyEffective">
+            <template #voce="{ voce }">{{ voce.azione_descrizione }}</template>
+            <template #colonne>
+              <Column field="area_codice" :header="t('amministrazione.col_area')" style="width: 8rem" />
+              <Column :header="t('amministrazione.col_abilitata')" style="width: 6rem">
+                <template #body="{ data }">
+                  <ToggleSwitch v-model="data.abilitata" :disabled="isReadOnlyEffective" />
+                </template>
+              </Column>
+            </template>
+          </MatriceCatalogo>
         </AccordionContent>
       </AccordionPanel>
     </Accordion>

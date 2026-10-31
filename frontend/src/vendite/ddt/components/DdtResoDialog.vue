@@ -21,11 +21,8 @@
 // L'over-return resta rifiutato dal guard DB (E_RESO_QTA_SUPERA_CONSEGNATO).
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import Checkbox from 'primevue/checkbox'
-// eslint-disable-next-line no-restricted-imports -- eccezione nel registro DataTable (scripts/datatable.baseline.json)
-import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
-import InputNumber from 'primevue/inputnumber'
+import TabellaSelezioneRighe from '../../_shared/righe/TabellaSelezioneRighe.vue'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 
@@ -78,12 +75,7 @@ function residuoDi(r) {
 
 // Macchina selezione/quantità (BB). Le due fetch (lookup tipi + righe) sono
 // indipendenti: in parallelo (latenza = max, non somma).
-const {
-  righe, loadingRighe, selected, qtaMap, righeSelezionabili,
-  loadRighe, buildPayloadRighe,
-  isSelectable, isSelected, toggleRow, toggleAll, allSelected, anySelected,
-  chiudiConConferma,
-} = useRigheSelezioneQta({
+const selezione = useRigheSelezioneQta({
   fetchRighe: async () => {
     if (!props.ddtId) return []
     const [, res] = await Promise.all([
@@ -111,6 +103,13 @@ const {
     motivoMap.value = motivo
   },
 })
+const {
+  selected,
+  righeSelezionabili,
+  loadRighe,
+  buildPayloadRighe,
+  chiudiConConferma,
+} = selezione
 
 // Fetch lazy: all'apertura (e a ogni riapertura, cosi' i residui restano
 // freschi dopo un reso appena creato). Non al mount: la dialog vive montata
@@ -195,64 +194,38 @@ function onCrea() {
         {{ t('vendite.resi.crea_intro') }}
       </p>
 
-      <DataTable v-if="righe.length" :value="righe"
-        data-key="ddt_riga_id" striped-rows size="small" class="app-datatable"
-        :loading="loadingRighe" scrollable scrollHeight="360px">
-        <!-- Checkbox custom (no selectionMode: PrimeVue 4 renderebbe spuntabili
-             anche le righe con residuo esaurito): disabled per riga da
-             isSelectable, colonna nascosta quando non resta nulla da rendere. -->
-        <Column v-if="!readonly && righeSelezionabili.length" headerStyle="width: 3rem">
-          <template #header>
-            <Checkbox :model-value="allSelected" binary
-              :indeterminate="anySelected" @update:model-value="toggleAll" />
-          </template>
-          <template #body="{ data }">
-            <Checkbox :model-value="isSelected(data)" binary
-              :disabled="!isSelectable(data)" @update:model-value="toggleRow(data)" />
-          </template>
-        </Column>
-        <Column :header="t('vendite.resi.riga_articolo')">
-          <template #body="{ data }">
-            {{ data.articolo_codice }} — {{ data.descrizione }}
-          </template>
-        </Column>
-        <Column :header="t('vendite.resi.crea_col_consegnata')" style="width: 110px;">
-          <template #body="{ data }">
-            {{ formatNumber(data.qta_operativa) }} {{ data.uom_codice }}
-          </template>
-        </Column>
-        <Column :header="t('vendite.resi.crea_col_gia_resa')" style="width: 100px;">
-          <template #body="{ data }">{{ formatNumber(data.qta_gia_resa) }}</template>
-        </Column>
-        <Column :header="t('vendite.resi.crea_col_residuo')" style="width: 100px;">
-          <template #body="{ data }">{{ formatNumber(data.qta_resa_residua_operativa) }}</template>
-        </Column>
-        <Column :header="t('vendite.resi.crea_col_qta')" style="width: 150px;">
-          <template #body="{ data }">
-            <InputNumber v-if="!readonly && residuoDi(data) > 0"
-              v-model="qtaMap[data.ddt_riga_id]" :min="0" :max="residuoDi(data)"
-              :min-fraction-digits="0" :max-fraction-digits="6"
-              input-style="width: 6.5rem;" />
-            <span v-else>{{ formatNumber(qtaMap[data.ddt_riga_id]) }}</span>
-          </template>
-        </Column>
-        <Column :header="t('vendite.resi.crea_col_tipo')" style="width: 190px;">
-          <template #body="{ data }">
-            <Select v-if="!readonly && residuoDi(data) > 0"
-              v-model="tipoMap[data.ddt_riga_id]" :options="tipiReso"
-              option-label="descrizione" option-value="id" size="small" />
-          </template>
-        </Column>
-        <Column :header="t('vendite.resi.crea_col_motivo')" style="width: 180px;">
-          <template #body="{ data }">
-            <InputText v-if="!readonly && residuoDi(data) > 0"
-              v-model="motivoMap[data.ddt_riga_id]" size="small" style="width: 100%;" />
-          </template>
-        </Column>
-      </DataTable>
-      <div v-else-if="!loadingRighe" style="color: var(--app-text-muted); font-style: italic;">
-        {{ t('vendite.resi.crea_nessuna_riga') }}
-      </div>
+      <TabellaSelezioneRighe :macchina="selezione"
+        :etichetta-qta="t('vendite.resi.crea_col_qta')" larghezza-qta="150px"
+        :testo-vuoto="t('vendite.resi.crea_nessuna_riga')">
+        <template #colonne>
+          <Column :header="t('vendite.resi.crea_col_consegnata')" style="width: 110px;">
+            <template #body="{ data }">
+              {{ formatNumber(data.qta_operativa) }} {{ data.uom_codice }}
+            </template>
+          </Column>
+          <Column :header="t('vendite.resi.crea_col_gia_resa')" style="width: 100px;">
+            <template #body="{ data }">{{ formatNumber(data.qta_gia_resa) }}</template>
+          </Column>
+          <Column :header="t('vendite.resi.crea_col_residuo')" style="width: 100px;">
+            <template #body="{ data }">{{ formatNumber(data.qta_resa_residua_operativa) }}</template>
+          </Column>
+        </template>
+        <template #colonne-dopo>
+          <Column :header="t('vendite.resi.crea_col_tipo')" style="width: 190px;">
+            <template #body="{ data }">
+              <Select v-if="!readonly && residuoDi(data) > 0"
+                v-model="tipoMap[data.ddt_riga_id]" :options="tipiReso"
+                option-label="descrizione" option-value="id" size="small" />
+            </template>
+          </Column>
+          <Column :header="t('vendite.resi.crea_col_motivo')" style="width: 180px;">
+            <template #body="{ data }">
+              <InputText v-if="!readonly && residuoDi(data) > 0"
+                v-model="motivoMap[data.ddt_riga_id]" size="small" style="width: 100%;" />
+            </template>
+          </Column>
+        </template>
+      </TabellaSelezioneRighe>
     </div>
   </AppDialog>
 </template>

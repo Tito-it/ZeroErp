@@ -12,6 +12,9 @@
 import { computed, onActivated, provide, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+// ⛔ DEBITO, non eccezione: gli step della definizione col form sotto sono un
+// master-detail inline, da portare sullo standard insieme alle sotto-liste
+// di `CollectionEditorPanel`.
 // eslint-disable-next-line no-restricted-imports -- eccezione nel registro DataTable (scripts/datatable.baseline.json)
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
