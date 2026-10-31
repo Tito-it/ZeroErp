@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1149, di cui 123 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1150, di cui 124 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -301,6 +301,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # --- Immutabilita' quantita' + porta oneri (guard DB 550-554) --- · I due guard di immutabilita' sono 409: non e' un input da correggere, · e' un fatto che non si modifica (si corregge con una riga nuova).
     "E_COMMESSA_ATTIVITA_QUANTITA_IMMUTABILE": "CONFLITTO_STATO",
     "E_COMMESSA_ATTIVITA_TIPO_DOC_OBBLIGATORIO": "DATO_ERRATO",
+    # Ritirato il 2026-10-31 (brief-modello-documento-vendita §17, richiesta 4-bis-undecies-nonies del §14.7). Lo sollevava solo il backend (commesse_service: la «difesa applicativa» sul cambio stato), ritirata il 2026-10-27: il rifiuto arriva dal verbo vendite.fn_cambia_stato_commessa col codice del DB (E_DOC_PASSAGGIO_DI_PROCESSO, E_DOC_GIA_NELLO_STATO, E_STATO_WORKFLOW_NON_TROVATO). Nessun codice sostituto: il caso non e' piu' un errore del backend. Non si cancella: dbops.error_log punta a config.messaggi_errore. Dopo, il backend toglie policy e ripiego.
+    # ⚠️ RITIRATO il 2026-10-31
     "E_COMMESSA_AZIONE_NON_AMMESSA": "CONFLITTO_STATO",
     "E_COMMESSA_CHIAVE_IMMUTABILE": "CONFLITTO_STATO",
     "E_COMMESSA_CHIUSURA_CON_RIGHE_PENDENTI": "CONFLITTO_STATO",
@@ -1160,6 +1162,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # Guard emittente<->BA: valore sbagliato in un campo scelto dall'operatore, non conflitto di stato. Da CONFLITTO_STATO a DATO_ERRATO il 2026-08-09 (rilievo BE). Ragioni: brief-db-be-classe-codici-errore.md §8.6. · Ritirato il 2026-10-10 (brief-db-guard-emittente-ba-unico, D-1 di Tid): i sei documenti sollevano E_DOC_EMITTENTE_BA_INCOERENTE dal BB script.trgfn_doc_guard_emittente_ba. Resta a catalogo per i messaggi gia' scritti nel log.
     # ⚠️ RITIRATO il 2026-10-10
     "E_OFFERTA_EMITTENTE_BA_INCOERENTE": "DATO_ERRATO",
+    # Verbo di stato dell'offerta vendite.fn_cambia_stato_offerta (2026-10-31, brief-modello-documento-vendita §17.8, decisione (b) di Tid): il passaggio chiesto e' nella matrice (config.stati_doc_offerte_transizioni) e la sua riga NON ha requires_motivazione, ma la chiamata porta una motivazione non vuota. La colonna motivazione_rifiuto e' il motivo di una chiusura negativa: ammessa e obbligatoria sono la stessa lista. Gemello di E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA. Prende il posto del controllo Python di offerte_service.registra_esito. DATO_ERRATO col campo motivazione_rifiuto: e' un campo della richiesta. VALORI: codice dell'offerta, stato chiesto.
+    "E_OFFERTA_MOTIVAZIONE_NON_AMMESSA": "DATO_ERRATO",
     # Verbo di stato dell'offerta vendite.fn_cambia_stato_offerta (2026-10-26, brief-modello-documento-vendita §13, O-3 di Tid): il passaggio chiesto ha requires_motivazione sulla sua riga della matrice (config.stati_doc_offerte_transizioni.meta: il rifiuto e i due annulli) e la motivazione manca o e' vuota. Prende il posto del controllo Python di offerte_service (guard_non_empty_string sul campo motivazione); prima la matrice lo diceva e lo leggeva solo la capability per disegnare il campo. DATO_ERRATO col campo motivazione_rifiuto: e' un campo della richiesta. VALORI: codice dell'offerta, stato chiesto.
     "E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA": "DATO_ERRATO",
     "E_OFFERTA_NON_TROVATA": "NON_TROVATO",
@@ -2021,6 +2025,7 @@ CODICI_RITIRATI: frozenset[str] = frozenset(
         "E_BOM_VERSIONE_OVERLAP",
         "E_CLIENTE_NON_ATTIVO",
         "E_CLIENTI_GIORNI_SCADENZA_OBBLIGATORI",
+        "E_COMMESSA_AZIONE_NON_AMMESSA",
         "E_COMPETENZA",
         "E_COMPETENZA_SUPERATA",
         "E_CONTABILE_COMPENSAZIONE_CON_LOTTO",

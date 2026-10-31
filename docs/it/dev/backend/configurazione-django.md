@@ -191,7 +191,9 @@ regolano con le variabili `ZEROERP_GUNICORN_*`, descritte in
 `kill -HUP` (gli hook `on_starting` e `on_reload`), con la modalità forte accesa, rifiuta di
 partire se `SYSTEM_IDEMPOTENZA_IN_CORSO_SECONDI` non supera il timeout **effettivo** di almeno 30 secondi, se il timeout è 0 o se il worker non è `sync`.
 Il motivo: oltre quella soglia una Idempotency-Key «in corso» si riprende, e una richiesta ancora
-viva verrebbe eseguita due volte. Timeout e soglia si cambiano insieme
+viva verrebbe eseguita due volte. ⚠️ Il controllo gira in un **processo figlio** usa e getta
+(`manage.py verifica_presidi_avvio`), mai nel master: un master che carica Django passa ai worker di
+un `kill -HUP` i moduli vecchi, e il codice nuovo non entra (successo dal 2026-10-24 al 2026-10-31). Timeout e soglia si cambiano insieme
 ([API — Idempotency-Key](../api.md), guida
 [Le operazioni che non si ripetono](/guide/operazioni-che-non-si-ripetono)).
 

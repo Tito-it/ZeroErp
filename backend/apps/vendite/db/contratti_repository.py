@@ -311,13 +311,9 @@ _FROM_JOINS_UTILITY = """
 # la leggono il repository, il service e la catena dei permessi.
 TESTATA_CONTRATTI = "vendite.contratti"
 
-# Lo stato della cessazione: quello che `vendite.fn_cessa_contratto` scrive, e
-# per cui il cambio stato chiama quel verbo invece del verbo di stato.
-# ⚠️ E' il letterale che il verbo ha nel corpo (`v_cessato := 'CESSATO'`): il
-#    vocabolario non ha ancora un lettore dello stato di cessazione, come lo
-#    ha per l'emissione e l'annullo. Richiesta al team DB in
-#    brief-modello-documento-vendita §11.7: col lettore questa costante si ritira.
-STATO_CESSATO = "CESSATO"
+# ⛔ `STATO_CESSATO` ritirato il 2026-10-31 (brief-modello-documento-vendita
+#    §17.6 BE-T1): lo stato della cessazione lo dice il vocabolario (colonna
+#    `cessazione`, `script.fn_stato_cessazione_id`), come l'emissione e l'annullo.
 
 
 class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryMixin):

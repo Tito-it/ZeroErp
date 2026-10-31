@@ -332,6 +332,19 @@ class OrdiniServiceGuardsTests(ModelloDocumentoMockatoMixin, SimpleTestCase):
         self.assertTrue(out["deleted"])
         repo.delete_ordine.assert_called_once_with(7)
 
+    # ⭐ «Solo in bozza» lo dice il vocabolario (`e_stato_iniziale`), non un
+    #    insieme di codici nel service: uno stato non iniziale si rifiuta
+    #    prima di contare le righe.
+    @patch(_REPO)
+    def test_elimina_ordine_fuori_bozza_rifiutato(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "CONFERMATO"
+        with self.assertRaises(ServiceError) as cm:
+            ordini_service.elimina_ordine(7)
+        self.assertEqual(cm.exception.code, "E_ORD_STATO_TRANSIZIONE")
+        repo.count_righe.assert_not_called()
+        repo.delete_ordine.assert_not_called()
+
 
 _SVC = "apps.vendite.services.ordini_service"
 

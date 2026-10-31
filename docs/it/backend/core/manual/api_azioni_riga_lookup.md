@@ -13,7 +13,7 @@ ogni componente. Primo consumatore: «togli dal giro» nel drawer del lotto
 ## Contesto
 
 Il registro nasce col giro della fattura di
-[brief-modello-documento-vendita](../../../dev/work-in-progress/brief-modello-documento-vendita.md)
+[brief-modello-documento-vendita](../../../dev/work-done/brief-modello-documento-vendita.md)
 §15.10-§15.11 (F-5, Q-F5 di Tid, 2026-10-27): un'azione di riga nuova si
 aggiunge con una riga di registro e la sua vista, senza un pulsante nuovo. Il
 presidio pgTAP del registro verifica che superficie, colonne, `fn_check` e verbo

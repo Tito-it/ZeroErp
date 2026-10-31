@@ -51,7 +51,7 @@ portano solo ciò che resta, e il chiuso sta qui e nei brief:
 - **Modello del documento di vendita**: la commessa (giro 10) è portata;
   fattura (giro 11) e versione di listino (giro 12) hanno il DB applicato e
   aspettano il BE; D-N1 è entrata nel giro 11, D-G1 decisa —
-  [brief-modello-documento-vendita.md](work-in-progress/brief-modello-documento-vendita.md)
+  [brief-modello-documento-vendita.md](work-done/brief-modello-documento-vendita.md)
 - **Accessi**: L-2, L-4, L-6 e il collaudo del consenso al riuso erano chiusi
   ma la mappa li dava aperti; resta L-5 (R-4) e il collaudo di D-5 —
   [piano-be-fe-accessi-credenziale-e-vesti.md](work-in-progress/piano-be-fe-accessi-credenziale-e-vesti.md)
@@ -112,7 +112,7 @@ se un altro dello stesso lotto è in errore»*. ⚠️ Aperti: i giri di fattura
 listino, D-N1 (i gate delle azioni per riga), D-G1 e D-G2 ereditati dalla
 grammatica, i profili su dbdev che non hanno `emetti_offerta`/`emetti_contratto`/
 `emetti_ordine`, la scadenza dei preventivi (brief nuovo, E-1…E-3 a Tid). Vedi
-[brief-modello-documento-vendita.md](work-in-progress/brief-modello-documento-vendita.md),
+[brief-modello-documento-vendita.md](work-done/brief-modello-documento-vendita.md),
 [brief-db-documento-nasce-nello-stato-iniziale.md](work-done/brief-db-documento-nasce-nello-stato-iniziale.md),
 [brief-db-scadenza-preventivi.md](work-in-progress/brief-db-scadenza-preventivi.md).
 

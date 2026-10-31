@@ -465,6 +465,7 @@
     },
     "campi": {
       "abilita_fattura": "Abilita fattura",
+      "accettazione": "Stato di accettazione",
       "aliquota_iva": "Aliquota IVA",
       "applica_fattura": "Si applica alla fattura",
       "applica_lotto": "Si applica al lotto",
@@ -485,6 +486,7 @@
       "categoria_accisa_id": "Categoria accisa",
       "causale_magazzino": "Causale di magazzino",
       "centro_riscossione_id": "Centro di riscossione",
+      "cessazione": "Stato di cessazione",
       "cf_obbligatorio": "Codice fiscale obbligatorio",
       "check_lettura": "Controllo di lettura",
       "chiude_commessa": "Chiude la commessa",
@@ -3454,7 +3456,8 @@
       "righe_filtra_utility": "Filtra per utility...",
       "variazione_short": "Variazione",
       "aggiungi_prezzo_hint": "Aggiungi prezzo",
-      "alert_scadenze_non_verificabili": "Scadenze dei listini non verificabili: clic per riprovare"
+      "alert_scadenze_non_verificabili": "Scadenze dei listini non verificabili: clic per riprovare",
+      "col_giorni_alla_scadenza": "In scadenza (giorni)"
     },
     "lotti": {
       "seleziona_pagina": "Seleziona tutti i lotti di questa pagina",
@@ -5448,7 +5451,8 @@
     "field_solo_stampa": "Solo stampa",
     "placeholder_riga_doc": "Lascia vuoto per nota del documento",
     "placeholder_stile": "Seleziona uno stile",
-    "placeholder_testo": "Inserisci il testo della nota (markdown supportato)"
+    "placeholder_testo": "Inserisci il testo della nota (markdown supportato)",
+    "col_seq": "Sequenza"
   },
   "geo": {
     "tab_province": "Province",

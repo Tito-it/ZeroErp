@@ -465,6 +465,7 @@
     },
     "campi": {
       "abilita_fattura": "Enables invoice",
+      "accettazione": "Acceptance state",
       "aliquota_iva": "VAT rate",
       "applica_fattura": "Applies to invoice",
       "applica_lotto": "Applies to batch",
@@ -485,6 +486,7 @@
       "categoria_accisa_id": "Excise category",
       "causale_magazzino": "Warehouse reason",
       "centro_riscossione_id": "Collection center",
+      "cessazione": "Termination state",
       "cf_obbligatorio": "Tax code required",
       "check_lettura": "Read check",
       "chiude_commessa": "Closes the job",
@@ -3454,7 +3456,8 @@
       "righe_filtra_utility": "Filter by utility...",
       "variazione_short": "Variation",
       "aggiungi_prezzo_hint": "Add price",
-      "alert_scadenze_non_verificabili": "Price list expiries could not be checked: click to retry"
+      "alert_scadenze_non_verificabili": "Price list expiries could not be checked: click to retry",
+      "col_giorni_alla_scadenza": "Expiring (days)"
     },
     "lotti": {
       "seleziona_pagina": "Select all batches on this page",
@@ -5448,7 +5451,8 @@
     "field_solo_stampa": "Print only",
     "placeholder_riga_doc": "Leave empty for document-level note",
     "placeholder_stile": "Select a style",
-    "placeholder_testo": "Note text (markdown supported)"
+    "placeholder_testo": "Note text (markdown supported)",
+    "col_seq": "Sequence"
   },
   "geo": {
     "tab_province": "Provinces",

@@ -63,7 +63,7 @@ Rispetto a preventivi/offerte l'ordine **non ha revisioni** né listino in testa
 La transizione si innesca **solo** da `/emetti/` (conferma + generazione
 documento, vedi sezione Emetti): la conferma senza PDF (`POST /<id>/conferma/`) è
 ritirata dal 2026-10-25 (M-2 e Z-2 di
-[brief-modello-documento-vendita](../../../dev/work-in-progress/brief-modello-documento-vendita.md) §9).
+[brief-modello-documento-vendita](../../../dev/work-done/brief-modello-documento-vendita.md) §9).
 Lo stato lo scrive il verbo `vendite.fn_cambia_stato_ordine` (un UPDATE diretto
 della colonna lo rifiuta la porta, `E_DOC_STATO_SOLO_DAL_VERBO`), e la
 transizione è **autoritativa lato DB** (trigger `trgfn_ordini_guard_transizione`; dal

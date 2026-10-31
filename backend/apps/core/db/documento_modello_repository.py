@@ -4,11 +4,12 @@
 # Doc: Python
 # Scopo: Accesso DB al modello del documento (guida
 #        `modello-documento-di-vendita.md` §6): l'azione di processo che un
-#        passaggio di stato chiede, lo stato di emissione, quello d'annullo
-#        e quello iniziale,
+#        passaggio di stato chiede, lo stato di emissione, quello d'annullo,
+#        di cessazione, di accettazione e quello iniziale,
 #        letti dai lettori unici del DB
 #        (`script.fn_doc_azione_passaggio`, `script.fn_doc_stato_id`,
 #        `script.fn_stato_emissione_id`, `script.fn_stato_abortito_id`,
+#        `script.fn_stato_cessazione_id`, `script.fn_stato_accettazione_id`,
 #        `script.fn_doc_stato_iniziale_id`,
 #        `script.fn_doc_stato_codice`), gli stessi che usano i verbi e le
 #        capability. Generico per ogni testata della mappa
@@ -42,6 +43,11 @@ class StatoDocumento(NamedTuple):
 # ⛔ solo queste costanti, mai un valore che arriva da fuori.
 _LETTORE_EMISSIONE = "script.fn_stato_emissione_id"
 _LETTORE_ANNULLO = "script.fn_stato_abortito_id"
+# La cessazione (contratti) e l'accettazione (preventivi, offerte): due colonne
+# del vocabolario, non una (brief-modello-documento-vendita §17.2): l'accettazione
+# non chiude il documento, la cessazione si'.
+_LETTORE_CESSAZIONE = "script.fn_stato_cessazione_id"
+_LETTORE_ACCETTAZIONE = "script.fn_stato_accettazione_id"
 # Lo stato in cui il documento nasce, letto dalla TESTATA (`20261027-29`,
 # brief-modello-documento-vendita §15.13): mai `'DRAFT'` scritto qui.
 _LETTORE_INIZIALE = "script.fn_doc_stato_iniziale_id"
@@ -88,6 +94,25 @@ class DocumentoModelloRepository:
     def e_stato_di_annullo(self, testata: str, codice: str) -> bool:
         return self._e_stato_del_modello(_LETTORE_ANNULLO, testata, codice)
 
+    # Scopo: Lo stato chiesto (codice) e' lo stato di cessazione della testata
+    #        (colonna `cessazione`, §17.2)? False per un documento che non si
+    #        cessa e per un codice che non e' uno stato attivo.
+    def e_stato_di_cessazione(self, testata: str, codice: str) -> bool:
+        return self._e_stato_del_modello(_LETTORE_CESSAZIONE, testata, codice)
+
+    # Scopo: Lo stato chiesto (codice) e' lo stato di accettazione della
+    #        testata (colonna `accettazione`, §17.2)? False per un documento che
+    #        non si accetta e per un codice che non e' uno stato attivo.
+    def e_stato_di_accettazione(self, testata: str, codice: str) -> bool:
+        return self._e_stato_del_modello(_LETTORE_ACCETTAZIONE, testata, codice)
+
+    # Scopo: Lo stato chiesto (codice) e' lo stato iniziale della testata
+    #        (colonna `iniziale` del vocabolario, `fn_doc_stato_iniziale_id`),
+    #        cioe' la bozza? False per una testata che non ne dichiara uno e
+    #        per un codice che non e' uno stato attivo.
+    def e_stato_iniziale(self, testata: str, codice: str) -> bool:
+        return self._e_stato_del_modello(_LETTORE_INIZIALE, testata, codice)
+
     # Scopo: Lo stato di emissione della testata (id e codice), o None: il
     #        documento non si emette (vocabolario senza la colonna `emissione`).
     #        Una lettura, i due lettori composti (V-1, brief-modello-documento-
@@ -104,6 +129,12 @@ class DocumentoModelloRepository:
     def stato_di_annullo(self, testata: str) -> StatoDocumento | None:
         return self._stato_del_modello(_LETTORE_ANNULLO, testata)
 
+    # Scopo: Lo stato di accettazione della testata (id e codice), o None (il
+    #        documento non si accetta). Gemello di `stato_di_emissione`, su
+    #        `fn_stato_accettazione_id`.
+    def stato_di_accettazione(self, testata: str) -> StatoDocumento | None:
+        return self._stato_del_modello(_LETTORE_ACCETTAZIONE, testata)
+
     # Scopo: Lo stato iniziale della testata (id e codice), o None (il
     #        vocabolario non ne dichiara uno). Gemello dei due sopra, su
     #        `fn_doc_stato_iniziale_id` (§15.13): l'arrivo di «riporta in
@@ -112,7 +143,7 @@ class DocumentoModelloRepository:
         return self._stato_del_modello(_LETTORE_INIZIALE, testata)
 
     # Scopo: la lettura (id, codice) di uno stato del modello col suo lettore
-    #        del DB. Una query sola per emissione e annullo: cambia il lettore.
+    #        del DB. Una query sola per ogni stato del modello: cambia il lettore.
     def _stato_del_modello(self, lettore: str, testata: str) -> StatoDocumento | None:
         with connection.cursor() as cursor:
             cursor.execute(

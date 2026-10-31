@@ -429,7 +429,7 @@ class DdtAggiornaTests(SimpleTestCase):
         repo.update_ddt.assert_not_called()
 
 
-class DdtEliminaTests(SimpleTestCase):
+class DdtEliminaTests(ModelloDocumentoMockatoMixin, SimpleTestCase):
     """elimina_ddt: hard-delete solo per bozza orfana (0 righe)."""
 
     @patch(_REPO)

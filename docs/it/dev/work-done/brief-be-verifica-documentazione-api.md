@@ -9,7 +9,7 @@ in esercizio su dbdev (passo 8-bis, §I.11.4). Resta il commit del passo BE 12 (
 e BE-6 sono fatti. La guida
 [Le operazioni che non si ripetono](../../guide/operazioni-che-non-si-ripetono.md) è riletta
 dopo BE-6 (§I.9). **D2 e D3 sono usciti da questo brief**: sono il tema del
-[brief-modello-documento-vendita](../work-in-progress/brief-modello-documento-vendita.md) (M-1 … M-4).
+[brief-modello-documento-vendita](brief-modello-documento-vendita.md) (M-1 … M-4).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -745,12 +745,12 @@ la ripresa di una key orfana (ATOMICA sì, A_PASSI no). La provano i test sul DB
 
 1. **`E_FAMIGLIA_DOCUMENTO_RIFERIMENTO_INESISTENTE` ha classe TECNICO** (500) per un
    errore di input dell'amministratore: dovrebbe essere DATO_ERRATO. (§3.21)
-2. ~~**Azioni di processo mancanti fra gemelli**~~ (A5, `post_permission`): ➡️ *Spostato il 2026-10-21 in [brief-modello-documento-vendita](../work-in-progress/brief-modello-documento-vendita.md) (M-1 … M-4).* emissione e
+2. ~~**Azioni di processo mancanti fra gemelli**~~ (A5, `post_permission`): ➡️ *Spostato il 2026-10-21 in [brief-modello-documento-vendita](brief-modello-documento-vendita.md) (M-1 … M-4).* emissione e
    cambio stato di contratto, offerta e ordine; stato della versione di listino;
    stato di distinte e righe di pagamenti; stato di inventari e rettifiche. Il
    preventivo, la commessa, la pratica, il DDT e il reso hanno un'azione di processo,
    questi no. Il backend non la inventa.
-3. ~~**Cambio stato del DDT**~~ (aggiunto il 2026-10-21, ok Tid): ➡️ *Spostato il 2026-10-21 in [brief-modello-documento-vendita](../work-in-progress/brief-modello-documento-vendita.md) (M-1 … M-4).* l'emissione chiede
+3. ~~**Cambio stato del DDT**~~ (aggiunto il 2026-10-21, ok Tid): ➡️ *Spostato il 2026-10-21 in [brief-modello-documento-vendita](brief-modello-documento-vendita.md) (M-1 … M-4).* l'emissione chiede
    `emetti_ddt` (`post_permission`), `ApiDdtCambiaStato` nessuna azione di processo,
    mentre il verbo DB applica `emetti_ddt` anche a `EMESSO → ANNULLATO`. Un solo
    `post_permission` sulla view non basta: le transizioni hanno permessi diversi. Al

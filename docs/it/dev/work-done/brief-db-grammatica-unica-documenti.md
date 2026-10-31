@@ -2,7 +2,7 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-25
 
-✅ **Brief chiuso il 2026-10-25 e archiviato.** Lotto 4 fatto: presidio verde come app (Tid, 2026-10-25), L4-1 = A (§15). I due punti che non erano grammatica (il blocco «origine» della stampa della fattura, la prova a video del 2b) sono passati a [brief-modello-documento-vendita §10](../work-in-progress/brief-modello-documento-vendita.md) (D-G1, D-G2). Lo storico qui sotto resta com'era. Il giro BE/FE del lotto 3 è committato (`de6adcf9f`, PR #1949). Il lotto 3 (le note) è chiuso su DB (`20261025-53` … `-69`, applicato su dbdev e scratch, pgTAP verdi come app) e su BE/FE (§14.10, 2026-10-25: elenco BE-1 … FE-2 tutto fatto, chiamata reale su dbdev, suite intera verde); il giro BE/FE è **da committare**. A Tid, quando vuole, la prova a video delle note di ordine, DDT, offerta e articolo. Tutto il resto è chiuso e in `main`: lotti 0, 1, 2a … 2e e §13.6 su DB e BE/FE (§13.6: DB `2ada3f6d1`, BE/FE `a5af6305e`). Il ponte di `fn_articolo_riga_contesto` è morto nel 2a (`20261019-53`). Restano a Tid, quando vuole, le prove a video di fine cantiere. Il brief si è fermato il 2026-10-21 perché il lavoro è passato a [brief-modello-documento-vendita](../work-in-progress/brief-modello-documento-vendita.md): i due brief non dipendono l'uno dall'altro (§14.1).
+✅ **Brief chiuso il 2026-10-25 e archiviato.** Lotto 4 fatto: presidio verde come app (Tid, 2026-10-25), L4-1 = A (§15). I due punti che non erano grammatica (il blocco «origine» della stampa della fattura, la prova a video del 2b) sono passati a [brief-modello-documento-vendita §10](brief-modello-documento-vendita.md) (D-G1, D-G2). Lo storico qui sotto resta com'era. Il giro BE/FE del lotto 3 è committato (`de6adcf9f`, PR #1949). Il lotto 3 (le note) è chiuso su DB (`20261025-53` … `-69`, applicato su dbdev e scratch, pgTAP verdi come app) e su BE/FE (§14.10, 2026-10-25: elenco BE-1 … FE-2 tutto fatto, chiamata reale su dbdev, suite intera verde); il giro BE/FE è **da committare**. A Tid, quando vuole, la prova a video delle note di ordine, DDT, offerta e articolo. Tutto il resto è chiuso e in `main`: lotti 0, 1, 2a … 2e e §13.6 su DB e BE/FE (§13.6: DB `2ada3f6d1`, BE/FE `a5af6305e`). Il ponte di `fn_articolo_riga_contesto` è morto nel 2a (`20261019-53`). Restano a Tid, quando vuole, le prove a video di fine cantiere. Il brief si è fermato il 2026-10-21 perché il lavoro è passato a [brief-modello-documento-vendita](brief-modello-documento-vendita.md): i due brief non dipendono l'uno dall'altro (§14.1).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -1793,7 +1793,7 @@ richiesta al BE/FE (§14.9) e il suo giro (§14.10). Applicato su dbdev e scratc
 
 ### 14.1 Il rapporto col brief del modello del documento
 
-Nessuna dipendenza, nei due versi. [brief-modello-documento-vendita](../work-in-progress/brief-modello-documento-vendita.md)
+Nessuna dipendenza, nei due versi. [brief-modello-documento-vendita](brief-modello-documento-vendita.md)
 lavora su stato, verbo, permesso, emissione e annullo; i suoi BB (`fn_doc_stato_modello`,
 `fn_stato_iniziale_id`, `fn_doc_stato_id`, `fn_doc_azione_passaggio`, `fn_stato_emissione_id`) ricevono la
 **tabella** (`regclass`), non un codice di tipo: non aprono un vocabolario nuovo. Il lotto 3 non tocca
@@ -2172,6 +2172,6 @@ il file l'ha lanciato Tid (§15.3).
    difetto del test: `regclass::text` perde lo schema quando `config` è nel search_path di chi legge, e il
    confronto col nome falliva; ora si confrontano gli oid;
 2. ✅ riga di PROJECT_CONTEXT e archiviazione in `work-done/` (2026-10-25);
-3. ✅ passati a [brief-modello-documento-vendita §10](../work-in-progress/brief-modello-documento-vendita.md)
+3. ✅ passati a [brief-modello-documento-vendita §10](brief-modello-documento-vendita.md)
    (scelta di Tid, 2026-10-25): il blocco «origine» della stampa della fattura (§12.9, in fondo) come D-G1, la
    prova a video del 2b (riga 6-septies-d) come D-G2.

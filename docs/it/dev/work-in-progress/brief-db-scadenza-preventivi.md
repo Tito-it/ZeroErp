@@ -15,9 +15,9 @@ esce dal modello del preventivo. Nessuno sviluppo prima del via.
 Decisioni aperte di Tid: E-1 … E-3. Lavoro da committare: questo documento.
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-25. **A chi:** Tid, poi il team DB.
-> **Origine:** W-3 di [brief-modello-documento-vendita](brief-modello-documento-vendita.md) §8.12 (debito X-2,
+> **Origine:** W-3 di [brief-modello-documento-vendita](../work-done/brief-modello-documento-vendita.md) §8.12 (debito X-2,
 > dichiarato nel §8.6 del giro 6). Tid, 2026-10-25: «brief separato».
-> **Brief vicini verificati:** [brief-modello-documento-vendita](brief-modello-documento-vendita.md) (il
+> **Brief vicini verificati:** [brief-modello-documento-vendita](../work-done/brief-modello-documento-vendita.md) (il
 > verbo e i passaggi di processo: questo brief ne usa i pezzi comuni, non li cambia);
 > [brief-design-proiezione-stato-dominio](brief-design-proiezione-stato-dominio.md) (legge SCADUTO come stato
 > chiuso negativo: è un lettore, non uno scrittore). Nessun brief aperto scrive la scadenza.
