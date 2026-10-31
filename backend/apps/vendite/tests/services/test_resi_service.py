@@ -121,6 +121,7 @@ from django.db import DatabaseError, IntegrityError
 from django.test import SimpleTestCase
 
 from apps.core.services.error_manager import ServiceError
+from apps.core.tests._helpers.modello_documento_mockato import ModelloDocumentoMockatoMixin
 from apps.core.services.fan_out import run_fan_out as _run_fan_out_vero
 from apps.vendite.services import resi_service
 from apps.vendite.services.resi_service import _db_errors
@@ -600,7 +601,7 @@ class ResiCodaFiltroDocumentoTests(SimpleTestCase):
         self.assertEqual(resi_service.resolve_filtri_coda_export_label(), {})
 
 
-class ResiEliminaTests(SimpleTestCase):
+class ResiEliminaTests(ModelloDocumentoMockatoMixin, SimpleTestCase):
     """elimina_reso: hard-delete solo per bozza orfana (0 righe)."""
 
     @patch(_REPO)

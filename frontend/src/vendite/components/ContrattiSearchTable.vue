@@ -28,7 +28,7 @@ import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
 import ContrattoCella, { CELLE_CONTRATTO } from './ContrattoCella.vue'
 import ExportDialog from '../../core/components/ExportDialog.vue'
 import PdfDocumentiSorgenteDialog from '../../documenti/components/PdfDocumentiSorgenteDialog.vue'
-import ContrattoNoteDrawer from './ContrattoNoteDrawer.vue'
+import VenditeNoteDrawer from '../_shared/note/VenditeNoteDrawer.vue'
 import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
 import { MONTH_FORMAT, TIPO_RUOLO, MANAGE_ICONS, TAB_ENTITIES } from '../../core/constants'
 import { SORGENTE_CODES } from '../../documenti/constants'
@@ -268,10 +268,12 @@ onMounted(() => {
         : ''"
     />
 
-    <ContrattoNoteDrawer
+    <VenditeNoteDrawer
       v-if="noteDrawerContratto?.id"
       v-model:visible="noteDrawerVisible"
-      :contratto-id="noteDrawerContratto.id"
+      dominio="contratti"
+      :id="noteDrawerContratto.id"
+      :emittente-fiscale-id="noteDrawerContratto.emittente_fiscale_id ?? null"
     />
   </div>
 </template>

@@ -24,7 +24,6 @@ from apps.core.api.payload_validators import corpo_oggetto, paginated_envelope, 
 from apps.core.api.success_responses import success_response
 from apps.vendite.db.listini_repository import TESTATA_LISTINI_VERSIONI
 from apps.vendite.services.listini_service import (
-    fn_alert_scadenze,
     fn_applica_variazione_percentuale,
     fn_change_versione_state,
     fn_rettifica_controllata_riga,
@@ -198,6 +197,11 @@ class ApiListiniList(DomainAPIView):
             OpenApiParameter(name="utility_id", type=int, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="tipologia_id", type=int, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="attivo", type=bool, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(
+                name="in_scadenza", type=bool, location=OpenApiParameter.QUERY, required=False,
+                description="true = solo i listini con la versione in vigore in scadenza senza successore "
+                "(vendite.fn_listini_in_scadenza_senza_successore); false = gli altri",
+            ),
             OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="offset", type=int, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False),
@@ -222,6 +226,8 @@ class ApiListiniList(DomainAPIView):
             utility_id=qp_int_optional(qp.get("utility_id"), "utility_id"),
             tipologia_id=qp_int_optional(qp.get("tipologia_id"), "tipologia_id"),
             attivo=qp_bool_optional(request.query_params.get("attivo"), "attivo"),
+            # La regola «in scadenza senza successore» del DB: il link del badge.
+            in_scadenza=qp_bool_optional(qp.get("in_scadenza"), "in_scadenza"),
             search=p["search"],
             order_by=p["order_by"],
             order_dir=p["order_dir"],
@@ -291,8 +297,17 @@ class ApiListinoDetail(DomainAPIView):
 class ApiListinoVersioniList(DomainAPIView):
     area_funzionale = "vendite"
     model_permission = ("vendite", "listino")
+    is_search_endpoint = True
+    lista_codice = "vendite.listini_versioni"
 
     @extend_schema(
+        parameters=[
+            param_ricerca_full(),
+            OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="offset", type=int, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False),
+        ],
         responses={
             200: inline_serializer(
                 name="VenditeListinoVersioniListResponse",
@@ -300,10 +315,20 @@ class ApiListinoVersioniList(DomainAPIView):
             )
         },
     )
-    # Scopo: Restituisce via GET la lista versioni del listino.
+    # Scopo: Restituisce via GET la pagina delle versioni del listino (lista
+    #        `vendite.listini_versioni`), con `giorni_alla_scadenza` dalla regola
+    #        del DB. Fino al 2026-10-31 era la collezione intera.
     def get(self, request: Request, listino_id: int) -> JsonResponse:
-        del request
-        return success_response(fn_list_versioni(listino_id))
+        p = parse_list_params(request.query_params, default_order="valido_dal")
+        results, total = fn_list_versioni(
+            listino_id,
+            search=p["search"],
+            order_by=p["order_by"],
+            order_dir=p["order_dir"],
+            limit=p["limit"],
+            offset=p["offset"],
+        )
+        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
 
     @extend_schema(
         request=_VERSIONE_CREATE_REQUEST,
@@ -546,30 +571,6 @@ class ApiListinoVersioneRigaRettificaControllata(DomainAPIView):
         return success_response(
             fn_rettifica_controllata_riga(listino_id, ver_id, riga_id, corpo_oggetto(request))
         )
-
-
-class ApiListiniAlertScadenze(DomainAPIView):
-    area_funzionale = "vendite"
-    model_permission = ("vendite", "listino")
-
-    @extend_schema(
-        parameters=[
-            OpenApiParameter(name="giorni", type=int, required=False, description="Giorni di anticipo (default 15)"),
-        ],
-        responses={
-            200: inline_serializer(
-                name="VenditeListiniAlertScadenzeResponse",
-                fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
-            )
-        },
-    )
-    # Scopo: Restituisce versioni ATTIVE in scadenza senza successore.
-    def get(self, request: Request) -> JsonResponse:
-        # ⚠️ Il VALORE del parametro, non la request: fino al 2026-10-09 qui si
-        #    passava `request`, e l'endpoint rispondeva 400 `giorni_invalid` a ogni
-        #    chiamata (il badge di AlertScadenzeWidget non si accendeva mai).
-        giorni = qp_int_strict(request.query_params.get("giorni"), "giorni", default=15)
-        return success_response(fn_alert_scadenze(giorni))
 
 
 class ApiListinoVersioneApplicaVariazione(DomainAPIView):

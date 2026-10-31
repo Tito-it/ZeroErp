@@ -27,7 +27,7 @@ import LineagePraticaCell from '../../_shared/lineage/LineagePraticaCell.vue'
 import LineageFaseTag from '../../_shared/lineage/LineageFaseTag.vue'
 import LineageFrontieraChip from '../../_shared/lineage/LineageFrontieraChip.vue'
 import ExportDialog from '../../../core/components/ExportDialog.vue'
-import OrdineNoteDrawer from './OrdineNoteDrawer.vue'
+import VenditeNoteDrawer from '../../_shared/note/VenditeNoteDrawer.vue'
 import PdfDocumentiSorgenteDialog from '../../../documenti/components/PdfDocumentiSorgenteDialog.vue'
 import { SORGENTE_CODES } from '../../../documenti/constants'
 import { useInjectBlocked } from '../../../core/composables/useReadonlyMode'
@@ -223,10 +223,12 @@ onMounted(() => store.fetchList())
       @export="onExportConfirm"
     />
 
-    <OrdineNoteDrawer
+    <VenditeNoteDrawer
       v-if="noteDrawerOrdine?.id"
       v-model:visible="noteDrawerVisible"
-      :ordine-id="noteDrawerOrdine.id"
+      dominio="ordini"
+      :id="noteDrawerOrdine.id"
+      :emittente-fiscale-id="noteDrawerOrdine.emittente_fiscale_id ?? null"
     />
 
     <!-- Dialog lista PDF documenti generati per l'ordine selezionato. Riusa il

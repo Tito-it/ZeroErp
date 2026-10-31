@@ -15,7 +15,7 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useContatoreNote } from '../../core/composables/useContatoreNote'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
-import { listArticoloUom, listArticoloComponenti, makeArticoloNotesApi, getArticoloFormDefaults } from '../api/catalogo'
+import { lookupArticoloUom, listArticoloComponenti, makeArticoloNotesApi, getArticoloFormDefaults } from '../api/catalogo'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import { oggiAziendaleString } from '../../core/utils/date'
 import AppDrawer from '../../core/components/AppDrawer.vue'
@@ -152,11 +152,13 @@ function resetForm() {
   contatoreNote.azzera()
 }
 
-// Scopo: Carica riepilogo UoM operative.
+// Scopo: Carica riepilogo UoM operative. ⚠️ Dal lookup, che le da' TUTTE:
+//        dal 2026-10-31 `listArticoloUom` e' la pagina della lista
+//        `catalogo.articolo_uom`, e un riepilogo non si tronca alla prima.
 async function loadUomRiepilogo() {
   if (!props.articoloId) return
   try {
-    const res = await listArticoloUom(props.articoloId)
+    const res = await lookupArticoloUom(props.articoloId)
     const payload = res.data?.data
     uomRiepilogo.value = payload?.results || payload || []
   } catch { uomRiepilogo.value = [] }

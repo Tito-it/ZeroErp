@@ -189,8 +189,8 @@ const duplicaDialogMinDate = computed(() => parseIsoDate(duplicaDialogRow.value?
 const duplicaDialogIsImmediata = computed(() => isOggi(duplicaDialogChiudiAl.value))
 
 // Sub-drawer note per componente (BB partizionato NoteDrawer +
-// makeComponenteNotesApi). apiClient reattivo a `noteCompId` cosi' il
-// dereffato di useNote intercetta il cambio padre senza ricreare il drawer.
+// makeComponenteNotesApi). apiClient reattivo a `noteCompId`: il padre della
+// lista del drawer e' il suo `basePath`, che cambia col componente.
 const noteDrawerVisible = ref(false)
 const noteCompId = ref(null)
 
@@ -647,6 +647,7 @@ const fotoDuplica = useFotografiaDialog(() => ({ chiudiAl: duplicaDialogChiudiAl
     :visible="noteDrawerVisible"
     @update:visible="v => noteDrawerVisible = v"
     :api-client="noteApiClient"
+    codice="catalogo.note"
     :title="t('catalogo.tab_note')"
     @saved="reloadAll"
   />

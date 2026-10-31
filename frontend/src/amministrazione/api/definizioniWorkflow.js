@@ -8,8 +8,9 @@ import api from '../../core/api'
 
 const BASE = '/pratiche/definizioni'
 
-// Lista edizioni per (tipo [, emittente]) con drift. Params opzionali:
-// tipo_prestazione_id, emittente_fiscale_id. Assenti = tutte (preset inclusi).
+// La pagina della lista `pratiche.definizioni_workflow` (edizioni per tipo
+// [, emittente], drift in colonne piatte). Params: tipo_prestazione_id,
+// emittente_fiscale_id, search, limit/offset, order_by/order_dir.
 export function listDefinizioniWorkflow(params = {}) {
   return api.get(`${BASE}/`, { params })
 }

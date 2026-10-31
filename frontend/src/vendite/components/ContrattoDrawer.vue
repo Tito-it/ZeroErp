@@ -44,7 +44,7 @@ import { CLIENTE_BA } from '../_shared/cliente/clienteCambiato'
 import { useCambioClienteDocumento } from '../_shared/cliente/useCambioClienteDocumento'
 import EmittenteFiscaleField from '../../core/components/EmittenteFiscaleField.vue'
 import UtilityPerRuoloSelect from '../../core/components/UtilityPerRuoloSelect.vue'
-import ContrattoNoteDrawer from './ContrattoNoteDrawer.vue'
+import VenditeNoteDrawer from '../_shared/note/VenditeNoteDrawer.vue'
 import ContrattoEmissioneDialog from './dialogs/ContrattoEmissioneDialog.vue'
 import DocumentoAnnulloLegamiDialog from '../_shared/annullo/DocumentoAnnulloLegamiDialog.vue'
 import ContrattoRigheDrawer from './ContrattoRigheDrawer.vue'
@@ -1285,11 +1285,13 @@ const fotoCessa = useFotografiaDialog(() => ({ data: cessaDialogData.value }), {
 
     <!-- Sub-drawer note partizionate. Le righe sono passate per popolare il
          dropdown RIGA del form: detail.righe e' gia' caricato dal padre. -->
-    <ContrattoNoteDrawer
+    <VenditeNoteDrawer
       v-if="isEdit && detail"
       v-model:visible="noteDrawerVisible"
       @saved="contatoreNote.aggiorna"
-      :contratto-id="props.contrattoId"
+      dominio="contratti"
+      :id="props.contrattoId"
+      :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
       :righe="detail.righe || []"
     />
 

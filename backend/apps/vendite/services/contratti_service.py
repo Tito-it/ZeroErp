@@ -46,6 +46,7 @@ from apps.config.sorgenti import SORGENTE_CONTRATTO
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.services.documento_modello import (
     e_stato_di_annullo,
+    e_stato_di_cessazione,
     rifiuta_stato_di_emissione,
     stato_di_emissione,
 )
@@ -81,7 +82,6 @@ from apps.core.services.payload_helpers import (
 from apps.core.services.partitioned_note_service import contatori_documento
 from apps.vendite.db.note_repositories import NOTE_REPO_CONTRATTO
 from apps.vendite.db.contratti_repository import (
-    STATO_CESSATO,
     TESTATA_CONTRATTI,
     _ORDER_COLS_CONTRATTI,
     ContrattiRepository,
@@ -891,7 +891,9 @@ class ContrattiService:
     #            legami): con legami il DB rifiuta (E_DOC_ANNULLO_CON_LEGAMI,
     #            `confirm_and_retry`) finche' la richiesta non dichiara
     #            `legami_confermati`, letto da `get_legami`;
-    #          - la cessazione (`STATO_CESSATO`) passa da
+    #          - la cessazione (lo stato di cessazione del vocabolario,
+    #            colonna `cessazione`, brief-modello-documento-vendita §17.6
+    #            BE-T1) passa da
     #            `vendite.fn_cessa_contratto` con la sua data, e decide lui:
     #            senza data, data passata, oggi (data e stato) o futura (solo la
     #            data, `programmata`: lo stato lo chiude il job sugli scaduti);
@@ -935,8 +937,9 @@ class ContrattiService:
         # La data accompagna solo la cessazione: con un altro stato non ha un
         # verbo che la scriva, e scartarla in silenzio direbbe al client che e'
         # stata presa.
+        cessazione = e_stato_di_cessazione(TESTATA_CONTRATTI, codice_norm)
         ErrorManager.require(
-            valido_al is None or codice_norm == STATO_CESSATO,
+            valido_al is None or cessazione,
             code=E_VENDITE_VALIDATION,
             message="La data di cessazione si indica solo per cessare il contratto.",
             context={"field": "valido_al", "codice_interno": codice_norm},
@@ -955,7 +958,7 @@ class ContrattiService:
                 self._repo.annulla(contratto_id, confermati)
             return self.get_contratto(contratto_id)
 
-        if codice_norm == STATO_CESSATO:
+        if cessazione:
             with self._map_db_errors(contesto, fallback_message="Violazione vincolo DB su cessazione contratto."):
                 esito = self._repo.cessa(contratto_id, valido_al)
             return {**self.get_contratto(contratto_id), "programmata": bool(esito["programmata"])}

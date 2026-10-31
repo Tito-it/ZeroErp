@@ -21,7 +21,7 @@ presidi, i 38 pgTAP toccati, le pagine manuali dei due builder, la guida pgTAP, 
 brief nuovo del giro 2.
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-25. **A chi:** Tid; poi il team DB.
-> **Origine:** [brief-modello-documento-vendita](../work-in-progress/brief-modello-documento-vendita.md) §4-octies (proposta),
+> **Origine:** [brief-modello-documento-vendita](brief-modello-documento-vendita.md) §4-octies (proposta),
 > decisa da Tid il 2026-10-25: «facciamolo, apri un brief specifico».
 > **Perimetro:** solo DB — i pgTAP (`db/pgtap/`) e i builder di fixture (`dbops`). Nessuna ricaduta su
 > backend o frontend, nessun cambio al modello del dominio.

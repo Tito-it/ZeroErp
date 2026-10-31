@@ -109,7 +109,9 @@ export function fetchParameterDefaults(codes) {
   })
 }
 
-// `options` ammesse (tutte opzionali):
+// La pagina della lista `config.parametri_impostazioni` (dal 2026-10-31): i
+// parametri di lista (`search`, `limit`/`offset`, `order_by`/`order_dir`)
+// passano come sono. In piu', tutte opzionali:
 //   - categoria_cliente_id (number): attiva il livello categoria_cliente nella
 //     cascata visualizzata (post brief DB 2026-05-19, migration 20260519-01).
 //   - billing_account_id (number): alternativa al precedente; il BE risolve la
@@ -117,11 +119,11 @@ export function fetchParameterDefaults(codes) {
 //     fuori scope → 404 E_ANAG_NOT_FOUND. Ignorato se categoria_cliente_id
 //     e' valorizzato.
 export function fetchParameterSettings(options = {}) {
-  const params = {}
-  if (options.categoria_cliente_id != null) {
-    params.categoria_cliente_id = options.categoria_cliente_id
-  } else if (options.billing_account_id != null) {
-    params.billing_account_id = options.billing_account_id
+  const { categoria_cliente_id, billing_account_id, ...params } = options
+  if (categoria_cliente_id != null) {
+    params.categoria_cliente_id = categoria_cliente_id
+  } else if (billing_account_id != null) {
+    params.billing_account_id = billing_account_id
   }
   return api.get(`${BASE}/parameters/settings/`, { params })
 }

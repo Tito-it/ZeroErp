@@ -16,9 +16,6 @@ from typing import Any
 
 from django.db import connection
 
-# Repository per la ricerca universale soggetti (livello 1 e livello 2).
-
-
 class SearchRepository:
     """Accesso DB per ricerca universale soggetti e dettaglio per tipo ruolo."""
 
@@ -40,11 +37,14 @@ class SearchRepository:
         # ⭐ Il perimetro lo fa la RLS di `anagrafiche.clienti` (dal 2026-10-08,
         #    brief-db-codici-non-trovato-email-e-permessi R-4): il backend non
         #    passa piu' `p_emittente_ids`, superato e non letto dalla funzione.
-        def _pagina(lim: int, off: int) -> list[tuple[Any, ...]]:
+        # ⭐ `r.*` e non `row_to_json(r)` (2026-10-31): la riga arriva per
+        #    colonne, e il presidio della proiezione della lista
+        #    (`test_lista_proiezione_campo_sorgente`) le legge dal cursore.
+        def _pagina(lim: int, off: int) -> list[dict[str, Any]]:
             with connection.cursor() as cursor:
                 cursor.execute(
                     """
-                    SELECT row_to_json(r) AS row_data
+                    SELECT r.*
                       FROM script.fn_search_soggetti_universale(
                                p_search_term   := %s,
                                p_tipo_ruolo_id := %s,
@@ -56,7 +56,7 @@ class SearchRepository:
                     """,
                     [search_term, tipo_ruolo_id, lim, off, order_by, order_dir],
                 )
-                return cursor.fetchall()
+                return rows_to_list(cursor)
 
         rows = _pagina(limit, offset)
         if not rows:
@@ -68,21 +68,14 @@ class SearchRepository:
             if offset > 0:
                 prima = _pagina(1, 0)
                 if prima:
-                    return [], int(jsonb_out(prima[0][0]).get("total_count") or 0)
+                    return [], int(prima[0].get("total_count") or 0)
             return [], 0
 
-        results: list[dict[str, Any]] = []
-        total_count = 0
+        # total_count e' in ogni riga (COUNT(*) OVER()): si legge e si toglie.
+        total_count = int(rows[0].get("total_count") or 0)
         for row in rows:
-            data = jsonb_out(row[0])
-            # total_count è presente in ogni riga (COUNT(*) OVER())
-            if total_count == 0 and "total_count" in data:
-                total_count = data["total_count"]
-            # Rimuovi total_count dal risultato esposto
-            data.pop("total_count", None)
-            results.append(data)
-
-        return results, total_count
+            row.pop("total_count", None)
+        return rows, total_count
 
     # Scopo: Carica il dettaglio di un soggetto per tipo ruolo (livello 2)
     # tramite script.fn_get_search_detail. Output JSONB con sezioni

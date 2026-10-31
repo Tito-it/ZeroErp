@@ -77,7 +77,7 @@ import { useOfferteStore } from '../stores/offerte'
 import { useOffertaRevisioniStore } from '../stores/offertaRevisioni'
 import RevisioniTab from '../../_shared/revisioni/RevisioniTab.vue'
 import OffertaRigheDrawer from './OffertaRigheDrawer.vue'
-import OffertaNoteDrawer from './OffertaNoteDrawer.vue'
+import VenditeNoteDrawer from '../../_shared/note/VenditeNoteDrawer.vue'
 import OffertaEmissioneDialog from './dialogs/OffertaEmissioneDialog.vue'
 import OffertaEsitoDialog from './dialogs/OffertaEsitoDialog.vue'
 import OffertaPushDialog from './dialogs/OffertaPushDialog.vue'
@@ -1319,12 +1319,14 @@ const footerDrawer = useFooterDocumento({
 
     <!-- Sub-drawer note partizionate. Le eccezioni vengono passate per
          popolare il select RIGA nel form note (anchor RIGA). -->
-    <OffertaNoteDrawer
+    <VenditeNoteDrawer
       v-if="isEdit && detail"
       v-model:visible="noteDrawerVisible"
       @saved="contatoreNote.aggiorna"
-      :offerta-id="props.offertaId"
-      :eccezioni="detail.eccezioni || []"
+      dominio="offerte"
+      :id="props.offertaId"
+      :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
+      :righe="detail.eccezioni || []"
     />
 
     <!-- Dialogs di processo (state machine FE). -->

@@ -29,8 +29,10 @@ export function deleteListino(id) {
 
 // --- Versioni ---
 
-export function listVersioni(listinoId) {
-  return api.get(`${BASE}/${listinoId}/versioni/`)
+// La pagina delle versioni (lista `vendite.listini_versioni`, il tab «Versioni»
+// del drawer listino): `search`, `limit`/`offset`, `order_by`/`order_dir`.
+export function listVersioni(listinoId, params = {}) {
+  return api.get(`${BASE}/${listinoId}/versioni/`, { params })
 }
 
 export function getVersione(listinoId, verId) {
@@ -73,11 +75,6 @@ export function cloneVersione(listinoId, srcVerId, payload) {
 // di una versione BOZZA. Supporta dry_run per preview.
 export function applicaVariazionePercentuale(listinoId, verId, payload) {
   return api.post(`${BASE}/${listinoId}/versioni/${verId}/applica-variazione/`, payload)
-}
-
-// Versioni ATTIVE in scadenza senza successore.
-export function alertScadenze(giorni = 15) {
-  return api.get(`${BASE}/alert-scadenze/`, { params: { giorni } })
 }
 
 // Tipologie listino ammesse per la utility indicata (matrice

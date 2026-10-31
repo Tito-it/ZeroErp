@@ -50,7 +50,7 @@ import DocumentoCollegamentiBar from '../../_shared/lineage/DocumentoCollegament
 import SituazioneMerceBar from '../../_shared/situazioneMerce/SituazioneMerceBar.vue'
 import OrdiniForm from './OrdiniForm.vue'
 import OrdiniRigheTable from './OrdiniRigheTable.vue'
-import OrdineNoteDrawer from './OrdineNoteDrawer.vue'
+import VenditeNoteDrawer from '../../_shared/note/VenditeNoteDrawer.vue'
 import OrdineEvasioneDialog from './dialogs/OrdineEvasioneDialog.vue'
 import DocumentoAnnulloLegamiDialog from '../../_shared/annullo/DocumentoAnnulloLegamiDialog.vue'
 import OrdineEmissioneDialog from './dialogs/OrdineEmissioneDialog.vue'
@@ -809,11 +809,13 @@ const drawerActions = computed(() => {
   </AppDrawer>
 
   <!-- Sub-drawer note: cablato sull'id effettivo dell'ordine. -->
-  <OrdineNoteDrawer
+  <VenditeNoteDrawer
     v-if="effectiveOrdineId"
     v-model:visible="noteDrawerVisible"
     @saved="contatoreNote.aggiorna"
-    :ordine-id="effectiveOrdineId"
+    dominio="ordini"
+    :id="effectiveOrdineId"
+    :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
   />
 
   <!-- Dialog emissione ordine (transizione DRAFT → CONFERMATO). Wrapper sul

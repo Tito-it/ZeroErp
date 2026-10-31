@@ -15,7 +15,14 @@ from typing import Any, NamedTuple
 
 from django.db import connection
 
-from apps.core.db._helpers import rows_to_list
+from apps.core.db._helpers import (
+    RicercaFull,
+    add_ricerca_full_condition,
+    fetch_paged_with_total,
+    limiti_pagina,
+    rows_to_list,
+    sql_order_clause,
+)
 from apps.core.db.sql_write_helpers import execute_dynamic_insert, sql_set_clause
 
 # Campi "core" di uno step editabili in Slice 2 anello 3 — UNICA fonte di verità
@@ -29,6 +36,30 @@ STEP_CORE_FIELDS: tuple[str, ...] = (
 # Colonne dell'INSERT di uno step: i campi core + le due chiavi imposte dal BE.
 _STEP_INSERT_COLUMNS: tuple[str, ...] = (
     "definizione_id", "tipo_prestazione_id", *STEP_CORE_FIELDS,
+)
+
+
+# Whitelist ORDER BY della lista `pratiche.definizioni_workflow` (107): chiavi =
+# `campo_sorgente` del catalogo, valori = colonne della subquery `d` (la SELECT
+# condivisa col dettaglio, `_DEFINIZIONE_SELECT`).
+DEFINIZIONI_ORDER_COLUMNS: dict[str, str] = {
+    "tipo_prestazione_descrizione": "d.tipo_prestazione_descrizione",
+    "emittente_display": "d.emittente_display",
+    "versione": "d.versione",
+    "stato": "d.stato",
+    "versioni_indietro": "d.versioni_indietro",
+}
+
+# L'ordinamento di partenza (lo stesso del preset 107): per tipo, il preset di
+# sistema prima delle edizioni d'emittente, la versione piu' recente in cima.
+_DEFINIZIONI_ORDINE_DEFAULT = (
+    "d.tipo_prestazione_descrizione ASC, d.emittente_fiscale_id ASC NULLS FIRST, d.versione DESC"
+)
+
+# Cosa si PUO' cercare (cosa si cerca lo dice il catalogo): nomi di uscita.
+_RICERCA_DEFINIZIONI = RicercaFull(
+    "pratiche.definizioni_workflow",
+    {"tipo_prestazione_descrizione": "tp.descrizione", "descrizione": "wd.descrizione"},
 )
 
 
@@ -160,26 +191,47 @@ class DefinizioniRepository:
             cursor.execute(sql, params)
             return rows_to_list(cursor)
 
-    # Scopo: elenco edizioni per (tipo [, emittente]) con drift. Preset =
-    # emittente_fiscale_id NULL; il drift e' valorizzato solo per le edizioni
-    # forkate (vista vuota finche' non esistono fork → LEFT JOIN → NULL).
+    # Scopo: la pagina della lista `pratiche.definizioni_workflow` (107): edizioni
+    # per (tipo [, emittente]) col drift in colonne piatte (`versioni_indietro`
+    # e' il `campo_sorgente` del catalogo). Preset = emittente_fiscale_id NULL;
+    # il drift c'e' solo sulle edizioni forkate (LEFT JOIN → NULL).
+    # ⚠️ Lista `multi_emittente`: la riga dice di chi e' (`emittente_display`),
+    #    e la lista si apre anche su «Tutti». Fino al 2026-10-31 era la
+    #    collezione intera, senza pagina ne' ricerca.
     def list_definizioni(
         self,
         *,
         tipo_prestazione_id: int | None = None,
         emittente_fiscale_id: int | None = None,
-    ) -> list[dict[str, Any]]:
-        return self._rows(
-            self._DEFINIZIONE_SELECT + """
-            WHERE (%(tipo)s IS NULL OR wd.tipo_prestazione_id = %(tipo)s)
-              AND (%(emittente)s IS NULL OR wd.emittente_fiscale_id = %(emittente)s)
-            ORDER BY wd.tipo_prestazione_id,
-                     wd.emittente_fiscale_id NULLS FIRST,
-                     wd.versione DESC,
-                     wd.id
-            """,
-            {"tipo": tipo_prestazione_id, "emittente": emittente_fiscale_id},
+        search: str | None = None,
+        order_by: str | None = None,
+        order_dir: str | None = None,
+        limit: int,
+        offset: int,
+    ) -> tuple[list[dict[str, Any]], int]:
+        safe_limit, safe_offset = limiti_pagina(limit, offset)
+        conditions: list[str] = []
+        params: list[Any] = []
+        if tipo_prestazione_id is not None:
+            conditions.append("wd.tipo_prestazione_id = %s")
+            params.append(tipo_prestazione_id)
+        if emittente_fiscale_id is not None:
+            conditions.append("wd.emittente_fiscale_id = %s")
+            params.append(emittente_fiscale_id)
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_DEFINIZIONI, alias="wd")
+        where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=DEFINIZIONI_ORDER_COLUMNS, default_clause=_DEFINIZIONI_ORDINE_DEFAULT,
+            tiebreak="d.id",
         )
+        sql = f"""
+            SELECT d.*, COUNT(*) OVER () AS total_count
+              FROM ({self._DEFINIZIONE_SELECT} {where}) d
+             ORDER BY {ordinamento}
+             LIMIT %s OFFSET %s
+        """  # noqa: S608 — WHERE da clausole letterali/BB add_ricerca_full_condition, ORDER BY da whitelist DEFINIZIONI_ORDER_COLUMNS, valori come parametri
+        return fetch_paged_with_total(sql, [*params, safe_limit, safe_offset])
 
     # Scopo: header singolo di un'edizione per id (stessi campi della lista, drift
     # incluso) per il dettaglio editing (Slice 2). None se l'id non esiste.

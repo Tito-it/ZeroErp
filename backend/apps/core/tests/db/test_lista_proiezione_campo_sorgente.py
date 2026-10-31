@@ -83,6 +83,10 @@
    `natura_doc_codice_interno`, dal 2026-09-18) — contano come campi
    dichiarati: senza, il Tag renderebbe `—` su ogni riga e nessuno lo direbbe.
 
+1-quater. (test 1 e 4) le ALTRE query di una lista (`_ALTRE_QUERY`): una
+   seconda SELECT della stessa lista, o la proiezione propria di un repository
+   su una lista con vista. Stesse prove, fuori dal censimento del test 2.
+
 5. test_le_gemelle_di_formato_esistono_nella_vista
    Lo stesso per le liste CON vista, che il test 1 non esercita: il trigger DB
    valida il solo `campo_sorgente` contro la vista, non la gemella. Si chiede
@@ -277,6 +281,15 @@ def _r(percorso: str, classe: str) -> Any:
     import importlib
 
     return getattr(importlib.import_module(percorso), classe)()
+
+
+# Scopo: un tipo ruolo che la ricerca universale accetta (`ricerca_visibile`).
+def _tipo_ruolo_ricercabile() -> int:
+    from django.db import connection
+
+    with connection.cursor() as cur:
+        cur.execute("SELECT id FROM config.tipi_ruoli WHERE ricerca_visibile ORDER BY id LIMIT 1")
+        return int(cur.fetchone()[0])
 
 
 # Scopo: la configurazione di una famiglia del documento interno di magazzino,
@@ -518,6 +531,42 @@ _ESERCIZI: dict[str, Esercizio] = {
         ),
     ),
     # ---------- pratiche ----------
+    # Le note: una partizione di vendita qualunque, e l'articolo per catalogo.
+    "vendite.note": Esercizio(
+        dove="core/db/partitioned_note_repository.py::list",
+        chiama=lambda ob, od: __import__(
+            "apps.vendite.db.note_repositories", fromlist=["NOTE_REPO_PREVENTIVO"],
+        ).NOTE_REPO_PREVENTIVO.list(_ID_FINTO, limit=1, offset=0, **_ordine(ob, od)),
+    ),
+    "catalogo.note": Esercizio(
+        dove="catalogo/db/catalogo_bom_repository.py::list_note_articolo_pagina",
+        chiama=lambda ob, od: _r(
+            "apps.catalogo.db.catalogo_bom_repository", "CatalogoBomRepository"
+        ).list_note_articolo_pagina("00000000-0000-0000-0000-000000000000", limit=1, offset=0, **_ordine(ob, od)),
+    ),
+    # La ricerca: la funzione vuole un tipo ruolo vero; il termine non trova
+    # niente, e le colonne le dice il cursore anche a zero righe.
+    "anagrafiche.ricerca_soggetti": Esercizio(
+        dove="core/db/search_repository.py::search_soggetti",
+        chiama=lambda ob, od: _r(
+            "apps.core.db.search_repository", "SearchRepository"
+        ).search_soggetti(
+            search_term="zzznessunoqui", tipo_ruolo_id=_tipo_ruolo_ricercabile(),
+            limit=1, offset=0, **_ordine(ob, od),
+        ),
+    ),
+    "config.parametri_impostazioni": Esercizio(
+        dove="core/db/parameter_repository.py::list_for_user",
+        chiama=lambda ob, od: _r(
+            "apps.core.db.parameter_repository", "ParameterRepository"
+        ).list_for_user(_ID_FINTO, None, None, None, limit=1, offset=0, **_ordine(ob, od)),
+    ),
+    "pratiche.definizioni_workflow": Esercizio(
+        dove="pratiche/db/definizioni_repository.py::list_definizioni",
+        chiama=lambda ob, od: _r(
+            "apps.pratiche.db.definizioni_repository", "DefinizioniRepository"
+        ).list_definizioni(limit=1, offset=0, **_ordine(ob, od)),
+    ),
     "pratiche.pratiche": Esercizio(
         dove="pratiche/db/pratiche_repository.py::list_pratiche",
         chiama=lambda ob, od: _r(
@@ -660,6 +709,12 @@ _ESERCIZI: dict[str, Esercizio] = {
             offset=0,
             **_ordine(ob, od, "codice"),
         ),
+    ),
+    "vendite.listini_versioni": Esercizio(
+        dove="vendite/db/listini_repository.py::list_versioni_pagina",
+        chiama=lambda ob, od: _r(
+            "apps.vendite.db.listini_repository", "ListiniRepository"
+        ).list_versioni_pagina(_ID_FINTO, limit=1, offset=0, **_ordine(ob, od)),
     ),
     "vendite.listini_righe": Esercizio(
         dove="vendite/db/listini_repository.py::list_righe",
@@ -1101,6 +1156,43 @@ _ESERCIZI: dict[str, Esercizio] = {
 }
 
 
+# Le ALTRE query di una lista: la stessa lista letta da una seconda SELECT
+# (le note di un componente, su un'altra vista di `catalogo.note`), o una lista
+# CON vista che il repository legge con una proiezione sua (le UoM operative:
+# `UOM_OPERATIVA_DETAIL_COLUMNS`, non `v.*`). Il trigger DB valida il
+# `campo_sorgente` contro la vista, non contro QUELLA SELECT: senza questa riga
+# una colonna tolta dalla proiezione uscirebbe vuota a video e nessuno la
+# vedrebbe. Si provano come `_ESERCIZI` (test 1 e 4), ma il registro non le
+# conta fra le liste senza vista (test 2 e 3).
+_ALTRE_QUERY: tuple[tuple[str, Esercizio], ...] = (
+    (
+        "catalogo.note",
+        Esercizio(
+            dove="catalogo/db/catalogo_bom_repository.py::list_note_componente",
+            chiama=lambda ob, od: _r(
+                "apps.catalogo.db.catalogo_bom_repository", "CatalogoBomRepository"
+            ).list_note_componente("00000000-0000-0000-0000-000000000000", limit=1, offset=0, **_ordine(ob, od)),
+        ),
+    ),
+    (
+        "catalogo.articolo_uom",
+        Esercizio(
+            dove="catalogo/db/catalogo_uom_repository.py::list_uom_operative_pagina",
+            chiama=lambda ob, od: _r(
+                "apps.catalogo.db.catalogo_uom_repository", "CatalogoUomRepository"
+            ).list_uom_operative_pagina(
+                "00000000-0000-0000-0000-000000000000", limit=1, offset=0, **_ordine(ob, od),
+            ),
+        ),
+    ),
+)
+
+
+# Scopo: tutte le query da provare: una per lista senza vista, piu' le altre.
+def _tutte_le_query() -> list[tuple[str, Esercizio]]:
+    return sorted(_ESERCIZI.items()) + list(_ALTRE_QUERY)
+
+
 # ⛔ Liste senza vista che NON possono essere esercitate da qui, con la ragione.
 #    ⚠️ Deve restare VUOTO o cortissimo: una lista che finisce qui per far
 #       passare il test e' un buco, non un'esenzione.
@@ -1164,13 +1256,13 @@ class ListaProiezioneCampoSorgenteTests(unittest.TestCase):
         mancanti: dict[str, dict[str, Any]] = {}
         fantasmi: dict[str, list[str]] = {}
         provate = 0
-        for codice, esercizio in sorted(_ESERCIZI.items()):
+        for codice, esercizio in _tutte_le_query():
             # Contato PRIMA delle verifiche: un fallimento dentro il `subTest`
             # salta il resto del blocco, e un contatore incrementato in fondo
             # farebbe fallire anche il conteggio — due rossi per un difetto
             # solo, e il secondo parla di un'altra cosa.
             provate += 1
-            with self.subTest(lista=codice):
+            with self.subTest(lista=codice, query=esercizio.dove):
                 dichiarati = _campi_dichiarati(codice)
                 self.assertTrue(
                     dichiarati,
@@ -1182,7 +1274,7 @@ class ListaProiezioneCampoSorgenteTests(unittest.TestCase):
                     dichiarati - colonne - set(esercizio.campi_da_python)
                 )
                 if assenti:
-                    mancanti[codice] = {
+                    mancanti[esercizio.dove] = {
                         "colonne": assenti,
                         "query": esercizio.dove,
                     }
@@ -1192,8 +1284,8 @@ class ListaProiezioneCampoSorgenteTests(unittest.TestCase):
                 if chiavi_riga is not None and esercizio.campi_da_python:
                     spariti = sorted(set(esercizio.campi_da_python) - chiavi_riga)
                     if spariti:
-                        fantasmi[codice] = spariti
-        self.assertEqual(provate, len(_ESERCIZI))
+                        fantasmi[esercizio.dove] = spariti
+        self.assertEqual(provate, len(_ESERCIZI) + len(_ALTRE_QUERY))
         self.assertEqual(
             mancanti,
             {},
@@ -1228,7 +1320,7 @@ class ListaProiezioneCampoSorgenteTests(unittest.TestCase):
     # 3. Il verso opposto: una riga morta qui nasconde una lista scoperta la'.
     def test_nessun_esercizio_punta_a_una_lista_inesistente(self) -> None:
         codici = {riga["codice"] for riga in _seed("lista_definizione.csv")}
-        orfani = sorted(set(_ESERCIZI) - codici)
+        orfani = sorted((set(_ESERCIZI) | {c for c, _ in _ALTRE_QUERY}) - codici)
         self.assertEqual(orfani, [], "esercizi su liste assenti dal catalogo")
         con_vista = sorted(set(_ESERCIZI) - _liste_senza_vista())
         self.assertEqual(
@@ -1279,7 +1371,7 @@ class ListaProiezioneCampoSorgenteTests(unittest.TestCase):
         provate = 0
         senza_whitelist: list[str] = []
         locali: list[str] = []
-        for codice, esercizio in sorted(_ESERCIZI.items()):
+        for codice, esercizio in _tutte_le_query():
             whitelist = _whitelist(codice)
             # ⭐ Ordinamento LOCALE: non c'e' niente da provare, e non e' un
             #    buco — e' una proprieta' della lista, dichiarata a registro.
@@ -1301,7 +1393,7 @@ class ListaProiezioneCampoSorgenteTests(unittest.TestCase):
                 #    NULL), e un ripiego malformato si vedrebbe su un verso
                 #    solo.
                 for verso in ("ASC", "DESC"):
-                    with self.subTest(lista=codice, colonna=colonna, verso=verso):
+                    with self.subTest(lista=codice, query=esercizio.dove, colonna=colonna, verso=verso):
                         self._proiezione(esercizio, colonna, verso)
                         provate += 1
         self.assertEqual(

@@ -19,6 +19,11 @@
 #       ⭐ Default per l'annullo: e' lo stato d'annullo un codice di
 #       `ANNULLI_DI_PROVA` (i nomi dei vocabolari, maschile e femminile): la
 #       domanda resta al BB (`e_stato_di_annullo`), il nome lo sceglie il test.
+#       ⭐ Lo stesso per cessazione e accettazione (brief-modello-documento-
+#       vendita §17.6): `CESSAZIONI_DI_PROVA`, `ACCETTAZIONI_DI_PROVA`. Lo stato
+#       che l'accettazione scrive ha il default dell'emissione (None): il test
+#       lo dichiara con `self.accettazione_del_documento("ACCETTATA")`.
+#       ⭐ E per lo stato iniziale (la bozza): `INIZIALI_DI_PROVA`.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -29,6 +34,9 @@ from apps.core.db.documento_modello_repository import StatoDocumento
 
 # I codici d'annullo che il repository finto riconosce, come i vocabolari.
 ANNULLI_DI_PROVA: frozenset[str] = frozenset({"ANNULLATO", "ANNULLATA"})
+CESSAZIONI_DI_PROVA: frozenset[str] = frozenset({"CESSATO"})
+ACCETTAZIONI_DI_PROVA: frozenset[str] = frozenset({"ACCETTATO", "ACCETTATA"})
+INIZIALI_DI_PROVA: frozenset[str] = frozenset({"DRAFT", "BOZZA"})
 
 
 class ModelloDocumentoMockatoMixin:
@@ -43,13 +51,37 @@ class ModelloDocumentoMockatoMixin:
         self.modello_documento.e_stato_di_annullo.side_effect = (
             lambda _testata, codice: codice in ANNULLI_DI_PROVA
         )
+        self.modello_documento.e_stato_di_cessazione.side_effect = (
+            lambda _testata, codice: codice in CESSAZIONI_DI_PROVA
+        )
+        self.modello_documento.e_stato_di_accettazione.side_effect = (
+            lambda _testata, codice: codice in ACCETTAZIONI_DI_PROVA
+        )
+        self.modello_documento.stato_di_accettazione.return_value = None
+        self.modello_documento.e_stato_iniziale.side_effect = (
+            lambda _testata, codice: codice in INIZIALI_DI_PROVA
+        )
 
     # Scopo: lo stato chiesto e' lo stato di emissione del documento.
     def stato_chiesto_di_emissione(self) -> None:
         self.modello_documento.e_stato_di_emissione.return_value = True
 
+    # Scopo: lo stato di emissione del documento e' questo codice: il BB
+    #        risponde si' per lui solo, sullo stato chiesto come su quello
+    #        corrente (il preventivo da emesso ad accettato).
+    def e_emissione_il_codice(self, codice: str) -> None:
+        self.modello_documento.e_stato_di_emissione.side_effect = (
+            lambda _testata, c: c == codice
+        )
+
     # Scopo: il documento si emette, e il suo stato di emissione e' questo.
     def emissione_del_documento(self, codice: str, *, stato_id: int = 2) -> None:
         self.modello_documento.stato_di_emissione.return_value = StatoDocumento(
+            id=stato_id, codice=codice,
+        )
+
+    # Scopo: il documento si accetta, e il suo stato di accettazione e' questo.
+    def accettazione_del_documento(self, codice: str, *, stato_id: int = 3) -> None:
+        self.modello_documento.stato_di_accettazione.return_value = StatoDocumento(
             id=stato_id, codice=codice,
         )

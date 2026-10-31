@@ -4077,7 +4077,7 @@ provide(READONLY_KEY, isReadonly)
 **Template sub-drawer (figlio puro consumer)** — *zero* logica locale:
 
 ```js
-// ContrattoRigheDrawer.vue / PreventivoNoteDrawer.vue / ContrattoNoteDrawer.vue
+// ContrattoRigheDrawer.vue / VenditeNoteDrawer.vue (note di ogni documento di vendita)
 import { useInjectReadonly } from '@/core/composables/useReadonlyMode'
 
 const isReadonly = useInjectReadonly()  // ← solo lettura. STOP.
@@ -4139,8 +4139,8 @@ Riferimento: `DdtResoDialog`, `OrdineEvasioneDialog`, `PreventiviSmistamentoDial
 
 | Drawer parent (provider) | Sub-drawer figli (consumer) | Cosa propaga |
 | --- | --- | --- |
-| `ContrattoDrawer` | `ContrattoRigheDrawer`, `ContrattoNoteDrawer` | parentReadonly + `stato_codice !== 'DRAFT'` |
-| `PreventiviDrawer` | `PreventivoNoteDrawer`, `PreventiviRigheTable` | parentReadonly + `stato_codice_interno !== 'DRAFT'` + `is_attiva=false` |
+| `ContrattoDrawer` | `ContrattoRigheDrawer`, `VenditeNoteDrawer` (`dominio="contratti"`) | parentReadonly + `stato_codice !== 'DRAFT'` |
+| `PreventiviDrawer` | `VenditeNoteDrawer` (`dominio="preventivi"`), `PreventiviRigheTable` | parentReadonly + `stato_codice_interno !== 'DRAFT'` + `is_attiva=false` |
 | `SoggettoDrawer` | `IndirizziSoggettoDrawer`, `ContattiSoggettoDrawer` | solo parentReadonly (no workflow state) |
 
 ### Tasti di uscita

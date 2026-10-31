@@ -31,7 +31,7 @@ import LineageFaseTag from '../../_shared/lineage/LineageFaseTag.vue'
 import LineageFrontieraChip from '../../_shared/lineage/LineageFrontieraChip.vue'
 import ExportDialog from '../../../core/components/ExportDialog.vue'
 import PdfDocumentiSorgenteDialog from '../../../documenti/components/PdfDocumentiSorgenteDialog.vue'
-import DdtNoteDrawer from './DdtNoteDrawer.vue'
+import VenditeNoteDrawer from '../../_shared/note/VenditeNoteDrawer.vue'
 import { useInjectBlocked } from '../../../core/composables/useReadonlyMode'
 import { useListaConfigurabilePage } from '../../../core/composables/useListaConfigurabilePage'
 import { useStoreFilterBindings } from '../../../core/composables/useStoreFilterBindings'
@@ -237,10 +237,12 @@ onMounted(() => store.fetchList())
         : ''"
     />
 
-    <DdtNoteDrawer
+    <VenditeNoteDrawer
       v-if="noteDrawerDdt?.id"
       v-model:visible="noteDrawerVisible"
-      :ddt-id="noteDrawerDdt.id"
+      dominio="ddt"
+      :id="noteDrawerDdt.id"
+      :emittente-fiscale-id="noteDrawerDdt.emittente_fiscale_id ?? null"
     />
   </div>
 </template>

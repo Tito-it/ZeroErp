@@ -88,6 +88,9 @@ from apps.core.tests.test_ricerca_full_seed import _RICERCHE
 # si cerca il valore di una riga e la riga deve uscire (brief §5.4 p.3).
 # `codice lista` -> `modulo.Classe.metodo` del test che lo fa.
 _QUI = "apps.core.tests.db.test_ricerca_full_db.RicercaFullDbTests."
+# Un utente che non esiste: la lista dei parametri esce intera anche senza i
+# suoi override (i livelli restano vuoti), ed e' cio' che serve per cercare.
+_ID_FINTO_UTENTE = 999_999_999
 _DOC = "apps.magazzino.tests.db.test_documento_interno_db.DocumentoInternoDbTests."
 _PAG = "apps.pagamenti.tests.db.test_rate_lista_db.RicercaListeDbTests."
 _MAG = "apps.magazzino.tests.db.test_anagrafiche_magazzino_db.AnagraficheMagazzinoDbTests."
@@ -110,6 +113,10 @@ _ESERCITATE_DAL_REPOSITORY: dict[str, str] = {
     "config.tipi_ruolo_tipi_indirizzo": _QUI + "test_la_ricerca_trova_ogni_colonna_accesa_dal_repository",
     "config.utilities_tipi_ruolo": _QUI + "test_la_ricerca_trova_ogni_colonna_accesa_dal_repository",
     "pratiche.pratiche": _QUI + "test_la_ricerca_trova_ogni_colonna_accesa_dal_repository",
+    "pratiche.definizioni_workflow": _QUI + "test_definizioni_workflow_trova_ogni_colonna_accesa",
+    "config.parametri_impostazioni": _QUI + "test_impostazioni_trova_ogni_colonna_accesa",
+    "vendite.note": _QUI + "test_note_trovano_ogni_colonna_accesa",
+    "catalogo.note": _QUI + "test_note_trovano_ogni_colonna_accesa",
     "anagrafiche.emittenti_fiscali": _QUI + "test_la_ricerca_trova_ogni_colonna_accesa_dal_repository",
     "anagrafiche.emittente_billing_account": _QUI + "test_la_ricerca_trova_ogni_colonna_accesa_dal_repository",
     "magazzino.inventari": _DOC + "test_la_ricerca_trova_ogni_colonna_accesa",
@@ -138,6 +145,7 @@ _ESERCITATE_DAL_REPOSITORY: dict[str, str] = {
     "anagrafiche.operatori": _ANA + "test_operatori_trova_ogni_colonna_accesa",
     "vendite.listini": _VEN + "test_la_ricerca_trova_ogni_colonna_accesa",
     "vendite.listini_righe": _VEN + "test_la_ricerca_trova_ogni_colonna_accesa",
+    "vendite.listini_versioni": _VEN + "test_la_ricerca_trova_ogni_colonna_accesa",
     "vendite.promo_articoli": _VEN + "test_la_ricerca_trova_ogni_colonna_accesa",
     "vendite.dash_competenza_gruppi": _VEN + "test_la_ricerca_trova_ogni_colonna_accesa",
     "vendite.contratto_righe": _VEN + "test_la_ricerca_trova_ogni_colonna_accesa",
@@ -515,6 +523,149 @@ class RicercaFullDbTests(unittest.TestCase):
                     lambda t: EmittentiFiscaliBillingAccountRepository().list_by_emittente(
                         mondo["emittente_soggetto_ruolo_id"], search=t, limit=200)[0],
                     chiave="billing_account_id",
+                )
+                raise Annulla
+        except Annulla:
+            pass
+
+    # Scopo: la lista delle edizioni di workflow (2026-10-31) trova un'edizione
+    #        da ogni colonna accesa. Si legge un'edizione che c'e' (i preset di
+    #        sistema esistono per costruzione): costruirne una vorrebbe le fn
+    #        del ciclo di vita, e la ricerca non ha bisogno di una riga nuova.
+    def test_definizioni_workflow_trova_ogni_colonna_accesa(self):
+        from apps.pratiche.db.definizioni_repository import DefinizioniRepository
+
+        try:
+            with transaction.atomic(), connection.cursor() as cur:
+                apri_contesto_operatore(cur)
+                cur.execute(
+                    "SELECT wd.id, tp.descrizione, wd.descrizione"
+                    "  FROM pratiche.workflow_definizioni wd"
+                    "  JOIN pratiche.tipi_prestazione tp ON tp.id = wd.tipo_prestazione_id"
+                    " ORDER BY wd.id LIMIT 1"
+                )
+                riga = cur.fetchone()
+                self.assertIsNotNone(riga, "nessuna edizione di workflow su questo DB")
+                definizione_id, tipo, descrizione = riga
+                verifica_ricerca_colonna_per_colonna(
+                    self, cur, "pratiche.definizioni_workflow", definizione_id,
+                    {"tipo_prestazione_descrizione": tipo, "descrizione": descrizione},
+                    lambda t: DefinizioniRepository().list_definizioni(search=t, limit=200, offset=0)[0],
+                )
+                raise Annulla
+        except Annulla:
+            pass
+
+    # Scopo: la lista delle impostazioni (2026-10-31) trova un parametro da ogni
+    #        colonna accesa. Si legge un parametro che c'e' (il seed ne ha
+    #        decine): la funzione restituisce l'intero catalogo per chiunque.
+    def test_impostazioni_trova_ogni_colonna_accesa(self):
+        from apps.core.db.parameter_repository import ParameterRepository
+
+        try:
+            with transaction.atomic(), connection.cursor() as cur:
+                apri_contesto_operatore(cur)
+                cur.execute(
+                    "SELECT code, description FROM config.parameters"
+                    " WHERE description IS NOT NULL ORDER BY id LIMIT 1"
+                )
+                code, description = cur.fetchone()
+                verifica_ricerca_colonna_per_colonna(
+                    self, cur, "config.parametri_impostazioni", code,
+                    {"code": code, "description": description},
+                    lambda t: ParameterRepository().list_for_user(
+                        _ID_FINTO_UTENTE, None, None, None, search=t, limit=200, offset=0,
+                    )[0],
+                    chiave="code",
+                )
+                raise Annulla
+        except Annulla:
+            pass
+
+    # Scopo: le due liste di note (2026-10-31, D-2), gemelle: una nota di un
+    #        preventivo, una di un articolo e una di un componente, col testo
+    #        che sta solo li', si trovano dalla loro lista con la ricerca del BB
+    #        comune (`pagina_note`). ⭐ Il componente e' la SECONDA query di
+    #        `catalogo.note` (`list_note_componente`, su un'altra vista): la
+    #        ricerca e' la stessa, la SELECT no, e va eseguita anche lei.
+    def test_note_trovano_ogni_colonna_accesa(self):
+        from apps.catalogo.db.catalogo_bom_repository import (
+            NOTA_TARGET_ARTICOLO,
+            NOTA_TARGET_COMPONENTE,
+            CatalogoBomRepository,
+        )
+        from apps.vendite.db.note_repositories import NOTE_REPO_PREVENTIVO
+
+        try:
+            with transaction.atomic(), connection.cursor() as cur:
+                cur.execute("SELECT preventivo_id FROM dbops.fn_pgtap_crea_preventivo('ricerca note')")
+                preventivo_id = cur.fetchone()[0]
+                apri_contesto_operatore(cur)
+                cur.execute("SELECT dbops.fn_pgtap_crea_articolo('RICNOTEART')")
+                articolo_id = cur.fetchone()[0]
+                cur.execute("SELECT id FROM config.note_stili WHERE attivo ORDER BY id LIMIT 1")
+                stile = cur.fetchone()[0]
+                nota = {"anchor_tipo": "DOCUMENTO", "posizione": "HEADER", "id_stile": stile}
+                nota_ven = NOTE_REPO_PREVENTIVO.create(preventivo_id, {**nota, "testo": "Nota ricnotaven"})
+                bom = CatalogoBomRepository()
+                nota_cat = bom.create_nota(NOTA_TARGET_ARTICOLO, articolo_id, {**nota, "testo": "Nota ricnotacat"})
+                verifica_ricerca_colonna_per_colonna(
+                    self, cur, "vendite.note", nota_ven, {"testo": "ricnotaven"},
+                    lambda t: NOTE_REPO_PREVENTIVO.list(preventivo_id, search=t, limit=200)[0],
+                )
+                verifica_ricerca_colonna_per_colonna(
+                    self, cur, "catalogo.note", nota_cat, {"testo": "ricnotacat"},
+                    lambda t: bom.list_note_articolo_pagina(articolo_id, search=t, limit=200, offset=0)[0],
+                )
+                # Il componente: un kit costruito, con l'articolo sopra dentro.
+                cur.execute(
+                    "SELECT dbops.fn_pgtap_crea_articolo('RICNOTEKIT', false, p_is_composito => TRUE)"
+                )
+                kit_id = cur.fetchone()[0]
+                cur.execute(
+                    "INSERT INTO catalogo.articoli_componenti (prodotto_id, componente_id, coeff_qta, valido_dal)"
+                    " VALUES (%s, %s, 1, '2020-01-01') RETURNING id",
+                    [kit_id, articolo_id],
+                )
+                componente_id = cur.fetchone()[0]
+                nota_comp = bom.create_nota(
+                    NOTA_TARGET_COMPONENTE, componente_id, {**nota, "testo": "Nota ricnotacomp"},
+                )
+                verifica_ricerca_colonna_per_colonna(
+                    self, cur, "catalogo.note", nota_comp, {"testo": "ricnotacomp"},
+                    lambda t: bom.list_note_componente(componente_id, search=t, limit=200, offset=0)[0],
+                )
+                raise Annulla
+        except Annulla:
+            pass
+
+    # Scopo: la lista delle UoM di un articolo (`catalogo.articolo_uom`,
+    #        2026-10-31) trova la UoM da ogni colonna accesa, dalla query del
+    #        REPOSITORY (`list_uom_operative_pagina`). Il test 1 la prova sulla
+    #        vista del catalogo; la pagina pero' proietta colonne sue
+    #        (`UOM_OPERATIVA_DETAIL_COLUMNS`), e va eseguita. L'articolo e'
+    #        costruito: la sua UoM base la semina il trigger della nascita.
+    def test_uom_operative_trovano_ogni_colonna_accesa(self):
+        from apps.catalogo.db.catalogo_uom_repository import CatalogoUomRepository
+
+        try:
+            with transaction.atomic(), connection.cursor() as cur:
+                apri_contesto_operatore(cur)
+                cur.execute("SELECT dbops.fn_pgtap_crea_articolo('RICUOMART')")
+                articolo_id = cur.fetchone()[0]
+                cur.execute(
+                    "SELECT id, uom_codice, uom_descrizione"
+                    "  FROM catalogo.vw_articoli_uom_operativa_dettaglio"
+                    " WHERE articolo_id = %s AND is_base",
+                    [articolo_id],
+                )
+                uom_id, codice, descrizione = cur.fetchone()
+                verifica_ricerca_colonna_per_colonna(
+                    self, cur, "catalogo.articolo_uom", uom_id,
+                    {"uom_codice": codice, "uom_descrizione": descrizione},
+                    lambda t: CatalogoUomRepository().list_uom_operative_pagina(
+                        articolo_id, search=t, limit=200, offset=0,
+                    )[0],
                 )
                 raise Annulla
         except Annulla:

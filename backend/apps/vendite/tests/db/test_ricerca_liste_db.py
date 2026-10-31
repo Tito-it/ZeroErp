@@ -318,6 +318,15 @@ class RicercaListeVenditeDbTests(unittest.TestCase):
                         order_by="codice", order_dir="asc", limit=200, offset=0,
                     )[0],
                 )
+                # Le versioni del listino (2026-10-31): il codice lo da' la
+                # fabbrica, lo si legge (una versione ATTIVA non lo cambia).
+                cur.execute("SELECT codice_versione FROM vendite.listini_versioni WHERE id = %s", [versione])
+                codice_versione = cur.fetchone()[0]
+                verifica_ricerca_colonna_per_colonna(
+                    self, cur, "vendite.listini_versioni", versione,
+                    {"codice_versione": codice_versione},
+                    lambda t: ListiniRepository().list_versioni_pagina(listino, search=t, limit=200)[0],
+                )
                 verifica_ricerca_colonna_per_colonna(
                     self, cur, "vendite.listini_righe", riga,
                     {"articolo_codice": f"RVART-{sfx}", "articolo_descrizione": "ricdescart"},

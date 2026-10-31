@@ -38,7 +38,10 @@ from django.db import transaction
 from apps.config.sorgenti import SORGENTE_OFFERTA_COMMERCIALE
 from apps.core.db._helpers import richiedi_codice_a_vocabolario
 from apps.core.api.constants import DEFAULT_LIMIT
-from apps.core.services.documento_modello import stato_di_emissione
+from apps.core.services.documento_modello import (
+    stato_di_accettazione,
+    stato_di_emissione,
+)
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.service_errors import ServiceError
 from apps.core.services.capability_blob import capabilities_o_vuoto
@@ -112,6 +115,12 @@ E_VENDITE_FK = "E_VENDITE_FK"
 # motivazione e manca (O-3): il service lo riconosce per dire al client il
 # campo della SUA richiesta (vedi `_db_errors`).
 E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA = "E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA"
+# Il gemello: una motivazione su un passaggio che non la chiede
+# (`20261031-22`, brief-modello-documento-vendita §18.3 BE-T6).
+E_OFFERTA_MOTIVAZIONE_NON_AMMESSA = "E_OFFERTA_MOTIVAZIONE_NON_AMMESSA"
+_CODICI_MOTIVAZIONE: frozenset[str] = frozenset(
+    {E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA, E_OFFERTA_MOTIVAZIONE_NON_AMMESSA}
+)
 
 # Il campo della richiesta che porta la motivazione (rifiuto e annullo).
 _CAMPO_MOTIVAZIONE = "motivazione"
@@ -124,9 +133,14 @@ _CAMPO_MOTIVAZIONE = "motivazione"
 
 # Codici stato documento (chiavi naturali `codice_interno` in
 # config.stati_doc_offerte) che il service nomina: la bozza dell'eliminazione e
-# i due esiti del cliente. ⛔ Non l'emissione ne' l'annullo, che li dice il
-# vocabolario (`stato_di_emissione`; lo stato d'annullo lo sceglie
-# `vendite.fn_annulla_offerta`), e non gli stati di partenza dei passaggi.
+# i due esiti del cliente. ⛔ Non l'emissione, l'accettazione ne' l'annullo, che
+# li dice il vocabolario (`stato_di_emissione`, `stato_di_accettazione`; lo
+# stato d'annullo lo sceglie `vendite.fn_annulla_offerta`), e non gli stati di
+# partenza dei passaggi.
+# ⚠️ `ACCETTATA` resta come PAROLA dell'API: il valore di `esito` che la rotta
+#    dell'esito accetta (`_ESITI`, il ChoiceField della view). Lo stato che
+#    l'accettazione scrive lo legge `registra_accettazione` dal vocabolario
+#    (brief-modello-documento-vendita §17.6 BE-T2).
 class StatoOfferta:
     BOZZA = "BOZZA"
     ACCETTATA = "ACCETTATA"
@@ -406,10 +420,11 @@ class OfferteService:
     #        Delega al BB condiviso `translate_db_errors` (core
     #        payload_helpers, estratto 2026-07-13 — regola del 2 alla 5a
     #        copia); resta la firma context-based per i call site del service.
-    # ⭐ Il campo di E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA: il verbo nomina la
+    # ⭐ Il campo di E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA e del gemello
+    #    E_OFFERTA_MOTIVAZIONE_NON_AMMESSA: il verbo nomina la
     #    COLONNA (`motivazione_rifiuto`, canale `COLUMN`), la richiesta porta
     #    `motivazione`. `error.fields` promette un input della richiesta
-    #    (api.md §Envelope): qui il nome si traduce, per questo codice soltanto.
+    #    (api.md §Envelope): qui il nome si traduce, per questi codici soltanto.
     #    ⛔ Non con `context={"field": ...}`: vincerebbe su OGNI errore del
     #    blocco, e un E_DOC_GIA_NELLO_STATO accenderebbe la motivazione.
     @contextmanager
@@ -430,7 +445,7 @@ class OfferteService:
             ):
                 yield
         except ServiceError as exc:
-            if exc.code == E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA:
+            if exc.code in _CODICI_MOTIVAZIONE:
                 exc.fields = (_CAMPO_MOTIVAZIONE,)
             raise
 
@@ -826,9 +841,22 @@ class OfferteService:
         return self._cambia_stato(offerta_id, stato_codice=stato.codice)
 
     # Scopo: EMESSA -> ACCETTATA (esito cliente positivo). Il trigger DB
-    #        valorizza `data_accettazione`.
-    def registra_accettazione(self, offerta_id: int) -> dict[str, Any]:
-        return self._cambia_stato(offerta_id, stato_codice=StatoOfferta.ACCETTATA)
+    #        valorizza `data_accettazione`. Lo stato di arrivo dal vocabolario
+    #        (colonna `accettazione`, §17.6 BE-T2), non `StatoOfferta.ACCETTATA`.
+    #        ⭐ La motivazione passa al verbo com'e': il passaggio non la chiede,
+    #        e il verbo la rifiuta (E_OFFERTA_MOTIVAZIONE_NON_AMMESSA, al client
+    #        col campo `motivazione`, `_db_errors`). Assente, null, vuota o di
+    #        soli spazi e' nessuna motivazione.
+    def registra_accettazione(
+        self, offerta_id: int, *, motivazione: Any = None
+    ) -> dict[str, Any]:
+        stato = stato_di_accettazione(
+            TESTATA_OFFERTE, function_name="offerte_service.registra_accettazione",
+        )
+        return self._cambia_stato(
+            offerta_id, stato_codice=stato.codice,
+            motivazione=self._motivazione(motivazione),
+        )
 
     # Scopo: EMESSA -> RIFIUTATA (esito cliente negativo). Il trigger DB
     #        valorizza `data_rifiuto`; la motivazione la scrive il verbo in
@@ -850,12 +878,10 @@ class OfferteService:
     #        view si limita a passare il payload, il routing per esito vive
     #        qui — coerente con i due metodi specifici sopra (mantenuti per
     #        chi vuole l'API esplicita).
-    #        ⛔ L'accettazione non porta una motivazione: la sola colonna che la
-    #        terrebbe e' `motivazione_rifiuto`, e scartarla in silenzio direbbe
-    #        al client che e' stata presa (stesso criterio di `valido_al` nel
-    #        cambio stato del contratto). Una motivazione con ACCETTATA e' un
-    #        400 col campo; assente, null o vuota passa. Fino al 2026-10-26 si
-    #        perdeva qui senza dirlo.
+    #        ⭐ Dove la motivazione e' ammessa lo dice il verbo (motivazione (b),
+    #        brief-modello-documento-vendita §17.8 e §18.3 BE-T6): solo dove il
+    #        passaggio la chiede. ⛔ Fino al 2026-10-31 qui c'era la copia
+    #        Python della regola (un E_VENDITE_VALIDATION sull'accettazione).
     def registra_esito(
         self, offerta_id: int, *, esito: str, motivazione: Any = None
     ) -> dict[str, Any]:
@@ -867,13 +893,7 @@ class OfferteService:
             context={"offerta_id": offerta_id, "esito": esito, "field": "esito"},
         )
         if esito == StatoOfferta.ACCETTATA:
-            ErrorManager.require(
-                self._motivazione(motivazione) is None,
-                code=E_VENDITE_VALIDATION,
-                message="La motivazione si indica solo per rifiutare o annullare l'offerta.",
-                context={"offerta_id": offerta_id, "esito": esito, "field": _CAMPO_MOTIVAZIONE},
-            )
-            return self.registra_accettazione(offerta_id)
+            return self.registra_accettazione(offerta_id, motivazione=motivazione)
         return self.registra_rifiuto(offerta_id, motivazione=motivazione)
 
     # Scopo: Crea rev.N+1 di un'offerta in stato EMESSA invocando la fn DB
@@ -884,19 +904,14 @@ class OfferteService:
     #        (BOZZA) come dettaglio completo.
     #
     #        Lo stato di partenza (EMESSA) lo dice il DB
-    #        (`E_OFFERTA_REVISIONE_STATO_NON_AMMESSO`); qui solo l'esistenza
-    #        (404). ⛔ Fino al 2026-10-26 lo ripeteva `_assert_stato_corrente`
-    #        (brief-modello-documento-vendita §13.6 punto 4).
-    #        ⚠️ L'esistenza resta qui, a differenza del push (regola del 1),
-    #        perche' la fn sull'offerta che non c'e' risponde
-    #        E_PARAMETRO_INVALIDO, un 400: si toglie quando il DB rispondera'
-    #        E_OFFERTA_NON_TROVATA (richiesta al team DB, brief-modello-
-    #        documento-vendita §14.8).
+    #        (`E_OFFERTA_REVISIONE_STATO_NON_AMMESSO`), e anche l'esistenza:
+    #        l'offerta che non c'e' e' E_OFFERTA_NON_TROVATA (404) dal verbo
+    #        (`20261031-21`, R-1). ⛔ Nessun controllo qui (regola del 1; fino
+    #        al 2026-10-31 la lettura della testata, §17.6 BE-T3).
     def crea_revisione(
         self, offerta_id: int, *, user: str | None = None
     ) -> dict[str, Any]:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
-        self._get_offerta_or_raise(offerta_id, op="crea_revisione", getter=self._repo.get_stato_codice)
         with self._db_errors(
             {"offerta_id": offerta_id},
             fallback_message="Errore creazione revisione offerta.",

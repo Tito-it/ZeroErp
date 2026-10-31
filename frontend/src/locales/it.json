@@ -465,6 +465,7 @@
     },
     "campi": {
       "abilita_fattura": "Abilita fattura",
+      "accettazione": "Stato di accettazione",
       "aliquota_iva": "Aliquota IVA",
       "applica_fattura": "Si applica alla fattura",
       "applica_lotto": "Si applica al lotto",
@@ -485,6 +486,7 @@
       "categoria_accisa_id": "Categoria accisa",
       "causale_magazzino": "Causale di magazzino",
       "centro_riscossione_id": "Centro di riscossione",
+      "cessazione": "Stato di cessazione",
       "cf_obbligatorio": "Codice fiscale obbligatorio",
       "check_lettura": "Controllo di lettura",
       "chiude_commessa": "Chiude la commessa",
@@ -2110,6 +2112,7 @@
     "col_uom_da": "UoM Da",
     "col_uom_a": "UoM A",
     "tag_base": "Base",
+    "tag_logistica": "Logistica",
     "conv_search_placeholder": "Cerca conversione (codice UoM)...",
     "conv_mostra_non_attive": "Mostra non attive",
     "nuova_conversione": "Nuova Conversione",
@@ -3417,7 +3420,6 @@
       "versione_eliminata": "Versione eliminata",
       "elimina_listino": "Elimina listino (mai usato)",
       "listino_eliminato": "Listino eliminato",
-      "nessuna_versione_inline": "Nessuna versione. Crea la prima con il pulsante in alto.",
       "uom_select_articolo_first": "Seleziona prima un articolo",
       "uom_no_operative": "Nessuna UoM operativa per questo articolo",
       "uom_base_suffix": "(base)",
@@ -3437,11 +3439,6 @@
       "variazione_pct_conferma": "Applica variazione",
       "variazione_pct_successo": "Variazione applicata a {count} righe",
       "variazione_pct_help": "Positivo = aumento, negativo = riduzione. Es. 3 = +3%, -5 = -5%. Solo su versioni BOZZA.",
-      "alert_scadenze_titolo": "Listini in scadenza",
-      "alert_scadenze_vuoto": "Nessun listino in scadenza",
-      "alert_scadenze_badge": "{count} in scadenza",
-      "alert_scadenze_giorni_rimanenti": "{giorni} giorni",
-      "alert_scadenze_scaduto": "Scaduto",
       "chiudi_versione_titolo": "Chiudi versione",
       "chiudi_versione_warning": "Dal {data_dopo} i contesti gestiti da questa versione non avranno prezzo attivo, a meno che non esista gia' una versione successiva.",
       "chiudi_versione_data": "Chiudi al",
@@ -3454,7 +3451,11 @@
       "righe_filtra_utility": "Filtra per utility...",
       "variazione_short": "Variazione",
       "aggiungi_prezzo_hint": "Aggiungi prezzo",
-      "alert_scadenze_non_verificabili": "Scadenze dei listini non verificabili: clic per riprovare"
+      "alert_scadenze_non_verificabili": "Scadenze dei listini non verificabili: clic per riprovare",
+      "tab_dati": "Dati",
+      "alert_scadenze_filtra": "Listini con la versione in scadenza senza successore: clic per vederli",
+      "col_giorni_alla_scadenza": "In scadenza (giorni)",
+      "filtro_in_scadenza": "Solo in scadenza"
     },
     "lotti": {
       "seleziona_pagina": "Seleziona tutti i lotti di questa pagina",
@@ -5448,7 +5449,8 @@
     "field_solo_stampa": "Solo stampa",
     "placeholder_riga_doc": "Lascia vuoto per nota del documento",
     "placeholder_stile": "Seleziona uno stile",
-    "placeholder_testo": "Inserisci il testo della nota (markdown supportato)"
+    "placeholder_testo": "Inserisci il testo della nota (markdown supportato)",
+    "col_seq": "Sequenza"
   },
   "geo": {
     "tab_province": "Province",

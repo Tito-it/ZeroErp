@@ -13,36 +13,44 @@
 from __future__ import annotations
 
 import os
+import subprocess
+import sys
+from pathlib import Path
 from typing import Any
+
+# La directory di `manage.py`, la stessa di questo file (`backend/`, `/app`).
+_BACKEND = Path(__file__).resolve().parent
 
 
 # Scopo: Prima di creare i worker, verifica che il timeout stia sotto la soglia
-#        di ripresa delle Idempotency-Key (BE-5, `soglia_idempotenza`).
-# ⭐ Vale solo con la modalita' forte accesa: spenta, la funzione che legge la
-#    soglia non viene mai chiamata.
-# ⚠️ La connessione aperta per leggere la soglia si chiude prima del fork: un
-#    socket ereditato dai worker sarebbe condiviso fra processi.
+#        di ripresa delle Idempotency-Key (BE-5, `soglia_idempotenza`), in un
+#        processo FIGLIO usa e getta (`manage.py verifica_presidi_avvio`).
+# ⛔ Mai `django.setup()` qui (brief-modello-documento-vendita §15.17.3, ok di
+#    Tid 2026-10-31): fino ad allora il master caricava Django e i moduli
+#    dell'applicazione, i worker nati da un `kill -HUP` li ereditavano, e il
+#    codice nuovo non entrava. Il master resta senza codice applicativo, e un
+#    HUP torna a caricare tutto da capo.
+# ⭐ La modalita' forte spenta la giudica il figlio, che legge i settings.
 def _verifica_presidi(server: Any) -> None:
-    import django
-
-    # Lo stesso modulo di `zeroerp_backend/wsgi.py`, che qui non e' ancora
-    # stato importato. `django.setup()` e' idempotente: al reload non rifa' niente.
-    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "zeroerp_backend.settings")
-    django.setup()
-    from django.conf import settings
-    from django.db import connections
-
-    from apps.core.services.soglia_idempotenza import verifica_soglia_contro_timeout
-
-    if not getattr(settings, "API_STRONG_IDEMPOTENCY_ENABLED", False):
-        return
-    try:
-        verifica_soglia_contro_timeout(
-            timeout_secondi=int(server.cfg.timeout),
-            worker_class=server.cfg.worker_class,
+    worker_class = server.cfg.worker_class
+    env = {**os.environ}
+    env.setdefault("DJANGO_SETTINGS_MODULE", "zeroerp_backend.settings")
+    esito = subprocess.run(  # noqa: S603 — argomenti nostri, nessun input esterno
+        [
+            sys.executable, str(_BACKEND / "manage.py"), "verifica_presidi_avvio",
+            "--timeout", str(int(server.cfg.timeout)),
+            "--worker-class", f"{worker_class.__module__}.{worker_class.__qualname__}",
+        ],
+        cwd=_BACKEND, env=env, capture_output=True, text=True, timeout=120, check=False,
+    )
+    if esito.returncode != 0:
+        # L'ultima riga di stderr e' l'errore (CommandError o la coda di un
+        # traceback); sopra ci sono i log dell'avvio di Django nel figlio.
+        righe = esito.stderr.strip().splitlines()
+        raise RuntimeError(
+            "Presidi di avvio non superati: "
+            + (righe[-1] if righe else f"uscita {esito.returncode}")
         )
-    finally:
-        connections.close_all()
 
 
 # Scopo: All'avvio del master: un rifiuto e' un backend che non parte.

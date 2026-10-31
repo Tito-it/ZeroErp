@@ -414,20 +414,25 @@ class CatalogoApiTests(JwtMockedApiTest):
         self.assertFalse(response.json()["data"]["attivo"])
         self.assertEqual(str(mocked_disable.call_args.args[0]), _ARTICOLO_UUID)
 
-    # Scopo: GET UoM articolo -> 200 con envelope count/results.
+    # Scopo: GET UoM articolo -> 200, la pagina della lista `catalogo.articolo_uom`
+    #        (dal 2026-10-31) coi campi non modificabili accanto alla busta;
+    #        ricerca e ordinamento arrivano al service.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
-    @patch("apps.catalogo.api.views.fn_list_uom_operative")
+    @patch("apps.catalogo.api.views.fn_list_uom_operative_pagina")
     def test_get_articolo_uom_list_ok(self, mocked_list, _mock_auth):
-        mocked_list.return_value = {
-            "count": 1,
-            "results": [{"id": 11, "uom_codice": "PZ"}],
-        }
+        mocked_list.return_value = ([{"id": 11, "uom_codice": "PZ"}], 1, ["uom_id"])
 
-        response = self.client.get(f"/api/v1/catalogo/articoli/{_ARTICOLO_UUID}/uom/")
+        response = self.client.get(
+            f"/api/v1/catalogo/articoli/{_ARTICOLO_UUID}/uom/?search=p&order_by=uom_codice&limit=10"
+        )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["data"]["results"][0]["uom_codice"], "PZ")
+        data = response.json()["data"]
+        self.assertEqual((data["count"], data["results"][0]["uom_codice"]), (1, "PZ"))
+        self.assertEqual(data["non_editable_fields"], ["uom_id"])
         self.assertEqual(str(mocked_list.call_args.args[0]), _ARTICOLO_UUID)
+        kwargs = mocked_list.call_args.kwargs
+        self.assertEqual((kwargs["search"], kwargs["order_by"], kwargs["limit"]), ("p", "uom_codice", 10))
 
     # Scopo: POST UoM articolo -> 200 e payload inoltrato al service.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
@@ -568,12 +573,15 @@ class CatalogoApiTests(JwtMockedApiTest):
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     @patch("apps.catalogo.api.views.fn_list_note_articolo")
     def test_get_articolo_note_ok(self, mocked_list, _mock_auth):
-        mocked_list.return_value = {"count": 1, "results": [{"id": 5, "testo": "Demo"}]}
+        mocked_list.return_value = ([{"id": 5, "testo": "Demo"}], 1)
 
-        response = self.client.get(f"/api/v1/catalogo/articoli/{_ARTICOLO_UUID}/note/")
+        response = self.client.get(f"/api/v1/catalogo/articoli/{_ARTICOLO_UUID}/note/?search=dem")
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["data"]["results"][0]["id"], 5)
+        # La pagina della lista `catalogo.note` (dal 2026-10-31).
+        self.assertEqual(response.json()["data"]["count"], 1)
+        self.assertEqual(mocked_list.call_args.kwargs["search"], "dem")
 
     # Scopo: POST nota articolo -> 200 e payload inoltrato al service.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))

@@ -173,6 +173,12 @@ _ESENZIONI: dict[str, str] = {
     "config.comuni": "catalogo globale — territorio, nessun `emittente_fiscale_id` in tabella (perimetro_emittente = false)",
     "config.codici_postali": "catalogo globale — territorio, nessun `emittente_fiscale_id` in tabella (perimetro_emittente = false)",
     "config.toponomastica": "catalogo globale — tipi di strada, nessun `emittente_fiscale_id` in tabella (perimetro_emittente = false)",
+    # ⭐ Secondo giro delle liste grezze (2026-10-31, §7.1 del brief): le note
+    #    e le unita' di misura di un ARTICOLO. L'articolo e' anagrafica comune
+    #    a tutte le aziende, e cosi' le sue note e le sue UoM: il seed le
+    #    semina `perimetro_emittente = false`.
+    "catalogo.note": "catalogo globale — note di un articolo o di un componente, nessun `emittente_fiscale_id` in tabella (perimetro_emittente = false)",
+    "catalogo.articolo_uom": "catalogo globale — unita' di misura di un articolo, nessun `emittente_fiscale_id` in tabella (perimetro_emittente = false)",
     "ui.lista_definizione": "catalogo delle liste — nessun `emittente_fiscale_id` in tabella",
     "ui.lista_colonna": "catalogo delle colonne — nessun `emittente_fiscale_id` in tabella",
     "ui.lista_colonna_permesso": "grant per colonna/profilo — nessun `emittente_fiscale_id` in tabella",

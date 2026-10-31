@@ -114,6 +114,17 @@ export const PASSAGGI_VERSIONE_LISTINO = Object.freeze({
   ATTIVA: 'attiva',
 })
 
+// I codici del registro delle azioni di riga (`useAzioneRiga`) per i verbi
+// della versione di listino: il registro dice QUALI colonne della riga portano
+// il motivo del verbo spento. ⚠️ Non sono le `action_key` di
+// `PASSAGGI_VERSIONE_LISTINO` qui sopra (quelle dicono se il passaggio e'
+// permesso): due vocabolari, due costanti.
+export const AZIONE_RIGA_VERSIONE_LISTINO = Object.freeze({
+  ATTIVA: 'ATTIVA_VERSIONE_LISTINO',
+  ELIMINA: 'ELIMINA_VERSIONE_LISTINO',
+  CHIUDI: 'CHIUDI_VERSIONE_LISTINO',
+})
+
 // Codici azione di processo (`config.azioni_processo.permission_codename`).
 // Usati con `auth.isActionAllowed(...)` per gating UI lato FE.
 export const PRICING_ACTIONS = Object.freeze({

@@ -44,10 +44,11 @@ TESTATA_LISTINI_VERSIONI = "vendite.listini_versioni"
 
 # Lo stato che il verbo dell'attivazione scrive (`vendite.fn_attiva_versione_listino`,
 # la sua costante `c_attiva`): la rotta del cambio stato lo instrada al verbo.
-# ⚠️ Gli altri confronti coi codici (le scadenze qui sotto) leggono il codice dal
-#    vocabolario `config.stati_doc_listino_versioni`, come le funzioni del DB.
+# ⚠️ Gli altri confronti coi codici leggono il codice dal vocabolario
+#    `config.stati_doc_listino_versioni`, come le funzioni del DB.
+# ⛔ Ritirata il 2026-10-31 `STATO_VERSIONE_BOZZA`: la usava solo la query
+#    delle scadenze, passata al DB (`_FN_SCADENZA`).
 STATO_VERSIONE_ATTIVA = "ATTIVA"
-STATO_VERSIONE_BOZZA = "BOZZA"
 
 # Le colonne della versione, una volta sola per lista e dettaglio.
 # ⭐ Lo stato e' il CODICE del vocabolario (dal 2026-10-28 la colonna e'
@@ -116,6 +117,12 @@ _SELECT_VERSIONE = f"""
 """  # noqa: S608 — costanti di modulo TESTATA_LISTINI_VERSIONI e STATO_VERSIONE_ATTIVA
 
 
+# «Non in scadenza» (`giorni_rimanenti` NULL) e' la scadenza PIU' LONTANA, come
+# la fine validita' vuota e' `infinity` (`_SQL_DATE_INFINITY`): senza, il BB
+# dell'ordine tratta il NULL come minimo, e l'ordine crescente metterebbe in
+# cima i listini che non scadono. Il massimo di `integer` (date - date).
+_SQL_GIORNI_SENZA_SCADENZA = "2147483647"
+
 # `attivo` e' NUCLEO: lo stato ordina sempre. Aggiunta in anticipo sul seed
 # della lista listini (passata unica 2026-08-01, richiesta del team DB).
 LISTINI_ORDER_COLUMNS: dict[str, str] = {
@@ -126,7 +133,36 @@ LISTINI_ORDER_COLUMNS: dict[str, str] = {
     "attivo": "l.attivo",
     "data_insert": "l.data_insert",
     "data_update": "l.data_update",
+    # Dalla regola del DB (`_FN_SCADENZA`): NULL = non in scadenza.
+    "giorni_alla_scadenza": f"COALESCE(s.giorni_rimanenti, {_SQL_GIORNI_SENZA_SCADENZA})",
 }
+
+# ⭐ «In scadenza senza successore» la dice il DB, una volta per query
+#    (`vendite.fn_listini_in_scadenza_senza_successore`, 20261031-27,
+#    brief-db-liste-datatable-grezze-secondo-giro §7.2): una riga per versione
+#    in vigore che scade entro N giorni, N dal parametro
+#    `LISTINI_SCADENZA_PREAVVISO_GIORNI`. La leggono la lista listini (colonna e
+#    filtro, che e' anche il conteggio del badge) e la lista versioni.
+#    ⛔ Fino al 2026-10-31 la regola era una query di questo repository
+#    (`listini_in_scadenza`), con N in DUE default (15 nel FE e nel service):
+#    ritirata nello stesso giro.
+_FN_SCADENZA = "vendite.fn_listini_in_scadenza_senza_successore()"
+
+# Whitelist ORDER BY della lista versioni di un listino (`vendite.listini_versioni`,
+# 112): sulle colonne della subquery `x` (`_SELECT_VERSIONE`) e sulla regola
+# della scadenza `sc`. Le chiavi sono i `campo_sorgente` del catalogo.
+VERSIONI_ORDER_COLUMNS: dict[str, str] = {
+    "codice_versione": "x.codice_versione",
+    "valido_dal": "x.valido_dal",
+    # Fine vuota = validita' infinita: la versione aperta e' la piu' lontana.
+    "valido_al": f"COALESCE(x.valido_al, {_SQL_DATE_INFINITY})",
+    "righe_count": "x.righe_count",
+    "stato": "x.stato",
+    "giorni_alla_scadenza": f"COALESCE(sc.giorni_rimanenti, {_SQL_GIORNI_SENZA_SCADENZA})",
+}
+# Le date della lista si leggono dalla piu' recente (regola di Tid del
+# 2026-09-02): i nomi `valido_*` non le dicono date da soli.
+VERSIONI_ORDER_COLONNE_DATA: frozenset[str] = frozenset({"valido_dal", "valido_al"})
 
 LISTINO_CREATE_COLUMNS: dict[str, str] = {
     "codice": "text",
@@ -200,6 +236,7 @@ RIGHE_ORDER_COLUMNS: dict[str, str] = {
 #    escape di `%`/`_`, niente strip, e un elenco di colonne cablato che il
 #    pannello admin non poteva spegnere.
 _RICERCA_LISTINI = RicercaFull("vendite.listini", ("codice", "descrizione"))
+_RICERCA_VERSIONI = RicercaFull("vendite.listini_versioni", ("codice_versione",))
 
 # ⭐ Forma a tupla sull'alias `unione`, e NON due mappe per le due gambe della
 #    `UNION ALL` (`ad.*` e `adc.*`): la condizione si applica ai nomi che la
@@ -227,6 +264,7 @@ class ListiniRepository:
         order_dir: str | None,
         limit: int,
         offset: int,
+        in_scadenza: bool | None = None,
     ) -> tuple[list[dict[str, Any]], int]:
         safe_limit, safe_offset = limiti_pagina(limit, offset)
         # BB `sql_order_clause` (NULL come valore minimo, tiebreak `l.id`
@@ -249,6 +287,8 @@ class ListiniRepository:
         if attivo is not None:
             conditions.append("l.attivo = %s")
             params.append(attivo)
+        if in_scadenza is not None:
+            conditions.append("s.listino_id IS NOT NULL" if in_scadenza else "s.listino_id IS NULL")
         # ⚠️ Una condizione sola per le DUE query (conteggio e pagina): stessi
         #    `conditions`/`params`, quindi il totale non puo' descrivere un
         #    perimetro diverso dalle righe. Il 400 sotto soglia resta nella view
@@ -256,11 +296,19 @@ class ListiniRepository:
         add_ricerca_full_condition(conditions, params, search, _RICERCA_LISTINI, alias="l")
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
+        # La regola della scadenza entra nel conteggio solo se la filtra: la
+        # pagina la legge comunque (proietta `giorni_alla_scadenza`), il totale
+        # senza filtro non ne dipende — la funzione da' al piu' una riga per
+        # listino (la sola versione in vigore), il LEFT JOIN non moltiplica.
+        join_scadenza_count = (
+            f"LEFT JOIN {_FN_SCADENZA} s ON s.listino_id = l.id" if in_scadenza is not None else ""
+        )
         count_sql = f"""
             SELECT COUNT(*)
               FROM vendite.listini l
               LEFT JOIN config.utilities u ON u.id = l.utility_id
               LEFT JOIN config.listini_tipologie lt ON lt.id = l.tipologia_id
+              {join_scadenza_count}
             {where_clause}
         """  # noqa: S608 — WHERE da clausole letterali/BB add_ricerca_full_condition, ORDER BY da whitelist LISTINI_ORDER_COLUMNS, valori come parametri
         data_sql = f"""
@@ -284,10 +332,12 @@ class ListiniRepository:
                     SELECT COUNT(*)
                       FROM vendite.listini_versioni v
                      WHERE v.listino_id = l.id
-                ) AS versioni_count
+                ) AS versioni_count,
+                s.giorni_rimanenti AS giorni_alla_scadenza
               FROM vendite.listini l
               LEFT JOIN config.utilities u ON u.id = l.utility_id
               LEFT JOIN config.listini_tipologie lt ON lt.id = l.tipologia_id
+              LEFT JOIN {_FN_SCADENZA} s ON s.listino_id = l.id
             {where_clause}
              ORDER BY {ordinamento}
              LIMIT %s OFFSET %s
@@ -409,8 +459,49 @@ class ListiniRepository:
             )
             return cursor.rowcount > 0
 
-    # Scopo: Restituisce le versioni del listino con conteggio righe e
-    # ordinamento stabile. Le colonne sono quelle di `_SELECT_VERSIONE`.
+    # Scopo: La pagina delle versioni di un listino (lista `vendite.listini_versioni`,
+    #        112): colonne di `_SELECT_VERSIONE`, piu' `giorni_alla_scadenza` dalla
+    #        regola del DB (`_FN_SCADENZA`, NULL = non in scadenza). Ricerca dal
+    #        catalogo, ordinamento dalla whitelist, spareggio sull'id.
+    # ⚠️ `_SELECT_VERSIONE` sta in una subquery: il suo alias `s` e' lo stato, e
+    #    `righe_count` e' un'espressione che l'ORDER BY vede solo come colonna
+    #    di `x`. Fino al 2026-10-31 la lista era la collezione intera
+    #    (`list_versioni`, che resta per il dettaglio del listino e i default
+    #    della nuova versione).
+    def list_versioni_pagina(
+        self,
+        listino_id: int,
+        *,
+        search: str | None = None,
+        order_by: str | None = None,
+        order_dir: str | None = None,
+        limit: int = DEFAULT_LIMIT,
+        offset: int = 0,
+    ) -> tuple[list[dict[str, Any]], int]:
+        safe_limit, safe_offset = limiti_pagina(limit, offset)
+        conditions: list[str] = ["v.listino_id = %s"]
+        params: list[Any] = [listino_id]
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_VERSIONI, alias="v")
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=VERSIONI_ORDER_COLUMNS, default="x.valido_dal", default_desc=True,
+            tiebreak="x.id", colonne_desc=VERSIONI_ORDER_COLONNE_DATA,
+        )
+        data_sql = f"""
+            SELECT x.*,
+                   sc.giorni_rimanenti AS giorni_alla_scadenza,
+                   COUNT(*) OVER () AS total_count
+              FROM ({_SELECT_VERSIONE} WHERE {" AND ".join(conditions)}) x
+              LEFT JOIN {_FN_SCADENZA} sc ON sc.versione_id = x.id
+             ORDER BY {ordinamento}
+             LIMIT %s OFFSET %s
+        """  # noqa: S608 — WHERE da clausole letterali/BB add_ricerca_full_condition, ORDER BY da whitelist VERSIONI_ORDER_COLUMNS, valori come parametri
+        return fetch_paged_with_total(data_sql, [*params, safe_limit, safe_offset])
+
+    # Scopo: Tutte le versioni del listino, dalla piu' recente: per i
+    #        consumatori che le leggono intere (dettaglio del listino, bozze
+    #        esistenti nei default della nuova versione). Colonne di
+    #        `_SELECT_VERSIONE`.
     def list_versioni(self, listino_id: int) -> list[dict[str, Any]]:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -926,73 +1017,6 @@ class ListiniRepository:
                 },
             )
             return cursor.rowcount > 0
-
-    # Scopo: Restituisce versioni ATTIVE in scadenza entro N giorni senza successore.
-    #        Filtro temporale isolato per facilitare futura migrazione daterange (N1).
-    # ⛔ La scadenza e' `valido_al` (incluso), NON `upper(validita)`:
-    #    `validita` e' `daterange(valido_dal, valido_al, '[]')`, che PostgreSQL
-    #    normalizza in `[)`, quindi `upper()` vale `valido_al + 1`. Fino al
-    #    2026-10-21 la query leggeva `upper()` e sbagliava di un giorno la
-    #    scadenza, i giorni rimanenti e il successore contiguo
-    #    (brief-be-verifica-documentazione-api §C1).
-    def _filter_versioni_in_scadenza(self) -> str:
-        return (
-            "v.valido_al IS NOT NULL "
-            "AND v.valido_al <= (SELECT script.fn_data_operativa()) + %(giorni)s * INTERVAL '1 day'"
-        )
-
-    # Scopo: Lista versioni operativamente ATTIVE oggi che scadono entro `giorni`
-    #        e non hanno una versione successiva (BOZZA o operativa) che subentra.
-    #        La versione in vigore oggi la dice il DB
-    #        (`vendite.fn_listino_versione_in_vigore`, regola §6 brief 2026-05-16:
-    #        la BOZZA e' preparazione, non versione operativa, quindi non genera
-    #        alert di scadenza); lo stato del successore si legge dal vocabolario
-    #        (giro 12, BE-L1). Per il "successore che subentrera`" sono ammesse
-    #        sia BOZZA sia operative future.
-    def listini_in_scadenza(self, giorni: int) -> list[dict[str, Any]]:
-        filtro_scadenza = self._filter_versioni_in_scadenza()
-        with connection.cursor() as cursor:
-            cursor.execute(
-                f"""
-                SELECT
-                    l.id AS listino_id,
-                    l.codice AS listino_codice,
-                    l.descrizione AS listino_descrizione,
-                    l.utility_id,
-                    u.descrizione AS utility_descrizione,
-                    v.id AS versione_id,
-                    v.codice_versione,
-                    v.valido_dal,
-                    v.valido_al,
-                    v.valido_al - (SELECT script.fn_data_operativa()) AS giorni_rimanenti
-                  FROM vendite.listini_versioni v
-                  JOIN vendite.listini l ON l.id = v.listino_id
-                  LEFT JOIN config.utilities u ON u.id = l.utility_id
-                 WHERE v.id = vendite.fn_listino_versione_in_vigore(
-                                  v.listino_id, (SELECT script.fn_data_operativa()))
-                   AND l.attivo IS TRUE
-                   AND {filtro_scadenza}
-                   AND NOT EXISTS (
-                       SELECT 1
-                         FROM vendite.listini_versioni succ
-                         JOIN config.stati_doc_listino_versioni ss
-                           ON ss.id = succ.stato_doc_listino_versione_id
-                        WHERE succ.listino_id = v.listino_id
-                          AND succ.id != v.id
-                          AND succ.attivo IS TRUE
-                          -- Il successore CONTIGUO nasce il giorno dopo la
-                          -- scadenza: `valido_dal = valido_al + 1`, cioe' `>`.
-                          AND succ.valido_dal > v.valido_al
-                          AND (
-                              ss.codice_interno = '{STATO_VERSIONE_BOZZA}'
-                              OR succ.validita && daterange(v.valido_al + 1, NULL, '[)')
-                          )
-                   )
-                 ORDER BY v.valido_al ASC, l.codice
-                """,  # noqa: S608 — filtro letterale da _filter_versioni_in_scadenza e costante STATO_VERSIONE_BOZZA, valori come parametri
-                {"giorni": giorni},
-            )
-            return rows_to_list(cursor)
 
     # Scopo: Applica variazione percentuale massa ai prezzi delle righe attive
     #        di una versione. Se dry_run=True restituisce la preview senza modificare.

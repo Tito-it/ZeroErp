@@ -18,6 +18,7 @@ from apps.core.db._helpers import (
     row_to_dict,
     rows_to_list,
 )
+from apps.core.db.partitioned_note_repository import NOTE_ORDINE_DEFAULT, pagina_note
 from apps.core.db.righe_lista_mixin import RigheListaCompletaMixin
 from apps.core.db.sql_write_helpers import execute_dynamic_insert, sql_set_clause
 
@@ -281,22 +282,48 @@ class CatalogoBomRepository(RigheListaCompletaMixin):
             return cursor.rowcount > 0
 
     # Scopo: Lista le note articolo con dati arricchiti di stile e lingua.
+    #        Ordine di partenza delle note (`NOTE_ORDINE_DEFAULT`), lo stesso
+    #        della pagina (`pagina_note`): fino al 2026-10-31 il dettaglio
+    #        ordinava per conto suo.
     def list_note_articolo(self, articolo_id: UUID | str) -> list[dict[str, Any]]:
         with connection.cursor() as cursor:
             cursor.execute(
                 f"""
-                SELECT
-                    vn.articolo_id,
-                    vn.articolo_codice,
-                    vn.articolo_descrizione,
-                    {_NOTA_PARTITIONED_COLUMNS}
-                FROM catalogo.vw_articoli_note vn
-                WHERE vn.articolo_id = %s
-                ORDER BY vn.nota_anchor_tipo ASC, vn.nota_posizione ASC, vn.nota_seq ASC, vn.nota_id ASC
-                """,  # noqa: S608 — proiezione dalla costante _NOTA_PARTITIONED_COLUMNS, valori come parametri
+                SELECT x.*
+                  FROM (
+                    SELECT
+                        vn.articolo_id,
+                        vn.articolo_codice,
+                        vn.articolo_descrizione,
+                        {_NOTA_PARTITIONED_COLUMNS}
+                    FROM catalogo.vw_articoli_note vn
+                    WHERE vn.articolo_id = %s
+                  ) x
+                 ORDER BY {NOTE_ORDINE_DEFAULT}, x.id ASC
+                """,  # noqa: S608 — proiezione e ORDER BY da costanti, valori come parametri
                 [articolo_id],
             )
             return rows_to_list(cursor)
+
+    # Scopo: La pagina della lista `catalogo.note` (110) per un articolo: stesse
+    #        colonne, ricerca e ordinamento di `vendite.note` (BB `pagina_note`,
+    #        D-2 del 2026-10-31). `list_note_articolo` resta la collezione intera
+    #        per il dettaglio dell'articolo.
+    def list_note_articolo_pagina(
+        self,
+        articolo_id: UUID | str,
+        *,
+        search: str | None = None,
+        order_by: str | None = None,
+        order_dir: str | None = None,
+        limit: int,
+        offset: int,
+    ) -> tuple[list[dict[str, Any]], int]:
+        return pagina_note(
+            f"SELECT {_NOTA_PARTITIONED_COLUMNS} FROM catalogo.vw_articoli_note vn WHERE vn.articolo_id = %s",  # noqa: S608 — proiezione dalla costante _NOTA_PARTITIONED_COLUMNS
+            [str(articolo_id)], lista_codice="catalogo.note",
+            search=search, order_by=order_by, order_dir=order_dir, limit=limit, offset=offset,
+        )
 
     # Scopo: Restituisce una singola nota articolo dalla vista arricchita.
     def get_nota_articolo(
@@ -358,20 +385,25 @@ class CatalogoBomRepository(RigheListaCompletaMixin):
             return rows_to_list(cursor)
 
     # Scopo: Lista le note di un componente articolo con dati arricchiti.
-    def list_note_componente(self, componente_id: str | UUID) -> list[dict[str, Any]]:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                f"""
-                SELECT
-                    {_NOTA_PARTITIONED_COLUMNS}
-                FROM catalogo.vw_articoli_componenti_note vn
-                WHERE vn.articolo_componente_id = %s
-                ORDER BY vn.nota_anchor_tipo ASC, vn.nota_posizione ASC,
-                         vn.nota_seq ASC, vn.nota_id ASC
-                """,  # noqa: S608 — proiezione dalla costante _NOTA_PARTITIONED_COLUMNS, valori come parametri
-                [str(componente_id)],
-            )
-            return rows_to_list(cursor)
+    # Scopo: La pagina della lista `catalogo.note` per un componente (stesso
+    #        BB `pagina_note` delle note dell'articolo). Fino al 2026-10-31 era
+    #        la collezione intera.
+    def list_note_componente(
+        self,
+        componente_id: str | UUID,
+        *,
+        search: str | None = None,
+        order_by: str | None = None,
+        order_dir: str | None = None,
+        limit: int,
+        offset: int,
+    ) -> tuple[list[dict[str, Any]], int]:
+        return pagina_note(
+            f"SELECT {_NOTA_PARTITIONED_COLUMNS} FROM catalogo.vw_articoli_componenti_note vn"  # noqa: S608 — proiezione dalla costante _NOTA_PARTITIONED_COLUMNS
+            " WHERE vn.articolo_componente_id = %s",
+            [str(componente_id)], lista_codice="catalogo.note",
+            search=search, order_by=order_by, order_dir=order_dir, limit=limit, offset=offset,
+        )
 
     # Scopo: Inserisce una nota nella partizione indicata da target_tipo.
     # ⛔ Whitelist RIGIDA dal 2026-09-26 (vedi `create_componente`): il 400

@@ -108,9 +108,10 @@ _ECCEZIONE_PATCH_REQUEST = schema_da_contratto(
 _ESITO_REQUEST = inline_serializer(
     name="VenditeOffertaEsitoReq",
     fields={
-        # Esito cliente da EMESSA: ACCETTATA (motivazione non usata) oppure
-        # RIFIUTATA (motivazione obbligatoria: lo dice la riga del passaggio,
-        # al verbo, E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA).
+        # Esito cliente da EMESSA: ACCETTATA (motivazione rifiutata dal verbo,
+        # E_OFFERTA_MOTIVAZIONE_NON_AMMESSA) oppure RIFIUTATA (motivazione
+        # obbligatoria: lo dice la riga del passaggio, al verbo,
+        # E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA).
         "esito": serializers.ChoiceField(choices=["ACCETTATA", "RIFIUTATA"]),
         "motivazione": serializers.CharField(required=False, allow_blank=True, allow_null=True),
     },

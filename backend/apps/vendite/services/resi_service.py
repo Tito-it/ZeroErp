@@ -39,6 +39,7 @@ from apps.config.db.sorgenti_repository import SorgentiRepository
 from apps.config.sorgenti import SORGENTE_DDT_VENDITA, SORGENTE_RESO_VENDITA
 from apps.core.db._helpers import richiedi_codice_a_vocabolario
 from apps.core.api.constants import MAX_LIMIT
+from apps.core.services.documento_modello import e_stato_iniziale
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.services._cliente_dal_ba import FK_CLIENTE_DIVERSO_DA_BA
 from apps.vendite.services._righe_bozza_guard import Verbo, richiedi_righe_in_bozza
@@ -114,17 +115,16 @@ _CHECK_CONSTRAINTS: dict[str, tuple[str, ...]] = {
 
 # ── Costanti di dominio ──
 _FN = "vendite.resi_service"
-_STATO_BOZZA = "DRAFT"
 # La testata nel modello del documento e lo stato a cui porta la conferma: li
 # legge la catena dei permessi (`PassaggioDocumento` delle view).
 TESTATA_RESO = "vendite.resi"
 STATO_CONFERMATO = "CONFERMATO"
-# Il reso si ELIMINA solo in bozza (abbandono del drawer, `elimina_reso`). I
-# campi della testata li governa il lock di testata del DB
+# Il reso si ELIMINA solo nello stato in cui nasce (la bozza: lo stato
+# iniziale del vocabolario, `_assert_stato_iniziale`; abbandono del drawer,
+# `elimina_reso`). I campi della testata li governa il lock di testata del DB
 # (`trg_resi_a05_lock_fuori_bozza_upd`: in bozza tutto, dopo la conferma le
 # sole note); le RIGHE il lock delle righe (`E_RIGA_DOC_NON_BOZZA`, dal
 # `20260929-01`), con lo stesso codice del pre-check `richiedi_righe_in_bozza`.
-_STATI_MODIFICABILI: frozenset[str] = frozenset({_STATO_BOZZA})
 # Stato richiesto al DDT sorgente per aprire un reso (non si rende cio' che
 # non e' stato consegnato — brief DB §3).
 _STATO_DDT_SORGENTE = "CONSEGNATO"
@@ -581,7 +581,7 @@ def aggiorna_reso(reso_id: int, payload: dict[str, Any]) -> dict[str, Any]:
 #        ANNULLA (fn_annulla_reso, che da DRAFT non ha effetti da stornare).
 def elimina_reso(reso_id: int) -> dict[str, Any]:
     repo = ResiRepository()
-    _assert_stato(repo, reso_id, _STATI_MODIFICABILI, op="elimina_reso")
+    _assert_stato_iniziale(repo, reso_id, op="elimina_reso")
     righe_count = repo.count_righe(reso_id)
     ErrorManager.require(
         righe_count == 0,
@@ -1283,9 +1283,11 @@ def _richiedi_righe_in_bozza(
 
 
 # Scopo: Guard di stato leggero (solo codice_interno): E_RESO_NOT_FOUND se il
-#        reso non esiste, E_RESO_STATO_TRANSIZIONE se lo stato non e' ammesso.
-def _assert_stato(
-    repo: ResiRepository, reso_id: int, ammessi: frozenset[str], *, op: str,
+#        reso non esiste, E_RESO_STATO_TRANSIZIONE se lo stato non e' quello in
+#        cui il documento nasce (lo stato iniziale del vocabolario, mai
+#        `'DRAFT'` scritto qui).
+def _assert_stato_iniziale(
+    repo: ResiRepository, reso_id: int, *, op: str,
     message: str | None = None,
 ) -> str:
     # Stesso BB del guard di testata, col getter leggero (solo codice_interno).
@@ -1295,10 +1297,10 @@ def _assert_stato(
         id_name="reso_id", function_name=f"{_FN}.{op}",
     )
     ErrorManager.require(
-        stato in ammessi,
+        e_stato_iniziale(TESTATA_RESO, stato),
         code="E_RESO_STATO_TRANSIZIONE",
         message=message or f"Operazione non ammessa nello stato {stato}.",
-        detail=f"ammessi={sorted(ammessi)}",
+        detail=f"stato={stato}, ammesso: lo stato iniziale del vocabolario",
         function_name=f"{_FN}.{op}",
     )
     return stato
