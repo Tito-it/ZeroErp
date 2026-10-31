@@ -2,22 +2,25 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-31
 
-**Riparte: team DB (`dev/db-tid`)** con i seed del §2 e la funzione del §3.1.
-In parallelo, e senza aspettare il DB, il BE/FE può fare il §4.2.
+**Riparte: BE/FE** (`dev/backend-tid`): conversione delle liste (§4.1) con i
+codici del §7.1 e le richieste del §7.4. Il lato DB è applicato e verde.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
 | 1 | Tid | ✅ D-2 e B1-bis decisi il 2026-10-31 (§5.2) | questo brief | — |
-| 2 | team DB | Seed delle liste (§2) e presidio delle note (§3.3) | `80_data/sql/ui/`, `db/pgtap/` | — |
-| 3 | team DB | La regola «in scadenza senza successore» a DB (§3.1), letta anche dalla lista listini | `20_code/vendite/` | — |
-| 4 | team DB | Visibilità della colonna emittente nella ricerca (§3.2) | `ui` | — |
-| 5 | BE/FE | ✅ Lavoro senza seed (§4.2) fatto il 2026-10-31: dialog di selezione, `MatriceCatalogo` (Reparto, Utilities), catch dell'alert. Registro a 24 | `dev/backend-tid` | — |
-| 6 | BE/FE | Conversione delle 6 liste (§4.1) | `dev/backend-tid` | 2, 3, 4 applicati |
-| 7 | BE/FE | Abbassare il registro `datatable.baseline.json`, archiviare il brief | `frontend/scripts/` | 5, 6 |
+| 2 | team DB | ✅ Seed delle liste (§2) e presidio delle note (§3.3), scritti il 2026-10-31 (§7.1, §7.3) | `80_data/sql/ui/`, `db/pgtap/` | — |
+| 3 | team DB | ✅ La regola «in scadenza senza successore» a DB (§3.1), scritta il 2026-10-31 (§7.2) | `20_code/vendite/` | — |
+| 4 | team DB | ✅ Visibilità della colonna emittente nella ricerca (§3.2): risposta «no», limite dichiarato | `ui` | — |
+| 5 | Tid | ✅ Apply (`20261031-27` e i mirror dei CSV) e corsa pgTAP verde, 2026-10-31 (§7.5) | dbdev | — |
+| 6 | BE/FE | ✅ Lavoro senza seed (§4.2) fatto il 2026-10-31: dialog di selezione, `MatriceCatalogo` (Reparto, Utilities), catch dell'alert. Registro a 24 | `dev/backend-tid` | — |
+| 7 | BE/FE | Conversione delle 6 liste (§4.1) con i codici del §7.1 e le richieste del §7.4 | `dev/backend-tid` | — |
+| 8 | BE/FE | Abbassare il registro `datatable.baseline.json`, archiviare il brief | `frontend/scripts/` | 6, 7 |
 
 **Decisioni aperte di Tid:** nessuna. D-1, D-2 e B1-bis decisi il 2026-10-31.
-**Da committare:** il giro del 2026-10-31 (motivi delle eccezioni, guard
-stretto, registro a 8 senza motivazione) è ancora nel working tree.
+**Committato:** il lato DB del 2026-10-31 (§7) è su `dev/db-tid`. ⚠️ Fino alla conversione BE alcune liste sono rotte di proposito
+(Tid, 2026-10-31: «non ci preoccupiamo se alcune liste andranno in errore
+temporaneamente»): per esempio la colonna nuova di `vendite.listini` non è
+ancora nella whitelist del BE (§7.4).
 
 ---
 
@@ -122,6 +125,13 @@ visibilità di colonna legata al valore di un filtro?
 - **se sì**, la si usa;
 - **se no**, la colonna resta sempre visibile e vuota per gli altri ruoli. Si
   scrive qui come limite dichiarato, senza inventare una regola nel FE.
+
+✅ **Risposta del team DB (2026-10-31): no.** `ui.lista_colonna` non ha una
+condizione di visibilità legata al valore di un filtro (la struttura: nessuna
+colonna del genere, e `fn_resolve_lista_config` non ne legge una). Vale il
+secondo ramo: la colonna `emittente_ragione_sociale` è a catalogo sempre
+attiva, ed è vuota per i ruoli diversi da CLIENTE. Limite dichiarato.
+L'operatore può nasconderla dal preset personale.
 
 ### 3.3 Presidio: le liste delle note restano gemelle
 
@@ -243,3 +253,132 @@ dentro i drawer, `<ListaConfigurabile>` nelle pagine.
   `MatriceOverride`, `ScadenzeSintesi`, `RiepilogoIvaTable`, le anteprime dei
   dialog, `SituazioneMerceContenuto`, la seconda tabella di `PraticaFlussiTab`,
   `ListaPresetColonneDrawer` e `ComponentiDialog`.
+
+## 7. Lato DB — cosa è stato scritto (2026-10-31, applicato)
+
+### 7.1 I seed — i codici che il FE scrive nel `.vue`
+
+Righe in coda ai quattro CSV di `80_data/sql/ui/` (li caricano i mirror
+`runOnChange`; le sequenze le riallinea il resync runAlways
+`90_end/20260602-17`). Bozze dal generatore, curate a mano sui campi che il BE
+restituisce oggi.
+
+| # | Codice | id lista/preset | colonne | Flag |
+| --- | --- | --- | --- | --- |
+| 1 | `pratiche.definizioni_workflow` | 107 | 1113-1119 | ⭐ `multi_emittente` (v. sotto) |
+| 2 | `config.parametri_impostazioni` | 108 | 1120-1128 | con perimetro |
+| 3 | `vendite.note` | 109 | 1129-1136 | con perimetro |
+| 3 | `catalogo.note` | 110 | 1137-1144 | globale |
+| 4 | `catalogo.articolo_uom` | 111 | 1145-1151 | globale, `vista_sql` = `vw_articoli_uom_operativa_dettaglio`, ricerca da 1 carattere |
+| 5 | `vendite.listini_versioni` | 112 | 1152-1158 | con perimetro |
+| 6 | ⚠️ **`anagrafiche.ricerca_soggetti`** | 113 | 1159-1163 | con perimetro |
+| — | `vendite.listini` (27): colonna `giorni_alla_scadenza` | — | 1164 | spenta nel preset 27 |
+
+⚠️ **Riga 6: il codice non è `core.ricerca_soggetti`.** Vince il catalogo: il
+prefisso è lo schema dei dati, e la ricerca legge soggetti di `anagrafiche`
+(lo schema `core` non esiste).
+
+⚠️ **Riga 1: `multi_emittente = t`, non globale.** Ogni edizione di workflow è
+di un emittente, il preset di sistema di nessuno (`emittente_fiscale_id` NULL),
+come i modelli standard di `documenti.template_documenti`. La lista globale con
+una colonna d'emittente era la combinazione che il presidio
+`ui/test-lista-definizione-perimetro-emittente-v1` (test 8) rifiuta, e aveva
+ragione: la lista sa dire di chi è ogni riga. Il super admin la apre su «Tutti».
+
+Note di cura, per il BE:
+
+- **note (3).** I due codici hanno le **stesse** colonne (le tiene gemelle il
+  presidio del §7.3): `anchor_tipo`, `riga` (← `target_riga_id`, l'etichetta la
+  compone il FE), `posizione`, `testo`, `stile` (← `stile_descrizione`),
+  `lingua` (← `lingua_codice_iso`), `seq` (nascosta), `azioni`. Preset ordinato
+  per `posizione`, `seq`.
+- **impostazioni (2).** I sei livelli sono colonne (B1); le colonne dei valori
+  non sono ordinabili né filtrabili: sono testo di tipi diversi.
+- **versioni (5).** `giorni_alla_scadenza` è il campo che il BE deve
+  restituire da `vendite.fn_listini_in_scadenza_senza_successore` (§7.2).
+- **ricerca (6).** `utility_list` ed `emittente_ragione_sociale` non
+  ordinabili (aggregati: `fn_search_soggetti_universale` li rifiuta in
+  `p_order_by`). Nessuna colonna azioni: la riga espansa resta su
+  `SearchDetailTable`.
+
+⚠️ **Chiavi i18n nuove** (FE, `it.json` + `en.json`): `note.col_seq`,
+`vendite.listini.col_giorni_alla_scadenza`. Le altre sono quelle che i `.vue`
+usano già. Finché mancano, `check_i18n_keys` resta rosso.
+
+### 7.2 La regola «in scadenza senza successore» (§3.1)
+
+| changeSet / file | Cosa |
+| --- | --- |
+| `20_code/vendite/20261031-27` | `vendite.fn_listini_in_scadenza_senza_successore(p_data date DEFAULT NULL)` → `(listino_id, versione_id, valido_al, giorni_rimanenti)`, una riga per versione in scadenza. STABLE, SECURITY INVOKER, EXECUTE a `zeroerp_app` |
+| `80_data/sql/config/parameters.csv` (id 63) | `LISTINI_SCADENZA_PREAVVISO_GIORNI` = 15, `ammette_override = true`: è una preferenza di chi lavora |
+
+La regola è quella del BE, riga per riga (versione in vigore dalla sede
+`fn_listino_versione_in_vigore`, fine entro N giorni, listino attivo, nessun
+successore in preparazione o operativo dal giorno dopo). Due differenze di
+forma:
+
+- lo stato «in preparazione» si legge dal vocabolario (`iniziale`), non dal
+  letterale `BOZZA`;
+- **N non si passa**: è il parametro, letto con la cascata degli override
+  della sessione e validato (`script.fn_intero_positivo_da_testo`: assente o
+  non intero positivo = `E_CONFIG_MANCANTE`). I due default di 15 giorni (FE e
+  `_ALERT_GIORNI_DEFAULT`) si chiudono qui.
+
+⭐ È **set-returning** di proposito: i consumatori la chiamano una volta per
+query, con una `LEFT JOIN`, e il parametro si risolve una volta sola. Una
+funzione per riga avrebbe risolto la cascata degli override a ogni riga.
+
+Prova (2026-10-31): SQL estratto + seed del parametro, su `zeroerp_ruoli` come
+owner, pgTAP nuovo **9/9**; su dbdev, la query del BE (N = 15) e la funzione
+danno lo stesso insieme nei due versi. Fatto datato: su dbdev oggi nessun
+listino è in scadenza, quindi l'equivalenza sui dati è a vuoto; i casi li
+costruisce il pgTAP.
+
+### 7.3 Presidi pgTAP
+
+| File | Cosa |
+| --- | --- |
+| `db/pgtap/vendite/test-listini-in-scadenza-senza-successore-v1.sql` (nuovo, 9) | cinque listini costruiti attorno a N letto dal parametro: in scadenza, fuori finestra, coperto da una BOZZA, coperto da un'ATTIVA, bozza che nasce prima della fine (non è un successore); i giorni da una data diversa da oggi; una riga per versione |
+| `db/pgtap/ui/test-lista-note-gemelle-v1.sql` (nuovo, 4) | §3.3: l'elenco dalla struttura (le tabelle `note` di ogni schema, con una lista `<schema>.note`), stesse colonne di `vendite.note` su codice, campo, tipo, ordinabile, filtrabile; non a vuoto |
+| `ui/test-lista-definizione-perimetro-emittente-v1` (test 6) | + `catalogo.articolo_uom`, `catalogo.note`, col motivo |
+| `ui/test-lista-definizione-multi-emittente-v1` (test 5) | + `pratiche.definizioni_workflow`, col motivo |
+| `ui/test-lista-ricerca-min-caratteri-v1` (test 16) | + `catalogo.articolo_uom` (codici UoM corti) |
+
+Prova (2026-10-31), su `zeroerp_ruoli` come owner, seed simulato dai CSV dentro
+la transazione: i 18 pgTAP di `ui/` e i 10 fuori da `ui/` che leggono il
+catalogo liste, prima e dopo. Cambiano solo i tre previsti (perimetro test 6,
+note gemelle, ricerca test 16), tutti verso il verde. Restano rossi **come
+prima**: perimetro test 4 e multi-emittente (precondizione 0), che girano solo
+come app.
+
+### 7.4 Per il BE (`dev/backend-tid`)
+
+- **I sette codici** del §7.1 nei `.vue`; whitelist di ordinamento sui campi
+  `ordinabile = t` (`gen_seed_lista.py --verifica-ordinamento` oggi le dà
+  «NON MAPPATA»); registrare le liste in `test_liste_configurabili_seed` e
+  `test_ricerca_full_seed`.
+- **`vendite.listini` (27)**: la colonna `giorni_alla_scadenza` (filtrabile,
+  ordinabile) va restituita da `LEFT JOIN
+  vendite.fn_listini_in_scadenza_senza_successore() s ON s.listino_id = l.id`
+  e messa in whitelist. Oggi il comando di verifica dà **KO** su questa lista:
+  è il rotto temporaneo dichiarato. Il link dell'alert apre la lista filtrata
+  su `giorni_alla_scadenza` non vuoto (D-1).
+- **`vendite.listini_versioni`**: stessa colonna, `LEFT JOIN … s ON
+  s.versione_id = v.id`.
+- **Il badge** conta le righe della funzione (o del filtro). ⛔ **Nello stesso
+  giro si ritirano** `listini_repository.listini_in_scadenza`,
+  `_filter_versioni_in_scadenza`, `_ALERT_GIORNI_DEFAULT`/`_MIN`/`_MAX` e il
+  parametro `giorni` dell'endpoint, e il default 15 del FE: N è il parametro.
+  I due test Django che leggono `listini_in_scadenza(30)` vanno riscritti
+  sulla funzione.
+- **`pratiche.definizioni_workflow`** è `multi_emittente`: la view la serve
+  anche su «Tutti», e la colonna `emittente_display` è il biglietto.
+- **`catalogo.note`**: l'endpoint delle note di catalogo va paginato come
+  quello di vendita (D-2).
+
+### 7.5 Per Tid — apply e corsa
+
+`20261031-27`, poi i mirror dei CSV `ui` e `config/parameters.csv` al migrate.
+Corsa pgTAP: i due file nuovi e i tre `ui/` toccati (§7.3).
+
+✅ **Fatto il 2026-10-31** (Tid): migrazione applicata su dbdev, pgTAP verdi.

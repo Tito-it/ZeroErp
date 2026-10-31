@@ -1110,3 +1110,55 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 1110,28,override_count,Override,"Override dei permessi scritti per l operatore (aree, azioni e oggetti)",override_count,informazione,numeric,number,110,35,right,,,f,t,t,f,f,t,2026-10-06 00:00:00,mctit,amministrazione.col_override,70
 1111,24,standard,Standard,"Modello standard di sistema: in sola lettura, vale per gli emittenti che non hanno un modello loro",standard,informazione,boolean,,,80,center,,,t,t,t,f,f,t,2026-10-21 00:00:00,mctit,config.modelli_documenti.col_standard,50
 1112,24,stato_scarto,Allineamento allo standard,Quanto la copia e rimasta indietro rispetto al modello standard da cui deriva,stato_scarto,informazione,string,,,90,left,,,f,f,t,f,f,t,2026-10-21 00:00:00,mctit,config.modelli_documenti.col_stato_scarto,50
+1113,107,tipo_prestazione,Tipo,Tipo di prestazione della definizione,tipo_prestazione_descrizione,identificatore,string,,220,10,left,,,t,t,t,t,f,t,2026-10-31 00:00:00,mctit,amministrazione.definizioni_workflow.col_tipo,50
+1114,107,emittente,Emittente,"Emittente dell'edizione, vuoto per il preset di sistema",emittente_display,informazione,string,,200,20,left,,,t,t,t,f,f,t,2026-10-31 00:00:00,mctit,amministrazione.definizioni_workflow.col_emittente,50
+1115,107,versione,Versione,Numero di versione dell'edizione,versione,informazione,numeric,,90,30,right,,,t,t,t,f,f,t,2026-10-31 00:00:00,mctit,amministrazione.definizioni_workflow.col_versione,50
+1116,107,stato,Stato,Stato dell'edizione,stato,informazione,string,,130,40,left,,,t,t,t,f,f,t,2026-10-31 00:00:00,mctit,amministrazione.definizioni_workflow.col_stato,50
+1117,107,drift,Aggiornamento,Versioni del preset uscite dopo quella da cui l'edizione deriva,versioni_indietro,informazione,numeric,,180,50,right,,,t,t,t,f,f,t,2026-10-31 00:00:00,mctit,amministrazione.definizioni_workflow.col_drift,50
+1118,107,descrizione,Descrizione,Descrizione dell'edizione,descrizione,informazione,string,,220,60,left,,,f,f,t,t,f,t,2026-10-31 00:00:00,mctit,amministrazione.definizioni_workflow.col_descrizione,50
+1119,107,azioni,Azioni,,,azione,string,,70,999,center,,99,f,f,f,f,f,t,2026-10-31 00:00:00,mctit,common.col_azioni,50
+1120,108,code,Codice,Codice del parametro,code,identificatore,string,,220,10,left,,,t,t,t,t,f,t,2026-10-31 00:00:00,mctit,config.impostazioni.col_code,50
+1121,108,description,Descrizione,Descrizione del parametro,description,informazione,string,,250,20,left,,,f,t,t,t,f,t,2026-10-31 00:00:00,mctit,config.impostazioni.col_description,50
+1122,108,default_value,Default,Valore di default del parametro,default_value,informazione,string,,130,30,left,,,f,f,t,f,f,t,2026-10-31 00:00:00,mctit,config.impostazioni.col_default,50
+1123,108,emittente_value,Emittente,Valore scritto per l'emittente,emittente_value,informazione,string,,130,40,left,,,f,f,t,f,f,t,2026-10-31 00:00:00,mctit,config.impostazioni.col_emittente,50
+1124,108,group_value,Gruppo,Valore scritto per il gruppo,group_value,informazione,string,,130,50,left,,,f,f,t,f,f,t,2026-10-31 00:00:00,mctit,config.impostazioni.col_group,50
+1125,108,categoria_cliente_value,Categoria,Valore scritto per la categoria cliente,categoria_cliente_value,informazione,string,,130,60,left,,,f,f,t,f,f,t,2026-10-31 00:00:00,mctit,config.impostazioni.col_categoria_cliente,50
+1126,108,user_value,Mio,Valore scritto per l'utente,user_value,informazione,string,,130,70,left,,,f,f,t,f,f,t,2026-10-31 00:00:00,mctit,config.impostazioni.col_user,50
+1127,108,resolved_value,Valore attivo,"Il valore che vale per chi guarda, dopo la cascata degli override",resolved_value,informazione,string,,160,80,left,,,f,f,t,f,f,t,2026-10-31 00:00:00,mctit,config.impostazioni.col_resolved,50
+1128,108,azioni,Azioni,,,azione,string,,70,999,center,,99,f,f,f,f,f,t,2026-10-31 00:00:00,mctit,common.col_azioni,50
+1129,109,anchor_tipo,Ambito,Nota del documento o di una sua riga,anchor_tipo,identificatore,string,,110,10,left,,,t,t,t,f,f,t,2026-10-31 00:00:00,mctit,note.col_ambito,50
+1130,109,riga,Riga,"La riga a cui la nota e agganciata, vuota per le note del documento",target_riga_id,informazione,string,,140,20,left,,,f,f,t,f,f,t,2026-10-31 00:00:00,mctit,note.col_riga,50
+1131,109,posizione,Posizione,Dove la nota si stampa rispetto al suo aggancio,posizione,informazione,string,,110,30,left,,,t,t,t,f,f,t,2026-10-31 00:00:00,mctit,note.col_posizione,50
+1132,109,testo,Testo,Il testo della nota,testo,informazione,string,,,40,left,,,f,f,t,t,f,t,2026-10-31 00:00:00,mctit,note.col_testo,50
+1133,109,stile,Stile,Lo stile di stampa della nota,stile_descrizione,informazione,string,,160,50,left,,,t,t,t,f,f,t,2026-10-31 00:00:00,mctit,note.col_stile,50
+1134,109,lingua,Lingua,La lingua della nota (codice ISO),lingua_codice_iso,informazione,string,,90,60,left,,,t,t,t,f,f,t,2026-10-31 00:00:00,mctit,note.col_lingua,50
+1135,109,seq,Ordine,Ordine della nota fra quelle con la stessa posizione,seq,informazione,numeric,,80,70,right,,,f,t,t,f,f,t,2026-10-31 00:00:00,mctit,note.col_seq,50
+1136,109,azioni,Azioni,,,azione,string,,70,999,center,,99,f,f,f,f,f,t,2026-10-31 00:00:00,mctit,common.col_azioni,50
+1137,110,anchor_tipo,Ambito,Nota del documento o di una sua riga,anchor_tipo,identificatore,string,,110,10,left,,,t,t,t,f,f,t,2026-10-31 00:00:00,mctit,note.col_ambito,50
+1138,110,riga,Riga,"La riga a cui la nota e agganciata, vuota per le note del documento",target_riga_id,informazione,string,,140,20,left,,,f,f,t,f,f,t,2026-10-31 00:00:00,mctit,note.col_riga,50
+1139,110,posizione,Posizione,Dove la nota si stampa rispetto al suo aggancio,posizione,informazione,string,,110,30,left,,,t,t,t,f,f,t,2026-10-31 00:00:00,mctit,note.col_posizione,50
+1140,110,testo,Testo,Il testo della nota,testo,informazione,string,,,40,left,,,f,f,t,t,f,t,2026-10-31 00:00:00,mctit,note.col_testo,50
+1141,110,stile,Stile,Lo stile di stampa della nota,stile_descrizione,informazione,string,,160,50,left,,,t,t,t,f,f,t,2026-10-31 00:00:00,mctit,note.col_stile,50
+1142,110,lingua,Lingua,La lingua della nota (codice ISO),lingua_codice_iso,informazione,string,,90,60,left,,,t,t,t,f,f,t,2026-10-31 00:00:00,mctit,note.col_lingua,50
+1143,110,seq,Ordine,Ordine della nota fra quelle con la stessa posizione,seq,informazione,numeric,,80,70,right,,,f,t,t,f,f,t,2026-10-31 00:00:00,mctit,note.col_seq,50
+1144,110,azioni,Azioni,,,azione,string,,70,999,center,,99,f,f,f,f,f,t,2026-10-31 00:00:00,mctit,common.col_azioni,50
+1145,111,uom_codice,Codice,Codice dell'unita di misura,uom_codice,identificatore,string,,80,10,left,,,t,t,t,t,f,t,2026-10-31 00:00:00,mctit,catalogo.col_codice,50
+1146,111,uom_descrizione,Descrizione,Descrizione dell'unita di misura,uom_descrizione,informazione,string,,180,20,left,,,t,t,t,t,f,t,2026-10-31 00:00:00,mctit,catalogo.col_descrizione,50
+1147,111,is_base,Base,Unita di misura base dell'articolo,is_base,informazione,boolean,yesno,60,30,center,,,t,t,t,f,f,t,2026-10-31 00:00:00,mctit,catalogo.col_base,50
+1148,111,factor_to_base,Fattore,Fattore di conversione verso l'unita base,factor_to_base,informazione,numeric,number,90,40,right,,,t,t,t,f,f,t,2026-10-31 00:00:00,mctit,catalogo.col_fattore,50
+1149,111,is_logistic_uom,Logistica,Unita di misura logistica,is_logistic_uom,informazione,boolean,yesno,60,50,center,,,t,t,t,f,f,t,2026-10-31 00:00:00,mctit,catalogo.field_logistica,50
+1150,111,attivo,Attivo,Unita di misura operativa attiva,attivo,informazione,boolean,yesno,70,60,center,,,t,t,t,f,f,t,2026-10-31 00:00:00,mctit,catalogo.col_attivo,50
+1151,111,azioni,Azioni,,,azione,string,,70,999,center,,99,f,f,f,f,f,t,2026-10-31 00:00:00,mctit,common.col_azioni,50
+1152,112,codice_versione,Cod. versione,Codice della versione,codice_versione,identificatore,string,,140,10,left,,,t,t,t,t,f,t,2026-10-31 00:00:00,mctit,vendite.listini.col_codice_versione,50
+1153,112,valido_dal,Valido dal,Inizio della validita,valido_dal,informazione,date,date_short,110,20,left,,,t,t,t,f,f,t,2026-10-31 00:00:00,mctit,vendite.listini.field_valido_dal,50
+1154,112,valido_al,Valido al,"Fine della validita, vuota se aperta",valido_al,informazione,date,date_short,110,30,left,,,t,t,t,f,f,t,2026-10-31 00:00:00,mctit,vendite.listini.field_valido_al,50
+1155,112,righe_count,Righe,Numero di prezzi della versione,righe_count,informazione,numeric,,80,40,right,,,f,t,t,f,f,t,2026-10-31 00:00:00,mctit,vendite.listini.col_righe,50
+1156,112,stato,Stato,Stato della versione,stato,informazione,string,,110,50,left,,,t,t,t,f,f,t,2026-10-31 00:00:00,mctit,vendite.listini.col_stato,50
+1157,112,giorni_alla_scadenza,In scadenza,Giorni alla scadenza della versione in vigore che non ha un successore (vendite.fn_listini_in_scadenza_senza_successore); vuoto altrimenti,giorni_alla_scadenza,informazione,numeric,,110,60,right,,,t,t,t,f,f,t,2026-10-31 00:00:00,mctit,vendite.listini.col_giorni_alla_scadenza,50
+1158,112,azioni,Azioni,,,azione,string,,70,999,center,,99,f,f,f,f,f,t,2026-10-31 00:00:00,mctit,common.col_azioni,50
+1159,113,soggetto_codice,Codice,Codice del soggetto,soggetto_codice,identificatore,string,,90,10,left,,,t,t,t,t,f,t,2026-10-31 00:00:00,mctit,search.col_code,50
+1160,113,ragione_sociale_completa,Ragione sociale,Ragione sociale completa del soggetto,ragione_sociale_completa,informazione,string,,,20,left,,,t,t,t,t,f,t,2026-10-31 00:00:00,mctit,search.col_name,50
+1161,113,id_fiscale_univoco,CF / P.IVA,Codice fiscale o partita IVA,id_fiscale_univoco,informazione,string,,160,30,left,,,t,t,t,t,f,t,2026-10-31 00:00:00,mctit,search.col_fiscal_id,50
+1162,113,utility_list,Utility,Utility delle forniture del cliente (aggregato della pagina: non si ordina),utility_list,informazione,string,,80,40,left,,,f,f,t,f,f,t,2026-10-31 00:00:00,mctit,search.col_utility,50
+1163,113,emittente_ragione_sociale,Emittenti presso cui e cliente,"Emittenti dei billing account del soggetto: solo per i clienti, vuota per gli altri ruoli (aggregato: non si ordina)",emittente_ragione_sociale,informazione,string,,200,50,left,,,f,f,t,f,f,t,2026-10-31 00:00:00,mctit,search.col_emittenti,50
+1164,27,giorni_alla_scadenza,In scadenza,Giorni alla scadenza della versione in vigore che non ha un successore (vendite.fn_listini_in_scadenza_senza_successore); vuoto altrimenti. E la colonna del filtro del link dell'alert scadenze,giorni_alla_scadenza,informazione,numeric,,110,55,right,,,t,t,t,f,f,t,2026-10-31 00:00:00,mctit,vendite.listini.col_giorni_alla_scadenza,40
