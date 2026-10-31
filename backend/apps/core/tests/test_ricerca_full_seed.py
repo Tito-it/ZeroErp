@@ -36,7 +36,7 @@
 
 5. test_bb_*
    Il comportamento del BB, con la lettura del catalogo mockata:
-   intersezione, colonne accese ma non dichiarate (warning), nessuna colonna
+   intersezione (anche da sola, `colonne_ricerca_attive`), colonne accese ma non dichiarate (warning), nessuna colonna
    (`FALSE`), soglia DELLA LISTA (termine vuoto: niente letture; sotto soglia:
    si legge la soglia, non le colonne), escape, mappa, alias invalido (esplode
    anche a lista aperta senza ricerca).
@@ -69,7 +69,7 @@ import unittest
 from pathlib import Path
 
 from apps.core.api.openapi_params import param_ricerca_full
-from apps.core.db._helpers import RicercaFull, add_ricerca_full_condition
+from apps.core.db._helpers import RicercaFull, add_ricerca_full_condition, colonne_ricerca_attive
 from apps.core.tests.ricerca_catalogo_fakes import catalogo_ricerca_finto
 from apps.core.tests.test_liste_configurabili_seed import (
     _colonne_attive,
@@ -206,6 +206,9 @@ _RICERCHE: tuple[tuple[str, object], ...] = (
     ("vendite.contratto_righe", _da_costante(_V + "contratti_repository", "_RICERCA_RIGHE_CONTRATTO")),
     # Le righe di un'offerta (2026-10-05, gemella della 103): lista 106 sulla funzione.
     ("vendite.offerta_righe", _da_costante(_V + "offerte_repository", "_RICERCA_RIGHE_OFFERTA")),
+    # La ricerca universale (2026-10-31, D-4 di brief-db-liste-datatable-grezze-
+    # secondo-giro): lista 113 sulla funzione, che riceve i campi dal BB.
+    ("anagrafiche.ricerca_soggetti", _da_costante("apps.core.db.search_repository", "RICERCA_SOGGETTI")),
 )
 
 # Liste con colonne `ricercabile_full = t` la cui ricerca e' ancora scritta a
@@ -305,6 +308,25 @@ class RicercaFullSeedTests(unittest.TestCase):
         self.assertEqual(conditions, ["((v.numero)::text ILIKE %s)"])
         self.assertEqual(len(params), 1)
         self.assertIn("segreta", log.output[0])
+
+    # ⭐ La sola intersezione (estratta il 2026-10-31): la legge chi passa i
+    #    NOMI a una funzione DB invece di un `ILIKE` (la ricerca universale).
+    #    Stesso ordine, stesso warning, elenco vuoto senza colonne accese; su
+    #    una mappa conta il nome, non l'espressione.
+    def test_bb_colonne_attive_sono_l_intersezione(self):
+        ricerca = RicercaFull("x.lista", ("numero", "ba_codice", "descrizione"))
+        with catalogo_ricerca_finto(["descrizione", "numero"]) as (lettura, _):
+            self.assertEqual(colonne_ricerca_attive(ricerca), ["numero", "descrizione"])
+        lettura.assert_called_once_with("x.lista")
+        with self.assertLogs("apps.core.db._helpers", level="WARNING") as log, \
+                catalogo_ricerca_finto(["numero", "segreta"]):
+            self.assertEqual(colonne_ricerca_attive(ricerca), ["numero"])
+        self.assertIn("segreta", log.output[0])
+        with catalogo_ricerca_finto([]):
+            self.assertEqual(colonne_ricerca_attive(ricerca), [])
+        mappa = RicercaFull("x.lista", {"ba_codice": "ba.codice"})
+        with catalogo_ricerca_finto(["ba_codice"]):
+            self.assertEqual(colonne_ricerca_attive(mappa), ["ba_codice"])
 
     def test_bb_nessuna_colonna_accesa_non_trova_niente(self):
         ricerca = RicercaFull("x.lista", ("numero",))

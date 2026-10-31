@@ -63,6 +63,14 @@
    non era mai passata: il filtro per nature castava a `bigint[]` un codice.
    Lo stesso ruolo senza matrice: `nature_ammesse` e' il dominio dell'enum
    `config.natura_soggetto_enum`, non un elenco scritto nel codice.
+
+9. test_ricerca_soggetti_cerca_dove_il_catalogo_dice
+   La ricerca universale (lista 113) sulla funzione: i campi arrivano dal BB
+   (`p_campi_ricerca`, D-4 del 2026-10-31). Un soggetto costruito si trova da
+   ogni colonna accesa; si spegne il CF a catalogo e il CF non lo trova piu',
+   la ragione sociale si'; spente tutte, nessuna riga. ⭐ E' il caso che
+   distingue: prima la funzione cercava sempre sui tre campi, e l'interruttore
+   del catalogo non contava.
 """
 
 from __future__ import annotations
@@ -115,6 +123,7 @@ _ESERCITATE_DAL_REPOSITORY: dict[str, str] = {
     "pratiche.pratiche": _QUI + "test_la_ricerca_trova_ogni_colonna_accesa_dal_repository",
     "pratiche.definizioni_workflow": _QUI + "test_definizioni_workflow_trova_ogni_colonna_accesa",
     "config.parametri_impostazioni": _QUI + "test_impostazioni_trova_ogni_colonna_accesa",
+    "anagrafiche.ricerca_soggetti": _QUI + "test_ricerca_soggetti_cerca_dove_il_catalogo_dice",
     "vendite.note": _QUI + "test_note_trovano_ogni_colonna_accesa",
     "catalogo.note": _QUI + "test_note_trovano_ogni_colonna_accesa",
     "anagrafiche.emittenti_fiscali": _QUI + "test_la_ricerca_trova_ogni_colonna_accesa_dal_repository",
@@ -578,6 +587,68 @@ class RicercaFullDbTests(unittest.TestCase):
                     )[0],
                     chiave="code",
                 )
+                raise Annulla
+        except Annulla:
+            pass
+
+    # Scopo: la ricerca universale cerca dove il catalogo dice (test 9). Il
+    #        soggetto e' un RE: nessuna entita' d'esistenza, si vede se esiste
+    #        (come nel pgTAP `script/test-search-universale-campi-ricerca-v1`).
+    #        ⚠️ Si chiede se QUEL soggetto-ruolo c'e', non quante righe tornano.
+    def test_ricerca_soggetti_cerca_dove_il_catalogo_dice(self):
+        from apps.core.db.search_repository import SearchRepository
+
+        lista = "anagrafiche.ricerca_soggetti"
+        try:
+            with transaction.atomic(), connection.cursor() as cur:
+                apri_contesto_operatore(cur)
+                cur.execute(
+                    "SELECT dbops.fn_pgtap_crea_soggetto_ruolo("
+                    "  dbops.fn_pgtap_crea_soggetto_pg('ZQRICUNIV ricerca universale BE'),"
+                    "  'RE'::character varying)"
+                )
+                sr_id = cur.fetchone()[0]
+                cur.execute(
+                    "SELECT s.codice, s.ragione_sociale_completa, s.id_fiscale_univoco_cf_piva,"
+                    "       sr.tipo_ruolo_id"
+                    "  FROM anagrafiche.soggetti_ruoli sr"
+                    "  JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id"
+                    " WHERE sr.id = %s",
+                    [sr_id],
+                )
+                codice, ragione_sociale, cf, tipo_ruolo_id = cur.fetchone()
+
+                def cerca(termine):
+                    return SearchRepository().search_soggetti(
+                        search_term=termine, tipo_ruolo_id=tipo_ruolo_id, limit=200,
+                    )[0]
+
+                def trova(termine) -> bool:
+                    return sr_id in {r["soggetto_ruolo_id"] for r in cerca(termine)}
+
+                verifica_ricerca_colonna_per_colonna(
+                    self, cur, lista, sr_id,
+                    {"soggetto_codice": codice, "ragione_sociale_completa": ragione_sociale,
+                     "id_fiscale_univoco": cf},
+                    cerca, chiave="soggetto_ruolo_id",
+                )
+
+                def spegni(*campi: str) -> None:
+                    cur.execute(
+                        "UPDATE ui.lista_colonna lc SET ricercabile_full = false"
+                        "  FROM ui.lista_definizione ld"
+                        " WHERE ld.id = lc.lista_id AND ld.codice = %s"
+                        "   AND lc.campo_sorgente = ANY(%s)",
+                        [lista, list(campi)],
+                    )
+                    self.assertEqual(cur.rowcount, len(campi))
+
+                spegni("id_fiscale_univoco")
+                self.assertFalse(trova(cf), "CF spento a catalogo: la funzione lo cerca ancora")
+                self.assertTrue(trova(ragione_sociale))
+
+                spegni("soggetto_codice", "ragione_sociale_completa")
+                self.assertFalse(trova(ragione_sociale), "nessuna colonna accesa: deve non trovare niente")
                 raise Annulla
         except Annulla:
             pass

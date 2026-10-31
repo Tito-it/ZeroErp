@@ -11,10 +11,22 @@ from __future__ import annotations
 
 
 from apps.core.api.constants import DEFAULT_LIMIT
-from apps.core.db._helpers import jsonb_out, rows_to_list
+from apps.core.db._helpers import RicercaFull, colonne_ricerca_attive, jsonb_out, rows_to_list
 from typing import Any
 
 from django.db import connection
+
+# Dove la ricerca universale SA cercare: i campi della whitelist di
+# `fn_search_soggetti_universale` (`p_campi_ricerca`, D-4 di
+# brief-db-liste-datatable-grezze-secondo-giro, 2026-10-31). Dove CERCA lo dice
+# il catalogo della lista 113, letto a ogni ricerca: spegnere una colonna dal
+# pannello admin la toglie subito, e una colonna BLOCCATA per l'utente non si
+# sonda cercandola. `soggetto_codice` copre anche il codice dell'entita' del
+# ruolo: e' la funzione a saperlo.
+RICERCA_SOGGETTI = RicercaFull(
+    "anagrafiche.ricerca_soggetti",
+    ("soggetto_codice", "ragione_sociale_completa", "id_fiscale_univoco"),
+)
 
 class SearchRepository:
     """Accesso DB per ricerca universale soggetti e dettaglio per tipo ruolo."""
@@ -40,6 +52,14 @@ class SearchRepository:
         # ⭐ `r.*` e non `row_to_json(r)` (2026-10-31): la riga arriva per
         #    colonne, e il presidio della proiezione della lista
         #    (`test_lista_proiezione_campo_sorgente`) le legge dal cursore.
+        # ⭐ I campi si leggono UNA volta, prima della pagina: la rilettura per
+        #    il totale cerca dove ha cercato la pagina. ⛔ Elenco vuoto: la
+        #    funzione non restituisce righe (nessuna colonna accesa non trova
+        #    niente, come il `FALSE` di `add_ricerca_full_condition`). Mai
+        #    `None`: per la funzione vorrebbe dire «i tre campi», e
+        #    riaccenderebbe le colonne spente.
+        campi = colonne_ricerca_attive(RICERCA_SOGGETTI)
+
         def _pagina(lim: int, off: int) -> list[dict[str, Any]]:
             with connection.cursor() as cursor:
                 cursor.execute(
@@ -51,10 +71,11 @@ class SearchRepository:
                                p_limit         := %s,
                                p_offset        := %s,
                                p_order_by      := %s,
-                               p_order_dir     := %s
+                               p_order_dir     := %s,
+                               p_campi_ricerca := %s::text[]
                            ) r
                     """,
-                    [search_term, tipo_ruolo_id, lim, off, order_by, order_dir],
+                    [search_term, tipo_ruolo_id, lim, off, order_by, order_dir, campi],
                 )
                 return rows_to_list(cursor)
 

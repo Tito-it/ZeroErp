@@ -25,7 +25,10 @@ import Select from 'primevue/select'
 const { t } = useI18n()
 const store = useImpostazioniStore()
 const auth = useAuthStore()
-const { execute, loading } = useApiHandler()
+// `campiErrati`: il valore fuori forma lo rifiuta il DB sul campo `value`
+// (E_PARAMETER_VALORE_NON_CONFORME, guard a07 del 2026-10-31): la forma la
+// giudica il DB, qui si evidenzia solo il campo.
+const { execute, loading, campiErrati } = useApiHandler()
 const isReadonly = useInjectReadonly()
 
 const props = defineProps({
@@ -203,6 +206,7 @@ function close() {
         <div class="form-field">
           <label>{{ overrideLabel }}</label>
           <InputText v-model="overrideValue" :disabled="isReadonly"
+            :invalid="campiErrati.includes('value')"
             :placeholder="t('config.impostazioni.override_placeholder')" />
         </div>
         </template>

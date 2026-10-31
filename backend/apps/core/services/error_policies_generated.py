@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1153, di cui 124 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1155, di cui 124 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -1242,10 +1242,14 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_PARAMETER_NOT_FOUND": "NON_TROVATO",
     # Guard config.trgfn_parameter_overrides_guard_ammette_override (a05, 20261025-84): un override su un parametro con config.parameters.ammette_override = false, anche spento. Prima veniva accettato e ignorato, perche' il lettore di quei parametri guarda il default. DATO_ERRATO: e' la richiesta a essere sbagliata, non lo stato della risorsa. Il valore lo stabilisce la configurazione del sistema (il CSV di 80_data, cioe' un rilascio: l'applicazione non scrive il default), quindi chi riceve l'errore non personalizza e si rivolge all'amministratore del sistema (rev 2026-10-26, §6.7 del brief). Parla prima del dispatcher FK-surrogata (E_PARAMETER_OVERRIDE_VALUE_INVALID). VARIADIC: il codice del parametro. Brief: brief-db-parametri-senza-override (D-1, 2026-10-25).
     "E_PARAMETER_OVERRIDE_NON_AMMESSO": "DATO_ERRATO",
+    # Guard a07 config.trgfn_parameters_guard_tipo_valore (20261031-56): si cambia tipo_valore di un parametro mentre un suo override, acceso o spento, non ha la forma del tipo nuovo. CONFLITTO_STATO: il tipo nuovo puo' essere giusto, e' l'override esistente a non ammetterlo. Lo scrive un CSV o un amministratore; campo tipo_valore nel contesto, con override_id. VARIADIC: il codice del parametro, il valore dell'override, la forma attesa in parole. Brief: brief-db-liste-datatable-grezze-secondo-giro (D-5, 2026-10-31).
+    "E_PARAMETER_OVERRIDE_NON_CONFORME_AL_TIPO": "CONFLITTO_STATO",
     # Guard config.trgfn_parameters_guard_ammette_override (a10, 20261025-85): un parametro passa da ammette_override = true a false mentre ha override, accesi o spenti. CONFLITTO_STATO: il valore nuovo puo' essere giusto, sono gli override esistenti a non ammetterlo. Lo scrive un CSV o un amministratore; campo ammette_override nel contesto. VARIADIC: il codice del parametro, il numero di override. Brief: brief-db-parametri-senza-override (D-1, 2026-10-25).
     "E_PARAMETER_OVERRIDE_PRESENTI": "CONFLITTO_STATO",
     "E_PARAMETER_OVERRIDE_VALUE_INVALID": "DATO_ERRATO",
     "E_PARAMETER_VALIDATION": "DATO_ERRATO",
+    # Guard a07 config.trgfn_parameters_guard_tipo_valore (default_value, 20261031-56) e config.trgfn_parameter_overrides_guard_tipo_valore (overridden_value, 20261031-57): il valore non ha la forma di config.parameters.tipo_valore, giudicata da script.fn_valore_parametro_non_conforme. DATO_ERRATO: e' il valore scritto a essere sbagliato. Prima un override fuori forma si salvava, e l'errore arrivava in lettura (E_CONFIG_MANCANTE, TECNICO) su ogni lettore del parametro. Campo nel contesto: value per l'override, default_value per il default. VARIADIC: il valore, il codice del parametro, la forma attesa in parole (dal BB). Brief: brief-db-liste-datatable-grezze-secondo-giro (D-5, 2026-10-31).
+    "E_PARAMETER_VALORE_NON_CONFORME": "DATO_ERRATO",
     "E_PARAMETRI_TABELLA": "NON_TROVATO",
     # 177 punti in 114 funzioni: 160 sono guard di parametro (NULL, <= 0, btrim vuoto), 17 altro. DATO_ERRATO copre il 90%. I 17 restanti vanno guardati con la lente messaggio-vs-condizione, non spezzati a priori.
     "E_PARAMETRO_INVALIDO": "DATO_ERRATO",

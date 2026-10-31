@@ -1,9 +1,10 @@
 # Brief DB — Liste ancora su `DataTable` grezza, secondo giro
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-31
+## ⏭️ Chi riparte — aggiornato al 2026-11-01
 
-**Riparte: BE** (`dev/backend-tid`) con l'elenco chiuso del §7.6.5. Il secondo giro DB è
-applicato su dbdev e la corsa pgTAP è verde (Tid, 2026-10-31). Poi si archivia il brief.
+**Riparte: team DB** (`dev/db-tid`) con il §7.7.1 (nei due guard a07 il campo va sotto
+`'campo'`, non `'field'`) e il §7.7.2 (D-6: la funzione della ricerca universale perde la sua
+soglia). Il BE ha chiuso il §7.6.5 (§7.7); dopo il DB allinea la view e si archivia il brief.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -19,12 +20,16 @@ applicato su dbdev e la corsa pgTAP è verde (Tid, 2026-10-31). Poi si archivia 
 | 9 | team DB | ✅ Ricerca universale sui campi del catalogo, `filtrabile = f` sulla 113 (§4.5.1, D-4), scritti il 2026-10-31 (§7.6) | `20_code/script/`, seed `ui` | — |
 | 10 | team DB | ✅ La forma del valore di ogni parametro, rispettata in scrittura (§4.6.1, D-5), scritta il 2026-10-31 (§7.6) | `config`, `script` | — |
 | 10-bis | Tid | ✅ Apply di `20261031-53…59` e dei mirror, 2026-10-31 (verificato: 56 parametri tipizzati, una firma della ricerca, i due trigger a07, i due codici d'errore, `filtrabile = f`). ✅ Corsa pgTAP verde (Tid, 2026-10-31) | dbdev | — |
-| 9-bis | BE | L'elenco chiuso del §7.6.5: `p_campi_ricerca` dalla `RicercaFull`, la 113 registrata, l'helper dei parametri di prova col tipo, l'errore nuovo sul campo `value` | `dev/backend-tid` | — (apply fatto) |
+| 9-bis | BE | ✅ L'elenco chiuso del §7.6.5, fatto il 2026-10-31 (§7.7): `p_campi_ricerca` dal BB `colonne_ricerca_attive`, la 113 registrata, l'eccezione al nucleo dichiarata, i due codici nuovi, l'helper col tipo | `dev/backend-tid` | — |
+| 9-ter | team DB | 🔴 I due guard a07 mettono il campo sotto `'field'`: `fn_log_and_raise_error` legge solo `'campo'`, e il campo non arriva (§7.7.1). Più l'asserzione nel pgTAP | `20_code/config/`, `db/pgtap/config/` | — |
+| 9-quater | Tid | ✅ D-6 decisa il 2026-11-01: la soglia della 113 viene dal catalogo, come per ogni lista (§7.7.2) | questo brief | — |
+| 9-quinquies | team DB | D-6: `fn_search_soggetti_universale` senza la soglia scritta nel corpo (§7.7.2) | `20_code/script/`, `db/pgtap/script/` | — |
+| 9-sexies | BE | D-6: la view della ricerca usa `soglia_ricerca('anagrafiche.ricerca_soggetti')` al posto di `RICERCA_MIN_CARATTERI` | `dev/backend-tid` | 9-quinquies |
 | 11 | BE/FE | ✅ Revisione critica del lavoro non committato, 2026-10-31 (§4.7) | `dev/backend-tid` | — |
-| 12 | BE/FE | Archiviare il brief in `work-done/` | — | 9-bis |
+| 12 | BE/FE | Archiviare il brief in `work-done/` | — | 9-ter, 9-sexies |
 
-**Decisioni aperte di Tid:** nessuna. D-3, D-4 e D-5 decise il 2026-10-31 (§4.5.1, §4.6.1); D-1, D-2, B1-bis, B8 e l'ordinamento per utility della 113 (§4.5) decisi il 2026-10-31.
-**Committato:** il lato DB, primo e secondo giro (§7.1-§7.6, con guida e pagine manual), è su `dev/db-tid`; il lato BE/FE (righe 6-8 e 11) è su `Tito-dev` (`82ea9e3a1`, PR #1987). Il rotto temporaneo
+**Decisioni aperte di Tid:** nessuna. D-6 decisa il 2026-11-01 (§7.7.2); D-3, D-4 e D-5 decise il 2026-10-31 (§4.5.1, §4.6.1); D-1, D-2, B1-bis, B8 e l'ordinamento per utility della 113 (§4.5) decisi il 2026-10-31.
+**Committato:** il lato DB, primo e secondo giro (§7.1-§7.6, con guida e pagine manual), è su `dev/db-tid` e mergiato in `dev/backend-tid` (#1988); il lato BE del §7.7 è committato su `dev/backend-tid`; il lato BE/FE (righe 6-8 e 11) è su `Tito-dev` (`82ea9e3a1`, PR #1987). Il rotto temporaneo
 dichiarato fino alla conversione BE (Tid, 2026-10-31: «non ci preoccupiamo se
 alcune liste andranno in errore temporaneamente») è **chiuso**: §7.4 tutto
 fatto, verificato il 2026-10-31 (§7.4, in fondo).
@@ -787,3 +792,57 @@ le quattro `script/test-search-*`.
 6. *(facoltativo, non chiesto)* `script.fn_list_parameters_for_user` non espone `tipo_valore`.
    Se la UI delle impostazioni vuole un campo adatto alla forma (numero, sì/no, data), è una
    colonna in più della lista: richiesta al DB, non un elenco nel FE.
+
+## 7.7 Lato BE — l'elenco del §7.6.5, fatto il 2026-10-31
+
+| # | Voce | Cosa è stato fatto |
+| --- | --- | --- |
+| 1 | Ricerca universale (113) | `RICERCA_SOGGETTI` (`RicercaFull` sui tre campi) in `core/db/search_repository.py`; `search_soggetti` passa `p_campi_ricerca` dal BB nuovo **`colonne_ricerca_attive`**, estratto da `add_ricerca_full_condition` (regola del 2, ok Tid; catalogo BB backend). Elenco vuoto passato vuoto, mai `NULL`. La 113 è in `_RICERCHE` e in `_ESERCITATE_DAL_REPOSITORY`. Presidio `test_ricerca_full_db.test_ricerca_soggetti_cerca_dove_il_catalogo_dice`: ogni colonna accesa trova, il CF spento non trova, tutte spente nessuna riga. Provato per mutazione (con `NULL` il test va rosso: «CF spento a catalogo: la funzione lo cerca ancora») |
+| 2 | `filtrabile = f` | nessun registro BE dei filtri nomina la 113; il FE legge i filtri dal catalogo. Niente da allineare |
+| 3 | Utility non ordinabile | `NUCLEO_ECCEZIONI` in `scripts/gen_seed_lista.py`: un'eccezione per (lista, concetto), col motivo e la decisione. La verifica la stampa, e segnala come **stantia** un'eccezione che non serve più. La 113 dà ok; i 4 KO di `pagamenti` (`canali_incasso`, `eccedenze`, `rate`, `righe`) erano rossi già prima e non sono di questo brief |
+| 4 | Override fuori forma | i due codici nuovi in `error_policies_generated.py` (rigenerato; classi: `DATO_ERRATO`, `CONFLITTO_STATO`) e i due ripieghi senza `%s` in `error_messages_fallback.py`. Nessun controllo di forma nel BE. Il drawer `ImpostazioniOverrideDrawer` evidenzia il campo valore su `campiErrati.includes('value')`. ⚠️ Il campo non arriva: v. §7.7.1 |
+| 5 | Helper dei test | `crea_parametro_di_prova` dichiara `tipo_valore` (default `'TESTO'`) e accetta `default_value` |
+
+⚠️ **Lo status di `DATO_ERRATO` nel BE è 400**, non 422 come scrive il §7.6.1: vale la mappa del BE (`error_policies.py`).
+
+⚠️ **Rigenerando le policy è entrato `E_PREV_VALIDITA_SCADUTA`**, che sta su dbdev ma non nel CSV in git (è del giro di brief-db-scadenza-preventivi, `20261031-62`). È stato tolto a mano dal file generato: il BE non si aggancia a un changeSet non pushato. Finché quel giro non arriva in git, `genera_error_policies --check` su dbdev dà «DIVERGE»: è atteso.
+
+### 7.7.1 Richiesta al team DB — il campo dei due guard a07 non arriva
+
+🔴 **Difetto che non dà errore.** `config.trgfn_parameter_overrides_guard_tipo_valore` e
+`config.trgfn_parameters_guard_tipo_valore` (`20261031-56`, `-57`) mettono il campo nel contesto
+sotto la chiave **`'field'`** (`'field', 'value'` e `'field', 'default_value'`). Però
+`script.fn_log_and_raise_error` porta sul canale `COLUMN` solo **`p_context->>'campo'`**
+(doc auto-gen, blocco 4-bis). Il codice d'errore arriva, il campo no: il FE mostra il messaggio ma
+non sa quale campo evidenziare. Il gemello `trgfn_parameters_guard_ammette_override` usa
+`'campo'`, ed è la forma giusta.
+
+- **Visto da**: `core/tests/db/test_parameter_overrides_db.test_valore_fuori_forma_non_si_salva`
+  (nuovo), che si aspetta il campo `value` dal canale strutturato. Oggi è **rosso** su
+  `None != 'value'`, ed è il rosso giusto. Il pgTAP `config/test-parameters-tipo-valore-v1` non
+  controlla il campo, per questo è verde.
+- **La richiesta**: nei due guard, `'campo'` al posto di `'field'` (changeSet nuovi, corpo dalla
+  doc auto-gen), più un'asserzione nel pgTAP sul campo (`COLUMN` dell'eccezione) per i due casi.
+  Il BE non cambia: il test diventa verde da solo.
+
+### 7.7.2 D-6 — la soglia della ricerca universale sta in tre posti (deciso da Tid il 2026-11-01)
+
+Una lista a catalogo prende la soglia da `ui.lista_definizione.ricerca_min_caratteri`
+(`soglia_ricerca`, brief-db-be-fe-ricerca-soglia-per-lista). La 113 ce l'ha (3), ma oggi la
+dicono anche:
+
+- la view del BE, `require_min_search_length(q)` con `RICERCA_MIN_CARATTERI` (400 sotto soglia);
+- la funzione, `length(btrim(p_search_term)) < 3` scritto nel corpo.
+
+Sono tre copie della stessa regola. Se l'amministratore cambia la soglia della 113, il FE (che
+legge il catalogo) manda termini che il BE rifiuta, o che la funzione scarta. **Proposta**: la
+funzione non ha una soglia sua (o la legge da `ui.fn_lista_da_codice`), e la view usa
+`soglia_ricerca('anagrafiche.ricerca_soggetti')`. Il lato BE si fa quando il lato DB è
+pronto.
+
+✅ **D-6 — DECISO da Tid il 2026-11-01: la proposta.** La soglia della 113 è quella del
+catalogo, come per ogni lista. **Al team DB**: togliere il controllo `< 3` dal corpo di
+`fn_search_soggetti_universale`, nello stesso giro del §7.7.1. Il termine vuoto resta un
+rifiuto della funzione, ma la lunghezza minima la giudica il chiamante dalla soglia della
+lista. Va aggiornato il pgTAP che oggi la prova, se c'è. **Al BE, dopo**: la view usa
+`soglia_ricerca('anagrafiche.ricerca_soggetti')`, sempre con il 400 sotto soglia.

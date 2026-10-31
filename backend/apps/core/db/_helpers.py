@@ -362,6 +362,33 @@ def utente_di_sessione() -> int | None:
     return int(row[0]) if row and row[0] is not None else None
 
 
+# Scopo: le colonne in cui si cerca ADESSO in una lista: quelle che la
+#        dichiarazione sa cercare (`ricerca`) e che il catalogo accende per
+#        l'utente corrente (`colonne_ricerca_accese`), nell'ordine della
+#        dichiarazione. Una colonna accesa ma non dichiarata e' ignorata, con
+#        un `warning` che la nomina: ⛔ mai un nome di catalogo che arriva in
+#        SQL senza che il codice lo conosca. Elenco vuoto = non c'e' dove
+#        cercare, e chi lo riceve non trova niente.
+# ⭐ Estratta il 2026-10-31 (regola del 2, ok Tid) da `add_ricerca_full_condition`,
+#    al secondo consumatore: `SearchRepository.search_soggetti` passa i nomi a
+#    `script.fn_search_soggetti_universale` (`p_campi_ricerca`), che la
+#    condizione la scrive da se' (brief-db-liste-datatable-grezze-secondo-giro
+#    D-4). Il BB costruisce l'OR di `ILIKE`; la funzione DB fa lo stesso sui
+#    nomi: l'intersezione e' una, e sta qui.
+# ⚠️ Legge il catalogo a ogni chiamata: la soglia e il termine vuoto li
+#    giudica chi chiama, PRIMA (aprire una lista senza cercare non legge niente).
+def colonne_ricerca_attive(ricerca: RicercaFull) -> list[str]:
+    dichiarate = list(ricerca.colonne)
+    accese = set(colonne_ricerca_accese(ricerca.lista_codice))
+    ignote = sorted(accese - set(dichiarate))
+    if ignote:
+        logger.warning(
+            "ricerca_full.colonne_accese_non_dichiarate lista=%s colonne=%s",
+            ricerca.lista_codice, ignote,
+        )
+    return [c for c in dichiarate if c in accese]
+
+
 def add_ricerca_full_condition(
     conditions: list[str],
     params: list[Any],
@@ -426,14 +453,7 @@ def add_ricerca_full_condition(
     if len(termine) < soglia_ricerca(ricerca.lista_codice):
         return
     espressioni = ricerca.espressioni(alias)
-    accese = set(colonne_ricerca_accese(ricerca.lista_codice))
-    ignote = sorted(accese - espressioni.keys())
-    if ignote:
-        logger.warning(
-            "ricerca_full.colonne_accese_non_dichiarate lista=%s colonne=%s",
-            ricerca.lista_codice, ignote,
-        )
-    attive = [e for c, e in espressioni.items() if c in accese]
+    attive = [espressioni[c] for c in colonne_ricerca_attive(ricerca)]
     if not attive:
         conditions.append("FALSE")
         return
