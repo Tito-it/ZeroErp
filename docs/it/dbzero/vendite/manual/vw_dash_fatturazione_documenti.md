@@ -17,7 +17,8 @@ Aggregata e brief:
 
 ---
 ### 🎯 Scopo Principale
-(latest review 2026-07-18)
+> **Ultimo aggiornamento**: 31 ottobre 2026
+
 `vendite.vw_dash_fatturazione_documenti` è la fonte dati del **drill-down della
 Dashboard Fatturazione**: una riga per **documento × mese di competenza** su tutte
 e **6** le aree che portano alla fatturazione (`PREVENTIVI`, `ORDINI`, `OFFERTE`,
@@ -66,13 +67,14 @@ l'aggregata mensile — mai i resolver singoli.
 
 | Codice | Area | Significato |
 |--------|------|-------------|
-| `DOC_BOZZA` | preventivi, ordini, offerte, contratti | Documento ancora in bozza |
+| `DOC_BOZZA` | preventivi, ordini, offerte | Documento ancora in bozza (il contratto in bozza ha il giudizio sospeso: motivo NULL) |
 | `IN_ATTESA_ACCETTAZIONE` | preventivi, offerte | Emesso, in attesa del cliente |
 | `RIGA_RESIDUA` | preventivi | Accettato con righe non ancora smistate (residuo bi-ramo) |
 | `PUSH_NON_ESEGUITO` / `PUSH_PARZIALE` | ordini | Confermato, push a commessa assente/parziale |
 | `SENZA_FIGLIO` | offerte | Accettata, né contratto né ordine generato |
 | `FIGLIO_ABORTITO` | offerte | Figlio generato ma annullato: la XOR permanente impedisce di rigenerarlo — serve una **revisione** dell'offerta |
-| `CANONE_NON_GENERATO` | contratti | Nessuna attività EMESSA con sorgente CONTRATTO per quel mese |
+| `CANONE_NON_GENERATO` | contratti | Un addebito maturato (canone, una tantum, storno) non ancora in commessa (dal 2026-10-31, da `vendite.fn_contratti_addebiti_maturati`) |
+| `CANONE_NON_GENERABILE` | contratti | Un canone che il push salta: senza periodicità, durata senza calendario, prezzo che manca alla data (dal 2026-10-31) |
 | `ATTIVITA_NON_APPROVATA` / `ATTIVITA_NON_EMESSA` | commesse | Collo di bottiglia: approvazione vs emissione |
 
 ---

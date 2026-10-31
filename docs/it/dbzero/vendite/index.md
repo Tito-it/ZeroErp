@@ -132,6 +132,7 @@ search:
 - [fn_cambia_stato_preventivo](funzioni/fn_cambia_stato_preventivo.md) — (latest review 03-04-2026) `vendite.fn_cambia_stato_preventivo(p_preventivo_id, p_nuovo_stato, p_user)` esegue la **transizione di stato** di un preventivo vendita, validando la transizione tramite la matrice configurabile `config.transizioni_stati_preventivi`.
 - [fn_cancel_lotto_task_run](funzioni/fn_cancel_lotto_task_run.md) — Chiude un task run impostando `task_stato = ANNULLATO`.
 - [fn_cancella_fondo_fattura](funzioni/fn_cancella_fondo_fattura.md) — (latest review 14-09-2026)
+- [fn_canone_periodi](funzioni/fn_canone_periodi.md)
 - [fn_cessa_contratti_scaduti](funzioni/fn_cessa_contratti_scaduti.md)
 - [fn_cessa_contratto](funzioni/fn_cessa_contratto.md)
 - [fn_check_commessa_sorgente_emittente_omogeneo](funzioni/fn_check_commessa_sorgente_emittente_omogeneo.md)
@@ -154,6 +155,7 @@ search:
 - [fn_complete_lotto_task_run](funzioni/fn_complete_lotto_task_run.md) — Chiude un task run impostando `task_stato = COMPLETATO` e `ended_at`.
 - [fn_componi_numero_documento](funzioni/fn_componi_numero_documento.md) — (rev 2026-08-31, sera)
 - [fn_conferma_reso](funzioni/fn_conferma_reso.md) — (rev 2026-07-13)
+- [fn_contratti_addebiti_maturati](funzioni/fn_contratti_addebiti_maturati.md)
 - [fn_contratto_riga_componenti_init](funzioni/fn_contratto_riga_componenti_init.md)
 - [fn_contratto_riga_componenti_preview](funzioni/fn_contratto_riga_componenti_preview.md)
 - [fn_contratto_righe_preview](funzioni/fn_contratto_righe_preview.md)

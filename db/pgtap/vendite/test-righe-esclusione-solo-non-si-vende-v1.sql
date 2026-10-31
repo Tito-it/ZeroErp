@@ -1,6 +1,10 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
+-- rev 2026-10-29 (brief-db-contratto-righe-periodiche-in-commessa §6.10, G-0-ter; 20261029-39): la riga
+--   di listino ha anche l'azione ADERISCI (test 21).
+-- rev 2026-10-29 (brief-db-contratto-righe-periodiche-in-commessa §6.8, G-8 di Tid; 20261029-26/-27):
+--   competenza_canone ritirata dalle righe: i campi dell'esclusione sono nove (test 1, 2, 6, 11).
 -- rev 2026-10-28 (brief-modello-documento-vendita §16, giro 12): la versione di oggi nasce in bozza
 --   senza stato e si attiva dal verbo (dbops.fn_pgtap_porta_a_stato), non con un UPDATE dello stato.
 --
@@ -38,7 +42,7 @@
 --     tipo_eccezione).
 --
 -- Indice test (1..26):
---    1) contratto: CHECK sui dieci campi dell'esclusione
+--    1) contratto: CHECK sui nove campi dell'esclusione
 --    2) offerta: lo stesso CHECK
 --    3) fonte nullable sulle due tabelle, obbligatoria per CHECK sulle altre righe
 --    4) offerta: i cinque trigger nuovi montati sulle funzioni giuste
@@ -255,7 +259,7 @@ SELECT pg_temp.esegui(pg_temp.ins(d, s, t))
 -- ============================================================
 -- 1..5 — la regola nella struttura, e i trigger montati
 -- ============================================================
--- ⭐ Le colonne del CHECK lette da conkey, non dal testo deparsato: dieci campi
+-- ⭐ Le colonne del CHECK lette da conkey, non dal testo deparsato: nove campi
 --   di vendita piu' tipo_eccezione, ne' uno di piu' ne' uno di meno.
 CREATE OR REPLACE FUNCTION pg_temp.colonne_check(p_tab regclass, p_nome text)
 RETURNS text LANGUAGE sql STABLE AS $fx$
@@ -267,13 +271,13 @@ $fx$;
 
 SELECT is(
     pg_temp.colonne_check('vendite.contratti_righe', 'chk_contrighe_esclusione_senza_dati'),
-    'competenza_canone,factor_to_base,fonte_quantita_attesa,generazione_canone,periodicita,'
+    'factor_to_base,fonte_quantita_attesa,generazione_canone,periodicita,'
     'prezzo_unitario,qta_operativa,quantita,tipo_eccezione,tipo_erogazione,uom_operativa_id',
-    '1) contratto: il CHECK dell''esclusione copre i dieci campi di vendita');
+    '1) contratto: il CHECK dell''esclusione copre i nove campi di vendita');
 
 SELECT is(
     pg_temp.colonne_check('vendite.offerte_commerciali_eccezioni', 'chk_offerte_eccezioni_esclusione_senza_dati'),
-    'competenza_canone,factor_to_base,fonte_quantita_attesa,generazione_canone,periodicita,'
+    'factor_to_base,fonte_quantita_attesa,generazione_canone,periodicita,'
     'prezzo_unitario,qta_operativa,quantita,tipo_eccezione,tipo_erogazione,uom_operativa_id',
     '2) offerta: lo stesso CHECK');
 
@@ -337,7 +341,7 @@ SELECT pg_temp.esegui(pg_temp.ins('contratto', 'C', 'ESCLUSIONE'));
 SELECT is(
     (SELECT num_nonnulls(prezzo_unitario, quantita, qta_operativa, uom_operativa_id,
                          factor_to_base, tipo_erogazione, fonte_quantita_attesa,
-                         periodicita, generazione_canone, competenza_canone)
+                         periodicita, generazione_canone)
        FROM vendite.contratti_righe
       WHERE contratto_id = pg_temp.doc('contratto') AND articolo_id = pg_temp.art('C')),
     0,
@@ -391,7 +395,7 @@ SELECT pg_temp.esegui(pg_temp.ins('offerta', 'C', 'ESCLUSIONE'));
 SELECT is(
     (SELECT num_nonnulls(prezzo_unitario, quantita, qta_operativa, uom_operativa_id,
                          factor_to_base, tipo_erogazione, fonte_quantita_attesa,
-                         periodicita, generazione_canone, competenza_canone)
+                         periodicita, generazione_canone)
        FROM vendite.offerte_commerciali_eccezioni
       WHERE offerta_id = pg_temp.doc('offerta') AND articolo_id = pg_temp.art('C')),
     0,
@@ -475,7 +479,7 @@ SELECT is(
                        ' ' ORDER BY t.sigla)
        FROM tmp_rsv_lista l JOIN tmp_rsv_art t ON t.id = l.articolo_id
       WHERE t.sigla IN ('A', 'B', 'C', 'X')),
-    'A:DA_LISTINO:SOVRASCRIVI_PREZZO+ESCLUDI B:OVERRIDE:MODIFICA+RIPRISTINA_LISTINO '
+    'A:DA_LISTINO:SOVRASCRIVI_PREZZO+ESCLUDI+ADERISCI B:OVERRIDE:MODIFICA+RIPRISTINA_LISTINO '
     'C:ESCLUSIONE:RIPRISTINA_ARTICOLO X:AGGIUNTA:MODIFICA+RIMUOVI',
     '21) lista dell''offerta: i verbi per origine, gli stessi del contratto');
 

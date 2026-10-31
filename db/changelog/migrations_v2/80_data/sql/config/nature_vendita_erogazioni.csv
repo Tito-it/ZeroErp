@@ -1,8 +1,9 @@
-id,natura_vendita_id,tipo_erogazione,fonte_quantita_attesa,e_default,generazione_canone
-1,1,UNA_TANTUM,FISSA,true,NULL
-2,1,UNA_TANTUM,MANUALE,false,NULL
-3,2,UNA_TANTUM,FISSA,true,NULL
-4,2,UNA_TANTUM,MANUALE,false,NULL
-5,2,CONSUMO,MANUALE,false,NULL
-6,3,CANONE,FISSA,true,INIZIO_PERIODO
-7,3,CONSUMO,MANUALE,false,NULL
+id,natura_vendita_id,tipo_erogazione,fonte_quantita_attesa,e_default
+1,1,UNA_TANTUM,FISSA,true
+2,1,UNA_TANTUM,MANUALE,false
+3,2,UNA_TANTUM,FISSA,true
+4,2,UNA_TANTUM,MANUALE,false
+5,2,CONSUMO,MANUALE,false
+6,3,CANONE,FISSA,true
+7,3,CONSUMO,MANUALE,false
+8,3,CANONE,DURATA,false

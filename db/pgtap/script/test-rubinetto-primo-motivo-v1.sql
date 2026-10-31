@@ -184,7 +184,7 @@ SELECT is(
     (SELECT count(*)::int FROM pg_proc p
       WHERE regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~ 'fn_raise_primo_motivo_se_presente\s*\('
         AND p.proname <> 'fn_raise_primo_motivo_se_presente'),
-    44,
+    48,
     -- ⚠️ 2026-09-09: da 10 a 16. E' un'uguaglianza ESATTA, non una soglia:
     --   scende se una bonifica viene disfatta (ed e' il test che ha morso nella
     --   prova per mutazione), sale se qualcuno ne bonifica un'altra senza
@@ -335,7 +335,14 @@ SELECT is(
     --   vendite.trgfn_listini_versioni_guard_transizione_stato (20261028-08) e
     --   il verbo vendite.fn_attiva_versione_listino (20261028-12), che
     --   sollevano il primo motivo di script.fn_check_versione_listino_attivabile.
-    'le quarantaquattro funzioni bonificate chiamano l''helper');
+    -- ⭐ 2026-10-29: da 44 a 48. Quattro siti NUOVI nati sull'helper, sempre col
+    --   giro 12 (la versione di listino), che il conto non aveva preso:
+    --   vendite.trgfn_listini_versioni_guard_per_stato (20261028-09),
+    --   vendite.fn_elimina_versione_listino (20261028-39),
+    --   vendite.fn_programma_chiusura_versione_listino (20261029-02) e
+    --   vendite.fn_clona_versione_listino (20261029-04). Aggiornato dalla sessione
+    --   di brief-db-contratto-righe-periodiche-in-commessa, che ha visto il rosso.
+    'le quarantotto funzioni bonificate chiamano l''helper');
 
 -- 6) ⚠️ Il marcatore non e' troppo LARGO. vendite.fn_cleanup_fatture_by_ids
 --    solleva un codice LETTERALE e dal primo motivo legge solo un valore per la

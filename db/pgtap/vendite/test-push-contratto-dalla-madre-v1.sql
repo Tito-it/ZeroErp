@@ -7,6 +7,7 @@
 -- ChangeSet: 20261013-16 … -23
 -- Segnalazione: smoke BE su dbdev del 2026-10-13 (push batch CONTRATTO in
 --   ERRORE, «tipo_consumo non valido: UNA_TANTUM», commessa rimasta vuota).
+-- rev 2026-10-30 (20261030-01, brief-db-contratto-righe-periodiche-in-commessa §6.12): la parte D prova il canone che parte a periodi (9, 10, 11, 12).
 -- rev 2026-10-26 (brief-modello-documento-vendita §11): i due contratti (della madre e quello aperto) si attivano con dbops.fn_pgtap_porta_a_stato, non piu' con l'UPDATE diretto dello stato che la porta del contratto ora rifiuta.
 -- ------------------------------------------------------------
 -- Indice test (plan 12):
@@ -35,14 +36,20 @@
 --      madre lo toglie, e il resto del meta resta
 --   8) un secondo invio dello stesso segmento (ramo ON CONFLICT) non rimette
 --      la chiave
---  D — un contratto senza scadenza (20261013-24, D-1 e D-2 di Tid)
---   9) il lister lista la sola riga UNA_TANTUM, non la CANONE
+--  D — un contratto senza scadenza (20261013-24, D-1 e D-2 di Tid; rev
+--      2026-10-30, 20261030-01: il canone parte, a periodi)
+--   9) il lister lista la riga UNA_TANTUM e il primo pezzo della CANONE
+--      (anticipata e mensile: il mese in corso, da oggi)
 --  10) la competenza della riga una tantum e' il giorno di attivazione, in
 --      tutte e due le colonne (prima: competenza_al = valido_al, cioe' NULL)
 --  11) l'invio dalla madre riesce, con quella competenza. ⚠️ E' il caso della
 --      segnalazione BE del 2026-10-13 (registro 2724): sul lister del
 --      20261013-19 la madre cadeva sul NOT NULL di competenza_al
---  12) la riga CANONE non e' finita in commessa
+--  12) il pezzo del canone e' in commessa col suo periodo (da oggi a fine
+--      mese) e la frazione del mese, e un secondo giro non lo rimanda.
+--      ⚠️ Fino al 20261030-01 qui si provava il contrario (la CANONE non
+--      partiva): il test racconta la regola, e la regola e' cambiata (§5 del
+--      brief-db-contratto-righe-periodiche-in-commessa)
 --
 -- ⚠️ LE FIXTURE SI COSTRUISCONO: cliente e articolo dai builder, contratto
 --   composto in DRAFT e poi ATTIVO (come l'applicazione), commessa da
@@ -273,7 +280,7 @@ SELECT ok(
 -- D — Un contratto senza scadenza (20261013-24)
 -- ============================================================
 -- valido_al NULL: e' il contratto che non finisce. Una riga UNA_TANTUM e una
--- CANONE (INIZIO_PERIODO, come vuole chk_contrighe_coerenza_canone).
+-- CANONE (INIZIO_PERIODO, forzata sulla riga: vuota seguirebbe la testata, F-7).
 -- ⚠️ Un cliente suo: due contratti della stessa fornitura non si sovrappongono
 --   (ex_contratti_no_overlap), e quello del caso B copre gia' oggi.
 CREATE TEMP TABLE tmp_pc_cli2 AS
@@ -344,14 +351,15 @@ SELECT to_jsonb(x) AS v
   FROM vendite.fn_list_contratti_da_pushare(p_contratto_id => (SELECT id FROM tmp_pc_aperto)) x;
 
 SELECT is(
-  (SELECT array_agg((l.v ->> 'riga_id')::bigint) FROM tmp_pc_aperto_lista l),
-  (SELECT array_agg(r.id) FROM tmp_pc_aperto_righe r WHERE r.tipo_erogazione = 'UNA_TANTUM'),
-  '9) contratto senza scadenza: il lister lista la sola riga UNA_TANTUM, non la CANONE');
+  (SELECT array_agg((l.v ->> 'riga_id')::bigint ORDER BY (l.v ->> 'riga_id')::bigint) FROM tmp_pc_aperto_lista l),
+  (SELECT array_agg(r.id ORDER BY r.id) FROM tmp_pc_aperto_righe r),
+  '9) contratto senza scadenza: il lister lista la riga UNA_TANTUM e il primo pezzo della CANONE');
 
 SELECT ok(
   (SELECT (l.v ->> 'competenza_dal')::date = c.valido_dal
           AND (l.v ->> 'competenza_al')::date = c.valido_dal
-     FROM tmp_pc_aperto_lista l, tmp_pc_aperto c),
+     FROM tmp_pc_aperto_lista l, tmp_pc_aperto c, tmp_pc_aperto_righe r
+    WHERE r.tipo_erogazione = 'UNA_TANTUM' AND (l.v ->> 'riga_id')::bigint = r.id),
   '10) la competenza della riga una tantum e'' il giorno di attivazione, dal e al');
 
 CREATE TEMP TABLE tmp_pc_aperto_ca AS
@@ -361,16 +369,29 @@ SELECT ok(
   (SELECT ca.competenza_dal = c.valido_dal AND ca.competenza_al = c.valido_dal
           AND ca.sorgente_uid = c.uid::text
      FROM tmp_pc_aperto_ca t
-     JOIN vendite.commesse_attivita ca ON ca.id = t.id, tmp_pc_aperto c),
+     JOIN vendite.commesse_attivita ca ON ca.id = t.id, tmp_pc_aperto c
+    WHERE ca.segment_key LIKE '%:R:' || (SELECT id FROM tmp_pc_aperto_righe
+                                          WHERE tipo_erogazione = 'UNA_TANTUM') || ':%'),
   '11) l''invio dalla madre riesce, con la competenza del giorno di attivazione');
 
-SELECT is(
-  (SELECT count(*)::int FROM vendite.commesse_attivita ca
-    WHERE ca.sorgente_uid = (SELECT uid::text FROM tmp_pc_aperto)
+SELECT ok(
+  (SELECT count(*) = 1
+          AND bool_and(ca.competenza_dal = c.valido_dal
+                       AND ca.competenza_al = (date_trunc('month', c.valido_dal)
+                                               + interval '1 month - 1 day')::date
+                       AND ca.quantita = round(((date_trunc('month', c.valido_dal)
+                                                 + interval '1 month - 1 day')::date
+                                                - c.valido_dal + 1)::numeric
+                                               / extract(day FROM date_trunc('month', c.valido_dal)
+                                                 + interval '1 month - 1 day')::numeric, 6))
+          AND (SELECT count(*) FROM vendite.fn_list_contratti_da_pushare(p_contratto_id => c.id)) = 0
+     FROM tmp_pc_aperto c
+     JOIN vendite.commesse_attivita ca
+       ON ca.sorgente_uid = c.uid::text
       AND ca.segment_key LIKE '%:R:' || (SELECT id FROM tmp_pc_aperto_righe
-                                          WHERE tipo_erogazione = 'CANONE') || ':%'),
-  0,
-  '12) la riga CANONE non e'' finita in commessa (aspetta la sua generazione per periodo)');
+                                          WHERE tipo_erogazione = 'CANONE') || ':M:%'
+    GROUP BY c.id),
+  '12) il pezzo del canone e'' in commessa, da oggi a fine mese per la frazione del mese, e un secondo giro non lo rimanda');
 
 SELECT * FROM finish();
 ROLLBACK;

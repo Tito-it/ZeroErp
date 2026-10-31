@@ -61,6 +61,7 @@ search:
 - [parameter_fk_surrogate](tabelle/parameter_fk_surrogate.md) — (latest review 02-05-2026)
 - [parameter_overrides](tabelle/parameter_overrides.md)
 - [parameters](tabelle/parameters.md) — (ultima revisione 25-10-2026)
+- [periodicita](tabelle/periodicita.md)
 - [priorita_pratiche](tabelle/priorita_pratiche.md) — La tabella `config.priorita_pratiche` definisce i **livelli di priorita'** assegnabili alle pratiche. Ogni pratica ha una priorita' obbligatoria che ne influenza l'ordine di lavorazione.
 - [profili_accesso](tabelle/profili_accesso.md) — (latest revision 04-05-2026 — modello legacy `profili_reparto_*` dismesso)
 - [profili_accesso_aree](tabelle/profili_accesso_aree.md) — (latest revision 04-05-2026 — modello legacy `profili_reparto_aree` dismesso)

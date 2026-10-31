@@ -137,6 +137,8 @@ BEGIN
         validita_al,
         revisione_numero,
         revisione_padre_id,
+        generazione_canone,
+        mese_partenza_canone,
         meta,
         user_insert,
         user_update
@@ -159,6 +161,8 @@ BEGIN
         oc.validita_al,
         oc.revisione_numero + 1,
         p_offerta_id,
+        oc.generazione_canone,
+        oc.mese_partenza_canone,
         oc.meta,
         COALESCE(p_user, CURRENT_USER),
         COALESCE(p_user, CURRENT_USER)
@@ -206,7 +210,6 @@ BEGIN
             fonte_quantita_attesa,
             periodicita,
             generazione_canone,
-            competenza_canone,
             prezzo_unitario,
             quantita,
             qta_operativa,
@@ -228,7 +231,6 @@ BEGIN
             v_ecc.fonte_quantita_attesa,
             v_ecc.periodicita,
             v_ecc.generazione_canone,
-            v_ecc.competenza_canone,
             v_ecc.prezzo_unitario,
             v_ecc.quantita,
             v_ecc.qta_operativa,

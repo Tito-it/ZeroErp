@@ -23,7 +23,8 @@
 • [`vendite.trgfn_contratti_gen_codice`](/dbzero/vendite/funzioni/trgfn_contratti_gen_codice)
 >
 ### 🎯 Scopo Principale
-(Initial version - 19-01-26)
+> **Ultimo aggiornamento**: 31 ottobre 2026
+
 `vendite.contratti` rappresenta la **testata del contratto commerciale**: l’accordo che lega un **billing account** a una **istanza/utility** e ne definisce **ambito**, **periodo di validita** e **stato**. E` la base di aggregazione delle righe (`vendite.contratti_righe`) e il punto di riferimento per la generazione di **attivita fatturabili**.
 
 Obiettivi principali:
@@ -277,7 +278,7 @@ per stabilita' rispetto a relabelling.
 | --- | --- | --- | --- |
 | DRAFT | ATTIVO | si | — |
 | DRAFT | ANNULLATO | si | sempre (nessuna fatturazione su DRAFT) |
-| ATTIVO | CESSATO | si | `valido_al IS NOT NULL AND valido_al < CURRENT_DATE` |
+| ATTIVO | CESSATO | si | `valido_al` valorizzata e arrivata (`<=` la data operativa): oggi dall'operatore, il giorno dopo dalla scadenza |
 | ATTIVO | ATTIVO | si | no-op |
 | DRAFT | DRAFT | si | no-op |
 | DRAFT | CESSATO | **no** | una bozza si annulla, non si cessa |
@@ -318,41 +319,28 @@ le date comandano.
 `stato_doc_contratto_id`. Consente seed/import e creazione di
 contratti direttamente in stato non-DRAFT se necessario.
 
-**Path utente per cessare un contratto**: non esiste un'azione
-manuale "cambia stato a CESSATO" tradizionale. L'utente imposta
-`valido_al` (PATCH); la cessazione di stato avviene automaticamente
-alla scadenza tramite il **framework `dbops.automazione_chiusura_scadenze`**
-(vedi sotto).
+**Come si cessa un contratto** (rev 2026-10-31: fino a questa data la pagina diceva che non
+esisteva un'azione per cessare, e che si scriveva `valido_al` a mano).
 
-#### Cessazione automatica via framework
-
-Il job pgAgent unico **`chiusura_scadenze_daily`** (00:05) invoca
-`dbops.fn_apply_chiusura_scadenze()` che, leggendo la riga
-configurata in `dbops.automazione_chiusura_scadenze`, esegue:
-
-```sql
--- Lookup id stati via codice_interno
-SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'CESSATO';
-SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'ATTIVO';
-
--- UPDATE dinamico
-UPDATE vendite.contratti
-   SET stato_doc_contratto_id = <id_cessato>
- WHERE stato_doc_contratto_id = <id_attivo>
-   AND valido_al IS NOT NULL
-   AND valido_al < CURRENT_DATE;
-```
-
-L'UPDATE attraversa il guard transizione e lo soddisfa per
-costruzione (`valido_al < CURRENT_DATE` identica al WHERE).
+* **Dall'operatore**: [`vendite.fn_cessa_contratto`](/dbzero/vendite/manual/fn_cessa_contratto)
+  con la data di fine. Oggi → `CESSATO` subito; futura → **cessazione programmata**, si scrive
+  solo `valido_al` e il contratto resta ATTIVO; passata → rifiutata
+  (`E_CONTRATTO_VALIDO_AL_RETROATTIVO`). Chiede l'azione `emetti_contratto`.
+* **Alla scadenza**: [`vendite.fn_cessa_contratti_scaduti`](/dbzero/vendite/manual/fn_cessa_contratti_scaduti),
+  chiamata dalla chiusura per scadenza (`dbops.fn_apply_chiusura_scadenze`, job
+  `chiusura_scadenze_daily`), cessa uno per uno, dalla scrittura comune del modello del
+  documento, i contratti ATTIVO con `valido_al` prima di oggi.
+* Finché il contratto è ATTIVO `valido_al` si può ancora spostare (o togliere): se un canone
+  anticipato è già stato addebitato oltre la data nuova, il push storna o riaddebita la
+  differenza ([guida dei contratti §4-bis.4](/guide/gestione-contratti#4-bis4-la-cessazione-e-gli-storni)).
 
 **Semantica `valido_al`** (importante per UX):
 
-* `valido_al = oggi` → contratto ancora ATTIVO oggi (ultimo giorno **incluso**); cessazione scatta dalle 00:05 di domani.
+* `valido_al = oggi` → l'ultimo giorno è **incluso**. Scritta oggi da `fn_cessa_contratto` il contratto passa subito a CESSATO; una cessazione programmata che arriva a oggi la chiude il job di domani.
 * `valido_al = ieri` → contratto cessato; il job notturno gia' scattato lo ha portato a CESSATO.
 * `valido_al = data_futura` → cessazione **programmata**; il contratto resta ATTIVO fino al giorno seguente la data, dove il job lo chiude automaticamente.
 
-**Effetto pratico**: l'utente programma `valido_al` (PATCH) senza
+**Effetto pratico**: l'utente programma la fine con `fn_cessa_contratto` a una data futura, senza
 toccare lo stato. Il job allinea lo stato `CESSATO` quando la
 finestra e' effettivamente scaduta. Il principio fail-safe garantisce
 che, anche se il job non scatta, la logica operativa resta corretta

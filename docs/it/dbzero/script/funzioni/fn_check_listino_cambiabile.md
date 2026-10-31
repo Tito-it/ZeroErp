@@ -67,14 +67,14 @@ BEGIN
 
     IF p_documento = 'CONTRATTO' THEN
         SELECT count(*),
-               count(*) FILTER (WHERE r.tipo_eccezione IN ('OVERRIDE', 'ESCLUSIONE'))
+               count(*) FILTER (WHERE r.tipo_eccezione IN ('OVERRIDE', 'ESCLUSIONE', 'ADESIONE'))
           INTO v_righe, v_eccezioni
           FROM vendite.contratti_righe r
          WHERE r.contratto_id = p_documento_id
            AND r.attivo IS TRUE;
     ELSE
         SELECT count(*),
-               count(*) FILTER (WHERE r.tipo_eccezione IN ('OVERRIDE', 'ESCLUSIONE'))
+               count(*) FILTER (WHERE r.tipo_eccezione IN ('OVERRIDE', 'ESCLUSIONE', 'ADESIONE'))
           INTO v_righe, v_eccezioni
           FROM vendite.offerte_commerciali_eccezioni r
          WHERE r.offerta_id = p_documento_id

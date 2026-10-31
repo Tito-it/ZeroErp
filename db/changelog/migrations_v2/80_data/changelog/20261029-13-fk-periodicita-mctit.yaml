@@ -1,0 +1,100 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE RIGHE DI CONTRATTO, OFFERTA E LISTINO SI LEGANO AL VOCABOLARIO DELLA PERIODICITA'
+#   vendite.contratti_righe.periodicita               -> config.periodicita(codice)
+#   vendite.offerte_commerciali_eccezioni.periodicita -> config.periodicita(codice)
+#   vendite.listini_righe.periodicita                 -> config.periodicita(codice)
+#   Brief: brief-db-contratto-righe-periodiche-in-commessa §6.5 (Lotto 1)
+#
+# -- PERCHE' IN 80_data E NON IN 00_schema ---------------------------------
+#   La FK punta a righe di seed (20261029-12): in 00_schema il vocabolario e'
+#   vuoto. Forma di 20261007-54.
+#
+# -- I VALORI GIA' SCRITTI ---------------------------------------------------
+#   Fino a qui periodicita era testo libero. Un valore fuori vocabolario ferma
+#   l'apply sulla FK (fail-fast): sono dati da correggere, non da tradurre in
+#   silenzio. Su dbdev (2026-10-29, fatto datato) la colonna e' vuota su tutte
+#   le righe di contratto e offerta; listini_righe.periodicita nasce col -11.
+#
+# -- LA FORMA -----------------------------------------------------------------
+#   ON UPDATE / ON DELETE RESTRICT: i codici non si rinominano e una periodicita'
+#   in uso non si cancella. Indici delle FK: policy opt-in, nessuna query entra
+#   dal vocabolario verso le righe. I COMMENT delle due colonne gemelle, che
+#   elencavano i valori, rimandano al vocabolario.
+#   ⚠️ Che la periodicita' sia OBBLIGATORIA su una riga a canone non e' qui: il
+#   frontend oggi non la manda, e l'obbligo arriva col lotto dell'ADESIONE,
+#   insieme al default dalla riga di listino e al passaggio BE/FE (brief §6.5).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261029-13-fk-periodicita-mctit.yaml
+
+  - changeSet:
+      id: 20261029-13-fk-periodicita
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        FK periodicita da vendite.contratti_righe, vendite.offerte_commerciali_eccezioni e
+        vendite.listini_righe su config.periodicita(codice). In 80_data perche' il vocabolario
+        nasce dal seed 20261029-12. Brief: brief-db-contratto-righe-periodiche-in-commessa §6.5.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: periodicita
+            - columnExists:
+                schemaName: vendite
+                tableName: listini_righe
+                columnName: periodicita
+            - sqlCheck:
+                expectedResult: "0"
+                sql: |
+                  SELECT count(*) FROM pg_catalog.pg_constraint c
+                   WHERE c.conname IN ('fk_contratti_righe_periodicita',
+                                       'fk_offerte_commerciali_eccezioni_periodicita',
+                                       'fk_listini_righe_periodicita');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.contratti_righe
+                  ADD CONSTRAINT fk_contratti_righe_periodicita
+                  FOREIGN KEY (periodicita)
+                  REFERENCES config.periodicita (codice)
+                  ON UPDATE RESTRICT ON DELETE RESTRICT;
+
+              ALTER TABLE vendite.offerte_commerciali_eccezioni
+                  ADD CONSTRAINT fk_offerte_commerciali_eccezioni_periodicita
+                  FOREIGN KEY (periodicita)
+                  REFERENCES config.periodicita (codice)
+                  ON UPDATE RESTRICT ON DELETE RESTRICT;
+
+              ALTER TABLE vendite.listini_righe
+                  ADD CONSTRAINT fk_listini_righe_periodicita
+                  FOREIGN KEY (periodicita)
+                  REFERENCES config.periodicita (codice)
+                  ON UPDATE RESTRICT ON DELETE RESTRICT;
+
+              COMMENT ON COLUMN vendite.contratti_righe.periodicita IS
+                  'Ogni quanto si addebita il canone della riga: un codice di config.periodicita (FK fk_contratti_righe_periodicita, 20261029-13). NULL sulle righe senza canone. Brief: brief-db-contratto-righe-periodiche-in-commessa §6.2.';
+
+              COMMENT ON COLUMN vendite.offerte_commerciali_eccezioni.periodicita IS
+                  'Come vendite.contratti_righe.periodicita: un codice di config.periodicita (FK fk_offerte_commerciali_eccezioni_periodicita, 20261029-13). Il passaggio offerta → contratto la copia.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.contratti_righe DROP CONSTRAINT IF EXISTS fk_contratti_righe_periodicita;
+              ALTER TABLE vendite.offerte_commerciali_eccezioni DROP CONSTRAINT IF EXISTS fk_offerte_commerciali_eccezioni_periodicita;
+              ALTER TABLE vendite.listini_righe DROP CONSTRAINT IF EXISTS fk_listini_righe_periodicita;

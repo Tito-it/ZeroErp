@@ -1,0 +1,81 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UN'IMPOSTA NON E' UN CANONE, L'ONERE NON E' A DURATA — config.listini_tipologie_erogazioni
+#   Brief: brief-db-contratto-righe-periodiche-in-commessa §6.9 (Lotto 2),
+#   decisione di Tid del 2026-10-29 (revoca della riga IMPOSTA · CANONE/FISSA
+#   della tabella §C.5.2 di brief-db-offerta-emissione-ed-erogazione, 2026-10-07)
+#
+#   La tipologia IMPOSTA si eroga solo a consumo (CONSUMO/LETTURE, il suo
+#   default); ONERE_SISTEMA tiene CANONE/FISSA ma non la durata (Tid, stesso
+#   giorno: «non e' detto che sia un canone»). Le combinazioni escono dal CSV
+#   — IMPOSTA · CANONE/FISSA (id 5), e le due CANONE/DURATA che il primo giro del
+#   Lotto 2 aveva messo su IMPOSTA (id 15) e ONERE_SISTEMA (id 16), applicate su
+#   dbdev il 2026-10-29 prima della decisione —, escono dal CSV
+#   (80_data/sql/config/listini_tipologie_erogazioni.csv) e da qui dal database:
+#   il mirror loadUpdateData (20261007-53) aggiorna e inserisce, non cancella.
+#   Da zero il CSV non la crea e il DELETE non trova niente. Forma di 20261021-51.
+#
+#   Su dbdev (2026-10-29, fatto datato) nessun articolo e' di tipologia IMPOSTA
+#   e nessuna riga di documento la usa a canone. preCondition HALT sulle righe:
+#   una riga a canone su un articolo IMPOSTA resterebbe fuori perimetro, e
+#   l'UPDATE dopo la rifiuterebbe senza dire perche'.
+#
+# Ritorno indietro: la riga, col suo id.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261029-34-delete-tipologie-erogazioni-imposta-canone-mctit.yaml
+
+  - changeSet:
+      id: 20261029-34-delete-tipologie-erogazioni-imposta-canone
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config.listini_tipologie_erogazioni: IMPOSTA non ammette piu' il canone, ONERE_SISTEMA non
+        ammette la durata (Tid, 2026-10-29). Brief: brief-db-contratto-righe-periodiche-in-commessa §6.9 (Lotto 2).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT (SELECT count(*) FROM vendite.contratti_righe r
+                        JOIN catalogo.articoli a ON a.id = r.articolo_id
+                        JOIN config.listini_tipologie t ON t.id = a.listino_tipologia_id
+                       WHERE (t.codice = 'IMPOSTA' AND r.tipo_erogazione = 'CANONE')
+                          OR (t.codice = 'ONERE_SISTEMA' AND r.fonte_quantita_attesa = 'DURATA'))
+                   + (SELECT count(*) FROM vendite.offerte_commerciali_eccezioni r
+                        JOIN catalogo.articoli a ON a.id = r.articolo_id
+                        JOIN config.listini_tipologie t ON t.id = a.listino_tipologia_id
+                       WHERE (t.codice = 'IMPOSTA' AND r.tipo_erogazione = 'CANONE')
+                          OR (t.codice = 'ONERE_SISTEMA' AND r.fonte_quantita_attesa = 'DURATA'));
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DELETE FROM config.listini_tipologie_erogazioni te
+               USING config.listini_tipologie t
+               WHERE t.id = te.tipologia_id
+                 AND ((t.codice = 'IMPOSTA' AND te.tipo_erogazione = 'CANONE')
+                      OR (t.codice = 'ONERE_SISTEMA' AND te.tipo_erogazione = 'CANONE'
+                          AND te.fonte_quantita_attesa = 'DURATA'));
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              INSERT INTO config.listini_tipologie_erogazioni (id, tipologia_id, tipo_erogazione, fonte_quantita_attesa, e_default)
+              SELECT v.id, t.id, 'CANONE', v.fonte, false
+                FROM (VALUES (5, 'IMPOSTA', 'FISSA'), (15, 'IMPOSTA', 'DURATA'),
+                             (16, 'ONERE_SISTEMA', 'DURATA')) v(id, tipologia, fonte)
+                JOIN config.listini_tipologie t ON t.codice = v.tipologia
+              ON CONFLICT (id) DO NOTHING;

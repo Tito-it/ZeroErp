@@ -1,6 +1,6 @@
 # Guida — Gestione Listini e Pricing
 
-> **Ultimo aggiornamento**: 28 ottobre 2026
+> **Ultimo aggiornamento**: 31 ottobre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend/frontend, DBA
 >
@@ -61,6 +61,15 @@ Un listino contiene:
 
 * **Versioni** (`listini_versioni`) — finestre temporali con stato BOZZA → ATTIVA → CHIUSA. Per ogni data al più una versione in vigore (ATTIVA o CHIUSA) per listino (vincolo `EXCLUDE`).
 * **Righe** (`listini_righe`) — per ogni versione: (articolo, uom) → prezzo. Forma pura, senza dimensioni di scope.
+  Una voce a canone porta anche la **periodicità** (mensile … annuale):
+  * su una voce di tipologia **quota fissa** è il ritmo con cui **ogni contratto** del listino la
+    paga, da sé, senza bisogno di una riga (salvo un'eccezione che la cambia o la toglie);
+  * sulle altre voci è la periodicità che il contratto (o l'offerta) **propone** quando il cliente
+    la prende con un'adesione.
+
+  Una quota fissa senza periodicità non si addebita, e i contratti del listino compaiono nel
+  Backlog come anomalia. Come il contratto addebita, lo spiega la
+  [guida dei contratti §4-bis](/guide/gestione-contratti#4-bis-come-il-contratto-si-addebita-una-tantum-e-canoni).
 
 ⭐ **Come finisce un listino.** Dipende dalla sua **storia**: un listino ha storia se ha
 almeno una versione che è stata attivata (oggi ATTIVA o CHIUSA, anche spenta); una bozza
@@ -121,15 +130,12 @@ Vincolo `EXCLUDE`: non possono esistere due righe attive sovrapposte per la stes
 
 ### 2.4 Contratto
 
-È l'**accordo individuale** tra cliente ed emittente. Tre modalità possibili:
-
-| Modalità                            | Listino | Variazione globale | Righe override                  | Quando usarla                             |
-| ----------------------------------- | ------- | ------------------ | ------------------------------- | ----------------------------------------- |
-| **A** — listino + variazione        | sì      | sì                 | vuote o parziali                | "Listino standard 2026 scontato 10%"      |
-| **B** — listino con override mirati | sì      | sì o no            | alcune righe con prezzo forzato | "Listino standard, ma art X a €50 fisso"  |
-| **C** — interamente negoziato       | no      | no                 | tutte le righe con prezzo       | Grande cliente con condizioni 100% custom |
-
-Un trigger DB blocca la transizione DRAFT → ATTIVO se la modalità C ha righe vuote (errore `E_CONTRATTO_MODALITA_C_RIGHE_INCOMPLETE`).
+È l'**accordo individuale** tra cliente ed emittente: un listino di partenza (facoltativo), una
+variazione globale (facoltativa) e le **eccezioni** di riga — un prezzo del cliente (OVERRIDE), un
+articolo tolto (ESCLUSIONE), uno fuori listino (AGGIUNTA), uno del listino che il cliente prende
+(ADESIONE). Senza listino tutte le righe sono AGGIUNTA. Le vecchie modalità A/B/C non esistono più:
+la forma del contratto si legge dai dati (vedi la
+[guida dei contratti §1.1](/guide/gestione-contratti#11-il-modello-unificato-post-refactor-maggio-2026)).
 
 ### 2.5 Promo
 

@@ -1,0 +1,107 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'ADESIONE NON HA UN PREZZO SUO, ED E' UNA SOLA PER ARTICOLO
+#   chk_contrighe_prezzo_per_tipo_eccezione / chk_offerte_eccezioni_prezzo_per_tipo_eccezione
+#   uq_contrighe_one_eccezione_per_articolo / uq_offerte_eccezioni_one_eccezione_per_articolo
+#   Brief: brief-db-contratto-righe-periodiche-in-commessa §6.2, §6.10 (Lotto 4), G-0-ter
+#
+# ── COSA FA ──────────────────────────────────────────────────────
+#   · Il prezzo per tipo: ADESIONE senza prezzo, come l'ESCLUSIONE. Il prezzo e'
+#     quello del listino con la variazione globale: lo dice il resolver
+#     (20261029-38), mai la riga. Prima il CHECK non conosceva il valore, e una
+#     riga ADESIONE non sarebbe passata in nessuna delle due meta'.
+#   · L'unicita' per articolo: una riga di listino ha al piu' UNA fra OVERRIDE,
+#     ESCLUSIONE e ADESIONE (un prezzo suo, o non si vende, o lo prende). L'indice
+#     parziale si allarga ad ADESIONE, stesso nome (la traduzione dell'errore va
+#     per nome). L'AGGIUNTA ha il suo, e vive fuori listino: le due non si
+#     incontrano (fn_check_articolo_riga_su_contesto, motivi 5a/5b).
+#
+# ── PERCHE' QUI ──────────────────────────────────────────────────
+#   Dopo il 20261029-36 (il valore nuovo si usa solo dopo il COMMIT che lo
+#   aggiunge). Nessun dato da sistemare: nessuna riga e' ADESIONE.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261029-37-alter-righe-adesione-prezzo-e-unicita-mctit.yaml
+
+  - changeSet:
+      id: 20261029-37-alter-righe-adesione-prezzo-e-unicita
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Righe di contratto e offerta: ADESIONE senza prezzo (CHECK) e una sola fra OVERRIDE,
+        ESCLUSIONE e ADESIONE per articolo (indice). Brief:
+        brief-db-contratto-righe-periodiche-in-commessa §6.10 (Lotto 4).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.contratti_righe
+                  DROP CONSTRAINT chk_contrighe_prezzo_per_tipo_eccezione,
+                  ADD CONSTRAINT chk_contrighe_prezzo_per_tipo_eccezione CHECK (
+                      (tipo_eccezione IN ('ESCLUSIONE'::vendite.tipo_eccezione_contratto,
+                                          'ADESIONE'::vendite.tipo_eccezione_contratto)
+                       AND prezzo_unitario IS NULL)
+                      OR (tipo_eccezione IN ('OVERRIDE'::vendite.tipo_eccezione_contratto,
+                                             'AGGIUNTA'::vendite.tipo_eccezione_contratto)
+                          AND prezzo_unitario IS NOT NULL));
+
+              ALTER TABLE vendite.offerte_commerciali_eccezioni
+                  DROP CONSTRAINT chk_offerte_eccezioni_prezzo_per_tipo_eccezione,
+                  ADD CONSTRAINT chk_offerte_eccezioni_prezzo_per_tipo_eccezione CHECK (
+                      (tipo_eccezione IN ('ESCLUSIONE'::vendite.tipo_eccezione_contratto,
+                                          'ADESIONE'::vendite.tipo_eccezione_contratto)
+                       AND prezzo_unitario IS NULL)
+                      OR (tipo_eccezione IN ('OVERRIDE'::vendite.tipo_eccezione_contratto,
+                                             'AGGIUNTA'::vendite.tipo_eccezione_contratto)
+                          AND prezzo_unitario IS NOT NULL));
+
+              COMMENT ON CONSTRAINT chk_contrighe_prezzo_per_tipo_eccezione ON vendite.contratti_righe IS
+                  'Il prezzo della riga per tipo: ESCLUSIONE e ADESIONE senza prezzo (l''ADESIONE prende quello del listino con la variazione globale, dal resolver); OVERRIDE e AGGIUNTA col prezzo. Rev 2026-10-29 (20261029-37, G-0-ter): ADESIONE.';
+
+              COMMENT ON CONSTRAINT chk_offerte_eccezioni_prezzo_per_tipo_eccezione ON vendite.offerte_commerciali_eccezioni IS
+                  'Come chk_contrighe_prezzo_per_tipo_eccezione su vendite.contratti_righe: le due tabelle sono gemelle.';
+
+              DROP INDEX vendite.uq_contrighe_one_eccezione_per_articolo;
+              CREATE UNIQUE INDEX uq_contrighe_one_eccezione_per_articolo
+                  ON vendite.contratti_righe (contratto_id, articolo_id)
+                  WHERE tipo_eccezione IN ('OVERRIDE'::vendite.tipo_eccezione_contratto,
+                                           'ESCLUSIONE'::vendite.tipo_eccezione_contratto,
+                                           'ADESIONE'::vendite.tipo_eccezione_contratto);
+
+              DROP INDEX vendite.uq_offerte_eccezioni_one_eccezione_per_articolo;
+              CREATE UNIQUE INDEX uq_offerte_eccezioni_one_eccezione_per_articolo
+                  ON vendite.offerte_commerciali_eccezioni (offerta_id, articolo_id)
+                  WHERE tipo_eccezione IN ('OVERRIDE'::vendite.tipo_eccezione_contratto,
+                                           'ESCLUSIONE'::vendite.tipo_eccezione_contratto,
+                                           'ADESIONE'::vendite.tipo_eccezione_contratto);
+
+              COMMENT ON INDEX vendite.uq_contrighe_one_eccezione_per_articolo IS
+                  'Una riga di listino ha al più una fra OVERRIDE, ESCLUSIONE e ADESIONE sullo stesso contratto. L''AGGIUNTA (fuori listino) ha uq_contrighe_one_aggiunta_per_articolo. Rev 2026-10-29 (20261029-37): ADESIONE.';
+
+              COMMENT ON INDEX vendite.uq_offerte_eccezioni_one_eccezione_per_articolo IS
+                  'Come uq_contrighe_one_eccezione_per_articolo, sull''offerta.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.contratti_righe
+                  DROP CONSTRAINT chk_contrighe_prezzo_per_tipo_eccezione,
+                  ADD CONSTRAINT chk_contrighe_prezzo_per_tipo_eccezione CHECK ((((tipo_eccezione = 'ESCLUSIONE'::vendite.tipo_eccezione_contratto) AND (prezzo_unitario IS NULL)) OR ((tipo_eccezione = ANY (ARRAY['OVERRIDE'::vendite.tipo_eccezione_contratto, 'AGGIUNTA'::vendite.tipo_eccezione_contratto])) AND (prezzo_unitario IS NOT NULL))));
+              ALTER TABLE vendite.offerte_commerciali_eccezioni
+                  DROP CONSTRAINT chk_offerte_eccezioni_prezzo_per_tipo_eccezione,
+                  ADD CONSTRAINT chk_offerte_eccezioni_prezzo_per_tipo_eccezione CHECK ((((tipo_eccezione = 'ESCLUSIONE'::vendite.tipo_eccezione_contratto) AND (prezzo_unitario IS NULL)) OR ((tipo_eccezione = ANY (ARRAY['OVERRIDE'::vendite.tipo_eccezione_contratto, 'AGGIUNTA'::vendite.tipo_eccezione_contratto])) AND (prezzo_unitario IS NOT NULL))));
+              DROP INDEX vendite.uq_contrighe_one_eccezione_per_articolo;
+              CREATE UNIQUE INDEX uq_contrighe_one_eccezione_per_articolo ON vendite.contratti_righe USING btree (contratto_id, articolo_id) WHERE (tipo_eccezione = ANY (ARRAY['OVERRIDE'::vendite.tipo_eccezione_contratto, 'ESCLUSIONE'::vendite.tipo_eccezione_contratto]));
+              DROP INDEX vendite.uq_offerte_eccezioni_one_eccezione_per_articolo;
+              CREATE UNIQUE INDEX uq_offerte_eccezioni_one_eccezione_per_articolo ON vendite.offerte_commerciali_eccezioni USING btree (offerta_id, articolo_id) WHERE (tipo_eccezione = ANY (ARRAY['OVERRIDE'::vendite.tipo_eccezione_contratto, 'ESCLUSIONE'::vendite.tipo_eccezione_contratto]));

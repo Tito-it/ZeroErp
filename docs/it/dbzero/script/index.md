@@ -359,6 +359,7 @@ search:
 - [trgfn_qta_from_operativa](funzioni/trgfn_qta_from_operativa.md) — Calcolare e garantire la **coerenza della quantità in UoM base (`NEW.qta`)** a partire dalla **sorgente operativa** (`NEW.uom_operativa_id`, `NEW.qta_operativa`) sulle righe documentali (es. `vendite.ddt_righe`). La funzione:
 - [trgfn_righe_default_erogazione_da_articolo](funzioni/trgfn_righe_default_erogazione_da_articolo.md)
 - [trgfn_righe_default_fonte_qta](funzioni/trgfn_righe_default_fonte_qta.md) — (rev 2026-08-21)
+- [trgfn_righe_default_periodicita_da_listino](funzioni/trgfn_righe_default_periodicita_da_listino.md)
 - [trgfn_righe_guard_articolo_ammesso](funzioni/trgfn_righe_guard_articolo_ammesso.md) — (latest review 2026-10-14, brief-db-articoli-ammessi-per-documento A-2, A-6, D-6; Lotti 3b e 3c, `20261013-56/-57/-61`; Lotto 4, `20261014-05`: la promo)
 - [trgfn_righe_guard_erogazione_obbligatoria](funzioni/trgfn_righe_guard_erogazione_obbligatoria.md) — (funzione nata il 2026-10-04, `20261004-31`; trigger `20261004-32`)
 - [trgfn_righe_guard_erogazione_perimetro](funzioni/trgfn_righe_guard_erogazione_perimetro.md)

@@ -75,6 +75,7 @@ BEGIN
             CASE
                 WHEN e.tipo_eccezione = 'OVERRIDE'   THEN 'OVERRIDE'
                 WHEN e.tipo_eccezione = 'ESCLUSIONE' THEN 'ESCLUSIONE'
+                WHEN e.tipo_eccezione = 'ADESIONE'   THEN 'ADESIONE'
                 ELSE                                      'DA_LISTINO'
             END::varchar,
             CASE
@@ -95,7 +96,11 @@ BEGIN
                 -- (guard _a05_ sulla riga, sui due documenti).
                 WHEN e.tipo_eccezione = 'ESCLUSIONE'
                     THEN ARRAY['RIPRISTINA_ARTICOLO']
-                ELSE ARRAY['SOVRASCRIVI_PREZZO', 'ESCLUDI']
+                -- rev 2026-10-29 (G-0-ter): l'ADESIONE si modifica (quantita',
+                -- periodicita') o si toglie; la riga di listino si puo' aderire.
+                WHEN e.tipo_eccezione = 'ADESIONE'
+                    THEN ARRAY['MODIFICA', 'RIMUOVI_ADESIONE']
+                ELSE ARRAY['SOVRASCRIVI_PREZZO', 'ESCLUDI', 'ADERISCI']
             END,
             -- Solo dove «Escludi» e' un'azione della riga (dal listino).
             CASE
@@ -113,7 +118,8 @@ BEGIN
                  ON e.articolo_id            = base.articolo_id
                 AND e.tipo_eccezione         IN (
                         'OVERRIDE'::vendite.tipo_eccezione_contratto,
-                        'ESCLUSIONE'::vendite.tipo_eccezione_contratto
+                        'ESCLUSIONE'::vendite.tipo_eccezione_contratto,
+                        'ADESIONE'::vendite.tipo_eccezione_contratto
                     )
                 AND COALESCE(e.attivo, TRUE) = TRUE;
     END IF;

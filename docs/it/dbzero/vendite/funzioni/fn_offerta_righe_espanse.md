@@ -80,7 +80,9 @@ BEGIN
             AND ecc.articolo_id           = base.articolo_id
             AND ecc.tipo_eccezione        IN (
                     'OVERRIDE'::vendite.tipo_eccezione_contratto,
-                    'ESCLUSIONE'::vendite.tipo_eccezione_contratto
+                    'ESCLUSIONE'::vendite.tipo_eccezione_contratto,
+                    -- rev 2026-10-29 (G-0-ter): l'ADESIONE porta la sua quantita'.
+                    'ADESIONE'::vendite.tipo_eccezione_contratto
                 )
             AND COALESCE(ecc.attivo, TRUE) = TRUE
      WHERE ecc.tipo_eccezione IS DISTINCT FROM 'ESCLUSIONE'::vendite.tipo_eccezione_contratto;
