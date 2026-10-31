@@ -18,14 +18,22 @@ Approfondimento funzioni:
 
 ### 🎯 Scopo Principale
 
-(rev 2026-09-24 — MOTIVO 2, i prezzi non autorizzati; funzione nata il 2026-08-29)
+(rev 2026-10-31 — MOTIVO 4, la validità già finita; rev 2026-09-24 — MOTIVO 2, i prezzi
+non autorizzati; funzione nata il 2026-08-29)
 
-Elenca i motivi che impediscono di **emettere** un preventivo. Oggi ne ha due, in
+Elenca i motivi che impediscono di **emettere** un preventivo. Oggi ne ha quattro, in
 quest'ordine:
 
 1. una riga attiva, con quantità e prezzo, che non porta l'aliquota;
 2. un prezzo che nessuno ha autorizzato — in attesa di approvazione o rifiutato — su una
-   riga o un componente BoM attivi (rev 2026-09-24, vedi la sezione in fondo).
+   riga o un componente BoM attivi (rev 2026-09-24, vedi la sezione in fondo);
+3. un indirizzo d'anagrafica che non è del cliente del preventivo (rev 2026-10-11);
+4. la validità già finita: «Valido al» è prima di oggi (rev 2026-10-31,
+   `E_PREV_EMISSIONE_VALIDITA_SCADUTA`, col campo `validita_al`). Un preventivo emesso così
+   arriverebbe al cliente scaduto: non potrebbe accettarlo, e il job delle scadenze lo
+   chiuderebbe la notte dopo. In bozza la data si corregge. Lo stesso confronto
+   dell'accettazione e del job: «Valido al» è l'ultimo giorno valido, e senza data il
+   preventivo non scade. Brief `brief-db-scadenza-preventivi` (E-4 di Tid).
 
 Terzo gemello del cancello «una riga valorizzata porta l'aliquota», dopo il DDT
 (2026-08-28) e l'ordine (2026-08-29).

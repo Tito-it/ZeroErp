@@ -1,0 +1,143 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UN PREVENTIVO CON LA VALIDITA' FINITA NON SI ACCETTA
+#   script.fn_check_preventivo_accettabile: i motivi che impediscono
+#   l'ACCETTAZIONE di un preventivo. Gemella di
+#   script.fn_check_preventivo_emettibile.
+#   Brief: brief-db-scadenza-preventivi §8.1, D-2 (E-2 di Tid, 2026-10-31).
+#
+# ── PERCHE' UNA CHECK ───────────────────────────────────────────────
+#   La regola deve anche spegnere «Accetta» nella capability (linee guida
+#   SQL §5, «la domanda che viene prima»): il predicato sta qui, il guard
+#   di transizione solleva il primo motivo e la capability li mostra. I
+#   prezzi non autorizzati, che guard e capability chiamavano ciascuno per
+#   se', diventano il motivo 2 di questa: una lista sola dei motivi
+#   dell'accettazione, come per l'emissione.
+#
+# ── LA DATA ENTRA COME PARAMETRO ────────────────────────────────────
+#   Il guard e' BEFORE ROW sulla testata che sta cambiando: rileggere
+#   validita_al per id leggerebbe la riga di ieri. Il guard passa
+#   NEW.validita_al, la capability p.validita_al. Nessun DEFAULT: NULL e'
+#   un valore del modello («non scade»), e dimenticare l'argomento deve non
+#   compilare.
+#
+# ── IL CONFRONTO ────────────────────────────────────────────────────
+#   validita_al e' l'ultimo giorno valido (linee guida SQL §7c, punto 7):
+#   la validita' e' finita se validita_al < script.fn_data_operativa(), lo
+#   stesso confronto del job delle scadenze. Il giorno di validita_al si
+#   accetta ancora.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261031-62-create-fn-check-preventivo-accettabile-mctit.yaml
+
+  - changeSet:
+      id: 20261031-62-create-fn-check-preventivo-accettabile
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_check_preventivo_accettabile(id, validita_al): motivo 1 E_PREV_VALIDITA_SCADUTA (la
+        validita' e' finita), motivo 2 i prezzi non autorizzati (script.fn_check_prezzi_autorizzati).
+        Funzione pura, consumatori il guard di transizione e la capability. Brief:
+        brief-db-scadenza-preventivi §8.1 (D-2).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "2"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname IN ('fn_check_prezzi_autorizzati', 'fn_data_operativa');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION script.fn_check_preventivo_accettabile(
+                  p_preventivo_id vendite.preventivi.id%TYPE,
+                  p_validita_al   vendite.preventivi.validita_al%TYPE)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: elencare i motivi che impediscono l'ACCETTAZIONE di un
+              --   preventivo. Funzione PURA (fn_check_*): non solleva, non
+              --   scrive. Consumatori: vendite.trgfn_preventivi_guard_transizione
+              --   (che solleva il codice del primo motivo) e
+              --   script.fn_available_actions_preventivo (che spegne «Accetta»).
+              --   Gemella di fn_check_preventivo_emettibile. Vedi l'intestazione
+              --   del changeSet 20261031-62.
+              -- Ritorna: [] se accettabile; altrimenti array ORDINATO di
+              --   {codice, reason, reason_key, dettaglio, valori}.
+              DECLARE
+                  v_motivi jsonb := '[]'::jsonb;
+                  v_uid    vendite.preventivi.uid%TYPE;
+                  v_numero vendite.preventivi.numero%TYPE;
+              BEGIN
+                  IF p_preventivo_id IS NULL OR p_preventivo_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_check_preventivo_accettabile', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'preventivo_id', 'valore', p_preventivo_id),
+                          NULL::uuid, 'preventivo_id obbligatorio (>0)');
+                  END IF;
+
+                  -- `p.numero` serve a COMPORRE la frase, non a decidere.
+                  SELECT p.uid, p.numero INTO v_uid, v_numero
+                    FROM vendite.preventivi p
+                   WHERE p.id = p_preventivo_id;
+
+                  IF v_uid IS NULL THEN
+                      RETURN v_motivi;   -- preventivo inesistente: decide il chiamante
+                  END IF;
+
+                  -- MOTIVO 1 — LA VALIDITA' E' FINITA (E-2 di Tid, 2026-10-31): il
+                  --   cliente non puo' piu' accettare un'offerta scaduta, anche se il
+                  --   job delle scadenze non e' ancora passato a portarla a SCADUTO.
+                  -- ⭐ Il confronto e' quello del job (vendite.fn_chiudi_preventivi_scaduti):
+                  --   validita_al e' l'ultimo giorno valido, scade dal giorno dopo.
+                  -- ⚠️ NULL non scade mai: e' un caso del modello, non un'eccezione.
+                  -- ⛔ Nessuna chiave `campo`: la richiesta e' «accetta», e validita_al
+                  --   fuori bozza non si corregge. La strada e' la revisione.
+                  IF p_validita_al IS NOT NULL
+                     AND p_validita_al < (SELECT script.fn_data_operativa()) THEN
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_PREV_VALIDITA_SCADUTA',
+                          'reason',     'VALIDITA_SCADUTA',
+                          'reason_key', 'vendite.preventivi.azione_reason.validita_scaduta',
+                          'dettaglio',  jsonb_build_object('validita_al', p_validita_al),
+                          'valori',     jsonb_build_array(COALESCE(v_numero, p_preventivo_id::text),
+                                                          to_char(p_validita_al, 'DD/MM/YYYY')));
+                  END IF;
+
+                  -- MOTIVO 2 — PREZZI NON AUTORIZZATI: un prezzo in attesa o rifiutato
+                  --   non diventa un impegno ACCETTATO (brief-db-preventivi-congelamento-
+                  --   pricing, D-1/D-2). Il predicato sta nel building block comune ai
+                  --   documenti di vendita; prima lo chiamavano guard e capability
+                  --   ciascuno per se'. Dopo la validita': un prezzo si aspetta, una
+                  --   validita' finita non torna.
+                  v_motivi := v_motivi
+                           || script.fn_check_prezzi_autorizzati('vendite.preventivi'::regclass,
+                                                                 p_preventivo_id);
+
+                  RETURN v_motivi;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_check_preventivo_accettabile(vendite.preventivi.id%TYPE, vendite.preventivi.validita_al%TYPE)
+              IS 'Funzione PURA (fn_check_*): i motivi che impediscono l''ACCETTAZIONE di un preventivo, [] se accettabile; array ordinato di {codice, reason, reason_key, dettaglio, valori}. Motivo 1 (brief-db-scadenza-preventivi, E-2 di Tid 2026-10-31): la validita'' e'' finita, p_validita_al < script.fn_data_operativa() (validita_al e'' l''ultimo giorno valido, lo stesso confronto del job delle scadenze; NULL non scade) -> E_PREV_VALIDITA_SCADUTA, reason VALIDITA_SCADUTA, reason_key vendite.preventivi.azione_reason.validita_scaduta, valori numero e data. Motivo 2: i prezzi non autorizzati, da script.fn_check_prezzi_autorizzati (prima la chiamavano guard e capability ciascuno per se''). ⭐ p_validita_al e'' un PARAMETRO senza default: il guard vendite.trgfn_preventivi_guard_transizione e'' BEFORE ROW sulla testata e passa NEW.validita_al (rileggerla per id leggerebbe la riga di prima); la capability script.fn_available_actions_preventivo passa p.validita_al. Preventivo inesistente: [], decide il chiamante; id NULL o <= 0: E_PARAMETRO_INVALIDO. Gemella di script.fn_check_preventivo_emettibile. Brief: brief-db-scadenza-preventivi §8.1 (D-2).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_check_preventivo_accettabile(vendite.preventivi.id%TYPE, vendite.preventivi.validita_al%TYPE);

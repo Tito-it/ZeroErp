@@ -1,8 +1,8 @@
-id,codice_interno,codice,descrizione,attivo,ordine,meta,data_insert,user_insert,data_update,user_update,is_abortito,fase,terminale,pdf_mode,pdf_allow_allegati,iniziale,emissione,accettazione
-1,DRAFT,DRAFT,Bozza,t,10,{},2025-09-15 16:46:46.709947+02,titodb,2026-01-16 17:38:32.346807+01,titodb,f,APERTO,f,PREVIEW,f,t,f,f
-2,EMESSO,EMESSO,Emesso,t,20,{},2025-09-15 16:46:46.709947+02,titodb,2026-01-16 17:38:32.346807+01,titodb,f,IN_ATTESA,f,ARCHIVE,f,f,t,f
-4,ACCETTATO,ACCETTATO,Accettato,t,40,{},2025-09-15 16:46:46.709947+02,titodb,2026-01-16 17:38:32.346807+01,titodb,f,IN_CORSO,f,ARCHIVE,f,f,f,t
-5,RIFIUTATO,RIFIUTATO,Rifiutato,t,50,"{""nessuna_azione_key"":""vendite.preventivi.stato_info.rifiutato""}",2025-09-15 16:46:46.709947+02,titodb,2026-01-16 17:38:32.346807+01,titodb,f,CHIUSO,t,ARCHIVE,f,f,f,f
-7,SCADUTO,SCADUTO,Scaduto,t,60,"{""nessuna_azione_key"":""vendite.preventivi.stato_info.scaduto""}",2025-09-15 16:46:46.709947+02,titodb,2026-01-16 17:38:32.346807+01,titodb,f,CHIUSO,t,ARCHIVE,f,f,f,f
-9,ANNULLATO,ANNULLATO,Annullato,t,70,"{""nessuna_azione_key"":""vendite.preventivi.stato_info.annullato""}",2026-04-03 00:00:00+02,SEED,2026-04-03 00:00:00+02,SEED,t,CHIUSO,t,ARCHIVE,f,f,f,f
-10,EVASO,EVASO,Evaso,t,45,"{""nessuna_azione_key"":""vendite.preventivi.stato_info.evaso""}",2026-05-10 00:00:00+02,SEED,2026-05-10 00:00:00+02,SEED,f,CHIUSO,t,ARCHIVE,f,f,f,f
+id,codice_interno,codice,descrizione,attivo,ordine,meta,data_insert,user_insert,data_update,user_update,is_abortito,fase,terminale,pdf_mode,pdf_allow_allegati,iniziale,emissione,accettazione,scadenza
+1,DRAFT,DRAFT,Bozza,t,10,{},2025-09-15 16:46:46.709947+02,titodb,2026-01-16 17:38:32.346807+01,titodb,f,APERTO,f,PREVIEW,f,t,f,f,f
+2,EMESSO,EMESSO,Emesso,t,20,{},2025-09-15 16:46:46.709947+02,titodb,2026-01-16 17:38:32.346807+01,titodb,f,IN_ATTESA,f,ARCHIVE,f,f,t,f,f
+4,ACCETTATO,ACCETTATO,Accettato,t,40,{},2025-09-15 16:46:46.709947+02,titodb,2026-01-16 17:38:32.346807+01,titodb,f,IN_CORSO,f,ARCHIVE,f,f,f,t,f
+5,RIFIUTATO,RIFIUTATO,Rifiutato,t,50,"{""nessuna_azione_key"":""vendite.preventivi.stato_info.rifiutato""}",2025-09-15 16:46:46.709947+02,titodb,2026-01-16 17:38:32.346807+01,titodb,f,CHIUSO,t,ARCHIVE,f,f,f,f,f
+7,SCADUTO,SCADUTO,Scaduto,t,60,"{""nessuna_azione_key"":""vendite.preventivi.stato_info.scaduto""}",2025-09-15 16:46:46.709947+02,titodb,2026-01-16 17:38:32.346807+01,titodb,f,CHIUSO,t,ARCHIVE,f,f,f,f,t
+9,ANNULLATO,ANNULLATO,Annullato,t,70,"{""nessuna_azione_key"":""vendite.preventivi.stato_info.annullato""}",2026-04-03 00:00:00+02,SEED,2026-04-03 00:00:00+02,SEED,t,CHIUSO,t,ARCHIVE,f,f,f,f,f
+10,EVASO,EVASO,Evaso,t,45,"{""nessuna_azione_key"":""vendite.preventivi.stato_info.evaso""}",2026-05-10 00:00:00+02,SEED,2026-05-10 00:00:00+02,SEED,f,CHIUSO,t,ARCHIVE,f,f,f,f,f

@@ -138,8 +138,9 @@ SELECT is(
                                THEN '(MORTO)' ELSE '' END,
                        ', ' ORDER BY r.nome_tabella)
        FROM dbops.automazione_chiusura_scadenze r WHERE r.attivo),
-    'contratti=vendite.fn_cessa_contratti_scaduti, listini_versioni=vendite.fn_chiudi_versioni_listino_scadute',
-    '4) il registro della chiusura per scadenza dichiara i due verbi, vivi');
+    'contratti=vendite.fn_cessa_contratti_scaduti, listini_versioni=vendite.fn_chiudi_versioni_listino_scadute, '
+    'preventivi=vendite.fn_chiudi_preventivi_scaduti',
+    '4) il registro della chiusura per scadenza dichiara i tre verbi, vivi');
 
 -- ============================================================
 -- 5-7) La fixture e la nascita

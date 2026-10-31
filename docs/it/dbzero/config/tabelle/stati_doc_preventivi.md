@@ -28,6 +28,7 @@
 | iniziale | boolean | NO | false |
 | emissione | boolean | NO | false |
 | accettazione | boolean | NO | false |
+| scadenza | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -38,6 +39,7 @@
 | CHECK | chk_stati_doc_preventivi_fase |  |
 | CHECK | chk_stati_doc_preventivi_iniziale_attivo |  |
 | CHECK | chk_stati_doc_preventivi_pdf_mode |  |
+| CHECK | chk_stati_doc_preventivi_scadenza_attivo |  |
 | CHECK | chk_stati_doc_preventivi_terminale_chiuso |  |
 | FOREIGN KEY | fk_stati_doc_preventivi_esito | esito |
 | PRIMARY KEY | pk_stati_doc_preventivi | id |
@@ -55,6 +57,7 @@
 | uq_stati_doc_preventivi_codice_interno | `CREATE UNIQUE INDEX uq_stati_doc_preventivi_codice_interno ON config.stati_doc_preventivi USING btree (codice_interno)` |
 | uq_stati_doc_preventivi_emissione | `CREATE UNIQUE INDEX uq_stati_doc_preventivi_emissione ON config.stati_doc_preventivi USING btree (emissione) WHERE emissione` |
 | uq_stati_doc_preventivi_iniziale | `CREATE UNIQUE INDEX uq_stati_doc_preventivi_iniziale ON config.stati_doc_preventivi USING btree (iniziale) WHERE iniziale` |
+| uq_stati_doc_preventivi_scadenza | `CREATE UNIQUE INDEX uq_stati_doc_preventivi_scadenza ON config.stati_doc_preventivi USING btree (scadenza) WHERE scadenza` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |

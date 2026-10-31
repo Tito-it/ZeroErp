@@ -1,6 +1,6 @@
 # Guida — Processi pgAgent funzionali
 
-> (latest review 28-10-2026)
+> **Ultimo aggiornamento**: 31 ottobre 2026
 >
 > Destinatari: sviluppatori database, backend, analisti funzionali
 >
@@ -67,6 +67,7 @@ corretta.
 * **Tabelle attualmente configurate**:
   * `vendite.listini_versioni` (`tipo_stato=FK`, lookup `config.stati_doc_listino_versioni.codice_interno`, ciclo `BOZZA -> ATTIVA -> CHIUSA`; sotto la porta del modello: chiude il verbo `vendite.fn_chiudi_versioni_listino_scadute`)
   * `vendite.contratti` (`tipo_stato=FK`, lookup `config.stati_doc_contratti.codice_interno`, ciclo `DRAFT -> ATTIVO -> CESSATO`; `SOSPESO` fuori scope operativo; sotto la porta: chiude il verbo `vendite.fn_cessa_contratti_scaduti`)
+  * `vendite.preventivi` (`tipo_stato=FK`, lookup `config.stati_doc_preventivi.codice_interno`, `EMESSO -> SCADUTO` sulla colonna `validita_al`; sotto la porta: chiude il verbo `vendite.fn_chiudi_preventivi_scaduti`; dal 31-10-2026, brief-db-scadenza-preventivi)
 * **Pre-check**: prima di ogni UPDATE la fn verifica esistenza schema/tabella/colonne (e per FK anche tabella di lookup + codici). Errore tipato `E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA` in caso di config invalida (no exec parziale).
 * **Idempotenza**: la query seleziona solo righe ancora attive con `valido_al` scaduto; esecuzioni ripetute nella stessa giornata sono no-op.
 * **Interazione con guard tabella-specifici**: l'UPDATE attraversa i trigger `trg_<tabella>_a10_guard_transizione_stato_upd` e li soddisfa per costruzione (precondizione `valido_al < CURRENT_DATE` identica al WHERE). Nessun bypass, nessun GUC, nessun privilegio elevato.

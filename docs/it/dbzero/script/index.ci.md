@@ -65,8 +65,9 @@ search:
 - [fn_check_ordine_confermabile](manual/fn_check_ordine_confermabile.md) — (rev 2026-08-29 — funzione nata il 2026-08-29)
 - [fn_check_ordine_data_consegna_confermata](manual/fn_check_ordine_data_consegna_confermata.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 1)
 - [fn_check_parameter_fk_surrogate](manual/fn_check_parameter_fk_surrogate.md) — (latest review 02-05-2026)
+- [fn_check_preventivo_accettabile](manual/fn_check_preventivo_accettabile.md)
 - [fn_check_preventivo_annullabile](manual/fn_check_preventivo_annullabile.md) — (rev 2026-08-21 — funzione rev 2026-08-10)
-- [fn_check_preventivo_emettibile](manual/fn_check_preventivo_emettibile.md) — (rev 2026-09-24 — MOTIVO 2, i prezzi non autorizzati; funzione nata il 2026-08-29)
+- [fn_check_preventivo_emettibile](manual/fn_check_preventivo_emettibile.md) — (rev 2026-10-31 — MOTIVO 4, la validità già finita; rev 2026-09-24 — MOTIVO 2, i prezzi non autorizzati; funzione nata il 2026-08-29)
 - [fn_check_prezzi_autorizzati](manual/fn_check_prezzi_autorizzati.md) — (nata il 2026-09-24 — `20260924-20`)
 - [fn_check_prezzi_in_attesa](manual/fn_check_prezzi_in_attesa.md) — (nata il 2026-09-24 — `20260924-33`)
 - [fn_check_registro_forma_modificabile](manual/fn_check_registro_forma_modificabile.md) — *(rev 2026-09-01 — funzione nata il 2026-09-01)*
@@ -250,6 +251,7 @@ search:
 - [fn_stato_id_da_iso2](manual/fn_stato_id_da_iso2.md) — (18-10-2026 — decisione D-1 di Tid)
 - [fn_stato_per_colonna_id](manual/fn_stato_per_colonna_id.md)
 - [fn_stato_proposto_id](manual/fn_stato_proposto_id.md) — (18-10-2026 — decisione D-1 di Tid, richiesta del backend in `brief-db-processi-accensione-per-ambiente` §6.11)
+- [fn_stato_scadenza_id](manual/fn_stato_scadenza_id.md)
 - [fn_stato_veste](manual/fn_stato_veste.md)
 - [fn_subentro_cliente](manual/fn_subentro_cliente.md) — (latest review 01-03-26)
 - [fn_tabelle_che_trattengono](manual/fn_tabelle_che_trattengono.md)

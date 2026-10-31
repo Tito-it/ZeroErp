@@ -96,6 +96,9 @@ SELECT
 -- ⚠️ rev 2026-10-25 (§8, giro 6): con una riga di merce, scritta in bozza da
 --   dbops.fn_pgtap_crea_preventivo_con_righe, che poi porta lo stato: senza
 --   righe l'emissione e' rifiutata (E_PREV_NESSUNA_RIGA_ATTIVA).
+-- rev 2026-10-31 (brief-db-scadenza-preventivi §8.3): validita_al da oggi + 30, come i
+--   builder. Con una data fissa di giugno 2026 la validita' era gia' finita, e l'accettazione
+--   ora la rifiuta (E_PREV_VALIDITA_SCADUTA): la data era un dettaglio, non il caso.
 CREATE TEMP TABLE tmp_prev_aa_accettato AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
@@ -108,7 +111,7 @@ WITH ins AS (
     'PGTAP-AA-ACCT-' || substr(md5(clock_timestamp()::text), 1, 8),
     0,
     r.billing_account_id, r.istanza_utility_id, r.utility_id,
-    DATE '2026-06-01', DATE '2026-06-30', r.valuta_id,
+    DATE '2026-06-01', script.fn_data_operativa() + 30, r.valuta_id,
     r.stato_draft_id, DATE '2026-06-01', false,
     false, '{"test_scope":"pgtap_fn_available_actions"}'::jsonb,
     r.emittente_fiscale_id
@@ -123,6 +126,9 @@ DO $porta$ BEGIN
 END $porta$;
 
 -- Preventivo DRAFT (fixture per test 6-7)
+-- rev 2026-10-31 (brief-db-scadenza-preventivi §8.3): validita_al da oggi + 30, come i
+--   builder. Con una data fissa di giugno 2026 la validita' era gia' finita, e l'accettazione
+--   ora la rifiuta (E_PREV_VALIDITA_SCADUTA): la data era un dettaglio, non il caso.
 CREATE TEMP TABLE tmp_prev_aa_draft AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
@@ -135,7 +141,7 @@ WITH ins AS (
     'PGTAP-AA-DRF-' || substr(md5(clock_timestamp()::text), 1, 8),
     0,
     r.billing_account_id, r.istanza_utility_id, r.utility_id,
-    DATE '2026-06-01', DATE '2026-06-30', r.valuta_id,
+    DATE '2026-06-01', script.fn_data_operativa() + 30, r.valuta_id,
     r.stato_draft_id, DATE '2026-06-01', false,
     false, '{"test_scope":"pgtap_fn_available_actions","stato":"draft"}'::jsonb,
     r.emittente_fiscale_id

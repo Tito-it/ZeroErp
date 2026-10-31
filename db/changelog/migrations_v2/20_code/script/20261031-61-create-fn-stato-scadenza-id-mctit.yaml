@@ -1,0 +1,87 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# BB: LO STATO DI SCADENZA DI UNA TESTATA
+#   Brief: brief-db-scadenza-preventivi §8.1, D-1 (Tid 2026-10-31).
+#   Gemello di script.fn_stato_cessazione_id e script.fn_stato_accettazione_id:
+#   la logica e' del lettore comune script.fn_stato_per_colonna_id
+#   (20261031-06), qui la porta con il nome.
+#
+# ── CHE COSA DICE ───────────────────────────────────────────────────
+#   L'id dello stato di scadenza (scadenza = true) nel vocabolario della
+#   testata. Oggi e' SCADUTO del preventivo.
+#   NULL per gli altri documenti: il loro vocabolario non ha la colonna.
+#   Al massimo uno, ed e' attivo: indice unico parziale e CHECK in
+#   20261031-60.
+#
+# ── I CONSUMATORI ───────────────────────────────────────────────────
+#   Nascono nello stesso giro, senza il letterale 'SCADUTO':
+#   vendite.fn_chiudi_preventivi_scaduti (lo scrive) con questo lettore;
+#   vendite.fn_crea_revisione_preventivo e
+#   script.fn_available_actions_preventivo (da li' si ripropone) leggono la
+#   colonna dalla riga del vocabolario che hanno gia' in mano.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261031-61-create-fn-stato-scadenza-id-mctit.yaml
+
+  - changeSet:
+      id: 20261031-61-create-fn-stato-scadenza-id
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        BB script.fn_stato_scadenza_id(regclass): l'id dello stato di scadenza (scadenza) nel
+        vocabolario di una testata della mappa, NULL se il vocabolario non ha la colonna o non ne
+        dichiara. Gemello di script.fn_stato_cessazione_id, dal lettore comune
+        script.fn_stato_per_colonna_id. Brief: brief-db-scadenza-preventivi §8.1.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_stato_per_colonna_id';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION script.fn_stato_scadenza_id(p_testata regclass)
+               -- bigint: l'id di uno stato di un vocabolario qualunque della
+               -- mappa; nessuna colonna comune a cui ancorarlo.
+               RETURNS bigint
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              BEGIN
+                  -- =========================================================
+                  -- Scopo: l'id dello stato di scadenza della testata, dal suo
+                  --   vocabolario (colonna scadenza = true). La logica e' del
+                  --   lettore comune:
+                  --   - testata fuori mappa: E_SCRIPT_CHIAMATA_NON_VALIDA;
+                  --   - vocabolario senza la colonna scadenza: il documento
+                  --     non ha quello stato, NULL;
+                  --   - nessuno stato dichiarato: NULL.
+                  -- =========================================================
+                  RETURN script.fn_stato_per_colonna_id(p_testata, 'scadenza', 'script.fn_stato_scadenza_id');
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_stato_scadenza_id(p_testata regclass)
+              IS 'BB del modello del documento: l''id dello stato di SCADENZA di una testata, letto dal suo vocabolario degli stati (colonna scadenza = true; la mappa e'' script.fn_doc_stato_modello): lo stato in cui il documento arriva quando la sua validita'' e'' finita senza risposta del cliente. Unica sede da cui leggerlo: nessuno scrive ''SCADUTO'' per dire «lo stato di scadenza». Al massimo uno per vocabolario, ed e'' attivo (uq_<vocabolario>_scadenza, chk_<vocabolario>_scadenza_attivo). NULL se il vocabolario non ha la colonna (tutti i documenti tranne il preventivo) o non ne dichiara; testata fuori mappa: E_SCRIPT_CHIAMATA_NON_VALIDA. La logica e'' di script.fn_stato_per_colonna_id, comune ai gemelli script.fn_stato_emissione_id, script.fn_stato_abortito_id, script.fn_stato_accettazione_id, script.fn_stato_cessazione_id; il codice si legge con script.fn_doc_stato_codice. Consumatori: vendite.fn_chiudi_preventivi_scaduti; vendite.fn_crea_revisione_preventivo e script.fn_available_actions_preventivo leggono la colonna scadenza dalla riga del vocabolario che hanno gia''. Brief: brief-db-scadenza-preventivi §8.1 (D-1, Tid 2026-10-31).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_stato_scadenza_id(regclass);
