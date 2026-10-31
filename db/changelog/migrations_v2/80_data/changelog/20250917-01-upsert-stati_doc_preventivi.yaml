@@ -61,6 +61,10 @@ databaseChangeLog:
                         # 2026-10-31 (20261031-05, brief-modello-documento-vendita §17): lo stato di
                         # accettazione del cliente. Va dichiarata qui, o la cella del CSV non la governa.
                         - column: { name: accettazione, type: BOOLEAN }
+                        # 2026-10-31 (20261031-60, brief-db-scadenza-preventivi §8.1): lo stato di
+                        # scadenza, quello che scrive il job delle scadenze. Va dichiarata qui, o la
+                        # cella del CSV non la governa.
+                        - column: { name: scadenza, type: BOOLEAN }
 
     - changeSet:
           id: 20250917-90-upsert-stati_doc_preventivi

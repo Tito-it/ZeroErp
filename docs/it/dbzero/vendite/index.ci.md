@@ -132,6 +132,7 @@ search:
 - [fn_check_fondo_fattura_capiente](manual/fn_check_fondo_fattura_capiente.md) — (latest review 15-08-2026)
 - [fn_check_listino_provenienza](manual/fn_check_listino_provenienza.md) — (rev 2026-10-16, brief `brief-db-coerenza-listino-della-riga-di-commessa`, decisioni di Tid)
 - [fn_chiudi_contratto_per_successione](manual/fn_chiudi_contratto_per_successione.md) — `vendite.fn_chiudi_contratto_per_successione(...)` è la **seconda metà** del meccanismo di successione: dopo che [`fn_contratto_sovrapposto`](/dbzero/vendite/funzioni/fn_contratto_sovrapposto) ha individuato un contratto in conflitto, questa funzione lo **accorcia** per fare spazio al nuovo, impostando:
+- [fn_chiudi_preventivi_scaduti](manual/fn_chiudi_preventivi_scaduti.md)
 - [fn_chiudi_riconsegna_reso](manual/fn_chiudi_riconsegna_reso.md) — (rev 2026-07-26)
 - [fn_chiudi_versioni_listino_scadute](manual/fn_chiudi_versioni_listino_scadute.md)
 - [fn_classe_emittibilita_per_giro](manual/fn_classe_emittibilita_per_giro.md) — (latest review 12-09-2026)

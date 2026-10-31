@@ -1,0 +1,74 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL VOCABOLARIO DICE QUALE STATO E' LA SCADENZA DEL PREVENTIVO
+#   Brief: brief-db-scadenza-preventivi §8.1, D-1 (E-1 (a) di Tid,
+#   2026-10-31).
+#
+# ── LA REGOLA ───────────────────────────────────────────────────────
+#   Lo stato di SCADENZA del preventivo e' quello in cui il documento
+#   arriva quando la sua validita' (validita_al) e' finita senza che il
+#   cliente abbia risposto (oggi SCADUTO). Lo nominano tre punti per il
+#   suo significato: il verbo di chiusura del job delle scadenze
+#   (vendite.fn_chiudi_preventivi_scaduti), che lo scrive; la revisione
+#   (vendite.fn_crea_revisione_preventivo) e la capability, che da li'
+#   ammettono di riproporre il preventivo (E-3 (ii)). Come per l'inizio,
+#   l'emissione, l'accettazione e la cessazione (20261031-05), nessuno lo
+#   scrive come letterale: lo dice il vocabolario.
+#
+# ── LA COLONNA ──────────────────────────────────────────────────────
+#   scadenza (preventivi): boolean NOT NULL DEFAULT false, al piu' una
+#   riga per vocabolario (indice unico parziale) e solo su uno stato
+#   attivo (CHECK), come accettazione e cessazione. La legge
+#   script.fn_stato_scadenza_id. Il valore sta nel CSV del vocabolario
+#   (80_data), non qui (§11.2).
+#
+# ── UNA COLONNA SUA, NON cessazione ─────────────────────────────────
+#   La cessazione del contratto ferma i canoni; la scadenza del
+#   preventivo toglie al cliente la possibilita' di accettare. Sono due
+#   conseguenze diverse: una colonna sola direbbe due cose col nome di
+#   una (la stessa ragione delle due colonne di 20261031-05). Solo sul
+#   vocabolario dove lo stato esiste: gli altri rispondono NULL al
+#   lettore.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261031-60-alter-stati-doc-preventivi-add-scadenza-mctit.yaml
+
+  - changeSet:
+      id: 20261031-60-alter-stati-doc-preventivi-add-scadenza
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Colonna scadenza su config.stati_doc_preventivi, NOT NULL DEFAULT false, con un indice unico
+        parziale (al massimo uno stato per vocabolario) e il CHECK «e'' attivo». Valore dal CSV di
+        80_data. Brief: brief-db-scadenza-preventivi §8.1 (D-1).
+      preConditions:
+        - onFail: HALT
+        - tableExists: { schemaName: config, tableName: stati_doc_preventivi }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.stati_doc_preventivi
+                  ADD COLUMN scadenza BOOLEAN NOT NULL DEFAULT false,
+                  ADD CONSTRAINT chk_stati_doc_preventivi_scadenza_attivo CHECK (NOT scadenza OR attivo);
+
+              CREATE UNIQUE INDEX uq_stati_doc_preventivi_scadenza ON config.stati_doc_preventivi (scadenza) WHERE scadenza;
+
+              COMMENT ON COLUMN config.stati_doc_preventivi.scadenza IS
+                  'true = lo stato in cui il preventivo e'' SCADUTO: la sua validita'' (validita_al) e'' finita senza che il cliente abbia risposto. Lo scrive il verbo di chiusura del job delle scadenze (vendite.fn_chiudi_preventivi_scaduti); da qui la revisione (vendite.fn_crea_revisione_preventivo) ripropone il preventivo. Al massimo uno per vocabolario (uq_stati_doc_preventivi_scadenza) ed e'' attivo (chk_stati_doc_preventivi_scadenza_attivo). Lo legge script.fn_stato_scadenza_id, non un letterale ''SCADUTO''. Il valore sta nel CSV del vocabolario in 80_data. Brief: brief-db-scadenza-preventivi §8.1 (D-1, Tid 2026-10-31).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.stati_doc_preventivi DROP COLUMN IF EXISTS scadenza;

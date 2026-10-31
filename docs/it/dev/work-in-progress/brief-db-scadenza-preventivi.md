@@ -1,21 +1,24 @@
 # Brief DB — La scadenza dei preventivi (EMESSO → SCADUTO)
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-31
+## ⏭️ Chi riparte — aggiornato al 2026-11-01
 
-**Riparte: Tid**, col via allo sviluppo. Le decisioni sono prese (E-1 a, E-2 guard, E-3 ii: §7); il giro
-è scritto nel §6.5. Nessuno sviluppo prima del via.
+**Riparte: team BE/FE** (`dev/backend-tid`), con le tre richieste del §8.8. Il lato DB è chiuso: tutto il
+giro (§8.2 e §8.7) è applicato da Tid, pgTAP verdi.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
 | 1 | ✅ team DB | Il caso, i fatti, le domande | §1-§4 | — |
 | 2 | ✅ team DB | Riverifica contro i giri 13-16 del modello (2026-10-31) | §6 | 1 |
-| 3 | ✅ Tid | E-1 … E-3, decise il 2026-10-31 | §7 | 2 |
-| 4 | **Tid** ⏭️ | Il via allo sviluppo | — | 3 |
-| 5 | team DB | Il giro | §6.5, §7 | 4 |
-| 6 | team BE/FE | La revisione da SCADUTO e il rifiuto per data arrivano all'interfaccia (§7) | — | 5 |
+| 3 | ✅ Tid | E-1 … E-3, decise il 2026-10-31; via allo sviluppo | §7 | 2 |
+| 4 | ✅ team DB | Il giro: changeSet, CSV, pgTAP, doc | §8 | 3 |
+| 5 | ✅ Tid | Apply di `-60` … `-66`, pgTAP verdi (2026-10-31) | §8.2, §8.6 | 4 |
+| 6 | ✅ team DB | E-4 (decisa da Tid il 2026-10-31): l'emissione con la validità già finita | §8.7 | 5 |
+| 7 | ✅ Tid | Apply del `-67`, pgTAP verdi (2026-11-01) | §8.7 | 6 |
+| 8 | **team BE/FE** ⏭️ | Chiave i18n, i due codici nelle error policy, prova a video | §8.8 | 7 |
+| 9 | Tid | Prova a video e archiviazione del brief in `work-done/` | §8.8 | 8 |
 
-Decisioni aperte di Tid: nessuna; manca il via allo sviluppo. Lavoro da committare: la riverifica del §6 e
-le decisioni del §7 (il brief del 2026-10-25 è già committato).
+Decisioni aperte di Tid: nessuna. Lavoro da committare: tutto il giro DB (§8.2, §8.3, §8.6, §8.7) e questo
+brief.
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-25. **A chi:** Tid, poi il team DB.
 > **Origine:** W-3 di [brief-modello-documento-vendita](../work-done/brief-modello-documento-vendita.md) §8.12 (debito X-2,
@@ -181,3 +184,185 @@ dato.**
   allo SCADUTO di origine (oggi la revisione da EMESSO lo supera: lo stesso trattamento, da verificare sul
   corpo). La nuova revisione nasce in bozza, con `validita_al` di nuovo modificabile. Ricaduta BE/FE: l'azione
   «Crea revisione» visibile anche su uno SCADUTO.
+
+## 8. Piano di sviluppo (2026-10-31)
+
+Via allo sviluppo di Tid il 2026-10-31 («fai il piano di sviluppo nel brief e poi procedi»). Le migrazioni le
+applica Tid, i pgTAP li lancia Tid.
+
+### 8.1 Le scelte del giro
+
+* **D-1. SCADUTO si legge dal vocabolario, non dal letterale.** Colonna nuova `scadenza` su
+  `config.stati_doc_preventivi` (boolean NOT NULL DEFAULT false, al più uno per vocabolario, solo su uno stato
+  attivo), gemella di `cessazione` e `accettazione` (`20261031-05`), e il lettore `script.fn_stato_scadenza_id`
+  sul lettore comune `script.fn_stato_per_colonna_id`. È la regola del giro 17 del modello («gli stati con un
+  significato si leggono dal vocabolario»): lo stato di scadenza lo nominano tre punti (il verbo di chiusura, la
+  revisione, la capability), e nessuno lo scrive come `'SCADUTO'`. Colonna propria e non `cessazione`: il
+  contratto cessato ferma i canoni, il preventivo scaduto non si accetta più; il COMMENT di `20261031-05` vuole
+  una colonna per significato. ⚠️ Il verbo gemello del listino legge ancora `'ATTIVA'`/`'CHIUSA'` come letterali:
+  non è di questo giro.
+* **D-2. La regola dell'accettazione sta in una `fn_check_*`.** «Accetta» si deve spegnere col motivo
+  (linee guida SQL §5, «la domanda che viene prima»), quindi il predicato va in
+  `script.fn_check_preventivo_accettabile(p_preventivo_id, p_validita_al)`, gemella di
+  `fn_check_preventivo_emettibile`: MOTIVO 1 la validità finita (`p_validita_al < fn_data_operativa()`;
+  `NULL` = non scade), MOTIVO 2 i prezzi non autorizzati (`fn_check_prezzi_autorizzati`, che oggi guard e
+  capability chiamano ciascuno per sé). `p_validita_al` è un **parametro senza default**: il guard è
+  `BEFORE ROW` e passa `NEW.validita_al`, la capability `p.validita_al`.
+* **D-3. Il codice.** `E_PREV_VALIDITA_SCADUTA`, `CONFLITTO_STATO` (409): il preventivo può essere giusto, è il
+  tempo a non ammettere l'accettazione. Frase con numero e data di fine validità; reason `VALIDITA_SCADUTA`,
+  reason_key `vendite.preventivi.azione_reason.validita_scaduta` (da seminare nel FE, §8.4).
+* **D-4. Nessuna precondizione temporale sul passaggio a SCADUTO nel guard.** Il contratto la ha (verso CESSATO,
+  data arrivata) perché il cambio di stato generico ci arriva; EMESSO → SCADUTO è di processo (`manuale =
+  false`), il verbo comune lo rifiuta a mano, e l'unico scrittore è il verbo di chiusura, che filtra la data.
+* **D-5. La revisione da SCADUTO non tocca l'origine**: oggi la revisione da EMESSO non cambia lo stato della
+  rev N (l'attiva la deriva `vw_preventivi`), e così da SCADUTO. La rev N+1 copia `validita_al` della rev N
+  (già passata): è in bozza, l'operatore la riscrive. ⚠️ Nessuna regola impedisce oggi di **emettere** con la
+  validità già finita: è una domanda nuova, non decisa (§8.5, E-4).
+
+### 8.2 ChangeSet
+
+| # | File | Che cosa |
+| --- | --- | --- |
+| `00_schema/config/20261031-60` | `alter-stati-doc-preventivi-add-scadenza` | D-1: colonna, CHECK, indice unico parziale |
+| `20_code/script/20261031-61` | `create-fn-stato-scadenza-id` | D-1: il lettore |
+| `20_code/script/20261031-62` | `create-fn-check-preventivo-accettabile` | D-2: i motivi dell'accettazione |
+| `20_code/vendite/20261031-63` | `update-trgfn-preventivi-guard-transizione-accettazione-in-validita` | E-2: la Regola 3 solleva il primo motivo della check nuova |
+| `20_code/script/20261031-64` | `update-fn-available-actions-preventivo-scadenza` | «Accetta» spento dalla check nuova; «Crea revisione» anche dallo stato di scadenza |
+| `20_code/vendite/20261031-65` | `update-fn-crea-revisione-preventivo-da-scaduto` | E-3 (ii): ammessa dallo stato di emissione e da quello di scadenza, dal vocabolario |
+| `20_code/vendite/20261031-66` | `create-fn-chiudi-preventivi-scaduti` | E-1 (a): il verbo di chiusura, gemello di `fn_cessa_contratti_scaduti` |
+| CSV `config/stati_doc_preventivi` + mirror `20250917-01` | | `scadenza = t` su SCADUTO (id 7) |
+| CSV `dbops/automazione_chiusura_scadenze` (id 3) | | il preventivo nel registro, `DOMINIO`, col verbo |
+| CSV `dbops/processi_bersagli` (id 52) | | il bersaglio del processo `chiusura_scadenze_daily`, emittente via `emittente_fiscale_id` |
+| CSV `config/messaggi_errore` (1417, 850), `config/codici_errore` | | il codice nuovo; la frase della revisione non dice più «solo da EMESSO» |
+
+### 8.3 pgTAP e presidi
+
+* Nuovo `db/pgtap/vendite/test-preventivo-scadenza-v1.sql`, che costruisce i casi: validità di ieri, di oggi,
+  `NULL`; il verbo porta a SCADUTO solo il primo; il guard rifiuta l'accettazione del primo con
+  `E_PREV_VALIDITA_SCADUTA` e accetta il secondo; la capability spegne «Accetta» col motivo; la revisione da
+  SCADUTO nasce in bozza; il registro e il bersaglio del processo.
+* Fixture portate (il preventivo arrivava ad ACCETTATO con una validità del 2026-06/07, già finita):
+  `script/test-fn-available-actions-preventivo-v1`, `pratiche/test-reconcile-tie-break-flusso-origine`,
+  `pratiche/test-guida-avanza-esito-proiettato`, `pratiche/test-proiezione-stato-sorgente` — `validita_al` a
+  `fn_data_operativa() + 30`, come i builder. Le altre fixture che accettano un preventivo hanno validità
+  futura (builder a +30, date 2080-2082) o `NULL`.
+* Presidi trasversali da rilanciare: `script/test-doc-stati-dal-vocabolario-v1`,
+  `script/test-rubinetto-primo-motivo-v1` (il conteggio non cambia: il guard chiamava già l'helper),
+  `script/test-catalogo-messaggi-errore-completo`, `dbops/test-vw-codici-errore-motivo-nominato`,
+  `dbops/test-riferimenti-morti-v1`, `dbops/test-processi-registro`, `dbops/test-fn-apply-chiusura-scadenze-v1`,
+  `vendite/test-fn-crea-revisione-preventivo`, `script/test-fn-check-prezzi-autorizzati-v1`,
+  `vendite/test-listino-versione-al-modello-v1` (il test 4 asserisce l'intero registro: portato ai tre verbi il
+  2026-11-01, sfuggito al censimento e preso rosso da Tid).
+* ⚠️ `vendite/test-preventivo-scadenza-v1`, rosso solo sullo scratch (`ERRORE_FIXTURE`, «riga scritta ma non
+  visibile a chi chiama», 2026-11-01): senza un operatore pronto il contesto lo costruisce, e la veste nasce alla
+  data operativa del fuso di casa. Il passaggio a ovest portava «oggi» al giorno prima della sua nascita
+  (`fn_veste_utilizzabile`), il perimetro si svuotava e il billing account del builder spariva sotto RLS. Su
+  dbdev si riusa un operatore vecchio. Corretto nel test: il fuso a ovest si imposta **prima** del contesto. La
+  regola della veste è giusta e non cambia. Verificato sullo scratch come app: 19/19.
+
+### 8.4 Ricadute BE/FE (richieste al team)
+
+* **FE**: la chiave `vendite.preventivi.azione_reason.validita_scaduta` nei locales (`check_i18n_keys` la
+  troverà nella doc auto-generata, controllo 4).
+* **BE**: `E_PREV_VALIDITA_SCADUTA` nelle error policy generate (409). `preventivi_service.crea_revisione`
+  non filtra lo stato in Python (letto il 2026-10-31): niente da togliere.
+* **FE**: «Crea revisione» su un preventivo SCADUTO arriva dalla capability, nessun codice nuovo atteso.
+
+### 8.5 Domanda nuova per Tid
+
+* **E-4. L'emissione con la validità già finita.** Oggi si emette un preventivo con `validita_al` passata, e il
+  job lo porta a SCADUTO la notte dopo. Lo si rifiuta anche all'emissione (motivo in
+  `fn_check_preventivo_emettibile`, stesso codice o uno suo)? Consiglio: sì, per la stessa ragione di E-2.
+  Non è in questo giro. ✅ **Decisa da Tid il 2026-10-31: sì, come consigliato** (§8.7).
+
+### 8.6 Scritto e provato (2026-10-31)
+
+Scritto come da §8.2 e §8.3, con due precisazioni:
+
+* il letterale `'ACCETTATO'` della Regola 3 del guard **resta**: il giro 17 del modello tiene i letterali
+  nei guard di transizione come condizione del passaggio (intestazione di
+  `test-doc-stati-dal-vocabolario-v1`). Cambia solo la check che la Regola 3 solleva;
+* la revisione e la capability leggono `emissione` e `scadenza` dalla riga del vocabolario che hanno già;
+  il lettore `fn_stato_scadenza_id` lo usa il verbo di chiusura. Il `-65` chiude anche il debito del
+  letterale `'EMESSO'` nella revisione, dichiarato in `20261031-19`.
+
+Doc: guida dei preventivi §3.1 e §4.1 (stato, accettazione oltre la validità, revisione da SCADUTO,
+diagramma), guida del modello §10 (riga del preventivo), linee guida SQL §7c, guida dei processi pgAgent,
+pagine manuali del registro e del framework; pagine manuali nuove di `fn_stato_scadenza_id`,
+`fn_check_preventivo_accettabile`, `fn_chiudi_preventivi_scaduti`.
+
+**Prova pre-apply** sullo scratch `zeroerp_ruoli`, come `zeroerp_owner`, in transazione annullata: l'SQL
+estratto dei sette changeSet più le righe dei CSV, messo dopo la riga `BEGIN;` di ogni pgTAP.
+
+| Che cosa | Esito |
+| --- | --- |
+| `vendite/test-preventivo-scadenza-v1` (nuovo) | 15/15 |
+| le quattro fixture portate, prima e dopo | identiche, tutte verdi; le versioni di HEAD con l'SQL estratto si fermano in errore (la prova che il porting serviva) |
+| i presidi del §8.3 e gli altri 26 pgTAP che portano un preventivo ad ACCETTATO, prima e dopo | nessuna differenza. Due rossi uguali prima e dopo: `script/test-doc-lettori-stato-e-preventivo-al-modello-v1` n. 23 (dichiarato «rosso da owner»), `vendite/test-annullo-documento-con-legami-v1` (1 su 30) |
+| preCondition, ciascuna dopo i changeSet che la precedono | tutte all'atteso |
+| firme ancorate | una sola funzione per nome; il verbo è DEFINER con EXECUTE alla sola applicazione |
+
+⚠️ Non provato qui: il loader dei CSV (il seed è simulato con `INSERT`/`UPDATE`; la colonna nuova del
+vocabolario ha solo `t`/`f`, nessuna cella vuota), la corsa come applicazione con la RLS, e il job vero
+(sveglia, coda, tesserino). Li prova la corsa di Tid dopo l'apply. Da sapere: alla prima notte dopo
+l'apply, su dbdev i preventivi EMESSI con la validità già finita passano a SCADUTO; è il comportamento
+voluto.
+
+### 8.7 E-4: l'emissione con la validità già finita (2026-10-31)
+
+Decisa da Tid il 2026-10-31 («procedi come consigliato»), dopo l'apply del §8.2 (pgTAP verdi).
+
+| ChangeSet / file | Che cosa |
+| --- | --- |
+| `20_code/script/20261031-67-update-fn-check-preventivo-emettibile-validita` | motivo 4 di `fn_check_preventivo_emettibile`: `validita_al < fn_data_operativa()` → `E_PREV_EMISSIONE_VALIDITA_SCADUTA` |
+| CSV `codici_errore`, `messaggi_errore` (1418) | il codice, `DATO_ERRATO`, col campo `validita_al` nel dettaglio |
+| `vendite/test-preventivo-scadenza-v1` | 15 → 19 test; la fixture del preventivo «emesso e poi scaduto» rifatta (sotto) |
+| guida dei preventivi §3.1, pagina manuale della check | la regola |
+
+* **Guard e capability non cambiano**: il primo solleva il primo motivo della check, la seconda spegne
+  «Emetti» coi suoi motivi. La reason e la reason_key sono le stesse dell'accettazione
+  (`VALIDITA_SCADUTA`, `vendite.preventivi.azione_reason.validita_scaduta`): una chiave sola nel FE.
+  Il codice è un altro, perché la classe è un'altra: in bozza la data si corregge (`DATO_ERRATO`, campo
+  `validita_al`), all'accettazione è ferma (`CONFLITTO_STATO`, la strada è la revisione).
+* **Firma invariata, data letta per id.** La check è letta da un guard `BEFORE ROW`, ma sotto la porta il
+  passaggio a EMESSO lo scrive solo `script.fn_doc_scrivi_stato`, con un `UPDATE` della sola colonna di
+  stato: in quell'istruzione `validita_al` non cambia. Gli altri motivi della testata (gli indirizzi) si
+  leggono già così. La check dell'accettazione (`-62`) prende invece la data come parametro: è nata nuova.
+  Asimmetria dichiarata; uniformarla vorrebbe dire cambiare la firma di `fn_check_preventivo_emettibile`
+  (sette chiamate in due pgTAP, guard e capability da riscrivere).
+* **Il preventivo emesso e poi scaduto, nel pgTAP.** Con E-4 non si costruisce più emettendolo con la data
+  passata: ci si arriva solo perché il tempo passa. Il test lo emette con il fuso dell'azienda a
+  `Etc/GMT+12` e `validita_al` = oggi, poi sposta `SYSTEM_FUSO_ORARIO` a `Pacific/Kiritimati` (26 ore più
+  avanti: la data operativa è sempre almeno il giorno dopo), come già `vendite/test-data-documento-v1`.
+* **Censimento**: nessun altro pgTAP emette un preventivo con una validità passata (le date fisse sono
+  2080+, i builder a +30, le quattro fixture del §8.3 già portate). Il test Django
+  `vendite/tests/db/test_ricerca_liste_db.py` usa il 2083.
+
+**Prova pre-apply** sullo scratch `zeroerp_ruoli` (con `-60` … `-66` già applicati), come `zeroerp_owner`,
+in transazione annullata, SQL estratto del `-67` e delle righe dei cataloghi dopo la riga `BEGIN;`:
+
+| Che cosa | Esito |
+| --- | --- |
+| `vendite/test-preventivo-scadenza-v1` | dopo 19/19; prima 15 ok, i test 16-18 rossi e la correzione della data fermata dal lock (senza la regola il preventivo si era emesso): la prova distingue |
+| 49 pgTAP che emettono un preventivo, chiamano la check o sono presidi trasversali (motivi nominati, catalogo dei messaggi, riferimenti morti, rubinetto) | nessuna differenza fra prima e dopo; quattro rossi uguali prima e dopo, non toccati da E-4 (`script/test-doc-lettori-stato-e-preventivo-al-modello-v1`, `script/test-doc-verbo-comune-e-porta-v1`, `vendite/test-esecutivi-ba-coppia-v1`, `vendite/test-ordine-al-modello-v1`: da owner) |
+
+Ricaduta BE: `E_PREV_EMISSIONE_VALIDITA_SCADUTA` nelle error policy generate (400, `DATO_ERRATO`). FE:
+nessuna chiave nuova (la stessa del §8.4).
+
+### 8.8 Chiusura del lato DB e richieste al team BE/FE (2026-11-01)
+
+Applicato da Tid: `-60` … `-66` il 2026-10-31, `-67` il 2026-11-01, con i CSV di `80_data`; pgTAP verdi
+(corsa di Tid, compreso `vendite/test-preventivo-scadenza-v1`, 19 test). Il lato DB del brief è
+chiuso.
+
+Le richieste al team BE/FE, nessuna bloccante per il DB:
+
+| # | Lato | Che cosa | Perché |
+| --- | --- | --- | --- |
+| R-1 | FE | la chiave `vendite.preventivi.azione_reason.validita_scaduta` nei locales (it, en): «La validità del preventivo è finita» | la reason di «Accetta» (E-2) e di «Emetti» (E-4) spenti; senza la chiave il tooltip è vuoto. `check_i18n_keys` la trova nella doc auto-generata (controllo 4) |
+| R-2 | BE | `E_PREV_VALIDITA_SCADUTA` (409, `CONFLITTO_STATO`) e `E_PREV_EMISSIONE_VALIDITA_SCADUTA` (400, `DATO_ERRATO`, campo `validita_al`) nelle error policy generate | i due codici nuovi; il secondo accende il campo «Valido al» del drawer |
+| R-3 | BE/FE | prova a video: preventivo emesso con la validità finita (Accetta spento, Crea revisione acceso), lo stesso dopo il job (SCADUTO, Crea revisione acceso), bozza con la validità passata (Emetti spento, campo acceso) | nessun codice nuovo atteso: azioni e motivi arrivano dalla capability. `preventivi_service.crea_revisione` non filtra lo stato (letto il 2026-10-31) |
+
+Da sapere: dalla prima notte dopo l'apply il job porta a SCADUTO, su dbdev, i preventivi EMESSI con la
+validità già finita; è il comportamento voluto. Dopo la prova a video di Tid il brief va in `work-done/`.
+

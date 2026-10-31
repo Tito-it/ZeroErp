@@ -108,7 +108,8 @@ non dopo, così la migrazione non richiede di toccare il job.
 Una testata con la porta del modello del documento (`script.trgfn_doc_stato_solo_dal_verbo`)
 non si chiude con l'`UPDATE` dinamico: la funzione chiama il **verbo di chiusura** dichiarato
 nella colonna `verbo_chiusura` del registro (oggi `vendite.fn_cessa_contratti_scaduti` per il
-contratto e `vendite.fn_chiudi_versioni_listino_scadute` per la versione di listino). Verbo
+contratto, `vendite.fn_chiudi_versioni_listino_scadute` per la versione di listino e, dal
+31-10-2026, `vendite.fn_chiudi_preventivi_scaduti` per il preventivo). Verbo
 assente, o non una funzione viva senza argomenti: `E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA`.
 
 ### Compatibilita' con guard tabella-specifici
