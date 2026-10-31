@@ -1,5 +1,7 @@
 ## 📚 Documentazione Concettuale – Tabella `config.parameters`  
 
+> **Ultimo aggiornamento**: 1 novembre 2026
+
 > 👀 **Vedi anche**  
 >
 Approfondimento Tabelle:   
@@ -74,6 +76,9 @@ Il database la fa rispettare quando si scrive:
   [la funzione](/dbzero/config/funzioni/trgfn_parameters_guard_tipo_valore);
 * su `config.parameter_overrides`, il valore dell'override
   ([la funzione](/dbzero/config/funzioni/trgfn_parameter_overrides_guard_tipo_valore)).
+
+Il rifiuto nomina il campo da correggere sul canale `COLUMN` dell'errore: `value` per l'override,
+`default_value` per il default, `tipo_valore` per il cambio di tipo.
 
 Il quadro, con le regole di lettura: [Configurazione e gestione parametri](/guide/configurazione-e-gestione-parametri).
 I valori si seminano da `80_data/sql/config/parameters.csv`; i parametri di sistema da

@@ -8,7 +8,7 @@
 --  3) Guard: p_tipo_ruolo_id NULL lancia errore
 --  4) Guard: p_tipo_ruolo_id <= 0 lancia errore
 --  5) Guard: p_search_term NULL lancia errore
---  6) Guard: p_search_term troppo corto (< 3 caratteri) lancia errore
+--  6) Guard: p_search_term di soli spazi lancia errore
 --  7) Ricerca con termine valido sul ruolo CL ritorna senza errori
 --  8) Ricerca con termine inesistente ritorna zero righe
 --  9) Il campo total_count e' coerente con il numero di righe ritornate
@@ -25,6 +25,14 @@
 -- 20) Ordinamento con colonna invalida lancia E_PARAMETRO_INVALIDO
 -- 21) Ordinamento DESC non lancia errore
 -- 22) Chiamata senza ordinamento (default) funziona come prima
+--
+-- Rev 2026-11-01 (brief-db-liste-datatable-grezze-secondo-giro §7.7.2, D-6,
+--   20261101-03): la funzione non ha piu' una soglia sua. La lunghezza minima
+--   e' quella della lista anagrafiche.ricerca_soggetti
+--   (ui.lista_definizione.ricerca_min_caratteri) e la giudica il chiamante.
+--   Il test 6 pinnava «'ab' rifiutato»: ora pinna il termine vuoto. Che un
+--   termine di un carattere trovi lo prova, col soggetto costruito,
+--   script/test-search-universale-campi-ricerca-v1 (test 12).
 --
 -- Rev 2026-10-10 (stesso brief, R-5, R-6, Q-2): escono 23-26, che pinnavano il
 --   parametro p_emittente_ids, ritirato dalle due firme (20261010-11/-12). Le
@@ -158,15 +166,15 @@ SELECT throws_ok(
   'Guard: p_search_term NULL lancia errore'
 );
 
--- 6) Guard: p_search_term troppo corto
+-- 6) Guard: p_search_term di soli spazi (il termine vuoto resta un rifiuto)
 SELECT throws_ok(
   format(
-    $$SELECT * FROM script.fn_search_soggetti_universale('ab', %s)$$,
+    $$SELECT * FROM script.fn_search_soggetti_universale('   ', %s)$$,
     (SELECT tipo_ruolo_id FROM tmp_ctx)
   ),
   'P0001',
   NULL,
-  'Guard: p_search_term troppo corto (< 3 caratteri) lancia errore'
+  'Guard: p_search_term di soli spazi lancia errore'
 );
 
 -- =========================================================
