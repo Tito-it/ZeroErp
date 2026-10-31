@@ -2,10 +2,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Tid (Michele Carlo Titini)
 // Doc: JavaScript
-// Scopo: Le due regole pure del tetto d'area, per la SOLA anteprima del
-//        pannello permessi (brief-db-permessi-tetto-area §7.3, Tid 2026-10-04):
-//        mostrare «limitata dall'area» mentre l'admin cambia le tendine, prima
-//        del salvataggio.
+// Scopo: Le due regole pure del tetto d'area, per la SOLA anteprima
+//        (brief-db-permessi-tetto-area §7.3, Tid 2026-10-04): mostrare
+//        «limitata dall'area» mentre l'admin cambia i valori, prima del
+//        salvataggio. Consumer: il pannello permessi dell'operatore
+//        (`OperatorePermessiTab`) e, dal 2026-10-31, il profilo del reparto
+//        (`RepartoProfiloEditor`).
+//        ⛔ Sui valori SALVATI nessuno dei due la usa: l'operatore legge
+//        `permessi-effettivi`, il reparto `limitata_da_area` della lettura del
+//        profilo, entrambi calcolati a DB (decisione Tid «sola regola DB»).
 // Note: ⛔ NON e' la sede della regola. La sede e' il DB:
 //       `script.fn_area_consente_azione` e `script.fn_livello_con_tetto_area`,
 //       lette dai resolver, dalle mappe di `/me/` e dal pannello (endpoint

@@ -18,6 +18,8 @@ Indice test eseguiti:
 9) ListiniServiceTests.test_create_riga_blocked_on_versione_attiva
 10) ListiniServiceTests.test_update_riga_blocked_on_versione_chiusa
 11) ListiniServiceTests.test_delete_riga_blocked_on_versione_attiva
+11b) ListiniServiceTests.test_create_riga_porta_la_periodicita
+11c) ListiniServiceTests.test_update_riga_periodicita_vuota_e_null
 13) ListiniServiceTests.test_update_versione_attiva_fine_rifiutata_dal_db
 14) ListiniServiceTests.test_update_versione_regole_per_stato_del_db
 15) ListiniServiceTests.test_clone_versione_d2_dal_db
@@ -413,6 +415,41 @@ class ListiniServiceTests(TestCase):
         self.assertIn("BOZZA", ctx.exception.detail or "")
         # Verifica che la guard scatti PRIMA di toccare create_riga
         repo.create_riga.assert_not_called()
+
+    # Scopo: la periodicita' del canone (G-0-bis) arriva al repository, col
+    #        codice del vocabolario in maiuscolo. ⛔ Una chiave ammessa e non
+    #        mappata si perderebbe in silenzio: il mapper copia campo per campo.
+    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    def test_create_riga_porta_la_periodicita(self, mock_repo_cls):
+        from apps.vendite.services.listini_service import fn_create_riga
+
+        repo = mock_repo_cls.return_value
+        repo.get_versione.return_value = {"id": 101, "listino_id": 10, "stato": "BOZZA"}
+        repo.get_articolo_uom_validation.return_value = {
+            "articolo_attivo": True, "uom_attiva": True, "uom_compatibile": True,
+        }
+        repo.create_riga.return_value = 7
+        repo.get_riga.return_value = {"id": 7}
+
+        fn_create_riga(10, 101, {
+            "articolo_id": "019bbee2-5f6a-704f-bbd0-34ed84db252d",
+            "uom_id": 1, "prezzo": "12.50", "periodicita": " trimestrale ",
+        })
+
+        data = repo.create_riga.call_args[0][1]
+        self.assertEqual(data["periodicita"], "TRIMESTRALE")
+
+    # Scopo: simmetrico — vuota o null toglie la periodicita' (NULL, non '').
+    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    def test_update_riga_periodicita_vuota_e_null(self, mock_repo_cls):
+        from apps.vendite.services.listini_service import _extract_riga_payload
+
+        for valore in ("", None):
+            with self.subTest(valore=valore):
+                data = _extract_riga_payload(
+                    {"periodicita": valore}, for_update=True, function_name="test",
+                )
+                self.assertIsNone(data["periodicita"])
 
     # Scopo: F1 - update_riga deve fallire se la versione e' CHIUSA.
     @patch("apps.vendite.services.listini_service.ListiniRepository")

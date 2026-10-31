@@ -786,6 +786,9 @@ export const MANAGE_ICONS = {
   // Escludere una riga dall'eccezione di listino (la toglie dalla vendita a
   // quel prezzo). ⛔ Non `DISATTIVA`: la riga non si spegne.
   ESCLUDI: 'pi pi-cart-minus',
+  // Aderire a un articolo del listino (ADESIONE: il cliente lo prende al
+  // prezzo del listino). Il gemello di ESCLUDI, nel verso opposto.
+  ADERISCI: 'pi pi-cart-plus',
   // Tornare al prezzo di listino (ripristina l'eccezione, «usa il prezzo di
   // listino»). ⛔ Non `CORREZIONE` ne' `UNDO`.
   RIPRISTINA_LISTINO: 'pi pi-reply',

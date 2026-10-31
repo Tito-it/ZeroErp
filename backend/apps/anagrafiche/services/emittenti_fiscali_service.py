@@ -468,6 +468,22 @@ _UTILITY_CHECK_CONSTRAINTS: dict[str, tuple] = {
         E_ANAG_VALIDAZIONE,
         "Soglie del minimo incoerenti: la soglia minima non puo' superare la massima.",
     ),
+    # ⭐ I due CHECK dell'arrotondamento (2026-10-31): fino a quel giorno
+    #    cadevano sul ripiego «Dati del record utility non validi.», che non
+    #    dice cosa correggere — e il FE ammetteva decimali fino a 6 contro i 2
+    #    del vincolo. Un campo solo per vincolo, quindi il campo si dichiara.
+    # ⛔ L'intervallo NON e' scritto nel messaggio: sta nel CHECK, e un numero
+    #    ricopiato qui diverge in silenzio al primo cambio del vincolo.
+    "chk_emittenti_fiscali_utilities_arrotondamento_dec": (
+        E_ANAG_VALIDAZIONE,
+        "Decimali di arrotondamento degli importi fuori dall'intervallo ammesso.",
+        "arrotondamento_importi_dec",
+    ),
+    "chk_emittenti_fiscali_utilities_metodo_arrotondamento": (
+        E_ANAG_VALIDAZIONE,
+        "Metodo di arrotondamento degli importi non ammesso.",
+        "metodo_arrotondamento_importi",
+    ),
 }
 
 

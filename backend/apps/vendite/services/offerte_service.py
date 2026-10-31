@@ -93,6 +93,7 @@ from apps.vendite.services._pricing_gate_helpers import (
     resolve_or_check_override_prezzo,
     validate_componenti_overrides_authorization,
 )
+from apps.vendite.services._righe_codici import normalizza_codici_riga
 from apps.vendite.types import OffertaPushResult
 
 logger = logging.getLogger(__name__)
@@ -199,9 +200,29 @@ _MSG_BA_FUORI_COPPIA = (
 )
 
 
+# I domini della testata che vivono in un CHECK: il vincolo del DB, tradotto
+# sul campo del form. ⛔ I codici ammessi NON sono nel messaggio: stanno nel
+# CHECK (e nelle opzioni del Select), e una lista ricopiata qui diverge in
+# silenzio al primo cambio del vincolo.
+_CHECK_CONSTRAINTS: dict[str, tuple] = {
+    "chk_offerte_commerciali_generazione_canone": (
+        E_VENDITE_VALIDATION,
+        "Addebito dei canoni non ammesso.",
+        "generazione_canone",
+    ),
+    "chk_offerte_commerciali_mese_partenza_canone": (
+        E_VENDITE_VALIDATION,
+        "Mese di partenza dei canoni non valido: da 1 a 12.",
+        "mese_partenza_canone",
+    ),
+}
+
 # FK constraints catalogati (best-effort: i nomi corrispondono a quelli
 # emessi da Postgres su violazione FK).
 _FK_CONSTRAINTS: dict[str, tuple] = {
+    "fk_offerte_commerciali_eccezioni_periodicita": (
+        E_VENDITE_FK, "Periodicità inesistente.", "periodicita",
+    ),
     "fk_offerte_commerciali_billing_account": (
         E_VENDITE_FK, "Billing account non trovato.",
     ),
@@ -259,6 +280,11 @@ CREATE_KEYS_OFFERTA: frozenset[str] = frozenset({
     "tipo_variazione_globale",
     "validita_dal",
     "validita_al",
+    # Come si addebitano i canoni (F-2, F-7, `20261029-15`): il passaggio a
+    # contratto le copia. Il dominio lo dice il DB (`chk_offerte_commerciali_*`);
+    # fuori bozza le ferma il lock di testata (`E_DOC_CONDIZIONI_FUORI_BOZZA`).
+    "generazione_canone",
+    "mese_partenza_canone",
     "meta",
     # Sub-oggetto opzionale per la creazione contestuale del record
     # utility 1:1 (mirror ContrattoDrawer pattern, piano §C2). Se presente,
@@ -284,6 +310,8 @@ UPDATE_KEYS_OFFERTA: frozenset[str] = frozenset({
     "tipo_variazione_globale",
     "validita_dal",
     "validita_al",
+    "generazione_canone",
+    "mese_partenza_canone",
     "meta",
     # Sub-oggetto opzionale per upsert del record utility 1:1 nella stessa
     # transazione (simmetria col create, mirror ContrattoDrawer pattern).
@@ -309,7 +337,6 @@ CREATE_KEYS_ECCEZIONE: frozenset[str] = frozenset({
     "fonte_quantita_attesa",
     "periodicita",
     "generazione_canone",
-    "competenza_canone",
     "prezzo_unitario",
     # ⛔ Niente `quantita`: e' calcolata dal DB da `qta_operativa` (FISSA) e
     #    vuota con una fonte a valle (`script.trgfn_qta_from_operativa`). Un
@@ -399,6 +426,7 @@ class OfferteService:
                 fallback_message=fallback_message,
                 unique_constraints=_UNIQUE_CONSTRAINTS,
                 fk_constraints=_FK_CONSTRAINTS,
+                check_constraints=_CHECK_CONSTRAINTS,
             ):
                 yield
         except ServiceError as exc:
@@ -1052,6 +1080,11 @@ class OfferteService:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
         self._v.validate_allowed_keys(payload, allowed=CREATE_KEYS_ECCEZIONE)
         payload = self._con_meta_normalizzato(payload)
+        # I codici a vocabolario nella stessa forma del contratto (BB
+        # `normalizza_codici_riga`): fino al 2026-10-31 qui passavano grezzi.
+        payload = normalizza_codici_riga(
+            self._v, payload, function_name="offerte_service.crea_eccezione",
+        )
         # «Solo in bozza» lo dice il DB (`trgfn_doc_righe_lock_fuori_bozza` su
         # eccezioni e componenti, `E_RIGA_DOC_NON_BOZZA`, 409): qui l'esistenza.
         self._get_offerta_or_raise(offerta_id, op="righe", getter=self._repo.get_stato_codice)
@@ -1098,7 +1131,7 @@ class OfferteService:
         # Coerenza prezzo_unitario / tipo_eccezione (pre-DB, specchio CHECK
         # `chk_offerte_eccezioni_prezzo_per_tipo_eccezione`):
         # - OVERRIDE / AGGIUNTA -> prezzo NOT NULL (e' il prezzo finale)
-        # ⛔ L'ESCLUSIONE non si pre-valida qui: il prezzo e' uno dei dieci dati
+        # ⛔ L'ESCLUSIONE non si pre-valida qui: il prezzo e' uno dei nove dati
         #    di fatturazione che il guard DB rifiuta col campo
         #    (E_RIGA_ESCLUSIONE_CON_DATI, brief-db-righe-esclusione-solo-non-si-
         #    vende R-BE-3), come sul contratto.
@@ -1112,7 +1145,9 @@ class OfferteService:
         # `contratti_service` ~ linea 2114 "Padre composito").
         tipo_eccezione = payload.get("tipo_eccezione")
         prezzo_raw = payload.get("prezzo_unitario")
-        if prezzo_raw is None and tipo_eccezione in ("OVERRIDE", "AGGIUNTA"):
+        # ⛔ Non ESCLUSIONE (sopra) ne' ADESIONE (il prezzo e' del listino):
+        #    la regola vale per i soli tipi col gate, come sul contratto.
+        if prezzo_raw is None and tipo_eccezione in _TIPI_ECCEZIONE_CON_GATE:
             ErrorManager.require(
                 is_composito,
                 code=E_VENDITE_VALIDATION,
@@ -1166,7 +1201,9 @@ class OfferteService:
                 # prezzo_unitario NULL) ne' senso di negoziare i suoi componenti.
                 # Inizializzarli farebbe scattare trgfn_componenti_ricalcola_padre
                 # che scriverebbe SUM(figli) sul padre ESCLUSIONE -> violazione.
-                if is_composito and tipo_eccezione != "ESCLUSIONE":
+                # Idem l'ADESIONE: il kit aderito prende prezzo e componenti dal
+                # listino, e il DB non ne inizializza i componenti (`20261029-43`).
+                if is_composito and tipo_eccezione in _TIPI_ECCEZIONE_CON_GATE:
                     testata = testata_gate or self._repo.get_offerta(offerta_id) or {}
                     emittente_sr_id = self._resolve_emittente_sr_id_for_offerta(
                         offerta_id=offerta_id,
@@ -1196,6 +1233,9 @@ class OfferteService:
         self._v.guard_positive_int(eccezione_id, field="eccezione_id")
         self._v.validate_allowed_keys(payload, allowed=UPDATE_KEYS_ECCEZIONE)
         payload = self._con_meta_normalizzato(payload)
+        payload = normalizza_codici_riga(
+            self._v, payload, function_name="offerte_service.aggiorna_eccezione",
+        )
         # Flag opt-in workflow L3 (estratto prima del guard non-vuoto: non e' un
         # campo di update di per se').
         richiesta_approvazione = self._v.optional_bool(payload, "richiesta_approvazione") is True

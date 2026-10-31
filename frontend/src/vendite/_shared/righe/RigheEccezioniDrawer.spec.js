@@ -25,7 +25,7 @@ import en from '../../../locales/en.json'
 import sorgenteBB from './RigheEccezioniDrawer.vue?raw'
 import sorgenteContratto from '../../components/ContrattoRigheDrawer.vue?raw'
 import sorgenteOfferta from '../../offerte/components/OffertaRigheDrawer.vue?raw'
-import { FONTE_QUANTITA_ATTESA, TIPO_EROGAZIONE } from '../../constants'
+import { FONTE_QUANTITA_ATTESA, TIPO_ECCEZIONE, TIPO_EROGAZIONE } from '../../constants'
 
 const LINGUE = { it: it_, en }
 const NAMESPACE_DOCUMENTO = ['vendite.contratti', 'vendite.offerte']
@@ -80,6 +80,29 @@ describe('RigheEccezioniDrawer — testi', () => {
     const chiavi = [
       ...Object.values(TIPO_EROGAZIONE).map((v) => `tipo_erogazione_${v.toLowerCase()}`),
       ...Object.values(FONTE_QUANTITA_ATTESA).map((v) => `fonte_quantita_value_${v.toLowerCase()}`),
+    ]
+    const mancanti = []
+    for (const [lingua, diz] of Object.entries(LINGUE)) {
+      for (const k of chiavi) {
+        if (typeof leggi(diz, `vendite.contratti.${k}`) !== 'string') mancanti.push(`${lingua}:${k}`)
+      }
+    }
+    expect(mancanti).toEqual([])
+  })
+
+  // Il Tag del tipo di riga e quello dell'origine sono costruiti dal valore
+  // (`tipo_eccezione_${…}`, `origine_${…}`); il tag della fonte senza
+  // quantita' sulla riga idem. ADESIONE (G-0-ter) e DURATA (G-9) ne sono
+  // l'esempio: entrate col DB, senza etichetta sarebbero un buco a video.
+  it('ogni tipo di riga, origine e fonte a valle ha la sua etichetta', () => {
+    const chiavi = [
+      ...Object.values(TIPO_ECCEZIONE)
+        .filter((v) => v !== TIPO_ECCEZIONE.DA_LISTINO)
+        .map((v) => `tipo_eccezione_${v}`),
+      ...Object.values(TIPO_ECCEZIONE).map((v) => `origine_${v.toLowerCase()}`),
+      ...Object.values(FONTE_QUANTITA_ATTESA)
+        .filter((v) => v !== FONTE_QUANTITA_ATTESA.FISSA)
+        .map((v) => `fonte_quantita_tag_${v.toLowerCase()}`),
     ]
     const mancanti = []
     for (const [lingua, diz] of Object.entries(LINGUE)) {

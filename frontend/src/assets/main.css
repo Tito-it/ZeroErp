@@ -1127,6 +1127,14 @@ a {
 .app-permessi-tetto-icona {
   color: var(--app-warning-color);
 }
+/* La frase del tetto sotto il valore di una voce: c'e' ma l'area la ferma.
+   Sotto il controllo, col colore d'avviso: e' la riga che dice il falso se
+   non la si legge. Pannello permessi dell'operatore e profilo del reparto
+   (2026-10-31, seconda occorrenza: era scoped nel primo). */
+.app-permessi-tetto {
+  display: block;
+  color: var(--app-warning-color);
+}
 
 .app-elenco-dettaglio {
   margin-top: 0.75rem;

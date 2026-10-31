@@ -53,10 +53,17 @@ const props = defineProps({
 
 // `metodo_arrotondamento_importi`: Select riusabile EmittenteRoundingModeSelect
 // (Fase 3 — A6). 4 codici allineati al CHECK constraint DB
-// `chk_emittenti_fiscali_utilities_metodo` (UP/DOWN/HALF_UP/HALF_DOWN).
-// `arrotondamento_importi_dec`: range tecnico in `ROUNDING_DECIMALI_RANGE`
-// (constants.js). Allineato al CHECK chk_emittenti_fiscali_utilities_arrotondamento_dec.
+// `chk_emittenti_fiscali_utilities_metodo_arrotondamento` (UP/DOWN/HALF_UP/HALF_DOWN).
+// `arrotondamento_importi_dec`: range in `ROUNDING_DECIMALI_RANGE` (constants.js),
+// specchio del CHECK chk_emittenti_fiscali_utilities_arrotondamento_dec (0..2).
 
+// ⚠️ I tre `InputNumber` della riga hanno anche `@input`, oltre al v-model:
+//    PrimeVue aggiorna il v-model SOLO all'uscita dal campo (blur) o con le
+//    frecce, mentre il «Salva riga» si accende da `isRowValid`, che legge il
+//    modello. Senza, scelto il metodo e scritti i decimali, il Salva restava
+//    spento finche' il cursore stava nel campo — e cliccare un pulsante
+//    disabilitato non toglie il fuoco, quindi non si accendeva mai
+//    (segnalazione di Tid, 2026-10-31; presidio: lo spec di questo file).
 // Stato editing per riga: chiave = utility_id, valore = oggetto editabile.
 // Permette multi-riga: piu' righe possono essere in editing contemporaneamente.
 // Niente default: i campi sono vuoti finche' l'utente non li compila.
@@ -264,8 +271,8 @@ watch(() => props.emittenteId, async (id) => {
             <InputNumber
               v-if="isEditing(data)"
               v-model="editing[data.utility_id].minimo_soglia_min"
+              @input="(e) => (editing[data.utility_id].minimo_soglia_min = e.value)"
               :min-fraction-digits="2" :max-fraction-digits="6"
-              fluid
               class="ut-cell-input"
               :input-class="'ut-cell-input-el'"
             />
@@ -278,8 +285,8 @@ watch(() => props.emittenteId, async (id) => {
             <InputNumber
               v-if="isEditing(data)"
               v-model="editing[data.utility_id].minimo_soglia_max"
+              @input="(e) => (editing[data.utility_id].minimo_soglia_max = e.value)"
               :min-fraction-digits="2" :max-fraction-digits="6"
-              fluid
               class="ut-cell-input"
               :input-class="'ut-cell-input-el'"
             />
@@ -292,11 +299,11 @@ watch(() => props.emittenteId, async (id) => {
             <InputNumber
               v-if="isEditing(data)"
               v-model="editing[data.utility_id].arrotondamento_importi_dec"
+              @input="(e) => (editing[data.utility_id].arrotondamento_importi_dec = e.value)"
               :min="ROUNDING_DECIMALI_RANGE.MIN" :max="ROUNDING_DECIMALI_RANGE.MAX"
               showButtons
               buttonLayout="stacked"
-              fluid
-              class="ut-cell-input"
+              class="ut-cell-input ut-cell-input--dec"
               :input-class="'ut-cell-input-el'"
             />
             <span v-else>{{ data.arrotondamento_importi_dec ?? '—' }}</span>
@@ -379,24 +386,34 @@ watch(() => props.emittenteId, async (id) => {
 </template>
 
 <style scoped>
-/* Vincola gli input PrimeVue (InputNumber, Select) alla larghezza della cella della
-   matrice utility. Senza questo, in editing l'input wrapper sfora la colonna perche'
-   il min-width interno del componente prevale sul width della Column. */
-.ut-matrix-table :deep(.ut-cell-input) {
-  width: 100%;
-  max-width: 100%;
-  min-width: 0;
-  display: flex;
-}
-.ut-matrix-table :deep(.ut-cell-input .p-inputnumber-input),
+/* I campi della riga in modifica hanno una larghezza ESPLICITA, ed e' la
+   larghezza a decidere la colonna. ⛔ Non `fluid` / `width: 100%`: la tabella
+   e' `width: max-content` (`.app-datatable`), cioe' e' la cella a prendere la
+   misura dal contenuto, e una percentuale del contenitore li' non limita
+   niente — ogni input tornava alla sua larghezza naturale (~20 caratteri) e le
+   sette colonne in modifica superavano il drawer: barra orizzontale appena si
+   premeva «Configura» o «Modifica» (segnalazione di Tid, 2026-10-31). */
 .ut-matrix-table :deep(.ut-cell-input-el) {
-  width: 100%;
+  width: 7rem;
   min-width: 0;
 }
-/* InputNumber con showButtons stacked: i bottoni hanno larghezza fissa, l'input
-   deve restringersi per stare nel resto della cella. */
+/* I decimali: due cifre di testo PIU' lo spazio delle frecce impilate.
+   ⛔ Non un numero solo: con `buttonLayout="stacked"` PrimeVue mette le frecce
+   SOPRA il campo (posizione assoluta, a destra) e gli riserva un margine
+   interno pari alla loro larghezza piu' il padding. A 3.5rem (2026-10-31, una
+   correzione sbagliata) il testo non aveva spazio: il numero non si vedeva e
+   il clic cadeva sulle frecce, quindi non si riusciva a scrivere. La misura
+   si compone dai token del tema, cosi' segue le frecce se cambiano. */
+.ut-matrix-table :deep(.ut-cell-input--dec .ut-cell-input-el) {
+  width: calc(2ch + var(--p-inputnumber-button-width, 2.5rem) + 2 * var(--p-form-field-padding-x, 0.75rem));
+}
 .ut-matrix-table :deep(.ut-cell-input.p-inputnumber) {
   flex-wrap: nowrap;
+}
+/* Il metodo: l'etichetta lunga («descrizione (codice)») si taglia coi puntini
+   dentro il Select, invece di allargare la colonna. */
+.ut-matrix-table :deep(.p-select.ut-cell-input) {
+  width: 11rem;
 }
 /* Il contenitore e' `app-empty-state` (main.css): fino al 17/09 qui c'era una
  * copia identica, `.ut-empty`, accanto a un `app-empty` che non esisteva. */

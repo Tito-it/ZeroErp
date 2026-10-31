@@ -396,5 +396,6 @@ al prossimo caso B.
 - **Il tetto d'area** (`.codex/PROJECT_CONTEXT.md` § «Aperto»): un override
   per oggetto **sostituisce** il livello dell'area, non lo limita. Non cambia
   qui.
+  ✅ *Nota del 2026-10-31: chiuso il 2026-10-04 da [brief-db-permessi-tetto-area.md](brief-db-permessi-tetto-area.md) — un permesso specifico ora può solo restringere quello della sua area. La frase qui sotto è la storia di quando era aperto.*
 - Le **azioni di processo**: si applicano con `check_azione`, non col livello
   d'oggetto, e non sono toccate.

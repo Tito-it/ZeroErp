@@ -15,6 +15,7 @@ import DatePicker from 'primevue/datepicker'
 import AppDialog from '../../../core/components/AppDialog.vue'
 import InputNumber from 'primevue/inputnumber'
 import InputText from 'primevue/inputtext'
+import Select from 'primevue/select'
 import Message from 'primevue/message'
 import Tab from 'primevue/tab'
 import Tabs from 'primevue/tabs'
@@ -56,7 +57,7 @@ import {
 import { DRAWER_WIDTH, MANAGE_ICONS, TIPO_RUOLO, DATE_FORMAT } from '../../../core/constants'
 import { NAV_ICONS } from '../../../core/navigation'
 import { extractApiError, extractApiErrorCode } from '../../../core/utils/apiError'
-import { displayDate, parseIsoDate, toDateString, oggiAziendaleString } from '../../../core/utils/date'
+import { displayDate, nomiMesi, parseIsoDate, toDateString, oggiAziendaleString } from '../../../core/utils/date'
 import { statoOffertaSeverity } from '../../../core/utils/severity'
 import { getOffertaFormDefaults } from '../../api/formDefaults'
 import { useBaFormDefaults } from '../../_shared/baDefaults/useBaFormDefaults'
@@ -65,6 +66,7 @@ import {
 } from '../../_shared/fornitura/schedaFornitura'
 import ListinoDocumentoSelect from '../../components/ListinoDocumentoSelect.vue'
 import TipoVariazioneSelect from '../../components/TipoVariazioneSelect.vue'
+import { GENERAZIONE_CANONE } from '../../constants'
 import {
   CAMPI_FORM_TESTATA_OFFERTA,
   STATO_OFFERTA,
@@ -87,7 +89,7 @@ import ContrattoDrawer from '../../components/ContrattoDrawer.vue'
 import EntityPdfButton from '../../../documenti/components/EntityPdfButton.vue'
 import { SORGENTE_CODES } from '../../../documenti/constants'
 
-const { t, te } = useI18n()
+const { t, te, locale } = useI18n()
 const store = useOfferteStore()
 const { execute, loading, campiErrati } = useApiHandler()
 const { confirmAction } = useConfirmAction()
@@ -275,6 +277,10 @@ function defaultForm() {
     valore_variazione_globale: null,
     validita_dal: oggiAziendaleString(),
     validita_al: null,
+    // I canoni (F-2, F-7): vuoti in CREATE = il default del DB (anticipati,
+    // da gennaio), che il dettaglio poi mostra. Il form non ricopia il default.
+    generazione_canone: null,
+    mese_partenza_canone: null,
     // Scheda di fornitura inline (BB `schedaFornitura`, come il contratto)
     ...schedaVuota(),
   }
@@ -307,6 +313,8 @@ function populateFromDetail(d) {
     valore_variazione_globale: d.valore_variazione_globale,
     validita_dal: d.validita_dal,
     validita_al: d.validita_al,
+    generazione_canone: d.generazione_canone ?? null,
+    mese_partenza_canone: d.mese_partenza_canone ?? null,
     ...schedaDaFornitura(d.utility),
   }
   if (!stessoCliente) ripristinaBillingAccount(form.value, d.billing_account_id)
@@ -489,8 +497,22 @@ function buildPayload() {
       : null,
     validita_dal: toIsoDate(f.validita_dal),
     validita_al: f.validita_al ? toIsoDate(f.validita_al) : null,
+    // NOT NULL a DB col default: si mandano solo valorizzati, mai `null`.
+    ...(f.generazione_canone ? { generazione_canone: f.generazione_canone } : {}),
+    ...(f.mese_partenza_canone ? { mese_partenza_canone: f.mese_partenza_canone } : {}),
   }
 }
+
+// Le opzioni dei due campi del canone: i codici del CHECK del DB con la loro
+// etichetta, e i dodici mesi (valore 1-12) dal BB `nomiMesi`. Chiavi i18n
+// letterali, cosi' `check_i18n_keys` le vede.
+const opzioniGenerazioneCanone = computed(() => [
+  { value: GENERAZIONE_CANONE.INIZIO_PERIODO, label: t('vendite.offerte.generazione_canone_INIZIO_PERIODO') },
+  { value: GENERAZIONE_CANONE.FINE_PERIODO, label: t('vendite.offerte.generazione_canone_FINE_PERIODO') },
+])
+const opzioniMesePartenza = computed(() => nomiMesi(locale.value).map((nome, i) => ({
+  value: i + 1, label: nome,
+})))
 
 // Il sotto-oggetto `utility` della richiesta (BB `schedaDaForm`): null finche'
 // il cliente non e' scelto, perche' la scheda e' della sua coppia (istanza,
@@ -1161,6 +1183,35 @@ const footerDrawer = useFooterDocumento({
                   show-button-bar
                   @update:model-value="form.validita_al = toIsoDate($event)"
                 />
+              </div>
+            </div>
+
+            <!-- Come si addebitano i canoni (F-2, F-7): la riga a canone senza
+                 generazione segue la testata; il passaggio a contratto le copia. -->
+            <h4>{{ t('vendite.offerte.section_canoni') }}</h4>
+            <div class="form-grid-2col">
+              <div class="form-field">
+                <label>{{ t('vendite.offerte.field_generazione_canone') }}</label>
+                <Select
+                  v-model="form.generazione_canone"
+                  :options="opzioniGenerazioneCanone"
+                  option-label="label" option-value="value"
+                  :placeholder="t('vendite.offerte.canoni_predefinito')"
+                  :disabled="testata.bloccato('generazione_canone')"
+                  :invalid="campiErrati.includes('generazione_canone')"
+                />
+              </div>
+              <div class="form-field">
+                <label>{{ t('vendite.offerte.field_mese_partenza_canone') }}</label>
+                <Select
+                  v-model="form.mese_partenza_canone"
+                  :options="opzioniMesePartenza"
+                  option-label="label" option-value="value"
+                  :placeholder="t('vendite.offerte.canoni_predefinito')"
+                  :disabled="testata.bloccato('mese_partenza_canone')"
+                  :invalid="campiErrati.includes('mese_partenza_canone')"
+                />
+                <small class="app-text-muted">{{ t('vendite.offerte.hint_mese_partenza_canone') }}</small>
               </div>
             </div>
           </div>

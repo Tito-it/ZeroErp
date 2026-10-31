@@ -52,6 +52,7 @@ from apps.core.services.documento_modello import (
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.error_messages_fallback import USER_MESSAGE_FALLBACK
 from apps.vendite.services._righe_bozza_guard import Verbo, richiedi_righe_in_bozza
+from apps.vendite.services._righe_codici import CAMPI_CODICE_RIGA, normalizza_codici_riga
 from apps.vendite.services._cliente_coppia_documento import (
     coppia_cambiata,
     rifiuta_colonne_ferme,
@@ -316,7 +317,6 @@ CREATE_KEYS_RIGA: frozenset[str] = frozenset({
     "fonte_quantita_attesa",
     "periodicita",
     "generazione_canone",
-    "competenza_canone",
     "prezzo_unitario",
     # ⛔ Niente `quantita`: e' calcolata dal DB da `qta_operativa` (FISSA) e
     #    vuota con una fonte a valle (`script.trgfn_qta_from_operativa`). Un
@@ -346,7 +346,6 @@ UPDATE_KEYS_RIGA: frozenset[str] = frozenset({
     "fonte_quantita_attesa",
     "periodicita",
     "generazione_canone",
-    "competenza_canone",
     "prezzo_unitario",
     "qta_operativa",
     "uom_operativa_id",
@@ -368,7 +367,9 @@ _FORBIDDEN_RIGA_UPDATE: frozenset[str] = frozenset({
 })
 
 # Tipi eccezione ammessi su contratti_righe (refactor 2026-05-15).
-_TIPI_ECCEZIONE: frozenset[str] = frozenset({"OVERRIDE", "ESCLUSIONE", "AGGIUNTA"})
+# ADESIONE (G-0-ter, `20261029-36`): l'articolo del listino al prezzo del
+# listino, senza prezzo sulla riga, come l'ESCLUSIONE.
+_TIPI_ECCEZIONE: frozenset[str] = frozenset({"OVERRIDE", "ESCLUSIONE", "AGGIUNTA", "ADESIONE"})
 # Sottoinsieme che richiede il passaggio per il gate L1+L2+L3 (refactor
 # 2026-05-19 BE porting gate riga contratti). ESCLUSIONE ha prezzo NULL per
 # design e salta i gate; OVERRIDE/AGGIUNTA passano al BB
@@ -436,6 +437,9 @@ _MSG_BA_FUORI_COPPIA = (
     "Il billing account non e' quello dell'istanza e della utility del contratto."
 )
 _FK_CONSTRAINTS: dict[str, tuple] = {
+    "fk_contratti_righe_periodicita": (
+        E_VENDITE_FK, "Periodicità inesistente.", "periodicita",
+    ),
     "fk_contratti_billing_account": (E_VENDITE_FK, "Billing account inesistente."),
     # FK composta (billing_account_id, istanza_utility_id, utility_id) verso il
     # BA della coppia, dal 2026-10-08 (brief-db-istanza-nasce-col-ba, R-2): la
@@ -1204,9 +1208,11 @@ class ContrattiService:
             # prezzo_unitario NULL) ne' senso di negoziare i suoi componenti.
             # Inizializzarli farebbe scattare trgfn_componenti_ricalcola_padre
             # che scriverebbe SUM(figli) sul padre ESCLUSIONE -> violazione.
+            # Idem l'ADESIONE: il kit aderito prende prezzo e componenti dal
+            # listino, e il DB non inizializza i suoi componenti (`20261029-42`).
             if (
                 articolo_id
-                and tipo_eccezione != "ESCLUSIONE"
+                and tipo_eccezione in _TIPI_ECCEZIONE_CON_GATE
                 and self._repo.is_articolo_composito(str(articolo_id))
             ):
                 # Riusa la testata letta dal gate (sopra) se disponibile;
@@ -2095,7 +2101,7 @@ class ContrattiService:
 
             # Coerenza prezzo_unitario / tipo_eccezione (pre-DB):
             # - OVERRIDE / AGGIUNTA -> prezzo NOT NULL (e' il prezzo finale)
-            # ⛔ L'ESCLUSIONE non si pre-valida qui: il prezzo e' uno dei dieci
+            # ⛔ L'ESCLUSIONE non si pre-valida qui: il prezzo e' uno dei nove
             #    dati di fatturazione che il guard DB rifiuta col campo
             #    (E_RIGA_ESCLUSIONE_CON_DATI, brief-db-righe-esclusione-solo-
             #    non-si-vende R-BE-3). Un 400 nostro sul solo prezzo direbbe la
@@ -2110,8 +2116,11 @@ class ContrattiService:
             # trigger lo sovrascrive sincrono dopo INSERT padre + INSERT figli.
             # Pattern simmetrico al preventivo (cfr. preventivi_service.py
             # `gestisci_riga` ~ linea 670, "Padre composito").
+            # ⛔ L'ADESIONE non ha prezzo (lo da' il listino,
+            #    `chk_contrighe_prezzo_per_tipo_eccezione`): il segnaposto la
+            #    farebbe rifiutare, quindi la regola vale solo per i tipi col gate.
             prezzo_raw = payload.get("prezzo_unitario")
-            if prezzo_raw is None and tipo_eccezione != "ESCLUSIONE":
+            if prezzo_raw is None and tipo_eccezione in _TIPI_ECCEZIONE_CON_GATE:
                 # OVERRIDE / AGGIUNTA: prezzo None ammesso solo se composito.
                 articolo_id_val = data.get("articolo_id")
                 is_composito = bool(
@@ -2147,29 +2156,13 @@ class ContrattiService:
             value = self._v.optional_bool(payload, "attivo")
             if value is not None:
                 data["attivo"] = value
-        # Stringhe opzionali (varchar libere lato DB: CHECK constraint sul DB
-        # per enum — traduciamo un eventuale IntegrityError.
-        for field in (
-            "tipo_erogazione",
-            "fonte_quantita_attesa",
-            "periodicita",
-            "generazione_canone",
-            "competenza_canone",
-        ):
-            if field in payload:
-                raw = payload[field]
-                if raw is None:
-                    data[field] = None
-                else:
-                    ErrorManager.require(
-                        isinstance(raw, str),
-                        code=E_VENDITE_VALIDATION,
-                        message=_MESSAGE_RIGA,
-                        detail=f"{field} deve essere stringa o NULL.",
-                        context={"field": field},
-                    )
-                    assert isinstance(raw, str)
-                    data[field] = raw.strip().upper()
+        # I codici a vocabolario della riga: la lettura e' del BB di vendite
+        # `normalizza_codici_riga` (stessa forma sull'offerta); il dominio lo
+        # dice il DB (CHECK/FK), tradotto sul campo da `_FK_CONSTRAINTS`.
+        codici = normalizza_codici_riga(self._v, payload)
+        for field in CAMPI_CODICE_RIGA:
+            if field in codici:
+                data[field] = codici[field]
 
         # ⛔ La quantita' per fonte non si normalizza qui: con una fonte a valle
         # (MANUALE, LETTURE, TIMESHEET) il DB svuota `quantita` da solo
