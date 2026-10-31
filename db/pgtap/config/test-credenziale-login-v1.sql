@@ -277,6 +277,11 @@ SELECT is(
     '21) le firme vecchie (senza provenienza, senza digest del nome) non esistono piu''');
 
 -- ⚠️ Per ultimo: cambia un parametro (il ROLLBACK lo rimette).
+-- ⚠️ Dal 2026-10-31 (brief-db-liste-datatable-grezze-secondo-giro, D-5) il guard
+--   a07 rifiuta in scrittura un vuoto su un INTERO_POSITIVO: per provare che il
+--   LETTORE resta fail-loud (non da' per scontato il guard) il parametro si
+--   dichiara prima TESTO, l'unica strada da cui un valore fuori forma entra.
+UPDATE config.parameters SET tipo_valore = 'TESTO' WHERE code = 'login_tetto_credenziale';
 UPDATE config.parameters SET default_value = '' WHERE code = 'login_tetto_credenziale';
 
 SELECT throws_like(

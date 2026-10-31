@@ -2,10 +2,8 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-31
 
-**Riparte: team DB** (`dev/db-tid`) per le richieste del §4.5 (le colonne
-di ricerca della ricerca universale e il suo ordinamento per utility) e del §4.6 (il preavviso delle scadenze
-validato in scrittura). Le sei liste del §4.1 sono
-convertite (§4.3, §4.4); poi si archivia il brief.
+**Riparte: BE** (`dev/backend-tid`) con l'elenco chiuso del §7.6.5. Il secondo giro DB è
+applicato su dbdev e la corsa pgTAP è verde (Tid, 2026-10-31). Poi si archivia il brief.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -17,14 +15,16 @@ convertite (§4.3, §4.4); poi si archivia il brief.
 | 6 | BE/FE | ✅ Lavoro senza seed (§4.2) fatto il 2026-10-31: dialog di selezione, `MatriceCatalogo` (Reparto, Utilities), catch dell'alert. Registro a 24 | `dev/backend-tid` | — |
 | 7 | BE/FE | ✅ Conversione delle 6 liste (§4.1), fatta il 2026-10-31: riga 5 al §4.3, righe 1-4 e 6 al §4.4 | `dev/backend-tid` | — |
 | 8 | BE/FE | ✅ Registro `datatable.baseline.json` abbassato a **17** grezze, **0** senza motivo | `frontend/scripts/` | — |
-| 9 | team DB | La ricerca universale e le colonne `ricercabile_full` della lista 113, più l'ordinamento per utility (§4.5) | `20_code/script/` o seed `ui` | — |
-| 9-bis | BE | A funzione pronta: `utility_list` nella whitelist della ricerca e nei registri (§4.5) | `dev/backend-tid` | 9 |
-| 10 | team DB | Il valore di un parametro intero si valida quando si scrive, non quando si legge (§4.6) | `config` | — |
+| 8-bis | Tid | ✅ D-3 (nessun cambiamento), D-4 (strada 2 e caso gemello), D-5 (strada 1) decise il 2026-10-31, col via | §4.5.1, §4.6.1 | — |
+| 9 | team DB | ✅ Ricerca universale sui campi del catalogo, `filtrabile = f` sulla 113 (§4.5.1, D-4), scritti il 2026-10-31 (§7.6) | `20_code/script/`, seed `ui` | — |
+| 10 | team DB | ✅ La forma del valore di ogni parametro, rispettata in scrittura (§4.6.1, D-5), scritta il 2026-10-31 (§7.6) | `config`, `script` | — |
+| 10-bis | Tid | ✅ Apply di `20261031-53…59` e dei mirror, 2026-10-31 (verificato: 56 parametri tipizzati, una firma della ricerca, i due trigger a07, i due codici d'errore, `filtrabile = f`). ✅ Corsa pgTAP verde (Tid, 2026-10-31) | dbdev | — |
+| 9-bis | BE | L'elenco chiuso del §7.6.5: `p_campi_ricerca` dalla `RicercaFull`, la 113 registrata, l'helper dei parametri di prova col tipo, l'errore nuovo sul campo `value` | `dev/backend-tid` | — (apply fatto) |
 | 11 | BE/FE | ✅ Revisione critica del lavoro non committato, 2026-10-31 (§4.7) | `dev/backend-tid` | — |
-| 12 | BE/FE | Archiviare il brief in `work-done/` | — | 9, 9-bis, 10 |
+| 12 | BE/FE | Archiviare il brief in `work-done/` | — | 9-bis |
 
-**Decisioni aperte di Tid:** nessuna. D-1, D-2, B1-bis, B8 e l'ordinamento per utility della 113 (§4.5) decisi il 2026-10-31.
-**Committato:** il lato DB del 2026-10-31 (§7) è su `dev/db-tid`. Il lato BE/FE (righe 6-8 e 11) è **da committare** su `dev/backend-tid`. Il rotto temporaneo
+**Decisioni aperte di Tid:** nessuna. D-3, D-4 e D-5 decise il 2026-10-31 (§4.5.1, §4.6.1); D-1, D-2, B1-bis, B8 e l'ordinamento per utility della 113 (§4.5) decisi il 2026-10-31.
+**Committato:** il lato DB, primo e secondo giro (§7.1-§7.6, con guida e pagine manual), è su `dev/db-tid`; il lato BE/FE (righe 6-8 e 11) è su `Tito-dev` (`82ea9e3a1`, PR #1987). Il rotto temporaneo
 dichiarato fino alla conversione BE (Tid, 2026-10-31: «non ci preoccupiamo se
 alcune liste andranno in errore temporaneamente») è **chiuso**: §7.4 tutto
 fatto, verificato il 2026-10-31 (§7.4, in fondo).
@@ -291,6 +291,83 @@ stato.
 - **Lato BE**, a funzione pronta: `utility_list` entra in
   `ALLOWED_ORDER_COLUMNS` (`core/db/search_repository.py`) e nei registri.
 
+#### 4.5.1 Ricognizione del team DB (2026-10-31, dopo il push BE) — da decidere
+
+Percorso letto: il corpo di `script.fn_search_soggetti_universale` (doc
+auto-gen), `ui.fn_lista_colonne_ricerca_full`, il seed della 113
+(colonne 1159-1163), il chiamante (`core/db/search_repository.py`, l'unico
+nel BE), i cinque pgTAP `script/test-search-*` e
+[brief-db-ricerca-universale-tetto-10000](../work-done/brief-db-ricerca-universale-tetto-10000.md).
+
+⛔ **L'ordinamento per utility è una revoca, e va detta.** Le date:
+
+| Data | Decisione |
+| --- | --- |
+| 2026-07-31 | regola di dominio: la utility, se la lista ce l'ha, ordina sempre (`NUCLEO_ORDINABILE`) |
+| 2026-10-10 | **D-2 (a)** di brief-db-ricerca-universale-tetto-10000: `utility_list` esce dalla whitelist della ricerca universale. Motivo scritto: «l'ordine di una lista di forniture concatenate dice poco, e la fornitura si filtra nel dettaglio». Scartata la (b): l'aggregato su tutte le corrispondenze, solo quando si sceglie quell'ordinamento |
+| 2026-10-31 | Tid: la regola del 07-31 vale anche qui |
+
+La decisione del 31-10 **revoca D-2 (a)** del 10-10 e prende, di fatto, la
+(b). Il tetto che la (b) portava con sé non serve più: dal 10-10 il conteggio e la pagina stanno
+sulle colonne semplici (strada B), e l'aggregato si calcolerebbe **solo**
+quando l'operatore ordina per utility.
+
+✅ **D-3 — DECISO da Tid il 2026-10-31: nessun cambiamento.** Resta D-2 (a)
+del 2026-10-10: `utility_list` non si ordina, il seed resta `ordinabile = f`,
+la funzione non cambia. ⚠️ Effetto: `gen_seed_lista.py --verifica-ordinamento`
+continua a dare KO («NUCLEO rotto: utility») sulla 113. Come renderlo un
+caso dichiarato è da fissare (vedi sotto). La proposta che segue resta scritta
+come storia, ed è **superata**.
+
+~~**D-3 — la forma dell'ordinamento per utility. Proposta:**~~ la chiave d'ordine
+è **la stessa stringa che la colonna mostra** (`string_agg(DISTINCT
+codice_interno, ', ' ORDER BY codice_interno)` sulle righe cliente),
+calcolata su tutte le corrispondenze **solo** con `p_order_by =
+'utility_list'`, prima della pagina, con lo spareggio su
+`soggetto_ruolo_id` come oggi. NULL in fondo in ASC. Così l'ordine che si
+vede è quello della colonna, e senza quell'ordinamento la query resta quella
+di oggi. La RLS di `anagrafiche.clienti` filtra la chiave come filtra la
+colonna, quindi le due non possono dissentire. Il costo lo dirà un `EXPLAIN`
+sul DB vero, come verifica e non come motivo.
+Alternativa scartata: il codice minimo della utility come chiave. È più
+leggera, ma ordina in un modo che la colonna non mostra («GAS» davanti a
+«ENERGIA, GAS» se il criterio è il primo elemento).
+
+✅ **D-4 — DECISO da Tid il 2026-10-31: strada 2 («fare funzionare l'interruttore»), e `filtrabile = f` per il caso gemello.** Scritto al §7.6.
+
+**D-4 — le colonne di ricerca. Proposta: una terza strada**, fra le due del
+§4.5:
+
+- **la funzione riceve i campi dal chiamante**: `p_campi_ricerca text[]`, in
+  coda alla firma, validati contro una whitelist della funzione
+  (`soggetto_codice`, `ragione_sociale_completa`, `id_fiscale_univoco`). Il BE
+  li legge da `ui.fn_lista_colonne_ricerca_full('anagrafiche.ricerca_soggetti')`
+  con la `RicercaFull`, come per le altre liste. L'elenco vuoto o un campo
+  fuori whitelist: `E_PARAMETRO_INVALIDO`;
+- il **codice dell'entità** (l'`EXISTS` dinamico su
+  `tipi_ruoli.entita_tabella`) segue `soggetto_codice`: è lo stesso concetto,
+  «il codice», su due tabelle.
+
+Perché non le due strade del §4.5:
+
+- **«il catalogo dice il vero» (`ricercabile_full = f`)** lascia un buco del
+  modello. `fn_lista_colonne_ricerca_full` esclude le colonne a livello
+  `BLOCCATO` per l'utente, e la funzione di oggi cerca comunque su
+  `id_fiscale_univoco`. Chi non può vedere il CF lo può **sondare**,
+  cercandolo. Con i campi dal catalogo, il livello di colonna vale anche per la
+  ricerca, come sulle altre liste;
+- **«la funzione legge il catalogo»** chiude lo stesso buco, ma lega una
+  funzione di dominio (`script`) a un codice lista di `ui`. Oggi lo schema
+  `ui` lo legge solo chi presenta (il BE), e nessuna funzione `script`.
+
+Ricaduta: la firma cambia, quindi `DROP` + `CREATE` (`RETURNS TABLE`). Va
+toccato l'unico chiamante BE, insieme ai cinque pgTAP `script/test-search-*`.
+`filtrabile = t` sulle tre colonne 1159-1161 ha lo stesso problema: la
+funzione non sa filtrare per colonna. ⚠️ Da decidere nello stesso giro se la
+113 offre filtri (allora servono parametri) o se il seed dice `filtrabile = f`.
+**Proposta: `f`**. La ricerca universale ha un termine solo, e i filtri
+veri stanno nel dettaglio (`p_utility_id`).
+
 ### 4.6 Richiesta al team DB — il preavviso delle scadenze si valida quando si scrive
 
 `LISTINI_SCADENZA_PREAVVISO_GIORNI` (§7.2) ha `ammette_override = true`, e
@@ -317,6 +394,48 @@ stato.
 - **Lato BE, già fatto (§4.7).** La query di conteggio della lista listini
   chiama la funzione solo quando il filtro `in_scadenza` è acceso. Le righe
   la chiamano comunque.
+
+#### 4.6.1 Ricognizione del team DB (2026-10-31) — da decidere
+
+Struttura letta (doc auto-gen): `config.parameters` non ha una colonna che
+dica la forma del valore (`default_value text NOT NULL`). Su
+`parameter_overrides` girano il guard `ammette_override` (a05) e il
+dispatcher **FK-surrogata** (a10, registro `config.parameter_fk_surrogate`).
+Il dispatcher è il precedente giusto: valida già **in scrittura** il valore
+di un parametro, sia il default sia l'override (`E_PARAMETER_DEFAULT_VALUE_INVALID`,
+`E_PARAMETER_OVERRIDE_VALUE_INVALID`), ma solo per i codici di un'altra tabella.
+In lettura validano oggi tre funzioni (`fn_intero_positivo_da_testo`, con
+consumatori `fn_idempotency_soglia_secondi`, `fn_login_parametri` e
+`fn_listini_in_scadenza_senza_successore`).
+
+✅ **D-5 — DECISO da Tid il 2026-10-31: strada 1, il tipo su tutti i parametri.** Scritto al §7.6.
+
+**D-5 — la forma. Proposta:** ogni parametro **dichiara il tipo del suo
+valore**.
+
+- Colonna `tipo_valore` su `config.parameters`, `NOT NULL` e **senza
+  default**, come `ammette_override`: un parametro nuovo la dichiara. FK
+  verso un vocabolario piccolo `config.tipi_valore_parametro`. I tipi si
+  ricavano dal seed di `80_data`, che è contratto: `BOOLEANO`,
+  `INTERO_POSITIVO`, `INTERO_NON_NEGATIVO` (i `*_LEAD_GG` e gli sconti
+  ammettono 0), `DECIMALE`, `DATA`, `TESTO`. Il vuoto ammesso (per esempio
+  `EMITTENTE_DEFAULT_BOLLO_SOGLIA`) è un tipo a sé o un flag, da fissare
+  scrivendo.
+- **Un BB solo** per la regola, `script.fn_valore_parametro_ammesso(tipo,
+  valore) boolean`. Lo leggono due guard nuovi, uno su `parameters` (il
+  default) e uno su `parameter_overrides` (l'override), con un errore di
+  dominio (`DATO_ERRATO`, 422) che nomina il parametro e la forma attesa.
+  `fn_intero_positivo_da_testo` resta il lettore fail-loud, ma prende la
+  regola dal BB, così la regex non vive in due posti (regola del 2).
+- La FK-surrogata resta com'è. Dice **quale** valore (un codice esistente),
+  il tipo dice **che forma**: sono due domande diverse.
+
+⚠️ **È un tema su tutta la famiglia dei parametri**: la colonna `NOT NULL`
+chiede il tipo per **ogni** riga di `parameters.csv`, e il seed va riscritto
+tutto. Per `AGENTS.md` un tema così non si apre senza l'ok esplicito di Tid.
+La strada stretta, un tipo nullable solo sui parametri numerici, lascerebbe
+un «non dichiarato» che il modello non sa distinguere da «testo libero».
+**Non la si propone.**
 
 ### 4.7 Revisione del lavoro non committato — fatta il 2026-10-31
 
@@ -552,3 +671,119 @@ come app.
 Corsa pgTAP: i due file nuovi e i tre `ui/` toccati (§7.3).
 
 ✅ **Fatto il 2026-10-31** (Tid): migrazione applicata su dbdev, pgTAP verdi.
+
+## 7.6 Secondo giro DB — D-4 e D-5 (2026-10-31, applicato su dbdev)
+
+### 7.6.1 I changeSet
+
+| changeSet | Cosa |
+| --- | --- |
+| `00_schema/config/20261031-53` | `config.parameters.tipo_valore text NOT NULL` + `chk_parameters_tipo_valore` (otto forme). DEFAULT `'TESTO'` temporaneo, come `ammette_override`: backfill e seed `80_data/20260224-38`, che inserisce senza la colonna |
+| `20_code/script/20261031-54` | **BB** `script.fn_valore_parametro_non_conforme(tipo, valore)`: NULL se conforme, altrimenti la forma attesa in parole (la frase del messaggio). Regola e frase in un posto. Tipo sconosciuto: `E_SCRIPT_CHIAMATA_NON_VALIDA` |
+| `20_code/script/20261031-55` | `script.fn_intero_positivo_da_testo` prende la regola dal BB (la regex stava qui: regola del 2). Firma, risultato ed errori invariati, resta fail-loud |
+| `20_code/config/20261031-56` | guard a07 su `config.parameters` (`INSERT OR UPDATE OF default_value, tipo_valore`): il default ha la forma del tipo; cambiando il tipo, anche ogni override, **anche spento** (`E_PARAMETER_OVERRIDE_NON_CONFORME_AL_TIPO`, CONFLITTO_STATO) |
+| `20_code/config/20261031-57` | guard a07 su `config.parameter_overrides` (`INSERT OR UPDATE OF parameter_id, overridden_value`): `E_PARAMETER_VALORE_NON_CONFORME` (DATO_ERRATO, 422), campo `value` nel contesto. Dopo a05 (famiglia), prima di a10 (FK-surrogata) |
+| `20_code/script/20261031-58` | `script.fn_search_soggetti_universale(…, p_campi_ricerca text[] DEFAULT NULL)`, **in coda**. Whitelist `soggetto_codice` (codice del soggetto **e** dell'entità), `ragione_sociale_completa`, `id_fiscale_univoco`; vuoto = nessuna riga (come `RicercaFull`); NULL = i tre di prima; un campo fuori whitelist o NULL = `E_SCRIPT_CHIAMATA_NON_VALIDA`. `DROP` della firma a sei argomenti + `CREATE` + `GRANT` a `zeroerp_app` |
+| `90_end/20261031-59` | `DROP DEFAULT` di `tipo_valore` |
+
+Seed:
+
+- `parameters.csv` e `parameters_sistema.csv`: colonna `tipo_valore` in coda, su ogni riga; la
+  colonna nei due mirror (`20250715-01`, `70_dati_sistema/20260825-12`, entrambi
+  `runOnChange` + `ANY`). Le forme: 7 `BOOLEANO`, 12 `INTERO_POSITIVO`, 8
+  `INTERO_NON_NEGATIVO` (i `*_LEAD_GG`, `CATALOGO_UOM_OP_DEFAULT_MAX_DECIMALS`,
+  `VENDITE_LIMITE_EMISSIONE_IMMEDIATA_GIORNI`: 0 = solo oggi), 3 `DECIMALE_POSITIVO` (fattore,
+  passo e coefficiente della distinta), 2 `DECIMALE_NON_NEGATIVO` (le due percentuali), 1
+  `DECIMALE_NON_NEGATIVO_O_VUOTO` (`EMITTENTE_DEFAULT_BOLLO_SOGLIA`), 1 `DATA`, 22 `TESTO` (i
+  codici di catalogo, che valida la FK-surrogata, gli enum e il fuso).
+  `VENDITE_LIMITE_EMISSIONE_DIFFERITA_GIORNO_MESE` è `INTERO_POSITIVO`: un giorno del mese 0
+  non esiste, anche se il lettore oggi accetta da 0 a 9999.
+- `codici_errore.csv` + `messaggi_errore.csv` (id 1415, 1416): i due codici nuovi.
+- `ui/lista_colonna.csv`: `filtrabile = f` su 1159-1161 (caso gemello di D-4).
+
+Le scelte fatte scrivendo (§4.6.1 le lasciava aperte):
+
+- **Il vocabolario è un `CHECK`, non una tabella.** Ogni forma ha la sua regola nel BB, e una
+  riga di catalogo senza il suo ramo non vorrebbe dire niente. Il pgTAP prova che ogni forma del
+  CHECK ha il ramo.
+- **Il vuoto ammesso è una forma a sé** (`DECIMALE_NON_NEGATIVO_O_VUOTO`), non un flag: una
+  colonna in più da dichiarare su ogni riga per un caso solo.
+- **Le forme sono canoniche**: `true`/`false` minuscolo, niente segno, spazi o zeri iniziali, il
+  punto per i decimali. Il tipo dice la forma. Il confine del dominio (giorno del mese,
+  percentuale fino a 100) resta a chi legge.
+
+### 7.6.2 pgTAP
+
+| File | Cosa |
+| --- | --- |
+| `config/test-parameters-tipo-valore-v1.sql` (nuovo, 20) | colonna; BB ⊇ CHECK; 39 casi di forma; i due guard in INSERT e UPDATE di una colonna sola; il cambio di tipo con override acceso e spento; le fasi a05 < a07 < a10; il caso del brief (`LISTINI_SCADENZA_PREAVVISO_GIORNI` = `'0'` rifiutato); il lettore fail-loud |
+| `script/test-search-universale-campi-ricerca-v1.sql` (nuovo, 11) | una firma sola; NULL = i tre; ogni campo da solo trova e gli altri no (CF, ragione sociale, codice del soggetto, codice dell'entità); vuoto = zero righe; campo fuori whitelist e NULL rifiutati |
+| `script/test-intero-positivo-da-testo-v1.sql` (test 7) | la regex «intero positivo» sta ora nel BB delle forme: la sede attesa passa a `fn_valore_parametro_non_conforme` |
+| `config/test-credenziale-login-v1.sql` (test 22) | per provare il lettore fail-loud con un vuoto, il parametro si dichiara prima `TESTO` (il guard rifiuterebbe il vuoto su un `INTERO_POSITIVO`) |
+| `config/test-elimina-credenziale-v1.sql` | la pesca del parametro per l'override `'pgtap'` vuole anche `tipo_valore = 'TESTO'` |
+| 8 file con `INSERT INTO config.parameters` (13 istruzioni) | `tipo_valore = 'TESTO'` dichiarato: dopo `90_end` il NOT NULL non ha più default. Nel test 4 di `ammette-override` così il 23502 viene solo da `ammette_override` |
+
+### 7.6.3 Prova (2026-10-31, scratch `zeroerp_ruoli` come owner, SQL estratto in transazione annullata)
+
+- L'SQL estratto dei sette changeSet, più il seed simulato dai CSV (un `UPDATE` per parametro
+  con valore e tipo, i due codici d'errore, `filtrabile`), si applica. **I 56 parametri dei due
+  CSV passano il guard** col tipo dichiarato, e resta **una** funzione
+  `fn_search_soggetti_universale`. ⚠️ Il seed simulato non prova il loader di Liquibase
+  (`tipo_valore` non ha celle vuote, i mirror sono `nullValue: "NULL"`).
+- I due pgTAP nuovi: **20/20** e **11/11** con l'SQL estratto, rossi senza: distinguono il
+  corpo nuovo dal vecchio.
+- Regressione, prima (file di HEAD, DB com'è) e dopo (file nuovi + SQL estratto), su 41 file:
+  i presidi dei parametri, del login, della ricerca, dell'FK-surrogata, delle liste `ui`,
+  `test-listini-in-scadenza-senza-successore` e i trasversali
+  (`test-catalogo-messaggi-errore-completo`, `test-riferimenti-morti` con `plpgsql_check`,
+  `test-vw-codici-errore-*`, `test-rubinetto-primo-motivo`). **Un solo scarto**, il test 7 di
+  `test-intero-positivo-da-testo` (la regex spostata nel BB, voluto, aggiornato e verde). I
+  rossi restano **identici prima e dopo**: i test «come app» lanciati da owner
+  (`test-credenziali-porta` 3-5, `test-elimina-credenziale` 18,
+  `test-lista-definizione-perimetro-emittente` 4) e il test 7 di
+  `test-search-soggetti-universale`, che pesca un cliente dai dati e sullo scratch si ferma.
+- Guardrail statici verdi (`run_on_change`, `precondition_seed`, `ddl_su_trigger_automazione`,
+  `grant_ruolo_batch`, `v1_congelato`, `sql_letterali`, `timestamp_senza_fuso`); il preambolo
+  pgTAP ha due violazioni preesistenti in `test-grammatica-presidio-tipo-documento-v1`, non di
+  questo giro.
+- Fatto datato, usato solo come verifica: su dbdev gli override dei parametri ora tipizzati
+  rispettano già la forma (`VENDITE_MAX_*_PCT` = `10`). L'apply non si ferma sui dati di oggi.
+
+### 7.6.4 Per Tid — apply e corsa
+
+`20261031-53` … `-59`. All'apply si svegliano i mirror di `parameters.csv`,
+`parameters_sistema.csv`, `codici_errore.csv`, `messaggi_errore.csv` e `lista_colonna.csv`.
+✅ **Fatto il 2026-10-31** (Tid): apply su dbdev, pgTAP verdi.
+
+Corsa pgTAP: i due nuovi, i tre toccati nel corpo (`test-intero-positivo-da-testo`,
+`test-credenziale-login`, `test-elimina-credenziale`), gli otto con l'`INSERT` dei parametri, e
+le quattro `script/test-search-*`.
+
+⚠️ I rollback di `80_data/20261002-67` e `20261019-04` reinseriscono parametri senza
+`tipo_valore`: dopo `90_end/20261031-59` non girerebbero più (dichiarato nel changeSet).
+
+### 7.6.5 Per il BE (`dev/backend-tid`) — elenco chiuso, dopo l'apply
+
+1. **Ricerca universale (113).** `search_repository` passa a `fn_search_soggetti_universale`
+   il settimo argomento, `p_campi_ricerca`. Sono le colonne accese del catalogo
+   (`ui.fn_lista_colonne_ricerca_full('anagrafiche.ricerca_soggetti')`, il campo
+   `campo_sorgente`), dichiarate con una `RicercaFull` sulle tre colonne. La 113 entra in
+   `_RICERCHE` e va tolta dal debito: `test_ogni_lista_ricercabile_e_registrata_o_in_debito`
+   torna verde. Il termine resta uno, e la funzione cerca dove il catalogo dice.
+   ⛔ Elenco vuoto = nessuna riga, come il BB.
+2. **`filtrabile = f`** sulle tre colonne della 113: se un registro BE dei filtri le elencava, si
+   allinea al seed.
+3. **Utility non ordinabile** (D-3, nessun cambiamento): `utility_list` resta fuori da
+   `ALLOWED_ORDER_COLUMNS`, e `gen_seed_lista.py --verifica-ordinamento` resta KO («NUCLEO
+   rotto: utility») sulla 113. ⚠️ Da dichiarare dove lo script tiene le eccezioni motivate: la
+   decisione del 31-10 è che la regola del nucleo **non** vale qui.
+4. **Override con valore fuori forma**: `POST`/`PUT` degli override ricevono
+   `E_PARAMETER_VALORE_NON_CONFORME` (DATO_ERRATO, 422, campo `value`). La frase viene dal
+   catalogo, con la forma attesa. Nessun controllo di forma da aggiungere nel BE (sarebbe una
+   copia della regola). I booleani si scrivono `true`/`false` minuscoli.
+5. **Test Django**: l'helper `apps/core/tests/_helpers/parametro_di_prova.py`
+   (`crea_parametro_di_prova`, 6 usi) inserisce senza `tipo_valore`. Dopo `90_end` è un
+   NOT NULL: aggiungere il tipo (`'TESTO'` come default dell'helper).
+6. *(facoltativo, non chiesto)* `script.fn_list_parameters_for_user` non espone `tipo_valore`.
+   Se la UI delle impostazioni vuole un campo adatto alla forma (numero, sì/no, data), è una
+   colonna in più della lista: richiesta al DB, non un elenco nel FE.

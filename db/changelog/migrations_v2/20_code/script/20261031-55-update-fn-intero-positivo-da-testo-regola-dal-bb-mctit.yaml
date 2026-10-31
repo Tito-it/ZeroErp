@@ -1,0 +1,119 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_intero_positivo_da_testo — LA REGOLA LA DICE IL BB DELLE FORME
+#   Brief: brief-db-liste-datatable-grezze-secondo-giro §4.6.1 (D-5, Tid 2026-10-31)
+#
+# ── COSA CAMBIA ──────────────────────────────────────────────────
+#   La regex '^[1-9][0-9]{0,5}$' era scritta qui. Dal 20261031-54 la stessa
+#   regola («intero positivo») la dice script.fn_valore_parametro_non_conforme
+#   per il tipo INTERO_POSITIVO, ed e' quella che i guard applicano in
+#   scrittura. Due copie della stessa regex divergono al primo ritocco
+#   (regola del 2): il lettore la prende dal BB.
+#
+# ── COSA RESTA ───────────────────────────────────────────────────
+#   Firma, risultato, errori e frasi: NULL, vuoto o forma non ammessa danno
+#   E_CONFIG_MANCANTE col nome del parametro, come prima. Il lettore resta
+#   fail-loud: in scrittura il guard rifiuta un valore fuori forma, ma il
+#   lettore non lo da' per scontato.
+#
+# ⚠️ CORPO dalla doc auto-gen (docs/it/dbzero/script/funzioni/
+#   fn_intero_positivo_da_testo.md, = 20261024-03 applicato). CREATE OR
+#   REPLACE: firma invariata, nessun overload.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261031-55-update-fn-intero-positivo-da-testo-regola-dal-bb-mctit.yaml
+
+  - changeSet:
+      id: 20261031-55-update-fn-intero-positivo-da-testo-regola-dal-bb
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_intero_positivo_da_testo prende la regola «intero positivo» da
+        script.fn_valore_parametro_non_conforme (tipo INTERO_POSITIVO) invece di tenere la sua
+        regex: una regola, un posto. Firma, risultato ed errori invariati. Brief:
+        brief-db-liste-datatable-grezze-secondo-giro §4.6.1 (D-5).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >-
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_valore_parametro_non_conforme'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_intero_positivo_da_testo(
+                  p_valore    config.parameters.default_value%TYPE,
+                  p_parametro config.parameters.code%TYPE,
+                  -- chi lo chiede, per il log: un nome di funzione, nessuna colonna
+                  p_chi       text DEFAULT NULL)
+               -- l'intero validato: nessuna colonna di cui sia il riflesso
+               RETURNS integer
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Il valore di un parametro che deve essere un intero
+                  --   positivo: dal testo all'intero, oppure E_CONFIG_MANCANTE.
+                  --
+                  -- Regole:
+                  --   - ammesso: la forma INTERO_POSITIVO di
+                  --     script.fn_valore_parametro_non_conforme (da 1 a 999999,
+                  --     senza zeri iniziali, segno, decimali o spazi), la
+                  --     stessa che i guard applicano in scrittura;
+                  --   - NULL o vuoto: il parametro manca, E_CONFIG_MANCANTE;
+                  --   - niente valore di ripiego, niente btrim.
+                  -- =========================================================
+
+                  -- Guard di chiamata: senza il nome del parametro l'errore non
+                  -- direbbe all'amministratore che cosa correggere.
+                  IF NULLIF(btrim(p_parametro), '') IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', COALESCE(p_chi, 'script.fn_intero_positivo_da_testo'),
+                          'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('detail', 'p_parametro obbligatorio'),
+                          NULL::uuid,
+                          'script.fn_intero_positivo_da_testo',
+                          'il codice del parametro da validare e'' obbligatorio');
+                  END IF;
+
+                  -- La regola dal BB delle forme (NULL non e' conforme).
+                  IF script.fn_valore_parametro_non_conforme('INTERO_POSITIVO', p_valore) IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', COALESCE(p_chi, 'script.fn_intero_positivo_da_testo'),
+                          'E_CONFIG_MANCANTE',
+                          jsonb_build_object('config',    'config.parameters',
+                                             'parametro', p_parametro,
+                                             'valore',    p_valore),
+                          NULL::uuid,
+                          VARIADIC ARRAY[format('parametro %s (intero positivo)', p_parametro)]);
+                  END IF;
+
+                  RETURN p_valore::integer;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_intero_positivo_da_testo(config.parameters.default_value%TYPE, config.parameters.code%TYPE, text) IS
+                  'La regola «intero positivo» del valore di un parametro di sistema, letta: restituisce l''intero (da 1 a 999999, senza zeri iniziali, segno, decimali o spazi), oppure solleva E_CONFIG_MANCANTE col nome del parametro (assente, vuoto o forma non ammessa). La forma la dice script.fn_valore_parametro_non_conforme (tipo INTERO_POSITIVO, rev 2026-10-31), la stessa che i guard applicano in scrittura. Fail-loud, niente ripiego, niente btrim. Non legge tabelle: il valore lo passa il chiamante, che lo legge dove sta. p_chi: chi la chiama, per il log. Consumatori: dbops.fn_idempotency_soglia_secondi, script.fn_login_parametri, vendite.fn_listini_in_scadenza_senza_successore. Brief: brief-be-verifica-documentazione-api §I.11.0, brief-db-liste-datatable-grezze-secondo-giro (D-5).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- firma invariata: il corpo precedente si ricrea da 20261024-03, se servisse
+              SELECT 1;

@@ -2,7 +2,7 @@
 # ⚙️ Funzione `fn_search_soggetti_universale`
 
 ```sql
-CREATE FUNCTION fn_search_soggetti_universale(p_search_term text, p_tipo_ruolo_id integer, p_limit integer, p_offset integer, p_order_by text, p_order_dir text)
+CREATE FUNCTION fn_search_soggetti_universale(p_search_term text, p_tipo_ruolo_id integer, p_limit integer, p_offset integer, p_order_by text, p_order_dir text, p_campi_ricerca text[])
 ```
 
 > 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
@@ -12,7 +12,7 @@ CREATE FUNCTION fn_search_soggetti_universale(p_search_term text, p_tipo_ruolo_i
 <div data-search-exclude markdown>
 
 ```sql
-CREATE OR REPLACE FUNCTION script.fn_search_soggetti_universale(p_search_term text, p_tipo_ruolo_id integer, p_limit integer DEFAULT 50, p_offset integer DEFAULT 0, p_order_by text DEFAULT NULL::text, p_order_dir text DEFAULT 'ASC'::text)
+CREATE OR REPLACE FUNCTION script.fn_search_soggetti_universale(p_search_term text, p_tipo_ruolo_id integer, p_limit integer DEFAULT 50, p_offset integer DEFAULT 0, p_order_by text DEFAULT NULL::text, p_order_dir text DEFAULT 'ASC'::text, p_campi_ricerca text[] DEFAULT NULL::text[])
  RETURNS TABLE(total_count bigint, soggetto_id uuid, soggetto_ruolo_id bigint, tipo_ruolo_id integer, soggetto_codice text, ragione_sociale_completa text, id_fiscale_univoco text, utility_list text, emittente_ragione_sociale text)
  LANGUAGE plpgsql
  STABLE
@@ -30,18 +30,29 @@ DECLARE
   v_entita_tabella    config.tipi_ruoli.entita_tabella%TYPE;
   -- Colonna codice nella tabella entita' (default 'codice')
   v_entita_colonna    config.tipi_ruoli.entita_colonna_codice%TYPE;
-  -- Frammento SQL EXISTS dinamico (vuoto se nessuna tabella)
-  v_exists_clause     text := '';
   -- Predicato della regola unica (fn_predicato_soggetto_ruolo_visibile)
   v_predicato         text;
   -- Colonne ordinabili (whitelist). ⚠️ Solo colonne SEMPLICI del
   --   soggetto: l'ordine e la pagina si decidono prima degli aggregati
-  --   (rev 2026-10-10, D-2): utility_list non e' piu' ordinabile.
+  --   (rev 2026-10-10, D-2): utility_list non e' ordinabile.
   c_allowed_order_cols constant text[] := ARRAY[
     'ragione_sociale_completa',
     'soggetto_codice',
     'id_fiscale_univoco'
   ];
+  -- Campi su cui si puo' cercare (whitelist, rev 2026-10-31, D-4):
+  --   i nomi delle colonne di uscita, cioe' i campo_sorgente del
+  --   catalogo della lista 113. NULL = tutti e tre.
+  c_allowed_campi     constant text[] := ARRAY[
+    'soggetto_codice',
+    'ragione_sociale_completa',
+    'id_fiscale_univoco'
+  ];
+  -- I campi effettivi e il primo fuori whitelist
+  v_campi             text[];
+  v_campo_ignoto      text;
+  -- Le condizioni di ricerca, una per campo, in OR
+  v_search_clause     text;
   -- Colonna e direzione ordinamento effettivi
   v_order_col         text;
   v_order_dir         text;
@@ -81,11 +92,9 @@ BEGIN
   -- ⚠️ `utility_list` ed `emittente_ragione_sociale` NON sono nella
   --   whitelist, ed e' voluto: sono aggregati che si calcolano solo
   --   per le righe della pagina (rev 2026-10-10). Ordinare per un
-  --   aggregato vorrebbe calcolarlo su TUTTE le corrispondenze,
-  --   cioe' il costo da cui il vecchio tetto di 10.000 proteggeva.
+  --   aggregato vorrebbe calcolarlo su TUTTE le corrispondenze.
   --   utility_list era ordinabile fino al 2026-10-10: tolta per
-  --   decisione di Tid (D-2), l'ordine di una lista concatenata di
-  --   forniture dice poco e la fornitura si filtra nel dettaglio.
+  --   decisione di Tid (D-2), confermata il 2026-10-31 (D-3).
   v_order_col := COALESCE(btrim(p_order_by), 'ragione_sociale_completa');
 
   IF NOT (v_order_col = ANY(c_allowed_order_cols)) THEN
@@ -108,6 +117,35 @@ BEGIN
     WHEN 'DESC' THEN 'DESC'
     ELSE 'ASC'
   END;
+
+  -- =========================================================
+  -- I campi su cui cercare (rev 2026-10-31, D-4).
+  -- NULL: i tre di prima. Vuoto: nessun campo, nessuna riga.
+  -- Un campo fuori whitelist: il chiamante passa un valore che il
+  -- catalogo della lista 113 non produce.
+  -- =========================================================
+  v_campi := COALESCE(p_campi_ricerca, c_allowed_campi);
+
+  SELECT c INTO v_campo_ignoto
+    FROM unnest(v_campi) AS c
+   WHERE c IS NULL OR NOT (c = ANY(c_allowed_campi))
+   LIMIT 1;
+
+  IF FOUND THEN
+    PERFORM script.fn_log_and_raise_error(
+      'database',
+      'script.fn_search_soggetti_universale',
+      'E_SCRIPT_CHIAMATA_NON_VALIDA',
+      jsonb_build_object(
+        'parametro', 'p_campi_ricerca',
+        'valore', to_jsonb(p_campi_ricerca),
+        'campi_ammessi', to_jsonb(c_allowed_campi)
+      ),
+      NULL::uuid,
+      'script.fn_search_soggetti_universale',
+      format('campo di ricerca non ammesso: %s', COALESCE(v_campo_ignoto, 'NULL'))
+    );
+  END IF;
 
   -- Costruisci frammento ORDER BY.
   -- %I quota il nome colonna (safe), direzione validata sopra.
@@ -132,41 +170,47 @@ BEGIN
   FROM config.tipi_ruoli tr
   WHERE tr.id = p_tipo_ruolo_id;
 
-  -- Costruisci frammento EXISTS dinamico per ricerca codice.
-  -- La tabella e' gia' validata dal trigger guard su tipi_ruoli
-  -- (regclass valido, ha soggetto_ruolo_id, ha colonna codice).
-  -- Usa %s per il nome tabella (validato) e %I per la colonna.
-  IF v_entita_tabella IS NOT NULL THEN
-    v_exists_clause := format(
-      'OR EXISTS (SELECT 1 FROM %s e WHERE e.soggetto_ruolo_id = sr.id AND e.%I ILIKE $2)',
-      v_entita_tabella::regclass,
-      v_entita_colonna
-    );
-  END IF;
+  -- Le condizioni, una per campo acceso, in OR. Nessun campo:
+  -- FALSE, nessuna riga (come RicercaFull del BE).
+  -- soggetto_codice cerca il codice del soggetto E il codice
+  -- dell'entita' (EXISTS dinamico). La tabella e' gia' validata dal
+  -- trigger guard su tipi_ruoli (regclass valido, ha
+  -- soggetto_ruolo_id, ha colonna codice): %s per il nome tabella
+  -- (validato), %I per la colonna.
+  SELECT COALESCE(string_agg(cond, ' OR ' ORDER BY ord), 'FALSE')
+    INTO v_search_clause
+    FROM (
+      SELECT 1 AS ord, 's.codice ILIKE $2' ||
+             CASE WHEN v_entita_tabella IS NOT NULL THEN
+               format(
+                 ' OR EXISTS (SELECT 1 FROM %s e WHERE e.soggetto_ruolo_id = sr.id AND e.%I ILIKE $2)',
+                 v_entita_tabella::regclass,
+                 v_entita_colonna)
+             ELSE '' END AS cond
+       WHERE 'soggetto_codice' = ANY(v_campi)
+      UNION ALL
+      SELECT 2, 's.ragione_sociale_completa ILIKE $2'
+       WHERE 'ragione_sociale_completa' = ANY(v_campi)
+      UNION ALL
+      SELECT 3, 's.id_fiscale_univoco_cf_piva ILIKE $2'
+       WHERE 'id_fiscale_univoco' = ANY(v_campi)
+    ) c;
 
   -- =========================================================
   -- Query principale (rev 2026-10-10, brief-db-ricerca-universale-
   -- tetto-10000, strada B di Tid).
   --
-  -- Prima: raccolta di AL MASSIMO 10.000 corrispondenze con un LIMIT
-  -- senza ORDER BY, aggregati su tutte, poi conteggio, ordine e
-  -- pagina su quelle. Oltre il tetto il totale era falso, la prima
-  -- pagina non era la prima vera e le pagine potevano ripetere o
-  -- saltare soggetti.
-  -- Ora: conteggio, ordine e pagina sulle colonne SEMPLICI del
-  -- soggetto (nessuna join pesante), su TUTTE le corrispondenze; gli
+  -- Conteggio, ordine e pagina sulle colonne SEMPLICI del soggetto
+  -- (nessuna join pesante), su TUTTE le corrispondenze; gli
   -- aggregati (utility, emittenti) solo per le righe della pagina.
-  -- La parte costosa non cresce con il numero di corrispondenze, e il
-  -- tetto non ha piu' niente da proteggere: e' tolto.
   --
   -- $1 = p_tipo_ruolo_id, $2 = v_search_pattern,
   -- $3 = v_limit, $4 = v_offset
   -- =========================================================
   RETURN QUERY EXECUTE format('
     WITH r AS (
-      -- Soggetti con il ruolo richiesto e il termine trovato.
-      -- Cerca su ragione_sociale, id_fiscale, codice soggetto
-      -- e codice entita'' (dinamico da tipi_ruoli.entita_tabella).
+      -- Soggetti con il ruolo richiesto e il termine trovato
+      -- sui campi accesi (p_campi_ricerca, rev 2026-10-31).
       -- Chi si vede: il predicato della regola unica
       -- (fn_predicato_soggetto_ruolo_visibile), lo stesso del
       -- dettaglio. Nessun tetto: qui ci sono solo colonne semplici.
@@ -181,12 +225,7 @@ BEGIN
         JOIN anagrafiche.soggetti s
           ON s.id = sr.soggetto_id
       WHERE sr.tipo_ruolo_id = $1
-        AND (
-          s.ragione_sociale_completa ILIKE $2
-          OR s.id_fiscale_univoco_cf_piva ILIKE $2
-          OR s.codice ILIKE $2
-          %s
-        )
+        AND (%s)
         AND %s
     ),
     paged AS (
@@ -239,13 +278,13 @@ BEGIN
       ) agg ON true
     -- La join laterale non garantisce l''ordine: lo si riapplica.
     %s
-  ', v_exists_clause, v_predicato, v_order_clause, v_order_clause)
+  ', v_search_clause, v_predicato, v_order_clause, v_order_clause)
   USING p_tipo_ruolo_id, v_search_pattern, v_limit, v_offset;
 END;
 $function$
 
-COMMENT ON FUNCTION script.fn_search_soggetti_universale(p_search_term text, p_tipo_ruolo_id integer, p_limit integer, p_offset integer, p_order_by text, p_order_dir text)
-IS 'Ricerca universale soggetti per tipo ruolo (livello 1). Cerca su ragione_sociale_completa, id_fiscale_univoco_cf_piva, codice soggetto e codice entita'' (config.tipi_ruoli.entita_tabella, che serve solo a questo). ⭐ Conteggio, ordine e pagina (rev 2026-10-10, brief-db-ricerca-universale-tetto-10000, strada B di Tid) si fanno sulle colonne semplici del soggetto, su TUTTE le corrispondenze: total_count e'' il totale vero e le pagine sono contigue (tie-breaker soggetto_ruolo_id). Gli aggregati utility_list ed emittente_ragione_sociale si calcolano solo per le righe della pagina. Nessun tetto: fino al 2026-10-10 un LIMIT 10000 senza ORDER BY rendeva falsi totale e pagine oltre il tetto. Ordinamento: p_order_by in whitelist (ragione_sociale_completa, soggetto_codice, id_fiscale_univoco; utility_list tolta il 2026-10-10, D-2: gli aggregati non sono ordinabili), p_order_dir ASC/DESC. Paginazione LIMIT/OFFSET, p_limit al massimo 200. ⭐ Chi si vede (rev 2026-10-10, brief-db-codici-non-trovato-email-e-permessi R-6): il filtro di riga e'' il predicato della regola unica script.fn_predicato_soggetto_ruolo_visibile, lo stesso della verifica d''esistenza di fn_get_search_detail — almeno una riga visibile della entita_esistenza del ruolo (CL clienti sotto la RLS, FO fornitori, VT vettori, BANK_B bank_branches), o il solo soggetto-ruolo per i ruoli che non ne hanno. Lo stato dell''entita'' non conta; nessun filtro su soggetti.attivo (il modello non ammette un soggetto-ruolo col soggetto spento). Tipo ruolo validato dal BB: NULL o <= 0 E_PARAMETRO_INVALIDO, inesistente E_TIPO_RUOLO_NON_TROVATO, non ricercabile E_TIPO_RUOLO_NON_RICERCABILE. ⭐ emittente_ragione_sociale: AGGREGATA (string_agg), una riga per soggetto, perche'' un soggetto non ha un emittente — il legame e'' transitivo via billing account. ⚠️ Elenca solo gli emittenti dei clienti che la RLS restituisce: chi ha in whitelist il solo A, su un soggetto cliente di A e di B, legge «A». NULL sui rami non-CL. SECURITY INVOKER: la RLS vale con l''identita'' di chi chiama.';
+COMMENT ON FUNCTION script.fn_search_soggetti_universale(p_search_term text, p_tipo_ruolo_id integer, p_limit integer, p_offset integer, p_order_by text, p_order_dir text, p_campi_ricerca text[])
+IS 'Ricerca universale soggetti per tipo ruolo (livello 1). ⭐ Cerca sui campi di p_campi_ricerca (rev 2026-10-31, brief-db-liste-datatable-grezze-secondo-giro D-4): i campo_sorgente accesi nel catalogo della lista anagrafiche.ricerca_soggetti, che il chiamante legge da ui.fn_lista_colonne_ricerca_full (ricercabile_full e livello di colonna dell''utente: una colonna BLOCCATA non si sonda cercandola). Whitelist: soggetto_codice (codice del soggetto e codice dell''entita'' di config.tipi_ruoli.entita_tabella), ragione_sociale_completa, id_fiscale_univoco; un campo fuori whitelist o NULL: E_SCRIPT_CHIAMATA_NON_VALIDA. Elenco vuoto: nessuna riga (nessuna colonna accesa non trova niente). p_campi_ricerca NULL (il default): i tre campi. ⭐ Conteggio, ordine e pagina (rev 2026-10-10, brief-db-ricerca-universale-tetto-10000, strada B di Tid) si fanno sulle colonne semplici del soggetto, su TUTTE le corrispondenze: total_count e'' il totale vero e le pagine sono contigue (tie-breaker soggetto_ruolo_id). Gli aggregati utility_list ed emittente_ragione_sociale si calcolano solo per le righe della pagina. Ordinamento: p_order_by in whitelist (ragione_sociale_completa, soggetto_codice, id_fiscale_univoco; utility_list tolta il 2026-10-10, D-2, confermata il 2026-10-31: gli aggregati non sono ordinabili), p_order_dir ASC/DESC. Paginazione LIMIT/OFFSET, p_limit al massimo 200. ⭐ Chi si vede (rev 2026-10-10, brief-db-codici-non-trovato-email-e-permessi R-6): il filtro di riga e'' il predicato della regola unica script.fn_predicato_soggetto_ruolo_visibile, lo stesso della verifica d''esistenza di fn_get_search_detail. Tipo ruolo validato dal BB: NULL o <= 0 E_PARAMETRO_INVALIDO, inesistente E_TIPO_RUOLO_NON_TROVATO, non ricercabile E_TIPO_RUOLO_NON_RICERCABILE. ⭐ emittente_ragione_sociale: AGGREGATA (string_agg), una riga per soggetto. ⚠️ Elenca solo gli emittenti dei clienti che la RLS restituisce. NULL sui rami non-CL. SECURITY INVOKER: la RLS vale con l''identita'' di chi chiama.';
 ```
 
 </div>

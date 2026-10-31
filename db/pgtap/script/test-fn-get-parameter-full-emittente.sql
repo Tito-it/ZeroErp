@@ -82,8 +82,8 @@ SELECT ok(
 -- Parametro di test
 -- 2026-10-25 (brief-db-parametri-senza-override): config.parameters.ammette_override
 -- e' NOT NULL senza DEFAULT, un parametro dichiara la sua famiglia.
-INSERT INTO config.parameters (id, code, default_value, description, ammette_override)
-VALUES (99990, '_TEST_PARAM_EMIT_', 'DEFAULT_VAL', 'Parametro test emittente', true)
+INSERT INTO config.parameters (id, code, default_value, description, ammette_override, tipo_valore)
+VALUES (99990, '_TEST_PARAM_EMIT_', 'DEFAULT_VAL', 'Parametro test emittente', true, 'TESTO')
 ON CONFLICT (id) DO NOTHING;
 
 -- Garantisce che esista almeno un gruppo di test (ROLLBACK ripristina)

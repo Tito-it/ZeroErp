@@ -63,6 +63,10 @@ databaseChangeLog:
               # 2026-10-25 (brief-db-parametri-senza-override, D-1): la famiglia
               # del parametro, dichiarata riga per riga (nessun DEFAULT nel modello).
               - column: { name: ammette_override, type: BOOLEAN }
+              # 2026-10-31 (brief-db-liste-datatable-grezze-secondo-giro, D-5): la
+              # forma del valore, dichiarata riga per riga (nessun DEFAULT nel modello).
+              # Il guard a07 (20261031-56) la fa rispettare al caricamento.
+              - column: { name: tipo_valore, type: STRING }
 
   - changeSet:
       id: 20250715-90-upsert_parameters
