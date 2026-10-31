@@ -1,0 +1,142 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'INVOLUCRO SEGUE IL CORPO COMUNE: vendite.fn_contratto_righe_preview
+#   Brief: brief-db-contratto-righe-periodiche-in-commessa §7.5 e §7.7 (D-7, L16).
+#
+#   vendite.fn_documento_righe_preview ha due colonne in coda (20261031-41):
+#   periodicita e generazione_canone. L'involucro le dichiara (RETURN QUERY
+#   SELECT * dal corpo comune), quindi cambia il RETURNS TABLE: DROP + CREATE,
+#   COMMENT riscritto per intero, col GRANT. Corpo invariato.
+#   Corpo dal catalogo vivo di dbdev (2026-10-31, uguale all'ultimo YAML).
+#   Ritorno indietro: DROP e il corpo di prima.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261031-42-update-fn-contratto-righe-preview-periodicita-mctit.yaml
+
+  - changeSet:
+      id: 20261031-42-update-fn-contratto-righe-preview-periodicita
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_contratto_righe_preview: periodicita e generazione_canone in coda, come vendite.fn_documento_righe_preview (D-7). Brief: brief-db-contratto-righe-periodiche-in-commessa §7.5.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION vendite.fn_contratto_righe_preview(bigint);
+
+              CREATE OR REPLACE FUNCTION vendite.fn_contratto_righe_preview(
+                  p_contratto_id vendite.contratti.id%TYPE)
+              RETURNS TABLE(
+                  articolo_id           catalogo.articoli.id%TYPE,
+                  articolo_codice       catalogo.articoli.codice%TYPE,
+                  articolo_descrizione  catalogo.articoli.descrizione%TYPE,
+                  is_composito          catalogo.articoli.is_composito%TYPE,
+                  uom_id                catalogo.unita_misura.id%TYPE,
+                  uom_codice            catalogo.unita_misura.codice%TYPE,
+                  prezzo_listino        vendite.listini_righe.prezzo%TYPE,
+                  tipo_variazione       vendite.contratti.tipo_variazione_globale%TYPE,
+                  valore_variazione     vendite.contratti.valore_variazione_globale%TYPE,
+                  override_riga_id      vendite.contratti_righe.id%TYPE,
+                  override_prezzo       vendite.contratti_righe.prezzo_unitario%TYPE,
+                  tipo_eccezione        vendite.contratti_righe.tipo_eccezione%TYPE,
+                  origine               character varying,
+                  prezzo_finale         numeric,
+                  componenti            jsonb,
+                  quantita              vendite.contratti_righe.quantita%TYPE,
+                  qta_operativa         vendite.contratti_righe.qta_operativa%TYPE,
+                  tipo_erogazione       vendite.contratti_righe.tipo_erogazione%TYPE,
+                  fonte_quantita_attesa vendite.contratti_righe.fonte_quantita_attesa%TYPE,
+                  riga_key              text,
+                  azioni                text[],
+                  escludi_blocco_codice text,
+                  ordine                vendite.contratti_righe.ordine%TYPE,
+                  uom_operativa_id      vendite.contratti_righe.uom_operativa_id%TYPE,
+                  -- rev 2026-10-31 (20261031-42, D-7): in coda, come il corpo comune.
+                  periodicita           vendite.contratti_righe.periodicita%TYPE,
+                  generazione_canone    vendite.contratti_righe.generazione_canone%TYPE)
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: le righe del drawer ContrattoRigheDrawer e la sorgente della
+              --   lista vendite.contratto_righe (output invariato).
+              -- rev 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende, R4): il
+              --   corpo vive in vendite.fn_documento_righe_preview, comune con
+              --   l'offerta (regola del 2); qui resta l'ingresso per il contratto.
+              --   Storia del corpo: 20260516-04 … 20261004-14.
+              BEGIN
+                  RETURN QUERY
+                  SELECT *
+                    FROM vendite.fn_documento_righe_preview('CONTRATTO', p_contratto_id);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_contratto_righe_preview(bigint) IS
+                'Le righe OPERATIVE di un contratto (listino + overlay OVERRIDE/ESCLUSIONE + AGGIUNTA standalone e bundle), con riga_key, azioni ed escludi_blocco_codice: SORGENTE della lista configurabile vendite.contratto_righe (D-8.4 del brief liste-righe-documento). 24 colonne. ⭐ Dal 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende, R4) e'' un involucro di vendite.fn_documento_righe_preview(''CONTRATTO'', id), il corpo comune con l''offerta (regola del 2): la storia delle regole (verbi per origine, UdM della riga, esposizione dei componenti, esclusione senza MODIFICA) e il contratto delle colonne stanno nel COMMENT di quella funzione. Firma e colonne invariate. ⭐ rev 2026-10-31 (20261031-42, brief-db-contratto-righe-periodiche-in-commessa D-7): 26 colonne, periodicita e generazione_canone in coda come il corpo comune.';
+              GRANT EXECUTE ON FUNCTION vendite.fn_contratto_righe_preview(bigint) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION vendite.fn_contratto_righe_preview(bigint);
+
+              CREATE OR REPLACE FUNCTION vendite.fn_contratto_righe_preview(
+                  p_contratto_id vendite.contratti.id%TYPE)
+              RETURNS TABLE(
+                  articolo_id           catalogo.articoli.id%TYPE,
+                  articolo_codice       catalogo.articoli.codice%TYPE,
+                  articolo_descrizione  catalogo.articoli.descrizione%TYPE,
+                  is_composito          catalogo.articoli.is_composito%TYPE,
+                  uom_id                catalogo.unita_misura.id%TYPE,
+                  uom_codice            catalogo.unita_misura.codice%TYPE,
+                  prezzo_listino        vendite.listini_righe.prezzo%TYPE,
+                  tipo_variazione       vendite.contratti.tipo_variazione_globale%TYPE,
+                  valore_variazione     vendite.contratti.valore_variazione_globale%TYPE,
+                  override_riga_id      vendite.contratti_righe.id%TYPE,
+                  override_prezzo       vendite.contratti_righe.prezzo_unitario%TYPE,
+                  tipo_eccezione        vendite.contratti_righe.tipo_eccezione%TYPE,
+                  origine               character varying,
+                  prezzo_finale         numeric,
+                  componenti            jsonb,
+                  quantita              vendite.contratti_righe.quantita%TYPE,
+                  qta_operativa         vendite.contratti_righe.qta_operativa%TYPE,
+                  tipo_erogazione       vendite.contratti_righe.tipo_erogazione%TYPE,
+                  fonte_quantita_attesa vendite.contratti_righe.fonte_quantita_attesa%TYPE,
+                  riga_key              text,
+                  azioni                text[],
+                  escludi_blocco_codice text,
+                  ordine                vendite.contratti_righe.ordine%TYPE,
+                  uom_operativa_id      vendite.contratti_righe.uom_operativa_id%TYPE)
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: le righe del drawer ContrattoRigheDrawer e la sorgente della
+              --   lista vendite.contratto_righe (output invariato).
+              -- rev 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende, R4): il
+              --   corpo vive in vendite.fn_documento_righe_preview, comune con
+              --   l'offerta (regola del 2); qui resta l'ingresso per il contratto.
+              --   Storia del corpo: 20260516-04 … 20261004-14.
+              BEGIN
+                  RETURN QUERY
+                  SELECT *
+                    FROM vendite.fn_documento_righe_preview('CONTRATTO', p_contratto_id);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_contratto_righe_preview(bigint) IS
+                'Le righe OPERATIVE di un contratto (listino + overlay OVERRIDE/ESCLUSIONE + AGGIUNTA standalone e bundle), con riga_key, azioni ed escludi_blocco_codice: SORGENTE della lista configurabile vendite.contratto_righe (D-8.4 del brief liste-righe-documento). 24 colonne. ⭐ Dal 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende, R4) e'' un involucro di vendite.fn_documento_righe_preview(''CONTRATTO'', id), il corpo comune con l''offerta (regola del 2): la storia delle regole (verbi per origine, UdM della riga, esposizione dei componenti, esclusione senza MODIFICA) e il contratto delle colonne stanno nel COMMENT di quella funzione. Firma e colonne invariate.';
+              GRANT EXECUTE ON FUNCTION vendite.fn_contratto_righe_preview(bigint) TO zeroerp_app;

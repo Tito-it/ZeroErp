@@ -94,6 +94,12 @@ BEGIN
            --    sola esiste davvero.
            fattura_riga_id      = NULL,
            stato_esecuzione     = NULL,
+           -- rev 2026-10-31 (20261031-46, D-1): la natura decisa dal segno del
+           -- documento vale per quel documento; libera, l'attivita' torna FATTURA.
+           natura_doc_id        = CASE WHEN natura_dal_segno
+                                       THEN config.fn_get_natura_doc_fiscale_id('FATTURA')
+                                       ELSE natura_doc_id END,
+           natura_dal_segno     = false,
            data_update          = now(),
            user_update          = current_user
      WHERE id = ANY(p_attivita_fatturabili_ids);

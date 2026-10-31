@@ -1,0 +1,218 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA VERSIONE NON SI ATTIVA CON UNA QUOTA FISSA SENZA PERIODICITA': script.fn_check_versione_listino_attivabile
+#   Brief: brief-db-contratto-righe-periodiche-in-commessa §7.3 e §7.7 (D-3, decisione (b) di Tid,
+#   2026-10-31). Lotto L15.
+#
+#   Il motivo 3, nuovo: la versione ha una quota fissa a canone senza
+#   periodicita'. Una quota fissa (articolo con una tipologia e_quota_fissa)
+#   la cui erogazione di default e' un canone si addebita da se', ogni
+#   periodo, a ogni contratto del listino che non la ritocca: senza
+#   periodicita' non si addebita, e ogni contratto del listino resta in
+#   CANONE_NON_GENERABILE (§6.13). Fuori dalla bozza la riga non si corregge
+#   piu': serve una versione nuova. L'errore esce prima che un contratto la usi.
+#   · Vale per la riga di listino e per il kit (che sul listino non ha una
+#     riga: e' sul listino se ha componenti attivi, e la periodicita' sta in
+#     vendite.listini_kit). La periodicita' la dice la sede,
+#     vendite.fn_listino_periodicita_articolo (regola del 2).
+#   · La bozza resta libera di essere incompleta: il motivo pesa solo
+#     sull'attivazione. La quota fissa che non si eroga a canone non e' un
+#     motivo qui: la segnala il lister (QUOTA_FISSA_SENZA_CANONE, 20261031-35).
+#   Codice nuovo E_LISTINO_VERSIONE_QUOTA_FISSA_SENZA_PERIODICITA (catalogo,
+#   stesso giro); reason_key nuova, ricaduta FE nella richiesta. Forma del motivo:
+#   SELECT ... INTO + IF FOUND THEN RETURN, il motivo accanto alla guardia.
+#   Corpo dal catalogo vivo di dbdev (2026-10-31, uguale al 20261028-07).
+#   Ritorno indietro: il corpo del 20261028-07.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261031-39-update-fn-check-versione-listino-attivabile-quota-fissa-periodicita-mctit.yaml
+
+  - changeSet:
+      id: 20261031-39-update-fn-check-versione-listino-attivabile-quota-fissa-periodicita
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_check_versione_listino_attivabile: motivo 3, una quota fissa a canone senza periodicita' (riga o kit). Brief: brief-db-contratto-righe-periodiche-in-commessa §7.3 (D-3, b).
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: vendite
+            tableName: listini_kit
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_versione_listino_attivabile(
+                  p_versione_id vendite.listini_versioni.id%TYPE)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_versione vendite.listini_versioni%ROWTYPE;
+                  v_riga_id  vendite.listini_righe.id%TYPE;
+                  v_articolo catalogo.articoli%ROWTYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo: dire perche' una versione di listino NON si attiva.
+                  --   '[]' = si attiva. Non solleva: sollevare e' del guard di
+                  --   transizione e del verbo, che la chiamano, come la
+                  --   superficie della lista (linee-guida-sql §12.5.2).
+                  -- =========================================================
+                  SELECT lv.* INTO v_versione
+                    FROM vendite.listini_versioni lv
+                   WHERE lv.id = p_versione_id;
+                  IF NOT FOUND THEN
+                      RETURN jsonb_build_array();
+                  END IF;
+
+                  -- 1. La versione e' spenta.
+                  IF v_versione.attivo IS NOT TRUE THEN
+                      RETURN jsonb_build_array(jsonb_build_object(
+                          'codice',     'E_LISTINO_VERSIONE_SPENTA',
+                          'reason',     'VERSIONE_SPENTA',
+                          'reason_key', 'vendite.listini.azione_reason.versione_spenta',
+                          'dettaglio',  jsonb_build_object('listino_versione_id', v_versione.id,
+                                                           'listino_id', v_versione.listino_id),
+                          'valori',     jsonb_build_array(v_versione.codice_versione)));
+                  END IF;
+
+                  -- 2. La versione non ha prezzi: ne' una riga attiva, ne' un
+                  --    composito col prezzo bundle.
+                  SELECT r.id INTO v_riga_id
+                    FROM vendite.listini_righe r
+                   WHERE r.listino_versione_id = v_versione.id
+                     AND r.attivo IS TRUE
+                   LIMIT 1;
+                  IF NOT FOUND THEN
+                      SELECT c.id INTO v_riga_id
+                        FROM vendite.listini_righe_componenti c
+                       WHERE c.listino_versione_id = v_versione.id
+                         AND c.attivo IS TRUE
+                       LIMIT 1;
+                  END IF;
+                  IF NOT FOUND THEN
+                      RETURN jsonb_build_array(jsonb_build_object(
+                          'codice',     'E_LISTINO_VERSIONE_SENZA_RIGHE',
+                          'reason',     'VERSIONE_SENZA_RIGHE',
+                          'reason_key', 'vendite.listini.azione_reason.versione_senza_righe',
+                          'dettaglio',  jsonb_build_object('listino_versione_id', v_versione.id,
+                                                           'listino_id', v_versione.listino_id),
+                          'valori',     jsonb_build_array(v_versione.codice_versione)));
+                  END IF;
+
+                  -- 3. rev 2026-10-31 (20261031-39, D-3): una quota fissa a canone senza
+                  --    periodicita', riga di listino o kit (la sede la dice per tutti e due).
+                  SELECT a.* INTO v_articolo
+                    FROM (SELECT r.articolo_id
+                            FROM vendite.listini_righe r
+                           WHERE r.listino_versione_id = v_versione.id
+                             AND r.attivo IS TRUE
+                          UNION
+                          SELECT c.articolo_padre_id
+                            FROM vendite.listini_righe_componenti c
+                           WHERE c.listino_versione_id = v_versione.id
+                             AND c.attivo IS TRUE) x
+                    JOIN catalogo.articoli a ON a.id = x.articolo_id
+                    JOIN config.listini_tipologie t
+                      ON t.id = a.listino_tipologia_id AND t.e_quota_fissa IS TRUE
+                   WHERE EXISTS (SELECT 1
+                                   FROM vendite.fn_articolo_erogazioni(a.id) e
+                                  WHERE e.e_default IS TRUE AND e.tipo_erogazione = 'CANONE')
+                     AND vendite.fn_listino_periodicita_articolo(v_versione.id, a.id) IS NULL
+                   ORDER BY a.codice
+                   LIMIT 1;
+                  IF FOUND THEN
+                      RETURN jsonb_build_array(jsonb_build_object(
+                          'codice',     'E_LISTINO_VERSIONE_QUOTA_FISSA_SENZA_PERIODICITA',
+                          'reason',     'QUOTA_FISSA_SENZA_PERIODICITA',
+                          'reason_key', 'vendite.listini.azione_reason.quota_fissa_senza_periodicita',
+                          'dettaglio',  jsonb_build_object('listino_versione_id', v_versione.id,
+                                                           'listino_id', v_versione.listino_id,
+                                                           'articolo_id', v_articolo.id,
+                                                           'campo', 'periodicita'),
+                          'valori',     jsonb_build_array(v_versione.codice_versione, v_articolo.codice)));
+                  END IF;
+
+                  RETURN jsonb_build_array();
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_versione_listino_attivabile(
+                  p_versione_id vendite.listini_versioni.id%TYPE)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_versione vendite.listini_versioni%ROWTYPE;
+                  v_riga_id  vendite.listini_righe.id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo: dire perche' una versione di listino NON si attiva.
+                  --   '[]' = si attiva. Non solleva: sollevare e' del guard di
+                  --   transizione e del verbo, che la chiamano, come la
+                  --   superficie della lista (linee-guida-sql §12.5.2).
+                  -- =========================================================
+                  SELECT lv.* INTO v_versione
+                    FROM vendite.listini_versioni lv
+                   WHERE lv.id = p_versione_id;
+                  IF NOT FOUND THEN
+                      RETURN jsonb_build_array();
+                  END IF;
+
+                  -- 1. La versione e' spenta.
+                  IF v_versione.attivo IS NOT TRUE THEN
+                      RETURN jsonb_build_array(jsonb_build_object(
+                          'codice',     'E_LISTINO_VERSIONE_SPENTA',
+                          'reason',     'VERSIONE_SPENTA',
+                          'reason_key', 'vendite.listini.azione_reason.versione_spenta',
+                          'dettaglio',  jsonb_build_object('listino_versione_id', v_versione.id,
+                                                           'listino_id', v_versione.listino_id),
+                          'valori',     jsonb_build_array(v_versione.codice_versione)));
+                  END IF;
+
+                  -- 2. La versione non ha prezzi: ne' una riga attiva, ne' un
+                  --    composito col prezzo bundle.
+                  SELECT r.id INTO v_riga_id
+                    FROM vendite.listini_righe r
+                   WHERE r.listino_versione_id = v_versione.id
+                     AND r.attivo IS TRUE
+                   LIMIT 1;
+                  IF NOT FOUND THEN
+                      SELECT c.id INTO v_riga_id
+                        FROM vendite.listini_righe_componenti c
+                       WHERE c.listino_versione_id = v_versione.id
+                         AND c.attivo IS TRUE
+                       LIMIT 1;
+                  END IF;
+                  IF NOT FOUND THEN
+                      RETURN jsonb_build_array(jsonb_build_object(
+                          'codice',     'E_LISTINO_VERSIONE_SENZA_RIGHE',
+                          'reason',     'VERSIONE_SENZA_RIGHE',
+                          'reason_key', 'vendite.listini.azione_reason.versione_senza_righe',
+                          'dettaglio',  jsonb_build_object('listino_versione_id', v_versione.id,
+                                                           'listino_id', v_versione.listino_id),
+                          'valori',     jsonb_build_array(v_versione.codice_versione)));
+                  END IF;
+
+                  RETURN jsonb_build_array();
+              END;
+              $function$;

@@ -1,0 +1,166 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA NOTA DI CREDITO DEGLI STORNI CITA LE FATTURE CHE CORREGGE: vendite.fn_popola_fatture_rettifiche
+#   Brief: brief-db-contratto-righe-periodiche-in-commessa §7.1 e §7.7 (D-1-ter, decisione (A) di
+#   Tid del 2026-10-31; L17).
+#
+#   Il legame documento-a-documento (vendite.fatture_rettifiche, da cui esce
+#   DatiFattureCollegate) si proiettava solo dalle righe che rettificano una
+#   riga (fatture_righe.riga_rettificata_id: l'accredito del reso). Da oggi
+#   anche dagli storni dei canoni (G-5): una nota di credito che porta lo
+#   storno di un pezzo gia' fatturato cita la fattura di quel pezzo. Il
+#   cammino: la riga di fattura, le sue attivita' fatturabili, la riga di
+#   commessa dello storno, il pezzo stornato (meta.storno_di_attivita_id), la
+#   sua attivita' fatturabile, la sua riga di fattura, la fattura.
+#   · Solo sulla nota di credito (la natura del documento): e' il documento
+#     che corregge. Un pezzo non ancora fatturato non ha una fattura da citare:
+#     lo storno si compensa nella stessa fattura (D-1).
+#   · Le righe dello storno restano NORMALE, non RETTIFICA: non copiano prezzo
+#     e IVA da una riga di fattura, e il guard del backend vuole la coppia
+#     RETTIFICA + puntatore. La citazione e' del documento, non della riga.
+#   Idempotente come prima (ON CONFLICT sulla coppia); non cancella. Il
+#   conteggio somma le due proiezioni.
+#   Corpo dal catalogo vivo di dbdev (2026-10-31, uguale al 20260818-41); il
+#   COMMENT vivo resta. Ritorno indietro: il corpo del 20260818-41.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261031-48-update-fn-popola-fatture-rettifiche-storni-mctit.yaml
+
+  - changeSet:
+      id: 20261031-48-update-fn-popola-fatture-rettifiche-storni
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_popola_fatture_rettifiche: la nota di credito cita anche le fatture dei pezzi di canone che storna (D-1-ter). Brief: brief-db-contratto-righe-periodiche-in-commessa §7.7 (L17).
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: vendite
+            tableName: attivita_fatturabili
+            columnName: natura_dal_segno
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_popola_fatture_rettifiche(
+                  p_fattura_id vendite.fatture.id%TYPE
+              )
+               -- RETURNS integer: e' un CONTEGGIO di coppie inserite, non il
+               -- valore di una colonna — non c'e' nulla da ancorare.
+               RETURNS integer
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: proietta sul legame documento-a-documento
+              --   (vendite.fatture_rettifiche) cio' che le righe gia' dicono
+              --   (fatture_righe.riga_rettificata_id). Ritorna il numero di
+              --   coppie effettivamente aggiunte.
+              -- Idempotente: ON CONFLICT DO NOTHING sulla coppia. Rieseguibile
+              --   su un documento gia' proiettato senza effetti.
+              -- ⚠️ Non cancella mai: una proiezione che cancella diventa un
+              --   secondo scrittore, ed e' li' che nascono le due verita'.
+              DECLARE
+                  v_inserite integer;
+                  v_storni   integer;
+              BEGIN
+                  IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_popola_fatture_rettifiche','E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro','fattura_id','valore',p_fattura_id),
+                          NULL::uuid, 'fattura_id obbligatorio (>0)');
+                  END IF;
+
+                  INSERT INTO vendite.fatture_rettifiche (fattura_id, rettificata_id)
+                  SELECT DISTINCT r.fattura_id, orig.fattura_id
+                    FROM vendite.fatture_righe r
+                    JOIN vendite.fatture_righe orig ON orig.id = r.riga_rettificata_id
+                   WHERE r.fattura_id = p_fattura_id
+                     AND r.riga_rettificata_id IS NOT NULL
+                     -- Una fattura non rettifica se stessa: sarebbe una coppia
+                     -- che non dice nulla, e la FK la ammetterebbe.
+                     AND orig.fattura_id <> r.fattura_id
+                  ON CONFLICT ON CONSTRAINT uq_fatture_rettifiche_pair DO NOTHING;
+
+                  GET DIAGNOSTICS v_inserite = ROW_COUNT;
+
+                  -- rev 2026-10-31 (20261031-48, D-1-ter): la nota di credito cita le
+                  -- fatture dei pezzi di canone che storna (meta.storno_di_attivita_id
+                  -- della riga di commessa dello storno -> il pezzo -> la sua fattura).
+                  INSERT INTO vendite.fatture_rettifiche (fattura_id, rettificata_id)
+                  SELECT DISTINCT r.fattura_id, fo.fattura_id
+                    FROM vendite.fatture f
+                    JOIN vendite.fatture_righe r ON r.fattura_id = f.id
+                    JOIN vendite.attivita_fatturabili af ON af.fattura_riga_id = r.id
+                    JOIN vendite.commesse_attivita ca ON ca.id = af.commessa_attivita_id
+                    JOIN vendite.attivita_fatturabili afo
+                      ON afo.commessa_attivita_id = CASE WHEN (ca.meta ->> 'storno_di_attivita_id') ~ '^[0-9]+$'
+                                                    THEN (ca.meta ->> 'storno_di_attivita_id')::bigint END
+                    JOIN vendite.fatture_righe fo ON fo.id = afo.fattura_riga_id
+                   WHERE f.id = p_fattura_id
+                     AND f.natura_doc_id = config.fn_get_natura_doc_fiscale_id('NOTA_CREDITO')
+                     AND fo.fattura_id <> r.fattura_id
+                  ON CONFLICT ON CONSTRAINT uq_fatture_rettifiche_pair DO NOTHING;
+
+                  GET DIAGNOSTICS v_storni = ROW_COUNT;
+                  v_inserite := v_inserite + v_storni;
+                  RETURN v_inserite;
+              END
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_popola_fatture_rettifiche(
+                  p_fattura_id vendite.fatture.id%TYPE
+              )
+               -- RETURNS integer: e' un CONTEGGIO di coppie inserite, non il
+               -- valore di una colonna — non c'e' nulla da ancorare.
+               RETURNS integer
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: proietta sul legame documento-a-documento
+              --   (vendite.fatture_rettifiche) cio' che le righe gia' dicono
+              --   (fatture_righe.riga_rettificata_id). Ritorna il numero di
+              --   coppie effettivamente aggiunte.
+              -- Idempotente: ON CONFLICT DO NOTHING sulla coppia. Rieseguibile
+              --   su un documento gia' proiettato senza effetti.
+              -- ⚠️ Non cancella mai: una proiezione che cancella diventa un
+              --   secondo scrittore, ed e' li' che nascono le due verita'.
+              DECLARE
+                  v_inserite integer;
+              BEGIN
+                  IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_popola_fatture_rettifiche','E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro','fattura_id','valore',p_fattura_id),
+                          NULL::uuid, 'fattura_id obbligatorio (>0)');
+                  END IF;
+
+                  INSERT INTO vendite.fatture_rettifiche (fattura_id, rettificata_id)
+                  SELECT DISTINCT r.fattura_id, orig.fattura_id
+                    FROM vendite.fatture_righe r
+                    JOIN vendite.fatture_righe orig ON orig.id = r.riga_rettificata_id
+                   WHERE r.fattura_id = p_fattura_id
+                     AND r.riga_rettificata_id IS NOT NULL
+                     -- Una fattura non rettifica se stessa: sarebbe una coppia
+                     -- che non dice nulla, e la FK la ammetterebbe.
+                     AND orig.fattura_id <> r.fattura_id
+                  ON CONFLICT ON CONSTRAINT uq_fatture_rettifiche_pair DO NOTHING;
+
+                  GET DIAGNOSTICS v_inserite = ROW_COUNT;
+                  RETURN v_inserite;
+              END
+              $function$;

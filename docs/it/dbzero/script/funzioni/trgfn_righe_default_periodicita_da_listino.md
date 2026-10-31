@@ -16,11 +16,14 @@ CREATE OR REPLACE FUNCTION script.trgfn_righe_default_periodicita_da_listino()
  LANGUAGE plpgsql
 AS $function$
 -- Scopo: la riga a canone su un articolo del listino (ADESIONE, OVERRIDE)
---   senza periodicita' la prende dalla riga di listino dell'articolo, nella
---   versione operativa del documento. Riempie solo il vuoto.
+--   senza periodicita' la prende dal listino dell'articolo, nella versione
+--   operativa del documento. Riempie solo il vuoto.
 -- Generica sulle due tabelle gemelle: TG_ARGV[0] = documento (codice della
 --   sorgente), TG_ARGV[1] = colonna del padre. Regola completa nell'intestazione
 --   del changeSet 20261029-44.
+-- rev 2026-10-31 (20261031-33, D-2-bis): la periodicita' la dice
+--   vendite.fn_listino_periodicita_articolo, che conosce anche il kit
+--   (vendite.listini_kit).
 DECLARE
     v_documento    config.sorgenti.codice_interno%TYPE := TG_ARGV[0];
     -- Nudo DICHIARATO: l'id del padre, polimorfo (contratto o offerta).
@@ -39,14 +42,7 @@ BEGIN
         RETURN NEW;
     END IF;
 
-    SELECT lr.periodicita INTO v_periodicita
-      FROM vendite.listini_righe lr
-     WHERE lr.listino_versione_id = v_versione_id
-       AND lr.articolo_id = NEW.articolo_id
-       AND lr.attivo IS TRUE
-       AND lr.periodicita IS NOT NULL
-     ORDER BY lr.id
-     LIMIT 1;
+    v_periodicita := vendite.fn_listino_periodicita_articolo(v_versione_id, NEW.articolo_id);
 
     IF v_periodicita IS NOT NULL THEN
         NEW.periodicita := v_periodicita;

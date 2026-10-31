@@ -1,0 +1,64 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA MARCA DELLA NATURA DECISA DAL SEGNO: vendite.attivita_fatturabili.natura_dal_segno
+#   Brief: brief-db-contratto-righe-periodiche-in-commessa §7.1 e §7.7 (D-1; L17, forma accettata da
+#   Tid il 2026-10-31).
+#
+#   Un documento che somma negativo e' una nota di credito (D-1). La natura
+#   la porta l'attivita' fatturabile, e la chiave della testata la legge da
+#   li' (vendite.fn_build_fattura_key). Il verbo del lotto
+#   (vendite.fn_lotto_natura_dal_segno, 20261031-45) porta a NOTA_CREDITO le
+#   attivita' FATTURA dei gruppi negativi, e questa colonna lo ricorda: true =
+#   la natura non e' quella della commessa, l'ha decisa il segno del documento.
+#   Serve a tornare indietro: quando l'attivita' torna libera
+#   (vendite.fn_libera_attivita_fatturabili, 20261031-46) riprende la natura
+#   FATTURA, e la prossima composizione del lotto decide di nuovo.
+#   NOT NULL DEFAULT false: le righe di oggi non sono state battezzate.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261031-44-alter-attivita-fatturabili-natura-dal-segno-mctit.yaml
+
+  - changeSet:
+      id: 20261031-44-alter-attivita-fatturabili-natura-dal-segno
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.attivita_fatturabili.natura_dal_segno: la natura NOTA_CREDITO l'ha decisa il segno del
+        documento (D-1), non la commessa. Brief: brief-db-contratto-righe-periodiche-in-commessa §7.7 (L17).
+      preConditions:
+        - onFail: HALT
+        - not:
+            - columnExists:
+                schemaName: vendite
+                tableName: attivita_fatturabili
+                columnName: natura_dal_segno
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.attivita_fatturabili
+                  ADD COLUMN natura_dal_segno boolean NOT NULL DEFAULT false;
+
+              COMMENT ON COLUMN vendite.attivita_fatturabili.natura_dal_segno IS
+                  'true = la natura NOTA_CREDITO di questa attivita'' l''ha decisa il segno del documento (D-1: '
+                  'un documento che somma negativo e'' una nota di credito), non la commessa: la scrive '
+                  'vendite.fn_lotto_natura_dal_segno prima delle testate del lotto. Quando l''attivita'' torna '
+                  'libera (vendite.fn_libera_attivita_fatturabili) riprende la natura FATTURA e la marca cade; '
+                  'la riscrittura dalla commessa (vendite.fn_emit_attivita_fatturabili_da_commessa) la toglie. '
+                  'Brief: brief-db-contratto-righe-periodiche-in-commessa §7.7 (L17).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.attivita_fatturabili DROP COLUMN IF EXISTS natura_dal_segno;

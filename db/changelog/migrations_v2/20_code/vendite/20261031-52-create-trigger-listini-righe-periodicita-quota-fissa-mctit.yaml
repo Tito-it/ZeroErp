@@ -1,0 +1,53 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL MONTAGGIO DEL GUARD DELLA PERIODICITA' DELLA QUOTA FISSA: trg_listini_righe_a10_periodicita_quota_fissa_upd
+#   Brief: brief-db-contratto-righe-periodiche-in-commessa §7.10.
+#
+#   BEFORE UPDATE OF periodicita, per riga, WHEN la periodicita' va da un valore
+#   a NULL. Fase _a10_; il nome ordina dopo _a10_guard_stato_upd_dlt («g» prima
+#   di «p»): su una versione CHIUSA l'operatore legge che la versione e' ferma.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261031-52-create-trigger-listini-righe-periodicita-quota-fissa-mctit.yaml
+
+  - changeSet:
+      id: 20261031-52-create-trigger-listini-righe-periodicita-quota-fissa
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Montaggio di vendite.trgfn_listini_righe_guard_periodicita_quota_fissa su vendite.listini_righe,
+        BEFORE UPDATE OF periodicita quando va a NULL. Brief:
+        brief-db-contratto-righe-periodiche-in-commessa §7.10.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc
+               WHERE oid = to_regprocedure('vendite.trgfn_listini_righe_guard_periodicita_quota_fissa()')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_listini_righe_a10_periodicita_quota_fissa_upd ON vendite.listini_righe;
+              CREATE TRIGGER trg_listini_righe_a10_periodicita_quota_fissa_upd
+                  BEFORE UPDATE OF periodicita ON vendite.listini_righe
+                  FOR EACH ROW
+                  WHEN (OLD.periodicita IS NOT NULL AND NEW.periodicita IS NULL)
+                  EXECUTE FUNCTION vendite.trgfn_listini_righe_guard_periodicita_quota_fissa();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_listini_righe_a10_periodicita_quota_fissa_upd ON vendite.listini_righe;

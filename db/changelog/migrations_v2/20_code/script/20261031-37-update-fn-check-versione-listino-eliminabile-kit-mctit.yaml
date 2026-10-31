@@ -1,0 +1,217 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I KIT DELLA VERSIONE NON LA TRATTENGONO: script.fn_check_versione_listino_eliminabile
+#   Brief: brief-db-contratto-righe-periodiche-in-commessa §7.7 (L12, D-2-bis).
+#
+#   «Chi trattiene» la versione lo trova script.fn_tabelle_che_trattengono,
+#   dalle FK: vendite.listini_kit (20261031-29) cita la versione, e senza questa
+#   riga una bozza con un kit risulterebbe «citata» e non si eliminerebbe.
+#   Le righe del kit sono della versione, e il verbo le cancella con lei
+#   (20261031-36): entrano fra le proprie, come righe e componenti.
+#   Corpo dal catalogo vivo di dbdev (2026-10-31, uguale al 20261028-36). Il
+#   COMMENT vivo resta. Ritorno indietro: il corpo del 20261028-36.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261031-37-update-fn-check-versione-listino-eliminabile-kit-mctit.yaml
+
+  - changeSet:
+      id: 20261031-37-update-fn-check-versione-listino-eliminabile-kit
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_check_versione_listino_eliminabile: vendite.listini_kit fra le tabelle proprie della versione, che non la trattengono. Brief: brief-db-contratto-righe-periodiche-in-commessa §7.7 (L12).
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: vendite
+            tableName: listini_kit
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_versione_listino_eliminabile(
+                  p_versione_id vendite.listini_versioni.id%TYPE)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_versione vendite.listini_versioni%ROWTYPE;
+                  v_stato    config.stati_doc_listino_versioni.codice_interno%TYPE;
+                  -- Righe e componenti della versione: il verbo li cancella
+                  -- con lei, non trattengono.
+                  -- rev 2026-10-31 (20261031-37, D-2-bis): anche i kit (vendite.listini_kit).
+                  v_proprie  regclass[] := ARRAY['vendite.listini_righe'::regclass,
+                                                 'vendite.listini_righe_componenti'::regclass,
+                                                 'vendite.listini_kit'::regclass];
+                  -- Le tabelle che trattengono, `schema.tabella`.
+                  v_dove     text[];
+              BEGIN
+                  -- =========================================================
+                  -- Scopo: dire perche' una versione di listino NON si
+                  --   elimina. '[]' = si elimina. Non solleva: sollevare e'
+                  --   del guard per stato e del verbo, che la chiamano, come
+                  --   la superficie della lista (linee-guida-sql §12.5.2).
+                  --   Vedi l'intestazione del changeSet 20261028-36.
+                  -- =========================================================
+                  SELECT lv.* INTO v_versione
+                    FROM vendite.listini_versioni lv
+                   WHERE lv.id = p_versione_id;
+                  IF NOT FOUND THEN
+                      RETURN jsonb_build_array();
+                  END IF;
+
+                  SELECT s.codice_interno INTO v_stato
+                    FROM config.stati_doc_listino_versioni s
+                   WHERE s.id = v_versione.stato_doc_listino_versione_id;
+
+                  -- 1. Fuori dalla bozza: e' stata visibile ai prezzi.
+                  IF v_stato IS DISTINCT FROM 'BOZZA' THEN
+                      RETURN jsonb_build_array(jsonb_build_object(
+                          'codice',     'E_LISTINO_VERSIONE_NON_ELIMINABILE',
+                          'reason',     'VERSIONE_NON_IN_BOZZA',
+                          'reason_key', 'vendite.listini.azione_reason.versione_non_in_bozza',
+                          'dettaglio',  jsonb_build_object('listino_versione_id', v_versione.id,
+                                                           'listino_id', v_versione.listino_id,
+                                                           'stato', v_stato),
+                          'valori',     jsonb_build_array(v_versione.codice_versione,
+                                                          COALESCE(v_stato, 'NULL'))));
+                  END IF;
+
+                  -- 2. Un documento la tiene: la versione, o una sua riga o
+                  --    un suo componente.
+                  SELECT array_agg(DISTINCT d.tabella ORDER BY d.tabella) INTO v_dove
+                    FROM (
+                      SELECT unnest(script.fn_tabelle_che_trattengono(
+                                 'vendite.listini_versioni'::regclass,
+                                 ARRAY[v_versione.id]::bigint[], v_proprie))
+                      UNION ALL
+                      SELECT unnest(script.fn_tabelle_che_trattengono(
+                                 'vendite.listini_righe'::regclass,
+                                 ARRAY(SELECT r.id FROM vendite.listini_righe r
+                                        WHERE r.listino_versione_id = v_versione.id)::bigint[],
+                                 v_proprie))
+                      UNION ALL
+                      SELECT unnest(script.fn_tabelle_che_trattengono(
+                                 'vendite.listini_righe_componenti'::regclass,
+                                 ARRAY(SELECT c.id FROM vendite.listini_righe_componenti c
+                                        WHERE c.listino_versione_id = v_versione.id)::bigint[],
+                                 v_proprie))
+                    ) AS d(tabella);
+
+                  IF cardinality(v_dove) > 0 THEN
+                      RETURN jsonb_build_array(jsonb_build_object(
+                          'codice',     'E_LISTINO_VERSIONE_CITATA',
+                          'reason',     'VERSIONE_CITATA',
+                          'reason_key', 'vendite.listini.azione_reason.versione_citata',
+                          'dettaglio',  jsonb_build_object('listino_versione_id', v_versione.id,
+                                                           'listino_id', v_versione.listino_id,
+                                                           'dove', to_jsonb(v_dove)),
+                          'valori',     jsonb_build_array(v_versione.codice_versione,
+                                                          array_to_string(v_dove, ', '))));
+                  END IF;
+
+                  RETURN jsonb_build_array();
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_versione_listino_eliminabile(
+                  p_versione_id vendite.listini_versioni.id%TYPE)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_versione vendite.listini_versioni%ROWTYPE;
+                  v_stato    config.stati_doc_listino_versioni.codice_interno%TYPE;
+                  -- Righe e componenti della versione: il verbo li cancella
+                  -- con lei, non trattengono.
+                  v_proprie  regclass[] := ARRAY['vendite.listini_righe'::regclass,
+                                                 'vendite.listini_righe_componenti'::regclass];
+                  -- Le tabelle che trattengono, `schema.tabella`.
+                  v_dove     text[];
+              BEGIN
+                  -- =========================================================
+                  -- Scopo: dire perche' una versione di listino NON si
+                  --   elimina. '[]' = si elimina. Non solleva: sollevare e'
+                  --   del guard per stato e del verbo, che la chiamano, come
+                  --   la superficie della lista (linee-guida-sql §12.5.2).
+                  --   Vedi l'intestazione del changeSet 20261028-36.
+                  -- =========================================================
+                  SELECT lv.* INTO v_versione
+                    FROM vendite.listini_versioni lv
+                   WHERE lv.id = p_versione_id;
+                  IF NOT FOUND THEN
+                      RETURN jsonb_build_array();
+                  END IF;
+
+                  SELECT s.codice_interno INTO v_stato
+                    FROM config.stati_doc_listino_versioni s
+                   WHERE s.id = v_versione.stato_doc_listino_versione_id;
+
+                  -- 1. Fuori dalla bozza: e' stata visibile ai prezzi.
+                  IF v_stato IS DISTINCT FROM 'BOZZA' THEN
+                      RETURN jsonb_build_array(jsonb_build_object(
+                          'codice',     'E_LISTINO_VERSIONE_NON_ELIMINABILE',
+                          'reason',     'VERSIONE_NON_IN_BOZZA',
+                          'reason_key', 'vendite.listini.azione_reason.versione_non_in_bozza',
+                          'dettaglio',  jsonb_build_object('listino_versione_id', v_versione.id,
+                                                           'listino_id', v_versione.listino_id,
+                                                           'stato', v_stato),
+                          'valori',     jsonb_build_array(v_versione.codice_versione,
+                                                          COALESCE(v_stato, 'NULL'))));
+                  END IF;
+
+                  -- 2. Un documento la tiene: la versione, o una sua riga o
+                  --    un suo componente.
+                  SELECT array_agg(DISTINCT d.tabella ORDER BY d.tabella) INTO v_dove
+                    FROM (
+                      SELECT unnest(script.fn_tabelle_che_trattengono(
+                                 'vendite.listini_versioni'::regclass,
+                                 ARRAY[v_versione.id]::bigint[], v_proprie))
+                      UNION ALL
+                      SELECT unnest(script.fn_tabelle_che_trattengono(
+                                 'vendite.listini_righe'::regclass,
+                                 ARRAY(SELECT r.id FROM vendite.listini_righe r
+                                        WHERE r.listino_versione_id = v_versione.id)::bigint[],
+                                 v_proprie))
+                      UNION ALL
+                      SELECT unnest(script.fn_tabelle_che_trattengono(
+                                 'vendite.listini_righe_componenti'::regclass,
+                                 ARRAY(SELECT c.id FROM vendite.listini_righe_componenti c
+                                        WHERE c.listino_versione_id = v_versione.id)::bigint[],
+                                 v_proprie))
+                    ) AS d(tabella);
+
+                  IF cardinality(v_dove) > 0 THEN
+                      RETURN jsonb_build_array(jsonb_build_object(
+                          'codice',     'E_LISTINO_VERSIONE_CITATA',
+                          'reason',     'VERSIONE_CITATA',
+                          'reason_key', 'vendite.listini.azione_reason.versione_citata',
+                          'dettaglio',  jsonb_build_object('listino_versione_id', v_versione.id,
+                                                           'listino_id', v_versione.listino_id,
+                                                           'dove', to_jsonb(v_dove)),
+                          'valori',     jsonb_build_array(v_versione.codice_versione,
+                                                          array_to_string(v_dove, ', '))));
+                  END IF;
+
+                  RETURN jsonb_build_array();
+              END;
+              $function$;

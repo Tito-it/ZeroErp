@@ -68,14 +68,35 @@ DO $fx$ BEGIN
         ARRAY[pg_temp.art('A'), pg_temp.art('B')], 100);
 END $fx$;
 
--- In bozza la riga di listino si scrive: A a TRIMESTRALE, B senza.
+-- In bozza la riga di listino si scrive: A a TRIMESTRALE, B mensile.
+-- ⚠️ rev 2026-10-31 (20261031-39 e -51/-52): una versione con una quota fissa a
+--   canone senza periodicita' non si attiva, e fuori dalla bozza la quota non la
+--   perde. L'unica strada per «una riga di listino senza periodicita'» su una
+--   versione attiva e' il catalogo che cambia dopo l'attivazione: la fixture la
+--   costruisce cosi' (brief-db-contratto-righe-periodiche-in-commessa §7.10).
 UPDATE vendite.listini_righe
    SET periodicita = 'TRIMESTRALE'
  WHERE listino_versione_id = (SELECT id FROM tmp_per_ver) AND articolo_id = pg_temp.art('A');
 
+-- La tipologia QUOTA_FISSA, nella transazione, non si eroga a canone: in bozza
+-- la quota senza periodicita' non e' «a canone», e la versione si attiva.
+UPDATE config.listini_tipologie_erogazioni SET e_default = false
+ WHERE tipologia_id = (SELECT t.id FROM config.listini_tipologie t WHERE t.codice = 'QUOTA_FISSA')
+   AND e_default IS TRUE;
+INSERT INTO config.listini_tipologie_erogazioni (tipologia_id, tipo_erogazione, fonte_quantita_attesa, e_default)
+SELECT t.id, 'UNA_TANTUM', 'FISSA', true FROM config.listini_tipologie t WHERE t.codice = 'QUOTA_FISSA';
+
 DO $fx$ BEGIN
     PERFORM dbops.fn_pgtap_porta_a_stato('vendite.listini_versioni'::regclass, (SELECT id FROM tmp_per_ver), 'ATTIVA');
 END $fx$;
+
+-- Poi il catalogo torna com'era: la quota e' di nuovo un canone, senza periodicita'.
+DELETE FROM config.listini_tipologie_erogazioni
+ WHERE tipologia_id = (SELECT t.id FROM config.listini_tipologie t WHERE t.codice = 'QUOTA_FISSA')
+   AND tipo_erogazione = 'UNA_TANTUM' AND e_default IS TRUE;
+UPDATE config.listini_tipologie_erogazioni SET e_default = true
+ WHERE tipologia_id = (SELECT t.id FROM config.listini_tipologie t WHERE t.codice = 'QUOTA_FISSA')
+   AND tipo_erogazione = 'CANONE' AND fonte_quantita_attesa = 'FISSA';
 
 CREATE TEMP TABLE tmp_per_ctr AS
 SELECT k.contratto_id AS id

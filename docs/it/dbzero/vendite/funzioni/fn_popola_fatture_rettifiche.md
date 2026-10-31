@@ -26,6 +26,7 @@ AS $function$
 --   secondo scrittore, ed e' li' che nascono le due verita'.
 DECLARE
     v_inserite integer;
+    v_storni   integer;
 BEGIN
     IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
         PERFORM script.fn_log_and_raise_error(
@@ -46,6 +47,27 @@ BEGIN
     ON CONFLICT ON CONSTRAINT uq_fatture_rettifiche_pair DO NOTHING;
 
     GET DIAGNOSTICS v_inserite = ROW_COUNT;
+
+    -- rev 2026-10-31 (20261031-48, D-1-ter): la nota di credito cita le
+    -- fatture dei pezzi di canone che storna (meta.storno_di_attivita_id
+    -- della riga di commessa dello storno -> il pezzo -> la sua fattura).
+    INSERT INTO vendite.fatture_rettifiche (fattura_id, rettificata_id)
+    SELECT DISTINCT r.fattura_id, fo.fattura_id
+      FROM vendite.fatture f
+      JOIN vendite.fatture_righe r ON r.fattura_id = f.id
+      JOIN vendite.attivita_fatturabili af ON af.fattura_riga_id = r.id
+      JOIN vendite.commesse_attivita ca ON ca.id = af.commessa_attivita_id
+      JOIN vendite.attivita_fatturabili afo
+        ON afo.commessa_attivita_id = CASE WHEN (ca.meta ->> 'storno_di_attivita_id') ~ '^[0-9]+$'
+                                      THEN (ca.meta ->> 'storno_di_attivita_id')::bigint END
+      JOIN vendite.fatture_righe fo ON fo.id = afo.fattura_riga_id
+     WHERE f.id = p_fattura_id
+       AND f.natura_doc_id = config.fn_get_natura_doc_fiscale_id('NOTA_CREDITO')
+       AND fo.fattura_id <> r.fattura_id
+    ON CONFLICT ON CONSTRAINT uq_fatture_rettifiche_pair DO NOTHING;
+
+    GET DIAGNOSTICS v_storni = ROW_COUNT;
+    v_inserite := v_inserite + v_storni;
     RETURN v_inserite;
 END
 $function$

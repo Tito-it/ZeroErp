@@ -316,6 +316,9 @@ BEGIN
                    tipo_movimento = v_row.tipo_movimento,
                    -- Natura e riga rettificata: stesso specchio.
                    natura_doc_id = v_row.natura_doc_id,
+                   -- rev 2026-10-31 (20261031-47, D-1): la natura torna quella della
+                   -- commessa, la marca del segno cade.
+                   natura_dal_segno = false,
                    fattura_riga_rettificata_id = v_row.fattura_riga_rettificata_id,
                    -- Refresh snapshot audit pricing v5 (riga non ancora fatturata)
                    prezzo_base_snapshot = v_row.prezzo_base_snapshot,

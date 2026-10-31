@@ -56,6 +56,7 @@ search:
 - [fatture_sdi_eventi](tabelle/fatture_sdi_eventi.md) — (latest review 16-02-2026)   `vendite.fatture_sdi_eventi` mantiene lo **storico cronologico eventi SDI** per ciascun tentativo (`fattura_sdi_id`).
 - [fatture_stampa_coda](tabelle/fatture_stampa_coda.md) — `vendite.fatture_stampa_coda` è la **coda (outbox) della stampa massiva delle fatture**. Il task di pipeline `stampa_documenti_lotto` vi **accoda** un work-item per fattura al momento della numerazione (step DEFINITIVA), poi lo step chiude subito la transazione; un **worker** esterno drena la coda, garantisce la numerazione (backstop idempotente) e delega il render al processo di stampa generico. Così il rendering dei PDF **non** avviene dentro la transazione di numerazione e **non** tiene il lock del registro fiscale.
 - [listini](tabelle/listini.md) — La tabella `vendite.listini` rappresenta la testata anagrafica dei listini prezzo del dominio vendite.
+- [listini_kit](tabelle/listini_kit.md)
 - [listini_righe](tabelle/listini_righe.md) — La tabella `vendite.listini_righe` contiene i prezzi elementari per articolo/UOM, eventualmente specializzati per contesto (BA, utility, emittente fiscale).
 - [listini_righe_componenti](tabelle/listini_righe_componenti.md)
 - [listini_versioni](tabelle/listini_versioni.md) — (ultima revisione 28-10-2026 — brief `brief-modello-documento-vendita` §16)
@@ -116,6 +117,7 @@ search:
 - [fn_applica_fondi_lotto](funzioni/fn_applica_fondi_lotto.md) — (latest review 15-08-2026)
 - [fn_approva_commessa_attivita](funzioni/fn_approva_commessa_attivita.md) — (rev 2026-06-07) `vendite.fn_approva_commessa_attivita(p_commessa_id, p_righe_ids, p_user)` porta le righe `commesse_attivita` da `stato_approvazione = 'BOZZA'` a `'APPROVATA'`.
 - [fn_articolo_erogazioni](funzioni/fn_articolo_erogazioni.md)
+- [fn_articolo_quota_fissa_a_canone](funzioni/fn_articolo_quota_fissa_a_canone.md)
 - [fn_assegna_numero_documento](funzioni/fn_assegna_numero_documento.md) — (rev 2026-08-31, sera)
 - [fn_assign_numero_fattura](funzioni/fn_assign_numero_fattura.md) — (latest review 09-02-2026) La funzione **`vendite.fn_assign_numero_fattura()`** assegna il progressivo in base al registro e aggiorna `anno`, `serie` e `numero` sulla testata fattura.
 - [fn_attiva_versione_listino](funzioni/fn_attiva_versione_listino.md)
@@ -156,6 +158,7 @@ search:
 - [fn_componi_numero_documento](funzioni/fn_componi_numero_documento.md) — (rev 2026-08-31, sera)
 - [fn_conferma_reso](funzioni/fn_conferma_reso.md) — (rev 2026-07-13)
 - [fn_contratti_addebiti_maturati](funzioni/fn_contratti_addebiti_maturati.md) — Gli **addebiti maturati** dei contratti ATTIVO e CESSATO a questo giro e non ancora in commessa, **con gli scartati** e il motivo (`scarto`). È la **sede unica** della regola del push dei contratti (dal 2026-10-31, `20261031-02`), letta da due posti:
+- [fn_contratto_kit_componenti](funzioni/fn_contratto_kit_componenti.md)
 - [fn_contratto_riga_componenti_init](funzioni/fn_contratto_riga_componenti_init.md)
 - [fn_contratto_riga_componenti_preview](funzioni/fn_contratto_riga_componenti_preview.md)
 - [fn_contratto_righe_preview](funzioni/fn_contratto_righe_preview.md)
@@ -257,6 +260,7 @@ search:
 - [fn_listini_in_scadenza_senza_successore](funzioni/fn_listini_in_scadenza_senza_successore.md)
 - [fn_listini_selezionabili](funzioni/fn_listini_selezionabili.md)
 - [fn_listino_ha_storia](funzioni/fn_listino_ha_storia.md) — (rev 2026-10-22, decisione di Tid del 2026-10-21 e D-1 del 2026-10-22)
+- [fn_listino_periodicita_articolo](funzioni/fn_listino_periodicita_articolo.md)
 - [fn_listino_versione_in_vigore](funzioni/fn_listino_versione_in_vigore.md) — (funzione nata il 2026-09-28, `20260928-35`)
 - [fn_listino_versione_operativa](funzioni/fn_listino_versione_operativa.md)
 - [fn_log_event](funzioni/fn_log_event.md) — `vendite.fn_log_event` fornisce un entrypoint unico (DB) per registrare eventi append-only in `vendite.event_log`, sia da servizi Python sia da funzioni SQL.
@@ -265,6 +269,7 @@ search:
 - [fn_lookup_registro_documento](funzioni/fn_lookup_registro_documento.md) — (latest review 31-08-2026)
 - [fn_lookup_registro_id](funzioni/fn_lookup_registro_id.md) — **Cercare il sezionale di numerazione, e basta.**
 - [fn_lotto_da_emit_batch](funzioni/fn_lotto_da_emit_batch.md) — (latest review 12-09-2026)
+- [fn_lotto_natura_dal_segno](funzioni/fn_lotto_natura_dal_segno.md)
 - [fn_lotto_proietta_stato_step](funzioni/fn_lotto_proietta_stato_step.md)
 - [fn_numera_fattura_opz_emessa](funzioni/fn_numera_fattura_opz_emessa.md) — (latest review 09-02-2026) La funzione **`vendite.fn_numera_fattura_opz_emessa()`** assegna il numero fattura in modo **idempotente** e, opzionalmente, imposta lo stato documento **EMESSA** usando `codice_interno`.
 - [fn_numero_documento_fattura](funzioni/fn_numero_documento_fattura.md) — **È la sede unica che dice come si scrive il numero di una fattura.**
@@ -428,7 +433,9 @@ search:
 - [trgfn_guard_fatturazione_immediata_immutabile](funzioni/trgfn_guard_fatturazione_immediata_immutabile.md) — Impedire la modifica di `fatturazione_immediata` su un documento che sta in una commessa **aperta**.
 - [trgfn_listini_guard_spegnimento_storia](funzioni/trgfn_listini_guard_spegnimento_storia.md) — (rev 2026-10-22, decisione di Tid del 2026-10-21)
 - [trgfn_listini_guard_tipologia_utility](funzioni/trgfn_listini_guard_tipologia_utility.md) — Guard defense-in-depth: verifica che la coppia `(utility_id, tipologia_id)` su `vendite.listini` sia ammessa dalla matrice `config.listini_tipologie_utilities` con `attivo = true`.
+- [trgfn_listini_kit_guard](funzioni/trgfn_listini_kit_guard.md)
 - [trgfn_listini_righe_comp_guard_immutabilita_v5](funzioni/trgfn_listini_righe_comp_guard_immutabilita_v5.md)
+- [trgfn_listini_righe_guard_periodicita_quota_fissa](funzioni/trgfn_listini_righe_guard_periodicita_quota_fissa.md)
 - [trgfn_listini_righe_guard_stato](funzioni/trgfn_listini_righe_guard_stato.md) — Guard N6 — terzo livello di protezione: impedisce la modifica o cancellazione di righe listino quando lo stato della versione padre non lo consente o quando la riga e` gia` stata propagata a valle (commesse, attivita` fatturabili).
 - [trgfn_listini_versioni_guard_per_stato](funzioni/trgfn_listini_versioni_guard_per_stato.md)
 - [trgfn_listini_versioni_guard_transizione_stato](funzioni/trgfn_listini_versioni_guard_transizione_stato.md)

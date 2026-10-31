@@ -1,0 +1,119 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I COMPONENTI DI UN KIT DAL LISTINO DEL CONTRATTO: vendite.fn_contratto_kit_componenti
+#   Brief: brief-db-contratto-righe-periodiche-in-commessa §7.2 e §7.7 (D-2, decisione (c) di Tid,
+#   2026-10-31). Lotto L13.
+#
+# -- IL CASO ------------------------------------------------------------------------------------
+#   Il kit che il contratto non negozia (la quota fissa del listino, l'ADESIONE)
+#   prende prezzo e componenti dal listino (§6.10). L'espansore del backend
+#   (BoMComponentExpander) legge i componenti negoziati sulla riga del
+#   documento (vendite.contratti_righe_componenti): per questi due casi non ce
+#   ne sono, e il kit passava intero in commessa.
+#
+# -- LA FORMA (c) -------------------------------------------------------------------------------
+#   Dati il contratto, il kit e la data del pezzo, i componenti del kit sulla
+#   versione di listino del contratto (vendite.fn_documento_listino_operativo),
+#   nella forma che l'espansore gia' legge dalle *_righe_componenti:
+#   componente, unita' operativa, coefficiente, prezzo unitario, esposizione in
+#   fattura, origine del prezzo (piu' la riga di distinta, per chi la vuole).
+#   · I componenti: le righe attive di vendite.listini_righe_componenti della
+#     versione, valide alla data. L'unita' e' quella del componente, come
+#     nell'anteprima (vendite.fn_espandi_listino_versione).
+#   · Il prezzo: lo dice il resolver (vendite.fn_resolve_prezzo_listino_v2_esito)
+#     sul componente, nel contesto del padre (p_articolo_padre_contesto) e sulla
+#     versione del contratto. ⛔ Non si ricopia qui: oggi per il componente di
+#     un bundle il resolver da' il prezzo del listino senza variazione
+#     (origine LISTINO_BUNDLE), come l'anteprima. Se la regola cambia, cambia
+#     li'. Un componente senza prezzo esce col prezzo NULL: e' il lister a dire
+#     SENZA_PREZZO, per il kit intero.
+#   · Il prezzo del kit e' la somma prezzo x coefficiente: la fa chi la usa
+#     (il lister, 20261031-35), su queste righe.
+#   Contratto fuori perimetro, senza listino, kit assente: nessuna riga.
+#
+#   Scartate (Tid): (a) l'espansore che legge da solo il listino (prezzi in
+#   Python); (b) il lister che emette i #CMP (due sedi per l'espansione).
+#
+#   LANGUAGE sql BEGIN ATOMIC, STABLE, SECURITY INVOKER (legge sotto le policy
+#   di chi chiama, come il lister). Da sola nel suo sql:, COMMENT e GRANT nel
+#   secondo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261031-34-create-fn-contratto-kit-componenti-mctit.yaml
+
+  - changeSet:
+      id: 20261031-34-create-fn-contratto-kit-componenti
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_contratto_kit_componenti: i componenti di un kit sul listino del contratto alla
+        data, col prezzo del resolver nel contesto del padre, nella forma dell'espansore. Brief:
+        brief-db-contratto-righe-periodiche-in-commessa §7.2 (D-2, c).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_contratto_kit_componenti(
+                  p_contratto_id      vendite.contratti.id%TYPE,
+                  p_articolo_padre_id catalogo.articoli.id%TYPE,
+                  p_data              date)
+               RETURNS TABLE(
+                  articolo_componente_id catalogo.articoli_componenti.id%TYPE,
+                  componente_id          catalogo.articoli.id%TYPE,
+                  uom_operativa_id       catalogo.unita_misura.id%TYPE,
+                  coeff_qta_snapshot     catalogo.articoli_componenti.coeff_qta%TYPE,
+                  prezzo_unitario        numeric,
+                  esposizione_in_fattura catalogo.articoli_componenti.esposizione_in_fattura%TYPE,
+                  origine_prezzo         character varying)
+               LANGUAGE sql
+               STABLE
+               SECURITY INVOKER
+              BEGIN ATOMIC
+                  SELECT ac.id, af.id, af.uom_id, ac.coeff_qta,
+                         rp.prezzo_finale, ac.esposizione_in_fattura, rp.origine
+                    FROM vendite.contratti c
+                    CROSS JOIN LATERAL vendite.fn_documento_listino_operativo('CONTRATTO', c.id) lo
+                    JOIN vendite.listini_righe_componenti lrc
+                      ON lrc.listino_versione_id = lo.listino_versione_id
+                     AND lrc.articolo_padre_id   = p_articolo_padre_id
+                     AND lrc.attivo IS TRUE
+                     AND lrc.validita @> p_data
+                    JOIN catalogo.articoli_componenti ac ON ac.id = lrc.articolo_componente_id
+                    JOIN catalogo.articoli af ON af.id = lrc.articolo_figlio_id
+                    LEFT JOIN LATERAL (
+                      SELECT r.prezzo_finale, r.origine
+                        FROM vendite.fn_resolve_prezzo_listino_v2_esito(
+                               af.id, af.uom_id, p_data, c.billing_account_id,
+                               c.utility_id,
+                               anagrafiche.fn_get_emittente_fiscale_id(c.billing_account_id),
+                               NULL::integer, p_articolo_padre_id,
+                               lo.listino_versione_id) r
+                       WHERE r.esito_codice IS NULL) rp ON true
+                   WHERE c.id = p_contratto_id
+                   ORDER BY lrc.id;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.fn_contratto_kit_componenti(bigint, uuid, date) IS
+                'I componenti di un kit sulla versione di listino del contratto (vendite.fn_documento_listino_operativo), validi alla data, nella forma che l''espansore del backend legge dalle *_righe_componenti: componente, unita'' operativa (quella del componente), coefficiente della distinta, prezzo unitario, esposizione in fattura, origine del prezzo. Il prezzo lo dice il resolver (vendite.fn_resolve_prezzo_listino_v2_esito) sul componente nel contesto del padre: oggi il prezzo del listino senza variazione (LISTINO_BUNDLE), come l''anteprima. NULL = il componente non ha un prezzo alla data. Il prezzo del kit e'' la somma prezzo x coefficiente, che fa chi la usa (vendite.fn_contratti_addebiti_maturati). Serve il kit che il contratto non negozia: la quota fissa del listino e l''ADESIONE. Contratto fuori perimetro o senza listino: nessuna riga. SECURITY INVOKER. Nasce il 2026-10-31 (20261031-34), brief-db-contratto-righe-periodiche-in-commessa §7.2 (D-2, c).';
+              REVOKE ALL ON FUNCTION vendite.fn_contratto_kit_componenti(bigint, uuid, date) FROM PUBLIC;
+              GRANT EXECUTE ON FUNCTION vendite.fn_contratto_kit_componenti(bigint, uuid, date) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_contratto_kit_componenti(bigint, uuid, date);

@@ -88,9 +88,10 @@ BEGIN
     RETURNING id INTO v_nuova_id;
 
     -- 4. Le righe attive.
+    -- rev 2026-10-31 (20261031-38): con la periodicita', che il clone perdeva.
     INSERT INTO vendite.listini_righe (listino_versione_id, articolo_id, uom_id,
-                                       prezzo, meta, attivo)
-    SELECT v_nuova_id, r.articolo_id, r.uom_id, r.prezzo, r.meta, TRUE
+                                       prezzo, periodicita, meta, attivo)
+    SELECT v_nuova_id, r.articolo_id, r.uom_id, r.prezzo, r.periodicita, r.meta, TRUE
       FROM vendite.listini_righe r
      WHERE r.listino_versione_id = p_sorgente_id
        AND r.attivo IS TRUE;
@@ -120,6 +121,12 @@ BEGIN
            <= LEAST(COALESCE(ac.valido_al, 'infinity'::date),
                     COALESCE(p_valido_al,  'infinity'::date));
     GET DIAGNOSTICS v_componenti = ROW_COUNT;
+
+    -- 6. rev 2026-10-31 (20261031-38, D-2-bis): i kit, con la loro periodicita'.
+    INSERT INTO vendite.listini_kit (listino_versione_id, articolo_padre_id, periodicita, meta)
+    SELECT v_nuova_id, k.articolo_padre_id, k.periodicita, k.meta
+      FROM vendite.listini_kit k
+     WHERE k.listino_versione_id = p_sorgente_id;
 
     RETURN QUERY SELECT v_nuova_id, v_righe, v_componenti, v_comp_sorg - v_componenti;
 END;

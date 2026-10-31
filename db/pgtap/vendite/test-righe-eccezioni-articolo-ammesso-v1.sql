@@ -144,6 +144,15 @@ SELECT (SELECT id FROM _ver), ac.id, pg_temp.art('P'), pg_temp.art('F'), 50.00, 
   FROM catalogo.articoli_componenti ac
  WHERE ac.prodotto_id = pg_temp.art('P') AND ac.componente_id = pg_temp.art('F');
 
+-- ⚠️ rev 2026-10-31 (20261031-39, D-3): la tipologia «pescata» sopra e' oggi la
+--   quota fissa, e una versione con una quota fissa a canone senza periodicita'
+--   non si attiva piu'. La fixture porta la versione al modello: periodicita' a
+--   righe e kit, in bozza (brief-db-contratto-righe-periodiche-in-commessa §7.7).
+UPDATE vendite.listini_righe SET periodicita = 'MENSILE'
+ WHERE listino_versione_id = (SELECT id FROM _ver);
+INSERT INTO vendite.listini_kit (listino_versione_id, articolo_padre_id, periodicita)
+VALUES ((SELECT id FROM _ver), pg_temp.art('P'), 'MENSILE');
+
 SELECT dbops.fn_pgtap_porta_a_stato('vendite.listini_versioni', (SELECT id FROM _ver), 'ATTIVA');
 
 -- Due contratti DRAFT, col listino e senza; un'offerta BOZZA col listino.
