@@ -149,6 +149,15 @@ SELECT (SELECT id FROM tmp_oce_ver), ac.id, ac.prodotto_id, ac.componente_id, 40
   FROM catalogo.articoli_componenti ac
  WHERE ac.prodotto_id = pg_temp.oce('P');
 
+-- ⚠️ rev 2026-10-31 (20261031-39, D-3): la tipologia «pescata» sopra e' oggi la
+--   quota fissa, e una versione con una quota fissa a canone senza periodicita'
+--   non si attiva piu'. La fixture porta la versione al modello: periodicita' a
+--   righe e kit, in bozza (brief-db-contratto-righe-periodiche-in-commessa §7.7).
+UPDATE vendite.listini_righe SET periodicita = 'MENSILE'
+ WHERE listino_versione_id = (SELECT id FROM tmp_oce_ver);
+INSERT INTO vendite.listini_kit (listino_versione_id, articolo_padre_id, periodicita)
+VALUES ((SELECT id FROM tmp_oce_ver), pg_temp.oce('P'), 'MENSILE');
+
 SELECT dbops.fn_pgtap_porta_a_stato('vendite.listini_versioni'::regclass, (SELECT id FROM tmp_oce_ver), 'ATTIVA');
 
 CREATE TEMP TABLE tmp_oce_comp AS

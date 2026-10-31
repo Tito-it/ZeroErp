@@ -1,0 +1,128 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL KIT SUL LISTINO SI SCRIVE SOLO IN BOZZA, E SOLO SU UN COMPOSITO: vendite.trgfn_listini_kit_guard
+#   Brief: brief-db-contratto-righe-periodiche-in-commessa §7.7 (L12, D-2-bis).
+#
+#   Due regole, sulla riga di vendite.listini_kit (20261031-29):
+#   1. INSERT, UPDATE e DELETE solo se la versione e' in BOZZA. E' la regola
+#      dei componenti (vendite.trgfn_listini_righe_comp_guard_immutabilita_v5,
+#      E-1 di Tid del 2026-10-28): fuori dalla bozza una versione e' stata
+#      visibile ai prezzi, e il ritmo con cui un kit si addebita fa parte del
+#      prezzo. Una versione che non si legge non e' una bozza. Stesso codice
+#      (E_RIGA_LISTINO_VERSIONE_CHIUSA), stessi tre valori.
+#   2. Il kit e' un articolo composito: la periodicita' di un articolo
+#      semplice sta sulla sua riga di listino. Codice nuovo
+#      E_LISTINO_KIT_NON_COMPOSITO.
+#   L'identita' (versione, kit) non cambia dopo l'INSERT: lo dice il lucchetto
+#   generato (automation_lock_columns.csv, stesso giro), non questo guard.
+#
+#   ⚠️ Regola del 2, dichiarata. «Solo in bozza» sul figlio di una versione ha
+#   gia' due forme (questa dei componenti e vendite.trgfn_listini_righe_guard_stato
+#   delle righe, che in ATTIVA ammette la rettifica non propagata). Non sono
+#   copie della stessa regola: la seconda e' piu' larga, per decisione. Questa
+#   segue quella dei componenti, che sono la parte del kit gia' sul listino;
+#   il corpo non si estrae in un building block perche' quello dei componenti
+#   giudica anche le loro colonne di prezzo, che qui non ci sono.
+#
+#   Fase _a10_, BEFORE INSERT OR UPDATE OR DELETE (montaggio 20261031-31).
+#   Funzione nuova: %TYPE in dichiarazione, SECURITY INVOKER esplicito.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261031-30-create-trgfn-listini-kit-guard-mctit.yaml
+
+  - changeSet:
+      id: 20261031-30-create-trgfn-listini-kit-guard
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.trgfn_listini_kit_guard: la periodicita' di un kit sul listino si scrive solo in una
+        versione in bozza, e solo su un articolo composito. Brief:
+        brief-db-contratto-righe-periodiche-in-commessa §7.7 (L12, D-2-bis).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_listini_kit_guard()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: la riga di vendite.listini_kit si scrive solo in una versione in
+              --   BOZZA (INSERT, UPDATE, DELETE), e solo per un articolo composito.
+              --   Regola completa nell'intestazione del changeSet 20261031-30.
+              DECLARE
+                  v_stato       config.stati_doc_listino_versioni.codice_interno%TYPE;
+                  v_riga_id     vendite.listini_kit.id%TYPE;
+                  v_versione_id vendite.listini_kit.listino_versione_id%TYPE;
+                  v_composito   catalogo.articoli.is_composito%TYPE;
+                  v_codice      catalogo.articoli.codice%TYPE;
+              BEGIN
+                  v_riga_id     := CASE WHEN TG_OP = 'DELETE' THEN OLD.id ELSE NEW.id END;
+                  v_versione_id := CASE WHEN TG_OP = 'DELETE' THEN OLD.listino_versione_id
+                                        ELSE NEW.listino_versione_id END;
+
+                  SELECT s.codice_interno INTO v_stato
+                    FROM vendite.listini_versioni lv
+                    JOIN config.stati_doc_listino_versioni s ON s.id = lv.stato_doc_listino_versione_id
+                   WHERE lv.id = v_versione_id;
+
+                  -- 1. Solo in bozza. Una versione che non si legge non e' una bozza.
+                  IF v_stato IS DISTINCT FROM 'BOZZA' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', TG_NAME, 'E_RIGA_LISTINO_VERSIONE_CHIUSA',
+                          jsonb_build_object(
+                              'operazione',          TG_OP,
+                              'stato_versione',      v_stato,
+                              'listino_versione_id', v_versione_id,
+                              'riga_id',             v_riga_id,
+                              'tabella',             'listini_kit'),
+                          NULL::uuid,
+                          TG_OP, COALESCE(v_riga_id::text, 'nuova'), COALESCE(v_stato, 'NULL'));
+                  END IF;
+
+                  IF TG_OP = 'DELETE' THEN
+                      RETURN OLD;
+                  END IF;
+
+                  -- 2. Il kit e' un composito.
+                  SELECT a.is_composito, a.codice INTO v_composito, v_codice
+                    FROM catalogo.articoli a
+                   WHERE a.id = NEW.articolo_padre_id;
+
+                  IF v_composito IS NOT TRUE THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', TG_NAME, 'E_LISTINO_KIT_NON_COMPOSITO',
+                          jsonb_build_object(
+                              'campo',               'articolo_padre_id',
+                              'articolo_padre_id',   NEW.articolo_padre_id,
+                              'listino_versione_id', NEW.listino_versione_id),
+                          NULL::uuid,
+                          COALESCE(v_codice, NEW.articolo_padre_id::text));
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.trgfn_listini_kit_guard() IS
+                'Guard di vendite.listini_kit: la riga (la periodicita'' di un kit su una versione di listino) si scrive solo in una versione in BOZZA, INSERT UPDATE e DELETE (E_RIGA_LISTINO_VERSIONE_CHIUSA, come i componenti, E-1 di Tid del 2026-10-28), e solo per un articolo composito (E_LISTINO_KIT_NON_COMPOSITO): la periodicita'' di un articolo semplice sta sulla sua riga di listino. L''identita'' la ferma il lucchetto generato. Nasce il 2026-10-31 (20261031-30), brief-db-contratto-righe-periodiche-in-commessa §7.7 (L12, D-2-bis).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.trgfn_listini_kit_guard();

@@ -22,8 +22,10 @@ DECLARE
     v_stato    config.stati_doc_listino_versioni.codice_interno%TYPE;
     -- Righe e componenti della versione: il verbo li cancella
     -- con lei, non trattengono.
+    -- rev 2026-10-31 (20261031-37, D-2-bis): anche i kit (vendite.listini_kit).
     v_proprie  regclass[] := ARRAY['vendite.listini_righe'::regclass,
-                                   'vendite.listini_righe_componenti'::regclass];
+                                   'vendite.listini_righe_componenti'::regclass,
+                                   'vendite.listini_kit'::regclass];
     -- Le tabelle che trattengono, `schema.tabella`.
     v_dove     text[];
 BEGIN

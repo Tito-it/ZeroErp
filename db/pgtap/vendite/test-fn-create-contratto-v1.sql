@@ -24,6 +24,10 @@
 --                            dell'atto — CIG, CUP, commessa — sono accettati dal
 --                            p_testata e RILETTI dalla riga; assenti -> NULL;
 --                            null esplicito -> NULL, senza errore.
+--   * WHITELIST canone     : (16-18, changeset 20261031-28, brief-db-contratto-
+--                            righe-periodiche-in-commessa D-5) generazione_canone
+--                            e mese_partenza_canone accettati e RILETTI; assenti
+--                            -> i default (INIZIO_PERIODO, 1); null -> 23502.
 --
 -- ⚠️ I casi 13-15 si aggiungono QUI e non in un file nuovo: e' lo stesso
 --    difetto dei casi 10-12, sulla stessa funzione, e la copertura di
@@ -62,7 +66,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(15);
+SELECT plan(18);
 
 -- =========================================================
 -- Precondizione: coppia (istanza_utility, utility) SENZA precontrattuali
@@ -328,6 +332,57 @@ SELECT ok(
        FROM vendite.contratti c WHERE c.id = (SELECT contratto_id FROM r5)),
     '15) create con i tre codici a null: nessun errore e colonne NULL '
     '(nullable, a differenza di fatturazione_immediata del caso 12)');
+
+-- =========================================================
+-- WHITELIST DEI DUE CAMPI DEL CANONE (changeset 20261031-28)
+-- Brief: brief-db-contratto-righe-periodiche-in-commessa §7.4 (D-5).
+--
+-- ⛔ Come il 13: discrimina solo la RILETTURA. Con la whitelist vecchia la
+--    create riesce, e i due campi nascono coi default.
+--    Si scelgono valori DIVERSI dai default (FINE_PERIODO, 2): coi default il
+--    test sarebbe verde anche con la chiave scartata.
+-- =========================================================
+CREATE TEMP TABLE r6 AS
+SELECT * FROM vendite.fn_create_contratto(
+    jsonb_build_object(
+        'billing_account_id',   (SELECT billing_account_id FROM tmp_ba),
+        'emittente_fiscale_id', (SELECT emittente_fiscale_id FROM tmp_ba),
+        'istanza_utility_id',   (SELECT istanza_utility_id FROM tmp_ba),
+        'utility_id',           (SELECT utility_id FROM tmp_ba),
+        'generazione_canone',   'FINE_PERIODO',
+        'mese_partenza_canone', 2
+    ),
+    NULL
+);
+
+-- 16) I due insieme, riletti dalla riga.
+SELECT is(
+    (SELECT ROW(c.generazione_canone, c.mese_partenza_canone)::text
+       FROM vendite.contratti c WHERE c.id = (SELECT contratto_id FROM r6)),
+    ROW('FINE_PERIODO', 2)::text,
+    '16) create con «canoni normali, da febbraio»: tutti e due riletti dalla riga '
+    '(con la whitelist vecchia sarebbero INIZIO_PERIODO e 1, senza nessun errore)');
+
+-- 17) Non-regressione: senza le chiavi, i default della colonna (r1).
+SELECT is(
+    (SELECT ROW(c.generazione_canone, c.mese_partenza_canone)::text
+       FROM vendite.contratti c WHERE c.id = (SELECT contratto_id FROM r1)),
+    ROW('INIZIO_PERIODO', 1)::text,
+    '17) create senza le chiavi del canone: i default (anticipati, gennaio)');
+
+-- 18) Le due colonne sono NOT NULL: come fatturazione_immediata (caso 12), un
+--     null mandato e' un errore, mai un default nascosto.
+SELECT throws_ok(
+    $$ SELECT * FROM vendite.fn_create_contratto(
+           jsonb_build_object(
+               'billing_account_id',   (SELECT billing_account_id FROM tmp_ba),
+               'emittente_fiscale_id', (SELECT emittente_fiscale_id FROM tmp_ba),
+               'istanza_utility_id',   (SELECT istanza_utility_id FROM tmp_ba),
+               'utility_id',           (SELECT utility_id FROM tmp_ba),
+               'mese_partenza_canone', null)) $$,
+    '23502',
+    NULL::text,
+    '18) create con mese_partenza_canone=null: errore NOT NULL, mai un silenzio');
 
 SELECT * FROM finish();
 

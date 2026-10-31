@@ -1,0 +1,75 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# CHE COSA E' UNA QUOTA FISSA A CANONE, IN UN POSTO SOLO: vendite.fn_articolo_quota_fissa_a_canone
+#   Brief: brief-db-contratto-righe-periodiche-in-commessa §7.10 (decisione di Tid del 2026-10-31:
+#   la quota fissa non perde la periodicita' fuori dalla bozza).
+#
+#   Un articolo e' una quota fissa a canone se la sua tipologia di listino e'
+#   di quota fissa (config.listini_tipologie.e_quota_fissa) e la sua erogazione
+#   di default e' un canone (vendite.fn_articolo_erogazioni). E' l'articolo
+#   che si addebita da se', ogni periodo, a ogni contratto del listino.
+#   ⭐ Regola del 2: il predicato era scritto nel motivo 3 di
+#   script.fn_check_versione_listino_attivabile (20261031-39); il guard della
+#   periodicita' (20261031-51) sarebbe la seconda copia. La prima si ritira nel
+#   20261031-50. Il lister (vendite.fn_contratti_addebiti_maturati) legge le due
+#   meta' separate perche' gli serve anche la fonte della quantita' e lo scarto
+#   della quota che NON e' un canone: non e' una copia di questa domanda.
+#   LANGUAGE sql BEGIN ATOMIC, STABLE, SECURITY INVOKER; da sola nel suo sql:.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261031-49-create-fn-articolo-quota-fissa-a-canone-mctit.yaml
+
+  - changeSet:
+      id: 20261031-49-create-fn-articolo-quota-fissa-a-canone
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_articolo_quota_fissa_a_canone: l'articolo e' una quota fissa (tipologia e_quota_fissa)
+        che si eroga a canone di default. Sede unica, regola del 2. Brief:
+        brief-db-contratto-righe-periodiche-in-commessa §7.10.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_articolo_quota_fissa_a_canone(
+                  p_articolo_id catalogo.articoli.id%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+               SECURITY INVOKER
+              BEGIN ATOMIC
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM catalogo.articoli a
+                        JOIN config.listini_tipologie t
+                          ON t.id = a.listino_tipologia_id AND t.e_quota_fissa IS TRUE
+                       WHERE a.id = p_articolo_id
+                         AND EXISTS (SELECT 1
+                                       FROM vendite.fn_articolo_erogazioni(a.id) e
+                                      WHERE e.e_default IS TRUE AND e.tipo_erogazione = 'CANONE'));
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.fn_articolo_quota_fissa_a_canone(uuid) IS
+                'L''articolo e'' una quota fissa a canone: tipologia di listino di quota fissa (config.listini_tipologie.e_quota_fissa) ed erogazione di default CANONE (vendite.fn_articolo_erogazioni). Si addebita da se'', ogni periodo, a ogni contratto del listino che non la ritocca: per questo la sua riga di listino deve avere la periodicita''. Sede unica (regola del 2): la leggono il motivo 3 di script.fn_check_versione_listino_attivabile e il guard vendite.trgfn_listini_righe_guard_periodicita_quota_fissa. SECURITY INVOKER. Nasce il 2026-10-31 (20261031-49), brief-db-contratto-righe-periodiche-in-commessa §7.10.';
+              REVOKE ALL ON FUNCTION vendite.fn_articolo_quota_fissa_a_canone(uuid) FROM PUBLIC;
+              GRANT EXECUTE ON FUNCTION vendite.fn_articolo_quota_fissa_a_canone(uuid) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_articolo_quota_fissa_a_canone(uuid);

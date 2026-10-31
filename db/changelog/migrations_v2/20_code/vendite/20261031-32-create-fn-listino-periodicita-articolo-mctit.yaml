@@ -1,0 +1,93 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA PERIODICITA' DI UN ARTICOLO SUL LISTINO, IN UN POSTO SOLO: vendite.fn_listino_periodicita_articolo
+#   Brief: brief-db-contratto-righe-periodiche-in-commessa §7.7 (L12, D-2-bis).
+#
+#   Data una versione di listino e un articolo, la periodicita' con cui
+#   l'articolo si addebita su quel listino:
+#   · un kit: quella della sua riga in vendite.listini_kit (20261031-29);
+#   · un altro articolo: quella della riga di listino attiva; fra due righe
+#     sullo stesso articolo vince la prima CON la periodicita' (id piu' basso).
+#   NULL: l'articolo non ha una periodicita' su quel listino.
+#
+#   ⭐ Regola del 2. La seconda meta' era scritta due volte, con lo stesso
+#   significato: nel default della riga a canone
+#   (script.trgfn_righe_default_periodicita_da_listino, 20261029-44: la prima
+#   riga attiva con la periodicita') e nel ramo delle quote fisse del lister
+#   (vendite.fn_contratti_addebiti_maturati: «vince quella con la
+#   periodicita'»). Il kit sarebbe stato la terza. Le due copie si ritirano
+#   nello stesso giro (20261031-33, -35); la legge anche l'anteprima delle
+#   righe (D-7).
+#
+#   LANGUAGE sql BEGIN ATOMIC: le dipendenze dalle due tabelle stanno in
+#   pg_depend (linee-guida-sql §5c); da solo nel suo sql:, COMMENT e GRANT nel
+#   secondo. SECURITY INVOKER: legge sotto le policy dell'operatore, come chi
+#   la chiama. STABLE.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261031-32-create-fn-listino-periodicita-articolo-mctit.yaml
+
+  - changeSet:
+      id: 20261031-32-create-fn-listino-periodicita-articolo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_listino_periodicita_articolo: la periodicita' di un articolo su una versione di
+        listino (il kit da vendite.listini_kit, gli altri dalla riga di listino). Sede unica, regola
+        del 2. Brief: brief-db-contratto-righe-periodiche-in-commessa §7.7 (L12).
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: vendite
+            tableName: listini_kit
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_listino_periodicita_articolo(
+                  p_listino_versione_id vendite.listini_versioni.id%TYPE,
+                  p_articolo_id         catalogo.articoli.id%TYPE)
+               RETURNS config.periodicita.codice%TYPE
+               LANGUAGE sql
+               STABLE
+               SECURITY INVOKER
+              BEGIN ATOMIC
+                  SELECT COALESCE(
+                      (SELECT k.periodicita
+                         FROM vendite.listini_kit k
+                        WHERE k.listino_versione_id = p_listino_versione_id
+                          AND k.articolo_padre_id   = p_articolo_id),
+                      (SELECT lr.periodicita
+                         FROM vendite.listini_righe lr
+                        WHERE lr.listino_versione_id = p_listino_versione_id
+                          AND lr.articolo_id         = p_articolo_id
+                          AND lr.attivo IS TRUE
+                          AND lr.periodicita IS NOT NULL
+                        ORDER BY lr.id
+                        LIMIT 1));
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.fn_listino_periodicita_articolo(bigint, uuid) IS
+                'La periodicita'' con cui un articolo si addebita su una versione di listino: per un kit quella di vendite.listini_kit, per gli altri quella della riga di listino attiva (fra due righe sullo stesso articolo la prima con la periodicita''). NULL = nessuna periodicita'' su quel listino. Sede unica (regola del 2): la leggono il default della riga a canone (script.trgfn_righe_default_periodicita_da_listino), il lister dei canoni (vendite.fn_contratti_addebiti_maturati) e l''anteprima delle righe (vendite.fn_documento_righe_preview). SECURITY INVOKER. Nasce il 2026-10-31 (20261031-32), brief-db-contratto-righe-periodiche-in-commessa §7.7 (L12, D-2-bis).';
+              REVOKE ALL ON FUNCTION vendite.fn_listino_periodicita_articolo(bigint, uuid) FROM PUBLIC;
+              GRANT EXECUTE ON FUNCTION vendite.fn_listino_periodicita_articolo(bigint, uuid) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_listino_periodicita_articolo(bigint, uuid);

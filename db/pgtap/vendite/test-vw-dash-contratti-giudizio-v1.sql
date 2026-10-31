@@ -78,14 +78,35 @@ DO $fx$ BEGIN
 END $fx$;
 
 -- O mensile; P senza periodicita' (la sua quota non puo' partire).
+-- ⚠️ rev 2026-10-31 (20261031-39 e -51/-52): con una quota fissa a canone senza
+--   periodicita' la versione non si attiva, e fuori dalla bozza la quota non la
+--   perde. Il caso che la dashboard segnala nasce ancora da una strada sola: il
+--   catalogo che cambia dopo l'attivazione. La fixture la costruisce cosi'
+--   (brief-db-contratto-righe-periodiche-in-commessa §7.10).
 UPDATE vendite.listini_righe
-   SET periodicita = CASE WHEN articolo_id = pg_temp.art('O') THEN 'MENSILE' END
- WHERE listino_versione_id = (SELECT id FROM tmp_dg_ver);
+   SET periodicita = 'MENSILE'
+ WHERE listino_versione_id = (SELECT id FROM tmp_dg_ver) AND articolo_id = pg_temp.art('O');
+
+-- La tipologia QUOTA_FISSA, nella transazione, non si eroga a canone: in bozza
+-- la quota senza periodicita' non e' «a canone», e la versione si attiva.
+UPDATE config.listini_tipologie_erogazioni SET e_default = false
+ WHERE tipologia_id = (SELECT t.id FROM config.listini_tipologie t WHERE t.codice = 'QUOTA_FISSA')
+   AND e_default IS TRUE;
+INSERT INTO config.listini_tipologie_erogazioni (tipologia_id, tipo_erogazione, fonte_quantita_attesa, e_default)
+SELECT t.id, 'UNA_TANTUM', 'FISSA', true FROM config.listini_tipologie t WHERE t.codice = 'QUOTA_FISSA';
 
 DO $fx$ BEGIN
   PERFORM dbops.fn_pgtap_porta_a_stato('vendite.listini_versioni'::regclass, v.id, 'ATTIVA')
      FROM tmp_dg_ver v;
 END $fx$;
+
+-- Poi il catalogo torna com'era: la quota e' di nuovo un canone, senza periodicita'.
+DELETE FROM config.listini_tipologie_erogazioni
+ WHERE tipologia_id = (SELECT t.id FROM config.listini_tipologie t WHERE t.codice = 'QUOTA_FISSA')
+   AND tipo_erogazione = 'UNA_TANTUM' AND e_default IS TRUE;
+UPDATE config.listini_tipologie_erogazioni SET e_default = true
+ WHERE tipologia_id = (SELECT t.id FROM config.listini_tipologie t WHERE t.codice = 'QUOTA_FISSA')
+   AND tipo_erogazione = 'CANONE' AND fonte_quantita_attesa = 'FISSA';
 
 CREATE TEMP TABLE tmp_dg_ctr AS
 SELECT m.k, (SELECT x.contratto_id

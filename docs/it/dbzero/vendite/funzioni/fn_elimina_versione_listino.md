@@ -64,7 +64,11 @@ BEGIN
         jsonb_build_object('versione_id', p_versione_id,
                            'listino_id', v_listino_id, 'stato', v_stato));
 
-    -- 3. Componenti, righe, versione.
+    -- 3. Kit, componenti, righe, versione. rev 2026-10-31 (20261031-36,
+    --    D-2-bis): i kit della versione (vendite.listini_kit), prima di lei.
+    DELETE FROM vendite.listini_kit k
+     WHERE k.listino_versione_id = p_versione_id;
+
     DELETE FROM vendite.listini_righe_componenti c
      WHERE c.listino_versione_id = p_versione_id;
     GET DIAGNOSTICS v_componenti = ROW_COUNT;

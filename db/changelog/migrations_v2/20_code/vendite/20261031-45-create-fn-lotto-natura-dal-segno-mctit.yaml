@@ -1,0 +1,170 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UN DOCUMENTO CHE SOMMA NEGATIVO E' UNA NOTA DI CREDITO: vendite.fn_lotto_natura_dal_segno
+#   Brief: brief-db-contratto-righe-periodiche-in-commessa §7.1 e §7.7 (D-1 di Tid, 2026-10-31;
+#   forma L17 accettata da Tid lo stesso giorno).
+#
+# -- IL CASO ------------------------------------------------------------------------------------
+#   Un canone anticipato gia' fatturato su un contratto che cessa a meta'
+#   periodo produce uno storno (G-5), che apre una commessa nuova (G-6). Lo
+#   storno nasce di natura FATTURA, e un documento di soli storni era una
+#   FATTURA a totale negativo: fn_assign_numero_fattura (D-K) ne rifiuta la
+#   numerazione, e la fattura restava ferma.
+#
+# -- LA REGOLA (Tid) ----------------------------------------------------------------------------
+#   · Il segno si guarda sul DOCUMENTO, cioe' sul gruppo di attivita' che
+#     diventa una testata: le attivita' del lotto con la stessa chiave
+#     (vendite.fn_build_fattura_key, la stessa che decide la testata).
+#   · Si somma quantita' x prezzo delle attivita' di natura FATTURA del
+#     gruppo; se il totale e' negativo le attivita' diventano NOTA_CREDITO, e
+#     la testata nasce nota di credito, col suo registro e la sua serie.
+#   · Il documento misto (-300 di storno, +50 di una tantum) e' UNA nota di
+#     credito da -250, con dentro la riga positiva. Totale zero o positivo:
+#     resta FATTURA, anche con una riga negativa.
+#   · Vale per ogni sorgente, non solo per il contratto.
+#   · D-1-bis: le attivita' nate NOTA_CREDITO (l'accredito del reso) sono un
+#     gruppo loro (la natura e' nella chiave) e non si toccano.
+#
+# -- LA FORMA -----------------------------------------------------------------------------------
+#   Una chiamata per lotto, dal giro del backend, fra «in lavorazione» e le
+#   testate (fatture_righe_service.generate_fatture_righe): la chiave di ogni
+#   attivita' si calcola UNA volta (dentro la chiave, a ogni attivita',
+#   sarebbe il lotto intero ogni volta). Le attivita' del lotto sono quelle
+#   che il giro mette in lavorazione: lucchetto del lotto, non fatturate.
+#   · Rieseguibile: prima ritira le marche del lotto (natura FATTURA, marca
+#     false), poi decide di nuovo. Un lotto rilanciato su una composizione
+#     diversa non eredita la decisione di prima.
+#   · La marca (attivita_fatturabili.natura_dal_segno, 20261031-44) dice che la
+#     natura l'ha decisa il segno: cade quando l'attivita' torna libera
+#     (20261031-46).
+#   Ritorna quante attivita' sono diventate nota di credito.
+#
+#   SECURITY INVOKER (legge e scrive sotto le policy di chi chiama, come le
+#   testate). Funzione nuova: %TYPE, SECURITY INVOKER esplicito.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261031-45-create-fn-lotto-natura-dal-segno-mctit.yaml
+
+  - changeSet:
+      id: 20261031-45-create-fn-lotto-natura-dal-segno
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_lotto_natura_dal_segno: le attivita' FATTURA di un gruppo del lotto (stessa chiave di
+        testata) che somma negativo diventano NOTA_CREDITO, con la marca. Rieseguibile. Brief:
+        brief-db-contratto-righe-periodiche-in-commessa §7.7 (L17, D-1).
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: vendite
+            tableName: attivita_fatturabili
+            columnName: natura_dal_segno
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_lotto_natura_dal_segno(
+                  p_lotto_id vendite.fatturazione_lotti.id%TYPE)
+               RETURNS integer
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: un documento che somma negativo e' una nota di credito (D-1). Le
+              --   attivita' FATTURA del lotto, raggruppate per chiave di testata, si
+              --   sommano; nei gruppi negativi diventano NOTA_CREDITO, con la marca
+              --   natura_dal_segno. Rieseguibile. Regola completa nell'intestazione del
+              --   changeSet 20261031-45.
+              DECLARE
+                  v_batch   vendite.fatturazione_lotti.lock_batch_id%TYPE;
+                  v_fattura config.nature_doc_fiscale.id%TYPE;
+                  v_nc      config.nature_doc_fiscale.id%TYPE;
+                  -- CONTEGGIO delle attivita' battezzate nota di credito.
+                  v_n       integer;
+              BEGIN
+                  IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_lotto_natura_dal_segno',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_lotto_id', p_lotto_id),
+                          NULL::uuid, 'vendite.fn_lotto_natura_dal_segno',
+                          'p_lotto_id (obbligatorio, maggiore di zero)');
+                  END IF;
+
+                  SELECT fl.lock_batch_id INTO v_batch
+                    FROM vendite.fatturazione_lotti fl
+                   WHERE fl.id = p_lotto_id;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_lotto_natura_dal_segno', 'E_LOTTO_NON_TROVATO',
+                          jsonb_build_object('lotto_id', p_lotto_id),
+                          NULL::uuid, p_lotto_id::text);
+                  END IF;
+
+                  v_fattura := config.fn_get_natura_doc_fiscale_id('FATTURA');
+                  v_nc      := config.fn_get_natura_doc_fiscale_id('NOTA_CREDITO');
+                  IF v_fattura IS NULL OR v_nc IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_lotto_natura_dal_segno', 'E_CONFIG_MANCANTE',
+                          jsonb_build_object('config', 'config.nature_doc_fiscale'),
+                          NULL::uuid, 'natura FATTURA o NOTA_CREDITO (config.nature_doc_fiscale)');
+                  END IF;
+
+                  -- 0. Rieseguibile: le marche del lotto si ritirano, e si decide di nuovo.
+                  UPDATE vendite.attivita_fatturabili a
+                     SET natura_doc_id    = v_fattura,
+                         natura_dal_segno = false
+                   WHERE a.lock_batch_id = v_batch
+                     AND a.fatturato IS FALSE
+                     AND COALESCE(a.lock_in_fatturazione, false) IS TRUE
+                     AND a.natura_dal_segno IS TRUE;
+
+                  -- 1. I gruppi delle attivita' FATTURA, per chiave di testata (la stessa
+                  --    funzione delle testate), e il loro totale.
+                  WITH att AS (
+                      SELECT a.id, vendite.fn_build_fattura_key(a.id) AS chiave,
+                             a.quantita * a.prezzo_unitario AS importo
+                        FROM vendite.attivita_fatturabili a
+                       WHERE a.lock_batch_id = v_batch
+                         AND a.fatturato IS FALSE
+                         AND COALESCE(a.lock_in_fatturazione, false) IS TRUE
+                         AND a.natura_doc_id = v_fattura
+                  ),
+                  negativi AS (
+                      SELECT att.chiave FROM att GROUP BY att.chiave HAVING sum(att.importo) < 0
+                  )
+                  UPDATE vendite.attivita_fatturabili a
+                     SET natura_doc_id    = v_nc,
+                         natura_dal_segno = true
+                    FROM att
+                    JOIN negativi n ON n.chiave = att.chiave
+                   WHERE a.id = att.id;
+                  GET DIAGNOSTICS v_n = ROW_COUNT;
+
+                  RETURN v_n;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.fn_lotto_natura_dal_segno(bigint) IS
+                'D-1: un documento che somma negativo e'' una nota di credito. Le attivita'' FATTURA del lotto (lucchetto del lotto, non fatturate), raggruppate per chiave di testata (vendite.fn_build_fattura_key, la stessa delle testate), si sommano (quantita'' x prezzo); nei gruppi a totale negativo diventano NOTA_CREDITO con la marca natura_dal_segno, e la testata nasce nota di credito col suo registro e la sua serie. Il documento misto a totale negativo e'' una nota di credito con dentro la riga positiva; a totale zero o positivo resta FATTURA. Le attivita'' nate NOTA_CREDITO (accredito del reso) sono un gruppo loro e non si toccano (D-1-bis). Rieseguibile: prima ritira le marche del lotto. Si chiama una volta per lotto, prima delle testate (giro del backend). Ritorna quante attivita'' sono diventate nota di credito. SECURITY INVOKER. Nasce il 2026-10-31 (20261031-45), brief-db-contratto-righe-periodiche-in-commessa §7.7 (L17).';
+              REVOKE ALL ON FUNCTION vendite.fn_lotto_natura_dal_segno(bigint) FROM PUBLIC;
+              GRANT EXECUTE ON FUNCTION vendite.fn_lotto_natura_dal_segno(bigint) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_lotto_natura_dal_segno(bigint);

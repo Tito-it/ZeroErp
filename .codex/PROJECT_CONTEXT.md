@@ -3,7 +3,7 @@
 > Questo file è pensato per essere letto all'inizio di ogni sessione Claude Code,
 > su qualsiasi server (DB o backend). Integra AGENTS.md con lo stato corrente del progetto.
 >
-> Ultima revisione: 2026-10-25.
+> Ultima revisione: 2026-10-31.
 
 ## Identità del Progetto
 
@@ -409,11 +409,14 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   (`fn_articolo_colonne_struttura`) e il rifiuto se rende non valide righe aperte (A-11). DB Lotti 1-5 e
   `20261018-70…-74`, BE/FE §9.7 e §9.8.7, collaudo di Tid ok. Restano fuori: il ponte di
   `fn_articolo_riga_contesto` (brief della grammatica unica), D-5 (righe d'acquisto, col cantiere `acquisti`).
-- 📝 **Canone, orario e consumo del contratto in commessa**
-  (`work-in-progress/brief-db-contratto-righe-periodiche-in-commessa.md`, D31, 2026-10-13): il push dei
-  contratti manda solo le righe UNA_TANTUM, col giorno di attivazione (`20261013-24`, D-1/D-2 di Tid); la
-  generazione per periodo del canone e le quantità di orario e consumo dalle loro fonti: aperto, non
-  iniziato (G-1…G-4). Nello stesso giorno `tipo_consumo` ritirato dalla catena del push (`20261013-16…-23`).
+- ⏳ **Canone, orario e consumo del contratto in commessa**
+  (`work-in-progress/brief-db-contratto-righe-periodiche-in-commessa.md`, D31): lotti L1 … L9 applicati
+  (periodicità, ADESIONE, push a periodi, storni, dashboard, `20261029-10` … `20261031-04`); BE/FE in
+  `9f3a16904`. Giro del §7 (2026-10-31): `20261031-28` … `-43` applicati e verdi (il kit sul
+  listino `vendite.listini_kit`, componenti del kit dal listino, controllo all'attivazione, lookup e
+  anteprima della periodicità); L17 `-44` … `-48` (la nota di credito dal segno, §7.9) e `-49` … `-52`
+  (la quota fissa non perde la periodicità fuori dalla bozza, §7.10) applicati e verdi. Restano: BE/FE
+  passo 3 (§7.7, §7.9, §7.10), L18 documentazione, poi il passo 4 DB.
 - 📝 **Dove si addebita il trasporto di un ordine fatturato alla conferma**
   (`work-in-progress/brief-db-addebito-trasporto-ordine.md`, da A-9 del brief sopra): aperto, non iniziato.
 - ✅ **Codici d'errore per email, «accesso riservato» e «non trovato» del dettaglio ricerca: chiuso il 2026-10-10**

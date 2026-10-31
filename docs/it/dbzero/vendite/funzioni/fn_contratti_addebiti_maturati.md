@@ -41,6 +41,14 @@ AS $function$
 -- Nasce il 2026-10-31 (20261031-02) dal corpo del lister del 20261031-01.
 -- rev 2026-10-31 (20261031-13, brief-modello-documento-vendita §17): gli stati del push
 --   (emissione, cessazione) dal vocabolario, non 'ATTIVO' e 'CESSATO'.
+-- rev 2026-10-31 (20261031-35, brief-db-contratto-righe-periodiche-in-commessa §7.7,
+--   L14): i KIT del listino. La quota fissa di un kit si addebita (periodicita'
+--   da vendite.listini_kit; senza, scarto SENZA_PERIODICITA); il prezzo del kit
+--   che il contratto non negozia (quota fissa, ADESIONE) e' la somma dei
+--   componenti del listino (vendite.fn_contratto_kit_componenti); la
+--   periodicita' di una quota fissa dalla sede (vendite.fn_listino_periodicita_articolo);
+--   una quota fissa che non si eroga a canone esce con lo scarto
+--   QUOTA_FISSA_SENZA_CANONE, invece di sparire.
 DECLARE
   v_stato_attivo_id     config.stati_doc_contratti.id%TYPE;
   v_stato_cessato_id    config.stati_doc_contratti.id%TYPE;
@@ -120,6 +128,7 @@ BEGIN
            cr.quantita AS qta, cr.qta_operativa, cr.uom_operativa_id, cr.factor_to_base,
            cr.prezzo_unitario AS prezzo, NULL::bigint AS listino_riga_id,
            c.uid::text AS uid_chiave, 'RIGA'::text AS origine,
+           a.is_composito AS kit,
            CASE WHEN cr.periodicita IS NULL THEN 'SENZA_PERIODICITA'
                 WHEN cr.fonte_quantita_attesa = 'DURATA' AND um.conta_dal_calendario IS NULL
                   THEN 'DURATA_SENZA_CALENDARIO' END AS scarto
@@ -142,36 +151,61 @@ BEGIN
            -- La chiave della quota fissa nomina l'ARTICOLO, non la riga di
            -- listino: una versione nuova cambia la riga, non la quota.
            q.uid::text || ':A:' || q.articolo_id::text, 'LISTINO'::text,
-           CASE WHEN q.periodicita IS NULL THEN 'SENZA_PERIODICITA'
+           q.kit,
+           -- rev 2026-10-31 (-35): una quota fissa che non si eroga a canone
+           -- non sparisce piu': esce con il suo scarto (§7.3, la strada visibile).
+           CASE WHEN q.canone IS NOT TRUE THEN 'QUOTA_FISSA_SENZA_CANONE'
+                WHEN q.periodicita IS NULL THEN 'SENZA_PERIODICITA'
                 WHEN q.fonte = 'DURATA' AND q.calendario IS NULL
                   THEN 'DURATA_SENZA_CALENDARIO' END
       FROM (
-        SELECT DISTINCT ON (c.id, lr.articolo_id)
-               c.id AS contratto_id, c.uid, lr.articolo_id, lr.uom_id, lr.periodicita,
-               c.generazione_canone AS generazione, er.fonte_quantita_attesa AS fonte,
-               um.conta_dal_calendario AS calendario, lr.id AS listino_riga_id
-          FROM ctr c
-          JOIN vendite.listini_righe lr
-            ON lr.listino_versione_id = c.listino_versione_id
-           AND lr.attivo IS TRUE
-          JOIN catalogo.articoli a ON a.id = lr.articolo_id
-          JOIN config.listini_tipologie t
-            ON t.id = a.listino_tipologia_id AND t.e_quota_fissa IS TRUE
-          LEFT JOIN catalogo.unita_misura um ON um.id = lr.uom_id
-          -- L'erogazione di default dell'articolo: solo se e' un canone.
-          JOIN LATERAL (
+        SELECT s.contratto_id, s.uid, s.articolo_id, s.uom_id, s.listino_riga_id, s.kit,
+               -- La periodicita' dalla sede (regola del 2, 20261031-32): il kit
+               -- da vendite.listini_kit, gli altri dalla riga di listino.
+               vendite.fn_listino_periodicita_articolo(s.listino_versione_id, s.articolo_id) AS periodicita,
+               s.generazione, er.fonte_quantita_attesa AS fonte, (er.fonte_quantita_attesa IS NOT NULL) AS canone,
+               um.conta_dal_calendario AS calendario
+          FROM (
+            -- Le righe di listino delle quote fisse. Due righe sullo stesso
+            -- articolo: vince quella con la periodicita' (ne da' uom e riga).
+            (SELECT DISTINCT ON (c.id, lr.articolo_id)
+                   c.id AS contratto_id, c.uid, c.listino_versione_id, lr.articolo_id, lr.uom_id,
+                   lr.id AS listino_riga_id, false AS kit, c.generazione_canone AS generazione
+              FROM ctr c
+              JOIN vendite.listini_righe lr
+                ON lr.listino_versione_id = c.listino_versione_id
+               AND lr.attivo IS TRUE
+              JOIN catalogo.articoli a ON a.id = lr.articolo_id
+              JOIN config.listini_tipologie t
+                ON t.id = a.listino_tipologia_id AND t.e_quota_fissa IS TRUE
+             ORDER BY c.id, lr.articolo_id, (lr.periodicita IS NULL), lr.id)
+            UNION ALL
+            -- rev 2026-10-31 (-35): i KIT di quota fissa del listino. Il kit sul
+            -- listino non ha una riga: e' sul listino se ha componenti attivi
+            -- nella versione. L'unita' e' quella del kit.
+            SELECT DISTINCT c.id, c.uid, c.listino_versione_id, a.id, a.uom_id,
+                   NULL::bigint, true, c.generazione_canone
+              FROM ctr c
+              JOIN vendite.listini_righe_componenti lrc
+                ON lrc.listino_versione_id = c.listino_versione_id
+               AND lrc.attivo IS TRUE
+              JOIN catalogo.articoli a ON a.id = lrc.articolo_padre_id AND a.is_composito IS TRUE
+              JOIN config.listini_tipologie t
+                ON t.id = a.listino_tipologia_id AND t.e_quota_fissa IS TRUE
+          ) s
+          LEFT JOIN catalogo.unita_misura um ON um.id = s.uom_id
+          -- L'erogazione di default dell'articolo: si addebita da se' solo se e'
+          -- un canone. rev 2026-10-31 (-35): LEFT, cosi' l'altra resta visibile.
+          LEFT JOIN LATERAL (
             SELECT e.fonte_quantita_attesa
-              FROM vendite.fn_articolo_erogazioni(lr.articolo_id) e
+              FROM vendite.fn_articolo_erogazioni(s.articolo_id) e
              WHERE e.e_default IS TRUE AND e.tipo_erogazione = 'CANONE'
              LIMIT 1) er ON true
          WHERE NOT EXISTS (
                  SELECT 1 FROM vendite.contratti_righe cx
-                  WHERE cx.contratto_id = c.id
-                    AND cx.articolo_id = lr.articolo_id
+                  WHERE cx.contratto_id = s.contratto_id
+                    AND cx.articolo_id = s.articolo_id
                     AND COALESCE(cx.attivo, TRUE) IS TRUE)
-         -- Due righe di listino sullo stesso articolo: vince quella con la
-         -- periodicita'.
-         ORDER BY c.id, lr.articolo_id, (lr.periodicita IS NULL), lr.id
       ) q
   ),
   fonti_k AS (
@@ -199,7 +233,8 @@ BEGIN
       date_trunc('month', COALESCE(c.valido_dal, c.data))::date AS competenza_mese,
       -- L'ADESIONE non ha un prezzo suo: quello del listino, alla data
       -- dell'attivazione (G-0-ter).
-      COALESCE(cr.prezzo_unitario, rp.prezzo_finale) AS prezzo,
+      -- rev 2026-10-31 (-35): il kit aderito, la somma dei componenti del listino.
+      COALESCE(cr.prezzo_unitario, CASE WHEN a.is_composito THEN kp.prezzo ELSE rp.prezzo_finale END) AS prezzo,
       -- prezzo_bloccato: dipende dalla RIGA (prezzo valorizzato),
       -- INDIPENDENTE dal flag di corsia.
       (cr.prezzo_unitario IS NOT NULL) AS prezzo_bloccato,
@@ -210,7 +245,7 @@ BEGIN
         'policy_fatturazione', 'DA_DOCUMENTO'
       ) AS meta,
       0 AS ramo,
-      CASE WHEN COALESCE(cr.prezzo_unitario, rp.prezzo_finale) IS NULL
+      CASE WHEN COALESCE(cr.prezzo_unitario, CASE WHEN a.is_composito THEN kp.prezzo ELSE rp.prezzo_finale END) IS NULL
            THEN 'SENZA_PREZZO' END AS scarto
     FROM ctr c
     JOIN vendite.contratti_righe cr
@@ -229,7 +264,17 @@ BEGIN
                c.utility_id, c.emittente_id, NULL::integer, NULL::uuid,
                c.listino_versione_id) r
        WHERE cr.prezzo_unitario IS NULL
+         AND a.is_composito IS NOT TRUE
          AND r.esito_codice IS NULL) rp ON true
+    -- Il prezzo di un kit che il contratto non negozia: la somma prezzo x
+    -- coefficiente dei componenti del listino alla data (D-2). Senza componenti,
+    -- o con un componente senza prezzo, nessun prezzo.
+    LEFT JOIN LATERAL (
+      SELECT CASE WHEN count(*) = 0 OR bool_or(k.prezzo_unitario IS NULL) THEN NULL
+                  ELSE sum(k.prezzo_unitario * k.coeff_qta_snapshot) END AS prezzo
+        FROM vendite.fn_contratto_kit_componenti(c.id, cr.articolo_id, c.valido_dal) k
+       WHERE cr.prezzo_unitario IS NULL
+         AND a.is_composito IS TRUE) kp ON true
     WHERE c.stato_doc_contratto_id = v_stato_attivo_id
       AND (c.valido_al IS NULL OR c.valido_al >= COALESCE(p_competenza_mese, (SELECT script.fn_data_operativa())))
       AND (p_competenza_mese IS NULL
@@ -260,7 +305,7 @@ BEGIN
       -- Il prezzo: quello della riga (OVERRIDE, AGGIUNTA), o quello del
       -- listino del contratto all'inizio del pezzo (ADESIONE, quota fissa),
       -- con la variazione globale (G-0).
-      COALESCE(f.prezzo, rp.prezzo_finale) AS prezzo,
+      COALESCE(f.prezzo, CASE WHEN f.kit THEN kp.prezzo ELSE rp.prezzo_finale END) AS prezzo,
       (f.prezzo IS NOT NULL) AS prezzo_bloccato,
       jsonb_build_object(
         'contratto_numero',      c.numero,
@@ -277,7 +322,7 @@ BEGIN
         'policy_fatturazione',   'DA_DOCUMENTO'
       ) AS meta,
       1 AS ramo,
-      CASE WHEN COALESCE(f.prezzo, rp.prezzo_finale) IS NULL
+      CASE WHEN COALESCE(f.prezzo, CASE WHEN f.kit THEN kp.prezzo ELSE rp.prezzo_finale END) IS NULL
            THEN 'SENZA_PREZZO' END AS scarto
     FROM fonti_k f
     JOIN ctr c ON c.id = f.contratto_id
@@ -309,7 +354,15 @@ BEGIN
                c.utility_id, c.emittente_id, NULL::integer, NULL::uuid,
                c.listino_versione_id) r
        WHERE f.prezzo IS NULL
+         AND f.kit IS NOT TRUE
          AND r.esito_codice IS NULL) rp ON true
+    -- Il kit (quota fissa, ADESIONE): la somma dei componenti all'inizio del pezzo.
+    LEFT JOIN LATERAL (
+      SELECT CASE WHEN count(*) = 0 OR bool_or(k.prezzo_unitario IS NULL) THEN NULL
+                  ELSE sum(k.prezzo_unitario * k.coeff_qta_snapshot) END AS prezzo
+        FROM vendite.fn_contratto_kit_componenti(c.id, f.articolo_id, p.periodo_dal) k
+       WHERE f.prezzo IS NULL
+         AND f.kit IS TRUE) kp ON true
   ),
   storni AS (
     -- Lo storno (G-5): un pezzo addebitato che va oltre valido_al si storna
@@ -460,7 +513,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_contratti_addebiti_maturati(p_competenza_mese date, p_billing_account_id bigint, p_contratto_id bigint)
-IS 'Gli addebiti maturati dei contratti ATTIVO e CESSATO a questo giro e non ancora in commessa, con gli scartati e il motivo (scarto). Sede unica della regola del push dei contratti: la leggono vendite.fn_list_contratti_da_pushare (scarto NULL) e vendite.vw_dash_fatturazione_contratti (tutte e due). Rami: 0 una tantum, 1 canoni a periodi (vendite.fn_canone_periodi), 2 storni come differenza dal gia'' stornato, 3 fonti scartate (una riga per fonte, senza pezzo). Scarto: SENZA_PERIODICITA, DURATA_SENZA_CALENDARIO (ramo 3), SENZA_PREZZO (un pezzo o la una tantum senza prezzo alla data). Le righe gia'' inviate (script.fn_get_stato_push_segment <> LIBERA) e le quantita'' a zero non escono. Regola completa nelle intestazioni dei changeSet 20261030-01, 20261031-01 e 20261031-02: brief-db-contratto-righe-periodiche-in-commessa §6.12, §6.13.';
+IS 'Gli addebiti maturati dei contratti ATTIVO e CESSATO a questo giro e non ancora in commessa, con gli scartati e il motivo (scarto). Sede unica della regola del push dei contratti: la leggono vendite.fn_list_contratti_da_pushare (scarto NULL) e vendite.vw_dash_fatturazione_contratti (tutte e due). Rami: 0 una tantum, 1 canoni a periodi (vendite.fn_canone_periodi), 2 storni come differenza dal gia'' stornato, 3 fonti scartate (una riga per fonte, senza pezzo). Scarto: SENZA_PERIODICITA, DURATA_SENZA_CALENDARIO (ramo 3), SENZA_PREZZO (un pezzo o la una tantum senza prezzo alla data). Le righe gia'' inviate (script.fn_get_stato_push_segment <> LIBERA) e le quantita'' a zero non escono. Regola completa nelle intestazioni dei changeSet 20261030-01, 20261031-01 e 20261031-02: brief-db-contratto-righe-periodiche-in-commessa §6.12, §6.13. rev 2026-10-31 (20261031-35, brief-db-contratto-righe-periodiche-in-commessa L14): i kit del listino (quota fissa da vendite.listini_kit, prezzo del kit non negoziato = somma dei componenti da vendite.fn_contratto_kit_componenti), la periodicita'' della quota fissa da vendite.fn_listino_periodicita_articolo, lo scarto QUOTA_FISSA_SENZA_CANONE.';
 ```
 
 </div>

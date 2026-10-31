@@ -13,7 +13,7 @@ CREATE FUNCTION fn_documento_righe_eccezione(p_documento character varying, p_do
 
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_documento_righe_eccezione(p_documento character varying, p_documento_id bigint)
- RETURNS TABLE(id bigint, articolo_id uuid, tipo_eccezione vendite.tipo_eccezione_contratto, prezzo_unitario numeric, quantita numeric, qta_operativa numeric, uom_operativa_id bigint, tipo_erogazione character varying, fonte_quantita_attesa character varying, ordine smallint, attivo boolean)
+ RETURNS TABLE(id bigint, articolo_id uuid, tipo_eccezione vendite.tipo_eccezione_contratto, prezzo_unitario numeric, quantita numeric, qta_operativa numeric, uom_operativa_id bigint, tipo_erogazione character varying, fonte_quantita_attesa character varying, ordine smallint, attivo boolean, periodicita character varying, generazione_canone character varying)
  LANGUAGE plpgsql
  STABLE
 AS $function$
@@ -31,7 +31,7 @@ BEGIN
         SELECT cr.id, cr.articolo_id, cr.tipo_eccezione, cr.prezzo_unitario,
                cr.quantita, cr.qta_operativa, cr.uom_operativa_id,
                cr.tipo_erogazione, cr.fonte_quantita_attesa, cr.ordine,
-               cr.attivo
+               cr.attivo, cr.periodicita, cr.generazione_canone
           FROM vendite.contratti_righe cr
          WHERE cr.contratto_id = p_documento_id;
 
@@ -40,7 +40,7 @@ BEGIN
         SELECT oe.id, oe.articolo_id, oe.tipo_eccezione, oe.prezzo_unitario,
                oe.quantita, oe.qta_operativa, oe.uom_operativa_id,
                oe.tipo_erogazione, oe.fonte_quantita_attesa, oe.ordine,
-               oe.attivo
+               oe.attivo, oe.periodicita, oe.generazione_canone
           FROM vendite.offerte_commerciali_eccezioni oe
          WHERE oe.offerta_id = p_documento_id;
 
@@ -60,7 +60,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_documento_righe_eccezione(p_documento character varying, p_documento_id bigint)
-IS 'Le righe eccezione (OVERRIDE, ESCLUSIONE, AGGIUNTA) di un contratto (vendite.contratti_righe) o di un''offerta (vendite.offerte_commerciali_eccezioni), con le stesse colonne: le due tabelle sono gemelle per progetto. p_documento = CONTRATTO | OFFERTA; altro valore: E_DOC_TIPO_NON_GESTITO. Tutte le righe, attive e no. INVOKER: legge sotto la RLS di chi chiede. Colonne ancorate a contratti_righe (stesso tipo base sull''offerta; una funzione non porta il typmod). Consumatore: vendite.fn_documento_righe_preview, che senza di lei sceglierebbe la tabella in tre punti. Nasce il 2026-10-04, brief-db-righe-esclusione-solo-non-si-vende (R4). ⭐ rev 2026-10-19 (20261019-19, brief-db-grammatica-unica-documenti lotto 1, G-1 di Tid): il documento si nomina col codice della sorgente, CONTRATTO | OFFERTA_COMMERCIALE (era OFFERTA); dove sopra si legge OFFERTA come selettore, oggi e'' OFFERTA_COMMERCIALE. p_documento ancorato a config.sorgenti.codice_interno%TYPE: la firma passa da text a character varying (DROP + CREATE, nessun dipendente registrato).';
+IS 'Le righe eccezione (OVERRIDE, ESCLUSIONE, AGGIUNTA) di un contratto (vendite.contratti_righe) o di un''offerta (vendite.offerte_commerciali_eccezioni), con le stesse colonne: le due tabelle sono gemelle per progetto. p_documento = CONTRATTO | OFFERTA; altro valore: E_DOC_TIPO_NON_GESTITO. Tutte le righe, attive e no. INVOKER: legge sotto la RLS di chi chiede. Colonne ancorate a contratti_righe (stesso tipo base sull''offerta; una funzione non porta il typmod). Consumatore: vendite.fn_documento_righe_preview, che senza di lei sceglierebbe la tabella in tre punti. Nasce il 2026-10-04, brief-db-righe-esclusione-solo-non-si-vende (R4). ⭐ rev 2026-10-19 (20261019-19, brief-db-grammatica-unica-documenti lotto 1, G-1 di Tid): il documento si nomina col codice della sorgente, CONTRATTO | OFFERTA_COMMERCIALE (era OFFERTA); dove sopra si legge OFFERTA come selettore, oggi e'' OFFERTA_COMMERCIALE. p_documento ancorato a config.sorgenti.codice_interno%TYPE: la firma passa da text a character varying (DROP + CREATE, nessun dipendente registrato). ⭐ rev 2026-10-31 (20261031-40, brief-db-contratto-righe-periodiche-in-commessa D-7): periodicita e generazione_canone in coda, per l''anteprima delle righe.';
 ```
 
 </div>

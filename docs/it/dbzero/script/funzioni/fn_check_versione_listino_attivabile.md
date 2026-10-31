@@ -20,6 +20,7 @@ AS $function$
 DECLARE
     v_versione vendite.listini_versioni%ROWTYPE;
     v_riga_id  vendite.listini_righe.id%TYPE;
+    v_articolo catalogo.articoli%ROWTYPE;
 BEGIN
     -- =========================================================
     -- Scopo: dire perche' una versione di listino NON si attiva.
@@ -67,6 +68,36 @@ BEGIN
             'dettaglio',  jsonb_build_object('listino_versione_id', v_versione.id,
                                              'listino_id', v_versione.listino_id),
             'valori',     jsonb_build_array(v_versione.codice_versione)));
+    END IF;
+
+    -- 3. rev 2026-10-31 (20261031-39, D-3): una quota fissa a canone senza
+    --    periodicita', riga di listino o kit (la sede la dice per tutti e due).
+    SELECT a.* INTO v_articolo
+      FROM (SELECT r.articolo_id
+              FROM vendite.listini_righe r
+             WHERE r.listino_versione_id = v_versione.id
+               AND r.attivo IS TRUE
+            UNION
+            SELECT c.articolo_padre_id
+              FROM vendite.listini_righe_componenti c
+             WHERE c.listino_versione_id = v_versione.id
+               AND c.attivo IS TRUE) x
+      JOIN catalogo.articoli a ON a.id = x.articolo_id
+     -- rev 2026-10-31 (20261031-50): «quota fissa a canone» dalla sede.
+     WHERE vendite.fn_articolo_quota_fissa_a_canone(a.id)
+       AND vendite.fn_listino_periodicita_articolo(v_versione.id, a.id) IS NULL
+     ORDER BY a.codice
+     LIMIT 1;
+    IF FOUND THEN
+        RETURN jsonb_build_array(jsonb_build_object(
+            'codice',     'E_LISTINO_VERSIONE_QUOTA_FISSA_SENZA_PERIODICITA',
+            'reason',     'QUOTA_FISSA_SENZA_PERIODICITA',
+            'reason_key', 'vendite.listini.azione_reason.quota_fissa_senza_periodicita',
+            'dettaglio',  jsonb_build_object('listino_versione_id', v_versione.id,
+                                             'listino_id', v_versione.listino_id,
+                                             'articolo_id', v_articolo.id,
+                                             'campo', 'periodicita'),
+            'valori',     jsonb_build_array(v_versione.codice_versione, v_articolo.codice)));
     END IF;
 
     RETURN jsonb_build_array();

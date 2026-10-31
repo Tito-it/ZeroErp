@@ -1,0 +1,142 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL KIT ADERITO EREDITA LA PERIODICITA': script.trgfn_righe_default_periodicita_da_listino legge la sede
+#   Brief: brief-db-contratto-righe-periodiche-in-commessa §7.7 (L12, D-2-bis).
+#
+#   La periodicita' da ereditare si legge da vendite.fn_listino_periodicita_articolo
+#   (20261031-32), non piu' dalla riga di listino scritta qui. Due effetti:
+#   · il kit (ADESIONE o OVERRIDE su un composito) eredita la periodicita'
+#     della sua riga in vendite.listini_kit: prima la cercava in
+#     listini_righe, dove il padre non c'e', e restava vuota;
+#   · per gli altri articoli niente cambia: la sede applica la stessa regola
+#     (la prima riga attiva con la periodicita'), e questa copia si ritira.
+#   Montaggi (20261029-45) invariati.
+#
+#   Corpo dal catalogo vivo di dbdev (2026-10-31, uguale al 20261029-44); una
+#   modifica, la lettura. Dichiarazione con %TYPE e SECURITY INVOKER esplicito.
+#   Ritorno indietro: il corpo del 20261029-44.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261031-33-update-trgfn-righe-default-periodicita-dalla-sede-mctit.yaml
+
+  - changeSet:
+      id: 20261031-33-update-trgfn-righe-default-periodicita-dalla-sede
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.trgfn_righe_default_periodicita_da_listino: la periodicita' da ereditare la dice
+        vendite.fn_listino_periodicita_articolo (il kit compreso). Brief:
+        brief-db-contratto-righe-periodiche-in-commessa §7.7 (L12, D-2-bis).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc
+               WHERE oid = to_regprocedure('vendite.fn_listino_periodicita_articolo(bigint,uuid)')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_righe_default_periodicita_da_listino()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: la riga a canone su un articolo del listino (ADESIONE, OVERRIDE)
+              --   senza periodicita' la prende dal listino dell'articolo, nella versione
+              --   operativa del documento. Riempie solo il vuoto.
+              -- Generica sulle due tabelle gemelle: TG_ARGV[0] = documento (codice della
+              --   sorgente), TG_ARGV[1] = colonna del padre. Regola completa nell'intestazione
+              --   del changeSet 20261029-44.
+              -- rev 2026-10-31 (20261031-33, D-2-bis): la periodicita' la dice
+              --   vendite.fn_listino_periodicita_articolo, che conosce anche il kit
+              --   (vendite.listini_kit).
+              DECLARE
+                  v_documento    config.sorgenti.codice_interno%TYPE := TG_ARGV[0];
+                  -- Nudo DICHIARATO: l'id del padre, polimorfo (contratto o offerta).
+                  v_documento_id bigint := (to_jsonb(NEW) ->> TG_ARGV[1])::bigint;
+                  v_versione_id  vendite.listini_righe.listino_versione_id%TYPE;
+                  v_periodicita  vendite.listini_righe.periodicita%TYPE;
+              BEGIN
+                  IF NEW.tipo_eccezione NOT IN ('ADESIONE'::vendite.tipo_eccezione_contratto,
+                                                'OVERRIDE'::vendite.tipo_eccezione_contratto) THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT lo.listino_versione_id INTO v_versione_id
+                    FROM vendite.fn_documento_listino_operativo(v_documento, v_documento_id) lo;
+                  IF v_versione_id IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  v_periodicita := vendite.fn_listino_periodicita_articolo(v_versione_id, NEW.articolo_id);
+
+                  IF v_periodicita IS NOT NULL THEN
+                      NEW.periodicita := v_periodicita;
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_righe_default_periodicita_da_listino()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: la riga a canone su un articolo del listino (ADESIONE, OVERRIDE)
+              --   senza periodicita' la prende dalla riga di listino dell'articolo, nella
+              --   versione operativa del documento. Riempie solo il vuoto.
+              -- Generica sulle due tabelle gemelle: TG_ARGV[0] = documento (codice della
+              --   sorgente), TG_ARGV[1] = colonna del padre. Regola completa nell'intestazione
+              --   del changeSet 20261029-44.
+              DECLARE
+                  v_documento    config.sorgenti.codice_interno%TYPE := TG_ARGV[0];
+                  -- Nudo DICHIARATO: l'id del padre, polimorfo (contratto o offerta).
+                  v_documento_id bigint := (to_jsonb(NEW) ->> TG_ARGV[1])::bigint;
+                  v_versione_id  vendite.listini_righe.listino_versione_id%TYPE;
+                  v_periodicita  vendite.listini_righe.periodicita%TYPE;
+              BEGIN
+                  IF NEW.tipo_eccezione NOT IN ('ADESIONE'::vendite.tipo_eccezione_contratto,
+                                                'OVERRIDE'::vendite.tipo_eccezione_contratto) THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT lo.listino_versione_id INTO v_versione_id
+                    FROM vendite.fn_documento_listino_operativo(v_documento, v_documento_id) lo;
+                  IF v_versione_id IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT lr.periodicita INTO v_periodicita
+                    FROM vendite.listini_righe lr
+                   WHERE lr.listino_versione_id = v_versione_id
+                     AND lr.articolo_id = NEW.articolo_id
+                     AND lr.attivo IS TRUE
+                     AND lr.periodicita IS NOT NULL
+                   ORDER BY lr.id
+                   LIMIT 1;
+
+                  IF v_periodicita IS NOT NULL THEN
+                      NEW.periodicita := v_periodicita;
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;

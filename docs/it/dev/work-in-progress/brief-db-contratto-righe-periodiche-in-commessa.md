@@ -1,10 +1,17 @@
 # Brief DB — Le righe di contratto che non sono «una volta»: canone, orario e consumo in commessa
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-31 (presa in carico BE/FE)
+## ⏭️ Chi riparte — aggiornato al 2026-10-31 (giro del §7, L17 e §7.10 applicati e verdi)
 
-**Ripartono tutti e due i team.** Il **team DB** con le richieste del §7 (nota di credito dal
-segno del documento, componenti del kit dal listino, controllo all'attivazione del listino, i due campi
-del canone nella creazione del contratto), le prime tre decise da Tid il 2026-10-31. Il **team BE/FE** con la richiesta dei lotti L1 … L9 (sotto), che non aspetta il §7.
+**Ripartono in due.** Il **team BE/FE** dal passo 3, con la richiesta del §7.7 (otto punti), del §7.9
+(la chiamata del verbo nel giro) e del §7.10 (un codice nuovo). Il **team DB** con L18, la documentazione.
+Applicati e verdi, nessuna regressione: `20261031-28` … `-52` (2026-10-31).
+
+**Cosa resta lato DB** (§7.8):
+* ~~L17~~ applicato (§7.9);
+* ~~la periodicità della quota fissa ferma fuori dalla bozza~~ applicata (§7.10);
+* la documentazione del giro del §7 (guida dei listini, manual delle funzioni e della tabella nuova);
+* il passo 4: l'obbligo della periodicità sulla riga a canone e lo script di F-10, dopo il passo 3 del BE/FE;
+
 I lotti L1 … L9 lato DB restano finiti (§6.3).
 
 **Cosa resta:**
@@ -47,11 +54,19 @@ I lotti L1 … L9 lato DB restano finiti (§6.3).
 | 1-vicies ter | ✅ team DB | L9 (documentazione) scritto (2026-10-31) | §6.14 | 1-vicies bis |
 | 1-vicies quater | BE/FE (in corso) | la richiesta: fatto quanto non aspetta il DB, il resto dopo i punti 2 e 3 | §7.6 | 1-vicies ter |
 | 1-vicies quinquies | ✅ Tid | D-1 … D-4 del passaggio BE/FE (2026-10-31) | §7 | 1-vicies ter |
-| 2 | team DB | D-1 nota di credito dal segno del documento; D-2 componenti del kit dal listino; D-3 controllo all'attivazione della versione e quota fissa che sparisce; D-5 i due campi del canone nella whitelist di `fn_create_contratto`; D-6 la periodicità nel lookup; D-7 periodicità e generazione nella preview delle righe | §7.1 … §7.5 | 1-vicies quinquies |
-| 3 | BE/FE | il ramo dell'espansore sui componenti dal listino (D-2); i due campi del canone sulla testata del contratto (D-5); periodicità e generazione sulla riga e sul listino (D-6, D-7) | §7.2, §7.4, §7.5 | 2 (D-2, D-5, D-6, D-7) |
-| 4 | DB | l'obbligo della periodicità sulla riga a canone (guard + CHECK) e lo script di F-10 | §6.11 | 1-vicies quater |
+| 1-vicies sexies | ✅ Tid | D-1-ter (A) e D-2-bis (B); via allo sviluppo (2026-10-31) | §7.1, §7.2 | 1-vicies quinquies |
+| 2 | ✅ team DB (L10 … L16 scritti e provati, 2026-10-31; L17 proposto) | D-1 nota di credito dal segno del documento, con le fatture citate (D-1-ter); D-2 componenti del kit dal listino; D-2-bis il kit sul listino con la sua periodicità; D-3 controllo all'attivazione della versione e quota fissa che sparisce; D-5 i due campi del canone nella whitelist di `fn_create_contratto`; D-6 la periodicità nel lookup; D-7 periodicità e generazione nella preview delle righe | §7.1 … §7.5, §7.7 | 1-vicies sexies |
+| 2-bis | ✅ Tid | apply di `20261031-28` … `-43` e dei CSV, pgTAP verdi (2026-10-31) | §7.7 | 2 |
+| 2-bis-bis | ✅ Tid | ok alla forma di L17 (2026-10-31) | §7.7 | 2-bis |
+| 2-ter | ✅ team DB | L17 (D-1, D-1-ter) scritto e provato (2026-10-31) | §7.9 | 2-bis-bis |
+| 2-ter-bis | ✅ Tid | apply di `20261031-44` … `-48` (2026-10-31) | §7.9 | 2-ter |
+| 2-ter-ter | ✅ team DB | la quota fissa non perde la periodicità fuori dalla bozza, decisione di Tid; `-49` … `-52` scritti e provati (2026-10-31) | §7.10 | 2-ter-bis |
+| 2-ter-quater | ✅ Tid | apply di `20261031-49` … `-52`, pgTAP verdi, nessuna regressione (2026-10-31) | §7.10 | 2-ter-ter |
+| 2-quater | team DB | documentazione del giro del §7 (L18) | §7.8 | 2-bis |
+| 3 | BE/FE | il ramo dell'espansore sui componenti dal listino (D-2); il kit sul listino nel form (D-2-bis); i due campi del canone sulla testata del contratto (D-5); periodicità e generazione sulla riga e sul listino (D-6, D-7) | §7.2, §7.4, §7.5, §7.7 | 2-bis |
+| 4 | DB | l'obbligo della periodicità sulla riga a canone (guard + CHECK) e lo script di F-10 | §6.11 | 3 |
 
-Decisioni aperte di Tid: **due**, il collegamento della nota di credito alla fattura d'origine (§7.1, D-1-ter) e dove vive la periodicità di un kit sul listino (§7.2, D-2-bis). F-1 … F-10 prese il 2026-10-29, F-11 … F-13 il 2026-10-30, F-14 e F-15 il 2026-10-31, D-1 … D-4 il 2026-10-31. G-0 … G-11 prese il 2026-10-28. Lavoro committato il 2026-10-31 su `dev/db-tid` (un commit: L1 … L9): i changeSet `20261029-10` …
+Decisioni aperte di Tid: nessuna. La forma di L17 e la periodicità ferma della quota fissa decise il 2026-10-31. D-1-ter (A) e D-2-bis (B) prese il 2026-10-31. F-1 … F-10 prese il 2026-10-29, F-11 … F-13 il 2026-10-30, F-14 e F-15 il 2026-10-31, D-1 … D-4 il 2026-10-31. G-0 … G-11 prese il 2026-10-28. Lavoro committato il 2026-10-31 su `dev/db-tid` (un commit: L1 … L9): i changeSet `20261029-10` …
 `-45`, `20261030-01` e `20261031-01` … `-04` (§6.5 … §6.13, applicati su dbdev), i CSV e i seed
 toccati, i pgTAP nuovi e aggiornati, la documentazione del L9 (§6.14), questo documento. Il giro che lo ha aperto, `20261013-24`, è nella risposta al team BE del 2026-10-13.
 
@@ -1070,7 +1085,11 @@ il segno lo dà il TD04, e le righe si **invertono**: le negative si scrivono po
 negative. È un requisito del generatore del tracciato, che nel repo oggi non scrive le righe: non va
 ricopiato nella catena.
 
-**D-1-ter — aperta (Tid).** Lo storno sa quale pezzo storna (la base della chiave, `<base>#STO`), quindi
+**D-1-ter — decisa (Tid, 2026-10-31): (A), la nota di credito cita le fatture.** Quando il pezzo
+stornato è già fatturato, lo storno porta la riga di fattura che lo ha addebitato
+(`attivita_fatturabili.fattura_riga_rettificata_id`, lo stesso canale dell'accredito del reso), e la
+nota di credito cita quelle fatture. Se il pezzo non è fatturato, lo storno si compensa nella stessa
+fattura e il riferimento resta vuoto. La domanda, com'era: lo storno sa quale pezzo storna (la base della chiave, `<base>#STO`), quindi
 si può risalire alla riga di fattura che lo ha addebitato. La guida della fatturazione dice che una nota di
 credito cita il documento che corregge (`DatiFattureCollegate`). La domanda: la nota di credito nata dal
 segno deve citare le fatture dei pezzi che storna (una o più), o basta senza?
@@ -1105,7 +1124,13 @@ sede è `vendite.listini_righe_componenti` della versione del contratto, alla da
 **Da dire nella risposta del DB:** se anche l'una tantum ADESIONE su un kit passa di qui (stesso caso, un
 ramo diverso del lister).
 
-**⚠️ D-2-bis — aperta (Tid): il kit sul listino non ha una riga, quindi nemmeno una periodicità.** Trovato
+**D-2-bis — decisa (Tid, 2026-10-31): (B), una tabella del kit sul listino.** Una riga per versione e
+kit (versione, kit, periodicità). Resta valida la decisione del modello unificato dei componenti
+(`work-done/brief-db-componenti-modello-unificato.md`, 2026-05): il padre non ha una riga in
+`listini_righe`, e il prezzo del kit resta la somma dei componenti. Scartate: (A) la riga del padre in
+`listini_righe` senza prezzo, che revocava quella decisione e toglieva il `NOT NULL` a
+`listini_righe.prezzo`; (C) la periodicità sull'articolo, contro G-0-bis (la periodicità è una condizione
+del listino). Il problema, com'era: il kit sul listino non ha una riga, quindi nemmeno una periodicità. Trovato
 dal BE il 2026-10-31, aggiungendo la periodicità alla riga di listino. La doc di
 `vendite.listini_righe_componenti` lo dice: *«non esiste una riga in `listini_righe` per il padre (bloccato
 da guard dedicati)»*. Il kit sul listino è solo l'insieme dei prezzi dei componenti. Due conseguenze, sul
@@ -1191,7 +1216,7 @@ cancellerebbe una periodicità o una generazione forzata.
 quando arrivano D-6 e D-7. L'ADESIONE parte già: senza indicazione la periodicità la mette il trigger
 dalla riga di listino (L4b).
 
-### 7.6 Il passaggio BE/FE — stato al 2026-10-31 (non committato)
+### 7.6 Il passaggio BE/FE — stato al 2026-10-31 (committato in `9f3a16904`, PR #1985)
 
 **Fatto:**
 * la commessa del contratto si apre senza periodo (G-6, `commesse_source_handlers`, `_commessa_per_periodo`);
@@ -1209,5 +1234,207 @@ dalla riga di listino (L4b).
 
 **Aspetta:**
 * il DB: D-1, D-2, D-3, D-5, D-6, D-7 (§7.1 … §7.5);
-* Tid: D-1-ter; D-2-bis è una decisione di modello, da proporre dal team DB (dove vive la periodicità di
-  un kit sul listino).
+* ~~Tid: D-1-ter e D-2-bis~~ decise il 2026-10-31 (§7.1, §7.2).
+
+### 7.7 Il giro DB del §7 (team DB, 2026-10-31; via di Tid lo stesso giorno)
+
+**Verifica del push BE (2026-10-31, contro dbdev e doc auto-generata).** I nomi che il BE traduce sul
+campo esistono tutti: le tre FK `fk_*_periodicita` e i CHECK `chk_offerte_commerciali_*` e `chk_contratti_*`.
+`competenza_canone` non c'è più su nessuna tabella. L'uscita di `fn_documento_riga_erogazioni` è senza
+`generazione_canone`, e l'app ha i grant di colonna su tutto ciò che scrive. Confermati, sul corpo vivo, i
+fatti di D-1, D-3, D-5, D-6 e D-7. ⚠️ La CI di GitHub non è partita per nessuna corsa del 31-10, nemmeno
+per quelle di `dev/db-tid`: il motivo è la fatturazione dell'account, non i test. Il push BE è entrato in
+`Tito-dev` senza `validate` né `frontend`.
+
+**Trovato nel giro (struttura, 2026-10-31).**
+* `vendite.fn_clona_versione_listino` copia le righe senza `periodicita` (la colonna è del L1, il clone
+  le copia per nome): una versione clonata da un listino di quota fissa la perde. Si corregge qui.
+* Il prezzo di un kit aderito non c'è. Il lister chiede al resolver il prezzo del **padre**, ma il padre
+  non ha una riga di listino: per l'ADESIONE su un kit (una tantum o canone) il resolver non trova niente,
+  e la riga esce `SENZA_PREZZO`. Il prezzo del kit è la somma dei componenti, ciascuno al prezzo che il
+  resolver dà nel contesto del padre (`p_articolo_padre_contesto`, origine `LISTINO_BUNDLE`).
+* ⚠️ Il §7.2 dice «con la variazione globale del contratto come per il padre». Il resolver, oggi, sul
+  componente di un bundle **non** applica la variazione (`LISTINO_BUNDLE`), e così l'anteprima
+  (`fn_espandi_listino_versione`). La funzione nuova non ricopia la regola: chiede il prezzo al
+  resolver. Se la variazione sul kit deve cambiare, cambia lì, in un posto solo.
+
+**I lotti.**
+
+| Lotto | Che cosa | changeSet |
+| --- | --- | --- |
+| **L10** (D-5) | `fn_create_contratto`: le due chiavi del canone nella whitelist | `20261031-28` |
+| **L11** (D-6) | `config.periodicita` in `tabelle_gestibili.csv` (riga 93, lookup sì, pannello no) | seed `20260925-30` |
+| **L12** (D-2-bis) | la tabella `vendite.listini_kit` (versione, kit, periodicità NOT NULL; RLS della famiglia dei listini); il guard (solo in bozza, solo su un composito) e il suo montaggio; la sede della periodicità di un articolo sul listino, kit compresi (regola del 2: ritira la copia del default della riga e quella del lister); il default della riga a canone legge la sede; elimina, eliminabile e clona della versione portano il kit; il clone porta anche la periodicità delle righe, che perdeva | `-29` … `-33`, `-36` … `-38` |
+| **L13** (D-2) | `vendite.fn_contratto_kit_componenti(contratto, kit, data)`: i componenti del kit sul listino del contratto, nella forma dell'espansore, col prezzo del resolver nel contesto del padre | `-34` |
+| **L14** | il lister: la quota fissa di un kit (da `listini_kit`; senza, `SENZA_PERIODICITA`), il prezzo del kit non negoziato (quota fissa, ADESIONE) = la somma dei componenti, la periodicità dalla sede, lo scarto nuovo `QUOTA_FISSA_SENZA_CANONE` (§7.3, la strada «visibile»: l'erogazione la dice il catalogo, che può cambiare dopo l'attivazione) | `-35` |
+| **L15** (D-3) | `fn_check_versione_listino_attivabile`, motivo 3: una quota fissa a canone senza periodicità, riga o kit, ferma l'attivazione (`E_LISTINO_VERSIONE_QUOTA_FISSA_SENZA_PERIODICITA`) | `-39` |
+| **L16** (D-7) | `periodicita` e `generazione_canone` in coda: il lettore delle eccezioni, l'anteprima (sulla riga DA_LISTINO la periodicità del listino, la proposta di «Aderisci»), i due involucri; 26 colonne | `-40` … `-43` |
+| **L17** (D-1, D-1-ter) | la natura del documento dal segno; la nota di credito cita le fatture | `-44` … `-48` (§7.9) |
+
+Catalogo (stesso giro): `codici_errore.csv` e `messaggi_errore.csv` con `E_LISTINO_KIT_NON_COMPOSITO`
+(DATO_ERRATO) e `E_LISTINO_VERSIONE_QUOTA_FISSA_SENZA_PERIODICITA` (NON_ESEGUIBILE);
+`automation_lock_columns.csv` con l'identità di `listini_kit` (kit e versione, `E_LISTINO_RIGA_IDENTITA_IMMUTABILE`,
+come la riga di listino). Riusati: `E_RIGA_LISTINO_VERSIONE_CHIUSA` (fuori dalla bozza, come i componenti).
+
+**Applicato da Tid il 2026-10-31**, `20261031-28` … `-43` e i CSV; pgTAP verdi.
+
+**Prova (2026-10-31, dbdev, owner, transazione annullata; SQL estratto dai changeSet `-28` … `-43`, seed
+simulato con le righe nuove dei CSV).**
+* Il giro intero si applica nell'ordine e torna indietro; dopo ogni corsa le funzioni vive sono identiche
+  (impronta di `vendite`, `script`, `catalogo`, `config`, `dbops` prima e dopo).
+* **Nuovo** `vendite/test-listino-kit-e-periodicita-v1`: 18 test, tutto costruito. Un listino di quota fissa
+  con una quota (mensile) e un kit (2 × 10 + 30 = 50, trimestrale), due contratti. Copre la struttura, il
+  lookup, la sede, i due guard, i tre casi dell'attivazione, clona ed elimina, i componenti dal listino, la
+  quota fissa del kit addebitata a 50, l'ADESIONE sul kit (periodicità ereditata, prezzo 50), l'anteprima e
+  lo scarto nuovo. 18/18; sul corpo vivo non gira (la tabella non c'è).
+* `vendite/test-fn-create-contratto-v1`: 16-18 nuovi (i due campi riletti, i default, il null rifiutato);
+  sul vivo rossi il 16 e il 18, attesi.
+* **Prima/dopo su 60 pgTAP** che toccano i pezzi cambiati, più i presidi trasversali (riferimenti morti,
+  rubinetto del primo motivo, catalogo dei messaggi, motivo nominato, storico, `user_update`, perimetro RLS,
+  struttura delle policy). Differenze, tutte spiegate e portate:
+  * `test-contratto-righe-lista-uom-riga-v1`, 9: la firma passa da 24 a 26 colonne (atteso, aggiornato);
+  * quattro fixture attivavano un listino di quota fissa senza periodicità: è l'effetto di D-3.
+    `test-righe-eccezioni-articolo-ammesso-v1` e `offerte_commerciali/test_offerte_eccezioni_componenti`
+    scelgono la tipologia «pescando» la prima della utility con certe erogazioni, e oggi la pesca dà la quota
+    fissa: la fixture dà la periodicità a righe e kit in bozza. `test-righe-periodicita-da-listino-v1` e
+    `test-vw-dash-contratti-giudizio-v1` costruiscono **apposta** una quota senza periodicità: la tolgono
+    dopo l'attivazione (vedi il trovato sotto). Dopo: verdi.
+* Seconda tornata prima/dopo sui 140 pgTAP che costruiscono un listino o un mondo cliente, fuori dalla
+  lista: nessuna differenza, test per test.
+
+**Trovato nel giro — la periodicità si toglie da una versione ATTIVA.** `vendite.trgfn_listini_righe_guard_stato`
+ammette in ATTIVA la rettifica di una riga non propagata, e la periodicità non è nel lucchetto: una quota
+fissa può perdere la periodicità dopo l'attivazione, e il controllo di D-3 non la vede. È il caso che la
+dashboard segnala (F-15), e resta segnalato. Decisione di Tid (2026-10-31): si chiude, §7.10.
+
+**Richiesta al team BE/FE (passo 3), elenco chiuso, dopo l'apply.**
+1. **Espansore dei kit** (`BoMComponentExpander`): quando la riga non ha componenti negoziati (la quota
+   fissa del kit arriva con `riga_id` NULL; l'ADESIONE su un kit non ne ha), legge
+   `vendite.fn_contratto_kit_componenti(contratto, kit, data del pezzo)`: stesse colonne che già legge
+   (`componente_id`, `uom_operativa_id`, `coeff_qta_snapshot`, `prezzo_unitario`, `esposizione_in_fattura`,
+   `origine_prezzo`). Nessun prezzo in Python. Vale anche per l'una tantum ADESIONE su un kit.
+2. **Kit sul listino** (form della riga di listino del kit, il badge «N componenti»): la periodicità si
+   scrive in `vendite.listini_kit` (INSERT, UPDATE, DELETE solo in bozza; il DB rifiuta il resto).
+   Il BE la traduce sul campo: `fk_listini_kit_periodicita` e `uq_listini_kit_versione_articolo`; i codici
+   `E_LISTINO_KIT_NON_COMPOSITO` ed `E_RIGA_LISTINO_VERSIONE_CHIUSA`.
+3. **Creazione del contratto**: `generazione_canone` e `mese_partenza_canone` in creazione e modifica
+   (D-5); `null` non si manda (NOT NULL col default).
+4. **Lookup** (D-6): la voce `config.periodicita` in `_LOOKUP_SPECIALIZZATE`, come scritto nel §7.5.
+5. **Anteprima** (D-7): le due colonne in coda (26 colonne), nel form delle righe in modifica; sulla riga
+   DA_LISTINO la periodicità è la proposta di «Aderisci».
+6. **Attivazione**: il motivo nuovo `QUOTA_FISSA_SENZA_PERIODICITA` (reason_key
+   `vendite.listini.azione_reason.quota_fissa_senza_periodicita`, campo `periodicita`) nei locales.
+7. **Dashboard**: lo scarto nuovo `QUOTA_FISSA_SENZA_CANONE` esce come gli altri, in `CANONE_NON_GENERABILE`;
+   se il BE elenca gli scarti per nome, va aggiunto.
+8. **Catalogo errori**: rigenerare `error_policies_generated.py` per i due codici nuovi.
+
+**L17 — la proposta del team DB (2026-10-31); forma accettata da Tid lo stesso giorno, scritta nel §7.9.**
+
+*Perché non è nel giro.* Le testate le costruisce l'orchestratore BE, un'attività alla volta
+(`fatture_righe_service.generate_fatture_righe`: segna le attività in lavorazione, poi
+`batch_get_or_create_fattura_headers` → `vendite.fn_get_or_create_fattura_header` → `fn_build_fattura_key`).
+La chiave nasce per attività, e il totale del gruppo, cioè del documento, a quel punto non esiste. Calcolarlo
+dentro la chiave vorrebbe dire ricalcolare le chiavi di tutto il lotto a ogni attività (N² chiamate ai
+risolutori). Ricopiare a mano gli elementi della chiave sarebbe una seconda chiave, contro la regola del 2.
+
+*La forma proposta.*
+1. **Un verbo DB, chiamato una volta per lotto:** `vendite.fn_lotto_natura_dal_segno(p_lotto_id)`. Il BE lo
+   chiama fra «in lavorazione» e «testate». Per ogni attività del lotto calcola la chiave della testata con
+   `fn_build_fattura_key`, la stessa di sempre. Raggruppa per chiave le sole attività di natura FATTURA e
+   somma quantità × prezzo. Nei gruppi a somma negativa porta le attività a NOTA_CREDITO. Le testate poi
+   nascono nota di credito dalla chiave, con il loro registro e la loro serie.
+2. **Reversibile:** l'attività battezzata dal segno porta una marca (colonna `natura_dal_segno`). Quando
+   torna libera (lotto annullato o riportato in bozza, fatture ripulite) riprende la natura FATTURA. La
+   prossima composizione del lotto decide di nuovo. Un building block, chiamato da quei verbi.
+3. **D-1-bis resta:** le attività nate NOTA_CREDITO (l'accredito del reso) sono un gruppo loro, e restano
+   una nota di credito a sé.
+4. **D-1-ter, la nota di credito cita le fatture:** il passo di pipeline che già proietta il legame fra
+   documenti (`vendite.fn_popola_fatture_rettifiche`, solo DB) aggiunge le fatture dei pezzi stornati.
+   Il cammino è lo storno, poi `meta.storno_di_attivita_id`, poi l'attività fatturabile del pezzo, poi la
+   sua `fattura_riga_id`, poi la fattura. Le righe dello storno restano NORMALE: non sono rettifiche di
+   una riga (quelle prendono prezzo e IVA dalla riga rettificata, e il guard BE pretende la coppia
+   RETTIFICA + puntatore). La citazione è del documento (`fatture_rettifiche`, da cui esce
+   `DatiFattureCollegate`). Se il pezzo non era fatturato, lo storno si compensa nella stessa fattura e non
+   c'è niente da citare.
+
+*Che cosa serve da Tid:* l'ok alla forma, perché aggiunge una chiamata nel giro del BE (passo 1) e una
+colonna su `attivita_fatturabili` (passo 2). Poi il team DB la scrive con i pgTAP del §7.1: soli storni,
+misto negativo, misto positivo, accredito di reso dentro una commessa con addebiti.
+
+**Il collegamento di D-1-ter, i fatti (2026-10-31).** Il canale per riga esiste già:
+`commesse_attivita.fattura_riga_rettificata_id`, poi `attivita_fatturabili` (lo copia
+`fn_emit_attivita_fatturabili_da_commessa`), poi `fatture_righe.riga_rettificata_id`. Quello per documento
+è `vendite.fatture_rettifiche`, scritto da `fn_popola_fatture_rettifiche` a partire dalle righe.
+
+### 7.8 Che cosa resta lato DB (2026-10-31, dopo l'apply del giro del §7)
+
+| # | Che cosa | Aspetta | Dove |
+| --- | --- | --- | --- |
+| 1 | ~~**L17**~~ applicato (§7.9) | — | §7.9 |
+| 2 | **L18**, la documentazione del giro: `guide/gestione-listini.md` (il kit sul listino e la sua periodicità, il motivo nuovo dell'attivazione, il clone che porta periodicità e kit), `guide/gestione-contratti.md` §4-bis (la quota fissa del kit, il prezzo del kit aderito, lo scarto `QUOTA_FISSA_SENZA_CANONE`), i manual di `listini_kit`, `fn_listino_periodicita_articolo`, `fn_contratto_kit_componenti` e quelli stantii di `fn_contratti_addebiti_maturati` e della preview | — | — |
+| 3 | **Passo 4**: l'obbligo della periodicità sulla riga a canone (guard col campo + CHECK) e lo script di F-10 sui dati di prova | il passo 3 del BE/FE (il form la chiede) | §6.11 |
+| 4 | ~~la periodicità di una quota fissa ferma fuori dalla bozza~~ applicata (§7.10) | — | §7.10 |
+
+Fuori da questo brief, per decisione: ORARIO e CONSUMO aspettano le loro sorgenti (G-4); il default per
+utility della finestra del giro non è deciso (G-2).
+
+### 7.9 L17 — la nota di credito dal segno, scritto (2026-10-31)
+
+Forma del §7.7 accettata da Tid il 2026-10-31 (la chiamata nel giro del BE e la colonna).
+
+| changeSet | Che cosa |
+| --- | --- |
+| `00_schema/vendite/20261031-44-alter-attivita-fatturabili-natura-dal-segno` | `attivita_fatturabili.natura_dal_segno boolean NOT NULL DEFAULT false`: la natura NOTA_CREDITO l'ha decisa il segno del documento |
+| `20_code/vendite/20261031-45-create-fn-lotto-natura-dal-segno` | il verbo `vendite.fn_lotto_natura_dal_segno(lotto)`: le attività FATTURA del lotto (lucchetto del lotto, non fatturate), raggruppate per chiave di testata con `fn_build_fattura_key`, si sommano (quantità × prezzo); nei gruppi negativi diventano NOTA_CREDITO con la marca. Rieseguibile: prima ritira le marche del lotto. Ritorna quante. EXECUTE a `zeroerp_app` |
+| `-46` `fn_libera_attivita_fatturabili` | la primitiva che libera (l'unica): l'attività marcata riprende FATTURA, la marca cade |
+| `-47` `fn_emit_attivita_fatturabili_da_commessa` | la riemissione riscrive la natura dalla commessa e toglie la marca (l'unico scrittore di righe di `attivita_fatturabili`, censito) |
+| `-48` `fn_popola_fatture_rettifiche` | D-1-ter: sulla nota di credito, anche le fatture dei pezzi di canone stornati (storno → `meta.storno_di_attivita_id` → pezzo → attività fatturabile → riga di fattura → fattura). Le righe dello storno restano NORMALE |
+
+**Prova (2026-10-31, dbdev, owner, transazione annullata; SQL estratto dai changeSet `-44` … `-48`).**
+* **Nuovo** `vendite/test-lotto-natura-dal-segno-v1`: 11 test, tutto costruito (commesse, attività emesse
+  dalla madre, lotti, testate dalla chiave). Soli storni → nota di credito, e la testata nasce nota di
+  credito; misto negativo (-300 + 50) → una nota di credito sola; misto positivo (+300 - 50) → FATTURA;
+  D-1-bis (l'attività nata nota di credito non si tocca); rieseguibile; libera; lotto inesistente;
+  D-1-ter (la nota di credito dello storno cita la fattura del pezzo, idempotente). 11/11.
+  Controprova: senza `-46` e `-48` sono rossi il 7 e il 10.
+* Il giro si applica nell'ordine e torna indietro; funzioni vive invariate dopo ogni corsa.
+* **Prima/dopo su 93 pgTAP** che toccano attività fatturabili, emissione, liberazione, testate, rettifiche e
+  natura, più i presidi trasversali (riferimenti morti, rubinetto del primo motivo, catalogo dei messaggi,
+  motivo nominato, `user_update`, storico): nessuna differenza, test per test.
+
+**Richiesta al team BE (si aggiunge a quella del §7.7).**
+9. **La chiamata nel giro**: in `fatture_righe_service.generate_fatture_righe`, dopo
+   `mark_attivita_running` e prima di `batch_get_or_create_fattura_headers`,
+   `SELECT vendite.fn_lotto_natura_dal_segno(%s)` col lotto, nella stessa transazione. Niente regola nel BE.
+   Finché manca, tutto resta come oggi: un documento di soli storni nasce FATTURA e non si numera.
+
+### 7.10 La quota fissa non perde la periodicità fuori dalla bozza (decisione di Tid, 2026-10-31; applicato)
+
+Sul trovato del §7.7: fuori dalla bozza la riga di una quota fissa a canone non resta senza periodicità.
+Cambiarla con un'altra resta una rettifica, come il prezzo (la regola di `trgfn_listini_righe_guard_stato`
+non cambia).
+
+| changeSet | Che cosa |
+| --- | --- |
+| `20_code/vendite/20261031-49-create-fn-articolo-quota-fissa-a-canone` | `vendite.fn_articolo_quota_fissa_a_canone(articolo)`: tipologia di quota fissa ed erogazione di default CANONE. Sede unica (regola del 2) |
+| `20_code/script/20261031-50-…-attivabile-quota-fissa-dalla-sede` | il motivo 3 dell'attivazione legge la sede; la copia scritta nel `-39` si ritira. Comportamento invariato |
+| `20_code/vendite/20261031-51-create-trgfn-listini-righe-guard-periodicita-quota-fissa` | il guard: periodicità che va a NULL su una versione non in bozza, articolo quota fissa a canone → `E_LISTINO_QUOTA_FISSA_PERIODICITA_FERMA` (CONFLITTO_STATO, campo `periodicita`) |
+| `20_code/vendite/20261031-52-create-trigger-listini-righe-periodicita-quota-fissa` | montaggio BEFORE UPDATE OF periodicita, WHEN da un valore a NULL; il nome viene dopo `_a10_guard_stato_upd_dlt` (sulla versione CHIUSA parla lei) |
+| `codici_errore.csv`, `messaggi_errore.csv` | il codice nuovo |
+
+⚠️ **Resta una strada sola** per una quota senza periodicità su una versione attiva: il catalogo che cambia
+dopo l'attivazione (la tipologia dell'articolo, o la sua erogazione di default). La dashboard la segnala:
+`SENZA_PERIODICITA`, o `QUOTA_FISSA_SENZA_CANONE` se la quota smette di essere un canone.
+
+**Prova (2026-10-31, dbdev, owner, transazione annullata; SQL estratto da `-49` … `-52`, seed simulato).**
+* `vendite/test-listino-kit-e-periodicita-v1`: due test in più, ora 20. Il 9: toglierla su una versione
+  ATTIVA si rifiuta. Il 10: cambiarla con un'altra passa. 20/20; sul vivo è rosso il solo 9, atteso.
+* `test-righe-periodicita-da-listino-v1` e `test-vw-dash-contratti-giudizio-v1` costruivano la quota senza
+  periodicità togliendola dopo l'attivazione, e il guard ora lo vieta. La costruiscono dall'unica strada che
+  resta: in bozza la tipologia QUOTA_FISSA non si eroga a canone (vocabolario cambiato nella transazione),
+  la versione si attiva, poi il catalogo torna com'era. Prima/dopo: verdi identici.
+* Prima/dopo su 43 pgTAP che toccano righe di listino, attivazione, periodicità e vocabolario delle
+  erogazioni, più i presidi trasversali: l'unica differenza è il test 9 nuovo, rosso sul vivo e verde dopo.
+
+**Ricaduta BE/FE:** il codice nuovo nelle error policies (rigenerare) e sul campo `periodicita` della riga
+di listino.
