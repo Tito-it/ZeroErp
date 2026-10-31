@@ -189,8 +189,12 @@ SELECT set_eq(
            -- ⭐ 2026-09-27 (brief-db-liste-datatable-grezze, righe 5 e 9): si
            --   cerca anche su codici di due caratteri — la sigla della
            --   provincia, l'ISO2 dello stato, il codice del reparto.
-           ('amm.reparti'), ('config.province'), ('config.stati')$$,
-  '16) ⭐ le liste a 1 sono esattamente le diciassette dichiarate (codici corti)');
+           ('amm.reparti'), ('config.province'), ('config.stati'),
+           -- ⭐ 2026-10-31 (brief-db-liste-datatable-grezze-secondo-giro §2,
+           --   riga 4): le unita' di misura di un articolo si cercano sul
+           --   codice dell'UoM («KG», «PZ»), come catalogo.unita_misura.
+           ('catalogo.articolo_uom')$$,
+  '16) ⭐ le liste a 1 sono esattamente le diciotto dichiarate (codici corti)');
 
 SELECT * FROM finish();
 ROLLBACK;

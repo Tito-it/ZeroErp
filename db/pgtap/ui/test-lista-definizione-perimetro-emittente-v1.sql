@@ -126,6 +126,13 @@ SELECT is(
           --   la riga E' l'emittente. Scegliere un emittente per vedere
           --   l'elenco degli emittenti era una domanda senza risposta.
           'anagrafiche.emittenti_fiscali',
+          -- ⭐ 2026-10-31 (brief-db-liste-datatable-grezze-secondo-giro §2,
+          --   righe 3 e 4): le note e le unita' di misura di un ARTICOLO.
+          --   L'articolo e' catalogo unico per tutte le aziende, e le note
+          --   di catalogo non hanno emittente (le note di un documento di
+          --   vendita, `vendite.note`, il perimetro ce l'hanno: D-2).
+          'catalogo.articolo_uom',
+          'catalogo.note',
           -- ⭐ 2026-09-27 (brief-db-liste-datatable-grezze, riga 9): le sei
           --   liste geografiche leggono cataloghi di `config` senza emittente
           --   ne' RLS — la geografia e' la stessa per tutte le aziende.
