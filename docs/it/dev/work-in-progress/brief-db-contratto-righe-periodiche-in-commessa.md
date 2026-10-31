@@ -1,10 +1,11 @@
 # Brief DB — Le righe di contratto che non sono «una volta»: canone, orario e consumo in commessa
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-31 (giro del §7, L17 e §7.10 applicati e verdi)
+## ⏭️ Chi riparte — aggiornato al 2026-10-31 (passo 3 BE/FE chiuso, con la revisione del §7.11.4)
 
-**Ripartono in due.** Il **team BE/FE** dal passo 3, con la richiesta del §7.7 (otto punti), del §7.9
-(la chiamata del verbo nel giro) e del §7.10 (un codice nuovo). Il **team DB** con L18, la documentazione.
-Applicati e verdi, nessuna regressione: `20261031-28` … `-52` (2026-10-31).
+**Riparte il team DB**: L18 (la documentazione), il passo 4 (l'obbligo della periodicità sulla riga a
+canone e lo script di F-10, ora che il form la chiede) e una richiesta nuova del BE/FE (§7.11: la colonna
+«Periodicità» nella lista delle righe di listino). Il **passo 3 BE/FE** è chiuso: fatto, rivisto e
+provato (§7.11, revisione al §7.11.4), da committare; ⏳ il collaudo a video Tid lo fa alla fine.
 
 **Cosa resta lato DB** (§7.8):
 * ~~L17~~ applicato (§7.9);
@@ -63,10 +64,13 @@ I lotti L1 … L9 lato DB restano finiti (§6.3).
 | 2-ter-ter | ✅ team DB | la quota fissa non perde la periodicità fuori dalla bozza, decisione di Tid; `-49` … `-52` scritti e provati (2026-10-31) | §7.10 | 2-ter-bis |
 | 2-ter-quater | ✅ Tid | apply di `20261031-49` … `-52`, pgTAP verdi, nessuna regressione (2026-10-31) | §7.10 | 2-ter-ter |
 | 2-quater | team DB | documentazione del giro del §7 (L18) | §7.8 | 2-bis |
-| 3 | BE/FE | il ramo dell'espansore sui componenti dal listino (D-2); il kit sul listino nel form (D-2-bis); i due campi del canone sulla testata del contratto (D-5); periodicità e generazione sulla riga e sul listino (D-6, D-7) | §7.2, §7.4, §7.5, §7.7 | 2-bis |
+| 3 | ✅ BE/FE | i nove punti del §7.7 e del §7.9 e il codice del §7.10, provati (2026-10-31) | §7.11 | 2-bis |
+| 3-bis-bis | ✅ BE/FE | revisione critica del passo 3: BB `_campi_canone` (regola del 2, ok Tid) e note minori, provati (2026-10-31) | §7.11.4 | 3 |
+| 3-bis | Tid | commit del passo 3; collaudo a video alla fine | §7.11 | 3-bis-bis |
+| 3-ter | team DB | la colonna «Periodicità» nella lista 37 (`vendite.listini_righe`) | §7.11 | 3 |
 | 4 | DB | l'obbligo della periodicità sulla riga a canone (guard + CHECK) e lo script di F-10 | §6.11 | 3 |
 
-Decisioni aperte di Tid: nessuna. La forma di L17 e la periodicità ferma della quota fissa decise il 2026-10-31. D-1-ter (A) e D-2-bis (B) prese il 2026-10-31. F-1 … F-10 prese il 2026-10-29, F-11 … F-13 il 2026-10-30, F-14 e F-15 il 2026-10-31, D-1 … D-4 il 2026-10-31. G-0 … G-11 prese il 2026-10-28. Lavoro committato il 2026-10-31 su `dev/db-tid` (un commit: L1 … L9): i changeSet `20261029-10` …
+Decisioni aperte di Tid: nessuna. Da committare: il passo 3 BE/FE con la sua revisione (§7.11, §7.11.4), su `dev/backend-tid`. La forma di L17 e la periodicità ferma della quota fissa decise il 2026-10-31. D-1-ter (A) e D-2-bis (B) prese il 2026-10-31. F-1 … F-10 prese il 2026-10-29, F-11 … F-13 il 2026-10-30, F-14 e F-15 il 2026-10-31, D-1 … D-4 il 2026-10-31. G-0 … G-11 prese il 2026-10-28. Lavoro committato il 2026-10-31 su `dev/db-tid` (un commit: L1 … L9): i changeSet `20261029-10` …
 `-45`, `20261030-01` e `20261031-01` … `-04` (§6.5 … §6.13, applicati su dbdev), i CSV e i seed
 toccati, i pgTAP nuovi e aggiornati, la documentazione del L9 (§6.14), questo documento. Il giro che lo ha aperto, `20261013-24`, è nella risposta al team BE del 2026-10-13.
 
@@ -1438,3 +1442,63 @@ dopo l'attivazione (la tipologia dell'articolo, o la sua erogazione di default).
 
 **Ricaduta BE/FE:** il codice nuovo nelle error policies (rigenerare) e sul campo `periodicita` della riga
 di listino.
+
+### 7.11 Il passo 3 BE/FE — fatto (team BE/FE, 2026-10-31)
+
+> **Chi scrive:** team BE/FE (`dev/backend-tid`), 2026-10-31, dopo l'apply di `20261031-28` … `-52`.
+> **A chi:** Tid (collaudo e commit), poi il team DB (§7.11.3).
+
+**7.11.1 La richiesta, punto per punto.**
+
+| # | Punto | Dove | Fatto |
+| --- | --- | --- | --- |
+| 1 | Espansore dei kit | `commesse_source_handlers.BoMComponentExpander` | secondo lettore `componenti_listino_loader`: quando la riga non ha componenti negoziati (quota fissa senza riga, ADESIONE su un kit) legge `vendite.fn_contratto_kit_componenti` alla `data_attivita` del pezzo, la stessa a cui il lister prezza il kit. Lo inietta il solo `HandlerContratti` (`ContrattiRepository.list_componenti_kit_dal_listino`, contratto dal `sorgente_uid`). Nessun prezzo in Python |
+| 2 | Kit sul listino | `PUT …/listini/<l>/versioni/<v>/bundle/<kit>/` `{periodicita}` | scrive o toglie (`null`) la riga di `vendite.listini_kit`; la lista delle righe la porta sulla riga del composito; il DELETE del bundle toglie anche il kit. FE: «Periodicità del kit» nel kebab della riga del composito (in bozza). FK e `E_LISTINO_KIT_NON_COMPOSITO` / `E_RIGA_LISTINO_VERSIONE_CHIUSA` tradotti |
+| 3 | Creazione del contratto | `contratti_service` | i due campi nei tre anelli (whitelist, mapper — dal §7.11.4 il BB `campi_canone` —, colonne); `null` si omette; i due `chk_contratti_*` sul campo. FE: la sezione «Canoni» anche sul contratto |
+| 4 | Lookup | `_LOOKUP_SPECIALIZZATE` | `config.periodicita`, extra `mesi` (la tendina ordina sul ritmo) |
+| 5 | Anteprima a 26 colonne | `RigheEccezioniDrawer` | periodicità e generazione nel form della riga a canone: in modifica come scritte, su «Aderisci» la periodicità del listino. La riga di listino ha il campo periodicità |
+| 6 | Motivo d'attivazione | locales | `vendite.listini.azione_reason.quota_fissa_senza_periodicita` |
+| 7 | Dashboard | — | niente da fare: la vista giudica `scarto IS NOT NULL` e nessuno elenca gli scarti per nome |
+| 8 | Catalogo errori | `error_policies_generated.py` | rigenerato (tre codici, `--check` pulito) e i tre ripieghi senza `%s` |
+| 9 | La chiamata nel giro | `fatture_righe_service.generate_fatture_righe` | `fn_lotto_natura_dal_segno` dopo «in lavorazione» e **prima** dei group input e delle testate (repository `applica_natura_dal_segno`) |
+
+**Building block (regola del 2, ok Tid 2026-10-31).** `vendite/_shared/canoni/`: `campiCanone.js` e
+`CampiCanoneTestata.vue` (la sezione «Canoni» di contratto e offerta; le chiavi i18n passano a
+`vendite.canoni.*`, quelle dell'offerta ritirate), `PeriodicitaSelect.vue` (la tendina, tre consumatori:
+riga a canone, riga di listino, kit). Registrati nel catalogo FE.
+
+**7.11.2 Prove (2026-10-31, dbdev).** Backend: i test dei moduli toccati e i nuovi, col DB vero acceso
+(`ZEROERP_TEST_DB_E2E=1`), fra cui `vendite/tests/db/test_listino_kit_periodicita_db.py` (7 test, mondo
+costruito: scrive, cambia, toglie, lista, delete del bundle, semplice rifiutato, fuori vocabolario sul
+campo, fuori bozza, il lettore dell'espansore legato alla funzione); il guardrail della whitelist della
+madre del contratto; mypy e ruff puliti. Frontend: vitest 1062/1062, lint e guard i18n puliti. ⚠️ Il
+guard `capability` è rosso su `catalogo/stores/articoloUom.js` e `ArticoloUomDrawer.vue`, file non toccati
+da questo giro: è nel HEAD di partenza. Suite intera del backend (7090 test, DB vero acceso): verde per
+questo giro; 12 rossi del giro DB `11d434949` (brief-db-liste-datatable-grezze-secondo-giro: `tipo_valore`
+dei parametri, due codici nuovi, `lista_colonna`), applicato su dbdev e non ancora nel branch BE.
+`error_policies_generated.py` qui è rigenerato **prima** di quel giro (1153 voci): ⛔ non si rigenera col
+DB avanti rispetto a git.
+
+**7.11.3 Richiesta al team DB.** La lista delle righe di listino (`ui.lista_definizione` 37,
+`vendite.listini_righe`) non ha la colonna della periodicità: il dato arriva (`periodicita`, anche sul
+composito), ma a video non si vede. Una riga in `lista_colonna.csv` (campo `periodicita`, etichetta
+`vendite.canoni.field_periodicita`), e se va ordinabile la voce in `RIGHE_ORDER_COLUMNS` la aggiunge il BE.
+Con questo e il passo 4 il brief arriva alla chiusura.
+
+**7.11.4 Revisione critica del passo 3 (team BE/FE, 2026-10-31).** Nessun bug nel codice del passo 3.
+Verificati sulla doc auto-generata e col DB vero: il guard di `vendite.listini_kit` copre anche il DELETE
+(togliere la periodicità a un kit fuori bozza è rifiutato senza un controllo Python); la firma di
+`fn_lotto_natura_dal_segno(bigint)`; il PATCH del contratto fuori bozza manda i soli riferimenti
+dell'atto, quindi i campi del canone non arrivano al lock di testata. Corretto:
+
+| # | Cosa | Dove |
+| --- | --- | --- |
+| 1 | ⭐ **Regola del 2 (ok Tid)**: i due campi del canone in testata erano in due copie già divergenti. Il contratto normalizzava (maiuscolo, mese intero, `null` omesso); l'offerta passava i valori grezzi: «fine_periodo» era un 400 del CHECK, `null` un NULL su una colonna NOT NULL. Ora un BB solo: `campi_canone` / `con_campi_canone` (la lettura) e `check_campi_canone(tabella, code)` (i due `chk_<tabella>_*` sul campo). Ritirati `_apply_campi_canone`, `_CAMPI_CANONE` e le due mappe CHECK scritte a mano. Registrato nel catalogo BE | `apps/vendite/services/_campi_canone.py`; `contratti_service`, `offerte_service` |
+| 2 | Il dialog della periodicità del kit ha il suo gestore d'errore: un errore sul campo non accende più anche il form della riga, e viceversa | `VersioneDrawer.vue` |
+| 3 | Il lettore dei kit dal listino legge una volta per (contratto, kit, data) nel giro di push: l'handler nasce a ogni giro (`_build_handlers`), la memoria non vede un listino vecchio | `HandlerContratti._componenti_listino_loader` |
+| 4 | Pulizie: il `nextTick` ridondante all'apertura del dialog del kit (lo fa `useFotografiaDialog`), le firme di `_kit_db_errors` e dell'override del lettore, l'indice dei test dell'espansore (57–61), `PeriodicitaSelect` registrato nel catalogo FE | — |
+
+Prove (2026-10-31, dbdev, `ZEROERP_TEST_DB_E2E=1`): suite `apps.vendite` 2644 test verdi, fra cui i nuovi
+`test_campi_canone` (6), `test_offerte_service` 68–69 e `test_kit_dal_listino_una_lettura_per_pezzo`;
+ruff e mypy puliti. Frontend: vitest `src/vendite` 195/195, lint pulito. ⚠️ Dopo l'aggiornamento serve
+il `kill -HUP` al master di gunicorn: il comportamento Python dell'offerta è cambiato.

@@ -65,8 +65,10 @@ import { useInjectReadonly } from '../../../core/composables/useReadonlyMode'
 import { useAuthStore } from '../../../stores/auth'
 import { useLimitiPricing } from '../../composables/useLimitiPricing'
 import {
-  AZIONE_RIGA_CONTRATTO, FONTE_QUANTITA_ATTESA, PRICING_ACTIONS, TIPO_ECCEZIONE,
+  AZIONE_RIGA_CONTRATTO, FONTE_QUANTITA_ATTESA, PRICING_ACTIONS, TIPO_ECCEZIONE, TIPO_EROGAZIONE,
 } from '../../constants'
+import PeriodicitaSelect from '../canoni/PeriodicitaSelect.vue'
+import { opzioniGenerazioneCanone } from '../canoni/campiCanone'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../../core/constants'
 import { useArticoloUomOptions } from '../../../catalogo/composables/useArticoloUomOptions'
 import {
@@ -386,6 +388,12 @@ const showQtaOperativa = computed(() => form.value?.fonte_quantita_attesa === FO
 // non ha il prezzo ne' i componenti, che vengono dal listino.
 const isAdesione = computed(() => form.value?.tipo_eccezione === TIPO_ECCEZIONE.ADESIONE)
 
+// La riga a canone (D-6, D-7): periodicita' e generazione si vedono e si
+// mandano solo qui. Che la periodicita' sia obbligatoria lo dice il DB; la
+// generazione vuota = «come la testata».
+const isCanone = computed(() => form.value?.tipo_erogazione === TIPO_EROGAZIONE.CANONE)
+const opzioniGenerazione = computed(() => opzioniGenerazioneCanone(t))
+
 // Il tipo di eccezione non e' una scelta dell'operatore: lo da' l'azione che
 // apre il form («Nuovo» → AGGIUNTA, riga del listino → OVERRIDE o ADESIONE). Il form lo
 // mostra come Tag. Default AGGIUNTA: l'ingresso piu' generico.
@@ -402,6 +410,8 @@ function defaultForm(overrides = {}) {
     qta_operativa: 1,
     uom_operativa_id: null,
     ordine: 10,
+    periodicita: null,
+    generazione_canone: null,
     ...overrides,
   }
 }
@@ -462,6 +472,10 @@ function apriFormDaRigaListino(row, overrides) {
       _display: `${row.articolo_codice} — ${row.articolo_descrizione}`,
     },
     uom_operativa_id: row.uom_id ?? null,
+    // Sulla riga del listino la preview porta la periodicita' del listino
+    // (D-7): e' la proposta di «Aderisci», e quella che il DB metterebbe
+    // comunque senza indicazione (L4b).
+    periodicita: row.periodicita ?? null,
     ...overrides,
   })
   nuovaRiga()
@@ -573,6 +587,10 @@ function _onEditRigaPersistita(r) {
       //    ripieghi. NULL resta NULL.
       uom_operativa_id: r.uom_operativa_id ?? null,
       ordine: r.ordine ?? null,
+      // ⭐ Com'e' scritta (D-7): il form le rimanda al PATCH, e vuote
+      //    cancellerebbero una periodicita' o una generazione forzata.
+      periodicita: r.periodicita ?? null,
+      generazione_canone: r.generazione_canone ?? null,
     }
     articoloObj.value = {
       id: r.articolo_id,
@@ -674,6 +692,9 @@ function buildRigaPayload(extra = {}) {
     qta_operativa: (isFissa && f.qta_operativa != null) ? String(f.qta_operativa) : null,
     uom_operativa_id: f.uom_operativa_id || null,
     ordine: f.ordine != null ? Number(f.ordine) : null,
+    // Solo sulla riga a canone: su un'altra erogazione non hanno senso.
+    periodicita: isCanone.value ? (f.periodicita || null) : null,
+    generazione_canone: isCanone.value ? (f.generazione_canone || null) : null,
     ...extra,
   }
   // ⛔ L'ADESIONE non manda il prezzo: la colonna resta vuota per vincolo
@@ -1067,6 +1088,26 @@ function origineSeverity(origine) {
           <InputNumber v-model="form.prezzo_unitario"
             :disabled="articoloObj?.is_composito === true"
             :min-fraction-digits="2" :max-fraction-digits="4" showButtons />
+        </div>
+      </div>
+
+      <!-- La riga a canone (D-6, D-7): ogni quanto si addebita e come. La
+           periodicita' sulla riga del listino arriva proposta dal listino; la
+           generazione vuota segue la testata. -->
+      <div class="form-grid-2col" v-if="isCanone">
+        <div class="form-field">
+          <label>{{ t('vendite.canoni.field_periodicita') }}</label>
+          <PeriodicitaSelect v-model="form.periodicita"
+            :placeholder="t('vendite.canoni.select_periodicita')"
+            :invalid="campiErrati.includes('periodicita')" />
+        </div>
+        <div class="form-field">
+          <label>{{ t('vendite.canoni.field_generazione_canone') }}</label>
+          <Select v-model="form.generazione_canone"
+            :options="opzioniGenerazione"
+            option-label="label" option-value="value" show-clear
+            :placeholder="t('vendite.canoni.generazione_come_testata')"
+            :invalid="campiErrati.includes('generazione_canone')" />
         </div>
       </div>
 

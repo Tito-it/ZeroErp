@@ -3410,6 +3410,7 @@
       "azione_reason": {
         "versione_spenta": "La versione è spenta: riaccenderla prima di attivarla.",
         "versione_senza_righe": "La versione non ha prezzi: aggiungere almeno una riga prima di attivarla.",
+        "quota_fissa_senza_periodicita": "La versione ha una quota fissa senza periodicità: indicarla sulla riga dell'articolo (o del kit) prima di attivarla.",
         "versione_non_in_bozza": "Si elimina solo una versione in bozza: questa è stata usata per i prezzi.",
         "versione_citata": "La versione è usata da altri documenti: toglierla da quei documenti prima di eliminarla.",
         "versione_non_attiva": "Si chiude solo una versione attiva: di una bozza si modificano le date, una chiusa non cambia più.",
@@ -3455,7 +3456,12 @@
       "tab_dati": "Dati",
       "alert_scadenze_filtra": "Listini con la versione in scadenza senza successore: clic per vederli",
       "col_giorni_alla_scadenza": "In scadenza (giorni)",
-      "filtro_in_scadenza": "Solo in scadenza"
+      "filtro_in_scadenza": "Solo in scadenza",
+      "kit_periodicita_azione": "Periodicità del kit",
+      "kit_periodicita_titolo": "Periodicità del kit {articolo}",
+      "kit_periodicita_salvata": "Periodicità del kit salvata",
+      "periodicita_nessuna": "Nessuna",
+      "hint_periodicita": "Ogni quanto si addebita a canone. Su una quota fissa serve per attivare la versione; altrove è la proposta di «Aderisci»."
     },
     "lotti": {
       "seleziona_pagina": "Seleziona tutti i lotti di questa pagina",
@@ -3688,13 +3694,6 @@
       "field_valuta": "Valuta",
       "field_validita_dal": "Valido dal",
       "field_validita_al": "Valido al (scadenza)",
-      "section_canoni": "Canoni",
-      "field_generazione_canone": "Addebito dei canoni",
-      "generazione_canone_INIZIO_PERIODO": "Anticipati (all'inizio del periodo)",
-      "generazione_canone_FINE_PERIODO": "Normali (a periodo finito)",
-      "field_mese_partenza_canone": "Mese di partenza dei periodi",
-      "hint_mese_partenza_canone": "Da quale mese si contano i periodi: per un trimestrale da febbraio, feb-apr, mag-lug, ago-ott, nov-gen.",
-      "canoni_predefinito": "Predefinito",
       "field_tipo_utenza": "Tipo utenza",
       "select_tipo_utenza": "Seleziona tipo utenza...",
       "field_classe_utenza": "Classe utenza",
@@ -4648,6 +4647,18 @@
     },
     "righe_selezione": {
       "col_articolo": "Articolo"
+    },
+    "canoni": {
+      "section_canoni": "Canoni",
+      "field_generazione_canone": "Addebito dei canoni",
+      "generazione_canone_INIZIO_PERIODO": "Anticipati (all'inizio del periodo)",
+      "generazione_canone_FINE_PERIODO": "Normali (a periodo finito)",
+      "field_mese_partenza_canone": "Mese di partenza dei periodi",
+      "hint_mese_partenza_canone": "Da quale mese si contano i periodi: per un trimestrale da febbraio, feb-apr, mag-lug, ago-ott, nov-gen.",
+      "canoni_predefinito": "Predefinito",
+      "field_periodicita": "Periodicità",
+      "select_periodicita": "Scegliere la periodicità",
+      "generazione_come_testata": "Come la testata"
     }
   },
   "pagamenti": {

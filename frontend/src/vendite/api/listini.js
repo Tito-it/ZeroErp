@@ -159,7 +159,19 @@ export function saveBundleComponenti(listinoId, verId, padreId, rows) {
   )
 }
 
-// Elimina TUTTI i prezzi bundle del composito dalla versione. Tabula rasa
+// La periodicita' del KIT sulla versione (`vendite.listini_kit`, D-2-bis (B)):
+// il kit non ha una riga di listino, e il ritmo con cui si addebita a canone
+// sta li'. `periodicita` = un codice di `config.periodicita`, `null` la toglie.
+// Solo versione BOZZA, solo su un composito: lo dice il DB.
+export function saveKitPeriodicita(listinoId, verId, padreId, periodicita) {
+  return api.put(
+    `${BASE}/${listinoId}/versioni/${verId}/bundle/${padreId}/`,
+    { periodicita },
+  )
+}
+
+// Elimina TUTTI i prezzi bundle del composito dalla versione, e il kit con la
+// sua periodicita'. Tabula rasa
 // idempotente: soft-delete cascade su `listini_righe_componenti`. Solo
 // versione BOZZA. Idempotente: 0 disattivati senza errore se gia' vuoto.
 export function deleteBundleComponenti(listinoId, verId, padreId) {

@@ -814,9 +814,9 @@ class ListiniRepository:
                     -- Il composito non ha un prezzo proprio: il suo valore e' la
                     -- somma dei componenti, mostrata come badge «N componenti».
                     NULL::numeric                       AS prezzo,
-                    -- Il padre del kit non ha una riga di listino, quindi
-                    -- nemmeno una periodicita' (D-2-bis, aperta).
-                    NULL::varchar                       AS periodicita,
+                    -- Il padre del kit non ha una riga di listino: la sua
+                    -- periodicita' sta in `vendite.listini_kit` (D-2-bis (B)).
+                    lk.periodicita                      AS periodicita,
                     adc.iva_id,
                     adc.iva_codice,
                     adc.iva_aliquota_iva                AS iva_aliquota,
@@ -833,10 +833,13 @@ class ListiniRepository:
                    AND vc.listino_id = %s
                   LEFT JOIN catalogo.vw_articoli_dettaglio adc
                     ON adc.id = lrc.articolo_padre_id
+                  LEFT JOIN vendite.listini_kit lk
+                    ON lk.listino_versione_id = lrc.listino_versione_id
+                   AND lk.articolo_padre_id = lrc.articolo_padre_id
                 {where_comp}
                  GROUP BY lrc.articolo_padre_id, lrc.listino_versione_id,
                           adc.codice, adc.descrizione, adc.iva_id,
-                          adc.iva_codice, adc.iva_aliquota_iva
+                          adc.iva_codice, adc.iva_aliquota_iva, lk.periodicita
             )
             SELECT *, COUNT(*) OVER() AS total_count
               FROM unione
@@ -1141,6 +1144,54 @@ class ListiniRepository:
     # — un SUM(lrc.prezzo) puro sarebbe fuorviante perche' ignora i
     # coefficienti. Il totale per padre vive nel preview del Dialog detail
     # (`list_bundle_preview`) dove abbiamo accesso a `ac.coeff_qta`.
+
+    # Scopo: Il KIT sulla versione di listino (`vendite.listini_kit`, D-2-bis
+    #        (B)): la periodicita' con cui si addebita a canone. Una riga per
+    #        (versione, kit): con una periodicita' si scrive (INSERT o UPDATE
+    #        sulla chiave `uq_listini_kit_versione_articolo`), con `None` si
+    #        toglie. Solo in bozza, solo su un composito: lo dice il guard DB
+    #        (`trgfn_listini_kit_guard`).
+    # Ritorna: la periodicita' scritta (None se tolta).
+    def salva_kit_periodicita(
+        self, *, versione_id: int, articolo_padre_id: str, periodicita: str | None,
+    ) -> str | None:
+        with connection.cursor() as cursor:
+            if periodicita is None:
+                self._elimina_kit(cursor, versione_id, articolo_padre_id)
+                return None
+            cursor.execute(
+                """
+                INSERT INTO vendite.listini_kit
+                       (listino_versione_id, articolo_padre_id, periodicita)
+                VALUES (%s, %s::uuid, %s)
+                ON CONFLICT (listino_versione_id, articolo_padre_id)
+                DO UPDATE SET periodicita = EXCLUDED.periodicita
+                RETURNING periodicita
+                """,
+                [versione_id, str(articolo_padre_id), periodicita],
+            )
+            row = cursor.fetchone()
+            assert row is not None
+            return row[0]
+
+    # Scopo: Toglie il kit dalla versione (la sua periodicita'): con i prezzi
+    #        del bundle se ne va anche lui, o resterebbe un kit senza prezzo.
+    #        Idempotente.
+    def elimina_kit(self, *, versione_id: int, articolo_padre_id: str) -> int:
+        with connection.cursor() as cursor:
+            return self._elimina_kit(cursor, versione_id, articolo_padre_id)
+
+    @staticmethod
+    def _elimina_kit(cursor: Any, versione_id: int, articolo_padre_id: str) -> int:
+        cursor.execute(
+            """
+            DELETE FROM vendite.listini_kit
+             WHERE listino_versione_id = %s
+               AND articolo_padre_id = %s::uuid
+            """,
+            [versione_id, str(articolo_padre_id)],
+        )
+        return cursor.rowcount
 
     # Scopo: Preview BoM corrente di un padre composito + LEFT JOIN sui
     # prezzi gia' definiti in `listini_righe_componenti` per la versione

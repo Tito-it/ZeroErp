@@ -468,6 +468,15 @@ class FattureRigheService:
             # 1. Le attività entrano in lavorazione.
             self.repository.mark_attivita_running(lotto_id)
 
+            # 1-bis. La natura del documento dal SEGNO (D-1, §7.9 di brief-db-
+            #    contratto-righe-periodiche-in-commessa): un documento che somma
+            #    negativo nasce nota di credito, col suo registro e la sua serie.
+            #    ⛔ L'ordine e' un requisito: la natura entra nella chiave della
+            #    testata, quindi il verbo gira PRIMA delle testate (3), e prima
+            #    dei group input, perche' nessuno legga la natura di prima.
+            #    La regola e' tutta del DB: qui la chiamata sola.
+            self.repository.applica_natura_dal_segno(lotto_id)
+
             # 2. Batch fetch group inputs (1 round-trip).
             group_inputs = self.repository.batch_get_group_attivita_inputs(attivita_ids)
 

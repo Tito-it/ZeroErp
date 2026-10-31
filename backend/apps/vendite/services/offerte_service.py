@@ -96,6 +96,7 @@ from apps.vendite.services._pricing_gate_helpers import (
     resolve_or_check_override_prezzo,
     validate_componenti_overrides_authorization,
 )
+from apps.vendite.services._campi_canone import check_campi_canone, con_campi_canone
 from apps.vendite.services._righe_codici import normalizza_codici_riga
 from apps.vendite.types import OffertaPushResult
 
@@ -214,21 +215,10 @@ _MSG_BA_FUORI_COPPIA = (
 )
 
 
-# I domini della testata che vivono in un CHECK: il vincolo del DB, tradotto
-# sul campo del form. ⛔ I codici ammessi NON sono nel messaggio: stanno nel
-# CHECK (e nelle opzioni del Select), e una lista ricopiata qui diverge in
-# silenzio al primo cambio del vincolo.
+# I domini della testata che vivono in un CHECK, tradotti sul campo del form:
+# oggi i due del canone (BB `check_campi_canone`, lo stesso del contratto).
 _CHECK_CONSTRAINTS: dict[str, tuple] = {
-    "chk_offerte_commerciali_generazione_canone": (
-        E_VENDITE_VALIDATION,
-        "Addebito dei canoni non ammesso.",
-        "generazione_canone",
-    ),
-    "chk_offerte_commerciali_mese_partenza_canone": (
-        E_VENDITE_VALIDATION,
-        "Mese di partenza dei canoni non valido: da 1 a 12.",
-        "mese_partenza_canone",
-    ),
+    **check_campi_canone("offerte_commerciali", E_VENDITE_VALIDATION),
 }
 
 # FK constraints catalogati (best-effort: i nomi corrispondono a quelli
@@ -626,8 +616,10 @@ class OfferteService:
         # Lo stato non si passa: l'offerta nasce nello stato iniziale del suo
         # vocabolario, e lo mette il DB (BB `script.trgfn_doc_stato_iniziale`,
         # brief-modello-documento-vendita P-2).
+        # I due campi del canone nella forma del DB (BB `con_campi_canone`):
+        # codice in maiuscolo, `null` omesso (NOT NULL col default).
         data: dict[str, Any] = self._con_meta_normalizzato(
-            {k: v for k, v in payload.items() if k != "utility"},
+            {k: v for k, v in con_campi_canone(self._v, payload).items() if k != "utility"},
         )
         # `codice` NON in payload (vedi nota CREATE_KEYS_OFFERTA): il trigger
         # BEFORE INSERT genera OFC-NNNNNNN via `script.fn_generate_codice`.
@@ -724,7 +716,7 @@ class OfferteService:
                 context={"got": type(utility_payload).__name__},
             )
         testata_payload = self._con_meta_normalizzato(
-            {k: v for k, v in payload.items() if k != "utility"},
+            {k: v for k, v in con_campi_canone(self._v, payload).items() if k != "utility"},
         )
         # Almeno un campo, della testata o della scheda: `{"utility": {}}` da
         # solo non e' una modifica (fino al 2026-10-14 passava, e la risposta

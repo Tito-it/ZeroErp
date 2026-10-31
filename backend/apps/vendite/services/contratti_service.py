@@ -53,6 +53,7 @@ from apps.core.services.documento_modello import (
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.error_messages_fallback import USER_MESSAGE_FALLBACK
 from apps.vendite.services._righe_bozza_guard import Verbo, richiedi_righe_in_bozza
+from apps.vendite.services._campi_canone import CAMPI_CANONE, campi_canone, check_campi_canone
 from apps.vendite.services._righe_codici import CAMPI_CODICE_RIGA, normalizza_codici_riga
 from apps.vendite.services._cliente_coppia_documento import (
     coppia_cambiata,
@@ -221,6 +222,18 @@ CREATE_KEYS_TESTATA: frozenset[str] = frozenset({
     # ⭐ Il caso d'uso e' proprio la creazione: un CIG nasce con la gara, cioe'
     #    PRIMA del contratto.
     *_CODICI_ATTO,
+    # Come si addebitano i canoni (F-2, F-7, `20261029-15`), ammessi in CREATE
+    # dal changeSet `20261031-28` che li ha messi nella whitelist interna di
+    # `vendite.fn_create_contratto` (D-5 di brief-db-contratto-righe-periodiche-
+    # in-commessa §7.4). ⛔ Prima la madre li SCARTAVA: un contratto «normali,
+    # da febbraio» nasceva coi default e la risposta era 200. Il dominio lo
+    # dice il DB (`chk_contratti_*`); fuori bozza li ferma il lock di testata.
+    # ⚠️ Mai `null`: le colonne sono NOT NULL col default (§C4 come per
+    #    `fatturazione_immediata`): assente o null si OMETTE.
+    # I due campi li nomina il BB `_campi_canone` (regola del 2 con l'offerta);
+    # il terzo anello, `TESTATA_UPDATE_COLUMNS`, li ripete di proposito (vedi
+    # la nota su `_CODICI_ATTO`).
+    *CAMPI_CANONE,
     "meta",
     # Sub-entita' opzionale: se presente crea la riga utility 1:1 nella
     # stessa transazione. Il service NON permette payload utility senza
@@ -255,6 +268,7 @@ UPDATE_KEYS_TESTATA: frozenset[str] = frozenset({
     # tre CIG: su quella riga ne entrava uno solo, ripetuto su tutte le forniture
     # dello stesso contratto e incapace di tenerne due sulla stessa.
     *_CODICI_ATTO,
+    *CAMPI_CANONE,
     "meta",
 })
 
@@ -436,6 +450,11 @@ _UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
 _MSG_BA_FUORI_COPPIA = (
     "Il billing account non e' quello dell'istanza e della utility del contratto."
 )
+# I domini della testata che vivono in un CHECK, tradotti sul campo del form:
+# oggi i due del canone (BB `check_campi_canone`, lo stesso dell'offerta).
+_CHECK_CONSTRAINTS: dict[str, tuple] = {
+    **check_campi_canone("contratti", E_VENDITE_VALIDATION),
+}
 _FK_CONSTRAINTS: dict[str, tuple] = {
     "fk_contratti_righe_periodicita": (
         E_VENDITE_FK, "Periodicità inesistente.", "periodicita",
@@ -566,6 +585,7 @@ class ContrattiService:
                 exc,
                 unique_constraints=_UNIQUE_CONSTRAINTS,
                 fk_constraints=_FK_CONSTRAINTS,
+                check_constraints=_CHECK_CONSTRAINTS,
                 fallback_code=E_VENDITE_VALIDATION,
                 fallback_message=fallback_message,
                 context=context,
@@ -1856,6 +1876,9 @@ class ContrattiService:
         #    persistito). Stesso helper dell'update: validazione di lunghezza e
         #    normalizzazione del vuoto vivono in un posto solo.
         self._apply_codici_atto(payload, data)
+        # I due campi del canone (BB `campi_canone`): i mapper copiano campo
+        # per campo, e `null` si omette (NOT NULL col default).
+        data.update(campi_canone(self._v, payload))
         if "meta" in payload:
             meta = self._v.optional_meta(payload)
             if meta is not None:
@@ -1975,6 +1998,9 @@ class ContrattiService:
         )
         self._apply_fatturazione_immediata(payload, data)
         self._apply_codici_atto(payload, data)
+        # I due campi del canone (BB `campi_canone`): i mapper copiano campo
+        # per campo, e `null` si omette (NOT NULL col default).
+        data.update(campi_canone(self._v, payload))
         if "meta" in payload:
             meta = self._v.optional_meta(payload)
             if meta is not None:
