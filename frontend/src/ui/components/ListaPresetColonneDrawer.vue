@@ -9,6 +9,9 @@
 //        L'ordine si modifica con frecce (no drag-and-drop esterno).
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+// DataTable grezza: la composizione del preset si edita PER INTERO nel client
+// (ordine a frecce, PUT atomico che rimpiazza tutto) ed e' limitata dalle
+// colonne della lista — un editor di un insieme ordinato, non una lista.
 // eslint-disable-next-line no-restricted-imports -- eccezione nel registro DataTable (scripts/datatable.baseline.json)
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'

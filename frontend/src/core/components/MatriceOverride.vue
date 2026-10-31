@@ -17,39 +17,34 @@
 //    Il pannello permessi dell'operatore faceva ENTRAMBE, ed e' il secondo uso
 //    reale: da qui il building block.
 //
+// ⭐ DAL 2026-10-31 E' LO STRATO, non la matrice intera (B1-bis del brief-db-
+//    liste-datatable-grezze-secondo-giro, decisione Tid). La meta' bassa —
+//    tutte le voci, ricerca, sola lettura, nessuna paginazione — e' la base
+//    `MatriceCatalogo`, che serve anche a matrici SENZA override (il profilo
+//    di un reparto, le utility di un emittente). Qui restano le tre cose che
+//    fanno di una matrice una matrice di override: la colonna «ereditato», lo
+//    stato override/ereditato con l'avviso, e il ripristino.
+//
 // ⛔ IL BB NON CONOSCE IL DOMINIO. Non sa cosa sia un'area, un livello o
 //    un'azione: sa che esistono delle VOCI, che alcune hanno un override e che
 //    un override si puo' TOGLIERE. I valori li disegna il caller negli slot.
 //    Se conoscesse i livelli sarebbe il pannello permessi travestito da
 //    componente, e il terzo uso non lo potrebbe riusare.
 //
-// ⛔ NON PAGINA, ed e' una scelta di modello e non una svista: si usa dove la
-//    popolazione e' limitata PER CATALOGO (le aree funzionali, le azioni di
-//    processo, i model overridabili). Paginare nasconderebbe righe proprio
-//    nella schermata che esiste per farle vedere tutte. Se un giorno le voci
-//    crescessero con l'USO e non col catalogo, l'astrazione giusta e' un'altra
-//    (`ListaConfigurabile`), non una prop `paginata` qui.
-import { computed, ref } from 'vue'
+// ⛔ NON PAGINA: e' la regola della base (`MatriceCatalogo`, «NON PAGINA»).
 import { useI18n } from 'vue-i18n'
-import { useInjectReadonly } from '../composables/useReadonlyMode'
-// eslint-disable-next-line no-restricted-imports -- eccezione nel registro DataTable (scripts/datatable.baseline.json)
-import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Button from 'primevue/button'
-import InputText from 'primevue/inputtext'
 import Tag from 'primevue/tag'
+import MatriceCatalogo from './MatriceCatalogo.vue'
 import { MANAGE_ICONS, STATUS_ICONS } from '../constants'
 
 const { t } = useI18n()
 
 const props = defineProps({
-  // Tutte le voci del catalogo, gia' caricate. ⚠️ TUTTE: una lista parziale
-  // qui e' il difetto che il pattern esiste per togliere.
+  // Tutte le voci del catalogo (v. la base).
   voci: { type: Array, required: true },
-  // `voce -> chiave stabile`. Non c'e' un default `id`: le tre matrici dei
-  // permessi hanno chiavi diverse (`area_id`, `azione_id`,
-  // `app_label.model_name`), e un default indovinato le farebbe collidere in
-  // silenzio.
+  // `voce -> chiave stabile` (v. la base: nessun default `id`).
   chiave: { type: Function, required: true },
   // Le righe SCRITTE, indicizzate per chiave. La PRESENZA della chiave e'
   // l'override; il valore lo usa il caller nello slot.
@@ -59,47 +54,15 @@ const props = defineProps({
   // Avviso per riga: `(voce) => string|null`. Il BB non puo' saperlo — servono
   // due valori di dominio da confrontare — ma sa dove disegnarlo.
   avviso: { type: Function, default: null },
-  // Ricerca locale. Si accende dove le voci sono tante (le azioni di processo);
-  // ⚠️ filtra la VISTA e mai il modello: una riga nascosta dal filtro resta
-  // nel salvataggio del caller, che non passa da qui.
   ricerca: { type: Boolean, default: false },
   ricercaPlaceholder: { type: String, default: '' },
-  // Testo da cercare in una voce. Default: tutti i valori stringa della voce.
   testoRicerca: { type: Function, default: null },
-  // Sola lettura. `null` = eredita quella iniettata dal drawer.
-  // ⛔ `type: null` (qualunque tipo) e NON `Boolean`, ed e' la differenza fra
-  //    funzionare e no: con `Boolean` nella lista dei tipi Vue applica il
-  //    *boolean casting* e una prop ASSENTE arriva come `false`, non come
-  //    `null` — il ramo dell'inject non si accenderebbe mai e il pannello
-  //    sarebbe editabile dentro un drawer in sola lettura, senza errori.
+  // Sola lettura: passa alla base COSI' COM'E' — `null` vuol dire «eredita dal
+  // drawer», e la decisione la prende una sede sola (v. la base, `type: null`).
   readonly: { type: null, default: null },
 })
 
 const emit = defineEmits(['reset'])
-
-// Readonly: prop esplicita se data, altrimenti quella iniettata dal drawer.
-// ⚠️ `== null` e non falsy: `readonly: false` esplicito deve poter vincere
-// sull'inject, altrimenti un pannello dichiaratamente editabile dentro un
-// drawer readonly non sarebbe esprimibile.
-const injected = useInjectReadonly()
-const isReadonly = computed(() =>
-  props.readonly == null ? injected.value : props.readonly
-)
-
-const termine = ref('')
-
-function _testo(voce) {
-  if (props.testoRicerca) return props.testoRicerca(voce)
-  return Object.values(voce)
-    .filter(v => typeof v === 'string')
-    .join(' ')
-}
-
-const vociVisibili = computed(() => {
-  const q = termine.value.trim().toLowerCase()
-  if (!q) return props.voci
-  return props.voci.filter(v => _testo(v).toLowerCase().includes(q))
-})
 
 const haOverride = (voce) =>
   Object.prototype.hasOwnProperty.call(props.overrides, props.chiave(voce))
@@ -110,34 +73,22 @@ const avvisoDi = (voce) => (props.avviso ? props.avviso(voce) : null)
 </script>
 
 <template>
-  <div>
-    <div v-if="ricerca" class="app-matrice-override-ricerca">
-      <InputText
-        v-model="termine"
-        :placeholder="ricercaPlaceholder || t('matrice_override.cerca')"
-      />
-    </div>
+  <MatriceCatalogo
+    :voci="voci"
+    :chiave="chiave"
+    :label-voce="labelVoce"
+    :ricerca="ricerca"
+    :ricerca-placeholder="ricercaPlaceholder"
+    :testo-ricerca="testoRicerca"
+    :readonly="readonly"
+  >
+    <template #voce="{ voce }">
+      <!-- Il nome della voce lo disegna il caller: qui non si sa se una voce
+           si chiami `descrizione`, `permission_codename` o altro. -->
+      <slot name="voce" :voce="voce">{{ chiave(voce) }}</slot>
+    </template>
 
-    <DataTable
-      :value="vociVisibili"
-      class="app-datatable"
-      size="small"
-    >
-      <Column :header="labelVoce">
-        <template #body="{ data }">
-          <!-- Il nome della voce lo disegna il caller: qui non si sa se una
-               voce si chiami `descrizione`, `permission_codename` o altro. -->
-          <!-- ⚠️ Il testo della voce VA A CAPO entro una larghezza massima:
-               la tabella e' `width: max-content` (main.css, `.app-datatable`),
-               quindi senza tetto una descrizione lunga allarga la colonna e
-               spinge la colonna Override fuori vista (pannello permessi,
-               azioni di processo, 2026-10-04). -->
-          <div class="app-matrice-override-voce">
-            <slot name="voce" :voce="data">{{ chiave(data) }}</slot>
-          </div>
-        </template>
-      </Column>
-
+    <template #colonne>
       <Column :header="t('matrice_override.col_ereditato')">
         <template #body="{ data }">
           <div class="app-matrice-override-ereditato">
@@ -179,44 +130,25 @@ const avvisoDi = (voce) => (props.avviso ? props.avviso(voce) : null)
           />
         </template>
       </Column>
+    </template>
 
-      <Column v-if="!isReadonly" style="width: 3rem">
-        <template #body="{ data }">
-          <!-- ⭐ «Torna all'ereditato» CANCELLA la riga, non ne scrive una
-               uguale: un override che ripete il valore ereditato congela la
-               voce, perche' da quel momento non segue piu' la sua sorgente.
-               Sono due verbi diversi e devono restare due pulsanti diversi. -->
-          <Button
-            v-if="haOverride(data)"
-            :icon="MANAGE_ICONS.UNDO"
-            text
-            v-tooltip.left="t('matrice_override.reset_tooltip')"
-            @click="emit('reset', chiave(data))"
-          />
-        </template>
-      </Column>
-
-      <template #empty>
-        <span class="app-matrice-override-vuota">
-          {{ t('matrice_override.nessuna_voce') }}
-        </span>
-      </template>
-    </DataTable>
-  </div>
+    <template #azioni="{ voce }">
+      <!-- ⭐ «Torna all'ereditato» CANCELLA la riga, non ne scrive una uguale:
+           un override che ripete il valore ereditato congela la voce, perche'
+           da quel momento non segue piu' la sua sorgente. Sono due verbi
+           diversi e devono restare due pulsanti diversi. -->
+      <Button
+        v-if="haOverride(voce)"
+        :icon="MANAGE_ICONS.UNDO"
+        text
+        v-tooltip.left="t('matrice_override.reset_tooltip')"
+        @click="emit('reset', chiave(voce))"
+      />
+    </template>
+  </MatriceCatalogo>
 </template>
 
 <style scoped>
-.app-matrice-override-ricerca {
-  margin-bottom: 0.5rem;
-}
-/* Voce ed ereditato vanno a capo entro un tetto: con la tabella a
-   `max-content` il tetto e' cio' che limita il contributo della cella, e il
-   resto della larghezza resta alla colonna Override. */
-.app-matrice-override-voce {
-  max-width: 22rem;
-  white-space: normal;
-  overflow-wrap: anywhere;
-}
 .app-matrice-override-ereditato {
   max-width: 16rem;
   white-space: normal;
@@ -226,8 +158,5 @@ const avvisoDi = (voce) => (props.avviso ? props.avviso(voce) : null)
 .app-matrice-override-avviso {
   margin-left: 0.4rem;
   color: var(--app-warning-color);
-}
-.app-matrice-override-vuota {
-  color: var(--app-text-muted);
 }
 </style>

@@ -12,6 +12,7 @@ import Popover from 'primevue/popover'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import { STATUS_ICONS } from '../../core/constants'
+import { eAccessoNegato } from '../../core/utils/apiError'
 
 const { t } = useI18n()
 
@@ -23,7 +24,21 @@ const items = ref([])
 const count = ref(0)
 const loading = ref(false)
 const op = ref(null)
+// La lettura e' fallita e non ce n'e' una buona da mostrare: il widget lo DICE.
+const nonVerificabile = ref(false)
+// L'endpoint ha risposto 401/403: l'utente non vede le scadenze, e il widget
+// non si mostra (non e' un errore da segnalare).
+const negato = ref(false)
+// C'e' stata almeno una lettura buona. ⚠️ Non e' `count > 0`: «letto, zero
+// scadenze» e' un valore buono da tenere, «mai letto» no.
+const letto = ref(false)
 
+// Scopo: legge le versioni in scadenza. ⛔ Su errore NON azzera: fino al
+//        2026-10-31 un `catch {}` metteva il conteggio a zero e il widget
+//        spariva, cioe' un errore si leggeva come «nessun listino in
+//        scadenza» — il caso che il widget esiste per segnalare. Stessa regola
+//        dei contatori ambientali (`usePresidiPolling`): 401/403 nasconde, ogni
+//        altro errore tiene l'ultimo valore, e senza un valore buono si vede.
 async function load() {
   loading.value = true
   try {
@@ -31,9 +46,11 @@ async function load() {
     const data = res.data.data
     items.value = data.results || []
     count.value = data.count || 0
-  } catch {
-    items.value = []
-    count.value = 0
+    letto.value = true
+    nonVerificabile.value = false
+  } catch (err) {
+    if (eAccessoNegato(err)) negato.value = true
+    else nonVerificabile.value = !letto.value
   } finally {
     loading.value = false
   }
@@ -47,7 +64,14 @@ onMounted(load)
 </script>
 
 <template>
-  <span v-if="count > 0" class="alert-scadenze-widget">
+  <span v-if="!negato && nonVerificabile" class="alert-scadenze-widget">
+    <Button type="button" :icon="STATUS_ICONS.ERRORE" severity="secondary"
+      text rounded size="small" :loading="loading"
+      v-tooltip.bottom="t('vendite.listini.alert_scadenze_non_verificabili')"
+      :aria-label="t('vendite.listini.alert_scadenze_non_verificabili')"
+      @click="load" />
+  </span>
+  <span v-else-if="!negato && count > 0" class="alert-scadenze-widget">
     <Button type="button" :icon="STATUS_ICONS.ERRORE" severity="warn"
       text rounded size="small" @click="toggle" :loading="loading">
       <template #icon>
