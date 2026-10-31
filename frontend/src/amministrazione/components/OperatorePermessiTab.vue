@@ -28,9 +28,11 @@
 //    E' il pattern slot/override gia' adottato sul tab Utilities degli
 //    emittenti, qui incarnato dal BB `MatriceOverride`.
 // ⛔ NESSUN CAMBIO DI FUNZIONALITA': la semantica dei permessi e' identica.
-//    In particolare un'area BLOCCATA continua a NON bloccare le sue azioni di
-//    processo — e' un difetto di modello aperto, non lavoro di questa
-//    ristrutturazione (analisi-ui-permessi-operatore.md §3).
+//    ✅ Il difetto che qui era annotato come aperto — un'area BLOCCATA che
+//    non bloccava le sue azioni di processo (analisi-ui-permessi-operatore.md
+//    §3) — e' CHIUSO dal 2026-10-04 (brief-db-permessi-tetto-area: il tetto
+//    d'area, `script.fn_area_consente_azione`). Riga corretta il 2026-10-31:
+//    era rimasta indietro e faceva ripetere il difetto come ancora aperto.
 import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useOperatoriStore } from '../stores/operatori'
@@ -46,6 +48,7 @@ import { areaConsenteAzione, livelloConTettoArea } from '../tettoArea'
 import { oggiAziendaleString } from '../../core/utils/date'
 import MatriceOverride from '../../core/components/MatriceOverride.vue'
 import FiltroToggle from '../../core/components/FiltroToggle.vue'
+import ElencoDettaglio from '../../core/components/ElencoDettaglio.vue'
 import Select from 'primevue/select'
 import Message from 'primevue/message'
 import InputText from 'primevue/inputtext'
@@ -656,10 +659,8 @@ const areeVisibili = computed(() =>
   })
 )
 
-// L'area mostrata: la scelta se ancora a vista, altrimenti la prima a vista.
-const areaCorrente = computed(() =>
-  areeVisibili.value.find(a => a.id === areaScelta.value) ?? areeVisibili.value[0] ?? null
-)
+// L'area mostrata (la scelta se ancora a vista, altrimenti la prima a vista)
+// la decide `ElencoDettaglio`: qui resta solo la SCELTA, che si azzera sopra.
 
 defineExpose({ modificato, chiudiConConferma, salva, puoSalvare, salvando })
 </script>
@@ -672,158 +673,148 @@ defineExpose({ modificato, chiudiConConferma, salva, puoSalvare, salvando })
 
     <p class="app-permessi-nota">{{ t('amministrazione.permessi_nota') }}</p>
 
-    <div class="app-elenco-dettaglio-filtri">
-      <InputText
-        v-model="termine"
-        :placeholder="t('amministrazione.permessi_cerca')"
-      />
-      <FiltroToggle
-        v-model="soloOverride"
-        :label="t('amministrazione.permessi_solo_override')"
-      />
-    </div>
+    <!-- Per AREA (`ElencoDettaglio`): l'elenco delle aree a sinistra, il colpo
+         d'occhio che prima era la prima tabella, e l'area scelta a destra —
+         il suo livello, i suoi oggetti, le sue azioni. -->
+    <ElencoDettaglio
+      v-model="areaScelta"
+      :voci="areeVisibili"
+      :chiave="a => a.id"
+      :etichetta="a => a.descrizione"
+      :modificata="a => riassunti[a.id].modificata"
+      :testo-vuoto="t('amministrazione.permessi_nessuna_area')"
+    >
+      <template #filtri>
+        <InputText
+          v-model="termine"
+          :placeholder="t('amministrazione.permessi_cerca')"
+        />
+        <FiltroToggle
+          v-model="soloOverride"
+          :label="t('amministrazione.permessi_solo_override')"
+        />
+      </template>
 
-    <div class="app-elenco-dettaglio">
-      <!-- L'elenco delle aree: il colpo d'occhio che prima era la prima
-           tabella, compresso. -->
-      <nav class="app-elenco-dettaglio-elenco">
-        <button
-          v-for="area in areeVisibili"
-          :key="area.id"
-          type="button"
-          class="app-elenco-dettaglio-voce"
-          :class="{
-            'app-elenco-dettaglio-voce--attiva': areaCorrente?.id === area.id,
-            'app-elenco-dettaglio-voce--modificata': riassunti[area.id].modificata,
-          }"
-          v-tooltip.right="riassunti[area.id].modificata ? t('common.modifiche_non_salvate.indicatore') : null"
-          @click="areaScelta = area.id"
-        >
-          <span class="app-elenco-dettaglio-voce-testo">{{ area.descrizione }}</span>
-          <i
-            v-if="riassunti[area.id].limitate"
-            v-tooltip.top="t('amministrazione.permessi_area_limitate', { n: riassunti[area.id].limitate })"
-            :class="[STATUS_ICONS.ERRORE, 'app-permessi-tetto-icona']"
-          />
-          <Badge
-            v-if="riassunti[area.id].conOverride"
-            v-tooltip.top="t('amministrazione.permessi_area_override')"
-            :value="riassunti[area.id].conOverride"
-            severity="info"
-          />
-          <Tag
-            :value="getLivelloLabel(t, livelloAreaVideo(area.id))"
-            :severity="getLivelloSeverity(livelloAreaVideo(area.id))"
-          />
-        </button>
-        <span v-if="!areeVisibili.length" class="app-elenco-dettaglio-vuoto">
-          {{ t('amministrazione.permessi_nessuna_area') }}
-        </span>
-      </nav>
+      <template #segni="{ voce: area }">
+        <i
+          v-if="riassunti[area.id].limitate"
+          v-tooltip.top="t('amministrazione.permessi_area_limitate', { n: riassunti[area.id].limitate })"
+          :class="[STATUS_ICONS.ERRORE, 'app-permessi-tetto-icona']"
+        />
+        <Badge
+          v-if="riassunti[area.id].conOverride"
+          v-tooltip.top="t('amministrazione.permessi_area_override')"
+          :value="riassunti[area.id].conOverride"
+          severity="info"
+        />
+        <Tag
+          :value="getLivelloLabel(t, livelloAreaVideo(area.id))"
+          :severity="getLivelloSeverity(livelloAreaVideo(area.id))"
+        />
+      </template>
 
-      <!-- L'area scelta: il suo livello, i suoi oggetti, le sue azioni. -->
-      <section v-if="areaCorrente" class="app-elenco-dettaglio-dettaglio">
-        <h4>{{ areaCorrente.descrizione }}</h4>
+      <template #dettaglio="{ voce: area }">
+          <h4>{{ area.descrizione }}</h4>
 
-        <MatriceOverride
-          :voci="[areaCorrente]"
-          :readonly="isReadonly"
-          :chiave="a => a.id"
-          :overrides="overrideAree"
-          :label-voce="t('amministrazione.permessi_livello_area')"
-          :avviso="avvisoArea"
-          @reset="resetArea"
-        >
-          <template #voce>{{ t('amministrazione.permessi_livello_area') }}</template>
-          <template #ereditato="{ voce }">
-            {{ getLivelloLabel(t, livelloEreditatoArea(voce.id)) }}
-            <small class="app-permessi-fonte">{{ fonteArea(voce.id) }}</small>
-          </template>
-          <template #override="{ voce, valore }">
-            <Select
-              :model-value="valore?.livello ?? null"
-              :options="livelloOptions"
-              option-label="label"
-              option-value="value"
-              :placeholder="t('amministrazione.override_non_impostato')"
-              :disabled="isReadonly"
-              @update:model-value="v => setOverrideArea(voce.id, v)"
-            />
-          </template>
-        </MatriceOverride>
-
-        <template v-if="oggettiVisibili(areaCorrente).length">
-          <h5>{{ t('amministrazione.permessi_oggetti_area') }}</h5>
           <MatriceOverride
-            :voci="oggettiVisibili(areaCorrente)"
-            :readonly="isReadonly"
-            :chiave="chiaveOggetto"
-            :overrides="overrideOggetti"
-            :label-voce="t('amministrazione.col_model')"
-            :avviso="avvisoOggetto"
-            @reset="resetOggetto"
-          >
-            <template #voce="{ voce }">{{ voce.label }}</template>
-            <template #ereditato="{ voce }">
-              {{ getLivelloLabel(t, livelloEreditatoOggetto(voce)) }}
-              <small class="app-permessi-fonte">{{ fonteOggetto(voce) }}</small>
-            </template>
-            <template #override="{ voce, valore }">
-              <span v-tooltip.top="modelOverrideReason(voce)">
-                <Select
-                  :model-value="valore?.livello ?? null"
-                  :options="livelloOptions"
-                  option-label="label"
-                  option-value="value"
-                  :placeholder="t('amministrazione.override_non_impostato')"
-                  :disabled="isReadonly || !!modelOverrideReason(voce)"
-                  @update:model-value="v => setOverrideOggetto(voce, v)"
-                />
-              </span>
-              <small v-if="tettoOggetto(voce)" class="app-permessi-tetto">{{ tettoOggetto(voce) }}</small>
-            </template>
-          </MatriceOverride>
-        </template>
-
-        <template v-if="azioniVisibili(areaCorrente).length">
-          <h5>{{ t('amministrazione.permessi_azioni_area') }}</h5>
-          <MatriceOverride
-            :voci="azioniVisibili(areaCorrente)"
+            :voci="[area]"
             :readonly="isReadonly"
             :chiave="a => a.id"
-            :overrides="overrideAzioni"
-            :label-voce="t('amministrazione.col_azione')"
-            :avviso="avvisoAzione"
-            @reset="resetAzione"
+            :overrides="overrideAree"
+            :label-voce="t('amministrazione.permessi_livello_area')"
+            :avviso="avvisoArea"
+            @reset="resetArea"
           >
-            <template #voce="{ voce }">{{ voce.descrizione }}</template>
+            <template #voce>{{ t('amministrazione.permessi_livello_area') }}</template>
             <template #ereditato="{ voce }">
-              {{ abilitataEreditataAzione(voce.id) ? t('amministrazione.azione_abilitata') : t('amministrazione.azione_negata') }}
-              <small class="app-permessi-fonte">{{ fonteAzione(voce.id) }}</small>
+              {{ getLivelloLabel(t, livelloEreditatoArea(voce.id)) }}
+              <small class="app-permessi-fonte">{{ fonteArea(voce.id) }}</small>
             </template>
-            <template #override="{ voce, valore, haOverride }">
+            <template #override="{ voce, valore }">
               <Select
-                :model-value="haOverride ? valore.abilitata : null"
-                :options="azioneOptions"
+                :model-value="valore?.livello ?? null"
+                :options="livelloOptions"
                 option-label="label"
                 option-value="value"
                 :placeholder="t('amministrazione.override_non_impostato')"
                 :disabled="isReadonly"
-                @update:model-value="v => setOverrideAzione(voce.id, v)"
+                @update:model-value="v => setOverrideArea(voce.id, v)"
               />
-              <small v-if="tettoAzione(voce.id)" class="app-permessi-tetto">{{ tettoAzione(voce.id) }}</small>
             </template>
           </MatriceOverride>
-        </template>
 
-        <p
-          v-if="!(oggettiPerArea[areaCorrente.id] || []).length && !(azioniPerArea[areaCorrente.id] || []).length"
-          class="app-permessi-nota"
-        >
-          {{ t('amministrazione.permessi_area_senza_voci') }}
-        </p>
-      </section>
-    </div>
+          <template v-if="oggettiVisibili(area).length">
+            <h5>{{ t('amministrazione.permessi_oggetti_area') }}</h5>
+            <MatriceOverride
+              :voci="oggettiVisibili(area)"
+              :readonly="isReadonly"
+              :chiave="chiaveOggetto"
+              :overrides="overrideOggetti"
+              :label-voce="t('amministrazione.col_model')"
+              :avviso="avvisoOggetto"
+              @reset="resetOggetto"
+            >
+              <template #voce="{ voce }">{{ voce.label }}</template>
+              <template #ereditato="{ voce }">
+                {{ getLivelloLabel(t, livelloEreditatoOggetto(voce)) }}
+                <small class="app-permessi-fonte">{{ fonteOggetto(voce) }}</small>
+              </template>
+              <template #override="{ voce, valore }">
+                <span v-tooltip.top="modelOverrideReason(voce)">
+                  <Select
+                    :model-value="valore?.livello ?? null"
+                    :options="livelloOptions"
+                    option-label="label"
+                    option-value="value"
+                    :placeholder="t('amministrazione.override_non_impostato')"
+                    :disabled="isReadonly || !!modelOverrideReason(voce)"
+                    @update:model-value="v => setOverrideOggetto(voce, v)"
+                  />
+                </span>
+                <small v-if="tettoOggetto(voce)" class="app-permessi-tetto">{{ tettoOggetto(voce) }}</small>
+              </template>
+            </MatriceOverride>
+          </template>
+
+          <template v-if="azioniVisibili(area).length">
+            <h5>{{ t('amministrazione.permessi_azioni_area') }}</h5>
+            <MatriceOverride
+              :voci="azioniVisibili(area)"
+              :readonly="isReadonly"
+              :chiave="a => a.id"
+              :overrides="overrideAzioni"
+              :label-voce="t('amministrazione.col_azione')"
+              :avviso="avvisoAzione"
+              @reset="resetAzione"
+            >
+              <template #voce="{ voce }">{{ voce.descrizione }}</template>
+              <template #ereditato="{ voce }">
+                {{ abilitataEreditataAzione(voce.id) ? t('amministrazione.azione_abilitata') : t('amministrazione.azione_negata') }}
+                <small class="app-permessi-fonte">{{ fonteAzione(voce.id) }}</small>
+              </template>
+              <template #override="{ voce, valore, haOverride }">
+                <Select
+                  :model-value="haOverride ? valore.abilitata : null"
+                  :options="azioneOptions"
+                  option-label="label"
+                  option-value="value"
+                  :placeholder="t('amministrazione.override_non_impostato')"
+                  :disabled="isReadonly"
+                  @update:model-value="v => setOverrideAzione(voce.id, v)"
+                />
+                <small v-if="tettoAzione(voce.id)" class="app-permessi-tetto">{{ tettoAzione(voce.id) }}</small>
+              </template>
+            </MatriceOverride>
+          </template>
+
+          <p
+            v-if="!(oggettiPerArea[area.id] || []).length && !(azioniPerArea[area.id] || []).length"
+            class="app-permessi-nota"
+          >
+            {{ t('amministrazione.permessi_area_senza_voci') }}
+          </p>
+      </template>
+    </ElencoDettaglio>
   </div>
 </template>
 
@@ -848,10 +839,6 @@ h5 {
   display: block;
   color: var(--app-text-muted);
 }
-/* Il tetto d'area: l'override c'e' ma l'area lo ferma. Sotto la tendina,
-   col colore d'avviso: e' la riga che dice il falso se non lo si legge. */
-.app-permessi-tetto {
-  display: block;
-  color: var(--app-warning-color);
-}
+/* `.app-permessi-tetto` (la frase del tetto sotto la tendina) e' globale in
+   main.css dal 2026-10-31: la usa anche il profilo del reparto. */
 </style>

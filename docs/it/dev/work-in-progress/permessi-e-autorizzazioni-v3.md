@@ -15,8 +15,16 @@
 >   2026-09-28**: catalogo, BE, FE e pannello DB dicono la stessa cosa su ogni
 >   oggetto personalizzabile, e un test lo presidia
 >   ([brief-db-be-fe-catalogo-oggetti-permessi.md](../work-done/brief-db-be-fe-catalogo-oggetti-permessi.md), chiuso);
-> - la gerarchia padre/figlio dipende dal **tetto d'area**, difetto aperto e
->   senza decisione (`.codex/PROJECT_CONTEXT.md` § «Aperto»).
+> - ✅ **il tetto d'area, da cui la gerarchia padre/figlio dipende, è CHIUSO
+>   dal 2026-10-04** ([brief-db-permessi-tetto-area.md](../work-done/brief-db-permessi-tetto-area.md)):
+>   un permesso specifico (oggetto, azione di processo) **può solo restringere**
+>   quello della sua area — `script.fn_livello_con_tetto_area` per gli oggetti,
+>   `script.fn_area_consente_azione` per le azioni. La gerarchia ha quindi una
+>   semantica: un figlio non può essere più permissivo del padre. (Fino al
+>   2026-10-31 qui stava scritto «difetto aperto e senza decisione».)
+> - il pannello permessi dell'operatore è **per area** dal 2026-10-04 (elenco
+>   delle aree, area scelta a destra), e dal 2026-10-31 lo è anche il profilo
+>   del reparto (BB `ElencoDettaglio`).
 
 ---
 
@@ -115,8 +123,10 @@ Dei quattro problemi di aprile ne restano due:
 - ~~Difficile capire quali override sono "attivi" vs "ereditati dall'area"~~ — risolto
 - Lista senza struttura visiva (non si capisce cosa e' padre e cosa e' figlio)
 - Impossibile gestire dipendenze (se blocco `cliente`, cosa succede agli indirizzi?).
-  ⚠️ È la domanda del **tetto d'area**, aperta a sé: oggi un override per oggetto
-  **sostituisce** il livello dell'area, non lo limita
+  ✅ La metà «area → oggetto» di questa domanda è il **tetto d'area**, chiuso il
+  2026-10-04: un override per oggetto non **sostituisce** più il livello
+  dell'area, lo **limita** (vince il più restrittivo). Resta della v3 la metà
+  «oggetto padre → oggetto figlio»
 
 ---
 
@@ -247,9 +257,10 @@ cliente, e il permesso è `cliente` — D-5 del brief del catalogo.)
 - v2 completata ✅
 - ✅ **Modello piatto allineato** il 2026-09-28:
   [brief-db-be-fe-catalogo-oggetti-permessi.md](../work-done/brief-db-be-fe-catalogo-oggetti-permessi.md)
-- 🔴 **Tetto d'area** (`.codex/PROJECT_CONTEXT.md` § «Aperto»): decide se un
-  figlio può essere più permissivo del padre. Senza, la gerarchia non ha una
-  semantica
+- ✅ **Tetto d'area** — chiuso il 2026-10-04
+  ([brief-db-permessi-tetto-area.md](../work-done/brief-db-permessi-tetto-area.md)):
+  un permesso specifico può solo restringere quello della sua area. È la
+  semantica che la gerarchia padre/figlio estende un livello più in giù
 - I tre passi (DB/BE/FE) per ogni sotto-oggetto restano applicabili dominio per
   dominio, **ma insieme**: catalogo, rotte e vista dello stesso oggetto nello
   stesso rilascio

@@ -24,7 +24,8 @@
 >   applicato, con la ricaduta BE fatta. Il brief ha corretto anche un difetto:
 >   i resolver da operatore contavano i profili delle **altre vesti**
 >   dell'utente (D-1, D-2, D-3).
-> - 🔴 **Tetto d'area**: aperto, senza decisione; ora è registrato in
+> - ✅ *(2026-10-31) Chiuso il 2026-10-04: [brief-db-permessi-tetto-area.md](brief-db-permessi-tetto-area.md).*
+>   🔴 **Tetto d'area**: aperto, senza decisione; ora è registrato in
 >   `.codex/PROJECT_CONTEXT.md` § «Aperto», così sopravvive alla chiusura di
 >   questo documento.
 > - 📌 Riconteggio del catalogo al 2026-09-25 in §8.
@@ -41,6 +42,10 @@
 > [piano-be-fe-ui-permessi-operatore.md](piano-be-fe-ui-permessi-operatore.md)**
 > — componente, endpoint, store, test e ordine dei passi. ⛔ Le decisioni non si
 > riaprono lì: si traducono.
+>
+> ✅ *(2026-10-31) Il tetto d'area è chiuso dal 2026-10-04:
+> [brief-db-permessi-tetto-area.md](brief-db-permessi-tetto-area.md). La frase
+> qui sotto è la storia di quando era aperto.*
 >
 > 🔴 **Resta aperto e NON è di questo cantiere**: il tetto d'area (§3) è un
 > difetto di modello vero — un'area bloccata non blocca le sue azioni di
@@ -115,6 +120,8 @@ legge come «non può fare niente».
 ---
 
 ## 3 · 🔴 Le due cose che il modello NON fa
+
+✅ *Nota del 2026-10-31: chiuso il 2026-10-04 da [brief-db-permessi-tetto-area.md](brief-db-permessi-tetto-area.md) — un permesso specifico ora può solo restringere quello della sua area. La frase qui sotto è la storia di quando era aperto.*
 
 ### a) Un'area bloccata **non** blocca le sue azioni di processo
 

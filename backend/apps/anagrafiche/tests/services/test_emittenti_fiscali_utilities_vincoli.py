@@ -13,6 +13,8 @@ Indice test eseguiti:
 2) CreaRecordVincoliTests.test_soglie_fuori_ordine_da_validazione
 3) CreaRecordVincoliTests.test_duplicato_resta_duplicato
 4) CreaRecordVincoliTests.test_vincolo_ignoto_non_diventa_un_duplicato
+4b) CreaRecordVincoliTests.test_decimali_fuori_intervallo_nominano_il_campo
+4c) CreaRecordVincoliTests.test_metodo_non_ammesso_nomina_il_campo
 5) AggiornaRecordVincoliTests.test_update_traduce_le_soglie_incomplete
 6) AggiornaRecordVincoliTests.test_update_ok_non_tocca_la_traduzione
 """
@@ -106,13 +108,36 @@ class CreaRecordVincoliTests(TestCase):
             svc.crea_record(7, dict(_PAYLOAD_OK))
         self.assertEqual(ctx.exception.code, "E_ANAG_DUPLICATO")
 
-    # Scopo: un vincolo non mappato (es. i due CHECK sull'arrotondamento) cade
-    #        sul fallback di VALIDAZIONE. Non e' un dettaglio: il ripiego
-    #        precedente era «duplicato», cioe' diceva una cosa falsa su ogni
-    #        violazione che non fosse la UNIQUE.
+    # Scopo: un vincolo non mappato cade sul fallback di VALIDAZIONE. Non e' un
+    #        dettaglio: il ripiego precedente era «duplicato», cioe' diceva una
+    #        cosa falsa su ogni violazione che non fosse la UNIQUE.
+    #        ⚠️ Fino al 2026-10-31 l'esempio era il CHECK dei decimali, che da
+    #        quel giorno e' mappato: qui serve un vincolo che la mappa NON
+    #        conosce, e un nome inventato lo resta per costruzione.
     @patch(f"{SVC_MOD}.EmittentiFiscaliRepository")
     @patch(f"{SVC_MOD}.EmittentiFiscaliUtilitiesRepository")
     def test_vincolo_ignoto_non_diventa_un_duplicato(self, mock_repo_cls, _parent):
+        from apps.anagrafiche.services.emittenti_fiscali_service import (
+            EmittentiFiscaliUtilitiesService,
+        )
+
+        svc = EmittentiFiscaliUtilitiesService()
+        svc._parent._resolve_soggetto_ruolo_id = lambda _id: 11  # type: ignore[method-assign]
+        mock_repo_cls.return_value.create_record.side_effect = _integrity(
+            "chk_emittenti_fiscali_utilities_vincolo_che_non_esiste"
+        )
+
+        with self.assertRaises(ServiceError) as ctx:
+            svc.crea_record(7, dict(_PAYLOAD_OK))
+        self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
+        self.assertNotEqual(ctx.exception.code, "E_ANAG_DUPLICATO")
+
+    # Scopo: i decimali fuori dal CHECK escono col loro messaggio e nominano il
+    #        CAMPO (2026-10-31: prima era il ripiego generico, che non diceva
+    #        cosa correggere).
+    @patch(f"{SVC_MOD}.EmittentiFiscaliRepository")
+    @patch(f"{SVC_MOD}.EmittentiFiscaliUtilitiesRepository")
+    def test_decimali_fuori_intervallo_nominano_il_campo(self, mock_repo_cls, _parent):
         from apps.anagrafiche.services.emittenti_fiscali_service import (
             EmittentiFiscaliUtilitiesService,
         )
@@ -126,7 +151,27 @@ class CreaRecordVincoliTests(TestCase):
         with self.assertRaises(ServiceError) as ctx:
             svc.crea_record(7, dict(_PAYLOAD_OK))
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
-        self.assertNotEqual(ctx.exception.code, "E_ANAG_DUPLICATO")
+        self.assertIn("Decimali", ctx.exception.message)
+        self.assertEqual(ctx.exception.context.get("field"), "arrotondamento_importi_dec")
+
+    # Scopo: stesso trattamento per il metodo di arrotondamento.
+    @patch(f"{SVC_MOD}.EmittentiFiscaliRepository")
+    @patch(f"{SVC_MOD}.EmittentiFiscaliUtilitiesRepository")
+    def test_metodo_non_ammesso_nomina_il_campo(self, mock_repo_cls, _parent):
+        from apps.anagrafiche.services.emittenti_fiscali_service import (
+            EmittentiFiscaliUtilitiesService,
+        )
+
+        svc = EmittentiFiscaliUtilitiesService()
+        svc._parent._resolve_soggetto_ruolo_id = lambda _id: 11  # type: ignore[method-assign]
+        mock_repo_cls.return_value.create_record.side_effect = _integrity(
+            "chk_emittenti_fiscali_utilities_metodo_arrotondamento"
+        )
+
+        with self.assertRaises(ServiceError) as ctx:
+            svc.crea_record(7, dict(_PAYLOAD_OK))
+        self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
+        self.assertEqual(ctx.exception.context.get("field"), "metodo_arrotondamento_importi")
 
 
 class AggiornaRecordVincoliTests(TestCase):
