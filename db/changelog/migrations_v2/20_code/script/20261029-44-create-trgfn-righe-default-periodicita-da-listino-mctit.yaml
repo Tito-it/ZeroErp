@@ -1,0 +1,108 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NASCE script.trgfn_righe_default_periodicita_da_listino: la riga di listino
+# dice ogni quanto si addebita il canone, e la riga del documento lo eredita
+#   Brief: brief-db-contratto-righe-periodiche-in-commessa §6.2, §6.11 (Lotto 4b),
+#   decisioni G-0-bis (2026-10-28), F-9 e la (b) del Lotto 4b (2026-10-29) di Tid
+#
+# ── LA REGOLA ────────────────────────────────────────────────────
+#   Una riga a canone di contratto o di offerta su un articolo del listino
+#   (ADESIONE, OVERRIDE) senza periodicita' prende quella della riga di listino
+#   dell'articolo, nella versione operativa del documento
+#   (vendite.fn_documento_listino_operativo). Riempie SOLO il vuoto: la
+#   periodicita' scritta dall'operatore vince. Se la riga di listino non la dice,
+#   resta vuota.
+#   · L'AGGIUNTA (fuori listino) non ha una riga di listino da cui ereditare: la
+#     periodicita' la scrive l'operatore (F-9).
+#   · ⚠️ L'obbligo (guard + CHECK) NON e' qui: entra col passaggio BE/FE, quando
+#     il form chiede la periodicita' (decisione (b) di Tid, 2026-10-29). Fino ad
+#     allora una riga a canone senza periodicita' si salva, e il generatore dei
+#     periodi non la puo' addebitare: la segnala la dashboard (Lotto 8).
+#
+# ── LA FORMA ─────────────────────────────────────────────────────
+#   · UNA funzione per le due tabelle gemelle (regola del 2): TG_ARGV[0] = il
+#     documento (CONTRATTO | OFFERTA_COMMERCIALE, codice della sorgente),
+#     TG_ARGV[1] = la colonna del padre (contratto_id | offerta_id).
+#   · Montata BEFORE INSERT OR UPDATE OF tipo_erogazione, WHEN la riga e' a
+#     canone e senza periodicita' (20261029-45), fascia _a10_, nome dopo
+#     default_erogazione_articolo e default_fonte_qta: prima si eredita
+#     l'erogazione, poi la periodicita'.
+#   · plpgsql, SECURITY INVOKER: legge il listino coi diritti di chi scrive.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261029-44-create-trgfn-righe-default-periodicita-da-listino-mctit.yaml
+
+  - changeSet:
+      id: 20261029-44-create-trgfn-righe-default-periodicita-da-listino
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Nasce script.trgfn_righe_default_periodicita_da_listino: la riga a canone su un articolo del
+        listino (ADESIONE, OVERRIDE) eredita la periodicita' dalla riga di listino. Brief:
+        brief-db-contratto-righe-periodiche-in-commessa §6.11 (Lotto 4b).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_righe_default_periodicita_da_listino()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: la riga a canone su un articolo del listino (ADESIONE, OVERRIDE)
+              --   senza periodicita' la prende dalla riga di listino dell'articolo, nella
+              --   versione operativa del documento. Riempie solo il vuoto.
+              -- Generica sulle due tabelle gemelle: TG_ARGV[0] = documento (codice della
+              --   sorgente), TG_ARGV[1] = colonna del padre. Regola completa nell'intestazione
+              --   del changeSet 20261029-44.
+              DECLARE
+                  v_documento    config.sorgenti.codice_interno%TYPE := TG_ARGV[0];
+                  -- Nudo DICHIARATO: l'id del padre, polimorfo (contratto o offerta).
+                  v_documento_id bigint := (to_jsonb(NEW) ->> TG_ARGV[1])::bigint;
+                  v_versione_id  vendite.listini_righe.listino_versione_id%TYPE;
+                  v_periodicita  vendite.listini_righe.periodicita%TYPE;
+              BEGIN
+                  IF NEW.tipo_eccezione NOT IN ('ADESIONE'::vendite.tipo_eccezione_contratto,
+                                                'OVERRIDE'::vendite.tipo_eccezione_contratto) THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT lo.listino_versione_id INTO v_versione_id
+                    FROM vendite.fn_documento_listino_operativo(v_documento, v_documento_id) lo;
+                  IF v_versione_id IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT lr.periodicita INTO v_periodicita
+                    FROM vendite.listini_righe lr
+                   WHERE lr.listino_versione_id = v_versione_id
+                     AND lr.articolo_id = NEW.articolo_id
+                     AND lr.attivo IS TRUE
+                     AND lr.periodicita IS NOT NULL
+                   ORDER BY lr.id
+                   LIMIT 1;
+
+                  IF v_periodicita IS NOT NULL THEN
+                      NEW.periodicita := v_periodicita;
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.trgfn_righe_default_periodicita_da_listino()
+              IS 'Trigger generico (vendite.contratti_righe, vendite.offerte_commerciali_eccezioni), BEFORE INSERT OR UPDATE OF tipo_erogazione WHEN la riga è a canone e senza periodicità: su una riga ADESIONE o OVERRIDE la periodicità viene dalla riga di listino dell''articolo nella versione operativa del documento (vendite.fn_documento_listino_operativo), se la dice. Riempie solo il vuoto. L''AGGIUNTA (fuori listino) non eredita: la periodicità la scrive l''operatore (F-9). L''obbligo non è qui: entra col passaggio BE/FE (decisione (b) di Tid). TG_ARGV[0] = documento (CONTRATTO | OFFERTA_COMMERCIALE), TG_ARGV[1] = colonna del padre. Nasce il 2026-10-29 (20261029-44), brief-db-contratto-righe-periodiche-in-commessa G-0-bis.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: DROP FUNCTION IF EXISTS script.trgfn_righe_default_periodicita_da_listino();

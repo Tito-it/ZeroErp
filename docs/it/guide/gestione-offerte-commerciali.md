@@ -1,6 +1,6 @@
 # Guida — Gestione Offerte commerciali
 
-> **Ultimo aggiornamento**: 26 ottobre 2026
+> **Ultimo aggiornamento**: 31 ottobre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend/frontend, DBA.
 >
@@ -113,6 +113,9 @@ Contiene il contesto commerciale e i parametri di pricing:
 * **variazione globale** (`tipo_variazione_globale`, `valore_variazione_globale`) — opzionale
 * **quando** (`validita_dal`, `validita_al` nullable = senza scadenza)
 * **valuta** (`valuta_id`) — riempita di default dal resolver (vedi §9)
+* **canone**: il mese da cui si contano i periodi (`mese_partenza_canone`) e se i canoni
+  sono anticipati o normali (`generazione_canone`) — copiati nel contratto; che cosa
+  vogliono dire lo spiega la [guida dei contratti §4-bis.3](/guide/gestione-contratti#4-bis3-il-canone)
 * **stato** corrente (`stato_doc_offerta_id`)
 * **revisione** (`revisione_numero`, `revisione_padre_id` — vedi §4)
 * **date evento** (`data_emissione`, `data_accettazione`, `data_rifiuto`,
@@ -131,13 +134,14 @@ qualifica il tipo:
 | `OVERRIDE`       | Prezzo personalizzato per articolo **presente nel listino** | NOT NULL          |
 | `ESCLUSIONE`     | Articolo del listino **non disponibile** per questo cliente | NULL              |
 | `AGGIUNTA`       | Articolo **non presente nel listino**, aggiunto all'offerta | NOT NULL          |
+| `ADESIONE`       | Articolo **del listino** che il cliente prende, al prezzo del listino | NULL              |
 
 Constraint principali:
 
-* al massimo una riga OVERRIDE/ESCLUSIONE per `(offerta, articolo)` (unique parziale)
+* al massimo una riga OVERRIDE/ESCLUSIONE/ADESIONE per `(offerta, articolo)` (unique parziale)
 * al massimo una riga AGGIUNTA per `(offerta, articolo)` (unique parziale separato)
 * CHECK di coerenza prezzo per tipo: `prezzo_unitario` obbligatorio se OVERRIDE o
-  AGGIUNTA, NULL se ESCLUSIONE
+  AGGIUNTA, NULL se ESCLUSIONE o ADESIONE
 
 **Quali articoli ammette un'eccezione** (dal 2026-10-13, le stesse regole del contratto):
 
@@ -162,7 +166,10 @@ componenti si inizializzano solo per OVERRIDE e AGGIUNTA su articolo composito.
 
 Oltre al prezzo, l'eccezione porta i **parametri di fornitura** che serviranno al
 contratto e alla fatturazione ricorrente: `tipo_erogazione`, `fonte_quantita_attesa`,
-`periodicita`, `generazione_canone`, `competenza_canone`, e la quantità.
+`periodicita` (sull'adesione la propone la riga del listino), `generazione_canone`
+(vuota = segue la testata) e la quantità. L'offerta non addebita niente: che cosa il
+contratto addebiterà, e come, lo dice la
+[guida dei contratti §4-bis](/guide/gestione-contratti#4-bis-come-il-contratto-si-addebita-una-tantum-e-canoni).
 
 La quantità si inserisce **nell'unità di misura operativa scelta** e il sistema la
 converte da sé nell'unità base (stesso meccanismo di preventivi e contratti — vedi

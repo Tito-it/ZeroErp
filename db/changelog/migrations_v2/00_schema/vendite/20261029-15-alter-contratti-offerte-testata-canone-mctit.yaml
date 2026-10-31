@@ -1,0 +1,104 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA TESTATA DICE COME SI ADDEBITANO I CANONI DEL DOCUMENTO
+#   vendite.contratti.generazione_canone, vendite.contratti.mese_partenza_canone
+#   vendite.offerte_commerciali.generazione_canone, vendite.offerte_commerciali.mese_partenza_canone
+#   Brief: brief-db-contratto-righe-periodiche-in-commessa §6.4 (F-2, F-7), §6.6 (Lotto 5),
+#   decisioni di Tid del 2026-10-29
+#
+# ── PERCHE' ──────────────────────────────────────────────────────
+#   · generazione_canone (F-7, revoca di G-3): canoni anticipati
+#     (INIZIO_PERIODO, il periodo si addebita appena comincia) o normali
+#     (FINE_PERIODO, appena finisce). Lo dice la TESTATA; la riga resta e, se
+#     vuota, la segue (ereditarieta' viva: cambiando la testata cambiano le righe
+#     non forzate). Il lettore e' il generatore dei periodi: coalesce(riga, testata).
+#   · mese_partenza_canone (F-2): da quale mese si contano i periodi del
+#     calendario. 1 = gennaio = il calendario normale (trimestri gen/apr/lug/ott);
+#     2 = trimestri feb/mag/ago/nov. I periodi cominciano sempre il giorno 1.
+#
+# ── LA FORMA ─────────────────────────────────────────────────────
+#   · NOT NULL col default (INIZIO_PERIODO, 1): le testate di oggi lo prendono
+#     all'ADD COLUMN, e chi crea un documento senza saperlo (form, BE, verbi)
+#     non deve mandare niente di nuovo.
+#   · Il dominio di generazione_canone e' lo stesso CHECK delle righe
+#     (INIZIO_PERIODO / FINE_PERIODO; nessun vocabolario: due valori).
+#   · Le stesse colonne sull'offerta (G-11): il passaggio offerta -> contratto
+#     e la revisione dell'offerta le copiano (20261029-21, -22).
+#   · Fuori dalla bozza sono condizioni del documento: le ferma il lock di
+#     testata (rimontato nel 20261029-20).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261029-15-alter-contratti-offerte-testata-canone-mctit.yaml
+
+  - changeSet:
+      id: 20261029-15-alter-contratti-offerte-testata-canone
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        generazione_canone (anticipati / normali) e mese_partenza_canone sulle testate di
+        vendite.contratti e vendite.offerte_commerciali. Brief:
+        brief-db-contratto-righe-periodiche-in-commessa §6.6 (Lotto 5).
+      preConditions:
+        - onFail: HALT
+        - not:
+            - columnExists:
+                schemaName: vendite
+                tableName: contratti
+                columnName: generazione_canone
+        - not:
+            - columnExists:
+                schemaName: vendite
+                tableName: offerte_commerciali
+                columnName: generazione_canone
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.contratti
+                  ADD COLUMN generazione_canone varchar(32) NOT NULL DEFAULT 'INIZIO_PERIODO',
+                  ADD COLUMN mese_partenza_canone smallint NOT NULL DEFAULT 1,
+                  ADD CONSTRAINT chk_contratti_generazione_canone CHECK (
+                      generazione_canone IN ('INIZIO_PERIODO', 'FINE_PERIODO')),
+                  ADD CONSTRAINT chk_contratti_mese_partenza_canone CHECK (
+                      mese_partenza_canone BETWEEN 1 AND 12);
+
+              ALTER TABLE vendite.offerte_commerciali
+                  ADD COLUMN generazione_canone varchar(32) NOT NULL DEFAULT 'INIZIO_PERIODO',
+                  ADD COLUMN mese_partenza_canone smallint NOT NULL DEFAULT 1,
+                  ADD CONSTRAINT chk_offerte_commerciali_generazione_canone CHECK (
+                      generazione_canone IN ('INIZIO_PERIODO', 'FINE_PERIODO')),
+                  ADD CONSTRAINT chk_offerte_commerciali_mese_partenza_canone CHECK (
+                      mese_partenza_canone BETWEEN 1 AND 12);
+
+              COMMENT ON COLUMN vendite.contratti.generazione_canone IS
+                  'Come si addebitano i canoni del contratto: INIZIO_PERIODO (anticipati: il periodo si addebita appena comincia) o FINE_PERIODO (normali: appena finisce). Default INIZIO_PERIODO. Una riga con vendite.contratti_righe.generazione_canone vuota segue questo valore; valorizzata lo forza su quella riga. Fuori dalla bozza non cambia (lock di testata). 20261029-15, brief-db-contratto-righe-periodiche-in-commessa F-7.';
+
+              COMMENT ON COLUMN vendite.contratti.mese_partenza_canone IS
+                  'Da quale mese (1-12) si contano i periodi dei canoni: 1 = gennaio = il calendario normale (trimestrale: gen, apr, lug, ott); 2 = trimestrale feb, mag, ago, nov. I periodi cominciano sempre il giorno 1 del mese; il primo e l''ultimo, se il contratto comincia o finisce a metà, si addebitano a giorni. Fuori dalla bozza non cambia (lock di testata). 20261029-15, brief-db-contratto-righe-periodiche-in-commessa F-2.';
+
+              COMMENT ON COLUMN vendite.offerte_commerciali.generazione_canone IS
+                  'Come vendite.contratti.generazione_canone. Il passaggio offerta → contratto e la revisione dell''offerta lo copiano.';
+
+              COMMENT ON COLUMN vendite.offerte_commerciali.mese_partenza_canone IS
+                  'Come vendite.contratti.mese_partenza_canone. Il passaggio offerta → contratto e la revisione dell''offerta lo copiano.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.contratti
+                  DROP COLUMN IF EXISTS generazione_canone,
+                  DROP COLUMN IF EXISTS mese_partenza_canone;
+              ALTER TABLE vendite.offerte_commerciali
+                  DROP COLUMN IF EXISTS generazione_canone,
+                  DROP COLUMN IF EXISTS mese_partenza_canone;

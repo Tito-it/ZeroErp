@@ -1,0 +1,178 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL FORM DELLE RIGHE NON PROPONE PIU' COME SI ADDEBITA IL CANONE — vendite.fn_documento_riga_erogazioni
+#   Brief: brief-db-contratto-righe-periodiche-in-commessa §6.4 (F-7), §6.6 (Lotto 5)
+#
+#   F-7 (Tid, 2026-10-29): anticipati o normali lo dice la testata
+#   (20261029-15); la riga vuota la segue. La colonna generazione_canone esce
+#   dall'uscita, come da vendite.fn_articolo_erogazioni (20261029-17).
+#
+#   DROP + CREATE: cambia la RETURNS TABLE. Firma, tipi ancorati (%TYPE) e corpo
+#   dall'ultimo YAML (20261021-49, identico al vivo), meno la colonna. Nessun
+#   dipendente di catalogo. GRANT a zeroerp_app come prima.
+#   ⚠️ Ricaduta BE (rottura accettata, nel passaggio BE/FE del brief):
+#   backend/apps/vendite/api/_riga_erogazioni_views.py e types.py leggono la
+#   colonna; il FE (erogazioniRiga.js) la preseleziona.
+#
+# Ritorno indietro: DROP e il CREATE di 20261021-49.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261029-18-update-fn-documento-riga-erogazioni-senza-generazione-mctit.yaml
+
+  - changeSet:
+      id: 20261029-18-update-fn-documento-riga-erogazioni-senza-generazione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_documento_riga_erogazioni senza generazione_canone (la dice la testata, F-7).
+        Brief: brief-db-contratto-righe-periodiche-in-commessa §6.6 (Lotto 5).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_documento_riga_erogazioni(config.sorgenti.codice_interno%TYPE, bigint, catalogo.articoli.id%TYPE);
+
+              CREATE FUNCTION vendite.fn_documento_riga_erogazioni(
+                  p_documento    config.sorgenti.codice_interno%TYPE,
+                  p_documento_id bigint,
+                  p_articolo_id  catalogo.articoli.id%TYPE)
+              RETURNS TABLE(
+                  tipo_erogazione       config.erogazioni_fonti.tipo_erogazione%TYPE,
+                  fonte_quantita_attesa config.erogazioni_fonti.fonte_quantita_attesa%TYPE,
+                  e_default             config.erogazioni_fonti.e_default%TYPE,
+                  -- Nudo DICHIARATO: TIPOLOGIA | NATURA (vendite.fn_articolo_erogazioni).
+                  origine               text)
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+
+              -- ⚠️ p_documento ancorato a config.sorgenti.codice_interno (CONTRATTO |
+              --   OFFERTA_COMMERCIALE, grammatica unica, lotto 1); p_documento_id nudo
+              --   DICHIARATO (id polimorfo).
+              -- Scopo: per il form delle righe (B-R4), le combinazioni (erogazione, fonte)
+              --   che una riga con questo articolo puo' avere su questo documento, con
+              --   quella che la riga erediterebbe (e_default). Le stesse righe di
+              --   vendite.fn_articolo_erogazioni, che l'eredita' e il guard leggono: il form
+              --   preseleziona cio' che il DB scriverebbe e propone solo cio' che il DB
+              --   accetterebbe.
+              -- Zero righe se l'articolo ha una tipologia che la utility del documento
+              --   non prevede: per quell'articolo nessuna combinazione e' ammessa (il guard
+              --   lo dice col campo articolo_id). Zero righe anche se documento o articolo
+              --   non ci sono o non si vedono.
+              -- Ordine: `ordine` di vendite.fn_articolo_erogazioni (20261007-66), lo stesso
+              --   che usa l'eredita'. Il default in testa, poi per erogazione e per
+              --   fonte. Il form propone la prima fonte di un'erogazione e coincide col DB
+              --   per costruzione. (Rev 2026-10-21, §I.1: il criterio «DERIVATA_COMPONENTI
+              --   per ultima» e' uscito con la fonte, ritirata.)
+              -- ⛔ Rev 2026-10-29 (F-7 di Tid, brief-db-contratto-righe-periodiche-in-
+              --   commessa §6.6): non propone piu' la generazione_canone. Anticipati o
+              --   normali lo dice la testata (vendite.contratti.generazione_canone,
+              --   vendite.offerte_commerciali.generazione_canone): la riga la lascia
+              --   vuota e la segue, o la forza.
+              DECLARE
+                  v_motivi jsonb;
+              BEGIN
+                  -- Lo stesso predicato del guard, sulla sola parte che non dipende dalla
+                  -- combinazione (erogazione e fonte NULL: il motivo 2 tace).
+                  v_motivi := script.fn_check_riga_erogazione(
+                      p_documento, p_documento_id, p_articolo_id,
+                      'AGGIUNTA'::vendite.tipo_eccezione_contratto, NULL, NULL);
+
+                  IF jsonb_array_length(v_motivi) > 0 THEN
+                      RETURN;
+                  END IF;
+
+                  RETURN QUERY
+                  SELECT ae.tipo_erogazione, ae.fonte_quantita_attesa, ae.e_default,
+                         ae.origine
+                    FROM vendite.fn_articolo_erogazioni(p_articolo_id) ae
+                   -- L'ordine del BB (§D.4 punto 1): la prima fonte di un'erogazione e'
+                   -- quella che l'eredita' scriverebbe.
+                   ORDER BY ae.ordine;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_documento_riga_erogazioni(config.sorgenti.codice_interno%TYPE, bigint, catalogo.articoli.id%TYPE) IS
+                'Lettura per il form delle righe di contratto (p_documento = CONTRATTO) e di offerta (OFFERTA), richiesta B-R4: le combinazioni (tipo_erogazione, fonte_quantita_attesa) che una riga con questo articolo può avere su questo documento, con e_default su quella che la riga erediterebbe e l''origine. Sono le righe di vendite.fn_articolo_erogazioni, la stessa sede che leggono l''eredità e il guard: il form preseleziona ciò che il DB scriverebbe e propone solo ciò che accetterebbe. Prende il posto di fontiQuantitaErogazione.js nel frontend e della copia Python della matrice. Zero righe se l''articolo ha una tipologia che la utility del documento non prevede (script.fn_check_riga_erogazione, motivo TIPOLOGIA_FUORI_UTILITY) o se documento o articolo non si vedono. Ordinate come le ordina vendite.fn_articolo_erogazioni (colonna ordine), lo stesso ordine dell''eredità: il default in testa, poi per erogazione e per fonte, quindi la prima fonte di un''erogazione è quella che il DB scriverebbe. Nasce il 2026-10-07, brief-db-offerta-emissione-ed-erogazione §C.7 (B4); ordine dal 20261007-68 (§D.4 punto 1). ⭐ rev 2026-10-19 (20261019-24, brief-db-grammatica-unica-documenti lotto 1, G-1 di Tid): il documento si nomina col codice della sorgente, CONTRATTO | OFFERTA_COMMERCIALE (era OFFERTA); dove sopra si legge OFFERTA come selettore, oggi e'' OFFERTA_COMMERCIALE. p_documento ancorato a config.sorgenti.codice_interno%TYPE: la firma passa da text a character varying (DROP + CREATE, nessun dipendente registrato). Rev 2026-10-21 (20261021-49, brief-db-offerta-emissione-ed-erogazione §I.1): commenti senza DERIVATA_COMPONENTI, ritirata. ⛔ Rev 2026-10-29 (20261029-18, F-7 di Tid, brief-db-contratto-righe-periodiche-in-commessa): esce generazione_canone dall''uscita (DROP + CREATE) — anticipati o normali li dice la testata del documento, e la riga vuota la segue.';
+
+              GRANT EXECUTE ON FUNCTION vendite.fn_documento_riga_erogazioni(config.sorgenti.codice_interno%TYPE, bigint, catalogo.articoli.id%TYPE) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_documento_riga_erogazioni(config.sorgenti.codice_interno%TYPE, bigint, catalogo.articoli.id%TYPE);
+
+              CREATE FUNCTION vendite.fn_documento_riga_erogazioni(
+                  p_documento    config.sorgenti.codice_interno%TYPE,
+                  p_documento_id bigint,
+                  p_articolo_id  catalogo.articoli.id%TYPE)
+              RETURNS TABLE(
+                  tipo_erogazione       config.erogazioni_fonti.tipo_erogazione%TYPE,
+                  fonte_quantita_attesa config.erogazioni_fonti.fonte_quantita_attesa%TYPE,
+                  e_default             config.erogazioni_fonti.e_default%TYPE,
+                  generazione_canone    config.listini_tipologie_erogazioni.generazione_canone%TYPE,
+                  -- Nudo DICHIARATO: TIPOLOGIA | NATURA (vendite.fn_articolo_erogazioni).
+                  origine               text)
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+
+              -- ⚠️ p_documento ancorato a config.sorgenti.codice_interno (CONTRATTO |
+              --   OFFERTA_COMMERCIALE, grammatica unica, lotto 1); p_documento_id nudo
+              --   DICHIARATO (id polimorfo).
+              -- Scopo: per il form delle righe (B-R4), le combinazioni (erogazione, fonte)
+              --   che una riga con questo articolo puo' avere su questo documento, con
+              --   quella che la riga erediterebbe (e_default). Le stesse righe di
+              --   vendite.fn_articolo_erogazioni, che l'eredita' e il guard leggono: il form
+              --   preseleziona cio' che il DB scriverebbe e propone solo cio' che il DB
+              --   accetterebbe.
+              -- Zero righe se l'articolo ha una tipologia che la utility del documento
+              --   non prevede: per quell'articolo nessuna combinazione e' ammessa (il guard
+              --   lo dice col campo articolo_id). Zero righe anche se documento o articolo
+              --   non ci sono o non si vedono.
+              -- Ordine: `ordine` di vendite.fn_articolo_erogazioni (20261007-66), lo stesso
+              --   che usa l'eredita'. Il default in testa, poi per erogazione e per
+              --   fonte. Il form propone la prima fonte di un'erogazione e coincide col DB
+              --   per costruzione. (Rev 2026-10-21, §I.1: il criterio «DERIVATA_COMPONENTI
+              --   per ultima» e' uscito con la fonte, ritirata.)
+              DECLARE
+                  v_motivi jsonb;
+              BEGIN
+                  -- Lo stesso predicato del guard, sulla sola parte che non dipende dalla
+                  -- combinazione (erogazione e fonte NULL: il motivo 2 tace).
+                  v_motivi := script.fn_check_riga_erogazione(
+                      p_documento, p_documento_id, p_articolo_id,
+                      'AGGIUNTA'::vendite.tipo_eccezione_contratto, NULL, NULL);
+
+                  IF jsonb_array_length(v_motivi) > 0 THEN
+                      RETURN;
+                  END IF;
+
+                  RETURN QUERY
+                  SELECT ae.tipo_erogazione, ae.fonte_quantita_attesa, ae.e_default,
+                         ae.generazione_canone, ae.origine
+                    FROM vendite.fn_articolo_erogazioni(p_articolo_id) ae
+                   -- L'ordine del BB (§D.4 punto 1): la prima fonte di un'erogazione e'
+                   -- quella che l'eredita' scriverebbe.
+                   ORDER BY ae.ordine;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_documento_riga_erogazioni(config.sorgenti.codice_interno%TYPE, bigint, catalogo.articoli.id%TYPE) IS
+                'Lettura per il form delle righe di contratto (p_documento = CONTRATTO) e di offerta (OFFERTA), richiesta B-R4: le combinazioni (tipo_erogazione, fonte_quantita_attesa) che una riga con questo articolo può avere su questo documento, con e_default su quella che la riga erediterebbe, la generazione_canone da proporre sulle CANONE e l''origine. Sono le righe di vendite.fn_articolo_erogazioni, la stessa sede che leggono l''eredità e il guard: il form preseleziona ciò che il DB scriverebbe e propone solo ciò che accetterebbe. Prende il posto di fontiQuantitaErogazione.js nel frontend e della copia Python della matrice. Zero righe se l''articolo ha una tipologia che la utility del documento non prevede (script.fn_check_riga_erogazione, motivo TIPOLOGIA_FUORI_UTILITY) o se documento o articolo non si vedono. Ordinate come le ordina vendite.fn_articolo_erogazioni (colonna ordine), lo stesso ordine dell''eredità: il default in testa, poi per erogazione e per fonte, quindi la prima fonte di un''erogazione è quella che il DB scriverebbe. Nasce il 2026-10-07, brief-db-offerta-emissione-ed-erogazione §C.7 (B4); ordine dal 20261007-68 (§D.4 punto 1). ⭐ rev 2026-10-19 (20261019-24, brief-db-grammatica-unica-documenti lotto 1, G-1 di Tid): il documento si nomina col codice della sorgente, CONTRATTO | OFFERTA_COMMERCIALE (era OFFERTA); dove sopra si legge OFFERTA come selettore, oggi e'' OFFERTA_COMMERCIALE. p_documento ancorato a config.sorgenti.codice_interno%TYPE: la firma passa da text a character varying (DROP + CREATE, nessun dipendente registrato). Rev 2026-10-21 (20261021-49, brief-db-offerta-emissione-ed-erogazione §I.1): commenti senza DERIVATA_COMPONENTI, ritirata.';
+
+              GRANT EXECUTE ON FUNCTION vendite.fn_documento_riga_erogazioni(config.sorgenti.codice_interno%TYPE, bigint, catalogo.articoli.id%TYPE) TO zeroerp_app;

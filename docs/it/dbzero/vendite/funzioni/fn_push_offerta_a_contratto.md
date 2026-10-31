@@ -221,6 +221,8 @@ BEGIN
             sorgente_uid,
             offerta_id,
             emittente_fiscale_id,
+            generazione_canone,
+            mese_partenza_canone,
             meta
         )
         VALUES (
@@ -237,6 +239,8 @@ BEGIN
             v_offerta.uid,
             p_offerta_id,
             v_offerta.emittente_fiscale_id,
+            v_offerta.generazione_canone,
+            v_offerta.mese_partenza_canone,
             COALESCE(v_offerta.meta, '{}'::jsonb)
         )
         RETURNING id, uid INTO v_contratto_id, v_contratto_uid;
@@ -298,7 +302,6 @@ BEGIN
             fonte_quantita_attesa,
             periodicita,
             generazione_canone,
-            competenza_canone,
             prezzo_unitario,
             quantita,
             qta_operativa,
@@ -318,7 +321,6 @@ BEGIN
             v_eccezione.fonte_quantita_attesa,
             v_eccezione.periodicita,
             v_eccezione.generazione_canone,
-            v_eccezione.competenza_canone,
             v_eccezione.prezzo_unitario,
             v_eccezione.quantita,
             v_eccezione.qta_operativa,

@@ -1,0 +1,101 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# RITIRO DI competenza_canone DALLE RIGHE DI CONTRATTO E DI OFFERTA
+#   vendite.contratti_righe.competenza_canone
+#   vendite.offerte_commerciali_eccezioni.competenza_canone
+#   + chk_contrighe_esclusione_senza_dati, chk_offerte_eccezioni_esclusione_senza_dati
+#   Brief: brief-db-contratto-righe-periodiche-in-commessa §6.2, §6.8 (Lotto 3),
+#   decisione G-8 di Tid (2026-10-28), F-4 superata (2026-10-29)
+#
+# ── PERCHE' ──────────────────────────────────────────────────────
+#   competenza_canone voleva dire quale periodo copre un addebito: nessuno la
+#   scriveva con una regola, e viaggiava nel meta del push senza un lettore. Con
+#   G-8 la sostituisce la regola dei periodi (vendite.fn_canone_periodi,
+#   20261029-25): il periodo lo dicono testata (anticipati/normali, mese di
+#   partenza) e riga (periodicita'). Su dbdev (2026-10-29, fatto datato) e'
+#   vuota su tutte le righe.
+#
+# ── COSA FA ──────────────────────────────────────────────────────
+#   · DROP COLUMN sulle due tabelle gemelle (G-11: l'offerta cambia col
+#     contratto);
+#   · i CHECK chk_*_esclusione_senza_dati (20261004-76) la nominano: un DROP
+#     COLUMN li porterebbe via in silenzio. Si riscrivono, stesso nome, coi nove
+#     campi che restano. L'elenco resta quello del guard
+#     script.trgfn_righe_guard_esclusione_senza_dati (riscritto nel 20261029-27).
+#   · I lettori nel codice escono nello stesso giro (20261029-27 … -30).
+#
+# ── PERCHE' IN 00_schema ─────────────────────────────────────────
+#   Censito il 2026-10-29: nessun changeSet ne prende il tipo (%TYPE), nessuno di
+#   80_data, 85_pgagent o 90_end la nomina (solo la descrizione di un codice
+#   d'errore nel CSV, aggiornata). Le funzioni vecchie che la leggono sono
+#   plpgsql: da zero si creano lo stesso.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261029-26-drop-righe-competenza-canone-mctit.yaml
+
+  - changeSet:
+      id: 20261029-26-drop-righe-competenza-canone
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Via competenza_canone da contratti_righe e offerte_commerciali_eccezioni (G-8); i CHECK
+        d'esclusione riscritti coi nove campi che restano. Brief:
+        brief-db-contratto-righe-periodiche-in-commessa §6.8 (Lotto 3).
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: vendite
+            tableName: contratti_righe
+            columnName: competenza_canone
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.contratti_righe
+                  DROP CONSTRAINT IF EXISTS chk_contrighe_esclusione_senza_dati,
+                  DROP COLUMN competenza_canone,
+                  ADD CONSTRAINT chk_contrighe_esclusione_senza_dati CHECK (
+                      tipo_eccezione <> 'ESCLUSIONE'::vendite.tipo_eccezione_contratto
+                      OR (prezzo_unitario IS NULL AND quantita IS NULL AND qta_operativa IS NULL
+                          AND uom_operativa_id IS NULL AND factor_to_base IS NULL
+                          AND tipo_erogazione IS NULL AND fonte_quantita_attesa IS NULL
+                          AND periodicita IS NULL AND generazione_canone IS NULL));
+
+              ALTER TABLE vendite.offerte_commerciali_eccezioni
+                  DROP CONSTRAINT IF EXISTS chk_offerte_eccezioni_esclusione_senza_dati,
+                  DROP COLUMN competenza_canone,
+                  ADD CONSTRAINT chk_offerte_eccezioni_esclusione_senza_dati CHECK (
+                      tipo_eccezione <> 'ESCLUSIONE'::vendite.tipo_eccezione_contratto
+                      OR (prezzo_unitario IS NULL AND quantita IS NULL AND qta_operativa IS NULL
+                          AND uom_operativa_id IS NULL AND factor_to_base IS NULL
+                          AND tipo_erogazione IS NULL AND fonte_quantita_attesa IS NULL
+                          AND periodicita IS NULL AND generazione_canone IS NULL));
+
+              COMMENT ON CONSTRAINT chk_contrighe_esclusione_senza_dati ON vendite.contratti_righe IS
+                  'Una riga ESCLUSIONE non porta dati di vendita: prezzo_unitario, quantita, qta_operativa, uom_operativa_id, factor_to_base, tipo_erogazione, fonte_quantita_attesa, periodicita, generazione_canone restano vuoti. Rete del guard script.trgfn_righe_guard_esclusione_senza_dati (stesso elenco, stesso ordine). Rev 2026-10-29 (20261029-26, G-8): competenza_canone ritirata dalla riga.';
+
+              COMMENT ON CONSTRAINT chk_offerte_eccezioni_esclusione_senza_dati ON vendite.offerte_commerciali_eccezioni IS
+                  'Come chk_contrighe_esclusione_senza_dati su vendite.contratti_righe: le due tabelle sono gemelle.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.contratti_righe
+                  DROP CONSTRAINT IF EXISTS chk_contrighe_esclusione_senza_dati,
+                  ADD COLUMN IF NOT EXISTS competenza_canone varchar(32),
+                  ADD CONSTRAINT chk_contrighe_esclusione_senza_dati CHECK (((tipo_eccezione <> 'ESCLUSIONE'::vendite.tipo_eccezione_contratto) OR ((prezzo_unitario IS NULL) AND (quantita IS NULL) AND (qta_operativa IS NULL) AND (uom_operativa_id IS NULL) AND (factor_to_base IS NULL) AND (tipo_erogazione IS NULL) AND (fonte_quantita_attesa IS NULL) AND (periodicita IS NULL) AND (generazione_canone IS NULL) AND (competenza_canone IS NULL))));
+              ALTER TABLE vendite.offerte_commerciali_eccezioni
+                  DROP CONSTRAINT IF EXISTS chk_offerte_eccezioni_esclusione_senza_dati,
+                  ADD COLUMN IF NOT EXISTS competenza_canone varchar(32),
+                  ADD CONSTRAINT chk_offerte_eccezioni_esclusione_senza_dati CHECK (((tipo_eccezione <> 'ESCLUSIONE'::vendite.tipo_eccezione_contratto) OR ((prezzo_unitario IS NULL) AND (quantita IS NULL) AND (qta_operativa IS NULL) AND (uom_operativa_id IS NULL) AND (factor_to_base IS NULL) AND (tipo_erogazione IS NULL) AND (fonte_quantita_attesa IS NULL) AND (periodicita IS NULL) AND (generazione_canone IS NULL) AND (competenza_canone IS NULL))));

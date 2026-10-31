@@ -1,5 +1,9 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-31 (brief-db-contratto-righe-periodiche-in-commessa §5, L9): solo testo. Dal 20261030-01
+--   il push manda anche i canoni, e il 19 resta vero per DUE ragioni: CONSUMO non si genera dal
+--   contratto (G-4), e l'OVERRIDE non si addebita (F-1; solo su una quota fissa, e A e' CONSUMO).
+--   Le descrizioni del 19 e del 21 dicevano «solo UNA_TANTUM». Nessuna attesa cambiata.
 -- rev 2026-10-28 (brief-modello-documento-vendita §16, giro 12): la versione di oggi nasce in bozza
 --   senza stato e si attiva dal verbo (dbops.fn_pgtap_porta_a_stato), non con un UPDATE dello stato.
 -- rev 2026-10-26 (brief-modello-documento-vendita §11): l'attivazione del contratto passa da
@@ -56,11 +60,11 @@
 --   16) offerta: togliere l'erogazione a un'AGGIUNTA e' rifiutato
 --   17) offerta: canale CONSTRAINT = il codice
 --   18) offerta: canale COLUMN = tipo_erogazione
---   19) D-2 (20261013-24): l'OVERRIDE con erogazione ereditata CONSUMO non si
---       lista: il push del contratto manda solo le UNA_TANTUM
+--   19) l'OVERRIDE con erogazione ereditata CONSUMO non si lista: il CONSUMO
+--       non si genera dal contratto (G-4), e l'OVERRIDE non si addebita (F-1)
 --   20) R4: l'ESCLUSIONE non si lista (non si fattura)
---   21) l'erogazione dell'OVERRIDE e' quella ereditata e NON e' UNA_TANTUM:
---       e' cio' che rende il 19 un'esclusione per erogazione, non una coincidenza
+--   21) l'erogazione dell'OVERRIDE e' quella ereditata e NON e' UNA_TANTUM ne'
+--       CANONE: il 19 non dipende da una coincidenza sull'erogazione
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -350,10 +354,11 @@ SELECT is(
 -- chiede il push del solo contratto della fixture.
 -- ⭐ L'erogazione di A e' quella EREDITATA dalla tipologia del listino (rev
 --   2026-10-07), CONSUMO.
--- 🔴 rev 2026-10-13 (20261013-24, D-2 di Tid): il push del contratto manda
---   solo le righe UNA_TANTUM; CANONE, ORARIO e CONSUMO aspettano la loro
---   generazione (brief-db-contratto-righe-periodiche-in-commessa). Il 19 voleva
---   A in lista e il 21 la sua erogazione in meta: ora A non si lista. La
+-- 🔴 rev 2026-10-13 (20261013-24, D-2 di Tid): il push del contratto mandava
+--   solo le righe UNA_TANTUM. Dal 20261030-01 manda anche i canoni (ORARIO e
+--   CONSUMO aspettano le loro sorgenti, G-4) e l'OVERRIDE non si addebita
+--   (F-1). Il 19 voleva A in lista e il 21 la sua erogazione in meta: ora A
+--   non si lista. La
 --   proiezione in meta.tipo_erogazione la tengono vendite/test-push-contratto-
 --   dalla-madre-v1 (3) e vendite/test-fn-list-contratti-da-pushare-v1 (3, 5).
 -- rev 2026-10-26 (brief-modello-documento-vendita §11): l'attivazione dal verbo
@@ -367,7 +372,7 @@ SELECT * FROM vendite.fn_list_contratti_da_pushare(
 SELECT is(
     (SELECT count(*)::int FROM tmp_ero_push WHERE articolo_id = pg_temp.art('A')),
     0,
-    '19) D-2: l''OVERRIDE con erogazione ereditata CONSUMO non si lista (solo UNA_TANTUM)');
+    '19) l''OVERRIDE con erogazione ereditata CONSUMO non si lista (CONSUMO non si genera dal contratto, e l''OVERRIDE non si addebita)');
 
 SELECT is(
     (SELECT count(*)::int FROM tmp_ero_push WHERE articolo_id = pg_temp.art('C')),

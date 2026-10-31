@@ -18,7 +18,20 @@
 #     trgfn_righe_default_fonte_qta (CANONE e UNA_TANTUM -> FISSA, ORARIO ->
 #     MANUALE, CONSUMO -> LETTURE). Il giro B1 non cambia il comportamento.
 #   · tipologie e nature: la tabella del §C.5.2, confermata da Tid il
-#     2026-10-07, con generazione_canone = INIZIO_PERIODO sulle righe CANONE.
+#     2026-10-07. ⛔ Rev 2026-10-29 (F-7 di Tid, brief-db-contratto-righe-
+#     periodiche-in-commessa §6.6): senza generazione_canone, che portava
+#     INIZIO_PERIODO sulle righe CANONE. Anticipati o normali li dice la
+#     testata del documento; la colonna esce col 20261029-24, i CHECK col -16.
+#   · ⛔ Rev 2026-10-29 (G-9 di Tid, Lotto 2): CANONE/MANUALE esce (id 2, lo
+#     cancella il 20261029-32), entra CANONE/DURATA (id 14: gli id ritirati non
+#     si riusano). CANONE/DURATA, mai di default, sulle tipologie QUOTA_FISSA e
+#     SERVIZI e sulla natura SERVIZIO_RICORRENTE (Tid, 2026-10-29: non su
+#     IMPOSTA ne' su ONERE_SISTEMA). Se l'articolo la puo' usare lo decide la sua
+#     unita' di misura (vendite.fn_articolo_erogazioni, 20261029-33).
+#   · ⛔ Rev 2026-10-29 (Tid, revoca della tabella del §C.5.2 del 2026-10-07):
+#     IMPOSTA non ammette piu' CANONE/FISSA (id 5): un'imposta non e' un canone.
+#     La riga la cancella il 20261029-34, con le due CANONE/DURATA (id 15, 16) che
+#     il primo apply del Lotto 2 aveva messo su IMPOSTA e ONERE_SISTEMA.
 #
 # ── LA FORMA ─────────────────────────────────────────────────────
 #   Mirror loadUpdateData chiavato sull'id (scritto nel CSV), nullValue "NULL"
@@ -82,7 +95,6 @@ databaseChangeLog:
               - column: { name: tipo_erogazione, type: STRING }
               - column: { name: fonte_quantita_attesa, type: STRING }
               - column: { name: e_default, type: BOOLEAN }
-              - column: { name: generazione_canone, type: STRING }
         - loadUpdateData:
             relativeToChangelogFile: true
             file: ../sql/config/nature_vendita_erogazioni.csv
@@ -98,4 +110,3 @@ databaseChangeLog:
               - column: { name: tipo_erogazione, type: STRING }
               - column: { name: fonte_quantita_attesa, type: STRING }
               - column: { name: e_default, type: BOOLEAN }
-              - column: { name: generazione_canone, type: STRING }

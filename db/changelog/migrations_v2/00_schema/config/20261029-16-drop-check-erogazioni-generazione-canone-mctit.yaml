@@ -1,0 +1,69 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I VOCABOLARI DELL'EROGAZIONE NON DICONO PIU' COME SI ADDEBITA IL CANONE — 1/2: i CHECK
+#   config.listini_tipologie_erogazioni: chk_listini_tipologie_erogazioni_canone,
+#                                        chk_listini_tipologie_erogazioni_generazione_canone
+#   config.nature_vendita_erogazioni:    chk_nature_vendita_erogazioni_canone,
+#                                        chk_nature_vendita_erogazioni_generazione_canone
+#   Brief: brief-db-contratto-righe-periodiche-in-commessa §6.4 (F-7), §6.6 (Lotto 5)
+#
+# ── PERCHE' ──────────────────────────────────────────────────────
+#   F-7 (Tid, 2026-10-29, revoca di G-3 e del default dall'articolo nato col
+#   20261007-51/-62): anticipati o normali lo dice la testata del documento, e
+#   la riga vuota la segue. La generazione_canone dei due vocabolari era il
+#   default che l'articolo dava alla riga: riempiendo la riga, la staccherebbe
+#   dalla testata. Esce, col suo lettore (20261029-17 … -19).
+#
+# ── PERCHE' IN DUE PASSI, E QUESTO IN 00_schema ─────────────────────
+#   Da zero l'ordine e' per fase: 00_schema, 20_code, 80_data, 90_end.
+#   · I CHECK si tolgono QUI: chk_*_canone (20261007-51) pretende la generazione
+#     sulle righe CANONE, e il seed 20261007-53 (80_data) non la scrive piu'.
+#     Tolto dopo, da zero il seed lo violerebbe.
+#   · La COLONNA si toglie in 80_data, dopo il seed (20261029-24): fino al
+#     20261029-17 le firme di vendite.fn_articolo_erogazioni ne prendono il
+#     tipo (%TYPE), e da zero i changeSet vecchi di 20_code girano dopo questo.
+#   · chk_*_generazione_canone nasce in 80_data (20261029-14): da zero qui non
+#     c'e' ancora (IF EXISTS), e il -14 non lo crea piu' (riscritto,
+#     validCheckSums ANY); su dbdev c'e' e si toglie qui.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261029-16-drop-check-erogazioni-generazione-canone-mctit.yaml
+
+  - changeSet:
+      id: 20261029-16-drop-check-erogazioni-generazione-canone
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Via i CHECK della generazione del canone dai vocabolari dell'erogazione (la dice la
+        testata, F-7). La colonna esce in 80_data (20261029-24). Brief:
+        brief-db-contratto-righe-periodiche-in-commessa §6.6 (Lotto 5).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.listini_tipologie_erogazioni
+                  DROP CONSTRAINT IF EXISTS chk_listini_tipologie_erogazioni_canone,
+                  DROP CONSTRAINT IF EXISTS chk_listini_tipologie_erogazioni_generazione_canone;
+
+              ALTER TABLE config.nature_vendita_erogazioni
+                  DROP CONSTRAINT IF EXISTS chk_nature_vendita_erogazioni_canone,
+                  DROP CONSTRAINT IF EXISTS chk_nature_vendita_erogazioni_generazione_canone;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.listini_tipologie_erogazioni
+                  ADD CONSTRAINT chk_listini_tipologie_erogazioni_canone CHECK ((((tipo_erogazione)::text = 'CANONE'::text) = (generazione_canone IS NOT NULL)));
+              ALTER TABLE config.nature_vendita_erogazioni
+                  ADD CONSTRAINT chk_nature_vendita_erogazioni_canone CHECK ((((tipo_erogazione)::text = 'CANONE'::text) = (generazione_canone IS NOT NULL)));

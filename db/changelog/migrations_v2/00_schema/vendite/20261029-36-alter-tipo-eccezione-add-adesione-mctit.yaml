@@ -1,0 +1,68 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UN QUARTO TIPO DI RIGA: ADESIONE — vendite.tipo_eccezione_contratto
+#   Brief: brief-db-contratto-righe-periodiche-in-commessa §6.2, §6.10 (Lotto 4),
+#   decisioni G-0, G-0-ter (2026-10-28) e F-1 (2026-10-29) di Tid
+#
+# ── PERCHE' ──────────────────────────────────────────────────────
+#   Del listino del contratto si addebitano da sole solo le quote fisse (G-0).
+#   Per gli altri articoli del listino serve una riga che dica «il cliente lo
+#   prende, al prezzo del listino»: nessuno dei tre tipi lo dice.
+#     OVERRIDE   = un prezzo suo, se e quando lo compra (F-1: non si addebita);
+#     ESCLUSIONE = non si vende;
+#     AGGIUNTA   = un articolo fuori listino, al prezzo della riga.
+#   ADESIONE = un articolo DEL listino, al prezzo DEL listino (con la variazione
+#   globale del documento); sulla riga solo quantita' e periodicita'.
+#   L'enum e' condiviso dalle due tabelle gemelle (contratti_righe,
+#   offerte_commerciali_eccezioni): l'offerta lo ha nello stesso giro (G-11).
+#
+# ── LA FORMA ─────────────────────────────────────────────────────
+#   ADD VALUE IF NOT EXISTS in un changeSet suo: il valore nuovo non si usa nella
+#   transazione che lo aggiunge, e Liquibase esegue ogni changeSet nella sua
+#   (precedente: 20260419-02). Chi lo usa viene dopo: CHECK e indice nel
+#   20261029-37, le funzioni nel -38 … -43.
+#   Rollback non supportato: PostgreSQL non toglie un valore da un enum.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261029-36-alter-tipo-eccezione-add-adesione-mctit.yaml
+
+  - changeSet:
+      id: 20261029-36-alter-tipo-eccezione-add-adesione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.tipo_eccezione_contratto: valore ADESIONE (un articolo del listino al prezzo del
+        listino, G-0-ter). Brief: brief-db-contratto-righe-periodiche-in-commessa §6.10 (Lotto 4).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: |
+              SELECT count(*)
+                FROM pg_catalog.pg_enum e
+               WHERE e.enumtypid = 'vendite.tipo_eccezione_contratto'::regtype
+                 AND e.enumlabel = 'ADESIONE';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TYPE vendite.tipo_eccezione_contratto ADD VALUE IF NOT EXISTS 'ADESIONE' AFTER 'AGGIUNTA';
+
+              COMMENT ON TYPE vendite.tipo_eccezione_contratto IS
+                  'Il tipo di una riga di contratto (vendite.contratti_righe) o di offerta (vendite.offerte_commerciali_eccezioni) rispetto al listino del documento: OVERRIDE = un articolo del listino a un prezzo suo (vale per gli acquisti del cliente, il contratto non lo addebita: F-1); ESCLUSIONE = un articolo del listino che il documento non vende; AGGIUNTA = un articolo fuori listino, al prezzo della riga; ADESIONE = un articolo del listino che il cliente prende, al prezzo del listino con la variazione globale del documento (sulla riga solo quantità e periodicità; G-0-ter, 20261029-36). Brief: brief-db-contratto-righe-periodiche-in-commessa.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- PostgreSQL non toglie un valore da un enum: rollback non supportato.
+              SELECT 1;

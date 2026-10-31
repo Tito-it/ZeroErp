@@ -1,0 +1,56 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Seed di config.periodicita (20261029-10)
+#   Brief: brief-db-contratto-righe-periodiche-in-commessa §6.4 (F-3), §6.5 (Lotto 1)
+#
+# ── I VALORI ─────────────────────────────────────────────────────
+#   I divisori di 12 (F-3, proposta del team DB): MENSILE, BIMESTRALE,
+#   TRIMESTRALE, QUADRIMESTRALE, SEMESTRALE, ANNUALE. I quattro del vecchio
+#   COMMENT di contratti_righe.periodicita ci sono tutti, con gli stessi codici.
+#
+# ── LA FORMA ─────────────────────────────────────────────────────
+#   Mirror loadUpdateData chiavato sull'id (scritto nel CSV), nullValue "NULL"
+#   (linee-guida-sql §11.7: il token, non la cella vuota; oggi nessuna colonna
+#   nullable). La tabella si popola SOLO da CSV (nessun CRUD): nessun resync
+#   della sequence. Forma di 20261007-53.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261029-12-seed-periodicita-mctit.yaml
+
+  - changeSet:
+      id: 20261029-12-seed-periodicita
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Seed di config.periodicita. Brief: brief-db-contratto-righe-periodiche-in-commessa §6.5.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: periodicita
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/periodicita.csv
+            tableName: periodicita
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            nullValue: "NULL"
+            primaryKey: "id"
+            columns:
+              - column: { name: id, type: NUMERIC }
+              - column: { name: codice, type: STRING }
+              - column: { name: descrizione, type: STRING }
+              - column: { name: mesi, type: NUMERIC }
+              - column: { name: ordine, type: NUMERIC }

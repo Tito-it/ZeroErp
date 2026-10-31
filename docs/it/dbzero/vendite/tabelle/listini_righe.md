@@ -20,6 +20,7 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
 | tx_id | uuid | YES |  |
+| periodicita | character varying(32) | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -27,6 +28,7 @@
 | CHECK | chk_listini_righe_prezzo |  |
 | CHECK | chk_listini_righe_prezzo_finito |  |
 | FOREIGN KEY | fk_listini_righe_articolo | articolo_id |
+| FOREIGN KEY | fk_listini_righe_periodicita | periodicita |
 | FOREIGN KEY | fk_listini_righe_uom | uom_id |
 | FOREIGN KEY | fk_listini_righe_versione | listino_versione_id |
 | PRIMARY KEY | pk_listini_righe | id |

@@ -13,7 +13,8 @@ Rami resi (dal 2026-07-18):
 
 ---
 ### 🎯 Scopo Principale
-(latest review 2026-07-18)
+> **Ultimo aggiornamento**: 31 ottobre 2026
+
 **Lente 2 Backlog** (cruscotti fatturazione a due lenti): la lista dei
 **non-collegati azionabili** — cosa è fermo prima della commessa, da quanto, e
 cosa serve per sbloccarlo. L'asse **non è la competenza** (i fermi non ce
@@ -34,8 +35,8 @@ l'**azionabilità** (`classe` dalla lookup `config.motivi_fermo`).
 | **Popolazione** | **Tre rami** uniti: (1) `vw_dash_fatturazione_documenti` con `motivo_fermo IS NOT NULL`; (2) `vw_resi_da_riconsegnare` → `RICONSEGNA_NON_ESEGUITA`; (3) `vw_resi_da_accreditare` con etichetta `DOVUTA` → `MERCE_RESA_GIA_FATTURATA`. Su **tutti** si applica poi la stessa regola unica DL-7: classe **non** `FISIOLOGICO`, nessun caso speciale per area |
 | **`classe`** | Da `config.motivi_fermo` per `codice_interno = motivo_fermo`: `RECUPERABILE` 🟠 (lavoro interno, il numero che conta) · `ANOMALIA` 🔴 (da rivedere) · `SOLLECITO_CLIENTE` 🔵 (palla al cliente, filtro dedicato) |
 | **Fail-visible (DB-3)** | LEFT JOIN + `COALESCE(classe, 'ANOMALIA')`: un motivo non mappato (o con lookup disattivata) **compare come anomalia**, non sparisce in silenzio |
-| **Conseguenze DL-7** | Contratti: fuori (tutto 🟢 finché manca il push ricorrente) · Offerte: solo `FIGLIO_ABORTITO` 🔴 e `IN_ATTESA_ACCETTAZIONE` 🔵 · Preventivi/Ordini/Commesse: il loro 🟠 |
-| **Anzianità (v1 proxy)** | `data_riferimento`: data documento (preventivi/ordini), emissione con fallback (offerte), mese della riga (contratti/commesse), **data del reso** (area RESI). `anzianita_giorni = CURRENT_DATE - data_riferimento` |
+| **Conseguenze DL-7** | Contratti: dal 2026-10-31 `CANONE_NON_GENERATO` 🟠 e `CANONE_NON_GENERABILE` 🔴 (prima fuori: giudizio sospeso) · Offerte: solo `FIGLIO_ABORTITO` 🔴 e `IN_ATTESA_ACCETTAZIONE` 🔵 · Preventivi/Ordini/Commesse: il loro 🟠 |
+| **Anzianità (v1 proxy)** | `data_riferimento`: data documento (preventivi/ordini), emissione con fallback (offerte), l'addebito più vecchio che aspetta (contratti, mai dopo oggi), mese della riga (commesse), **data del reso** (area RESI). `anzianita_giorni = CURRENT_DATE - data_riferimento` |
 | `valore_fermo` / `unita_ferme` | `totale - transitato` (valore NULL per le aree a conteggi) |
 | **Area `RESI` — grana** | Una riga per **(reso × motivo)**, non per riga di reso né per documento. Un **reso misto** (parte da ri-spedire, parte a credito) ha davvero due cose in corso e compare **due volte**, ciascuna con la sua azione e la sua classe: è una **deroga dichiarata**, unica area in cui accade — non un doppione da de-duplicare |
 | **Area `RESI` — misura** | **A conteggi** (i resi non hanno importi): `valore_fermo` **NULL**, mai `0` — zero direbbe «valore nullo», NULL dice «non misurabile in euro». `unita_ferme` = numero di righe reso del motivo |

@@ -7,9 +7,10 @@ id,codice_interno,codice,descrizione,classe,azione,ordine,attivo,meta
 6,FIGLIO_ABORTITO,FIGLIO_ABORTITO,Offerta con contratto/ordine generato poi annullato (XOR permanente),ANOMALIA,Rivedi l'offerta,60,true,{}
 7,IN_ATTESA_ACCETTAZIONE,IN_ATTESA_ACCETTAZIONE,Documento emesso in attesa di decisione del cliente,SOLLECITO_CLIENTE,Sollecita il cliente,70,true,{}
 8,DOC_BOZZA,DOC_BOZZA,Documento in lavorazione interna (bozza),FISIOLOGICO,NULL,80,true,{}
-9,CANONE_NON_GENERATO,CANONE_NON_GENERATO,Contratto attivo senza canone del mese (push ricorrente non ancora costruito),FISIOLOGICO,NULL,90,true,{}
+9,CANONE_NON_GENERATO,CANONE_NON_GENERATO,Contratto con addebiti maturati non ancora in commessa (canoni o una tantum o storni),RECUPERABILE,Esegui il push dei canoni,90,true,{}
 10,SENZA_FIGLIO,SENZA_FIGLIO,Offerta accettata non ancora convertita (scelta commerciale non ritardo),FISIOLOGICO,NULL,100,true,{}
 11,IN_TRANSITO,IN_TRANSITO,Merce spedita non ancora arrivata allo stato che fattura (viaggio in corso),FISIOLOGICO,NULL,110,true,{}
 12,IN_ATTESA_DDT,IN_ATTESA_DDT,Ordine che fattura via DDT: il push spetta al DDT allo stato-trigger,FISIOLOGICO,NULL,120,true,{}
 13,RICONSEGNA_NON_ESEGUITA,RICONSEGNA_NON_ESEGUITA,Riga reso per ri-consegna senza DDT di ri-spedizione: il residuo ordine resta riaperto,RECUPERABILE,Genera il DDT di ri-consegna,130,true,{}
 14,MERCE_RESA_GIA_FATTURATA,MERCE_RESA_GIA_FATTURATA,Merce resa che risulta gia' fatturata: accredito dovuto (fatturata per N e tenuta M),RECUPERABILE,Emetti la nota di credito dalla coda accrediti,140,true,{}
+15,CANONE_NON_GENERABILE,CANONE_NON_GENERABILE,Contratto con un canone che non puo' partire (senza periodicita' o senza prezzo alla data),ANOMALIA,Rivedi il contratto,150,true,{}

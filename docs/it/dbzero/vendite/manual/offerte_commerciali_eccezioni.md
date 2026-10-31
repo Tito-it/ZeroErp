@@ -14,7 +14,8 @@
 
 ### 🎯 Scopo Principale
 
-(rev 2026-05-24)
+> **Ultimo aggiornamento**: 31 ottobre 2026
+
 
 `vendite.offerte_commerciali_eccezioni` contiene le **eccezioni puntuali al listino**
 proposte nell'offerta commerciale: ogni riga rappresenta una deviazione tipizzata
@@ -49,20 +50,20 @@ Ogni riga porta un campo `tipo_eccezione` (enum `vendite.tipo_eccezione_contratt
 | `OVERRIDE`   | Prezzo personalizzato per articolo gia' nel listino  | NOT NULL          |
 | `ESCLUSIONE` | Articolo del listino escluso per questo cliente      | NULL              |
 | `AGGIUNTA`   | Articolo non presente nel listino, aggiunto          | NOT NULL          |
+| `ADESIONE`   | Articolo del listino che il cliente prende, al prezzo del listino (dal 2026-10-29) | NULL |
 
 #### CHECK `chk_offerte_eccezioni_prezzo_per_tipo_eccezione`
 
 ```text
-ESCLUSIONE  → prezzo_unitario IS NULL
-OVERRIDE    → prezzo_unitario IS NOT NULL
-AGGIUNTA    → prezzo_unitario IS NOT NULL
+ESCLUSIONE, ADESIONE → prezzo_unitario IS NULL
+OVERRIDE, AGGIUNTA   → prezzo_unitario IS NOT NULL
 ```
 
 #### Vincoli di unicita parziale
 
 | Indice                                         | Predicato                               | Semantica |
 | ---------------------------------------------- | --------------------------------------- | --------- |
-| `uq_offerte_eccezioni_one_eccezione_per_articolo` | `WHERE tipo_eccezione IN ('OVERRIDE','ESCLUSIONE')` | OVERRIDE e ESCLUSIONE sono mutualmente esclusivi per la stessa coppia `(offerta, articolo)` |
+| `uq_offerte_eccezioni_one_eccezione_per_articolo` | `WHERE tipo_eccezione IN ('OVERRIDE','ESCLUSIONE','ADESIONE')` | OVERRIDE, ESCLUSIONE e ADESIONE sono mutualmente esclusivi per la stessa coppia `(offerta, articolo)` |
 | `uq_offerte_eccezioni_one_aggiunta_per_articolo`  | `WHERE tipo_eccezione = 'AGGIUNTA'`    | Al piu' una AGGIUNTA per coppia `(offerta, articolo)` |
 
 Gli stessi indici esistono su `contratti_righe` con gli stessi predicati, confermando
@@ -75,14 +76,19 @@ la simmetria strutturale.
 Le colonne `tipo_erogazione` e `fonte_quantita_attesa` replicano la stessa semantica
 di `contratti_righe`:
 
-- `tipo_erogazione` — `CANONE | UNA_TANTUM | ORARIO | CONSUMO` (CHECK
-  `chk_offerte_eccezioni_tipo_erog`).
-- `fonte_quantita_attesa` — `FISSA | MANUALE | TIMESHEET | LETTURE` (le combinazioni di `config.erogazioni_fonti`; `DERIVATA_COMPONENTI` ritirata il 2026-10-21, e sul composito solo la `FISSA`: `brief-db-offerta-emissione-ed-erogazione` §I.1)
-  (CHECK `chk_offerte_eccezioni_fonte_qta`), NOT NULL.
-- CHECK `chk_offerte_eccezioni_coerenza_canone` — se `tipo_erogazione = 'CANONE'`,
-  `generazione_canone` deve essere in `('INIZIO_PERIODO', 'FINE_PERIODO', 'PRORATA')`.
-- CHECK `chk_offerte_eccezioni_coerenza_fonte_erogazione` — blocca le 7 combinazioni
-  vietate tra `tipo_erogazione` e `fonte_quantita_attesa` (stessa matrice di `contratti_righe`).
+- `tipo_erogazione` — `CANONE | UNA_TANTUM | ORARIO | CONSUMO`;
+- `fonte_quantita_attesa` — `FISSA | MANUALE | TIMESHEET | LETTURE | DURATA`, obbligatoria sulle
+  righe che non sono esclusioni (`chk_offerte_eccezioni_fonte_per_tipo_eccezione`). La coppia
+  deve stare in `config.erogazioni_fonti` (FK `fk_offerte_commerciali_eccezioni_erogazione_fonte`,
+  che ha preso il posto dei CHECK sulla matrice). `DERIVATA_COMPONENTI` ritirata il 2026-10-21, e
+  sul composito solo la `FISSA`; `CANONE/MANUALE` ritirata il 2026-10-29, al suo posto
+  `CANONE/DURATA`.
+- `periodicita` — FK a `config.periodicita`; su ADESIONE e OVERRIDE a canone, se vuota, la
+  propone la riga del listino (come sul contratto).
+- `generazione_canone` — `INIZIO_PERIODO` o `FINE_PERIODO`, oppure vuota = segue la testata
+  dell'offerta (`chk_offerte_eccezioni_coerenza_canone`). `PRORATA` è ritirato, e
+  `competenza_canone` pure (2026-10-29): sono gli stessi campi del contratto, che il passaggio
+  offerta → contratto copia.
 
 Per la matrice completa e la semantica di ogni valore vedi la documentazione di
 [`vendite.contratti_righe`](/dbzero/vendite/tabelle/contratti_righe).

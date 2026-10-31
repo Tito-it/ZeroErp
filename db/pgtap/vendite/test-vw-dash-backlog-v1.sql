@@ -1,5 +1,9 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-31 (brief-db-contratto-righe-periodiche-in-commessa §6.13, F-13): CANONE_NON_GENERATO
+--   passa da FISIOLOGICO a RECUPERABILE (test 2: 6 arancio, 2 verdi); il giudizio dei contratti e'
+--   riacceso (20261031-04), il contratto ATTIVO della fixture non ha righe: transitato, fuori dal
+--   backlog come prima.
 -- rev 2026-10-25 (brief-modello-documento-vendita §9): la conferma dell'ordine passa da
 --   dbops.fn_pgtap_porta_a_stato (il verbo dell'ordine), non da un UPDATE dello stato: la porta lo
 --   ferma. Nessuna attesa cambiata.
@@ -167,17 +171,17 @@ SELECT ok(
 -- ============================================================
 SELECT ok(
   (SELECT count(*) = 10
-      AND count(*) FILTER (WHERE classe = 'RECUPERABILE') = 5
+      AND count(*) FILTER (WHERE classe = 'RECUPERABILE') = 6
       AND count(*) FILTER (WHERE classe = 'ANOMALIA') = 1
       AND count(*) FILTER (WHERE classe = 'SOLLECITO_CLIENTE') = 1
-      AND count(*) FILTER (WHERE classe = 'FISIOLOGICO') = 3
+      AND count(*) FILTER (WHERE classe = 'FISIOLOGICO') = 2
       AND bool_and(attivo)
      FROM config.motivi_fermo
     WHERE codice_interno IN ('RIGA_RESIDUA','PUSH_NON_ESEGUITO','PUSH_PARZIALE',
                              'ATTIVITA_NON_APPROVATA','ATTIVITA_NON_EMESSA',
                              'FIGLIO_ABORTITO','IN_ATTESA_ACCETTAZIONE',
                              'DOC_BOZZA','CANONE_NON_GENERATO','SENZA_FIGLIO')),
-  '2. Seed lookup: 10 codici attivi con la mappatura classi DL-6 (5 arancio, 1 rosso, 1 blu, 3 verdi)'
+  '2. Seed lookup: 10 codici attivi con la mappatura classi DL-6 (6 arancio, 1 rosso, 1 blu, 2 verdi; CANONE_NON_GENERATO arancio dal 2026-10-31)'
 );
 
 -- ============================================================
@@ -360,12 +364,12 @@ SELECT * FROM dbops.fn_pgtap_crea_contratto(
 CREATE TEMP TABLE tmp_bl_contratto_annullato AS
 SELECT contratto_id AS id FROM tmp_bl_k_annullato;
 
--- Fixture CONTRATTO ATTIVO senza canone (fisiologico, fuori dal backlog).
--- ⚠️ Il motivo e' NULL, non CANONE_NON_GENERATO: dal 20260707-03 (vista dei
---   contratti «de-esplosa») i contratti non hanno un motivo di fermo finche' non
---   esiste il push ricorrente dei canoni. Il codice resta nel seed di
---   config.motivi_fermo apposta, per la riaccensione (vedi la doc della vista).
---   rev 2026-10-24: il commento diceva ancora CANONE_NON_GENERATO.
+-- Fixture CONTRATTO ATTIVO senza righe (fuori dal backlog).
+-- Il motivo e' NULL: dal 20261031-04 la vista giudica di nuovo i contratti dal
+--   push (vendite.fn_contratti_addebiti_maturati), e un contratto senza niente
+--   da mandare e' transitato. Dal 20260707-03 al 20261031-04 il giudizio era
+--   sospeso (NULL per tutti).
+--   rev 2026-10-31: prima diceva «finche' non esiste il push ricorrente».
 -- rev 2026-10-24 (Q-2): dal builder, sul cliente del test, attivato sul
 --   listino che il builder gli costruisce (dell'azienda di chi agisce).
 CREATE TEMP TABLE tmp_bl_k_attivo AS

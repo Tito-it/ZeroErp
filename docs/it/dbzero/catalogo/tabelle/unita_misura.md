@@ -18,10 +18,12 @@
 | data_insert | timestamp with time zone | NO | now() |
 | data_update | timestamp with time zone | NO | now() |
 | tipo_uom_id | bigint | NO |  |
+| conta_dal_calendario | character varying(16) | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_unita_misura_conta_dal_calendario |  |
 | FOREIGN KEY | fk_unita_misura_tipo_uom | tipo_uom_id |
 | PRIMARY KEY | pk_unita_misura | id |
 | UNIQUE | uq_unita_misura_codice | codice |

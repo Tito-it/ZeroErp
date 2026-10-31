@@ -1,0 +1,100 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA RIGA A CANONE PUO' LASCIARE VUOTA LA GENERAZIONE: SEGUE LA TESTATA
+#   chk_contrighe_coerenza_canone          (vendite.contratti_righe)
+#   chk_offerte_eccezioni_coerenza_canone  (vendite.offerte_commerciali_eccezioni)
+#   Brief: brief-db-contratto-righe-periodiche-in-commessa §6.4 (F-7), §6.6 (Lotto 5)
+#
+# ── PERCHE' ──────────────────────────────────────────────────────
+#   Il 20261029-14 rendeva obbligatoria la generazione sulle righe CANONE. F-7
+#   (Tid, 2026-10-29, revoca di G-3): anticipati o normali li dice la testata
+#   (20261029-15, NOT NULL col default), e una riga vuota la SEGUE
+#   (ereditarieta' viva: cambiando la testata cambiano le righe non forzate).
+#   L'obbligo sulla riga esce; resta il dominio, INIZIO_PERIODO / FINE_PERIODO,
+#   senza PRORATA. Il valore che vale e' coalesce(riga, testata): lo legge il
+#   generatore dei periodi (Lotto 6), nessuno lo scrive sulla riga.
+#
+# ── LE RIGHE DI OGGI ────────────────────────────────────────────────
+#   Le righe CANONE gia' scritte hanno la generazione che l'articolo (o la
+#   correzione F-5 su dbdev) ci aveva messo: restano FORZATE con quel valore.
+#   Non si sa piu' quali l'operatore avesse scelto e quali fossero il default,
+#   e svuotarle cambierebbe in silenzio quelle scelte. Sui dati di sviluppo,
+#   se serve, si svuotano a mano.
+#
+# ── PERCHE' IN 80_data ───────────────────────────────────────────────
+#   Il -14, che il CHECK lo crea, e' in 80_data: questo viene dopo.
+#   Stesso nome dei vincoli: la traduzione degli errori del backend, che va per
+#   nome, non cambia.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261029-23-check-coerenza-canone-riga-segue-testata-mctit.yaml
+
+  - changeSet:
+      id: 20261029-23-check-coerenza-canone-riga-segue-testata
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        chk_*_coerenza_canone di contratto e offerta senza l'obbligo sulla riga: vuota segue la
+        testata (F-7); resta il dominio. Brief: brief-db-contratto-righe-periodiche-in-commessa §6.6.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: vendite
+            tableName: contratti
+            columnName: generazione_canone
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.contratti_righe
+                  DROP CONSTRAINT IF EXISTS chk_contrighe_coerenza_canone,
+                  ADD CONSTRAINT chk_contrighe_coerenza_canone CHECK (
+                      generazione_canone IS NULL
+                      OR generazione_canone IN ('INIZIO_PERIODO', 'FINE_PERIODO'));
+
+              ALTER TABLE vendite.offerte_commerciali_eccezioni
+                  DROP CONSTRAINT IF EXISTS chk_offerte_eccezioni_coerenza_canone,
+                  ADD CONSTRAINT chk_offerte_eccezioni_coerenza_canone CHECK (
+                      generazione_canone IS NULL
+                      OR generazione_canone IN ('INIZIO_PERIODO', 'FINE_PERIODO'));
+
+              COMMENT ON CONSTRAINT chk_contrighe_coerenza_canone ON vendite.contratti_righe IS
+                  'Il dominio della generazione del canone sulla riga: vuota (segue vendite.contratti.generazione_canone) oppure INIZIO_PERIODO / FINE_PERIODO (forzata su questa riga). PRORATA ritirata (G-7): il periodo incompleto si addebita sempre a giorni. 20261029-23 (F-7), brief-db-contratto-righe-periodiche-in-commessa §6.6.';
+
+              COMMENT ON CONSTRAINT chk_offerte_eccezioni_coerenza_canone ON vendite.offerte_commerciali_eccezioni IS
+                  'Come chk_contrighe_coerenza_canone su vendite.contratti_righe; la testata è vendite.offerte_commerciali.generazione_canone.';
+
+              COMMENT ON COLUMN vendite.contratti_righe.generazione_canone IS
+                  'Come si addebita il canone di QUESTA riga, se diverso dalla testata: INIZIO_PERIODO (anticipato: il periodo si addebita appena comincia) o FINE_PERIODO (normale: appena finisce). Vuota = segue vendite.contratti.generazione_canone (il valore che vale è coalesce(riga, testata)). Nessun default: l''articolo non la propone più (20261029-19). Il periodo incompleto si addebita sempre a giorni: PRORATA non è un valore. 20261029-23, brief-db-contratto-righe-periodiche-in-commessa F-7.';
+
+              COMMENT ON COLUMN vendite.offerte_commerciali_eccezioni.generazione_canone IS
+                  'Come vendite.contratti_righe.generazione_canone; vuota segue vendite.offerte_commerciali.generazione_canone. Il passaggio offerta → contratto la copia così com''è (vuota resta vuota).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.contratti_righe
+                  DROP CONSTRAINT IF EXISTS chk_contrighe_coerenza_canone,
+                  ADD CONSTRAINT chk_contrighe_coerenza_canone CHECK (
+                      (generazione_canone IS NULL
+                       OR generazione_canone IN ('INIZIO_PERIODO', 'FINE_PERIODO'))
+                      AND (tipo_erogazione IS DISTINCT FROM 'CANONE'
+                           OR generazione_canone IS NOT NULL));
+              ALTER TABLE vendite.offerte_commerciali_eccezioni
+                  DROP CONSTRAINT IF EXISTS chk_offerte_eccezioni_coerenza_canone,
+                  ADD CONSTRAINT chk_offerte_eccezioni_coerenza_canone CHECK (
+                      (generazione_canone IS NULL
+                       OR generazione_canone IN ('INIZIO_PERIODO', 'FINE_PERIODO'))
+                      AND (tipo_erogazione IS DISTINCT FROM 'CANONE'
+                           OR generazione_canone IS NOT NULL));

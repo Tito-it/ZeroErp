@@ -1,0 +1,149 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA DASHBOARD GIUDICA DI NUOVO I CONTRATTI — vendite.vw_dash_fatturazione_contratti
+#   Brief: brief-db-contratto-righe-periodiche-in-commessa §6.13 (Lotto 8), decisioni di
+#   Tid F-12 (riaccendere il giudizio in questa vista), F-13 (CANONE_NON_GENERATO
+#   RECUPERABILE), F-14 (un motivo per le righe che il push salta), F-15 (ANOMALIA,
+#   «Rivedi il contratto»): 2026-10-30/31.
+#
+#   Dal 20260707-03 il giudizio era SOSPESO «finche' non esiste il push
+#   ricorrente» (senza push ogni contratto sarebbe stato fermo per sempre). Il
+#   push c'e' (Lotto 7): torna, come predisposto nel 20260707-03.
+#
+# ── LA REGOLA ────────────────────────────────────────────────────
+#   Per i contratti ATTIVO e CESSATO (quelli che il push legge), dalla sede
+#   vendite.fn_contratti_addebiti_maturati (20261031-02), al giro di oggi:
+#   · CANONE_NON_GENERABILE se c'e' uno scartato (fonte senza periodicita', durata
+#     senza calendario, prezzo che manca alla data). Vince: il push non lo chiude;
+#   · CANONE_NON_GENERATO se c'e' un addebito da mandare (canone, una tantum,
+#     storno);
+#   · altrimenti transitato (is_transitato = true, unita_transitate = 1).
+#   La bozza resta sospesa (NULL), come dal 20260707-03.
+#   data_riferimento: valido_dal; se fermo, l'addebito piu' vecchio che aspetta,
+#   mai dopo oggi (l'anzianita' del Backlog e' oggi - data_riferimento).
+#
+# ── EFFETTI A VALLE ──────────────────────────────────────────────
+#   · vw_dash_aperto_documenti (is_transitato IS DISTINCT FROM true): un
+#     contratto senza niente da mandare ESCE dalla situazione aperta, come un
+#     ordine tutto in commessa; rientra quando matura il pezzo dopo.
+#   · vw_dash_backlog_documenti: i contratti fermi ENTRANO (CANONE_NON_GENERATO
+#     RECUPERABILE, CANONE_NON_GENERABILE ANOMALIA; config.motivi_fermo, seed
+#     20260706-02); anche un CESSATO con uno storno da mandare.
+#   · union vw_dash_fatturazione_documenti: stesse colonne, stessi tipi:
+#     CREATE OR REPLACE, niente da ricreare.
+#
+# Ritorno indietro: la vista del 20261020-84.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261031-04-update-vw-dash-fatturazione-contratti-giudizio-dal-push-mctit.yaml
+
+  - changeSet:
+      id: 20261031-04-update-vw-dash-fatturazione-contratti-giudizio-dal-push
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.vw_dash_fatturazione_contratti: il giudizio di transito torna, dalla sede del
+        push (CANONE_NON_GENERATO, CANONE_NON_GENERABILE). Brief:
+        brief-db-contratto-righe-periodiche-in-commessa §6.13 (Lotto 8).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- security_invoker si AZZERA a ogni CREATE OR REPLACE VIEW: si ripete.
+              CREATE OR REPLACE VIEW vendite.vw_dash_fatturazione_contratti WITH (security_invoker=on) AS
+              SELECT 'CONTRATTO'::character varying AS area,
+                  NULL::date AS competenza_mese,
+                  c.id AS documento_id,
+                  (c.uid)::text AS documento_uid,
+                  (c.numero)::text AS codice,
+                  c.emittente_fiscale_id,
+                  NULL::bigint AS emittente_soggetto_ruolo_id,
+                  NULL::numeric AS valore_totale,
+                  NULL::numeric AS valore_transitato,
+                  1 AS unita_totali,
+                  -- Il giudizio (F-12): solo i contratti che il push legge, ATTIVO e
+                  -- CESSATO. La bozza resta sospesa (NULL), come dal 20260707-03.
+                  CASE WHEN g.giudicato THEN (NOT g.fermo)::integer END AS unita_transitate,
+                  CASE WHEN g.giudicato THEN NOT g.fermo END AS is_transitato,
+                  false AS is_abortito,
+                  -- Vince la riga che non puo' partire (F-14): il push da solo non la chiude.
+                  (CASE WHEN g.non_generabile THEN 'CANONE_NON_GENERABILE'
+                        WHEN g.da_mandare THEN 'CANONE_NON_GENERATO' END)::character varying AS motivo_fermo,
+                  sdc.codice_interno AS stato_codice_interno,
+                  sdc.codice AS stato_codice,
+                  sdc.fase,
+                  sog.ragione_sociale_completa AS cliente_display,
+                  -- «In essere da»; fermo, «fermo da»: l'addebito piu' vecchio che aspetta
+                  -- (la fonte scartata: dall'inizio del contratto), mai dopo oggi (uno
+                  -- storno di una cessazione programmata ha la competenza nel futuro).
+                  COALESCE(g.dal, c.valido_dal) AS data_riferimento
+                 FROM vendite.contratti c
+                   JOIN config.stati_doc_contratti sdc ON sdc.id = c.stato_doc_contratto_id AND sdc.esito::text IS DISTINCT FROM 'NEGATIVO'::text
+                   LEFT JOIN anagrafiche.billing_account ba ON ba.id = c.billing_account_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ba.soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti sog ON sog.id = sr.soggetto_id
+                   -- Gli addebiti maturati e non in commessa, e gli scartati: la regola e'
+                   -- del push (vendite.fn_contratti_addebiti_maturati), qui si contano.
+                   CROSS JOIN LATERAL (
+                     SELECT x.giudicato,
+                            COALESCE(x.non_generabile, false) AS non_generabile,
+                            COALESCE(x.da_mandare, false) AS da_mandare,
+                            COALESCE(x.non_generabile OR x.da_mandare, false) AS fermo,
+                            x.dal
+                       FROM (SELECT sdc.codice_interno::text IN ('ATTIVO', 'CESSATO') AS giudicato,
+                                    bool_or(a.scarto IS NOT NULL) AS non_generabile,
+                                    bool_or(a.scarto IS NULL) AS da_mandare,
+                                    -- least ignora i NULL: senza righe niente data.
+                                    CASE WHEN count(*) > 0
+                                         THEN least(min(COALESCE(a.competenza_dal, c.valido_dal)),
+                                                    script.fn_data_operativa()) END AS dal
+                               FROM vendite.fn_contratti_addebiti_maturati(NULL::date, NULL::bigint, c.id) a
+                              WHERE sdc.codice_interno::text IN ('ATTIVO', 'CESSATO')) x
+                   ) g;
+              COMMENT ON VIEW vendite.vw_dash_fatturazione_contratti IS
+                'Resolver area CONTRATTO (famiglia dash fatturazione / situazione aperta): 1 riga per contratto vivo (esito <> NEGATIVO), DE-ESPLOSO (niente asse mese, DL-12). Giudizio di transito RIACCESO dal 20261031-04 (brief-db-contratto-righe-periodiche-in-commessa §6.13, F-12 … F-15) per i contratti ATTIVO e CESSATO, dalla sede del push vendite.fn_contratti_addebiti_maturati: fermo se ha un addebito maturato non in commessa (motivo CANONE_NON_GENERATO, RECUPERABILE) o un canone che non puo'' partire (CANONE_NON_GENERABILE, ANOMALIA, vince sul primo); altrimenti is_transitato = true e il contratto esce dalla situazione aperta. La bozza resta sospesa: is_transitato/unita_transitate/motivo_fermo NULL. unita_totali = 1. data_riferimento = valido_dal (in essere da); se fermo, l''addebito piu'' vecchio che aspetta (fonte scartata: valido_dal), mai dopo oggi. Area a conteggi: valore_* NULL. Consumata da vw_dash_fatturazione_documenti (union), e attraverso questa da vw_dash_aperto_documenti e vw_dash_backlog_documenti. Rev 2026-10-20 (20261020-84): l''area CONTRATTI diventa CONTRATTO.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- security_invoker si AZZERA a ogni CREATE OR REPLACE VIEW: si ripete dal catalogo.
+              CREATE OR REPLACE VIEW vendite.vw_dash_fatturazione_contratti WITH (security_invoker=on) AS
+              SELECT 'CONTRATTO'::character varying AS area,
+                  NULL::date AS competenza_mese,
+                  c.id AS documento_id,
+                  (c.uid)::text AS documento_uid,
+                  (c.numero)::text AS codice,
+                  c.emittente_fiscale_id,
+                  NULL::bigint AS emittente_soggetto_ruolo_id,
+                  NULL::numeric AS valore_totale,
+                  NULL::numeric AS valore_transitato,
+                  1 AS unita_totali,
+                  NULL::integer AS unita_transitate,
+                  NULL::boolean AS is_transitato,
+                  false AS is_abortito,
+                  NULL::character varying AS motivo_fermo,
+                  sdc.codice_interno AS stato_codice_interno,
+                  sdc.codice AS stato_codice,
+                  sdc.fase,
+                  sog.ragione_sociale_completa AS cliente_display,
+                  c.valido_dal AS data_riferimento
+                 FROM ((((vendite.contratti c
+                   JOIN config.stati_doc_contratti sdc ON (((sdc.id = c.stato_doc_contratto_id) AND ((sdc.esito)::text IS DISTINCT FROM 'NEGATIVO'::text))))
+                   LEFT JOIN anagrafiche.billing_account ba ON ((ba.id = c.billing_account_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr ON ((sr.id = ba.soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti sog ON ((sog.id = sr.soggetto_id)));
+
+              COMMENT ON VIEW vendite.vw_dash_fatturazione_contratti IS
+                'Resolver area CONTRATTI (famiglia dash fatturazione / situazione aperta): 1 riga per contratto vivo (esito <> NEGATIVO), DE-ESPLOSO (niente asse mese, DL-12). Giudizio di transito SOSPESO finche'' non esiste il push ricorrente: is_transitato/unita_transitate/motivo_fermo = NULL (non "fermo": senza push ogni contratto sarebbe un falso-allarme perenne). data_riferimento = valido_dal ("in essere da"). Area a conteggi: valore_* NULL. Consumata da vw_dash_fatturazione_documenti (union) e da vw_dash_aperto_*; il Backlog non la vede (motivo_fermo NULL). Rev 2026-10-20 (20261020-84, brief-db-grammatica-unica-documenti 2d, G-6): l''area CONTRATTI diventa CONTRATTO, il codice della sorgente (il plurale e'' ritirato).';

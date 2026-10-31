@@ -1,6 +1,8 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
+-- rev 2026-10-29 (brief-db-contratto-righe-periodiche-in-commessa §6.10, G-0-ter; 20261029-39): la riga
+--   di listino ha anche l'azione ADERISCI (test 3).
 -- rev 2026-10-28 (brief-modello-documento-vendita §16, giro 12): la versione nasce
 --   senza stato (BOZZA) e diventa ATTIVA da dbops.fn_pgtap_porta_a_stato, non da un
 --   UPDATE dello stato (la colonna non c'e' piu').
@@ -184,10 +186,10 @@ SELECT ok(
 SELECT ok(
     (SELECT riga_key = 'L:' || l.articolo_id::text || ':' || l.uom_id::text
         AND origine = 'DA_LISTINO'
-        AND azioni = ARRAY['SOVRASCRIVI_PREZZO', 'ESCLUDI']
+        AND azioni = ARRAY['SOVRASCRIVI_PREZZO', 'ESCLUDI', 'ADERISCI']
         AND escludi_blocco_codice IS NULL
        FROM tmp_crl_lista l WHERE l.articolo_id = pg_temp.art('A')),
-    '3) A dal listino: chiave L:<articolo>:<uom>, sovrascrivi/escludi, nessun blocco');
+    '3) A dal listino: chiave L:<articolo>:<uom>, sovrascrivi/escludi/aderisci, nessun blocco');
 
 SELECT is(
     (SELECT azioni FROM tmp_crl_lista WHERE articolo_id = pg_temp.art('B') AND origine = 'OVERRIDE'),

@@ -9,7 +9,8 @@ Approfondimento tabelle:
 ---
 ### 🎯 Scopo Principale
 
-(rev 2026-08-21)
+> **Ultimo aggiornamento**: 31 ottobre 2026
+
 
 Normalizza `fonte_quantita_attesa` — *da dove arriva la quantità da fatturare* — portandola
 al valore coerente con il `tipo_erogazione` della riga. Fa **due** cose, e solo quelle:
@@ -59,15 +60,16 @@ matrice. Copre l'`INSERT` senza fonte; sull'`UPDATE` è difensivo, perché la co
 `NOT NULL`.
 
 **Ramo 2 — il tipo è cambiato e la combinazione diventa vietata.** Solo in `UPDATE`, solo se
-`tipo_erogazione` è effettivamente cambiato e la coppia risultante è una delle **sette
-combinazioni vietate**:
+`tipo_erogazione` è effettivamente cambiato e la coppia risultante **non sta in
+`config.erogazioni_fonti`** (il vocabolario, letto dalla funzione). Al 2026-10-31 le coppie
+ammesse sono:
 
-| `tipo_erogazione` | fonti vietate |
+| `tipo_erogazione` | fonti ammesse |
 |---|---|
-| `CANONE` | `TIMESHEET`, `LETTURE` |
-| `UNA_TANTUM` | `TIMESHEET`, `LETTURE` |
-| `ORARIO` | `LETTURE` |
-| `CONSUMO` | `FISSA`, `TIMESHEET` |
+| `CANONE` | `FISSA`, `DURATA` (`MANUALE` ritirata il 2026-10-29) |
+| `UNA_TANTUM` | `FISSA`, `MANUALE` |
+| `ORARIO` | `FISSA`, `MANUALE`, `TIMESHEET` |
+| `CONSUMO` | `MANUALE`, `LETTURE` |
 
 In quel caso la fonte torna al default del **nuovo** tipo. Le combinazioni solo *insolite* —
 non presenti in questa lista — vengono lasciate come sono: la funzione corregge l'illegale,

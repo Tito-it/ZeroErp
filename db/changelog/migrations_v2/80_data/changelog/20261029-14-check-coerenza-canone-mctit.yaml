@@ -1,0 +1,126 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA RIGA A CANONE DICE QUANDO SI ADDEBITA, E PRORATA ESCE
+#   chk_contrighe_coerenza_canone          (vendite.contratti_righe)
+#   chk_offerte_eccezioni_coerenza_canone  (vendite.offerte_commerciali_eccezioni)
+#   Brief: brief-db-contratto-righe-periodiche-in-commessa §6.1, §6.5 (Lotto 1),
+#   decisione G-7 di Tid (2026-10-28)
+#
+# ⛔ RISCRITTO il 2026-10-29, gia' applicato su dbdev (validCheckSums ANY, la
+#   corsa non si ripete): toglie il dominio di generazione_canone sui due
+#   vocabolari dell'erogazione (chk_listini_tipologie_erogazioni_generazione_canone,
+#   chk_nature_vendita_erogazioni_generazione_canone). Con F-7 di Tid la colonna
+#   dei vocabolari esce (20261029-16 i CHECK, -24 la colonna): da zero questo
+#   changeSet la troverebbe gia' senza dominio da dare. Su dbdev i due CHECK li
+#   toglie il -16. L'obbligo sulla riga che qui nasce esce col 20261029-23: la
+#   riga vuota segue la testata (F-7).
+#
+# -- IL DIFETTO ---------------------------------------------------------------
+#   Il CHECK era (tipo_erogazione <> 'CANONE') OR (generazione_canone IN
+#   ('INIZIO_PERIODO','FINE_PERIODO','PRORATA')). Con generazione_canone NULL la
+#   seconda meta' vale NULL, l'OR vale NULL e un CHECK che vale NULL PASSA: la
+#   generazione non e' mai stata obbligatoria. Su dbdev (2026-10-29, fatto
+#   datato) 10 righe di contratto e 12 di offerta a canone l'hanno vuota.
+#
+# -- COSA FA -------------------------------------------------------------------
+#   Due condizioni, nessuna delle due puo' valere NULL:
+#     · il dominio: generazione_canone vuota o INIZIO_PERIODO / FINE_PERIODO.
+#       PRORATA esce (G-7): il periodo incompleto si addebita SEMPRE in
+#       proporzione ai giorni, quindi non e' una scelta della riga;
+#     · l'obbligo: su una riga CANONE generazione_canone c'e' (uscito col
+#       20261029-23).
+#   Stesso nome dei vincoli di prima: la traduzione degli errori d'integrita'
+#   del backend, che va per nome, non cambia.
+#
+# -- PERCHE' IN 80_data ----------------------------------------------------------
+#   Nato accanto al dominio dei vocabolari, che si popolano dal seed 20261007-53
+#   (oggi tolto, vedi sopra): resta qui, e il -23 viene dopo.
+#
+# -- CHI SCRIVE GIA' LA GENERAZIONE ------------------------------------------------
+#   Una riga CANONE senza generazione la prende dall'articolo
+#   (script.trgfn_righe_default_erogazione_da_articolo, su INSERT e su UPDATE OF
+#   tipo_erogazione), e le tipologie e nature la portano su ogni combinazione
+#   CANONE (pgTAP vendite/test-erogazioni-vocabolario-v1, 8): il form e il
+#   backend non devono mandare niente di nuovo.
+#
+# -- ⚠️ SU dbdev -------------------------------------------------------------------
+#   Le 22 righe di prova senza generazione fermano l'apply su questo CHECK:
+#   vanno corrette (o cancellate) prima, a mano (brief §6.4, F-5). Su un DB da
+#   zero (CI) non ci sono.
+#   ⚠️ L'obbligo della PERIODICITA' sulla riga a canone non e' qui: il frontend
+#   oggi non la manda. Arriva col lotto dell'ADESIONE, col default dalla riga di
+#   listino (brief §6.5).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261029-14-check-coerenza-canone-mctit.yaml
+
+  - changeSet:
+      id: 20261029-14-check-coerenza-canone
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        chk_*_coerenza_canone riscritti su contratto e offerta (la generazione obbligatoria
+        sulle righe CANONE, senza il NULL che passava; PRORATA via). Brief:
+        brief-db-contratto-righe-periodiche-in-commessa §6.5 (Lotto 1).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "2"
+            sql: |
+              SELECT count(*) FROM pg_catalog.pg_constraint c
+               WHERE c.conname IN ('chk_contrighe_coerenza_canone',
+                                   'chk_offerte_eccezioni_coerenza_canone');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.contratti_righe
+                  DROP CONSTRAINT IF EXISTS chk_contrighe_coerenza_canone,
+                  ADD CONSTRAINT chk_contrighe_coerenza_canone CHECK (
+                      (generazione_canone IS NULL
+                       OR generazione_canone IN ('INIZIO_PERIODO', 'FINE_PERIODO'))
+                      AND (tipo_erogazione IS DISTINCT FROM 'CANONE'
+                           OR generazione_canone IS NOT NULL));
+
+              ALTER TABLE vendite.offerte_commerciali_eccezioni
+                  DROP CONSTRAINT IF EXISTS chk_offerte_eccezioni_coerenza_canone,
+                  ADD CONSTRAINT chk_offerte_eccezioni_coerenza_canone CHECK (
+                      (generazione_canone IS NULL
+                       OR generazione_canone IN ('INIZIO_PERIODO', 'FINE_PERIODO'))
+                      AND (tipo_erogazione IS DISTINCT FROM 'CANONE'
+                           OR generazione_canone IS NOT NULL));
+
+              COMMENT ON CONSTRAINT chk_contrighe_coerenza_canone ON vendite.contratti_righe IS
+                  'Su una riga CANONE la generazione c''è: INIZIO_PERIODO (in anticipo, all''inizio del periodo) o FINE_PERIODO (a consuntivo, a periodo chiuso). Nessuna delle due metà vale NULL: prima la generazione vuota passava. PRORATA ritirata (G-7): il periodo incompleto si addebita sempre in proporzione ai giorni. 20261029-14, brief-db-contratto-righe-periodiche-in-commessa §6.5.';
+
+              COMMENT ON CONSTRAINT chk_offerte_eccezioni_coerenza_canone ON vendite.offerte_commerciali_eccezioni IS
+                  'Come chk_contrighe_coerenza_canone su vendite.contratti_righe: le due tabelle sono gemelle per progetto.';
+
+              COMMENT ON COLUMN vendite.contratti_righe.generazione_canone IS
+                  'Quando si addebita un periodo del canone: INIZIO_PERIODO (in anticipo, appena il periodo comincia) o FINE_PERIODO (a consuntivo, a periodo chiuso). Obbligatoria sulle righe CANONE (chk_contrighe_coerenza_canone); se manca la prende dall''articolo (script.trgfn_righe_default_erogazione_da_articolo). Il periodo incompleto si addebita sempre in proporzione ai giorni: PRORATA non è più un valore (20261029-14).';
+
+              COMMENT ON COLUMN vendite.offerte_commerciali_eccezioni.generazione_canone IS
+                  'Come vendite.contratti_righe.generazione_canone. Il passaggio offerta → contratto la copia.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.contratti_righe
+                  DROP CONSTRAINT IF EXISTS chk_contrighe_coerenza_canone,
+                  ADD CONSTRAINT chk_contrighe_coerenza_canone CHECK ((((tipo_erogazione)::text <> 'CANONE'::text) OR ((generazione_canone)::text = ANY (ARRAY[('INIZIO_PERIODO'::character varying)::text, ('FINE_PERIODO'::character varying)::text, ('PRORATA'::character varying)::text]))));
+              ALTER TABLE vendite.offerte_commerciali_eccezioni
+                  DROP CONSTRAINT IF EXISTS chk_offerte_eccezioni_coerenza_canone,
+                  ADD CONSTRAINT chk_offerte_eccezioni_coerenza_canone CHECK ((((tipo_erogazione)::text <> 'CANONE'::text) OR ((generazione_canone)::text = ANY ((ARRAY['INIZIO_PERIODO'::character varying, 'FINE_PERIODO'::character varying, 'PRORATA'::character varying])::text[]))));
