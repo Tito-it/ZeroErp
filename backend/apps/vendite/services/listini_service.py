@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Any, NoReturn
@@ -523,6 +524,12 @@ def _translate_integrity_error(exc: IntegrityError, *, function_name: str, entit
             # La periodicita' della riga (G-0-bis): fuori vocabolario e' un
             # dato del form, col campo, come su contratto e offerta.
             "fk_listini_righe_periodicita": (
+                E_VENDITE_FK,
+                "Periodicità inesistente.",
+                "periodicita",
+            ),
+            # La periodicita' del kit sul listino (D-2-bis (B)): stesso campo.
+            "fk_listini_kit_periodicita": (
                 E_VENDITE_FK,
                 "Periodicità inesistente.",
                 "periodicita",
@@ -1876,6 +1883,13 @@ _KNOWN_BUNDLE_DB_ERROR_MARKERS: tuple[tuple[str, tuple[str, ...]], ...] = (
         "E_LISTINO_RIGA_COMP_BOM_INCOERENTE",
         ("E_LISTINO_RIGA_COMP_BOM_INCOERENTE",),
     ),
+    # Guard `vendite.trgfn_listini_kit_guard` (D-2-bis (B)): la periodicita'
+    # a parte si scrive solo per un composito. Fuori bozza parla
+    # `E_RIGA_LISTINO_VERSIONE_CHIUSA`, la stessa dei componenti.
+    (
+        "E_LISTINO_KIT_NON_COMPOSITO",
+        ("E_LISTINO_KIT_NON_COMPOSITO",),
+    ),
 )
 
 
@@ -2030,9 +2044,81 @@ def fn_save_bundle(
 #        Idempotente: 0 disattivati su composito senza prezzi bundle,
 #        nessun errore. Guard BOZZA via `_assert_versione_bozza_for_riga_op`
 #        ereditata da `fn_save_bundle`.
+#        ⭐ Con i prezzi se ne va anche il kit (`vendite.listini_kit`, la sua
+#        periodicita'): restando, sarebbe un kit sul listino senza prezzo.
 def fn_delete_bundle(
     listino_id: int,
     versione_id: int,
     articolo_padre_id: str,
 ) -> dict[str, int]:
-    return fn_save_bundle(listino_id, versione_id, articolo_padre_id, rows=[])
+    with transaction.atomic():
+        result = fn_save_bundle(listino_id, versione_id, articolo_padre_id, rows=[])
+        _kit_db_errors(
+            lambda: ListiniRepository().elimina_kit(
+                versione_id=versione_id, articolo_padre_id=str(articolo_padre_id),
+            ),
+            function_name="vendite.listini_service.fn_delete_bundle",
+            context={"versione_id": versione_id, "articolo_padre_id": str(articolo_padre_id)},
+        )
+    return result
+
+
+# Scopo: La periodicita' del KIT sulla versione di listino (D-2-bis (B),
+#        `vendite.listini_kit`): il kit non ha una riga di listino, e la
+#        periodicita' con cui si addebita a canone sta li'. Un codice del
+#        vocabolario la scrive, `null` (o vuoto) la toglie. Solo in bozza e
+#        solo su un composito: lo dice il guard DB, tradotto qui.
+#        ⛔ Che sia obbligatoria su una quota fissa lo dice il controllo
+#        all'attivazione della versione (`E_LISTINO_VERSIONE_QUOTA_FISSA_SENZA_
+#        PERIODICITA`), non questo verbo: la bozza resta libera.
+# Ritorna: {articolo_padre_id, periodicita}.
+def fn_save_kit_periodicita(
+    listino_id: int,
+    versione_id: int,
+    articolo_padre_id: str,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    function_name = "vendite.listini_service.fn_save_kit_periodicita"
+    _get_listino_or_raise(listino_id, function_name=function_name)
+    _get_versione_or_raise(listino_id, versione_id, function_name=function_name)
+    _V.validate_allowed_keys(payload, allowed=frozenset({"periodicita"}), function_name=function_name)
+    ErrorManager.require(
+        "periodicita" in payload,
+        code="E_VENDITE_VALIDATION",
+        message="Campo 'periodicita' obbligatorio: un codice, o null per toglierla.",
+        context={"field": "periodicita"},
+        function_name=function_name,
+    )
+    periodicita = _V.optional_upper(payload, "periodicita", function_name=function_name)
+    scritta = _kit_db_errors(
+        lambda: ListiniRepository().salva_kit_periodicita(
+            versione_id=versione_id,
+            articolo_padre_id=str(articolo_padre_id),
+            periodicita=periodicita,
+        ),
+        function_name=function_name,
+        context={"versione_id": versione_id, "articolo_padre_id": str(articolo_padre_id)},
+    )
+    return {"articolo_padre_id": str(articolo_padre_id), "periodicita": scritta}
+
+
+# Scopo: Le scritture di `vendite.listini_kit` con gli errori del DB tradotti:
+#        i vincoli col campo (`_translate_integrity_error`), i guard col loro
+#        codice (`_KNOWN_BUNDLE_DB_ERROR_MARKERS`, gli stessi del bundle).
+def _kit_db_errors(
+    scrittura: Callable[[], Any], *, function_name: str, context: dict[str, Any],
+) -> Any:
+    try:
+        with transaction.atomic():
+            return scrittura()
+    except IntegrityError as exc:
+        _translate_integrity_error(exc, function_name=function_name, entity="kit")
+    except DatabaseError as exc:
+        ErrorManager.raise_from_database_error(
+            exc,
+            known_markers=_KNOWN_BUNDLE_DB_ERROR_MARKERS,
+            fallback_code="E_VENDITE_VALIDATION",
+            message="Impossibile salvare il kit sul listino.",
+            context=context,
+            function_name=function_name,
+        )

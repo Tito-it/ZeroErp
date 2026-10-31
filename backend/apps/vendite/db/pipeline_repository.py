@@ -3344,6 +3344,20 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
             )
             return cursor.rowcount
 
+    # Scopo: La natura del documento dal SEGNO (D-1, D-1-ter di brief-db-
+    #        contratto-righe-periodiche-in-commessa §7.9): il verbo DB
+    #        `vendite.fn_lotto_natura_dal_segno` raggruppa le attivita' FATTURA
+    #        del lotto per chiave di testata (`fn_build_fattura_key`) e porta a
+    #        NOTA_CREDITO quelle dei gruppi a somma negativa. Rieseguibile (ritira
+    #        prima le sue marche). ⛔ Nessuna regola qui: la chiamata sola.
+    # Ritorna: quante attivita' ha battezzato nota di credito.
+    def applica_natura_dal_segno(self, lotto_id: int) -> int:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT vendite.fn_lotto_natura_dal_segno(%s)", [lotto_id])
+            row = cursor.fetchone()
+            assert row is not None
+            return int(row[0] or 0)
+
     # Scopo: Inserisce in un solo round-trip le righe fattura AGGREGATE e collega
     #        a ciascuna le *n* attivita' che l'hanno prodotta, marcandole
     #        fatturate e COMPLETED.

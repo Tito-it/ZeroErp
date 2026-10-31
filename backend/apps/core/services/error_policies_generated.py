@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1150, di cui 124 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1153, di cui 124 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -985,6 +985,10 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_LISTINO_COMPONENTE_COERENZA_BOM": "DATO_ERRATO",
     # Guard vendite.trgfn_listini_guard_spegnimento_storia (BEFORE UPDATE OF attivo su vendite.listini, a05: prima della catena generica a10_*_block_deact; decisione di Tid del 2026-10-21, D-1 del 2026-10-22; richiesta BE §9.8 di brief-be-utenti-di-sviluppo): si spegne (attivo true -> false) un listino con STORIA, cioe' con almeno una versione ATTIVA o CHIUSA (vendite.fn_listino_ha_storia). Un listino con storia non si spegne con l'interruttore: si chiude con la fine validita' della versione in vigore. Prima usciva E_ATTIVO_BLOCK_CHILDREN_ACTIVE col rimedio «disattivare le righe», non eseguibile. CONFLITTO_STATO: e' lo stato del listino a impedire la richiesta. Campo attivo. I VALORI: codice del listino.
     "E_LISTINO_CON_STORIA_NON_SPEGNIBILE": "CONFLITTO_STATO",
+    # Guard vendite.trgfn_listini_kit_guard (BEFORE INSERT OR UPDATE su vendite.listini_kit; 2026-10-31, brief-db-contratto-righe-periodiche-in-commessa §7.7, L12, D-2-bis di Tid): la periodicita' di un kit sul listino si scrive solo per un articolo composito. La periodicita' di un articolo semplice sta sulla sua riga di listino (vendite.listini_righe.periodicita). Nel contesto il campo (articolo_padre_id), l'articolo e la versione.
+    "E_LISTINO_KIT_NON_COMPOSITO": "DATO_ERRATO",
+    # Guard vendite.trgfn_listini_righe_guard_periodicita_quota_fissa (BEFORE UPDATE OF periodicita su vendite.listini_righe; 2026-10-31, brief-db-contratto-righe-periodiche-in-commessa §7.10, decisione di Tid): fuori dalla bozza la riga di una quota fissa a canone (vendite.fn_articolo_quota_fissa_a_canone) non resta senza periodicita'. Cambiarla con un'altra resta una rettifica. Chiude il buco del controllo all'attivazione (E_LISTINO_VERSIONE_QUOTA_FISSA_SENZA_PERIODICITA). Nel contesto il campo (periodicita), la riga, la versione e il suo stato.
+    "E_LISTINO_QUOTA_FISSA_PERIODICITA_FERMA": "CONFLITTO_STATO",
     # Trigger DB guard coerenza BoM su listini_righe_componenti: blocca · prezzi bundle riferiti a componenti non presenti nella BoM corrente · del padre composito (o fuori dal range di validità della BoM).
     "E_LISTINO_RIGA_COMP_BOM_INCOERENTE": "DATO_ERRATO",
     "E_LISTINO_RIGA_COMPOSITO_VIETATO": "DATO_ERRATO",
@@ -1010,6 +1014,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_LISTINO_VERSIONE_NON_CHIUDIBILE": "CONFLITTO_STATO",
     # Guard vendite.trgfn_listini_versioni_guard_per_stato (BEFORE DELETE su vendite.listini_versioni; L-5, brief-modello-documento-vendita §16, giro 12, Tid 2026-10-28): si cancella solo una versione in BOZZA; una ATTIVA o CHIUSA e' stata visibile ai prezzi (decisione O2 di sviluppo-listini-v2). Prima la regola stava nel backend (listini_service.fn_delete_versione). Dal 2026-10-28 (§16.11) e' il primo motivo di script.fn_check_versione_listino_eliminabile: lo sollevano il verbo vendite.fn_elimina_versione_listino e il guard per stato, lo mostra vendite.vw_listini_versioni_azioni.
     "E_LISTINO_VERSIONE_NON_ELIMINABILE": "CONFLITTO_STATO",
+    # Terzo motivo di script.fn_check_versione_listino_attivabile (2026-10-31, brief-db-contratto-righe-periodiche-in-commessa §7.3, D-3 (b) di Tid): la versione ha una quota fissa a canone (tipologia e_quota_fissa, erogazione di default CANONE) senza periodicita', sulla riga di listino o, per un kit, in vendite.listini_kit. Si addebiterebbe da se' a ogni contratto del listino, e senza periodicita' non puo': la versione non si attiva. Lo sollevano il verbo vendite.fn_attiva_versione_listino e il guard di transizione; lo mostra vendite.vw_listini_versioni_azioni. Nel dettaglio l'articolo e il campo (periodicita).
+    "E_LISTINO_VERSIONE_QUOTA_FISSA_SENZA_PERIODICITA": "NON_ESEGUIBILE",
     # Secondo motivo di script.fn_check_versione_listino_attivabile (L-4, brief-modello-documento-vendita §16, giro 12, Tid 2026-10-28): la versione non ha prezzi (nessuna riga attiva e nessun composito con prezzo bundle) e non si attiva. Lo sollevano il verbo vendite.fn_attiva_versione_listino e il guard di transizione; lo mostra vendite.vw_listini_versioni_azioni. Prima il controllo stava nel backend (listini_repository.count_active_righe_versione, E_VENDITE_VALIDATION).
     "E_LISTINO_VERSIONE_SENZA_RIGHE": "NON_ESEGUIBILE",
     # Primo motivo di script.fn_check_versione_listino_attivabile (L-4, brief-modello-documento-vendita §16, giro 12, Tid 2026-10-28): la versione di listino e' spenta (attivo = false) e non si attiva. Lo sollevano il verbo vendite.fn_attiva_versione_listino e il guard vendite.trgfn_listini_versioni_guard_transizione_stato; lo mostra la superficie vendite.vw_listini_versioni_azioni. Prima il controllo stava nel backend (listini_service._plan_versione_state_change, E_VENDITE_VALIDATION).

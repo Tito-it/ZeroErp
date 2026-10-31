@@ -52,6 +52,10 @@ import EntityPdfButton from '../../documenti/components/EntityPdfButton.vue'
 import { SORGENTE_CODES } from '../../documenti/constants'
 import { CAMPI_FORM_TESTATA_CONTRATTO, FORMA_CONTRATTO, STATO_CONTRATTO } from '../constants'
 import TipoVariazioneSelect from './TipoVariazioneSelect.vue'
+import CampiCanoneTestata from '../_shared/canoni/CampiCanoneTestata.vue'
+import {
+  campiCanoneDaDettaglio, campiCanoneDaForm, campiCanoneVuoti,
+} from '../_shared/canoni/campiCanone'
 import AmbitoContrattoSelect from './AmbitoContrattoSelect.vue'
 import { useParameterDefaults } from '../../core/composables/useParameterDefaults'
 import { useUtilityDefaultId } from '../../core/composables/useUtilityDefaultId'
@@ -254,6 +258,9 @@ function defaultForm() {
     codice_commessa: null,
     // Corsia di instradamento: default differita (DEFAULT false a DB).
     fatturazione_immediata: false,
+    // I canoni (F-2, F-7; D-5): vuoti in CREATE = il default del DB
+    // (anticipati, da gennaio), che il dettaglio poi mostra.
+    ...campiCanoneVuoti(),
     // Pricing — refactor modalita 2026-05-15: niente piu' SelectButton A/B/C.
     // Listino e variazione globale sono campi opzionali liberi; la "forma"
     // (con/senza listino) e' derivata e mostrata come badge readonly post-save.
@@ -298,6 +305,7 @@ function populateFromDetail(d) {
     codice_cup: d.codice_cup || null,
     codice_commessa: d.codice_commessa || null,
     fatturazione_immediata: d.fatturazione_immediata ?? false,
+    ...campiCanoneDaDettaglio(d),
     listino_id: d.listino_id,
     tipo_variazione_globale: d.tipo_variazione_globale,
     valore_variazione_globale: d.valore_variazione_globale,
@@ -526,6 +534,10 @@ function buildPayload() {
     // fn madre `vendite.fn_create_contratto`). Sempre un booleano, mai null:
     // la colonna e' NOT NULL e la fn madre filtra sulla presenza della chiave.
     fatturazione_immediata: !!f.fatturazione_immediata,
+    // I canoni (D-5): in create e in PATCH dal changeSet `20261031-28`, che li
+    // ha messi nella whitelist della fn madre. NOT NULL col default: solo
+    // valorizzati, mai `null`.
+    ...campiCanoneDaForm(f),
   }
   // Pricing — refactor modalita 2026-05-15: niente piu' if-chain modalita.
   // Il payload include sempre listino_id (puo' essere null = forma senza_listino).
@@ -1213,6 +1225,17 @@ const fotoCessa = useFotografiaDialog(() => ({ data: cessaDialogData.value }), {
       <small class="app-text-muted">{{ t('vendite.contratti.hint_valore_variazione') }}</small>
     </div>
   </div>
+
+  <!-- Come si addebitano i canoni (F-2, F-7; D-5): la riga a canone senza
+       generazione segue la testata. In bozza come le altre condizioni
+       (`isLocked`); fuori bozza li ferma il lock di testata del DB. -->
+  <CampiCanoneTestata
+    v-model:generazione="form.generazione_canone"
+    v-model:mese="form.mese_partenza_canone"
+    :bloccato-generazione="isEdit && isLocked('generazione_canone')"
+    :bloccato-mese="isEdit && isLocked('mese_partenza_canone')"
+    :campi-errati="campiErrati"
+  />
 
   <!-- Valuta: snapshot fissato al CREATE, immutabile in EDIT
        (allineato a preventivi/offerte). Pre-popolata da

@@ -86,6 +86,8 @@ Scritture sul BB core (2026-09-26):
 Codici a vocabolario della riga (BB `normalizza_codici_riga`, 2026-10-31):
 66) crea_eccezione_codici_normalizzati_come_il_contratto [strip+upper, '' -> NULL]
 67) aggiorna_eccezione_codice_non_stringa_e_400          [400 col campo, repo non chiamato]
+68) aggiorna_offerta_campi_canone_come_il_contratto      [BB campi_canone: upper, intero]
+69) aggiorna_offerta_campi_canone_null_omessi            [null omesso, NOT NULL col default]
 """
 
 from unittest import TestCase
@@ -1932,3 +1934,26 @@ class OfferteScrittureBbTests(TestCase):
 
         svc.aggiorna_offerta(1, {"utility": {"tipo_utenza_id": 7, "utility_id": 3}})
         repo.update_utility.assert_called_once_with(99, {"tipo_utenza_id": 7})
+
+    # 68. ⭐ I due campi del canone come il contratto (BB `campi_canone`,
+    #     regola del 2): il codice in maiuscolo, il mese intero. Prima
+    #     l'offerta passava i valori grezzi: «fine_periodo» era un 400 del CHECK.
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_aggiorna_offerta_campi_canone_come_il_contratto(self, repo_cls, _atomic):
+        svc, repo = self._svc(repo_cls, _atomic)
+        svc.aggiorna_offerta(1, {"generazione_canone": "fine_periodo", "mese_partenza_canone": "2"})
+        repo.update_offerta.assert_called_once_with(
+            1, {"generazione_canone": "FINE_PERIODO", "mese_partenza_canone": 2},
+        )
+
+    # 69. `null` si omette (NOT NULL col default): prima arrivava NULL al DB.
+    #     Senza altri campi la PATCH non ha niente da scrivere: 400.
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_aggiorna_offerta_campi_canone_null_omessi(self, repo_cls, _atomic):
+        svc, repo = self._svc(repo_cls, _atomic)
+        svc.aggiorna_offerta(1, {"generazione_canone": None, "meta": {"nota": "x"}})
+        repo.update_offerta.assert_called_once_with(1, {"meta": {"nota": "x"}})
+        with self.assertRaises(ServiceError):
+            svc.aggiorna_offerta(1, {"mese_partenza_canone": None})

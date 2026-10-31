@@ -2867,6 +2867,86 @@ class ContrattiFatturazioneImmediataTests(TestCase):
             ContrattiService().update_contratto(1, {"fatturazione_immediata": "false"})
 
 
+@_SENZA_CONTATORI_DB
+class ContrattiCampiCanoneTests(TestCase):
+    """I due campi del canone sulla testata (D-5 di brief-db-contratto-righe-
+    periodiche-in-commessa §7.4): `generazione_canone` e `mese_partenza_canone`.
+
+    Fino a `20261031-28` la madre li scartava, e l'app li leggeva soltanto.
+    Stesso rischio di `fatturazione_immediata`: i mapper copiano campo per
+    campo, quindi qui si prova l'anello di mezzo, in creazione e in modifica.
+    """
+
+    def _repo(self, repo_cls):
+        repo = repo_cls.return_value
+        repo.create_contratto_atomico.return_value = 7
+        repo.update_contratto.return_value = True
+        repo.get_contratto.return_value = _testata_default()
+        repo.get_utility.return_value = None
+        repo.list_righe.return_value = []
+        return repo
+
+    _BASE = {
+        "billing_account_id": 1,
+        "istanza_utility_id": 2,
+        "utility_id": 3,
+        "valido_dal": "2026-01-01",
+    }
+
+    # 1) CREATE: i due valori arrivano alla fn madre, il codice in maiuscolo.
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_create_porta_i_due_campi_alla_fn_madre(self, repo_cls):
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = self._repo(repo_cls)
+        ContrattiService().create_contratto({
+            **self._BASE,
+            "generazione_canone": "fine_periodo",
+            "mese_partenza_canone": 2,
+        })
+        testata = repo.create_contratto_atomico.call_args.kwargs["testata"]
+        self.assertEqual(testata["generazione_canone"], "FINE_PERIODO")
+        self.assertEqual(testata["mese_partenza_canone"], 2)
+
+    # 2) CREATE con `null` (o senza): si omettono, decide il default del DB —
+    #    le colonne sono NOT NULL e la madre filtra sulla PRESENZA della chiave.
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_create_nulli_omessi(self, repo_cls):
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = self._repo(repo_cls)
+        ContrattiService().create_contratto({
+            **self._BASE,
+            "generazione_canone": None,
+            "mese_partenza_canone": None,
+        })
+        testata = repo.create_contratto_atomico.call_args.kwargs["testata"]
+        self.assertNotIn("generazione_canone", testata)
+        self.assertNotIn("mese_partenza_canone", testata)
+
+    # 3) PATCH: i due valori raggiungono il repository.
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_patch_persiste_i_due_campi(self, repo_cls):
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = self._repo(repo_cls)
+        ContrattiService().update_contratto(
+            1, {"generazione_canone": "INIZIO_PERIODO", "mese_partenza_canone": "7"},
+        )
+        data = repo.update_contratto.call_args.args[1]
+        self.assertEqual(data["generazione_canone"], "INIZIO_PERIODO")
+        self.assertEqual(data["mese_partenza_canone"], 7)
+
+    # 4) Il mese non intero → 400 sul campo. Il dominio (1..12) lo dice il CHECK.
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_mese_non_intero_rifiutato(self, repo_cls):
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        self._repo(repo_cls)
+        with self.assertRaises(ServiceError):
+            ContrattiService().update_contratto(1, {"mese_partenza_canone": "febbraio"})
+
+
 class ContrattiWhitelistCreateAllineataAlDbTests(TestCase):
     """Guardrail §6a: la whitelist BE della create combacia con quella della fn madre.
 
@@ -3039,6 +3119,9 @@ class ContrattiCatenaUpdateTests(TestCase):
         "codice_cig": "1234567890ABCDE",
         "codice_cup": "H51B09000000001",
         "codice_commessa": "CONV-2026/17",
+        # Come si addebitano i canoni (D-5): un valore diverso dal default.
+        "generazione_canone": "FINE_PERIODO",
+        "mese_partenza_canone": 2,
         "meta": {"nota": "guardrail"},
     }
 

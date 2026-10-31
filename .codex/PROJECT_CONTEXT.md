@@ -420,8 +420,9 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   `9f3a16904`. Giro del §7 (2026-10-31): `20261031-28` … `-43` applicati e verdi (il kit sul
   listino `vendite.listini_kit`, componenti del kit dal listino, controllo all'attivazione, lookup e
   anteprima della periodicità); L17 `-44` … `-48` (la nota di credito dal segno, §7.9) e `-49` … `-52`
-  (la quota fissa non perde la periodicità fuori dalla bozza, §7.10) applicati e verdi. Restano: BE/FE
-  passo 3 (§7.7, §7.9, §7.10), L18 documentazione, poi il passo 4 DB.
+  (la quota fissa non perde la periodicità fuori dalla bozza, §7.10) applicati e verdi. BE/FE passo 3
+  fatto il 2026-10-31 (§7.11, da committare). Restano: L18 documentazione, la colonna della periodicità
+  nella lista 37 e il passo 4 DB.
 - 📝 **Dove si addebita il trasporto di un ordine fatturato alla conferma**
   (`work-in-progress/brief-db-addebito-trasporto-ordine.md`, da A-9 del brief sopra): aperto, non iniziato.
 - ✅ **Codici d'errore per email, «accesso riservato» e «non trovato» del dettaglio ricerca: chiuso il 2026-10-10**

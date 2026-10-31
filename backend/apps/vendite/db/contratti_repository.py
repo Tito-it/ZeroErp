@@ -664,6 +664,27 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
             assert row is not None
             return int(row[0])
 
+    # Scopo: I componenti di un kit sulla versione di listino del contratto,
+    #        alla data, nella forma che l'espansore legge dalle
+    #        `*_righe_componenti` (`vendite.fn_contratto_kit_componenti`, D-2
+    #        (c)): per il kit che il contratto non negozia, la quota fissa del
+    #        listino e l'ADESIONE. Il prezzo lo dice il resolver del DB.
+    #        Il contratto si nomina col suo `uid`, la sorgente della riga.
+    def list_componenti_kit_dal_listino(
+        self, *, contratto_uid: str, articolo_padre_id: Any, data: date,
+    ) -> list[dict[str, Any]]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT k.*
+                  FROM vendite.contratti c
+                 CROSS JOIN LATERAL vendite.fn_contratto_kit_componenti(c.id, %s::uuid, %s) k
+                 WHERE c.uid = %s::uuid
+                """,
+                [str(articolo_padre_id), data, str(contratto_uid)],
+            )
+            return rows_to_list(cursor)
+
     # Scopo: Aggiorna una testata contratto. `numero` immutabile (trigger
     #        lock_columns). Lo stato non passa da qui: lo scrivono i verbi
     #        (`cambia_stato`, `cessa`, `annulla`).
@@ -701,6 +722,10 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
         "codice_cig",
         "codice_cup",
         "codice_commessa",
+        # Come si addebitano i canoni (D-5): fuori bozza li ferma il lock di
+        # testata (`E_DOC_CONDIZIONI_FUORI_BOZZA`).
+        "generazione_canone",
+        "mese_partenza_canone",
         "meta",
     })
 

@@ -44,6 +44,7 @@ from apps.vendite.services.listini_service import (
     fn_preview_bundle,
     fn_programma_chiusura_versione,
     fn_save_bundle,
+    fn_save_kit_periodicita,
     fn_update_listino,
     fn_update_riga,
     fn_update_versione,
@@ -647,13 +648,15 @@ class ApiListiniTipologiePerUtility(DomainAPIView):
 
 
 class ApiListinoVersioneBundleDetail(DomainAPIView):
-    """GET / POST `/api/v1/vendite/listini/<lid>/versioni/<vid>/bundle/<padre_id>/`
+    """GET / POST / PUT / DELETE `/api/v1/vendite/listini/<lid>/versioni/<vid>/bundle/<padre_id>/`
 
     GET: preview BoM del padre composito + prezzi bundle gia' definiti
          per quella versione (per popolare il Dialog di editing).
     POST: upsert batch dei prezzi bundle (strategia tabula rasa
          idempotente: soft-disattiva le righe correnti + inserisce le
          nuove). Solo versione BOZZA editabile.
+    PUT: la periodicita' del kit sulla versione (`vendite.listini_kit`).
+    DELETE: i prezzi bundle e il kit.
     """
 
     area_funzionale = "vendite"
@@ -710,6 +713,40 @@ class ApiListinoVersioneBundleDetail(DomainAPIView):
             return fn_save_bundle(listino_id, ver_id, padre_id, payload.get("rows"))
 
         return handle_post_json(request, handler=_handler)
+
+    @extend_schema(
+        request=inline_serializer(
+            name="VenditeListinoVersioneKitPeriodicitaRequest",
+            fields={
+                "periodicita": serializers.CharField(
+                    allow_null=True,
+                    help_text=(
+                        "Codice di `config.periodicita`; null la toglie. Solo in "
+                        "bozza, solo su un composito."
+                    ),
+                ),
+            },
+        ),
+        responses={200: inline_serializer(
+            name="VenditeListinoVersioneKitPeriodicitaResponse",
+            fields={"data": inline_serializer(
+                name="VenditeListinoVersioneKitPeriodicitaData",
+                fields={
+                    "articolo_padre_id": serializers.UUIDField(),
+                    "periodicita": serializers.CharField(allow_null=True),
+                },
+            )},
+        )},
+    )
+    # Scopo: La periodicita' del kit sulla versione (`vendite.listini_kit`,
+    #        D-2-bis (B) di brief-db-contratto-righe-periodiche-in-commessa):
+    #        il kit non ha una riga di listino, il suo ritmo sta qui.
+    def put(
+        self, request: Request, listino_id: int, ver_id: int, padre_id: str,
+    ) -> JsonResponse:
+        return success_response(
+            fn_save_kit_periodicita(listino_id, ver_id, padre_id, corpo_oggetto(request))
+        )
 
     @extend_schema(
         responses={200: inline_serializer(

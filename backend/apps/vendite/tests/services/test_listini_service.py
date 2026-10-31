@@ -1194,10 +1194,12 @@ class FnDeleteBundleTests(TestCase):
     riusando tutti i guard esistenti (BOZZA, listino/versione esistenti).
     """
 
-    # Scopo: fn_delete_bundle e' un thin wrapper di fn_save_bundle(rows=[]).
-    # Verifica che il payload passato sia effettivamente lista vuota.
+    # Scopo: fn_delete_bundle delega i prezzi a fn_save_bundle(rows=[]) e
+    # toglie il kit dalla versione (`vendite.listini_kit`, D-2-bis (B)): senza
+    # prezzi, un kit con la sua periodicita' resterebbe sul listino.
+    @patch("apps.vendite.services.listini_service.ListiniRepository")
     @patch("apps.vendite.services.listini_service.fn_save_bundle")
-    def test_fn_delete_bundle_delega_a_save_bundle_con_rows_vuota(self, mock_save):
+    def test_fn_delete_bundle_delega_a_save_bundle_con_rows_vuota(self, mock_save, repo_cls):
         from apps.vendite.services.listini_service import fn_delete_bundle
 
         mock_save.return_value = {"disattivati": 3, "inseriti": 0}
@@ -1206,11 +1208,15 @@ class FnDeleteBundleTests(TestCase):
 
         self.assertEqual(result, {"disattivati": 3, "inseriti": 0})
         mock_save.assert_called_once_with(10, 101, "abc-uuid", rows=[])
+        repo_cls.return_value.elimina_kit.assert_called_once_with(
+            versione_id=101, articolo_padre_id="abc-uuid",
+        )
 
     # Scopo: idempotenza — composito senza prezzi bundle ritorna 0 disattivati,
     # nessuna eccezione. Pattern DELETE coerente.
+    @patch("apps.vendite.services.listini_service.ListiniRepository")
     @patch("apps.vendite.services.listini_service.fn_save_bundle")
-    def test_fn_delete_bundle_idempotente_zero_disattivati(self, mock_save):
+    def test_fn_delete_bundle_idempotente_zero_disattivati(self, mock_save, _repo_cls):
         from apps.vendite.services.listini_service import fn_delete_bundle
 
         mock_save.return_value = {"disattivati": 0, "inseriti": 0}
