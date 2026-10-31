@@ -32,7 +32,7 @@ import LineageFrontieraChip from '../../_shared/lineage/LineageFrontieraChip.vue
 import ExportDialog from '../../../core/components/ExportDialog.vue'
 import FiltroToggle from '../../../core/components/FiltroToggle.vue'
 import PdfDocumentiSorgenteDialog from '../../../documenti/components/PdfDocumentiSorgenteDialog.vue'
-import PreventivoNoteDrawer from '../../components/PreventivoNoteDrawer.vue'
+import VenditeNoteDrawer from '../../_shared/note/VenditeNoteDrawer.vue'
 import { useInjectBlocked } from '../../../core/composables/useReadonlyMode'
 import FiltroPeriodo from '../../../core/components/FiltroPeriodo.vue'
 import FiltriLista from '../../../core/components/FiltriLista.vue'
@@ -228,10 +228,12 @@ onMounted(() => store.fetchList())
         : ''"
     />
 
-    <PreventivoNoteDrawer
+    <VenditeNoteDrawer
       v-if="noteDrawerPreventivo?.id"
       v-model:visible="noteDrawerVisible"
-      :preventivo-id="noteDrawerPreventivo.id"
+      dominio="preventivi"
+      :id="noteDrawerPreventivo.id"
+      :emittente-fiscale-id="noteDrawerPreventivo.emittente_fiscale_id ?? null"
     />
   </div>
 </template>

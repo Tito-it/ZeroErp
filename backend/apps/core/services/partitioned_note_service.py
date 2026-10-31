@@ -18,11 +18,13 @@ from django.db import IntegrityError, connection, transaction
 
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.db.partitioned_note_repository import (
+    NOTE_ORDER_COLUMNS,
     ANCHOR_TIPI_AMMESSI,
     POSIZIONI_AMMESSE,
     PartitionedNoteRepository,
 )
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.list_helpers import validate_order_params
 from apps.core.services.parameter_service import ParameterService
 from apps.core.services.payload_helpers import (
     PayloadValidator,
@@ -259,17 +261,28 @@ class PartitionedNoteService:
         target_id: int,
         target_riga_id: int | None = None,
         include_invisible: bool = True,
+        search: str | None = None,
+        order_by: str | None = None,
+        order_dir: str | None = None,
         limit: int = DEFAULT_LIMIT,
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
         self._validator.guard_positive_int(target_id, field="target_id")
         if target_riga_id is not None:
             self._validator.guard_positive_int(target_riga_id, field="target_riga_id")
+        # La pagina della lista `<schema>.note` (dal 2026-10-31): l'ordinamento
+        # dalla whitelist comune delle note (`ordine_note_valido`).
+        order_by, order_dir = ordine_note_valido(
+            order_by, order_dir, function_name="core.partitioned_note_service.list_note",
+        )
         self._ensure_parent_exists(target_id)
         return self._repo.list(
             target_id,
             target_riga_id=target_riga_id,
             include_invisible=include_invisible,
+            search=search,
+            order_by=order_by,
+            order_dir=order_dir,
             limit=min(MAX_LIMIT, max(1, limit)),
             offset=max(0, offset),
         )
@@ -659,3 +672,25 @@ def contatori_documento(repo: PartitionedNoteRepository, target_id: int) -> dict
     return {
         "note": PartitionedNoteService(repo=repo).count_per_target(target_id=target_id),
     }
+
+
+# Scopo: L'ordinamento chiesto a una lista di note `<schema>.note`, validato
+#        sulla whitelist COMUNE `NOTE_ORDER_COLUMNS` (quella con cui ordina
+#        `pagina_note`): `vendite.note` (`list_note`, sotto) e `catalogo.note`
+#        (`catalogo_service._lista_note`) dicevano la stessa regola in due copie
+#        (regola del 2, 2026-10-31). Ritorna la coppia normalizzata.
+# ⭐ Senza colonna non si valida qui: l'ordine lo decide il default di
+#    `pagina_note`, e una direzione estranea la rifiuta comunque
+#    `sql_order_clause` (400 `E_VALIDATION_INPUT`, lo stesso codice).
+def ordine_note_valido(
+    order_by: str | None, order_dir: str | None, *, function_name: str,
+) -> tuple[str | None, str | None]:
+    if not order_by:
+        return order_by, order_dir
+    return validate_order_params(
+        order_by, order_dir,
+        allowed_columns=frozenset(NOTE_ORDER_COLUMNS),
+        error_code="E_VALIDATION_INPUT",
+        nullable=True,
+        function_name=function_name,
+    )

@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2025 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: Test service edizioni workflow (Fase 2 Slice 1a): lista + drift
-#        annidato. Mock repository, nessun DB reale.
+# Scopo: Test service edizioni workflow (Fase 2 Slice 1a): la pagina della
+#        lista (drift piatto) e il dettaglio (drift annidato). Mock repository, nessun DB reale.
 # ------------------------------------------------------------
 from unittest.mock import patch
 
@@ -17,48 +17,30 @@ _SVC = "apps.pratiche.services.definizioni_service"
 
 
 class DefinizioniServiceTests(SimpleTestCase):
-    # Scopo: il service annida i campi drift in `drift` e li rimuove dal livello
-    # superiore; passa i filtri al repository.
+    # Scopo: la lista e' una pagina (lista `pratiche.definizioni_workflow`, dal
+    # 2026-10-31): filtri, ricerca, pagina e ordinamento arrivano al repository,
+    # e il drift resta PIATTO (`versioni_indietro` e' il `campo_sorgente` del
+    # catalogo). Senza `order_by` decide il default del repository.
     @patch(f"{_SVC}.DefinizioniRepository")
-    def test_list_definizioni_annida_drift(self, MockRepo):
-        MockRepo.return_value.list_definizioni.return_value = [
-            {
-                "id": 7, "tipo_prestazione_id": 9004, "stato": "PUBBLICATA",
-                "emittente_fiscale_id": None,
-                "versioni_indietro": None, "preset_corrente_id": None,
-                "versione_preset_corrente": None,
-            },
-        ]
-        rows = definizioni_service.list_definizioni(tipo_prestazione_id=9004)
-        self.assertEqual(len(rows), 1)
-        row = rows[0]
-        self.assertEqual(row["drift"], {
-            "versioni_indietro": None,
-            "preset_corrente_id": None,
-            "versione_preset_corrente": None,
-        })
-        # I campi drift non restano sparsi al livello superiore.
-        self.assertNotIn("versioni_indietro", row)
+    def test_list_definizioni_pagina_e_drift_piatto(self, MockRepo):
+        riga = {"id": 12, "tipo_prestazione_id": 9004, "versioni_indietro": 2}
+        MockRepo.return_value.list_definizioni.return_value = ([riga], 1)
+        rows, total = definizioni_service.list_definizioni(
+            tipo_prestazione_id=9004, search="gas", limit=10, offset=0,
+        )
+        self.assertEqual((rows, total), ([riga], 1))
+        self.assertNotIn("drift", rows[0])
         MockRepo.return_value.list_definizioni.assert_called_once_with(
-            tipo_prestazione_id=9004, emittente_fiscale_id=None,
+            tipo_prestazione_id=9004, emittente_fiscale_id=None, search="gas",
+            order_by=None, order_dir=None, limit=10, offset=0,
         )
 
-    # Scopo: drift valorizzato (edizione forkata) → annidato correttamente.
+    # Scopo: un `order_by` fuori whitelist e' un 400, prima del repository.
     @patch(f"{_SVC}.DefinizioniRepository")
-    def test_list_definizioni_drift_valorizzato(self, MockRepo):
-        MockRepo.return_value.list_definizioni.return_value = [
-            {
-                "id": 12, "tipo_prestazione_id": 9004, "stato": "PUBBLICATA",
-                "emittente_fiscale_id": 155,
-                "versioni_indietro": 2, "preset_corrente_id": 7,
-                "versione_preset_corrente": 3,
-            },
-        ]
-        rows = definizioni_service.list_definizioni(
-            tipo_prestazione_id=9004, emittente_fiscale_id=155,
-        )
-        self.assertEqual(rows[0]["drift"]["versioni_indietro"], 2)
-        self.assertEqual(rows[0]["drift"]["preset_corrente_id"], 7)
+    def test_list_definizioni_ordine_fuori_whitelist(self, MockRepo):
+        with self.assertRaises(ServiceError):
+            definizioni_service.list_definizioni(order_by="id", limit=10, offset=0)
+        MockRepo.return_value.list_definizioni.assert_not_called()
 
     # --- Dettaglio editing (Slice 2 anello 1) ---
 

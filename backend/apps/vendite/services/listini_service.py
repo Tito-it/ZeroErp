@@ -17,7 +17,7 @@ from django.db import DatabaseError, IntegrityError, transaction
 from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.services.error_manager import ErrorManager
-from apps.core.services.list_helpers import collezione_completa, validate_order_params
+from apps.core.services.list_helpers import validate_order_params
 from apps.core.services.payload_helpers import (
     MISSING as _MISSING,
     MissingType as _MissingType,
@@ -34,11 +34,13 @@ from apps.vendite.db.listini_repository import (
     STATO_VERSIONE_ATTIVA,
     VERSIONE_CREATE_COLUMNS,
     VERSIONE_UPDATE_COLUMNS,
+    VERSIONI_ORDER_COLUMNS,
     ListiniRepository,
 )
 
 _ORDER_BY_VALIDI: frozenset[str] = frozenset(LISTINI_ORDER_COLUMNS.keys())
 _RIGHE_ORDER_BY_VALIDI: frozenset[str] = frozenset(RIGHE_ORDER_COLUMNS.keys())
+_VERSIONI_ORDER_BY_VALIDI: frozenset[str] = frozenset(VERSIONI_ORDER_COLUMNS.keys())
 _LISTINO_NULLABLE_FIELDS: frozenset[str] = frozenset({"meta"})
 _VERSIONE_NULLABLE_FIELDS: frozenset[str] = frozenset({"valido_al", "meta"})
 _RIGA_NULLABLE_FIELDS: frozenset[str] = frozenset(
@@ -939,6 +941,7 @@ def fn_list_listini(
     utility_id: int | None = None,
     tipologia_id: int | None = None,
     attivo: bool | None = None,
+    in_scadenza: bool | None = None,
     search: str | None = None,
     order_by: str = "codice",
     order_dir: str | None = "asc",
@@ -977,6 +980,7 @@ def fn_list_listini(
         order_dir=order_dir,
         limit=limit,
         offset=offset,
+        in_scadenza=in_scadenza,
     )
 
 
@@ -1092,12 +1096,37 @@ def fn_delete_listino(listino_id: int) -> dict[str, Any]:
     return {"deleted": True, "id": listino_id}
 
 
-# Scopo: Restituisce la lista versioni del listino con envelope uniforme.
-def fn_list_versioni(listino_id: int) -> dict[str, Any]:
+# Scopo: La pagina delle versioni del listino (lista `vendite.listini_versioni`),
+#        con ricerca e ordinamento validato sulla whitelist del repository.
+#        404 se il listino non c'e' (o non si vede).
+def fn_list_versioni(
+    listino_id: int,
+    *,
+    search: str | None = None,
+    order_by: str = "valido_dal",
+    order_dir: str | None = None,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
+) -> tuple[list[dict[str, Any]], int]:
     function_name = "vendite.listini_service.fn_list_versioni"
     _get_listino_or_raise(listino_id, function_name=function_name)
+    order_by, order_dir = validate_order_params(
+        order_by,
+        order_dir,
+        allowed_columns=_VERSIONI_ORDER_BY_VALIDI,
+        error_code="E_VENDITE_VALIDATION",
+        nullable=True,
+        function_name=function_name,
+    )
     repository = ListiniRepository()
-    return collezione_completa(repository.list_versioni(listino_id))
+    return repository.list_versioni_pagina(
+        listino_id,
+        search=search,
+        order_by=order_by,
+        order_dir=order_dir,
+        limit=limit,
+        offset=offset,
+    )
 
 
 # Scopo: Restituisce il dettaglio singolo di una versione del listino.
@@ -1486,32 +1515,6 @@ def fn_delete_riga(listino_id: int, versione_id: int, riga_id: int) -> dict[str,
         log_to_db=False,
     )
     return {"deleted": True, "id": riga_id}
-
-
-# --- N2: Alert scadenze versioni ---
-
-_ALERT_GIORNI_DEFAULT = 15
-_ALERT_GIORNI_MIN = 1
-_ALERT_GIORNI_MAX = 365
-
-
-# Scopo: Restituisce lista versioni ATTIVE in scadenza entro N giorni senza successore.
-def fn_alert_scadenze(giorni: int | None = None) -> dict[str, Any]:
-    function_name = "vendite.listini_service.fn_alert_scadenze"
-    if giorni is None:
-        giorni = _ALERT_GIORNI_DEFAULT
-    ErrorManager.require(
-        _ALERT_GIORNI_MIN <= giorni <= _ALERT_GIORNI_MAX,
-        code="E_VENDITE_VALIDATION",
-        message="Parametro giorni non valido.",
-        detail=f"giorni deve essere tra {_ALERT_GIORNI_MIN} e {_ALERT_GIORNI_MAX}.",
-        context={"giorni": giorni},
-        function_name=function_name,
-        log_to_db=False,
-    )
-    repository = ListiniRepository()
-    results = repository.listini_in_scadenza(giorni)
-    return {"results": results, "count": len(results), "giorni": giorni}
 
 
 # --- N6: Rettifica controllata su riga ATTIVA non propagata ---

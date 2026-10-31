@@ -6,7 +6,6 @@ from apps.vendite.api.views_form_defaults import (
     ApiListinoVersioneNewDefaults,
 )
 from apps.vendite.api.views_listini import (
-    ApiListiniAlertScadenze,
     ApiListiniTipologiePerUtility,
     ApiListinoDetail,
     ApiListinoVersioneApplicaVariazione,
@@ -26,7 +25,6 @@ from apps.vendite.api.views_listini import (
 # non usa piu' `listini_associazioni`; il test resolver e' coperto da
 # pricing_service.resolve_prezzo su `fn_resolve_prezzo_listino_v2`).
 urlpatterns = [
-    path("alert-scadenze/", ApiListiniAlertScadenze.as_view(), name="vendite-listini-alert-scadenze"),
     path("tipologie-per-utility/", ApiListiniTipologiePerUtility.as_view(), name="vendite-listini-tipologie-per-utility"),
     path("<int:listino_id>/versioni/<int:ver_id>/righe/<int:riga_id>/rettifica-controllata/", ApiListinoVersioneRigaRettificaControllata.as_view(), name="vendite-listino-versione-riga-rettifica-controllata"),
     path("<int:listino_id>/versioni/<int:ver_id>/righe/<int:riga_id>/", ApiListinoVersioneRigaDetail.as_view(), name="vendite-listino-versione-riga-detail"),

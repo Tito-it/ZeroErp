@@ -106,7 +106,7 @@ class VersioneListinoModelloDbTests(unittest.TestCase):
         )
 
     def _riga(self, versione_id: int) -> dict[str, Any]:
-        righe = {r["id"]: r for r in fn_list_versioni(self.listino_id)["results"]}
+        righe = {r["id"]: r for r in fn_list_versioni(self.listino_id)[0]}
         return righe[versione_id]
 
     def _con_un_prezzo(self, versione_id: int) -> None:
@@ -205,21 +205,26 @@ class VersioneListinoModelloDbTests(unittest.TestCase):
         self.assertEqual(errore.code, "E_LISTINO_VERSIONE_FINE_SOLO_DAL_VERBO")
         self.assertIsNone(self._riga(self.v1)["valido_al"])
 
+    # Scopo: le versioni del listino che la regola del DB dice in scadenza
+    #        (`giorni_alla_scadenza` della lista versioni, dal 2026-10-31).
+    def _in_scadenza(self) -> set[int]:
+        versioni, _ = self.repo.list_versioni_pagina(self.listino_id)
+        return {v["id"] for v in versioni if v["giorni_alla_scadenza"] is not None}
+
     # 6. Le scadenze: V1 in vigore oggi che scade fra 10 giorni compare; con
-    #    una BOZZA che le subentra (lo stato letto dal vocabolario) no.
+    #    una BOZZA che le subentra (lo stato letto dal vocabolario) no. Fra 10
+    #    giorni: dentro il preavviso del seed (15).
     def test_le_scadenze_leggono_il_vocabolario(self) -> None:
         fn_programma_chiusura_versione(
             self.listino_id, self.v1, {"valido_al": (self.oggi + timedelta(days=10)).isoformat()},
         )
         fn_delete_versione(self.listino_id, self.v2)
-        scadenze = {r["versione_id"] for r in self.repo.listini_in_scadenza(30)}
-        self.assertIn(self.v1, scadenze)
+        self.assertIn(self.v1, self._in_scadenza())
         self.repo.create_versione(
             self.listino_id,
             {"codice_versione": "SUCC", "valido_dal": self.oggi + timedelta(days=11)},
         )
-        scadenze = {r["versione_id"] for r in self.repo.listini_in_scadenza(30)}
-        self.assertNotIn(self.v1, scadenze)
+        self.assertNotIn(self.v1, self._in_scadenza())
 
     # 7. «Elimina» e «Chiudi» si spengono dalla superficie del DB col primo
     #    motivo della loro `fn_check` (§16.13 BE-E3, §16.16 BE-C3).
@@ -242,7 +247,7 @@ class VersioneListinoModelloDbTests(unittest.TestCase):
         self._con_un_prezzo(self.v2)
         out = fn_delete_versione(self.listino_id, self.v2)
         self.assertEqual((out["deleted"], out["righe_eliminate"], out["componenti_eliminati"]), (True, 1, 0))
-        self.assertNotIn(self.v2, {r["id"] for r in fn_list_versioni(self.listino_id)["results"]})
+        self.assertNotIn(self.v2, {r["id"] for r in fn_list_versioni(self.listino_id)[0]})
         errore = self._rifiuto(lambda: fn_delete_versione(self.listino_id, self.v2))
         self.assertEqual(errore.code, "E_VENDITE_LISTINO_VERSIONE_NOT_FOUND")
 

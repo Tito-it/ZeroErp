@@ -61,9 +61,10 @@ Le API richiedono JWT (`Authorization: Bearer <token>`) e usano l'envelope stand
 | `utility_id` | int | No | Filtro per utility (FK `config.utilities`) |
 | `tipologia_id` | int | No | Filtro per tipologia listino (FK `config.listini_tipologie`) |
 | `attivo` | bool | No | Filtro attivo/disattivo; parsing rigoroso |
+| `in_scadenza` | bool | No | `true` = solo i listini con la versione in vigore **in scadenza senza successore**, `false` = gli altri; parsing rigoroso. La regola è del DB (§7). È il filtro del badge delle scadenze |
 | `limit` | int | No | Righe per pagina, default `25`, max `200`; fuori da 1..200 → 400 `E_VALIDATION_INPUT` |
 | `offset` | int | No | Scostamento, default `0` (negativo → 400); la `page` della risposta si ricava da qui |
-| `order_by` | string | No | `codice` (default), `descrizione`, `utility_descrizione`, `tipologia_descrizione`, `attivo`, `data_insert`, `data_update` |
+| `order_by` | string | No | `codice` (default), `descrizione`, `utility_descrizione`, `tipologia_descrizione`, `attivo`, `data_insert`, `data_update`, `giorni_alla_scadenza` |
 | `order_dir` | string | No | `asc` oppure `desc` |
 
 `utility_id` e `tipologia_id`: stringa vuota equivale a parametro assente;
@@ -92,7 +93,8 @@ Permesso modello `("vendite", "listino")` su tutte le rotte di questa pagina.
         "tipologia_codice": "CONSUMO",
         "tipologia_descrizione": "Consumi",
         "attivo": true,
-        "versioni_count": 2
+        "versioni_count": 2,
+        "giorni_alla_scadenza": null
       }
     ]
   }
@@ -315,9 +317,18 @@ righe della matrice attive (`listini_tipologie_utilities.attivo = true`).
 | **Metodo** | `GET` |
 | **URL** | `/api/v1/vendite/listini/{listino_id}/versioni/` |
 
-Restituisce `{ "count": <n>, "results": [ ... ] }` (collezione completa, non
-paginata): per ogni versione i dati principali e `righe_count`. La stessa forma
-ha il dettaglio (§3.3).
+La pagina della lista `vendite.listini_versioni` (il tab «Versioni» del drawer
+listino): stessa busta paginata del §1.1. Per ogni versione i dati principali,
+`righe_count` e `giorni_alla_scadenza` (§7). Il dettaglio (§3.3) ha gli stessi
+campi tranne `giorni_alla_scadenza`. ⚠️ Fino al 2026-10-31 era la collezione
+completa `{count, results}`, senza pagina.
+
+| Parametro | Tipo | Obbligatorio | Descrizione |
+|---|---|---|---|
+| `search` | string | No | Ricerca libera sulle colonne che il catalogo accende (`codice_versione`); sotto 3 caratteri si ignora |
+| `limit` · `offset` | int | No | Come §1.1 |
+| `order_by` | string | No | `valido_dal` (default, DESC), `valido_al`, `codice_versione`, `righe_count`, `stato`, `giorni_alla_scadenza`. Le date senza direzione si ordinano DESC |
+| `order_dir` | string | No | `asc` oppure `desc` |
 
 Campi dal modello del documento (giro 12, brief-modello-documento-vendita §16,
 2026-10-28):
@@ -851,62 +862,32 @@ oppure dal contratto del billing account. E' lo STADIO 1/2 di
   (contratto, matrice categoria → listino, versioni, righe) e risponde senza
   sollevare. E' quello che usa `TestResolverDialog.vue`.
 
-## 7. Alert scadenze versioni (N2)
+## 7. Scadenze delle versioni (N2)
 
-| | |
-|---|---|
-| **Metodo** | `GET` |
-| **URL** | `/api/v1/vendite/listini/alert-scadenze/` |
+⭐ **Dal 2026-10-31 la regola «in scadenza senza successore» è del DB**:
+`vendite.fn_listini_in_scadenza_senza_successore()` (20261031-27,
+brief-db-liste-datatable-grezze-secondo-giro §7.2), una riga per versione in
+vigore che scade entro N giorni senza un successore, coi giorni rimanenti. N è
+il parametro `LISTINI_SCADENZA_PREAVVISO_GIORNI` (15 dal seed, con override):
+**non si passa più dal client**.
 
-Restituisce le versioni ATTIVE in scadenza entro N giorni che non hanno una versione
-successiva (ATTIVA o BOZZA) con `valido_dal > valido_al`. Serve per monitorare
-listini a rischio "buco di copertura" in produzione.
+La leggono, con una `LEFT JOIN` per query:
 
-### Query param
+- la lista listini (§1.1): campo `giorni_alla_scadenza` (`null` = non in
+  scadenza) e filtro `in_scadenza`;
+- la lista versioni (§3.1): lo stesso campo, sulla versione.
 
-| Parametro | Tipo | Obbligatorio | Descrizione |
-|---|---|---|---|
-| `giorni` | int | No | Anticipo in giorni, default `15`, range 1-365 |
+Il badge del frontend (`AlertScadenzeWidget.vue`) conta i listini con
+`in_scadenza=true` (§1.1, `limit=1`, il totale della busta) e al clic filtra
+la lista.
 
-### Risposta (200)
-
-```json
-{
-  "data": {
-    "results": [
-      {
-        "listino_id": 10,
-        "listino_codice": "LIST-UTILITY",
-        "listino_descrizione": "Listino Utility Base",
-        "utility_id": 1,
-        "utility_descrizione": "Energia Elettrica",
-        "versione_id": 101,
-        "codice_versione": "V001",
-        "valido_dal": "2026-01-01",
-        "valido_al": "2026-04-30",
-        "giorni_rimanenti": 8
-      }
-    ],
-    "count": 1,
-    "giorni": 15
-  }
-}
-```
-
-### Regole specifiche
-
-- Filtro temporale isolato nel repository (`_filter_versioni_in_scadenza`) per facilitare
-  futura migrazione a `daterange` nativo PostgreSQL (N1).
-- Solo versioni operative oggi (`validita @> fn_data_operativa()`); `giorni`
-  fuori 1-365 o non intero → `400`.
-- `valido_al` è l'ultimo giorno di validità (incluso) e `giorni_rimanenti` si
-  conta da lì; una versione con un successore — BOZZA, o operativa dopo la
-  scadenza — **anche contiguo** (`valido_dal = valido_al + 1`) non è in alert.
-  ⚠️ Fino al 2026-10-21 la query leggeva `upper(validita)` (che per un intervallo
-  chiuso è `valido_al + 1`): scadenza e giorni uscivano con un giorno in più, e il
-  successore contiguo non contava (presidio sul DB vero:
-  `vendite/tests/db/test_listini_in_scadenza_db.py`).
-- Frontend: widget `AlertScadenzeWidget.vue` con badge nella toolbar listini.
+⛔ **Ritirato il 2026-10-31** l'endpoint `GET /api/v1/vendite/listini/alert-scadenze/`
+(parametro `giorni`, default 15, range 1-365), insieme alla query del
+repository che scriveva la regola in Python (`listini_in_scadenza`,
+`_filter_versioni_in_scadenza`). La regola è passata al DB riga per riga; il
+caso del successore contiguo (`valido_dal = valido_al + 1`), che fino al
+2026-10-21 la query sbagliava, resta presidiato sul DB vero da
+`vendite/tests/db/test_listini_in_scadenza_db.py` attraverso le due liste.
 
 ---
 

@@ -189,25 +189,27 @@ class ParameterServiceTests(TestCase):
                 "resolved_value": "5",
             },
         ]
-        self._mock_repo.list_for_user.return_value = mock_data
+        self._mock_repo.list_for_user.return_value = (mock_data, 1)
         result = self.svc.list_parameters_for_user(
             django_user_id=1, group_ids=[2], emittente_fiscale_id=3,
         )
-        self.assertEqual(result, mock_data)
+        self.assertEqual(result, (mock_data, 1))
         self._mock_repo.list_for_user.assert_called_once_with(
             1, [2], 3, categoria_cliente_id=None,
+            search=None, order_by=None, order_dir=None, limit=25, offset=0,
         )
 
     # Scopo: Verifica che list_parameters_for_user propaghi categoria_cliente_id
     #        al repository (post brief DB 2026-05-19, migration 20260519-01).
     def test_list_parameters_for_user_propaga_categoria(self):
-        self._mock_repo.list_for_user.return_value = []
+        self._mock_repo.list_for_user.return_value = ([], 0)
         self.svc.list_parameters_for_user(
             django_user_id=1, group_ids=[2], emittente_fiscale_id=3,
             categoria_cliente_id=12,
         )
         self._mock_repo.list_for_user.assert_called_once_with(
             1, [2], 3, categoria_cliente_id=12,
+            search=None, order_by=None, order_dir=None, limit=25, offset=0,
         )
 
     # Scopo: Verifica che upsert_user_override chiami il repository e restituisca l'ID.

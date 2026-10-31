@@ -38,6 +38,7 @@ from apps.catalogo.services.catalogo_service import (
     fn_list_articoli,
     fn_list_note_articolo,
     fn_list_uom_operative,
+    fn_list_uom_operative_pagina,
     fn_list_uom_rounding_modes,
     fn_list_uom_tipi,
     fn_list_unita_misura,
@@ -373,11 +374,31 @@ class ApiArticoloRiattiva(DomainAPIView):
         return handle_post_json(request, handler=lambda _payload: fn_riattiva_articolo(articolo_id))
 
 
+# I parametri di pagina delle liste figlie dell'articolo (2026-10-31): le UoM
+# (`catalogo.articolo_uom`) e le note (`catalogo.note`, come `vendite.note`).
+_PARAMETRI_LISTA_FIGLIA = [
+    param_ricerca_full(),
+    OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY, required=False),
+    OpenApiParameter(name="offset", type=int, location=OpenApiParameter.QUERY, required=False),
+    OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False),
+    OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False),
+]
+
+
+# Scopo: dai parametri di lista quelli della pagina.
+def _lista_pagina_da(p: dict[str, Any]) -> dict[str, Any]:
+    return {k: p[k] for k in ("search", "order_by", "order_dir", "limit", "offset")}
+
+
 class ApiArticoloUomList(DomainAPIView):
     area_funzionale = "catalogo"
     model_permission = ("catalogo", "articolo")
+    is_search_endpoint = True
+    # ⚠️ Nessun `lista_codice`: `catalogo.articolo_uom` e' globale (come le
+    #    note dell'articolo, vedi sopra).
 
     @extend_schema(
+        parameters=_PARAMETRI_LISTA_FIGLIA,
         responses={
             200: inline_serializer(
                 name="CatalogoArticoloUomListResponse",
@@ -385,10 +406,15 @@ class ApiArticoloUomList(DomainAPIView):
             )
         },
     )
-    # Scopo: Lista le UoM operative di un articolo.
+    # Scopo: La pagina delle UoM operative dell'articolo (lista
+    #        `catalogo.articolo_uom`, dal 2026-10-31), coi campi non
+    #        modificabili del form di riga accanto alla busta.
     def get(self, request: Request, articolo_id: UUID) -> JsonResponse:
-        del request
-        return success_response(fn_list_uom_operative(articolo_id))
+        p = parse_list_params(request.query_params, default_order="")
+        results, total, non_editable = fn_list_uom_operative_pagina(articolo_id, **_lista_pagina_da(p))
+        busta = paginated_envelope(results, total, p["page"], p["limit"])
+        busta["non_editable_fields"] = non_editable
+        return success_response(busta)
 
     @extend_schema(
         request=_UOM_CREATE_REQUEST,
@@ -577,8 +603,13 @@ class ApiArticoloComponenteDetail(DomainAPIView):
 class ApiArticoloNoteList(DomainAPIView):
     area_funzionale = "catalogo"
     model_permission = ("catalogo", "articolo")
+    is_search_endpoint = True
+    # ⚠️ Nessun `lista_codice`: `catalogo.note` e' globale (perimetro_emittente
+    #    = false), il cancello non avrebbe niente da chiedere. Esenzione
+    #    motivata in `test_perimetro_emittente_copertura`.
 
     @extend_schema(
+        parameters=_PARAMETRI_LISTA_FIGLIA,
         responses={
             200: inline_serializer(
                 name="CatalogoArticoloNoteListResponse",
@@ -586,10 +617,11 @@ class ApiArticoloNoteList(DomainAPIView):
             )
         },
     )
-    # Scopo: Lista le note articolo.
+    # Scopo: La pagina delle note dell'articolo (lista `catalogo.note`).
     def get(self, request: Request, articolo_id: UUID) -> JsonResponse:
-        del request
-        return success_response(fn_list_note_articolo(articolo_id))
+        p = parse_list_params(request.query_params, default_order="")
+        results, total = fn_list_note_articolo(articolo_id, **_lista_pagina_da(p))
+        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
 
     @extend_schema(
         request=_NOTA_CREATE_REQUEST,
@@ -639,17 +671,23 @@ class ApiNotaDetail(DomainAPIView):
 class ApiComponenteNoteList(DomainAPIView):
     area_funzionale = "catalogo"
     model_permission = ("catalogo", "articolo")
+    is_search_endpoint = True
+    # ⚠️ Nessun `lista_codice`: `catalogo.note` e' globale (perimetro_emittente
+    #    = false), il cancello non avrebbe niente da chiedere. Esenzione
+    #    motivata in `test_perimetro_emittente_copertura`.
 
     @extend_schema(
+        parameters=_PARAMETRI_LISTA_FIGLIA,
         responses={200: inline_serializer(
             name="CatalogoComponenteNoteListResponse",
             fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
         )},
     )
-    # Scopo: Lista le note di un componente articolo.
+    # Scopo: La pagina delle note di un componente (lista `catalogo.note`).
     def get(self, request: Request, articolo_id: UUID, comp_id: UUID) -> JsonResponse:
-        del request
-        return success_response(fn_list_note_componente(articolo_id, comp_id))
+        p = parse_list_params(request.query_params, default_order="")
+        results, total = fn_list_note_componente(articolo_id, comp_id, **_lista_pagina_da(p))
+        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
 
     @extend_schema(
         request=_NOTA_CREATE_REQUEST,

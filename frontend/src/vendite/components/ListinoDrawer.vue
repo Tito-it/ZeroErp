@@ -1,7 +1,10 @@
 <script setup>
 // Scopo: Drawer crea/modifica listino.
-//        In edit: pulsanti per aprire drawer autonomi versioni (eventi al parent).
-//        Contenuto deferito a dopo l'animazione per evitare rimbalzi visivi.
+//        In modifica ha due tab: «Dati» (il form) e «Versioni» (la lista
+//        `vendite.listini_versioni`, `ListinoVersioniTab`, dal 2026-10-31:
+//        prima le versioni erano la riga espansa della lista listini). I
+//        drawer delle versioni (righe, nuova, clone) li apre la vista: il tab
+//        li chiede con un evento, che qui si inoltra.
 import { ref, watch, computed, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useListiniStore } from '../stores/listini'
@@ -17,6 +20,12 @@ import TipologiaListinoSelect from './TipologiaListinoSelect.vue'
 import InputText from 'primevue/inputtext'
 import ToggleSwitch from 'primevue/toggleswitch'
 import Message from 'primevue/message'
+import Tabs from 'primevue/tabs'
+import TabList from 'primevue/tablist'
+import Tab from 'primevue/tab'
+import TabPanels from 'primevue/tabpanels'
+import TabPanel from 'primevue/tabpanel'
+import ListinoVersioniTab from './ListinoVersioniTab.vue'
 
 const { t } = useI18n()
 const store = useListiniStore()
@@ -33,9 +42,30 @@ const props = defineProps({
   mode: { type: String, default: 'create' },
   listinoId: { type: [Number, null], default: null }
 })
-const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
+const emit = defineEmits([
+  'update:visible', 'saved', 'cancelled',
+  // Inoltrati dal tab «Versioni» (`ListinoVersioniTab`).
+  'open-righe', 'open-nuova-versione', 'open-clona-versione', 'versioni-cambiate',
+])
 
 const isEdit = computed(() => props.mode === 'edit')
+// ⭐ Il tab «Versioni» si legge SOLO se l'operatore ci entra (come il tab
+//    «Utilizzo» di `UtilityTipoRuoloDrawer`); resta acceso fino alla prossima
+//    apertura, cosi' tornare su «Dati» non perde la pagina e l'ordine scelti.
+const activeTab = ref('dati')
+const versioniAperte = ref(false)
+const versioniTabRef = ref(null)
+watch(activeTab, (tab) => {
+  if (tab === 'versioni' && isEdit.value) versioniAperte.value = true
+})
+// La vista lo chiama quando salvano i drawer delle versioni.
+// ⭐ Rilegge anche il dettaglio: una versione salvata altrove puo' aver dato
+//    storia al listino (vedi `riallineaDettaglio`).
+function ricaricaVersioni() {
+  versioniTabRef.value?.reload()
+  riallineaDettaglio()
+}
+defineExpose({ ricaricaVersioni })
 const form = ref({})
 // Modifiche non salvate: fotografia a form popolato (creazione o modifica),
 // chiudere con modifiche chiede conferma (BB useDrawerFormPreserve).
@@ -88,8 +118,34 @@ async function loadDetail() {
   }
 }
 
+// Scopo: dopo un verbo sulle versioni (Attiva su una bozza, Chiudi, Elimina)
+//        il listino puo' aver cambiato `ha_storia`, e con lui il blocco del
+//        toggle «Attivo» (`attivoBloccato`). Si rilegge il DETTAGLIO e basta:
+//        ⛔ il `form` resta quello dell'operatore — le sue modifiche ai dati
+//        non si perdono, e la fotografia (`fissa`) non si rifà.
+// ⚠️ La risposta di un listino che nel frattempo non e' piu' quello del
+//    drawer (chiuso, o aperto su un altro) si scarta.
+async function riallineaDettaglio() {
+  const id = props.listinoId
+  if (!id || !props.visible) return
+  try {
+    const data = await store.fetchDetail(id)
+    if (data && props.listinoId === id && props.visible) detail.value = data
+  } catch {
+    // Lettura di cortesia: il dettaglio di prima resta, il salvataggio lo
+    // ricontrolla comunque il DB (il guard rifiuta lo spegnimento).
+  }
+}
+
+function onVersioniCambiate() {
+  riallineaDettaglio()
+  emit('versioni-cambiate')
+}
+
 watch(() => props.visible, async (v) => {
   if (!v) return
+  activeTab.value = 'dati'
+  versioniAperte.value = false
   // Carica il default utility (parameter + lookup) prima di resetForm:
   // defaultForm() legge utilityDefaultId.value gia' risolto a id locale.
   await loadUtilityDefault()
@@ -180,13 +236,19 @@ function chiudiDopoSalvataggio() {
 
 <template>
   <!-- Il chrome e' di AppDrawer dal 2026-10-03
-       (work-done/analisi-fe-chrome-drawer.md). -->
+       (work-done/analisi-fe-chrome-drawer.md).
+       ⚠️ Sul tab «Versioni» il corpo NON si protegge e il footer e' «Chiudi»:
+       la lista e' di consultazione anche in sola lettura («Gestisci righe»
+       dal clic e dal kebab), e i verbi li nasconde il tab stesso; il Salva
+       del form «Dati» li' salverebbe un form che non si vede. -->
   <AppDrawer
     :visible="visible"
     :title="t('vendite.listini.listino')"
     :icon="NAV_ICONS.LISTINI"
     :action="isEdit ? t('common.edit') : t('common.new')"
-    :width="DRAWER_WIDTH.STANDARD"
+    :width="activeTab === 'versioni' ? DRAWER_WIDTH.WIDE : DRAWER_WIDTH.STANDARD"
+    :proteggi-corpo="activeTab !== 'versioni'"
+    :footer="activeTab === 'versioni' ? 'chiudi' : 'form'"
     :modificato="modificato"
     :conferma-uscita="chiudiConConferma"
     :loading="loading"
@@ -195,52 +257,74 @@ function chiudiDopoSalvataggio() {
     @cancel="emit('cancelled')"
     @save="handleSave"
   >
-    <!-- Solo in creazione: su quale emittente nasce il listino, o che
-         prima va scelto (super admin su «Tutti gli emittenti»). -->
-    <Message v-if="!isEdit && auth.emittenteScritturaSoggettoRuoloId == null" severity="warn" :closable="false">
-      {{ t('vendite.listini.banner_scegli_emittente') }}
-    </Message>
-    <Message v-else-if="!isEdit && auth.emittenteScritturaNome" severity="info" :closable="false">
-      {{ t('vendite.listini.banner_emittente_corrente', { nome: auth.emittenteScritturaNome }) }}
-    </Message>
-    <div class="form-grid-2col">
-      <div class="form-field">
-        <label>{{ t('vendite.listini.field_codice') }} *</label>
-        <InputText v-model="form.codice" :disabled="isEdit"
-          :invalid="campiErrati.includes('codice')"
-        />
-      </div>
-      <div class="form-field">
-        <label>{{ t('vendite.listini.field_utility') }} *</label>
-        <UtilityPerRuoloSelect v-model="form.utility_id"
-          :placeholder="t('vendite.listini.field_utility')" />
-      </div>
-    </div>
+    <Tabs v-model:value="activeTab">
+      <TabList v-if="isEdit">
+        <Tab value="dati">{{ t('vendite.listini.tab_dati') }}</Tab>
+        <Tab value="versioni">{{ t('vendite.listini.tab_versioni') }}</Tab>
+      </TabList>
+      <TabPanels>
+        <TabPanel value="dati">
+          <!-- Solo in creazione: su quale emittente nasce il listino, o che
+               prima va scelto (super admin su «Tutti gli emittenti»). -->
+          <Message v-if="!isEdit && auth.emittenteScritturaSoggettoRuoloId == null" severity="warn" :closable="false">
+            {{ t('vendite.listini.banner_scegli_emittente') }}
+          </Message>
+          <Message v-else-if="!isEdit && auth.emittenteScritturaNome" severity="info" :closable="false">
+            {{ t('vendite.listini.banner_emittente_corrente', { nome: auth.emittenteScritturaNome }) }}
+          </Message>
+          <div class="form-grid-2col">
+            <div class="form-field">
+              <label>{{ t('vendite.listini.field_codice') }} *</label>
+              <InputText v-model="form.codice" :disabled="isEdit"
+                :invalid="campiErrati.includes('codice')"
+              />
+            </div>
+            <div class="form-field">
+              <label>{{ t('vendite.listini.field_utility') }} *</label>
+              <UtilityPerRuoloSelect v-model="form.utility_id"
+                :placeholder="t('vendite.listini.field_utility')" />
+            </div>
+          </div>
 
-    <div class="form-grid-2col">
-      <div class="form-field">
-        <label>{{ t('vendite.listini.field_tipologia') }} *</label>
-        <TipologiaListinoSelect v-model="form.tipologia_id"
-          :utility-id="form.utility_id" />
-      </div>
-      <div class="form-field">
-        <label>{{ t('vendite.listini.field_descrizione') }} *</label>
-        <InputText v-model="form.descrizione"
-          :invalid="campiErrati.includes('descrizione')"
-        />
-      </div>
-    </div>
+          <div class="form-grid-2col">
+            <div class="form-field">
+              <label>{{ t('vendite.listini.field_tipologia') }} *</label>
+              <TipologiaListinoSelect v-model="form.tipologia_id"
+                :utility-id="form.utility_id" />
+            </div>
+            <div class="form-field">
+              <label>{{ t('vendite.listini.field_descrizione') }} *</label>
+              <InputText v-model="form.descrizione"
+                :invalid="campiErrati.includes('descrizione')"
+              />
+            </div>
+          </div>
 
-    <!-- ⭐ Un listino con storia si spegne con la fine validità della versione,
-         non col flag (`attivoBloccato`). -->
-    <div v-if="isEdit" class="form-grid">
-      <div class="form-field">
-        <label>{{ t('indirizzi.campo_attivo') }}</label>
-        <ToggleSwitch v-if="!attivoBloccato" v-model="form.attivo"
-          :invalid="campiErrati.includes('attivo')"
-        />
-        <small v-else class="app-field-hint">{{ t('vendite.listini.attivo_con_storia') }}</small>
-      </div>
-    </div>
+          <!-- ⭐ Un listino con storia si spegne con la fine validità della versione,
+               non col flag (`attivoBloccato`). -->
+          <div v-if="isEdit" class="form-grid">
+            <div class="form-field">
+              <label>{{ t('indirizzi.campo_attivo') }}</label>
+              <ToggleSwitch v-if="!attivoBloccato" v-model="form.attivo"
+                :invalid="campiErrati.includes('attivo')"
+              />
+              <small v-else class="app-field-hint">{{ t('vendite.listini.attivo_con_storia') }}</small>
+            </div>
+          </div>
+        </TabPanel>
+
+        <TabPanel v-if="isEdit" value="versioni">
+          <ListinoVersioniTab
+            ref="versioniTabRef"
+            :listino="detail"
+            :attivo="visible && versioniAperte"
+            @open-righe="(ver, listino) => emit('open-righe', ver, listino)"
+            @open-nuova-versione="(listino) => emit('open-nuova-versione', listino)"
+            @open-clona-versione="(ver, listino) => emit('open-clona-versione', ver, listino)"
+            @cambiate="onVersioniCambiate"
+          />
+        </TabPanel>
+      </TabPanels>
+    </Tabs>
   </AppDrawer>
 </template>

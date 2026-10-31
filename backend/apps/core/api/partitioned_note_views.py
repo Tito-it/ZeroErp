@@ -18,10 +18,10 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serial
 from rest_framework import serializers
 from rest_framework.request import Request
 
-from apps.core.api.openapi_params import parametri_finestra
+from apps.core.api.openapi_params import param_ricerca_full, parametri_finestra
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import get_actor_user_id, handle_post_json
-from apps.core.api.payload_validators import envelope_da_offset, pagina_da_query, corpo_oggetto, qp_bool_optional, qp_int_strict, qp_str
+from apps.core.api.payload_validators import envelope_da_offset, parse_list_params, corpo_oggetto, qp_bool_optional, qp_int_strict, qp_str
 from apps.core.api.success_responses import success_response
 from apps.core.services.partitioned_note_service import PartitionedNoteService
 
@@ -132,11 +132,33 @@ def make_note_views(
 
         area_funzionale = _area
         is_search_endpoint = _is_search
+        # ⭐ La lista a catalogo della tabella-madre (`vendite.note`, D-2,
+        #    2026-10-31), col perimetro dell'emittente: il documento lo porta,
+        #    e il FE lo passa come lasciapassare del cancello.
+        # ⚠️ Letterale perche' il presidio del perimetro legge il codice dal
+        #    sorgente. La fabbrica oggi la montano le sole partizioni di
+        #    `vendite.note` (`apps/vendite/api/note_views.py`); il repository
+        #    NON lo verifica (`lista_codice` lo ricava dalla partizione, e
+        #    accetta anche `catalogo.note`). ⛔ Montarla su un'altra tabella-
+        #    madre vuole il codice parametrico qui, o cancello e ricerca
+        #    girerebbero su due liste diverse.
+        # ⚠️ Il cancello vale anche per il POST (`initial()`): il FE manda
+        #    l'emittente anche sulla creazione (`makeNotesApi`).
+        lista_codice = "vendite.note"
+        lista_emittente_param = "emittente_fiscale_id"
         if _model_perm is not None:
             model_permission = _model_perm
 
         @extend_schema(
             parameters=[
+                param_ricerca_full(),
+                OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False),
+                OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False),
+                OpenApiParameter(
+                    name="emittente_fiscale_id", type=int,
+                    location=OpenApiParameter.QUERY, required=False,
+                    description="L'emittente del documento: scioglie il cancello di perimetro della lista.",
+                ),
                 OpenApiParameter(
                     name="target_riga_id", type=int,
                     location=OpenApiParameter.QUERY, required=False,
@@ -161,14 +183,20 @@ def make_note_views(
                 if raw_riga is not None else None
             )
             include_invisible = qp_bool_optional(qp.get("include_invisible"), "include_invisible", default=True)
-            # La finestra dal BB: dal 2026-10-21 un dialetto solo, `limit`/`offset`.
-            limit, offset = pagina_da_query(qp)
+            # Finestra (`limit`/`offset`, dal 2026-10-21 un dialetto solo),
+            # ricerca e ordinamento (dal 2026-10-31) in una lettura: senza
+            # `order_by` vale l'ordine di partenza delle note.
+            p = parse_list_params(qp, default_order="")
+            limit, offset = p["limit"], p["offset"]
 
             svc = service_factory()
             results, total = svc.list_note(
                 target_id=target_id,
                 target_riga_id=target_riga_id,
                 include_invisible=include_invisible,
+                search=p["search"],
+                order_by=p["order_by"],
+                order_dir=p["order_dir"],
                 limit=limit,
                 offset=offset,
             )

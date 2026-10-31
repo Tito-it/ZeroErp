@@ -24,7 +24,8 @@ import re
 from apps.anagrafiche.services.billing_account_service import categoria_cliente_da_query
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json, utente_autenticato, utente_autenticato_id
-from apps.core.api.payload_validators import qp_int_optional
+from apps.core.api.openapi_params import param_ricerca_full
+from apps.core.api.payload_validators import paginated_envelope, parse_list_params, qp_int_optional
 from apps.core.api.permissions import IsAdminZeroERP
 from apps.core.api.success_responses import success_response
 from apps.core.db.parameter_repository import MAX_CODES
@@ -180,9 +181,13 @@ class ParameterDefaultsView(DomainAPIView):
 
 
 class ParameterSettingsView(DomainAPIView):
-    """Lista parametri con valori a ogni livello di scope per l'utente loggato."""
+    """La pagina della lista `config.parametri_impostazioni`: i parametri con i
+    valori a ogni livello di scope per l'utente loggato (dal 2026-10-31 a
+    catalogo: pagina, ricerca, ordinamento; prima la lista intera)."""
 
     skip_area_check = True
+    is_search_endpoint = True
+    lista_codice = "config.parametri_impostazioni"
 
     @extend_schema(
         summary="Lista parametri con livelli override",
@@ -218,20 +223,21 @@ class ParameterSettingsView(DomainAPIView):
                     "E_ANAG_NOT_FOUND."
                 ),
             ),
+            param_ricerca_full(),
+            OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="offset", type=int, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False,
+                             description="`code` (default) o `description`."),
+            OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False),
         ],
         responses={
             200: inline_serializer(
                 name="ParameterSettingsResponse",
-                fields={
-                    "data": serializers.ListField(
-                        child=serializers.DictField(),
-                        help_text="Lista parametri con livelli override",
-                    ),
-                },
+                fields={"data": serializers.DictField(help_text="Pagina della lista parametri con livelli override")},
             )
         },
     )
-    # Scopo: Restituisce la lista completa dei parametri con i valori a ogni
+    # Scopo: Restituisce una pagina della lista parametri con i valori a ogni
     #        livello di scope e il valore risolto finale per l'utente corrente.
     #        Per la lista settings, risolve sempre django_user_id e
     #        emittente_fiscale_id anche per superuser, altrimenti il LEFT JOIN
@@ -273,13 +279,19 @@ class ParameterSettingsView(DomainAPIView):
             # BA che non risulta (inesistente o fuori scope RLS) → 404, F-6.
             categoria_cliente_id = categoria_cliente_da_query(qp.get("billing_account_id"))
 
-        parameters = svc.list_parameters_for_user(
+        p = parse_list_params(qp, default_order="code")
+        results, total = svc.list_parameters_for_user(
             django_user_id=django_user_id,
             group_ids=ctx["group_ids"],
             emittente_fiscale_id=emittente_fiscale_id,
             categoria_cliente_id=categoria_cliente_id,
+            search=p["search"],
+            order_by=p["order_by"],
+            order_dir=p["order_dir"],
+            limit=p["limit"],
+            offset=p["offset"],
         )
-        return success_response(parameters)
+        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
 
 
 class ParameterOverrideView(DomainAPIView):

@@ -8,15 +8,10 @@
   "grezze": [
     "amministrazione/components/CollectionEditorPanel.vue",
     "amministrazione/views/DefinizioneEditorView.vue",
-    "amministrazione/views/DefinizioniWorkflowListView.vue",
-    "catalogo/components/ArticoloUomDrawer.vue",
-    "config/components/ImpostazioniSearchTable.vue",
     "core/components/ConfigTablePanel.vue",
     "core/components/MatriceCatalogo.vue",
-    "core/components/NoteDrawer.vue",
     "core/components/RiepilogoIvaTable.vue",
     "core/components/ScadenzeSintesi.vue",
-    "core/components/SearchDrawer.vue",
     "pagamenti/components/RegistraDistintaDialog.vue",
     "pratiche/components/PraticaFlussiTab.vue",
     "ui/components/ListaPresetColonneDrawer.vue",
@@ -24,19 +19,10 @@
     "vendite/_shared/componenti/ComponentiPanel.vue",
     "vendite/_shared/righe/TabellaSelezioneRighe.vue",
     "vendite/_shared/situazioneMerce/SituazioneMerceContenuto.vue",
-    "vendite/components/AlertScadenzeWidget.vue",
     "vendite/components/ApplicaVariazioneDialog.vue",
     "vendite/components/AttivaVersioneDialog.vue",
-    "vendite/components/ListiniSearchTable.vue",
     "vendite/preventivi/components/dialogs/PreventiviSmistamentoDialog.vue",
     "vendite/resi/components/AccreditoEsitoDialog.vue"
   ],
-  "senza_motivazione": [
-    "catalogo/components/ArticoloUomDrawer.vue",
-    "config/components/ImpostazioniSearchTable.vue",
-    "core/components/NoteDrawer.vue",
-    "core/components/SearchDrawer.vue",
-    "vendite/components/AlertScadenzeWidget.vue",
-    "vendite/components/ListiniSearchTable.vue"
-  ]
+  "senza_motivazione": []
 }

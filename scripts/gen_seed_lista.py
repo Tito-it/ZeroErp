@@ -255,6 +255,22 @@ WHITELIST_BE: dict[str, tuple] = {
     # lettore ha imparato a leggere proprio per questa lista.
     "catalogo.articoli": ("apps/catalogo/db/catalogo_repository.py", "ARTICOLI_ORDER_COLUMNS"),
     "vendite.listini": ("apps/vendite/db/listini_repository.py", "LISTINI_ORDER_COLUMNS"),
+    # Le note di vendita e di catalogo, e le UoM di un articolo (2026-10-31,
+    # secondo giro righe 3 e 4): le note su UNA whitelist (le liste gemelle).
+    "vendite.note": ("apps/core/db/partitioned_note_repository.py", "NOTE_ORDER_COLUMNS"),
+    "catalogo.note": ("apps/core/db/partitioned_note_repository.py", "NOTE_ORDER_COLUMNS"),
+    "catalogo.articolo_uom": ("apps/catalogo/db/catalogo_uom_repository.py", "ARTICOLO_UOM_ORDER_COLUMNS"),
+    # La ricerca universale dei soggetti (2026-10-31, secondo giro riga 6):
+    # l'ordinamento lo fa la funzione DB, questa e' la colonna che accetta.
+    "anagrafiche.ricerca_soggetti": ("apps/core/api/search_validators.py", "ALLOWED_ORDER_COLUMNS"),
+    # Le impostazioni (2026-10-31, secondo giro riga 2).
+    "config.parametri_impostazioni": ("apps/core/db/parameter_repository.py", "IMPOSTAZIONI_ORDER_COLUMNS"),
+    # Le edizioni di workflow (2026-10-31, secondo giro riga 1).
+    "pratiche.definizioni_workflow": ("apps/pratiche/db/definizioni_repository.py", "DEFINIZIONI_ORDER_COLUMNS"),
+    # Il tab «Versioni» del drawer listino (2026-10-31, brief-db-liste-
+    # datatable-grezze-secondo-giro riga 5): fino a quel giorno una `DataTable`
+    # nella riga espansa della lista listini.
+    "vendite.listini_versioni": ("apps/vendite/db/listini_repository.py", "VERSIONI_ORDER_COLUMNS"),
     "anagrafiche.operatori": ("apps/amm_software/db/amm_software_repository.py",
                               "ALLOWED_ORDER_COLUMNS"),
     # L'area «Accessi» (2026-10-02, brief-db-be-fe-area-accessi R-BE-d): gli

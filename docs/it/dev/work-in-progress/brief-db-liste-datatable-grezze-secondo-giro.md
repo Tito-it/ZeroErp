@@ -2,8 +2,10 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-31
 
-**Riparte: BE/FE** (`dev/backend-tid`): conversione delle liste (§4.1) con i
-codici del §7.1 e le richieste del §7.4. Il lato DB è applicato e verde.
+**Riparte: team DB** (`dev/db-tid`) per le richieste del §4.5 (le colonne
+di ricerca della ricerca universale e il suo ordinamento per utility) e del §4.6 (il preavviso delle scadenze
+validato in scrittura). Le sei liste del §4.1 sono
+convertite (§4.3, §4.4); poi si archivia il brief.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -13,14 +15,19 @@ codici del §7.1 e le richieste del §7.4. Il lato DB è applicato e verde.
 | 4 | team DB | ✅ Visibilità della colonna emittente nella ricerca (§3.2): risposta «no», limite dichiarato | `ui` | — |
 | 5 | Tid | ✅ Apply (`20261031-27` e i mirror dei CSV) e corsa pgTAP verde, 2026-10-31 (§7.5) | dbdev | — |
 | 6 | BE/FE | ✅ Lavoro senza seed (§4.2) fatto il 2026-10-31: dialog di selezione, `MatriceCatalogo` (Reparto, Utilities), catch dell'alert. Registro a 24 | `dev/backend-tid` | — |
-| 7 | BE/FE | Conversione delle 6 liste (§4.1) con i codici del §7.1 e le richieste del §7.4 | `dev/backend-tid` | — |
-| 8 | BE/FE | Abbassare il registro `datatable.baseline.json`, archiviare il brief | `frontend/scripts/` | 6, 7 |
+| 7 | BE/FE | ✅ Conversione delle 6 liste (§4.1), fatta il 2026-10-31: riga 5 al §4.3, righe 1-4 e 6 al §4.4 | `dev/backend-tid` | — |
+| 8 | BE/FE | ✅ Registro `datatable.baseline.json` abbassato a **17** grezze, **0** senza motivo | `frontend/scripts/` | — |
+| 9 | team DB | La ricerca universale e le colonne `ricercabile_full` della lista 113, più l'ordinamento per utility (§4.5) | `20_code/script/` o seed `ui` | — |
+| 9-bis | BE | A funzione pronta: `utility_list` nella whitelist della ricerca e nei registri (§4.5) | `dev/backend-tid` | 9 |
+| 10 | team DB | Il valore di un parametro intero si valida quando si scrive, non quando si legge (§4.6) | `config` | — |
+| 11 | BE/FE | ✅ Revisione critica del lavoro non committato, 2026-10-31 (§4.7) | `dev/backend-tid` | — |
+| 12 | BE/FE | Archiviare il brief in `work-done/` | — | 9, 9-bis, 10 |
 
-**Decisioni aperte di Tid:** nessuna. D-1, D-2 e B1-bis decisi il 2026-10-31.
-**Committato:** il lato DB del 2026-10-31 (§7) è su `dev/db-tid`. ⚠️ Fino alla conversione BE alcune liste sono rotte di proposito
-(Tid, 2026-10-31: «non ci preoccupiamo se alcune liste andranno in errore
-temporaneamente»): per esempio la colonna nuova di `vendite.listini` non è
-ancora nella whitelist del BE (§7.4).
+**Decisioni aperte di Tid:** nessuna. D-1, D-2, B1-bis, B8 e l'ordinamento per utility della 113 (§4.5) decisi il 2026-10-31.
+**Committato:** il lato DB del 2026-10-31 (§7) è su `dev/db-tid`. Il lato BE/FE (righe 6-8 e 11) è **da committare** su `dev/backend-tid`. Il rotto temporaneo
+dichiarato fino alla conversione BE (Tid, 2026-10-31: «non ci preoccupiamo se
+alcune liste andranno in errore temporaneamente») è **chiuso**: §7.4 tutto
+fatto, verificato il 2026-10-31 (§7.4, in fondo).
 
 ---
 
@@ -181,6 +188,157 @@ dentro i drawer, `<ListaConfigurabile>` nelle pagine.
   d'errore. Il doppio default dei 15 giorni si chiude invece col parametro del
   §3.1.
 
+### 4.3 Riga 5 e §7.4 dei listini — fatto il 2026-10-31
+
+- **BE.** `vendite.listini` (27): `giorni_alla_scadenza` e filtro
+  `in_scadenza` da `LEFT JOIN vendite.fn_listini_in_scadenza_senza_successore()`,
+  colonna in whitelist. `GET …/listini/<id>/versioni/` è la pagina della lista
+  `vendite.listini_versioni` (112: ricerca, ordinamento `VERSIONI_ORDER_COLUMNS`
+  con le date DESC, la stessa colonna sulla versione); `list_versioni` resta
+  la collezione intera per il dettaglio del listino e i default della nuova
+  versione. ⛔ Ritirati nello stesso giro `listini_in_scadenza`,
+  `_filter_versioni_in_scadenza`, `STATO_VERSIONE_BOZZA`, `fn_alert_scadenze`
+  con `_ALERT_GIORNI_*`, l'endpoint `alert-scadenze/` col parametro `giorni`.
+  La lista 112 è iscritta nei cinque registri (`WHITELIST_BE`,
+  `test_liste_configurabili_seed`, `test_ricerca_full_seed`, proiezione e
+  ricerca sul DB vero). I due test DB che leggevano la query ora leggono la
+  regola attraverso le due liste; il filtro è provato per mutazione.
+- **FE.** Il badge (`AlertScadenzeWidget`) conta i listini `in_scadenza=true`
+  (il totale, una riga) e al clic accende il filtro «Solo in scadenza» della
+  lista (D-1); popover e `DataTable` ritirati. La riga espansa di
+  `ListiniSearchTable` è ritirata con la cache delle versioni nello store
+  (N richieste per pagina): le versioni sono il tab «Versioni» di
+  `ListinoDrawer` (`ListinoVersioniTab`, `DrawerTabLista`, store
+  `listinoVersioni`), con le azioni di ciclo di vita nel kebab e «Nuova
+  versione» fra le azioni di pagina; il clic sulla riga apre le righe. Ritirato
+  il ripiego di `VersioneFormDrawer` sulla cache. Chiavi i18n del §7.1
+  (`vendite.listini.col_giorni_alla_scadenza`, `note.col_seq`) aggiunte.
+  Registro `DataTable` 24 → 22. Presidi: `ListinoVersioniTab.spec.js` (tab
+  chiuso non legge, provato per mutazione), `AlertScadenzeWidget.spec.js`.
+- ⚠️ **Rosso atteso fino alle altre righe:** i registri del BE
+  (`test_il_registro_copre_ogni_lista_senza_vista`,
+  `test_ogni_lista_ricercabile_e_registrata_o_in_debito`) elencano le cinque
+  liste seminate e non ancora servite.
+
+### 4.4 Righe 1, 2, 3, 4 e 6 — fatte il 2026-10-31
+
+Ogni lista: endpoint paginato (`limit`/`offset`, whitelist di ordinamento,
+spareggio sulla PK), ricerca dal BB `RicercaFull` dove il catalogo la accende,
+la lista nei cinque registri (`WHITELIST_BE`, `test_liste_configurabili_seed`,
+`test_ricerca_full_seed`, proiezione e ricerca sul DB vero).
+
+| # | Lista | BE | FE |
+| --- | --- | --- | --- |
+| 1 | `pratiche.definizioni_workflow` | pagina su `_DEFINIZIONE_SELECT` (subquery), drift in colonne piatte (`versioni_indietro`), `multi_emittente` | `<ListaConfigurabile>` con fork / nuova versione / pubblica nel kebab, clic = editor; store `createListaStore`, ritirato il filtro emittente che nessuna casella impostava |
+| 2 | `config.parametri_impostazioni` | pagina sopra `script.fn_list_parameters_for_user` | `<ListaConfigurabile>`, i livelli come colonne; store `createListaStore` (ora `userScoped`); `useParameterSettings` tiene i soli override |
+| 3 | `vendite.note` · `catalogo.note` | BB `pagina_note` (core): UNA whitelist e la stessa ricerca per le due liste gemelle; `make_note_views` col cancello di `vendite.note` | `NoteDrawer` sul BB **`ListaConFormInline`** (regola del 2, ok Tid), form estratto in `NotaForm`, store per sede `useNoteListaStore`; l'emittente del documento passa dai sei wrapper e dagli undici punti di montaggio. ⛔ Ritirato `useNote` |
+| 4 | `catalogo.articolo_uom` | `list_uom_operative_pagina` sulla vista, `non_editable_fields` accanto alla busta; il lookup resta la collezione intera | `ArticoloUomDrawer` sul BB, form estratto in `ArticoloUomForm`; il riepilogo del drawer articolo legge il lookup (intero) |
+| 6 | `anagrafiche.ricerca_soggetti` | `lista_codice` sulla view, whitelist `ALLOWED_ORDER_COLUMNS` nei registri, la funzione letta per colonne (`r.*`, non piu' `row_to_json`) | `SearchDrawer` su `<DrawerTabLista>` con la riga espansa su `SearchDetailTable`; store `useRicercaSoggettiStore` (`search` → `q`) |
+
+⚠️ Due effetti da sapere:
+- **`config.parametri_impostazioni` e `vendite.listini_versioni` hanno il
+  perimetro** a catalogo: chi vede piu' emittenti senza averne scelto uno
+  (super admin su «Tutti») ora riceve il cancello «scegli un emittente», come
+  sulle altre liste col perimetro. Prima la pagina impostazioni si apriva.
+- `catalogo.note` e `catalogo.articolo_uom` sono globali (`perimetro_emittente
+  = false`): niente `lista_codice` sulla view, esenzione motivata in
+  `test_perimetro_emittente_copertura`, come gli altri cataloghi globali.
+- ⭐ **`anagrafiche.ricerca_soggetti` (113) è mono-emittente: non vale per
+  «Tutti» (Tid, 2026-10-31).** Il super admin su «Tutti gli emittenti» riceve
+  il cancello «scegli un emittente» anche sulla ricerca universale, ed è
+  voluto: il seed (`multi_emittente = f`, `perimetro_emittente = t`) dice il
+  vero. ⛔ Non è il caso della 107 (`pratiche.definizioni_workflow`,
+  `multi_emittente = t`): che la funzione restituisca
+  `emittente_ragione_sociale` non basta a farne una lista multi-emittente.
+- **Il cancello di `vendite.note` vale anche per la creazione.** Sta in
+  `DomainAPIView.initial()`, cioè su ogni verbo dell'endpoint di lista, POST
+  compreso. Fino alla revisione del §4.7 il FE mandava l'emittente solo sulla
+  lettura: chi vede più emittenti vedeva le note ma non poteva crearle (422).
+  Ora lo manda anche `makeNotesApi(...).createNota`.
+
+### 4.5 Richiesta al team DB — la ricerca della lista 113
+
+La ricerca universale cerca dentro `script.fn_search_soggetti_universale`
+(`p_search_term`), che sceglie lei i campi e pagina da se'. Il seed della lista
+113 dichiara invece `ricercabile_full = t` su codice, ragione sociale e id
+fiscale: il pannello di amministrazione le mostra accendibili e spegnibili, ma
+spegnerle **non cambia niente**, e il backend non puo' applicarle senza rompere
+la paginazione della funzione. Oggi `test_ogni_lista_ricercabile_e_registrata_o_in_debito`
+e' rosso su questa sola lista (rotto dichiarato).
+
+Le due strade, da decidere col modello davanti:
+- **la funzione legge il catalogo** (`ui.fn_lista_colonne_ricerca_full('anagrafiche.ricerca_soggetti')`)
+  e cerca sulle colonne accese: la lista torna come le altre, e il BE la
+  registra con una `RicercaFull`;
+- **il catalogo dice il vero**: `ricercabile_full = f` sulle tre colonne,
+  perche' la ricerca e' della funzione e non del catalogo.
+
+⭐ **Nello stesso giro, l'ordinamento per utility** (emerso il 2026-10-31,
+deciso da Tid lo stesso giorno). La regola di dominio del 2026-07-31 dice che
+la utility, quando una lista ce l'ha, ordina **sempre** (`NUCLEO_ORDINABILE` di
+`gen_seed_lista.py`). Sulla 113 il seed marca `utility_list` (id 1162) come non
+ordinabile, perché è un aggregato della pagina, e
+`fn_search_soggetti_universale` la rifiuta in `p_order_by`. Per questo
+`gen_seed_lista.py --verifica-ordinamento anagrafiche.ricerca_soggetti` dà
+**KO** («NUCLEO rotto: utility»), e la 113 è l'unica lista del brief in questo
+stato.
+- **La richiesta:** la funzione deve saper ordinare per utility, e il seed
+  deve dire `ordinabile = t`. ⛔ Non vale un'eccezione nello script: Tid ha
+  deciso che la regola vale anche qui.
+- **La forma** la sceglie il team DB, per esempio una chiave d'ordine
+  deterministica dell'insieme delle utility del soggetto, calcolata prima
+  della paginazione.
+- **Lato BE**, a funzione pronta: `utility_list` entra in
+  `ALLOWED_ORDER_COLUMNS` (`core/db/search_repository.py`) e nei registri.
+
+### 4.6 Richiesta al team DB — il preavviso delle scadenze si valida quando si scrive
+
+`LISTINI_SCADENZA_PREAVVISO_GIORNI` (§7.2) ha `ammette_override = true`, e
+`vendite.fn_listini_in_scadenza_senza_successore` lo valida **in lettura**
+(`script.fn_intero_positivo_da_testo`: non intero positivo =
+`E_CONFIG_MANCANTE`, classe TECNICO, cioè un 500).
+
+- **Il difetto, sul modello.** Il valore lo scrive chi lavora, e
+  `config.parameter_overrides` accetta qualunque testo: nessuna colonna di
+  `config.parameters` dice che il valore è un intero, e nessun trigger lo
+  controlla (oggi c'è solo il guard `ammette_override`). Un override «0» o
+  «abc» si salva senza errori, e da lì l'operatore non apre più la lista
+  listini né il tab «Versioni» del listino. Le due liste chiamano la funzione
+  sempre, perché proiettano la colonna `giorni_alla_scadenza`, anche quando
+  non filtrano né ordinano per scadenza. L'errore arriva lontano dal gesto
+  che l'ha causato, e con la classe sbagliata.
+- **La richiesta.** Rifiutare il valore sbagliato quando si scrive l'override
+  (e il default), con un errore di dominio sul campo: la stessa regola di
+  `fn_intero_positivo_da_testo`, applicata in scrittura. La forma la sceglie
+  il team DB. Una strada è un tipo del valore dichiarato su
+  `config.parameters`, con un guard su `parameter_overrides` che lo applica:
+  questa vale per ogni parametro numerico, non solo per questo. La lettura
+  resta fail-loud com'è.
+- **Lato BE, già fatto (§4.7).** La query di conteggio della lista listini
+  chiama la funzione solo quando il filtro `in_scadenza` è acceso. Le righe
+  la chiamano comunque.
+
+### 4.7 Revisione del lavoro non committato — fatta il 2026-10-31
+
+Revisione critica BE e FE del lavoro di §4.3 e §4.4 prima del commit, con le
+correzioni ok di Tid. Quello che cambia il contratto o il comportamento:
+
+- **Liste.** Il form inline rinasce a ogni voce. Prima, cliccando un'altra
+  riga a form aperto, si salvavano i dati della voce precedente sopra quella
+  nuova.
+- **Ordinamenti.** `valido_al` vuoto è la validità più lontana, e
+  `giorni_alla_scadenza` vuoto (non in scadenza) va in fondo nell'ordine
+  crescente.
+- **Viste.** Gli slot di cella della lista 107 sono allineati ai codici del
+  seed (`emittente`, `drift`). La ricerca universale non perde più il tipo
+  ruolo alla riapertura.
+- **Sola lettura.** In sola lettura il tab «Versioni» resta consultabile, e
+  i verbi li nasconde il tab.
+- **Regola del 2.** Sono stati ritirati i sei wrapper delle note di vendita e
+  la colla gemella di `NoteDrawer`/`ArticoloUomDrawer`. Sono stati estratti
+  la validazione dell'ordine delle note e la lettura dello stato obbligatorio
+  del modello documento. Il dettaglio è nei due cataloghi BB.
+
 ## 5. Decisioni
 
 ### 5.1 Prese da Tid il 2026-10-31
@@ -193,6 +351,7 @@ dentro i drawer, `<ListaConfigurabile>` nelle pagine.
 | B5 | La ricerca universale dei soggetti è una lista vera |
 | B6 | I tre dialog di selezione righe hanno un BB comune (§4.2) |
 | B7 | ✅ Fatto: il guard vuole il motivo in un commento **attaccato** all'import |
+| B8 | La ricerca universale dei soggetti (113) è **mono-emittente**: su «Tutti» il cancello di perimetro è voluto (§4.4) |
 
 ### 5.2 Aperte
 
@@ -303,7 +462,7 @@ Note di cura, per il BE:
 
 ⚠️ **Chiavi i18n nuove** (FE, `it.json` + `en.json`): `note.col_seq`,
 `vendite.listini.col_giorni_alla_scadenza`. Le altre sono quelle che i `.vue`
-usano già. Finché mancano, `check_i18n_keys` resta rosso.
+usano già. ✅ Aggiunte dal BE/FE: `check_i18n_keys` verde il 2026-10-31.
 
 ### 7.2 La regola «in scadenza senza successore» (§3.1)
 
@@ -375,6 +534,17 @@ come app.
   anche su «Tutti», e la colonna `emittente_display` è il biglietto.
 - **`catalogo.note`**: l'endpoint delle note di catalogo va paginato come
   quello di vendita (D-2).
+
+✅ **Tutto fatto, verificato il 2026-10-31** (§4.3, §4.4, §4.7):
+- `gen_seed_lista.py --verifica-ordinamento` dà **ok** in tutte e tre le
+  direzioni su sette delle otto liste del brief: `vendite.listini` (prima KO),
+  `vendite.listini_versioni`, le due note, `catalogo.articolo_uom`,
+  `config.parametri_impostazioni`, `pratiche.definizioni_workflow`;
+- l'ottava, `anagrafiche.ricerca_soggetti`, dà **KO** sul nucleo «utility»
+  (v. §4.5);
+- ritirati `listini_in_scadenza`, `_filter_versioni_in_scadenza`,
+  `_ALERT_GIORNI_*`, l'endpoint `alert-scadenze/` (un test controlla che non
+  risponda più) e il default 15 del FE.
 
 ### 7.5 Per Tid — apply e corsa
 

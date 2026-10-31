@@ -17,7 +17,17 @@ from typing import Any
 from django.db import connection
 
 from apps.core.api.constants import DEFAULT_LIMIT
-from apps.core.db._helpers import fetchone_scalar, row_to_dict, rows_to_list
+from apps.core.db._helpers import (
+    RicercaFull,
+    add_ricerca_full_condition,
+    fetch_paged_with_total,
+    fetchone_scalar,
+    limiti_pagina,
+    row_to_dict,
+    sql_order_clause,
+    sql_order_direction_lista,
+    sql_tiebreak_direction,
+)
 from apps.core.db.sql_write_helpers import execute_dynamic_insert, sql_set_clause
 
 # Regex per validare SQL identifier dotted (schema.tabella). I parametri del
@@ -116,6 +126,101 @@ _SELECT_COLUMNS = """
 """
 
 
+# ⭐ LA PAGINA DI UNA LISTA DI NOTE, una volta sola per le tabelle-madre
+#    `<schema>.note` (2026-10-31, brief-db-liste-datatable-grezze-secondo-giro
+#    D-2): `vendite.note` (questo repository) e `catalogo.note`
+#    (`CatalogoBomRepository`). Le due liste hanno le STESSE colonne per
+#    contratto del modello (le tiene gemelle il pgTAP
+#    `ui/test-lista-note-gemelle-v1`): una whitelist sola, sui nomi di USCITA
+#    della proiezione (`x.<campo_sorgente>`), e la stessa ricerca. Le due
+#    query si scrivono ognuna sulla sua relazione e qui si avvolgono.
+#    ⛔ Prima erano due liste senza pagina ne' ricerca, ordinate in due modi.
+NOTE_ORDER_COLUMNS: dict[str, str] = {
+    "anchor_tipo": "x.anchor_tipo",
+    "posizione": "x.posizione",
+    "stile_descrizione": "x.stile_descrizione",
+    "lingua_codice_iso": "x.lingua_codice_iso",
+    "seq": "x.seq",
+}
+# Le note del documento prima di quelle di riga, poi per riga, ambito,
+# posizione e ordine: il preset (`posizione`, `seq`) dentro ogni aggancio.
+# Sui nomi di USCITA (`x.`): lo legge anche la collezione intera delle note
+# dell'articolo (`CatalogoBomRepository.list_note_articolo`), che avvolge la
+# sua query in `x` per mostrarle nello stesso ordine della pagina.
+NOTE_ORDINE_DEFAULT = (
+    "(x.target_riga_id IS NOT NULL) ASC, x.target_riga_id ASC NULLS FIRST, "
+    "x.anchor_tipo ASC, x.posizione ASC, x.seq ASC"
+)
+# Il sotto-ordine di una colonna scelta dall'operatore: a parita' di ambito
+# le note vanno per posizione e ordine, a parita' di posizione per ordine —
+# lo stesso del preset (`posizione`, `seq`). ⛔ Senza, «ordina per posizione»
+# spareggiava sul solo `id`, cioe' sull'ordine di inserimento, e due note
+# HEADER uscivano nell'ordine in cui erano state scritte e non in `seq`.
+_NOTE_SOTTO_ORDINE: dict[str, tuple[str, ...]] = {
+    "anchor_tipo": ("x.posizione", "x.seq"),
+    "posizione": ("x.seq",),
+}
+# Cosa si PUO' cercare, una dichiarazione per lista (il codice e' la sede).
+_RICERCA_NOTE_VENDITE = RicercaFull("vendite.note", ("testo",))
+_RICERCA_NOTE_CATALOGO = RicercaFull("catalogo.note", ("testo",))
+RICERCHE_NOTE: dict[str, RicercaFull] = {
+    r.lista_codice: r for r in (_RICERCA_NOTE_VENDITE, _RICERCA_NOTE_CATALOGO)
+}
+
+
+# Scopo: la pagina di una lista di note: `select_sql` (con il suo WHERE di
+#        aggancio, parametri in `params`) si avvolge in `x`, e sopra si cercano
+#        e si ordinano i nomi che la lista mostra.
+def pagina_note(
+    select_sql: str,
+    params: list[Any],
+    *,
+    lista_codice: str,
+    search: str | None,
+    order_by: str | None,
+    order_dir: str | None,
+    limit: int,
+    offset: int,
+) -> tuple[list[dict[str, Any]], int]:
+    safe_limit, safe_offset = limiti_pagina(limit, offset)
+    conditions: list[str] = []
+    ricerca_params: list[Any] = []
+    add_ricerca_full_condition(conditions, ricerca_params, search, RICERCHE_NOTE[lista_codice], alias="x")
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+    ordinamento = _ordine_note(order_by, order_dir)
+    sql = f"""
+        SELECT x.*, COUNT(*) OVER () AS total_count
+          FROM ({select_sql}) x
+        {where}
+         ORDER BY {ordinamento}
+         LIMIT %s OFFSET %s
+    """  # noqa: S608 — WHERE dal BB add_ricerca_full_condition, ORDER BY da whitelist NOTE_ORDER_COLUMNS, valori come parametri
+    return fetch_paged_with_total(sql, [*params, *ricerca_params, safe_limit, safe_offset])
+
+
+# Scopo: il corpo dell'`ORDER BY` di una lista di note. Le colonne con un
+#        sotto-ordine (`_NOTE_SOTTO_ORDINE`) si compongono a mano — il BB
+#        `sql_order_clause` scrive UNA chiave di spareggio, e qui sono due o
+#        tre — con la direzione della stessa regola (`sql_order_direction_lista`)
+#        e le chiavi seguenti nel suo verso, come lo spareggio. Le altre, e il
+#        default, passano dal BB.
+def _ordine_note(order_by: str | None, order_dir: str | None) -> str:
+    chiave = (order_by or "").strip()
+    sotto_ordine = _NOTE_SOTTO_ORDINE.get(chiave)
+    if not sotto_ordine:
+        return sql_order_clause(
+            order_by, order_dir,
+            colonne=NOTE_ORDER_COLUMNS, default_clause=NOTE_ORDINE_DEFAULT, tiebreak="x.id",
+        )
+    direzione = sql_order_direction_lista(order_by, order_dir, colonne=NOTE_ORDER_COLUMNS)
+    verso = sql_tiebreak_direction(direzione)
+    return ", ".join([
+        f"{NOTE_ORDER_COLUMNS[chiave]} {direzione}",
+        *(f"{colonna} {verso}" for colonna in sotto_ordine),
+        f"x.id {verso}",
+    ])
+
+
 class PartitionedNoteRepository:
     """Accesso DB generico a una partizione di `vendite.note`.
 
@@ -163,6 +268,11 @@ class PartitionedNoteRepository:
         if child_parent_fk is not None:
             _validate_sql_identifier(child_parent_fk, kind="child_parent_fk", dotted=False)
         self._partition_table = partition_table
+        # La lista a catalogo e' quella della TABELLA-MADRE (`<schema>.note`,
+        # D-2): la partizione `vendite.note_preventivo` e' di `vendite.note`.
+        self.lista_codice = f"{partition_table.split('.', 1)[0]}.note"
+        if self.lista_codice not in RICERCHE_NOTE:
+            raise ValueError(f"PartitionedNoteRepository: nessuna lista a catalogo per {self.lista_codice}")
         self._target_tipo = target_tipo
         self._parent_table = parent_table
         self._parent_pk = parent_pk
@@ -218,6 +328,9 @@ class PartitionedNoteRepository:
         *,
         target_riga_id: int | None = None,
         include_invisible: bool = True,
+        search: str | None = None,
+        order_by: str | None = None,
+        order_dir: str | None = None,
         limit: int = DEFAULT_LIMIT,
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
@@ -228,32 +341,17 @@ class PartitionedNoteRepository:
             params.append(target_riga_id)
         if not include_invisible:
             where.append("n.visibile = TRUE")
-        where_sql = " AND ".join(where)
-
-        count_sql = (
-            f"SELECT COUNT(*) FROM {self._partition_table} n "  # noqa: S608
-            f"WHERE {where_sql}"
-        )
-        list_sql = (
+        select_sql = (
             f"SELECT {_SELECT_COLUMNS} "  # noqa: S608
             f"FROM {self._partition_table} n "
             f"LEFT JOIN config.note_stili s ON s.id = n.id_stile "
             f"LEFT JOIN config.lingue l ON l.id = n.id_lingua "
-            f"WHERE {where_sql} "
-            f"ORDER BY "
-            f"  (n.target_riga_id IS NOT NULL), "
-            f"  n.target_riga_id NULLS FIRST, "
-            f"  n.anchor_tipo, n.posizione, n.seq, n.id "
-            f"LIMIT %s OFFSET %s"
+            f"WHERE {' AND '.join(where)}"
         )
-        with connection.cursor() as cursor:
-            cursor.execute(count_sql, params)
-            total = int(fetchone_scalar(cursor))
-            if total == 0:
-                return [], 0
-            cursor.execute(list_sql, [*params, limit, offset])
-            rows = rows_to_list(cursor)
-        return rows, total
+        return pagina_note(
+            select_sql, params, lista_codice=self.lista_codice,
+            search=search, order_by=order_by, order_dir=order_dir, limit=limit, offset=offset,
+        )
 
     # Scopo: Restituisce singola nota filtrata per pk composita (target_tipo, id)
     #        + target_id (anti-tampering). Ritorna None se non esiste.

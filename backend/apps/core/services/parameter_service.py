@@ -14,8 +14,10 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
-from apps.core.db.parameter_repository import ParameterRepository
+from apps.core.api.constants import DEFAULT_LIMIT
+from apps.core.db.parameter_repository import IMPOSTAZIONI_ORDER_COLUMNS, ParameterRepository
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.list_helpers import validate_order_params
 
 
 # Scopo: L'esito di un upsert di override: l'id, oppure 404
@@ -171,10 +173,27 @@ class ParameterService:
         group_ids: list[int] | None = None,
         emittente_fiscale_id: int | None = None,
         categoria_cliente_id: int | None = None,
-    ) -> list[dict]:
+        *,
+        search: str | None = None,
+        order_by: str | None = None,
+        order_dir: str | None = None,
+        limit: int = DEFAULT_LIMIT,
+        offset: int = 0,
+    ) -> tuple[list[dict], int]:
+        # La pagina della lista `config.parametri_impostazioni` (dal 2026-10-31).
+        if order_by:
+            order_by, order_dir = validate_order_params(
+                order_by, order_dir,
+                allowed_columns=frozenset(IMPOSTAZIONI_ORDER_COLUMNS),
+                error_code="E_VALIDATION_INPUT",
+                nullable=True,
+                function_name="core.parameter_service.list_parameters_for_user",
+            )
         return self._repo.list_for_user(
             django_user_id, group_ids, emittente_fiscale_id,
             categoria_cliente_id=categoria_cliente_id,
+            search=search, order_by=order_by, order_dir=order_dir,
+            limit=limit, offset=offset,
         )
 
     # Scopo: Crea o aggiorna un override personale dell'utente per un parametro.

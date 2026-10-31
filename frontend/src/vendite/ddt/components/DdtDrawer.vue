@@ -53,7 +53,7 @@ import SituazioneMerceBar from '../../_shared/situazioneMerce/SituazioneMerceBar
 import DdtForm from './DdtForm.vue'
 import DdtRigheTable from './DdtRigheTable.vue'
 import DdtPrelieviSection from './DdtPrelieviSection.vue'
-import DdtNoteDrawer from './DdtNoteDrawer.vue'
+import VenditeNoteDrawer from '../../_shared/note/VenditeNoteDrawer.vue'
 import DdtResoDialog from './DdtResoDialog.vue'
 import DdtEmissioneDialog from './dialogs/DdtEmissioneDialog.vue'
 import DocumentoAnnulloLegamiDialog from '../../_shared/annullo/DocumentoAnnulloLegamiDialog.vue'
@@ -879,11 +879,13 @@ const drawerActions = computed(() => {
   </AppDrawer>
 
   <!-- Sub-drawer note: cablato sull'id effettivo del DDT. -->
-  <DdtNoteDrawer
+  <VenditeNoteDrawer
     v-if="effectiveDdtId"
     v-model:visible="noteDrawerVisible"
     @saved="contatoreNote.aggiorna"
-    :ddt-id="effectiveDdtId"
+    dominio="ddt"
+    :id="effectiveDdtId"
+    :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
   />
 
   <!-- Dialog "Genera reso" (slice resi): righe consegnate con residuo rendibile,

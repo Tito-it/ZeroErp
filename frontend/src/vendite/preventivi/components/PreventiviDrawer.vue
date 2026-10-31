@@ -47,7 +47,7 @@ import DocumentoIndirizziSection from '../../_shared/indirizzi/DocumentoIndirizz
 import DocumentoCollegamentiBar from '../../_shared/lineage/DocumentoCollegamentiBar.vue'
 import EntityPdfButton from '../../../documenti/components/EntityPdfButton.vue'
 import { SORGENTE_CODES } from '../../../documenti/constants'
-import PreventivoNoteDrawer from '../../components/PreventivoNoteDrawer.vue'
+import VenditeNoteDrawer from '../../_shared/note/VenditeNoteDrawer.vue'
 import PreventivoEmissioneDialog from './dialogs/PreventivoEmissioneDialog.vue'
 import PreventivoAccettazioneDialog from './dialogs/PreventivoAccettazioneDialog.vue'
 import DocumentoAnnulloLegamiDialog from '../../_shared/annullo/DocumentoAnnulloLegamiDialog.vue'
@@ -1198,11 +1198,13 @@ const drawerActions = computed(() => {
 
   <!-- Sub-drawer note: cablato sull'id effettivo del preventivo, montato
        solo quando il drawer principale e' aperto E c'e' un preventivo reale. -->
-  <PreventivoNoteDrawer
+  <VenditeNoteDrawer
     v-if="effectivePreventivoId"
     v-model:visible="noteDrawerVisible"
     @saved="contatoreNote.aggiorna"
-    :preventivo-id="effectivePreventivoId"
+    dominio="preventivi"
+    :id="effectivePreventivoId"
+    :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
   />
 
   <!-- La conferma dell'annullo di un preventivo con legami: aperta dalla

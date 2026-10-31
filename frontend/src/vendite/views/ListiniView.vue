@@ -1,8 +1,11 @@
 <script setup>
 // Scopo: Vista principale gestione listini vendite.
-// Orchestra: lista listini con expansion versioni inline + drawer testata listino,
-// drawer righe prezzo (VersioneDrawer), drawer create versione,
-// dialog test resolver prezzo. Cache versioni invalidata sui salvataggi.
+// Orchestra: lista listini + drawer listino (dati e tab «Versioni»), drawer
+// righe prezzo (VersioneDrawer), drawer create versione, drawer clone, dialog
+// test resolver prezzo. Il tab «Versioni» chiede i drawer delle versioni con
+// un evento; quando salvano, si ricaricano il tab e la lista listini
+// (conteggio versioni, badge delle scadenze). Dal 2026-10-31: prima le
+// versioni erano la riga espansa della lista, con una cache nello store.
 import { ref } from 'vue'
 import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useDrawerSavedListRefresh } from '../../core/composables/useDrawerSavedListRefresh'
@@ -44,6 +47,31 @@ const versioneListinoDescrizione = ref('')
 const versioneListinoCodice = ref('')
 const versioneListinoUtilityId = ref(null)
 
+// Il drawer listino: il suo tab «Versioni» si ricarica dopo i drawer delle
+// versioni.
+const listinoDrawerRef = ref(null)
+// La lista listini: il badge delle scadenze si rilegge da solo coi filtri, ma
+// a filtri fermi lo cambiano le versioni (un successore toglie un listino) e
+// il listino salvato (attivo/spento): glielo si chiede qui (`ricaricaBadge`).
+const searchTableRef = ref(null)
+async function versioniCambiate() {
+  listinoDrawerRef.value?.ricaricaVersioni()
+  searchTableRef.value?.ricaricaBadge()
+  await store.fetchList()
+}
+
+// Il tab «Versioni» ha fatto un verbo (attiva, chiudi, elimina): lista e badge.
+// (Il dettaglio del listino lo riallinea il drawer da se'.)
+async function onVersioniCambiateDalDrawer() {
+  searchTableRef.value?.ricaricaBadge()
+  await store.fetchList()
+}
+
+async function onListinoSaved(result) {
+  searchTableRef.value?.ricaricaBadge()
+  await onDrawerSaved(result)
+}
+
 function onOpenRighe(versione, listino) {
   versioneSelezionata.value = versione
   versioneListinoId.value = listino.id
@@ -55,10 +83,8 @@ function onOpenRighe(versione, listino) {
 
 async function onRigheClose() {
   versioneDrawerVisible.value = false
-  // Dopo modifica righe, le righe_count della versione cambiano: rinfresca le versioni del listino.
-  if (versioneListinoId.value) {
-    await store.invalidateVersioniListino(versioneListinoId.value)
-  }
+  // Dopo modifica righe, le righe_count della versione cambiano.
+  listinoDrawerRef.value?.ricaricaVersioni()
   versioneSelezionata.value = null
   versioneListinoId.value = null
   versioneListinoCodice.value = ''
@@ -71,13 +97,10 @@ function onOpenNuovaVersione(listino) {
   nuovaVersioneVisible.value = true
 }
 
-async function onNuovaVersioneSaved({ listinoId }) {
-  // Una nuova versione cambia il versioni_count del listino: refresh lista
-  // (che farà a sua volta preload delle versioni e aprirà l'expansion).
-  if (listinoId) {
-    await store.invalidateVersioniListino(listinoId)
-  }
-  await store.fetchList()
+// Una nuova versione cambia il versioni_count del listino (e puo' essere il
+// successore che toglie il listino dalle scadenze).
+async function onNuovaVersioneSaved() {
+  await versioniCambiate()
 }
 
 function onOpenClonaVersione(versione, listino) {
@@ -86,34 +109,33 @@ function onOpenClonaVersione(versione, listino) {
   cloneDrawerVisible.value = true
 }
 
-async function onClonaVersioneSaved({ listinoId }) {
-  // Il clone aggiunge una nuova versione BOZZA: invalida cache versioni del
-  // listino e refresh della lista per aggiornare il versioni_count.
-  if (listinoId) {
-    await store.invalidateVersioniListino(listinoId)
-  }
-  await store.fetchList()
+// Il clone aggiunge una nuova versione BOZZA: come una nuova versione.
+async function onClonaVersioneSaved() {
+  await versioniCambiate()
 }
 </script>
 
 <template>
   <div class="app-page">
     <ListiniSearchTable
+      ref="searchTableRef"
       @new="drawer.openCreate"
       @row-click="(data) => drawer.editRow(data, 'id')"
-      @open-righe="onOpenRighe"
-      @open-nuova-versione="onOpenNuovaVersione"
-      @open-clona-versione="onOpenClonaVersione"
       @test-resolver="resolverVisible = true"
     />
 
     <ListinoDrawer
+      ref="listinoDrawerRef"
       :visible="drawer.state.visible"
       @update:visible="v => drawer.state.visible = v"
       :mode="drawer.state.mode"
       :listino-id="drawer.state.itemId"
-      @saved="onDrawerSaved"
+      @saved="onListinoSaved"
       @cancelled="drawer.close"
+      @open-righe="onOpenRighe"
+      @open-nuova-versione="onOpenNuovaVersione"
+      @open-clona-versione="onOpenClonaVersione"
+      @versioni-cambiate="onVersioniCambiateDalDrawer"
     />
 
     <VersioneDrawer v-if="versioneSelezionata"

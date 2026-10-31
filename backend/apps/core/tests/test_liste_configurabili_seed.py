@@ -389,6 +389,20 @@ _LISTE: tuple[tuple[str, object], ...] = (
     # Quinto lotto, 2026-08-01.
     ("catalogo.articoli", _da_costante("apps.catalogo.db.catalogo_repository", "ARTICOLI_ORDER_COLUMNS")),
     ("vendite.listini", _da_costante("apps.vendite.db.listini_repository", "LISTINI_ORDER_COLUMNS")),
+    # Le versioni di un listino (2026-10-31, brief-db-liste-datatable-grezze-
+    # secondo-giro riga 5): fino a quel giorno la riga espansa della lista.
+    # Note e UoM (2026-10-31, secondo giro righe 3 e 4): le due liste di note
+    # sono gemelle, sulla stessa whitelist.
+    ("vendite.note", _da_costante("apps.core.db.partitioned_note_repository", "NOTE_ORDER_COLUMNS")),
+    ("catalogo.note", _da_costante("apps.core.db.partitioned_note_repository", "NOTE_ORDER_COLUMNS")),
+    ("catalogo.articolo_uom", _da_costante("apps.catalogo.db.catalogo_uom_repository", "ARTICOLO_UOM_ORDER_COLUMNS")),
+    # La ricerca universale (2026-10-31, secondo giro riga 6).
+    ("anagrafiche.ricerca_soggetti", _da_costante("apps.core.api.search_validators", "ALLOWED_ORDER_COLUMNS")),
+    # Le impostazioni (2026-10-31, secondo giro riga 2).
+    ("config.parametri_impostazioni", _da_costante("apps.core.db.parameter_repository", "IMPOSTAZIONI_ORDER_COLUMNS")),
+    # Le edizioni di workflow (2026-10-31, secondo giro riga 1).
+    ("pratiche.definizioni_workflow", _da_costante("apps.pratiche.db.definizioni_repository", "DEFINIZIONI_ORDER_COLUMNS")),
+    ("vendite.listini_versioni", _da_costante("apps.vendite.db.listini_repository", "VERSIONI_ORDER_COLUMNS")),
     # Sesto lotto, 2026-08-01/02.
     ("config.email_account", _da_costante("apps.core.db.email_repository", "EMAIL_ACCOUNT_ORDER_COLUMNS")),
     ("config.email_template", _da_costante("apps.core.db.email_repository", "EMAIL_TEMPLATE_ORDER_COLUMNS")),

@@ -12,12 +12,12 @@ const BASE = '/catalogo'
 // generico (`/catalogo/note/<id>/`). Si esprime con `detailBase: '/catalogo'`.
 // Resto identico al pattern vendite (`makeNotesApi('/vendite/preventivi/<id>')`).
 
-// Scopo: Set CRUD note articolo per il building block NoteDrawer + useNote.
+// Scopo: Set CRUD note articolo per il building block NoteDrawer.
 export function makeArticoloNotesApi(articoloId) {
   return makeNotesApi(`${BASE}/articoli/${articoloId}`, { detailBase: BASE })
 }
 
-// Scopo: Set CRUD note componente articolo per il building block NoteDrawer + useNote.
+// Scopo: Set CRUD note componente articolo per il building block NoteDrawer.
 export function makeComponenteNotesApi(articoloId, compId) {
   return makeNotesApi(`${BASE}/articoli/${articoloId}/componenti/${compId}`, { detailBase: BASE })
 }
@@ -62,15 +62,18 @@ export function getArticoloFormDefaults() {
 
 // --- UoM operative articolo ---
 
-export function listArticoloUom(articoloId) {
-  return api.get(`${BASE}/articoli/${articoloId}/uom/`)
+// La pagina della lista `catalogo.articolo_uom` (dal 2026-10-31): `search`,
+// `limit`/`offset`, `order_by`/`order_dir`; la busta porta anche
+// `non_editable_fields`. Per tutte le UoM in un colpo: `lookupArticoloUom`.
+export function listArticoloUom(articoloId, params = {}) {
+  return api.get(`${BASE}/articoli/${articoloId}/uom/`, { params })
 }
 
 // Lookup cross-dominio (skip_area_check lato BE): per autocomplete UoM nei
 // drawer di vendite (preventivi, contratti, listini, promo articoli) che non
 // possono richiedere LETTURA su catalogo solo per popolare un combo.
-// Usato da `useArticoloUomOptions`. La response shape e' identica a
-// `listArticoloUom`: il composable e' agnostico rispetto all'endpoint.
+// Usato da `useArticoloUomOptions` e dal riepilogo del drawer articolo: la
+// collezione intera `{count, results, non_editable_fields}`.
 export function lookupArticoloUom(articoloId) {
   return api.get(`${BASE}/articoli/${articoloId}/uom/lookup/`)
 }

@@ -22,9 +22,9 @@ const props = defineProps({
 // aggiorna il pulsante «Gestisci note» (`useContatoreNote`).
 const emit = defineEmits(['update:visible', 'saved'])
 
-// articoloId e' UUID (catalogo.articoli.id); il watch reattivo di useNote lo
-// dereffa a ogni chiamata, quindi un cambio padre durante il lifecycle non
-// genera richieste stantie.
+// articoloId e' UUID (catalogo.articoli.id); il padre della lista del
+// `NoteDrawer` e' il percorso del client (`basePath`), quindi un cambio
+// articolo durante il lifecycle rilegge la lista giusta.
 const apiClient = computed(() => {
   if (!props.articoloId) return null
   return makeArticoloNotesApi(props.articoloId)
@@ -37,6 +37,7 @@ const apiClient = computed(() => {
     :visible="visible"
     @update:visible="emit('update:visible', $event)"
     :api-client="apiClient"
+    codice="catalogo.note"
     :title="t('catalogo.tab_note')"
     @saved="(total) => emit('saved', total)"
   />

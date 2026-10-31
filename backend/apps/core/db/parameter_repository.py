@@ -11,7 +11,26 @@
 from __future__ import annotations
 
 from django.db import connection
-from apps.core.db._helpers import rows_to_list
+from typing import Any
+
+from apps.core.db._helpers import (
+    RicercaFull,
+    add_ricerca_full_condition,
+    fetch_paged_with_total,
+    limiti_pagina,
+    sql_order_clause,
+)
+
+# Whitelist ORDER BY della lista `config.parametri_impostazioni` (108): le
+# colonne di uscita di `script.fn_list_parameters_for_user` (alias `p`). I
+# valori dei livelli non si ordinano: sono testo di tipi diversi (seed §7.1).
+IMPOSTAZIONI_ORDER_COLUMNS: dict[str, str] = {
+    "code": "p.code",
+    "description": "p.description",
+}
+
+# Cosa si PUO' cercare (cosa si cerca lo dice il catalogo).
+_RICERCA_IMPOSTAZIONI = RicercaFull("config.parametri_impostazioni", ("code", "description"))
 
 # Firma fn_get_parameter_full estesa (2026-05-15): aggiunto in coda
 # p_categoria_cliente_id (smallint) per gating soglie commerciali per
@@ -193,9 +212,11 @@ class ParameterRepository:
                 results[code] = valore
         return results
 
-    # Scopo: Restituisce la lista completa dei parametri con i valori risolti
-    #        a ogni livello di scope (emittente, gruppo, utente, categoria_cliente)
-    #        e il valore finale.
+    # Scopo: La pagina della lista `config.parametri_impostazioni` (108): i
+    #        parametri con i valori risolti a ogni livello di scope (emittente,
+    #        gruppo, utente, categoria_cliente) e il valore finale, con ricerca
+    #        e ordinamento sulle colonne di uscita della funzione. Fino al
+    #        2026-10-31 era la lista intera, filtrata nel browser.
     #        Delega a script.fn_list_parameters_for_user (migration 20260519-01,
     #        firma 4-arg).
     #        Output include `categoria_cliente_value` (text) e
@@ -207,25 +228,38 @@ class ParameterRepository:
         group_ids: list[int] | None = None,
         emittente_fiscale_id: int | None = None,
         categoria_cliente_id: int | None = None,
-    ) -> list[dict]:
+        *,
+        search: str | None = None,
+        order_by: str | None = None,
+        order_dir: str | None = None,
+        limit: int,
+        offset: int,
+    ) -> tuple[list[dict[str, Any]], int]:
+        safe_limit, safe_offset = limiti_pagina(limit, offset)
+        conditions: list[str] = []
+        params: list[Any] = [django_user_id, group_ids, emittente_fiscale_id, categoria_cliente_id]
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_IMPOSTAZIONI, alias="p")
+        where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+        ordinamento = sql_order_clause(
+            order_by, order_dir, colonne=IMPOSTAZIONI_ORDER_COLUMNS, default="p.code", tiebreak="p.code",
+        )
         # Cast espliciti (fix 2026-05-20): la signature DB e' (integer,
         # integer[], bigint, smallint). Senza cast, psycopg manda Python int
         # come `integer`, e PG non risolve la signature quando esistono
         # overload competing. Vedi `_SQL_RESOLVE` sopra per il pattern.
-        sql = """
-            SELECT * FROM script.fn_list_parameters_for_user(
+        sql = f"""
+            SELECT p.*, COUNT(*) OVER () AS total_count
+              FROM script.fn_list_parameters_for_user(
                 %s::integer,
                 %s::integer[],
                 %s::bigint,
                 %s::smallint
-            )
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(
-                sql,
-                [django_user_id, group_ids, emittente_fiscale_id, categoria_cliente_id],
-            )
-            return rows_to_list(cursor)
+              ) p
+            {where}
+             ORDER BY {ordinamento}
+             LIMIT %s OFFSET %s
+        """  # noqa: S608 — WHERE dal BB add_ricerca_full_condition, ORDER BY da whitelist IMPOSTAZIONI_ORDER_COLUMNS, valori come parametri
+        return fetch_paged_with_total(sql, [*params, safe_limit, safe_offset])
 
     # Scopo: Upsert generico di un override su config.parameter_overrides, sul
     #        vincolo che identifica l'ambito (`uq_overrides_full_scope_v5`, NULLS

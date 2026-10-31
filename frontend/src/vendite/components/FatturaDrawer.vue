@@ -52,7 +52,7 @@ import RiepilogoIvaTable from '../../core/components/RiepilogoIvaTable.vue'
 import ScadenzeSintesi from '../../core/components/ScadenzeSintesi.vue'
 import PdfDocumentiSorgenteDialog from '../../documenti/components/PdfDocumentiSorgenteDialog.vue'
 import DocumentoCollegamentiBar from '../_shared/lineage/DocumentoCollegamentiBar.vue'
-import FatturaNoteDrawer from './FatturaNoteDrawer.vue'
+import VenditeNoteDrawer from '../_shared/note/VenditeNoteDrawer.vue'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useContatoreNote } from '../../core/composables/useContatoreNote'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
@@ -123,7 +123,23 @@ const fattura = computed(() => dettaglio.value?.fattura ?? null)
 // ⭐ Le righe COMPLETE del documento (dal dettaglio, vista `vw_fattura_righe_
 //    lista`): le legge il drawer delle note per il selettore di riga. La
 //    lista a video e' un'altra lettura della STESSA vista, paginata (sotto).
-const righe = computed(() => dettaglio.value?.righe ?? [])
+// ⭐ Una nota di riga si aggancia a una riga che ESISTE in tabella: la vista
+//    porta il primo livello, con la chiave vera in `fatture_righe_id`, e i
+//    componenti esposti di un kit DENTRO il padre (`componenti`). Qui si
+//    appiattiscono le righe vere — quelle di primo livello e i componenti —
+//    nella forma del BB (`id`, codice, descrizione); il padre di un kit, che
+//    in tabella non c'e', resta fuori. (Era il corpo di `FatturaNoteDrawer`,
+//    ritirato il 2026-10-31: la forma delle righe e' della fattura.)
+const righeNote = computed(() => (dettaglio.value?.righe ?? []).flatMap((r) => [
+  ...(r.fatture_righe_id != null
+    ? [{ id: r.fatture_righe_id, articolo_codice: r.articolo_codice, descrizione: r.descrizione }]
+    : []),
+  ...(r.componenti || []).map((c) => ({
+    id: c.fatture_righe_id,
+    articolo_codice: c.articolo_codice,
+    descrizione: c.descrizione,
+  })),
+]))
 
 // ⭐ LE RIGHE A VIDEO SONO UNA LISTA STANDARD (brief-db-liste-righe-documento,
 //    lotto C, 2026-09-28): `vendite.fattura_righe`, colonne dal catalogo con
@@ -726,10 +742,12 @@ const drawerActions = computed(() => [
 
     <!-- Note della fattura (BB partizionato). Il readonly di oggetto arriva
          al NoteDrawer via provide/inject (useReadonlyMode sopra). -->
-    <FatturaNoteDrawer
+    <VenditeNoteDrawer
       v-model:visible="noteDrawer"
-      :fattura-id="fatturaId"
-      :righe="righe"
+      dominio="fatture"
+      :id="fatturaId"
+      :emittente-fiscale-id="fattura?.emittente_fiscale_pk ?? null"
+      :righe="righeNote"
       @saved="contatoreNote.aggiorna"
     />
   </AppDrawer>

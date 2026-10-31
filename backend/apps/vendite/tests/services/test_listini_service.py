@@ -46,8 +46,6 @@ Indice test eseguiti:
 34) ListiniServiceTests.test_variazione_pct_con_filtro_articoli
 35) ListiniServiceTests.test_variazione_pct_campo_obbligatorio_mancante
 36) ListiniServiceTests.test_variazione_pct_arrotondamento_fuori_range
-37) ListiniServiceTests.test_alert_scadenze_default_giorni
-38) ListiniServiceTests.test_alert_scadenze_giorni_fuori_range
 39) ListiniServiceTests.test_rettifica_controllata_su_bozza_rifiutata
 40) ListiniServiceTests.test_rettifica_controllata_riga_propagata_rifiutata
 41) ListiniServiceTests.test_rettifica_controllata_ok_non_propagata
@@ -989,36 +987,6 @@ class ListiniServiceTests(TestCase):
             fn_applica_variazione_percentuale(
                 10, 101, {"variazione_percentuale": 3.0, "arrotondamento_decimali": 15}
             )
-        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
-
-    # --- N2: Alert scadenze ---
-
-    # Scopo: N2 - alert scadenze con giorni default chiama il repository.
-    @patch("apps.vendite.services.listini_service.ListiniRepository")
-    def test_alert_scadenze_default_giorni(self, mock_repo_cls):
-        from apps.vendite.services.listini_service import fn_alert_scadenze
-
-        repo = mock_repo_cls.return_value
-        repo.listini_in_scadenza.return_value = [
-            {"listino_id": 10, "listino_codice": "LIST-01", "giorni_rimanenti": 5}
-        ]
-
-        result = fn_alert_scadenze()
-
-        self.assertEqual(result["count"], 1)
-        self.assertEqual(result["giorni"], 15)
-        repo.listini_in_scadenza.assert_called_once_with(15)
-
-    # Scopo: N2 - alert scadenze con giorni fuori range rifiutato.
-    def test_alert_scadenze_giorni_fuori_range(self):
-        from apps.vendite.services.listini_service import fn_alert_scadenze
-
-        with self.assertRaises(ServiceError) as ctx:
-            fn_alert_scadenze(giorni=0)
-        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
-
-        with self.assertRaises(ServiceError) as ctx:
-            fn_alert_scadenze(giorni=400)
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
     # --- N6: Rettifica controllata ---
