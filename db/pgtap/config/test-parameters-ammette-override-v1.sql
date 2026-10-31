@@ -58,13 +58,13 @@ SELECT plan(21);
 -- registro FK-surrogata (pattern DEFAULT_TIPO_SOGGETTO_DETTAGLIO_%) che vale per
 -- tutti. Ogni override ha esattamente un ambito: qui la funzione.
 -- ============================================================
-INSERT INTO config.parameters (id, code, default_value, description, ammette_override)
-VALUES (99950, '_TEST_SENZA_OVR_', 'DEF_SENZA', 'pgTAP ammette_override: vale per tutti', false),
-       (99951, '_TEST_CON_OVR_',   'DEF_CON',   'pgTAP ammette_override: con override',   true);
+INSERT INTO config.parameters (id, code, default_value, description, ammette_override, tipo_valore)
+VALUES (99950, '_TEST_SENZA_OVR_', 'DEF_SENZA', 'pgTAP ammette_override: vale per tutti', false, 'TESTO'),
+       (99951, '_TEST_CON_OVR_',   'DEF_CON',   'pgTAP ammette_override: con override',   true,  'TESTO');
 
-INSERT INTO config.parameters (id, code, default_value, description, ammette_override)
+INSERT INTO config.parameters (id, code, default_value, description, ammette_override, tipo_valore)
 SELECT 99952, 'DEFAULT_TIPO_SOGGETTO_DETTAGLIO_PGTAP_SENZA', t.codice_interno,
-       'pgTAP ammette_override: registro FK-surrogata, vale per tutti', false
+       'pgTAP ammette_override: registro FK-surrogata, vale per tutti', false, 'TESTO'
   FROM (SELECT codice_interno FROM config.tipi_soggetto_dettaglio ORDER BY id LIMIT 1) t;
 
 -- ============================================================
@@ -80,8 +80,8 @@ SELECT col_hasnt_default('config', 'parameters', 'ammette_override',
     '3) ammette_override senza DEFAULT: un parametro nuovo dichiara la sua famiglia');
 
 SELECT throws_ok(
-    $$INSERT INTO config.parameters (id, code, default_value, description)
-      VALUES (99953, '_TEST_SENZA_FAMIGLIA_', 'X', 'pgTAP senza famiglia')$$,
+    $$INSERT INTO config.parameters (id, code, default_value, description, tipo_valore)
+      VALUES (99953, '_TEST_SENZA_FAMIGLIA_', 'X', 'pgTAP senza famiglia', 'TESTO')$$,
     '23502', NULL,
     '4) INSERT di un parametro senza ammette_override -> 23502');
 

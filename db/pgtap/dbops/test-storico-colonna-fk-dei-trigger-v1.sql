@@ -124,11 +124,11 @@ SELECT (SELECT COALESCE(max(id), 0) FROM config.parameters) + 1000000 AS id_upd,
 
 -- 2026-10-25 (brief-db-parametri-senza-override): config.parameters.ammette_override
 -- e' NOT NULL senza DEFAULT, un parametro dichiara la sua famiglia.
-INSERT INTO config.parameters (id, code, default_value, description, storicizza, ammette_override)
-SELECT id_upd, 'PGTAP_STORICO_FK_UPD', '1', 'pgTAP test-storico-colonna-fk-dei-trigger', true, true FROM tmp_par;
+INSERT INTO config.parameters (id, code, default_value, description, storicizza, ammette_override, tipo_valore)
+SELECT id_upd, 'PGTAP_STORICO_FK_UPD', '1', 'pgTAP test-storico-colonna-fk-dei-trigger', true, true, 'TESTO' FROM tmp_par;
 
-INSERT INTO config.parameters (id, code, default_value, description, storicizza, ammette_override)
-SELECT id_dlt, 'PGTAP_STORICO_FK_DLT', '1', 'pgTAP test-storico-colonna-fk-dei-trigger', true, true FROM tmp_par;
+INSERT INTO config.parameters (id, code, default_value, description, storicizza, ammette_override, tipo_valore)
+SELECT id_dlt, 'PGTAP_STORICO_FK_DLT', '1', 'pgTAP test-storico-colonna-fk-dei-trigger', true, true, 'TESTO' FROM tmp_par;
 
 -- 13
 SELECT lives_ok(

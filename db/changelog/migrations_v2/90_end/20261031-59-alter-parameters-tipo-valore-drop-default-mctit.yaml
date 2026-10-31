@@ -1,0 +1,53 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# config.parameters.tipo_valore — VIA IL DEFAULT TEMPORANEO
+#   Brief: brief-db-liste-datatable-grezze-secondo-giro §4.6.1 (D-5, Tid 2026-10-31)
+#
+#   Il DEFAULT 'TESTO' di 00_schema/20261031-53 serviva al backfill e al seed
+#   80_data/20260224-38, che inserisce senza la colonna. Dopo tutti i seed un
+#   parametro nuovo dichiara la sua forma: un INSERT senza tipo_valore viola il
+#   NOT NULL. Stessa forma di ammette_override (20261025-88).
+#   ⚠️ I rollback di 80_data/20261002-67 e 20261019-04 reinseriscono righe
+#   senza la colonna: dopo questo changeSet andrebbero riscritti col tipo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261031-59-alter-parameters-tipo-valore-drop-default-mctit.yaml
+
+  - changeSet:
+      id: 20261031-59-alter-parameters-tipo-valore-drop-default
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config.parameters.tipo_valore: DROP DEFAULT. Il DEFAULT 'TESTO' di 20261031-53 serviva al
+        backfill e al seed 80_data/20260224-38, che inserisce senza la colonna; dopo i seed un
+        parametro nuovo dichiara la sua forma. Brief: brief-db-liste-datatable-grezze-secondo-giro
+        §4.6.1 (D-5).
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: config
+            tableName: parameters
+            columnName: tipo_valore
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.parameters
+                  ALTER COLUMN tipo_valore DROP DEFAULT;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.parameters
+                  ALTER COLUMN tipo_valore SET DEFAULT 'TESTO';

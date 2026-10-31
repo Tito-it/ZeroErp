@@ -1,0 +1,98 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# config.parameters.tipo_valore — LA FORMA DEL VALORE DI UN PARAMETRO
+#   Brief: brief-db-liste-datatable-grezze-secondo-giro §4.6.1 (D-5, Tid 2026-10-31)
+#
+# ── IL DIFETTO ───────────────────────────────────────────────────
+#   default_value e overridden_value sono testo libero: nessuna colonna dice
+#   che il valore di LISTINI_SCADENZA_PREAVVISO_GIORNI e' un intero. Un
+#   override «0» o «abc» si salvava senza errori, e l'errore arrivava dopo,
+#   in lettura, lontano dal gesto e con la classe sbagliata (E_CONFIG_MANCANTE,
+#   un 500): l'operatore non apriva piu' la lista listini.
+#
+# ── COSA FA ──────────────────────────────────────────────────────
+#   Ogni parametro dichiara la forma del suo valore. La regola di ogni forma
+#   sta in UN posto, script.fn_valore_parametro_non_conforme (20261031-54);
+#   la fanno rispettare in scrittura due guard (20261031-56 sul default,
+#   -57 sull'override). Il valore della colonna sta nei due CSV dei parametri.
+#
+# ── IL VOCABOLARIO E' UN CHECK, NON UNA TABELLA ──────────────────
+#   Ogni forma ha una regola scritta nel BB: una riga di catalogo senza il suo
+#   ramo nel BB non vorrebbe dire niente. Il vocabolario e' chiuso dal codice,
+#   come chk_parameter_fk_surrogate_match_mode. Il pgTAP
+#   config/test-parameters-tipo-valore-v1 presidia che il CHECK e il BB
+#   elenchino le stesse forme.
+#
+# ── ⛔ IL DEFAULT E' TEMPORANEO, E SI TOGLIE IN 90_end ───────────
+#   Stessa forma di ammette_override (20261025-83 / -88). Nel modello la
+#   colonna non ha DEFAULT: un parametro nuovo dichiara la sua forma. Il
+#   DEFAULT 'TESTO' serve a due cose:
+#   · il backfill delle righe esistenti (dbdev), prima che i mirror dei CSV
+#     scrivano il valore vero;
+#   · su un database ricostruito da zero, 80_data/20260224-38 (gia' mergiato)
+#     fa INSERT INTO config.parameters (code, default_value, description) ...
+#     ON CONFLICT (code): il NOT NULL si giudica sulla riga PROPOSTA.
+#   'TESTO' ammette ogni valore, cioe' il comportamento di prima per tutti.
+#   Lo toglie 90_end/20261031-59, dopo tutti i seed.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261031-53-alter-parameters-add-tipo-valore-mctit.yaml
+
+  - changeSet:
+      id: 20261031-53-alter-parameters-add-tipo-valore
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config.parameters.tipo_valore text NOT NULL con CHECK sul vocabolario delle forme
+        (BOOLEANO, INTERO_POSITIVO, INTERO_NON_NEGATIVO, DECIMALE_POSITIVO, DECIMALE_NON_NEGATIVO,
+        DECIMALE_NON_NEGATIVO_O_VUOTO, DATA, TESTO). DEFAULT 'TESTO' temporaneo per il backfill e
+        per il seed 80_data/20260224-38; lo toglie 90_end/20261031-59. Brief:
+        brief-db-liste-datatable-grezze-secondo-giro §4.6.1 (D-5).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: parameters
+            - not:
+                - columnExists:
+                    schemaName: config
+                    tableName: parameters
+                    columnName: tipo_valore
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.parameters
+                  ADD COLUMN tipo_valore text NOT NULL DEFAULT 'TESTO';
+
+              ALTER TABLE config.parameters
+                  ADD CONSTRAINT chk_parameters_tipo_valore
+                  CHECK (tipo_valore IN (
+                      'BOOLEANO',
+                      'INTERO_POSITIVO',
+                      'INTERO_NON_NEGATIVO',
+                      'DECIMALE_POSITIVO',
+                      'DECIMALE_NON_NEGATIVO',
+                      'DECIMALE_NON_NEGATIVO_O_VUOTO',
+                      'DATA',
+                      'TESTO'));
+
+              COMMENT ON COLUMN config.parameters.tipo_valore IS
+                  'La forma del valore del parametro, che vale per il default e per ogni override. La regola di ogni forma sta in script.fn_valore_parametro_non_conforme; la fanno rispettare in scrittura i guard a07 di config.parameters e config.parameter_overrides (E_PARAMETER_VALORE_NON_CONFORME). BOOLEANO: true o false. INTERO_POSITIVO: da 1 a 999999. INTERO_NON_NEGATIVO: da 0 a 999999. DECIMALE_POSITIVO e DECIMALE_NON_NEGATIVO: numero col punto decimale, maggiore di zero o anche zero. DECIMALE_NON_NEGATIVO_O_VUOTO: come il precedente, o la stringa vuota («non impostato»). DATA: AAAA-MM-GG. TESTO: qualunque valore (i codici di un catalogo li valida il framework FK-surrogata, config.parameter_fk_surrogate). Nessun DEFAULT nel modello: un parametro nuovo dichiara la sua forma. Brief: brief-db-liste-datatable-grezze-secondo-giro (D-5).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.parameters DROP COLUMN IF EXISTS tipo_valore;

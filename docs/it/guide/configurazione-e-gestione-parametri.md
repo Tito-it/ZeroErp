@@ -1,6 +1,6 @@
 # Guida — Configurazione e Gestione Parametri
 
-> **Ultimo aggiornamento**: 26 ottobre 2026
+> **Ultimo aggiornamento**: 31 ottobre 2026
 >
 > **Destinatari**: sviluppatori database e backend
 >
@@ -20,6 +20,8 @@
 > * [config.trgfn_parameters_fk_surrogate_dispatch](/dbzero/config/funzioni/trgfn_parameters_fk_surrogate_dispatch) · [config.trgfn_parameter_overrides_fk_surrogate_dispatch](/dbzero/config/funzioni/trgfn_parameter_overrides_fk_surrogate_dispatch) — il controllo sul *valore* scritto nel default e in un override
 > * [script.fn_check_parameter_fk_surrogate](/dbzero/script/funzioni/fn_check_parameter_fk_surrogate) — la regola condivisa dai due trigger
 > * [config.trgfn_parameter_overrides_guard_ammette_override](/dbzero/config/funzioni/trgfn_parameter_overrides_guard_ammette_override) · [config.trgfn_parameters_guard_ammette_override](/dbzero/config/funzioni/trgfn_parameters_guard_ammette_override) — il rispetto della famiglia: nessun override su un parametro che vale per tutti
+> * [script.fn_valore_parametro_non_conforme](/dbzero/script/funzioni/fn_valore_parametro_non_conforme) — la regola delle forme del valore (`tipo_valore`)
+> * [config.trgfn_parameters_guard_tipo_valore](/dbzero/config/funzioni/trgfn_parameters_guard_tipo_valore) · [config.trgfn_parameter_overrides_guard_tipo_valore](/dbzero/config/funzioni/trgfn_parameter_overrides_guard_tipo_valore) — la forma del valore rispettata quando si scrive il default o un override
 >
 > **Vedi anche** — guide correlate:
 >
@@ -127,6 +129,7 @@ perché.
 | `default_value` | TEXT                 |    no    | Valore di default                                                   |
 | `description`   | TEXT                 |    sì    | Descrizione: significato, chi lo legge, perché ha la sua famiglia   |
 | `ammette_override` | BOOLEAN           |    no    | La famiglia: `true` con override, `false` uguale per tutti. Senza default |
+| `tipo_valore`   | TEXT, CHECK          |    no    | La forma del valore, per il default e per ogni override. Senza default |
 | `storicizza`    | BOOLEAN              |    sì    | Flag storicizzazione (default: true)                                |
 | Campi audit     | —                    |    —     | `data_insert`, `user_insert`, `data_update`, `user_update`, `tx_id` |
 
@@ -250,6 +253,38 @@ l'override, e il valore risolto è il default.
 
 ---
 
+## La forma del valore
+
+Il valore di un parametro è testo, ma quasi sempre ha una forma precisa: un numero di giorni, un
+sì/no, una data. Ogni parametro la dichiara nella colonna `tipo_valore`, e il database la fa
+rispettare **quando si scrive**, sul default e su ogni override. Un valore fuori forma è
+rifiutato subito, sul campo, con `E_PARAMETER_VALORE_NON_CONFORME`. Non arriva più a chi legge il
+parametro, dove l'errore sarebbe lontano dal gesto che l'ha causato.
+
+| `tipo_valore` | Valori ammessi |
+| --- | --- |
+| `BOOLEANO` | `true` o `false` |
+| `INTERO_POSITIVO` | un intero da 1 a 999999 |
+| `INTERO_NON_NEGATIVO` | un intero da 0 a 999999 |
+| `DECIMALE_POSITIVO` | un numero maggiore di zero, col punto per i decimali |
+| `DECIMALE_NON_NEGATIVO` | un numero da zero in su, col punto per i decimali |
+| `DECIMALE_NON_NEGATIVO_O_VUOTO` | come il precedente, oppure vuoto («non impostato») |
+| `DATA` | una data `AAAA-MM-GG` che esiste |
+| `TESTO` | qualunque valore |
+
+Le regole esatte (cifre, zeri iniziali, decimali) stanno in una funzione sola,
+[script.fn_valore_parametro_non_conforme](/dbzero/script/funzioni/fn_valore_parametro_non_conforme).
+La usano i due trigger di scrittura e anche il lettore
+[script.fn_intero_positivo_da_testo](/dbzero/script/funzioni/fn_intero_positivo_da_testo), che
+resta fail-loud. Il tipo dice solo la forma. Il confine di dominio (un giorno del mese, una
+percentuale fino a 100) lo controlla chi legge il parametro. Che un codice esista in un catalogo
+lo controlla il framework FK-surrogata, qui sotto.
+
+Cambiare il tipo di un parametro è rifiutato se un suo override, acceso o spento, non ha la forma
+nuova (`E_PARAMETER_OVERRIDE_NON_CONFORME_AL_TIPO`): l'override va corretto o tolto prima.
+
+---
+
 ## Parametri che puntano a una riga di un'altra tabella
 
 ### Il problema
@@ -285,6 +320,8 @@ Un parametro nuovo di questo tipo si aggiunge con una riga del registro, accanto
   query diretta sugli override.
 * **Parametri senza override**: `ammette_override = false`, e si legge il default nella funzione
   che possiede la regola. La descrizione dice il motivo.
+* **Un parametro nuovo dichiara la forma del suo valore** (`tipo_valore`). `TESTO` solo se il
+  valore è davvero testo libero o un codice di catalogo.
 * **Un lookup per codice si fa su una chiave univoca.** Se il codice non lo è (per esempio
   `config.stati.codice_iso2`, che ha righe storiche dello stesso paese), si usa la funzione che
   gestisce l'ambiguità (`script.fn_stato_id_da_iso2`), non un `SELECT … INTO`.

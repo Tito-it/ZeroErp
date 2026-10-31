@@ -1,0 +1,132 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UN OVERRIDE HA LA FORMA DEL TIPO DEL SUO PARAMETRO
+#   config.trgfn_parameter_overrides_guard_tipo_valore
+#   Brief: brief-db-liste-datatable-grezze-secondo-giro §4.6.1 (D-5, Tid 2026-10-31)
+#
+# ── LA REGOLA ────────────────────────────────────────────────────
+#   overridden_value deve avere la forma di config.parameters.tipo_valore del
+#   parametro padre (script.fn_valore_parametro_non_conforme), altrimenti
+#   E_PARAMETER_VALORE_NON_CONFORME, la stessa frase del default. ⭐ E' il
+#   gesto che prima passava: un preavviso «0» o «abc» si salvava, e l'errore
+#   arrivava in lettura (E_CONFIG_MANCANTE, un 500) su ogni lista che legge il
+#   parametro. Ora lo riceve chi lo scrive, sul campo `value`.
+#
+# ── LA FASE: a07, FRA a05 E a10 ──────────────────────────────────
+#   · dopo a05 (ammette_override): se il parametro non si personalizza, la
+#     frase giusta e' «non si personalizza», non «il valore e' sbagliato»;
+#   · prima di a10 (FK-surrogata): prima la forma, poi l'esistenza nel catalogo.
+#
+# ── IL TRIGGER ───────────────────────────────────────────────────
+#   BEFORE INSERT OR UPDATE OF parameter_id, overridden_value (cambiare padre
+#   cambia il tipo che vale). Il corpo confronta OLD e NEW. Il tipo si legge
+#   dalla tabella del PADRE. Padre assente: lo giudica la FK
+#   fk_overrides_parameter. Il cambio di tipo con override esistenti lo
+#   giudica il gemello su config.parameters (20261031-56).
+#   ⚠️ L'upsert del BE (ON CONFLICT ... DO UPDATE SET overridden_value) passa
+#   di qui due volte: all'INSERT proposto e all'UPDATE del conflitto, con lo
+#   stesso valore.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20261031-57-create-trgfn-parameter-overrides-guard-tipo-valore-mctit.yaml
+
+  - changeSet:
+      id: 20261031-57-create-trgfn-parameter-overrides-guard-tipo-valore
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Guard config.trgfn_parameter_overrides_guard_tipo_valore su config.parameter_overrides
+        (a07, BEFORE INSERT OR UPDATE OF parameter_id, overridden_value): il valore dell'override
+        deve avere la forma del tipo del parametro (E_PARAMETER_VALORE_NON_CONFORME). Dopo a05
+        (ammette_override), prima di a10 (FK-surrogata). Brief:
+        brief-db-liste-datatable-grezze-secondo-giro §4.6.1 (D-5).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >-
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_valore_parametro_non_conforme'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION config.trgfn_parameter_overrides_guard_tipo_valore()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- =========================================================
+              -- Scopo: il valore di un override ha la forma del tipo del suo
+              --   parametro (script.fn_valore_parametro_non_conforme).
+              -- Parametro assente: lo giudica la FK fk_overrides_parameter.
+              -- Brief: brief-db-liste-datatable-grezze-secondo-giro §4.6.1.
+              -- =========================================================
+              DECLARE
+                  v_code  config.parameters.code%TYPE;
+                  v_tipo  config.parameters.tipo_valore%TYPE;
+                  -- La forma attesa in parole (NULL = conforme): nessuna colonna.
+                  v_forma text;
+              BEGIN
+                  -- UPDATE OF scatta anche a valore uguale: conta il cambio.
+                  IF TG_OP = 'UPDATE'
+                     AND NEW.parameter_id     IS NOT DISTINCT FROM OLD.parameter_id
+                     AND NEW.overridden_value IS NOT DISTINCT FROM OLD.overridden_value THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT p.code, p.tipo_valore
+                    INTO v_code, v_tipo
+                    FROM config.parameters p
+                   WHERE p.id = NEW.parameter_id;
+
+                  -- Zero righe: passa, e decide la FK.
+                  IF NOT FOUND THEN
+                      RETURN NEW;
+                  END IF;
+
+                  v_forma := script.fn_valore_parametro_non_conforme(v_tipo, NEW.overridden_value);
+                  IF v_forma IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'config.trgfn_parameter_overrides_guard_tipo_valore',
+                          'E_PARAMETER_VALORE_NON_CONFORME',
+                          jsonb_build_object(
+                              'field',        'value',
+                              'override_id',  NEW.id,
+                              'parameter_id', NEW.parameter_id,
+                              'code',         v_code,
+                              'tipo_valore',  v_tipo,
+                              'valore',       NEW.overridden_value),
+                          NEW.tx_id,
+                          NEW.overridden_value::text, v_code::text, v_forma);
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION config.trgfn_parameter_overrides_guard_tipo_valore() IS
+                  'Guard di config.parameter_overrides (a07, BEFORE INSERT OR UPDATE OF parameter_id, overridden_value): overridden_value deve avere la forma di config.parameters.tipo_valore del parametro padre (script.fn_valore_parametro_non_conforme), altrimenti E_PARAMETER_VALORE_NON_CONFORME, sul campo value. Prima veniva accettato, e l''errore arrivava in lettura (E_CONFIG_MANCANTE) su ogni lettore del parametro. Dopo a05 (ammette_override), prima di a10 (FK-surrogata). Parametro assente: lo giudica la FK. Gemello: config.trgfn_parameters_guard_tipo_valore (default e cambio di tipo). Brief: brief-db-liste-datatable-grezze-secondo-giro (D-5).';
+
+              DROP TRIGGER IF EXISTS trg_parameter_overrides_a07_guard_tipo_valore_ins_upd
+                  ON config.parameter_overrides;
+              CREATE TRIGGER trg_parameter_overrides_a07_guard_tipo_valore_ins_upd
+                  BEFORE INSERT OR UPDATE OF parameter_id, overridden_value ON config.parameter_overrides
+                  FOR EACH ROW EXECUTE FUNCTION config.trgfn_parameter_overrides_guard_tipo_valore();
+      rollback:
+        - sql:
+            sql: >
+              DROP TRIGGER IF EXISTS trg_parameter_overrides_a07_guard_tipo_valore_ins_upd ON config.parameter_overrides;
+              DROP FUNCTION IF EXISTS config.trgfn_parameter_overrides_guard_tipo_valore();

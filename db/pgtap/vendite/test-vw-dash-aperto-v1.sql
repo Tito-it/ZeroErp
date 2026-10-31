@@ -4,6 +4,7 @@
 -- rev 2026-10-24 (brief-modello-documento-vendita Q-2/Q-4): il contratto ATTIVO nasce da dbops.fn_pgtap_crea_contratto (madre di produzione) invece che da un INSERT a mano; date multi-mese e listino in bozza.
 -- rev 2026-10-24 (brief-modello-documento-vendita R-2/R-9): l'azienda A nasce da dbops.fn_pgtap_crea_mondo_cliente (contesto aperto sul suo operatore, whitelist gia' sua: tolta la riscrittura a mano); B ha il suo operatore e il suo cliente e preventivo nascono sotto il suo contesto; il contratto nasce ATTIVO col periodo, la data e il listino dal builder; la commessa nasce da dbops.fn_pgtap_crea_commessa in BOZZA.
 -- rev 2026-10-25 (brief-modello-documento-vendita §8.5): il caso (b) e' un contratto CESSATO; il preventivo EVASO con riga residua il modello non lo ammette piu'.
+-- rev 2026-10-31 (brief-db-contratto-righe-periodiche-in-commessa §6.13, 20261031-04): il giudizio dei contratti e' riacceso; un contratto senza niente da mandare e' transitato ed esce dallo stock. I due contratti stanno su un listino QUOTA_FISSA con una quota mensile: dal valido_dal di due mesi fa i canoni maturano e non sono in commessa, quindi sono fermi (CANONE_NON_GENERATO). L'ATTIVO resta nello stock; il CESSATO resta il caso (b): chiuso, non transitato.
 -- pgtap-runner: owner
 -- pgtap-runner-motivo: ALTER TABLE vendite.preventivi FORCE ROW LEVEL SECURITY: il test verifica che
 --   la vista di dashboard resti coerente con la RLS armata.
@@ -29,8 +30,8 @@
 --             (es. preventivo ACCETTATO gia' completamente smistato, IN_CORSO);
 --         (b) CHIUSO-non-transitato  -> lo toglie SOLO fase<>CHIUSO
 --             (es. contratto CESSATO: esito POSITIVO -> NOT is_abortito NON
---             lo prende, is_transitato NULL (giudizio sospeso) -> is_aperto
---             NON lo prende).  NB: l'esempio "offerta SUPERATA" del brief NON
+--             lo prende, is_transitato false (fermo: canoni maturati non in
+--             commessa, rev 2026-10-31) -> is_aperto NON lo prende).  NB: l'esempio "offerta SUPERATA" del brief NON
 --             vale (SUPERATA ha esito=NEGATIVO -> is_abortito, gia' escluso).
 --             ⛔ rev 2026-10-25: l'esempio era il preventivo EVASO con riga
 --             residua, che il modello non ammette piu': EVASO lo scrive solo
@@ -46,7 +47,7 @@
 -- Fixture: preventivo ACCETTATO con riga residua (aperto, resta), contratto
 -- CESSATO (chiuso-non-transitato, ESCE — caso b), preventivo
 -- ABORTITO (NEGATIVO, fuori), preventivo emittente B (scope), contratto ATTIVO
--- multi-mese (aperto, resta), commessa (esclusa dallo stock).
+-- multi-mese fermo (aperto, resta), commessa (esclusa dallo stock).
 --
 -- Indice test (0..13):
 --   0)  Precondizioni (refs: BA, articoli, stati incl. NEGATIVO e CESSATO)
@@ -58,8 +59,8 @@
 --   5)  COMMESSE fuori dallo stock
 --   6)  Abortito (esito NEGATIVO) fuori dallo stock
 --   7)  Preventivo ACCETTATO con residuo: nello stock, valore>0, fase, motivo
---   8)  Contratto ATTIVO multi-mese: 1 riga nello stock, valori NULL
---   9)  Caso (b): contratto CESSATO -> in union (fase=CHIUSO,
+--   8)  Contratto ATTIVO multi-mese fermo: 1 riga nello stock, valori NULL
+--   9)  Caso (b): contratto CESSATO fermo -> in union (fase=CHIUSO,
 --       NON abortito, NON transitato) ma ASSENTE dallo stock (fase<>CHIUSO)
 --  10)  INVARIANTE perimetro: nessuna riga dello stock e' transitata o CHIUSA
 --       sulla union (fallback caso a + b, seed-agnostico)
@@ -323,8 +324,51 @@ SELECT ok(
 --   senza listino. L'attivazione vuole un listino con una versione in vigore
 --   (trgfn_contratti_freeze_listino_versione): lo costruisce il builder, che
 --   gli da' l'emittente di chi agisce, cioe' l'operatore di A in sessione.
+-- ⛔ rev 2026-10-31 (20261031-04): il giudizio dei contratti e' riacceso, e un
+--   contratto senza niente da mandare e' transitato: esce dallo stock e, CESSATO,
+--   non e' piu' il caso (b). Il listino porta una quota QUOTA_FISSA mensile
+--   (come in test-vw-dash-contratti-giudizio-v1, senza la quota che non puo'
+--   partire): il push la legge dal listino anche senza righe di contratto, i
+--   canoni dal valido_dal maturano e non sono in commessa, e i due contratti sono
+--   fermi (CANONE_NON_GENERATO). La versione vale dal valido_dal dei contratti.
 CREATE TEMP TABLE tmp_ap_listino AS
-SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM tmp_ap_refs), 'dash aperto');
+WITH ins AS (
+  INSERT INTO vendite.listini (codice, descrizione, utility_id, tipologia_id, emittente_soggetto_ruolo_id)
+  SELECT 'PGTAP_AP_' || substr(md5(clock_timestamp()::text || random()::text), 1, 10),
+         'Fixture pgTAP: dash aperto',
+         (SELECT utility_id FROM tmp_ap_refs),
+         (SELECT t.id FROM config.listini_tipologie t WHERE t.codice = 'QUOTA_FISSA'),
+         script.fn_pgtap_emittente_sr_operatore()
+  RETURNING id)
+SELECT id AS listino_id FROM ins;
+
+CREATE TEMP TABLE tmp_ap_lst_ver AS
+WITH ins AS (
+  INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal)
+  SELECT listino_id, 'PGTAP_V1',
+         (date_trunc('month', script.fn_data_operativa()) - interval '2 months')::date
+    FROM tmp_ap_listino
+  RETURNING id)
+SELECT * FROM ins;
+
+CREATE TEMP TABLE tmp_ap_quota AS
+SELECT dbops.fn_pgtap_crea_articolo('PGTAP-AP-QUOTA',
+         p_listino_tipologia_id => (SELECT t.id FROM config.listini_tipologie t WHERE t.codice = 'QUOTA_FISSA')) AS id;
+
+DO $fx$ BEGIN
+  PERFORM dbops.fn_pgtap_listino_aggiungi_articoli((SELECT id FROM tmp_ap_lst_ver),
+    ARRAY[(SELECT id FROM tmp_ap_quota)], 100);
+END $fx$;
+
+UPDATE vendite.listini_righe
+   SET periodicita = 'MENSILE'
+ WHERE listino_versione_id = (SELECT id FROM tmp_ap_lst_ver)
+   AND articolo_id = (SELECT id FROM tmp_ap_quota);
+
+DO $fx$ BEGIN
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.listini_versioni'::regclass, v.id, 'ATTIVA')
+     FROM tmp_ap_lst_ver v;
+END $fx$;
 
 -- ⭐ rev 2026-10-24 (R-2): il contratto nasce dal builder, dalla madre di
 --   produzione (numero, indirizzo di default), sul cliente di A, gia' ATTIVO
@@ -342,7 +386,8 @@ CREATE TEMP TABLE tmp_ap_contratto AS
 SELECT contratto_id AS id FROM tmp_ap_k;
 
 -- Caso (b): contratto CESSATO (fase CHIUSO, esito POSITIVO -> NON abortito;
--- giudizio di transito sospeso -> is_transitato NULL). Deve essere presente in
+-- fermo, canoni maturati non in commessa -> is_transitato false, rev
+-- 2026-10-31). Deve essere presente in
 -- union ma FUORI dallo stock, tolto SOLO da fase<>CHIUSO.
 -- rev 2026-10-25: un cliente suo (il builder senza BA lo costruisce nella
 -- stessa azienda, il contesto e' aperto), cosi' non si sovrappone al
@@ -406,15 +451,18 @@ SELECT ok(
 
 -- ============================================================
 -- 8) Contratto de-esploso -> 1 riga, valori NULL
+--    rev 2026-10-31: fermo (tre canoni maturati non in commessa), resta nello
+--    stock con UNA riga sola.
 -- ============================================================
 SELECT ok(
   (SELECT count(*) = 1
       AND bool_and(a.fase IS NOT NULL)
       AND bool_and(a.valore_totale IS NULL)
+      AND bool_and(a.motivo_fermo = 'CANONE_NON_GENERATO')
      FROM vendite.vw_dash_aperto_documenti a
     WHERE a.area = 'CONTRATTO'
       AND a.documento_id = (SELECT id FROM tmp_ap_contratto)),
-  '8. Contratto ATTIVO multi-mese: 1 sola riga nello stock (giudizio sospeso = aperto), valori NULL'
+  '8. Contratto ATTIVO multi-mese fermo (canoni non in commessa): 1 sola riga nello stock, valori NULL'
 );
 
 -- ============================================================
@@ -428,12 +476,12 @@ SELECT ok(
         AND d.area = 'CONTRATTO'
         AND d.fase = 'CHIUSO'
         AND NOT d.is_abortito
-        AND d.is_transitato IS DISTINCT FROM true))
+        AND d.is_transitato = false))
   AND NOT EXISTS (
      SELECT 1 FROM vendite.vw_dash_aperto_documenti a
       WHERE a.area = 'CONTRATTO'
         AND a.documento_id = (SELECT id FROM tmp_ap_contratto_cessato)),
-  '9. Caso (b): contratto CESSATO non-abortito/non-transitato in union (fase CHIUSO), ASSENTE dallo stock via fase<>CHIUSO'
+  '9. Caso (b): contratto CESSATO fermo, non-abortito/non-transitato in union (fase CHIUSO), ASSENTE dallo stock via fase<>CHIUSO'
 );
 
 -- ============================================================

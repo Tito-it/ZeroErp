@@ -23,8 +23,10 @@ BEGIN
     --   positivo: dal testo all'intero, oppure E_CONFIG_MANCANTE.
     --
     -- Regole:
-    --   - ammesso: da 1 a 999999, senza zeri iniziali, segno,
-    --     decimali o spazi ('^[1-9][0-9]{0,5}$');
+    --   - ammesso: la forma INTERO_POSITIVO di
+    --     script.fn_valore_parametro_non_conforme (da 1 a 999999,
+    --     senza zeri iniziali, segno, decimali o spazi), la
+    --     stessa che i guard applicano in scrittura;
     --   - NULL o vuoto: il parametro manca, E_CONFIG_MANCANTE;
     --   - niente valore di ripiego, niente btrim.
     -- =========================================================
@@ -41,7 +43,8 @@ BEGIN
             'il codice del parametro da validare e'' obbligatorio');
     END IF;
 
-    IF COALESCE(p_valore, '') !~ '^[1-9][0-9]{0,5}$' THEN
+    -- La regola dal BB delle forme (NULL non e' conforme).
+    IF script.fn_valore_parametro_non_conforme('INTERO_POSITIVO', p_valore) IS NOT NULL THEN
         PERFORM script.fn_log_and_raise_error(
             'database', COALESCE(p_chi, 'script.fn_intero_positivo_da_testo'),
             'E_CONFIG_MANCANTE',
@@ -57,7 +60,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_intero_positivo_da_testo(p_valore text, p_parametro character varying, p_chi text)
-IS 'La regola «intero positivo» del valore di un parametro di sistema, in una sede: restituisce l''intero (da 1 a 999999, senza zeri iniziali, segno, decimali o spazi), oppure solleva E_CONFIG_MANCANTE col nome del parametro (assente, vuoto o forma non ammessa). Fail-loud, niente ripiego, niente btrim. Non legge tabelle: il valore lo passa il chiamante, che lo legge dove sta (di solito il default nudo di config.parameters, per un parametro senza override). p_chi: chi la chiama, per il log. Consumatori: dbops.fn_idempotency_soglia_secondi, script.fn_login_parametri. Brief: brief-be-verifica-documentazione-api §I.11.0.';
+IS 'La regola «intero positivo» del valore di un parametro di sistema, letta: restituisce l''intero (da 1 a 999999, senza zeri iniziali, segno, decimali o spazi), oppure solleva E_CONFIG_MANCANTE col nome del parametro (assente, vuoto o forma non ammessa). La forma la dice script.fn_valore_parametro_non_conforme (tipo INTERO_POSITIVO, rev 2026-10-31), la stessa che i guard applicano in scrittura. Fail-loud, niente ripiego, niente btrim. Non legge tabelle: il valore lo passa il chiamante, che lo legge dove sta. p_chi: chi la chiama, per il log. Consumatori: dbops.fn_idempotency_soglia_secondi, script.fn_login_parametri, vendite.fn_listini_in_scadenza_senza_successore. Brief: brief-be-verifica-documentazione-api §I.11.0, brief-db-liste-datatable-grezze-secondo-giro (D-5).';
 ```
 
 </div>

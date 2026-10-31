@@ -969,6 +969,15 @@ Applicato da Tid il 2026-10-31 (`20261031-01` … `-04` e il seed `20260706-02`)
 * nel Backlog entrano i contratti fermi, anche un CESSATO con uno storno da mandare;
 * union `vw_dash_fatturazione_documenti`: stesse colonne, niente da ricreare.
 
+**pgTAP a valle sfuggiti al censimento (rossi da Tid, 2026-10-31).** Asserivano ancora il giudizio
+sospeso. `test-vw-dash-backlog-v1` era già allineato.
+* `vendite/test-vw-dash-aperto-v1`, test 8 e 9. Senza niente da mandare il contratto è transitato:
+  l'ATTIVO usciva dallo stock e il CESSATO non era più il caso (b), cioè chiuso ma non transitato. I due
+  contratti stanno ora su un listino QUOTA_FISSA con una quota mensile: i canoni maturati non sono in
+  commessa, quindi sono fermi (`CANONE_NON_GENERATO`).
+* `vendite/test-vw-dash-fatturazione-v1`, test 12 e 13. Il contratto non ha niente da mandare: è transitato
+  (1, motivo NULL), sempre in una riga.
+
 **Da sapere:**
 * una quota fissa del listino senza periodicità rende `CANONE_NON_GENERABILE` **ogni** contratto del
   listino che non la esclude. È un difetto del listino, e la segnalazione è giusta;

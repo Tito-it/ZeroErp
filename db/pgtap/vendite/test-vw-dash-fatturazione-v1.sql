@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-31 (brief-db-contratto-righe-periodiche-in-commessa §6.13, 20261031-04): il giudizio dei contratti e' riacceso dal push. Il contratto della fixture non ha niente da mandare (il listino ha solo la riga d'appoggio, che non matura canoni): e' transitato (1, motivo NULL); il canone EMESSO scritto a mano non cambia il giudizio, che e' del push. Sempre 1 riga.
 -- rev 2026-10-25 (brief-modello-documento-vendita §9): la conferma dell'ordine passa da
 --   dbops.fn_pgtap_porta_a_stato (il verbo dell'ordine), non da un UPDATE dello stato: la porta lo
 --   ferma. Nessuna attesa cambiata.
@@ -50,7 +51,7 @@
 -- Test: viste dashboard fatturazione (20260703-51..57, agg. 20260707-03/06
 --       "Situazione aperta"): 5 resolver di area + union
 --       (vw_dash_fatturazione_documenti). La mensile e' DISMESSA (20260707-06)
---       e il resolver contratti e' DE-ESPLOSO con giudizio sospeso (DL-12).
+--       e il resolver contratti e' DE-ESPLOSO (DL-12), giudizio dal push (20261031-04).
 --       Brief: brief-design-dashboard-fatturazione.md §5 +
 --       brief-db-situazione-aperta.md §2-3.
 --       Fixture: preventivo ACCETTATO misto (merce a ordine, servizio
@@ -71,9 +72,9 @@
 --   9)  OFFERTE: ACCETTATA senza figlio -> SENZA_FIGLIO
 --   10) OFFERTE: ACCETTATA con contratto figlio vivo -> transitata
 --   11) OFFERTE: ACCETTATA con figlio ANNULLATO -> FIGLIO_ABORTITO
---   12) CONTRATTI: DE-ESPLOSO -> 1 riga (multi-mese), giudizio SOSPESO
---       (is_transitato/motivo NULL), competenza NULL, data_rif = valido_dal
---   13) CONTRATTI: canone EMESSO in commessa -> giudizio RESTA sospeso (DL-12)
+--   12) CONTRATTI: DE-ESPLOSO -> 1 riga (multi-mese), niente da mandare ->
+--       transitato (motivo NULL), competenza NULL, data_rif = valido_dal
+--   13) CONTRATTI: canone EMESSO in commessa -> sempre 1 riga, giudizio invariato
 --   14) CONTRATTI: contratto ANNULLATO (abortito) escluso dal resolver
 --   15) COMMESSE: valori 90/60, motivo ATTIVITA_NON_APPROVATA
 --   16) COMMESSE: attivita APPROVATA ma non emessa -> ATTIVITA_NON_EMESSA
@@ -555,24 +556,24 @@ CREATE TEMP TABLE tmp_df_contratto AS
 SELECT k.id, k.uid FROM vendite.contratti k WHERE k.id = (SELECT contratto_id FROM tmp_df_k);
 
 -- ============================================================
--- 12-14) Area CONTRATTI (de-esplosa, giudizio sospeso — DL-12)
+-- 12-14) Area CONTRATTI (de-esplosa — DL-12; giudizio dal push, 20261031-04)
 -- ============================================================
 SELECT ok(
   (SELECT count(*) = 1
-      AND bool_and(v.is_transitato IS NULL)
-      AND bool_and(v.unita_transitate IS NULL)
+      AND bool_and(v.is_transitato)
+      AND bool_and(v.unita_transitate = 1)
       AND bool_and(v.motivo_fermo IS NULL)
       AND bool_and(v.unita_totali = 1)
       AND bool_and(v.competenza_mese IS NULL)
       AND bool_and(v.data_riferimento = (date_trunc('month', script.fn_data_operativa()) - interval '2 months')::date)
      FROM vendite.vw_dash_fatturazione_contratti v
     WHERE v.documento_id = (SELECT id FROM tmp_df_contratto)),
-  '12. Contratto ATTIVO multi-mese: 1 SOLA riga (de-esploso), giudizio sospeso (transito/motivo NULL), data_riferimento = valido_dal'
+  '12. Contratto ATTIVO multi-mese senza niente da mandare: 1 SOLA riga (de-esploso), transitato, motivo NULL, data_riferimento = valido_dal'
 );
 
 -- Canone del mese generato: attivita EMESSA con sorgente CONTRATTO. Con la
--- de-esplosione (DL-12) il giudizio di transito resta SOSPESO anche in
--- presenza del canone: si riaccendera' col push ricorrente.
+-- de-esplosione (DL-12) resta 1 riga; il giudizio e' del push (20261031-04,
+-- rev 2026-10-31): l'attivita' scritta a mano non lo cambia.
 -- ⚠️ rev 2026-10-24 (§4-octies): resta scritta a mano, perche' la chiave del
 --   canone porta il mese (:M:<AAAA-MM>) e il builder non lo passa al
 --   costruttore; la chiave pero' la compone script.fn_segment_key.
@@ -597,11 +598,11 @@ SELECT
 FROM tmp_df_refs r;
 
 SELECT ok(
-  (SELECT count(*) = 1 AND bool_and(v.is_transitato IS NULL)
+  (SELECT count(*) = 1 AND bool_and(v.is_transitato)
       AND bool_and(v.motivo_fermo IS NULL)
      FROM vendite.vw_dash_fatturazione_contratti v
     WHERE v.documento_id = (SELECT id FROM tmp_df_contratto)),
-  '13. Contratto con canone EMESSO in commessa: giudizio RESTA sospeso (DL-12), sempre 1 riga'
+  '13. Contratto con canone EMESSO in commessa: sempre 1 riga (DL-12), giudizio del push invariato (transitato)'
 );
 
 SELECT is(
