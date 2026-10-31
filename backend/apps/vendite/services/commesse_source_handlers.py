@@ -362,6 +362,14 @@ class BaseSourceHandler(ABC):
     # È una staticmethod (non import top-level) perche' i *_repository importano
     # i types del dominio vendite → import locale evita cicli.
     _componenti_repo_factory: Callable[[], Any] | None = None
+    # Il periodo della riga entra nella chiave della commessa? Si' per le
+    # sorgenti a evento (un documento, un periodo). ⛔ No per il contratto
+    # (G-6 del brief-db-contratto-righe-periodiche-in-commessa): ogni pezzo di
+    # canone ha il suo periodo, e col periodo nella chiave dal secondo pezzo
+    # si aprirebbe un'altra commessa, che la madre rifiuta
+    # (`E_COMMESSA_SORGENTE_ALTRA_COMMESSA`, D-12). Una commessa viva per
+    # contratto accumula i pezzi finche' non si fattura.
+    _commessa_per_periodo: bool = True
 
     def __init__(
         self,
@@ -511,8 +519,8 @@ class BaseSourceHandler(ABC):
                 "tipo_commessa": tipo_commessa,
                 "policy_fatturazione": policy_fatturazione,
                 "fatturazione_immediata": row.fatturazione_immediata,
-                "competenza_dal": row.competenza_dal,
-                "competenza_al": row.competenza_al,
+                "competenza_dal": row.competenza_dal if self._commessa_per_periodo else None,
+                "competenza_al": row.competenza_al if self._commessa_per_periodo else None,
                 "termine_pagamento_id": row.termine_pagamento_id,
                 "modalita_pagamento_id": row.modalita_pagamento_id,
             }
@@ -801,6 +809,8 @@ class HandlerContratti(BaseSourceHandler):
 
     name = "HandlerContratti"
     sorgente_codice = SORGENTE_CONTRATTO
+    # G-6: la commessa del contratto si apre senza periodo (vedi la base).
+    _commessa_per_periodo = False
 
     @staticmethod
     def _componenti_repo_factory():

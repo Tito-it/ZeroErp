@@ -81,6 +81,10 @@ Scritture sul BB core (2026-09-26):
 63) aggiorna_offerta_utility_inline_chiave_estranea_e_400 [niente scarto silenzioso]
 64) aggiorna_offerta_cambio_cliente_non_riscrive_la_scheda [R-BE-6: la rifa' il DB]
 65) aggiorna_offerta_stesso_cliente_applica_la_scheda    [id come testo: non e' un cambio]
+
+Codici a vocabolario della riga (BB `normalizza_codici_riga`, 2026-10-31):
+66) crea_eccezione_codici_normalizzati_come_il_contratto [strip+upper, '' -> NULL]
+67) aggiorna_eccezione_codice_non_stringa_e_400          [400 col campo, repo non chiamato]
 """
 
 from unittest import TestCase
@@ -764,6 +768,49 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         }
         OfferteService().crea_eccezione(1, payload)
         repo.create_eccezione.assert_called_once_with(1, payload)
+
+    # Scopo: 66) i codici della riga arrivano al repository nella forma del
+    #        contratto: fino al 2026-10-31 qui passavano grezzi, e « trimestrale »
+    #        o '' finivano nella FK come «inesistente».
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_crea_eccezione_codici_normalizzati_come_il_contratto(self, repo_cls, _atomic):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        _atomic.return_value.__enter__ = MagicMock()
+        _atomic.return_value.__exit__ = MagicMock(return_value=False)
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "BOZZA"
+        repo.create_eccezione.return_value = 77
+        repo.get_eccezione.return_value = {"id": 77, "offerta_id": 1}
+
+        OfferteService().crea_eccezione(1, {
+            "articolo_id": "00000000-0000-7000-8000-000000000abc",
+            "tipo_eccezione": "OVERRIDE",
+            "fonte_quantita_attesa": " manuale ",
+            "periodicita": "trimestrale",
+            "generazione_canone": "",
+            "prezzo_unitario": "12.50",
+        })
+        scritto = repo.create_eccezione.call_args[0][1]
+        self.assertEqual(scritto["fonte_quantita_attesa"], "MANUALE")
+        self.assertEqual(scritto["periodicita"], "TRIMESTRALE")
+        self.assertIsNone(scritto["generazione_canone"])
+        # Una chiave non mandata resta assente: non diventa un NULL scritto.
+        self.assertNotIn("tipo_erogazione", scritto)
+
+    # Scopo: 67) simmetrico in PATCH: un codice che non e' una stringa e' un
+    #        400 col campo, prima di toccare il repository.
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_aggiorna_eccezione_codice_non_stringa_e_400(self, repo_cls):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        repo = repo_cls.return_value
+        with self.assertRaises(ServiceError) as cm:
+            OfferteService().aggiorna_eccezione(1, 7, {"periodicita": 3})
+        self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
+        self.assertEqual(cm.exception.context.get("field"), "periodicita")
+        repo.update_eccezione.assert_not_called()
 
     # Scopo: aggiorna_eccezione ownership cross-offerta -> 404.
     @patch("apps.vendite.services.offerte_service.OfferteRepository")

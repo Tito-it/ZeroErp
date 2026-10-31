@@ -518,6 +518,13 @@ def _translate_integrity_error(exc: IntegrityError, *, function_name: str, entit
                 E_VENDITE_FK,
                 "Tipologia listino non valida.",
             ),
+            # La periodicita' della riga (G-0-bis): fuori vocabolario e' un
+            # dato del form, col campo, come su contratto e offerta.
+            "fk_listini_righe_periodicita": (
+                E_VENDITE_FK,
+                "Periodicità inesistente.",
+                "periodicita",
+            ),
             # Temporal FK PG18 (migration 20260514-12) — sostituisce il guard
             # trigger di coerenza BoM (guard 6 rimosso con migration 20260514-13).
             "fk_listrighe_comp_articoli_comp_temporal": (
@@ -851,6 +858,16 @@ def _extract_riga_payload(
     )
     if attivo is not _MISSING:
         data["attivo"] = attivo
+
+    # La periodicita' del canone: un codice del vocabolario o NULL, letto col
+    # BB `optional_upper` come sulle righe di contratto e offerta
+    # (`normalizza_codici_riga`). Il vocabolario lo dice la FK
+    # (`fk_listini_righe_periodicita`); fuori bozza la riga e' ferma dal guard
+    # di stato della versione.
+    if "periodicita" in payload:
+        data["periodicita"] = _V.optional_upper(
+            payload, "periodicita", function_name=function_name,
+        )
 
     meta = _extract_meta(payload, function_name=function_name, message=message)
     if meta is not _MISSING:

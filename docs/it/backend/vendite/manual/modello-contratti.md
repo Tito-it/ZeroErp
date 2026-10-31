@@ -260,9 +260,10 @@ non lo sceglie l'operatore da zero: **lo dice l'articolo**.
   (`config.nature_vendita_erogazioni`). Vince la tipologia. Il composito (kit)
   ammette le sole combinazioni FISSA (I-D6, 2026-10-21): si vende a quantita'
   fissa. Sede unica: `vendite.fn_articolo_erogazioni`.
-- **La riga eredita** erogazione e fonte che non indica (solo all'INSERT);
-  CANONE porta con se' la sua `generazione_canone`. La scelta dell'operatore
-  vince, dentro il perimetro.
+- **La riga eredita** erogazione e fonte che non indica (solo all'INSERT). La
+  `generazione_canone` non si eredita piu' dall'articolo (dal 2026-10-29, F-7):
+  vuota, la riga segue la testata. La scelta dell'operatore vince, dentro il
+  perimetro.
 - **Il perimetro** e' la tipologia dell'articolo, e la tipologia dev'essere fra
   quelle della utility del documento: una combinazione fuori →
   `E_RIGA_EROGAZIONE_FUORI_PERIMETRO`; un articolo di una tipologia che la

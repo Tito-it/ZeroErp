@@ -355,6 +355,21 @@ export function nomeGiornoSettimana(indice, locale) {
 }
 
 /**
+ * I dodici nomi dei mesi (gennaio … dicembre) nella lingua data: indice 0 =
+ * gennaio. Il gemello di `nomeGiornoSettimana` per i mesi; un giorno di
+ * calendario qualunque di ogni mese, quindi nessun fuso in gioco. Estratto il
+ * 2026-10-31 (regola del 2, ok Tid): i cruscotti mensili (`useDashMesiNav`) e
+ * la tendina del mese di partenza dei canoni sulla testata.
+ *
+ * @param {string} locale - es. 'it-IT'
+ * @returns {string[]}
+ */
+export function nomiMesi(locale) {
+  const fmt = new Intl.DateTimeFormat(locale, { month: 'long' })
+  return Array.from({ length: 12 }, (_, m) => fmt.format(new Date(2024, m, 1)))
+}
+
+/**
  * Ritorna una Date locale a mezzanotte = OGGI DELL'AZIENDA + N giorni.
  * Helper standard per i parameters lead-gg dei `defaultForm()` (Fase 2
  * refactor frontend vendite). Centralizzare evita pattern ripetuto

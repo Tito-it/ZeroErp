@@ -168,6 +168,10 @@ _SELECT_COLS_CONTRATTO = """
     -- prima del push in commessa (guard DB); in ATTIVO la whitelist di patch
     -- non lo ammette, quindi il FE lo mostra readonly da li' in poi.
     c.fatturazione_immediata,
+    -- Come si addebitano i canoni (F-2, F-7): anticipati/normali e il mese da
+    -- cui si contano i periodi. Le righe a canone senza generazione la seguono.
+    c.generazione_canone,
+    c.mese_partenza_canone,
     c.meta,
     c.data_insert,
     c.user_insert,
@@ -211,7 +215,6 @@ _SELECT_COLS_RIGA = """
     r.fonte_quantita_attesa,
     r.periodicita,
     r.generazione_canone,
-    r.competenza_canone,
     r.prezzo_unitario,
     r.quantita,
     r.qta_operativa,
@@ -825,7 +828,6 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
         "fonte_quantita_attesa",
         "periodicita",
         "generazione_canone",
-        "competenza_canone",
         "prezzo_unitario",
         # ⛔ Niente `quantita`: la calcola il DB (`trgfn_qta_from_operativa`).
         "qta_operativa",
@@ -864,7 +866,6 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
         "fonte_quantita_attesa",
         "periodicita",
         "generazione_canone",
-        "competenza_canone",
         "prezzo_unitario",
         "qta_operativa",
         "uom_operativa_id",

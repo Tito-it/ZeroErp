@@ -156,6 +156,10 @@ RIGA_CREATE_COLUMNS: dict[str, str] = {
     "articolo_id": "uuid",
     "uom_id": "int",
     "prezzo": "numeric",
+    # La periodicita' del canone (G-0-bis, `20261029-11`): FK verso
+    # `config.periodicita`. Sulla quota fissa e' la periodicita' con cui si
+    # addebita; altrove e' la proposta che l'ADESIONE eredita.
+    "periodicita": "text",
     "meta": "jsonb",
     "attivo": "bool",
 }
@@ -686,6 +690,7 @@ class ListiniRepository:
                     u.codice                            AS uom_codice,
                     u.descrizione                       AS uom_descrizione,
                     r.prezzo,
+                    r.periodicita,
                     -- IVA dell'articolo (denormalizzata dal `vw_articoli_dettaglio`):
                     -- il FE mostra la colonna IVA per ogni riga (audit visivo +
                     -- coerenza padre-figlio nei bundle).
@@ -718,6 +723,9 @@ class ListiniRepository:
                     -- Il composito non ha un prezzo proprio: il suo valore e' la
                     -- somma dei componenti, mostrata come badge «N componenti».
                     NULL::numeric                       AS prezzo,
+                    -- Il padre del kit non ha una riga di listino, quindi
+                    -- nemmeno una periodicita' (D-2-bis, aperta).
+                    NULL::varchar                       AS periodicita,
                     adc.iva_id,
                     adc.iva_codice,
                     adc.iva_aliquota_iva                AS iva_aliquota,
@@ -772,6 +780,7 @@ class ListiniRepository:
                     r.articolo_id,
                     r.uom_id,
                     r.prezzo,
+                    r.periodicita,
                     r.meta,
                     r.attivo,
                     r.data_insert,

@@ -31,7 +31,6 @@ _RIGA_EROGAZIONE = inline_serializer(
         "tipo_erogazione": serializers.CharField(),
         "fonte_quantita_attesa": serializers.CharField(),
         "e_default": serializers.BooleanField(),
-        "generazione_canone": serializers.CharField(allow_null=True),
         "origine": serializers.CharField(),
     },
 )

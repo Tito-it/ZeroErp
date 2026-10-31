@@ -467,6 +467,13 @@ Tipi ammessi (allineati col CHECK DB `chk_contrighe_prezzo_per_tipo_eccezione`):
 | `OVERRIDE` | Prezzo personalizzato per un articolo presente nel listino | NOT NULL |
 | `ESCLUSIONE` | L'articolo del listino non e' disponibile per il cliente | NULL |
 | `AGGIUNTA` | Articolo fuori-listino, aggiunto al contratto | NOT NULL |
+| `ADESIONE` | Il cliente prende un articolo del listino al prezzo del listino, con la variazione globale (G-0-ter, dal 2026-10-29). Sulla riga solo quantita' e periodicita', che senza indicazione arriva dalla riga di listino | NULL |
+
+Un'ADESIONE non passa dal gate dei prezzi (L1/L2/L3): non ha un prezzo suo. Su un kit
+non inizializza i componenti, che vengono dal listino. Dal 2026-10-29 l'OVERRIDE non si
+addebita piu': e' solo il prezzo del cliente, se e quando compra l'articolo (F-1 di
+brief-db-contratto-righe-periodiche-in-commessa); cio' che il contratto addebita a
+periodi e' l'ADESIONE.
 
 Vincoli:
 
@@ -480,8 +487,8 @@ Vincoli:
 - **Un'ESCLUSIONE e' vuota** (decisione di Tid, 2026-10-04,
   brief-db-righe-esclusione-solo-non-si-vende): dice solo «non si vende», quindi
   `prezzo_unitario`, `quantita`, `qta_operativa`, `uom_operativa_id`,
-  `factor_to_base`, `tipo_erogazione`, `fonte_quantita_attesa`, `periodicita`,
-  `generazione_canone` e `competenza_canone` restano NULL. «Escludi» manda solo
+  `factor_to_base`, `tipo_erogazione`, `fonte_quantita_attesa`, `periodicita` e
+  `generazione_canone` restano NULL (`competenza_canone` ritirata il 2026-10-29). «Escludi» manda solo
   `articolo_id` e `tipo_eccezione`. Un dato valorizzato lo rifiuta il guard
   `script.trgfn_righe_guard_esclusione_senza_dati` → `E_RIGA_ESCLUSIONE_CON_DATI`
   (400, campo in `error.fields`); CHECK `chk_contrighe_esclusione_senza_dati` come rete.
@@ -575,8 +582,9 @@ ha tipologia (`config.nature_vendita_erogazioni`); un composito (kit) le sole
 combinazioni `FISSA` (I-D6, 2026-10-21). Sede unica: `vendite.fn_articolo_erogazioni`.
 
 - **Eredità** (solo INSERT): erogazione e fonte non indicate si ereditano dalla
-  combinazione di default; `CANONE` porta anche la sua `generazione_canone`
-  (`script.trgfn_righe_default_erogazione_da_articolo`). Su un UPDATE che cambia
+  combinazione di default (`script.trgfn_righe_default_erogazione_da_articolo`).
+  La `generazione_canone` non si eredita piu' dall'articolo (dal 2026-10-29, F-7): sulla
+  riga e' facoltativa, e vuota segue la testata del contratto. Su un UPDATE che cambia
   la sola erogazione, la fonte si riallinea a quella che l'articolo ammette.
 - **Perimetro**: una combinazione che l'articolo non ammette →
   `E_RIGA_EROGAZIONE_FUORI_PERIMETRO` (400, campo `tipo_erogazione` o

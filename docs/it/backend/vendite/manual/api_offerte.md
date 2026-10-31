@@ -328,6 +328,15 @@ Note:
   `POST /utility/` separato dopo (vedi §Utility 1:1) — sconsigliato
   perche' non atomico col create testata.
 - `validita_dal` obbligatorio; `validita_al` opzionale.
+- **I canoni della testata** (dal 2026-10-29, F-2 e F-7 di
+  brief-db-contratto-righe-periodiche-in-commessa), in creazione e in PATCH:
+  `generazione_canone` (`INIZIO_PERIODO` = anticipati, il default;
+  `FINE_PERIODO` = normali) e `mese_partenza_canone` (1-12, default 1: il mese da
+  cui si contano i periodi). NOT NULL: si omettono o si mandano valorizzati, mai
+  `null`. Il dominio lo dicono i CHECK `chk_offerte_commerciali_*`, tradotti sul
+  campo (400). Fuori bozza li ferma il lock di testata
+  (`E_DOC_CONDIZIONI_FUORI_BOZZA`, 409). Il passaggio a contratto li copia. Una
+  riga a canone con `generazione_canone` vuota segue la testata.
 - Coerenza coppia variazione globale: `tipo_variazione_globale` +
   `valore_variazione_globale` entrambi NULL o entrambi NOT NULL (CHECK DB
   `chk_offerte_variazione_globale_coerenza`).
@@ -904,9 +913,9 @@ per l'eredità e per il guard del perimetro.
 ```json
 { "data": { "results": [
   { "tipo_erogazione": "UNA_TANTUM", "fonte_quantita_attesa": "FISSA",
-    "e_default": true, "generazione_canone": null, "origine": "TIPOLOGIA" },
+    "e_default": true, "origine": "TIPOLOGIA" },
   { "tipo_erogazione": "UNA_TANTUM", "fonte_quantita_attesa": "MANUALE",
-    "e_default": false, "generazione_canone": null, "origine": "TIPOLOGIA" }
+    "e_default": false, "origine": "TIPOLOGIA" }
 ] } }
 ```
 
@@ -966,6 +975,7 @@ contratto — riuso intenzionale per push 1:1 senza conversioni):
 | `OVERRIDE`       | Prezzo personalizzato per articolo del listino         | NOT NULL          |
 | `ESCLUSIONE`     | Articolo del listino non disponibile per il cliente    | NULL              |
 | `AGGIUNTA`       | Articolo fuori-listino aggiunto all'offerta            | NOT NULL          |
+| `ADESIONE`       | Articolo del listino al prezzo del listino (G-0-ter, dal 2026-10-29): sulla riga solo quantita' e periodicita' | NULL |
 
 Vincoli (CHECK DB `chk_offerte_eccezioni_*` + UNIQUE):
 
@@ -991,8 +1001,8 @@ Vincoli (CHECK DB `chk_offerte_eccezioni_*` + UNIQUE):
 - **Un'ESCLUSIONE e' vuota** (decisione di Tid, 2026-10-04,
   brief-db-righe-esclusione-solo-non-si-vende): dice solo «non si vende», quindi
   `prezzo_unitario`, `quantita`, `qta_operativa`, `uom_operativa_id`,
-  `factor_to_base`, `tipo_erogazione`, `fonte_quantita_attesa`, `periodicita`,
-  `generazione_canone` e `competenza_canone` restano NULL. «Escludi» manda solo
+  `factor_to_base`, `tipo_erogazione`, `fonte_quantita_attesa`, `periodicita` e
+  `generazione_canone` restano NULL (`competenza_canone` ritirata il 2026-10-29). «Escludi» manda solo
   `articolo_id` e `tipo_eccezione`. Un dato valorizzato lo rifiuta il guard
   `script.trgfn_righe_guard_esclusione_senza_dati` → `E_RIGA_ESCLUSIONE_CON_DATI`
   (400, campo in `error.fields`); CHECK `chk_offerte_eccezioni_esclusione_senza_dati` come rete.

@@ -20,6 +20,8 @@ Indice test eseguiti:
 8) CommesseSourceHandlersTests.test_process_rows_default_stato_approvazione_bozza
 9) CommesseSourceHandlersTests.test_process_rows_isolamento_errori_per_riga
 10) CommesseSourceHandlersTests.test_handler_contratti_esiste
+10b) CommesseSourceHandlersTests.test_contratto_apre_la_commessa_senza_periodo
+10c) CommesseSourceHandlersTests.test_sorgente_a_evento_tiene_il_periodo_nella_chiave
 11) CommesseSourceHandlersTests.test_handler_ddt_esiste
 12) CommesseSourceHandlersTests.test_handler_consumi_expand_rows_fanout
 13) CommesseSourceHandlersTests.test_process_rows_cache_commessa_evita_chiamate_ripetute
@@ -398,6 +400,51 @@ class CommesseSourceHandlersTests(TestCase):
         handler = HandlerContratti(repo)
         self.assertEqual(handler.sorgente_codice, "CONTRATTO")
         self.assertEqual(handler.name, "HandlerContratti")
+
+    # Scopo: G-6 (brief-db-contratto-righe-periodiche-in-commessa) — due pezzi
+    #        di canone dello stesso contratto, con periodi diversi, vanno nella
+    #        STESSA commessa, aperta senza periodo. Col periodo nella chiave il
+    #        secondo pezzo aprirebbe un'altra commessa, e la madre DB lo
+    #        rifiuterebbe (`E_COMMESSA_SORGENTE_ALTRA_COMMESSA`, D-12).
+    def test_contratto_apre_la_commessa_senza_periodo(self):
+        repo = _mock_repo()
+        repo.fetch_pushable_rows.return_value = [
+            _make_row(segment_key="CONTRATTO:uid-1:R:1:M:2026-06", sorgente_uid="uid-1",
+                      competenza_dal=date(2026, 6, 1), competenza_al=date(2026, 6, 30)),
+            _make_row(segment_key="CONTRATTO:uid-1:R:1:M:2026-07", sorgente_uid="uid-1",
+                      competenza_dal=date(2026, 7, 1), competenza_al=date(2026, 7, 31)),
+        ]
+        HandlerContratti(repo).run()
+
+        repo.get_or_create_commessa.assert_called_once()
+        kwargs = repo.get_or_create_commessa.call_args.kwargs
+        self.assertIsNone(kwargs["competenza_dal"])
+        self.assertIsNone(kwargs["competenza_al"])
+        # Il periodo non sparisce: resta sulla riga di commessa.
+        inputs = repo.batch_upsert_attivita.call_args[0][0]
+        self.assertEqual(
+            [(i.competenza_dal, i.competenza_al) for i in inputs],
+            [(date(2026, 6, 1), date(2026, 6, 30)), (date(2026, 7, 1), date(2026, 7, 31))],
+        )
+
+    # Scopo: simmetrico — le sorgenti a evento tengono il periodo nella chiave:
+    #        senza, il test sopra si soddisferebbe togliendo il periodo a tutti.
+    def test_sorgente_a_evento_tiene_il_periodo_nella_chiave(self):
+        repo = _mock_repo()
+        repo.get_or_create_commessa.side_effect = [10, 11]
+        repo.fetch_pushable_rows.return_value = [
+            _make_row(segment_key="K:1", sorgente_uid="uid-1",
+                      competenza_dal=date(2026, 6, 1), competenza_al=date(2026, 6, 30)),
+            _make_row(segment_key="K:2", sorgente_uid="uid-2",
+                      competenza_dal=date(2026, 7, 1), competenza_al=date(2026, 7, 31)),
+        ]
+        HandlerPreventivi(repo).run()
+
+        self.assertEqual(repo.get_or_create_commessa.call_count, 2)
+        self.assertEqual(
+            [c.kwargs["competenza_dal"] for c in repo.get_or_create_commessa.call_args_list],
+            [date(2026, 6, 1), date(2026, 7, 1)],
+        )
 
     # Scopo: HandlerDdt esiste e ha sorgente_codice DDT_VENDITA (#8).
     def test_handler_ddt_esiste(self):

@@ -113,6 +113,9 @@ TIPI: Tipi = {
     "codice_cig": (_testo, True),
     "codice_cup": (_testo, True),
     "codice_commessa": (_testo, True),
+    # I canoni della testata (F-2, F-7): anticipati/normali e il mese da cui si
+    # contano i periodi. NOT NULL a DB col default: `null` non si manda.
+    "mese_partenza_canone": (_intero, False),
     # ── righe ────────────────────────────────────────────────
     "articolo_id": (_uuid, False),
     "descrizione": (_testo, False),
@@ -143,7 +146,6 @@ TIPI: Tipi = {
     "fonte_quantita_attesa": (_testo, False),
     "periodicita": (_testo, True),
     "generazione_canone": (_testo, True),
-    "competenza_canone": (_testo, True),
     # Non colonne: il service le legge per il gate prezzi (L3) e i componenti.
     "richiesta_approvazione": (_booleano, False),
     "componenti_overrides": (_mappa_prezzi, True),
