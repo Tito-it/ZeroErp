@@ -30,6 +30,7 @@ Indice test eseguiti:
 5) ParameterOverridesDbTests.test_upsert_riattiva_la_riga_spenta
 6) ParameterOverridesDbTests.test_lettura_facoltativa_di_un_codice_non_dichiarato
 7) ParameterOverridesDbTests.test_parametro_per_tutti_non_si_personalizza
+8) ParameterOverridesDbTests.test_valore_fuori_forma_non_si_salva
 """
 
 from __future__ import annotations
@@ -40,7 +41,7 @@ from django.contrib.auth.models import User
 from django.db import DatabaseError, IntegrityError, connection, transaction
 
 from apps.core.db.parameter_repository import ParameterRepository
-from apps.core.services.db_error_fields import db_error_code
+from apps.core.services.db_error_fields import db_error_code, diagnostica_db
 from apps.core.tests._helpers.parametro_di_prova import crea_parametro_di_prova
 from apps.core.tests.db_e2e import richiedi_db_provvisto
 
@@ -58,12 +59,13 @@ class ParameterOverridesDbTests(unittest.TestCase):
     # Scopo: esegue `azione(cur, param_id, codice, uid)` in una transazione
     # SEMPRE annullata, con un parametro e un utente creati qui. Il parametro
     # dichiara la sua famiglia: `ammette_override` (default: si personalizza).
-    def _nel_mondo(self, azione, *, ammette_override: bool = True) -> None:
+    def _nel_mondo(self, azione, *, ammette_override: bool = True, **parametro) -> None:
         with transaction.atomic():
             try:
                 with connection.cursor() as cur:
                     param_id, codice = crea_parametro_di_prova(
                         cur, codice=_CODICE_DI_PROVA, ammette_override=ammette_override,
+                        **parametro,
                     )
                     uid = User.objects.create(username="zz_test_parametri_puri").id
                     azione(cur, param_id, codice, uid)
@@ -200,3 +202,27 @@ class ParameterOverridesDbTests(unittest.TestCase):
             )
             self.assertEqual(cur.fetchone()[0], 0)
         self._nel_mondo(azione, ammette_override=False)
+
+    # Scopo: ⭐ Il valore di un override ha la forma che il parametro dichiara
+    # (`tipo_valore`, D-5 di brief-db-liste-datatable-grezze-secondo-giro,
+    # 2026-10-31). Un `'0'` su un INTERO_POSITIVO lo rifiuta il guard a07
+    # (`E_PARAMETER_VALORE_NON_CONFORME`, DATO_ERRATO), col campo `value` nel
+    # canale strutturato: e' il campo del form che il FE evidenzia. Prima
+    # l'override si salvava, e l'errore arrivava in lettura come TECNICO (500)
+    # su ogni lista che legge il parametro. ⛔ Il BE non ricopia la regola:
+    # la prova e' che il rifiuto arriva dal DB attraverso il repository.
+    def test_valore_fuori_forma_non_si_salva(self):
+        def azione(cur, param_id, code, uid):
+            with self.assertRaises(DatabaseError) as ctx, transaction.atomic():
+                ParameterRepository().upsert_user_override(code, uid, "0")
+            diagnostica = diagnostica_db(ctx.exception)
+            self.assertEqual(diagnostica.codice, "E_PARAMETER_VALORE_NON_CONFORME")
+            self.assertEqual(diagnostica.campo, "value")
+            cur.execute(
+                "SELECT count(*) FROM config.parameter_overrides WHERE parameter_id = %s",
+                [param_id],
+            )
+            self.assertEqual(cur.fetchone()[0], 0)
+            # Lo stesso parametro accetta il valore nella forma giusta.
+            self.assertIsNotNone(ParameterRepository().upsert_user_override(code, uid, "7"))
+        self._nel_mondo(azione, tipo_valore="INTERO_POSITIVO", default_value="15")
