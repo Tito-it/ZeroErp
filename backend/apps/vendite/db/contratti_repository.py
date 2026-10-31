@@ -168,6 +168,10 @@ _SELECT_COLS_CONTRATTO = """
     -- prima del push in commessa (guard DB); in ATTIVO la whitelist di patch
     -- non lo ammette, quindi il FE lo mostra readonly da li' in poi.
     c.fatturazione_immediata,
+    -- Come si addebitano i canoni (F-2, F-7): anticipati/normali e il mese da
+    -- cui si contano i periodi. Le righe a canone senza generazione la seguono.
+    c.generazione_canone,
+    c.mese_partenza_canone,
     c.meta,
     c.data_insert,
     c.user_insert,
@@ -211,7 +215,6 @@ _SELECT_COLS_RIGA = """
     r.fonte_quantita_attesa,
     r.periodicita,
     r.generazione_canone,
-    r.competenza_canone,
     r.prezzo_unitario,
     r.quantita,
     r.qta_operativa,
@@ -308,13 +311,9 @@ _FROM_JOINS_UTILITY = """
 # la leggono il repository, il service e la catena dei permessi.
 TESTATA_CONTRATTI = "vendite.contratti"
 
-# Lo stato della cessazione: quello che `vendite.fn_cessa_contratto` scrive, e
-# per cui il cambio stato chiama quel verbo invece del verbo di stato.
-# ⚠️ E' il letterale che il verbo ha nel corpo (`v_cessato := 'CESSATO'`): il
-#    vocabolario non ha ancora un lettore dello stato di cessazione, come lo
-#    ha per l'emissione e l'annullo. Richiesta al team DB in
-#    brief-modello-documento-vendita §11.7: col lettore questa costante si ritira.
-STATO_CESSATO = "CESSATO"
+# ⛔ `STATO_CESSATO` ritirato il 2026-10-31 (brief-modello-documento-vendita
+#    §17.6 BE-T1): lo stato della cessazione lo dice il vocabolario (colonna
+#    `cessazione`, `script.fn_stato_cessazione_id`), come l'emissione e l'annullo.
 
 
 class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryMixin):
@@ -665,6 +664,27 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
             assert row is not None
             return int(row[0])
 
+    # Scopo: I componenti di un kit sulla versione di listino del contratto,
+    #        alla data, nella forma che l'espansore legge dalle
+    #        `*_righe_componenti` (`vendite.fn_contratto_kit_componenti`, D-2
+    #        (c)): per il kit che il contratto non negozia, la quota fissa del
+    #        listino e l'ADESIONE. Il prezzo lo dice il resolver del DB.
+    #        Il contratto si nomina col suo `uid`, la sorgente della riga.
+    def list_componenti_kit_dal_listino(
+        self, *, contratto_uid: str, articolo_padre_id: Any, data: date,
+    ) -> list[dict[str, Any]]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT k.*
+                  FROM vendite.contratti c
+                 CROSS JOIN LATERAL vendite.fn_contratto_kit_componenti(c.id, %s::uuid, %s) k
+                 WHERE c.uid = %s::uuid
+                """,
+                [str(articolo_padre_id), data, str(contratto_uid)],
+            )
+            return rows_to_list(cursor)
+
     # Scopo: Aggiorna una testata contratto. `numero` immutabile (trigger
     #        lock_columns). Lo stato non passa da qui: lo scrivono i verbi
     #        (`cambia_stato`, `cessa`, `annulla`).
@@ -702,6 +722,10 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
         "codice_cig",
         "codice_cup",
         "codice_commessa",
+        # Come si addebitano i canoni (D-5): fuori bozza li ferma il lock di
+        # testata (`E_DOC_CONDIZIONI_FUORI_BOZZA`).
+        "generazione_canone",
+        "mese_partenza_canone",
         "meta",
     })
 
@@ -825,7 +849,6 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
         "fonte_quantita_attesa",
         "periodicita",
         "generazione_canone",
-        "competenza_canone",
         "prezzo_unitario",
         # ⛔ Niente `quantita`: la calcola il DB (`trgfn_qta_from_operativa`).
         "qta_operativa",
@@ -864,7 +887,6 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
         "fonte_quantita_attesa",
         "periodicita",
         "generazione_canone",
-        "competenza_canone",
         "prezzo_unitario",
         "qta_operativa",
         "uom_operativa_id",

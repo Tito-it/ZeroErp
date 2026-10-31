@@ -272,7 +272,6 @@ Risposta `200`:
     "default_codice_versione": "v1-clone",
     "default_valido_dal": "2026-05-01",
     "default_valido_al": null,
-    "min_valido_dal": "2026-01-01",
     "is_retroactive_default": false,
     "retroactive_warning_key": "listini.warning_retroattivo"
   }
@@ -282,8 +281,9 @@ Risposta `200`:
 `default_codice_versione` = `source_codice_versione` + suffisso parameter
 `VENDITE_LISTINI_CLONE_VERSIONE_CODICE_SUFFIX` (default `-clone`).
 `default_valido_dal` = oggi + `VENDITE_LISTINI_CLONE_VERSIONE_LEAD_GG`
-(default `1`, "domani"). `min_valido_dal` = `source.valido_dal` (vincolo
-D2 backend: target non puo' essere antecedente alla sorgente).
+(default `1`, "domani"). ⛔ Niente `min_valido_dal` dal 2026-10-29: D2 (la
+copia non comincia prima della sorgente) la dice il verbo del DB sul campo
+`valido_dal` (brief-modello-documento-vendita §16.16, BE-C3).
 
 Errori: `E_VENDITE_NOT_FOUND` (404) se la versione sorgente non esiste.
 
@@ -303,17 +303,17 @@ Risposta `200`:
     "stato_codice": "ATTIVA",
     "current_valido_al": null,
     "has_existing_chiusura": false,
-    "default_valido_al": "2026-04-30",
-    "min_valido_al": "2026-04-30"
+    "default_valido_al": "2026-04-30"
   }
 }
 ```
 
-`default_valido_al` = `current_valido_al` se gia' programmata (UX
-"modifica chiusura"), altrimenti oggi +
+`default_valido_al` = `current_valido_al` se gia' programmata e non ancora
+passata (UX "modifica chiusura"; una fine passata il verbo «Chiudi» la
+rifiuterebbe, dal 2026-10-29), altrimenti oggi +
 `VENDITE_LISTINI_CLOSE_VERSIONE_LEAD_GG` (default `0`).
-`min_valido_al` = oggi (no chiusura nel passato lato UX; la cessazione
-storica passa per il workflow data-driven sui contratti, non sui listini).
+⛔ Niente `min_valido_al` dal 2026-10-29: la fine nel passato la rifiuta il verbo
+«Chiudi» sul campo `valido_al` (C-2 = a, brief-modello-documento-vendita §16.16).
 
 Errori: `E_VENDITE_NOT_FOUND` (404) se la versione non esiste.
 

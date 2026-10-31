@@ -1015,7 +1015,6 @@ class OffertaEccezioneRow(TypedDict):
     fonte_quantita_attesa: str | None
     periodicita: str | None
     generazione_canone: str | None
-    competenza_canone: str | None
     prezzo_unitario: str | None
     quantita: str | None
     qta_operativa: str | None

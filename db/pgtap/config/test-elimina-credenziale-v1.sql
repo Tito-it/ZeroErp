@@ -93,9 +93,12 @@ SELECT script.fn_registra_tentativo_login((SELECT pulita FROM _t), sha256('pgtap
 -- La storia: un override di parametro intestato alla credenziale (FK NO ACTION).
 -- Su un parametro che AMMETTE override (2026-10-25, brief-db-parametri-senza-override):
 -- il primo per id e' tx_id_bypass_enabled, che vale per tutti e lo rifiuterebbe.
+-- E di forma TESTO (2026-10-31, D-5 di brief-db-liste-datatable-grezze-secondo-giro):
+-- 'pgtap' su un parametro numerico lo rifiuterebbe il guard a07.
 INSERT INTO config.parameter_overrides (parameter_id, overridden_value, django_user_id)
 SELECT min(p.id), 'pgtap', (SELECT storia FROM _t) FROM config.parameters p
- WHERE p.ammette_override;
+ WHERE p.ammette_override
+   AND p.tipo_valore = 'TESTO';
 
 -- La veste spenta: l'operatore senza privilegi, con la sua veste disattivata.
 UPDATE anagrafiche.identita_digitali SET attivo = false WHERE id = (SELECT identita_id FROM _op);

@@ -95,7 +95,8 @@ BEGIN
     -- impone prezzo_unitario IS NULL) e quindi nessun componente BoM.
     -- Inizializzare i componenti scatenerebbe il ricalcolo del prezzo padre
     -- (trigger _z90_ricalcola_padre -> SUM figli) in violazione del CHECK.
-    IF v_tipo_eccezione = 'ESCLUSIONE' THEN
+    -- rev 2026-10-29 (20261029-43, G-0-ter): anche l'ADESIONE (senza prezzo suo).
+    IF v_tipo_eccezione IN ('ESCLUSIONE', 'ADESIONE') THEN
         RETURN 0;
     END IF;
 

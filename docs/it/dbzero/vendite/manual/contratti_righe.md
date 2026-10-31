@@ -13,14 +13,23 @@
 
 ---
 ### 🎯 Scopo Principale
-(Initial version - 19-01-26)
-`vendite.contratti_righe` contiene il **dettaglio economico e operativo** del contratto: ogni riga rappresenta un **articolo/servizio** con le proprie regole di erogazione (canone, consumo, una‑tantum), periodicita e parametri di quantita/prezzo.
+> **Ultimo aggiornamento**: 31 ottobre 2026
 
-Obiettivi principali:
+`vendite.contratti_righe` contiene le **eccezioni** del contratto rispetto al suo listino: una
+riga non è «un articolo del contratto» ma un **modificatore** di un articolo
+(rev 2026-10-31: fino a questa data lo Scopo diceva «ogni riga rappresenta un articolo/servizio»,
+del modello precedente alle eccezioni). Il tipo lo dice `tipo_eccezione`:
 
-* Definire **cosa** viene erogato (articolo) e **come** viene fatturato.
-* Gestire **canoni** e **quantita attese** secondo regole flessibili.
-* Supportare servizi **utilities** e servizi **non‑standard** con logiche specifiche per riga.
+* `OVERRIDE` — il prezzo del cliente per un articolo del listino;
+* `ESCLUSIONE` — un articolo del listino tolto al cliente;
+* `AGGIUNTA` — un articolo fuori listino, al prezzo della riga;
+* `ADESIONE` — un articolo del listino che il cliente prende, al prezzo del listino.
+
+Ogni riga che non è un'esclusione porta anche **come si eroga** (una tantum, canone, ore,
+consumo), con quantità e, per il canone, periodicità. Che cosa il contratto **addebita** da
+queste righe (e dalle quote fisse del listino, che non hanno bisogno di una riga) lo dice
+[`vendite.fn_contratti_addebiti_maturati`](/dbzero/vendite/manual/fn_contratti_addebiti_maturati);
+in parole semplici, la [guida dei contratti §4-bis](/guide/gestione-contratti#4-bis-come-il-contratto-si-addebita-una-tantum-e-canoni).
 
 ---
 
@@ -28,17 +37,18 @@ Obiettivi principali:
 
 1. **Creazione contratto** → testata in `vendite.contratti`.
 2. **Inserimento righe** → articoli e regole di erogazione in `vendite.contratti_righe`.
-3. **Generazione attivita fatturabili** → le righe alimentano il motore di fatturazione (direttamente o tramite regole articolo).
+3. **Push in commessa** → a ogni giro il push dei contratti manda in commessa le una tantum e i periodi di canone maturati, e gli storni ([`fn_list_contratti_da_pushare`](/dbzero/vendite/manual/fn_list_contratti_da_pushare)); dalla commessa alla fattura.
 
 ---
 
 ### Campi chiave e logiche operative
 
 * **Articolo** (`articolo_id`) → servizio/voce di catalogo.
+* **Tipo di eccezione** (`tipo_eccezione`) → OVERRIDE, ESCLUSIONE, AGGIUNTA, ADESIONE (sezione dedicata sotto).
 * **Tipo erogazione** (`tipo_erogazione`) → natura della riga: `CANONE`, `UNA_TANTUM`, `ORARIO`, `CONSUMO`.
 * **Fonte quantita attesa** (`fonte_quantita_attesa`) → origine della quantita attesa (vedi sezione dedicata).
-* **Periodicita** (`periodicita`) → intervallo di fatturazione (mensile, bimestrale, ecc.).
-* **Generazione/competenza canone** (`generazione_canone`, `competenza_canone`) → canone anticipato/posticipato e competenza.
+* **Periodicita** (`periodicita`, FK a `config.periodicita`) → ogni quanti mesi si addebita il canone: mensile, bimestrale, trimestrale, quadrimestrale, semestrale, annuale. Su ADESIONE e OVERRIDE a canone, se vuota, la riempie la riga del listino (`script.trgfn_righe_default_periodicita_da_listino`). Una riga a canone senza periodicità non si addebita: la segnala la dashboard (`CANONE_NON_GENERABILE`).
+* **Generazione canone** (`generazione_canone`) → `INIZIO_PERIODO` (anticipato) o `FINE_PERIODO` (normale). **Vuota = segue la testata** (`vendite.contratti.generazione_canone`); valorizzata la forza su questa riga. `PRORATA` è ritirato: il periodo incompleto si paga sempre in proporzione. `competenza_canone` è ritirata (2026-10-29): il periodo lo dicono la testata (mese di partenza) e la periodicità.
 * **Prezzo unitario** (`prezzo_unitario`, `numeric(18,6)` dal 2026-10-05) e **quantita** (`quantita`) → base per righe a canone o una‑tantum.
 * **Meta** (`meta`) → estensioni specifiche (parametri di tariffa, flag tecnici, mapping esterni). Sempre valorizzato (`NOT NULL`, default `{}`), come `attivo` (default `true`), dal 2026-10-05.
 
@@ -60,6 +70,7 @@ su INSERT e resetta la fonte se il cambio di `tipo_erogazione` rende la combinaz
 | --- | --- | --- |
 | `FISSA` | Quantita contrattualizzata a corpo | Si’, obbligatoria |
 | `MANUALE` | Quantita definita sul documento al momento dell’emissione | No — tag "Definita sul documento" |
+| `DURATA` | Solo per il canone: la quantita la conta il sistema dal calendario (giorni o mesi del periodo), nell'unita dell'articolo, che deve avere `conta_dal_calendario` (dal 2026-10-29) | No — la conta il push |
 | `TIMESHEET` | Quantita da rendicontazione ore (modulo futuro) | No — tag "Da rendicontazione ore" |
 | `LETTURE` | Quantita da letture utility | No — tag "Da letture utility" |
 
@@ -83,10 +94,13 @@ NULL a ogni INSERT e UPDATE; il guard `script.trgfn_righe_guard_quantita_per_fon
 
 | tipo_erogazione | FISSA | MANUALE | TIMESHEET | LETTURE |
 | --- | --- | --- | --- | --- |
-| **CANONE** | ✅ | 🟡 | ❌ | ❌ |
+| **CANONE** | ✅ | ❌ (ritirata 2026-10-29) | ❌ | ❌ |
 | **UNA_TANTUM** | ✅ | 🟢 | ❌ | ❌ |
 | **ORARIO** | 🟡 | 🟢 | ✅ (futuro) | ❌ |
 | **CONSUMO** | ❌ | 🟢 | ❌ | ✅ |
+
+`DURATA` vale solo per il canone (`CANONE/DURATA`, 🟢). `CANONE/MANUALE` è ritirata il
+2026-10-29: nessuno sapeva che cosa caricare a ogni periodo; al suo posto la durata.
 
 Le combinazioni ❌ non sono in `config.erogazioni_fonti`, e la FK composta delle righe le rifiuta
 (dal 2026-10-07 ha preso il posto del CHECK `chk_contrighe_coerenza_fonte_erogazione`).
@@ -143,22 +157,22 @@ Ogni riga porta un campo `tipo_eccezione vendite.tipo_eccezione_contratto NOT NU
 | `OVERRIDE` | Prezzo personalizzato per articolo già nel listino | NOT NULL |
 | `ESCLUSIONE` | Articolo del listino escluso per questo cliente | NULL |
 | `AGGIUNTA` | Articolo non presente nel listino, aggiunto al contratto | NOT NULL |
+| `ADESIONE` | Articolo del listino che il cliente prende, al prezzo del listino con la variazione globale (dal 2026-10-29) | NULL |
 
 #### CHECK `chk_contrighe_prezzo_per_tipo_eccezione`
 
 Coerenza strutturale dichiarativa:
 
 ```text
-ESCLUSIONE  → prezzo_unitario IS NULL
-OVERRIDE    → prezzo_unitario IS NOT NULL
-AGGIUNTA    → prezzo_unitario IS NOT NULL
+ESCLUSIONE, ADESIONE → prezzo_unitario IS NULL
+OVERRIDE, AGGIUNTA   → prezzo_unitario IS NOT NULL
 ```
 
 #### Vincoli di unicità parziale
 
 | Indice | Predicato | Semantica |
 | --- | --- | --- |
-| `uq_contrighe_one_eccezione_per_articolo` | `WHERE tipo_eccezione IN ('OVERRIDE','ESCLUSIONE')` | OVERRIDE e ESCLUSIONE sono mutualmente esclusivi per la stessa coppia `(contratto, articolo)` |
+| `uq_contrighe_one_eccezione_per_articolo` | `WHERE tipo_eccezione IN ('OVERRIDE','ESCLUSIONE','ADESIONE')` | OVERRIDE, ESCLUSIONE e ADESIONE sono mutualmente esclusivi per la stessa coppia `(contratto, articolo)` |
 | `uq_contrighe_one_aggiunta_per_articolo` | `WHERE tipo_eccezione = 'AGGIUNTA'` | Al più una AGGIUNTA per coppia `(contratto, articolo)` |
 
 #### Quali articoli ammette la riga (AGGIUNTA, OVERRIDE, ESCLUSIONE)
@@ -211,8 +225,8 @@ passare da Escludi. Per cambiare tipo si elimina la riga e se ne crea una nuova.
 
 #### Una riga che si fattura dice come si eroga (2026-10-04)
 
-Ogni riga che non è `ESCLUSIONE` (oggi `OVERRIDE` e `AGGIUNTA`) finisce in
-fattura, e la fattura deve sapere come conteggiarla: `tipo_erogazione` è
+Ogni riga che non è `ESCLUSIONE` (`OVERRIDE`, `AGGIUNTA`, `ADESIONE`) può finire in
+fattura (l'OVERRIDE quando il cliente compra, o al posto di una quota fissa), e la fattura deve sapere come conteggiarla: `tipo_erogazione` è
 obbligatoria. Sull'esclusione è vuota, perché non si fattura (sezione seguente). Il trigger
 `trg_contratti_righe_a10_guard_erogazione_obbligatoria_ins_upd`
 (→ [`trgfn_righe_guard_erogazione_obbligatoria`](/dbzero/script/funzioni/trgfn_righe_guard_erogazione_obbligatoria))
@@ -224,8 +238,8 @@ dell'offerta, da cui il contratto le copia.
 #### Un'esclusione non porta dati di vendita (2026-10-04)
 
 L'esclusione dice solo «questo articolo non si vende». Prezzo, quantità,
-quantità operativa, unità di misura, fattore, erogazione, fonte, periodicità,
-generazione e competenza del canone **restano vuoti**: lo dice il vincolo
+quantità operativa, unità di misura, fattore, erogazione, fonte, periodicità e
+generazione del canone **restano vuoti**: lo dice il vincolo
 `chk_contrighe_esclusione_senza_dati`, e a parlare all'operatore è il trigger
 `trg_contratti_righe_a10_guard_esclusione_senza_dati_ins`
 (→ [`script.trgfn_righe_guard_esclusione_senza_dati`](/dbzero/script/funzioni/trgfn_righe_guard_esclusione_senza_dati))
@@ -247,8 +261,8 @@ Il push copia la riga dell'offerta nel contratto così com'è: un valore valido
 sull'offerta non deve poter fallire qui. Dal 2026-10-05 le due tabelle hanno gli
 stessi tipi su ogni colonna comune: `prezzo_unitario` è `numeric(18,6)` (era
 `(15,6)`: un prezzo oltre il miliardo passava sull'offerta e moriva al push), i
-quattro codici di erogazione (`fonte_quantita_attesa`, `periodicita`,
-`generazione_canone`, `competenza_canone`) sono `varchar(32)`. Anche
+codici di erogazione (`fonte_quantita_attesa`, `periodicita`,
+`generazione_canone`; `competenza_canone`, allora la quarta, è ritirata il 2026-10-29) sono `varchar(32)`. Anche
 `attivo` e `meta` sono diventati obbligatori, come sull'offerta. Lo presidia
 `db/pgtap/vendite/test-righe-gemelle-secondo-giro-v1.sql` (test 1, 3), che
 confronta le due tabelle colonna per colonna: una divergenza futura è un rosso.

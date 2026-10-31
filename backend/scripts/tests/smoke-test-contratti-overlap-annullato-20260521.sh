@@ -53,6 +53,7 @@ set -euo pipefail
 BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
 # Login degli smoke (HTTPS come Nginx, secondo fattore, refresh, SMOKE_TOKEN): un BB.
 source "$(dirname "${BASH_SOURCE[0]}")/_smoke_auth.sh" "$@"
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_errori.sh"   # smoke_check_codice
 SMOKE_TAG="${SMOKE_TAG:-smoke-overlap-annullato-$(date +%Y%m%d-%H%M%S)}"
 
 RED='\033[0;31m'
@@ -130,24 +131,6 @@ check_status() {
         return 0
     fi
     log_fail "$label — atteso HTTP $expected, ricevuto $LAST_STATUS"
-    diag_fail
-    return 1
-}
-
-check_error_code() {
-    local label="$1" expected_status="$2" expected_code="$3"
-    if [[ "$LAST_STATUS" != "$expected_status" ]]; then
-        log_fail "$label — atteso HTTP $expected_status, ricevuto $LAST_STATUS"
-        diag_fail
-        return 1
-    fi
-    local actual_code
-    actual_code=$(json_get "$LAST_BODY" ".error.code")
-    if [[ "$actual_code" == "$expected_code" ]]; then
-        log_ok "$label (HTTP $LAST_STATUS, code=$expected_code)"
-        return 0
-    fi
-    log_fail "$label — atteso code=$expected_code, ricevuto code=$actual_code"
     diag_fail
     return 1
 }
@@ -247,7 +230,7 @@ log_info "contratti totali: ${EXTRACTED:-?}"
 echo ""
 echo "-- 3. GET contratto inesistente --"
 do_curl GET "/api/v1/vendite/contratti/999999999/"
-check_error_code "GET contratto 999999999" 404 "E_VENDITE_NOT_FOUND" || true
+smoke_check_codice "GET contratto 999999999" 404 "E_VENDITE_NOT_FOUND" || true
 
 # ================================================================
 # 4. Lookup codici — rel non whitelistata
@@ -261,7 +244,7 @@ check_error_code "GET contratto 999999999" 404 "E_VENDITE_NOT_FOUND" || true
 echo ""
 echo "-- 4. Lookup rel non whitelistata --"
 do_curl GET "/api/v1/core/lookup/codici/?rel=schema.tabella_inesistente"
-check_error_code "GET lookup rel non whitelistata" 400 "E_CORE_VALIDATION" || true
+smoke_check_codice "GET lookup rel non whitelistata" 400 "E_CORE_VALIDATION" || true
 
 # ================================================================
 # Test CREATE/UPDATE/ANNULLA — richiedono env setup
@@ -330,7 +313,7 @@ EOF
         echo "-- 6. PATCH C1 coppia tipo-senza-valore -> 400 atteso --"
         do_curl PATCH "/api/v1/vendite/contratti/${C1_ID}/" \
             '{"tipo_variazione_globale":"PERCENTUALE","valore_variazione_globale":null}'
-        check_error_code "PATCH coppia incoerente" 400 "E_VENDITE_VALIDATION" || true
+        smoke_check_codice "PATCH coppia incoerente" 400 "E_VENDITE_VALIDATION" || true
     fi
 
     # ================================================================
@@ -352,7 +335,7 @@ EOF
         echo ""
         echo "-- 8. CREATE C2 stessa quadrupla -> 409 overlap atteso --"
         do_curl POST "/api/v1/vendite/contratti/" "$PAYLOAD_C1"
-        if check_error_code "CREATE C2 overlap" 409 "E_VENDITE_CONTRATTO_OVERLAP"; then
+        if smoke_check_codice "CREATE C2 overlap" 409 "E_VENDITE_CONTRATTO_OVERLAP"; then
             MSG=$(json_get "$LAST_BODY" ".error.message")
             # Verifica che il message contenga il phrasing user-friendly
             # ("punto di fornitura") e NON il vecchio gergo tecnico

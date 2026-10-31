@@ -31,6 +31,9 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Column from 'primevue/column'
+// DataTable grezza: le quattro tabelle sono SEZIONI di un payload solo
+// (`props.sezioni`), tutte limitate al documento da cui si apre — il dettaglio
+// del master, non liste con endpoint e popolazione propri.
 // eslint-disable-next-line no-restricted-imports -- eccezione nel registro DataTable (scripts/datatable.baseline.json)
 import DataTable from 'primevue/datatable'
 import Button from 'primevue/button'

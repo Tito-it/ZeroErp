@@ -28,8 +28,9 @@ Indice test eseguiti:
 16) crea_utility_duplicato_mappato
 17) emetti_ok                                         [happy path]
 18) registra_accettazione_ok                          [happy path]
+    (+ registra_accettazione_senza_lo_stato_nel_vocabolario)
 19) registra_esito_routing_accettata                  [routing service]
-    (+ registra_esito_accettata_con_motivazione_e_400)
+    (+ registra_esito_accettata_con_motivazione_la_rifiuta_il_verbo)
 20) registra_esito_routing_rifiutata_motivazione_al_verbo
 21) registra_esito_invalido
 22) aggiorna_offerta_payload_vuoto_fallisce           [fix #3]
@@ -81,6 +82,12 @@ Scritture sul BB core (2026-09-26):
 63) aggiorna_offerta_utility_inline_chiave_estranea_e_400 [niente scarto silenzioso]
 64) aggiorna_offerta_cambio_cliente_non_riscrive_la_scheda [R-BE-6: la rifa' il DB]
 65) aggiorna_offerta_stesso_cliente_applica_la_scheda    [id come testo: non e' un cambio]
+
+Codici a vocabolario della riga (BB `normalizza_codici_riga`, 2026-10-31):
+66) crea_eccezione_codici_normalizzati_come_il_contratto [strip+upper, '' -> NULL]
+67) aggiorna_eccezione_codice_non_stringa_e_400          [400 col campo, repo non chiamato]
+68) aggiorna_offerta_campi_canone_come_il_contratto      [BB campi_canone: upper, intero]
+69) aggiorna_offerta_campi_canone_null_omessi            [null omesso, NOT NULL col default]
 """
 
 from unittest import TestCase
@@ -355,6 +362,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
 
         _atomic.return_value.__enter__ = MagicMock()
         _atomic.return_value.__exit__ = MagicMock(return_value=False)
+        self.accettazione_del_documento("ACCETTATA")
         repo = repo_cls.return_value
         repo.cambia_stato.side_effect = DatabaseError(
             "E_OFFERTA_TRANSIZIONE_NON_AMMESSA: BOZZA -> ACCETTATA",
@@ -630,12 +638,15 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         repo.cambia_stato.assert_called_once_with(1, "EMESSA", None)
         self.modello_documento.stato_di_emissione.assert_called_once_with("vendite.offerte_commerciali")
 
-    # Scopo: registra_accettazione EMESSA -> ACCETTATA, no motivazione.
+    # Scopo: registra_accettazione EMESSA -> ACCETTATA, no motivazione. Lo
+    #        stato di arrivo dal vocabolario (§17.6 BE-T2): il codice lo
+    #        sceglie il test, e la domanda va al BB con la testata dell'offerta.
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
     @patch("apps.vendite.services.offerte_service.OfferteRepository")
     def test_registra_accettazione_ok(self, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
 
+        self.accettazione_del_documento("ACCETTATA")
         _atomic.return_value.__enter__ = MagicMock()
         _atomic.return_value.__exit__ = MagicMock(return_value=False)
         repo = repo_cls.return_value
@@ -646,6 +657,20 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         OfferteService().registra_accettazione(1)
 
         repo.cambia_stato.assert_called_once_with(1, "ACCETTATA", None)
+        self.modello_documento.stato_di_accettazione.assert_called_once_with(
+            "vendite.offerte_commerciali",
+        )
+
+    # Scopo: senza uno stato di accettazione nel vocabolario «Accetta» non
+    #        arriva al verbo: e' configurazione rotta (E_CONFIG_MANCANTE).
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_registra_accettazione_senza_lo_stato_nel_vocabolario(self, repo_cls):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        with self.assertRaises(ServiceError) as cm:
+            OfferteService().registra_accettazione(1)
+        self.assertEqual(cm.exception.code, "E_CONFIG_MANCANTE")
+        repo_cls.return_value.cambia_stato.assert_not_called()
 
     # Scopo: registra_esito routing: ACCETTATA delega a registra_accettazione.
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
@@ -653,6 +678,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     def test_registra_esito_routing_accettata(self, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
 
+        self.accettazione_del_documento("ACCETTATA")
         _atomic.return_value.__enter__ = MagicMock()
         _atomic.return_value.__exit__ = MagicMock(return_value=False)
         repo = repo_cls.return_value
@@ -666,18 +692,28 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         # ACCETTATA -> il codice al verbo, nessuna motivazione.
         repo.cambia_stato.assert_called_once_with(1, "ACCETTATA", None)
 
-    # Scopo: una motivazione con ACCETTATA e' un 400 col campo, non si perde in
-    #        silenzio: l'accettazione non ha una colonna che la tenga.
+    # Scopo: una motivazione con ACCETTATA arriva al verbo, che la rifiuta
+    #        (E_OFFERTA_MOTIVAZIONE_NON_AMMESSA, §18.3 BE-T6): al client il
+    #        campo della richiesta, non la colonna. ⛔ Fino al 2026-10-31 il
+    #        rifiuto era una copia Python (E_VENDITE_VALIDATION).
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
     @patch("apps.vendite.services.offerte_service.OfferteRepository")
-    def test_registra_esito_accettata_con_motivazione_e_400(self, repo_cls):
+    def test_registra_esito_accettata_con_motivazione_la_rifiuta_il_verbo(self, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
         from apps.core.services.error_translator import ErrorTranslator
 
+        self.accettazione_del_documento("ACCETTATA")
+        _atomic.return_value.__enter__ = MagicMock()
+        _atomic.return_value.__exit__ = MagicMock(return_value=False)
+        repo = repo_cls.return_value
+        repo.cambia_stato.side_effect = DatabaseError(
+            "E_OFFERTA_MOTIVAZIONE_NON_AMMESSA: OFF-1 ACCETTATA",
+        )
         with self.assertRaises(ServiceError) as cm:
-            OfferteService().registra_esito(1, esito="ACCETTATA", motivazione="ottimo prezzo")
-        self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
+            OfferteService().registra_esito(1, esito="ACCETTATA", motivazione=" ottimo prezzo ")
+        self.assertEqual(cm.exception.code, "E_OFFERTA_MOTIVAZIONE_NON_AMMESSA")
         self.assertEqual(ErrorTranslator.to_api_error(cm.exception).fields, ("motivazione",))
-        repo_cls.return_value.cambia_stato.assert_not_called()
+        repo.cambia_stato.assert_called_once_with(1, "ACCETTATA", "ottimo prezzo")
 
     # Scopo: registra_esito routing: RIFIUTATA porta la motivazione al verbo
     #        (assente = None); l'obbligo lo dice il DB.
@@ -765,6 +801,49 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         OfferteService().crea_eccezione(1, payload)
         repo.create_eccezione.assert_called_once_with(1, payload)
 
+    # Scopo: 66) i codici della riga arrivano al repository nella forma del
+    #        contratto: fino al 2026-10-31 qui passavano grezzi, e « trimestrale »
+    #        o '' finivano nella FK come «inesistente».
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_crea_eccezione_codici_normalizzati_come_il_contratto(self, repo_cls, _atomic):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        _atomic.return_value.__enter__ = MagicMock()
+        _atomic.return_value.__exit__ = MagicMock(return_value=False)
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "BOZZA"
+        repo.create_eccezione.return_value = 77
+        repo.get_eccezione.return_value = {"id": 77, "offerta_id": 1}
+
+        OfferteService().crea_eccezione(1, {
+            "articolo_id": "00000000-0000-7000-8000-000000000abc",
+            "tipo_eccezione": "OVERRIDE",
+            "fonte_quantita_attesa": " manuale ",
+            "periodicita": "trimestrale",
+            "generazione_canone": "",
+            "prezzo_unitario": "12.50",
+        })
+        scritto = repo.create_eccezione.call_args[0][1]
+        self.assertEqual(scritto["fonte_quantita_attesa"], "MANUALE")
+        self.assertEqual(scritto["periodicita"], "TRIMESTRALE")
+        self.assertIsNone(scritto["generazione_canone"])
+        # Una chiave non mandata resta assente: non diventa un NULL scritto.
+        self.assertNotIn("tipo_erogazione", scritto)
+
+    # Scopo: 67) simmetrico in PATCH: un codice che non e' una stringa e' un
+    #        400 col campo, prima di toccare il repository.
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_aggiorna_eccezione_codice_non_stringa_e_400(self, repo_cls):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        repo = repo_cls.return_value
+        with self.assertRaises(ServiceError) as cm:
+            OfferteService().aggiorna_eccezione(1, 7, {"periodicita": 3})
+        self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
+        self.assertEqual(cm.exception.context.get("field"), "periodicita")
+        repo.update_eccezione.assert_not_called()
+
     # Scopo: aggiorna_eccezione ownership cross-offerta -> 404.
     @patch("apps.vendite.services.offerte_service.OfferteRepository")
     def test_aggiorna_eccezione_ownership_violata(self, repo_cls):
@@ -823,16 +902,23 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         self.assertEqual(cm.exception.code, "E_OFFERTA_REVISIONE_STATO_NON_AMMESSO")
         repo.crea_revisione.assert_called_once()
 
-    # Scopo: crea_revisione di un'offerta che non c'e' (o fuori perimetro): 404.
+    # Scopo: crea_revisione di un'offerta che non c'e' (o fuori perimetro): il
+    #        404 e' del verbo, col suo codice (R-1, §17.6 BE-T3): nessuna
+    #        lettura della testata prima.
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
     @patch("apps.vendite.services.offerte_service.OfferteRepository")
-    def test_crea_revisione_offerta_inesistente_404(self, repo_cls):
+    def test_crea_revisione_offerta_inesistente_404(self, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
 
-        repo_cls.return_value.get_stato_codice.return_value = None
+        _atomic.return_value.__enter__ = MagicMock()
+        _atomic.return_value.__exit__ = MagicMock(return_value=False)
+        repo_cls.return_value.crea_revisione.side_effect = DatabaseError(
+            "E_OFFERTA_NON_TROVATA: offerta 1",
+        )
         with self.assertRaises(ServiceError) as cm:
             OfferteService().crea_revisione(1)
-        self.assertEqual(cm.exception.code, "E_VENDITE_NOT_FOUND")
-        repo_cls.return_value.crea_revisione.assert_not_called()
+        self.assertEqual(cm.exception.code, "E_OFFERTA_NON_TROVATA")
+        repo_cls.return_value.get_stato_codice.assert_not_called()
 
     # Scopo: crea_revisione OK da EMESSA: chiama fn DB, legge la rev.N+1
     #        via get_offerta(new_id).
@@ -1848,3 +1934,26 @@ class OfferteScrittureBbTests(TestCase):
 
         svc.aggiorna_offerta(1, {"utility": {"tipo_utenza_id": 7, "utility_id": 3}})
         repo.update_utility.assert_called_once_with(99, {"tipo_utenza_id": 7})
+
+    # 68. ⭐ I due campi del canone come il contratto (BB `campi_canone`,
+    #     regola del 2): il codice in maiuscolo, il mese intero. Prima
+    #     l'offerta passava i valori grezzi: «fine_periodo» era un 400 del CHECK.
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_aggiorna_offerta_campi_canone_come_il_contratto(self, repo_cls, _atomic):
+        svc, repo = self._svc(repo_cls, _atomic)
+        svc.aggiorna_offerta(1, {"generazione_canone": "fine_periodo", "mese_partenza_canone": "2"})
+        repo.update_offerta.assert_called_once_with(
+            1, {"generazione_canone": "FINE_PERIODO", "mese_partenza_canone": 2},
+        )
+
+    # 69. `null` si omette (NOT NULL col default): prima arrivava NULL al DB.
+    #     Senza altri campi la PATCH non ha niente da scrivere: 400.
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_aggiorna_offerta_campi_canone_null_omessi(self, repo_cls, _atomic):
+        svc, repo = self._svc(repo_cls, _atomic)
+        svc.aggiorna_offerta(1, {"generazione_canone": None, "meta": {"nota": "x"}})
+        repo.update_offerta.assert_called_once_with(1, {"meta": {"nota": "x"}})
+        with self.assertRaises(ServiceError):
+            svc.aggiorna_offerta(1, {"mese_partenza_canone": None})

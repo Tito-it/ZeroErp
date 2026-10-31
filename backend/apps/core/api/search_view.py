@@ -97,10 +97,19 @@ class LookupTipiRuoliView(DomainAPIView):
 
 
 class SearchUniversaleView(DomainAPIView):
-    """GET /api/v1/core/search/ — ricerca soggetti livello 1 (una riga per soggetto)."""
+    """GET /api/v1/core/search/ — ricerca soggetti livello 1 (una riga per soggetto).
+
+    Dal 2026-10-31 e' la lista a catalogo `anagrafiche.ricerca_soggetti` (113):
+    colonne e personalizzazione dal catalogo, ordinamento dalla whitelist
+    `ALLOWED_ORDER_COLUMNS` (`search_validators`).
+    ⚠️ La RICERCA e' della funzione DB (`q`, i campi li sceglie lei): le colonne
+    `ricercabile_full` del catalogo qui non la governano (richiesta al team DB,
+    brief-db-liste-datatable-grezze-secondo-giro §4.4).
+    """
 
     skip_area_check = True
     is_search_endpoint = True
+    lista_codice = "anagrafiche.ricerca_soggetti"
     throttle_classes = [SearchBurstRateThrottle]
 
     @extend_schema(

@@ -24,6 +24,8 @@ Indice test eseguiti (opt-in `ZEROERP_TEST_DB_E2E=1`):
 4) OffertaCambiaStatoDbTests.test_rifiuto_senza_motivazione_e_con — E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA (campo `motivazione`), poi RIFIUTATA
 5) OffertaCambiaStatoDbTests.test_annullo_della_bozza_senza_azione_vuole_la_motivazione — M-4, O-3
 6) OffertaCambiaStatoDbTests.test_annullo_di_una_revisione_chiede_la_conferma — O-4: legami, rifiuto, conferma
+7) OffertaCambiaStatoDbTests.test_accettazione_con_motivazione_e_rifiutata — E_OFFERTA_MOTIVAZIONE_NON_AMMESSA (campo `motivazione`), poi ACCETTATA dal vocabolario
+8) OffertaCambiaStatoDbTests.test_revisione_di_un_offerta_che_non_ce — E_OFFERTA_NON_TROVATA dal verbo (R-1)
 """
 from __future__ import annotations
 
@@ -144,6 +146,34 @@ class OffertaCambiaStatoDbTests(unittest.TestCase):
 
         self.servizio.registra_esito(self.offerta_id, esito="RIFIUTATA", motivazione=" prezzo alto ")
         self.assertEqual(self._stato(), {"stato": "RIFIUTATA", "motivazione_rifiuto": "prezzo alto"})
+
+    # La motivazione solo dove il passaggio la chiede (§17.8, decisione (b);
+    # §18.3 BE-T6): sull'accettazione la rifiuta il verbo, niente si scrive, e
+    # il client ha il campo della SUA richiesta. Lo stato di arrivo e' quello
+    # che il vocabolario marca `accettazione` (§17.6 BE-T2).
+    def test_accettazione_con_motivazione_e_rifiutata(self) -> None:
+        self._concedi_emetti_offerta()
+        self.servizio.emetti(self.offerta_id)
+
+        errore = self._rifiuto(lambda: self.servizio.registra_esito(
+            self.offerta_id, esito="ACCETTATA", motivazione="ottimo prezzo",
+        ))
+        self.assertEqual(errore.code, "E_OFFERTA_MOTIVAZIONE_NON_AMMESSA")
+        self.assertEqual(errore.fields, ("motivazione",))
+        self.assertEqual(self._stato(), {"stato": "EMESSA", "motivazione_rifiuto": None})
+
+        out = self.servizio.registra_esito(self.offerta_id, esito="ACCETTATA", motivazione="  ")
+        self.assertEqual(out["stato_codice_interno"], "ACCETTATA")
+        self.assertEqual(self._stato(), {"stato": "ACCETTATA", "motivazione_rifiuto": None})
+
+    # La revisione di un'offerta che non c'e': il 404 e' del verbo (R-1,
+    # `20261031-21`), senza la lettura della testata prima (§17.6 BE-T3).
+    def test_revisione_di_un_offerta_che_non_ce(self) -> None:
+        with connection.cursor() as cur:
+            cur.execute("SELECT COALESCE(max(id), 0) + 1000 FROM vendite.offerte_commerciali")
+            assente = int(cur.fetchone()[0])
+        errore = self._rifiuto(lambda: self.servizio.crea_revisione(assente))
+        self.assertEqual(errore.code, "E_OFFERTA_NON_TROVATA")
 
     # L'annullo della bozza chiede il solo livello sul documento (M-4): nessuna
     # azione concessa. La motivazione si'.

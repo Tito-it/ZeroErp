@@ -1,0 +1,303 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA VERSIONE CLONATA PORTA LA PERIODICITA' E I KIT: vendite.fn_clona_versione_listino
+#   Brief: brief-db-contratto-righe-periodiche-in-commessa §7.7 (L12, D-2-bis; il difetto trovato
+#   nel giro, 2026-10-31).
+#
+#   Due correzioni:
+#   1. Le righe si copiano CON la periodicita'. Il clone (20261029-04) copia
+#      le colonne per nome, e listini_righe.periodicita (20261029-11, L1) non
+#      c'era: una versione clonata da un listino di quota fissa la perdeva, e
+#      dall'L15 non si attiverebbe piu'. La periodicita' e' una condizione del
+#      listino (G-0-bis), come il prezzo.
+#   2. Si copiano i kit (vendite.listini_kit, 20261031-29), con la loro
+#      periodicita'. Tutti: un kit i cui componenti il clone salta (fuori dal
+#      periodo della distinta) resta senza prezzo sulla versione nuova, e lo
+#      dice l'anteprima; la sua periodicita' non e' un prezzo.
+#   RETURNS TABLE invariato: i kit non si contano. Corpo dal catalogo vivo di
+#   dbdev (2026-10-31, uguale al 20261029-04). REVOKE, GRANT e COMMENT vivi
+#   restano. Ritorno indietro: il corpo del 20261029-04.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261031-38-update-fn-clona-versione-listino-periodicita-e-kit-mctit.yaml
+
+  - changeSet:
+      id: 20261031-38-update-fn-clona-versione-listino-periodicita-e-kit
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_clona_versione_listino: copia la periodicita' delle righe (persa dal clone) e i kit della versione (vendite.listini_kit). Brief: brief-db-contratto-righe-periodiche-in-commessa §7.7 (L12).
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: vendite
+            tableName: listini_kit
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_clona_versione_listino(
+                  p_sorgente_id     vendite.listini_versioni.id%TYPE,
+                  p_codice_versione vendite.listini_versioni.codice_versione%TYPE,
+                  p_valido_dal      vendite.listini_versioni.valido_dal%TYPE,
+                  p_valido_al       vendite.listini_versioni.valido_al%TYPE DEFAULT NULL)
+               RETURNS TABLE(versione_id          vendite.listini_versioni.id%TYPE,
+                             -- CONTEGGI delle righe copiate e saltate.
+                             righe_copiate        integer,
+                             componenti_copiati   integer,
+                             componenti_saltati   integer)
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_listino_id vendite.listini_versioni.listino_id%TYPE;
+                  v_tx_id      vendite.listini_versioni.tx_id%TYPE;
+                  v_nuova_id   vendite.listini_versioni.id%TYPE;
+                  -- CONTEGGI delle righe copiate e dei componenti della sorgente.
+                  v_righe      integer;
+                  v_componenti integer;
+                  v_comp_sorg  integer;
+              BEGIN
+                  -- ==========================================================
+                  -- Scopo: copiare una versione di listino, con le sue righe
+                  --   e i suoi componenti attivi, in una versione nuova in
+                  --   BOZZA dello stesso listino, in una transazione.
+                  --   Vedi l'intestazione del changeSet 20261029-04.
+                  -- ==========================================================
+
+                  -- 1. Parametri e sorgente, nel perimetro (RLS).
+                  IF p_sorgente_id IS NULL OR p_sorgente_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_clona_versione_listino',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_sorgente_id', p_sorgente_id),
+                          NULL::uuid, 'vendite.fn_clona_versione_listino',
+                          'p_sorgente_id (obbligatorio, maggiore di zero)');
+                  END IF;
+                  IF NULLIF(btrim(p_codice_versione), '') IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_clona_versione_listino',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_codice_versione', p_codice_versione),
+                          NULL::uuid, 'vendite.fn_clona_versione_listino',
+                          'p_codice_versione (obbligatorio, non vuoto)');
+                  END IF;
+                  IF p_valido_dal IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_clona_versione_listino',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_valido_dal', p_valido_dal),
+                          NULL::uuid, 'vendite.fn_clona_versione_listino',
+                          'p_valido_dal (obbligatorio)');
+                  END IF;
+
+                  SELECT lv.listino_id, lv.tx_id
+                    INTO v_listino_id, v_tx_id
+                    FROM vendite.listini_versioni lv
+                   WHERE lv.id = p_sorgente_id
+                     FOR KEY SHARE OF lv;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_clona_versione_listino',
+                          'E_VENDITE_LISTINO_VERSIONE_NOT_FOUND',
+                          -- Frase chiusa: nessun segnaposto, il variadico vuoto e' esplicito.
+                          jsonb_build_object('id', p_sorgente_id), NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  -- 2. Prima cio' che vieta, prima di scrivere.
+                  PERFORM script.fn_raise_primo_motivo_se_presente(
+                      'vendite', 'vendite.fn_clona_versione_listino',
+                      script.fn_check_versione_listino_clonabile(p_sorgente_id, p_valido_dal),
+                      'valido_dal',
+                      v_tx_id,
+                      jsonb_build_object('sorgente_id', p_sorgente_id,
+                                         'listino_id', v_listino_id,
+                                         'valido_dal', p_valido_dal));
+
+                  -- 3. La versione nuova: lo stato dal guard della nascita.
+                  INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal, valido_al)
+                  VALUES (v_listino_id, p_codice_versione, p_valido_dal, p_valido_al)
+                  RETURNING id INTO v_nuova_id;
+
+                  -- 4. Le righe attive.
+                  -- rev 2026-10-31 (20261031-38): con la periodicita', che il clone perdeva.
+                  INSERT INTO vendite.listini_righe (listino_versione_id, articolo_id, uom_id,
+                                                     prezzo, periodicita, meta, attivo)
+                  SELECT v_nuova_id, r.articolo_id, r.uom_id, r.prezzo, r.periodicita, r.meta, TRUE
+                    FROM vendite.listini_righe r
+                   WHERE r.listino_versione_id = p_sorgente_id
+                     AND r.attivo IS TRUE;
+                  GET DIAGNOSTICS v_righe = ROW_COUNT;
+
+                  -- 5. I componenti attivi, nel periodo comune alla riga di
+                  --    distinta e alla versione nuova; gli altri si saltano.
+                  SELECT count(*) INTO v_comp_sorg
+                    FROM vendite.listini_righe_componenti c
+                   WHERE c.listino_versione_id = p_sorgente_id
+                     AND c.attivo IS TRUE;
+
+                  INSERT INTO vendite.listini_righe_componenti (
+                         listino_versione_id, articolo_componente_id, articolo_padre_id,
+                         articolo_figlio_id, prezzo, iva_id, valido_dal, valido_al, attivo)
+                  SELECT v_nuova_id, c.articolo_componente_id, c.articolo_padre_id,
+                         c.articolo_figlio_id, c.prezzo, c.iva_id,
+                         GREATEST(ac.valido_dal, p_valido_dal),
+                         -- LEAST ignora i NULL: NULL solo se aperte entrambe.
+                         LEAST(ac.valido_al, p_valido_al),
+                         TRUE
+                    FROM vendite.listini_righe_componenti c
+                    JOIN catalogo.articoli_componenti ac ON ac.id = c.articolo_componente_id
+                   WHERE c.listino_versione_id = p_sorgente_id
+                     AND c.attivo IS TRUE
+                     AND GREATEST(ac.valido_dal, p_valido_dal)
+                         <= LEAST(COALESCE(ac.valido_al, 'infinity'::date),
+                                  COALESCE(p_valido_al,  'infinity'::date));
+                  GET DIAGNOSTICS v_componenti = ROW_COUNT;
+
+                  -- 6. rev 2026-10-31 (20261031-38, D-2-bis): i kit, con la loro periodicita'.
+                  INSERT INTO vendite.listini_kit (listino_versione_id, articolo_padre_id, periodicita, meta)
+                  SELECT v_nuova_id, k.articolo_padre_id, k.periodicita, k.meta
+                    FROM vendite.listini_kit k
+                   WHERE k.listino_versione_id = p_sorgente_id;
+
+                  RETURN QUERY SELECT v_nuova_id, v_righe, v_componenti, v_comp_sorg - v_componenti;
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_clona_versione_listino(
+                  p_sorgente_id     vendite.listini_versioni.id%TYPE,
+                  p_codice_versione vendite.listini_versioni.codice_versione%TYPE,
+                  p_valido_dal      vendite.listini_versioni.valido_dal%TYPE,
+                  p_valido_al       vendite.listini_versioni.valido_al%TYPE DEFAULT NULL)
+               RETURNS TABLE(versione_id          vendite.listini_versioni.id%TYPE,
+                             -- CONTEGGI delle righe copiate e saltate.
+                             righe_copiate        integer,
+                             componenti_copiati   integer,
+                             componenti_saltati   integer)
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_listino_id vendite.listini_versioni.listino_id%TYPE;
+                  v_tx_id      vendite.listini_versioni.tx_id%TYPE;
+                  v_nuova_id   vendite.listini_versioni.id%TYPE;
+                  -- CONTEGGI delle righe copiate e dei componenti della sorgente.
+                  v_righe      integer;
+                  v_componenti integer;
+                  v_comp_sorg  integer;
+              BEGIN
+                  -- ==========================================================
+                  -- Scopo: copiare una versione di listino, con le sue righe
+                  --   e i suoi componenti attivi, in una versione nuova in
+                  --   BOZZA dello stesso listino, in una transazione.
+                  --   Vedi l'intestazione del changeSet 20261029-04.
+                  -- ==========================================================
+
+                  -- 1. Parametri e sorgente, nel perimetro (RLS).
+                  IF p_sorgente_id IS NULL OR p_sorgente_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_clona_versione_listino',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_sorgente_id', p_sorgente_id),
+                          NULL::uuid, 'vendite.fn_clona_versione_listino',
+                          'p_sorgente_id (obbligatorio, maggiore di zero)');
+                  END IF;
+                  IF NULLIF(btrim(p_codice_versione), '') IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_clona_versione_listino',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_codice_versione', p_codice_versione),
+                          NULL::uuid, 'vendite.fn_clona_versione_listino',
+                          'p_codice_versione (obbligatorio, non vuoto)');
+                  END IF;
+                  IF p_valido_dal IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_clona_versione_listino',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_valido_dal', p_valido_dal),
+                          NULL::uuid, 'vendite.fn_clona_versione_listino',
+                          'p_valido_dal (obbligatorio)');
+                  END IF;
+
+                  SELECT lv.listino_id, lv.tx_id
+                    INTO v_listino_id, v_tx_id
+                    FROM vendite.listini_versioni lv
+                   WHERE lv.id = p_sorgente_id
+                     FOR KEY SHARE OF lv;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_clona_versione_listino',
+                          'E_VENDITE_LISTINO_VERSIONE_NOT_FOUND',
+                          -- Frase chiusa: nessun segnaposto, il variadico vuoto e' esplicito.
+                          jsonb_build_object('id', p_sorgente_id), NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  -- 2. Prima cio' che vieta, prima di scrivere.
+                  PERFORM script.fn_raise_primo_motivo_se_presente(
+                      'vendite', 'vendite.fn_clona_versione_listino',
+                      script.fn_check_versione_listino_clonabile(p_sorgente_id, p_valido_dal),
+                      'valido_dal',
+                      v_tx_id,
+                      jsonb_build_object('sorgente_id', p_sorgente_id,
+                                         'listino_id', v_listino_id,
+                                         'valido_dal', p_valido_dal));
+
+                  -- 3. La versione nuova: lo stato dal guard della nascita.
+                  INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal, valido_al)
+                  VALUES (v_listino_id, p_codice_versione, p_valido_dal, p_valido_al)
+                  RETURNING id INTO v_nuova_id;
+
+                  -- 4. Le righe attive.
+                  INSERT INTO vendite.listini_righe (listino_versione_id, articolo_id, uom_id,
+                                                     prezzo, meta, attivo)
+                  SELECT v_nuova_id, r.articolo_id, r.uom_id, r.prezzo, r.meta, TRUE
+                    FROM vendite.listini_righe r
+                   WHERE r.listino_versione_id = p_sorgente_id
+                     AND r.attivo IS TRUE;
+                  GET DIAGNOSTICS v_righe = ROW_COUNT;
+
+                  -- 5. I componenti attivi, nel periodo comune alla riga di
+                  --    distinta e alla versione nuova; gli altri si saltano.
+                  SELECT count(*) INTO v_comp_sorg
+                    FROM vendite.listini_righe_componenti c
+                   WHERE c.listino_versione_id = p_sorgente_id
+                     AND c.attivo IS TRUE;
+
+                  INSERT INTO vendite.listini_righe_componenti (
+                         listino_versione_id, articolo_componente_id, articolo_padre_id,
+                         articolo_figlio_id, prezzo, iva_id, valido_dal, valido_al, attivo)
+                  SELECT v_nuova_id, c.articolo_componente_id, c.articolo_padre_id,
+                         c.articolo_figlio_id, c.prezzo, c.iva_id,
+                         GREATEST(ac.valido_dal, p_valido_dal),
+                         -- LEAST ignora i NULL: NULL solo se aperte entrambe.
+                         LEAST(ac.valido_al, p_valido_al),
+                         TRUE
+                    FROM vendite.listini_righe_componenti c
+                    JOIN catalogo.articoli_componenti ac ON ac.id = c.articolo_componente_id
+                   WHERE c.listino_versione_id = p_sorgente_id
+                     AND c.attivo IS TRUE
+                     AND GREATEST(ac.valido_dal, p_valido_dal)
+                         <= LEAST(COALESCE(ac.valido_al, 'infinity'::date),
+                                  COALESCE(p_valido_al,  'infinity'::date));
+                  GET DIAGNOSTICS v_componenti = ROW_COUNT;
+
+                  RETURN QUERY SELECT v_nuova_id, v_righe, v_componenti, v_comp_sorg - v_componenti;
+              END;
+              $function$;

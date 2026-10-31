@@ -18,7 +18,7 @@ Approfondimento parametri tabellari Vs GUC
 ---
 ### 🎯 Scopo Principale
 
-(ultima revisione 25-10-2026)
+(ultima revisione 31-10-2026)
 
 La tabella **`config.parameters`** implementa un’**architettura a due livelli** per la configurazione dinamica dell’applicazione:
 
@@ -40,6 +40,7 @@ La tabella **`config.parameters`** implementa un’**architettura a due livelli*
 | `default_value` | TEXT                        | NO       | —                   | Valore di default del parametro.              |
 | `description`   | TEXT                        | SÌ       | —                   | Descrizione estesa.                           |
 | `ammette_override` | BOOLEAN                  | NO       | —                   | La famiglia: `true` con override, `false` uguale per tutti. Nessun default: un parametro nuovo la dichiara. |
+| `tipo_valore`   | TEXT (CHECK)                | NO       | —                   | La forma del valore (default e override). Nessun default: un parametro nuovo la dichiara. |
 | `data_insert`   | TIMESTAMP WITHOUT TIME ZONE | NO       | `CURRENT_TIMESTAMP` | Data di creazione del record.                 |
 | `user_insert`   | VARCHAR(80)                 | NO       | `CURRENT_USER`      | Utente creazione.                             |
 | `data_update`   | TIMESTAMP WITHOUT TIME ZONE | NO       | `CURRENT_TIMESTAMP` | Data ultima modifica.                         |
@@ -58,6 +59,21 @@ che possiede la regola). Il database la fa rispettare:
 * qui, il passaggio `true` → `false` si rifiuta finché il parametro ha override
   (`E_PARAMETER_OVERRIDE_PRESENTI`, trigger `trg_parameters_a10_guard_ammette_override_upd`,
   [la funzione](/dbzero/config/funzioni/trgfn_parameters_guard_ammette_override)).
+
+### La forma del valore
+
+`tipo_valore` dice che forma ha il valore, per il default e per ogni override: `BOOLEANO`,
+`INTERO_POSITIVO`, `INTERO_NON_NEGATIVO`, `DECIMALE_POSITIVO`, `DECIMALE_NON_NEGATIVO`,
+`DECIMALE_NON_NEGATIVO_O_VUOTO`, `DATA`, `TESTO` (vincolo `chk_parameters_tipo_valore`). La regola
+di ogni forma sta in [script.fn_valore_parametro_non_conforme](/dbzero/script/funzioni/fn_valore_parametro_non_conforme).
+Il database la fa rispettare quando si scrive:
+
+* qui, il default (`E_PARAMETER_VALORE_NON_CONFORME`); cambiando il tipo, anche ogni override
+  esistente, acceso o spento (`E_PARAMETER_OVERRIDE_NON_CONFORME_AL_TIPO`). Trigger
+  `trg_parameters_a07_guard_tipo_valore_ins_upd`,
+  [la funzione](/dbzero/config/funzioni/trgfn_parameters_guard_tipo_valore);
+* su `config.parameter_overrides`, il valore dell'override
+  ([la funzione](/dbzero/config/funzioni/trgfn_parameter_overrides_guard_tipo_valore)).
 
 Il quadro, con le regole di lettura: [Configurazione e gestione parametri](/guide/configurazione-e-gestione-parametri).
 I valori si seminano da `80_data/sql/config/parameters.csv`; i parametri di sistema da

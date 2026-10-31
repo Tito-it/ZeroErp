@@ -208,6 +208,18 @@ _LOOKUP_SPECIALIZZATE: dict[str, dict] = {
         "has_codice_interno": False,
         "has_obsoleto": False,
     },
+    # mesi: la durata del periodo. Il FE ordina la tendina della periodicita'
+    # (riga a canone, riga e kit di listino) sul ritmo e non sull'alfabeto, e
+    # il valore della tendina e' il `codice`, quello della FK
+    # (brief-db-contratto-righe-periodiche-in-commessa §7.5, D-6).
+    # ⚠️ Niente `codice_interno`, `attivo` e `obsoleto_dal`: il vocabolario e'
+    #    del modello, non una configurazione (fuori dal pannello).
+    "config.periodicita": {
+        "extra_col": "mesi",
+        "has_codice_interno": False,
+        "has_obsoleto": False,
+        "has_attivo": False,
+    },
 }
 
 

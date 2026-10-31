@@ -1,0 +1,261 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'ATTIVAZIONE DI UNA VERSIONE DI LISTINO APRE LA PORTA DELLA FINE
+#   Brief: brief-modello-documento-vendita §16.15 (C-4 = a di Tid,
+#   2026-10-29). Corpo di partenza: il vivo, uguale al 20261028-32.
+#
+# ── PERCHE' ─────────────────────────────────────────────────────────
+#   Da 20261029-07 il guard per stato accetta la fine di una ATTIVA solo con
+#   la porta (GUC zeroerp.listino_versione_fine = id della versione) aperta
+#   dal proprietario della tabella. L'attivazione chiude le precedenti che si
+#   sovrappongono (D3 di sviluppo-listini-v2): e' uno dei due verbi che
+#   scrivono quella fine, e la porta deve aprirla lei. Gira gia' come
+#   proprietario (SECURITY DEFINER).
+#
+# ── CHE COSA CAMBIA ─────────────────────────────────────────────────
+#   Il passo 4: l'UPDATE unico sulle precedenti diventa un ciclo sullo stesso
+#   lettore (vendite.fn_versioni_listino_da_chiudere), una versione alla
+#   volta: la GUC porta un id solo. Il conteggio delle chiuse si somma nel
+#   ciclo. Il resto del corpo, la firma e i GRANT restano quelli del
+#   20261028-32; il COMMENT prende la revisione in coda.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261029-09-update-fn-attiva-versione-listino-porta-della-fine-mctit.yaml
+
+  - changeSet:
+      id: 20261029-09-update-fn-attiva-versione-listino-porta-della-fine
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_attiva_versione_listino: le precedenti si chiudono una alla volta con la porta
+        della fine aperta (C-4). Brief: brief-modello-documento-vendita §16.15.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite' AND p.proname = 'fn_attiva_versione_listino';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_attiva_versione_listino(
+                  p_versione_id vendite.listini_versioni.id%TYPE)
+               RETURNS TABLE(versione_id      vendite.listini_versioni.id%TYPE,
+                             stato_precedente config.stati_doc_listino_versioni.codice_interno%TYPE,
+                             stato_nuovo      config.stati_doc_listino_versioni.codice_interno%TYPE,
+                             versioni_chiuse  integer)
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  c_attiva      CONSTANT config.stati_doc_listino_versioni.codice_interno%TYPE := 'ATTIVA';
+                  v_utente      config.user_override_azioni.auth_user_id%TYPE;
+                  v_stato_da    config.stati_doc_listino_versioni.codice_interno%TYPE;
+                  v_stato_da_id vendite.listini_versioni.stato_doc_listino_versione_id%TYPE;
+                  v_stato_a_id  config.stati_doc_listino_versioni.id%TYPE;
+                  v_tx_id       vendite.listini_versioni.tx_id%TYPE;
+                  v_prec_id     vendite.listini_versioni.id%TYPE;
+                  v_fine        vendite.listini_versioni.valido_al%TYPE;
+                  -- CONTEGGIO delle versioni chiuse.
+                  v_chiuse      integer := 0;
+              BEGIN
+                  -- ==========================================================
+                  -- Scopo: attivare una versione di listino, chiudendo le
+                  --   precedenti. Vedi l'intestazione dei changeSet 20261028-12, -32
+                  --   e 20261029-09.
+                  -- ==========================================================
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+
+                  -- 1. Parametro e versione, nel perimetro.
+                  IF p_versione_id IS NULL OR p_versione_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_attiva_versione_listino',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_versione_id', p_versione_id),
+                          NULL::uuid, 'vendite.fn_attiva_versione_listino',
+                          'p_versione_id (obbligatorio, maggiore di zero)');
+                  END IF;
+
+                  SELECT lv.stato_doc_listino_versione_id, s.codice_interno, lv.tx_id
+                    INTO v_stato_da_id, v_stato_da, v_tx_id
+                    FROM vendite.listini_versioni lv
+                    JOIN config.stati_doc_listino_versioni s ON s.id = lv.stato_doc_listino_versione_id
+                   WHERE lv.id = p_versione_id
+                     AND script.fn_scope_ef_whitelist_via_listino_versione(v_utente, lv.id)
+                     FOR UPDATE OF lv;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_attiva_versione_listino',
+                          'E_VENDITE_LISTINO_VERSIONE_NOT_FOUND',
+                          -- Frase chiusa: nessun segnaposto, il variadico vuoto e' esplicito.
+                          jsonb_build_object('id', p_versione_id), NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  -- 2. Prima riga comune: lo stato che ha gia', l'azione.
+                  v_stato_a_id := script.fn_doc_stato_id('vendite.listini_versioni'::regclass, c_attiva);
+                  IF v_stato_a_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_attiva_versione_listino',
+                          'E_CONFIG_MANCANTE',
+                          jsonb_build_object('config', 'config.stati_doc_listino_versioni',
+                                             'codice', c_attiva),
+                          NULL::uuid, 'stato ATTIVA (config.stati_doc_listino_versioni)');
+                  END IF;
+                  PERFORM script.fn_guard_passaggio(v_utente, 'vendite.listini_versioni'::regclass,
+                                                    v_stato_da_id, v_stato_a_id);
+
+                  -- 3. Prima cio' che vieta, prima di toccare le altre versioni.
+                  PERFORM script.fn_raise_primo_motivo_se_presente(
+                      'vendite', 'vendite.fn_attiva_versione_listino',
+                      script.fn_check_versione_listino_attivabile(p_versione_id),
+                      NULL,
+                      v_tx_id,
+                      jsonb_build_object('versione_id', p_versione_id,
+                                         'stato_da', v_stato_da, 'stato_a', c_attiva));
+
+                  -- 4. Le precedenti che si sovrappongono si chiudono il giorno
+                  --    prima della decorrenza nuova: lo stesso lettore
+                  --    dell'anteprima. Una alla volta, con la porta aperta
+                  --    sulla sua versione (il guard per stato, 20261029-07).
+                  FOR v_prec_id, v_fine IN
+                      SELECT d.versione_id, d.valido_al_dopo
+                        FROM vendite.fn_versioni_listino_da_chiudere(p_versione_id) d
+                  LOOP
+                      PERFORM set_config('zeroerp.listino_versione_fine', v_prec_id::text, true);
+                      UPDATE vendite.listini_versioni lv
+                         SET valido_al = v_fine
+                       WHERE lv.id = v_prec_id;
+                      v_chiuse := v_chiuse + 1;
+                  END LOOP;
+                  PERFORM set_config('zeroerp.listino_versione_fine', '', true);
+
+                  -- 5. Lo stato, attraverso la porta.
+                  PERFORM script.fn_doc_scrivi_stato('vendite.listini_versioni'::regclass,
+                                                     p_versione_id, v_stato_a_id);
+
+                  RETURN QUERY SELECT p_versione_id, v_stato_da, c_attiva, v_chiuse;
+              END;
+              $function$;
+
+              REVOKE EXECUTE ON FUNCTION vendite.fn_attiva_versione_listino(bigint) FROM PUBLIC;
+              GRANT EXECUTE ON FUNCTION vendite.fn_attiva_versione_listino(bigint) TO zeroerp_app;
+
+              COMMENT ON FUNCTION vendite.fn_attiva_versione_listino(bigint) IS
+                  'VERBO dell''attivazione di una versione di listino (BOZZA -> ATTIVA), in una transazione: la versione FOR UPDATE nel perimetro (script.fn_scope_ef_whitelist_via_listino_versione: DEFINER, la RLS non c''e''; fuori perimetro E_VENDITE_LISTINO_VERSIONE_NOT_FOUND); la prima riga comune (script.fn_guard_passaggio: E_DOC_GIA_NELLO_STATO, l''azione attiva_listino della riga del passaggio); prima cio'' che vieta (il primo motivo di script.fn_check_versione_listino_attivabile: spenta, senza prezzi); poi le versioni precedenti che si sovrappongono prendono valido_al = decorrenza - 1 (vendite.fn_versioni_listino_da_chiudere, lo stesso lettore dell''anteprima: decisione D3 di sviluppo-listini-v2); infine lo stato dalla scrittura comune (script.fn_doc_scrivi_stato, attraverso la porta). Ritorna versione, stati (codice_interno) e quante versioni ha chiuso. Prende il posto di listini_service.fn_change_versione_state (regole, chiusura delle precedenti e UPDATE dello stato nel backend). EXECUTE solo all''applicazione. Brief: brief-modello-documento-vendita §16 (L-3, L-4, Tid 2026-10-28). Rev 2026-10-29 (20261029-09, §16.15, C-4 = a di Tid): le precedenti si chiudono una alla volta con la porta aperta sulla loro versione (GUC transazionale zeroerp.listino_versione_fine = id: la onora vendite.trgfn_listini_versioni_guard_per_stato insieme al proprietario della tabella), perche'' la fine di una ATTIVA cambia solo dai verbi.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo del 20261028-32.
+              CREATE OR REPLACE FUNCTION vendite.fn_attiva_versione_listino(
+                  p_versione_id vendite.listini_versioni.id%TYPE)
+               RETURNS TABLE(versione_id      vendite.listini_versioni.id%TYPE,
+                             stato_precedente config.stati_doc_listino_versioni.codice_interno%TYPE,
+                             stato_nuovo      config.stati_doc_listino_versioni.codice_interno%TYPE,
+                             versioni_chiuse  integer)
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  c_attiva      CONSTANT config.stati_doc_listino_versioni.codice_interno%TYPE := 'ATTIVA';
+                  v_utente      config.user_override_azioni.auth_user_id%TYPE;
+                  v_stato_da    config.stati_doc_listino_versioni.codice_interno%TYPE;
+                  v_stato_da_id vendite.listini_versioni.stato_doc_listino_versione_id%TYPE;
+                  v_stato_a_id  config.stati_doc_listino_versioni.id%TYPE;
+                  v_tx_id       vendite.listini_versioni.tx_id%TYPE;
+                  -- CONTEGGIO delle versioni chiuse.
+                  v_chiuse      integer;
+              BEGIN
+                  -- ==========================================================
+                  -- Scopo: attivare una versione di listino, chiudendo le
+                  --   precedenti. Vedi l'intestazione dei changeSet 20261028-12 e -32.
+                  -- ==========================================================
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+
+                  -- 1. Parametro e versione, nel perimetro.
+                  IF p_versione_id IS NULL OR p_versione_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_attiva_versione_listino',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_versione_id', p_versione_id),
+                          NULL::uuid, 'vendite.fn_attiva_versione_listino',
+                          'p_versione_id (obbligatorio, maggiore di zero)');
+                  END IF;
+
+                  SELECT lv.stato_doc_listino_versione_id, s.codice_interno, lv.tx_id
+                    INTO v_stato_da_id, v_stato_da, v_tx_id
+                    FROM vendite.listini_versioni lv
+                    JOIN config.stati_doc_listino_versioni s ON s.id = lv.stato_doc_listino_versione_id
+                   WHERE lv.id = p_versione_id
+                     AND script.fn_scope_ef_whitelist_via_listino_versione(v_utente, lv.id)
+                     FOR UPDATE OF lv;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_attiva_versione_listino',
+                          'E_VENDITE_LISTINO_VERSIONE_NOT_FOUND',
+                          -- Frase chiusa: nessun segnaposto, il variadico vuoto e' esplicito.
+                          jsonb_build_object('id', p_versione_id), NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  -- 2. Prima riga comune: lo stato che ha gia', l'azione.
+                  v_stato_a_id := script.fn_doc_stato_id('vendite.listini_versioni'::regclass, c_attiva);
+                  IF v_stato_a_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_attiva_versione_listino',
+                          'E_CONFIG_MANCANTE',
+                          jsonb_build_object('config', 'config.stati_doc_listino_versioni',
+                                             'codice', c_attiva),
+                          NULL::uuid, 'stato ATTIVA (config.stati_doc_listino_versioni)');
+                  END IF;
+                  PERFORM script.fn_guard_passaggio(v_utente, 'vendite.listini_versioni'::regclass,
+                                                    v_stato_da_id, v_stato_a_id);
+
+                  -- 3. Prima cio' che vieta, prima di toccare le altre versioni.
+                  PERFORM script.fn_raise_primo_motivo_se_presente(
+                      'vendite', 'vendite.fn_attiva_versione_listino',
+                      script.fn_check_versione_listino_attivabile(p_versione_id),
+                      NULL,
+                      v_tx_id,
+                      jsonb_build_object('versione_id', p_versione_id,
+                                         'stato_da', v_stato_da, 'stato_a', c_attiva));
+
+                  -- 4. Le precedenti che si sovrappongono si chiudono il giorno
+                  --    prima della decorrenza nuova: lo stesso lettore
+                  --    dell'anteprima.
+                  UPDATE vendite.listini_versioni lv
+                     SET valido_al = d.valido_al_dopo
+                    FROM vendite.fn_versioni_listino_da_chiudere(p_versione_id) d
+                   WHERE lv.id = d.versione_id;
+                  GET DIAGNOSTICS v_chiuse = ROW_COUNT;
+
+                  -- 5. Lo stato, attraverso la porta.
+                  PERFORM script.fn_doc_scrivi_stato('vendite.listini_versioni'::regclass,
+                                                     p_versione_id, v_stato_a_id);
+
+                  RETURN QUERY SELECT p_versione_id, v_stato_da, c_attiva, v_chiuse;
+              END;
+              $function$;
+
+              REVOKE EXECUTE ON FUNCTION vendite.fn_attiva_versione_listino(bigint) FROM PUBLIC;
+              GRANT EXECUTE ON FUNCTION vendite.fn_attiva_versione_listino(bigint) TO zeroerp_app;
+
+              COMMENT ON FUNCTION vendite.fn_attiva_versione_listino(bigint) IS
+                  'VERBO dell''attivazione di una versione di listino (BOZZA -> ATTIVA), in una transazione: la versione FOR UPDATE nel perimetro (script.fn_scope_ef_whitelist_via_listino_versione: DEFINER, la RLS non c''e''; fuori perimetro E_VENDITE_LISTINO_VERSIONE_NOT_FOUND); la prima riga comune (script.fn_guard_passaggio: E_DOC_GIA_NELLO_STATO, l''azione attiva_listino della riga del passaggio); prima cio'' che vieta (il primo motivo di script.fn_check_versione_listino_attivabile: spenta, senza prezzi); poi le versioni precedenti che si sovrappongono prendono valido_al = decorrenza - 1 (vendite.fn_versioni_listino_da_chiudere, lo stesso lettore dell''anteprima: decisione D3 di sviluppo-listini-v2); infine lo stato dalla scrittura comune (script.fn_doc_scrivi_stato, attraverso la porta). Ritorna versione, stati (codice_interno) e quante versioni ha chiuso. Prende il posto di listini_service.fn_change_versione_state (regole, chiusura delle precedenti e UPDATE dello stato nel backend). EXECUTE solo all''applicazione. Brief: brief-modello-documento-vendita §16 (L-3, L-4, Tid 2026-10-28).';

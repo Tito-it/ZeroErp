@@ -72,4 +72,8 @@ export const CAMPI_FORM_TESTATA_OFFERTA = Object.freeze([
   'valuta_id',
   'validita_dal',
   'validita_al',
+  // Come si addebitano i canoni (F-2, F-7): fermi fuori bozza come le
+  // condizioni (`E_DOC_CONDIZIONI_FUORI_BOZZA`).
+  'generazione_canone',
+  'mese_partenza_canone',
 ])

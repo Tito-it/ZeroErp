@@ -38,6 +38,7 @@ from apps.catalogo.db.catalogo_repository import (
     CatalogoRepository,
 )
 from apps.catalogo.db.catalogo_uom_repository import (
+    ARTICOLO_UOM_ORDER_COLUMNS,
     UOM_OPERATIVA_WRITE_COLUMNS,
     CatalogoUomRepository,
 )
@@ -48,6 +49,7 @@ from apps.core.services.error_manager import ErrorManager
 from apps.core.services.service_errors import ServiceError
 from apps.core.services.list_helpers import collezione_completa, validate_order_params
 from apps.core.services.parameter_service import ParameterService
+from apps.core.services.partitioned_note_service import ordine_note_valido
 from apps.core.services.testata_guard import o_not_found, pagina_dopo_testata
 from apps.core.services.payload_helpers import (
     MISSING as _MISSING,
@@ -1594,10 +1596,38 @@ def fn_list_uom_rounding_modes() -> list[dict[str, Any]]:
     ]
 
 
-# Scopo: Lista UoM operative dell'articolo, previa verifica esistenza articolo.
-#        Envelope arricchito con `non_editable_fields` (Fase 5): il FE
-#        costruisce form di edit da una riga della lista, ha bisogno dei
-#        metadata immutabilita' al livello collezione.
+# Scopo: La PAGINA delle UoM operative dell'articolo (lista
+#        `catalogo.articolo_uom`), previa verifica esistenza articolo: righe,
+#        totale e `non_editable_fields` (il FE costruisce il form di edit da
+#        una riga della lista, e i campi immutabili sono della collezione).
+def fn_list_uom_operative_pagina(
+    articolo_id: UUID | str,
+    *,
+    search: str | None = None,
+    order_by: str | None = None,
+    order_dir: str | None = None,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
+) -> tuple[list[dict[str, Any]], int, list[str]]:
+    # La pagina della lista `catalogo.articolo_uom` (dal 2026-10-31), coi
+    # campi non modificabili del form di riga (come la collezione intera).
+    _get_articolo_base(articolo_id)
+    if order_by:
+        order_by, order_dir = validate_order_params(
+            order_by, order_dir,
+            allowed_columns=frozenset(ARTICOLO_UOM_ORDER_COLUMNS),
+            error_code="E_VALIDATION_INPUT",
+            nullable=True,
+            function_name="catalogo.catalogo_service.fn_list_uom_operative_pagina",
+        )
+    results, total = CatalogoUomRepository().list_uom_operative_pagina(
+        articolo_id, search=search, order_by=order_by, order_dir=order_dir, limit=limit, offset=offset,
+    )
+    return results, total, _compute_non_editable_fields("catalogo", "articoli_uom_operativa")
+
+
+# Scopo: Tutte le UoM operative dell'articolo, coi campi non modificabili:
+#        per il lookup cross-dominio (`uom/lookup/`), che le vuole intere.
 def fn_list_uom_operative(articolo_id: UUID | str) -> dict[str, Any]:
     _get_articolo_base(articolo_id)
     repository = CatalogoUomRepository()
@@ -1790,11 +1820,26 @@ def fn_delete_componente(articolo_id: UUID | str, componente_row_id: UUID | str)
     return {"deleted": True}
 
 
-# Scopo: Lista note articolo con dati arricchiti.
-def fn_list_note_articolo(articolo_id: UUID | str) -> dict[str, Any]:
+# Scopo: La PAGINA delle note dell'articolo (lista `catalogo.note`, dal
+#        2026-10-31), previa verifica esistenza articolo. L'ordinamento si
+#        valida sulla whitelist COMUNE delle note (`ordine_note_valido`, la
+#        stessa di `vendite.note`).
+def fn_list_note_articolo(
+    articolo_id: UUID | str,
+    *,
+    search: str | None = None,
+    order_by: str | None = None,
+    order_dir: str | None = None,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
+) -> tuple[list[dict[str, Any]], int]:
     _get_articolo_base(articolo_id)
-    repository = CatalogoBomRepository()
-    return collezione_completa(repository.list_note_articolo(articolo_id))
+    order_by, order_dir = ordine_note_valido(
+        order_by, order_dir, function_name="catalogo.catalogo_service.fn_list_note_articolo",
+    )
+    return CatalogoBomRepository().list_note_articolo_pagina(
+        articolo_id, search=search, order_by=order_by, order_dir=order_dir, limit=limit, offset=offset,
+    )
 
 
 # Scopo: Crea una nota articolo e restituisce il dettaglio arricchito della nota.
@@ -1812,13 +1857,25 @@ def fn_create_nota_articolo(articolo_id: UUID | str, payload: dict[str, Any]) ->
     return result
 
 
-# Scopo: Lista le note di un componente articolo.
-def fn_list_note_componente(articolo_id: UUID | str, componente_id: UUID | str) -> dict[str, Any]:
-    _componente_dell_articolo(
-        articolo_id, componente_id, function_name="catalogo.catalogo_service.fn_list_note_componente",
+# Scopo: La PAGINA delle note di un componente dell'articolo (lista
+#        `catalogo.note`), previa verifica che il componente sia dell'articolo.
+#        Ordinamento validato come le note dell'articolo (`ordine_note_valido`).
+def fn_list_note_componente(
+    articolo_id: UUID | str,
+    componente_id: UUID | str,
+    *,
+    search: str | None = None,
+    order_by: str | None = None,
+    order_dir: str | None = None,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
+) -> tuple[list[dict[str, Any]], int]:
+    function_name = "catalogo.catalogo_service.fn_list_note_componente"
+    _componente_dell_articolo(articolo_id, componente_id, function_name=function_name)
+    order_by, order_dir = ordine_note_valido(order_by, order_dir, function_name=function_name)
+    return CatalogoBomRepository().list_note_componente(
+        componente_id, search=search, order_by=order_by, order_dir=order_dir, limit=limit, offset=offset,
     )
-    repository = CatalogoBomRepository()
-    return collezione_completa(repository.list_note_componente(componente_id))
 
 
 # Scopo: ⛔ Il componente dell'URL esiste ED e' dell'articolo dell'URL, o 404.

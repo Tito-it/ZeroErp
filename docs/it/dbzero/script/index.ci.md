@@ -65,8 +65,9 @@ search:
 - [fn_check_ordine_confermabile](manual/fn_check_ordine_confermabile.md) — (rev 2026-08-29 — funzione nata il 2026-08-29)
 - [fn_check_ordine_data_consegna_confermata](manual/fn_check_ordine_data_consegna_confermata.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 1)
 - [fn_check_parameter_fk_surrogate](manual/fn_check_parameter_fk_surrogate.md) — (latest review 02-05-2026)
+- [fn_check_preventivo_accettabile](manual/fn_check_preventivo_accettabile.md)
 - [fn_check_preventivo_annullabile](manual/fn_check_preventivo_annullabile.md) — (rev 2026-08-21 — funzione rev 2026-08-10)
-- [fn_check_preventivo_emettibile](manual/fn_check_preventivo_emettibile.md) — (rev 2026-09-24 — MOTIVO 2, i prezzi non autorizzati; funzione nata il 2026-08-29)
+- [fn_check_preventivo_emettibile](manual/fn_check_preventivo_emettibile.md) — (rev 2026-10-31 — MOTIVO 4, la validità già finita; rev 2026-09-24 — MOTIVO 2, i prezzi non autorizzati; funzione nata il 2026-08-29)
 - [fn_check_prezzi_autorizzati](manual/fn_check_prezzi_autorizzati.md) — (nata il 2026-09-24 — `20260924-20`)
 - [fn_check_prezzi_in_attesa](manual/fn_check_prezzi_in_attesa.md) — (nata il 2026-09-24 — `20260924-33`)
 - [fn_check_registro_forma_modificabile](manual/fn_check_registro_forma_modificabile.md) — *(rev 2026-09-01 — funzione nata il 2026-09-01)*
@@ -82,6 +83,9 @@ search:
 - [fn_check_user_emittente_scope](manual/fn_check_user_emittente_scope.md) — (latest review 08-03-2026) La funzione **`script.fn_check_user_emittente_scope`** verifica se un utente ha accesso a uno specifico emittente fiscale. Pensata per i trigger defense-in-depth su tabelle operative (fatture, pagamenti).
 - [fn_check_utility_istanza_coerenza](manual/fn_check_utility_istanza_coerenza.md)
 - [fn_check_versione_listino_attivabile](manual/fn_check_versione_listino_attivabile.md)
+- [fn_check_versione_listino_chiudibile](manual/fn_check_versione_listino_chiudibile.md)
+- [fn_check_versione_listino_clonabile](manual/fn_check_versione_listino_clonabile.md)
+- [fn_check_versione_listino_eliminabile](manual/fn_check_versione_listino_eliminabile.md)
 - [fn_cliente_dal_billing_account](manual/fn_cliente_dal_billing_account.md) — **Il cliente e la utility di un documento sono quelli del suo billing account.**
 - [fn_clone_catasto_from_parent_by_istanza](manual/fn_clone_catasto_from_parent_by_istanza.md) — (latest review 15-12-25) La funzione **`script.fn_clone_catasto_from_parent_by_istanza(p_istanza_utilities_id)`** gestisce la **clonazione** di un record catastale (`anagrafiche.catasto_unita_immobiliari`) dalla **parent_istanza** verso l’istanza corrente, tipicamente nel flusso di **subentro**.
 - [fn_crea_utente_tecnico](manual/fn_crea_utente_tecnico.md) — (latest review 04-09-2026)
@@ -241,11 +245,16 @@ search:
 - [fn_sorgente_chiave_uuid](manual/fn_sorgente_chiave_uuid.md) — (scritta il 05-10-2026)
 - [fn_sqlstate_di_ambiente](manual/fn_sqlstate_di_ambiente.md) — (latest review 16-10-2026)
 - [fn_stato_abortito_id](manual/fn_stato_abortito_id.md)
+- [fn_stato_accettazione_id](manual/fn_stato_accettazione_id.md)
+- [fn_stato_cessazione_id](manual/fn_stato_cessazione_id.md)
 - [fn_stato_emissione_id](manual/fn_stato_emissione_id.md)
 - [fn_stato_id_da_iso2](manual/fn_stato_id_da_iso2.md) — (18-10-2026 — decisione D-1 di Tid)
+- [fn_stato_per_colonna_id](manual/fn_stato_per_colonna_id.md)
 - [fn_stato_proposto_id](manual/fn_stato_proposto_id.md) — (18-10-2026 — decisione D-1 di Tid, richiesta del backend in `brief-db-processi-accensione-per-ambiente` §6.11)
+- [fn_stato_scadenza_id](manual/fn_stato_scadenza_id.md)
 - [fn_stato_veste](manual/fn_stato_veste.md)
 - [fn_subentro_cliente](manual/fn_subentro_cliente.md) — (latest review 01-03-26)
+- [fn_tabelle_che_trattengono](manual/fn_tabelle_che_trattengono.md)
 - [fn_totp_conferma_device](manual/fn_totp_conferma_device.md) — (scritta il 29-09-2026)
 - [fn_totp_consuma_recovery](manual/fn_totp_consuma_recovery.md) — (scritta il 29-09-2026)
 - [fn_totp_disabilita_device](manual/fn_totp_disabilita_device.md) — (scritta il 29-09-2026)
@@ -289,7 +298,7 @@ search:
 - [trgfn_notify_permessi_catalogo](manual/trgfn_notify_permessi_catalogo.md) — (scritta il 04-10-2026)
 - [trgfn_prevent_modification_generic](manual/trgfn_prevent_modification_generic.md) — * **Proteggere dati di audit**   Garantire l’inalterabilità delle cronologie storiche registrate in tabelle dedicate (es. `config.parameters_audit`). * **Centralizzare la gestione degli errori**   Usare un wrapper di logging e exception unificato per fornire messaggi coerenti e tracce in log.
 - [trgfn_qta_from_operativa](manual/trgfn_qta_from_operativa.md) — Calcolare e garantire la **coerenza della quantità in UoM base (`NEW.qta`)** a partire dalla **sorgente operativa** (`NEW.uom_operativa_id`, `NEW.qta_operativa`) sulle righe documentali (es. `vendite.ddt_righe`). La funzione:
-- [trgfn_righe_default_fonte_qta](manual/trgfn_righe_default_fonte_qta.md) — (rev 2026-08-21)
+- [trgfn_righe_default_fonte_qta](manual/trgfn_righe_default_fonte_qta.md) — > **Ultimo aggiornamento**: 31 ottobre 2026
 - [trgfn_righe_guard_articolo_ammesso](manual/trgfn_righe_guard_articolo_ammesso.md) — (latest review 2026-10-14, brief-db-articoli-ammessi-per-documento A-2, A-6, D-6; Lotti 3b e 3c, `20261013-56/-57/-61`; Lotto 4, `20261014-05`: la promo)
 - [trgfn_righe_guard_erogazione_obbligatoria](manual/trgfn_righe_guard_erogazione_obbligatoria.md) — (funzione nata il 2026-10-04, `20261004-31`; trigger `20261004-32`)
 - [trgfn_righe_guard_esclusione_immutabile](manual/trgfn_righe_guard_esclusione_immutabile.md) — (funzione nata il 2026-10-04, `20261004-46`; trigger `20261004-48` e `-49`)

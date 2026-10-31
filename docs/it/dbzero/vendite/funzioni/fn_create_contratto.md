@@ -19,6 +19,8 @@ AS $function$
 -- rev 2026-10-24 (20261024-14, brief-modello-documento-vendita N-1/P-2):
 --   lo stato iniziale non si scrive piu' qui: lo mette il trigger della
 --   nascita (script.trgfn_doc_stato_iniziale), letto dal vocabolario.
+-- rev 2026-10-31 (20261031-28, brief-db-contratto-righe-periodiche-in-commessa
+--   D-5): generazione_canone e mese_partenza_canone nella whitelist.
 DECLARE
     v_numero       vendite.contratti.numero%TYPE;
     v_contratto_id vendite.contratti.id%TYPE;
@@ -42,7 +44,12 @@ DECLARE
         'tipo_variazione_globale', 'valore_variazione_globale',
         'categoria_cliente_id_snapshot', 'valuta_id',
         'fatturazione_immediata',
-        'codice_cig', 'codice_cup', 'codice_commessa', 'meta'
+        'codice_cig', 'codice_cup', 'codice_commessa',
+        -- rev 2026-10-31 (D-5): come si addebitano i canoni (F-2, F-7,
+        -- 20261029-15). Stesso difetto delle due righe sopra: le
+        -- colonne c'erano, la chiave veniva scartata in silenzio.
+        'generazione_canone', 'mese_partenza_canone',
+        'meta'
     ];
     v_util_allowed text[] := ARRAY[
         'istanza_utility_id', 'utility_id', 'istanza_dati_precontrattuali_id',

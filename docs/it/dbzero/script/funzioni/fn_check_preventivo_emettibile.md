@@ -27,12 +27,16 @@ AS $function$
 --   rev 2026-09-24: + MOTIVO 2, i prezzi non autorizzati, dal building
 --   block script.fn_check_prezzi_autorizzati
 --   (brief-db-preventivi-congelamento-pricing, D-1/D-2).
+--   rev 2026-10-31: + MOTIVO 4, la validita' gia' finita
+--   (brief-db-scadenza-preventivi, E-4).
 -- Ritorna: [] se emettibile; altrimenti array ORDINATO di
 --   {codice, reason, reason_key, dettaglio}.
 DECLARE
     v_motivi   jsonb := '[]'::jsonb;
     v_uid      vendite.preventivi.uid%TYPE;
     v_numero   vendite.preventivi.numero%TYPE;
+    -- L'ultimo giorno valido (motivo 4, rev 2026-10-31).
+    v_validita_al vendite.preventivi.validita_al%TYPE;
     v_riga_id  vendite.preventivi_righe.id%TYPE;
     v_riga_des vendite.preventivi_righe.descrizione%TYPE;
 BEGIN
@@ -45,7 +49,7 @@ BEGIN
 
     -- ⭐ `p.numero` sulla SELECT che c'era gia': serve a COMPORRE la frase
     --   («Preventivo %s: la riga «%s» ...»), non a decidere.
-    SELECT p.uid, p.numero INTO v_uid, v_numero
+    SELECT p.uid, p.numero, p.validita_al INTO v_uid, v_numero, v_validita_al
       FROM vendite.preventivi p
      WHERE p.id = p_preventivo_id;
 
@@ -137,12 +141,37 @@ BEGIN
     v_motivi := v_motivi
              || script.fn_check_indirizzi_documento_cliente('PREVENTIVO', p_preventivo_id);
 
+    -- MOTIVO 4 (rev 2026-10-31, brief-db-scadenza-preventivi, E-4 di Tid) —
+    --   LA VALIDITA' E' GIA' FINITA: un preventivo che arriva al cliente gia'
+    --   scaduto non si potrebbe accettare (E-2), e il job delle scadenze lo
+    --   chiuderebbe la notte dopo. Si emette solo con una validita' viva.
+    -- ⭐ Lo stesso confronto dell'accettazione e del job: validita_al e'
+    --   l'ultimo giorno valido (< script.fn_data_operativa()); NULL non scade.
+    -- ⭐ DATO_ERRATO, con il campo: in bozza «Valido al» si corregge sullo
+    --   stesso documento, e il frontend accende quel campo.
+    -- ⚠️ La data si legge per id, come gli altri motivi della testata, anche
+    --   se il guard e' BEFORE ROW: sotto la porta del modello il passaggio a
+    --   EMESSO lo scrive solo script.fn_doc_scrivi_stato, con un UPDATE della
+    --   SOLA colonna di stato. In quella istruzione validita_al non cambia, e
+    --   la riga in tabella ha gia' la data che conta.
+    IF v_validita_al IS NOT NULL
+       AND v_validita_al < (SELECT script.fn_data_operativa()) THEN
+        v_motivi := v_motivi || jsonb_build_object(
+            'codice',     'E_PREV_EMISSIONE_VALIDITA_SCADUTA',
+            'reason',     'VALIDITA_SCADUTA',
+            'reason_key', 'vendite.preventivi.azione_reason.validita_scaduta',
+            'dettaglio',  jsonb_build_object('campo', 'validita_al',
+                                             'validita_al', v_validita_al),
+            'valori',     jsonb_build_array(COALESCE(v_numero, p_preventivo_id::text),
+                                            to_char(v_validita_al, 'DD/MM/YYYY')));
+    END IF;
+
     RETURN v_motivi;
 END;
 $function$
 
 COMMENT ON FUNCTION script.fn_check_preventivo_emettibile(p_preventivo_id bigint)
-IS 'Single source dei motivi che impediscono l''EMISSIONE di un preventivo. Ritorna [] se emettibile, altrimenti array ORDINATO di {codice, reason, reason_key, dettaglio}. PURA: non solleva e non scrive. Consumatori: vendite.trgfn_preventivi_guard_transizione (solleva il codice del primo motivo) e script.fn_available_actions_preventivo (spegne il bottone ed espone la reason). ⭐ Oggi UN motivo: E_PREV_RIGA_IVA_MANCANTE, una riga attiva con quantita e prezzo ma senza aliquota. Chiude un difetto silenzioso gemello di quelli sanati sul DDT (2026-08-28) e sull''ordine (2026-08-29): fn_ricalcola_riepilogo_iva_preventivo aggrega le righe attive con quantita > 0 e calcola l''imposta con COALESCE(fn_get_aliquota_iva(iva_id, stato), 0), quindi una riga senza aliquota finisce in vendite.preventivi_riepiloghi_iva con imponibile pieno e imposta zero. ⭐ IL PREDICATO E'' COPIATO DAL CONSUMATORE (attivo IS TRUE AND quantita > 0): il vincolo deve avere lo stesso perimetro di cio'' che protegge. ⚠️ E NON e'' una copia della gemella sugli ordini, perche'' i due documenti divergono su tre punti strutturali: preventivi_righe non ha riga_nr (nel messaggio va la DESCRIZIONE, non «la riga 0» che darebbe la colonna `ordine`), quantita e'' nullable e senza CHECK di positivita'' (sugli ordini c''e'' chk_ordini_v_r_qta_pos, quindi li'' il filtro sarebbe ridondante), attivo e'' nullable (su ordini_righe e'' NOT NULL). ⛔ NON contiene il motivo «documento senza righe»: quello vive nella porta vendite.fn_cambia_stato_preventivo ed e'' un''asimmetria gia'' dichiarata, non una regola dell''emissione. Piano: brief-db-be-iva-risolutore-e-regime-cliente, I9. ⭐ rev 2026-09-24: + MOTIVO 2, i prezzi non autorizzati (E_DOC_PREZZO_PENDENTE, E_DOC_PREZZO_RIFIUTATO) su righe e componenti BoM attivi, dal building block script.fn_check_prezzi_autorizzati: il predicato sta li'''', qui si decide solo che l''''emissione lo chiede. Sommati dopo il motivo dell''''aliquota. Brief: brief-db-preventivi-congelamento-pricing (D-1, D-2). rev 2026-10-11: + MOTIVO 3, E_INDIRIZZO_DOC_NON_DEL_CLIENTE (reason INDIRIZZO_NON_DEL_CLIENTE, reason_key common.azione_reason.indirizzo_non_del_cliente) da script.fn_check_indirizzi_documento_cliente(''PREVENTIVO'', id): un indirizzo d''anagrafica del cliente di prima, o di un''altra fornitura, ferma l''emissione. Dopo i prezzi. Brief: brief-db-indirizzi-documento-seguono-il-cliente (D-3).';
+IS 'Single source dei motivi che impediscono l''EMISSIONE di un preventivo. Ritorna [] se emettibile, altrimenti array ORDINATO di {codice, reason, reason_key, dettaglio}. PURA: non solleva e non scrive. Consumatori: vendite.trgfn_preventivi_guard_transizione (solleva il codice del primo motivo) e script.fn_available_actions_preventivo (spegne il bottone ed espone la reason). ⭐ Oggi UN motivo: E_PREV_RIGA_IVA_MANCANTE, una riga attiva con quantita e prezzo ma senza aliquota. Chiude un difetto silenzioso gemello di quelli sanati sul DDT (2026-08-28) e sull''ordine (2026-08-29): fn_ricalcola_riepilogo_iva_preventivo aggrega le righe attive con quantita > 0 e calcola l''imposta con COALESCE(fn_get_aliquota_iva(iva_id, stato), 0), quindi una riga senza aliquota finisce in vendite.preventivi_riepiloghi_iva con imponibile pieno e imposta zero. ⭐ IL PREDICATO E'' COPIATO DAL CONSUMATORE (attivo IS TRUE AND quantita > 0): il vincolo deve avere lo stesso perimetro di cio'' che protegge. ⚠️ E NON e'' una copia della gemella sugli ordini, perche'' i due documenti divergono su tre punti strutturali: preventivi_righe non ha riga_nr (nel messaggio va la DESCRIZIONE, non «la riga 0» che darebbe la colonna `ordine`), quantita e'' nullable e senza CHECK di positivita'' (sugli ordini c''e'' chk_ordini_v_r_qta_pos, quindi li'' il filtro sarebbe ridondante), attivo e'' nullable (su ordini_righe e'' NOT NULL). ⛔ NON contiene il motivo «documento senza righe»: quello vive nella porta vendite.fn_cambia_stato_preventivo ed e'' un''asimmetria gia'' dichiarata, non una regola dell''emissione. Piano: brief-db-be-iva-risolutore-e-regime-cliente, I9. ⭐ rev 2026-09-24: + MOTIVO 2, i prezzi non autorizzati (E_DOC_PREZZO_PENDENTE, E_DOC_PREZZO_RIFIUTATO) su righe e componenti BoM attivi, dal building block script.fn_check_prezzi_autorizzati: il predicato sta li'''', qui si decide solo che l''''emissione lo chiede. Sommati dopo il motivo dell''''aliquota. Brief: brief-db-preventivi-congelamento-pricing (D-1, D-2). rev 2026-10-11: + MOTIVO 3, E_INDIRIZZO_DOC_NON_DEL_CLIENTE (reason INDIRIZZO_NON_DEL_CLIENTE, reason_key common.azione_reason.indirizzo_non_del_cliente) da script.fn_check_indirizzi_documento_cliente(''PREVENTIVO'', id): un indirizzo d''anagrafica del cliente di prima, o di un''altra fornitura, ferma l''emissione. Dopo i prezzi. Brief: brief-db-indirizzi-documento-seguono-il-cliente (D-3). ⭐ rev 2026-10-31 (20261031-67, brief-db-scadenza-preventivi §8.7, E-4 di Tid): + MOTIVO 4, E_PREV_EMISSIONE_VALIDITA_SCADUTA (reason VALIDITA_SCADUTA, reason_key vendite.preventivi.azione_reason.validita_scaduta, dettaglio {campo validita_al, validita_al}, valori numero e data): la validita'' e'' gia'' finita (validita_al < script.fn_data_operativa(), lo stesso confronto dell''accettazione e del job delle scadenze; NULL non scade). DATO_ERRATO: in bozza la data si corregge. La data si legge per id anche dal guard BEFORE ROW: sotto la porta il passaggio a EMESSO e'' un UPDATE della sola colonna di stato (script.fn_doc_scrivi_stato).';
 ```
 
 </div>

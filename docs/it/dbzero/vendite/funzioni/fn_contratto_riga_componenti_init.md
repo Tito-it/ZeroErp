@@ -76,7 +76,9 @@ BEGIN
     -- impone prezzo_unitario IS NULL) e quindi nessun componente BoM.
     -- Inizializzare i componenti scatenerebbe il ricalcolo del prezzo padre
     -- (trigger _z90_ricalcola_padre -> SUM figli) in violazione del CHECK.
-    IF v_tipo_eccezione = 'ESCLUSIONE' THEN RETURN 0; END IF;
+    -- rev 2026-10-29 (20261029-42, G-0-ter): anche l'ADESIONE, che il prezzo
+    -- non lo ha: il kit aderito prende prezzo e componenti dal listino.
+    IF v_tipo_eccezione IN ('ESCLUSIONE', 'ADESIONE') THEN RETURN 0; END IF;
 
     -- No-op su riga a consumo senza quantita fissa
     IF v_qta_padre IS NULL THEN RETURN 0; END IF;

@@ -46,12 +46,15 @@ from apps.config.sorgenti import SORGENTE_CONTRATTO
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.services.documento_modello import (
     e_stato_di_annullo,
+    e_stato_di_cessazione,
     rifiuta_stato_di_emissione,
     stato_di_emissione,
 )
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.error_messages_fallback import USER_MESSAGE_FALLBACK
 from apps.vendite.services._righe_bozza_guard import Verbo, richiedi_righe_in_bozza
+from apps.vendite.services._campi_canone import CAMPI_CANONE, campi_canone, check_campi_canone
+from apps.vendite.services._righe_codici import CAMPI_CODICE_RIGA, normalizza_codici_riga
 from apps.vendite.services._cliente_coppia_documento import (
     coppia_cambiata,
     rifiuta_colonne_ferme,
@@ -80,7 +83,6 @@ from apps.core.services.payload_helpers import (
 from apps.core.services.partitioned_note_service import contatori_documento
 from apps.vendite.db.note_repositories import NOTE_REPO_CONTRATTO
 from apps.vendite.db.contratti_repository import (
-    STATO_CESSATO,
     TESTATA_CONTRATTI,
     _ORDER_COLS_CONTRATTI,
     ContrattiRepository,
@@ -220,6 +222,18 @@ CREATE_KEYS_TESTATA: frozenset[str] = frozenset({
     # ⭐ Il caso d'uso e' proprio la creazione: un CIG nasce con la gara, cioe'
     #    PRIMA del contratto.
     *_CODICI_ATTO,
+    # Come si addebitano i canoni (F-2, F-7, `20261029-15`), ammessi in CREATE
+    # dal changeSet `20261031-28` che li ha messi nella whitelist interna di
+    # `vendite.fn_create_contratto` (D-5 di brief-db-contratto-righe-periodiche-
+    # in-commessa §7.4). ⛔ Prima la madre li SCARTAVA: un contratto «normali,
+    # da febbraio» nasceva coi default e la risposta era 200. Il dominio lo
+    # dice il DB (`chk_contratti_*`); fuori bozza li ferma il lock di testata.
+    # ⚠️ Mai `null`: le colonne sono NOT NULL col default (§C4 come per
+    #    `fatturazione_immediata`): assente o null si OMETTE.
+    # I due campi li nomina il BB `_campi_canone` (regola del 2 con l'offerta);
+    # il terzo anello, `TESTATA_UPDATE_COLUMNS`, li ripete di proposito (vedi
+    # la nota su `_CODICI_ATTO`).
+    *CAMPI_CANONE,
     "meta",
     # Sub-entita' opzionale: se presente crea la riga utility 1:1 nella
     # stessa transazione. Il service NON permette payload utility senza
@@ -254,6 +268,7 @@ UPDATE_KEYS_TESTATA: frozenset[str] = frozenset({
     # tre CIG: su quella riga ne entrava uno solo, ripetuto su tutte le forniture
     # dello stesso contratto e incapace di tenerne due sulla stessa.
     *_CODICI_ATTO,
+    *CAMPI_CANONE,
     "meta",
 })
 
@@ -316,7 +331,6 @@ CREATE_KEYS_RIGA: frozenset[str] = frozenset({
     "fonte_quantita_attesa",
     "periodicita",
     "generazione_canone",
-    "competenza_canone",
     "prezzo_unitario",
     # ⛔ Niente `quantita`: e' calcolata dal DB da `qta_operativa` (FISSA) e
     #    vuota con una fonte a valle (`script.trgfn_qta_from_operativa`). Un
@@ -346,7 +360,6 @@ UPDATE_KEYS_RIGA: frozenset[str] = frozenset({
     "fonte_quantita_attesa",
     "periodicita",
     "generazione_canone",
-    "competenza_canone",
     "prezzo_unitario",
     "qta_operativa",
     "uom_operativa_id",
@@ -368,7 +381,9 @@ _FORBIDDEN_RIGA_UPDATE: frozenset[str] = frozenset({
 })
 
 # Tipi eccezione ammessi su contratti_righe (refactor 2026-05-15).
-_TIPI_ECCEZIONE: frozenset[str] = frozenset({"OVERRIDE", "ESCLUSIONE", "AGGIUNTA"})
+# ADESIONE (G-0-ter, `20261029-36`): l'articolo del listino al prezzo del
+# listino, senza prezzo sulla riga, come l'ESCLUSIONE.
+_TIPI_ECCEZIONE: frozenset[str] = frozenset({"OVERRIDE", "ESCLUSIONE", "AGGIUNTA", "ADESIONE"})
 # Sottoinsieme che richiede il passaggio per il gate L1+L2+L3 (refactor
 # 2026-05-19 BE porting gate riga contratti). ESCLUSIONE ha prezzo NULL per
 # design e salta i gate; OVERRIDE/AGGIUNTA passano al BB
@@ -435,7 +450,15 @@ _UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
 _MSG_BA_FUORI_COPPIA = (
     "Il billing account non e' quello dell'istanza e della utility del contratto."
 )
+# I domini della testata che vivono in un CHECK, tradotti sul campo del form:
+# oggi i due del canone (BB `check_campi_canone`, lo stesso dell'offerta).
+_CHECK_CONSTRAINTS: dict[str, tuple] = {
+    **check_campi_canone("contratti", E_VENDITE_VALIDATION),
+}
 _FK_CONSTRAINTS: dict[str, tuple] = {
+    "fk_contratti_righe_periodicita": (
+        E_VENDITE_FK, "Periodicità inesistente.", "periodicita",
+    ),
     "fk_contratti_billing_account": (E_VENDITE_FK, "Billing account inesistente."),
     # FK composta (billing_account_id, istanza_utility_id, utility_id) verso il
     # BA della coppia, dal 2026-10-08 (brief-db-istanza-nasce-col-ba, R-2): la
@@ -562,6 +585,7 @@ class ContrattiService:
                 exc,
                 unique_constraints=_UNIQUE_CONSTRAINTS,
                 fk_constraints=_FK_CONSTRAINTS,
+                check_constraints=_CHECK_CONSTRAINTS,
                 fallback_code=E_VENDITE_VALIDATION,
                 fallback_message=fallback_message,
                 context=context,
@@ -887,7 +911,9 @@ class ContrattiService:
     #            legami): con legami il DB rifiuta (E_DOC_ANNULLO_CON_LEGAMI,
     #            `confirm_and_retry`) finche' la richiesta non dichiara
     #            `legami_confermati`, letto da `get_legami`;
-    #          - la cessazione (`STATO_CESSATO`) passa da
+    #          - la cessazione (lo stato di cessazione del vocabolario,
+    #            colonna `cessazione`, brief-modello-documento-vendita §17.6
+    #            BE-T1) passa da
     #            `vendite.fn_cessa_contratto` con la sua data, e decide lui:
     #            senza data, data passata, oggi (data e stato) o futura (solo la
     #            data, `programmata`: lo stato lo chiude il job sugli scaduti);
@@ -931,8 +957,9 @@ class ContrattiService:
         # La data accompagna solo la cessazione: con un altro stato non ha un
         # verbo che la scriva, e scartarla in silenzio direbbe al client che e'
         # stata presa.
+        cessazione = e_stato_di_cessazione(TESTATA_CONTRATTI, codice_norm)
         ErrorManager.require(
-            valido_al is None or codice_norm == STATO_CESSATO,
+            valido_al is None or cessazione,
             code=E_VENDITE_VALIDATION,
             message="La data di cessazione si indica solo per cessare il contratto.",
             context={"field": "valido_al", "codice_interno": codice_norm},
@@ -951,7 +978,7 @@ class ContrattiService:
                 self._repo.annulla(contratto_id, confermati)
             return self.get_contratto(contratto_id)
 
-        if codice_norm == STATO_CESSATO:
+        if cessazione:
             with self._map_db_errors(contesto, fallback_message="Violazione vincolo DB su cessazione contratto."):
                 esito = self._repo.cessa(contratto_id, valido_al)
             return {**self.get_contratto(contratto_id), "programmata": bool(esito["programmata"])}
@@ -1204,9 +1231,11 @@ class ContrattiService:
             # prezzo_unitario NULL) ne' senso di negoziare i suoi componenti.
             # Inizializzarli farebbe scattare trgfn_componenti_ricalcola_padre
             # che scriverebbe SUM(figli) sul padre ESCLUSIONE -> violazione.
+            # Idem l'ADESIONE: il kit aderito prende prezzo e componenti dal
+            # listino, e il DB non inizializza i suoi componenti (`20261029-42`).
             if (
                 articolo_id
-                and tipo_eccezione != "ESCLUSIONE"
+                and tipo_eccezione in _TIPI_ECCEZIONE_CON_GATE
                 and self._repo.is_articolo_composito(str(articolo_id))
             ):
                 # Riusa la testata letta dal gate (sopra) se disponibile;
@@ -1847,6 +1876,9 @@ class ContrattiService:
         #    persistito). Stesso helper dell'update: validazione di lunghezza e
         #    normalizzazione del vuoto vivono in un posto solo.
         self._apply_codici_atto(payload, data)
+        # I due campi del canone (BB `campi_canone`): i mapper copiano campo
+        # per campo, e `null` si omette (NOT NULL col default).
+        data.update(campi_canone(self._v, payload))
         if "meta" in payload:
             meta = self._v.optional_meta(payload)
             if meta is not None:
@@ -1966,6 +1998,9 @@ class ContrattiService:
         )
         self._apply_fatturazione_immediata(payload, data)
         self._apply_codici_atto(payload, data)
+        # I due campi del canone (BB `campi_canone`): i mapper copiano campo
+        # per campo, e `null` si omette (NOT NULL col default).
+        data.update(campi_canone(self._v, payload))
         if "meta" in payload:
             meta = self._v.optional_meta(payload)
             if meta is not None:
@@ -2095,7 +2130,7 @@ class ContrattiService:
 
             # Coerenza prezzo_unitario / tipo_eccezione (pre-DB):
             # - OVERRIDE / AGGIUNTA -> prezzo NOT NULL (e' il prezzo finale)
-            # ⛔ L'ESCLUSIONE non si pre-valida qui: il prezzo e' uno dei dieci
+            # ⛔ L'ESCLUSIONE non si pre-valida qui: il prezzo e' uno dei nove
             #    dati di fatturazione che il guard DB rifiuta col campo
             #    (E_RIGA_ESCLUSIONE_CON_DATI, brief-db-righe-esclusione-solo-
             #    non-si-vende R-BE-3). Un 400 nostro sul solo prezzo direbbe la
@@ -2110,8 +2145,11 @@ class ContrattiService:
             # trigger lo sovrascrive sincrono dopo INSERT padre + INSERT figli.
             # Pattern simmetrico al preventivo (cfr. preventivi_service.py
             # `gestisci_riga` ~ linea 670, "Padre composito").
+            # ⛔ L'ADESIONE non ha prezzo (lo da' il listino,
+            #    `chk_contrighe_prezzo_per_tipo_eccezione`): il segnaposto la
+            #    farebbe rifiutare, quindi la regola vale solo per i tipi col gate.
             prezzo_raw = payload.get("prezzo_unitario")
-            if prezzo_raw is None and tipo_eccezione != "ESCLUSIONE":
+            if prezzo_raw is None and tipo_eccezione in _TIPI_ECCEZIONE_CON_GATE:
                 # OVERRIDE / AGGIUNTA: prezzo None ammesso solo se composito.
                 articolo_id_val = data.get("articolo_id")
                 is_composito = bool(
@@ -2147,29 +2185,13 @@ class ContrattiService:
             value = self._v.optional_bool(payload, "attivo")
             if value is not None:
                 data["attivo"] = value
-        # Stringhe opzionali (varchar libere lato DB: CHECK constraint sul DB
-        # per enum — traduciamo un eventuale IntegrityError.
-        for field in (
-            "tipo_erogazione",
-            "fonte_quantita_attesa",
-            "periodicita",
-            "generazione_canone",
-            "competenza_canone",
-        ):
-            if field in payload:
-                raw = payload[field]
-                if raw is None:
-                    data[field] = None
-                else:
-                    ErrorManager.require(
-                        isinstance(raw, str),
-                        code=E_VENDITE_VALIDATION,
-                        message=_MESSAGE_RIGA,
-                        detail=f"{field} deve essere stringa o NULL.",
-                        context={"field": field},
-                    )
-                    assert isinstance(raw, str)
-                    data[field] = raw.strip().upper()
+        # I codici a vocabolario della riga: la lettura e' del BB di vendite
+        # `normalizza_codici_riga` (stessa forma sull'offerta); il dominio lo
+        # dice il DB (CHECK/FK), tradotto sul campo da `_FK_CONSTRAINTS`.
+        codici = normalizza_codici_riga(self._v, payload)
+        for field in CAMPI_CODICE_RIGA:
+            if field in codici:
+                data[field] = codici[field]
 
         # ⛔ La quantita' per fonte non si normalizza qui: con una fonte a valle
         # (MANUALE, LETTURE, TIMESHEET) il DB svuota `quantita` da solo

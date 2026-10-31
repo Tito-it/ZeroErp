@@ -50,12 +50,11 @@ from apps.vendite.tests.db import test_righe_erogazione_obbligatoria_db as _geme
 _CODICE_NON_MODIFICABILE = "E_CONTRATTO_ESCLUSIONE_NON_MODIFICABILE"
 _CODICE_CON_DATI = "E_RIGA_ESCLUSIONE_CON_DATI"
 
-# I dieci dati di fatturazione che un'esclusione non porta (CHECK
-# `chk_*_esclusione_senza_dati`).
+# I nove dati di fatturazione che un'esclusione non porta (CHECK
+# `chk_*_esclusione_senza_dati`; `competenza_canone` ritirata dal `20261029-26`).
 _DATI_FATTURAZIONE = (
     "prezzo_unitario", "quantita", "qta_operativa", "uom_operativa_id", "factor_to_base",
     "tipo_erogazione", "fonte_quantita_attesa", "periodicita", "generazione_canone",
-    "competenza_canone",
 )
 
 _FIXTURE = _gemello._FIXTURE

@@ -14,6 +14,10 @@
 #       il valore. Quello costruito non e' in nessuno dei due casi.
 #       ⚠️ `config.parameters.id` non ha default: il seed lo scrive dal CSV, e
 #       qui si prende il successivo al massimo.
+#       ⚠️ Dal 2026-10-31 `tipo_valore` e' NOT NULL senza default
+#       (brief-db-liste-datatable-grezze-secondo-giro §7.6, D-5): il parametro
+#       dichiara la forma del suo valore, e i guard a07 la applicano al
+#       default e a ogni override. `'TESTO'` accetta qualunque valore.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -21,18 +25,21 @@ from __future__ import annotations
 from typing import Any
 
 
-# Scopo: inserisce il parametro `codice` (default `'di prova'`) e ne
-#        restituisce `(id, code)`. `ammette_override` dichiara la famiglia: a
-#        False ogni override e' rifiutato con `E_PARAMETER_OVERRIDE_NON_AMMESSO`.
+# Scopo: inserisce il parametro `codice` e ne restituisce `(id, code)`.
+#        `ammette_override` dichiara la famiglia: a False ogni override e'
+#        rifiutato con `E_PARAMETER_OVERRIDE_NON_AMMESSO`. `tipo_valore` e
+#        `default_value` vanno dichiarati insieme: il default deve avere la
+#        forma del tipo (guard a07 su `config.parameters`).
 def crea_parametro_di_prova(
     cur: Any, *, codice: str, ammette_override: bool = True,
+    tipo_valore: str = "TESTO", default_value: str = "di prova",
 ) -> tuple[int, str]:
     cur.execute(
         "INSERT INTO config.parameters "
-        "(id, code, default_value, description, ammette_override) "
-        "SELECT COALESCE(max(id), 0) + 1, %s, 'di prova', 'Parametro di prova di un test', %s "
+        "(id, code, default_value, description, ammette_override, tipo_valore) "
+        "SELECT COALESCE(max(id), 0) + 1, %s, %s, 'Parametro di prova di un test', %s, %s "
         "FROM config.parameters RETURNING id, code",
-        [codice, ammette_override],
+        [codice, default_value, ammette_override, tipo_valore],
     )
     riga = cur.fetchone()
     assert riga is not None

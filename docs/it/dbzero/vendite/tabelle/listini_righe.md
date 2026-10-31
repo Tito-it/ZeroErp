@@ -20,6 +20,7 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
 | tx_id | uuid | YES |  |
+| periodicita | character varying(32) | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -27,6 +28,7 @@
 | CHECK | chk_listini_righe_prezzo |  |
 | CHECK | chk_listini_righe_prezzo_finito |  |
 | FOREIGN KEY | fk_listini_righe_articolo | articolo_id |
+| FOREIGN KEY | fk_listini_righe_periodicita | periodicita |
 | FOREIGN KEY | fk_listini_righe_uom | uom_id |
 | FOREIGN KEY | fk_listini_righe_versione | listino_versione_id |
 | PRIMARY KEY | pk_listini_righe | id |
@@ -51,8 +53,9 @@
 | trg_listini_righe_a10_listini_versioni_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'listini_versioni', 'attivo', 'listino_versione_id', 'id')` |
 | trg_listini_righe_a10_listini_versioni_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'listini_versioni', 'attivo', 'listino_versione_id', 'id')` |
 | trg_listini_righe_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('articolo_id', 'E_LISTINO_RIGA_IDENTITA_IMMUTABILE', 'listino_versione_id', 'E_LISTINO_RIGA_IDENTITA_IMMUTABILE', 'uom_id', 'E_LISTINO_RIGA_IDENTITA_IMMUTABILE')` |
-| trg_listini_righe_a10_unita_misura_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_id', 'id')` |
+| trg_listini_righe_a10_periodicita_quota_fissa_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_listini_righe_guard_periodicita_quota_fissa()` |
 | trg_listini_righe_a10_unita_misura_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_id', 'id')` |
+| trg_listini_righe_a10_unita_misura_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_id', 'id')` |
 | trg_listini_righe_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_listini_righe_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_listini_righe_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |

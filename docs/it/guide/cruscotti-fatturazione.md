@@ -1,6 +1,6 @@
 # Guida — Cruscotti fatturazione (le tre lenti)
 
-> **Ultimo aggiornamento**: 27 ottobre 2026
+> **Ultimo aggiornamento**: 31 ottobre 2026
 >
 > **Destinatari**: analisti funzionali, operatori vendite/amministrazione,
 > sviluppatori backend/frontend.
@@ -250,6 +250,22 @@ Due domande che nascono guardando l'elenco:
   trasporto non fatturabile (conto visione, riparazione, campionatura,
   omaggio…) sono trasporti, non vendite: restano fuori per costruzione.
 
+### 4.2 Contratti: i due motivi
+
+Un contratto vive a lungo e addebita a ogni periodo (vedi la
+[guida dei contratti §4-bis](/guide/gestione-contratti#4-bis-come-il-contratto-si-addebita-una-tantum-e-canoni)):
+qui compare solo quando c'è qualcosa da fare **adesso**.
+
+| Cosa leggi a schermo | Colore | Cosa significa davvero |
+| --- | --- | --- |
+| *Contratto con addebiti maturati non ancora in commessa* | 🟠 | Un canone (o la una tantum, o lo storno di una cessazione) è maturato e non è ancora in commessa. L'azione è «Esegui il push dei canoni»: dopo il push il contratto esce dall'elenco, e ci torna quando matura il periodo dopo |
+| *Contratto con un canone che non può partire* | 🔴 | Una riga a canone (o una quota fissa del listino) non ha la periodicità, oppure il listino non ha un prezzo alla data: il push la salta e la salterà sempre. L'azione è «Rivedi il contratto». Le righe di un contratto attivo non si modificano: il rimedio è un contratto nuovo, o il prezzo nel listino quando manca quello |
+
+Se un contratto ha tutte e due le cose, vince il rosso: il push da solo non lo sblocca.
+L'anzianità parte dall'addebito più vecchio che aspetta (per il canone che non può partire,
+dall'inizio del contratto). Anche un contratto **cessato** compare qui, se ha ancora uno storno
+da mandare.
+
 ---
 
 ## 5. Situazione aperta — serbatoio pre-commessa
@@ -273,6 +289,11 @@ sono ancora arrivati — **senza asse temporale** e includendo anche gli aperti
 
 **Quando usarla**: per la visione d'insieme — quanti aperti ci sono, in che fase,
 quanto sono invecchiati — a prescindere dal mese e dall'urgenza di azione.
+
+Un **contratto** è nel serbatoio finché è in bozza, e da attivo solo quando ha un addebito
+maturato da mandare in commessa (o un canone che non può partire, §4.2). Un contratto attivo
+con tutto in commessa **non** compare: come un ordine tutto in commessa, non aspetta niente.
+Ci torna quando matura il periodo dopo.
 
 ### 5.1 L'ordine mostra quello che resta da spedire (non sempre)
 

@@ -30,8 +30,12 @@ import {
   previewBundleComponenti,
   saveBundleComponenti,
   deleteBundleComponenti,
+  saveKitPeriodicita,
 } from '../api/listini'
+import PeriodicitaSelect from '../_shared/canoni/PeriodicitaSelect.vue'
+import { useFotografiaDialog } from '../../core/composables/useFotografiaDialog'
 import ComponentiDialog from '../_shared/componenti/ComponentiDialog.vue'
+import AppDialog from '../../core/components/AppDialog.vue'
 import { useArticoloUomOptions } from '../../catalogo/composables/useArticoloUomOptions'
 import { useListiniRigheStore } from '../stores/listiniRighe'
 import { STATO_VERSIONE_LISTINO } from '../constants'
@@ -151,6 +155,10 @@ function defaultForm() {
     articolo_obj: null,
     uom_id: null,
     prezzo: null,
+    // La periodicita' del canone (G-0-bis): sulla quota fissa obbligatoria
+    // all'attivazione (lo dice il DB, `E_LISTINO_VERSIONE_QUOTA_FISSA_SENZA_
+    // PERIODICITA`); altrove la proposta che l'ADESIONE eredita.
+    periodicita: null,
   }
 }
 
@@ -228,6 +236,7 @@ function onRowClick(r) {
       },
       uom_id: r.uom_id,
       prezzo: r.prezzo != null ? Number(r.prezzo) : null,
+      periodicita: r.periodicita ?? null,
     }
     inline.fissa()
     // Edit: UoM gia' nel form, no autopick.
@@ -360,6 +369,9 @@ async function onSave() {
   const f = form.value
   const payload = {
     prezzo: f.prezzo,
+    // Sempre, anche a `null`: vuota = nessuna periodicita' (la colonna e'
+    // nullable). Fuori bozza toglierla a una quota fissa la rifiuta il DB.
+    periodicita: f.periodicita || null,
   }
   if (formMode.value === 'create') {
     payload.articolo_id = f.articolo_id
@@ -427,6 +439,15 @@ function onDelete(row) {
 // standalone.
 function buildRigaActions(row) {
   return [
+    // Il kit non ha una riga di listino: la sua periodicita' si da' qui
+    // (`vendite.listini_kit`, D-2-bis (B)).
+    {
+      key: 'periodicita-kit',
+      label: t('vendite.listini.kit_periodicita_azione'),
+      icon: MANAGE_ICONS.EDIT,
+      visible: row.is_composito === true && isBozza.value && !isReadonly.value,
+      command: () => apriKitPeriodicita(row),
+    },
     {
       key: 'elimina-riga',
       label: t('common.delete'),
@@ -459,6 +480,44 @@ function onVariazioneApplied() {
 }
 
 const annullaForm = () => inline.chiudiConConferma(closeForm)
+
+// ── La periodicita' del kit (D-2-bis (B)) ──
+// Un dialog piccolo dal kebab della riga del composito: il ComponentiDialog
+// dei prezzi e' un BB comune ai documenti e non ha un posto per il ritmo.
+// ⚠️ Un gestore suo: con quello del drawer un errore sulla periodicita' del
+//    kit accenderebbe anche il campo del form della riga, e viceversa.
+const {
+  execute: executeKit, loading: loadingKit, campiErrati: campiErratiKit,
+} = useApiHandler()
+const kitDialogVisible = ref(false)
+const kitRiga = ref(null)
+const kitPeriodicita = ref(null)
+const fotoKit = useFotografiaDialog(
+  () => ({ periodicita: kitPeriodicita.value }),
+  { visibile: () => kitDialogVisible.value },
+)
+
+function apriKitPeriodicita(row) {
+  kitRiga.value = row
+  kitPeriodicita.value = row.periodicita ?? null
+  // La fotografia la prende il BB all'apertura, dopo il giro di watch.
+  kitDialogVisible.value = true
+}
+
+async function onKitPeriodicitaSave() {
+  if (!kitRiga.value) return
+  const result = await executeKit(
+    () => saveKitPeriodicita(
+      props.listinoId, props.versione.id, kitRiga.value.articolo_id, kitPeriodicita.value || null,
+    ),
+    { successMessage: t('vendite.listini.kit_periodicita_salvata') },
+  )
+  if (result !== null) {
+    kitDialogVisible.value = false
+    kitRiga.value = null
+    await reloadAll()
+  }
+}
 </script>
 
 <template>
@@ -621,6 +680,16 @@ const annullaForm = () => inline.chiudiConConferma(closeForm)
         </div>
       </div>
 
+      <div class="form-grid-2col">
+        <div class="form-field">
+          <label>{{ t('vendite.canoni.field_periodicita') }}</label>
+          <PeriodicitaSelect v-model="form.periodicita"
+            :placeholder="t('vendite.listini.periodicita_nessuna')"
+            :invalid="campiErrati.includes('periodicita')" />
+          <small class="app-text-muted">{{ t('vendite.listini.hint_periodicita') }}</small>
+        </div>
+      </div>
+
       <FormFooter :loading="loading" :disabled="!canSave" @save="onSave" @cancel="annullaForm" />
     </template>
 
@@ -650,5 +719,22 @@ const annullaForm = () => inline.chiudiConConferma(closeForm)
       i18n-prefix="vendite.componenti.bundle"
       @confirm="onBundleConfirm"
     />
+
+    <AppDialog
+      v-model:visible="kitDialogVisible"
+      :conferma-uscita="fotoKit.chiudiConConferma"
+      :header="t('vendite.listini.kit_periodicita_titolo', { articolo: kitRiga?.articolo_codice ?? '' })"
+      width="sm"
+      :loading="loadingKit"
+      @save="onKitPeriodicitaSave"
+    >
+      <div class="form-field">
+        <label>{{ t('vendite.canoni.field_periodicita') }}</label>
+        <PeriodicitaSelect v-model="kitPeriodicita"
+          :placeholder="t('vendite.listini.periodicita_nessuna')"
+          :invalid="campiErratiKit.includes('periodicita')" />
+        <small class="app-text-muted">{{ t('vendite.listini.hint_periodicita') }}</small>
+      </div>
+    </AppDialog>
   </AppDrawer>
 </template>

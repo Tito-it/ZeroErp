@@ -105,3 +105,10 @@ id,codice,descrizione,schema_dati,vista_sql,attivo,data_insert,user_insert,multi
 104,anagrafiche.accessi_altri,Altri accessi,anagrafiche,vw_accessi_altri,t,2026-10-02 00:00:00,mctit,f,f,3
 105,anagrafiche.accessi_sistema,Accessi di sistema,anagrafiche,vw_accessi_sistema,t,2026-10-02 00:00:00,mctit,t,t,3
 106,vendite.offerta_righe,Righe di un'offerta commerciale,vendite,NULL,t,2026-10-05 00:00:00,mctit,f,t,3
+107,pratiche.definizioni_workflow,Definizioni di workflow (preset ed edizioni),pratiche,NULL,t,2026-10-31 00:00:00,mctit,t,t,3
+108,config.parametri_impostazioni,Impostazioni: parametri e livelli di override,config,NULL,t,2026-10-31 00:00:00,mctit,f,t,3
+109,vendite.note,Note di un documento di vendita,vendite,NULL,t,2026-10-31 00:00:00,mctit,f,t,3
+110,catalogo.note,Note di un articolo o di un componente,catalogo,NULL,t,2026-10-31 00:00:00,mctit,f,f,3
+111,catalogo.articolo_uom,Unita di misura operative di un articolo,catalogo,vw_articoli_uom_operativa_dettaglio,t,2026-10-31 00:00:00,mctit,f,f,1
+112,vendite.listini_versioni,Versioni di un listino,vendite,NULL,t,2026-10-31 00:00:00,mctit,f,t,3
+113,anagrafiche.ricerca_soggetti,Ricerca universale dei soggetti,anagrafiche,NULL,t,2026-10-31 00:00:00,mctit,f,t,3

@@ -49,20 +49,22 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_parameter_overrides_a05_guard_ammette_override_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION config.trgfn_parameter_overrides_guard_ammette_override()` |
 | trg_parameter_overrides_a05_guard_ammette_override_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION config.trgfn_parameter_overrides_guard_ammette_override()` |
-| trg_parameter_overrides_a10_categorie_clienti_require_at_431944 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'categorie_clienti', 'attivo', 'categoria_cliente_id', 'id')` |
+| trg_parameter_overrides_a05_guard_ammette_override_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION config.trgfn_parameter_overrides_guard_ammette_override()` |
+| trg_parameter_overrides_a07_guard_tipo_valore_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION config.trgfn_parameter_overrides_guard_tipo_valore()` |
+| trg_parameter_overrides_a07_guard_tipo_valore_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION config.trgfn_parameter_overrides_guard_tipo_valore()` |
 | trg_parameter_overrides_a10_categorie_clienti_require_at_431944 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'categorie_clienti', 'attivo', 'categoria_cliente_id', 'id')` |
+| trg_parameter_overrides_a10_categorie_clienti_require_at_431944 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'categorie_clienti', 'attivo', 'categoria_cliente_id', 'id')` |
 | trg_parameter_overrides_a10_emittenti_fiscali_require_at_d95c44 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'emittenti_fiscali', 'attivo', 'emittente_fiscale_id', 'id')` |
 | trg_parameter_overrides_a10_emittenti_fiscali_require_at_d95c44 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'emittenti_fiscali', 'attivo', 'emittente_fiscale_id', 'id')` |
 | trg_parameter_overrides_a10_fk_surrogate_dispatch_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION config.trgfn_parameter_overrides_fk_surrogate_dispatch()` |
 | trg_parameter_overrides_a10_fk_surrogate_dispatch_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION config.trgfn_parameter_overrides_fk_surrogate_dispatch()` |
-| trg_parameter_overrides_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_parameter_overrides_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_parameter_overrides_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_parameter_overrides_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_parameter_overrides_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_parameter_overrides_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('parameter_override_id')` |
 | trg_parameter_overrides_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('parameter_override_id')` |
+| trg_parameter_overrides_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('parameter_override_id')` |
 
 ---
 {% include-markdown "signature-core.md" %}

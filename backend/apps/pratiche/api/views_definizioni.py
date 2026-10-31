@@ -3,7 +3,7 @@
 # Copyright (C) 2025 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: API admin edizioni workflow versionate (Fase 2 Slice 1a): lista
-#        + drift. AdminAPIView (super-admin). Read-only: le azioni write
+#        a catalogo `pratiche.definizioni_workflow` (dal 2026-10-31) + drift. AdminAPIView (super-admin). Read-only: le azioni write
 #        (fork/nuova-versione/pubblica) arrivano in lockstep con la
 #        conversione SECURITY DEFINER delle fn DB
 #        (brief-db-accesso-be-definizioni-workflow.md §P1).
@@ -19,39 +19,56 @@ from rest_framework.request import Request
 
 from apps.core.api.base_views import AdminAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
-from apps.core.api.payload_validators import corpo_oggetto, qp_int_optional
+from apps.core.api.openapi_params import param_ricerca_full
+from apps.core.api.payload_validators import corpo_oggetto, paginated_envelope, parse_list_params, qp_int_optional
 from apps.core.api.success_responses import success_response
 from apps.pratiche.services import definizioni_service
 
 
 class ApiDefinizioniWorkflow(AdminAPIView):
-    """GET lista edizioni workflow (per tipo/emittente) con drift. Solo super-admin.
+    """GET la pagina della lista `pratiche.definizioni_workflow` (edizioni per
+    tipo/emittente, drift in colonne piatte). Solo super-admin.
 
-    Fase 2 Slice 1a — read-only: le letture su workflow_definizioni/vw_definizioni_drift
-    sono gia' sbloccate a DB (GRANT SELECT). Le azioni fork/nuova-versione/pubblica
-    verranno aggiunte in lockstep con la conversione DEFINER delle fn DB.
+    Dal 2026-10-31 (brief-db-liste-datatable-grezze-secondo-giro riga 1) e' una
+    lista a catalogo: pagina, ricerca, ordinamento dalla whitelist. ⚠️ La lista
+    e' `multi_emittente`: la riga dice di chi e', e si apre anche su «Tutti».
     """
+
+    is_search_endpoint = True
+    lista_codice = "pratiche.definizioni_workflow"
 
     @extend_schema(
         parameters=[
+            param_ricerca_full(),
             OpenApiParameter(name="tipo_prestazione_id", type=int, required=False),
             OpenApiParameter(name="emittente_fiscale_id", type=int, required=False,
                              description="Filtra per emittente; assente = tutte, preset inclusi."),
+            OpenApiParameter(name="limit", type=int, required=False),
+            OpenApiParameter(name="offset", type=int, required=False),
+            OpenApiParameter(name="order_by", type=str, required=False),
+            OpenApiParameter(name="order_dir", type=str, required=False),
         ],
         responses={200: inline_serializer(
             name="PraticheDefinizioniListResp",
             fields={"data": serializers.DictField()},
         )},
     )
-    # Scopo: Lista edizioni workflow con drift (super-admin).
+    # Scopo: Pagina delle edizioni workflow con drift (super-admin).
     def get(self, request: Request) -> JsonResponse:
-        results = definizioni_service.list_definizioni(
-            tipo_prestazione_id=qp_int_optional(
-                request.query_params.get("tipo_prestazione_id"), "tipo_prestazione_id"),
-            emittente_fiscale_id=qp_int_optional(
-                request.query_params.get("emittente_fiscale_id"), "emittente_fiscale_id"),
+        qp = request.query_params
+        # Senza `order_by` vale l'ordinamento di partenza del repository (per
+        # tipo, preset prima, versione DESC): nessuna colonna sola lo dice.
+        p = parse_list_params(qp, default_order="")
+        results, total = definizioni_service.list_definizioni(
+            tipo_prestazione_id=qp_int_optional(qp.get("tipo_prestazione_id"), "tipo_prestazione_id"),
+            emittente_fiscale_id=qp_int_optional(qp.get("emittente_fiscale_id"), "emittente_fiscale_id"),
+            search=p["search"],
+            order_by=p["order_by"],
+            order_dir=p["order_dir"],
+            limit=p["limit"],
+            offset=p["offset"],
         )
-        return success_response({"results": results})
+        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
 
 
 class ApiDefinizioneDettaglio(AdminAPIView):

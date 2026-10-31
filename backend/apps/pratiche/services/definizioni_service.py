@@ -16,11 +16,14 @@ from typing import Any
 
 from django.db import DatabaseError
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.list_helpers import validate_order_params
 from apps.core.services.payload_helpers import PayloadValidator
 from apps.core.services.service_errors import E_VALIDATION_INPUT
 from apps.pratiche.db.definizioni_repository import (
     CHILD_SPECS,
+    DEFINIZIONI_ORDER_COLUMNS,
     EDGE_SPECS,
     STEP_CORE_FIELDS,
     DefinizioniRepository,
@@ -30,6 +33,7 @@ from apps.pratiche.services.pratiche_service import _raise_known_db_error
 _V = PayloadValidator(validation_code=E_VALIDATION_INPUT)
 
 _DRIFT_KEYS = ("versioni_indietro", "preset_corrente_id", "versione_preset_corrente")
+_DEFINIZIONI_ORDER_BY_VALIDI: frozenset[str] = frozenset(DEFINIZIONI_ORDER_COLUMNS)
 
 
 # Scopo: mappa i DatabaseError noti (marker in pratiche_service) in ServiceError
@@ -44,21 +48,38 @@ def _mapped_db_errors(function_name: str) -> Iterator[None]:
         _raise_known_db_error(exc, function_name=function_name)
 
 
-# Scopo: elenco edizioni per (tipo [, emittente]) con drift annidato. Il drift e'
-# NULL per i preset (nessun fork → vista drift vuota); lo si restituisce come
-# oggetto esplicito `drift` invece di campi sparsi (mirror del contratto FE).
+# Scopo: la pagina della lista `pratiche.definizioni_workflow` (dal 2026-10-31,
+# brief-db-liste-datatable-grezze-secondo-giro riga 1), con l'ordinamento
+# validato sulla whitelist del repository. ⚠️ Il drift resta in colonne PIATTE
+# (`versioni_indietro`, ...): sono i `campo_sorgente` del catalogo. Il dettaglio
+# lo annida ancora in `drift` per l'editor.
 def list_definizioni(
     *,
     tipo_prestazione_id: int | None = None,
     emittente_fiscale_id: int | None = None,
-) -> list[dict[str, Any]]:
-    rows = DefinizioniRepository().list_definizioni(
+    search: str | None = None,
+    order_by: str | None = None,
+    order_dir: str | None = None,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
+) -> tuple[list[dict[str, Any]], int]:
+    if order_by:
+        order_by, order_dir = validate_order_params(
+            order_by, order_dir,
+            allowed_columns=_DEFINIZIONI_ORDER_BY_VALIDI,
+            error_code="E_VALIDATION_INPUT",
+            nullable=True,
+            function_name="pratiche.definizioni_service.list_definizioni",
+        )
+    return DefinizioniRepository().list_definizioni(
         tipo_prestazione_id=tipo_prestazione_id,
         emittente_fiscale_id=emittente_fiscale_id,
+        search=search,
+        order_by=order_by,
+        order_dir=order_dir,
+        limit=limit,
+        offset=offset,
     )
-    for r in rows:
-        r["drift"] = {k: r.pop(k, None) for k in _DRIFT_KEYS}
-    return rows
 
 
 # Scopo: dettaglio editing di un'edizione (Slice 2 anello 1): header con drift

@@ -1,6 +1,6 @@
 # Guida — Gestione Offerte commerciali
 
-> **Ultimo aggiornamento**: 26 ottobre 2026
+> **Ultimo aggiornamento**: 31 ottobre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend/frontend, DBA.
 >
@@ -113,12 +113,15 @@ Contiene il contesto commerciale e i parametri di pricing:
 * **variazione globale** (`tipo_variazione_globale`, `valore_variazione_globale`) — opzionale
 * **quando** (`validita_dal`, `validita_al` nullable = senza scadenza)
 * **valuta** (`valuta_id`) — riempita di default dal resolver (vedi §9)
+* **canone**: il mese da cui si contano i periodi (`mese_partenza_canone`) e se i canoni
+  sono anticipati o normali (`generazione_canone`) — copiati nel contratto; che cosa
+  vogliono dire lo spiega la [guida dei contratti §4-bis.3](/guide/gestione-contratti#4-bis3-il-canone)
 * **stato** corrente (`stato_doc_offerta_id`)
 * **revisione** (`revisione_numero`, `revisione_padre_id` — vedi §4)
 * **date evento** (`data_emissione`, `data_accettazione`, `data_rifiuto`,
   `data_annullamento`) — popolate dai trigger di transizione
 * **`motivazione_rifiuto`** — testo libero, valorizzato alla chiusura negativa
-  (RIFIUTATA o ANNULLATA)
+  (RIFIUTATA o ANNULLATA), e solo lì (§3)
 
 ### 2.2 Eccezioni `offerte_commerciali_eccezioni`
 
@@ -131,13 +134,14 @@ qualifica il tipo:
 | `OVERRIDE`       | Prezzo personalizzato per articolo **presente nel listino** | NOT NULL          |
 | `ESCLUSIONE`     | Articolo del listino **non disponibile** per questo cliente | NULL              |
 | `AGGIUNTA`       | Articolo **non presente nel listino**, aggiunto all'offerta | NOT NULL          |
+| `ADESIONE`       | Articolo **del listino** che il cliente prende, al prezzo del listino | NULL              |
 
 Constraint principali:
 
-* al massimo una riga OVERRIDE/ESCLUSIONE per `(offerta, articolo)` (unique parziale)
+* al massimo una riga OVERRIDE/ESCLUSIONE/ADESIONE per `(offerta, articolo)` (unique parziale)
 * al massimo una riga AGGIUNTA per `(offerta, articolo)` (unique parziale separato)
 * CHECK di coerenza prezzo per tipo: `prezzo_unitario` obbligatorio se OVERRIDE o
-  AGGIUNTA, NULL se ESCLUSIONE
+  AGGIUNTA, NULL se ESCLUSIONE o ADESIONE
 
 **Quali articoli ammette un'eccezione** (dal 2026-10-13, le stesse regole del contratto):
 
@@ -162,7 +166,10 @@ componenti si inizializzano solo per OVERRIDE e AGGIUNTA su articolo composito.
 
 Oltre al prezzo, l'eccezione porta i **parametri di fornitura** che serviranno al
 contratto e alla fatturazione ricorrente: `tipo_erogazione`, `fonte_quantita_attesa`,
-`periodicita`, `generazione_canone`, `competenza_canone`, e la quantità.
+`periodicita` (sull'adesione la propone la riga del listino), `generazione_canone`
+(vuota = segue la testata) e la quantità. L'offerta non addebita niente: che cosa il
+contratto addebiterà, e come, lo dice la
+[guida dei contratti §4-bis](/guide/gestione-contratti#4-bis-come-il-contratto-si-addebita-una-tantum-e-canoni).
 
 La quantità si inserisce **nell'unità di misura operativa scelta** e il sistema la
 converte da sé nell'unità base (stesso meccanismo di preventivi e contratti — vedi
@@ -236,7 +243,9 @@ automatici li fa il sistema e non si chiedono a mano. L'emissione e l'annullo di
 accettata chiedono l'azione di processo `emetti_offerta`, gli altri passaggi il solo permesso
 sull'offerta (modello §6). La **motivazione** la chiede il database, dove il passaggio la prevede
 (`E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA`): una motivazione vuota o di soli spazi conta come assente, e
-quella data resta sull'offerta.
+quella data resta sull'offerta. E solo lì: una motivazione su un passaggio che non la prevede
+(l'emissione, l'accettazione) è rifiutata (`E_OFFERTA_MOTIVAZIONE_NON_AMMESSA`), perché è il motivo
+di una chiusura negativa.
 
 Da **ACCETTATA** si esce trasformando l'offerta (contratto *o* ordine, §8 e §8.bis) oppure,
 se non si può trasformare, **annullandola**. L'annullo è ammesso solo se dall'offerta non vive
@@ -315,8 +324,8 @@ pena conoscerli perché il comportamento visibile cambia.
 
 | Aspetto                                                         | **Offerte**                                                                                            | **Preventivi**                                                                                        |
 | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
-| Cosa succede alla versione precedente quando nasce la revisione | passa **subito a SUPERATA** (stato chiuso e definitivo, imposto in automatico)                         | **resta EMESSA/viva**; il sistema calcola "qual è la versione valida" senza chiudere la precedente    |
-| Se abbandono/annullo la revisione appena iniziata               | la precedente **resta chiusa** (SUPERATA): non torna indietro. Per riprovare si fa una nuova revisione | la precedente **torna automaticamente la versione valida**: si può accettarla o revisionarla di nuovo |
+| Cosa succede alla versione precedente quando nasce la revisione | passa **subito a SUPERATA** (stato chiuso, imposto in automatico)                                   | **resta EMESSA/viva**; il sistema calcola "qual è la versione valida" senza chiudere la precedente    |
+| Se abbandono/annullo la revisione appena iniziata               | se non resta un'altra revisione viva, la precedente **torna EMESSA**; l'annullo lo dice prima e si conferma (offerte §4.4) | la precedente **torna automaticamente la versione valida**: si può accettarla o revisionarla di nuovo |
 | Come nasce il concetto di "versione valida"                     | dallo **stato** (SUPERATA/ANNULLATA = non valida)                                                      | da un **calcolo** (`is_attiva`), non da uno stato dedicato                                            |
 
 Il motivo della differenza: un'offerta è un **documento a sé** per ogni revisione
@@ -341,6 +350,11 @@ della revisione che si annulla: senza la conferma l'annullo è rifiutato con
 [`vendite.fn_annulla_offerta`](/dbzero/vendite/funzioni/fn_annulla_offerta), con la sua
 motivazione. Una revisione la cui precedente resta superata da un'altra revisione viva non ha
 legami, e si annulla senza conferma.
+
+La finestra della conferma mostra il numero e il link della revisione che torna emessa: la
+revisione è un passaggio del lineage (madre → figlia), e il pannello «Passaggi» dell'offerta la
+mostra. Non conta invece come passaggio di un documento a un altro: un'offerta superata non risulta
+«transitata» nei cruscotti, e una fattura non cita le revisioni superate.
 
 ---
 

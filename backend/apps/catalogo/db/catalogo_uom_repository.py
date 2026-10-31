@@ -13,7 +13,15 @@ from uuid import UUID
 
 from django.db import connection
 
-from apps.core.db._helpers import row_to_dict, rows_to_list
+from apps.core.db._helpers import (
+    RicercaFull,
+    add_ricerca_full_condition,
+    fetch_paged_with_total,
+    limiti_pagina,
+    row_to_dict,
+    rows_to_list,
+    sql_order_clause,
+)
 from apps.core.db.sql_write_helpers import execute_dynamic_insert, sql_set_clause
 
 # Colonne SCRIVIBILI di una UoM operativa: whitelist RIGIDA del BB di
@@ -38,6 +46,26 @@ UOM_OPERATIVA_WRITE_COLUMNS: frozenset[str] = frozenset({
     "attivo",
     "meta",
 })
+
+# Whitelist ORDER BY della lista `catalogo.articolo_uom` (111): le colonne
+# della vista `catalogo.vw_articoli_uom_operativa_dettaglio` (la `vista_sql`
+# del catalogo), chiavi = `campo_sorgente`.
+ARTICOLO_UOM_ORDER_COLUMNS: dict[str, str] = {
+    "uom_codice": "auo.uom_codice",
+    "uom_descrizione": "auo.uom_descrizione",
+    "is_base": "auo.is_base",
+    "factor_to_base": "auo.factor_to_base",
+    "is_logistic_uom": "auo.is_logistic_uom",
+    "attivo": "auo.attivo",
+}
+# L'ordine di partenza: la base in cima, poi vendita e logistica, poi il codice.
+# Uno solo per la collezione intera (`list_uom_operative`) e per la pagina: il
+# dettaglio dell'articolo e la lista mostrano le UoM nello stesso ordine.
+_ARTICOLO_UOM_ORDINE_DEFAULT = (
+    "auo.is_base DESC, auo.is_sell_uom DESC, auo.is_logistic_uom DESC, auo.uom_codice ASC"
+)
+# Cosa si PUO' cercare (la soglia della lista e' 1 carattere: codici corti).
+_RICERCA_ARTICOLO_UOM = RicercaFull("catalogo.articolo_uom", ("uom_codice", "uom_descrizione"))
 
 UOM_OPERATIVA_DETAIL_COLUMNS: tuple[str, ...] = (
     "auo.id",
@@ -86,16 +114,47 @@ class CatalogoUomRepository:
     def list_uom_operative(self, articolo_id: UUID | str) -> list[dict[str, Any]]:
         with connection.cursor() as cursor:
             cursor.execute(
-                """
+                f"""
                 SELECT
-                    {projection}
+                    {self._projection()}
                 FROM catalogo.vw_articoli_uom_operativa_dettaglio auo
                 WHERE auo.articolo_id = %s
-                ORDER BY auo.is_base DESC, auo.is_sell_uom DESC, auo.is_logistic_uom DESC, auo.uom_codice ASC, auo.id ASC
-                """.format(projection=self._projection()),
+                ORDER BY {_ARTICOLO_UOM_ORDINE_DEFAULT}, auo.id ASC
+                """,  # noqa: S608 — proiezione e ORDER BY da costanti, valori come parametri
                 [articolo_id],
             )
             return rows_to_list(cursor)
+
+    # Scopo: La pagina della lista `catalogo.articolo_uom` (111, dal 2026-10-31):
+    #        stessa proiezione di `list_uom_operative`, con ricerca e ordinamento.
+    #        `list_uom_operative` resta la collezione intera per il lookup
+    #        cross-dominio e il dettaglio dell'articolo.
+    def list_uom_operative_pagina(
+        self,
+        articolo_id: UUID | str,
+        *,
+        search: str | None = None,
+        order_by: str | None = None,
+        order_dir: str | None = None,
+        limit: int,
+        offset: int,
+    ) -> tuple[list[dict[str, Any]], int]:
+        safe_limit, safe_offset = limiti_pagina(limit, offset)
+        conditions = ["auo.articolo_id = %s"]
+        params: list[Any] = [str(articolo_id)]
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_ARTICOLO_UOM, alias="auo")
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=ARTICOLO_UOM_ORDER_COLUMNS, default_clause=_ARTICOLO_UOM_ORDINE_DEFAULT, tiebreak="auo.id",
+        )
+        sql = f"""
+            SELECT {self._projection()}, COUNT(*) OVER () AS total_count
+              FROM catalogo.vw_articoli_uom_operativa_dettaglio auo
+             WHERE {" AND ".join(conditions)}
+             ORDER BY {ordinamento}
+             LIMIT %s OFFSET %s
+        """  # noqa: S608 — proiezione da costante, WHERE dal BB add_ricerca_full_condition, ORDER BY da whitelist ARTICOLO_UOM_ORDER_COLUMNS
+        return fetch_paged_with_total(sql, [*params, safe_limit, safe_offset])
 
     # Scopo: Restituisce una singola UoM operativa verificando l'ownership sull'articolo.
     # Stessa proiezione della lista (Fase 6 — capability incluse).

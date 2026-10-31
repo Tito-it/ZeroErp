@@ -286,12 +286,15 @@ BEGIN
             v_snapshot_classe := COALESCE(v_contr_classe_utenza, p_classe_utenza_id);
 
             -- Stadio 1a: eccezione (OVERRIDE/ESCLUSIONE/AGGIUNTA).
+            -- ⛔ rev 2026-10-29 (20261029-38, G-0-ter): l'ADESIONE no — prende il
+            --   prezzo del listino con la variazione globale, cioe' lo stadio 1b.
             SELECT cr.tipo_eccezione, cr.prezzo_unitario
               INTO v_contr_tipo_eccezione, v_contr_riga_prezzo
               FROM vendite.contratti_righe cr
              WHERE cr.contratto_id          = v_contratto_id
                AND cr.articolo_id           = p_articolo_id
                AND COALESCE(cr.attivo, TRUE) = TRUE
+               AND cr.tipo_eccezione <> 'ADESIONE'::vendite.tipo_eccezione_contratto
              LIMIT 1;
 
             IF v_contr_tipo_eccezione IS NOT NULL THEN

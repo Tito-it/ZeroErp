@@ -33,11 +33,22 @@ La funzione **`script.fn_search_soggetti_universale`** implementa il **livello 1
 ### 🎯 Scopo Principale
 * **Ricerca per tipo ruolo**: il parametro `p_tipo_ruolo_id` e' obbligatorio. Il dropdown frontend mostra solo i ruoli accessibili all'utente corrente.
 
-* **Ricerca multi-campo**: la ricerca opera su 4 campi con pattern `%termine%` (ILIKE + GIN trgm):
+* **Ricerca multi-campo**: la ricerca opera fino a 4 campi con pattern `%termine%` (ILIKE + GIN trgm), quelli accesi da `p_campi_ricerca`:
   1. `ragione_sociale_completa` — nome/ragione sociale del soggetto
   2. `id_fiscale_univoco_cf_piva` — codice fiscale o P.IVA
   3. `codice` soggetto — codice univoco generato
   4. **codice entita' dinamico** — codice specifico del tipo ruolo (es. billing_account per CL, codice fornitore per FO), configurato in `tipi_ruoli.entita_tabella`
+
+* **I campi li dice il catalogo** *(dal 2026-10-31)*: `p_campi_ricerca` elenca i campi su cui
+  cercare, cioè i `campo_sorgente` accesi nel catalogo della lista
+  `anagrafiche.ricerca_soggetti` (113). Il backend li legge da
+  [ui.fn_lista_colonne_ricerca_full](/dbzero/ui/funzioni/fn_lista_colonne_ricerca_full), come per
+  le altre liste: conta l'interruttore `ricercabile_full`, e una colonna a livello `BLOCCATO` per
+  l'utente non si cerca, così non si può sondarla. La funzione resta cieca sullo schema `ui`.
+  Campi ammessi: `soggetto_codice` (codice del soggetto **e** codice dell'entità),
+  `ragione_sociale_completa` e `id_fiscale_univoco`. Un elenco vuoto non trova niente; `NULL`
+  vuol dire tutti e tre. Un campo fuori elenco, o un elemento `NULL`, è un errore del chiamante
+  (`E_SCRIPT_CHIAMATA_NON_VALIDA`).
 
 * **Ricerca codice entita' dinamica**: la tabella e la colonna del codice entita' sono letti da `config.tipi_ruoli.entita_tabella` e `entita_colonna_codice`. Se `entita_tabella` e' NULL per un tipo ruolo, la ricerca per codice entita' non viene eseguita. La query usa `RETURN QUERY EXECUTE` con `format()` per costruire dinamicamente il frammento `EXISTS`.
 
@@ -59,6 +70,7 @@ La funzione **`script.fn_search_soggetti_universale`** implementa il **livello 1
 | `p_offset`        | `INTEGER`  | No           | `0`     | Offset paginazione                                     |
 | `p_order_by`      | `TEXT`     | No           | `NULL`  | Colonna di ordinamento (whitelist, vedi sotto)         |
 | `p_order_dir`     | `TEXT`     | No           | `'ASC'` | Direzione ordinamento: `ASC` o `DESC`                  |
+| `p_campi_ricerca` | `TEXT[]`   | No           | `NULL`  | Campi su cui cercare (whitelist, vedi sopra); `NULL` = tutti e tre, vuoto = nessuna riga |
 
 **Guard**: il tipo ruolo lo valida la regola unica, la stessa del dettaglio: NULL o
 `<= 0` → `E_PARAMETRO_INVALIDO`, inesistente → `E_TIPO_RUOLO_NON_TROVATO`, **non

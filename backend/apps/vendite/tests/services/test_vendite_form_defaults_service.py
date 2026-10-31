@@ -25,6 +25,7 @@ Indice test eseguiti:
  9) test_versione_clone_codice_con_suffisso   — suffisso da parameter
 10) test_versione_close_default_oggi_se_no_chiusura — default oggi+lead_gg
 11) test_versione_close_usa_existing_se_presente    — modifica chiusura
+11bis) test_versione_close_fine_passata_non_riproposta — fine passata: default oggi+lead_gg
 12) test_listino_inesistente_404               — E_VENDITE_NOT_FOUND
 13) test_versione_inesistente_404              — E_VENDITE_NOT_FOUND
 """
@@ -517,7 +518,8 @@ class TestListinoVersioneFormDefaults(TestCase):
         }
         result = fn_get_versione_clone_defaults(listino_id=12, src_versione_id=33)
         self.assertEqual(result["default_codice_versione"], "v1-bis")
-        self.assertEqual(result["min_valido_dal"], "2026-01-01")
+        # ⛔ D2 la dice il verbo del DB (§16.16, BE-C3): niente copia qui.
+        self.assertNotIn("min_valido_dal", result)
         self.assertEqual(
             result["default_valido_dal"],
             (oggi_aziendale() + timedelta(days=1)).isoformat(),
@@ -564,6 +566,8 @@ class TestListinoVersioneFormDefaults(TestCase):
         self.assertEqual(result["default_valido_al"], oggi_aziendale().isoformat())
         self.assertEqual(result["current_valido_al"], None)
         self.assertFalse(result["has_existing_chiusura"])
+        # ⛔ La fine nel passato la rifiuta il verbo «Chiudi» (C-2 = a): niente copia.
+        self.assertNotIn("min_valido_al", result)
 
     @patch(_LISTINI_REPO)
     @patch(_PARAM)
@@ -579,6 +583,24 @@ class TestListinoVersioneFormDefaults(TestCase):
         result = fn_get_versione_close_defaults(listino_id=12, versione_id=33)
         self.assertEqual(result["default_valido_al"], "2027-12-31")
         self.assertEqual(result["current_valido_al"], "2027-12-31")
+        self.assertTrue(result["has_existing_chiusura"])
+
+    @patch(_LISTINI_REPO)
+    @patch(_PARAM)
+    def test_versione_close_fine_passata_non_riproposta(self, mock_param_cls, mock_repo_cls):
+        # Scopo: Fine gia' passata (ATTIVA in attesa del job) -> il default e'
+        #        oggi + lead_gg, non la fine vecchia che il verbo rifiuterebbe;
+        #        la fine attuale resta esposta in `current_valido_al`.
+        mock_param_cls.return_value.get_defaults.return_value = {
+            "VENDITE_LISTINI_CLOSE_VERSIONE_LEAD_GG": "0",
+        }
+        ieri = oggi_aziendale() - timedelta(days=1)
+        mock_repo_cls.return_value.get_versione.return_value = {
+            "id": 33, "stato": "ATTIVA", "valido_al": ieri,
+        }
+        result = fn_get_versione_close_defaults(listino_id=12, versione_id=33)
+        self.assertEqual(result["default_valido_al"], oggi_aziendale().isoformat())
+        self.assertEqual(result["current_valido_al"], ieri.isoformat())
         self.assertTrue(result["has_existing_chiusura"])
 
     @patch(_LISTINI_REPO)

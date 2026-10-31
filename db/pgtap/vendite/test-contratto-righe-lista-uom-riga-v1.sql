@@ -34,7 +34,8 @@
 --    6) R-D2: su Y uom_operativa_id resta NULL (il dato della riga, non il ripiego)
 --    7) R-D2: sulle eccezioni del listino (OVERRIDE) ci sono anche loro
 --    8) R-D2: sulla riga DA_LISTINO sono vuote
---    9) la firma: 24 colonne, ordine e uom_operativa_id in coda
+--    9) la firma: 26 colonne, in coda periodicita e generazione_canone (D-7, 20261031-42;
+--       prima 24, con ordine e uom_operativa_id in coda)
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -235,8 +236,8 @@ SELECT is(
             || '/' || (array_length(p.proargnames, 1) - 1)::text
        FROM pg_proc p
       WHERE p.oid = 'vendite.fn_contratto_righe_preview(bigint)'::regprocedure),
-    'ordine,uom_operativa_id/24',
-    '9) 24 colonne, ordine e uom_operativa_id in coda');
+    'periodicita,generazione_canone/26',
+    '9) 26 colonne, periodicita e generazione_canone in coda (D-7)');
 
 SELECT * FROM finish();
 ROLLBACK;

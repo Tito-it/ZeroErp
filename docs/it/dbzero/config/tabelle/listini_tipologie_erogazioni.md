@@ -12,7 +12,6 @@
 | tipo_erogazione | character varying(16) | NO |  |
 | fonte_quantita_attesa | character varying(32) | NO |  |
 | e_default | boolean | NO | false |
-| generazione_canone | character varying(32) | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
@@ -22,7 +21,6 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | chk_listini_tipologie_erogazioni_canone |  |
 | FOREIGN KEY | fk_listini_tipologie_erogazioni_erogazione_fonte | tipo_erogazione, fonte_quantita_attesa |
 | FOREIGN KEY | fk_listini_tipologie_erogazioni_tipologia | tipologia_id |
 | PRIMARY KEY | pk_listini_tipologie_erogazioni | id |

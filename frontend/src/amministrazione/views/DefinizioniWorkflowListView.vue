@@ -1,22 +1,26 @@
 <script setup>
 // Scopo: Vista admin edizioni di workflow versionate (Amm. Software, Fase 2).
-// Lista per tipo/emittente con stato + banner drift; azioni ciclo di vita:
+// Lista configurabile `pratiche.definizioni_workflow` (107, dal 2026-10-31:
+// prima una `DataTable` grezza sulla collezione intera) per tipo/emittente con
+// stato e drift; azioni ciclo di vita nel kebab:
 // fork (da PUBBLICATA → BOZZA d'emittente), nuova versione (PUBBLICATA → BOZZA),
 // pubblica (BOZZA → PUBBLICATA). Le fn DB restano l'unica sede di validazione.
 // Co-requisito lockstep: le 3 fn devono essere SECURITY DEFINER perché la scrittura
 // passi col ruolo web (brief-db-accesso-be-definizioni-workflow §P1).
-import { computed, onActivated, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-// eslint-disable-next-line no-restricted-imports -- eccezione nel registro DataTable (scripts/datatable.baseline.json)
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
+import InputText from 'primevue/inputtext'
 import Tag from 'primevue/tag'
 import Select from 'primevue/select'
 import LookupSelect from '../../core/components/LookupSelect.vue'
+import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
+import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import AppDialog from '../../core/components/AppDialog.vue'
+import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
+import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
@@ -39,15 +43,15 @@ const { isReadonly } = useReadonlyMode(READONLY_DOMAINS.AMM_SOFTWARE)
 const { execute } = useApiHandler()
 const { confirmAction } = useConfirmAction()
 
-const pageActions = computed(() => [
-  {
-    key: 'reload',
-    kind: 'utility',
-    label: t('common.reload_list'),
-    icon: MANAGE_ICONS.RELOAD,
-    command: () => store.load(),
-  },
-])
+// Ricarica, personalizza colonne: le azioni standard di ogni lista. Nessun
+// «Nuovo»: un'edizione nasce da fork o nuova versione, nel kebab.
+const {
+  searchText, onPage, onSort, applyFilters, paginatorProps, tablePage,
+  listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato,
+} = useListaConfigurabilePage(store)
+
+const { bindSelect } = useStoreFilterBindings(store, applyFilters)
+const { value: tipoFilter, onChange: onFiltroTipoChange } = bindSelect('tipo_prestazione_id')
 
 // Severity Tag per stato edizione (BOZZA editabile, PUBBLICATA attiva, RITIRATA storica).
 function statoSeverity(stato) {
@@ -55,8 +59,6 @@ function statoSeverity(stato) {
   if (stato === STATO_DEFINIZIONE.BOZZA) return 'warn'
   return 'secondary'
 }
-
-function onFiltroTipoChange() { store.load() }
 
 // --- Fork: dialog con scelta emittente (emittenti non nel lookup generico) ---
 const emittenti = useLookup(listEmittentiFiscali, { immediate: false })
@@ -79,7 +81,7 @@ async function onForkSave() {
       () => forkDefinizione(forkDefId.value, forkEmittenteId.value),
       { successMessage: t('amministrazione.definizioni_workflow.msg_fork_ok') },
     )
-    if (res !== null) { forkVisible.value = false; await store.load() }
+    if (res !== null) { forkVisible.value = false; await store.fetchList() }
   } finally {
     forkLoading.value = false
   }
@@ -95,7 +97,7 @@ function onNuovaVersione(data) {
         () => nuovaVersioneDefinizione(data.id),
         { successMessage: t('amministrazione.definizioni_workflow.msg_nuova_versione_ok') },
       )
-      if (res !== null) await store.load()
+      if (res !== null) await store.fetchList()
     },
   })
 }
@@ -109,7 +111,7 @@ function onPubblica(data) {
         () => pubblicaDefinizione(data.id),
         { successMessage: t('amministrazione.definizioni_workflow.msg_pubblica_ok') },
       )
-      if (res !== null) await store.load()
+      if (res !== null) await store.fetchList()
     },
   })
 }
@@ -164,11 +166,11 @@ function buildRowActions(data) {
   ]
 }
 
-// ⚠️ `onActivated` e non `onMounted`: la view vive sotto `<KeepAlive :max="10">`
-//    (AppLayout), quindi al rientro `onMounted` non riscatta e a video resterebbe
-//    l'elenco di prima. ⛔ Sostituisce, non si aggiunge: sotto KeepAlive al primo
-//    montaggio scattano ENTRAMBI, quindi tenerli tutti e due farebbe due fetch.
-onActivated(() => store.load())
+// ⚠️ `onMounted` e non `onActivated`: dal 2026-10-31 la lista e' su
+//    `useListaConfigurabilePage`, il cui `useSearchTable` rilegge gia' la pagina
+//    a ogni rientro sotto KeepAlive (salta la prima attivazione, quella del
+//    montaggio). Un `onActivated` qui raddoppierebbe la fetch a ogni rientro.
+onMounted(() => store.fetchList())
 
 // D-14: uscire con dati inseriti chiede (AppDialog `conferma-uscita`).
 const fotografia = useFotografiaDialog(() => ({ forkEmittenteId: forkEmittenteId.value }), { visibile: () => forkVisible.value })
@@ -177,9 +179,12 @@ const fotografia = useFotografiaDialog(() => ({ forkEmittenteId: forkEmittenteId
 <template>
   <div class="app-page">
     <div class="app-page-toolbar">
-      <FiltriLista :store="store">
+      <FiltriLista :store="store" :inert="perimetroBloccato">
+        <template #sempre>
+          <InputText v-model="searchText" class="app-filter-w-lg" :placeholder="t('common.search')" />
+        </template>
         <LookupSelect
-          v-model="store.filters.tipo_prestazione_id"
+          v-model="tipoFilter"
           class="app-filter-w-md"
           rel="pratiche.tipi_prestazione"
           :placeholder="t('amministrazione.definizioni_workflow.filtro_tipo')"
@@ -187,46 +192,47 @@ const fotografia = useFotografiaDialog(() => ({ forkEmittenteId: forkEmittenteId
           @change="onFiltroTipoChange"
         />
       </FiltriLista>
-      <PageActionsBar :actions="pageActions" />
+      <PageActionsBar :actions="pageActions">
+        <template #suffix>
+          <ListaConfigStatusTag :dirty="dirty" />
+        </template>
+      </PageActionsBar>
     </div>
 
-    <DataTable
-      :value="store.items"
+    <!-- ⚠️ Lista `multi_emittente`: la colonna emittente e' il biglietto della
+         riga, e la lista si apre anche su «Tutti». -->
+    <ListaConfigurabile
+      ref="listaRef"
+      codice="pratiche.definizioni_workflow"
+      :rows="store.items"
+      :total="store.totalRecords"
       :loading="store.loading"
-      striped-rows
-      scrollable
-      scroll-height="flex"
-      class="app-datatable"
-      data-key="id"
+      :paginator-options="paginatorProps"
+      :page="tablePage"
+      :sort-field="paginatorProps.sortField"
+      :sort-order="paginatorProps.sortOrder"
+      @page="onPage"
+      @sort="onSort"
+      @row-click="openEditor"
+      @config-loaded="onConfigLoaded"
     >
-      <Column field="tipo_prestazione_descrizione" :header="t('amministrazione.definizioni_workflow.col_tipo')" sortable style="min-width: 220px;" />
-      <Column field="emittente_display" :header="t('amministrazione.definizioni_workflow.col_emittente')" sortable style="width: 200px;">
-        <template #body="{ data }">
-          {{ data.emittente_fiscale_id ? data.emittente_display : t('amministrazione.definizioni_workflow.preset') }}
-        </template>
-      </Column>
-      <Column field="versione" :header="t('amministrazione.definizioni_workflow.col_versione')" sortable style="width: 90px;" />
-      <Column field="stato" :header="t('amministrazione.definizioni_workflow.col_stato')" sortable style="width: 130px;">
-        <template #body="{ data }">
-          <Tag :value="data.stato" :severity="statoSeverity(data.stato)" />
-        </template>
-      </Column>
-      <Column :header="t('amministrazione.definizioni_workflow.col_drift')" style="width: 180px;">
-        <template #body="{ data }">
-          <Tag
-            v-if="data.drift && data.drift.versioni_indietro > 0"
-            severity="warn"
-            :value="t('amministrazione.definizioni_workflow.drift_badge', { n: data.drift.versioni_indietro })"
-          />
-        </template>
-      </Column>
-      <Column field="descrizione" :header="t('amministrazione.definizioni_workflow.col_descrizione')" style="min-width: 220px;" />
-      <Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
-        <template #body="{ data }">
-          <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
-        </template>
-      </Column>
-    </DataTable>
+      <template #cell-emittente="{ data }">
+        {{ data.emittente_fiscale_id ? data.emittente_display : t('amministrazione.definizioni_workflow.preset') }}
+      </template>
+      <template #cell-stato="{ data }">
+        <Tag :value="data.stato" :severity="statoSeverity(data.stato)" />
+      </template>
+      <template #cell-drift="{ data }">
+        <Tag
+          v-if="data.versioni_indietro > 0"
+          severity="warn"
+          :value="t('amministrazione.definizioni_workflow.drift_badge', { n: data.versioni_indietro })"
+        />
+      </template>
+      <template #actions="{ data }">
+        <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
+      </template>
+    </ListaConfigurabile>
 
     <!-- Fork: scelta emittente per la nuova edizione BOZZA -->
     <AppDialog

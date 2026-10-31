@@ -105,3 +105,10 @@ id,lista_id,codice,descrizione,ambito,profilo_accesso_id,emittente_fiscale_id,is
 104,104,accessi_altri_default,Vista standard altri accessi,sistema,,,t,25,"[{""col"":""nome_visualizzato"",""dir"":""asc""}]",t,2026-10-02 00:00:00,mctit
 105,105,accessi_sistema_default,Vista standard accessi di sistema,sistema,,,t,25,"[{""col"":""username"",""dir"":""asc""}]",t,2026-10-02 00:00:00,mctit
 106,106,offerta_righe_default,Vista standard righe di un'offerta,sistema,,,t,10,,t,2026-10-05 00:00:00,mctit
+107,107,definizioni_workflow_default,Vista standard definizioni di workflow,sistema,,,t,25,"[{""col"":""tipo_prestazione_descrizione"",""dir"":""asc""},{""col"":""versione"",""dir"":""desc""}]",t,2026-10-31 00:00:00,mctit
+108,108,parametri_impostazioni_default,Vista standard impostazioni,sistema,,,t,25,"[{""col"":""code"",""dir"":""asc""}]",t,2026-10-31 00:00:00,mctit
+109,109,vendite_note_default,Vista standard note di un documento,sistema,,,t,25,"[{""col"":""posizione"",""dir"":""asc""},{""col"":""seq"",""dir"":""asc""}]",t,2026-10-31 00:00:00,mctit
+110,110,catalogo_note_default,Vista standard note di un articolo,sistema,,,t,25,"[{""col"":""posizione"",""dir"":""asc""},{""col"":""seq"",""dir"":""asc""}]",t,2026-10-31 00:00:00,mctit
+111,111,articolo_uom_default,Vista standard unita di misura di un articolo,sistema,,,t,25,"[{""col"":""uom_codice"",""dir"":""asc""}]",t,2026-10-31 00:00:00,mctit
+112,112,listini_versioni_default,Vista standard versioni di un listino,sistema,,,t,10,"[{""col"":""valido_dal"",""dir"":""desc""}]",t,2026-10-31 00:00:00,mctit
+113,113,ricerca_soggetti_default,Vista standard ricerca soggetti,sistema,,,t,25,"[{""col"":""ragione_sociale_completa"",""dir"":""asc""}]",t,2026-10-31 00:00:00,mctit

@@ -3,7 +3,7 @@
 > Questo file è pensato per essere letto all'inizio di ogni sessione Claude Code,
 > su qualsiasi server (DB o backend). Integra AGENTS.md con lo stato corrente del progetto.
 >
-> Ultima revisione: 2026-10-25.
+> Ultima revisione: 2026-10-31.
 
 ## Identità del Progetto
 
@@ -189,7 +189,7 @@ Il modello del documento di vendita è scritto:
   guard, nei verbi di ciascuno): aspetta che il cantiere porti quei documenti al modello.
 
 Si correggono i difetti; i brief già in esecuzione arrivano in fondo. Il perché, con i fatti datati,
-sta nel §1 di `work-in-progress/brief-modello-documento-vendita.md`. La regola generale «un tema, un
+sta nel §1 di `work-done/brief-modello-documento-vendita.md`. La regola generale «un tema, un
 brief» è in `.codex/AGENTS.md`.
 
 ### 🔵 Il cantiere principale — `acquisti` e `magazzino` (decisione di Tid, 2026-09-11)
@@ -237,6 +237,11 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 
 ### 🟡 Altri cantieri aperti
 
+- ✅ **Il modello del documento di vendita: chiuso il 2026-10-31**
+  (`work-done/brief-modello-documento-vendita.md`): un giro per documento (DDT, preventivo, ordine, contratto,
+  offerta, commessa, fattura, versione di listino), poi gli stati con un significato dal vocabolario (cessazione,
+  accettazione) e l'arco della revisione nel lineage. Prove a video di Tid tutte ok. La guida è
+  `docs/it/guide/modello-documento-di-vendita.md`. I residui sono in § «Aperto — Media priorità».
 - ✅ **Il reso costruito nei pgTAP: chiuso il 2026-10-25** (`work-done/brief-db-pgtap-reso-costruito.md`,
   seguito di `work-done/brief-db-pgtap-bolla-e-reso-costruiti`): i pgTAP non ricopiano più la strada del reso
   confermato, della bolla di ri-consegna, dell'ordine con righe, della bolla senza ordine e dell'attività fatturata;
@@ -409,11 +414,15 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   (`fn_articolo_colonne_struttura`) e il rifiuto se rende non valide righe aperte (A-11). DB Lotti 1-5 e
   `20261018-70…-74`, BE/FE §9.7 e §9.8.7, collaudo di Tid ok. Restano fuori: il ponte di
   `fn_articolo_riga_contesto` (brief della grammatica unica), D-5 (righe d'acquisto, col cantiere `acquisti`).
-- 📝 **Canone, orario e consumo del contratto in commessa**
-  (`work-in-progress/brief-db-contratto-righe-periodiche-in-commessa.md`, D31, 2026-10-13): il push dei
-  contratti manda solo le righe UNA_TANTUM, col giorno di attivazione (`20261013-24`, D-1/D-2 di Tid); la
-  generazione per periodo del canone e le quantità di orario e consumo dalle loro fonti: aperto, non
-  iniziato (G-1…G-4). Nello stesso giorno `tipo_consumo` ritirato dalla catena del push (`20261013-16…-23`).
+- ⏳ **Canone, orario e consumo del contratto in commessa**
+  (`work-in-progress/brief-db-contratto-righe-periodiche-in-commessa.md`, D31): lotti L1 … L9 applicati
+  (periodicità, ADESIONE, push a periodi, storni, dashboard, `20261029-10` … `20261031-04`); BE/FE in
+  `9f3a16904`. Giro del §7 (2026-10-31): `20261031-28` … `-43` applicati e verdi (il kit sul
+  listino `vendite.listini_kit`, componenti del kit dal listino, controllo all'attivazione, lookup e
+  anteprima della periodicità); L17 `-44` … `-48` (la nota di credito dal segno, §7.9) e `-49` … `-52`
+  (la quota fissa non perde la periodicità fuori dalla bozza, §7.10) applicati e verdi. BE/FE passo 3
+  fatto il 2026-10-31 (§7.11, da committare). Restano: L18 documentazione, la colonna della periodicità
+  nella lista 37 e il passo 4 DB.
 - 📝 **Dove si addebita il trasporto di un ordine fatturato alla conferma**
   (`work-in-progress/brief-db-addebito-trasporto-ordine.md`, da A-9 del brief sopra): aperto, non iniziato.
 - ✅ **Codici d'errore per email, «accesso riservato» e «non trovato» del dettaglio ricerca: chiuso il 2026-10-10**
@@ -564,6 +573,16 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   cambio di licenza.
 
 ### Aperto — Media priorità
+- **Residui di `work-done/brief-modello-documento-vendita.md`** (ereditati il 2026-10-31 dalla chiusura, §18.6),
+  nessuno bloccante:
+  - **i permessi `emetti_offerta`, `emetti_contratto`, `emetti_ordine`, `attiva_listino` ai profili** su dbdev:
+    al 2026-10-26 nessun profilo li aveva, e senza nessuno emette, attiva o cessa quei documenti. Di Tid;
+  - **due rami del preventivo senza strada dall'interfaccia** (§18.4): la riaccettazione di un preventivo già
+    accettato (aggiorna la sola modalità di fatturazione) e «Genera pratica» (`genera_pratica`). Ritirarli o dar
+    loro un accesso. Di Tid;
+  - **`DocumentoDrawerHost` tace sul drawer che non si carica** (`catch { return }`): il click su una tappa dei
+    «Passaggi» non fa niente, senza avviso né console (visto a video il 2026-10-31). Proposto un avviso. FE, con
+    l'ok di Tid.
 - **Residui di `work-done/collaudo-in-app-capability-annidata-e-prezzi-autorizzati.md`** (ereditati il
   2026-10-24 dal collaudo passato, §3):
   - **il reset del rifiuto sta solo nel BE del preventivo** (`preventivi_service.py` `aggiorna_riga`,

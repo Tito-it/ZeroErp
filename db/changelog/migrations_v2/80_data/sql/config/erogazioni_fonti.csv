@@ -1,6 +1,6 @@
 id,tipo_erogazione,fonte_quantita_attesa,e_default
 1,CANONE,FISSA,true
-2,CANONE,MANUALE,false
+14,CANONE,DURATA,false
 4,UNA_TANTUM,FISSA,true
 5,UNA_TANTUM,MANUALE,false
 7,ORARIO,MANUALE,true

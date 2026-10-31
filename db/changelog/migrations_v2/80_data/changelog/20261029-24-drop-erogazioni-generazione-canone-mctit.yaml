@@ -1,0 +1,59 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I VOCABOLARI DELL'EROGAZIONE NON DICONO PIU' COME SI ADDEBITA IL CANONE — 2/2: la colonna
+#   config.listini_tipologie_erogazioni.generazione_canone
+#   config.nature_vendita_erogazioni.generazione_canone
+#   Brief: brief-db-contratto-righe-periodiche-in-commessa §6.4 (F-7), §6.6 (Lotto 5)
+#
+# ── PERCHE' ──────────────────────────────────────────────────────
+#   Era il default che l'articolo dava alla riga a canone (20261007-51/-62). Con
+#   F-7 (Tid, 2026-10-29) anticipati o normali li dice la testata e la riga vuota
+#   la segue: il default dell'articolo la staccherebbe. I lettori sono usciti
+#   nello stesso giro (20261029-17 … -19), i CHECK col 20261029-16, il seed non
+#   la scrive piu' (20261007-53, CSV senza la colonna).
+#
+# ── PERCHE' QUI, IN 80_data ─────────────────────────────────────────────
+#   Da zero l'ordine e' per fase. Fino al 20261029-17 le firme di
+#   vendite.fn_articolo_erogazioni ne prendono il tipo (%TYPE), e i changeSet
+#   vecchi di 20_code devono trovarla; in 80_data il seed 20261007-53 e il
+#   20261029-14 vengono prima di questo (includeAll, ordine del nome). Nessun
+#   changeSet di 85_pgagent o 90_end la nomina (censito il 2026-10-29).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261029-24-drop-erogazioni-generazione-canone-mctit.yaml
+
+  - changeSet:
+      id: 20261029-24-drop-erogazioni-generazione-canone
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Via generazione_canone dai vocabolari dell'erogazione (la dice la testata, F-7). Brief:
+        brief-db-contratto-righe-periodiche-in-commessa §6.6 (Lotto 5).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.listini_tipologie_erogazioni
+                  DROP COLUMN IF EXISTS generazione_canone;
+
+              ALTER TABLE config.nature_vendita_erogazioni
+                  DROP COLUMN IF EXISTS generazione_canone;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.listini_tipologie_erogazioni ADD COLUMN IF NOT EXISTS generazione_canone varchar(32);
+              ALTER TABLE config.nature_vendita_erogazioni ADD COLUMN IF NOT EXISTS generazione_canone varchar(32);
+              UPDATE config.listini_tipologie_erogazioni SET generazione_canone = 'INIZIO_PERIODO' WHERE tipo_erogazione = 'CANONE';
+              UPDATE config.nature_vendita_erogazioni SET generazione_canone = 'INIZIO_PERIODO' WHERE tipo_erogazione = 'CANONE';

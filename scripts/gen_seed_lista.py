@@ -255,6 +255,22 @@ WHITELIST_BE: dict[str, tuple] = {
     # lettore ha imparato a leggere proprio per questa lista.
     "catalogo.articoli": ("apps/catalogo/db/catalogo_repository.py", "ARTICOLI_ORDER_COLUMNS"),
     "vendite.listini": ("apps/vendite/db/listini_repository.py", "LISTINI_ORDER_COLUMNS"),
+    # Le note di vendita e di catalogo, e le UoM di un articolo (2026-10-31,
+    # secondo giro righe 3 e 4): le note su UNA whitelist (le liste gemelle).
+    "vendite.note": ("apps/core/db/partitioned_note_repository.py", "NOTE_ORDER_COLUMNS"),
+    "catalogo.note": ("apps/core/db/partitioned_note_repository.py", "NOTE_ORDER_COLUMNS"),
+    "catalogo.articolo_uom": ("apps/catalogo/db/catalogo_uom_repository.py", "ARTICOLO_UOM_ORDER_COLUMNS"),
+    # La ricerca universale dei soggetti (2026-10-31, secondo giro riga 6):
+    # l'ordinamento lo fa la funzione DB, questa e' la colonna che accetta.
+    "anagrafiche.ricerca_soggetti": ("apps/core/api/search_validators.py", "ALLOWED_ORDER_COLUMNS"),
+    # Le impostazioni (2026-10-31, secondo giro riga 2).
+    "config.parametri_impostazioni": ("apps/core/db/parameter_repository.py", "IMPOSTAZIONI_ORDER_COLUMNS"),
+    # Le edizioni di workflow (2026-10-31, secondo giro riga 1).
+    "pratiche.definizioni_workflow": ("apps/pratiche/db/definizioni_repository.py", "DEFINIZIONI_ORDER_COLUMNS"),
+    # Il tab «Versioni» del drawer listino (2026-10-31, brief-db-liste-
+    # datatable-grezze-secondo-giro riga 5): fino a quel giorno una `DataTable`
+    # nella riga espansa della lista listini.
+    "vendite.listini_versioni": ("apps/vendite/db/listini_repository.py", "VERSIONI_ORDER_COLUMNS"),
     "anagrafiche.operatori": ("apps/amm_software/db/amm_software_repository.py",
                               "ALLOWED_ORDER_COLUMNS"),
     # L'area «Accessi» (2026-10-02, brief-db-be-fe-area-accessi R-BE-d): gli
@@ -409,6 +425,23 @@ NUCLEO_ORDINABILE: dict[str, tuple[str, ...]] = {
     # rotto: stato» su una lista che lo stato lo ordina eccome — un falso
     # allarme che, ripetuto, insegna a ignorare il controllo.
     "stato": ("stato", "attivo", "is_active"),
+}
+
+# Le eccezioni al nucleo, una per (lista, concetto), ciascuna col suo motivo e
+# la decisione che la prende. ⛔ Non e' un modo per far tacere il controllo:
+# una voce qui e' una decisione di Tid sul modello, scritta con la data. Il
+# controllo la mostra a ogni verifica, e segnala come STANTIA un'eccezione che
+# non serve piu' (il concetto ordina, o la lista non ha piu' quella colonna):
+# un'eccezione che sopravvive al suo motivo diventa un buco.
+NUCLEO_ECCEZIONI: dict[tuple[str, str], str] = {
+    # `utility_list` e' un aggregato della pagina (le forniture concatenate del
+    # soggetto), e `fn_search_soggetti_universale` la rifiuta in `p_order_by`.
+    ("anagrafiche.ricerca_soggetti", "utility"): (
+        "D-2 (a) di brief-db-ricerca-universale-tetto-10000 (2026-10-10), confermata "
+        "da D-3 di brief-db-liste-datatable-grezze-secondo-giro (Tid, 2026-10-31): "
+        "l'ordine di una lista di forniture concatenate dice poco, la fornitura si "
+        "filtra nel dettaglio"
+    ),
 }
 
 CAMPI_DEF = ["id", "codice", "descrizione", "schema_dati", "vista_sql", "attivo",
@@ -1177,9 +1210,17 @@ def verifica_ordinamento(solo: str | None = None) -> int:
         #    campi che la lista non mostra (stessa regola del test del BE).
         irraggiungibili = sorted((wl & a_catalogo) - ordinabili)
         # 3. regola di dominio: il nucleo ordina sempre.
-        rotte = [nome for nome, chiavi in NUCLEO_ORDINABILE.items()
-                 if (cand := [c for c in attive if any(k in c["codice"] for k in chiavi)])
-                 and not any(c["campo_sorgente"] in wl for c in cand)]
+        rotti_grezzi = [nome for nome, chiavi in NUCLEO_ORDINABILE.items()
+                        if (cand := [c for c in attive if any(k in c["codice"] for k in chiavi)])
+                        and not any(c["campo_sorgente"] in wl for c in cand)]
+        #    Le eccezioni dichiarate escono dal KO; quelle che non servono piu'
+        #    ci entrano, come stantie.
+        eccezioni = {conc for (lista, conc) in NUCLEO_ECCEZIONI if lista == codice}
+        rotte = [nome for nome in rotti_grezzi if nome not in eccezioni]
+        eccezioni_stantie = sorted(eccezioni - set(rotti_grezzi))
+        for nome in sorted(eccezioni & set(rotti_grezzi)):
+            print(f"  {codice:<40}    eccezione al nucleo «{nome}»: "
+                  f"{NUCLEO_ECCEZIONI[(codice, nome)]}")
 
         # 4. l'ordinamento di APERTURA della lista. `ordinamento_default` del
         #    preset deve puntare a una colonna che il backend sa ordinare E che
@@ -1208,7 +1249,8 @@ def verifica_ordinamento(solo: str | None = None) -> int:
             elif col not in ordinabili:
                 default_rotti.append(f"{pre['codice']}: `{col}` non e' offerta come ordinabile")
 
-        if not bugiarde and not irraggiungibili and not rotte and not default_rotti:
+        if (not bugiarde and not irraggiungibili and not rotte and not default_rotti
+                and not eccezioni_stantie):
             print(f"  {codice:<40}ok  ({len(attive)} colonne, whitelist {len(wl)})")
             continue
         problemi += 1
@@ -1219,6 +1261,9 @@ def verifica_ordinamento(solo: str | None = None) -> int:
             print(f"      il BE sa ordinarle ma il seed non le offre : {', '.join(irraggiungibili)}")
         if rotte:
             print(f"      NUCLEO rotto (deve ordinare sempre)        : {', '.join(rotte)}")
+        if eccezioni_stantie:
+            print(f"      eccezione al nucleo STANTIA (togliere da NUCLEO_ECCEZIONI): "
+                  f"{', '.join(eccezioni_stantie)}")
         if default_rotti:
             print(f"      ordinamento di APERTURA del preset        : {'; '.join(default_rotti)}")
 

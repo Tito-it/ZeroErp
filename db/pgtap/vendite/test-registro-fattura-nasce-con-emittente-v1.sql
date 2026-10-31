@@ -1,6 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
--- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
+-- rev 2026-10-28 (20261028-33): 14) e 15), lo spostamento di un collegamento con UPDATE; il guard sulla coppia non conta piu' la riga che si sposta.
 -- pgTAP test per Zero ERP
 --
 -- Il registro delle fatture nasce con l'emittente (2026-10-18). R-BE-14 del
@@ -11,7 +11,7 @@
 -- documento fiscale si fermava su vendite.fn_get_registro_id con
 -- E_CONFIG_MANCANTE «registro non risolto».
 --
--- Elenco test (plan 16):
+-- Elenco test (plan 18):
 --  1)   la regola del codice: FAT-<emittente>
 --  -- un emittente che nasce (D-14a, D-14b) --
 --  2)   ha il registro delle fatture standard, per tutte le utility
@@ -29,12 +29,15 @@
 --  11)  un registro di UNA utility accanto a quello di tutte: ammesso
 --  12)  ... portato a «tutte le utility» diventa ambiguo: rifiutato
 --  13)  un UPDATE del collegamento che non cambia niente passa (no-op)
+--  14)  spostare con UPDATE una coppia fra due registri dello stesso emittente
+--       e utility: ammesso, la riga che si sposta non e' un occupante
+--  15)  ... spostarla dove un altro registro la copre gia': rifiutato
 --  -- il builder pgTAP --
---  14)  fn_pgtap_registro_fattura salta lo standard: il suo registro, limite 9999
+--  16)  fn_pgtap_registro_fattura salta lo standard: il suo registro, limite 9999
 --  -- un registro standard spento --
---  15)  non si rifa' e non si ricollega: spegnerlo e' una scelta
+--  17)  non si rifa' e non si ricollega: spegnerlo e' una scelta
 --  -- per ultimo --
---  16)  la sistemazione degli emittenti di oggi e' idempotente: rilanciata non crea niente
+--  18)  la sistemazione degli emittenti di oggi e' idempotente: rilanciata non crea niente
 --
 -- Scopo:
 --  - provare la primitiva, i trigger e i guard COSTRUENDO emittenti, coppie e
@@ -54,7 +57,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_
 -- I builder degli emittenti chiudono da se' la loro finestra dei differiti.
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(16);
+SELECT plan(18);
 
 -- ============================================================
 -- Fixture
@@ -195,7 +198,7 @@ SELECT is(
     '9) l''emittente configurato a mano riceve lo standard solo per la coppia che non ha');
 
 -- ============================================================
--- 10-13) Il guard sull'ambiguita' (D-14d)
+-- 10-15) Il guard sull'ambiguita' (D-14d)
 -- ============================================================
 SELECT throws_like(
     (SELECT format('INSERT INTO vendite.tipi_doc_fiscale_registri (tipo_doc_fiscale_id, natura_doc_id, registro_id) VALUES (%s, %s, %s)',
@@ -232,8 +235,28 @@ SELECT lives_ok(
     (SELECT format('UPDATE vendite.tipi_doc_fiscale_registri SET registro_id = registro_id WHERE registro_id = %s', std_b) FROM _f),
     '13) un UPDATE del collegamento che non cambia niente passa');
 
+-- ⛔ In UNA istruzione: il guard e' BEFORE UPDATE e la tabella mostra ancora
+--   la riga sul registro di partenza. Scollegare e ricollegare (due
+--   istruzioni) era verde anche col difetto.
+-- La coppia n = 2 passa dal registro scritto a mano allo standard di B: stesso
+-- emittente, tutte le utility, e lo standard non la copre.
+SELECT lives_ok(
+    (SELECT format('UPDATE vendite.tipi_doc_fiscale_registri SET registro_id = %s WHERE registro_id = %s AND tipo_doc_fiscale_id = %s AND natura_doc_id = %s',
+                   _f.std_b, (SELECT manuale_id FROM _man), m.tipo_id, m.natura_id)
+       FROM _f, _m m WHERE m.n = 2),
+    '14) spostare con UPDATE una coppia fra due registri dello stesso emittente e utility: ammesso');
+
+-- La coppia n = 1 del registro di UNA utility passa al registro scritto a mano
+-- (tutte le utility): lo standard di B la copre gia', e il rifiuto resta.
+SELECT throws_like(
+    (SELECT format('UPDATE vendite.tipi_doc_fiscale_registri SET registro_id = %s WHERE registro_id = %s AND tipo_doc_fiscale_id = %s AND natura_doc_id = %s',
+                   (SELECT manuale_id FROM _man), (SELECT utility_reg_id FROM _uti), m.tipo_id, m.natura_id)
+       FROM _m m WHERE m.n = 1),
+    '%numera già%sul registro FATTURA-%',
+    '15) ... spostarla con UPDATE dove un altro registro la copre gia'': E_REGISTRO_COPPIA_GIA_COPERTA');
+
 -- ============================================================
--- 14) Il builder pgTAP salta lo standard
+-- 16) Il builder pgTAP salta lo standard
 -- ============================================================
 -- ⚠️ Il builder in un'istruzione sua: la riga che crea non e' visibile alla
 --   SELECT che lo chiama.
@@ -245,10 +268,10 @@ SELECT is(
        FROM vendite.registri_fatturazione r, _f, _b
       WHERE r.id = _b.registro_id),
     true,
-    '14) fn_pgtap_registro_fattura salta lo standard: il suo registro, col limite aperto');
+    '16) fn_pgtap_registro_fattura salta lo standard: il suo registro, col limite aperto');
 
 -- ============================================================
--- 15) Un registro standard spento non si rifa' e non si ricollega
+-- 17) Un registro standard spento non si rifa' e non si ricollega
 -- ============================================================
 DELETE FROM vendite.tipi_doc_fiscale_registri WHERE registro_id = (SELECT std_a FROM _f);
 UPDATE vendite.registri_fatturazione SET attivo = false WHERE id = (SELECT std_a FROM _f);
@@ -258,16 +281,16 @@ SELECT is(
             || (SELECT count(*) FROM vendite.fn_coppie_fattura_scoperte(_f.sr_a))::text
        FROM _f),
     '0/' || (SELECT count(*) FROM _coppie)::text,
-    '15) uno standard spento non si rifa'' e non si ricollega: le coppie restano scoperte');
+    '17) uno standard spento non si rifa'' e non si ricollega: le coppie restano scoperte');
 
 -- ============================================================
--- 16) Per ultimo: la sistemazione di oggi e' idempotente
+-- 18) Per ultimo: la sistemazione di oggi e' idempotente
 -- ============================================================
 SELECT vendite.fn_provision_registri_famiglia('FATTURA');
 SELECT is(
     vendite.fn_provision_registri_famiglia('FATTURA'),
     0,
-    '16) la sistemazione degli emittenti di oggi, rilanciata, non crea niente');
+    '18) la sistemazione degli emittenti di oggi, rilanciata, non crea niente');
 
 SELECT * FROM finish();
 ROLLBACK;

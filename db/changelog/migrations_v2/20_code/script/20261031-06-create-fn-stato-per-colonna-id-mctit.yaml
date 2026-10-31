@@ -1,0 +1,142 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# BB: LO STATO CHE UNA COLONNA DEL VOCABOLARIO DICHIARA
+#   Brief: brief-modello-documento-vendita §17 (ok di Tid 2026-10-31).
+#
+# ── PERCHE' ─────────────────────────────────────────────────────────
+#   script.fn_stato_emissione_id (20261025-40) e script.fn_stato_abortito_id
+#   (20261025-74) sono la stessa logica su due colonne: dalla mappa del
+#   modello il vocabolario della testata, poi l'id dello stato marcato dalla
+#   colonna. Il §17 aggiunge due colonne con lo stesso significato di forma
+#   (cessazione, accettazione: 20261031-05), e quindi due lettori: sarebbero
+#   quattro copie. Regola del 2: la logica sta qui, i quattro lettori con il
+#   nome restano la porta d'ingresso (la guida e i consumatori parlano di
+#   «lo stato di emissione», non di una colonna) e la chiamano.
+#
+# ── LE REGOLE ───────────────────────────────────────────────────────
+#   - testata fuori mappa: il chiamante e' rotto, E_SCRIPT_CHIAMATA_NON_VALIDA;
+#   - colonna che non c'e' nel vocabolario: NULL. E' il caso voluto del
+#     documento che non ha quello stato (il reso non si emette, il preventivo
+#     non cessa), come gia' per emissione;
+#   - colonna che c'e' ma non e' boolean: il chiamante e' rotto,
+#     E_SCRIPT_CHIAMATA_NON_VALIDA (non una colonna che marca uno stato);
+#   - nessuno stato marcato: NULL. Al massimo uno lo garantisce l'indice
+#     unico parziale di ogni colonna, ed e' attivo (il CHECK).
+#   Riceve la testata, non il vocabolario: chi chiede ha in mano il documento.
+#   p_lettore (in coda, facoltativo) e' il nome della porta che chiama: il
+#   messaggio della chiamata non valida nomina la funzione che il chiamante
+#   ha usato (script.fn_stato_abortito_id, …), non questa. Senza, questa.
+#   STABLE, SECURITY INVOKER: legge solo il catalogo e il vocabolario.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261031-06-create-fn-stato-per-colonna-id-mctit.yaml
+
+  - changeSet:
+      id: 20261031-06-create-fn-stato-per-colonna-id
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        BB script.fn_stato_per_colonna_id(regclass, name, text): l'id dello stato marcato da una colonna
+        boolean del vocabolario di una testata della mappa; NULL se il vocabolario non ha la colonna
+        o non marca nessuno stato. La logica comune dei lettori con il nome (emissione, annullo,
+        cessazione, accettazione). Brief: brief-modello-documento-vendita §17.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_doc_stato_modello';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION script.fn_stato_per_colonna_id(
+                  p_testata regclass,
+                  p_colonna name,
+                  -- il nome della porta che chiama, per il messaggio: nessuna colonna dietro
+                  p_lettore text DEFAULT NULL)
+               -- bigint: l'id di uno stato di un vocabolario qualunque della
+               -- mappa; nessuna colonna comune a cui ancorarlo.
+               RETURNS bigint
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  -- Il vocabolario, il tipo della colonna e l'id di uno stato
+                  -- di una qualunque testata della mappa: bigint in tutti,
+                  -- nessuna colonna comune a cui ancorarli.
+                  v_vocabolario regclass;
+                  v_tipo        regtype;
+                  v_id          bigint;
+                  -- La funzione che il messaggio nomina: la porta, o questa.
+                  v_lettore     text := COALESCE(p_lettore, 'script.fn_stato_per_colonna_id');
+              BEGIN
+                  -- =========================================================
+                  -- Scopo: l'id dello stato che la colonna p_colonna (boolean)
+                  --   marca nel vocabolario della testata. Vedi l'intestazione
+                  --   del changeSet.
+                  -- =========================================================
+                  SELECT m.vocabolario
+                    INTO v_vocabolario
+                    FROM script.fn_doc_stato_modello(p_testata) m;
+
+                  IF v_vocabolario IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_stato_per_colonna_id', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('testata', p_testata::text),
+                          NULL::uuid,
+                          v_lettore,
+                          'p_testata: una testata della mappa del modello (script.fn_doc_stato_modello)');
+                  END IF;
+
+                  SELECT a.atttypid::regtype
+                    INTO v_tipo
+                    FROM pg_catalog.pg_attribute a
+                   WHERE a.attrelid = v_vocabolario
+                     AND a.attname  = p_colonna
+                     AND a.attnum   > 0
+                     AND NOT a.attisdropped;
+
+                  -- Il vocabolario non ha la colonna: il documento non ha
+                  -- quello stato.
+                  IF v_tipo IS NULL THEN
+                      RETURN NULL;
+                  END IF;
+
+                  IF v_tipo <> 'boolean'::regtype THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_stato_per_colonna_id', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('testata', p_testata::text, 'colonna', p_colonna, 'tipo', v_tipo::text),
+                          NULL::uuid,
+                          v_lettore,
+                          'p_colonna: una colonna boolean del vocabolario che marca uno stato');
+                  END IF;
+
+                  EXECUTE format('SELECT s.id FROM %s s WHERE s.%I', v_vocabolario, p_colonna)
+                     INTO v_id;
+
+                  RETURN v_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_stato_per_colonna_id(p_testata regclass, p_colonna name, p_lettore text)
+              IS 'BB del modello del documento: l''id dello stato che una colonna boolean del vocabolario degli stati di una testata MARCA (al massimo uno: indice unico parziale e CHECK «attivo» su ogni colonna; la mappa e'' script.fn_doc_stato_modello). NULL se il vocabolario non ha la colonna (il documento non ha quello stato) o se non marca nessuno stato; testata fuori mappa o colonna non boolean: E_SCRIPT_CHIAMATA_NON_VALIDA, che nomina p_lettore (la porta che chiama) o, senza, questa funzione. ⛔ Non si chiama dai consumatori: e'' la logica comune dei lettori con il nome, che restano la porta (script.fn_stato_emissione_id, script.fn_stato_abortito_id, script.fn_stato_cessazione_id, script.fn_stato_accettazione_id). Brief: brief-modello-documento-vendita §17 (regola del 2, Tid 2026-10-31).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_stato_per_colonna_id(regclass, name, text);

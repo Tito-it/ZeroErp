@@ -114,6 +114,17 @@ export const PASSAGGI_VERSIONE_LISTINO = Object.freeze({
   ATTIVA: 'attiva',
 })
 
+// I codici del registro delle azioni di riga (`useAzioneRiga`) per i verbi
+// della versione di listino: il registro dice QUALI colonne della riga portano
+// il motivo del verbo spento. ⚠️ Non sono le `action_key` di
+// `PASSAGGI_VERSIONE_LISTINO` qui sopra (quelle dicono se il passaggio e'
+// permesso): due vocabolari, due costanti.
+export const AZIONE_RIGA_VERSIONE_LISTINO = Object.freeze({
+  ATTIVA: 'ATTIVA_VERSIONE_LISTINO',
+  ELIMINA: 'ELIMINA_VERSIONE_LISTINO',
+  CHIUDI: 'CHIUDI_VERSIONE_LISTINO',
+})
+
 // Codici azione di processo (`config.azioni_processo.permission_codename`).
 // Usati con `auth.isActionAllowed(...)` per gating UI lato FE.
 export const PRICING_ACTIONS = Object.freeze({
@@ -229,10 +240,13 @@ export const META_KEY_RIGA_PREVENTIVO_ID = 'riga_preventivo_id'
 // `DA_LISTINO` non e' un valore della colonna ma una pseudo-origine
 // derivata in `fn_contratto_righe_preview` per righe del listino senza
 // eccezioni — usata lato FE come marker.
+// `ADESIONE` (G-0-ter, 2026-10-29): l'articolo del listino al prezzo del
+// listino, senza prezzo sulla riga; e' anche l'origine della sua riga di lista.
 export const TIPO_ECCEZIONE = Object.freeze({
   OVERRIDE: 'OVERRIDE',
   ESCLUSIONE: 'ESCLUSIONE',
   AGGIUNTA: 'AGGIUNTA',
+  ADESIONE: 'ADESIONE',
   DA_LISTINO: 'DA_LISTINO',
 })
 
@@ -248,6 +262,10 @@ export const AZIONE_RIGA_CONTRATTO = Object.freeze({
   RIPRISTINA_LISTINO: 'RIPRISTINA_LISTINO',
   RIPRISTINA_ARTICOLO: 'RIPRISTINA_ARTICOLO',
   RIMUOVI: 'RIMUOVI',
+  // L'ADESIONE (`20261029-39`): sulla riga del listino «aderisci», sulla riga
+  // aderita «rimuovi adesione» (torna una riga del listino, non addebitata).
+  ADERISCI: 'ADERISCI',
+  RIMUOVI_ADESIONE: 'RIMUOVI_ADESIONE',
 })
 
 // Tipi erogazione su `vendite.contratti_righe.tipo_erogazione` (vocabolario
@@ -267,11 +285,23 @@ export const TIPO_EROGAZIONE = Object.freeze({
 // righe), dal 2026-10-07 (brief-db-offerta-emissione-ed-erogazione B-R4).
 // ⛔ DERIVATA_COMPONENTI non c'e' piu' (I-D1, 2026-10-21): il vocabolario del DB
 // (`config.erogazioni_fonti`) ha le quattro fonti qui sotto.
+// `DURATA` (G-9, `20261029-32`): la quantita' la conta il sistema dai giorni o
+// dai mesi del periodo; `CANONE/MANUALE` e' ritirata, MANUALE resta per ORARIO
+// e CONSUMO.
 export const FONTE_QUANTITA_ATTESA = Object.freeze({
   FISSA: 'FISSA',
   MANUALE: 'MANUALE',
   TIMESHEET: 'TIMESHEET',
   LETTURE: 'LETTURE',
+  DURATA: 'DURATA',
+})
+
+// Come si addebitano i canoni (`generazione_canone`, CHECK del DB sulle due
+// testate e sulle righe; F-7, 2026-10-29): anticipati, all'inizio del periodo,
+// o normali, a periodo finito. Sulla riga vuota = «come la testata».
+export const GENERAZIONE_CANONE = Object.freeze({
+  INIZIO_PERIODO: 'INIZIO_PERIODO',
+  FINE_PERIODO: 'FINE_PERIODO',
 })
 
 // I due modi del dialog della data documento (`NumerazioneDataDialog`).

@@ -330,7 +330,7 @@ nessun blocco.
 | Caso | Cosa si usa |
 | --- | --- |
 | **Dettaglio espanso di un risultato** della ricerca universale | `SearchDetailTable` (`core/components/details/`), **non** il BB |
-| **Matrice slot/override** (la popolazione la decide il catalogo, l'operatore imposta l'override sulla riga) | `MatriceOverride`, **non** il BB |
+| **Matrice limitata dal catalogo** (la popolazione la decide il catalogo, il valore si imposta sulla riga) | `MatriceCatalogo`, e `MatriceOverride` sopra quando c'è un ereditato da sovrascrivere — **non** il BB della lista |
 | Tabella di **anteprima** dentro un dialog, non paginata e non configurabile | `DataTable` grezza, con il motivo scritto in un commento sopra l'import |
 
 ⛔ **Le righe di un documento NON sono un'eccezione, dal 2026-09-28** (decisione
@@ -355,10 +355,15 @@ riscritto il giorno in cui il secondo caso è emerso.
 ⭐ **La matrice slot/override ha il suo building block: `MatriceOverride`**
 (regola del 2, estrazione approvata da Tid il 2026-09-05; primo consumatore
 `OperatorePermessiTab`). Non pagina per scelta di modello: la popolazione è
-limitata dal catalogo e la schermata esiste per farla vedere tutta. 🔴 Il
-pattern è nato sul tab Utilities degli emittenti
-(`EmittenteFiscaleUtilitiesTab`), che però monta ancora una `DataTable` grezza:
-debito dichiarato, non eccezione.
+limitata dal catalogo e la schermata esiste per farla vedere tutta.
+⭐ **Dal 2026-10-31 ha una base, `MatriceCatalogo`** (decisione di Tid, B1-bis
+del brief-db-liste-datatable-grezze-secondo-giro): tutte le voci, ricerca, sola
+lettura. `MatriceOverride` ci aggiunge lo strato ereditato/stato/ripristino.
+⛔ **Non ogni matrice è un override**, ed è l'errore da non rifare: il profilo
+di un reparto è completo e non eredita da niente (`RepartoProfiloEditor`), una
+utility non configurata non ha un valore ereditato (`EmittenteFiscaleUtilitiesTab`,
+dove il pattern era nato). Entrambe montano la base: lo strato vi avrebbe
+disegnato «Override» su ogni riga e un ripristino senza significato.
 
 ⛔ **Non sono eccezioni**: «è una lista piccola», «è solo per l'admin», «tanto
 non la guarda nessuno», «faccio prima». Una lista che nessuno guarda non è una
@@ -4072,7 +4077,7 @@ provide(READONLY_KEY, isReadonly)
 **Template sub-drawer (figlio puro consumer)** — *zero* logica locale:
 
 ```js
-// ContrattoRigheDrawer.vue / PreventivoNoteDrawer.vue / ContrattoNoteDrawer.vue
+// ContrattoRigheDrawer.vue / VenditeNoteDrawer.vue (note di ogni documento di vendita)
 import { useInjectReadonly } from '@/core/composables/useReadonlyMode'
 
 const isReadonly = useInjectReadonly()  // ← solo lettura. STOP.
@@ -4134,8 +4139,8 @@ Riferimento: `DdtResoDialog`, `OrdineEvasioneDialog`, `PreventiviSmistamentoDial
 
 | Drawer parent (provider) | Sub-drawer figli (consumer) | Cosa propaga |
 | --- | --- | --- |
-| `ContrattoDrawer` | `ContrattoRigheDrawer`, `ContrattoNoteDrawer` | parentReadonly + `stato_codice !== 'DRAFT'` |
-| `PreventiviDrawer` | `PreventivoNoteDrawer`, `PreventiviRigheTable` | parentReadonly + `stato_codice_interno !== 'DRAFT'` + `is_attiva=false` |
+| `ContrattoDrawer` | `ContrattoRigheDrawer`, `VenditeNoteDrawer` (`dominio="contratti"`) | parentReadonly + `stato_codice !== 'DRAFT'` |
+| `PreventiviDrawer` | `VenditeNoteDrawer` (`dominio="preventivi"`), `PreventiviRigheTable` | parentReadonly + `stato_codice_interno !== 'DRAFT'` + `is_attiva=false` |
 | `SoggettoDrawer` | `IndirizziSoggettoDrawer`, `ContattiSoggettoDrawer` | solo parentReadonly (no workflow state) |
 
 ### Tasti di uscita

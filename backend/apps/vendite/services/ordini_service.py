@@ -31,6 +31,7 @@ from apps.core.db._helpers import richiedi_codice_a_vocabolario
 from apps.core.api.constants import MAX_LIMIT
 from apps.core.services.documento_modello import (
     e_stato_di_annullo,
+    e_stato_iniziale,
     rifiuta_stato_di_emissione,
     stato_di_emissione,
 )
@@ -115,7 +116,6 @@ _CHECK_CONSTRAINTS: dict[str, tuple[str, str]] = {
 
 # ── Costanti di dominio ──
 _FN = "vendite.ordini_service"
-_STATI_MODIFICABILI: frozenset[str] = frozenset({"DRAFT"})
 # Stati che ammettono il push a commessa (fix orfano 2026-07-10, brief DB §16:
 # decoupling fatturazione/spedizione). Per trigger CONFERMATO l'eleggibilita'
 # sopravvive all'evasione in DDT (PARZIALMENTE_EVASO/EVASO): la FONTE UNICA e'
@@ -586,7 +586,7 @@ def crea_ordine_da_offerta(offerta_id: int) -> dict[str, Any]:
 #  - ordine esistente, stato BOZZA (DRAFT), zero righe.
 def elimina_ordine(ordine_id: int) -> dict[str, Any]:
     repo = OrdiniRepository()
-    _assert_stato(repo, ordine_id, _STATI_MODIFICABILI, op="elimina_ordine")
+    _assert_stato_iniziale(repo, ordine_id, op="elimina_ordine")
     righe_count = repo.count_righe(ordine_id)
     ErrorManager.require(
         righe_count == 0,
@@ -1146,8 +1146,12 @@ def _get_riga_or_raise(
     )
 
 
-def _assert_stato(
-    repo: OrdiniRepository, ordine_id: int, ammessi: frozenset[str], *, op: str,
+# Scopo: Guard di stato leggero (solo codice_interno): E_ORD_NOT_FOUND se
+#        l'ordine non esiste, E_ORD_STATO_TRANSIZIONE se lo stato non e' quello
+#        in cui il documento nasce (lo stato iniziale del vocabolario, mai
+#        `'DRAFT'` scritto qui).
+def _assert_stato_iniziale(
+    repo: OrdiniRepository, ordine_id: int, *, op: str,
 ) -> str:
     # Stesso BB del guard di testata, col getter leggero (solo codice_interno).
     stato = testata_o_not_found(
@@ -1156,10 +1160,10 @@ def _assert_stato(
         id_name="ordine_id", function_name=f"{_FN}.{op}",
     )
     ErrorManager.require(
-        stato in ammessi,
+        e_stato_iniziale(TESTATA_ORDINI, stato),
         code="E_ORD_STATO_TRANSIZIONE",
         message=f"Operazione non ammessa nello stato {stato}.",
-        detail=f"ammessi={sorted(ammessi)}",
+        detail=f"stato={stato}, ammesso: lo stato iniziale del vocabolario",
         function_name=f"{_FN}.{op}",
     )
     return stato

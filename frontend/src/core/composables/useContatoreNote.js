@@ -34,7 +34,7 @@
 //       command: () => { noteDrawerVisible.value = true },
 //     }),
 //   ])
-//   <DdtNoteDrawer … @saved="contatoreNote.aggiorna" />
+//   <VenditeNoteDrawer dominio="ddt" … @saved="contatoreNote.aggiorna" />
 // ------------------------------------------------------------
 
 import { computed, ref, toValue, watch } from 'vue'

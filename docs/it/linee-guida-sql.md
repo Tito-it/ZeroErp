@@ -1,6 +1,6 @@
 **Best Practice e Convenzioni**
 
-> **Ultimo aggiornamento**: 28 ottobre 2026
+> **Ultimo aggiornamento**: 31 ottobre 2026
 >
 > 👀 **Vedi anche:**   
 > Per come applicare queste best practice nelle migrazioni, consulta il documento  
@@ -760,6 +760,7 @@ La logica di chiusura per scadenza e' centralizzata in un framework parametrico.
 schema_tabella,nome_tabella,col_stato,tipo_stato,stato_attivo_codice,stato_chiuso_codice,fk_lookup_schema,fk_lookup_table,verbo_chiusura
 vendite,listini_versioni,stato_doc_listino_versione_id,FK,ATTIVA,CHIUSA,config,stati_doc_listino_versioni,vendite.fn_chiudi_versioni_listino_scadute
 vendite,contratti,stato_doc_contratto_id,FK,ATTIVO,CESSATO,config,stati_doc_contratti,vendite.fn_cessa_contratti_scaduti
+vendite,preventivi,stato_doc_preventivo_id,FK,EMESSO,SCADUTO,config,stati_doc_preventivi,vendite.fn_chiudi_preventivi_scaduti
 ```
 
 #### Componenti tabella-specifici (NON generalizzati nel framework)
@@ -776,6 +777,8 @@ La generalizzazione del guard transizione e' rinviata: serviranno almeno tre cas
 
 * `vendite.listini_versioni` (FK, ciclo `BOZZA -> ATTIVA -> CHIUSA`)
 * `vendite.contratti` (FK, ciclo `DRAFT -> ATTIVO -> CESSATO`)
+* `vendite.preventivi` (FK, `EMESSO -> SCADUTO` con `col_valido_al = validita_al`, dal 2026-10-31,
+  brief-db-scadenza-preventivi): la colonna della data si chiama come la testata la chiama
 
 ⭐ **Una testata sotto la porta del modello del documento** (il contratto e la versione di listino) non si
 chiude con l'`UPDATE` dinamico, che la porta rifiuterebbe: il framework chiama il **verbo di chiusura**

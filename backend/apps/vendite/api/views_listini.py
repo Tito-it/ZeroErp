@@ -24,7 +24,6 @@ from apps.core.api.payload_validators import corpo_oggetto, paginated_envelope, 
 from apps.core.api.success_responses import success_response
 from apps.vendite.db.listini_repository import TESTATA_LISTINI_VERSIONI
 from apps.vendite.services.listini_service import (
-    fn_alert_scadenze,
     fn_applica_variazione_percentuale,
     fn_change_versione_state,
     fn_rettifica_controllata_riga,
@@ -43,7 +42,9 @@ from apps.vendite.services.listini_service import (
     fn_list_tipologie_per_utility,
     fn_list_versioni,
     fn_preview_bundle,
+    fn_programma_chiusura_versione,
     fn_save_bundle,
+    fn_save_kit_periodicita,
     fn_update_listino,
     fn_update_riga,
     fn_update_versione,
@@ -138,6 +139,13 @@ _VERSIONE_CLONA_REQUEST = inline_serializer(
         "valido_al": serializers.DateField(required=False, allow_null=True),
     },
 )
+_VERSIONE_CHIUSURA_REQUEST = inline_serializer(
+    name="VenditeListinoVersioneChiusuraRequest",
+    fields={
+        # Obbligatorio anche quando e' null: null toglie la chiusura.
+        "valido_al": serializers.DateField(required=True, allow_null=True),
+    },
+)
 _RIGA_CREATE_REQUEST = inline_serializer(
     name="VenditeListinoRigaCreateRequest",
     fields=_riga_write_fields(include_identity=True),
@@ -190,6 +198,11 @@ class ApiListiniList(DomainAPIView):
             OpenApiParameter(name="utility_id", type=int, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="tipologia_id", type=int, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="attivo", type=bool, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(
+                name="in_scadenza", type=bool, location=OpenApiParameter.QUERY, required=False,
+                description="true = solo i listini con la versione in vigore in scadenza senza successore "
+                "(vendite.fn_listini_in_scadenza_senza_successore); false = gli altri",
+            ),
             OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="offset", type=int, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False),
@@ -214,6 +227,8 @@ class ApiListiniList(DomainAPIView):
             utility_id=qp_int_optional(qp.get("utility_id"), "utility_id"),
             tipologia_id=qp_int_optional(qp.get("tipologia_id"), "tipologia_id"),
             attivo=qp_bool_optional(request.query_params.get("attivo"), "attivo"),
+            # La regola «in scadenza senza successore» del DB: il link del badge.
+            in_scadenza=qp_bool_optional(qp.get("in_scadenza"), "in_scadenza"),
             search=p["search"],
             order_by=p["order_by"],
             order_dir=p["order_dir"],
@@ -283,8 +298,17 @@ class ApiListinoDetail(DomainAPIView):
 class ApiListinoVersioniList(DomainAPIView):
     area_funzionale = "vendite"
     model_permission = ("vendite", "listino")
+    is_search_endpoint = True
+    lista_codice = "vendite.listini_versioni"
 
     @extend_schema(
+        parameters=[
+            param_ricerca_full(),
+            OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="offset", type=int, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False),
+        ],
         responses={
             200: inline_serializer(
                 name="VenditeListinoVersioniListResponse",
@@ -292,10 +316,20 @@ class ApiListinoVersioniList(DomainAPIView):
             )
         },
     )
-    # Scopo: Restituisce via GET la lista versioni del listino.
+    # Scopo: Restituisce via GET la pagina delle versioni del listino (lista
+    #        `vendite.listini_versioni`), con `giorni_alla_scadenza` dalla regola
+    #        del DB. Fino al 2026-10-31 era la collezione intera.
     def get(self, request: Request, listino_id: int) -> JsonResponse:
-        del request
-        return success_response(fn_list_versioni(listino_id))
+        p = parse_list_params(request.query_params, default_order="valido_dal")
+        results, total = fn_list_versioni(
+            listino_id,
+            search=p["search"],
+            order_by=p["order_by"],
+            order_dir=p["order_dir"],
+            limit=p["limit"],
+            offset=p["offset"],
+        )
+        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
 
     @extend_schema(
         request=_VERSIONE_CREATE_REQUEST,
@@ -384,6 +418,35 @@ class ApiListinoVersioneStato(DomainAPIView):
         )
 
 
+class ApiListinoVersioneChiusura(DomainAPIView):
+    area_funzionale = "vendite"
+    model_permission = ("vendite", "listino")
+    # Nessun `post_passaggio`: «Chiudi» non e' un passaggio di stato (la
+    # versione resta ATTIVA, CHIUSA la scrive il job). Il permesso e' quello
+    # d'area, come per il PATCH che sostituisce.
+    # ⚠️ `post_accesso = "change"` lo rende vero per costruzione: senza, la
+    #    POST chiederebbe `add` (METHOD_REQUIRES), e «Chiudi» modifica una
+    #    versione che c'e', non ne crea una.
+    post_accesso = "change"
+
+    @extend_schema(
+        request=_VERSIONE_CHIUSURA_REQUEST,
+        responses={
+            200: inline_serializer(
+                name="VenditeListinoVersioneChiusuraResponse",
+                fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
+            )
+        },
+    )
+    # Scopo: «Chiudi» / «Rimuovi chiusura» della versione ATTIVA dal verbo del
+    #        DB: fissa la fine della validita', o la toglie con `valido_al` null.
+    def post(self, request: Request, listino_id: int, ver_id: int) -> JsonResponse:
+        return handle_post_json(
+            request,
+            handler=lambda payload: fn_programma_chiusura_versione(listino_id, ver_id, payload),
+        )
+
+
 class ApiListinoVersioneClona(DomainAPIView):
     area_funzionale = "vendite"
     model_permission = ("vendite", "listino")
@@ -397,8 +460,9 @@ class ApiListinoVersioneClona(DomainAPIView):
             )
         },
     )
-    # Scopo: Clona una versione esistente in una nuova versione BOZZA dello
-    #        stesso listino, copiando le righe attive. Workflow "cambio prezzi".
+    # Scopo: Clona una versione esistente (da qualunque stato) in una nuova
+    #        versione BOZZA dello stesso listino, dal verbo del DB. Workflow
+    #        "cambio prezzi".
     def post(self, request: Request, listino_id: int, src_ver_id: int) -> JsonResponse:
         return handle_post_json(
             request,
@@ -510,30 +574,6 @@ class ApiListinoVersioneRigaRettificaControllata(DomainAPIView):
         )
 
 
-class ApiListiniAlertScadenze(DomainAPIView):
-    area_funzionale = "vendite"
-    model_permission = ("vendite", "listino")
-
-    @extend_schema(
-        parameters=[
-            OpenApiParameter(name="giorni", type=int, required=False, description="Giorni di anticipo (default 15)"),
-        ],
-        responses={
-            200: inline_serializer(
-                name="VenditeListiniAlertScadenzeResponse",
-                fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
-            )
-        },
-    )
-    # Scopo: Restituisce versioni ATTIVE in scadenza senza successore.
-    def get(self, request: Request) -> JsonResponse:
-        # ⚠️ Il VALORE del parametro, non la request: fino al 2026-10-09 qui si
-        #    passava `request`, e l'endpoint rispondeva 400 `giorni_invalid` a ogni
-        #    chiamata (il badge di AlertScadenzeWidget non si accendeva mai).
-        giorni = qp_int_strict(request.query_params.get("giorni"), "giorni", default=15)
-        return success_response(fn_alert_scadenze(giorni))
-
-
 class ApiListinoVersioneApplicaVariazione(DomainAPIView):
     area_funzionale = "vendite"
     model_permission = ("vendite", "listino")
@@ -608,13 +648,15 @@ class ApiListiniTipologiePerUtility(DomainAPIView):
 
 
 class ApiListinoVersioneBundleDetail(DomainAPIView):
-    """GET / POST `/api/v1/vendite/listini/<lid>/versioni/<vid>/bundle/<padre_id>/`
+    """GET / POST / PUT / DELETE `/api/v1/vendite/listini/<lid>/versioni/<vid>/bundle/<padre_id>/`
 
     GET: preview BoM del padre composito + prezzi bundle gia' definiti
          per quella versione (per popolare il Dialog di editing).
     POST: upsert batch dei prezzi bundle (strategia tabula rasa
          idempotente: soft-disattiva le righe correnti + inserisce le
          nuove). Solo versione BOZZA editabile.
+    PUT: la periodicita' del kit sulla versione (`vendite.listini_kit`).
+    DELETE: i prezzi bundle e il kit.
     """
 
     area_funzionale = "vendite"
@@ -671,6 +713,40 @@ class ApiListinoVersioneBundleDetail(DomainAPIView):
             return fn_save_bundle(listino_id, ver_id, padre_id, payload.get("rows"))
 
         return handle_post_json(request, handler=_handler)
+
+    @extend_schema(
+        request=inline_serializer(
+            name="VenditeListinoVersioneKitPeriodicitaRequest",
+            fields={
+                "periodicita": serializers.CharField(
+                    allow_null=True,
+                    help_text=(
+                        "Codice di `config.periodicita`; null la toglie. Solo in "
+                        "bozza, solo su un composito."
+                    ),
+                ),
+            },
+        ),
+        responses={200: inline_serializer(
+            name="VenditeListinoVersioneKitPeriodicitaResponse",
+            fields={"data": inline_serializer(
+                name="VenditeListinoVersioneKitPeriodicitaData",
+                fields={
+                    "articolo_padre_id": serializers.UUIDField(),
+                    "periodicita": serializers.CharField(allow_null=True),
+                },
+            )},
+        )},
+    )
+    # Scopo: La periodicita' del kit sulla versione (`vendite.listini_kit`,
+    #        D-2-bis (B) di brief-db-contratto-righe-periodiche-in-commessa):
+    #        il kit non ha una riga di listino, il suo ritmo sta qui.
+    def put(
+        self, request: Request, listino_id: int, ver_id: int, padre_id: str,
+    ) -> JsonResponse:
+        return success_response(
+            fn_save_kit_periodicita(listino_id, ver_id, padre_id, corpo_oggetto(request))
+        )
 
     @extend_schema(
         responses={200: inline_serializer(

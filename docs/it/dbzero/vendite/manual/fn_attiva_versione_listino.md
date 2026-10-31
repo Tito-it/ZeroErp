@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_attiva_versione_listino(p_versione_id)`
 
+> **Ultimo aggiornamento**: 29 ottobre 2026
+
 > 👀 **Vedi anche**
 >
 > [vendite.listini_versioni](/dbzero/vendite/tabelle/listini_versioni) ·
@@ -26,7 +28,9 @@ in uso e chiude le versioni precedenti che si sovrappongono, in una transazione.
 4. Le versioni attive precedenti che si sovrappongono prendono la fine al giorno prima della
    decorrenza nuova, dal lettore
    [vendite.fn_versioni_listino_da_chiudere](/dbzero/vendite/funzioni/fn_versioni_listino_da_chiudere)
-   (lo stesso dell'anteprima: quello che si mostra è quello che si fa).
+   (lo stesso dell'anteprima: quello che si mostra è quello che si fa). Una alla volta, con la
+   «porta» aperta per ciascuna: la fine di una versione attiva cambia solo dai verbi
+   (dal 29-10-2026, il [guard per stato](/dbzero/vendite/funzioni/trgfn_listini_versioni_guard_per_stato)).
 5. Lo stato ATTIVA dalla scrittura comune (`script.fn_doc_scrivi_stato`), attraverso la porta.
 
 Ritorna la versione, lo stato di prima e quello nuovo (codici) e quante versioni ha chiuso.

@@ -1,6 +1,6 @@
 # Guida — Gestione Preventivi vendita
 
-> **Ultimo aggiornamento**: 25 ottobre 2026
+> **Ultimo aggiornamento**: 31 ottobre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend/frontend, DBA.
 >
@@ -14,7 +14,9 @@
 >
 > **Vedi anche** — funzioni DB:
 >
-> * [vendite.fn_crea_revisione_preventivo](/dbzero/vendite/funzioni/fn_crea_revisione_preventivo) — crea nuova revisione da EMESSO
+> * [vendite.fn_crea_revisione_preventivo](/dbzero/vendite/funzioni/fn_crea_revisione_preventivo) — crea nuova revisione da EMESSO o SCADUTO
+> * [vendite.fn_chiudi_preventivi_scaduti](/dbzero/vendite/funzioni/fn_chiudi_preventivi_scaduti) — il job delle scadenze: EMESSO → SCADUTO a validità finita
+> * [script.fn_check_preventivo_accettabile](/dbzero/script/funzioni/fn_check_preventivo_accettabile) — i motivi che impediscono l'accettazione (validità finita, prezzi non autorizzati)
 > * [vendite.fn_push_preventivo_a_ordine](/dbzero/vendite/manual/fn_push_preventivo_a_ordine) — smistamento delle righe merce verso un ordine; porta avanti la data di consegna richiesta
 > * [vendite.fn_preventivo_riga_componenti_init](/dbzero/vendite/funzioni/fn_preventivo_riga_componenti_init) — popola componenti BoM su riga padre composito
 > * [vendite.fn_preventivo_riga_componenti_preview](/dbzero/vendite/funzioni/fn_preventivo_riga_componenti_preview) — read-only, suggerimento prezzi pre-save
@@ -252,7 +254,7 @@ ammesse da `config.transizioni_stati_preventivi`:
 | `ACCETTATO` | Cliente ha accettato — pronto per lo smistamento downstream | No                                |
 | `EVASO`     | Tutte le righe smistate a ordine/commessa senza residuo     | No (terminale operativo positivo) |
 | `RIFIUTATO` | Cliente ha rifiutato — chiusura negativa del numero         | No (terminale)                    |
-| `SCADUTO`   | Validità offerta scaduta automaticamente (job notturno)     | No (terminale)                    |
+| `SCADUTO`   | Validità finita senza risposta del cliente (job delle scadenze) | No (terminale; si ripropone con una revisione) |
 | `ANNULLATO` | Annullamento manuale                                        | No (terminale, **abortito**)      |
 
 Le transizioni manuali permesse:
@@ -272,9 +274,23 @@ ACCETTATO  → ANNULLATO  (annulla)
 > chiede una conferma (§3.2).
 
 `EMESSO → SCADUTO` è un passaggio **di processo**: non lo chiede l'operatore, e il
-verbo lo rifiuta se chiesto a mano. ⚠️ Oggi nessuno lo scrive: il job notturno che
-dovrebbe farlo al superamento di `validita_al` non esiste ancora (verificato il 25
-ottobre 2026).
+verbo lo rifiuta se chiesto a mano. Lo scrive il job delle scadenze, ogni notte:
+[`vendite.fn_chiudi_preventivi_scaduti`](/dbzero/vendite/funzioni/fn_chiudi_preventivi_scaduti),
+dichiarato nel registro delle chiusure per scadenza come il contratto e la versione di
+listino. «Valido al» è l'**ultimo giorno valido**: un preventivo scade dal giorno dopo, e
+senza «Valido al» non scade mai.
+
+**Oltre la validità non si accetta.** Fra la fine della validità e il passaggio del job il
+preventivo è ancora `EMESSO`, ma «Accetta» è spento con il motivo e il database rifiuta
+l'accettazione (`E_PREV_VALIDITA_SCADUTA`). La regola non dipende dall'ora del job. Per
+riproporre un preventivo scaduto si crea una **revisione** (§4), dove si scrive una nuova
+validità.
+
+**Né si emette con la validità già finita.** «Emetti» è spento con il motivo e il database
+rifiuta l'emissione (`E_PREV_EMISSIONE_VALIDITA_SCADUTA`) se «Valido al» è prima di oggi:
+un'offerta che arriva al cliente già scaduta non si potrebbe accettare. In bozza si
+corregge la data, e la revisione di uno scaduto (che copia la data vecchia) va corretta
+così prima di emetterla.
 `ACCETTATO ↔ EVASO` è automatica, nei due versi, e la fa il database: il preventivo
 è `EVASO` quando non resta residuo su **nessun** ramo, e torna `ACCETTATO` appena uno
 dei due ne ha di nuovo (vedi §8); non c'è un pulsante.
@@ -367,7 +383,10 @@ PRV-0001 rev=1  DRAFT      ← revisione in corso (post-creazione)
 
 Caratteristiche:
 
-- una revisione si crea **solo da uno stato EMESSO**
+- una revisione si crea **da EMESSO** e, dal 2026-10-31, **da SCADUTO**: è la strada per
+  riproporre un preventivo la cui validità è finita. Gli stati sono quelli che il
+  vocabolario dichiara di emissione e di scadenza. Da ACCETTATO, RIFIUTATO, EVASO o
+  ANNULLATO no: lì si crea un preventivo nuovo
 - non possono coesistere due revisioni DRAFT per lo stesso numero
 - ⚠️ dal 2026-09-24 una revisione **non si crea se un prezzo è in attesa di
   approvazione**: prima serve l'esito del responsabile. La revisione ricopia le
@@ -377,7 +396,9 @@ Caratteristiche:
   rifiutato si corregge sulla revisione). «Crea revisione» resta a video,
   spento con il motivo
 - la nuova revisione nasce **DRAFT** e diventa la "rev attiva" del numero
-- la rev precedente resta in DB come storico (stato EMESSO conservato)
+- la rev precedente resta in DB come storico (stato EMESSO o SCADUTO conservato)
+- la nuova revisione copia «Valido al» della precedente: se la revisione nasce da uno
+  scaduto la data è già passata, e la si riscrive in bozza prima di emettere
 
 ### 4.2 Cosa viene copiato nella nuova rev
 
@@ -445,8 +466,8 @@ ragione precisa.
 
 | Aspetto                                                         | **Preventivi**                                                                                        | **Offerte**                                                                                            |
 | --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| Cosa succede alla versione precedente quando nasce la revisione | **resta EMESSA/viva**; il sistema calcola "qual è la versione valida" senza chiudere la precedente    | passa **subito a SUPERATA** (stato chiuso e definitivo, imposto in automatico)                         |
-| Se abbandono/annullo la revisione appena iniziata               | la precedente **torna automaticamente la versione valida**: si può accettarla o revisionarla di nuovo | la precedente **resta chiusa** (SUPERATA): non torna indietro. Per riprovare si fa una nuova revisione |
+| Cosa succede alla versione precedente quando nasce la revisione | **resta EMESSA/viva**; il sistema calcola "qual è la versione valida" senza chiudere la precedente    | passa **subito a SUPERATA** (stato chiuso, imposto in automatico)                                   |
+| Se abbandono/annullo la revisione appena iniziata               | la precedente **torna automaticamente la versione valida**: si può accettarla o revisionarla di nuovo | se non resta un'altra revisione viva, la precedente **torna EMESSA**; l'annullo lo dice prima e si conferma ([guida offerte §4.4](gestione-offerte-commerciali.md#44-annullare-una-revisione)) |
 | Come nasce il concetto di "versione valida"                     | da un **calcolo** (`is_attiva`), non da uno stato dedicato                                            | dallo **stato** (SUPERATA/ANNULLATA = non valida)                                                      |
 
 Il preventivo **è lo stesso documento** (stesso numero, più revisioni) e il flusso
@@ -457,8 +478,8 @@ casi limite in §4.3). **Non** esiste uno stato "SUPERATO" sui preventivi propri
 perché chiuderebbe la precedente e romperebbe questo ritorno.
 
 L'offerta invece è un **documento a sé** per ogni revisione (OFC-… diversi in
-catena): chiudere la precedente non crea problemi, perché se serve si emette una
-nuova offerta. Dettaglio nella
+catena): la precedente si chiude come superata, e torna emessa solo se la
+revisione che l'ha superata si annulla. Dettaglio nella
 [guida offerte §4.3](gestione-offerte-commerciali.md).
 
 Sui cruscotti entrambi i modelli sono corretti: i preventivi escludono le
@@ -621,7 +642,7 @@ La singola riga **PENDING** resta non modificabile finché la pratica è aperta
    │ Cliente vede      │    │  in documenti       │
    └────┬────┬──────┬──┘    └─────────────────────┘
         │    │      │
-        │    │      └──────────── (job notturno) ──▶ ┌─────────┐
+        │    │      └────── (job delle scadenze) ──▶ ┌─────────┐
         │    │                                       │ SCADUTO │
         │    │ rifiuta                               └─────────┘
         │    └──▶ ┌─────┐

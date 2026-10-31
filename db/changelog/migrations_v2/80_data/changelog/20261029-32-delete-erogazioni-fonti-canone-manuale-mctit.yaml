@@ -1,0 +1,64 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# RITIRO DI CANONE/MANUALE — il vocabolario config.erogazioni_fonti
+#   Brief: brief-db-contratto-righe-periodiche-in-commessa §6.9 (Lotto 2),
+#   decisione G-9 di Tid (2026-10-28)
+#
+#   G-9: nessuno ricorda che cosa caricare a mano ogni periodo. Per il canone
+#   restano FISSA e la durata del periodo (CANONE/DURATA, nuova nel CSV). La
+#   combinazione (id 2) esce dal CSV (80_data/sql/config/erogazioni_fonti.csv)
+#   e da qui dal database: il mirror loadUpdateData (20261007-53) aggiorna e
+#   inserisce, non cancella. Da zero il CSV non la crea e il DELETE non trova
+#   niente. Forma di 20261021-51.
+#
+#   Nessuna tipologia e nessuna natura la ammetteva (CSV), e su dbdev nessuna
+#   riga di documento la usa (2026-10-29, fatto datato). preCondition HALT sulle
+#   righe: se ce ne fosse una, il DELETE morirebbe sulla FK composta con un
+#   messaggio che non nomina il motivo.
+#
+# Ritorno indietro: la riga, col suo id.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261029-32-delete-erogazioni-fonti-canone-manuale-mctit.yaml
+
+  - changeSet:
+      id: 20261029-32-delete-erogazioni-fonti-canone-manuale
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config.erogazioni_fonti: via CANONE/MANUALE (G-9). Brief:
+        brief-db-contratto-righe-periodiche-in-commessa §6.9 (Lotto 2).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT (SELECT count(*) FROM vendite.contratti_righe
+                       WHERE tipo_erogazione = 'CANONE' AND fonte_quantita_attesa = 'MANUALE')
+                   + (SELECT count(*) FROM vendite.offerte_commerciali_eccezioni
+                       WHERE tipo_erogazione = 'CANONE' AND fonte_quantita_attesa = 'MANUALE');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DELETE FROM config.erogazioni_fonti
+               WHERE tipo_erogazione = 'CANONE' AND fonte_quantita_attesa = 'MANUALE';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              INSERT INTO config.erogazioni_fonti (id, tipo_erogazione, fonte_quantita_attesa, e_default)
+              VALUES (2, 'CANONE', 'MANUALE', false)
+              ON CONFLICT (id) DO NOTHING;

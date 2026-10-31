@@ -1,0 +1,7 @@
+id,codice,descrizione,mesi,ordine
+1,MENSILE,Mensile,1,10
+2,BIMESTRALE,Bimestrale,2,20
+3,TRIMESTRALE,Trimestrale,3,30
+4,QUADRIMESTRALE,Quadrimestrale,4,40
+5,SEMESTRALE,Semestrale,6,50
+6,ANNUALE,Annuale,12,60

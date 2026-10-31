@@ -49,12 +49,14 @@ SELECT plan(9);
 -- (che potrebbe non essere allineata con i dati seed).
 -- 2026-10-25 (brief-db-parametri-senza-override): config.parameters.ammette_override
 -- e' NOT NULL senza DEFAULT, un parametro dichiara la sua famiglia.
-INSERT INTO config.parameters (id, code, default_value, description, ammette_override)
+-- 2026-10-31 (brief-db-liste-datatable-grezze-secondo-giro, D-5): idem tipo_valore.
+INSERT INTO config.parameters (id, code, default_value, description, ammette_override, tipo_valore)
 SELECT MAX(id) + 1000,
        'TEST_FN_CASCATA_CAT_CLI_20260515',
        'LIVELLO_DEFAULT',
        'Parametro temporaneo per test cascata categoria_cliente',
-       true
+       true,
+       'TESTO'
   FROM config.parameters;
 
 -- Raccoglie id delle entita' necessarie dalla fixture esistente.

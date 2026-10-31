@@ -61,9 +61,10 @@ Le API richiedono JWT (`Authorization: Bearer <token>`) e usano l'envelope stand
 | `utility_id` | int | No | Filtro per utility (FK `config.utilities`) |
 | `tipologia_id` | int | No | Filtro per tipologia listino (FK `config.listini_tipologie`) |
 | `attivo` | bool | No | Filtro attivo/disattivo; parsing rigoroso |
+| `in_scadenza` | bool | No | `true` = solo i listini con la versione in vigore **in scadenza senza successore**, `false` = gli altri; parsing rigoroso. La regola è del DB (§7). È il filtro del badge delle scadenze |
 | `limit` | int | No | Righe per pagina, default `25`, max `200`; fuori da 1..200 → 400 `E_VALIDATION_INPUT` |
 | `offset` | int | No | Scostamento, default `0` (negativo → 400); la `page` della risposta si ricava da qui |
-| `order_by` | string | No | `codice` (default), `descrizione`, `utility_descrizione`, `tipologia_descrizione`, `attivo`, `data_insert`, `data_update` |
+| `order_by` | string | No | `codice` (default), `descrizione`, `utility_descrizione`, `tipologia_descrizione`, `attivo`, `data_insert`, `data_update`, `giorni_alla_scadenza` |
 | `order_dir` | string | No | `asc` oppure `desc` |
 
 `utility_id` e `tipologia_id`: stringa vuota equivale a parametro assente;
@@ -92,7 +93,8 @@ Permesso modello `("vendite", "listino")` su tutte le rotte di questa pagina.
         "tipologia_codice": "CONSUMO",
         "tipologia_descrizione": "Consumi",
         "attivo": true,
-        "versioni_count": 2
+        "versioni_count": 2,
+        "giorni_alla_scadenza": null
       }
     ]
   }
@@ -315,9 +317,18 @@ righe della matrice attive (`listini_tipologie_utilities.attivo = true`).
 | **Metodo** | `GET` |
 | **URL** | `/api/v1/vendite/listini/{listino_id}/versioni/` |
 
-Restituisce `{ "count": <n>, "results": [ ... ] }` (collezione completa, non
-paginata): per ogni versione i dati principali e `righe_count`. La stessa forma
-ha il dettaglio (§3.3).
+La pagina della lista `vendite.listini_versioni` (il tab «Versioni» del drawer
+listino): stessa busta paginata del §1.1. Per ogni versione i dati principali,
+`righe_count` e `giorni_alla_scadenza` (§7). Il dettaglio (§3.3) ha gli stessi
+campi tranne `giorni_alla_scadenza`. ⚠️ Fino al 2026-10-31 era la collezione
+completa `{count, results}`, senza pagina.
+
+| Parametro | Tipo | Obbligatorio | Descrizione |
+|---|---|---|---|
+| `search` | string | No | Ricerca libera sulle colonne che il catalogo accende (`codice_versione`); sotto 3 caratteri si ignora |
+| `limit` · `offset` | int | No | Come §1.1 |
+| `order_by` | string | No | `valido_dal` (default, DESC), `valido_al`, `codice_versione`, `righe_count`, `stato`, `giorni_alla_scadenza`. Le date senza direzione si ordinano DESC |
+| `order_dir` | string | No | `asc` oppure `desc` |
 
 Campi dal modello del documento (giro 12, brief-modello-documento-vendita §16,
 2026-10-28):
@@ -327,6 +338,8 @@ Campi dal modello del documento (giro 12, brief-modello-documento-vendita §16,
 | `stato` | il codice dello stato (`BOZZA`, `ATTIVA`, `CHIUSA`) dal vocabolario `config.stati_doc_listino_versioni`: e' lo stato **del DB**, nessuna deduzione dalle date |
 | `azioni_permesse` | le `action_key` dei passaggi che **l'operatore** puo' fare dallo stato della versione (`script.fn_doc_azioni_permesse`, che applica l'azione della riga del passaggio). Oggi solo `attiva`, da BOZZA, a chi ha `attiva_listino`. Permesso ⇒ nascondi |
 | `attivazione_blocco_reason` · `attivazione_blocco_reason_key` | perche' «Attiva» e' spento (codice macchina e chiave i18n del primo motivo di `script.fn_check_versione_listino_attivabile`, la stessa con cui il verbo rifiuta), da `vendite.vw_listini_versioni_azioni`; `null` = niente lo vieta. Sono le colonne che il registro `config.azioni_riga` dichiara per `ATTIVA_VERSIONE_LISTINO` |
+| `eliminazione_blocco_reason` · `eliminazione_blocco_reason_key` | perche' «Elimina» e' spento (`VERSIONE_NON_IN_BOZZA`, `VERSIONE_CITATA`: il primo motivo di `script.fn_check_versione_listino_eliminabile`), dalla stessa vista; registro `ELIMINA_VERSIONE_LISTINO` (§16.13, 2026-10-29) |
+| `chiusura_blocco_reason` · `chiusura_blocco_reason_key` | perche' «Chiudi» e' spento (`VERSIONE_NON_ATTIVA`: il primo motivo di `script.fn_check_versione_listino_chiudibile`, senza data), dalla stessa vista; registro `CHIUDI_VERSIONE_LISTINO` (§16.16, 2026-10-29). «Clona» non ha colonne: si clona da qualunque stato |
 | `chiusura_programmata` | la versione e' ATTIVA con `valido_al` scritto: il job la porta a CHIUSA quando la fine passa. Fra la fine e il job resta ATTIVA, e si mostra cosi' |
 
 ### 3.2 Crea versione
@@ -368,13 +381,14 @@ Il backend non filtra per stato e trasporta il rifiuto.
 | Stato versione | Campi modificabili |
 |---|---|
 | `BOZZA` | `codice_versione`, `valido_dal`, `valido_al`, `meta`, `attivo` |
-| `ATTIVA` | solo `valido_al` (programmazione chiusura) |
+| `ATTIVA` | nessun campo da qui: la fine (`valido_al`) solo da «Chiudi» (§3.6-bis) o dall'attivazione di una successiva |
 | `CHIUSA` | nessun campo (stato terminale) |
 
 **Razionale**: una versione `ATTIVA` ha gia` propagato i prezzi negli snapshot di
 `commesse_attivita`/`attivita_fatturabili`. Modificare `codice_versione`, `valido_dal`
 o `meta` su una versione operativa creerebbe drift tra documenti emessi e stato
-listino. Solo `valido_al` (programmazione chiusura) resta modificabile. Per
+listino. Solo la fine resta modificabile, e solo dai verbi che la scrivono
+(C-4 = a, 2026-10-29): cosi' vale sempre la regola «la fine non sta nel passato». Per
 cambiare prezzi su un periodo gia` attivo, si crea una nuova versione (clone +
 edit + activate).
 
@@ -383,6 +397,8 @@ edit + activate).
 - `409` `E_LISTINO_VERSIONE_CAMPO_NON_MODIFICABILE` (dal DB): il campo non si cambia
   nello stato della versione; la frase nomina il primo campo. Fino al 2026-10-28 era un
   `400 E_VENDITE_VALIDATION` del backend
+- `500` `E_LISTINO_VERSIONE_FINE_SOLO_DAL_VERBO` (`TECNICO`, dal DB): `valido_al` di una
+  ATTIVA dal PATCH. Nessuna interfaccia lo produce: si passa da §3.6-bis
 - `404` `E_VENDITE_LISTINO_VERSIONE_NOT_FOUND`
 
 ### 3.5 Clona versione
@@ -393,7 +409,10 @@ edit + activate).
 | **URL** | `/api/v1/vendite/listini/{listino_id}/versioni/{src_ver_id}/clona/` |
 
 Crea una **nuova versione BOZZA** dello stesso listino copiando tutte le righe
-attive della versione sorgente. Workflow operativo "cambio prezzi": clona V001
+attive della versione sorgente, **da qualunque stato** (anche da una BOZZA: C-1 = a,
+2026-10-29). La copia e' il verbo `vendite.fn_clona_versione_listino`, in una
+transazione: versione, righe attive e componenti attivi dei compositi con la validita'
+ricalcolata sul periodo comune alla distinta e alla versione nuova. Workflow operativo "cambio prezzi": clona V001
 in V002 BOZZA, modifica i prezzi che cambiano, attiva V002. La sorgente non
 viene toccata.
 
@@ -405,17 +424,24 @@ viene toccata.
 | `valido_dal` | date | Si | Data inizio validita` (vedi vincolo D2 sotto) |
 | `valido_al` | date | No | Data fine validita`, NULL = aperta |
 
-`meta` e `attivo`, se spediti, vengono validati e poi **ignorati**: la nuova
-versione nasce in stato BOZZA (lo stato iniziale, dal guard della nascita: il
-backend non lo scrive) con `attivo=true` e `meta` vuoto. Altre chiavi →
-`400 E_VENDITE_VALIDATION`. Le righe vengono copiate
+La nuova versione nasce in stato BOZZA (lo stato iniziale, dal guard della
+nascita: il backend non lo scrive) con `attivo=true` e `meta` vuoto. Ogni altra
+chiave, `meta` e `attivo` compresi, → `400 E_VENDITE_VALIDATION`: fino al
+2026-10-29 `meta` e `attivo` si validavano e poi si ignoravano in silenzio. Le righe vengono copiate
 con `attivo=true` (le righe non attive della sorgente sono escluse).
+
+#### Risposta (200)
+
+Il dettaglio della versione nuova (§3.1) piu' i conteggi della copia:
+`righe_copiate`, `componenti_copiati`, `componenti_saltati` (i componenti senza
+giorni in comune fra la distinta e la versione nuova: non si copiano).
 
 #### Vincolo D2 — `valido_dal` e retroattivita`
 
 `nuova.valido_dal` puo` essere retroattivo (precedente alla data odierna), ma
 **non puo` essere inferiore a `sorgente.valido_dal`**. Cio` protegge da cloni
-"prima dell'inizio" della versione che si vuole sostituire.
+"prima dell'inizio" della versione che si vuole sostituire. Lo dice il verbo
+(`script.fn_check_versione_listino_clonabile`), sul campo `valido_dal`.
 
 Il clone retroattivo non modifica le fatturazioni gia` emesse nel periodo:
 queste continuano a basarsi sullo snapshot in `commesse_attivita` /
@@ -424,8 +450,10 @@ queste continuano a basarsi sullo snapshot in `commesse_attivita` /
 
 #### Errori tipici
 
-- `400` `E_VENDITE_VALIDATION` se `nuova.valido_dal < sorgente.valido_dal` o se
-  manca un campo obbligatorio
+- `400` `E_LISTINO_VERSIONE_CLONE_PRIMA_DELLA_SORGENTE` (dal DB, campo `valido_dal`) se
+  `nuova.valido_dal < sorgente.valido_dal`. Fino al 2026-10-29 era un
+  `400 E_VENDITE_VALIDATION` del backend
+- `400` `E_VENDITE_VALIDATION` se manca un campo obbligatorio
 - `409` `E_VENDITE_DUPLICATO` se `codice_versione` duplicato per il listino
   (`uq_listini_versioni_listino_codice`)
 - `404` `E_VENDITE_LISTINO_VERSIONE_NOT_FOUND` se la sorgente non esiste
@@ -437,24 +465,55 @@ queste continuano a basarsi sullo snapshot in `commesse_attivita` /
 | **Metodo** | `DELETE` |
 | **URL** | `/api/v1/vendite/listini/{listino_id}/versioni/{ver_id}/` |
 
-Elimina una versione **solo se in stato `BOZZA`**, con tutte le sue righe in
-cascata. Versioni `ATTIVA` o `CHIUSA` sono storiche e non eliminabili: lo decide
-il DB (L-5, giro 12), non il backend.
+Elimina una versione **solo se in stato `BOZZA`** e non usata da un documento, con
+le sue righe e i componenti dei compositi. Decide il verbo
+`vendite.fn_elimina_versione_listino` (§16.11, 2026-10-29): prima il primo motivo di
+`script.fn_check_versione_listino_eliminabile` (lo stesso del pulsante), poi la
+cascata. Il backend non la fa piu'.
 
 Risposta (200):
 
 ```json
-{ "data": { "deleted": true, "id": 101 } }
+{ "data": { "deleted": true, "id": 101, "righe_eliminate": 3, "componenti_eliminati": 8 } }
 ```
 
 Errori tipici:
 
-- `409` `E_LISTINO_VERSIONE_NON_ELIMINABILE` (dal guard per stato della versione)
-- ⚠️ Le righe si cancellano **prima** della versione (le FK sono NO ACTION), quindi
-  su una versione non in bozza puo' rifiutare per primo il guard delle righe, col
-  suo codice (`E_RIGA_LISTINO_PROPAGATA`, `E_RIGA_LISTINO_VERSIONE_CHIUSA`). E il
-  guard dei componenti blocca sempre la DELETE: una BOZZA con un composito oggi
-  non si elimina. Richiesta al team DB: brief-modello-documento-vendita §16.8
+- `409` `E_LISTINO_VERSIONE_NON_ELIMINABILE`: la versione non e' in bozza
+- `409` `E_LISTINO_VERSIONE_CITATA`: una bozza che un contratto, un'offerta o
+  un'attivita' di commessa usa (prima cadeva sulla FK con un errore tecnico)
+- `404` `E_VENDITE_LISTINO_VERSIONE_NOT_FOUND`
+
+### 3.6-bis Chiudi versione
+
+| | |
+|---|---|
+| **Metodo** | `POST` |
+| **URL** | `/api/v1/vendite/listini/{listino_id}/versioni/{ver_id}/chiusura/` |
+
+«Chiudi» e «Rimuovi chiusura» di una versione ATTIVA: fissa la fine della validita'
+(la chiusura programmata) o la toglie. Decide il verbo
+`vendite.fn_programma_chiusura_versione_listino` (§16.14, C-2 = a, 2026-10-29). Lo
+stato non cambia: CHIUSA la scrive il job quando la fine passa. Nessun permesso di
+passaggio (non e' un passaggio di stato): il permesso d'area `change`, come il PATCH
+che sostituisce (`post_accesso = "change"`: senza, la POST chiederebbe `add`).
+
+#### Body JSON
+
+| Campo | Tipo | Obbligatorio | Descrizione |
+|---|---|---|---|
+| `valido_al` | date \| null | Si | la nuova fine; `null` toglie la chiusura. ⚠️ La chiave e' obbligatoria anche quando e' `null`: un corpo vuoto e' un `400` |
+
+Altre chiavi → `400 E_VENDITE_VALIDATION`. Risposta: il dettaglio della versione (§3.1).
+
+#### Errori tipici
+
+- `409` `E_LISTINO_VERSIONE_NON_CHIUDIBILE`: la versione non e' ATTIVA
+- `400` `E_LISTINO_VERSIONE_FINE_NEL_PASSATO` (campo `valido_al`): la fine precede
+  oggi (la data operativa). Prima il limite stava solo nel frontend
+- `400` `E_DATA_AL_MINORE_DAL`: la fine precede l'inizio (guard comune delle date)
+- `409` `E_VENDITE_LISTINO_VERSIONE_OVERLAP`: togliere la chiusura sovrapporrebbe la
+  versione ATTIVA successiva
 - `404` `E_VENDITE_LISTINO_VERSIONE_NOT_FOUND`
 
 ### 3.7 Cambia stato versione
@@ -479,7 +538,7 @@ Errori tipici:
 
 | Campo | Tipo | Obbligatorio | Descrizione |
 |---|---|---|---|
-| `stato` | string | Si | solo `ATTIVA`. ATTIVA → CHIUSA e' di processo: si programma con `valido_al` (§3.4) e la scrive il job a fine scaduta |
+| `stato` | string | Si | solo `ATTIVA`. ATTIVA → CHIUSA e' di processo: si programma con «Chiudi» (§3.6-bis) e la scrive il job a fine scaduta |
 | `dry_run` | bool | No | Se `true`, non scrive nulla e restituisce l'anteprima delle versioni che verrebbero chiuse. Default `false`. ⚠️ Solo il booleano JSON: un altro valore (anche `"true"`) e' un `400` sul campo |
 
 Altre chiavi → `400 E_VENDITE_VALIDATION`.
@@ -803,62 +862,32 @@ oppure dal contratto del billing account. E' lo STADIO 1/2 di
   (contratto, matrice categoria → listino, versioni, righe) e risponde senza
   sollevare. E' quello che usa `TestResolverDialog.vue`.
 
-## 7. Alert scadenze versioni (N2)
+## 7. Scadenze delle versioni (N2)
 
-| | |
-|---|---|
-| **Metodo** | `GET` |
-| **URL** | `/api/v1/vendite/listini/alert-scadenze/` |
+⭐ **Dal 2026-10-31 la regola «in scadenza senza successore» è del DB**:
+`vendite.fn_listini_in_scadenza_senza_successore()` (20261031-27,
+brief-db-liste-datatable-grezze-secondo-giro §7.2), una riga per versione in
+vigore che scade entro N giorni senza un successore, coi giorni rimanenti. N è
+il parametro `LISTINI_SCADENZA_PREAVVISO_GIORNI` (15 dal seed, con override):
+**non si passa più dal client**.
 
-Restituisce le versioni ATTIVE in scadenza entro N giorni che non hanno una versione
-successiva (ATTIVA o BOZZA) con `valido_dal > valido_al`. Serve per monitorare
-listini a rischio "buco di copertura" in produzione.
+La leggono, con una `LEFT JOIN` per query:
 
-### Query param
+- la lista listini (§1.1): campo `giorni_alla_scadenza` (`null` = non in
+  scadenza) e filtro `in_scadenza`;
+- la lista versioni (§3.1): lo stesso campo, sulla versione.
 
-| Parametro | Tipo | Obbligatorio | Descrizione |
-|---|---|---|---|
-| `giorni` | int | No | Anticipo in giorni, default `15`, range 1-365 |
+Il badge del frontend (`AlertScadenzeWidget.vue`) conta i listini con
+`in_scadenza=true` (§1.1, `limit=1`, il totale della busta) e al clic filtra
+la lista.
 
-### Risposta (200)
-
-```json
-{
-  "data": {
-    "results": [
-      {
-        "listino_id": 10,
-        "listino_codice": "LIST-UTILITY",
-        "listino_descrizione": "Listino Utility Base",
-        "utility_id": 1,
-        "utility_descrizione": "Energia Elettrica",
-        "versione_id": 101,
-        "codice_versione": "V001",
-        "valido_dal": "2026-01-01",
-        "valido_al": "2026-04-30",
-        "giorni_rimanenti": 8
-      }
-    ],
-    "count": 1,
-    "giorni": 15
-  }
-}
-```
-
-### Regole specifiche
-
-- Filtro temporale isolato nel repository (`_filter_versioni_in_scadenza`) per facilitare
-  futura migrazione a `daterange` nativo PostgreSQL (N1).
-- Solo versioni operative oggi (`validita @> fn_data_operativa()`); `giorni`
-  fuori 1-365 o non intero → `400`.
-- `valido_al` è l'ultimo giorno di validità (incluso) e `giorni_rimanenti` si
-  conta da lì; una versione con un successore — BOZZA, o operativa dopo la
-  scadenza — **anche contiguo** (`valido_dal = valido_al + 1`) non è in alert.
-  ⚠️ Fino al 2026-10-21 la query leggeva `upper(validita)` (che per un intervallo
-  chiuso è `valido_al + 1`): scadenza e giorni uscivano con un giorno in più, e il
-  successore contiguo non contava (presidio sul DB vero:
-  `vendite/tests/db/test_listini_in_scadenza_db.py`).
-- Frontend: widget `AlertScadenzeWidget.vue` con badge nella toolbar listini.
+⛔ **Ritirato il 2026-10-31** l'endpoint `GET /api/v1/vendite/listini/alert-scadenze/`
+(parametro `giorni`, default 15, range 1-365), insieme alla query del
+repository che scriveva la regola in Python (`listini_in_scadenza`,
+`_filter_versioni_in_scadenza`). La regola è passata al DB riga per riga; il
+caso del successore contiguo (`valido_dal = valido_al + 1`), che fino al
+2026-10-21 la query sbagliava, resta presidiato sul DB vero da
+`vendite/tests/db/test_listini_in_scadenza_db.py` attraverso le due liste.
 
 ---
 

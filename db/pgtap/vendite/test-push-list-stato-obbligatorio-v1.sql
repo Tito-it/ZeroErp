@@ -5,42 +5,45 @@
 -- Test: le liste del push a commessa non aprono il filtro di stato quando lo
 --       stato non si trova nel catalogo.
 -- Oggetti: vendite.fn_list_*_da_pushare (20261010-52 preventivi,
---   20261010-55 contratti).
+--   20261010-55 contratti) e, dal 2026-10-31, la sede della regola del push
+--   dei contratti vendite.fn_contratti_addebiti_maturati (20261031-02), che
+--   il lister dei contratti chiama.
 -- Riferimento: brief-db-istanza-nasce-col-ba-residui (D-2, decisione di Tid
---   del 2026-10-10).
+--   del 2026-10-10); brief-modello-documento-vendita §17 (2026-10-31).
 --
 -- Semantica attesa (il contratto, non l'implementazione):
---   - lo stato di partenza (ACCETTATO, ATTIVO) si cerca nel catalogo per
---     codice_interno; se non c'e' (riga assente o spenta) la lista SOLLEVA
---     E_CODICE, come per la sorgente: non lista documenti in uno stato
---     qualunque;
+--   - lo stato di partenza lo dice il vocabolario: l'accettazione per il
+--     preventivo, l'emissione e la cessazione per il contratto (colonne
+--     accettazione, emissione, cessazione; lettori script.fn_stato_*_id). Se
+--     il vocabolario non ne marca uno, la lista SOLLEVA E_CONFIG_MANCANTE:
+--     non lista documenti in uno stato qualunque (fino al 2026-10-31 il
+--     rifiuto era E_CODICE sul letterale, e il test leggeva il corpo);
 --   - nessuna lista del push filtra lo stato nella forma
 --     `v_stato_..._id IS NULL OR ...`, che con lo stato assente fa cadere il
 --     filtro.
 --
 -- Elenco test (plan 3):
 --   1) nessuna fn_list_*_da_pushare di vendite ha la forma `v_stato_..._id IS NULL OR`
---   2) preventivi: lo stato ACCETTATO assente solleva E_CODICE su config.stati_doc_preventivi
---   3) contratti: lo stato ATTIVO assente solleva E_CODICE su config.stati_doc_contratti
+--   2) preventivi: nessuno stato di accettazione -> E_CONFIG_MANCANTE
+--   3) contratti: nessuno stato di cessazione -> E_CONFIG_MANCANTE (dalla sede
+--      vendite.fn_contratti_addebiti_maturati, attraverso il lister)
+--   4) contratti: nessuno stato di emissione -> E_CONFIG_MANCANTE
 --
--- ⚠️ PRESIDIO SULLA FORMA, dichiarato. Il caso vero (lo stato spento nel
---   catalogo) e' raggiungibile sul modello — basta che nessun documento sia
---   in quello stato — ma un test non lo costruisce in modo deterministico:
---   dbops.trgfn_prevent_deactivate_if_children impedisce di spegnere uno
---   stato che un documento usa, e i documenti in quello stato dipendono dai
---   dati della macchina. Le due strade che lo forzerebbero (disattivare il
---   trigger, la GUC di bypass) non si usano in un pgTAP. Quindi si legge il
---   corpo: il test 1 fallisce se la forma che apre torna, in qualunque lista,
---   e i test 2-3 se il rifiuto sparisce.
+-- ⭐ Dal 2026-10-31 i casi 2-4 si COSTRUISCONO: togliere la marca a uno stato
+--   (accettazione = false) e' un UPDATE che nessun guard ferma e nessun
+--   documento impedisce, al contrario dello spegnimento dello stato. Il test 1
+--   resta un presidio sulla forma, dichiarato: la forma che apre il filtro e'
+--   un modo di scrivere, non un caso da costruire.
 -- ------------------------------------------------------------
 
 BEGIN;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
--- pgtap-contesto: escluso — legge solo il catalogo delle funzioni.
+-- pgtap-contesto: escluso — legge il catalogo delle funzioni, e i casi 2-4 si fermano
+--   prima di leggere un documento.
 
-SELECT plan(3);
+SELECT plan(4);
 
 -- ============================================================
 -- 1) Nessuna lista del push apre il filtro di stato
@@ -57,23 +60,36 @@ SELECT is(
 );
 
 -- ============================================================
--- 2-3) Lo stato assente solleva E_CODICE col suo catalogo
+-- 2-4) Il vocabolario senza la marca: la lista si ferma. Ogni caso nella
+--      sua transazione annidata, per non lasciare la marca tolta al
+--      successivo.
 -- ============================================================
-SELECT ok(
-    (SELECT p.prosrc ~ 'IF\s+v_stato_accettato_id\s+IS\s+NULL\s+THEN\s+PERFORM\s+script\.fn_log_and_raise_error\('
-        AND p.prosrc ~ '''E_CODICE''[^;]*''ACCETTATO'',\s*''config\.stati_doc_preventivi'''
-       FROM pg_proc p
-      WHERE p.oid = 'vendite.fn_list_preventivi_da_pushare(date,bigint,integer,bigint,bigint[])'::regprocedure),
-    '2. fn_list_preventivi_da_pushare: ACCETTATO assente dal catalogo -> E_CODICE (config.stati_doc_preventivi)'
+SAVEPOINT s_prev;
+UPDATE config.stati_doc_preventivi SET accettazione = false WHERE accettazione;
+SELECT throws_like(
+    $$SELECT * FROM vendite.fn_list_preventivi_da_pushare()$$,
+    'Configurazione mancante: stato di accettazione%',
+    '2. fn_list_preventivi_da_pushare: nessuno stato di accettazione nel vocabolario -> E_CONFIG_MANCANTE'
 );
+ROLLBACK TO SAVEPOINT s_prev;
 
-SELECT ok(
-    (SELECT p.prosrc ~ 'IF\s+v_stato_attivo_id\s+IS\s+NULL\s+THEN\s+PERFORM\s+script\.fn_log_and_raise_error\('
-        AND p.prosrc ~ '''E_CODICE''[^;]*''ATTIVO'',\s*''config\.stati_doc_contratti'''
-       FROM pg_proc p
-      WHERE p.oid = 'vendite.fn_list_contratti_da_pushare(date,bigint,integer,bigint)'::regprocedure),
-    '3. fn_list_contratti_da_pushare: ATTIVO assente dal catalogo -> E_CODICE (config.stati_doc_contratti)'
+SAVEPOINT s_cess;
+UPDATE config.stati_doc_contratti SET cessazione = false WHERE cessazione;
+SELECT throws_like(
+    $$SELECT * FROM vendite.fn_list_contratti_da_pushare()$$,
+    'Configurazione mancante: stato di cessazione%',
+    '3. fn_list_contratti_da_pushare: nessuno stato di cessazione nel vocabolario -> E_CONFIG_MANCANTE (dalla sede fn_contratti_addebiti_maturati)'
 );
+ROLLBACK TO SAVEPOINT s_cess;
+
+SAVEPOINT s_emis;
+UPDATE config.stati_doc_contratti SET emissione = false WHERE emissione;
+SELECT throws_like(
+    $$SELECT * FROM vendite.fn_list_contratti_da_pushare()$$,
+    'Configurazione mancante: stato di emissione%',
+    '4. fn_list_contratti_da_pushare: nessuno stato di emissione nel vocabolario -> E_CONFIG_MANCANTE'
+);
+ROLLBACK TO SAVEPOINT s_emis;
 
 SELECT * FROM finish();
 ROLLBACK;

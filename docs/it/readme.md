@@ -11,7 +11,7 @@ L'obiettivo e` ridurre la complessita` superflua mantenendo rigore su dati, rego
 
 > **Sviluppo attivo — DB, backend e frontend operativi su core, anagrafiche, catalogo, ciclo attivo completo (preventivi, offerte, contratti, ordini, DDT, resi, fatture, commesse), pratiche, documenti e presentazione configurabile. Non ancora rilasciato per produzione.**
 >
-> *Ultimo aggiornamento dello stato: **10 settembre 2026**.*
+> *Ultima revisione: **28 ottobre 2026**.*
 >
 > La fotografia dettagliata, lo stato per componente e la roadmap sono mantenuti in
 > un'unica fonte: la [Mappa Concentrica](./mappa-concentrica.md) (stato per anello +
@@ -140,16 +140,16 @@ Il modello e` pensato per supportare processi non lineari e gestione multi-repar
 
 ## Stato dello Sviluppo
 
-Snapshot (**30 agosto 2026**). Per il dettaglio per componente, lo stato per anello e
-la roadmap aggiornata fa fede la [Mappa Concentrica](./mappa-concentrica.md); la
-storia datata è nel suo [changelog](./dev/mappa-concentrica-changelog.md).
+Uno snapshot per orientarsi. Per il dettaglio per componente, lo stato per anello, i
+numeri e la roadmap fa fede la [Mappa Concentrica](./mappa-concentrica.md); la storia
+datata è nel suo [changelog](./dev/mappa-concentrica-changelog.md).
 
 **Fondamenta**
 
-- **Database**: operativo — 20 schemi, `daterange` nativo, PostgreSQL 18, automazioni parametriche (audit, storicizzazione, chiusure a scadenza, anti-overlap)
+- **Database**: operativo — `daterange` nativo, PostgreSQL 18, automazioni parametriche (audit, storicizzazione, chiusure a scadenza, anti-overlap)
 - **Coda lavori generica**: operativa — job queue DB-native transazionale, senza broker: la fondazione asincrona dell'ERP
-- **Errori come contratto**: il significato di un errore è **a catalogo** (10 classi, 831 codici nel seed); status HTTP e reazione della UI si **derivano**, e l'errore porta un **bersaglio** che la UI trasforma in un gesto
-- **Test DB**: 551 file pgTAP, in CI, eseguiti **come l'applicazione** — quindi con le policy RLS attive a ogni corsa; il debito noto è sceso da 86 rossi a 19
+- **Errori come contratto**: il significato di un errore è **a catalogo**, diviso in classi; status HTTP e reazione della UI si **derivano**, e l'errore porta un **bersaglio** che la UI trasforma in un gesto
+- **Test DB**: pgTAP in CI, eseguiti **come l'applicazione** — quindi con le policy RLS attive a ogni corsa; i test rossi sono un debito dichiarato, con il suo registro
 
 **Accessi e dati di base**
 
@@ -165,21 +165,22 @@ storia datata è nel suo [changelog](./dev/mappa-concentrica-changelog.md).
 - **Fatturazione**: pipeline batch a corsie, lotti, **cockpit da cui si agisce** (fattura adesso, rendi definitive, stampa massiva), tre lenti di lettura
 - **Commesse**: multi-sorgente, quantità immutabili dopo la fatturazione, oneri manuali con la propria IVA
 - **Motore pratiche**: operativo e **validato dal primo consumatore reale** (pratica PREVENTIVI); il secondo è ciò che ne promuoverà le astrazioni a contratti
-- **Motore documentale**: template versionati, asset per emittente, PDF — **6 domini consumatori**, con tre percorsi di stampa distinti
+- **Motore documentale**: template versionati, asset per emittente, PDF, con tre percorsi di stampa distinti
 - **Genealogia dei documenti**: da dove viene e dove è andato ogni documento del ciclo
+- **Magazzino**: la bolla scarica e il reso ricarica la merce, con il registro di magazzino come servizio che non conosce i suoi consumatori
 
-**Aperto**
+**Aree aperte**
 
-- **Incassi e contabili di pagamento**: il **posting è scritto** (contabile, saldo rata, sistemazioni) — ⛔ ma lo schema ha zero righe: di questo dominio è provato il *percorso*, mai l'*esito*, e il collaudo in-app è aperto
-- **Fatturazione elettronica SDI**: payload pronto, builder XML e persistenza esito da fare
-- **Acquisti, magazzino**: DB presente, backend ancora stub
-- ⛔ **Contabilità: fuori perimetro, e lo schema è vuoto.** `contabilita` non ha
-  tabelle, funzioni né viste: non è un modulo a metà, non c'è niente da finire.
-  Se un giorno servirà, sarà un **aggancio a una contabilità esterna**, e la
-  forma del piano dei conti la detta il **sistema di destinazione**
-- **Integrazione AI v2**: contesto dinamico e nuovi tool (v1 operativa: 11 tool + widget conversazionale)
+- **Incassi e contabili di pagamento** — riscossioni, saldo delle rate, sistemazioni
+- **Fatturazione elettronica SDI** — invio e ricezione dell'esito
+- **Acquisti** — il ciclo passivo, simmetrico al ciclo attivo
+- **Integrazione AI v2** — contesto dinamico e nuovi strumenti, sopra la v1 operativa
+- ⛔ **Contabilità: fuori perimetro.** Non è un modulo a metà: se un giorno
+  servirà, sarà un **aggancio a una contabilità esterna**, e la forma del piano
+  dei conti la detta il **sistema di destinazione**
 
-> Lavori in corso e previsti: vedi la [Roadmap nella Mappa Concentrica](./mappa-concentrica.md#3-roadmap).
+> A che punto è ciascuna, e che cosa è in corso o previsto: la
+> [Roadmap nella Mappa Concentrica](./mappa-concentrica.md#3-roadmap).
 
 ---
 
@@ -230,7 +231,7 @@ ricostruirlo dal codice.
 ### 📘 Guide — «come funziona questa area, e perché»
 
 Il livello concettuale: cosa fa un dominio, quali regole lo governano, quali
-sono le sue trappole. **44 guide**, raggruppate per area:
+sono le sue trappole. Le guide, raggruppate per area:
 
 - **Ciclo attivo** — [preventivi](./guide/gestione-preventivi.md) ·
   [offerte commerciali](./guide/gestione-offerte-commerciali.md) ·

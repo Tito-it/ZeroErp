@@ -2,14 +2,15 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: Gli OTTO lettori che leggono un `jsonb` da un cursor RAW devono
+# Scopo: I SETTE lettori che leggono un `jsonb` da un cursor RAW devono
 #        decodificarlo quando arriva come STRINGA — che e' la forma in cui il
 #        driver lo consegna davvero (psycopg 3 non decodifica i jsonb fuori
 #        dall'ORM). Database MOCKATO: qui si prova la lettura, non la query.
-# Note: ⛔ PERCHE' ESISTE. Il 2026-09-09 questi otto punti sono passati dalla
+# Note: ⛔ PERCHE' ESISTE. Il 2026-09-09 questi punti (otto allora, sette dal
+#        2026-10-31; il nome del file e' quello di allora) sono passati dalla
 #        coercizione scritta a mano al building block `jsonb_out`. Una
 #        MUTAZIONE (spegnere `jsonb_out`) ha fatto cadere otto test — e
-#        **nessuno dei quali toccava questi otto punti**: erano tutti
+#        **nessuno dei quali toccava questi punti**: erano tutti
 #        consumatori storici del BB. Cioe' la conversione era CIECA.
 #        ⭐ Un cambiamento che nessun test vede non e' verificato dal fatto che
 #        la suite resti verde: e' verificato dal fatto che qualcosa diventi
@@ -22,10 +23,10 @@
 """Indice test previsti.
 
 1. test_ogni_lettore_decodifica_il_jsonb_stringa
-   Gli otto punti, uno per sotto-prova: la stringa entra, un dict esce.
-2. test_gli_otto_punti_sono_ancora_otto
+   I sette punti, uno per sotto-prova: la stringa entra, un dict esce.
+2. test_i_sette_punti_sono_ancora_sette
    Il verso opposto: se un lettore sparisse o cambiasse nome, la sotto-prova
-   svanirebbe in silenzio e il test resterebbe verde su sette.
+   svanirebbe in silenzio e il test resterebbe verde su sei.
 """
 
 from __future__ import annotations
@@ -50,7 +51,7 @@ _PAYLOAD = {"bloccato": True, "minuti_rimanenti": 5, "tentativi": 9, "chiave": "
 _STRINGA = json.dumps(_PAYLOAD)
 
 
-# Scopo: (etichetta, modulo da patchare, chiamata) per ciascuno degli otto.
+# Scopo: (etichetta, modulo da patchare, chiamata) per ciascuno dei sette.
 #        ⚠️ La chiamata riceve il `connection` finto gia' attivo: costruisce il
 #        repository e invoca il metodo con argomenti qualunque — la query e'
 #        mockata, contano solo il valore che torna e come viene letto.
@@ -70,13 +71,11 @@ def _lettori():
                 1, nome_digest=bytes(32), provenienza="203.0.113.7", successo=False,
             ),
         ),
-        (
-            "search_repository.search_soggetti",
-            "apps.core.db.search_repository.connection",
-            lambda: SearchRepository().search_soggetti(
-                search_term="rossi", tipo_ruolo_id=1
-            )[0][0],
-        ),
+        # ⛔ `search_repository.search_soggetti` non c'e' piu' (2026-10-31): la
+        #    ricerca universale e' diventata la lista `anagrafiche.ricerca_soggetti`
+        #    e legge la funzione per COLONNE (`SELECT r.*`), non piu' come un
+        #    `row_to_json` da decodificare. Nessun jsonb da leggere, nessun
+        #    lettore: gli otto sono sette.
         (
             "search_repository.get_search_detail",
             "apps.core.db.search_repository.connection",
@@ -116,7 +115,7 @@ def _lettori():
     )
 
 
-class JsonbStringaNegliOttoLettoriTests(TestCase):
+class JsonbStringaNeiSetteLettoriTests(TestCase):
 
     # 1. La stringa entra, un dict esce. ⛔ Senza `jsonb_out` da qui uscirebbe la
     #    STRINGA, e il difetto si vedrebbe piu' a valle — al primo `.get`, o
@@ -133,7 +132,8 @@ class JsonbStringaNegliOttoLettoriTests(TestCase):
                 self.assertEqual(esito.get("chiave"), "valore")
 
     # 2. ⚠️ Se un lettore sparisse o cambiasse nome, la sua sotto-prova
-    #    svanirebbe **in silenzio** e il test resterebbe verde su sette: e' la
+    #    svanirebbe **in silenzio** e il test resterebbe verde su sei: e' la
     #    forma di «verde per sottrazione» che il progetto insegue.
-    def test_gli_otto_punti_sono_ancora_otto(self):
-        self.assertEqual(len(_lettori()), 8)
+    def test_i_sette_punti_sono_ancora_sette(self):
+        # Sette dal 2026-10-31 (la ricerca universale, vedi `_lettori`).
+        self.assertEqual(len(_lettori()), 7)

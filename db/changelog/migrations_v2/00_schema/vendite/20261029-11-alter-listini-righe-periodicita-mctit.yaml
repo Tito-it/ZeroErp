@@ -1,0 +1,65 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA RIGA DI LISTINO DICE OGNI QUANTO SI ADDEBITA IL SUO CANONE
+#   vendite.listini_righe.periodicita
+#   Brief: brief-db-contratto-righe-periodiche-in-commessa §6.2, §6.5 (Lotto 1),
+#   decisione G-0-bis di Tid (2026-10-28)
+#
+# ── PERCHE' ──────────────────────────────────────────────────────
+#   Del listino del contratto si addebitano in automatico le quote fisse (G-0),
+#   e una quota fissa non ha una riga di contratto: ogni quanto si addebita lo
+#   puo' dire solo la riga di listino. Sulle altre righe la periodicita' e' il
+#   default che l'ADESIONE eredita (Lotto 4).
+#
+# ── LA FORMA ─────────────────────────────────────────────────────
+#   · Nullable: la riga di un prodotto non ha un canone. Che sia obbligatoria
+#     sulla riga di una quota fissa dipende dall'articolo, non dalla riga: lo
+#     dira' un guard (non un CHECK), nel lotto che lo usa.
+#   · La FK verso config.periodicita sta in 80_data, dopo il seed (20261029-13).
+#   · Le righe fuori dalla BOZZA restano ferme: le copre il guard di stato
+#     (trg_listini_righe_a10_guard_stato_upd_dlt, BEFORE UPDATE senza OF), che
+#     vale anche per la colonna nuova. Il lock delle colonne d'identita'
+#     (trgfn_lock_columns) non la riguarda: non e' identita'.
+#   · Nessuna tabella di storico per listini_righe: nessuna copia da allineare.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261029-11-alter-listini-righe-periodicita-mctit.yaml
+
+  - changeSet:
+      id: 20261029-11-alter-listini-righe-periodicita
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Colonna vendite.listini_righe.periodicita: ogni quanto si addebita il canone della riga
+        (obbligatoria sulle quote fisse, nel lotto che la usa). Brief:
+        brief-db-contratto-righe-periodiche-in-commessa §6.5 (Lotto 1).
+      preConditions:
+        - onFail: HALT
+        - not:
+            - columnExists:
+                schemaName: vendite
+                tableName: listini_righe
+                columnName: periodicita
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.listini_righe
+                  ADD COLUMN periodicita varchar(32);
+
+              COMMENT ON COLUMN vendite.listini_righe.periodicita IS
+                  'Ogni quanto si addebita il canone della riga: un codice di config.periodicita (FK, 20261029-13). Sulla riga di una quota fissa (tipologia con e_quota_fissa) è ciò che il generatore dei periodi usa, perché la quota fissa non ha una riga di contratto; sulle altre è il default che l''ADESIONE del contratto eredita. NULL per le righe senza canone. Brief: brief-db-contratto-righe-periodiche-in-commessa §6.2.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: ALTER TABLE vendite.listini_righe DROP COLUMN IF EXISTS periodicita;

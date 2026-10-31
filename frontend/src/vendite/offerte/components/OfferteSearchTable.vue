@@ -26,7 +26,7 @@ import LineageFrontieraChip from '../../_shared/lineage/LineageFrontieraChip.vue
 import ExportDialog from '../../../core/components/ExportDialog.vue'
 import FiltroToggle from '../../../core/components/FiltroToggle.vue'
 import PdfDocumentiSorgenteDialog from '../../../documenti/components/PdfDocumentiSorgenteDialog.vue'
-import OffertaNoteDrawer from './OffertaNoteDrawer.vue'
+import VenditeNoteDrawer from '../../_shared/note/VenditeNoteDrawer.vue'
 import { useInjectBlocked } from '../../../core/composables/useReadonlyMode'
 import { useListaConfigurabilePage } from '../../../core/composables/useListaConfigurabilePage'
 import { useTabFreshness } from '../../../core/composables/useTabFreshness'
@@ -250,10 +250,12 @@ onMounted(() => store.fetchList())
         : ''"
     />
 
-    <OffertaNoteDrawer
+    <VenditeNoteDrawer
       v-if="noteDrawerOfferta?.id"
       v-model:visible="noteDrawerVisible"
-      :offerta-id="noteDrawerOfferta.id"
+      dominio="offerte"
+      :id="noteDrawerOfferta.id"
+      :emittente-fiscale-id="noteDrawerOfferta.emittente_fiscale_id ?? null"
     />
   </div>
 </template>

@@ -17,12 +17,18 @@
 --       rev 2026-10-26 (brief-modello-documento-vendita §13, giro 9): lo stato
 --       dell'offerta del push dalla fixture dbops.fn_pgtap_porta_a_stato (il verbo),
 --       non piu' con due UPDATE diretti: la porta li rifiuta.
+--       ⛔ rev 2026-10-29 (brief-db-contratto-righe-periodiche-in-commessa §6.6, F-7 di
+--       Tid; changeSet 20261029-15 … -24): la generazione_canone NON si eredita piu'
+--       dall'articolo. Anticipati o normali li dice la testata del documento, e la
+--       riga vuota la segue: test 5 e 18 attendono la generazione vuota, le letture
+--       del form (16, 21, 22) non hanno piu' la colonna, e il 23 presidia la copia
+--       della testata nel push.
 --
 -- ⭐ TUTTO COSTRUITO: cliente ENE (la prima utility: ammette CONSUMO, QUOTA_FISSA,
 --   IMPOSTA, ONERE_SISTEMA), listino, articoli. Gli articoli prendono qui la
 --   classificazione che il caso vuole:
 --     M, M2  MERCE senza tipologia          UNA_TANTUM/FISSA*, UNA_TANTUM/MANUALE
---     R, R2  SERVIZIO_RICORRENTE            CANONE/FISSA* (INIZIO_PERIODO), CONSUMO/MANUALE
+--     R, R2  SERVIZIO_RICORRENTE            CANONE/FISSA*, CONSUMO/MANUALE
 --     C      tipologia CONSUMO, natura SERVIZIO_RICORRENTE   (vince la tipologia)
 --     P      tipologia PRODOTTI, che ENE non prevede
 --     K      composito, SERVIZIO_RICORRENTE  solo le FISSA: CANONE/FISSA* (I-D6)
@@ -40,7 +46,7 @@
 --    3) composito: solo le combinazioni FISSA (I-D6; niente DERIVATA_COMPONENTI)
 --    4) articolo inesistente: nessuna riga
 --   L'eredita' (INSERT)
---    5) niente erogazione ne' fonte: il default dell'articolo, con la generazione_canone
+--    5) niente erogazione ne' fonte: il default dell'articolo, generazione vuota (F-7)
 --    6) erogazione senza fonte: la fonte che l'articolo ammette per QUELLA erogazione
 --    7) fonte senza erogazione: un'erogazione che l'articolo ammette con QUELLA fonte
 --   Il perimetro (guard)
@@ -63,13 +69,15 @@
 --   L'ordine delle combinazioni (§D.4 punto 1, 20261007-66 … -68)
 --   21) il form sul composito: la sola CANONE/FISSA, di default
 --   22) la prima fonte che il form propone per un'erogazione e' quella che il DB eredita (C)
+--   La testata (F-2, F-7)
+--   23) push offerta → contratto: la testata porta anticipati/normali e mese di partenza
 -- ------------------------------------------------------------
 
 BEGIN;
 SET CONSTRAINTS ALL IMMEDIATE;
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(22);
+SELECT plan(23);
 
 -- Scopo: canali strutturati di uno statement che deve fallire: «codice / campo».
 CREATE OR REPLACE FUNCTION pg_temp.canali(p_sql text)
@@ -185,8 +193,8 @@ SELECT is((SELECT count(*)::int FROM vendite.fn_articolo_erogazioni(gen_random_u
 -- 5-7) L'eredita'
 -- ============================================================
 DO $fx$ BEGIN PERFORM pg_temp.canali(pg_temp.agg('R', NULL, NULL)); END $fx$;
-SELECT is(pg_temp.riga('R'), 'CANONE/FISSA/INIZIO_PERIODO',
-    '5) niente erogazione ne'' fonte: il default dell''articolo, con la generazione_canone');
+SELECT is(pg_temp.riga('R'), 'CANONE/FISSA/-',
+    '5) niente erogazione ne'' fonte: il default dell''articolo; la generazione resta vuota e segue la testata (F-7)');
 
 -- Nasce MANUALE: senza quantita' (fonte a valle, 20261007-28).
 DO $fx$ BEGIN PERFORM pg_temp.canali(pg_temp.agg('R2', 'CONSUMO', NULL, 'AGGIUNTA', NULL)); END $fx$;
@@ -271,7 +279,7 @@ SELECT is(
        FROM vendite.fn_documento_riga_erogazioni('CONTRATTO', (SELECT id FROM tmp_eda_ctr),
                                                  pg_temp.art('R2'))
             WITH ORDINALITY AS e(tipo_erogazione, fonte_quantita_attesa, e_default,
-                                 generazione_canone, origine, n)),
+                                 origine, n)),
     'CANONE/FISSA* CONSUMO/MANUALE',
     '16) il form legge le combinazioni dell''articolo, col default in testa');
 
@@ -297,10 +305,13 @@ CREATE TEMP TABLE tmp_eda_off AS
 WITH ins AS (
     INSERT INTO vendite.offerte_commerciali (
         emittente_fiscale_id, billing_account_id, istanza_utility_id, utility_id,
-        listino_id, validita_dal, stato_doc_offerta_id)
+        listino_id, validita_dal, stato_doc_offerta_id,
+        generazione_canone, mese_partenza_canone)
     SELECT script.fn_pgtap_emittente_operatore(), c.billing_account_id, c.istanza_utility_id,
            c.utility_id, (SELECT listino_id FROM tmp_eda_listino), script.fn_data_operativa(),
-           (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'BOZZA')
+           (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'BOZZA'),
+           -- Non i default (INIZIO_PERIODO, 1): il 23 deve vedere la copia, non il default.
+           'FINE_PERIODO', 3
       FROM tmp_eda_cli2 c
     RETURNING id)
 SELECT id FROM ins;
@@ -324,8 +335,8 @@ SELECT is(
        FROM vendite.contratti_righe r
       WHERE r.contratto_id = (SELECT contratto_id FROM tmp_eda_push)
         AND r.articolo_id = pg_temp.art('R2')),
-    'CANONE/FISSA/INIZIO_PERIODO',
-    '18) push offerta → contratto: la riga porta erogazione, fonte e generazione ereditate sull''offerta');
+    'CANONE/FISSA/-',
+    '18) push offerta → contratto: la riga porta erogazione e fonte ereditate sull''offerta; la generazione resta vuota (segue la testata)');
 
 -- ============================================================
 -- 19-20) La forma
@@ -360,7 +371,7 @@ SELECT is(
        FROM vendite.fn_documento_riga_erogazioni('CONTRATTO', (SELECT id FROM tmp_eda_ctr),
                                                  pg_temp.art('K'))
             WITH ORDINALITY AS e(tipo_erogazione, fonte_quantita_attesa, e_default,
-                                 generazione_canone, origine, n)),
+                                 origine, n)),
     'CANONE/FISSA*',
     '21) il form sul composito: la sola CANONE/FISSA, di default (I-D6)');
 
@@ -375,11 +386,22 @@ SELECT is(
        FROM vendite.fn_documento_riga_erogazioni('CONTRATTO', (SELECT id FROM tmp_eda_ctr),
                                                  pg_temp.art('C'))
             WITH ORDINALITY AS e(tipo_erogazione, fonte_quantita_attesa, e_default,
-                                 generazione_canone, origine, n)
+                                 origine, n)
       WHERE e.tipo_erogazione = 'CONSUMO'
       ORDER BY e.n
       LIMIT 1)::text,
     '22) la prima fonte che il form propone per CONSUMO e'' quella che il DB eredita (LETTURE)');
+
+-- ============================================================
+-- 23) La testata del push (F-2, F-7)
+-- ============================================================
+-- ⚠️ La riga del contratto deve esistere: due NULL uguali sarebbero un verde per sottrazione.
+SELECT is(
+    (SELECT c.generazione_canone || '/' || c.mese_partenza_canone
+       FROM vendite.contratti c
+      WHERE c.id = (SELECT contratto_id FROM tmp_eda_push)),
+    'FINE_PERIODO/3',
+    '23) push offerta → contratto: la testata porta anticipati/normali e il mese di partenza dell''offerta');
 
 SELECT * FROM finish();
 ROLLBACK;

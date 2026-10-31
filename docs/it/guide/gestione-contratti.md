@@ -1,6 +1,6 @@
 # Guida — Gestione Contratti vendita
 
-> **Ultimo aggiornamento**: 26 ottobre 2026
+> **Ultimo aggiornamento**: 31 ottobre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend/frontend, DBA.
 >
@@ -20,6 +20,9 @@
 > * [script.fn_check_articolo_riga](/dbzero/script/manual/fn_check_articolo_riga) — quali articoli ammette una riga (contratto e offerta): AGGIUNTA già in listino, OVERRIDE ed ESCLUSIONE solo su un articolo del listino, solo componente, kit senza componenti, figlio di bundle
 > * [vendite.fn_contratto_riga_componenti_init](/dbzero/vendite/manual/fn_contratto_riga_componenti_init) — popola componenti BoM su riga padre composito
 > * [vendite.fn_contratto_riga_componenti_preview](/dbzero/vendite/manual/fn_contratto_riga_componenti_preview) — suggerimento prezzi pre-save
+> * [vendite.fn_contratti_addebiti_maturati](/dbzero/vendite/manual/fn_contratti_addebiti_maturati) — che cosa il contratto addebita a ogni giro (una tantum, canoni, storni), e che cosa non può partire
+> * [vendite.fn_list_contratti_da_pushare](/dbzero/vendite/manual/fn_list_contratti_da_pushare) — il lister del push dei contratti
+> * [vendite.fn_canone_periodi](/dbzero/vendite/funzioni/fn_canone_periodi) — la regola dei periodi del canone
 >
 > **Vedi anche** — guide correlate:
 >
@@ -27,6 +30,7 @@
 > * [Gestione Listini e Pricing v5](/guide/gestione-listini) — cascata promo → contratto → categoria
 > * [Gestione Preventivi](/guide/gestione-preventivi) — proposta puntuale (→ commessa); modello simmetrico
 > * [Fatturazione end-to-end](/guide/fatturazione) — la pipeline a valle del contratto
+> * [Cruscotti fatturazione](/guide/cruscotti-fatturazione) — dove si vede un contratto fermo
 > * [Modello componenti BoM](/dev/manual/modello-componenti-bom) — simmetria cross-dominio
 
 ---
@@ -44,7 +48,9 @@ Caratteristiche di base:
 * definisce il **listino di riferimento** (opzionale) e un'eventuale **variazione
   globale** (sconto o maggiorazione applicata a tutto il listino)
 * può contenere **eccezioni puntuali** per singoli articoli (prezzi personalizzati,
-  esclusioni, articoli fuori listino)
+  esclusioni, articoli fuori listino, articoli del listino che il cliente prende)
+* **addebita** quello che il cliente ha sottoscritto: una tantum e canoni a periodi
+  (§4-bis)
 * ha un **ciclo di vita** con stati da bozza a attivo, fino alla cessazione
 * quando **attivato**, viene usato come primo stadio (STADIO 1) del resolver
   pricing per determinare il prezzo applicabile a ogni articolo del BA
@@ -81,6 +87,8 @@ Contiene il contesto commerciale e i parametri di pricing:
 * **listino** (`listino_id` nullable, `listino_versione_id` nullable — fissato all'attivazione)
 * **variazione globale** (`tipo_variazione_globale`, `valore_variazione_globale`) — opzionale;
   si applica a tutte le righe listino salvo override puntuale
+* **canone**: il mese da cui si contano i periodi (`mese_partenza_canone`) e se i
+  canoni sono anticipati o normali (`generazione_canone`) — vedi §4-bis.3
 * **stato** corrente (`stato_doc_contratto_id`)
 * **categoria cliente** al momento della creazione (`categoria_cliente_id`) — snapshot
   congelato, non segue variazioni anagrafica
@@ -101,12 +109,13 @@ NOT NULL) qualifica esplicitamente il tipo:
 | `OVERRIDE`       | Prezzo personalizzato per articolo **presente nel listino** — la variazione globale non si applica; l'override è il prezzo finale | NOT NULL          |
 | `ESCLUSIONE`     | Articolo del listino **non disponibile** per questo cliente — il resolver solleva errore se richiesto                             | NULL              |
 | `AGGIUNTA`       | Articolo **non presente nel listino**, aggiunto al contratto — valido anche su contratti senza listino                            | NOT NULL          |
+| `ADESIONE`       | Articolo **del listino** che il cliente prende, al prezzo del listino con la variazione globale — sulla riga solo quantità e periodicità | NULL              |
 
 Constraint DB:
 
-* OVERRIDE e ESCLUSIONE: al massimo una riga per `(contratto, articolo)` (unique parziale)
+* OVERRIDE, ESCLUSIONE e ADESIONE: al massimo una riga per `(contratto, articolo)` (unique parziale)
 * AGGIUNTA: al massimo una riga per `(contratto, articolo)` (unique parziale separato)
-* CHECK: `prezzo_unitario NOT NULL` se OVERRIDE o AGGIUNTA; NULL obbligatorio se ESCLUSIONE
+* CHECK: `prezzo_unitario NOT NULL` se OVERRIDE o AGGIUNTA; NULL obbligatorio se ESCLUSIONE o ADESIONE
 * Guard: una AGGIUNTA è bloccata se l'articolo è già nel listino fissato al contratto
   (si deve usare OVERRIDE)
 * Guard: una ESCLUSIONE è bloccata se l'articolo è un **componente** (figlio) di un
@@ -312,6 +321,123 @@ OVERRIDE riceve esattamente il prezzo negoziato, senza variazione globale.
 
 ---
 
+## 4-bis. Come il contratto si addebita: una tantum e canoni
+
+Il contratto dà i prezzi agli acquisti del cliente (§4), ma addebita anche qualcosa
+di suo: quello che il cliente ha sottoscritto. Gli addebiti vanno **in commessa**, e
+dalla commessa in fattura (vedi [Gestione commesse](/guide/gestione-commesse) e
+[Fatturazione](/guide/fatturazione)). A mandarli in commessa è il **push dei
+contratti**, che gira a ogni giro del push e prende quello che è maturato.
+
+### 4-bis.1 Che cosa si addebita
+
+| Riga del contratto | Si addebita? | A che prezzo |
+| --- | --- | --- |
+| **ADESIONE** — un articolo del listino che il cliente prende | sì | quello del listino, con la variazione globale |
+| **AGGIUNTA** — un articolo fuori listino | sì | quello della riga |
+| **OVERRIDE** — il prezzo del cliente per un articolo del listino | **no**, salvo su una quota fissa (sotto) | — |
+| **ESCLUSIONE** | no | — |
+
+Due regole da sapere:
+
+* **L'OVERRIDE è solo un prezzo.** Dice quanto paga il cliente *se e quando* compra
+  quell'articolo (un preventivo, un ordine). Il contratto non lo addebita da solo:
+  altrimenti il cliente lo pagherebbe due volte.
+* **Le quote fisse del listino si addebitano da sole.** Una voce del listino di
+  tipologia «quota fissa» (canone o quota periodica indipendente dal consumo) la paga
+  ogni contratto di quel listino, senza bisogno di una riga: una volta per periodo, con
+  la periodicità scritta sulla riga del listino. Il contratto la cambia con una riga
+  sua: un OVERRIDE ne cambia il prezzo (e qui l'OVERRIDE si addebita, al posto della
+  quota), un'ESCLUSIONE la toglie.
+
+Le altre voci del listino (servizi, prodotti) sono solo prezzi: il cliente le paga se
+le prende, cioè con un'ADESIONE.
+
+### 4-bis.2 Una tantum
+
+Una riga **una tantum** si addebita **una volta**, alla data di inizio del contratto,
+appena il contratto è attivo.
+
+### 4-bis.3 Il canone
+
+Una riga **a canone** si addebita a periodi. Lo decidono tre dati:
+
+| Dato | Dove sta | Che cosa dice |
+| --- | --- | --- |
+| **Periodicità** | sulla riga (sulla quota fissa: sulla riga del listino) | mensile, bimestrale, trimestrale, quadrimestrale, semestrale, annuale. Sull'ADESIONE la propone il listino |
+| **Mese di partenza** | sulla testata | da quale mese si contano i periodi. Gennaio = il calendario normale (trimestri gen-mar, apr-giu…); febbraio = feb-apr, mag-lug… |
+| **Anticipato o normale** | sulla testata; una riga può forzarlo | *anticipato*: il periodo si addebita appena **comincia**; *normale*: appena **finisce** |
+
+Come si calcola il periodo:
+
+* i periodi **cominciano sempre il giorno 1** del mese;
+* il periodo **incompleto**, all'inizio o alla fine del contratto, si paga **in
+  proporzione**: i mesi interi a mesi, il mese a metà a giorni;
+* un periodo che **scavalca il 31 dicembre** si spezza in due righe di commessa, una per
+  anno, per la competenza contabile;
+* i periodi **arretrati** si recuperano: ogni giro riparte dal giorno dopo l'ultimo
+  periodo addebitato, quindi un giro saltato non perde niente.
+
+La quantità del periodo:
+
+* a **quantità fissa**: la quantità della riga, per la parte di periodo addebitata
+  (mezzo trimestre = metà);
+* a **durata**: il sistema conta i giorni o i mesi del periodo, nell'unità di misura
+  dell'articolo. Il periodo incompleto è già dentro.
+
+Il prezzo è quello della riga (OVERRIDE, AGGIUNTA), oppure quello del listino del
+contratto **all'inizio del periodo**, con la variazione globale (ADESIONE, quota fissa).
+
+> **Esempio.** Contratto dal 15 febbraio, trimestrale, anticipato, mese di partenza
+> gennaio, quota fissa da 100 € a trimestre. Primo giro, a ottobre:
+>
+> * 15/02 – 31/03: **0,5** trimestre (mezzo febbraio e marzo, su tre mesi) → 50 €;
+> * 01/04 – 30/06, 01/07 – 30/09, 01/10 – 31/12: un trimestre ciascuno → 100 € l'uno.
+>
+> Il giro di novembre non manda niente: il trimestre in corso è già addebitato.
+
+Ogni riga di commessa del canone porta come **mese di competenza** il mese del giro, e
+come **periodo** le date del pezzo addebitato.
+
+### 4-bis.4 La cessazione e gli storni
+
+Con il canone anticipato, quando il contratto cessa a metà periodo il periodo è già
+stato addebitato per intero. Il push allora **storna la parte non goduta**: una riga
+negativa, allo stesso prezzo, per quanto si sarebbe addebitato in meno con la fine
+nota. Le righe negative vanno nella fattura successiva.
+
+La data di fine si può cambiare finché il contratto è attivo (§6.1): anticiparla,
+spostarla più avanti, toglierla. Lo storno segue: è sempre la **differenza** fra
+quanto è dovuto con la fine di oggi e quanto è già stato stornato. Se la fine arretra
+si storna ancora, se avanza (o sparisce) si riaddebita quello che era stato stornato in
+più. Alla fine il periodo vale sempre quanto varrebbe con un taglio solo, alla data di
+fine di oggi.
+
+### 4-bis.5 Che cosa non parte, e dove si vede
+
+Un canone **non parte** se:
+
+* la riga (o la quota fissa del listino) non ha la periodicità;
+* è a durata su un'unità di misura che non si conta dal calendario;
+* il listino non ha un prezzo alla data del periodo.
+
+Il contratto compare allora nel **Backlog** come anomalia, «Rivedi il contratto»; quello
+che ha solo addebiti maturati da mandare compare come «Esegui il push dei canoni» (vedi
+[Cruscotti fatturazione §4](/guide/cruscotti-fatturazione)). Le righe sono chiuse fuori
+dalla bozza (§6.2): un canone che non può partire su un contratto attivo si risolve fuori
+dalla riga, con un contratto nuovo o con il prezzo nel listino.
+
+Le righe **a ore** e **a consumo** non arrivano ancora dal contratto: aspettano le loro
+fonti (rendicontazione ore, letture). Il **pacchetto di ore fisse** al periodo è un
+canone a quantità fissa sull'unità di misura delle ore.
+
+Dove sta la regola, per chi sviluppa: una funzione sola, che il push e la dashboard
+leggono tutti e due —
+[`vendite.fn_contratti_addebiti_maturati`](/dbzero/vendite/manual/fn_contratti_addebiti_maturati).
+I periodi li calcola [`vendite.fn_canone_periodi`](/dbzero/vendite/funzioni/fn_canone_periodi).
+
+---
+
 ## 5. Articoli compositi e BoM
 
 ### 5.1 Cosa succede quando aggiungi un composito
@@ -364,7 +490,8 @@ Dopo l'attivazione il contratto è un documento firmato: quasi tutto resta com'e
 | offerta e sorgente da cui nasce | ferme | ferme |
 | fine validità (`valido_al`), CIG, CUP, codice commessa, note | **si cambiano** | fermi |
 
-La fine validità si sposta per programmare la cessazione; CIG, CUP e codice
+La fine validità si sposta per programmare la cessazione (se un canone anticipato è già
+addebitato oltre la data nuova, il push storna o riaddebita la differenza: §4-bis.4); CIG, CUP e codice
 commessa arrivano spesso dopo la firma. A contratto cessato o annullato si ferma
 tutto. Utility e azienda che emette non si cambiano nemmeno in bozza: in bozza
 si cambia il cliente, dentro la stessa utility. Il rifiuto dice quale famiglia
@@ -624,6 +751,9 @@ sono gli stessi in tutti i domini. Vedi [modello componenti BoM](/dev/manual/mod
 | **OVERRIDE**                 | Eccezione di riga: prezzo personalizzato per articolo del listino. Variazione globale non si applica                |
 | **ESCLUSIONE**               | Eccezione di riga: articolo del listino non disponibile per il cliente                                              |
 | **AGGIUNTA**                 | Eccezione di riga: articolo fuori listino aggiunto al contratto                                                     |
+| **ADESIONE**                 | Eccezione di riga: articolo del listino che il cliente prende, al prezzo del listino. Si addebita                   |
+| **Quota fissa**              | Voce del listino a canone che ogni contratto del listino paga da sé, a periodi, salvo un'eccezione che la cambia     |
+| **Storno del canone**        | Riga negativa che restituisce la parte di un canone anticipato non goduta dopo la cessazione                        |
 | **Versione listino fissata** | `listino_versione_id` snapshot all'attivazione. Il contratto legge sempre quella versione                           |
 | **Drift listino**            | In DRAFT, se esce una nuova versione del listino mentre si lavorano le eccezioni, il banner UI avverte              |
 | **Lock post-attivazione**    | Da ATTIVO in poi, testata e righe sono immutabili — trigger DB enforced                                             |

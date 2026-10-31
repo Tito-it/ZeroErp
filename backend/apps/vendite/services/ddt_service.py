@@ -44,6 +44,7 @@ from apps.core.db._helpers import richiedi_codice_a_vocabolario
 from apps.core.api.constants import MAX_LIMIT
 from apps.core.services.documento_modello import (
     e_stato_di_annullo,
+    e_stato_iniziale,
     rifiuta_stato_di_emissione,
     stato_di_emissione,
 )
@@ -137,7 +138,6 @@ _V = PayloadValidator(validation_code="E_DDT_VALIDAZIONE")
 # Gli id della controparte che il payload puo' portare: si coerciscono a
 # intero (un valore non numerico e' un 400 col campo, non un 500 da `int()`).
 _ID_CONTROPARTE: tuple[str, ...] = ("billing_account_id", "destinatario_soggetto_ruolo_id")
-_STATI_MODIFICABILI: frozenset[str] = frozenset({"DRAFT"})
 
 # Whitelist campi testata accettati in create (null_vs_empty -> None).
 # Col BA il destinatario lo scrive il DB (e rifiuta un valore diverso); senza
@@ -463,7 +463,7 @@ def aggiorna_ddt(ddt_id: int, payload: dict[str, Any]) -> dict[str, Any]:
 #  - DDT esistente, stato BOZZA (DRAFT), zero righe.
 def elimina_ddt(ddt_id: int) -> dict[str, Any]:
     repo = DdtRepository()
-    _assert_stato(repo, ddt_id, _STATI_MODIFICABILI, op="elimina_ddt")
+    _assert_stato_iniziale(repo, ddt_id, op="elimina_ddt")
     righe_count = repo.count_righe(ddt_id)
     ErrorManager.require(
         righe_count == 0,
@@ -1161,9 +1161,11 @@ def _get_riga_or_raise(
 
 
 # Scopo: Guard di stato leggero (solo codice_interno): E_DDT_NOT_FOUND se il
-#        DDT non esiste, E_DDT_STATO_TRANSIZIONE se lo stato non e' ammesso.
-def _assert_stato(
-    repo: DdtRepository, ddt_id: int, ammessi: frozenset[str], *, op: str,
+#        DDT non esiste, E_DDT_STATO_TRANSIZIONE se lo stato non e' quello in
+#        cui il documento nasce (lo stato iniziale del vocabolario, mai
+#        `'DRAFT'` scritto qui).
+def _assert_stato_iniziale(
+    repo: DdtRepository, ddt_id: int, *, op: str,
 ) -> str:
     # Stesso BB del guard di testata, col getter leggero (solo codice_interno).
     stato = testata_o_not_found(
@@ -1172,10 +1174,10 @@ def _assert_stato(
         id_name="ddt_id", function_name=f"{_FN}.{op}",
     )
     ErrorManager.require(
-        stato in ammessi,
+        e_stato_iniziale(TESTATA_DDT, stato),
         code="E_DDT_STATO_TRANSIZIONE",
         message=f"Operazione non ammessa nello stato {stato}.",
-        detail=f"ammessi={sorted(ammessi)}",
+        detail=f"stato={stato}, ammesso: lo stato iniziale del vocabolario",
         function_name=f"{_FN}.{op}",
     )
     return stato

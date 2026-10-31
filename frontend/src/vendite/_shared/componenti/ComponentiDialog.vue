@@ -34,6 +34,9 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useEsposizioniComponente, severitaEsposizione } from '../../../catalogo/composables/useEsposizioniComponente'
+// DataTable grezza: i componenti BoM della riga in composizione, dall'anteprima
+// (`apiPreview`) e valorizzati nel client fino al salvataggio del padre — un
+// form atomico in un dialog, non paginato e non configurabile.
 // eslint-disable-next-line no-restricted-imports -- eccezione nel registro DataTable (scripts/datatable.baseline.json)
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'

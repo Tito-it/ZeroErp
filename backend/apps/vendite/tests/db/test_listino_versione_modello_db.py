@@ -5,8 +5,9 @@
 # Scopo: La versione di listino AL MODELLO sul DATABASE PROVVISTO, dal lato
 #        del backend (brief-modello-documento-vendita §16, giro 12): la riga
 #        della versione porta lo stato dal vocabolario, i passaggi permessi e
-#        il motivo di «Attiva»; l'attivazione e la sua anteprima sono il verbo
-#        e il lettore del DB; i rifiuti per stato arrivano col codice del DB.
+#        il motivo di «Attiva», «Elimina» e «Chiudi»; attivazione, anteprima,
+#        eliminazione, chiusura e clone sono i verbi e il lettore del DB
+#        (§16.13, §16.16); i rifiuti arrivano col codice del DB.
 #        E' la giuntura Python↔PL/pgSQL che i test del service (mock) non vedono.
 # Note: ⚠️ Le REGOLE (matrice, porta, motivi, chiusura delle precedenti) le
 #       prova il pgTAP `vendite/test-listino-versione-al-modello-v1`. Il mondo
@@ -25,6 +26,10 @@ Indice test eseguiti (opt-in `ZEROERP_TEST_DB_E2E=1`):
 4bis) VersioneListinoModelloDbTests.test_l_anteprima_non_scrive
 5) VersioneListinoModelloDbTests.test_le_regole_per_stato_sono_del_db
 6) VersioneListinoModelloDbTests.test_le_scadenze_leggono_il_vocabolario
+7) VersioneListinoModelloDbTests.test_la_riga_porta_i_motivi_di_elimina_e_chiudi
+8) VersioneListinoModelloDbTests.test_elimina_dal_verbo
+9) VersioneListinoModelloDbTests.test_chiudi_dal_verbo
+10) VersioneListinoModelloDbTests.test_clona_dal_verbo
 """
 from __future__ import annotations
 
@@ -43,8 +48,10 @@ from apps.core.tests.db_e2e import apri_transazione_annullata, richiedi_db_provv
 from apps.vendite.db.listini_repository import TESTATA_LISTINI_VERSIONI, ListiniRepository
 from apps.vendite.services.listini_service import (
     fn_change_versione_state,
+    fn_clone_versione,
     fn_delete_versione,
     fn_list_versioni,
+    fn_programma_chiusura_versione,
     fn_update_versione,
 )
 
@@ -55,7 +62,13 @@ class VersioneListinoModelloDbTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         # La sonda sul verbo del giro: un DB indietro fallisce sull'oggetto
         # mancante, non su un'attesa sbagliata.
-        richiedi_db_provvisto("vendite.fn_attiva_versione_listino(bigint)")
+        for sonda in (
+            "vendite.fn_attiva_versione_listino(bigint)",
+            "vendite.fn_elimina_versione_listino(bigint)",
+            "vendite.fn_programma_chiusura_versione_listino(bigint, date)",
+            "vendite.fn_clona_versione_listino(bigint, varchar, date, date)",
+        ):
+            richiedi_db_provvisto(sonda)
 
     # Scopo: il listino con la versione ATTIVA (V1) e una BOZZA senza prezzi
     #        (V2) che decorre fra 30 giorni.
@@ -93,7 +106,7 @@ class VersioneListinoModelloDbTests(unittest.TestCase):
         )
 
     def _riga(self, versione_id: int) -> dict[str, Any]:
-        righe = {r["id"]: r for r in fn_list_versioni(self.listino_id)["results"]}
+        righe = {r["id"]: r for r in fn_list_versioni(self.listino_id)[0]}
         return righe[versione_id]
 
     def _con_un_prezzo(self, versione_id: int) -> None:
@@ -176,7 +189,8 @@ class VersioneListinoModelloDbTests(unittest.TestCase):
         self.assertIsNone(self._riga(self.v1)["valido_al"])
 
     # 5. Le regole per stato (L-5) sono del guard della versione: di una
-    #    ATTIVA si cambia solo la fine, e non si elimina.
+    #    ATTIVA si cambia solo la fine, solo da «Chiudi» (C-4 = a), e non si
+    #    elimina.
     def test_le_regole_per_stato_sono_del_db(self) -> None:
         errore = self._rifiuto(
             lambda: fn_update_versione(self.listino_id, self.v1, {"codice_versione": "ALTRO"}),
@@ -185,21 +199,92 @@ class VersioneListinoModelloDbTests(unittest.TestCase):
         errore = self._rifiuto(lambda: fn_delete_versione(self.listino_id, self.v1))
         self.assertEqual(errore.code, "E_LISTINO_VERSIONE_NON_ELIMINABILE")
         fine = self.oggi + timedelta(days=10)
-        fn_update_versione(self.listino_id, self.v1, {"valido_al": fine.isoformat()})
-        self.assertEqual(self._riga(self.v1)["valido_al"], fine)
+        errore = self._rifiuto(
+            lambda: fn_update_versione(self.listino_id, self.v1, {"valido_al": fine.isoformat()}),
+        )
+        self.assertEqual(errore.code, "E_LISTINO_VERSIONE_FINE_SOLO_DAL_VERBO")
+        self.assertIsNone(self._riga(self.v1)["valido_al"])
+
+    # Scopo: le versioni del listino che la regola del DB dice in scadenza
+    #        (`giorni_alla_scadenza` della lista versioni, dal 2026-10-31).
+    def _in_scadenza(self) -> set[int]:
+        versioni, _ = self.repo.list_versioni_pagina(self.listino_id)
+        return {v["id"] for v in versioni if v["giorni_alla_scadenza"] is not None}
 
     # 6. Le scadenze: V1 in vigore oggi che scade fra 10 giorni compare; con
-    #    una BOZZA che le subentra (lo stato letto dal vocabolario) no.
+    #    una BOZZA che le subentra (lo stato letto dal vocabolario) no. Fra 10
+    #    giorni: dentro il preavviso del seed (15).
     def test_le_scadenze_leggono_il_vocabolario(self) -> None:
-        fn_update_versione(
+        fn_programma_chiusura_versione(
             self.listino_id, self.v1, {"valido_al": (self.oggi + timedelta(days=10)).isoformat()},
         )
         fn_delete_versione(self.listino_id, self.v2)
-        scadenze = {r["versione_id"] for r in self.repo.listini_in_scadenza(30)}
-        self.assertIn(self.v1, scadenze)
+        self.assertIn(self.v1, self._in_scadenza())
         self.repo.create_versione(
             self.listino_id,
             {"codice_versione": "SUCC", "valido_dal": self.oggi + timedelta(days=11)},
         )
-        scadenze = {r["versione_id"] for r in self.repo.listini_in_scadenza(30)}
-        self.assertNotIn(self.v1, scadenze)
+        self.assertNotIn(self.v1, self._in_scadenza())
+
+    # 7. «Elimina» e «Chiudi» si spengono dalla superficie del DB col primo
+    #    motivo della loro `fn_check` (§16.13 BE-E3, §16.16 BE-C3).
+    def test_la_riga_porta_i_motivi_di_elimina_e_chiudi(self) -> None:
+        v1, v2 = self._riga(self.v1), self._riga(self.v2)
+        self.assertEqual(v1["eliminazione_blocco_reason"], "VERSIONE_NON_IN_BOZZA")
+        self.assertEqual(
+            v1["eliminazione_blocco_reason_key"], "vendite.listini.azione_reason.versione_non_in_bozza",
+        )
+        self.assertIsNone(v1["chiusura_blocco_reason"])
+        self.assertIsNone(v2["eliminazione_blocco_reason"])
+        self.assertEqual(v2["chiusura_blocco_reason"], "VERSIONE_NON_ATTIVA")
+        self.assertEqual(
+            v2["chiusura_blocco_reason_key"], "vendite.listini.azione_reason.versione_non_attiva",
+        )
+
+    # 8. L'eliminazione e' il verbo: una BOZZA con un prezzo se ne va intera,
+    #    con i conteggi; una versione che non c'e' piu' e' un 404 del verbo.
+    def test_elimina_dal_verbo(self) -> None:
+        self._con_un_prezzo(self.v2)
+        out = fn_delete_versione(self.listino_id, self.v2)
+        self.assertEqual((out["deleted"], out["righe_eliminate"], out["componenti_eliminati"]), (True, 1, 0))
+        self.assertNotIn(self.v2, {r["id"] for r in fn_list_versioni(self.listino_id)[0]})
+        errore = self._rifiuto(lambda: fn_delete_versione(self.listino_id, self.v2))
+        self.assertEqual(errore.code, "E_VENDITE_LISTINO_VERSIONE_NOT_FOUND")
+
+    # 9. «Chiudi» e' il verbo: la fine nel passato e' rifiutata sul campo
+    #    `valido_al`; una futura si scrive (lo stato resta ATTIVA, la chiusura
+    #    e' programmata) e null la toglie. Su una BOZZA: non chiudibile.
+    def test_chiudi_dal_verbo(self) -> None:
+        ieri = self.oggi - timedelta(days=1)
+        errore = self._rifiuto(
+            lambda: fn_programma_chiusura_versione(self.listino_id, self.v1, {"valido_al": ieri.isoformat()}),
+        )
+        self.assertEqual(errore.code, "E_LISTINO_VERSIONE_FINE_NEL_PASSATO")
+        self.assertEqual(errore.fields, ("valido_al",))
+        fine = self.oggi + timedelta(days=20)
+        out = fn_programma_chiusura_versione(self.listino_id, self.v1, {"valido_al": fine.isoformat()})
+        self.assertEqual((out["stato"], out["valido_al"], out["chiusura_programmata"]), ("ATTIVA", fine, True))
+        out = fn_programma_chiusura_versione(self.listino_id, self.v1, {"valido_al": None})
+        self.assertIsNone(out["valido_al"])
+        errore = self._rifiuto(
+            lambda: fn_programma_chiusura_versione(self.listino_id, self.v2, {"valido_al": fine.isoformat()}),
+        )
+        self.assertEqual(errore.code, "E_LISTINO_VERSIONE_NON_CHIUDIBILE")
+
+    # 10. Il clone e' il verbo, anche da una BOZZA (C-1 = a): la copia nasce
+    #     BOZZA coi prezzi attivi; prima della sorgente e' rifiutata sul campo
+    #     `valido_dal` (D2).
+    def test_clona_dal_verbo(self) -> None:
+        self._con_un_prezzo(self.v2)
+        dal = self.v2_dal + timedelta(days=5)
+        out = fn_clone_versione(self.listino_id, self.v2, {"codice_versione": "COPIA", "valido_dal": dal.isoformat()})
+        self.assertEqual((out["stato"], out["valido_dal"], out["righe_count"]), ("BOZZA", dal, 1))
+        self.assertEqual((out["righe_copiate"], out["componenti_copiati"], out["componenti_saltati"]), (1, 0, 0))
+        prima = self.v2_dal - timedelta(days=1)
+        errore = self._rifiuto(
+            lambda: fn_clone_versione(
+                self.listino_id, self.v2, {"codice_versione": "PRIMA", "valido_dal": prima.isoformat()},
+            ),
+        )
+        self.assertEqual(errore.code, "E_LISTINO_VERSIONE_CLONE_PRIMA_DELLA_SORGENTE")
+        self.assertEqual(errore.fields, ("valido_dal",))

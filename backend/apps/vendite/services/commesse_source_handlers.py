@@ -132,7 +132,14 @@ class BoMComponentExpander:
     componenti effettivamente inclusi). `esposizione_in_fattura` arriva dalla
     proiezione (JOIN runtime su `articoli_componenti`).
 
-    Articolo composito senza loader o con snapshot vuoto: pass-through
+    Il kit che il documento NON negozia (la quota fissa del listino arriva
+    senza riga; l'ADESIONE su un kit non ha componenti suoi): li da' il
+    listino, dal secondo lettore `componenti_listino_loader` (riceve la
+    riga, oggi lo inietta il solo `HandlerContratti`: D-2 (c) di
+    brief-db-contratto-righe-periodiche-in-commessa §7.2). Stessa forma
+    dello snapshot, prezzo del DB: nessun prezzo calcolato qui.
+
+    Articolo composito senza componenti da nessuno dei due: pass-through
     difensivo + `logger.warning` (la riga padre va in commessa non
     espansa). Atteso solo in dev o per handler senza loader iniettato.
 
@@ -150,6 +157,7 @@ class BoMComponentExpander:
         self,
         is_composito_fn: Callable[[Any], bool] | None = None,
         componenti_loader: Callable[[int], list[dict[str, Any]]] | None = None,
+        componenti_listino_loader: Callable[[PushableRow], list[dict[str, Any]]] | None = None,
     ) -> None:
         self._is_composito_fn = is_composito_fn or self._default_is_composito
         # componenti_loader: snapshot pricing pre-popolato (modello unificato
@@ -160,6 +168,9 @@ class BoMComponentExpander:
         # 2026-05-14 (mai realmente esercitato in produzione: preventivi ha
         # snapshot, ordini/ddt non esistono).
         self._componenti_loader = componenti_loader
+        # I componenti del kit dal LISTINO del documento, quando la riga non
+        # ne ha di negoziati (D-2 (c)): stessa forma dello snapshot.
+        self._componenti_listino_loader = componenti_listino_loader
         self._composite_cache: dict[Any, bool] = {}
 
     # Scopo: applica la logica BoM a una riga sorgente, restituendo 1 o N
@@ -198,6 +209,16 @@ class BoMComponentExpander:
             if snapshot:
                 return [
                     self._build_componente_row_from_snapshot(row, c) for c in snapshot
+                ]
+
+        # Il kit che il documento non negozia: i componenti dal listino, alla
+        # data del pezzo (D-2 (c)). La quota fissa arriva senza riga
+        # sorgente, l'ADESIONE con la riga ma senza componenti suoi.
+        if self._componenti_listino_loader is not None:
+            dal_listino = self._componenti_listino_loader(row)
+            if dal_listino:
+                return [
+                    self._build_componente_row_from_snapshot(row, c) for c in dal_listino
                 ]
 
         # Articolo composito senza snapshot loader o con lista vuota.
@@ -362,6 +383,25 @@ class BaseSourceHandler(ABC):
     # È una staticmethod (non import top-level) perche' i *_repository importano
     # i types del dominio vendite → import locale evita cicli.
     _componenti_repo_factory: Callable[[], Any] | None = None
+    # Il periodo della riga entra nella chiave della commessa? Si' per le
+    # sorgenti a evento (un documento, un periodo). ⛔ No per il contratto
+    # (G-6 del brief-db-contratto-righe-periodiche-in-commessa): ogni pezzo di
+    # canone ha il suo periodo, e col periodo nella chiave dal secondo pezzo
+    # si aprirebbe un'altra commessa, che la madre rifiuta
+    # (`E_COMMESSA_SORGENTE_ALTRA_COMMESSA`, D-12). Una commessa viva per
+    # contratto accumula i pezzi finche' non si fattura.
+    _commessa_per_periodo: bool = True
+
+    # Scopo: il secondo lettore dell'espansore, i componenti di un kit dal
+    #        listino del documento quando la riga non ne ha di negoziati
+    #        (`BoMComponentExpander.componenti_listino_loader`). Nessuno di
+    #        default: lo da' la sorgente che ha kit non negoziati (il contratto).
+    @staticmethod
+    def _componenti_listino_loader(
+        repo_componenti: Any,
+    ) -> Callable[[PushableRow], list[dict[str, Any]]] | None:
+        del repo_componenti
+        return None
 
     def __init__(
         self,
@@ -379,6 +419,7 @@ class BaseSourceHandler(ABC):
             repo_componenti = self._componenti_repo_factory()
             bom_expander = BoMComponentExpander(
                 componenti_loader=repo_componenti.list_componenti_riga,
+                componenti_listino_loader=self._componenti_listino_loader(repo_componenti),
             )
         self._bom_expander = bom_expander or BoMComponentExpander()
         # PricingService per popolare l'audit snapshot v5 al push (F2-BE-12).
@@ -511,8 +552,8 @@ class BaseSourceHandler(ABC):
                 "tipo_commessa": tipo_commessa,
                 "policy_fatturazione": policy_fatturazione,
                 "fatturazione_immediata": row.fatturazione_immediata,
-                "competenza_dal": row.competenza_dal,
-                "competenza_al": row.competenza_al,
+                "competenza_dal": row.competenza_dal if self._commessa_per_periodo else None,
+                "competenza_al": row.competenza_al if self._commessa_per_periodo else None,
                 "termine_pagamento_id": row.termine_pagamento_id,
                 "modalita_pagamento_id": row.modalita_pagamento_id,
             }
@@ -801,12 +842,45 @@ class HandlerContratti(BaseSourceHandler):
 
     name = "HandlerContratti"
     sorgente_codice = SORGENTE_CONTRATTO
+    # G-6: la commessa del contratto si apre senza periodo (vedi la base).
+    _commessa_per_periodo = False
 
     @staticmethod
     def _componenti_repo_factory():
         from apps.vendite.db.contratti_repository import ContrattiRepository
 
         return ContrattiRepository()
+
+    # Scopo: il kit che il contratto non negozia (quota fissa del listino,
+    #        ADESIONE) prende i componenti dal listino del contratto, alla
+    #        data del pezzo (`data_attivita`, la stessa a cui il lister prezza
+    #        il kit; D-2 (c)). Il contratto e' la sorgente della riga
+    #        (`sorgente_uid` = `contratti.uid`).
+    #        ⭐ Una lettura per (contratto, kit, data) nel giro: lo stesso pezzo
+    #        si rilegge per ogni riga che lo porta. L'handler nasce a ogni giro
+    #        di push (`commesse_service._build_handlers`), quindi la memoria
+    #        vive quanto il giro e non vede un listino vecchio. I componenti
+    #        sono in sola lettura per l'espansore: condividerli e' sicuro.
+    @staticmethod
+    def _componenti_listino_loader(
+        repo_componenti: Any,
+    ) -> Callable[[PushableRow], list[dict[str, Any]]] | None:
+        letti: dict[tuple[Any, Any, Any], list[dict[str, Any]]] = {}
+
+        def _loader(row: PushableRow) -> list[dict[str, Any]]:
+            data = row.data_attivita or row.competenza_dal
+            if data is None:
+                return []
+            chiave = (row.sorgente_uid, row.articolo_id, data)
+            if chiave not in letti:
+                letti[chiave] = repo_componenti.list_componenti_kit_dal_listino(
+                    contratto_uid=row.sorgente_uid,
+                    articolo_padre_id=row.articolo_id,
+                    data=data,
+                )
+            return letti[chiave]
+
+        return _loader
 
 
 class HandlerDdt(BaseSourceHandler):

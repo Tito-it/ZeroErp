@@ -1,0 +1,209 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL GUARD PER STATO DI UNA VERSIONE DI LISTINO: LA FINE DI UNA ATTIVA SOLO
+# DAI VERBI
+#   Brief: brief-modello-documento-vendita §16.15 (C-4 = a di Tid,
+#   2026-10-29). Corpo di partenza: il vivo, uguale al 20261028-37.
+#
+# ── PERCHE' ─────────────────────────────────────────────────────────
+#   «La fine di una ATTIVA non sta nel passato» (C-2) la dice il verbo
+#   vendite.fn_programma_chiusura_versione_listino (20261029-02). Ma il guard
+#   lasciava cambiare valido_al di una ATTIVA a chiunque scrivesse la tabella:
+#   un PATCH aggirava il verbo, e il backend avrebbe dovuto tenere una regola
+#   di stato sua. Stretta di L-5, non revoca: di una ATTIVA si cambia ancora
+#   solo la fine, ma solo dai due verbi che la scrivono, «Chiudi» e
+#   l'attivazione (che chiude le precedenti, anche nel passato: D3 e D2 di
+#   sviluppo-listini-v2).
+#
+# ── CHE COSA CAMBIA ─────────────────────────────────────────────────
+#   Nel ramo UPDATE, dopo il controllo dei campi (invariato): su una ATTIVA
+#   una fine cambiata senza la porta del verbo solleva
+#   E_LISTINO_VERSIONE_FINE_SOLO_DAL_VERBO (TECNICO: nessuna interfaccia la
+#   produce, se il backend passa dal verbo). La porta, nel modello di
+#   vendite.trgfn_ddt_righe_guard_riga_evasa: la GUC transazionale
+#   zeroerp.listino_versione_fine = id della versione E chi scrive e' il
+#   proprietario della tabella (script.fn_is_proprietario_tabella): la apre un
+#   verbo SECURITY DEFINER, non l'applicazione.
+#   Un altro campo cambiato insieme alla fine: E_LISTINO_VERSIONE_CAMPO_NON_MODIFICABILE,
+#   come prima. Il ramo DELETE, BOZZA e CHIUSA, la firma e i trigger restano
+#   quelli del 20261028-37; SECURITY INVOKER ora scritto.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261029-07-update-trgfn-listini-versioni-guard-per-stato-fine-solo-dai-verbi-mctit.yaml
+
+  - changeSet:
+      id: 20261029-07-update-trgfn-listini-versioni-guard-per-stato-fine-solo-dai-verbi
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.trgfn_listini_versioni_guard_per_stato: la fine di una versione ATTIVA cambia solo
+        con la porta dei verbi (E_LISTINO_VERSIONE_FINE_SOLO_DAL_VERBO). Brief:
+        brief-modello-documento-vendita §16.15 (C-4).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite' AND p.proname = 'trgfn_listini_versioni_guard_per_stato';
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_is_proprietario_tabella';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_listini_versioni_guard_per_stato()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: che cosa si cambia di una versione di listino nello
+              --   stato in cui e' (BEFORE UPDATE), e se si cancella (BEFORE
+              --   DELETE). Vedi l'intestazione dei changeSet 20261028-09, -37
+              --   e 20261029-07.
+              DECLARE
+                  v_stato  config.stati_doc_listino_versioni.codice_interno%TYPE;
+                  -- Nomi di colonna della tabella: nessuna colonna di cui
+                  -- siano il riflesso.
+                  v_libere text[] := ARRAY['data_update', 'user_update', 'tx_id', 'validita',
+                                           'stato_doc_listino_versione_id'];
+                  v_campo  text;
+              BEGIN
+                  SELECT s.codice_interno INTO v_stato
+                    FROM config.stati_doc_listino_versioni s
+                   WHERE s.id = OLD.stato_doc_listino_versione_id;
+
+                  -- Se si cancella lo dice script.fn_check_versione_listino_eliminabile
+                  -- (20261028-36): la stessa regola del verbo e del pulsante.
+                  IF TG_OP = 'DELETE' THEN
+                      PERFORM script.fn_raise_primo_motivo_se_presente(
+                          'vendite', TG_NAME::text,
+                          script.fn_check_versione_listino_eliminabile(OLD.id),
+                          NULL,
+                          OLD.tx_id,
+                          jsonb_build_object('versione_id', OLD.id, 'listino_id', OLD.listino_id,
+                                             'stato', v_stato));
+                      RETURN OLD;
+                  END IF;
+
+                  IF v_stato = 'BOZZA' THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- ATTIVA: in piu' si cambia valido_al (dai verbi, sotto).
+                  -- CHIUSA: niente.
+                  IF v_stato = 'ATTIVA' THEN
+                      v_libere := array_append(v_libere, 'valido_al');
+                  END IF;
+
+                  -- Il primo campo cambiato fuori da quelli liberi, nell'ordine
+                  -- delle colonne della tabella.
+                  SELECT a.attname INTO v_campo
+                    FROM pg_catalog.pg_attribute a
+                   WHERE a.attrelid = TG_RELID
+                     AND a.attnum > 0
+                     AND NOT a.attisdropped
+                     AND a.attname <> ALL (v_libere)
+                     AND (to_jsonb(NEW) -> a.attname) IS DISTINCT FROM (to_jsonb(OLD) -> a.attname)
+                   ORDER BY a.attnum
+                   LIMIT 1;
+
+                  IF FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', TG_NAME::text, 'E_LISTINO_VERSIONE_CAMPO_NON_MODIFICABILE',
+                          jsonb_build_object('versione_id', OLD.id, 'listino_id', OLD.listino_id,
+                                             'stato', v_stato, 'campo', v_campo),
+                          NEW.tx_id,
+                          OLD.codice_versione::text,
+                          COALESCE(v_stato, 'NULL'),
+                          v_campo);
+                  END IF;
+
+                  -- La fine di una ATTIVA: solo dalla porta dei verbi («Chiudi»,
+                  -- l'attivazione), per QUESTA versione, dal proprietario della
+                  -- tabella.
+                  IF v_stato = 'ATTIVA'
+                     AND NEW.valido_al IS DISTINCT FROM OLD.valido_al
+                     AND NOT (COALESCE(current_setting('zeroerp.listino_versione_fine', true), '') = OLD.id::text
+                              AND script.fn_is_proprietario_tabella(TG_RELID)) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', TG_NAME::text, 'E_LISTINO_VERSIONE_FINE_SOLO_DAL_VERBO',
+                          jsonb_build_object('versione_id', OLD.id, 'listino_id', OLD.listino_id,
+                                             'valido_al_prima', OLD.valido_al,
+                                             'valido_al', NEW.valido_al),
+                          NEW.tx_id,
+                          OLD.codice_versione::text);
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_listini_versioni_guard_per_stato() IS
+                  'Guard di una versione di listino, stato per stato (BEFORE UPDATE e BEFORE DELETE): BOZZA tutto si cambia e si cancella; ATTIVA si cambia solo valido_al (la chiusura programmata, e quella delle precedenti all''attivazione di una nuova); CHIUSA niente. Se si cancella lo dice script.fn_check_versione_listino_eliminabile, e il ramo DELETE ne solleva il primo motivo (fuori dalla BOZZA E_LISTINO_VERSIONE_NON_ELIMINABILE; una BOZZA citata da un documento E_LISTINO_VERSIONE_CITATA); un altro campo cambiato fuori dalla BOZZA: E_LISTINO_VERSIONE_CAMPO_NON_MODIFICABILE, col primo campo nell''ordine delle colonne. Lo stato non e'' un campo di questa regola (guard di transizione, porta); le colonne d''audit e la generata validita non contano. Prima la regola stava nel backend (listini_service._VERSIONE_PATCH_ALLOWED_BY_STATE, fn_delete_versione), e il database ne aveva solo le date della CHIUSA (vendite.trgfn_listini_versioni_guard_date_chiusa, ritirata qui). Brief: brief-modello-documento-vendita §16 (L-5, Tid 2026-10-28). Rev 2026-10-28 (20261028-37, brief-modello-documento-vendita §16.11): il ramo DELETE dalla check, la stessa del verbo vendite.fn_elimina_versione_listino e del pulsante (vendite.vw_listini_versioni_azioni). Rev 2026-10-29 (20261029-07, §16.15, C-4 = a di Tid): la fine di una ATTIVA cambia solo dalla porta dei verbi vendite.fn_programma_chiusura_versione_listino e vendite.fn_attiva_versione_listino (GUC transazionale zeroerp.listino_versione_fine = id della versione E il proprietario della tabella, script.fn_is_proprietario_tabella); senza: E_LISTINO_VERSIONE_FINE_SOLO_DAL_VERBO. Stretta di L-5, non revoca.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo del 20261028-37.
+              CREATE OR REPLACE FUNCTION vendite.trgfn_listini_versioni_guard_per_stato()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_stato  config.stati_doc_listino_versioni.codice_interno%TYPE;
+                  v_libere text[] := ARRAY['data_update', 'user_update', 'tx_id', 'validita',
+                                           'stato_doc_listino_versione_id'];
+                  v_campo  text;
+              BEGIN
+                  SELECT s.codice_interno INTO v_stato
+                    FROM config.stati_doc_listino_versioni s
+                   WHERE s.id = OLD.stato_doc_listino_versione_id;
+                  IF TG_OP = 'DELETE' THEN
+                      PERFORM script.fn_raise_primo_motivo_se_presente(
+                          'vendite', TG_NAME::text,
+                          script.fn_check_versione_listino_eliminabile(OLD.id),
+                          NULL, OLD.tx_id,
+                          jsonb_build_object('versione_id', OLD.id, 'listino_id', OLD.listino_id,
+                                             'stato', v_stato));
+                      RETURN OLD;
+                  END IF;
+                  IF v_stato = 'BOZZA' THEN
+                      RETURN NEW;
+                  END IF;
+                  IF v_stato = 'ATTIVA' THEN
+                      v_libere := array_append(v_libere, 'valido_al');
+                  END IF;
+                  SELECT a.attname INTO v_campo
+                    FROM pg_catalog.pg_attribute a
+                   WHERE a.attrelid = TG_RELID AND a.attnum > 0 AND NOT a.attisdropped
+                     AND a.attname <> ALL (v_libere)
+                     AND (to_jsonb(NEW) -> a.attname) IS DISTINCT FROM (to_jsonb(OLD) -> a.attname)
+                   ORDER BY a.attnum
+                   LIMIT 1;
+                  IF FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', TG_NAME::text, 'E_LISTINO_VERSIONE_CAMPO_NON_MODIFICABILE',
+                          jsonb_build_object('versione_id', OLD.id, 'listino_id', OLD.listino_id,
+                                             'stato', v_stato, 'campo', v_campo),
+                          NEW.tx_id, OLD.codice_versione::text, COALESCE(v_stato, 'NULL'), v_campo);
+                  END IF;
+                  RETURN NEW;
+              END;
+              $function$;

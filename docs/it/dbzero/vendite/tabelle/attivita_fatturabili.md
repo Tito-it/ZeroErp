@@ -63,6 +63,7 @@
 | fattura_riga_rettificata_id | bigint | YES |  |
 | fatturato | boolean | NO |  |
 | emit_batch_id | uuid | YES |  |
+| natura_dal_segno | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

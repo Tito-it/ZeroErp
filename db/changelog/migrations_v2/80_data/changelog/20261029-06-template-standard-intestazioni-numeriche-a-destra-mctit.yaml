@@ -1,0 +1,247 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NEI MODELLI STANDARD LE INTESTAZIONI DELLE COLONNE NUMERICHE VANNO A DESTRA
+#   Origine: Tid, 2026-10-29 (nel PDF del preventivo ALIQUOTA, IMPONIBILE,
+#   IMPOSTA, TOTALE stanno a sinistra, i valori sotto a destra). Forma
+#   dell'evoluzione: brief-db-modelli-documento-standard §4.1 Q-5 (i
+#   changeSet di evoluzione scrivono SOLO sullo standard). Precedenti:
+#   20261020-25 (ordine), 20261028-01 (fattura).
+#
+# -- IL CASO --------------------------------------------------------------
+#   Nel <style> dell'HTML la regola `table.lines th[, table.vat th]`
+#   (specificita' 0,1,2) dichiara `text-align: left` e batte `.num` (0,1,0):
+#   le <th class="num"> restano a sinistra, le <td class="num"> sotto vanno a
+#   destra. Il foglio CSS separato della versione (`th`, 0,0,1) non ha il
+#   difetto, ma la regola dell'HTML e' piu' specifica e lo copre.
+#   Il difetto c'e' nei tre seed che qualificano `th` con la tabella:
+#     * preventivo (20261020-13): `table.lines th, table.vat th`;
+#     * contratto (20261020-14) e offerta commerciale (20261020-15):
+#       `table.lines th`.
+#   Ordine, DDT e fattura (20261020-16/17/18) usano `th` semplice: `.num`
+#   vince gia', non si toccano.
+#
+# -- LA FORMA DEI DATI: INVARIATA -------------------------------------------
+#   Cambia solo lo stile: nessuna chiave del contesto si legge o si smette di
+#   leggere. La versione nuova dichiara la versione_contesto della sorgente e
+#   il backend non deve fare nulla.
+#
+# -- COME ------------------------------------------------------------------
+#   * Ogni standard si cerca per (standard, tipo di output, sorgente,
+#     codice_interno), la chiave con cui il suo seed lo ha creato.
+#   * La versione nuova si COPIA dalla pubblicata valida oggi. Subito dopo il
+#     blocco `table.lines th[, table.vat th] { ... }` (testo esatto del seed,
+#     deve comparire UNA volta) si aggiunge la regola `th.num` con
+#     `text-align: right` (0,2,2: batte il blocco qualunque sia l'ordine).
+#     Un modello ritoccato in quel blocco ferma il changeSet invece di
+#     pubblicare una copia a meta'. Sul risultato si conta `th.num`.
+#   * Blocchi composti riga per riga (array_to_string): spazi e a capo sono
+#     nei letterali, non dipendono dall'indentazione di questo YAML.
+#   * Pubblicata da script.fn_data_operativa(): fn_pubblica_template_documento_versione
+#     chiude la versione precedente al giorno prima. Le ristampe dei
+#     documenti gia' generati non cambiano: rileggono la versione di allora.
+#   * Idempotente per modello: se la pubblicata valida oggi contiene gia'
+#     `th.num`, quel modello si salta. Una BOZZA gia' presente lo ferma.
+#     Scritto dal proprietario della tabella (il migrate): il guard di sola
+#     lettura dello standard (20261020-07) lo lascia passare.
+#   * Le copie degli emittenti NON si toccano (Q-5): chi ha personalizzato
+#     preventivo, contratto o offerta si tiene il difetto finche' non
+#     ricopia lo standard.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261029-06-template-standard-intestazioni-numeriche-a-destra-mctit.yaml
+
+  - changeSet:
+      id: 20261029-06-template-standard-intestazioni-numeriche-a-destra
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Modelli standard «Preventivo», «Contratto», «Offerta commerciale»: versione nuova con le
+        intestazioni delle colonne numeriche (th.num) allineate a destra come i valori; forma dei
+        dati invariata. Pubblicata dalla data operativa. Forma: brief-db-modelli-documento-standard
+        §4.1 Q-5.
+      preConditions:
+        - onFail: HALT
+        - and:
+            # I tre standard ci sono (20261020-13/14/15): sono loro che si fanno evolvere.
+            - sqlCheck:
+                expectedResult: "3"
+                sql: |
+                  SELECT count(*)
+                    FROM documenti.template_documenti t
+                    JOIN config.sorgenti s ON s.id = t.sorgente_tipo_id
+                    JOIN documenti.tipi_documento_output o ON o.id = t.tipo_documento_output_id
+                   WHERE t.standard
+                     AND (s.codice_interno, o.codice_interno, t.codice_interno) IN (
+                           ('PREVENTIVO',          'PREVENTIVO',          'preventivo'),
+                           ('CONTRATTO',           'CONTRATTO',           'contratto'),
+                           ('OFFERTA_COMMERCIALE', 'OFFERTA_COMMERCIALE', 'offerta_commerciale'));
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $evolve$
+              DECLARE
+                  -- un valore di meta (jsonb): nessuna colonna di cui sia il riflesso
+                  c_brief     CONSTANT text := 'brief-db-modelli-documento-standard';
+                  c_marcatore CONSTANT documenti.template_documenti_versioni.html_template%TYPE := 'th.num';
+                  -- Le proprieta' comuni del blocco dei seed, testo esatto.
+                  c_corpo     CONSTANT documenti.template_documenti_versioni.html_template%TYPE := array_to_string(ARRAY[
+                      '      background: #f3f4f6;',
+                      '      color: #374151;',
+                      '      font-size: 8pt;',
+                      '      font-weight: 700;',
+                      '      text-align: left;',
+                      '      text-transform: uppercase;',
+                      '    }'], E'\n');
+                  -- Le due forme del blocco: con la tabella del riepilogo IVA (preventivo) e senza.
+                  c_vecchio_lines_vat CONSTANT documenti.template_documenti_versioni.html_template%TYPE :=
+                      'table.lines th,' || E'\n' || '    table.vat th {' || E'\n' || c_corpo;
+                  c_vecchio_lines     CONSTANT documenti.template_documenti_versioni.html_template%TYPE :=
+                      'table.lines th {' || E'\n' || c_corpo;
+                  c_aggiunta_lines_vat CONSTANT documenti.template_documenti_versioni.html_template%TYPE := array_to_string(ARRAY[
+                      '',
+                      '',
+                      '    table.lines th.num,',
+                      '    table.vat th.num {',
+                      '      text-align: right;',
+                      '    }'], E'\n');
+                  c_aggiunta_lines     CONSTANT documenti.template_documenti_versioni.html_template%TYPE := array_to_string(ARRAY[
+                      '',
+                      '',
+                      '    table.lines th.num {',
+                      '      text-align: right;',
+                      '    }'], E'\n');
+                  v_oggi      CONSTANT documenti.template_documenti_versioni.valido_dal%TYPE := script.fn_data_operativa();
+                  r           record;
+                  v_tpl       documenti.template_documenti.id%TYPE;
+                  v_src       documenti.template_documenti_versioni%ROWTYPE;
+                  v_html      documenti.template_documenti_versioni.html_template%TYPE;
+                  -- un conteggio di sottostringhe: nessuna colonna di cui sia il riflesso
+                  v_occorrenze integer;
+                  v_versione_id documenti.template_documenti_versioni.id%TYPE;
+                  v_esito     record;
+              BEGIN
+                  FOR r IN
+                      SELECT x.sorgente, x.output, x.codice, x.vecchio, x.aggiunta, x.attese
+                        FROM (VALUES
+                              ('PREVENTIVO',          'PREVENTIVO',          'preventivo',          c_vecchio_lines_vat, c_aggiunta_lines_vat, 2),
+                              ('CONTRATTO',           'CONTRATTO',           'contratto',           c_vecchio_lines,     c_aggiunta_lines,     1),
+                              ('OFFERTA_COMMERCIALE', 'OFFERTA_COMMERCIALE', 'offerta_commerciale', c_vecchio_lines,     c_aggiunta_lines,     1)
+                             ) AS x(sorgente, output, codice, vecchio, aggiunta, attese)
+                  LOOP
+                      SELECT t.id INTO v_tpl
+                        FROM documenti.template_documenti t
+                        JOIN config.sorgenti s ON s.id = t.sorgente_tipo_id
+                        JOIN documenti.tipi_documento_output o ON o.id = t.tipo_documento_output_id
+                       WHERE t.standard
+                         AND s.codice_interno = r.sorgente
+                         AND o.codice_interno = r.output
+                         AND t.codice_interno = r.codice;
+
+                      -- Sorgente: la versione che la stampa sceglie oggi.
+                      SELECT v.* INTO v_src
+                        FROM documenti.template_documenti_versioni v
+                       WHERE v.template_documento_id = v_tpl
+                         AND v.stato = 'PUBBLICATA'
+                         AND v.attivo IS TRUE
+                         AND v.validita @> v_oggi
+                       ORDER BY v.versione DESC, v.id DESC
+                       LIMIT 1;
+
+                      IF NOT FOUND THEN
+                          RAISE EXCEPTION
+                            'Standard % senza versione PUBBLICATA valida al %: non c''e'' da cosa partire.', r.codice, v_oggi;
+                      END IF;
+
+                      -- Idempotente: la versione di oggi allinea gia' le intestazioni.
+                      IF strpos(v_src.html_template, c_marcatore) > 0 THEN
+                          RAISE NOTICE 'standard %: la versione % contiene gia'' %, niente da fare.',
+                              r.codice, v_src.versione, c_marcatore;
+                          CONTINUE;
+                      END IF;
+
+                      -- Lo standard si cambia solo coi changeSet: una bozza lasciata
+                      -- in giro e' un'anomalia da guardare, non da sovrascrivere.
+                      IF EXISTS (SELECT 1 FROM documenti.template_documenti_versioni b
+                                  WHERE b.template_documento_id = v_tpl AND b.stato = 'BOZZA') THEN
+                          RAISE EXCEPTION 'Standard % con una BOZZA gia'' presente: rivederla prima di pubblicare.', r.codice;
+                      END IF;
+
+                      v_occorrenze := (length(v_src.html_template)
+                                       - length(replace(v_src.html_template, r.vecchio, '')))
+                                      / length(r.vecchio);
+
+                      IF v_occorrenze <> 1 THEN
+                          RAISE EXCEPTION
+                            'Blocco delle intestazioni trovato % volte invece di 1 nella versione % dello standard %: il template e'' stato ritoccato, rivedere il changeSet.',
+                            v_occorrenze, v_src.versione, r.codice;
+                      END IF;
+
+                      v_html := replace(v_src.html_template, r.vecchio, r.vecchio || r.aggiunta);
+
+                      -- La modifica, verificata sul risultato.
+                      IF (length(v_html) - length(replace(v_html, c_marcatore, ''))) / length(c_marcatore) <> r.attese THEN
+                          RAISE EXCEPTION 'Nell''HTML risultante dello standard % «%» non compare % volte.',
+                              r.codice, c_marcatore, r.attese;
+                      END IF;
+
+                      INSERT INTO documenti.template_documenti_versioni (
+                          template_documento_id, versione, stato, titolo,
+                          formato_template, html_template, css_template,
+                          markdown_template, render_engine_id, page_format,
+                          page_orientation, margin_top_mm, margin_right_mm,
+                          margin_bottom_mm, margin_left_mm, context_schema,
+                          storicizza, versione_contesto, meta)
+                      SELECT v_tpl,
+                             -- Numero successivo PER TEMPLATE.
+                             (SELECT max(v2.versione) + 1
+                                FROM documenti.template_documenti_versioni v2
+                               WHERE v2.template_documento_id = v_tpl),
+                             'BOZZA',
+                             v_src.titolo,
+                             v_src.formato_template,
+                             v_html,
+                             v_src.css_template,
+                             v_src.markdown_template,
+                             v_src.render_engine_id,
+                             v_src.page_format,
+                             v_src.page_orientation,
+                             v_src.margin_top_mm, v_src.margin_right_mm,
+                             v_src.margin_bottom_mm, v_src.margin_left_mm,
+                             v_src.context_schema,
+                             v_src.storicizza,
+                             v_src.versione_contesto,
+                             v_src.meta || jsonb_build_object(
+                                 'brief',               c_brief,
+                                 'origine',             'Q-5',
+                                 'origine_versione_id', v_src.id,
+                                 'motivo',              'intestazioni delle colonne numeriche (th.num) a destra come i valori')
+                      RETURNING id INTO v_versione_id;
+
+                      SELECT * INTO v_esito
+                        FROM documenti.fn_pubblica_template_documento_versione(
+                               v_versione_id, v_oggi, v_src.versione_contesto, NULL);
+
+                      RAISE NOTICE 'standard %: pubblicata la versione id % dal % (forma %), versioni rese obsolete: %',
+                          r.codice, v_versione_id, v_oggi, v_src.versione_contesto, v_esito.versioni_obsolete;
+                  END LOOP;
+              END
+              $evolve$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Le versioni non si cancellano (trgfn_template_documenti_versioni_block_delete):
+              -- per tornare indietro si pubblica una versione nuova con un changeSet nuovo.
+              SELECT 1;

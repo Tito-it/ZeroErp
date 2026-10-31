@@ -1,0 +1,58 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I MONTAGGI di script.trgfn_righe_default_periodicita_da_listino (20261029-44)
+#   vendite.contratti_righe, vendite.offerte_commerciali_eccezioni
+#   Brief: brief-db-contratto-righe-periodiche-in-commessa §6.11 (Lotto 4b)
+#
+#   BEFORE INSERT OR UPDATE OF tipo_erogazione, WHEN la riga e' a canone e senza
+#   periodicita' (l'ESCLUSIONE ha l'erogazione vuota e non entra). Fascia _a10_:
+#   il nome viene dopo default_erogazione_articolo e default_fonte_qta
+#   («default_p» > «default_f» > «default_e»), quindi l'erogazione e' gia'
+#   ereditata quando si guarda il canone. Nomi sotto i 63 caratteri.
+#
+# Ritorno indietro: DROP dei due trigger.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261029-45-create-trigger-righe-default-periodicita-da-listino-mctit.yaml
+
+  - changeSet:
+      id: 20261029-45-create-trigger-righe-default-periodicita-da-listino
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Monta script.trgfn_righe_default_periodicita_da_listino su contratti_righe e
+        offerte_commerciali_eccezioni. Brief: brief-db-contratto-righe-periodiche-in-commessa §6.11.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_contratti_righe_a10_default_periodicita_listino_ins_upd ON vendite.contratti_righe;
+              CREATE TRIGGER trg_contratti_righe_a10_default_periodicita_listino_ins_upd
+                  BEFORE INSERT OR UPDATE OF tipo_erogazione ON vendite.contratti_righe
+                  FOR EACH ROW
+                  WHEN (NEW.tipo_erogazione = 'CANONE' AND NEW.periodicita IS NULL)
+                  EXECUTE FUNCTION script.trgfn_righe_default_periodicita_da_listino('CONTRATTO', 'contratto_id');
+
+              DROP TRIGGER IF EXISTS trg_offerte_eccezioni_a10_default_periodicita_listino_ins_upd ON vendite.offerte_commerciali_eccezioni;
+              CREATE TRIGGER trg_offerte_eccezioni_a10_default_periodicita_listino_ins_upd
+                  BEFORE INSERT OR UPDATE OF tipo_erogazione ON vendite.offerte_commerciali_eccezioni
+                  FOR EACH ROW
+                  WHEN (NEW.tipo_erogazione = 'CANONE' AND NEW.periodicita IS NULL)
+                  EXECUTE FUNCTION script.trgfn_righe_default_periodicita_da_listino('OFFERTA_COMMERCIALE', 'offerta_id');
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_contratti_righe_a10_default_periodicita_listino_ins_upd ON vendite.contratti_righe;
+              DROP TRIGGER IF EXISTS trg_offerte_eccezioni_a10_default_periodicita_listino_ins_upd ON vendite.offerte_commerciali_eccezioni;

@@ -169,6 +169,13 @@ SELECT is(
           --   NULL), e la colonna `emittente_ragione_sociale` (id 310, attiva)
           --   c'era gia': il biglietto era pagato, mancava la dichiarazione.
           'documenti.template_documenti',
+          -- ⭐ 2026-10-31 — brief-db-liste-datatable-grezze-secondo-giro §2,
+          --   riga 1: ogni edizione di workflow e' di UN emittente, e il preset
+          --   di sistema di nessuno (`emittente_fiscale_id` NULL), come i
+          --   modelli standard di template_documenti. La colonna Emittente
+          --   (campo_sorgente `emittente_display`) nasce attiva col seed: il
+          --   biglietto e' pagato nello stesso giro della dichiarazione.
+          'pratiche.definizioni_workflow',
           -- ⭐ 2026-09-18 — D-5 di Tid, stesso brief: un preset PUO' essere di
           --   un'azienda (`ambito = emittente_fiscale`), e la colonna «Emittente»
           --   (id 873, campo_sorgente `emittente_ragione_sociale`) e' attiva dal

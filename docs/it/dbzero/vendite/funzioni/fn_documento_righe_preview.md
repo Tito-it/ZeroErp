@@ -13,7 +13,7 @@ CREATE FUNCTION fn_documento_righe_preview(p_documento character varying, p_docu
 
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_documento_righe_preview(p_documento character varying, p_documento_id bigint)
- RETURNS TABLE(articolo_id uuid, articolo_codice character varying, articolo_descrizione character varying, is_composito boolean, uom_id bigint, uom_codice character varying, prezzo_listino numeric, tipo_variazione character varying, valore_variazione numeric, override_riga_id bigint, override_prezzo numeric, tipo_eccezione vendite.tipo_eccezione_contratto, origine character varying, prezzo_finale numeric, componenti jsonb, quantita numeric, qta_operativa numeric, tipo_erogazione character varying, fonte_quantita_attesa character varying, riga_key text, azioni text[], escludi_blocco_codice text, ordine smallint, uom_operativa_id bigint)
+ RETURNS TABLE(articolo_id uuid, articolo_codice character varying, articolo_descrizione character varying, is_composito boolean, uom_id bigint, uom_codice character varying, prezzo_listino numeric, tipo_variazione character varying, valore_variazione numeric, override_riga_id bigint, override_prezzo numeric, tipo_eccezione vendite.tipo_eccezione_contratto, origine character varying, prezzo_finale numeric, componenti jsonb, quantita numeric, qta_operativa numeric, tipo_erogazione character varying, fonte_quantita_attesa character varying, riga_key text, azioni text[], escludi_blocco_codice text, ordine smallint, uom_operativa_id bigint, periodicita character varying, generazione_canone character varying)
  LANGUAGE plpgsql
  STABLE
 AS $function$
@@ -31,6 +31,10 @@ AS $function$
 --   script.fn_check_esclusione_articolo_documento, NULL = ammesso:
 --   lo stesso predicato del guard), ordine e uom_operativa_id della
 --   riga eccezione (NULL sulle righe DA_LISTINO).
+-- rev 2026-10-31 (20261031-41, D-7): periodicita e generazione_canone in coda.
+--   Sulla riga con un'eccezione quelle scritte sulla riga; sulla riga DA_LISTINO
+--   la periodicita' del listino (vendite.fn_listino_periodicita_articolo, il kit
+--   compreso), che e' la proposta di «Aderisci», e nessuna generazione.
 -- L'UdM di una AGGIUNTA e' quella della RIGA; NULL = la base
 --   dell'articolo (lo stesso ripiego di script.trgfn_qta_from_operativa).
 -- ⚠️ Il blocco «fuori bozza» NON e' qui: e' di documento.
@@ -75,6 +79,7 @@ BEGIN
             CASE
                 WHEN e.tipo_eccezione = 'OVERRIDE'   THEN 'OVERRIDE'
                 WHEN e.tipo_eccezione = 'ESCLUSIONE' THEN 'ESCLUSIONE'
+                WHEN e.tipo_eccezione = 'ADESIONE'   THEN 'ADESIONE'
                 ELSE                                      'DA_LISTINO'
             END::varchar,
             CASE
@@ -95,7 +100,11 @@ BEGIN
                 -- (guard _a05_ sulla riga, sui due documenti).
                 WHEN e.tipo_eccezione = 'ESCLUSIONE'
                     THEN ARRAY['RIPRISTINA_ARTICOLO']
-                ELSE ARRAY['SOVRASCRIVI_PREZZO', 'ESCLUDI']
+                -- rev 2026-10-29 (G-0-ter): l'ADESIONE si modifica (quantita',
+                -- periodicita') o si toglie; la riga di listino si puo' aderire.
+                WHEN e.tipo_eccezione = 'ADESIONE'
+                    THEN ARRAY['MODIFICA', 'RIMUOVI_ADESIONE']
+                ELSE ARRAY['SOVRASCRIVI_PREZZO', 'ESCLUDI', 'ADERISCI']
             END,
             -- Solo dove «Escludi» e' un'azione della riga (dal listino).
             CASE
@@ -105,7 +114,11 @@ BEGIN
                          -> 0 ->> 'reason'
             END,
             e.ordine,
-            e.uom_operativa_id
+            e.uom_operativa_id,
+            CASE WHEN e.id IS NOT NULL THEN e.periodicita
+                 ELSE vendite.fn_listino_periodicita_articolo(v_listino_versione_id, base.articolo_id)
+            END,
+            e.generazione_canone
           FROM vendite.fn_espandi_listino_versione(
                    v_listino_versione_id, v_tipo_var, v_valore_var
                ) base
@@ -113,7 +126,8 @@ BEGIN
                  ON e.articolo_id            = base.articolo_id
                 AND e.tipo_eccezione         IN (
                         'OVERRIDE'::vendite.tipo_eccezione_contratto,
-                        'ESCLUSIONE'::vendite.tipo_eccezione_contratto
+                        'ESCLUSIONE'::vendite.tipo_eccezione_contratto,
+                        'ADESIONE'::vendite.tipo_eccezione_contratto
                     )
                 AND COALESCE(e.attivo, TRUE) = TRUE;
     END IF;
@@ -128,7 +142,7 @@ BEGIN
         'AGGIUNTA'::varchar, e.prezzo_unitario, NULL::jsonb,
         e.quantita, e.qta_operativa, e.tipo_erogazione, e.fonte_quantita_attesa,
         ('A:' || e.id::text), ARRAY['MODIFICA', 'RIMUOVI'], NULL::text,
-        e.ordine, e.uom_operativa_id
+        e.ordine, e.uom_operativa_id, e.periodicita, e.generazione_canone
       FROM vendite.fn_documento_righe_eccezione(p_documento, p_documento_id) e
       JOIN catalogo.articoli a
         ON a.id = e.articolo_id AND a.is_composito = FALSE AND a.attivo = TRUE
@@ -183,7 +197,7 @@ BEGIN
         ),
         e.quantita, e.qta_operativa, e.tipo_erogazione, e.fonte_quantita_attesa,
         ('A:' || e.id::text), ARRAY['MODIFICA', 'RIMUOVI'], NULL::text,
-        e.ordine, e.uom_operativa_id
+        e.ordine, e.uom_operativa_id, e.periodicita, e.generazione_canone
       FROM vendite.fn_documento_righe_eccezione(p_documento, p_documento_id) e
       JOIN catalogo.articoli a
         ON a.id = e.articolo_id AND a.is_composito = TRUE AND a.attivo = TRUE
@@ -195,7 +209,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_documento_righe_preview(p_documento character varying, p_documento_id bigint)
-IS 'Le righe di un contratto o di un''offerta come le vede il drawer (p_documento = CONTRATTO | OFFERTA): righe della versione operativa del listino (vendite.fn_documento_listino_operativo) con l''overlay OVERRIDE/ESCLUSIONE, piu'' le AGGIUNTA standalone e bundle (eccezioni da vendite.fn_documento_righe_eccezione). Colonne in coda: riga_key, azioni (DA_LISTINO -> SOVRASCRIVI_PREZZO, ESCLUDI; OVERRIDE -> MODIFICA, RIPRISTINA_LISTINO; ESCLUSIONE -> RIPRISTINA_ARTICOLO; AGGIUNTA -> MODIFICA, RIMUOVI), escludi_blocco_codice (primo motivo di script.fn_check_esclusione_articolo_documento, lo stesso predicato del guard), ordine e uom_operativa_id della riga eccezione. Il blocco «fuori bozza» non e'' qui: e'' di documento. Documento assente o fuori perimetro (INVOKER): nessuna riga. Sorgente unica (regola del 2) di vendite.fn_contratto_righe_preview e vendite.fn_offerta_righe_preview, involucri di una riga. Nasce il 2026-10-04 dal corpo di fn_contratto_righe_preview (20261004-14), brief-db-righe-esclusione-solo-non-si-vende (R4). ⭐ rev 2026-10-19 (20261019-23, brief-db-grammatica-unica-documenti lotto 1, G-1 di Tid): il documento si nomina col codice della sorgente, CONTRATTO | OFFERTA_COMMERCIALE (era OFFERTA); dove sopra si legge OFFERTA come selettore, oggi e'' OFFERTA_COMMERCIALE. p_documento ancorato a config.sorgenti.codice_interno%TYPE: la firma passa da text a character varying (DROP + CREATE, nessun dipendente registrato).';
+IS 'Le righe di un contratto o di un''offerta come le vede il drawer (p_documento = CONTRATTO | OFFERTA): righe della versione operativa del listino (vendite.fn_documento_listino_operativo) con l''overlay OVERRIDE/ESCLUSIONE, piu'' le AGGIUNTA standalone e bundle (eccezioni da vendite.fn_documento_righe_eccezione). Colonne in coda: riga_key, azioni (DA_LISTINO -> SOVRASCRIVI_PREZZO, ESCLUDI; OVERRIDE -> MODIFICA, RIPRISTINA_LISTINO; ESCLUSIONE -> RIPRISTINA_ARTICOLO; AGGIUNTA -> MODIFICA, RIMUOVI), escludi_blocco_codice (primo motivo di script.fn_check_esclusione_articolo_documento, lo stesso predicato del guard), ordine e uom_operativa_id della riga eccezione. Il blocco «fuori bozza» non e'' qui: e'' di documento. Documento assente o fuori perimetro (INVOKER): nessuna riga. Sorgente unica (regola del 2) di vendite.fn_contratto_righe_preview e vendite.fn_offerta_righe_preview, involucri di una riga. Nasce il 2026-10-04 dal corpo di fn_contratto_righe_preview (20261004-14), brief-db-righe-esclusione-solo-non-si-vende (R4). ⭐ rev 2026-10-19 (20261019-23, brief-db-grammatica-unica-documenti lotto 1, G-1 di Tid): il documento si nomina col codice della sorgente, CONTRATTO | OFFERTA_COMMERCIALE (era OFFERTA); dove sopra si legge OFFERTA come selettore, oggi e'' OFFERTA_COMMERCIALE. p_documento ancorato a config.sorgenti.codice_interno%TYPE: la firma passa da text a character varying (DROP + CREATE, nessun dipendente registrato). ⭐ rev 2026-10-31 (20261031-41, brief-db-contratto-righe-periodiche-in-commessa D-7): in coda periodicita e generazione_canone. Sulla riga con un''eccezione quelle della riga; sulla riga DA_LISTINO la periodicita'' del listino (vendite.fn_listino_periodicita_articolo, il kit compreso), proposta di «Aderisci», e nessuna generazione. 26 colonne.';
 ```
 
 </div>

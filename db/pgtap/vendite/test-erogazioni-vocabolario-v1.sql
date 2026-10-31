@@ -24,14 +24,14 @@
 --   (80_data/sql/config/*.csv), identiche su ogni macchina.
 --
 -- Indice test (1..12):
---   1)  config.erogazioni_fonti = le 9 combinazioni (le 13 dei CHECK ritirati, meno DERIVATA_COMPONENTI)
+--   1)  config.erogazioni_fonti = le 9 combinazioni (le 13 dei CHECK ritirati, meno DERIVATA_COMPONENTI; CANONE/DURATA al posto di CANONE/MANUALE, G-9)
 --   2)  ogni erogazione ha esattamente una fonte di default
 --   3)  i default sono quelli del CASE ritirato (CANONE/UNA_TANTUM FISSA, ORARIO MANUALE, CONSUMO LETTURE)
 --   4)  ogni tipologia di listino attiva ha esattamente un default
 --   5)  ogni natura di vendita attiva ha esattamente un default
 --   6)  nessuna natura ammette LETTURE (le letture vengono da una tipologia a contatore)
 --   7)  QUOTA_FISSA ammette solo CANONE (B-D4: si eroga a periodo, non a letture)
---   8)  ogni combinazione CANONE di tipologie e nature porta la generazione_canone
+--   8)  tipologie e nature NON portano piu' la generazione_canone (F-7, 20261029-24)
 --   9)  FK sul vocabolario presente su contratti_righe e offerte_commerciali_eccezioni
 --   10) i sei CHECK della matrice sono ritirati
 --   11) script.trgfn_righe_default_fonte_qta legge il vocabolario e non ricopia la matrice
@@ -45,13 +45,15 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SELECT plan(12);
 
 -- 1) Il vocabolario = le combinazioni dei CHECK ritirati (20261007-54)
+--    ⛔ rev 2026-10-29 (brief-db-contratto-righe-periodiche-in-commessa §6.9, G-9 di Tid;
+--    20261029-32): CANONE/MANUALE esce, entra CANONE/DURATA.
 SELECT set_eq(
     $$ SELECT tipo_erogazione::text, fonte_quantita_attesa::text FROM config.erogazioni_fonti $$,
-    $$ VALUES ('CANONE', 'FISSA'), ('CANONE', 'MANUALE'),
+    $$ VALUES ('CANONE', 'FISSA'), ('CANONE', 'DURATA'),
               ('UNA_TANTUM', 'FISSA'), ('UNA_TANTUM', 'MANUALE'),
               ('ORARIO', 'FISSA'), ('ORARIO', 'MANUALE'), ('ORARIO', 'TIMESHEET'),
               ('CONSUMO', 'MANUALE'), ('CONSUMO', 'LETTURE') $$,
-    '1) config.erogazioni_fonti = le 9 combinazioni (senza DERIVATA_COMPONENTI, ritirata il 2026-10-21)');
+    '1) config.erogazioni_fonti = le 9 combinazioni (senza DERIVATA_COMPONENTI, ritirata il 2026-10-21; CANONE/DURATA al posto di CANONE/MANUALE dal 2026-10-29, G-9)');
 
 -- 2) Completezza del default per erogazione
 SELECT is(
@@ -103,15 +105,20 @@ SELECT set_eq(
     $$ VALUES ('CANONE') $$,
     '7) QUOTA_FISSA ammette solo CANONE: si eroga a periodo, la fonte non sono le letture');
 
--- 8) Le righe CANONE portano la generazione_canone (il CHECK delle righe la pretende)
+-- 8) ⛔ rev 2026-10-29 (brief-db-contratto-righe-periodiche-in-commessa §6.6, F-7 di
+--    Tid): anticipati o normali li dice la testata del documento, e la riga vuota
+--    la segue. La generazione_canone dei vocabolari era il default che l'articolo
+--    dava alla riga: esce (20261029-16 i CHECK, -24 la colonna). Prima il test
+--    pretendeva che ogni combinazione CANONE la portasse.
+--    ⚠️ Per OID, non per nome testuale (regclass::text perde lo schema come app).
 SELECT is(
-    (SELECT count(*)::int FROM (
-        SELECT generazione_canone FROM config.listini_tipologie_erogazioni WHERE tipo_erogazione = 'CANONE'
-        UNION ALL
-        SELECT generazione_canone FROM config.nature_vendita_erogazioni WHERE tipo_erogazione = 'CANONE') x
-      WHERE x.generazione_canone IS NULL),
+    (SELECT count(*)::int FROM pg_catalog.pg_attribute a
+      WHERE a.attrelid IN ('config.listini_tipologie_erogazioni'::regclass,
+                           'config.nature_vendita_erogazioni'::regclass)
+        AND a.attname = 'generazione_canone'
+        AND NOT a.attisdropped),
     0,
-    '8) ogni combinazione CANONE di tipologie e nature porta la generazione_canone');
+    '8) tipologie e nature non portano piu'' la generazione_canone: la dice la testata (F-7)');
 
 -- 9) La FK sulle due tabelle gemelle
 SELECT is(

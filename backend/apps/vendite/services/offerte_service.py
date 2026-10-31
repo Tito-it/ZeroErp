@@ -38,7 +38,10 @@ from django.db import transaction
 from apps.config.sorgenti import SORGENTE_OFFERTA_COMMERCIALE
 from apps.core.db._helpers import richiedi_codice_a_vocabolario
 from apps.core.api.constants import DEFAULT_LIMIT
-from apps.core.services.documento_modello import stato_di_emissione
+from apps.core.services.documento_modello import (
+    stato_di_accettazione,
+    stato_di_emissione,
+)
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.service_errors import ServiceError
 from apps.core.services.capability_blob import capabilities_o_vuoto
@@ -93,6 +96,8 @@ from apps.vendite.services._pricing_gate_helpers import (
     resolve_or_check_override_prezzo,
     validate_componenti_overrides_authorization,
 )
+from apps.vendite.services._campi_canone import check_campi_canone, con_campi_canone
+from apps.vendite.services._righe_codici import normalizza_codici_riga
 from apps.vendite.types import OffertaPushResult
 
 logger = logging.getLogger(__name__)
@@ -111,6 +116,12 @@ E_VENDITE_FK = "E_VENDITE_FK"
 # motivazione e manca (O-3): il service lo riconosce per dire al client il
 # campo della SUA richiesta (vedi `_db_errors`).
 E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA = "E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA"
+# Il gemello: una motivazione su un passaggio che non la chiede
+# (`20261031-22`, brief-modello-documento-vendita §18.3 BE-T6).
+E_OFFERTA_MOTIVAZIONE_NON_AMMESSA = "E_OFFERTA_MOTIVAZIONE_NON_AMMESSA"
+_CODICI_MOTIVAZIONE: frozenset[str] = frozenset(
+    {E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA, E_OFFERTA_MOTIVAZIONE_NON_AMMESSA}
+)
 
 # Il campo della richiesta che porta la motivazione (rifiuto e annullo).
 _CAMPO_MOTIVAZIONE = "motivazione"
@@ -123,9 +134,14 @@ _CAMPO_MOTIVAZIONE = "motivazione"
 
 # Codici stato documento (chiavi naturali `codice_interno` in
 # config.stati_doc_offerte) che il service nomina: la bozza dell'eliminazione e
-# i due esiti del cliente. ⛔ Non l'emissione ne' l'annullo, che li dice il
-# vocabolario (`stato_di_emissione`; lo stato d'annullo lo sceglie
-# `vendite.fn_annulla_offerta`), e non gli stati di partenza dei passaggi.
+# i due esiti del cliente. ⛔ Non l'emissione, l'accettazione ne' l'annullo, che
+# li dice il vocabolario (`stato_di_emissione`, `stato_di_accettazione`; lo
+# stato d'annullo lo sceglie `vendite.fn_annulla_offerta`), e non gli stati di
+# partenza dei passaggi.
+# ⚠️ `ACCETTATA` resta come PAROLA dell'API: il valore di `esito` che la rotta
+#    dell'esito accetta (`_ESITI`, il ChoiceField della view). Lo stato che
+#    l'accettazione scrive lo legge `registra_accettazione` dal vocabolario
+#    (brief-modello-documento-vendita §17.6 BE-T2).
 class StatoOfferta:
     BOZZA = "BOZZA"
     ACCETTATA = "ACCETTATA"
@@ -199,9 +215,18 @@ _MSG_BA_FUORI_COPPIA = (
 )
 
 
+# I domini della testata che vivono in un CHECK, tradotti sul campo del form:
+# oggi i due del canone (BB `check_campi_canone`, lo stesso del contratto).
+_CHECK_CONSTRAINTS: dict[str, tuple] = {
+    **check_campi_canone("offerte_commerciali", E_VENDITE_VALIDATION),
+}
+
 # FK constraints catalogati (best-effort: i nomi corrispondono a quelli
 # emessi da Postgres su violazione FK).
 _FK_CONSTRAINTS: dict[str, tuple] = {
+    "fk_offerte_commerciali_eccezioni_periodicita": (
+        E_VENDITE_FK, "Periodicità inesistente.", "periodicita",
+    ),
     "fk_offerte_commerciali_billing_account": (
         E_VENDITE_FK, "Billing account non trovato.",
     ),
@@ -259,6 +284,11 @@ CREATE_KEYS_OFFERTA: frozenset[str] = frozenset({
     "tipo_variazione_globale",
     "validita_dal",
     "validita_al",
+    # Come si addebitano i canoni (F-2, F-7, `20261029-15`): il passaggio a
+    # contratto le copia. Il dominio lo dice il DB (`chk_offerte_commerciali_*`);
+    # fuori bozza le ferma il lock di testata (`E_DOC_CONDIZIONI_FUORI_BOZZA`).
+    "generazione_canone",
+    "mese_partenza_canone",
     "meta",
     # Sub-oggetto opzionale per la creazione contestuale del record
     # utility 1:1 (mirror ContrattoDrawer pattern, piano §C2). Se presente,
@@ -284,6 +314,8 @@ UPDATE_KEYS_OFFERTA: frozenset[str] = frozenset({
     "tipo_variazione_globale",
     "validita_dal",
     "validita_al",
+    "generazione_canone",
+    "mese_partenza_canone",
     "meta",
     # Sub-oggetto opzionale per upsert del record utility 1:1 nella stessa
     # transazione (simmetria col create, mirror ContrattoDrawer pattern).
@@ -309,7 +341,6 @@ CREATE_KEYS_ECCEZIONE: frozenset[str] = frozenset({
     "fonte_quantita_attesa",
     "periodicita",
     "generazione_canone",
-    "competenza_canone",
     "prezzo_unitario",
     # ⛔ Niente `quantita`: e' calcolata dal DB da `qta_operativa` (FISSA) e
     #    vuota con una fonte a valle (`script.trgfn_qta_from_operativa`). Un
@@ -379,10 +410,11 @@ class OfferteService:
     #        Delega al BB condiviso `translate_db_errors` (core
     #        payload_helpers, estratto 2026-07-13 — regola del 2 alla 5a
     #        copia); resta la firma context-based per i call site del service.
-    # ⭐ Il campo di E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA: il verbo nomina la
+    # ⭐ Il campo di E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA e del gemello
+    #    E_OFFERTA_MOTIVAZIONE_NON_AMMESSA: il verbo nomina la
     #    COLONNA (`motivazione_rifiuto`, canale `COLUMN`), la richiesta porta
     #    `motivazione`. `error.fields` promette un input della richiesta
-    #    (api.md §Envelope): qui il nome si traduce, per questo codice soltanto.
+    #    (api.md §Envelope): qui il nome si traduce, per questi codici soltanto.
     #    ⛔ Non con `context={"field": ...}`: vincerebbe su OGNI errore del
     #    blocco, e un E_DOC_GIA_NELLO_STATO accenderebbe la motivazione.
     @contextmanager
@@ -399,10 +431,11 @@ class OfferteService:
                 fallback_message=fallback_message,
                 unique_constraints=_UNIQUE_CONSTRAINTS,
                 fk_constraints=_FK_CONSTRAINTS,
+                check_constraints=_CHECK_CONSTRAINTS,
             ):
                 yield
         except ServiceError as exc:
-            if exc.code == E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA:
+            if exc.code in _CODICI_MOTIVAZIONE:
                 exc.fields = (_CAMPO_MOTIVAZIONE,)
             raise
 
@@ -583,8 +616,10 @@ class OfferteService:
         # Lo stato non si passa: l'offerta nasce nello stato iniziale del suo
         # vocabolario, e lo mette il DB (BB `script.trgfn_doc_stato_iniziale`,
         # brief-modello-documento-vendita P-2).
+        # I due campi del canone nella forma del DB (BB `con_campi_canone`):
+        # codice in maiuscolo, `null` omesso (NOT NULL col default).
         data: dict[str, Any] = self._con_meta_normalizzato(
-            {k: v for k, v in payload.items() if k != "utility"},
+            {k: v for k, v in con_campi_canone(self._v, payload).items() if k != "utility"},
         )
         # `codice` NON in payload (vedi nota CREATE_KEYS_OFFERTA): il trigger
         # BEFORE INSERT genera OFC-NNNNNNN via `script.fn_generate_codice`.
@@ -681,7 +716,7 @@ class OfferteService:
                 context={"got": type(utility_payload).__name__},
             )
         testata_payload = self._con_meta_normalizzato(
-            {k: v for k, v in payload.items() if k != "utility"},
+            {k: v for k, v in con_campi_canone(self._v, payload).items() if k != "utility"},
         )
         # Almeno un campo, della testata o della scheda: `{"utility": {}}` da
         # solo non e' una modifica (fino al 2026-10-14 passava, e la risposta
@@ -798,9 +833,22 @@ class OfferteService:
         return self._cambia_stato(offerta_id, stato_codice=stato.codice)
 
     # Scopo: EMESSA -> ACCETTATA (esito cliente positivo). Il trigger DB
-    #        valorizza `data_accettazione`.
-    def registra_accettazione(self, offerta_id: int) -> dict[str, Any]:
-        return self._cambia_stato(offerta_id, stato_codice=StatoOfferta.ACCETTATA)
+    #        valorizza `data_accettazione`. Lo stato di arrivo dal vocabolario
+    #        (colonna `accettazione`, §17.6 BE-T2), non `StatoOfferta.ACCETTATA`.
+    #        ⭐ La motivazione passa al verbo com'e': il passaggio non la chiede,
+    #        e il verbo la rifiuta (E_OFFERTA_MOTIVAZIONE_NON_AMMESSA, al client
+    #        col campo `motivazione`, `_db_errors`). Assente, null, vuota o di
+    #        soli spazi e' nessuna motivazione.
+    def registra_accettazione(
+        self, offerta_id: int, *, motivazione: Any = None
+    ) -> dict[str, Any]:
+        stato = stato_di_accettazione(
+            TESTATA_OFFERTE, function_name="offerte_service.registra_accettazione",
+        )
+        return self._cambia_stato(
+            offerta_id, stato_codice=stato.codice,
+            motivazione=self._motivazione(motivazione),
+        )
 
     # Scopo: EMESSA -> RIFIUTATA (esito cliente negativo). Il trigger DB
     #        valorizza `data_rifiuto`; la motivazione la scrive il verbo in
@@ -822,12 +870,10 @@ class OfferteService:
     #        view si limita a passare il payload, il routing per esito vive
     #        qui — coerente con i due metodi specifici sopra (mantenuti per
     #        chi vuole l'API esplicita).
-    #        ⛔ L'accettazione non porta una motivazione: la sola colonna che la
-    #        terrebbe e' `motivazione_rifiuto`, e scartarla in silenzio direbbe
-    #        al client che e' stata presa (stesso criterio di `valido_al` nel
-    #        cambio stato del contratto). Una motivazione con ACCETTATA e' un
-    #        400 col campo; assente, null o vuota passa. Fino al 2026-10-26 si
-    #        perdeva qui senza dirlo.
+    #        ⭐ Dove la motivazione e' ammessa lo dice il verbo (motivazione (b),
+    #        brief-modello-documento-vendita §17.8 e §18.3 BE-T6): solo dove il
+    #        passaggio la chiede. ⛔ Fino al 2026-10-31 qui c'era la copia
+    #        Python della regola (un E_VENDITE_VALIDATION sull'accettazione).
     def registra_esito(
         self, offerta_id: int, *, esito: str, motivazione: Any = None
     ) -> dict[str, Any]:
@@ -839,13 +885,7 @@ class OfferteService:
             context={"offerta_id": offerta_id, "esito": esito, "field": "esito"},
         )
         if esito == StatoOfferta.ACCETTATA:
-            ErrorManager.require(
-                self._motivazione(motivazione) is None,
-                code=E_VENDITE_VALIDATION,
-                message="La motivazione si indica solo per rifiutare o annullare l'offerta.",
-                context={"offerta_id": offerta_id, "esito": esito, "field": _CAMPO_MOTIVAZIONE},
-            )
-            return self.registra_accettazione(offerta_id)
+            return self.registra_accettazione(offerta_id, motivazione=motivazione)
         return self.registra_rifiuto(offerta_id, motivazione=motivazione)
 
     # Scopo: Crea rev.N+1 di un'offerta in stato EMESSA invocando la fn DB
@@ -856,19 +896,14 @@ class OfferteService:
     #        (BOZZA) come dettaglio completo.
     #
     #        Lo stato di partenza (EMESSA) lo dice il DB
-    #        (`E_OFFERTA_REVISIONE_STATO_NON_AMMESSO`); qui solo l'esistenza
-    #        (404). ⛔ Fino al 2026-10-26 lo ripeteva `_assert_stato_corrente`
-    #        (brief-modello-documento-vendita §13.6 punto 4).
-    #        ⚠️ L'esistenza resta qui, a differenza del push (regola del 1),
-    #        perche' la fn sull'offerta che non c'e' risponde
-    #        E_PARAMETRO_INVALIDO, un 400: si toglie quando il DB rispondera'
-    #        E_OFFERTA_NON_TROVATA (richiesta al team DB, brief-modello-
-    #        documento-vendita §14.8).
+    #        (`E_OFFERTA_REVISIONE_STATO_NON_AMMESSO`), e anche l'esistenza:
+    #        l'offerta che non c'e' e' E_OFFERTA_NON_TROVATA (404) dal verbo
+    #        (`20261031-21`, R-1). ⛔ Nessun controllo qui (regola del 1; fino
+    #        al 2026-10-31 la lettura della testata, §17.6 BE-T3).
     def crea_revisione(
         self, offerta_id: int, *, user: str | None = None
     ) -> dict[str, Any]:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
-        self._get_offerta_or_raise(offerta_id, op="crea_revisione", getter=self._repo.get_stato_codice)
         with self._db_errors(
             {"offerta_id": offerta_id},
             fallback_message="Errore creazione revisione offerta.",
@@ -1052,6 +1087,11 @@ class OfferteService:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
         self._v.validate_allowed_keys(payload, allowed=CREATE_KEYS_ECCEZIONE)
         payload = self._con_meta_normalizzato(payload)
+        # I codici a vocabolario nella stessa forma del contratto (BB
+        # `normalizza_codici_riga`): fino al 2026-10-31 qui passavano grezzi.
+        payload = normalizza_codici_riga(
+            self._v, payload, function_name="offerte_service.crea_eccezione",
+        )
         # «Solo in bozza» lo dice il DB (`trgfn_doc_righe_lock_fuori_bozza` su
         # eccezioni e componenti, `E_RIGA_DOC_NON_BOZZA`, 409): qui l'esistenza.
         self._get_offerta_or_raise(offerta_id, op="righe", getter=self._repo.get_stato_codice)
@@ -1098,7 +1138,7 @@ class OfferteService:
         # Coerenza prezzo_unitario / tipo_eccezione (pre-DB, specchio CHECK
         # `chk_offerte_eccezioni_prezzo_per_tipo_eccezione`):
         # - OVERRIDE / AGGIUNTA -> prezzo NOT NULL (e' il prezzo finale)
-        # ⛔ L'ESCLUSIONE non si pre-valida qui: il prezzo e' uno dei dieci dati
+        # ⛔ L'ESCLUSIONE non si pre-valida qui: il prezzo e' uno dei nove dati
         #    di fatturazione che il guard DB rifiuta col campo
         #    (E_RIGA_ESCLUSIONE_CON_DATI, brief-db-righe-esclusione-solo-non-si-
         #    vende R-BE-3), come sul contratto.
@@ -1112,7 +1152,9 @@ class OfferteService:
         # `contratti_service` ~ linea 2114 "Padre composito").
         tipo_eccezione = payload.get("tipo_eccezione")
         prezzo_raw = payload.get("prezzo_unitario")
-        if prezzo_raw is None and tipo_eccezione in ("OVERRIDE", "AGGIUNTA"):
+        # ⛔ Non ESCLUSIONE (sopra) ne' ADESIONE (il prezzo e' del listino):
+        #    la regola vale per i soli tipi col gate, come sul contratto.
+        if prezzo_raw is None and tipo_eccezione in _TIPI_ECCEZIONE_CON_GATE:
             ErrorManager.require(
                 is_composito,
                 code=E_VENDITE_VALIDATION,
@@ -1166,7 +1208,9 @@ class OfferteService:
                 # prezzo_unitario NULL) ne' senso di negoziare i suoi componenti.
                 # Inizializzarli farebbe scattare trgfn_componenti_ricalcola_padre
                 # che scriverebbe SUM(figli) sul padre ESCLUSIONE -> violazione.
-                if is_composito and tipo_eccezione != "ESCLUSIONE":
+                # Idem l'ADESIONE: il kit aderito prende prezzo e componenti dal
+                # listino, e il DB non ne inizializza i componenti (`20261029-43`).
+                if is_composito and tipo_eccezione in _TIPI_ECCEZIONE_CON_GATE:
                     testata = testata_gate or self._repo.get_offerta(offerta_id) or {}
                     emittente_sr_id = self._resolve_emittente_sr_id_for_offerta(
                         offerta_id=offerta_id,
@@ -1196,6 +1240,9 @@ class OfferteService:
         self._v.guard_positive_int(eccezione_id, field="eccezione_id")
         self._v.validate_allowed_keys(payload, allowed=UPDATE_KEYS_ECCEZIONE)
         payload = self._con_meta_normalizzato(payload)
+        payload = normalizza_codici_riga(
+            self._v, payload, function_name="offerte_service.aggiorna_eccezione",
+        )
         # Flag opt-in workflow L3 (estratto prima del guard non-vuoto: non e' un
         # campo di update di per se').
         richiesta_approvazione = self._v.optional_bool(payload, "richiesta_approvazione") is True

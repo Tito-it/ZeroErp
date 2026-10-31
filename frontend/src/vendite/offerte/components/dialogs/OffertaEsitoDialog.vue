@@ -1,7 +1,7 @@
 <script setup>
 // Scopo: Dialog multi-modalita' per registrare l'esito di un'offerta.
 //        Modalita' (state machine asimmetrica, piano BE+FE §C3):
-//          - ACCETTATA  da EMESSA  (nessuna motivazione: il BE la rifiuta, 400)
+//          - ACCETTATA  da EMESSA  (nessuna motivazione: il verbo DB la rifiuta, 400)
 //          - RIFIUTATA  da EMESSA  (motivazione obbligatoria, "no del cliente")
 //          - ANNULLATA  da BOZZA o da ACCETTATA (motivazione obbligatoria,
 //                       "ritiro da noi"; da ACCETTATA solo senza documenti vivi

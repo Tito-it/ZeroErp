@@ -1,0 +1,154 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# «IN SCADENZA SENZA SUCCESSORE» DIVENTA UNA REGOLA DEL DB — vendite.fn_listini_in_scadenza_senza_successore
+#   Brief: brief-db-liste-datatable-grezze-secondo-giro §3.1 (decisioni di Tid
+#   D-1 e B3+B4, 2026-10-31).
+#
+#   La regola era scritta solo nel backend (listini_repository.listini_in_scadenza):
+#   logica di business fuori dal DB. Ora la leggono tre consumatori, e la regola
+#   ha una sede sola:
+#     · il filtro della lista listini (vendite.listini, colonna giorni_alla_scadenza),
+#       destinazione del link dell'alert (D-1);
+#     · la colonna della lista versioni (vendite.listini_versioni, stessa colonna);
+#     · il conteggio del badge dell'alert.
+#   Il BE ritira la sua query nello stesso giro in cui la legge da qui.
+#
+# ── LA REGOLA (identica a quella del BE, che ne era la prima stesura) ─────
+#   Una versione e' «in scadenza senza successore» alla data se:
+#     1. e' la versione in vigore del suo listino alla data
+#        (vendite.fn_listino_versione_in_vigore: la sede, non una copia);
+#     2. ha una fine, e la fine cade entro N giorni dalla data;
+#     3. il listino e' attivo;
+#     4. non c'e' un successore attivo che nasca dopo la sua fine e che sia in
+#        preparazione (lo stato INIZIALE del vocabolario, oggi BOZZA) oppure abbia
+#        una validita' che tocca il giorno dopo la fine o un giorno successivo.
+#   ⚠️ valido_al e' la fine INCLUSIVA: il successore contiguo nasce il giorno
+#     dopo (valido_dal = valido_al + 1), cioe' «valido_dal > valido_al».
+#
+# ── FORMA ──────────────────────────────────────────────────────
+#   · SET-RETURNING, una riga per versione in scadenza: i consumatori la
+#     chiamano UNA volta per query (LEFT JOIN su listino_id o su versione_id,
+#     count(*) per il badge), e N si risolve una volta sola (linee-guida-sql
+#     §13.2). Una funzione scalare per riga avrebbe risolto il parametro, con la
+#     cascata degli override, a ogni riga della lista.
+#   · N e' il parametro LISTINI_SCADENZA_PREAVVISO_GIORNI (seed nel CSV
+#     config/parameters.csv, riga 63), letto con la cascata della sessione
+#     (script.fn_get_parameter_di_sessione) e validato da
+#     script.fn_intero_positivo_da_testo: assente, vuoto o non intero positivo
+#     = E_CONFIG_MANCANTE, mai un ripiego. Il chiamante non passa N: i due
+#     default di 15 giorni (FE e BE) si chiudono qui.
+#   · p_data: la data a cui si guarda, di default la data operativa
+#     (script.fn_data_operativa). Serve a chi guarda a una data diversa da oggi.
+#   · Lo stato «in preparazione» si legge dal vocabolario (iniziale), non da un
+#     letterale.
+#   · STABLE, SECURITY INVOKER: legge sotto il perimetro di chi chiama.
+#     EXECUTE a zeroerp_app, tolto a PUBLIC.
+#
+# Ritorno indietro: DROP FUNCTION.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261031-27-create-fn-listini-in-scadenza-senza-successore-mctit.yaml
+
+  - changeSet:
+      id: 20261031-27-create-fn-listini-in-scadenza-senza-successore
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_listini_in_scadenza_senza_successore: le versioni di listino in vigore
+        che scadono entro LISTINI_SCADENZA_PREAVVISO_GIORNI senza un successore, coi giorni
+        rimanenti. Sede unica della regola che era nel backend. Brief:
+        brief-db-liste-datatable-grezze-secondo-giro §3.1.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_listini_in_scadenza_senza_successore(
+                  p_data vendite.listini_versioni.valido_al%TYPE DEFAULT NULL::date)
+               RETURNS TABLE(
+                  listino_id       vendite.listini_versioni.listino_id%TYPE,
+                  versione_id      vendite.listini_versioni.id%TYPE,
+                  valido_al        vendite.listini_versioni.valido_al%TYPE,
+                  -- nudo: una differenza fra due date, nessuna colonna di cui sia il riflesso
+                  giorni_rimanenti integer)
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              #variable_conflict use_column
+              -- Scopo: le versioni di listino in vigore alla data che scadono entro N
+              --   giorni senza un successore, coi giorni rimanenti. Sede unica della
+              --   regola: la leggono il filtro della lista listini, la colonna della
+              --   lista versioni e il badge dell'alert scadenze.
+              --   N = LISTINI_SCADENZA_PREAVVISO_GIORNI, con la cascata degli override
+              --   della sessione. Regola completa nell'intestazione del changeSet
+              --   20261031-27 (brief-db-liste-datatable-grezze-secondo-giro §3.1).
+              -- Nasce il 2026-10-31 (20261031-27) dalla query del backend
+              --   listini_repository.listini_in_scadenza.
+              DECLARE
+                v_data   vendite.listini_versioni.valido_al%TYPE :=
+                           COALESCE(p_data, script.fn_data_operativa());
+                -- nudo: e' il ritorno di script.fn_intero_positivo_da_testo
+                v_giorni integer;
+              BEGIN
+                v_giorni := script.fn_intero_positivo_da_testo(
+                    script.fn_get_parameter_di_sessione(
+                        'LISTINI_SCADENZA_PREAVVISO_GIORNI',
+                        'vendite.fn_listini_in_scadenza_senza_successore'),
+                    'LISTINI_SCADENZA_PREAVVISO_GIORNI',
+                    'vendite.fn_listini_in_scadenza_senza_successore');
+
+                RETURN QUERY
+                SELECT v.listino_id,
+                       v.id,
+                       v.valido_al,
+                       (v.valido_al - v_data)::integer
+                  FROM vendite.listini_versioni v
+                  JOIN vendite.listini l ON l.id = v.listino_id
+                 WHERE l.attivo IS TRUE
+                   AND v.attivo IS TRUE
+                   AND v.valido_al IS NOT NULL
+                   AND v.valido_al <= v_data + v_giorni
+                   AND v.id = vendite.fn_listino_versione_in_vigore(v.listino_id, v_data)
+                   AND NOT EXISTS (
+                       SELECT 1
+                         FROM vendite.listini_versioni succ
+                         JOIN config.stati_doc_listino_versioni ss
+                           ON ss.id = succ.stato_doc_listino_versione_id
+                        WHERE succ.listino_id = v.listino_id
+                          AND succ.id <> v.id
+                          AND succ.attivo IS TRUE
+                          -- il successore contiguo nasce il giorno dopo la fine
+                          AND succ.valido_dal > v.valido_al
+                          -- in preparazione (lo stato iniziale, oggi BOZZA), oppure
+                          -- operativo dal giorno dopo la fine in poi
+                          AND (ss.iniziale IS TRUE
+                               OR succ.validita && daterange(v.valido_al + 1, NULL, '[)')));
+              END;
+              $function$;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.fn_listini_in_scadenza_senza_successore(vendite.listini_versioni.valido_al%TYPE) IS
+                'Le versioni di listino in vigore alla data (default: la data operativa) che scadono entro N giorni senza un successore, coi giorni rimanenti: una riga per versione. N = LISTINI_SCADENZA_PREAVVISO_GIORNI (cascata degli override della sessione; assente o non intero positivo = E_CONFIG_MANCANTE). Successore = una versione attiva dello stesso listino che nasce dopo la fine e che e'' nello stato iniziale (in preparazione) o ha una validita'' dal giorno dopo la fine in poi. La versione in vigore la dice vendite.fn_listino_versione_in_vigore. Sede unica della regola: la leggono il filtro della lista listini, la colonna giorni_alla_scadenza della lista versioni e il badge dell''alert scadenze, una volta per query. Nasce il 2026-10-31 (20261031-27, brief-db-liste-datatable-grezze-secondo-giro §3.1) dalla query del backend listini_repository.listini_in_scadenza.';
+              REVOKE EXECUTE ON FUNCTION vendite.fn_listini_in_scadenza_senza_successore(vendite.listini_versioni.valido_al%TYPE) FROM PUBLIC;
+              GRANT EXECUTE ON FUNCTION vendite.fn_listini_in_scadenza_senza_successore(vendite.listini_versioni.valido_al%TYPE) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_listini_in_scadenza_senza_successore(vendite.listini_versioni.valido_al%TYPE);

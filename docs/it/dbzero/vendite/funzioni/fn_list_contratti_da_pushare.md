@@ -16,51 +16,20 @@ CREATE OR REPLACE FUNCTION vendite.fn_list_contratti_da_pushare(p_competenza_mes
  RETURNS TABLE(contratto_id bigint, contratto_uid uuid, riga_id bigint, billing_account_id bigint, utility_id integer, emittente_soggetto_ruolo_id bigint, competenza_dal date, competenza_al date, fatturazione_immediata boolean, sorgente_tipo_id bigint, sorgente_uid text, segment_key character varying, articolo_id uuid, istanza_utility_id bigint, data_attivita date, uom_id bigint, quantita numeric, qta_operativa numeric, uom_operativa_id bigint, factor_to_base numeric, competenza_mese date, prezzo_snapshot numeric, prezzo_bloccato boolean, pricing_mode character varying, tipo_movimento character varying, valuta_id integer, meta jsonb, tipo_doc_fiscale_id bigint, termine_pagamento_id bigint, modalita_pagamento_id integer)
  LANGUAGE plpgsql
 AS $function$
--- rev 2026-10-20 (20261020-90, brief-db-grammatica-unica-documenti, 2e G-8):
---   la chiave e' CONTRATTO:<uid>:R:<riga>:M:<AAAA-MM>, composta da
---   script.fn_segment_key (era CONTR:...). Firma e RETURNS ancorati.
+-- Scopo: le righe di commessa che i contratti devono mandare a questo giro:
+--   gli addebiti maturati di vendite.fn_contratti_addebiti_maturati (la sede
+--   della regola: una tantum, canoni, storni) senza gli scartati, con le
+--   colonne della commessa che non dipendono dalla riga.
+-- rev 2026-10-30 (20261030-01): i tre rami; prima solo UNA_TANTUM.
+-- rev 2026-10-31 (20261031-01): lo storno segue la fine anche quando si
+--   sposta dopo il primo storno.
+-- rev 2026-10-31 (20261031-03): il corpo passa a
+--   vendite.fn_contratti_addebiti_maturati (20261031-02), che lo condivide
+--   con la dashboard; qui resta il filtro.
 DECLARE
   v_sorgente_tipo_id    config.sorgenti.id%TYPE;
   v_tipo_doc_fiscale_id config.sorgenti.tipo_doc_fiscale_id%TYPE;
-  v_stato_attivo_id     config.stati_doc_contratti.id%TYPE;
 BEGIN
-  -- rev 2026-06-28 (analisi-hardcoded-codice §3a): sorgente/stato
-  -- risolti per codice_interno (immutabile), non per codice (mutabile).
-  -- rev 2026-07-27 (brief emissione mirata PARTE B): fatturazione_immediata
-  -- proiettata dalla COLONNA (era la costante FALSE). Il valore instrada
-  -- la corsia via chiave di dedup di fn_get_or_create_commessa.
-  -- rev 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate R4):
-  -- le righe ESCLUSIONE non si listano (l'esclusione non si fattura: prima
-  -- arrivavano in commessa senza prezzo, e il resolver risponde
-  -- E_ARTICOLO_ESCLUSO_DA_CONTRATTO).
-  -- rev 2026-10-10 (brief-db-istanza-nasce-col-ba-residui D-1, D-2): via il
-  -- filtro billing_account_id IS NOT NULL (la colonna e' NOT NULL); lo stato
-  -- ATTIVO che non si trova nel catalogo solleva E_CODICE come la sorgente,
-  -- invece di far cadere il filtro di stato (prima: `IS NULL OR`, cioe'
-  -- contratti in qualunque stato).
-  -- rev 2026-10-13 (20261013-19, decisione A di Tid): via la colonna
-  -- tipo_consumo, dove finiva l'erogazione della riga — la madre la
-  -- rifiutava (vocabolario ACCONTO/CONGUAGLIO/STORNO), e nessun contratto
-  -- arrivava in commessa. L'erogazione viaggia in meta.tipo_erogazione.
-  -- rev 2026-10-13 (20261013-24, D-1 e D-2 di Tid): si listano solo le righe
-  -- UNA_TANTUM, e la loro competenza e' il giorno di attivazione (valido_dal),
-  -- non la validita' del contratto. Un fatto che accade una volta ha un
-  -- giorno, come ordini e DDT; con valido_al NULL (contratto senza scadenza)
-  -- la competenza_al usciva NULL e la madre la rifiutava (NOT NULL).
-  -- CANONE, ORARIO e CONSUMO non si mandano finche' non hanno la loro
-  -- generazione (un canone per periodo, ore e consumi dalle loro fonti): qui
-  -- partivano una volta sola, con la quantita' fissa del contratto e la
-  -- competenza di tutto il contratto. Brief:
-  -- brief-db-contratto-righe-periodiche-in-commessa.
-  IF p_contratto_id IS NOT NULL AND p_contratto_id <= 0 THEN
-    PERFORM script.fn_log_and_raise_error(
-      'vendite', 'fn_list_contratti_da_pushare', 'E_PUSH_SORGENTE_ID_INVALIDO',
-      jsonb_build_object('parametro', 'p_contratto_id', 'valore', p_contratto_id),
-      NULL::uuid,
-      'p_contratto_id', p_contratto_id::text
-    );
-  END IF;
-
   SELECT s.id, s.tipo_doc_fiscale_id
     INTO v_sorgente_tipo_id, v_tipo_doc_fiscale_id
   FROM config.sorgenti s
@@ -74,94 +43,38 @@ BEGIN
     );
   END IF;
 
-  SELECT s.id INTO v_stato_attivo_id
-  FROM config.stati_doc_contratti s
-  WHERE s.codice_interno = 'ATTIVO' AND s.attivo IS TRUE LIMIT 1;
-
-  -- Senza lo stato il filtro non ha un valore: si ferma, come per la
-  -- sorgente. Il push non lista mai contratti in uno stato qualunque.
-  IF v_stato_attivo_id IS NULL THEN
-    PERFORM script.fn_log_and_raise_error(
-      'vendite', 'fn_list_contratti_da_pushare', 'E_CODICE',
-      jsonb_build_object('codice', 'ATTIVO'),
-      NULL::uuid, 'ATTIVO', 'config.stati_doc_contratti'
-    );
-  END IF;
-
   RETURN QUERY
   SELECT
-    c.id, c.uid, cr.id,
-    c.billing_account_id,
-    c.utility_id,
-    anagrafiche.fn_get_emittente_fiscale_id(c.billing_account_id),
-    -- Competenza della riga UNA_TANTUM: il giorno di attivazione, in tutte
-    -- e due le colonne (D-1 di Tid, 2026-10-13). valido_dal e' NOT NULL.
-    c.valido_dal, c.valido_dal,
+    a.contratto_id, a.contratto_uid, a.riga_id,
+    a.billing_account_id, a.utility_id, a.emittente_soggetto_ruolo_id,
+    a.competenza_dal, a.competenza_al,
     -- Corsia di instradamento: valore reale del contratto.
-    c.fatturazione_immediata,
+    a.fatturazione_immediata,
     v_sorgente_tipo_id,
-    c.uid::text,
-    script.fn_segment_key('CONTRATTO', c.uid::text, cr.id, COALESCE(c.valido_dal, c.data)),
-    cr.articolo_id,
-    c.istanza_utility_id,
-    COALESCE(c.valido_dal, c.data),
-    -- uom_id canonica da catalogo.articoli (fix bug proiezione NULL)
-    a.uom_id,
-    cr.quantita,
-    cr.qta_operativa,
-    cr.uom_operativa_id,
-    COALESCE(cr.factor_to_base, 1::numeric),
-    date_trunc('month', COALESCE(c.valido_dal, c.data))::date,
-    cr.prezzo_unitario,
-    -- prezzo_bloccato: dipende dalla RIGA (prezzo valorizzato),
-    -- INDIPENDENTE dal flag di corsia. Vedi header del changeSet.
-    (cr.prezzo_unitario IS NOT NULL),
+    a.contratto_uid::text,
+    a.segment_key,
+    a.articolo_id, a.istanza_utility_id, a.data_attivita, a.uom_id,
+    a.quantita, a.qta_operativa, a.uom_operativa_id, a.factor_to_base,
+    a.competenza_mese,
+    a.prezzo_snapshot, a.prezzo_bloccato,
     'FIXED'::varchar,
     'NORMALE'::varchar,
     NULL::integer,
-    jsonb_build_object(
-      'contratto_numero',    c.numero,
-      'periodicita',         cr.periodicita,
-      'generazione_canone',  cr.generazione_canone,
-      'competenza_canone',   cr.competenza_canone,
-      'tipo_erogazione',     cr.tipo_erogazione,
-      'tipo_commessa',       'AUTO',
-      'policy_fatturazione', 'DA_DOCUMENTO'
-    ),
+    a.meta,
     v_tipo_doc_fiscale_id,
     NULL::bigint,
     NULL::integer
-  FROM vendite.contratti c
-  JOIN vendite.contratti_righe cr
-    ON cr.contratto_id = c.id
-   AND COALESCE(cr.attivo, TRUE) IS TRUE
-   -- L'esclusione non si fattura: dice solo che il contratto non vende
-   -- quell'articolo del listino.
-   AND cr.tipo_eccezione <> 'ESCLUSIONE'::vendite.tipo_eccezione_contratto
-   -- Solo le UNA_TANTUM (D-2 di Tid, 2026-10-13): sono le sole che il push sa
-   -- mandare giuste, una riga e una volta. Le altre erogazioni aspettano la
-   -- loro generazione (brief-db-contratto-righe-periodiche-in-commessa).
-   AND cr.tipo_erogazione = 'UNA_TANTUM'
-  JOIN catalogo.articoli a ON a.id = cr.articolo_id
-  WHERE c.stato_doc_contratto_id = v_stato_attivo_id
-    AND (c.valido_al IS NULL OR c.valido_al >= COALESCE(p_competenza_mese, (SELECT script.fn_data_operativa())))
-    AND (p_competenza_mese IS NULL
-         OR date_trunc('month', COALESCE(c.valido_dal, c.data))::date = p_competenza_mese)
-    AND (p_billing_account_id IS NULL OR c.billing_account_id = p_billing_account_id)
-    AND (p_contratto_id IS NULL OR c.id = p_contratto_id)
-    -- Esclusione "gia' inviato": eleggibile solo se MAI
-    -- instradata (LIBERA) — classificatore condiviso coi rami
-    -- reason della capability: vede anche i componenti #CMP e
-    -- non dipende piu' da stato_emissione (ALLOCATA basta).
-    AND script.fn_get_stato_push_segment(
-          script.fn_segment_key('CONTRATTO', c.uid::text, cr.id, COALESCE(c.valido_dal, c.data))) = 'LIBERA'
-  ORDER BY c.id, cr.id
+  FROM vendite.fn_contratti_addebiti_maturati(
+         p_competenza_mese, p_billing_account_id, p_contratto_id) a
+  -- Gli scartati non partono: li segnala la dashboard.
+  WHERE a.scarto IS NULL
+  ORDER BY a.contratto_id, a.ramo, a.segment_key
   LIMIT p_limit;
 END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_list_contratti_da_pushare(p_competenza_mese date, p_billing_account_id bigint, p_limit integer, p_contratto_id bigint)
-IS 'Lista righe contratto eligible al push su commessa (stato ATTIVO). uom_id da catalogo.articoli (canonica). p_contratto_id opzionale: NULL=batch globale, NOT NULL=singolo contratto. Filtri in AND. Esclude EMESSA via NOT EXISTS. (20260511-33: cr.quantita_fissa -> cr.quantita dopo rename colonna) rev 2026-06-28: sorgente/stato per codice_interno (analisi-hardcoded-codice §3a). rev 2026-07-19: esclusione su ALLOCAZIONE del mese via script.fn_get_stato_push_segment (vede anche componenti #CMP), non piu'' solo EMESSA — brief-db-push-commessa-gia-inviato §4a. rev 2026-07-27: fatturazione_immediata proiettata dalla colonna vendite.contratti.fatturazione_immediata (era costante FALSE) — simmetria del flag di corsia, brief-db-emissione-fattura-per-documento-sorgente PARTE B. prezzo_bloccato resta legato alla riga (prezzo valorizzato): l''accoppiamento flag/prezzo esiste solo sui preventivi. Espone termine_pagamento_id e modalita_pagamento_id a NULL: i contratti non hanno colonne di pagamento, la cascata scende al livello successivo (rev 2026-08-03, T.1). rev 2026-10-04: le righe ESCLUSIONE non si listano (non si fatturano; prima arrivavano in commessa senza prezzo, e per quell''articolo il resolver risponde E_ARTICOLO_ESCLUSO_DA_CONTRATTO) e l''erogazione della riga senza ripiego su CANONE, obbligatoria per CHECK su ogni riga che non e'' ESCLUSIONE, andava nella colonna tipo_consumo (ritirata il 2026-10-13) — brief-db-erogazione-obbligatoria-righe-fatturate R4. rev 2026-10-10 (20261010-55): via il filtro billing_account_id IS NOT NULL (colonna NOT NULL); lo stato ATTIVO assente dal catalogo solleva E_CODICE (config.stati_doc_contratti) invece di far cadere il filtro di stato. Brief: brief-db-istanza-nasce-col-ba-residui (D-1, D-2). rev 2026-10-13 (20261013-19): tipo_consumo RITIRATO in tutta la catena del push (madre, batch, cinque lister, builder pgTAP). Non aveva un lettore, e il vocabolario della madre (ACCONTO/CONGUAGLIO/STORNO) non lo produceva nessuna sorgente con un significato: preventivi, ordini e DDT scrivevano la costante CONGUAGLIO, contratti (l''erogazione della riga) e consumi (CONSUMO) un valore che la madre rifiutava, quindi il loro push falliva sempre (E_PARAMETRO_INVALIDO). L''erogazione resta dove gia'' stava, in meta.tipo_erogazione. Decisione A di Tid, 2026-10-13. Colonna tipo_consumo tolta dal RETURNS TABLE (DROP + CREATE). rev 2026-10-13 (20261013-24, D-1 e D-2 di Tid): si listano solo le righe UNA_TANTUM, con competenza dal giorno di attivazione al giorno di attivazione (valido_dal in tutte e due le colonne), come ordini e DDT. Prima la competenza era tutta la validita'' del contratto, e con valido_al NULL (contratto senza scadenza) competenza_al usciva NULL e la madre la rifiutava. CANONE, ORARIO e CONSUMO non si mandano finche'' non hanno la loro generazione: brief-db-contratto-righe-periodiche-in-commessa. Rev 2026-10-20 (20261020-90, brief-db-grammatica-unica-documenti 2e, G-8): la chiave e'' CONTRATTO:<uid>:R:<riga>:M:<AAAA-MM>, composta da script.fn_segment_key (era CONTR:...).';
+IS 'Le righe di commessa che i contratti ATTIVO e CESSATO devono mandare a questo giro, in tre rami. (1) UNA_TANTUM: le righe ADESIONE e AGGIUNTA dei contratti ATTIVO, una volta, con competenza il giorno di attivazione (valido_dal); l''OVERRIDE non si addebita (F-1, e'' il prezzo del cliente), l''ESCLUSIONE non si fattura. (2) CANONE: i pezzi di periodo maturati e non ancora addebitati, da vendite.fn_canone_periodi (sede unica della regola), per le righe a canone ADESIONE e AGGIUNTA, per l''OVERRIDE solo su una quota fissa (prende il posto della riga di listino), e per le quote fisse del listino (config.listini_tipologie.e_quota_fissa, erogazione di default CANONE) senza una riga del contratto sullo stesso articolo: quantita'' 1 a periodo, periodicita'' della riga di listino. Il «da» e'' il giorno dopo l''ultimo pezzo addebitato della fonte; la generazione e'' coalesce(riga, testata); quantita'' fissa = riga x frazione, durata = giorni del pezzo o mesi (frazione x mesi). Prezzo: della riga, o del listino del contratto all''inizio del pezzo (vendite.fn_resolve_prezzo_listino_v2_esito, con la variazione globale; senza prezzo la riga non parte). Chiave CONTRATTO:<uid>:R:<riga>:M:<AAAA-MM> (mese d''inizio del pezzo) o, per la quota fissa del listino, CONTRATTO:<uid>:A:<articolo>:M:<AAAA-MM>. (3) STORNO: un pezzo addebitato che va oltre valido_al si storna per la parte non goduta (addebitato meno dovuto con la fine nota, stessa regola dei mesi e dei giorni), una riga per riga addebitata, al prezzo addebitato. La fine si puo'' spostare finche'' il contratto e'' ATTIVO: lo storno e'' la differenza fra il dovuto con la fine di oggi e quanto e'' gia'' stornato per il pezzo (negativa se la fine arretra, positiva se avanza o sparisce), chiave <base del pezzo>#STO[:<n>][#CMP:...]: la prima #STO, le successive #STO:2, #STO:3, ... Canone e storno hanno competenza_mese = il mese del giro (fine del mese di p_competenza_mese, o l''oggi aziendale), competenza_dal/al = il pezzo. Esclusione gia'' inviato: script.fn_get_stato_push_segment = LIBERA. Righe senza periodicita'' o senza prezzo non partono: le segnala la dashboard (vendite.vw_dash_fatturazione_contratti, CANONE_NON_GENERABILE). Il corpo e'' in vendite.fn_contratti_addebiti_maturati (20261031-02), sede comune con la dashboard; qui il filtro (scarto NULL), le colonne costanti della commessa, l''ordine e il limite. Storia nei changeSet, l''ultimo 20261031-03: brief-db-contratto-righe-periodiche-in-commessa §6.12, §6.13.';
 ```
 
 </div>

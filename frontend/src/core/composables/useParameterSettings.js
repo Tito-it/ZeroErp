@@ -1,6 +1,9 @@
-// Scopo: Composable per la pagina di gestione parametri (admin+self):
-// carica la lista completa con tutti i livelli di scope (default,
-// emittente, gruppo, utente) e fornisce metodi CRUD override.
+// Scopo: Composable degli OVERRIDE della pagina di gestione parametri
+// (admin+self): `saveOverride` / `removeOverride` e gli scope ammessi.
+// ⛔ Dal 2026-10-31 non carica piu' la lista: la lista e' a catalogo
+//    (`config.parametri_impostazioni`), letta dallo store-lista
+//    `useImpostazioniStore` con pagina e ricerca lato server. Prima qui c'era
+//    il `load()` della lista intera, filtrata poi nel browser.
 //
 // Refactor 2026-05-02: gli override save/delete delegano allo
 // `useParametersStore` per ottenere invalidation reattiva della cache
@@ -8,11 +11,8 @@
 // BroadcastChannel.
 //
 // Uso:
-//   const { parameters, loading, load, saveOverride, removeOverride } = useParameterSettings()
-//   await load()
+//   const { saveOverride, removeOverride } = useParameterSettings()
 
-import { ref } from 'vue'
-import { fetchParameterSettings } from '../apiCore'
 import { useParametersStore } from '../../stores/parameters'
 
 // Scope override consentiti dal backend (allineati a backend/apps/core/api/views_parameters.py).
@@ -28,23 +28,7 @@ export const PARAMETER_SCOPE = Object.freeze({
 })
 
 export function useParameterSettings() {
-  const parameters = ref([])
-  const loading = ref(false)
   const store = useParametersStore()
-
-  // Accetta `options.categoria_cliente_id` (esplicito) o
-  // `options.billing_account_id` (derivato lato BE) per attivare il livello
-  // categoria_cliente nella cascata visualizzata. Default: tutti NULL,
-  // colonna categoria_cliente nel display resta vuota.
-  async function load(options = {}) {
-    loading.value = true
-    try {
-      const res = await fetchParameterSettings(options)
-      parameters.value = res.data.data || []
-    } finally {
-      loading.value = false
-    }
-  }
 
   // Delega allo store: invalidate + broadcast cross-tab automatici.
   // `options.categoriaClienteId` obbligatorio quando scope=CATEGORIA_CLIENTE
@@ -57,5 +41,5 @@ export function useParameterSettings() {
     return store.removeOverride(overrideId, parameterCode, scope, options)
   }
 
-  return { parameters, loading, load, saveOverride, removeOverride }
+  return { saveOverride, removeOverride }
 }

@@ -180,7 +180,8 @@ class ListNoteTests(unittest.TestCase):
         self.assertEqual(total, 1)
         self.assertEqual(rows, [{"id": 7}])
         repo.list.assert_called_once_with(
-            42, target_riga_id=5, include_invisible=False, limit=10, offset=10,
+            42, target_riga_id=5, include_invisible=False,
+            search=None, order_by=None, order_dir=None, limit=10, offset=10,
         )
 
     def test_page_size_clamp(self) -> None:

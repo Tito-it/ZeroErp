@@ -1,6 +1,6 @@
 # Mappa Concentrica — Changelog
 
-> **Ultimo aggiornamento**: 27 ottobre 2026
+> **Ultimo aggiornamento**: 28 ottobre 2026
 
 > Cronologia datata degli aggiornamenti della [Mappa Concentrica](../mappa-concentrica.md).
 > La mappa mostra solo lo **stato corrente** per anello; questo documento conserva la storia,
@@ -33,6 +33,35 @@
 > si toccano: l'URL di questo changelog deve restare uno.
 
 ---
+
+## 28 ottobre 2026
+
+**Trasversale — la roadmap della mappa torna a dire solo ciò che è aperto.** Le
+celle «In corso» del §3 avevano riaccumulato la storia delle voci chiuse; ora
+portano solo ciò che resta, e il chiuso sta qui e nei brief:
+
+- **Catena di verifica**: chiusi D1, D2, D3, D4, D6-registro, D7 col giro 2,
+  D10, D13, D14 —
+  [migliorie-generali-da-test-valutazione.md](work-in-progress/migliorie-generali-da-test-valutazione.md)
+- **Osservabilità** esce dalla roadmap: sette passi su sette a codice,
+  collaudo in-app chiuso, analisi e diagnostica di produzione archiviate; i
+  residui sono sotto «Previsti» —
+  [piano-be-fe-osservabilita-pallino-e-superfici.md](work-done/piano-be-fe-osservabilita-pallino-e-superfici.md),
+  [collaudo-in-app-osservabilita-giornale-errori-pallino.md](work-done/collaudo-in-app-osservabilita-giornale-errori-pallino.md)
+- **Modello del documento di vendita**: la commessa (giro 10) è portata;
+  fattura (giro 11) e versione di listino (giro 12) hanno il DB applicato e
+  aspettano il BE; D-N1 è entrata nel giro 11, D-G1 decisa —
+  [brief-modello-documento-vendita.md](work-done/brief-modello-documento-vendita.md)
+- **Accessi**: L-2, L-4, L-6 e il collaudo del consenso al riuso erano chiusi
+  ma la mappa li dava aperti; resta L-5 (R-4) e il collaudo di D-5 —
+  [piano-be-fe-accessi-credenziale-e-vesti.md](work-in-progress/piano-be-fe-accessi-credenziale-e-vesti.md)
+- **Incassi, magazzino, permesso nel verbo**: ridotti a ciò che resta (la prova
+  a video; collaudi e residui del piano §5; il passo 3)
+
+Misure rifatte sui registri: **4 rossi** su **917 file** sul database di
+sviluppo, **358** nel registro della CI, **23** in quello dello scratch.
+Contemporaneamente il [readme](../readme.md) perde il suo elenco di lavori
+aperti, che faceva da seconda roadmap, e i numeri che invecchiavano.
 
 ## 26 ottobre 2026
 
@@ -83,7 +112,7 @@ se un altro dello stesso lotto è in errore»*. ⚠️ Aperti: i giri di fattura
 listino, D-N1 (i gate delle azioni per riga), D-G1 e D-G2 ereditati dalla
 grammatica, i profili su dbdev che non hanno `emetti_offerta`/`emetti_contratto`/
 `emetti_ordine`, la scadenza dei preventivi (brief nuovo, E-1…E-3 a Tid). Vedi
-[brief-modello-documento-vendita.md](work-in-progress/brief-modello-documento-vendita.md),
+[brief-modello-documento-vendita.md](work-done/brief-modello-documento-vendita.md),
 [brief-db-documento-nasce-nello-stato-iniziale.md](work-done/brief-db-documento-nasce-nello-stato-iniziale.md),
 [brief-db-scadenza-preventivi.md](work-in-progress/brief-db-scadenza-preventivi.md).
 

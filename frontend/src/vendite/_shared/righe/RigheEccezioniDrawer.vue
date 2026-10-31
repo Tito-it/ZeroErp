@@ -24,13 +24,15 @@
 //    gli avvisi propri (il contesto pricing e' del solo contratto).
 //
 // ⭐ I VERBI DELLA RIGA LI DICE IL DB (colonna `azioni`, capability di riga):
-//    il drawer li RENDE, non li decide. DA_LISTINO → SOVRASCRIVI_PREZZO (click)
-//    ed ESCLUDI; OVERRIDE → MODIFICA (click) e RIPRISTINA_LISTINO; ESCLUSIONE
-//    → RIPRISTINA_ARTICOLO; AGGIUNTA → MODIFICA (click) e RIMUOVI. «Escludi»
+//    il drawer li RENDE, non li decide. DA_LISTINO → SOVRASCRIVI_PREZZO (click),
+//    ESCLUDI e ADERISCI; OVERRIDE → MODIFICA (click) e RIPRISTINA_LISTINO;
+//    ESCLUSIONE → RIPRISTINA_ARTICOLO; AGGIUNTA → MODIFICA (click) e RIMUOVI;
+//    ADESIONE → MODIFICA (click) e RIMUOVI_ADESIONE. «Escludi»
 //    spento porta il motivo (`escludi_blocco_codice`, lo stesso predicato del
 //    guard). Il tipo di eccezione non si sceglie: lo da' il gesto che apre il
-//    form (riga del listino → OVERRIDE, «Nuovo» → AGGIUNTA), e l'ESCLUSIONE
-//    non passa dal form (one-click, vuota: il DB la rifiuta con un dato).
+//    form (riga del listino → OVERRIDE o ADESIONE, «Nuovo» → AGGIUNTA), e
+//    l'ESCLUSIONE non passa dal form (one-click, vuota: il DB la rifiuta con
+//    un dato).
 //
 // ⭐ I TESTI, DUE SEDI. Il VOCABOLARIO delle righe (origini, tipi, fonti,
 //    erogazioni, motivi di «Escludi», etichette dei campi) e' lo stesso sui due
@@ -63,8 +65,10 @@ import { useInjectReadonly } from '../../../core/composables/useReadonlyMode'
 import { useAuthStore } from '../../../stores/auth'
 import { useLimitiPricing } from '../../composables/useLimitiPricing'
 import {
-  AZIONE_RIGA_CONTRATTO, FONTE_QUANTITA_ATTESA, PRICING_ACTIONS, TIPO_ECCEZIONE,
+  AZIONE_RIGA_CONTRATTO, FONTE_QUANTITA_ATTESA, PRICING_ACTIONS, TIPO_ECCEZIONE, TIPO_EROGAZIONE,
 } from '../../constants'
+import PeriodicitaSelect from '../canoni/PeriodicitaSelect.vue'
+import { opzioniGenerazioneCanone } from '../canoni/campiCanone'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../../core/constants'
 import { useArticoloUomOptions } from '../../../catalogo/composables/useArticoloUomOptions'
 import {
@@ -380,8 +384,18 @@ const fonteQuantitaOptions = computed(() => opzioniFonte(
 // componenti (trigger DB `z90_propaga_qta_componenti`).
 const showQtaOperativa = computed(() => form.value?.fonte_quantita_attesa === FONTE_QUANTITA_ATTESA.FISSA)
 
+// L'ADESIONE (G-0-ter): l'articolo del listino al prezzo del listino. Il form
+// non ha il prezzo ne' i componenti, che vengono dal listino.
+const isAdesione = computed(() => form.value?.tipo_eccezione === TIPO_ECCEZIONE.ADESIONE)
+
+// La riga a canone (D-6, D-7): periodicita' e generazione si vedono e si
+// mandano solo qui. Che la periodicita' sia obbligatoria lo dice il DB; la
+// generazione vuota = «come la testata».
+const isCanone = computed(() => form.value?.tipo_erogazione === TIPO_EROGAZIONE.CANONE)
+const opzioniGenerazione = computed(() => opzioniGenerazioneCanone(t))
+
 // Il tipo di eccezione non e' una scelta dell'operatore: lo da' l'azione che
-// apre il form («Nuovo» → AGGIUNTA, riga del listino → OVERRIDE). Il form lo
+// apre il form («Nuovo» → AGGIUNTA, riga del listino → OVERRIDE o ADESIONE). Il form lo
 // mostra come Tag. Default AGGIUNTA: l'ingresso piu' generico.
 function defaultForm(overrides = {}) {
   return {
@@ -396,6 +410,8 @@ function defaultForm(overrides = {}) {
     qta_operativa: 1,
     uom_operativa_id: null,
     ordine: 10,
+    periodicita: null,
+    generazione_canone: null,
     ...overrides,
   }
 }
@@ -440,12 +456,13 @@ function onAggiungiArticolo() {
   nextTick(fissa)
 }
 
-// Scopo: ingresso CREATE «Modifica prezzo» dal click su una riga del listino
-//        (verbo SOVRASCRIVI_PREZZO). Articolo (immutabile), UoM e prezzo dal
-//        listino: l'operatore cambia il prezzo. Tipo OVERRIDE.
-function onModificaPrezzo(row) {
+// Scopo: l'apertura del form da una riga del LISTINO, comune a «Modifica
+//        prezzo» (OVERRIDE) e «Aderisci» (ADESIONE): articolo (immutabile) e
+//        UoM dalla riga, la composizione del bundle del listino in sola
+//        lettura, le UoM e l'erogazione di default dal DB. Il chiamante dice
+//        il tipo e i campi propri (`overrides` di `defaultForm`).
+function apriFormDaRigaListino(row, overrides) {
   form.value = defaultForm({
-    tipo_eccezione: TIPO_ECCEZIONE.OVERRIDE,
     articolo_id: row.articolo_id,
     articolo_obj: {
       id: row.articolo_id,
@@ -454,11 +471,12 @@ function onModificaPrezzo(row) {
       is_composito: row.is_composito === true,
       _display: `${row.articolo_codice} — ${row.articolo_descrizione}`,
     },
-    // Prezzo iniziale = prezzo di listino. Number() per InputNumber (il
-    // Decimal arriva come stringa).
-    prezzo_unitario: row.prezzo_listino != null ? Number(row.prezzo_listino) : null,
     uom_operativa_id: row.uom_id ?? null,
-    qta_operativa: row.qta_operativa != null ? Number(row.qta_operativa) : 1,
+    // Sulla riga del listino la preview porta la periodicita' del listino
+    // (D-7): e' la proposta di «Aderisci», e quella che il DB metterebbe
+    // comunque senza indicazione (L4b).
+    periodicita: row.periodicita ?? null,
+    ...overrides,
   })
   nuovaRiga()
   rigaListinoAperta.value = row.riga_key
@@ -472,6 +490,18 @@ function onModificaPrezzo(row) {
   nextTick(fissa)
   // Come si eroga, dal DB: la combinazione di default nel form.
   caricaErogazioni(row.articolo_id, { preseleziona: true })
+}
+
+// Scopo: ingresso CREATE «Modifica prezzo» dal click su una riga del listino
+//        (verbo SOVRASCRIVI_PREZZO). Prezzo iniziale = quello del listino:
+//        l'operatore lo cambia. Tipo OVERRIDE.
+function onModificaPrezzo(row) {
+  apriFormDaRigaListino(row, {
+    tipo_eccezione: TIPO_ECCEZIONE.OVERRIDE,
+    // Number() per InputNumber (il Decimal arriva come stringa).
+    prezzo_unitario: row.prezzo_listino != null ? Number(row.prezzo_listino) : null,
+    qta_operativa: row.qta_operativa != null ? Number(row.qta_operativa) : 1,
+  })
 }
 
 // Scopo: «Escludi» dal menu di una riga del listino: conferma e salvataggio
@@ -500,13 +530,23 @@ function onEscludi(row) {
   })
 }
 
+// Scopo: «Aderisci» dal menu di una riga del listino (verbo ADERISCI, G-0-ter,
+//        D-4 di Tid): il form dell'ADESIONE pre-compilato, quantita' 1.
+//        Niente prezzo: l'adesione addebita il prezzo del listino, e i
+//        componenti di un kit aderito sono quelli del listino. La periodicita',
+//        se il form non la dice, la mette il DB dalla riga di listino
+//        (`trgfn_righe_default_periodicita_da_listino`).
+function onAderisci(row) {
+  apriFormDaRigaListino(row, { tipo_eccezione: TIPO_ECCEZIONE.ADESIONE, qta_operativa: 1 })
+}
+
 // Scopo: il click di riga e' il verbo che la riga ammette (colonna `azioni`
 //        del DB), non una scelta per origine (frontend-standards §"Pattern
 //        lista": modifica = click riga, kebab per le azioni secondarie):
 //        - readonly: niente
 //        - SOVRASCRIVI_PREZZO (riga del listino): form OVERRIDE pre-compilato.
 //          Muta un prezzo: vuole lo stesso permesso di «Nuovo» ed «Escludi»
-//        - MODIFICA (OVERRIDE/AGGIUNTA salvata): l'edit. ⛔ Un'ESCLUSIONE non
+//        - MODIFICA (OVERRIDE/AGGIUNTA/ADESIONE salvata): l'edit. ⛔ Un'ESCLUSIONE non
 //          ce l'ha: «un'esclusione non si modifica», e lo decide il DB
 // ⭐ Riceve la RIGA, non l'evento PrimeVue: e' la firma di `row-click` di
 //    `DrawerTabLista`.
@@ -532,7 +572,7 @@ function _onEditRigaPersistita(r) {
       articolo_id: r.articolo_id,
       articolo_obj: { id: r.articolo_id, codice: r.articolo_codice, descrizione: r.articolo_descrizione, _display: `${r.articolo_codice} — ${r.articolo_descrizione}` },
       // tipo_eccezione: immutabile (lock di colonna a DB), mostrato come Tag.
-      // Il form vede solo OVERRIDE/AGGIUNTA: un'ESCLUSIONE non ha MODIFICA.
+      // Il form vede OVERRIDE, AGGIUNTA e ADESIONE: un'ESCLUSIONE non ha MODIFICA.
       tipo_eccezione: r.tipo_eccezione,
       // Com'e' scritta: OVERRIDE e AGGIUNTA ce l'hanno per vincolo DB.
       tipo_erogazione: r.tipo_erogazione,
@@ -547,6 +587,10 @@ function _onEditRigaPersistita(r) {
       //    ripieghi. NULL resta NULL.
       uom_operativa_id: r.uom_operativa_id ?? null,
       ordine: r.ordine ?? null,
+      // ⭐ Com'e' scritta (D-7): il form le rimanda al PATCH, e vuote
+      //    cancellerebbero una periodicita' o una generazione forzata.
+      periodicita: r.periodicita ?? null,
+      generazione_canone: r.generazione_canone ?? null,
     }
     articoloObj.value = {
       id: r.articolo_id,
@@ -555,9 +599,12 @@ function _onEditRigaPersistita(r) {
       is_composito: r.is_composito === true,
     }
     // EDIT: nessuna Dialog stantia; i componenti persistiti stanno nel
-    // pannello sotto il form.
+    // pannello sotto il form. ⭐ L'ADESIONE non ha componenti suoi: quelli del
+    // kit aderito vengono dal listino, e si mostrano in sola lettura.
     resetComponentiDialog()
-    selectedRowComponenti.value = []
+    selectedRowComponenti.value = r.tipo_eccezione === TIPO_ECCEZIONE.ADESIONE
+      ? rowComponenti(r)
+      : []
     // UoM gia' scritta: niente autopick, solo le opzioni.
     loadUomPerArticolo(r.articolo_id)
     nextTick(fissa)
@@ -615,9 +662,10 @@ const canSave = computed(() => {
   }
   // Prezzo obbligatorio su OVERRIDE/AGGIUNTA, tranne gli articoli compositi:
   // il prezzo della madre = SUM(componenti), lo scrive il trigger DB.
+  // L'ADESIONE non ha prezzo: lo da' il listino.
   const prezzoMancante = form.value.prezzo_unitario == null
     || form.value.prezzo_unitario === ''
-  if (!articoloObj.value?.is_composito && prezzoMancante) return false
+  if (!isAdesione.value && !articoloObj.value?.is_composito && prezzoMancante) return false
   // In CREATE su composito il Salva aspetta la conferma della Dialog.
   if (showComponentiDialog.value && componentiPayload.value == null) return false
   return true
@@ -641,11 +689,18 @@ function buildRigaPayload(extra = {}) {
   const payload = {
     tipo_erogazione: f.tipo_erogazione || null,
     fonte_quantita_attesa: f.fonte_quantita_attesa || null,
-    prezzo_unitario: f.prezzo_unitario != null ? String(f.prezzo_unitario) : null,
     qta_operativa: (isFissa && f.qta_operativa != null) ? String(f.qta_operativa) : null,
     uom_operativa_id: f.uom_operativa_id || null,
     ordine: f.ordine != null ? Number(f.ordine) : null,
+    // Solo sulla riga a canone: su un'altra erogazione non hanno senso.
+    periodicita: isCanone.value ? (f.periodicita || null) : null,
+    generazione_canone: isCanone.value ? (f.generazione_canone || null) : null,
     ...extra,
+  }
+  // ⛔ L'ADESIONE non manda il prezzo: la colonna resta vuota per vincolo
+  //    (`chk_*_prezzo_per_tipo_eccezione`), e il prezzo e' quello del listino.
+  if (!isAdesione.value) {
+    payload.prezzo_unitario = f.prezzo_unitario != null ? String(f.prezzo_unitario) : null
   }
   if (formMode.value === 'create') {
     payload.articolo_id = f.articolo_id
@@ -732,6 +787,18 @@ function onRipristinaListino(r) {
   })
 }
 
+// ADESIONE: la cancellazione non toglie l'articolo dal listino, smette di
+// addebitarlo.
+function onRimuoviAdesione(r) {
+  confirmAction({
+    header: tv('rimuovi_adesione_dialog_titolo'),
+    message: tv('rimuovi_adesione_dialog_messaggio', { articolo: etichettaRiga(r) }),
+    acceptLabel: tv('rimuovi_adesione_dialog_conferma'),
+    danger: false,
+    onAccept: () => cancellaRiga(r, tv('riga_ripristinata')),
+  })
+}
+
 function onRipristinaArticolo(r) {
   confirmAction({
     header: td('ripristina_articolo_dialog_titolo'),
@@ -755,6 +822,9 @@ const annullaForm = () => chiudiConConferma(closeForm)
 //   - RIPRISTINA_LISTINO (OVERRIDE): DELETE → torna al prezzo di listino.
 //   - RIPRISTINA_ARTICOLO (ESCLUSIONE): DELETE → l'articolo torna disponibile.
 //   - RIMUOVI (AGGIUNTA): DELETE → l'articolo sparisce dal documento.
+//   - ADERISCI (riga del listino): il form dell'ADESIONE.
+//   - RIMUOVI_ADESIONE (ADESIONE): DELETE → torna una riga del listino, che il
+//     documento non addebita.
 // ⚠️ Un verbo nuovo del DB senza voce qui non compare: e' un'azione che il
 //    drawer non sa ancora fare, non una da inventare.
 const VOCI_MENU_RIGA = {
@@ -770,6 +840,22 @@ const VOCI_MENU_RIGA = {
       ? tv(`escludi_blocco.${r.escludi_blocco_codice.toLowerCase()}`)
       : '',
     command: () => onEscludi(r),
+  }),
+  // ADERISCI (riga del listino): il form dell'ADESIONE. Nessun gate prezzi:
+  // l'adesione non scrive un prezzo, prende quello del listino.
+  [AZIONE_RIGA_CONTRATTO.ADERISCI]: (r) => ({
+    key: 'aderisci',
+    label: tv('azione_aderisci'),
+    icon: MANAGE_ICONS.ADERISCI,
+    severity: 'success',
+    command: () => chiudiConConferma(() => onAderisci(r)),
+  }),
+  [AZIONE_RIGA_CONTRATTO.RIMUOVI_ADESIONE]: (r) => ({
+    key: 'rimuovi-adesione',
+    label: tv('azione_rimuovi_adesione'),
+    icon: MANAGE_ICONS.RIPRISTINA_LISTINO,
+    severity: 'secondary',
+    command: () => onRimuoviAdesione(r),
   }),
   [AZIONE_RIGA_CONTRATTO.RIPRISTINA_LISTINO]: (r) => ({
     key: 'ripristina-listino',
@@ -801,11 +887,12 @@ function buildRigaActions(r) {
 }
 
 // Scopo: severity del Tag per origine della riga (cella `origine`): DA_LISTINO
-//        neutra, OVERRIDE info (prezzo personalizzato), AGGIUNTA success,
-//        ESCLUSIONE warn (articolo tolto dal listino).
+//        neutra, OVERRIDE info (prezzo personalizzato), AGGIUNTA e ADESIONE
+//        success (si addebitano), ESCLUSIONE warn (articolo tolto dal listino).
 function origineSeverity(origine) {
   if (origine === TIPO_ECCEZIONE.OVERRIDE) return 'info'
   if (origine === TIPO_ECCEZIONE.AGGIUNTA) return 'success'
+  if (origine === TIPO_ECCEZIONE.ADESIONE) return 'success'
   if (origine === TIPO_ECCEZIONE.ESCLUSIONE) return 'warn'
   if (origine === TIPO_ECCEZIONE.DA_LISTINO) return 'secondary'
   return null
@@ -979,7 +1066,15 @@ function origineSeverity(origine) {
             :invalid="campiErrati.includes('fonte_quantita_attesa')"
             />
         </div>
-        <div class="form-field">
+        <!-- L'ADESIONE non ha prezzo suo: un Tag dice da dove arriva. -->
+        <div class="form-field" v-if="isAdesione">
+          <label>{{ tv('field_prezzo_unitario') }}</label>
+          <div>
+            <Tag severity="info" :value="tv('prezzo_da_listino')"
+              v-tooltip.top="tv('prezzo_da_listino_tooltip')" />
+          </div>
+        </div>
+        <div class="form-field" v-else>
           <label>
             {{ tv('field_prezzo_unitario') }}
             <!-- Obbligatorio per OVERRIDE/AGGIUNTA non composito. -->
@@ -993,6 +1088,26 @@ function origineSeverity(origine) {
           <InputNumber v-model="form.prezzo_unitario"
             :disabled="articoloObj?.is_composito === true"
             :min-fraction-digits="2" :max-fraction-digits="4" showButtons />
+        </div>
+      </div>
+
+      <!-- La riga a canone (D-6, D-7): ogni quanto si addebita e come. La
+           periodicita' sulla riga del listino arriva proposta dal listino; la
+           generazione vuota segue la testata. -->
+      <div class="form-grid-2col" v-if="isCanone">
+        <div class="form-field">
+          <label>{{ t('vendite.canoni.field_periodicita') }}</label>
+          <PeriodicitaSelect v-model="form.periodicita"
+            :placeholder="t('vendite.canoni.select_periodicita')"
+            :invalid="campiErrati.includes('periodicita')" />
+        </div>
+        <div class="form-field">
+          <label>{{ t('vendite.canoni.field_generazione_canone') }}</label>
+          <Select v-model="form.generazione_canone"
+            :options="opzioniGenerazione"
+            option-label="label" option-value="value" show-clear
+            :placeholder="t('vendite.canoni.generazione_come_testata')"
+            :invalid="campiErrati.includes('generazione_canone')" />
         </div>
       </div>
 
@@ -1021,7 +1136,7 @@ function origineSeverity(origine) {
       <!-- Componenti BoM. CREATE: il payload della Dialog parte col Salva
            (`componenti_overrides`). EDIT: il pannello carica i componenti
            persistiti e li rende modificabili. -->
-      <template v-if="articoloObj?.is_composito">
+      <template v-if="articoloObj?.is_composito && !isAdesione">
         <ComponentiCreateActionsPanel
           v-if="formMode === 'create'"
           :disabled="!form.articolo_id || !form.uom_operativa_id

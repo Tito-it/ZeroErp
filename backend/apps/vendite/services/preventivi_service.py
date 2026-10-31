@@ -25,7 +25,10 @@ from apps.core.db._helpers import richiedi_codice_a_vocabolario
 from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.services.documento_modello import (
+    e_stato_di_accettazione,
     e_stato_di_annullo,
+    e_stato_di_emissione,
+    e_stato_iniziale,
     rifiuta_stato_di_emissione,
     stato_di_emissione,
 )
@@ -81,9 +84,11 @@ from apps.core.api.payload_validators import envelope_da_offset
 
 # ── Costanti di validazione ──
 
-_STATI_MODIFICABILI: frozenset[str] = frozenset({"DRAFT"})
-_STATI_FATTURABILI: frozenset[str] = frozenset({"ACCETTATO"})
-_STATI_GENERA_PRATICA: frozenset[str] = frozenset({"ACCETTATO"})
+# ⛔ `_STATI_FATTURABILI` e `_STATI_GENERA_PRATICA` ({"ACCETTATO"}) ritirati il
+#    2026-10-31 (brief-modello-documento-vendita §17.6 BE-T2): lo stato di
+#    accettazione lo dice il vocabolario (colonna `accettazione`).
+#    E `_STATI_MODIFICABILI` ({"DRAFT"}) nello stesso giro: la bozza e' lo
+#    stato iniziale del vocabolario (`e_stato_iniziale`).
 _FN = "vendite.preventivi_service"
 # Il codice di validazione del dominio: una costante, non 35 letterali (2026-10-19).
 E_PREV_VALIDAZIONE = "E_PREV_VALIDAZIONE"
@@ -556,11 +561,12 @@ def crea_preventivo(payload: dict[str, Any]) -> dict[str, Any]:
 def elimina_preventivo(preventivo_id: int) -> dict[str, Any]:
     repo = PreventiviRepository()
     testata = _get_testata_or_raise(repo, preventivo_id, op="elimina_preventivo")
-    # Eliminabili solo i preventivi nello stesso stato in cui sono modificabili
-    # (BOZZA / DRAFT). Qualsiasi stato successivo (EMESSO/ACCETTATO/...) richiede
-    # cambia_stato → ANNULLATO invece dell'hard-delete.
+    # Eliminabili solo i preventivi nello stato in cui nascono (la bozza: lo
+    # stato iniziale del vocabolario). Qualsiasi stato successivo
+    # (EMESSO/ACCETTATO/...) richiede cambia_stato → ANNULLATO invece
+    # dell'hard-delete.
     ErrorManager.require(
-        testata["stato_codice_interno"] in _STATI_MODIFICABILI,
+        e_stato_iniziale(TESTATA_PREVENTIVI, testata["stato_codice_interno"]),
         code="E_PREV_STATO_NON_MODIFICABILE",
         message="Solo i preventivi in stato BOZZA possono essere eliminati.",
         detail=f"stato={testata['stato_codice_interno']}",
@@ -686,15 +692,19 @@ def cambia_stato(
         validation_code=E_PREV_VALIDAZIONE, function_name=f"{_FN}.cambia_stato",
     )
 
-    # Gate accettazione: i 2 parametri servono su EMESSO → ACCETTATO e
-    # sull'aggiornamento di un ACCETTATO (finche' il preventivo e' fatturabile,
-    # vedi _STATI_FATTURABILI). Su altre transizioni i parametri sono ignorati.
-    if nuovo_stato == "ACCETTATO":
+    # Gate accettazione: i 2 parametri servono dall'emissione all'accettazione e
+    # sull'aggiornamento di un accettato (finche' il preventivo e' fatturabile).
+    # Su altre transizioni i parametri sono ignorati. Emissione e accettazione
+    # dal vocabolario (§17.6 BE-T2), non `"EMESSO"` / `"ACCETTATO"`.
+    if e_stato_di_accettazione(TESTATA_PREVENTIVI, nuovo_stato):
         # Lo stato corrente decide se servono i due parametri. Un preventivo
         # che non c'e' (None) salta il ramo e lo rifiuta il verbo
         # (E_PREV_NOT_FOUND, regola del 1).
         stato_attuale = repo.get_stato_codice(preventivo_id)
-        if stato_attuale in ("EMESSO", "ACCETTATO"):
+        gia_accettato = stato_attuale == nuovo_stato
+        if stato_attuale is not None and (
+            gia_accettato or e_stato_di_emissione(TESTATA_PREVENTIVI, stato_attuale)
+        ):
             ErrorManager.require(
                 fatturazione_immediata is not None,
                 code=E_PREV_VALIDAZIONE,
@@ -725,7 +735,7 @@ def cambia_stato(
                     fatturazione_immediata=bool(fatturazione_immediata),
                     competenza_mese=competenza_mese,
                 )
-                if stato_attuale == "ACCETTATO":
+                if gia_accettato:
                     return {
                         "preventivo_id": preventivo_id,
                         "stato_precedente": stato_attuale,
@@ -1947,7 +1957,7 @@ def push_a_commessa(
     repo = PreventiviRepository()
     testata = _get_testata_or_raise(repo, preventivo_id, op="push_a_commessa")
     ErrorManager.require(
-        testata["stato_codice_interno"] in _STATI_FATTURABILI,
+        e_stato_di_accettazione(TESTATA_PREVENTIVI, testata["stato_codice_interno"]),
         code="E_PREV_STATO_TRANSIZIONE",
         message="Solo preventivi ACCETTATI possono essere inviati a fatturazione.",
         detail=f"stato={testata['stato_codice_interno']}",
@@ -2177,7 +2187,7 @@ def genera_pratica(
     # billing come difesa-in-profondita' (E_PREV_NOT_FOUND / E_PREV_VALIDAZIONE),
     # ma NON il guard di stato → resta qui.
     ErrorManager.require(
-        testata["stato_codice_interno"] in _STATI_GENERA_PRATICA,
+        e_stato_di_accettazione(TESTATA_PREVENTIVI, testata["stato_codice_interno"]),
         code="E_PREV_PRATICA_STATO",
         message="Stato preventivo non ammette generazione pratica.",
         detail=f"stato={testata['stato_codice_interno']}",

@@ -19,10 +19,12 @@
 | tx_id | uuid | YES |  |
 | storicizza | boolean | YES | true |
 | ammette_override | boolean | NO |  |
+| tipo_valore | text | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_parameters_tipo_valore |  |
 | PRIMARY KEY | parameters_pkey | id |
 | UNIQUE | uq_parameters_code | code |
 
@@ -35,6 +37,8 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_parameters_a07_guard_tipo_valore_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION config.trgfn_parameters_guard_tipo_valore()` |
+| trg_parameters_a07_guard_tipo_valore_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION config.trgfn_parameters_guard_tipo_valore()` |
 | trg_parameters_a10_fk_surrogate_dispatch_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION config.trgfn_parameters_fk_surrogate_dispatch()` |
 | trg_parameters_a10_fk_surrogate_dispatch_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION config.trgfn_parameters_fk_surrogate_dispatch()` |
 | trg_parameters_a10_guard_ammette_override_upd | BEFORE | UPDATE | `EXECUTE FUNCTION config.trgfn_parameters_guard_ammette_override()` |

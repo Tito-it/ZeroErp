@@ -10,6 +10,7 @@
 //        DashboardCompetenzaView — oggi unico consumer.
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { nomiMesi as nomiMesiDi } from '../utils/date'
 
 // Range anni accettato dai service dashboard BE (fn_dash_*_mensile):
 // clamp locale per non desincronizzare header (anno gia' cambiato) e dati
@@ -24,11 +25,8 @@ export const DASH_ANNO_MAX = 2100
 export function useDashMesiNav({ anno, meseIdx, onMeseChange, onAnnoChange }) {
   const { locale } = useI18n()
 
-  // Nomi mese localizzati: un solo Intl.DateTimeFormat per (anno, locale).
-  const nomiMesi = computed(() => {
-    const fmt = new Intl.DateTimeFormat(locale.value, { month: 'long' })
-    return Array.from({ length: 12 }, (_, m) => fmt.format(new Date(anno.value, m, 1)))
-  })
+  // Nomi mese localizzati: dal BB `nomiMesi` di `core/utils/date`.
+  const nomiMesi = computed(() => nomiMesiDi(locale.value))
 
   const competenzaCorrente = computed(
     () => `${anno.value}-${String(meseIdx.value + 1).padStart(2, '0')}-01`

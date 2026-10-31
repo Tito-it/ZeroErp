@@ -55,6 +55,7 @@ AS $function$
 DECLARE
     v_offerta       vendite.offerte_commerciali%ROWTYPE;
     v_stato_cod     config.stati_doc_offerte.codice_interno%TYPE;
+    v_accettazione  config.stati_doc_offerte.accettazione%TYPE;
     v_ordine_id     vendite.ordini.id%TYPE;
     v_ordine_data   vendite.ordini.data%TYPE;
     v_emittente_fiscale_id vendite.ordini.emittente_fiscale_id%TYPE;
@@ -91,12 +92,13 @@ BEGIN
             p_offerta_id::text);
     END IF;
 
-    -- 2. Solo da ACCETTATA.
-    SELECT codice_interno INTO v_stato_cod
+    -- 2. Solo dallo stato di accettazione, dal vocabolario
+    --    (rev 2026-10-31 (20261031-18, brief-modello-documento-vendita §17)).
+    SELECT codice_interno, accettazione INTO v_stato_cod, v_accettazione
       FROM config.stati_doc_offerte
      WHERE id = v_offerta.stato_doc_offerta_id;
 
-    IF v_stato_cod IS DISTINCT FROM 'ACCETTATA' THEN
+    IF v_accettazione IS NOT TRUE THEN
         PERFORM script.fn_log_and_raise_error(
             'vendite', 'fn_genera_ordine_da_offerta',
             'E_ORD_ORIGINE_NON_CONVERTIBILE',

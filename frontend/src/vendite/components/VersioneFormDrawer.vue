@@ -1,16 +1,14 @@
 <script setup>
 // Scopo: Drawer compatto per creare una nuova versione di un listino.
-// Apertura: dal pulsante "+ Nuova versione" nell'expansion riga listino.
+// Apertura: da «Nuova versione» nel tab «Versioni» del drawer listino.
 // Campi: codice_versione (obbl.), valido_dal (obbl.), valido_al.
 // Lo stato iniziale e' BOZZA (gestito dal backend).
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
-import { useListiniStore } from '../stores/listini'
 import { createVersione } from '../api/listini'
 import { getVersioneNewDefaults } from '../api/formDefaults'
-import { STATO_VERSIONE_LISTINO } from '../constants'
 import { toDateString, addDaysToToday, parseIsoDate } from '../../core/utils/date'
 import { DRAWER_WIDTH, DATE_FORMAT, MANAGE_ICONS } from '../../core/constants'
 import AppDrawer from '../../core/components/AppDrawer.vue'
@@ -20,7 +18,6 @@ import Message from 'primevue/message'
 
 const { t } = useI18n()
 const { execute, loading, campiErrati } = useApiHandler()
-const listiniStore = useListiniStore()
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -34,8 +31,9 @@ const form = ref({})
 // modifiche chiede conferma (BB useDrawerFormPreserve).
 const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, { visibile: () => props.visible })
 // existing_drafts arriva dal BE (Fase 2.B5a): single source of truth.
-// Mantiene anche compat con lo store locale come fallback se l'endpoint
-// fallisce (resilienza al primo open offline).
+// ⛔ Ritirato il 2026-10-31 il ripiego sulla cache delle versioni dello store
+//    listini, sparita con la riga espansa: era una seconda lettura di «quali
+//    sono le bozze», filtrata qui sul codice dello stato.
 const beExistingDrafts = ref(null)
 
 function emptyForm() {
@@ -79,14 +77,7 @@ const canSave = computed(() =>
   !!form.value.valido_dal
 )
 
-const bozzeEsistenti = computed(() => {
-  // Se l'endpoint BE ha risposto, usiamo quello (single source of truth).
-  // Altrimenti fallback allo store locale (popolato dalla lista versioni).
-  if (beExistingDrafts.value !== null) return beExistingDrafts.value
-  if (!props.listino?.id) return []
-  const versioni = listiniStore.versioniByListino[props.listino.id] || []
-  return versioni.filter(v => v.stato === STATO_VERSIONE_LISTINO.BOZZA)
-})
+const bozzeEsistenti = computed(() => beExistingDrafts.value ?? [])
 
 async function handleSave() {
   if (!props.listino?.id) return

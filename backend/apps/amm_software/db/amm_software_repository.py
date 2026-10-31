@@ -956,17 +956,32 @@ class AmmSoftwareRepository:
             aree = rows_to_list(cursor)
 
         # Azioni
+        # ⭐ `limitata_da_area` (2026-10-31, decisione Tid «sola regola DB»):
+        #    l'azione e' abilitata nel profilo ma la SUA area, nello stesso
+        #    profilo, non arriva al `livello_minimo_area` dell'azione. La regola
+        #    e' quella del DB, `script.fn_area_consente_azione` (sede unica, la
+        #    leggono i resolver): qui la si chiama, non la si riscrive. L'editor
+        #    del profilo la mostra sui valori SALVATI; la copia di `tettoArea.js`
+        #    resta per la sola anteprima di cio' che l'admin sta cambiando.
+        #    ⚠️ LEFT JOIN: un'area senza riga nel profilo arriva NULL, e la
+        #    funzione su NULL dice «no» (fail-closed) — un'azione abilitata in
+        #    un'area non configurata e' limitata, come per i resolver.
         with connection.cursor() as cursor:
             cursor.execute(
                 """SELECT paz.id, paz.azione_id, ap.permission_codename,
                           ap.descrizione AS azione_descrizione,
                           af.codice AS area_codice,
-                          paz.abilitata
+                          paz.abilitata,
+                          (paz.abilitata AND NOT script.fn_area_consente_azione(
+                               paa.livello, ap.livello_minimo_area)) AS limitata_da_area
                      FROM config.profili_accesso_bindings pab
                      JOIN config.profili_accesso_azioni paz
                        ON paz.profilo_accesso_id = pab.profilo_accesso_id
                      JOIN config.azioni_processo ap ON ap.id = paz.azione_id
                      JOIN config.aree_funzionali af ON af.id = ap.area_id
+                     LEFT JOIN config.profili_accesso_aree paa
+                       ON paa.profilo_accesso_id = pab.profilo_accesso_id
+                      AND paa.area_id = ap.area_id
                     WHERE pab.unita_organizzativa_id = %s
                     ORDER BY af.ordinamento, ap.permission_codename""",
                 [uo_id],
@@ -1472,12 +1487,18 @@ class AmmSoftwareRepository:
             return rows_to_list(cursor)
 
     # Scopo: Lista azioni processo attive per dropdown/selezione.
+    # ⭐ `livello_minimo_area` (2026-10-31): il tetto d'area dell'azione, letto
+    #    dall'editor del profilo REPARTO per l'anteprima «limitata dall'area»
+    #    (`tettoArea.js`), come gia' fa il pannello dell'operatore dai permessi
+    #    effettivi. Senza, si abilitava su un reparto un'azione che il livello
+    #    della sua area rende senza effetto, e nessuno lo diceva.
     def list_azioni_processo(self) -> list[dict[str, Any]]:
         with connection.cursor() as cursor:
             cursor.execute(
                 """SELECT ap.id, ap.permission_codename, ap.descrizione,
                           ap.pericolosa, ap.area_id,
-                          af.codice AS area_codice
+                          af.codice AS area_codice,
+                          ap.livello_minimo_area::text AS livello_minimo_area
                      FROM config.azioni_processo ap
                      JOIN config.aree_funzionali af ON af.id = ap.area_id
                     WHERE ap.attivo = true

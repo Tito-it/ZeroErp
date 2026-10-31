@@ -27,11 +27,21 @@ function _stripTrailingSlash(path) {
   return path.endsWith('/') ? path.slice(0, -1) : path
 }
 
+// Scopo: la pagina delle note sotto il percorso del padre. Una sede sola per
+//        l'URL: la usano `listNote` qui sotto e gli store di `noteLista`.
+export function listNotePerPercorso(basePath, params = {}) {
+  return api.get(`${_stripTrailingSlash(basePath)}/note/`, { params })
+}
+
 // Costruisce il set di metodi CRUD note bindati al basePath del dominio.
 // Opzione `detailBase`: per domini (es. catalogo) in cui le rotte detail
 // (GET/PATCH/DELETE) vivono su una root diversa dal parent path. Default
 // `detailBase = basePath` (pattern vendite con detail parent-aware).
-export function makeNotesApi(basePath, { detailBase = null } = {}) {
+// Opzione `emittenteFiscaleId`: l'emittente del documento (PK), per le note
+// col perimetro dell'emittente (`vendite.note`). ⚠️ Il cancello del BE vale
+// per OGNI verbo dell'endpoint di lista, POST compreso: senza il parametro chi
+// vede piu' emittenti avrebbe la lista ma non potrebbe creare (422).
+export function makeNotesApi(basePath, { detailBase = null, emittenteFiscaleId = null } = {}) {
   if (typeof basePath !== 'string' || !basePath) {
     throw new Error('makeNotesApi: basePath obbligatorio')
   }
@@ -43,7 +53,7 @@ export function makeNotesApi(basePath, { detailBase = null } = {}) {
 
   // Lista note del documento. `params` ammette {target_riga_id, include_invisible, limit, offset}.
   function listNote(params = {}) {
-    return api.get(`${base}/note/`, { params })
+    return listNotePerPercorso(base, params)
   }
 
   // Dettaglio singola nota.
@@ -55,7 +65,8 @@ export function makeNotesApi(basePath, { detailBase = null } = {}) {
   // Il payload accetta: testo, testo_md, anchor_tipo, posizione, seq,
   // visibile, solo_stampa, id_stile, id_lingua, meta, target_riga_id.
   function createNota(payload) {
-    return api.post(`${base}/note/`, payload)
+    const params = emittenteFiscaleId != null ? { emittente_fiscale_id: emittenteFiscaleId } : {}
+    return api.post(`${base}/note/`, payload, { params })
   }
 
   // Aggiorna parzialmente nota. target_riga_id immutabile lato BE.

@@ -18,6 +18,7 @@ Indice test eseguiti:
 9) VenditeListiniApiTests.test_get_versione_ok
 10) VenditeListiniApiTests.test_patch_versione_ok
 11) VenditeListiniApiTests.test_change_versione_state_ok
+11bis) VenditeListiniApiTests.test_programma_chiusura_versione_ok
 12) VenditeListiniApiTests.test_list_righe_ok
 13) VenditeListiniApiTests.test_create_riga_ok
 14) VenditeListiniApiTests.test_patch_riga_ok
@@ -31,7 +32,7 @@ Indice test eseguiti:
 22) VenditeListiniApiTests.test_list_listini_filter_tipologia_id
 23) VenditeListiniApiTests.test_tipologie_per_utility_ok
 24) VenditeListiniApiTests.test_tipologie_per_utility_missing_param
-25) VenditeListiniApiTests.test_alert_scadenze_default_e_parametro
+25) VenditeListiniApiTests.test_list_listini_filtro_in_scadenza
 """
 
 import json
@@ -74,11 +75,6 @@ _VERSIONE_DETAIL = {
     "stato": "BOZZA",
     "attivo": True,
     "righe_count": 1,
-}
-
-_COLLECTION_RESPONSE = {
-    "count": 1,
-    "results": [{"id": 1}],
 }
 
 class VenditeListiniApiTests(JwtMockedApiTest):
@@ -124,6 +120,8 @@ class VenditeListiniApiTests(JwtMockedApiTest):
         self.assertEqual(kwargs["offset"], 10)
         self.assertEqual(kwargs["order_by"], "codice")
         self.assertEqual(kwargs["order_dir"], "desc")
+        # Senza il parametro la regola delle scadenze non filtra.
+        self.assertIsNone(kwargs["in_scadenza"])
 
     # Scopo: Verifica create listino via POST JSON.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
@@ -162,14 +160,27 @@ class VenditeListiniApiTests(JwtMockedApiTest):
         self.assertEqual(response.json()["data"]["descrizione"], "Nuova descrizione")
         self.assertEqual(mocked_update.call_args.args[0], 10)
 
-    # Scopo: Verifica lista versioni.
+    # Scopo: la lista versioni e' una pagina (lista `vendite.listini_versioni`,
+    #        dal 2026-10-31): ricerca, pagina e ordinamento arrivano al service,
+    #        con `valido_dal` come ordinamento di partenza.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     @patch("apps.vendite.api.views_listini.fn_list_versioni")
     def test_list_versioni_ok(self, mocked_list, _mock_auth):
-        mocked_list.return_value = _COLLECTION_RESPONSE
+        mocked_list.return_value = ([{"id": 1}], 1)
         response = self.client.get("/api/v1/vendite/listini/10/versioni/")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["data"]["count"], 1)
+        self.assertEqual(mocked_list.call_args.args, (10,))
+        self.assertEqual(mocked_list.call_args.kwargs["order_by"], "valido_dal")
+        self.client.get(
+            "/api/v1/vendite/listini/10/versioni/?search=2026&limit=10&offset=10"
+            "&order_by=giorni_alla_scadenza&order_dir=asc"
+        )
+        kwargs = mocked_list.call_args.kwargs
+        self.assertEqual(
+            (kwargs["search"], kwargs["limit"], kwargs["offset"], kwargs["order_by"], kwargs["order_dir"]),
+            ("2026", 10, 10, "giorni_alla_scadenza", "asc"),
+        )
 
     # Scopo: Verifica create versione.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
@@ -193,7 +204,8 @@ class VenditeListiniApiTests(JwtMockedApiTest):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["data"]["codice_versione"], "2026-Q2")
 
-    # Scopo: Verifica patch versione (PATCH valido_al ammesso anche su ATTIVA).
+    # Scopo: Verifica patch versione (il routing: la fine di una ATTIVA la
+    #        rifiuta il DB, C-4 = a, e si cambia dalla rotta `chiusura/`).
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     @patch("apps.vendite.api.views_listini.fn_update_versione")
     def test_patch_versione_ok(self, mocked_update, _mock_auth):
@@ -218,6 +230,28 @@ class VenditeListiniApiTests(JwtMockedApiTest):
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["data"]["stato"], "ATTIVA")
+
+    # Scopo: «Chiudi» ha la sua rotta (§16.16, BE-C2): il corpo arriva al
+    #        service com'e', compreso `valido_al` null (toglie la chiusura).
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    @patch("apps.vendite.api.views_listini.fn_programma_chiusura_versione")
+    def test_programma_chiusura_versione_ok(self, mocked_chiusura, _mock_auth):
+        mocked_chiusura.return_value = {**_VERSIONE_DETAIL, "valido_al": None}
+        response = self.client.post(
+            "/api/v1/vendite/listini/10/versioni/101/chiusura/",
+            data=self._json({"valido_al": None}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        mocked_chiusura.assert_called_once_with(10, 101, {"valido_al": None})
+        # Il permesso del PATCH che sostituisce (`change`), non quello di una
+        # creazione (`add`, il default della POST).
+        from apps.core.api.permissions import ZeroERPPermission
+        from apps.vendite.api.views_listini import ApiListinoVersioneChiusura
+
+        self.assertEqual(
+            ZeroERPPermission.tipo_accesso(ApiListinoVersioneChiusura, method="POST"), "change",
+        )
 
     # Scopo: Verifica lista righe paginata.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
@@ -330,16 +364,18 @@ class VenditeListiniApiTests(JwtMockedApiTest):
         )
         self.assertEqual(response.status_code, 400)
 
-    # Scopo: l'alert scadenze risponde, col default (15) e col parametro. Fino al
-    #        2026-10-09 rispondeva 400 a ogni chiamata: la view passava la request
-    #        a `qp_int_strict` invece del valore (trovato da mypy).
+    # Scopo: il filtro del badge delle scadenze (D-1): `in_scadenza` arriva al
+    #        service come booleano; un valore che non e' booleano e' un 400.
+    #        ⛔ Fino al 2026-10-31 il badge aveva il suo endpoint
+    #        (`alert-scadenze/`, ritirato) con N passato dal client.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
-    @patch("apps.vendite.api.views_listini.fn_alert_scadenze")
-    def test_alert_scadenze_default_e_parametro(self, mocked_alert, _mock_auth):
-        mocked_alert.return_value = {"count": 0, "results": []}
+    @patch("apps.vendite.api.views_listini.fn_list_listini")
+    def test_list_listini_filtro_in_scadenza(self, mocked_list, _mock_auth):
+        mocked_list.return_value = (_LIST_LISTINI_RESULTS, _LIST_LISTINI_TOTAL)
+        response = self.client.get("/api/v1/vendite/listini/?in_scadenza=true")
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(mocked_list.call_args.kwargs["in_scadenza"])
+        response = self.client.get("/api/v1/vendite/listini/?in_scadenza=forse")
+        self.assertEqual(response.status_code, 400)
         response = self.client.get("/api/v1/vendite/listini/alert-scadenze/")
-        self.assertEqual(response.status_code, 200)
-        mocked_alert.assert_called_with(15)
-        response = self.client.get("/api/v1/vendite/listini/alert-scadenze/?giorni=30")
-        self.assertEqual(response.status_code, 200)
-        mocked_alert.assert_called_with(30)
+        self.assertNotEqual(response.status_code, 200)

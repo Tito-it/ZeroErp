@@ -54,8 +54,8 @@ SELECT plan(15);
 -- ============================================================
 -- 2026-10-25 (brief-db-parametri-senza-override): config.parameters.ammette_override
 -- e' NOT NULL senza DEFAULT, un parametro dichiara la sua famiglia.
-INSERT INTO config.parameters (id, code, default_value, description, ammette_override)
-VALUES (99970, '_TEST_OVR_CAT_CLI_', 'DEF', 'Test parameter_overrides categoria cliente', true);
+INSERT INTO config.parameters (id, code, default_value, description, ammette_override, tipo_valore)
+VALUES (99970, '_TEST_OVR_CAT_CLI_', 'DEF', 'Test parameter_overrides categoria cliente', true, 'TESTO');
 
 CREATE TEMP TABLE tmp_cat_ctx AS
 SELECT

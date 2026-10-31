@@ -25,7 +25,7 @@
 --   10) sintesi: SECURITY INVOKER e STABLE (rev 2026-10-11; era la vista)
 --   11) fn: STABLE
 --   12) fn: SECURITY INVOKER (NON definer)
---   13) archi: arco solo in A..H,R,N,S,T,U (vocabolario CHIUSO: e' un cricchetto)
+--   13) archi: arco solo in A..H,R,N,S,T,U,V (vocabolario CHIUSO: e' un cricchetto)
 --   14) archi: arco 'R' punta sempre a un nodo RESO_VENDITA
 --   15) nodi: pipeline_rank sempre in 0..5
 --   16) config.sorgenti RESO_VENDITA seedato e attivo (prereq Step 1)
@@ -104,6 +104,9 @@
 --      documento composto dalla sede unica fn_numero_documento_fattura.
 --   47) nodi: il codice di un nodo FATTURA E' quello della sede unica —
 --       nessun ramo se lo ricompone per conto suo
+--   ⭐ 48 — L'ARCO V, aggiunto il 2026-11-01 (changeSet 20261031-68):
+--   48) archi: V va dalla revisione madre alla figlia (offerta -> offerta,
+--       revisione_padre_id), non e' di ritorno, e ha il rango piu' basso
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -176,7 +179,7 @@ ANALYZE _lin_nodi;
 ANALYZE _lin_archi;
 ANALYZE _lin_summary;
 
-SELECT plan(47);
+SELECT plan(48);
 
 -- ---- 1..4: esistenza oggetti ---------------------------------------------
 SELECT has_view('vendite', 'vw_documento_lineage_nodi',  'vw_documento_lineage_nodi esiste');
@@ -293,6 +296,10 @@ SELECT is(
 --      brief-db-ddt-riconsegna-eredita-testata §9.4.1.
 --    · U aggiunto il 2026-08-28 (DDT -> commessa, la quarta sorgente di
 --      commessa), brief-db-lineage-residui-root-e-sorgente-ddt §2.
+--    · V aggiunto il 2026-11-01 (revisione dell'offerta, madre -> figlia),
+--      brief-modello-documento-vendita §17.7; il significato e' il test 48.
+--      Il 20261031-23 l'aveva fatta nascere senza dichiararla qui e senza
+--      rango: i due cricchetti l'hanno presa, che e' il loro mestiere.
 -- ⛔ E DAL 2026-08-28 IL CRICCHETTO E' DOPPIO: il test 41 chiede a ogni arco
 --    anche un rango_origine. Una lettera nuova che passasse di qui senza
 --    rango non farebbe fallire QUESTO test — passerebbe l'elenco e prenderebbe
@@ -300,8 +307,8 @@ SELECT is(
 --    insieme: l'elenco dice CHI esiste, il rango dice QUANTO conta.
 SELECT is(
     (SELECT count(*)::int FROM _lin_archi
-      WHERE arco NOT IN ('A','B','C','D','E','F','G','H','R','N','S','T','U')),
-    0, 'archi: arco sempre in A..H,R,N,S,T,U');
+      WHERE arco NOT IN ('A','B','C','D','E','F','G','H','R','N','S','T','U','V')),
+    0, 'archi: arco sempre in A..H,R,N,S,T,U,V');
 
 SELECT is(
     (SELECT count(*)::int FROM _lin_archi
@@ -790,6 +797,32 @@ SELECT is(
       WHERE n.codice IS DISTINCT FROM
             vendite.fn_numero_documento_fattura(f.numero, f.serie)::varchar),
     0, '47) nodi: il codice di un nodo FATTURA e'' quello della sede unica');
+
+-- ---- 48: l'arco V, la revisione dell'offerta ------------------------------
+-- ⭐ COSA SIGNIFICA LA LETTERA V (il cricchetto del 13 lo chiede): l'arco va
+--    dalla revisione madre alla figlia, entrambe OFFERTA_COMMERCIALE, e la
+--    figlia ha davvero quella madre in revisione_padre_id. Non e' un ramo di
+--    ritorno (si legge nel verso del pannello, come C e D), e non e'
+--    un'origine: il rango e' il piu' basso di tutti, sotto ogni arco che lo
+--    e'. La sintesi e le origini della fattura lo scartano per lettera.
+-- ⚠️ Invariante sugli archi che ci sono, come il 14: su un DB senza revisioni
+--    conta zero righe e asserisce zero. E' un presidio, non una riproduzione.
+SELECT is(
+    (SELECT count(*)::int
+       FROM _lin_archi a
+      WHERE a.arco = 'V'
+        AND (   a.from_tipo_id IS DISTINCT FROM (SELECT id FROM config.sorgenti WHERE codice_interno = 'OFFERTA_COMMERCIALE')
+             OR a.to_tipo_id   IS DISTINCT FROM (SELECT id FROM config.sorgenti WHERE codice_interno = 'OFFERTA_COMMERCIALE')
+             OR a.is_ramo_inverso
+             OR a.rango_origine IS NULL
+             OR EXISTS (SELECT 1 FROM _lin_archi o
+                         WHERE o.arco <> 'V' AND o.rango_origine >= a.rango_origine)
+             OR NOT EXISTS (SELECT 1
+                              FROM vendite.offerte_commerciali figlia
+                              JOIN vendite.offerte_commerciali madre ON madre.id = figlia.revisione_padre_id
+                             WHERE figlia.uid::text = a.to_uid
+                               AND madre.uid::text  = a.from_uid))),
+    0, '48) archi: V va dalla revisione madre alla figlia, in avanti, col rango piu'' basso');
 
 SELECT * FROM finish();
 ROLLBACK;

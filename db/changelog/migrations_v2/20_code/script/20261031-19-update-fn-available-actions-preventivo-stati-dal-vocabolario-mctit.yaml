@@ -1,0 +1,772 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA CAPABILITY DEL PREVENTIVO: GLI STATI DAL VOCABOLARIO
+#   Brief: brief-modello-documento-vendita §17 (R-2 del §14.8, ok di Tid
+#   2026-10-31).
+#
+#   La capability nominava per letterale tre stati che il vocabolario marca:
+#   - 'ACCETTATO' (push a commessa, genera ordine, i motivi del passaggio
+#     verso l'accettazione) -> colonna accettazione (20261031-05);
+#   - 'ANNULLATO' (i motivi del passaggio verso l'annullo) -> is_abortito,
+#     come gia' la capability dell'offerta (20261026-27);
+#   - 'EMESSO' («Crea revisione») -> emissione, come gia' i motivi
+#     dell'emissione nella stessa funzione.
+#   Le colonne si leggono dalla riga del vocabolario che la funzione ha gia'
+#   (lo stato di oggi, e sa per le destinazioni): nessuna lettura in piu'.
+#   Resta 'DRAFT' di can_edit: e' la regola di modifica della bozza, non lo
+#   stato iniziale. Blob invariato. Firma del COMMENT ancorata, SECURITY
+#   INVOKER dichiarato (era il default).
+#   ⚠️ La madre della revisione, vendite.fn_crea_revisione_preventivo, scrive
+#   ancora 'EMESSO': debito dichiarato nel brief §17, non in questo giro.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261031-19-update-fn-available-actions-preventivo-stati-dal-vocabolario-mctit.yaml
+
+  - changeSet:
+      id: 20261031-19-update-fn-available-actions-preventivo-stati-dal-vocabolario
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_available_actions_preventivo: accettazione, annullo ed emissione dalle colonne del
+        vocabolario (accettazione, is_abortito, emissione); ritirati i letterali 'ACCETTATO',
+        'ANNULLATO', 'EMESSO'. Blob invariato. Brief: brief-modello-documento-vendita §17.
+      preConditions:
+        - onFail: HALT
+        - columnExists: { schemaName: config, tableName: stati_doc_preventivi, columnName: accettazione }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_available_actions_preventivo(p_preventivo_id vendite.preventivi.id%TYPE)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              -- rev 2026-10-31 (20261031-19, brief-modello-documento-vendita §17):
+              --   accettazione, annullo ed emissione dal vocabolario (accettazione,
+              --   is_abortito, emissione), non 'ACCETTATO', 'ANNULLATO', 'EMESSO'.
+              -- Scopo: capability preventivo per detail API (pattern data-driven).
+              --   rev 2026-07-11: + blocco pdf {mode, allow_allegati} da
+              --   config.stati_doc_preventivi (bottone PDF data-driven via capabilities).
+              --   rev 2026-07-16: + enabled/reason/reason_key da meta.requires_righe
+              --   (documento vuoto non avanza di stato).
+              --   rev 2026-07-19: label_key e reason_key nel namespace i18n
+              --   vendite.preventivi.* (era preventivi.*, radice spostata dal FE
+              --   nella migrazione radici i18n) — brief-i18n-radici-uniformi §5.
+              --   rev 2026-08-04: + reasons sull'annullamento, da
+              --   script.fn_check_preventivo_annullabile — la STESSA funzione che
+              --   vendite.trgfn_preventivi_guard_annullamento usa per sollevare
+              --   (sorgente unica: la UI non puo' divergere dal guard). I motivi
+              --   si SOMMANO a quello di requires_righe in un array solo, da cui
+              --   discendono enabled/reason/reason_key. + nessuna_azione_key
+              --   dal meta dello stato, esposta quando nessuna azione e' abilitata
+              --   (brief-db-vie-uscita-operatore §4 regola R3 e §6).
+              --   rev 2026-08-06: + outlined dal meta della transizione (era
+              --   l'unica insieme all'offerta a non emetterlo: il dato del seed
+              --   non arrivava al pulsante) e + target_state_descrizione, la
+              --   forma leggibile dello stato di destinazione. Serve alla frase
+              --   di conferma «portare il documento nello stato X»: il
+              --   codice_interno non basta a derivarla (DRAFT -> Bozza) e
+              --   tradurla nel FE sarebbe una seconda copia del vocabolario
+              --   degli stati. NULL sulle azioni che non cambiano stato.
+              --   rev 2026-08-10: i motivi di push_commessa / genera_ordine non
+              --   promettono piu' l'accettazione sugli stati CHIUSI. Il ramo
+              --   `v_stato_cod <> 'ACCETTATO'` copriva per negazione due
+              --   situazioni opposte — prima dell'accettazione (istruzione
+              --   corretta) e dopo o fuori (promessa falsa: l'EVASO e' evaso
+              --   PERCHE' accettato). Ramo nuovo su fase = 'CHIUSO' davanti a
+              --   quello vecchio; reason PREVENTIVO_STATO_CHIUSO. Rilievo in-app
+              --   di Tid su PRV0000192 (brief-db-vie-uscita-operatore §12).
+              --   rev 2026-08-10 (2): la nota di stato non e' piu' subordinata alla
+              --   lista vuota, e cambia nome. Decisione §5 di Tid: «la nota spiega lo
+              --   stato chiuso, e compare sempre» — anche accanto a un'azione ancora
+              --   viva, dove l'operatore legge cos'e' successo E ha il suo bottone.
+              --   Cade quindi il presupposto che la faceva sparire: via
+              --   v_nessuna_azione e il suo NOT EXISTS, che erano diventati codice
+              --   morto, e via il commento che spiegava perche' non si appoggiavano a
+              --   v_can_change — era la motivazione di una regola che non esiste piu'.
+              --   Il campo si chiama ora `stato_info_key`: `nessuna_azione_key`
+              --   diventava falso proprio nel momento in cui inizia a mostrarsi
+              --   quando le azioni ci sono, e il vocabolario giusto era gia' dall'altra
+              --   parte (le chiavi i18n stanno sotto vendite.<dominio>.stato_info.*).
+              --   ⚠️ La PROPRIETA' nel meta dello stato resta `nessuna_azione_key`, ed
+              --   e' voluto: il presidio scripts/check_i18n_keys.py trova quelle chiavi
+              --   proprio per quel nome (RE_SEED_KEY sui CSV, elenco _PROP_KEY), e
+              --   rinominarla senza toccare il guard lo renderebbe verde per cecita' —
+              --   il caso peggiore, gia' denunciato nel §8.3 del brief. Rinomina della
+              --   proprieta' proposta come slice a se'.
+              --   brief-db-vie-uscita-operatore §4; attivita-urgenti-del-10-08 §2.
+              --   rev 2026-09-24: le azioni verso ACCETTATO espongono i motivi dei
+              --   prezzi non autorizzati da script.fn_check_prezzi_autorizzati — lo
+              --   stesso building block della Regola 3 del guard di transizione. Verso
+              --   EMESSO arrivano gia' dentro fn_check_preventivo_emettibile.
+              --   (brief-db-preventivi-congelamento-pricing, D-1/D-2).
+              --   rev 2026-09-24 (2): «Crea revisione» spento col motivo se c'e' un
+              --   prezzo IN ATTESA (script.fn_check_prezzi_in_attesa, stessa funzione
+              --   della madre fn_crea_revisione_preventivo); can_create_revisione
+              --   veritiero. Brief §10.
+              --   rev 2026-10-10: via il ramo «testata incompleta» del motivo del push
+              --   (il motivo «senza billing account»): BA e utility del preventivo sono
+              --   NOT NULL, il ramo non si raggiungeva. Brief:
+              --   brief-db-istanza-nasce-col-ba-residui (R-1).
+              --   rev 2026-10-18: via c_sempre_non_edit. La sola colonna che
+              --   nominava, utility_id, e' ora ferma sempre nel montaggio del lock di
+              --   testata (con l'emittente): non_editable_fields la riceve da li', in
+              --   ogni stato. La lista era la seconda copia della regola. Brief:
+              --   brief-db-indirizzi-documento-seguono-il-cliente (§8.7).
+              DECLARE
+                  -- Tipi nudi solo per valori CALCOLATI (azioni e motivi jsonb, flag,
+                  -- motivi e chiavi i18n composti): nessuna colonna di cui siano il riflesso.
+                  v_stato_id          vendite.preventivi.stato_doc_preventivo_id%TYPE;
+                  v_stato_cod         config.stati_doc_preventivi.codice_interno%TYPE;
+                  -- Proiezione normalizzata dello stato: APERTO | IN_CORSO |
+                  -- IN_ATTESA | CHIUSO. Serve a distinguere "non ancora
+                  -- accettato" da "chiuso", che il solo codice_interno
+                  -- confondeva in un unico ramo per negazione.
+                  v_fase              config.stati_doc_preventivi.fase%TYPE;
+                  -- Lo stato di oggi e' l'accettazione? l'emissione? Dal vocabolario.
+                  v_accettazione      config.stati_doc_preventivi.accettazione%TYPE;
+                  v_emissione         config.stati_doc_preventivi.emissione%TYPE;
+                  v_pdf_mode          config.stati_doc_preventivi.pdf_mode%TYPE;
+                  v_pdf_allow         config.stati_doc_preventivi.pdf_allow_allegati%TYPE;
+                  v_stato_info_key       text;
+                  v_actions           jsonb;
+                  v_ha_righe          boolean := false;
+                  v_mot_annulla       jsonb := '[]'::jsonb;
+                  v_mot_emetti        jsonb := '[]'::jsonb;
+                  v_mot_accetta       jsonb := '[]'::jsonb;
+                  v_mot_rev           jsonb := '[]'::jsonb;
+                  v_can_edit          boolean;
+                  v_can_push          boolean;
+                  v_can_rev           boolean;
+                  v_push_reason       text;
+                  v_push_reason_key   text;
+                  v_can_ordine        boolean;
+                  v_ordine_reason     text;
+                  v_ordine_reason_key text;
+                  -- Motivo "documento vuoto" nella STESSA forma dei motivi delle
+                  -- fn_check_* ({codice, reason, reason_key, dettaglio}), cosi' i
+                  -- due mondi si concatenano senza conversioni. `codice` e' quello
+                  -- che il guard della porta solleva davvero (PREV_NESSUNA_RIGA_ATTIVA
+                  -- in vendite.fn_cambia_stato_preventivo): qui non si solleva nulla,
+                  -- ma un codice inventato diventerebbe una bugia il giorno in cui
+                  -- qualcuno lo confronta con l'errore ricevuto.
+                  c_motivo_senza_righe CONSTANT jsonb := jsonb_build_array(
+                      jsonb_build_object(
+                          'codice',     'E_PREV_NESSUNA_RIGA_ATTIVA',
+                          'reason',     'DOCUMENTO_SENZA_RIGHE',
+                          'reason_key', 'common.azione_reason.senza_righe',
+                          'dettaglio',  0));
+                  -- Azioni applicative: non sono transizioni, quindi
+                  -- target_state e target_state_descrizione restano NULL.
+                  c_action_crea_revisione CONSTANT jsonb := jsonb_build_object(
+                      'key',                      'crea_revisione',
+                      'target_state',             NULL,
+                      'target_state_descrizione', NULL,
+                      'label_key',                'vendite.preventivi.azione_crea_revisione',
+                      'requires_confirm',         true,
+                      'requires_motivazione',     false,
+                      'outlined',                 false,
+                      'enabled',                  true,
+                      'reason',                   NULL,
+                      'reason_key',               NULL
+                  );
+                  c_action_push_commessa CONSTANT jsonb := jsonb_build_object(
+                      'key',                      'push_commessa',
+                      'target_state',             NULL,
+                      'target_state_descrizione', NULL,
+                      'label_key',                'vendite.preventivi.azione_push_commessa',
+                      'requires_motivazione',     false,
+                      'requires_confirm',         true,
+                      'outlined',                 false,
+                      'enabled',                  true,
+                      'reason',                   NULL,
+                      'reason_key',               NULL
+                  );
+                  c_action_genera_ordine CONSTANT jsonb := jsonb_build_object(
+                      'key',                      'genera_ordine',
+                      'target_state',             NULL,
+                      'target_state_descrizione', NULL,
+                      'label_key',                'vendite.preventivi.azione_genera_ordine',
+                      'requires_confirm',         true,
+                      'requires_motivazione',     false,
+                      'outlined',                 false,
+                      'enabled',                  true,
+                      'reason',                   NULL,
+                      'reason_key',               NULL
+                  );
+                  -- La testata nello stato, dal montaggio del lock (rev 2026-10-10):
+                  -- {modificabile, non_modificabili}.
+                  v_testata jsonb;
+              BEGIN
+                  -- Stato corrente + fase + capability PDF
+                  -- (pdf_mode/allow_allegati) + la chiave "nessuna azione"
+                  -- dello stato (dato, non codice).
+                  SELECT p.stato_doc_preventivo_id, sdp.codice_interno, sdp.fase,
+                         sdp.accettazione, sdp.emissione,
+                         sdp.pdf_mode, sdp.pdf_allow_allegati,
+                         -- ⚠️ La PROPRIETA' nel meta resta `nessuna_azione_key` mentre il
+                         -- campo del blob si chiama ora `stato_info_key`. L'asimmetria e'
+                         -- voluta e la spiega la rev 2026-08-10 (2) in testa: il presidio
+                         -- i18n si aggancia a QUESTO nome.
+                         sdp.meta->>'nessuna_azione_key'
+                    INTO v_stato_id, v_stato_cod, v_fase,
+                         v_accettazione, v_emissione,
+                         v_pdf_mode, v_pdf_allow, v_stato_info_key
+                    FROM vendite.preventivi p
+                    JOIN config.stati_doc_preventivi sdp ON sdp.id = p.stato_doc_preventivo_id
+                   WHERE p.id = p_preventivo_id;
+
+                  IF NOT FOUND THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- Precondizione "documento non vuoto" per le transizioni che la
+                  -- esigono (meta.requires_righe). La fn sa solo COME contare le
+                  -- proprie righe: specchia il guard di fn_cambia_stato_preventivo
+                  -- (PREV_NESSUNA_RIGA_ATTIVA, rev 2026-07-16): SOLO presenza di
+                  -- riga attiva, nessun vincolo su quantita/prezzo/totale.
+                  v_ha_righe := EXISTS (
+                      SELECT 1 FROM vendite.preventivi_righe pr
+                       WHERE pr.preventivo_id = p_preventivo_id
+                         AND pr.attivo IS TRUE
+                  );
+
+                  -- Motivi ostativi all'ANNULLAMENTO, calcolati UNA VOLTA SOLA.
+                  -- Fn pura: [] quando e' lecito. E' la stessa che solleva nel guard.
+                  v_mot_annulla := script.fn_check_preventivo_annullabile(p_preventivo_id);
+
+                  -- Motivi ostativi all'EMISSIONE, anch'essi calcolati UNA VOLTA SOLA.
+                  -- Stessa forma e stessa ragione della riga sopra: e' la funzione che il
+                  -- guard di transizione usa per sollevare (Regola 2), quindi bottone e
+                  -- guard non possono divergere. rev 2026-08-29, brief IVA I9.
+                  v_mot_emetti := script.fn_check_preventivo_emettibile(p_preventivo_id);
+
+                  -- Motivi ostativi all'ACCETTAZIONE: i prezzi non autorizzati. E' il
+                  -- building block che la Regola 3 del guard di transizione usa per
+                  -- sollevare, quindi «Accetta» e guard non possono divergere.
+                  -- rev 2026-09-24, brief-db-preventivi-congelamento-pricing (D-2).
+                  v_mot_accetta := script.fn_check_prezzi_autorizzati('vendite.preventivi'::regclass,
+                                                                      p_preventivo_id);
+
+                  SELECT COALESCE(
+                      jsonb_agg(
+                          jsonb_build_object(
+                              'key',              t.meta->>'action_key',
+                              'target_state',     sa.codice_interno,
+                              -- Forma leggibile della destinazione: la colonna
+                              -- accanto, nello stesso JOIN. Il FE non puo'
+                              -- derivarla dal codice.
+                              'target_state_descrizione', sa.descrizione,
+                              'label_key',        t.meta->>'label_key',
+                              'requires_confirm', COALESCE((t.meta->>'requires_confirm')::boolean, false),
+                              'outlined',         COALESCE((t.meta->>'outlined')::boolean, false),
+                              -- Tutto discende dall'array dei motivi: nessuna
+                              -- regola puo' mascherarne un'altra.
+                              'enabled',          jsonb_array_length(m.motivi) = 0,
+                              'reason',           m.motivi -> 0 ->> 'reason',
+                              'reason_key',       m.motivi -> 0 ->> 'reason_key',
+                              'reasons',          m.motivi
+                          )
+                          ORDER BY sa.ordine
+                      ),
+                      '[]'::jsonb
+                  )
+                  INTO v_actions
+                  -- I passaggi manuali che l'utente puo' fare, dal BB comune (rev
+                  -- 2026-10-27, 20261027-41, §15.14): matrice viva, manuale, permesso.
+                  FROM script.fn_doc_azioni_permesse('vendite.preventivi'::regclass, v_stato_id) t
+                  JOIN config.stati_doc_preventivi sa ON sa.id = t.stato_a_id
+                  -- I motivi della destinazione, sommati in un array solo.
+                  -- Ordine: prima quelli specifici della destinazione, poi il
+                  -- generico "documento vuoto"; il primo e' quello che il FE
+                  -- mostra nel caso singolare.
+                  CROSS JOIN LATERAL (
+                      SELECT CASE WHEN sa.is_abortito
+                                  THEN v_mot_annulla ELSE '[]'::jsonb END
+                          -- Lo stato di emissione dal vocabolario (rev 2026-10-25).
+                          || CASE WHEN sa.emissione
+                                  THEN v_mot_emetti ELSE '[]'::jsonb END
+                          || CASE WHEN sa.accettazione
+                                  THEN v_mot_accetta ELSE '[]'::jsonb END
+                          || CASE WHEN COALESCE((t.meta->>'requires_righe')::boolean, false)
+                                       AND NOT v_ha_righe
+                                  THEN c_motivo_senza_righe ELSE '[]'::jsonb END AS motivi
+                  ) m
+                  WHERE t.meta ? 'action_key'
+                    AND t.meta ? 'label_key';
+
+                  v_can_edit := (v_stato_cod = 'DRAFT');
+                  v_can_rev  := v_emissione;
+
+                  v_can_push := v_accettazione
+                      AND vendite.fn_preventivo_ha_residuo_commessa(p_preventivo_id);
+
+                  v_can_ordine := v_accettazione
+                      AND vendite.fn_preventivo_ha_residuo_ordine(p_preventivo_id);
+
+                  -- «Crea revisione» (rev 2026-09-24): proposta da EMESSO, SPENTA col
+                  -- motivo se il documento ha un prezzo IN ATTESA — lo stesso
+                  -- script.fn_check_prezzi_in_attesa con cui la madre
+                  -- vendite.fn_crea_revisione_preventivo rifiuta. Pulsante e madre non possono
+                  -- dissentire. ⭐ can_create_revisione diventa VERITIERO: vero solo se
+                  -- la revisione si puo' davvero creare (il FE legge l'azione, non il
+                  -- flag; il BE lo trasporta).
+                  IF v_can_rev THEN
+                      v_mot_rev := script.fn_check_prezzi_in_attesa('vendite.preventivi'::regclass, p_preventivo_id);
+                      v_actions := v_actions || jsonb_build_array(
+                          c_action_crea_revisione || jsonb_build_object(
+                              'enabled',    jsonb_array_length(v_mot_rev) = 0,
+                              'reason',     v_mot_rev -> 0 ->> 'reason',
+                              'reason_key', v_mot_rev -> 0 ->> 'reason_key',
+                              'reasons',    v_mot_rev));
+                      v_can_rev := jsonb_array_length(v_mot_rev) = 0;
+                  END IF;
+
+                  IF v_can_push THEN
+                      v_actions := v_actions || jsonb_build_array(c_action_push_commessa);
+                  END IF;
+
+                  IF v_can_ordine THEN
+                      v_actions := v_actions || jsonb_build_array(c_action_genera_ordine);
+                  END IF;
+
+                  -- Motivo del push a commessa. ⚠️ L'ORDINE DEI RAMI E'
+                  -- PORTANTE: "chiuso" viene prima di "non accettato".
+                  -- `NOT v_accettazione` copre per negazione due
+                  -- situazioni opposte — prima dell'accettazione la frase
+                  -- «sara' disponibile dopo l'accettazione» istruisce, dopo o
+                  -- fuori mente (l'EVASO e' evaso PERCHE' e' stato accettato e
+                  -- smistato; ANNULLATO/RIFIUTATO/SCADUTO non ci arriveranno
+                  -- mai). Il ramo su `fase` scioglie la negazione nei suoi due
+                  -- versi. Rilievo in-app 2026-08-10 su PRV0000192.
+                  IF v_can_push THEN
+                      v_push_reason     := NULL;
+                      v_push_reason_key := NULL;
+                  ELSIF v_fase = 'CHIUSO' THEN
+                      v_push_reason     := 'PREVENTIVO_STATO_CHIUSO';
+                      v_push_reason_key := 'vendite.preventivi.push_commessa_reason.stato_chiuso';
+                  ELSIF NOT v_accettazione THEN
+                      v_push_reason     := 'PREVENTIVO_NON_ACCETTATO';
+                      v_push_reason_key := 'vendite.preventivi.push_commessa_reason.non_accettato';
+                  ELSE
+                      v_push_reason     := 'PREVENTIVO_NESSUNA_RIGA_COMMESSA';
+                      v_push_reason_key := 'vendite.preventivi.push_commessa_reason.nessuna_riga';
+                  END IF;
+
+                  -- Ramo gemello per la generazione dell'ordine: stessa
+                  -- correzione, stesso ordine dei rami.
+                  IF v_can_ordine THEN
+                      v_ordine_reason     := NULL;
+                      v_ordine_reason_key := NULL;
+                  ELSIF v_fase = 'CHIUSO' THEN
+                      v_ordine_reason     := 'PREVENTIVO_STATO_CHIUSO';
+                      v_ordine_reason_key := 'vendite.preventivi.genera_ordine_reason.stato_chiuso';
+                  ELSIF NOT v_accettazione THEN
+                      v_ordine_reason     := 'PREVENTIVO_NON_ACCETTATO';
+                      v_ordine_reason_key := 'vendite.preventivi.genera_ordine_reason.non_accettato';
+                  ELSE
+                      v_ordine_reason     := 'PREVENTIVO_NESSUNA_RIGA_ORDINE';
+                      v_ordine_reason_key := 'vendite.preventivi.genera_ordine_reason.nessuna_riga';
+                  END IF;
+
+                  -- La testata nello stato, letta dal montaggio del lock di testata
+                  -- (rev 2026-10-10): le colonne che il lock blocca in questo stato,
+                  -- comprese quelle ferme sempre (rev 2026-10-18). Nessuno stato e
+                  -- nessuna colonna scritti qui.
+                  v_testata := script.fn_doc_testata_in_stato('vendite.preventivi'::regclass, v_stato_cod);
+
+                  RETURN jsonb_build_object(
+                      'available_actions',            v_actions,
+                      'can_edit_testata',  (v_testata ->> 'modificabile')::boolean,
+                      'can_edit_righe',               v_can_edit,
+                      -- Dal montaggio del lock dei satelliti (rev 2026-10-11, R-DB-3).
+                      'can_edit_indirizzi',  script.fn_doc_riga_modificabile('vendite.preventivi_indirizzi'::regclass, v_stato_cod),
+                      'can_push_commessa',            v_can_push,
+                      'can_push_commessa_reason',     v_push_reason,
+                      'can_push_commessa_reason_key', v_push_reason_key,
+                      'can_genera_ordine',            v_can_ordine,
+                      'can_genera_ordine_reason',     v_ordine_reason,
+                      'can_genera_ordine_reason_key', v_ordine_reason_key,
+                      'can_create_revisione',         v_can_rev,
+                      'stato_info_key',           v_stato_info_key,
+                      'non_editable_fields', v_testata -> 'non_modificabili',
+                      'pdf',                          jsonb_build_object('mode', v_pdf_mode, 'allow_allegati', v_pdf_allow),
+                      'stato_codice',                 v_stato_cod
+                  );
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_available_actions_preventivo(vendite.preventivi.id%TYPE)
+                IS 'Capability preventivo per detail API: available_actions + can_edit_* + push_commessa + genera_ordine + create_revisione + nessuna_azione_key + non_editable_fields + stato_codice. rev 2026-07-11: + blocco pdf {mode, allow_allegati} da config.stati_doc_preventivi (bottone PDF data-driven via capabilities). rev 2026-07-16: ogni azione espone enabled/reason/reason_key; se la transizione ha meta.requires_righe e il preventivo non ha righe attive -> enabled=false + reason DOCUMENTO_SENZA_RIGHE (predicato specchiato dal guard PREV_NESSUNA_RIGA_ATTIVA: SOLO presenza, nessun vincolo su quantita/prezzo/totale). rev 2026-07-19: le 3 label_key (crea_revisione/push_commessa/genera_ordine) e le 5 reason_key (push_commessa_reason.*, genera_ordine_reason.*) passano al namespace i18n vendite.preventivi.* — la radice preventivi.* e'' stata spostata sotto vendite.* dal FE nella migrazione radici i18n; brief-i18n-radici-uniformi §5. rev 2026-08-04: le azioni verso ANNULLATO espongono reasons da script.fn_check_preventivo_annullabile (stessa fn del guard trgfn_preventivi_guard_annullamento: UI e database non possono divergere); i motivi si sommano a quello di requires_righe in un array unico da cui discendono enabled/reason/reason_key. + nessuna_azione_key dal meta dello stato corrente, esposta solo quando nessuna azione risulta abilitata (brief-db-vie-uscita-operatore §4 regola R3, §6). rev 2026-08-06: ogni azione espone outlined (dal meta della transizione, COALESCE a false) e target_state_descrizione (config.stati_doc_preventivi.descrizione della destinazione). outlined mancava qui e sull''offerta: il seed lo portava ma la funzione non lo emetteva, quindi il pulsante distruttivo restava rosso pieno mentre negli altri sei domini era outlined. target_state_descrizione serve alla frase di conferma «portare il documento nello stato X»: il codice_interno non e'' la forma leggibile (DRAFT -> Bozza) e derivarla nel FE sarebbe una seconda copia del vocabolario degli stati; NULL sulle azioni applicative (crea_revisione / push_commessa / genera_ordine), che non cambiano stato. rev 2026-08-10: can_push_commessa_reason(_key) e can_genera_ordine_reason(_key) non promettono piu'' l''accettazione sugli stati CHIUSI. Il ramo `v_stato_cod <> ''ACCETTATO''` copriva per negazione due situazioni opposte: prima dell''accettazione (DRAFT/EMESSO) la frase «sara'' disponibile dopo l''accettazione» e'' un''istruzione corretta, dopo o fuori (EVASO/ANNULLATO/RIFIUTATO/SCADUTO) promette un passo gia'' avvenuto o impossibile — l''EVASO e'' evaso PERCHE'' accettato e smistato. Ramo nuovo su config.stati_doc_preventivi.fase = ''CHIUSO'' davanti a quello vecchio, reason PREVENTIVO_STATO_CHIUSO, reason_key push_commessa_reason.stato_chiuso / genera_ordine_reason.stato_chiuso. NON NULL di proposito: la nota nessuna_azione_key viaggia su un canale distinto (riga in coda alla barra) mentre questi campi alimentano il tooltip di due pulsanti che il FE rende comunque nel pannello Smistamento, visibile anche in EVASO; spento e muto violerebbe la R1/R3 del brief vie-d''uscita. `fase` e non `terminale` ne'' un elenco di codici: e'' la proiezione che dice «documento chiuso», cioe'' cio'' che il messaggio afferma. Rilievo in-app di Tid su PRV0000192, brief-db-vie-uscita-operatore §12. rev 2026-08-10 (2): il campo si chiama ora stato_info_key e NON e'' piu'' subordinato alla lista vuota: viene emesso sempre che lo stato lo dichiari nel proprio meta, anche accanto a un''azione ancora abilitata. Decisione §5 di Tid: la nota spiega lo STATO, e chi ha ancora un bottone deve comunque poter leggere cos''e'' successo; cade quindi il presupposto che la faceva sparire, e v_nessuna_azione con il suo NOT EXISTS escono come codice morto. Il nome vecchio nessuna_azione_key diventava falso proprio nel momento in cui il campo inizia a comparire QUANDO le azioni ci sono, e il vocabolario giusto era gia'' dall''altra parte: le chiavi i18n stanno sotto vendite.<dominio>.stato_info.*. ⚠️ La PROPRIETA'' nel meta dello stato resta nessuna_azione_key, ed e'' voluto: il presidio scripts/check_i18n_keys.py trova quelle chiavi proprio per quel nome (RE_SEED_KEY sui CSV, elenco _PROP_KEY), e rinominarla senza toccare il guard lo renderebbe verde per cecita'' — il caso peggiore, gia'' denunciato nel §8.3 del brief. Rinomina della proprieta'' proposta come slice a se''. ⚠️ Il campo e'' SEMPRE presente nel blob, col valore a null quando non si applica: filtrare con l''operatore di presenza risponde vero per TUTTI i documenti, va guardato il valore. Il FE rinomina la prop nello stesso rilascio (8 drawer + DrawerActionsBar). brief-db-vie-uscita-operatore §4; attivita-urgenti-del-10-08 §2. rev 2026-08-29: le azioni verso EMESSO espongono reasons da script.fn_check_preventivo_emettibile (stessa fn che il guard di transizione usa per sollevare, Regola 2), sommate nello stesso array unico da cui discendono enabled/reason/reason_key. Oggi un motivo: E_PREV_RIGA_IVA_MANCANTE, una riga attiva con quantita e prezzo ma senza aliquota — senza, fn_ricalcola_riepilogo_iva_preventivo la somma con COALESCE(aliquota, 0) e preventivi_riepiloghi_iva porta imponibile pieno e imposta zero. ⚠️ La reason_key vendite.preventivi.azione_reason.iva_mancante e'' un debito verso il frontend: va aggiunta ai locales. Brief: brief-db-be-iva-risolutore-e-regime-cliente, I9. rev 2026-09-24: le azioni verso ACCETTATO espongono reasons da script.fn_check_prezzi_autorizzati (prezzi PENDING o REJECTED su righe e componenti BoM attivi), lo stesso building block con cui la Regola 3 di trgfn_preventivi_guard_transizione solleva; verso EMESSO gli stessi motivi arrivano dentro fn_check_preventivo_emettibile. Annulla non li legge: e'''' la via d''''uscita e resta sempre accesa (D-2). ⭐ Da qui il backend smette di riscrivere available_actions e can_edit_* (preventivi_service.get_preventivo, debito dichiarato): il blob si consegna com''''e''''. ⚠️ Le reason_key common.azione_reason.prezzo_pendente / prezzo_rifiutato sono un debito verso il frontend: vanno nei locales. Brief: brief-db-preventivi-congelamento-pricing (D-1, D-2, D-3). rev 2026-09-24 (2, 20260924-36): «Crea revisione» resta proposto su EMESSO ma SPENTO col motivo (enabled/reason/reason_key/reasons) se il preventivo ha un prezzo IN ATTESA — script.fn_check_prezzi_in_attesa, la stessa funzione con cui vendite.fn_crea_revisione_preventivo rifiuta (decisione di Tid: prima l''''esito, poi la revisione). can_create_revisione diventa veritiero: vero solo se la revisione si puo'''' creare. Brief: brief-db-preventivi-congelamento-pricing §10. rev 2026-09-27 (20260927-12): le azioni non portano piu'' la chiave icon. Il DB manda il SIGNIFICATO (key), il frontend sceglie il segno dal key con una mappa verbo -> icona in core/ (decisione D-1 di Tid, opzione A): un segno scritto qui era l''unico dell''app che non passava dalle costanti del frontend, e lo stesso verbo ne portava due. Brief: brief-db-icone-azioni-per-significato (D-1). rev 2026-09-28 (20260928-09): le azioni non portano piu'' la chiave severity. Come l''icona, il colore del pulsante lo decide il VERBO, uguale in tutti i domini, e il frontend lo ricava dal key (mappa verbo -> aspetto in core/, decisione di Tid): lo stesso verbo portava colori diversi fra i domini. label_key e outlined restano dati. Brief: brief-db-icone-azioni-per-significato (§9). rev 2026-10-10 (20261010-50): via il ramo PREVENTIVO_SENZA_BILLING_ACCOUNT del motivo del push (chiave vendite.preventivi.push_commessa_reason.senza_billing_account): billing_account_id e utility_id del preventivo sono NOT NULL dal 2026-10-08, il ramo non si raggiungeva. Restano tre motivi del push: PREVENTIVO_STATO_CHIUSO, PREVENTIVO_NON_ACCETTATO, PREVENTIVO_NESSUNA_RIGA_COMMESSA. Brief: brief-db-istanza-nasce-col-ba-residui (R-1). rev 2026-10-10 (brief-db-testata-dopo-emissione fase 2): non_editable_fields e can_edit_testata si leggono dal montaggio del lock di testata con script.fn_doc_testata_in_stato: le colonne «sempre» della capability seguite da quelle che il lock blocca nello stato, e can_edit_testata vero se nello stato almeno una colonna nominata si cambia. Ritirate le liste scritte a mano dei campi bloccati fuori bozza (la terza copia della regola, accanto a lock e backend): con D-8/D-10 le colonne aperte dopo l''emissione (note, trasporto, valido_al e CIG/CUP del contratto…) si cambiano negli stati del montaggio e si fermano a documento chiuso. rev 2026-10-11 (brief-db-testata-dopo-emissione §11, R-DB-3): + can_edit_indirizzi, dal montaggio del lock di vendite.preventivi_indirizzi (script.fn_doc_riga_modificabile): gli indirizzi si scrivono solo in bozza, e il backend non lo scrive piu'' (_INDIRIZZI_CFG) rev 2026-10-18 (brief-db-indirizzi-documento-seguono-il-cliente §8.7): via la lista c_sempre_non_edit (utility_id): la utility e'' ferma sempre nel montaggio del lock di testata, con l''emittente, e non_editable_fields le riceve da li'' in ogni stato. La lista era la seconda copia della regola. Firma ancorata: p_preventivo_id vendite.preventivi.id%TYPE (stesso tipo, stessa identita''). ⭐ rev 2026-10-25 (20261025-47, brief-modello-documento-vendita §8, M-3): un passaggio con un''azione di processo sulla sua riga della matrice (letta da script.fn_doc_passaggio: emetti_preventivo sull''emissione e sull''annullo dell''emesso e dell''accettato) si NASCONDE a chi non ha l''azione (script.fn_check_azione_processo, utente da app.current_user_id): permesso => nascondi, stato => disabilita col motivo. I motivi dell''emissione si legano allo stato che il vocabolario dichiara di emissione (config.stati_doc_preventivi.emissione), non al letterale. Rev 2026-10-27 (20261027-41, brief-modello-documento-vendita §15.14): i passaggi manuali permessi da script.fn_doc_azioni_permesse (matrice viva, manuale, permesso => nascondi), non piu'' dal predicato ricopiato.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_available_actions_preventivo(p_preventivo_id vendite.preventivi.id%TYPE)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: capability preventivo per detail API (pattern data-driven).
+              --   rev 2026-07-11: + blocco pdf {mode, allow_allegati} da
+              --   config.stati_doc_preventivi (bottone PDF data-driven via capabilities).
+              --   rev 2026-07-16: + enabled/reason/reason_key da meta.requires_righe
+              --   (documento vuoto non avanza di stato).
+              --   rev 2026-07-19: label_key e reason_key nel namespace i18n
+              --   vendite.preventivi.* (era preventivi.*, radice spostata dal FE
+              --   nella migrazione radici i18n) — brief-i18n-radici-uniformi §5.
+              --   rev 2026-08-04: + reasons sull'annullamento, da
+              --   script.fn_check_preventivo_annullabile — la STESSA funzione che
+              --   vendite.trgfn_preventivi_guard_annullamento usa per sollevare
+              --   (sorgente unica: la UI non puo' divergere dal guard). I motivi
+              --   si SOMMANO a quello di requires_righe in un array solo, da cui
+              --   discendono enabled/reason/reason_key. + nessuna_azione_key
+              --   dal meta dello stato, esposta quando nessuna azione e' abilitata
+              --   (brief-db-vie-uscita-operatore §4 regola R3 e §6).
+              --   rev 2026-08-06: + outlined dal meta della transizione (era
+              --   l'unica insieme all'offerta a non emetterlo: il dato del seed
+              --   non arrivava al pulsante) e + target_state_descrizione, la
+              --   forma leggibile dello stato di destinazione. Serve alla frase
+              --   di conferma «portare il documento nello stato X»: il
+              --   codice_interno non basta a derivarla (DRAFT -> Bozza) e
+              --   tradurla nel FE sarebbe una seconda copia del vocabolario
+              --   degli stati. NULL sulle azioni che non cambiano stato.
+              --   rev 2026-08-10: i motivi di push_commessa / genera_ordine non
+              --   promettono piu' l'accettazione sugli stati CHIUSI. Il ramo
+              --   `v_stato_cod <> 'ACCETTATO'` copriva per negazione due
+              --   situazioni opposte — prima dell'accettazione (istruzione
+              --   corretta) e dopo o fuori (promessa falsa: l'EVASO e' evaso
+              --   PERCHE' accettato). Ramo nuovo su fase = 'CHIUSO' davanti a
+              --   quello vecchio; reason PREVENTIVO_STATO_CHIUSO. Rilievo in-app
+              --   di Tid su PRV0000192 (brief-db-vie-uscita-operatore §12).
+              --   rev 2026-08-10 (2): la nota di stato non e' piu' subordinata alla
+              --   lista vuota, e cambia nome. Decisione §5 di Tid: «la nota spiega lo
+              --   stato chiuso, e compare sempre» — anche accanto a un'azione ancora
+              --   viva, dove l'operatore legge cos'e' successo E ha il suo bottone.
+              --   Cade quindi il presupposto che la faceva sparire: via
+              --   v_nessuna_azione e il suo NOT EXISTS, che erano diventati codice
+              --   morto, e via il commento che spiegava perche' non si appoggiavano a
+              --   v_can_change — era la motivazione di una regola che non esiste piu'.
+              --   Il campo si chiama ora `stato_info_key`: `nessuna_azione_key`
+              --   diventava falso proprio nel momento in cui inizia a mostrarsi
+              --   quando le azioni ci sono, e il vocabolario giusto era gia' dall'altra
+              --   parte (le chiavi i18n stanno sotto vendite.<dominio>.stato_info.*).
+              --   ⚠️ La PROPRIETA' nel meta dello stato resta `nessuna_azione_key`, ed
+              --   e' voluto: il presidio scripts/check_i18n_keys.py trova quelle chiavi
+              --   proprio per quel nome (RE_SEED_KEY sui CSV, elenco _PROP_KEY), e
+              --   rinominarla senza toccare il guard lo renderebbe verde per cecita' —
+              --   il caso peggiore, gia' denunciato nel §8.3 del brief. Rinomina della
+              --   proprieta' proposta come slice a se'.
+              --   brief-db-vie-uscita-operatore §4; attivita-urgenti-del-10-08 §2.
+              --   rev 2026-09-24: le azioni verso ACCETTATO espongono i motivi dei
+              --   prezzi non autorizzati da script.fn_check_prezzi_autorizzati — lo
+              --   stesso building block della Regola 3 del guard di transizione. Verso
+              --   EMESSO arrivano gia' dentro fn_check_preventivo_emettibile.
+              --   (brief-db-preventivi-congelamento-pricing, D-1/D-2).
+              --   rev 2026-09-24 (2): «Crea revisione» spento col motivo se c'e' un
+              --   prezzo IN ATTESA (script.fn_check_prezzi_in_attesa, stessa funzione
+              --   della madre fn_crea_revisione_preventivo); can_create_revisione
+              --   veritiero. Brief §10.
+              --   rev 2026-10-10: via il ramo «testata incompleta» del motivo del push
+              --   (il motivo «senza billing account»): BA e utility del preventivo sono
+              --   NOT NULL, il ramo non si raggiungeva. Brief:
+              --   brief-db-istanza-nasce-col-ba-residui (R-1).
+              --   rev 2026-10-18: via c_sempre_non_edit. La sola colonna che
+              --   nominava, utility_id, e' ora ferma sempre nel montaggio del lock di
+              --   testata (con l'emittente): non_editable_fields la riceve da li', in
+              --   ogni stato. La lista era la seconda copia della regola. Brief:
+              --   brief-db-indirizzi-documento-seguono-il-cliente (§8.7).
+              DECLARE
+                  -- Tipi nudi solo per valori CALCOLATI (azioni e motivi jsonb, flag,
+                  -- motivi e chiavi i18n composti): nessuna colonna di cui siano il riflesso.
+                  v_stato_id          vendite.preventivi.stato_doc_preventivo_id%TYPE;
+                  v_stato_cod         config.stati_doc_preventivi.codice_interno%TYPE;
+                  -- Proiezione normalizzata dello stato: APERTO | IN_CORSO |
+                  -- IN_ATTESA | CHIUSO. Serve a distinguere "non ancora
+                  -- accettato" da "chiuso", che il solo codice_interno
+                  -- confondeva in un unico ramo per negazione.
+                  v_fase              config.stati_doc_preventivi.fase%TYPE;
+                  v_pdf_mode          config.stati_doc_preventivi.pdf_mode%TYPE;
+                  v_pdf_allow         config.stati_doc_preventivi.pdf_allow_allegati%TYPE;
+                  v_stato_info_key       text;
+                  v_actions           jsonb;
+                  v_ha_righe          boolean := false;
+                  v_mot_annulla       jsonb := '[]'::jsonb;
+                  v_mot_emetti        jsonb := '[]'::jsonb;
+                  v_mot_accetta       jsonb := '[]'::jsonb;
+                  v_mot_rev           jsonb := '[]'::jsonb;
+                  v_can_edit          boolean;
+                  v_can_push          boolean;
+                  v_can_rev           boolean;
+                  v_push_reason       text;
+                  v_push_reason_key   text;
+                  v_can_ordine        boolean;
+                  v_ordine_reason     text;
+                  v_ordine_reason_key text;
+                  -- Motivo "documento vuoto" nella STESSA forma dei motivi delle
+                  -- fn_check_* ({codice, reason, reason_key, dettaglio}), cosi' i
+                  -- due mondi si concatenano senza conversioni. `codice` e' quello
+                  -- che il guard della porta solleva davvero (PREV_NESSUNA_RIGA_ATTIVA
+                  -- in vendite.fn_cambia_stato_preventivo): qui non si solleva nulla,
+                  -- ma un codice inventato diventerebbe una bugia il giorno in cui
+                  -- qualcuno lo confronta con l'errore ricevuto.
+                  c_motivo_senza_righe CONSTANT jsonb := jsonb_build_array(
+                      jsonb_build_object(
+                          'codice',     'E_PREV_NESSUNA_RIGA_ATTIVA',
+                          'reason',     'DOCUMENTO_SENZA_RIGHE',
+                          'reason_key', 'common.azione_reason.senza_righe',
+                          'dettaglio',  0));
+                  -- Azioni applicative: non sono transizioni, quindi
+                  -- target_state e target_state_descrizione restano NULL.
+                  c_action_crea_revisione CONSTANT jsonb := jsonb_build_object(
+                      'key',                      'crea_revisione',
+                      'target_state',             NULL,
+                      'target_state_descrizione', NULL,
+                      'label_key',                'vendite.preventivi.azione_crea_revisione',
+                      'requires_confirm',         true,
+                      'requires_motivazione',     false,
+                      'outlined',                 false,
+                      'enabled',                  true,
+                      'reason',                   NULL,
+                      'reason_key',               NULL
+                  );
+                  c_action_push_commessa CONSTANT jsonb := jsonb_build_object(
+                      'key',                      'push_commessa',
+                      'target_state',             NULL,
+                      'target_state_descrizione', NULL,
+                      'label_key',                'vendite.preventivi.azione_push_commessa',
+                      'requires_motivazione',     false,
+                      'requires_confirm',         true,
+                      'outlined',                 false,
+                      'enabled',                  true,
+                      'reason',                   NULL,
+                      'reason_key',               NULL
+                  );
+                  c_action_genera_ordine CONSTANT jsonb := jsonb_build_object(
+                      'key',                      'genera_ordine',
+                      'target_state',             NULL,
+                      'target_state_descrizione', NULL,
+                      'label_key',                'vendite.preventivi.azione_genera_ordine',
+                      'requires_confirm',         true,
+                      'requires_motivazione',     false,
+                      'outlined',                 false,
+                      'enabled',                  true,
+                      'reason',                   NULL,
+                      'reason_key',               NULL
+                  );
+                  -- La testata nello stato, dal montaggio del lock (rev 2026-10-10):
+                  -- {modificabile, non_modificabili}.
+                  v_testata jsonb;
+              BEGIN
+                  -- Stato corrente + fase + capability PDF
+                  -- (pdf_mode/allow_allegati) + la chiave "nessuna azione"
+                  -- dello stato (dato, non codice).
+                  SELECT p.stato_doc_preventivo_id, sdp.codice_interno, sdp.fase,
+                         sdp.pdf_mode, sdp.pdf_allow_allegati,
+                         -- ⚠️ La PROPRIETA' nel meta resta `nessuna_azione_key` mentre il
+                         -- campo del blob si chiama ora `stato_info_key`. L'asimmetria e'
+                         -- voluta e la spiega la rev 2026-08-10 (2) in testa: il presidio
+                         -- i18n si aggancia a QUESTO nome.
+                         sdp.meta->>'nessuna_azione_key'
+                    INTO v_stato_id, v_stato_cod, v_fase,
+                         v_pdf_mode, v_pdf_allow, v_stato_info_key
+                    FROM vendite.preventivi p
+                    JOIN config.stati_doc_preventivi sdp ON sdp.id = p.stato_doc_preventivo_id
+                   WHERE p.id = p_preventivo_id;
+
+                  IF NOT FOUND THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- Precondizione "documento non vuoto" per le transizioni che la
+                  -- esigono (meta.requires_righe). La fn sa solo COME contare le
+                  -- proprie righe: specchia il guard di fn_cambia_stato_preventivo
+                  -- (PREV_NESSUNA_RIGA_ATTIVA, rev 2026-07-16): SOLO presenza di
+                  -- riga attiva, nessun vincolo su quantita/prezzo/totale.
+                  v_ha_righe := EXISTS (
+                      SELECT 1 FROM vendite.preventivi_righe pr
+                       WHERE pr.preventivo_id = p_preventivo_id
+                         AND pr.attivo IS TRUE
+                  );
+
+                  -- Motivi ostativi all'ANNULLAMENTO, calcolati UNA VOLTA SOLA.
+                  -- Fn pura: [] quando e' lecito. E' la stessa che solleva nel guard.
+                  v_mot_annulla := script.fn_check_preventivo_annullabile(p_preventivo_id);
+
+                  -- Motivi ostativi all'EMISSIONE, anch'essi calcolati UNA VOLTA SOLA.
+                  -- Stessa forma e stessa ragione della riga sopra: e' la funzione che il
+                  -- guard di transizione usa per sollevare (Regola 2), quindi bottone e
+                  -- guard non possono divergere. rev 2026-08-29, brief IVA I9.
+                  v_mot_emetti := script.fn_check_preventivo_emettibile(p_preventivo_id);
+
+                  -- Motivi ostativi all'ACCETTAZIONE: i prezzi non autorizzati. E' il
+                  -- building block che la Regola 3 del guard di transizione usa per
+                  -- sollevare, quindi «Accetta» e guard non possono divergere.
+                  -- rev 2026-09-24, brief-db-preventivi-congelamento-pricing (D-2).
+                  v_mot_accetta := script.fn_check_prezzi_autorizzati('vendite.preventivi'::regclass,
+                                                                      p_preventivo_id);
+
+                  SELECT COALESCE(
+                      jsonb_agg(
+                          jsonb_build_object(
+                              'key',              t.meta->>'action_key',
+                              'target_state',     sa.codice_interno,
+                              -- Forma leggibile della destinazione: la colonna
+                              -- accanto, nello stesso JOIN. Il FE non puo'
+                              -- derivarla dal codice.
+                              'target_state_descrizione', sa.descrizione,
+                              'label_key',        t.meta->>'label_key',
+                              'requires_confirm', COALESCE((t.meta->>'requires_confirm')::boolean, false),
+                              'outlined',         COALESCE((t.meta->>'outlined')::boolean, false),
+                              -- Tutto discende dall'array dei motivi: nessuna
+                              -- regola puo' mascherarne un'altra.
+                              'enabled',          jsonb_array_length(m.motivi) = 0,
+                              'reason',           m.motivi -> 0 ->> 'reason',
+                              'reason_key',       m.motivi -> 0 ->> 'reason_key',
+                              'reasons',          m.motivi
+                          )
+                          ORDER BY sa.ordine
+                      ),
+                      '[]'::jsonb
+                  )
+                  INTO v_actions
+                  -- I passaggi manuali che l'utente puo' fare, dal BB comune (rev
+                  -- 2026-10-27, 20261027-41, §15.14): matrice viva, manuale, permesso.
+                  FROM script.fn_doc_azioni_permesse('vendite.preventivi'::regclass, v_stato_id) t
+                  JOIN config.stati_doc_preventivi sa ON sa.id = t.stato_a_id
+                  -- I motivi della destinazione, sommati in un array solo.
+                  -- Ordine: prima quelli specifici della destinazione, poi il
+                  -- generico "documento vuoto"; il primo e' quello che il FE
+                  -- mostra nel caso singolare.
+                  CROSS JOIN LATERAL (
+                      SELECT CASE WHEN sa.codice_interno = 'ANNULLATO'
+                                  THEN v_mot_annulla ELSE '[]'::jsonb END
+                          -- Lo stato di emissione dal vocabolario (rev 2026-10-25).
+                          || CASE WHEN sa.emissione
+                                  THEN v_mot_emetti ELSE '[]'::jsonb END
+                          || CASE WHEN sa.codice_interno = 'ACCETTATO'
+                                  THEN v_mot_accetta ELSE '[]'::jsonb END
+                          || CASE WHEN COALESCE((t.meta->>'requires_righe')::boolean, false)
+                                       AND NOT v_ha_righe
+                                  THEN c_motivo_senza_righe ELSE '[]'::jsonb END AS motivi
+                  ) m
+                  WHERE t.meta ? 'action_key'
+                    AND t.meta ? 'label_key';
+
+                  v_can_edit := (v_stato_cod = 'DRAFT');
+                  v_can_rev  := (v_stato_cod = 'EMESSO');
+
+                  v_can_push := (v_stato_cod = 'ACCETTATO')
+                      AND vendite.fn_preventivo_ha_residuo_commessa(p_preventivo_id);
+
+                  v_can_ordine := (v_stato_cod = 'ACCETTATO')
+                      AND vendite.fn_preventivo_ha_residuo_ordine(p_preventivo_id);
+
+                  -- «Crea revisione» (rev 2026-09-24): proposta da EMESSO, SPENTA col
+                  -- motivo se il documento ha un prezzo IN ATTESA — lo stesso
+                  -- script.fn_check_prezzi_in_attesa con cui la madre
+                  -- vendite.fn_crea_revisione_preventivo rifiuta. Pulsante e madre non possono
+                  -- dissentire. ⭐ can_create_revisione diventa VERITIERO: vero solo se
+                  -- la revisione si puo' davvero creare (il FE legge l'azione, non il
+                  -- flag; il BE lo trasporta).
+                  IF v_can_rev THEN
+                      v_mot_rev := script.fn_check_prezzi_in_attesa('vendite.preventivi'::regclass, p_preventivo_id);
+                      v_actions := v_actions || jsonb_build_array(
+                          c_action_crea_revisione || jsonb_build_object(
+                              'enabled',    jsonb_array_length(v_mot_rev) = 0,
+                              'reason',     v_mot_rev -> 0 ->> 'reason',
+                              'reason_key', v_mot_rev -> 0 ->> 'reason_key',
+                              'reasons',    v_mot_rev));
+                      v_can_rev := jsonb_array_length(v_mot_rev) = 0;
+                  END IF;
+
+                  IF v_can_push THEN
+                      v_actions := v_actions || jsonb_build_array(c_action_push_commessa);
+                  END IF;
+
+                  IF v_can_ordine THEN
+                      v_actions := v_actions || jsonb_build_array(c_action_genera_ordine);
+                  END IF;
+
+                  -- Motivo del push a commessa. ⚠️ L'ORDINE DEI RAMI E'
+                  -- PORTANTE: "chiuso" viene prima di "non accettato".
+                  -- `v_stato_cod <> 'ACCETTATO'` copre per negazione due
+                  -- situazioni opposte — prima dell'accettazione la frase
+                  -- «sara' disponibile dopo l'accettazione» istruisce, dopo o
+                  -- fuori mente (l'EVASO e' evaso PERCHE' e' stato accettato e
+                  -- smistato; ANNULLATO/RIFIUTATO/SCADUTO non ci arriveranno
+                  -- mai). Il ramo su `fase` scioglie la negazione nei suoi due
+                  -- versi. Rilievo in-app 2026-08-10 su PRV0000192.
+                  IF v_can_push THEN
+                      v_push_reason     := NULL;
+                      v_push_reason_key := NULL;
+                  ELSIF v_fase = 'CHIUSO' THEN
+                      v_push_reason     := 'PREVENTIVO_STATO_CHIUSO';
+                      v_push_reason_key := 'vendite.preventivi.push_commessa_reason.stato_chiuso';
+                  ELSIF v_stato_cod <> 'ACCETTATO' THEN
+                      v_push_reason     := 'PREVENTIVO_NON_ACCETTATO';
+                      v_push_reason_key := 'vendite.preventivi.push_commessa_reason.non_accettato';
+                  ELSE
+                      v_push_reason     := 'PREVENTIVO_NESSUNA_RIGA_COMMESSA';
+                      v_push_reason_key := 'vendite.preventivi.push_commessa_reason.nessuna_riga';
+                  END IF;
+
+                  -- Ramo gemello per la generazione dell'ordine: stessa
+                  -- correzione, stesso ordine dei rami.
+                  IF v_can_ordine THEN
+                      v_ordine_reason     := NULL;
+                      v_ordine_reason_key := NULL;
+                  ELSIF v_fase = 'CHIUSO' THEN
+                      v_ordine_reason     := 'PREVENTIVO_STATO_CHIUSO';
+                      v_ordine_reason_key := 'vendite.preventivi.genera_ordine_reason.stato_chiuso';
+                  ELSIF v_stato_cod <> 'ACCETTATO' THEN
+                      v_ordine_reason     := 'PREVENTIVO_NON_ACCETTATO';
+                      v_ordine_reason_key := 'vendite.preventivi.genera_ordine_reason.non_accettato';
+                  ELSE
+                      v_ordine_reason     := 'PREVENTIVO_NESSUNA_RIGA_ORDINE';
+                      v_ordine_reason_key := 'vendite.preventivi.genera_ordine_reason.nessuna_riga';
+                  END IF;
+
+                  -- La testata nello stato, letta dal montaggio del lock di testata
+                  -- (rev 2026-10-10): le colonne che il lock blocca in questo stato,
+                  -- comprese quelle ferme sempre (rev 2026-10-18). Nessuno stato e
+                  -- nessuna colonna scritti qui.
+                  v_testata := script.fn_doc_testata_in_stato('vendite.preventivi'::regclass, v_stato_cod);
+
+                  RETURN jsonb_build_object(
+                      'available_actions',            v_actions,
+                      'can_edit_testata',  (v_testata ->> 'modificabile')::boolean,
+                      'can_edit_righe',               v_can_edit,
+                      -- Dal montaggio del lock dei satelliti (rev 2026-10-11, R-DB-3).
+                      'can_edit_indirizzi',  script.fn_doc_riga_modificabile('vendite.preventivi_indirizzi'::regclass, v_stato_cod),
+                      'can_push_commessa',            v_can_push,
+                      'can_push_commessa_reason',     v_push_reason,
+                      'can_push_commessa_reason_key', v_push_reason_key,
+                      'can_genera_ordine',            v_can_ordine,
+                      'can_genera_ordine_reason',     v_ordine_reason,
+                      'can_genera_ordine_reason_key', v_ordine_reason_key,
+                      'can_create_revisione',         v_can_rev,
+                      'stato_info_key',           v_stato_info_key,
+                      'non_editable_fields', v_testata -> 'non_modificabili',
+                      'pdf',                          jsonb_build_object('mode', v_pdf_mode, 'allow_allegati', v_pdf_allow),
+                      'stato_codice',                 v_stato_cod
+                  );
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_available_actions_preventivo(bigint)
+                IS 'Capability preventivo per detail API: available_actions + can_edit_* + push_commessa + genera_ordine + create_revisione + nessuna_azione_key + non_editable_fields + stato_codice. rev 2026-07-11: + blocco pdf {mode, allow_allegati} da config.stati_doc_preventivi (bottone PDF data-driven via capabilities). rev 2026-07-16: ogni azione espone enabled/reason/reason_key; se la transizione ha meta.requires_righe e il preventivo non ha righe attive -> enabled=false + reason DOCUMENTO_SENZA_RIGHE (predicato specchiato dal guard PREV_NESSUNA_RIGA_ATTIVA: SOLO presenza, nessun vincolo su quantita/prezzo/totale). rev 2026-07-19: le 3 label_key (crea_revisione/push_commessa/genera_ordine) e le 5 reason_key (push_commessa_reason.*, genera_ordine_reason.*) passano al namespace i18n vendite.preventivi.* — la radice preventivi.* e'' stata spostata sotto vendite.* dal FE nella migrazione radici i18n; brief-i18n-radici-uniformi §5. rev 2026-08-04: le azioni verso ANNULLATO espongono reasons da script.fn_check_preventivo_annullabile (stessa fn del guard trgfn_preventivi_guard_annullamento: UI e database non possono divergere); i motivi si sommano a quello di requires_righe in un array unico da cui discendono enabled/reason/reason_key. + nessuna_azione_key dal meta dello stato corrente, esposta solo quando nessuna azione risulta abilitata (brief-db-vie-uscita-operatore §4 regola R3, §6). rev 2026-08-06: ogni azione espone outlined (dal meta della transizione, COALESCE a false) e target_state_descrizione (config.stati_doc_preventivi.descrizione della destinazione). outlined mancava qui e sull''offerta: il seed lo portava ma la funzione non lo emetteva, quindi il pulsante distruttivo restava rosso pieno mentre negli altri sei domini era outlined. target_state_descrizione serve alla frase di conferma «portare il documento nello stato X»: il codice_interno non e'' la forma leggibile (DRAFT -> Bozza) e derivarla nel FE sarebbe una seconda copia del vocabolario degli stati; NULL sulle azioni applicative (crea_revisione / push_commessa / genera_ordine), che non cambiano stato. rev 2026-08-10: can_push_commessa_reason(_key) e can_genera_ordine_reason(_key) non promettono piu'' l''accettazione sugli stati CHIUSI. Il ramo `v_stato_cod <> ''ACCETTATO''` copriva per negazione due situazioni opposte: prima dell''accettazione (DRAFT/EMESSO) la frase «sara'' disponibile dopo l''accettazione» e'' un''istruzione corretta, dopo o fuori (EVASO/ANNULLATO/RIFIUTATO/SCADUTO) promette un passo gia'' avvenuto o impossibile — l''EVASO e'' evaso PERCHE'' accettato e smistato. Ramo nuovo su config.stati_doc_preventivi.fase = ''CHIUSO'' davanti a quello vecchio, reason PREVENTIVO_STATO_CHIUSO, reason_key push_commessa_reason.stato_chiuso / genera_ordine_reason.stato_chiuso. NON NULL di proposito: la nota nessuna_azione_key viaggia su un canale distinto (riga in coda alla barra) mentre questi campi alimentano il tooltip di due pulsanti che il FE rende comunque nel pannello Smistamento, visibile anche in EVASO; spento e muto violerebbe la R1/R3 del brief vie-d''uscita. `fase` e non `terminale` ne'' un elenco di codici: e'' la proiezione che dice «documento chiuso», cioe'' cio'' che il messaggio afferma. Rilievo in-app di Tid su PRV0000192, brief-db-vie-uscita-operatore §12. rev 2026-08-10 (2): il campo si chiama ora stato_info_key e NON e'' piu'' subordinato alla lista vuota: viene emesso sempre che lo stato lo dichiari nel proprio meta, anche accanto a un''azione ancora abilitata. Decisione §5 di Tid: la nota spiega lo STATO, e chi ha ancora un bottone deve comunque poter leggere cos''e'' successo; cade quindi il presupposto che la faceva sparire, e v_nessuna_azione con il suo NOT EXISTS escono come codice morto. Il nome vecchio nessuna_azione_key diventava falso proprio nel momento in cui il campo inizia a comparire QUANDO le azioni ci sono, e il vocabolario giusto era gia'' dall''altra parte: le chiavi i18n stanno sotto vendite.<dominio>.stato_info.*. ⚠️ La PROPRIETA'' nel meta dello stato resta nessuna_azione_key, ed e'' voluto: il presidio scripts/check_i18n_keys.py trova quelle chiavi proprio per quel nome (RE_SEED_KEY sui CSV, elenco _PROP_KEY), e rinominarla senza toccare il guard lo renderebbe verde per cecita'' — il caso peggiore, gia'' denunciato nel §8.3 del brief. Rinomina della proprieta'' proposta come slice a se''. ⚠️ Il campo e'' SEMPRE presente nel blob, col valore a null quando non si applica: filtrare con l''operatore di presenza risponde vero per TUTTI i documenti, va guardato il valore. Il FE rinomina la prop nello stesso rilascio (8 drawer + DrawerActionsBar). brief-db-vie-uscita-operatore §4; attivita-urgenti-del-10-08 §2. rev 2026-08-29: le azioni verso EMESSO espongono reasons da script.fn_check_preventivo_emettibile (stessa fn che il guard di transizione usa per sollevare, Regola 2), sommate nello stesso array unico da cui discendono enabled/reason/reason_key. Oggi un motivo: E_PREV_RIGA_IVA_MANCANTE, una riga attiva con quantita e prezzo ma senza aliquota — senza, fn_ricalcola_riepilogo_iva_preventivo la somma con COALESCE(aliquota, 0) e preventivi_riepiloghi_iva porta imponibile pieno e imposta zero. ⚠️ La reason_key vendite.preventivi.azione_reason.iva_mancante e'' un debito verso il frontend: va aggiunta ai locales. Brief: brief-db-be-iva-risolutore-e-regime-cliente, I9. rev 2026-09-24: le azioni verso ACCETTATO espongono reasons da script.fn_check_prezzi_autorizzati (prezzi PENDING o REJECTED su righe e componenti BoM attivi), lo stesso building block con cui la Regola 3 di trgfn_preventivi_guard_transizione solleva; verso EMESSO gli stessi motivi arrivano dentro fn_check_preventivo_emettibile. Annulla non li legge: e'''' la via d''''uscita e resta sempre accesa (D-2). ⭐ Da qui il backend smette di riscrivere available_actions e can_edit_* (preventivi_service.get_preventivo, debito dichiarato): il blob si consegna com''''e''''. ⚠️ Le reason_key common.azione_reason.prezzo_pendente / prezzo_rifiutato sono un debito verso il frontend: vanno nei locales. Brief: brief-db-preventivi-congelamento-pricing (D-1, D-2, D-3). rev 2026-09-24 (2, 20260924-36): «Crea revisione» resta proposto su EMESSO ma SPENTO col motivo (enabled/reason/reason_key/reasons) se il preventivo ha un prezzo IN ATTESA — script.fn_check_prezzi_in_attesa, la stessa funzione con cui vendite.fn_crea_revisione_preventivo rifiuta (decisione di Tid: prima l''''esito, poi la revisione). can_create_revisione diventa veritiero: vero solo se la revisione si puo'''' creare. Brief: brief-db-preventivi-congelamento-pricing §10. rev 2026-09-27 (20260927-12): le azioni non portano piu'' la chiave icon. Il DB manda il SIGNIFICATO (key), il frontend sceglie il segno dal key con una mappa verbo -> icona in core/ (decisione D-1 di Tid, opzione A): un segno scritto qui era l''unico dell''app che non passava dalle costanti del frontend, e lo stesso verbo ne portava due. Brief: brief-db-icone-azioni-per-significato (D-1). rev 2026-09-28 (20260928-09): le azioni non portano piu'' la chiave severity. Come l''icona, il colore del pulsante lo decide il VERBO, uguale in tutti i domini, e il frontend lo ricava dal key (mappa verbo -> aspetto in core/, decisione di Tid): lo stesso verbo portava colori diversi fra i domini. label_key e outlined restano dati. Brief: brief-db-icone-azioni-per-significato (§9). rev 2026-10-10 (20261010-50): via il ramo PREVENTIVO_SENZA_BILLING_ACCOUNT del motivo del push (chiave vendite.preventivi.push_commessa_reason.senza_billing_account): billing_account_id e utility_id del preventivo sono NOT NULL dal 2026-10-08, il ramo non si raggiungeva. Restano tre motivi del push: PREVENTIVO_STATO_CHIUSO, PREVENTIVO_NON_ACCETTATO, PREVENTIVO_NESSUNA_RIGA_COMMESSA. Brief: brief-db-istanza-nasce-col-ba-residui (R-1). rev 2026-10-10 (brief-db-testata-dopo-emissione fase 2): non_editable_fields e can_edit_testata si leggono dal montaggio del lock di testata con script.fn_doc_testata_in_stato: le colonne «sempre» della capability seguite da quelle che il lock blocca nello stato, e can_edit_testata vero se nello stato almeno una colonna nominata si cambia. Ritirate le liste scritte a mano dei campi bloccati fuori bozza (la terza copia della regola, accanto a lock e backend): con D-8/D-10 le colonne aperte dopo l''emissione (note, trasporto, valido_al e CIG/CUP del contratto…) si cambiano negli stati del montaggio e si fermano a documento chiuso. rev 2026-10-11 (brief-db-testata-dopo-emissione §11, R-DB-3): + can_edit_indirizzi, dal montaggio del lock di vendite.preventivi_indirizzi (script.fn_doc_riga_modificabile): gli indirizzi si scrivono solo in bozza, e il backend non lo scrive piu'' (_INDIRIZZI_CFG) rev 2026-10-18 (brief-db-indirizzi-documento-seguono-il-cliente §8.7): via la lista c_sempre_non_edit (utility_id): la utility e'' ferma sempre nel montaggio del lock di testata, con l''emittente, e non_editable_fields le riceve da li'' in ogni stato. La lista era la seconda copia della regola. Firma ancorata: p_preventivo_id vendite.preventivi.id%TYPE (stesso tipo, stessa identita''). ⭐ rev 2026-10-25 (20261025-47, brief-modello-documento-vendita §8, M-3): un passaggio con un''azione di processo sulla sua riga della matrice (letta da script.fn_doc_passaggio: emetti_preventivo sull''emissione e sull''annullo dell''emesso e dell''accettato) si NASCONDE a chi non ha l''azione (script.fn_check_azione_processo, utente da app.current_user_id): permesso => nascondi, stato => disabilita col motivo. I motivi dell''emissione si legano allo stato che il vocabolario dichiara di emissione (config.stati_doc_preventivi.emissione), non al letterale. Rev 2026-10-27 (20261027-41, brief-modello-documento-vendita §15.14): i passaggi manuali permessi da script.fn_doc_azioni_permesse (matrice viva, manuale, permesso => nascondi), non piu'' dal predicato ricopiato.';

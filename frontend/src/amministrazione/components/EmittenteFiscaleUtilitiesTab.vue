@@ -17,9 +17,8 @@ import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
 import { ROUNDING_DECIMALI_RANGE } from '../constants'
-// eslint-disable-next-line no-restricted-imports -- eccezione nel registro DataTable (scripts/datatable.baseline.json)
-import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
+import MatriceCatalogo from '../../core/components/MatriceCatalogo.vue'
 import InputNumber from 'primevue/inputnumber'
 import ToggleSwitch from 'primevue/toggleswitch'
 import Button from 'primevue/button'
@@ -54,10 +53,17 @@ const props = defineProps({
 
 // `metodo_arrotondamento_importi`: Select riusabile EmittenteRoundingModeSelect
 // (Fase 3 — A6). 4 codici allineati al CHECK constraint DB
-// `chk_emittenti_fiscali_utilities_metodo` (UP/DOWN/HALF_UP/HALF_DOWN).
-// `arrotondamento_importi_dec`: range tecnico in `ROUNDING_DECIMALI_RANGE`
-// (constants.js). Allineato al CHECK chk_emittenti_fiscali_utilities_arrotondamento_dec.
+// `chk_emittenti_fiscali_utilities_metodo_arrotondamento` (UP/DOWN/HALF_UP/HALF_DOWN).
+// `arrotondamento_importi_dec`: range in `ROUNDING_DECIMALI_RANGE` (constants.js),
+// specchio del CHECK chk_emittenti_fiscali_utilities_arrotondamento_dec (0..2).
 
+// ⚠️ I tre `InputNumber` della riga hanno anche `@input`, oltre al v-model:
+//    PrimeVue aggiorna il v-model SOLO all'uscita dal campo (blur) o con le
+//    frecce, mentre il «Salva riga» si accende da `isRowValid`, che legge il
+//    modello. Senza, scelto il metodo e scritti i decimali, il Salva restava
+//    spento finche' il cursore stava nel campo — e cliccare un pulsante
+//    disabilitato non toglie il fuoco, quindi non si accendeva mai
+//    (segnalazione di Tid, 2026-10-31; presidio: lo spec di questo file).
 // Stato editing per riga: chiave = utility_id, valore = oggetto editabile.
 // Permette multi-riga: piu' righe possono essere in editing contemporaneamente.
 // Niente default: i campi sono vuoti finche' l'utente non li compila.
@@ -232,142 +238,134 @@ watch(() => props.emittenteId, async (id) => {
       {{ t('amministrazione.emittenti_fiscali.ut_parent_inactive_warn') }}
     </Message>
 
-    <DataTable
-      :value="store.utilitiesRecords"
-      striped-rows
-      scrollable
-      class="app-datatable ut-matrix-table"
-      data-key="utility_id"
-      table-style="min-width: 1260px"
+    <!-- Matrice limitata dal catalogo (`MatriceCatalogo`, dal 2026-10-31): tutte
+         le utility ammesse per il ruolo, configurate o no. NON `MatriceOverride`:
+         una utility non configurata non eredita un valore da nessuno — e' solo
+         da configurare. Modifica e salvataggio sono PER RIGA, nello slot azioni. -->
+    <MatriceCatalogo
+      :voci="store.utilitiesRecords"
+      :chiave="r => r.utility_id"
+      :label-voce="t('amministrazione.emittenti_fiscali.ut_col_descrizione')"
+      class="ut-matrix-table"
     >
-      <Column :header="t('amministrazione.emittenti_fiscali.ut_col_stato')" style="width: 140px; min-width: 140px;">
-        <template #body="{ data }">
-          <Tag
-            v-if="isConfigured(data)"
-            :value="t('amministrazione.emittenti_fiscali.ut_stato_configurata')"
-            severity="success"
-          />
-          <Tag
-            v-else
-            :value="t('amministrazione.emittenti_fiscali.ut_stato_non_configurata')"
-            severity="secondary"
-          />
-        </template>
-      </Column>
-
-      <Column field="utility_codice" :header="t('amministrazione.emittenti_fiscali.ut_col_codice')" style="width: 100px; min-width: 100px;" />
-      <Column field="utility_descrizione" :header="t('amministrazione.emittenti_fiscali.ut_col_descrizione')" style="min-width: 180px;" />
-
-      <Column :header="t('amministrazione.emittenti_fiscali.ut_col_soglia_min')" style="width: 150px; min-width: 150px;">
-        <template #body="{ data }">
-          <InputNumber
-            v-if="isEditing(data)"
-            v-model="editing[data.utility_id].minimo_soglia_min"
-            :min-fraction-digits="2" :max-fraction-digits="6"
-            fluid
-            class="ut-cell-input"
-            :input-class="'ut-cell-input-el'"
-          />
-          <span v-else>{{ data.minimo_soglia_min ?? '—' }}</span>
-        </template>
-      </Column>
-
-      <Column :header="t('amministrazione.emittenti_fiscali.ut_col_soglia_max')" style="width: 150px; min-width: 150px;">
-        <template #body="{ data }">
-          <InputNumber
-            v-if="isEditing(data)"
-            v-model="editing[data.utility_id].minimo_soglia_max"
-            :min-fraction-digits="2" :max-fraction-digits="6"
-            fluid
-            class="ut-cell-input"
-            :input-class="'ut-cell-input-el'"
-          />
-          <span v-else>{{ data.minimo_soglia_max ?? '—' }}</span>
-        </template>
-      </Column>
-
-      <Column :header="t('amministrazione.emittenti_fiscali.ut_col_dec')" style="width: 120px; min-width: 120px;">
-        <template #body="{ data }">
-          <InputNumber
-            v-if="isEditing(data)"
-            v-model="editing[data.utility_id].arrotondamento_importi_dec"
-            :min="ROUNDING_DECIMALI_RANGE.MIN" :max="ROUNDING_DECIMALI_RANGE.MAX"
-            showButtons
-            buttonLayout="stacked"
-            fluid
-            class="ut-cell-input"
-            :input-class="'ut-cell-input-el'"
-          />
-          <span v-else>{{ data.arrotondamento_importi_dec ?? '—' }}</span>
-        </template>
-      </Column>
-
-      <Column :header="t('amministrazione.emittenti_fiscali.ut_col_metodo')" style="width: 170px; min-width: 170px;">
-        <template #body="{ data }">
-          <EmittenteRoundingModeSelect
-            v-if="isEditing(data)"
-            v-model="editing[data.utility_id].metodo_arrotondamento_importi"
-            class="ut-cell-input"
-          />
-          <span v-else>{{ data.metodo_arrotondamento_importi ?? '—' }}</span>
-        </template>
-      </Column>
-
-      <Column :header="t('amministrazione.emittenti_fiscali.ut_col_attivo')" style="width: 90px; min-width: 90px;">
-        <template #body="{ data }">
-          <ToggleSwitch
-            v-if="isEditing(data)"
-            v-model="editing[data.utility_id].attivo"
-            :disabled="!emittenteAttivo"
-            v-tooltip.bottom="!emittenteAttivo ? t('amministrazione.emittenti_fiscali.ut_parent_inactive_tooltip') : null"
-          />
-          <Tag
-            v-else-if="data.record_attivo === true"
-            :value="t('amministrazione.stato_attivo')"
-            severity="success"
-          />
-          <Tag
-            v-else-if="data.record_attivo === false"
-            :value="t('amministrazione.stato_inattivo')"
-            severity="danger"
-          />
-          <span v-else>—</span>
-        </template>
-      </Column>
-
-      <Column
-        v-if="!isReadonly"
-        :header="t('common.col_azioni')"
-        class="app-col-actions"
-        :exportable="false"
-        frozen
-        alignFrozen="right"
-      >
-        <template #body="{ data }">
-          <!-- Editing in corso: Salva + Annulla restano inline (form affordance,
-               non azioni di riga). Devono essere sempre visibili su ogni device. -->
-          <template v-if="isEditing(data)">
-            <Button
-              :icon="MANAGE_ICONS.CONFIRM"
-              text rounded size="small"
+      <template #voce="{ voce }">
+        {{ voce.utility_codice }} — {{ voce.utility_descrizione }}
+      </template>
+      <template #colonne>
+        <Column :header="t('amministrazione.emittenti_fiscali.ut_col_stato')" style="width: 140px; min-width: 140px;">
+          <template #body="{ data }">
+            <Tag
+              v-if="isConfigured(data)"
+              :value="t('amministrazione.emittenti_fiscali.ut_stato_configurata')"
               severity="success"
-              :disabled="!isRowValid(data)"
-              v-tooltip.bottom="t('amministrazione.emittenti_fiscali.ut_action_salva_riga')"
-              @click="saveRow(data)"
             />
-            <Button
-              :icon="MANAGE_ICONS.CANCEL"
-              text rounded size="small"
+            <Tag
+              v-else
+              :value="t('amministrazione.emittenti_fiscali.ut_stato_non_configurata')"
               severity="secondary"
-              v-tooltip.bottom="t('amministrazione.emittenti_fiscali.ut_action_annulla')"
-              @click="cancelEdit(data)"
             />
           </template>
-          <!-- Stato normale: azioni standard via RowActionsMenu. -->
-          <RowActionsMenu v-else :row="data" :actions="buildRowActions(data)" />
-        </template>
-      </Column>
+        </Column>
+        <Column :header="t('amministrazione.emittenti_fiscali.ut_col_soglia_min')" style="width: 150px; min-width: 150px;">
+          <template #body="{ data }">
+            <InputNumber
+              v-if="isEditing(data)"
+              v-model="editing[data.utility_id].minimo_soglia_min"
+              @input="(e) => (editing[data.utility_id].minimo_soglia_min = e.value)"
+              :min-fraction-digits="2" :max-fraction-digits="6"
+              class="ut-cell-input"
+              :input-class="'ut-cell-input-el'"
+            />
+            <span v-else>{{ data.minimo_soglia_min ?? '—' }}</span>
+          </template>
+        </Column>
 
+        <Column :header="t('amministrazione.emittenti_fiscali.ut_col_soglia_max')" style="width: 150px; min-width: 150px;">
+          <template #body="{ data }">
+            <InputNumber
+              v-if="isEditing(data)"
+              v-model="editing[data.utility_id].minimo_soglia_max"
+              @input="(e) => (editing[data.utility_id].minimo_soglia_max = e.value)"
+              :min-fraction-digits="2" :max-fraction-digits="6"
+              class="ut-cell-input"
+              :input-class="'ut-cell-input-el'"
+            />
+            <span v-else>{{ data.minimo_soglia_max ?? '—' }}</span>
+          </template>
+        </Column>
+
+        <Column :header="t('amministrazione.emittenti_fiscali.ut_col_dec')" style="width: 120px; min-width: 120px;">
+          <template #body="{ data }">
+            <InputNumber
+              v-if="isEditing(data)"
+              v-model="editing[data.utility_id].arrotondamento_importi_dec"
+              @input="(e) => (editing[data.utility_id].arrotondamento_importi_dec = e.value)"
+              :min="ROUNDING_DECIMALI_RANGE.MIN" :max="ROUNDING_DECIMALI_RANGE.MAX"
+              showButtons
+              buttonLayout="stacked"
+              class="ut-cell-input ut-cell-input--dec"
+              :input-class="'ut-cell-input-el'"
+            />
+            <span v-else>{{ data.arrotondamento_importi_dec ?? '—' }}</span>
+          </template>
+        </Column>
+
+        <Column :header="t('amministrazione.emittenti_fiscali.ut_col_metodo')" style="width: 170px; min-width: 170px;">
+          <template #body="{ data }">
+            <EmittenteRoundingModeSelect
+              v-if="isEditing(data)"
+              v-model="editing[data.utility_id].metodo_arrotondamento_importi"
+              class="ut-cell-input"
+            />
+            <span v-else>{{ data.metodo_arrotondamento_importi ?? '—' }}</span>
+          </template>
+        </Column>
+
+        <Column :header="t('amministrazione.emittenti_fiscali.ut_col_attivo')" style="width: 90px; min-width: 90px;">
+          <template #body="{ data }">
+            <ToggleSwitch
+              v-if="isEditing(data)"
+              v-model="editing[data.utility_id].attivo"
+              :disabled="!emittenteAttivo"
+              v-tooltip.bottom="!emittenteAttivo ? t('amministrazione.emittenti_fiscali.ut_parent_inactive_tooltip') : null"
+            />
+            <Tag
+              v-else-if="data.record_attivo === true"
+              :value="t('amministrazione.stato_attivo')"
+              severity="success"
+            />
+            <Tag
+              v-else-if="data.record_attivo === false"
+              :value="t('amministrazione.stato_inattivo')"
+              severity="danger"
+            />
+            <span v-else>—</span>
+          </template>
+        </Column>
+      </template>
+      <template #azioni="{ voce: data }">
+        <!-- Editing in corso: Salva + Annulla restano inline (form affordance,
+             non azioni di riga). Devono essere sempre visibili su ogni device. -->
+        <template v-if="isEditing(data)">
+          <Button
+            :icon="MANAGE_ICONS.CONFIRM"
+            text rounded size="small"
+            severity="success"
+            :disabled="!isRowValid(data)"
+            v-tooltip.bottom="t('amministrazione.emittenti_fiscali.ut_action_salva_riga')"
+            @click="saveRow(data)"
+          />
+          <Button
+            :icon="MANAGE_ICONS.CANCEL"
+            text rounded size="small"
+            severity="secondary"
+            v-tooltip.bottom="t('amministrazione.emittenti_fiscali.ut_action_annulla')"
+            @click="cancelEdit(data)"
+          />
+        </template>
+        <!-- Stato normale: azioni standard via RowActionsMenu. -->
+        <RowActionsMenu v-else :row="data" :actions="buildRowActions(data)" />
+      </template>
       <template #empty>
         <div class="app-empty-state">
           <i class="ut-empty-icon" :class="STATUS_ICONS.VUOTO" />
@@ -383,29 +381,39 @@ watch(() => props.emittenteId, async (id) => {
           />
         </div>
       </template>
-    </DataTable>
+    </MatriceCatalogo>
   </div>
 </template>
 
 <style scoped>
-/* Vincola gli input PrimeVue (InputNumber, Select) alla larghezza della cella della
-   matrice utility. Senza questo, in editing l'input wrapper sfora la colonna perche'
-   il min-width interno del componente prevale sul width della Column. */
-.ut-matrix-table :deep(.ut-cell-input) {
-  width: 100%;
-  max-width: 100%;
-  min-width: 0;
-  display: flex;
-}
-.ut-matrix-table :deep(.ut-cell-input .p-inputnumber-input),
+/* I campi della riga in modifica hanno una larghezza ESPLICITA, ed e' la
+   larghezza a decidere la colonna. ⛔ Non `fluid` / `width: 100%`: la tabella
+   e' `width: max-content` (`.app-datatable`), cioe' e' la cella a prendere la
+   misura dal contenuto, e una percentuale del contenitore li' non limita
+   niente — ogni input tornava alla sua larghezza naturale (~20 caratteri) e le
+   sette colonne in modifica superavano il drawer: barra orizzontale appena si
+   premeva «Configura» o «Modifica» (segnalazione di Tid, 2026-10-31). */
 .ut-matrix-table :deep(.ut-cell-input-el) {
-  width: 100%;
+  width: 7rem;
   min-width: 0;
 }
-/* InputNumber con showButtons stacked: i bottoni hanno larghezza fissa, l'input
-   deve restringersi per stare nel resto della cella. */
+/* I decimali: due cifre di testo PIU' lo spazio delle frecce impilate.
+   ⛔ Non un numero solo: con `buttonLayout="stacked"` PrimeVue mette le frecce
+   SOPRA il campo (posizione assoluta, a destra) e gli riserva un margine
+   interno pari alla loro larghezza piu' il padding. A 3.5rem (2026-10-31, una
+   correzione sbagliata) il testo non aveva spazio: il numero non si vedeva e
+   il clic cadeva sulle frecce, quindi non si riusciva a scrivere. La misura
+   si compone dai token del tema, cosi' segue le frecce se cambiano. */
+.ut-matrix-table :deep(.ut-cell-input--dec .ut-cell-input-el) {
+  width: calc(2ch + var(--p-inputnumber-button-width, 2.5rem) + 2 * var(--p-form-field-padding-x, 0.75rem));
+}
 .ut-matrix-table :deep(.ut-cell-input.p-inputnumber) {
   flex-wrap: nowrap;
+}
+/* Il metodo: l'etichetta lunga («descrizione (codice)») si taglia coi puntini
+   dentro il Select, invece di allargare la colonna. */
+.ut-matrix-table :deep(.p-select.ut-cell-input) {
+  width: 11rem;
 }
 /* Il contenitore e' `app-empty-state` (main.css): fino al 17/09 qui c'era una
  * copia identica, `.ut-empty`, accanto a un `app-empty` che non esisteva. */

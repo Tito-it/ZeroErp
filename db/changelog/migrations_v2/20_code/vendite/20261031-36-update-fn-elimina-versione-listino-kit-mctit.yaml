@@ -1,0 +1,197 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ELIMINARE UNA VERSIONE PORTA VIA ANCHE I SUOI KIT: vendite.fn_elimina_versione_listino
+#   Brief: brief-db-contratto-righe-periodiche-in-commessa §7.7 (L12, D-2-bis).
+#
+#   La versione in bozza si cancella con i suoi componenti e le sue righe
+#   (20261028-39); da oggi anche con le righe di vendite.listini_kit
+#   (20261031-29), che la citano con una FK NO ACTION: senza, la cancellazione
+#   della versione si fermerebbe sulla FK. Prima dei componenti, nello stesso
+#   giro; il guard del kit le ammette perche' la versione e' in bozza.
+#   RETURNS TABLE invariato: i kit non si contano (non sono prezzi).
+#   Corpo dal catalogo vivo di dbdev (2026-10-31, uguale al 20261028-39). COMMENT,
+#   REVOKE e GRANT vivi restano: CREATE OR REPLACE non li tocca.
+#   Ritorno indietro: il corpo del 20261028-39.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261031-36-update-fn-elimina-versione-listino-kit-mctit.yaml
+
+  - changeSet:
+      id: 20261031-36-update-fn-elimina-versione-listino-kit
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_elimina_versione_listino: cancella anche le righe di vendite.listini_kit della versione. Brief: brief-db-contratto-righe-periodiche-in-commessa §7.7 (L12).
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: vendite
+            tableName: listini_kit
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_elimina_versione_listino(
+                  p_versione_id vendite.listini_versioni.id%TYPE)
+               RETURNS TABLE(versione_id          vendite.listini_versioni.id%TYPE,
+                             -- CONTEGGI delle righe cancellate.
+                             righe_eliminate      integer,
+                             componenti_eliminati integer)
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_listino_id vendite.listini_versioni.listino_id%TYPE;
+                  v_stato      config.stati_doc_listino_versioni.codice_interno%TYPE;
+                  v_tx_id      vendite.listini_versioni.tx_id%TYPE;
+                  -- CONTEGGI delle righe cancellate.
+                  v_righe      integer;
+                  v_componenti integer;
+              BEGIN
+                  -- ==========================================================
+                  -- Scopo: eliminare una versione di listino in BOZZA con i
+                  --   suoi componenti e le sue righe, in una transazione.
+                  --   Vedi l'intestazione del changeSet 20261028-39.
+                  -- ==========================================================
+
+                  -- 1. Parametro e versione, nel perimetro (RLS).
+                  IF p_versione_id IS NULL OR p_versione_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_elimina_versione_listino',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_versione_id', p_versione_id),
+                          NULL::uuid, 'vendite.fn_elimina_versione_listino',
+                          'p_versione_id (obbligatorio, maggiore di zero)');
+                  END IF;
+
+                  SELECT lv.listino_id, s.codice_interno, lv.tx_id
+                    INTO v_listino_id, v_stato, v_tx_id
+                    FROM vendite.listini_versioni lv
+                    JOIN config.stati_doc_listino_versioni s ON s.id = lv.stato_doc_listino_versione_id
+                   WHERE lv.id = p_versione_id
+                     FOR UPDATE OF lv;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_elimina_versione_listino',
+                          'E_VENDITE_LISTINO_VERSIONE_NOT_FOUND',
+                          -- Frase chiusa: nessun segnaposto, il variadico vuoto e' esplicito.
+                          jsonb_build_object('id', p_versione_id), NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  -- 2. Prima cio' che vieta, prima di toccare righe e componenti.
+                  PERFORM script.fn_raise_primo_motivo_se_presente(
+                      'vendite', 'vendite.fn_elimina_versione_listino',
+                      script.fn_check_versione_listino_eliminabile(p_versione_id),
+                      NULL,
+                      v_tx_id,
+                      jsonb_build_object('versione_id', p_versione_id,
+                                         'listino_id', v_listino_id, 'stato', v_stato));
+
+                  -- 3. Kit, componenti, righe, versione. rev 2026-10-31 (20261031-36,
+                  --    D-2-bis): i kit della versione (vendite.listini_kit), prima di lei.
+                  DELETE FROM vendite.listini_kit k
+                   WHERE k.listino_versione_id = p_versione_id;
+
+                  DELETE FROM vendite.listini_righe_componenti c
+                   WHERE c.listino_versione_id = p_versione_id;
+                  GET DIAGNOSTICS v_componenti = ROW_COUNT;
+
+                  DELETE FROM vendite.listini_righe r
+                   WHERE r.listino_versione_id = p_versione_id;
+                  GET DIAGNOSTICS v_righe = ROW_COUNT;
+
+                  DELETE FROM vendite.listini_versioni lv
+                   WHERE lv.id = p_versione_id;
+
+                  RETURN QUERY SELECT p_versione_id, v_righe, v_componenti;
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_elimina_versione_listino(
+                  p_versione_id vendite.listini_versioni.id%TYPE)
+               RETURNS TABLE(versione_id          vendite.listini_versioni.id%TYPE,
+                             -- CONTEGGI delle righe cancellate.
+                             righe_eliminate      integer,
+                             componenti_eliminati integer)
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_listino_id vendite.listini_versioni.listino_id%TYPE;
+                  v_stato      config.stati_doc_listino_versioni.codice_interno%TYPE;
+                  v_tx_id      vendite.listini_versioni.tx_id%TYPE;
+                  -- CONTEGGI delle righe cancellate.
+                  v_righe      integer;
+                  v_componenti integer;
+              BEGIN
+                  -- ==========================================================
+                  -- Scopo: eliminare una versione di listino in BOZZA con i
+                  --   suoi componenti e le sue righe, in una transazione.
+                  --   Vedi l'intestazione del changeSet 20261028-39.
+                  -- ==========================================================
+
+                  -- 1. Parametro e versione, nel perimetro (RLS).
+                  IF p_versione_id IS NULL OR p_versione_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_elimina_versione_listino',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_versione_id', p_versione_id),
+                          NULL::uuid, 'vendite.fn_elimina_versione_listino',
+                          'p_versione_id (obbligatorio, maggiore di zero)');
+                  END IF;
+
+                  SELECT lv.listino_id, s.codice_interno, lv.tx_id
+                    INTO v_listino_id, v_stato, v_tx_id
+                    FROM vendite.listini_versioni lv
+                    JOIN config.stati_doc_listino_versioni s ON s.id = lv.stato_doc_listino_versione_id
+                   WHERE lv.id = p_versione_id
+                     FOR UPDATE OF lv;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_elimina_versione_listino',
+                          'E_VENDITE_LISTINO_VERSIONE_NOT_FOUND',
+                          -- Frase chiusa: nessun segnaposto, il variadico vuoto e' esplicito.
+                          jsonb_build_object('id', p_versione_id), NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  -- 2. Prima cio' che vieta, prima di toccare righe e componenti.
+                  PERFORM script.fn_raise_primo_motivo_se_presente(
+                      'vendite', 'vendite.fn_elimina_versione_listino',
+                      script.fn_check_versione_listino_eliminabile(p_versione_id),
+                      NULL,
+                      v_tx_id,
+                      jsonb_build_object('versione_id', p_versione_id,
+                                         'listino_id', v_listino_id, 'stato', v_stato));
+
+                  -- 3. Componenti, righe, versione.
+                  DELETE FROM vendite.listini_righe_componenti c
+                   WHERE c.listino_versione_id = p_versione_id;
+                  GET DIAGNOSTICS v_componenti = ROW_COUNT;
+
+                  DELETE FROM vendite.listini_righe r
+                   WHERE r.listino_versione_id = p_versione_id;
+                  GET DIAGNOSTICS v_righe = ROW_COUNT;
+
+                  DELETE FROM vendite.listini_versioni lv
+                   WHERE lv.id = p_versione_id;
+
+                  RETURN QUERY SELECT p_versione_id, v_righe, v_componenti;
+              END;
+              $function$;

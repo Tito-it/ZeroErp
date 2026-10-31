@@ -29,6 +29,7 @@ DECLARE
     v_bersagli jsonb;
     v_offerta               vendite.offerte_commerciali%ROWTYPE;
     v_stato_cod             config.stati_doc_offerte.codice_interno%TYPE;
+    v_accettazione          config.stati_doc_offerte.accettazione%TYPE;
     v_sorgente_ofc_id       config.sorgenti.id%TYPE;
     v_sorgente_contratto_id config.sorgenti.id%TYPE;
     v_contratto_id          vendite.contratti.id%TYPE;
@@ -71,13 +72,14 @@ BEGIN
         );
     END IF;
 
-    -- Recupera codice stato dell'offerta.
-    SELECT codice_interno INTO v_stato_cod
+    -- Recupera codice stato dell'offerta, e se e' l'accettazione.
+    SELECT codice_interno, accettazione INTO v_stato_cod, v_accettazione
       FROM config.stati_doc_offerte
      WHERE id = v_offerta.stato_doc_offerta_id;
 
-    -- Guard: push ammesso SOLO da stato ACCETTATA.
-    IF v_stato_cod IS DISTINCT FROM 'ACCETTATA' THEN
+    -- Guard: push ammesso SOLO dallo stato di accettazione, dal
+    -- vocabolario (rev 2026-10-31 (20261031-17, brief-modello-documento-vendita §17)).
+    IF v_accettazione IS NOT TRUE THEN
         PERFORM script.fn_log_and_raise_error(
             'vendite', 'fn_push_offerta_a_contratto',
             'E_OFFERTA_PUSH_STATO_NON_AMMESSO',
@@ -221,6 +223,8 @@ BEGIN
             sorgente_uid,
             offerta_id,
             emittente_fiscale_id,
+            generazione_canone,
+            mese_partenza_canone,
             meta
         )
         VALUES (
@@ -237,6 +241,8 @@ BEGIN
             v_offerta.uid,
             p_offerta_id,
             v_offerta.emittente_fiscale_id,
+            v_offerta.generazione_canone,
+            v_offerta.mese_partenza_canone,
             COALESCE(v_offerta.meta, '{}'::jsonb)
         )
         RETURNING id, uid INTO v_contratto_id, v_contratto_uid;
@@ -298,7 +304,6 @@ BEGIN
             fonte_quantita_attesa,
             periodicita,
             generazione_canone,
-            competenza_canone,
             prezzo_unitario,
             quantita,
             qta_operativa,
@@ -318,7 +323,6 @@ BEGIN
             v_eccezione.fonte_quantita_attesa,
             v_eccezione.periodicita,
             v_eccezione.generazione_canone,
-            v_eccezione.competenza_canone,
             v_eccezione.prezzo_unitario,
             v_eccezione.quantita,
             v_eccezione.qta_operativa,

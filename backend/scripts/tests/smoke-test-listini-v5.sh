@@ -41,6 +41,13 @@
 # 26) Resolver STADIO 1b: override B -> origine CONTRATTO_OVERRIDE
 # 27) Resolver STADIO 2: BA senza contratto -> origine CATEGORIA
 # 28) Resolver STADIO 0: promo attiva -> origine PROMO (se BA categoria partecipa)
+# 28b) Versione: clona prima della sorgente (400 E_LISTINO_VERSIONE_CLONE_PRIMA_DELLA_SORGENTE)
+# 28c) Versione: clona con `meta` nel corpo (400 E_VENDITE_VALIDATION)
+# 28d) Versione: clona la ATTIVA in una BOZZA (righe_copiate=1)
+# 28e) Versione: chiudi una BOZZA (409 E_LISTINO_VERSIONE_NON_CHIUDIBILE)
+# 28f) Versione: chiudi la ATTIVA nel passato (400 E_LISTINO_VERSIONE_FINE_NEL_PASSATO)
+# 28g) Versione: chiudi la ATTIVA a una data futura, poi togli la chiusura
+# 28h) Versione: elimina la ATTIVA (409 E_LISTINO_VERSIONE_NON_ELIMINABILE), poi la BOZZA
 # 29) Cleanup: disattiva contratti, promo, matrice, listino, categoria
 # ------------------------------------------------------------
 set -euo pipefail
@@ -50,6 +57,7 @@ BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
 source "$(dirname "${BASH_SOURCE[0]}")/_smoke_auth.sh" "$@"
 source "$(dirname "${BASH_SOURCE[0]}")/_smoke_cliente.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/_smoke_documenti.sh"   # smoke_emetti
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_errori.sh"      # smoke_check_codice
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -522,10 +530,7 @@ smoke_emetti contratti "$CONTRATTO_C_ID"
 # Il rifiuto di dominio ha il suo codice e il suo stato (422, una regola del
 # documento): fino al 2026-10-12 lo smoke si aspettava un 400 generico, e lo
 # prendeva dalla strada sbagliata (il cambio di stato diretto).
-check "Attivazione C senza righe rifiutata" "422" ".error.code"
-[[ "$EXTRACTED" == "E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE" ]] \
-    && log_ok "Codice corretto: E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE" \
-    || log_fail "Codice atteso E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE, ricevuto '${EXTRACTED:-<vuoto>}'"
+smoke_check_codice "Attivazione C senza righe rifiutata" 422 E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE
 
 # --- 21. Contratto C: aggiungi riga con prezzo ---
 echo ""
@@ -671,6 +676,87 @@ if [[ "$LAST_STATUS" == "200" ]]; then
 else
     ERR_CODE=$(json_get "$LAST_BODY" ".error.code")
     log_info "Scenario D errore applicativo: ${ERR_CODE}"
+fi
+
+# --- 28b … 28h. Ciclo della versione: «Clona», «Chiudi», «Elimina» ---
+# Sono i verbi del DB (brief-modello-documento-vendita §16.13, §16.16):
+# `fn_clona_versione_listino`, `fn_programma_chiusura_versione_listino`,
+# `fn_elimina_versione_listino`. I rifiuti arrivano col codice del DB, non
+# con E_VENDITE_VALIDATION del backend. Si lavora sulla versione ATTIVA del
+# passo 8 (valido_dal = oggi, un prezzo) e su una sua copia in BOZZA.
+# ⚠️ La porta della fine di una ATTIVA (E_LISTINO_VERSIONE_FINE_SOLO_DAL_VERBO,
+#    un PATCH di `valido_al`) NON si prova qui: e' un TECNICO (500), che il
+#    diario conta come un guasto. La prova il DB vero
+#    (`test_listino_versione_modello_db`).
+IERI=$(date -d yesterday +%F)
+FRA_30=$(date -d "+30 days" +%F)
+FRA_60=$(date -d "+60 days" +%F)
+VER_URL="/api/v1/vendite/listini/${LISTINO_ID}/versioni"
+
+echo ""
+echo "-- 28b. Clona prima della sorgente (D2, 400 atteso) --"
+do_curl POST "${VER_URL}/${VERSIONE_ID}/clona/" \
+    "{\"codice_versione\":\"${VERSION_CODE}-D2\",\"valido_dal\":\"${IERI}\"}"
+smoke_check_codice "Clona con decorrenza prima della sorgente" 400 E_LISTINO_VERSIONE_CLONE_PRIMA_DELLA_SORGENTE
+
+echo ""
+echo "-- 28c. Clona con meta nel corpo (400 atteso) --"
+do_curl POST "${VER_URL}/${VERSIONE_ID}/clona/" \
+    "{\"codice_versione\":\"${VERSION_CODE}-META\",\"valido_dal\":\"${FRA_60}\",\"meta\":{}}"
+smoke_check_codice "Clona con meta (non si clona)" 400 E_VENDITE_VALIDATION
+
+echo ""
+echo "-- 28d. Clona la versione ATTIVA in una BOZZA --"
+do_curl POST "${VER_URL}/${VERSIONE_ID}/clona/" \
+    "{\"codice_versione\":\"${VERSION_CODE}-CLN\",\"valido_dal\":\"${FRA_60}\"}"
+check "Clona versione" "200" ".data.id"
+CLONE_ID="$EXTRACTED"
+CLONE_STATO=$(json_get "$LAST_BODY" ".data.stato")
+CLONE_RIGHE=$(json_get "$LAST_BODY" ".data.righe_copiate")
+if [[ "$CLONE_STATO" == "BOZZA" && "$CLONE_RIGHE" == "1" ]]; then
+    log_ok "Copia in BOZZA con il suo prezzo (righe_copiate=${CLONE_RIGHE})"
+else
+    log_fail "Copia inattesa: stato='${CLONE_STATO}' righe_copiate='${CLONE_RIGHE}'"
+fi
+
+echo ""
+echo "-- 28e. Chiudi una BOZZA (409 atteso) --"
+do_curl POST "${VER_URL}/${CLONE_ID}/chiusura/" "{\"valido_al\":\"${FRA_30}\"}"
+smoke_check_codice "Chiudi una BOZZA" 409 E_LISTINO_VERSIONE_NON_CHIUDIBILE
+
+echo ""
+echo "-- 28f. Chiudi la ATTIVA con la fine nel passato (400 atteso) --"
+do_curl POST "${VER_URL}/${VERSIONE_ID}/chiusura/" "{\"valido_al\":\"${IERI}\"}"
+smoke_check_codice "Chiudi con la fine nel passato" 400 E_LISTINO_VERSIONE_FINE_NEL_PASSATO
+
+echo ""
+echo "-- 28g. Chiudi la ATTIVA a una data futura, poi togli la chiusura --"
+do_curl POST "${VER_URL}/${VERSIONE_ID}/chiusura/" "{\"valido_al\":\"${FRA_30}\"}"
+check "Chiusura programmata" "200" ".data.chiusura_programmata"
+CHIUSA_STATO=$(json_get "$LAST_BODY" ".data.stato")
+if [[ "$EXTRACTED" == "True" && "$CHIUSA_STATO" == "ATTIVA" ]]; then
+    log_ok "Resta ATTIVA con la fine al ${FRA_30}: la chiude il job"
+else
+    log_fail "Chiusura inattesa: programmata='${EXTRACTED}' stato='${CHIUSA_STATO}'"
+fi
+do_curl POST "${VER_URL}/${VERSIONE_ID}/chiusura/" "{\"valido_al\":null}"
+check "Rimuovi chiusura" "200" ".data.valido_al"
+if [[ "$EXTRACTED" == "None" ]]; then
+    log_ok "Chiusura tolta (valido_al null)"
+else
+    log_fail "Fine ancora scritta: '${EXTRACTED}'"
+fi
+
+echo ""
+echo "-- 28h. Elimina: la ATTIVA no (409), la BOZZA si' --"
+do_curl DELETE "${VER_URL}/${VERSIONE_ID}/"
+smoke_check_codice "Elimina la versione ATTIVA" 409 E_LISTINO_VERSIONE_NON_ELIMINABILE
+do_curl DELETE "${VER_URL}/${CLONE_ID}/"
+check "Elimina la BOZZA" "200" ".data.righe_eliminate"
+if [[ "$EXTRACTED" == "1" ]]; then
+    log_ok "BOZZA eliminata con il suo prezzo (righe_eliminate=1)"
+else
+    log_fail "Eliminazione inattesa: righe_eliminate='${EXTRACTED}'"
 fi
 
 # --- 29. Cleanup finale ---

@@ -20,6 +20,8 @@ Indice test eseguiti:
 8) CommesseSourceHandlersTests.test_process_rows_default_stato_approvazione_bozza
 9) CommesseSourceHandlersTests.test_process_rows_isolamento_errori_per_riga
 10) CommesseSourceHandlersTests.test_handler_contratti_esiste
+10b) CommesseSourceHandlersTests.test_contratto_apre_la_commessa_senza_periodo
+10c) CommesseSourceHandlersTests.test_sorgente_a_evento_tiene_il_periodo_nella_chiave
 11) CommesseSourceHandlersTests.test_handler_ddt_esiste
 12) CommesseSourceHandlersTests.test_handler_consumi_expand_rows_fanout
 13) CommesseSourceHandlersTests.test_process_rows_cache_commessa_evita_chiamate_ripetute
@@ -81,6 +83,13 @@ Fan-out compositi modello unico per sorgenti ≠ preventivo (analisi-commesse §
 Hook fasi di lavorazione (scaffolding §6):
 55) PreCommessaHookTests.test_hook_default_identity
 56) PreCommessaHookTests.test_hook_override_applicato_al_push
+
+I componenti del kit dal LISTINO (D-2 (c), brief-db-contratto-righe-periodiche-in-commessa §7.2):
+57) BoMComponentExpanderTests.test_kit_senza_riga_legge_i_componenti_dal_listino
+58) BoMComponentExpanderTests.test_kit_aderito_snapshot_vuoto_legge_il_listino
+59) BoMComponentExpanderTests.test_componenti_negoziati_il_listino_non_si_legge
+60) CompositiFanOutWiringTests.test_solo_il_contratto_legge_i_kit_dal_listino
+61) CompositiFanOutWiringTests.test_kit_dal_listino_una_lettura_per_pezzo
 """
 
 import dataclasses
@@ -398,6 +407,51 @@ class CommesseSourceHandlersTests(TestCase):
         handler = HandlerContratti(repo)
         self.assertEqual(handler.sorgente_codice, "CONTRATTO")
         self.assertEqual(handler.name, "HandlerContratti")
+
+    # Scopo: G-6 (brief-db-contratto-righe-periodiche-in-commessa) — due pezzi
+    #        di canone dello stesso contratto, con periodi diversi, vanno nella
+    #        STESSA commessa, aperta senza periodo. Col periodo nella chiave il
+    #        secondo pezzo aprirebbe un'altra commessa, e la madre DB lo
+    #        rifiuterebbe (`E_COMMESSA_SORGENTE_ALTRA_COMMESSA`, D-12).
+    def test_contratto_apre_la_commessa_senza_periodo(self):
+        repo = _mock_repo()
+        repo.fetch_pushable_rows.return_value = [
+            _make_row(segment_key="CONTRATTO:uid-1:R:1:M:2026-06", sorgente_uid="uid-1",
+                      competenza_dal=date(2026, 6, 1), competenza_al=date(2026, 6, 30)),
+            _make_row(segment_key="CONTRATTO:uid-1:R:1:M:2026-07", sorgente_uid="uid-1",
+                      competenza_dal=date(2026, 7, 1), competenza_al=date(2026, 7, 31)),
+        ]
+        HandlerContratti(repo).run()
+
+        repo.get_or_create_commessa.assert_called_once()
+        kwargs = repo.get_or_create_commessa.call_args.kwargs
+        self.assertIsNone(kwargs["competenza_dal"])
+        self.assertIsNone(kwargs["competenza_al"])
+        # Il periodo non sparisce: resta sulla riga di commessa.
+        inputs = repo.batch_upsert_attivita.call_args[0][0]
+        self.assertEqual(
+            [(i.competenza_dal, i.competenza_al) for i in inputs],
+            [(date(2026, 6, 1), date(2026, 6, 30)), (date(2026, 7, 1), date(2026, 7, 31))],
+        )
+
+    # Scopo: simmetrico — le sorgenti a evento tengono il periodo nella chiave:
+    #        senza, il test sopra si soddisferebbe togliendo il periodo a tutti.
+    def test_sorgente_a_evento_tiene_il_periodo_nella_chiave(self):
+        repo = _mock_repo()
+        repo.get_or_create_commessa.side_effect = [10, 11]
+        repo.fetch_pushable_rows.return_value = [
+            _make_row(segment_key="K:1", sorgente_uid="uid-1",
+                      competenza_dal=date(2026, 6, 1), competenza_al=date(2026, 6, 30)),
+            _make_row(segment_key="K:2", sorgente_uid="uid-2",
+                      competenza_dal=date(2026, 7, 1), competenza_al=date(2026, 7, 31)),
+        ]
+        HandlerPreventivi(repo).run()
+
+        self.assertEqual(repo.get_or_create_commessa.call_count, 2)
+        self.assertEqual(
+            [c.kwargs["competenza_dal"] for c in repo.get_or_create_commessa.call_args_list],
+            [date(2026, 6, 1), date(2026, 7, 1)],
+        )
 
     # Scopo: HandlerDdt esiste e ha sorgente_codice DDT_VENDITA (#8).
     def test_handler_ddt_esiste(self):
@@ -774,6 +828,62 @@ class BoMComponentExpanderTests(TestCase):
 
         self.assertEqual(result, [row])
         snapshot_loader.assert_not_called()
+
+    # ── I componenti dal LISTINO (D-2 (c), brief-db-contratto-righe-
+    #    periodiche-in-commessa §7.2): il kit che il documento non negozia ──
+
+    # Scopo: la quota fissa di un kit arriva senza riga sorgente: i
+    # componenti li da' il secondo lettore, che riceve la riga intera.
+    def test_kit_senza_riga_legge_i_componenti_dal_listino(self):
+        snapshot_loader = MagicMock()
+        listino_loader = MagicMock(return_value=[
+            _make_snapshot_componente(componente_id="cmp-01", coeff_qta_snapshot=Decimal("2")),
+            _make_snapshot_componente(componente_id="cmp-02", coeff_qta_snapshot=Decimal("1")),
+        ])
+        expander = BoMComponentExpander(
+            is_composito_fn=MagicMock(return_value=True),
+            componenti_loader=snapshot_loader,
+            componenti_listino_loader=listino_loader,
+        )
+        row = _make_composito_row(riga_sorgente_id=None)
+
+        result = expander.expand(row)
+
+        snapshot_loader.assert_not_called()
+        listino_loader.assert_called_once_with(row)
+        self.assertEqual([r.articolo_id for r in result], ["cmp-01", "cmp-02"])
+        self.assertEqual([r.quantita for r in result], [Decimal("6"), Decimal("3")])
+
+    # Scopo: l'ADESIONE su un kit ha la riga ma nessun componente suo: dopo
+    # lo snapshot vuoto, il listino.
+    def test_kit_aderito_snapshot_vuoto_legge_il_listino(self):
+        snapshot_loader = MagicMock(return_value=[])
+        listino_loader = MagicMock(return_value=[_make_snapshot_componente(componente_id="cmp-01")])
+        expander = BoMComponentExpander(
+            is_composito_fn=MagicMock(return_value=True),
+            componenti_loader=snapshot_loader,
+            componenti_listino_loader=listino_loader,
+        )
+        row = _make_composito_row(riga_sorgente_id=42)
+
+        result = expander.expand(row)
+
+        snapshot_loader.assert_called_once_with(42)
+        listino_loader.assert_called_once_with(row)
+        self.assertEqual([r.articolo_id for r in result], ["cmp-01"])
+
+    # Scopo: i componenti negoziati vincono: il listino non si legge.
+    def test_componenti_negoziati_il_listino_non_si_legge(self):
+        listino_loader = MagicMock()
+        expander = BoMComponentExpander(
+            is_composito_fn=MagicMock(return_value=True),
+            componenti_loader=MagicMock(return_value=[_make_snapshot_componente()]),
+            componenti_listino_loader=listino_loader,
+        )
+
+        expander.expand(_make_composito_row(riga_sorgente_id=42))
+
+        listino_loader.assert_not_called()
 
     # Scopo: DEC-3 — quantita componente = padre × coeff_qta_snapshot,
     # senza rounding. Test piena precisione con coeff_qta non intero.
@@ -1358,6 +1468,37 @@ class CompositiFanOutWiringTests(TestCase):
                 handler._bom_expander._componenti_loader,
                 f"{cls.__name__}: atteso loader componenti nel default expander",
             )
+
+    # Scopo: il secondo lettore (i componenti dal listino, D-2 (c)) ce l'ha
+    #        solo il contratto; legge alla data del pezzo, col contratto della
+    #        riga (`sorgente_uid` = `contratti.uid`).
+    def test_solo_il_contratto_legge_i_kit_dal_listino(self):
+        for cls in (HandlerPreventivi, HandlerOrdini, HandlerDdt):
+            self.assertIsNone(cls(_mock_repo())._bom_expander._componenti_listino_loader)
+        comp_repo = MagicMock()
+        comp_repo.list_componenti_kit_dal_listino.return_value = ["c1"]
+        loader = HandlerContratti._componenti_listino_loader(comp_repo)
+        row = _make_composito_row(sorgente_uid="uid-ctr", data_attivita=date(2026, 7, 1))
+
+        self.assertEqual(loader(row), ["c1"])
+        comp_repo.list_componenti_kit_dal_listino.assert_called_once_with(
+            contratto_uid="uid-ctr", articolo_padre_id=row.articolo_id, data=date(2026, 7, 1),
+        )
+
+    # Scopo: una lettura per (contratto, kit, data) nel giro; un'altra data
+    #        e' un'altra lettura (il listino puo' cambiare versione).
+    def test_kit_dal_listino_una_lettura_per_pezzo(self):
+        comp_repo = MagicMock()
+        comp_repo.list_componenti_kit_dal_listino.return_value = ["c1"]
+        loader = HandlerContratti._componenti_listino_loader(comp_repo)
+        luglio = _make_composito_row(sorgente_uid="uid-ctr", data_attivita=date(2026, 7, 1))
+        agosto = _make_composito_row(sorgente_uid="uid-ctr", data_attivita=date(2026, 8, 1))
+
+        loader(luglio)
+        loader(luglio)
+        self.assertEqual(comp_repo.list_componenti_kit_dal_listino.call_count, 1)
+        loader(agosto)
+        self.assertEqual(comp_repo.list_componenti_kit_dal_listino.call_count, 2)
 
     # Scopo: i consumi NON usano il modello unico (decomposizione tariffaria a
     #        parte, rinviata) → nessuna factory componenti.

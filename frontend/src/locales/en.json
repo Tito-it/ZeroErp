@@ -465,10 +465,11 @@
     },
     "campi": {
       "abilita_fattura": "Enables invoice",
+      "accettazione": "Acceptance state",
       "aliquota_iva": "VAT rate",
       "applica_fattura": "Applies to invoice",
       "applica_lotto": "Applies to batch",
-        "apribile": "Openable (has its own page)",
+      "apribile": "Openable (has its own page)",
       "area": "Area",
       "arrotondamento_decimali": "Rounding decimals",
       "arrotondamento_metodo": "Rounding method",
@@ -485,6 +486,7 @@
       "categoria_accisa_id": "Excise category",
       "causale_magazzino": "Warehouse reason",
       "centro_riscossione_id": "Collection center",
+      "cessazione": "Termination state",
       "cf_obbligatorio": "Tax code required",
       "check_lettura": "Read check",
       "chiude_commessa": "Closes the job",
@@ -496,6 +498,7 @@
       "codice_iso": "ISO code",
       "congela_fiscale": "Freezes fiscal data",
       "consente_stock_negativo": "Allows negative stock",
+      "conta_dal_calendario": "Counts duration from the calendar (days or months)",
       "conto_iva_acquisti_id": "Purchase VAT account",
       "conto_iva_vendita_id": "Sales VAT account",
       "dati_societari_policy": "Company data policy",
@@ -512,7 +515,7 @@
       "entita_tabella": "Entity table",
       "esito": "Outcome",
       "esito_default": "Default outcome",
-        "etichetta": "Label",
+      "etichetta": "Label",
       "extra_country": "Country data (JSON)",
       "fase": "Phase",
       "fatturabile": "Billable",
@@ -1615,7 +1618,6 @@
       "ut_col_stato": "Status",
       "ut_stato_configurata": "Configured",
       "ut_stato_non_configurata": "Not configured",
-      "ut_col_codice": "Code",
       "ut_col_descrizione": "Utility",
       "ut_col_soglia_min": "Min threshold",
       "ut_col_soglia_max": "Max threshold",
@@ -1871,7 +1873,11 @@
         "PROCESSO": "Automatic process",
         "API_CLIENT": "External system"
       }
-    }
+    },
+    "profilo_reparto_cerca": "Search area or action…",
+    "profilo_reparto_azioni_abilitate": "Actions enabled in this area",
+    "profilo_reparto_area_senza_azioni": "This area has no process actions: only the area level applies.",
+    "profilo_reparto_limitata_da_area": "Limited by the area: it needs «{minimo}», the area is «{area}». Enabled in the profile, but without effect until the area reaches that level."
   },
   "indirizzi": {
     "tab_indirizzi": "Addresses",
@@ -2106,6 +2112,7 @@
     "col_uom_da": "UoM From",
     "col_uom_a": "UoM To",
     "tag_base": "Base",
+    "tag_logistica": "Logistics",
     "conv_search_placeholder": "Search conversion (UoM code)...",
     "conv_mostra_non_attive": "Show inactive",
     "nuova_conversione": "New Conversion",
@@ -2485,9 +2492,11 @@
       "fonte_quantita_value_manuale": "Manual (on document)",
       "fonte_quantita_value_timesheet": "From time tracking",
       "fonte_quantita_value_letture": "From utility readings",
+      "fonte_quantita_value_durata": "From the period length",
       "fonte_quantita_tag_manuale": "Defined on document",
       "fonte_quantita_tag_timesheet": "From time tracking",
       "fonte_quantita_tag_letture": "From utility readings",
+      "fonte_quantita_tag_durata": "From the days or months of the period",
       "fonte_quantita_tag_tooltip": "Quantity will be determined downstream, not set here.",
       "select_categoria_cliente": "Select category...",
       "select_billing_account": "Search client...",
@@ -2518,8 +2527,16 @@
       "tipo_eccezione_OVERRIDE": "Override",
       "tipo_eccezione_ESCLUSIONE": "Exclusion",
       "tipo_eccezione_AGGIUNTA": "Addition",
+      "tipo_eccezione_ADESIONE": "Subscription",
       "field_tipo_eccezione": "Exception type",
       "azione_escludi": "Exclude article",
+      "azione_aderisci": "Subscribe",
+      "azione_rimuovi_adesione": "Remove subscription",
+      "rimuovi_adesione_dialog_titolo": "Remove subscription",
+      "rimuovi_adesione_dialog_messaggio": "{articolo} will no longer be charged: it stays among the price list rows. Continue?",
+      "rimuovi_adesione_dialog_conferma": "Remove",
+      "prezzo_da_listino": "Price list price",
+      "prezzo_da_listino_tooltip": "A subscription takes the price list price, with the global variation: only quantity and periodicity are set on the row.",
       "azione_aggiungi_articolo": "Add off-list article",
       "aggiungi_articolo": "Add article",
       "aggiungi_articolo_tooltip": "Add to the contract an article not present in the reference price list (AGGIUNTA).",
@@ -2566,6 +2583,7 @@
       "origine_override": "Override",
       "origine_aggiunta": "Manual",
       "origine_esclusione": "Exclusion",
+      "origine_adesione": "Subscription",
       "componenti_bundle_tooltip": "Show bundle components",
       "riga_creata": "Row created",
       "riga_salvata": "Row saved",
@@ -2641,7 +2659,8 @@
         "PUSH_PARZIALE": "Partial push to job",
         "SENZA_FIGLIO": "Accepted without generated contract/order",
         "FIGLIO_ABORTITO": "Generated document later cancelled — revision needed",
-        "CANONE_NON_GENERATO": "Month fee not generated",
+        "CANONE_NON_GENERATO": "Accrued fee to be pushed to the job",
+        "CANONE_NON_GENERABILE": "Fee that cannot be charged — review the contract",
         "ATTIVITA_NON_APPROVATA": "Activity not approved",
         "ATTIVITA_NON_EMESSA": "Activity not issued",
         "IN_TRANSITO": "Goods in transit, invoicing not yet due",
@@ -3378,6 +3397,7 @@
       "clona_versione": "Clone version",
       "versione_sorgente": "Source version",
       "versione_clonata": "Version cloned to DRAFT",
+      "clona_componenti_saltati": "{count} composite component(s) not copied: the bill of materials does not include them in the new version's period.",
       "clona_help": "The new version is created in DRAFT status with active rows copied from the source. You can edit it freely before activation.",
       "warning_retroattivo": "Warning: you are creating a version with retroactive start. Invoices already issued in the period will not be automatically updated. A dedicated adjustment is required to correct them.",
       "attiva_versione_titolo": "Confirm version activation",
@@ -3389,13 +3409,18 @@
       "chiusura_programmata_al": "Closing scheduled: the version stays active until {data} inclusive, then the job closes it.",
       "azione_reason": {
         "versione_spenta": "The version is switched off: switch it back on before activating it.",
-        "versione_senza_righe": "The version has no prices: add at least one row before activating it."
+        "versione_senza_righe": "The version has no prices: add at least one row before activating it.",
+        "quota_fissa_senza_periodicita": "The version has a fixed fee without a billing period: set it on the item's row (or the kit's) before activating it.",
+        "versione_non_in_bozza": "Only a draft version can be deleted: this one has been used for prices.",
+        "versione_citata": "The version is used by other documents: remove it from those documents before deleting it.",
+        "versione_non_attiva": "Only an active version can be closed: change a draft's dates instead; a closed version no longer changes.",
+        "fine_nel_passato": "The end cannot be before today: choose today or a future date.",
+        "clone_prima_della_sorgente": "The new version cannot start before the version it is copied from."
       },
       "elimina_versione": "Delete version",
       "versione_eliminata": "Version deleted",
       "elimina_listino": "Delete price list (never used)",
       "listino_eliminato": "Price list deleted",
-      "nessuna_versione_inline": "No version. Create the first one with the button above.",
       "uom_select_articolo_first": "Select an article first",
       "uom_no_operative": "No operational UoM for this article",
       "uom_base_suffix": "(base)",
@@ -3415,11 +3440,6 @@
       "variazione_pct_conferma": "Apply variation",
       "variazione_pct_successo": "Variation applied to {count} rows",
       "variazione_pct_help": "Positive = markup, negative = discount. E.g. 3 = +3%, -5 = -5%. Only on DRAFT versions.",
-      "alert_scadenze_titolo": "Price lists expiring",
-      "alert_scadenze_vuoto": "No price lists expiring",
-      "alert_scadenze_badge": "{count} expiring",
-      "alert_scadenze_giorni_rimanenti": "{giorni} days",
-      "alert_scadenze_scaduto": "Expired",
       "chiudi_versione_titolo": "Close version",
       "chiudi_versione_warning": "From {data_dopo} the contexts managed by this version will have no active price, unless a later version already exists.",
       "chiudi_versione_data": "Close on",
@@ -3431,7 +3451,17 @@
       "righe_filtra_ba": "Filter by BA...",
       "righe_filtra_utility": "Filter by utility...",
       "variazione_short": "Variation",
-      "aggiungi_prezzo_hint": "Add price"
+      "aggiungi_prezzo_hint": "Add price",
+      "alert_scadenze_non_verificabili": "Price list expiries could not be checked: click to retry",
+      "tab_dati": "Details",
+      "alert_scadenze_filtra": "Price lists whose version expires without a successor: click to show them",
+      "col_giorni_alla_scadenza": "Expiring (days)",
+      "filtro_in_scadenza": "Expiring only",
+      "kit_periodicita_azione": "Kit billing period",
+      "kit_periodicita_titolo": "Billing period of kit {articolo}",
+      "kit_periodicita_salvata": "Kit billing period saved",
+      "periodicita_nessuna": "None",
+      "hint_periodicita": "How often it is charged as a recurring fee. A fixed fee needs it to activate the version; elsewhere it is what «Subscribe» proposes."
     },
     "lotti": {
       "seleziona_pagina": "Select all batches on this page",
@@ -4614,6 +4644,21 @@
       "col_stato": "Status",
       "col_attiva": "Active",
       "col_totale": "Total"
+    },
+    "righe_selezione": {
+      "col_articolo": "Item"
+    },
+    "canoni": {
+      "section_canoni": "Recurring fees",
+      "field_generazione_canone": "Fee billing",
+      "generazione_canone_INIZIO_PERIODO": "In advance (at period start)",
+      "generazione_canone_FINE_PERIODO": "In arrears (at period end)",
+      "field_mese_partenza_canone": "Periods start month",
+      "hint_mese_partenza_canone": "The month periods are counted from: quarterly from February means Feb-Apr, May-Jul, Aug-Oct, Nov-Jan.",
+      "canoni_predefinito": "Default",
+      "field_periodicita": "Billing period",
+      "select_periodicita": "Choose the billing period",
+      "generazione_come_testata": "As in the header"
     }
   },
   "pagamenti": {
@@ -5415,7 +5460,8 @@
     "field_solo_stampa": "Print only",
     "placeholder_riga_doc": "Leave empty for document-level note",
     "placeholder_stile": "Select a style",
-    "placeholder_testo": "Note text (markdown supported)"
+    "placeholder_testo": "Note text (markdown supported)",
+    "col_seq": "Sequence"
   },
   "geo": {
     "tab_province": "Provinces",
@@ -6427,13 +6473,11 @@
     "affina": "Showing {shown} of {total}: refine your search"
   },
   "matrice_override": {
-    "cerca": "Search…",
     "col_ereditato": "Inherited",
     "col_override": "Override",
     "col_stato": "Status",
     "stato_override": "Override",
     "stato_ereditato": "Inherited",
-    "reset_tooltip": "Remove the override: the entry goes back to the inherited value",
-    "nessuna_voce": "No entries"
+    "reset_tooltip": "Remove the override: the entry goes back to the inherited value"
   }
 }

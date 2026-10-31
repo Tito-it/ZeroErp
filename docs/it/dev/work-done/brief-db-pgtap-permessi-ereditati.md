@@ -240,6 +240,7 @@ sul DB di sviluppo (vedi sopra).
 
 - ⛔ Il **tetto d'area** (analisi §3): difetto aperto a sé, in
   `.codex/PROJECT_CONTEXT.md` § «Aperto».
+  ✅ *Nota del 2026-10-31: chiuso il 2026-10-04 da [brief-db-permessi-tetto-area.md](brief-db-permessi-tetto-area.md) — un permesso specifico ora può solo restringere quello della sua area. La frase qui sotto è la storia di quando era aperto.*
 - La **provenienza completa** restituita dai resolver (analisi §5).
 
 ---

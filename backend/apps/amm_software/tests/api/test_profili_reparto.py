@@ -293,7 +293,7 @@ class TestLookupViews(TestCase):
         mock_repo.list_azioni_processo.return_value = [
             {"id": 1, "permission_codename": "genera_fatture_lotti",
              "descrizione": "Genera fatture", "pericolosa": False,
-             "area_id": 2, "area_codice": "vendite"},
+             "area_id": 2, "area_codice": "vendite", "livello_minimo_area": "TUTTO"},
         ]
         mock_repo_cls.return_value = mock_repo
 
@@ -302,6 +302,8 @@ class TestLookupViews(TestCase):
 
         data = json.loads(response.content)
         self.assertEqual(len(data["data"]["results"]), 1)
+        # Il tetto d'area viaggia fino al client (editor profilo reparto).
+        self.assertEqual(data["data"]["results"][0]["livello_minimo_area"], "TUTTO")
 
     @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
     def test_lookup_emittenti(self, mock_repo_cls):

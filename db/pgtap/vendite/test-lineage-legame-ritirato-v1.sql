@@ -79,8 +79,10 @@ SELECT is(
      JOIN vendite.fn_documento_lineage_legami(ARRAY[l.arco], ARRAY[0::bigint], ARRAY['0'],
                                               ARRAY[0::bigint], ARRAY['0']) g ON true
     WHERE g.is_legame_ritirato IS NOT NULL),
-  'A,B,C,D,E,F,G,H,N,R,S,T,U',
-  '2) il censimento e'' completo: le tredici lettere di fn_documento_lineage_archi hanno tutte una risposta');
+  -- rev 2026-10-31 (brief-modello-documento-vendita §18): V, la revisione
+  --   dell'offerta (20261031-23), col suo ramo nel decoratore (20261031-24).
+  'A,B,C,D,E,F,G,H,N,R,S,T,U,V',
+  '2) il censimento e'' completo: le quattordici lettere di fn_documento_lineage_archi hanno tutte una risposta');
 
 -- ============================================================
 -- Fixture — COSTRUITE (la forma di test-annullo-commessa-v1)

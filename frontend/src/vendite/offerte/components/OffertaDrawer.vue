@@ -65,6 +65,10 @@ import {
 } from '../../_shared/fornitura/schedaFornitura'
 import ListinoDocumentoSelect from '../../components/ListinoDocumentoSelect.vue'
 import TipoVariazioneSelect from '../../components/TipoVariazioneSelect.vue'
+import CampiCanoneTestata from '../../_shared/canoni/CampiCanoneTestata.vue'
+import {
+  campiCanoneDaDettaglio, campiCanoneDaForm, campiCanoneVuoti,
+} from '../../_shared/canoni/campiCanone'
 import {
   CAMPI_FORM_TESTATA_OFFERTA,
   STATO_OFFERTA,
@@ -75,7 +79,7 @@ import { useOfferteStore } from '../stores/offerte'
 import { useOffertaRevisioniStore } from '../stores/offertaRevisioni'
 import RevisioniTab from '../../_shared/revisioni/RevisioniTab.vue'
 import OffertaRigheDrawer from './OffertaRigheDrawer.vue'
-import OffertaNoteDrawer from './OffertaNoteDrawer.vue'
+import VenditeNoteDrawer from '../../_shared/note/VenditeNoteDrawer.vue'
 import OffertaEmissioneDialog from './dialogs/OffertaEmissioneDialog.vue'
 import OffertaEsitoDialog from './dialogs/OffertaEsitoDialog.vue'
 import OffertaPushDialog from './dialogs/OffertaPushDialog.vue'
@@ -275,6 +279,9 @@ function defaultForm() {
     valore_variazione_globale: null,
     validita_dal: oggiAziendaleString(),
     validita_al: null,
+    // I canoni (F-2, F-7): vuoti in CREATE = il default del DB (anticipati,
+    // da gennaio), che il dettaglio poi mostra. Il form non ricopia il default.
+    ...campiCanoneVuoti(),
     // Scheda di fornitura inline (BB `schedaFornitura`, come il contratto)
     ...schedaVuota(),
   }
@@ -307,6 +314,7 @@ function populateFromDetail(d) {
     valore_variazione_globale: d.valore_variazione_globale,
     validita_dal: d.validita_dal,
     validita_al: d.validita_al,
+    ...campiCanoneDaDettaglio(d),
     ...schedaDaFornitura(d.utility),
   }
   if (!stessoCliente) ripristinaBillingAccount(form.value, d.billing_account_id)
@@ -489,6 +497,8 @@ function buildPayload() {
       : null,
     validita_dal: toIsoDate(f.validita_dal),
     validita_al: f.validita_al ? toIsoDate(f.validita_al) : null,
+    // NOT NULL a DB col default: si mandano solo valorizzati, mai `null`.
+    ...campiCanoneDaForm(f),
   }
 }
 
@@ -1163,6 +1173,16 @@ const footerDrawer = useFooterDocumento({
                 />
               </div>
             </div>
+
+            <!-- Come si addebitano i canoni (F-2, F-7): la riga a canone senza
+                 generazione segue la testata; il passaggio a contratto le copia. -->
+            <CampiCanoneTestata
+              v-model:generazione="form.generazione_canone"
+              v-model:mese="form.mese_partenza_canone"
+              :bloccato-generazione="testata.bloccato('generazione_canone')"
+              :bloccato-mese="testata.bloccato('mese_partenza_canone')"
+              :campi-errati="campiErrati"
+            />
           </div>
 
           <!-- === Utility inline (mirror ContrattoDrawer) === -->
@@ -1268,12 +1288,14 @@ const footerDrawer = useFooterDocumento({
 
     <!-- Sub-drawer note partizionate. Le eccezioni vengono passate per
          popolare il select RIGA nel form note (anchor RIGA). -->
-    <OffertaNoteDrawer
+    <VenditeNoteDrawer
       v-if="isEdit && detail"
       v-model:visible="noteDrawerVisible"
       @saved="contatoreNote.aggiorna"
-      :offerta-id="props.offertaId"
-      :eccezioni="detail.eccezioni || []"
+      dominio="offerte"
+      :id="props.offertaId"
+      :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
+      :righe="detail.eccezioni || []"
     />
 
     <!-- Dialogs di processo (state machine FE). -->

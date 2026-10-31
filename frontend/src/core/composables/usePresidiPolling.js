@@ -36,6 +36,7 @@ import { useRefreshPeriodico } from './useRefreshPeriodico'
 import { statoPallino } from '../utils/pallinoPresidi'
 import { creaSegnale } from '../segnale'
 import { adesso } from '../utils/date'
+import { eAccessoNegato } from '../utils/apiError'
 
 // ⭐ 300 s e NON 60 come il badge code — deciso sul modello, non su una misura:
 //    quello segue il drenatore (~1/min); qui la sorgente piu' rapida a catalogo
@@ -86,8 +87,7 @@ export function usePresidiPolling({ ammesso = () => true } = {}) {
         const res = await getPresidiConteggi()
         adotta(res.data?.data ?? null)
       } catch (err) {
-        const status = err?.response?.status
-        if (status === 403 || status === 401) {
+        if (eAccessoNegato(err)) {
           negato.value = true
           ferma()
         }

@@ -56,9 +56,17 @@ export function buildLivelloOptions(t) {
 // statico /amm-software/lookup/rounding-modes/ via wrapper riusabile
 // EmittenteRoundingModeSelect. Single source of truth lato BE in
 // amm_software_service._ROUNDING_MODE_VALIDI_EMITTENTE.
-// Range decimali tecnico, allineato al CHECK constraint DB
-// (chk_emittenti_fiscali_utilities_arrotondamento_dec).
-export const ROUNDING_DECIMALI_RANGE = { MIN: 0, MAX: 6 }
+// Range dei decimali degli importi di una utility: lo specchio del CHECK
+// `chk_emittenti_fiscali_utilities_arrotondamento_dec` (0..2, come
+// `chk_utilities_arrotondamento_importi_dec` sulla tabella madre).
+// 🔴 Fino al 2026-10-31 qui c'era MAX 6 col commento «allineato al CHECK»: il
+//    campo accettava 4, il Salva si accendeva e il database rifiutava la riga
+//    (segnalazione di Tid). Il 6 e' l'intervallo di ALTRI vincoli (termini di
+//    pagamento, regole di fatturazione dell'articolo), non di questo.
+// ⚠️ Resta una copia del vincolo: il giorno che il CHECK cambia, questa no.
+//    Il rifiuto del DB esce comunque parlante e col campo (`_UTILITY_CHECK_
+//    CONSTRAINTS` lato BE), ma la sede giusta del numero e' il database.
+export const ROUNDING_DECIMALI_RANGE = { MIN: 0, MAX: 2 }
 
 // --- Email log stati ---
 // ⭐ Dal 2026-09-26 in `core`: il select (`core/components/EmailLogStatoSelect`,

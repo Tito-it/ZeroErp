@@ -31,6 +31,7 @@
 import { computed, ref } from 'vue'
 import { getCodeConteggi } from '../api/tracciamento'
 import { useRefreshPeriodico } from './useRefreshPeriodico'
+import { eAccessoNegato } from '../utils/apiError'
 
 const INTERVAL_MS = 60_000
 
@@ -100,8 +101,7 @@ export function useQueueCountsPolling({ ammesso = () => true } = {}) {
         const res = await getCodeConteggi()
         conteggi.value = res.data?.data ?? null
       } catch (err) {
-        const status = err?.response?.status
-        if (status === 403 || status === 401) {
+        if (eAccessoNegato(err)) {
           negato.value = true
           ferma()
         }

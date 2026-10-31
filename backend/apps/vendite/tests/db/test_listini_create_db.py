@@ -4,8 +4,9 @@
 # Doc: Python
 # Scopo: Le scritture di CREAZIONE di `ListiniRepository` sul DATABASE
 #        PROVVISTO, dopo il passaggio al BB `execute_dynamic_insert`
-#        (2026-09-26): `create_listino`, `create_versione`, `create_riga` e la
-#        testata di `clone_versione`. Le righe nascono davvero e i valori
+#        (2026-09-26): `create_listino`, `create_versione`, `create_riga`; e la
+#        copia di `clone_versione`, dal 2026-10-29 il verbo del DB
+#        (`vendite.fn_clona_versione_listino`, §16.16 BE-C1). Le righe nascono davvero e i valori
 #        riletti sono quelli scritti: stringhe strippate, `meta` dict ->
 #        `::jsonb` riletto come oggetto, `valido_al` None -> NULL (questi
 #        metodi NON usano `skip_none`: None scrive NULL), colonne omesse ->
@@ -162,15 +163,14 @@ class CreateListiniDbTests(unittest.TestCase):
 
             # ── clone_versione: il payload di `fn_clone_versione`
             #    (solo `clonable_fields`), testata BOZZA dalla nascita ──
-            clone_id = repo.clone_versione(
-                listino_id=listino_id,
-                src_versione_id=versione_id,
-                target_data={
-                    "codice_versione": " V002 ",
-                    "valido_dal": date(2083, 6, 1),
-                    "valido_al": date(2083, 12, 31),
-                },
+            copia = repo.clone_versione(
+                versione_id,
+                codice_versione="V002",
+                valido_dal=date(2083, 6, 1),
+                valido_al=date(2083, 12, 31),
             )
+            clone_id = int(copia["versione_id"])
+            self.assertEqual(copia["righe_copiate"], 1)
             self.assertNotEqual(clone_id, versione_id)
             cur.execute(
                 "SELECT v.listino_id, v.codice_versione, v.valido_dal, v.valido_al,"
@@ -203,9 +203,9 @@ class CreateListiniDbTests(unittest.TestCase):
         self._nel_mondo(_prova)
 
     # Scopo: whitelist RIGIDA — una chiave estranea e' RuntimeError PRIMA
-    #        dell'INSERT (nessuna riga, nessun errore di database), anche sulla
-    #        testata del clone (attivo/meta non si clonano, lo stato non si
-    #        scrive: giro 12, BE-L3).
+    #        dell'INSERT (nessuna riga, nessun errore di database); lo stato non
+    #        si scrive (giro 12, BE-L3). Il clone non ha whitelist: prende
+    #        codice e date come parametri espliciti del verbo.
     def test_una_colonna_fuori_whitelist_e_rifiutata(self):
         def _prova(cur, m):
             repo = ListiniRepository()
@@ -224,17 +224,5 @@ class CreateListiniDbTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "colonne non ammesse: stato"):
                 repo.create_versione(0, {"codice_versione": "V", "valido_dal": date(2083, 1, 1),
                                          "stato": "ATTIVA"})
-            with self.assertRaisesRegex(RuntimeError, "colonne non ammesse: meta"):
-                repo.clone_versione(
-                    listino_id=0, src_versione_id=0,
-                    target_data={"codice_versione": "V", "valido_dal": date(2083, 1, 1),
-                                 "meta": {}},
-                )
-            with self.assertRaisesRegex(RuntimeError, "colonne non ammesse: stato"):
-                repo.clone_versione(
-                    listino_id=0, src_versione_id=0,
-                    target_data={"codice_versione": "V", "valido_dal": date(2083, 1, 1),
-                                 "stato": "ATTIVA"},
-                )
 
         self._nel_mondo(_prova)

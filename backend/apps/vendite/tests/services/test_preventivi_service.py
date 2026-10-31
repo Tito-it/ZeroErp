@@ -465,6 +465,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
         from datetime import date
         from apps.vendite.services.preventivi_service import cambia_stato
 
+        self.e_emissione_il_codice("EMESSO")
         self.mock_repo.get_stato_codice.return_value = "EMESSO"
         self.mock_repo.cambia_stato.return_value = {"status": "ok"}
         cambia_stato(1, "ACCETTATO", fatturazione_immediata=True,
@@ -482,6 +483,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
         from datetime import date
         from apps.vendite.services.preventivi_service import cambia_stato
 
+        self.e_emissione_il_codice("EMESSO")
         self.mock_repo.get_stato_codice.return_value = "EMESSO"
         self.mock_repo.cambia_stato.return_value = {"status": "ok"}
         cambia_stato(1, "ACCETTATO", fatturazione_immediata=False,
@@ -494,6 +496,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
     def test_cambia_stato_accettato_senza_immediata_bloccato(self):
         from apps.vendite.services.preventivi_service import cambia_stato
 
+        self.e_emissione_il_codice("EMESSO")
         self.mock_repo.get_stato_codice.return_value = "EMESSO"
         with self.assertRaises(ServiceError) as ctx:
             cambia_stato(1, "ACCETTATO")
@@ -505,6 +508,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
     def test_cambia_stato_accettato_non_immediata_senza_competenza_bloccato(self):
         from apps.vendite.services.preventivi_service import cambia_stato
 
+        self.e_emissione_il_codice("EMESSO")
         self.mock_repo.get_stato_codice.return_value = "EMESSO"
         with self.assertRaises(ServiceError) as ctx:
             cambia_stato(1, "ACCETTATO", fatturazione_immediata=False,

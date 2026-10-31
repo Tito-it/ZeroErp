@@ -2,7 +2,7 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-25
 
-✅ **Archiviato il 2026-10-25** (V-3 di Tid, [brief-modello-documento-vendita](../work-in-progress/brief-modello-documento-vendita.md)
+✅ **Archiviato il 2026-10-25** (V-3 di Tid, [brief-modello-documento-vendita](brief-modello-documento-vendita.md)
 §8.11). Confluito in quel brief il 2026-10-24 (§4-bis, M-6): N-1 … N-3 decise là e costruite nel
 primo giro (`20261024-07` … `-25`, §4-quinquies: `script.trgfn_doc_stato_iniziale` montato sulle
 testate di vendita e d'acquisto, `E_DOC_STATO_INIZIALE_NON_VALIDO`). Nessuno riparte da qui. La

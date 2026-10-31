@@ -44,7 +44,7 @@ _AUTH = "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate"
 _ARTICOLO = "019d5449-3dd2-7301-afeb-057b60c5b791"
 _COMBINAZIONE = {
     "tipo_erogazione": "UNA_TANTUM", "fonte_quantita_attesa": "FISSA",
-    "e_default": True, "generazione_canone": None, "origine": "TIPOLOGIA",
+    "e_default": True, "origine": "TIPOLOGIA",
 }
 
 

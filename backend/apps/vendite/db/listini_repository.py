@@ -44,10 +44,11 @@ TESTATA_LISTINI_VERSIONI = "vendite.listini_versioni"
 
 # Lo stato che il verbo dell'attivazione scrive (`vendite.fn_attiva_versione_listino`,
 # la sua costante `c_attiva`): la rotta del cambio stato lo instrada al verbo.
-# ⚠️ Gli altri confronti coi codici (le scadenze qui sotto) leggono il codice dal
-#    vocabolario `config.stati_doc_listino_versioni`, come le funzioni del DB.
+# ⚠️ Gli altri confronti coi codici leggono il codice dal vocabolario
+#    `config.stati_doc_listino_versioni`, come le funzioni del DB.
+# ⛔ Ritirata il 2026-10-31 `STATO_VERSIONE_BOZZA`: la usava solo la query
+#    delle scadenze, passata al DB (`_FN_SCADENZA`).
 STATO_VERSIONE_ATTIVA = "ATTIVA"
-STATO_VERSIONE_BOZZA = "BOZZA"
 
 # Le colonne della versione, una volta sola per lista e dettaglio.
 # ⭐ Lo stato e' il CODICE del vocabolario (dal 2026-10-28 la colonna e'
@@ -65,6 +66,10 @@ STATO_VERSIONE_BOZZA = "BOZZA"
 #    (`vendite.vw_listini_versioni_azioni`, il primo motivo della stessa
 #    `fn_check` con cui il verbo rifiuta). Prima il frontend lo deduceva da
 #    `righe_count`.
+# ⭐ `eliminazione_blocco_reason` / `_key` e `chiusura_blocco_reason` / `_key`:
+#    la stessa cosa per «Elimina» (`ELIMINA_VERSIONE_LISTINO`, §16.11) e per
+#    «Chiudi» (`CHIUDI_VERSIONE_LISTINO`, §16.14), dalla stessa vista. Prima il
+#    frontend li decideva dal codice dello stato (R-L4 del §16.9).
 # ⭐ `chiusura_programmata`: la versione e' ATTIVA con la fine scritta, quindi
 #    il job la chiude quando la fine passa (L-2). Fra la fine e il passaggio del
 #    job la versione e' ATTIVA con `valido_al` passato: la lista la mostra cosi',
@@ -100,6 +105,10 @@ _SELECT_VERSIONE = f"""
         ) AS azioni_permesse,
         az.attivazione_blocco_reason,
         az.attivazione_blocco_reason_key,
+        az.eliminazione_blocco_reason,
+        az.eliminazione_blocco_reason_key,
+        az.chiusura_blocco_reason,
+        az.chiusura_blocco_reason_key,
         (s.codice_interno = '{STATO_VERSIONE_ATTIVA}' AND v.valido_al IS NOT NULL)
             AS chiusura_programmata
       FROM vendite.listini_versioni v
@@ -107,6 +116,12 @@ _SELECT_VERSIONE = f"""
       LEFT JOIN vendite.vw_listini_versioni_azioni az ON az.versione_id = v.id
 """  # noqa: S608 — costanti di modulo TESTATA_LISTINI_VERSIONI e STATO_VERSIONE_ATTIVA
 
+
+# «Non in scadenza» (`giorni_rimanenti` NULL) e' la scadenza PIU' LONTANA, come
+# la fine validita' vuota e' `infinity` (`_SQL_DATE_INFINITY`): senza, il BB
+# dell'ordine tratta il NULL come minimo, e l'ordine crescente metterebbe in
+# cima i listini che non scadono. Il massimo di `integer` (date - date).
+_SQL_GIORNI_SENZA_SCADENZA = "2147483647"
 
 # `attivo` e' NUCLEO: lo stato ordina sempre. Aggiunta in anticipo sul seed
 # della lista listini (passata unica 2026-08-01, richiesta del team DB).
@@ -118,7 +133,36 @@ LISTINI_ORDER_COLUMNS: dict[str, str] = {
     "attivo": "l.attivo",
     "data_insert": "l.data_insert",
     "data_update": "l.data_update",
+    # Dalla regola del DB (`_FN_SCADENZA`): NULL = non in scadenza.
+    "giorni_alla_scadenza": f"COALESCE(s.giorni_rimanenti, {_SQL_GIORNI_SENZA_SCADENZA})",
 }
+
+# ⭐ «In scadenza senza successore» la dice il DB, una volta per query
+#    (`vendite.fn_listini_in_scadenza_senza_successore`, 20261031-27,
+#    brief-db-liste-datatable-grezze-secondo-giro §7.2): una riga per versione
+#    in vigore che scade entro N giorni, N dal parametro
+#    `LISTINI_SCADENZA_PREAVVISO_GIORNI`. La leggono la lista listini (colonna e
+#    filtro, che e' anche il conteggio del badge) e la lista versioni.
+#    ⛔ Fino al 2026-10-31 la regola era una query di questo repository
+#    (`listini_in_scadenza`), con N in DUE default (15 nel FE e nel service):
+#    ritirata nello stesso giro.
+_FN_SCADENZA = "vendite.fn_listini_in_scadenza_senza_successore()"
+
+# Whitelist ORDER BY della lista versioni di un listino (`vendite.listini_versioni`,
+# 112): sulle colonne della subquery `x` (`_SELECT_VERSIONE`) e sulla regola
+# della scadenza `sc`. Le chiavi sono i `campo_sorgente` del catalogo.
+VERSIONI_ORDER_COLUMNS: dict[str, str] = {
+    "codice_versione": "x.codice_versione",
+    "valido_dal": "x.valido_dal",
+    # Fine vuota = validita' infinita: la versione aperta e' la piu' lontana.
+    "valido_al": f"COALESCE(x.valido_al, {_SQL_DATE_INFINITY})",
+    "righe_count": "x.righe_count",
+    "stato": "x.stato",
+    "giorni_alla_scadenza": f"COALESCE(sc.giorni_rimanenti, {_SQL_GIORNI_SENZA_SCADENZA})",
+}
+# Le date della lista si leggono dalla piu' recente (regola di Tid del
+# 2026-09-02): i nomi `valido_*` non le dicono date da soli.
+VERSIONI_ORDER_COLONNE_DATA: frozenset[str] = frozenset({"valido_dal", "valido_al"})
 
 LISTINO_CREATE_COLUMNS: dict[str, str] = {
     "codice": "text",
@@ -148,6 +192,10 @@ RIGA_CREATE_COLUMNS: dict[str, str] = {
     "articolo_id": "uuid",
     "uom_id": "int",
     "prezzo": "numeric",
+    # La periodicita' del canone (G-0-bis, `20261029-11`): FK verso
+    # `config.periodicita`. Sulla quota fissa e' la periodicita' con cui si
+    # addebita; altrove e' la proposta che l'ADESIONE eredita.
+    "periodicita": "text",
     "meta": "jsonb",
     "attivo": "bool",
 }
@@ -188,6 +236,7 @@ RIGHE_ORDER_COLUMNS: dict[str, str] = {
 #    escape di `%`/`_`, niente strip, e un elenco di colonne cablato che il
 #    pannello admin non poteva spegnere.
 _RICERCA_LISTINI = RicercaFull("vendite.listini", ("codice", "descrizione"))
+_RICERCA_VERSIONI = RicercaFull("vendite.listini_versioni", ("codice_versione",))
 
 # ⭐ Forma a tupla sull'alias `unione`, e NON due mappe per le due gambe della
 #    `UNION ALL` (`ad.*` e `adc.*`): la condizione si applica ai nomi che la
@@ -215,6 +264,7 @@ class ListiniRepository:
         order_dir: str | None,
         limit: int,
         offset: int,
+        in_scadenza: bool | None = None,
     ) -> tuple[list[dict[str, Any]], int]:
         safe_limit, safe_offset = limiti_pagina(limit, offset)
         # BB `sql_order_clause` (NULL come valore minimo, tiebreak `l.id`
@@ -237,6 +287,8 @@ class ListiniRepository:
         if attivo is not None:
             conditions.append("l.attivo = %s")
             params.append(attivo)
+        if in_scadenza is not None:
+            conditions.append("s.listino_id IS NOT NULL" if in_scadenza else "s.listino_id IS NULL")
         # ⚠️ Una condizione sola per le DUE query (conteggio e pagina): stessi
         #    `conditions`/`params`, quindi il totale non puo' descrivere un
         #    perimetro diverso dalle righe. Il 400 sotto soglia resta nella view
@@ -244,11 +296,19 @@ class ListiniRepository:
         add_ricerca_full_condition(conditions, params, search, _RICERCA_LISTINI, alias="l")
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
+        # La regola della scadenza entra nel conteggio solo se la filtra: la
+        # pagina la legge comunque (proietta `giorni_alla_scadenza`), il totale
+        # senza filtro non ne dipende — la funzione da' al piu' una riga per
+        # listino (la sola versione in vigore), il LEFT JOIN non moltiplica.
+        join_scadenza_count = (
+            f"LEFT JOIN {_FN_SCADENZA} s ON s.listino_id = l.id" if in_scadenza is not None else ""
+        )
         count_sql = f"""
             SELECT COUNT(*)
               FROM vendite.listini l
               LEFT JOIN config.utilities u ON u.id = l.utility_id
               LEFT JOIN config.listini_tipologie lt ON lt.id = l.tipologia_id
+              {join_scadenza_count}
             {where_clause}
         """  # noqa: S608 — WHERE da clausole letterali/BB add_ricerca_full_condition, ORDER BY da whitelist LISTINI_ORDER_COLUMNS, valori come parametri
         data_sql = f"""
@@ -272,10 +332,12 @@ class ListiniRepository:
                     SELECT COUNT(*)
                       FROM vendite.listini_versioni v
                      WHERE v.listino_id = l.id
-                ) AS versioni_count
+                ) AS versioni_count,
+                s.giorni_rimanenti AS giorni_alla_scadenza
               FROM vendite.listini l
               LEFT JOIN config.utilities u ON u.id = l.utility_id
               LEFT JOIN config.listini_tipologie lt ON lt.id = l.tipologia_id
+              LEFT JOIN {_FN_SCADENZA} s ON s.listino_id = l.id
             {where_clause}
              ORDER BY {ordinamento}
              LIMIT %s OFFSET %s
@@ -397,8 +459,49 @@ class ListiniRepository:
             )
             return cursor.rowcount > 0
 
-    # Scopo: Restituisce le versioni del listino con conteggio righe e
-    # ordinamento stabile. Le colonne sono quelle di `_SELECT_VERSIONE`.
+    # Scopo: La pagina delle versioni di un listino (lista `vendite.listini_versioni`,
+    #        112): colonne di `_SELECT_VERSIONE`, piu' `giorni_alla_scadenza` dalla
+    #        regola del DB (`_FN_SCADENZA`, NULL = non in scadenza). Ricerca dal
+    #        catalogo, ordinamento dalla whitelist, spareggio sull'id.
+    # ⚠️ `_SELECT_VERSIONE` sta in una subquery: il suo alias `s` e' lo stato, e
+    #    `righe_count` e' un'espressione che l'ORDER BY vede solo come colonna
+    #    di `x`. Fino al 2026-10-31 la lista era la collezione intera
+    #    (`list_versioni`, che resta per il dettaglio del listino e i default
+    #    della nuova versione).
+    def list_versioni_pagina(
+        self,
+        listino_id: int,
+        *,
+        search: str | None = None,
+        order_by: str | None = None,
+        order_dir: str | None = None,
+        limit: int = DEFAULT_LIMIT,
+        offset: int = 0,
+    ) -> tuple[list[dict[str, Any]], int]:
+        safe_limit, safe_offset = limiti_pagina(limit, offset)
+        conditions: list[str] = ["v.listino_id = %s"]
+        params: list[Any] = [listino_id]
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_VERSIONI, alias="v")
+        ordinamento = sql_order_clause(
+            order_by, order_dir,
+            colonne=VERSIONI_ORDER_COLUMNS, default="x.valido_dal", default_desc=True,
+            tiebreak="x.id", colonne_desc=VERSIONI_ORDER_COLONNE_DATA,
+        )
+        data_sql = f"""
+            SELECT x.*,
+                   sc.giorni_rimanenti AS giorni_alla_scadenza,
+                   COUNT(*) OVER () AS total_count
+              FROM ({_SELECT_VERSIONE} WHERE {" AND ".join(conditions)}) x
+              LEFT JOIN {_FN_SCADENZA} sc ON sc.versione_id = x.id
+             ORDER BY {ordinamento}
+             LIMIT %s OFFSET %s
+        """  # noqa: S608 — WHERE da clausole letterali/BB add_ricerca_full_condition, ORDER BY da whitelist VERSIONI_ORDER_COLUMNS, valori come parametri
+        return fetch_paged_with_total(data_sql, [*params, safe_limit, safe_offset])
+
+    # Scopo: Tutte le versioni del listino, dalla piu' recente: per i
+    #        consumatori che le leggono intere (dettaglio del listino, bozze
+    #        esistenti nei default della nuova versione). Colonne di
+    #        `_SELECT_VERSIONE`.
     def list_versioni(self, listino_id: int) -> list[dict[str, Any]]:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -455,159 +558,71 @@ class ListiniRepository:
             )
             return cursor.rowcount > 0
 
-    # Scopo: Clona una versione esistente in una nuova versione BOZZA dello stesso
-    #        listino, copiando tutte le righe attive della sorgente. La nuova versione
-    #        prende i dati di testata dal payload (codice_versione, valido_dal,
-    #        valido_al); meta e attivo derivano dai default DB, lo stato dal guard
-    #        della nascita (lo stato iniziale del vocabolario, N-1). Restituisce
-    #        l'id della nuova versione. Esegue tutto in transazione gestita dal caller.
+    # Scopo: Clona la versione dal verbo `vendite.fn_clona_versione_listino`
+    #        (§16.14, C-1 = a: da qualunque stato): in una transazione la
+    #        versione nuova dello stesso listino (nasce BOZZA), le righe attive
+    #        della sorgente e i componenti attivi con la validita' ricalcolata
+    #        sul periodo comune alla distinta e alla versione nuova. Prima della
+    #        copia il primo motivo di `script.fn_check_versione_listino_clonabile`
+    #        (D2: la copia non comincia prima della sorgente).
+    #        ⛔ Ritirate il 2026-10-29 (BE-C1) le tre INSERT che il backend
+    #        faceva da se': la stessa copia, ora nel DB.
+    # Ritorna: {versione_id, righe_copiate, componenti_copiati, componenti_saltati}.
+    #        ⭐ Parametri espliciti e non un dict: attivo, meta e stato non si
+    #        clonano, e una chiave in piu' non ha dove andare.
     def clone_versione(
         self,
-        listino_id: int,
         src_versione_id: int,
-        target_data: dict[str, Any],
-    ) -> int:
-        # Guardrail atomicità (review 2026-07-08): INSERT testata + INSERT righe clonate
-        # resi self-atomici (o versione+righe complete o rollback). Nested=savepoint.
-        with transaction.atomic(), connection.cursor() as cursor:
-            # 1) INSERT testata nuova versione: nasce BOZZA dal guard della
-            #    nascita, lo stato non si scrive (giro 12, BE-L3).
-            #    ⛔ Whitelist RIGIDA (BB `execute_dynamic_insert`): attivo/meta
-            #    NON si clonano, e il payload li ha gia' tolti il service
-            #    (`fn_clone_versione`, `clonable_fields`). Qui non si scartano
-            #    in silenzio: se arrivassero sarebbe un errore del chiamante.
-            target_versione_id = int(
-                execute_dynamic_insert(
-                    "vendite.listini_versioni",
-                    {"listino_id": listino_id, **target_data},
-                    allowed={"listino_id", "codice_versione", "valido_dal", "valido_al"},
-                )["id"]
-            )
-
-            # 2) Copy delle righe ATTIVE della sorgente nella nuova versione.
-            #    Pricing v5: le dimensioni contesto (BA/utility/emittente)
-            #    sono state droppate da listini_righe (F1-DB-25). La riga
-            #    e' (articolo, uom, prezzo, meta). Forziamo attivo=TRUE sulla
-            #    copia. user_insert/data_insert sono gestiti dai default audit.
+        *,
+        codice_versione: str,
+        valido_dal: date,
+        valido_al: date | None,
+    ) -> dict[str, Any]:
+        with connection.cursor() as cursor:
             cursor.execute(
-                """
-                INSERT INTO vendite.listini_righe (
-                    listino_versione_id,
-                    articolo_id,
-                    uom_id,
-                    prezzo,
-                    meta,
-                    attivo
-                )
-                SELECT
-                    %s,
-                    articolo_id,
-                    uom_id,
-                    prezzo,
-                    meta,
-                    TRUE
-                  FROM vendite.listini_righe
-                 WHERE listino_versione_id = %s
-                   AND attivo IS TRUE
-                """,
-                [target_versione_id, src_versione_id],
+                "SELECT * FROM vendite.fn_clona_versione_listino(%s, %s, %s, %s)",
+                [src_versione_id, codice_versione, valido_dal, valido_al],
             )
+            result = row_to_dict(cursor)
+            assert result is not None
+            return result
 
-            # 3) Copy delle righe bundle compositi ATTIVE
-            #    (`listini_righe_componenti`) della sorgente nella nuova
-            #    versione (modello unificato BoM 2026-05-13). Ricalcolo
-            #    `valido_dal`/`valido_al` come intersezione fra validita'
-            #    della BoM (`articoli_componenti`) e validita' della versione
-            #    target (NON della sorgente: l'admin si aspetta prezzi validi
-            #    per il nuovo range).
-            #
-            #    `GREATEST`/`LEAST` sono NULL-safe in PG: NULL viene ignorato
-            #    nel calcolo. Quindi `LEAST(NULL, date)=date`, `LEAST(NULL,NULL)=NULL`.
-            #    NULL su `valido_al` significa "open-ended" e la formula lo
-            #    propaga correttamente (post-fix DB 2026-05-15 il trigger
-            #    `trgfn_listini_righe_comp_guard_coerenza_bom` coalesce
-            #    simmetricamente vs STORED su listini_versioni.validita).
-            #
-            #    Skip riga se intersezione vuota (es. BoM scaduta o non
-            #    coperta dalla versione target): il WHERE finale lo intercetta
-            #    via COALESCE→'infinity'. Senza lo skip la riga arriverebbe al
-            #    guard comune delle date (`script.trgfn_guard_date_validita`,
-            #    dal 2026-09-23) con `E_DATA_AL_MINORE_DAL`, e l'intera copia
-            #    fallirebbe per una sola riga fuori periodo.
+    # Scopo: Elimina la versione dal verbo `vendite.fn_elimina_versione_listino`
+    #        (§16.11): in una transazione la versione bloccata, prima il primo
+    #        motivo di `script.fn_check_versione_listino_eliminabile` (non in
+    #        bozza, citata da un documento), poi componenti, righe e versione.
+    #        ⛔ Ritirata il 2026-10-29 (BE-E1) la cascata del backend: tre DELETE
+    #        che fuori dalla BOZZA facevano rifiutare per primi i guard delle
+    #        righe, col codice di un'altra regola (§16.8).
+    # Ritorna: {versione_id, righe_eliminate, componenti_eliminati}.
+    def delete_versione(self, versione_id: int) -> dict[str, Any]:
+        with connection.cursor() as cursor:
             cursor.execute(
-                f"""
-                INSERT INTO vendite.listini_righe_componenti (
-                    listino_versione_id,
-                    articolo_componente_id,
-                    articolo_padre_id,
-                    articolo_figlio_id,
-                    prezzo,
-                    iva_id,
-                    valido_dal,
-                    valido_al,
-                    attivo
-                )
-                SELECT
-                    %s,
-                    lrc.articolo_componente_id,
-                    lrc.articolo_padre_id,
-                    lrc.articolo_figlio_id,
-                    lrc.prezzo,
-                    lrc.iva_id,
-                    GREATEST(ac.valido_dal, target_v.valido_dal) AS v_dal,
-                    LEAST(ac.valido_al, target_v.valido_al) AS v_al,
-                    TRUE
-                  FROM vendite.listini_righe_componenti lrc
-                  JOIN catalogo.articoli_componenti ac
-                       ON ac.id = lrc.articolo_componente_id
-                  JOIN vendite.listini_versioni target_v
-                       ON target_v.id = %s
-                 WHERE lrc.listino_versione_id = %s
-                   AND lrc.attivo IS TRUE
-                   AND GREATEST(ac.valido_dal, target_v.valido_dal) <=
-                       LEAST(
-                           COALESCE(ac.valido_al, {_SQL_DATE_INFINITY}),
-                           COALESCE(target_v.valido_al, {_SQL_DATE_INFINITY})
-                       )
-                """,  # noqa: S608 — costante di modulo _SQL_DATE_INFINITY, valori come parametri
-                [target_versione_id, target_versione_id, src_versione_id],
-            )
-
-        return target_versione_id
-
-    # Scopo: Elimina una versione e le sue righe in cascata. Se si puo' eliminare
-    #        lo dice il DB (L-5, giro 12): il guard per stato della versione
-    #        (`trgfn_listini_versioni_guard_per_stato`, E_LISTINO_VERSIONE_NON_ELIMINABILE
-    #        fuori dalla BOZZA) e i guard delle righe; prima la regola stava nel
-    #        service. La cascade sulle righe e` esplicita perche' le FK sono
-    #        NO ACTION. Cascade su 2 tabelle figlie:
-    #          - `listini_righe` (standalone)
-    #          - `listini_righe_componenti` (compositi, modello unificato 2026-05-13)
-    #        ⚠️ Le righe si cancellano PRIMA della versione, quindi fuori dalla
-    #        BOZZA rifiutano per primi i guard delle righe, coi loro codici
-    #        (brief-modello-documento-vendita §16.8: richiesta al team DB).
-    def delete_versione(self, listino_id: int, versione_id: int) -> bool:
-        # Guardrail atomicità (review 2026-07-08): 3 DELETE a cascata (componenti +
-        # righe + versione) resi self-atomici. Nested=savepoint se caller ha atomic.
-        with transaction.atomic(), connection.cursor() as cursor:
-            cursor.execute(
-                "DELETE FROM vendite.listini_righe_componenti "
-                "WHERE listino_versione_id = %s",
+                "SELECT * FROM vendite.fn_elimina_versione_listino(%s)",
                 [versione_id],
             )
+            result = row_to_dict(cursor)
+            assert result is not None
+            return result
+
+    # Scopo: Fissa (o toglie, `valido_al` None) la fine di una versione ATTIVA
+    #        dal verbo «Chiudi» `vendite.fn_programma_chiusura_versione_listino`
+    #        (§16.14, C-2 = a): perimetro, il primo motivo di
+    #        `script.fn_check_versione_listino_chiudibile` (non attiva, fine nel
+    #        passato) sul campo `valido_al`, poi la fine con la porta aperta. Lo
+    #        stato non cambia: CHIUSA la scrive il job a scadenza.
+    #        ⛔ Il PATCH generico della fine di una ATTIVA lo rifiuta il DB
+    #        (C-4 = a, E_LISTINO_VERSIONE_FINE_SOLO_DAL_VERBO).
+    # Ritorna: {versione_id, valido_al_prima, valido_al_dopo}.
+    def programma_chiusura(self, versione_id: int, valido_al: date | None) -> dict[str, Any]:
+        with connection.cursor() as cursor:
             cursor.execute(
-                "DELETE FROM vendite.listini_righe WHERE listino_versione_id = %s",
-                [versione_id],
+                "SELECT * FROM vendite.fn_programma_chiusura_versione_listino(%s, %s)",
+                [versione_id, valido_al],
             )
-            cursor.execute(
-                """
-                DELETE FROM vendite.listini_versioni
-                 WHERE listino_id = %s
-                   AND id = %s
-                """,
-                [listino_id, versione_id],
-            )
-            return cursor.rowcount > 0
+            result = row_to_dict(cursor)
+            assert result is not None
+            return result
 
     # Scopo: Le versioni che l'attivazione di `versione_id` chiuderebbe, con la
     #        fine che prenderebbero: l'anteprima del dialogo di conferma (`dry_run`).
@@ -766,6 +781,7 @@ class ListiniRepository:
                     u.codice                            AS uom_codice,
                     u.descrizione                       AS uom_descrizione,
                     r.prezzo,
+                    r.periodicita,
                     -- IVA dell'articolo (denormalizzata dal `vw_articoli_dettaglio`):
                     -- il FE mostra la colonna IVA per ogni riga (audit visivo +
                     -- coerenza padre-figlio nei bundle).
@@ -798,6 +814,9 @@ class ListiniRepository:
                     -- Il composito non ha un prezzo proprio: il suo valore e' la
                     -- somma dei componenti, mostrata come badge «N componenti».
                     NULL::numeric                       AS prezzo,
+                    -- Il padre del kit non ha una riga di listino: la sua
+                    -- periodicita' sta in `vendite.listini_kit` (D-2-bis (B)).
+                    lk.periodicita                      AS periodicita,
                     adc.iva_id,
                     adc.iva_codice,
                     adc.iva_aliquota_iva                AS iva_aliquota,
@@ -814,10 +833,13 @@ class ListiniRepository:
                    AND vc.listino_id = %s
                   LEFT JOIN catalogo.vw_articoli_dettaglio adc
                     ON adc.id = lrc.articolo_padre_id
+                  LEFT JOIN vendite.listini_kit lk
+                    ON lk.listino_versione_id = lrc.listino_versione_id
+                   AND lk.articolo_padre_id = lrc.articolo_padre_id
                 {where_comp}
                  GROUP BY lrc.articolo_padre_id, lrc.listino_versione_id,
                           adc.codice, adc.descrizione, adc.iva_id,
-                          adc.iva_codice, adc.iva_aliquota_iva
+                          adc.iva_codice, adc.iva_aliquota_iva, lk.periodicita
             )
             SELECT *, COUNT(*) OVER() AS total_count
               FROM unione
@@ -852,6 +874,7 @@ class ListiniRepository:
                     r.articolo_id,
                     r.uom_id,
                     r.prezzo,
+                    r.periodicita,
                     r.meta,
                     r.attivo,
                     r.data_insert,
@@ -998,73 +1021,6 @@ class ListiniRepository:
             )
             return cursor.rowcount > 0
 
-    # Scopo: Restituisce versioni ATTIVE in scadenza entro N giorni senza successore.
-    #        Filtro temporale isolato per facilitare futura migrazione daterange (N1).
-    # ⛔ La scadenza e' `valido_al` (incluso), NON `upper(validita)`:
-    #    `validita` e' `daterange(valido_dal, valido_al, '[]')`, che PostgreSQL
-    #    normalizza in `[)`, quindi `upper()` vale `valido_al + 1`. Fino al
-    #    2026-10-21 la query leggeva `upper()` e sbagliava di un giorno la
-    #    scadenza, i giorni rimanenti e il successore contiguo
-    #    (brief-be-verifica-documentazione-api §C1).
-    def _filter_versioni_in_scadenza(self) -> str:
-        return (
-            "v.valido_al IS NOT NULL "
-            "AND v.valido_al <= (SELECT script.fn_data_operativa()) + %(giorni)s * INTERVAL '1 day'"
-        )
-
-    # Scopo: Lista versioni operativamente ATTIVE oggi che scadono entro `giorni`
-    #        e non hanno una versione successiva (BOZZA o operativa) che subentra.
-    #        La versione in vigore oggi la dice il DB
-    #        (`vendite.fn_listino_versione_in_vigore`, regola §6 brief 2026-05-16:
-    #        la BOZZA e' preparazione, non versione operativa, quindi non genera
-    #        alert di scadenza); lo stato del successore si legge dal vocabolario
-    #        (giro 12, BE-L1). Per il "successore che subentrera`" sono ammesse
-    #        sia BOZZA sia operative future.
-    def listini_in_scadenza(self, giorni: int) -> list[dict[str, Any]]:
-        filtro_scadenza = self._filter_versioni_in_scadenza()
-        with connection.cursor() as cursor:
-            cursor.execute(
-                f"""
-                SELECT
-                    l.id AS listino_id,
-                    l.codice AS listino_codice,
-                    l.descrizione AS listino_descrizione,
-                    l.utility_id,
-                    u.descrizione AS utility_descrizione,
-                    v.id AS versione_id,
-                    v.codice_versione,
-                    v.valido_dal,
-                    v.valido_al,
-                    v.valido_al - (SELECT script.fn_data_operativa()) AS giorni_rimanenti
-                  FROM vendite.listini_versioni v
-                  JOIN vendite.listini l ON l.id = v.listino_id
-                  LEFT JOIN config.utilities u ON u.id = l.utility_id
-                 WHERE v.id = vendite.fn_listino_versione_in_vigore(
-                                  v.listino_id, (SELECT script.fn_data_operativa()))
-                   AND l.attivo IS TRUE
-                   AND {filtro_scadenza}
-                   AND NOT EXISTS (
-                       SELECT 1
-                         FROM vendite.listini_versioni succ
-                         JOIN config.stati_doc_listino_versioni ss
-                           ON ss.id = succ.stato_doc_listino_versione_id
-                        WHERE succ.listino_id = v.listino_id
-                          AND succ.id != v.id
-                          AND succ.attivo IS TRUE
-                          -- Il successore CONTIGUO nasce il giorno dopo la
-                          -- scadenza: `valido_dal = valido_al + 1`, cioe' `>`.
-                          AND succ.valido_dal > v.valido_al
-                          AND (
-                              ss.codice_interno = '{STATO_VERSIONE_BOZZA}'
-                              OR succ.validita && daterange(v.valido_al + 1, NULL, '[)')
-                          )
-                   )
-                 ORDER BY v.valido_al ASC, l.codice
-                """,  # noqa: S608 — filtro letterale da _filter_versioni_in_scadenza e costante STATO_VERSIONE_BOZZA, valori come parametri
-                {"giorni": giorni},
-            )
-            return rows_to_list(cursor)
-
     # Scopo: Applica variazione percentuale massa ai prezzi delle righe attive
     #        di una versione. Se dry_run=True restituisce la preview senza modificare.
     #        Restituisce (righe_aggiornate, preview_rows).
@@ -1188,6 +1144,54 @@ class ListiniRepository:
     # — un SUM(lrc.prezzo) puro sarebbe fuorviante perche' ignora i
     # coefficienti. Il totale per padre vive nel preview del Dialog detail
     # (`list_bundle_preview`) dove abbiamo accesso a `ac.coeff_qta`.
+
+    # Scopo: Il KIT sulla versione di listino (`vendite.listini_kit`, D-2-bis
+    #        (B)): la periodicita' con cui si addebita a canone. Una riga per
+    #        (versione, kit): con una periodicita' si scrive (INSERT o UPDATE
+    #        sulla chiave `uq_listini_kit_versione_articolo`), con `None` si
+    #        toglie. Solo in bozza, solo su un composito: lo dice il guard DB
+    #        (`trgfn_listini_kit_guard`).
+    # Ritorna: la periodicita' scritta (None se tolta).
+    def salva_kit_periodicita(
+        self, *, versione_id: int, articolo_padre_id: str, periodicita: str | None,
+    ) -> str | None:
+        with connection.cursor() as cursor:
+            if periodicita is None:
+                self._elimina_kit(cursor, versione_id, articolo_padre_id)
+                return None
+            cursor.execute(
+                """
+                INSERT INTO vendite.listini_kit
+                       (listino_versione_id, articolo_padre_id, periodicita)
+                VALUES (%s, %s::uuid, %s)
+                ON CONFLICT (listino_versione_id, articolo_padre_id)
+                DO UPDATE SET periodicita = EXCLUDED.periodicita
+                RETURNING periodicita
+                """,
+                [versione_id, str(articolo_padre_id), periodicita],
+            )
+            row = cursor.fetchone()
+            assert row is not None
+            return row[0]
+
+    # Scopo: Toglie il kit dalla versione (la sua periodicita'): con i prezzi
+    #        del bundle se ne va anche lui, o resterebbe un kit senza prezzo.
+    #        Idempotente.
+    def elimina_kit(self, *, versione_id: int, articolo_padre_id: str) -> int:
+        with connection.cursor() as cursor:
+            return self._elimina_kit(cursor, versione_id, articolo_padre_id)
+
+    @staticmethod
+    def _elimina_kit(cursor: Any, versione_id: int, articolo_padre_id: str) -> int:
+        cursor.execute(
+            """
+            DELETE FROM vendite.listini_kit
+             WHERE listino_versione_id = %s
+               AND articolo_padre_id = %s::uuid
+            """,
+            [versione_id, str(articolo_padre_id)],
+        )
+        return cursor.rowcount
 
     # Scopo: Preview BoM corrente di un padre composito + LEFT JOIN sui
     # prezzi gia' definiti in `listini_righe_componenti` per la versione

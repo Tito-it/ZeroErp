@@ -6,7 +6,8 @@
 // null e delegare al BE il residuo effettivo, race-proof).
 //
 // Il composable possiede SOLO la macchina di stato; restano nel caller (perché
-// divergono davvero): il template/colonne, il watch sull'id del padre, il
+// divergono davvero): le colonne di dominio (la tabella e' il BB
+// `TabellaSelezioneRighe`, dal 2026-10-31), il watch sull'id del padre, il
 // flusso confirm/execute/notify dell'azione e la shape del payload (iniettata
 // via `buildPayloadRighe(mapRow)`).
 //
@@ -131,6 +132,13 @@ export function useRigheSelezioneQta({
   }
 
   return {
+    // Chiave riga, residuo e sola lettura, ri-esposti per `TabellaSelezioneRighe`:
+    // la tabella li legge dalla macchina invece di riceverli una seconda volta
+    // dal caller (una copia di `readonly` potrebbe dire il contrario della
+    // selezione, che in sola lettura la macchina lascia vuota).
+    rowKey,
+    residuoDi,
+    readonly,
     righe,
     loadingRighe,
     selected,

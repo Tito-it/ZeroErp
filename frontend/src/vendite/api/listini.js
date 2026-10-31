@@ -29,8 +29,10 @@ export function deleteListino(id) {
 
 // --- Versioni ---
 
-export function listVersioni(listinoId) {
-  return api.get(`${BASE}/${listinoId}/versioni/`)
+// La pagina delle versioni (lista `vendite.listini_versioni`, il tab «Versioni»
+// del drawer listino): `search`, `limit`/`offset`, `order_by`/`order_dir`.
+export function listVersioni(listinoId, params = {}) {
+  return api.get(`${BASE}/${listinoId}/versioni/`, { params })
 }
 
 export function getVersione(listinoId, verId) {
@@ -45,8 +47,8 @@ export function updateVersione(listinoId, verId, payload) {
   return api.patch(`${BASE}/${listinoId}/versioni/${verId}/`, payload)
 }
 
-// Elimina una versione in stato BOZZA con tutte le sue righe (cascata).
-// Il backend rifiuta con 400 se la versione non e' BOZZA.
+// Elimina una versione in stato BOZZA con tutte le sue righe: il verbo del DB
+// (fn_elimina_versione_listino) rifiuta fuori dalla BOZZA o se un documento la usa.
 export function deleteVersione(listinoId, verId) {
   return api.delete(`${BASE}/${listinoId}/versioni/${verId}/`)
 }
@@ -55,8 +57,16 @@ export function changeVersioneStato(listinoId, verId, payload) {
   return api.post(`${BASE}/${listinoId}/versioni/${verId}/stato/`, payload)
 }
 
-// Clona una versione esistente in una nuova versione BOZZA dello stesso listino,
-// copiando le righe attive. Vincolo D2: target.valido_dal >= src.valido_dal.
+// «Chiudi» di una versione ATTIVA: fissa la fine (`valido_al`) o la toglie
+// (`valido_al: null`), dal verbo del DB. La fine nel passato la rifiuta il DB
+// sul campo `valido_al`; il PATCH generico della fine di una ATTIVA non passa.
+export function programmaChiusuraVersione(listinoId, verId, valido_al) {
+  return api.post(`${BASE}/${listinoId}/versioni/${verId}/chiusura/`, { valido_al })
+}
+
+// Clona una versione esistente (da qualunque stato) in una nuova versione BOZZA
+// dello stesso listino, copiando le righe attive. D2 (target.valido_dal >=
+// src.valido_dal) la dice il verbo del DB, sul campo valido_dal.
 export function cloneVersione(listinoId, srcVerId, payload) {
   return api.post(`${BASE}/${listinoId}/versioni/${srcVerId}/clona/`, payload)
 }
@@ -65,11 +75,6 @@ export function cloneVersione(listinoId, srcVerId, payload) {
 // di una versione BOZZA. Supporta dry_run per preview.
 export function applicaVariazionePercentuale(listinoId, verId, payload) {
   return api.post(`${BASE}/${listinoId}/versioni/${verId}/applica-variazione/`, payload)
-}
-
-// Versioni ATTIVE in scadenza senza successore.
-export function alertScadenze(giorni = 15) {
-  return api.get(`${BASE}/alert-scadenze/`, { params: { giorni } })
 }
 
 // Tipologie listino ammesse per la utility indicata (matrice
@@ -154,7 +159,19 @@ export function saveBundleComponenti(listinoId, verId, padreId, rows) {
   )
 }
 
-// Elimina TUTTI i prezzi bundle del composito dalla versione. Tabula rasa
+// La periodicita' del KIT sulla versione (`vendite.listini_kit`, D-2-bis (B)):
+// il kit non ha una riga di listino, e il ritmo con cui si addebita a canone
+// sta li'. `periodicita` = un codice di `config.periodicita`, `null` la toglie.
+// Solo versione BOZZA, solo su un composito: lo dice il DB.
+export function saveKitPeriodicita(listinoId, verId, padreId, periodicita) {
+  return api.put(
+    `${BASE}/${listinoId}/versioni/${verId}/bundle/${padreId}/`,
+    { periodicita },
+  )
+}
+
+// Elimina TUTTI i prezzi bundle del composito dalla versione, e il kit con la
+// sua periodicita'. Tabula rasa
 // idempotente: soft-delete cascade su `listini_righe_componenti`. Solo
 // versione BOZZA. Idempotente: 0 disattivati senza errore se gia' vuoto.
 export function deleteBundleComponenti(listinoId, verId, padreId) {

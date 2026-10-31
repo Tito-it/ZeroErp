@@ -1,0 +1,111 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'AZIONE DI RIGA «CHIUDI» DELLE VERSIONI DI LISTINO
+#   Brief: brief-modello-documento-vendita §16.14 (C-2 = a, C-3 di Tid,
+#   2026-10-29). Vista di partenza: 20261028-40, uguale alla viva.
+#
+# ── PERCHE' ─────────────────────────────────────────────────────────
+#   Il pulsante «Chiudi» si accendeva nel frontend sullo stato (ATTIVA), una
+#   copia della regola (R-L4 della revisione BE). Ora la regola e'
+#   script.fn_check_versione_listino_chiudibile (20261029-01) e il suo primo
+#   motivo si legge da qui: la riga CHIUDI_VERSIONE_LISTINO del registro
+#   config.azioni_riga (80_data) nomina questa vista e le due colonne nuove.
+#   La check si chiama senza data: dice se il pulsante si accende; la fine
+#   nel passato la giudica il verbo con la data scelta nel dialogo.
+#   «Clona» non ha colonne: nessun motivo di stato (C-1 = a).
+#
+# ── CHE COSA CAMBIA ─────────────────────────────────────────────────
+#   Due colonne in coda, chiusura_blocco_reason / _reason_key (NULL = si
+#   chiude). Le colonne di prima restano dove sono.
+#   ⛔ CREATE OR REPLACE VIEW azzera security_invoker: si riscrive nel WITH.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261029-05-update-vw-listini-versioni-azioni-chiusura-mctit.yaml
+
+  - changeSet:
+      id: 20261029-05-update-vw-listini-versioni-azioni-chiusura
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.vw_listini_versioni_azioni: il motivo per cui «Chiudi» e' spento
+        (script.fn_check_versione_listino_chiudibile), superficie dell'azione
+        CHIUDI_VERSIONE_LISTINO. Brief: brief-modello-documento-vendita §16.14.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_check_versione_listino_chiudibile';
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_attribute a
+                JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
+                JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+               WHERE n.nspname = 'vendite' AND c.relname = 'vw_listini_versioni_azioni'
+                 AND a.attname = 'eliminazione_blocco_reason_key'
+                 AND NOT a.attisdropped;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_listini_versioni_azioni
+              WITH (security_invoker = true) AS
+              SELECT lv.id         AS versione_id,
+                     lv.listino_id,
+                     -- Il PRIMO motivo: il verbo e il guard sollevano quello.
+                     chk.motivi -> 0 ->> 'reason'     AS attivazione_blocco_reason,
+                     chk.motivi -> 0 ->> 'reason_key' AS attivazione_blocco_reason_key,
+                     eli.motivi -> 0 ->> 'reason'     AS eliminazione_blocco_reason,
+                     eli.motivi -> 0 ->> 'reason_key' AS eliminazione_blocco_reason_key,
+                     chi.motivi -> 0 ->> 'reason'     AS chiusura_blocco_reason,
+                     chi.motivi -> 0 ->> 'reason_key' AS chiusura_blocco_reason_key
+                FROM vendite.listini_versioni lv
+                CROSS JOIN LATERAL (
+                    SELECT script.fn_check_versione_listino_attivabile(lv.id) AS motivi
+                ) chk
+                CROSS JOIN LATERAL (
+                    SELECT script.fn_check_versione_listino_eliminabile(lv.id) AS motivi
+                ) eli
+                CROSS JOIN LATERAL (
+                    -- Senza data: se il pulsante si accende.
+                    SELECT script.fn_check_versione_listino_chiudibile(lv.id) AS motivi
+                ) chi;
+
+              COMMENT ON VIEW vendite.vw_listini_versioni_azioni IS
+                  'Le AZIONI DI RIGA delle versioni di listino: una riga per versione (versione_id, listino_id). attivazione_blocco_reason / attivazione_blocco_reason_key: il PRIMO motivo di script.fn_check_versione_listino_attivabile (la stessa fn_check che vendite.fn_attiva_versione_listino e il guard di transizione sollevano; NULL = niente vieta l''attivazione). eliminazione_blocco_reason / eliminazione_blocco_reason_key: il PRIMO motivo di script.fn_check_versione_listino_eliminabile (la stessa che vendite.fn_elimina_versione_listino e il guard per stato sollevano: non in bozza, citata da un documento; NULL = si elimina). chiusura_blocco_reason / chiusura_blocco_reason_key: il PRIMO motivo di script.fn_check_versione_listino_chiudibile senza data (non ATTIVA; NULL = «Chiudi» acceso; la fine nel passato la giudica vendite.fn_programma_chiusura_versione_listino con la data scelta). «Clona» non ha colonne: si clona da qualunque stato. Lo stato non c''e'': chi puo'' attivare da quale stato lo dice la riga lista (script.fn_doc_azioni_permesse). E'' la superficie delle azioni ATTIVA_VERSIONE_LISTINO, ELIMINA_VERSIONE_LISTINO e CHIUDI_VERSIONE_LISTINO nel registro config.azioni_riga. security_invoker: i soli listini del proprio perimetro. Si filtra per listino_id o versione_id. Prima i pulsanti si decidevano nel frontend (conteggio delle righe, stato). Brief: brief-modello-documento-vendita §16 (L-4), §16.11 (E-2) e §16.14 (C-2, C-3, Tid 2026-10-29).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Una vista non perde colonne con CREATE OR REPLACE: si ricrea quella del 20261028-40.
+              DROP VIEW IF EXISTS vendite.vw_listini_versioni_azioni;
+              CREATE VIEW vendite.vw_listini_versioni_azioni
+              WITH (security_invoker = true) AS
+              SELECT lv.id         AS versione_id,
+                     lv.listino_id,
+                     chk.motivi -> 0 ->> 'reason'     AS attivazione_blocco_reason,
+                     chk.motivi -> 0 ->> 'reason_key' AS attivazione_blocco_reason_key,
+                     eli.motivi -> 0 ->> 'reason'     AS eliminazione_blocco_reason,
+                     eli.motivi -> 0 ->> 'reason_key' AS eliminazione_blocco_reason_key
+                FROM vendite.listini_versioni lv
+                CROSS JOIN LATERAL (
+                    SELECT script.fn_check_versione_listino_attivabile(lv.id) AS motivi
+                ) chk
+                CROSS JOIN LATERAL (
+                    SELECT script.fn_check_versione_listino_eliminabile(lv.id) AS motivi
+                ) eli;
+              GRANT SELECT ON vendite.vw_listini_versioni_azioni TO zeroerp_app;

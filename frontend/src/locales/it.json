@@ -465,10 +465,11 @@
     },
     "campi": {
       "abilita_fattura": "Abilita fattura",
+      "accettazione": "Stato di accettazione",
       "aliquota_iva": "Aliquota IVA",
       "applica_fattura": "Si applica alla fattura",
       "applica_lotto": "Si applica al lotto",
-        "apribile": "Apribile (ha una sua pagina)",
+      "apribile": "Apribile (ha una sua pagina)",
       "area": "Area",
       "arrotondamento_decimali": "Decimali di arrotondamento",
       "arrotondamento_metodo": "Metodo di arrotondamento",
@@ -485,6 +486,7 @@
       "categoria_accisa_id": "Categoria accisa",
       "causale_magazzino": "Causale di magazzino",
       "centro_riscossione_id": "Centro di riscossione",
+      "cessazione": "Stato di cessazione",
       "cf_obbligatorio": "Codice fiscale obbligatorio",
       "check_lettura": "Controllo di lettura",
       "chiude_commessa": "Chiude la commessa",
@@ -496,6 +498,7 @@
       "codice_iso": "Codice ISO",
       "congela_fiscale": "Congela i dati fiscali",
       "consente_stock_negativo": "Consente giacenza negativa",
+      "conta_dal_calendario": "Conta la durata dal calendario (giorni o mesi)",
       "conto_iva_acquisti_id": "Conto IVA acquisti",
       "conto_iva_vendita_id": "Conto IVA vendite",
       "dati_societari_policy": "Regola dati societari",
@@ -512,7 +515,7 @@
       "entita_tabella": "Tabella entità",
       "esito": "Esito",
       "esito_default": "Esito predefinito",
-        "etichetta": "Etichetta",
+      "etichetta": "Etichetta",
       "extra_country": "Dati paese (JSON)",
       "fase": "Fase",
       "fatturabile": "Fatturabile",
@@ -1615,7 +1618,6 @@
       "ut_col_stato": "Stato",
       "ut_stato_configurata": "Configurata",
       "ut_stato_non_configurata": "Non configurata",
-      "ut_col_codice": "Cod.",
       "ut_col_descrizione": "Utility",
       "ut_col_soglia_min": "Soglia min",
       "ut_col_soglia_max": "Soglia max",
@@ -1871,7 +1873,11 @@
         "PROCESSO": "Processo automatico",
         "API_CLIENT": "Sistema esterno"
       }
-    }
+    },
+    "profilo_reparto_cerca": "Cerca area o azione…",
+    "profilo_reparto_azioni_abilitate": "Azioni abilitate in quest'area",
+    "profilo_reparto_area_senza_azioni": "Quest'area non ha azioni di processo: vale il solo livello dell'area.",
+    "profilo_reparto_limitata_da_area": "Limitata dall'area: serve «{minimo}», l'area è «{area}». Abilitata nel profilo, ma senza effetto finché l'area non arriva a quel livello."
   },
   "indirizzi": {
     "tab_indirizzi": "Indirizzi",
@@ -2106,6 +2112,7 @@
     "col_uom_da": "UoM Da",
     "col_uom_a": "UoM A",
     "tag_base": "Base",
+    "tag_logistica": "Logistica",
     "conv_search_placeholder": "Cerca conversione (codice UoM)...",
     "conv_mostra_non_attive": "Mostra non attive",
     "nuova_conversione": "Nuova Conversione",
@@ -2485,9 +2492,11 @@
       "fonte_quantita_value_manuale": "Manuale (sul documento)",
       "fonte_quantita_value_timesheet": "Da rendicontazione ore",
       "fonte_quantita_value_letture": "Da letture utility",
+      "fonte_quantita_value_durata": "Dalla durata del periodo",
       "fonte_quantita_tag_manuale": "Definita sul documento",
       "fonte_quantita_tag_timesheet": "Da rendicontazione ore",
       "fonte_quantita_tag_letture": "Da letture utility",
+      "fonte_quantita_tag_durata": "Dai giorni o dai mesi del periodo",
       "fonte_quantita_tag_tooltip": "La quantita' sara' determinata downstream, non si imposta qui.",
       "select_categoria_cliente": "Seleziona categoria...",
       "select_billing_account": "Cerca cliente...",
@@ -2518,8 +2527,16 @@
       "tipo_eccezione_OVERRIDE": "Override",
       "tipo_eccezione_ESCLUSIONE": "Esclusione",
       "tipo_eccezione_AGGIUNTA": "Aggiunta",
+      "tipo_eccezione_ADESIONE": "Adesione",
       "field_tipo_eccezione": "Tipo eccezione",
       "azione_escludi": "Escludi articolo",
+      "azione_aderisci": "Aderisci",
+      "azione_rimuovi_adesione": "Rimuovi adesione",
+      "rimuovi_adesione_dialog_titolo": "Rimuovi adesione",
+      "rimuovi_adesione_dialog_messaggio": "{articolo} non verrà più addebitato: resta fra le righe del listino. Continuare?",
+      "rimuovi_adesione_dialog_conferma": "Rimuovi",
+      "prezzo_da_listino": "Prezzo del listino",
+      "prezzo_da_listino_tooltip": "L'adesione prende il prezzo del listino, con la variazione globale: sulla riga si scrivono solo quantità e periodicità.",
       "azione_aggiungi_articolo": "Aggiungi articolo fuori listino",
       "aggiungi_articolo": "Aggiungi articolo",
       "aggiungi_articolo_tooltip": "Aggiungi al contratto un articolo non presente nel listino di riferimento (AGGIUNTA).",
@@ -2566,6 +2583,7 @@
       "origine_override": "Override",
       "origine_aggiunta": "Manuale",
       "origine_esclusione": "Esclusione",
+      "origine_adesione": "Adesione",
       "componenti_bundle_tooltip": "Mostra componenti del bundle",
       "riga_creata": "Riga creata",
       "riga_salvata": "Riga salvata",
@@ -2641,7 +2659,8 @@
         "PUSH_PARZIALE": "Push a commessa parziale",
         "SENZA_FIGLIO": "Accettata senza contratto/ordine generato",
         "FIGLIO_ABORTITO": "Documento generato poi annullato — serve revisione",
-        "CANONE_NON_GENERATO": "Canone del mese non generato",
+        "CANONE_NON_GENERATO": "Canone maturato da mandare in commessa",
+        "CANONE_NON_GENERABILE": "Canone che non può partire — rivedi il contratto",
         "ATTIVITA_NON_APPROVATA": "Attività non approvata",
         "ATTIVITA_NON_EMESSA": "Attività non emessa",
         "IN_TRANSITO": "Merce in viaggio, fatturazione non ancora dovuta",
@@ -3378,6 +3397,7 @@
       "clona_versione": "Clona versione",
       "versione_sorgente": "Versione sorgente",
       "versione_clonata": "Versione clonata in BOZZA",
+      "clona_componenti_saltati": "{count} componente/i dei compositi non copiato/i: la distinta non li prevede nel periodo della nuova versione.",
       "clona_help": "La nuova versione viene creata in stato BOZZA con le righe attive copiate dalla sorgente. Puoi modificarla liberamente prima dell'attivazione.",
       "warning_retroattivo": "Attenzione: stai creando una versione con decorrenza retroattiva. Le fatturazioni gia' emesse nel periodo non verranno modificate automaticamente. Per correggerle e' necessaria una rettifica dedicata.",
       "attiva_versione_titolo": "Conferma attivazione versione",
@@ -3389,13 +3409,18 @@
       "chiusura_programmata_al": "Chiusura programmata: la versione resta attiva fino al {data} compreso, poi il job la chiude.",
       "azione_reason": {
         "versione_spenta": "La versione è spenta: riaccenderla prima di attivarla.",
-        "versione_senza_righe": "La versione non ha prezzi: aggiungere almeno una riga prima di attivarla."
+        "versione_senza_righe": "La versione non ha prezzi: aggiungere almeno una riga prima di attivarla.",
+        "quota_fissa_senza_periodicita": "La versione ha una quota fissa senza periodicità: indicarla sulla riga dell'articolo (o del kit) prima di attivarla.",
+        "versione_non_in_bozza": "Si elimina solo una versione in bozza: questa è stata usata per i prezzi.",
+        "versione_citata": "La versione è usata da altri documenti: toglierla da quei documenti prima di eliminarla.",
+        "versione_non_attiva": "Si chiude solo una versione attiva: di una bozza si modificano le date, una chiusa non cambia più.",
+        "fine_nel_passato": "La fine non può essere prima di oggi: scegliere oggi o una data futura.",
+        "clone_prima_della_sorgente": "La nuova versione non può cominciare prima della versione da cui si copia."
       },
       "elimina_versione": "Elimina versione",
       "versione_eliminata": "Versione eliminata",
       "elimina_listino": "Elimina listino (mai usato)",
       "listino_eliminato": "Listino eliminato",
-      "nessuna_versione_inline": "Nessuna versione. Crea la prima con il pulsante in alto.",
       "uom_select_articolo_first": "Seleziona prima un articolo",
       "uom_no_operative": "Nessuna UoM operativa per questo articolo",
       "uom_base_suffix": "(base)",
@@ -3415,11 +3440,6 @@
       "variazione_pct_conferma": "Applica variazione",
       "variazione_pct_successo": "Variazione applicata a {count} righe",
       "variazione_pct_help": "Positivo = aumento, negativo = riduzione. Es. 3 = +3%, -5 = -5%. Solo su versioni BOZZA.",
-      "alert_scadenze_titolo": "Listini in scadenza",
-      "alert_scadenze_vuoto": "Nessun listino in scadenza",
-      "alert_scadenze_badge": "{count} in scadenza",
-      "alert_scadenze_giorni_rimanenti": "{giorni} giorni",
-      "alert_scadenze_scaduto": "Scaduto",
       "chiudi_versione_titolo": "Chiudi versione",
       "chiudi_versione_warning": "Dal {data_dopo} i contesti gestiti da questa versione non avranno prezzo attivo, a meno che non esista gia' una versione successiva.",
       "chiudi_versione_data": "Chiudi al",
@@ -3431,7 +3451,17 @@
       "righe_filtra_ba": "Filtra per BA...",
       "righe_filtra_utility": "Filtra per utility...",
       "variazione_short": "Variazione",
-      "aggiungi_prezzo_hint": "Aggiungi prezzo"
+      "aggiungi_prezzo_hint": "Aggiungi prezzo",
+      "alert_scadenze_non_verificabili": "Scadenze dei listini non verificabili: clic per riprovare",
+      "tab_dati": "Dati",
+      "alert_scadenze_filtra": "Listini con la versione in scadenza senza successore: clic per vederli",
+      "col_giorni_alla_scadenza": "In scadenza (giorni)",
+      "filtro_in_scadenza": "Solo in scadenza",
+      "kit_periodicita_azione": "Periodicità del kit",
+      "kit_periodicita_titolo": "Periodicità del kit {articolo}",
+      "kit_periodicita_salvata": "Periodicità del kit salvata",
+      "periodicita_nessuna": "Nessuna",
+      "hint_periodicita": "Ogni quanto si addebita a canone. Su una quota fissa serve per attivare la versione; altrove è la proposta di «Aderisci»."
     },
     "lotti": {
       "seleziona_pagina": "Seleziona tutti i lotti di questa pagina",
@@ -4614,6 +4644,21 @@
       "col_stato": "Stato",
       "col_attiva": "Attiva",
       "col_totale": "Totale"
+    },
+    "righe_selezione": {
+      "col_articolo": "Articolo"
+    },
+    "canoni": {
+      "section_canoni": "Canoni",
+      "field_generazione_canone": "Addebito dei canoni",
+      "generazione_canone_INIZIO_PERIODO": "Anticipati (all'inizio del periodo)",
+      "generazione_canone_FINE_PERIODO": "Normali (a periodo finito)",
+      "field_mese_partenza_canone": "Mese di partenza dei periodi",
+      "hint_mese_partenza_canone": "Da quale mese si contano i periodi: per un trimestrale da febbraio, feb-apr, mag-lug, ago-ott, nov-gen.",
+      "canoni_predefinito": "Predefinito",
+      "field_periodicita": "Periodicità",
+      "select_periodicita": "Scegliere la periodicità",
+      "generazione_come_testata": "Come la testata"
     }
   },
   "pagamenti": {
@@ -5415,7 +5460,8 @@
     "field_solo_stampa": "Solo stampa",
     "placeholder_riga_doc": "Lascia vuoto per nota del documento",
     "placeholder_stile": "Seleziona uno stile",
-    "placeholder_testo": "Inserisci il testo della nota (markdown supportato)"
+    "placeholder_testo": "Inserisci il testo della nota (markdown supportato)",
+    "col_seq": "Sequenza"
   },
   "geo": {
     "tab_province": "Province",
@@ -6427,13 +6473,11 @@
     "affina": "Mostrate {shown} di {total}: affina la ricerca"
   },
   "matrice_override": {
-    "cerca": "Cerca…",
     "col_ereditato": "Ereditato",
     "col_override": "Override",
     "col_stato": "Stato",
     "stato_override": "Override",
     "stato_ereditato": "Ereditato",
-    "reset_tooltip": "Togli l'override: la voce torna a seguire il valore ereditato",
-    "nessuna_voce": "Nessuna voce"
+    "reset_tooltip": "Togli l'override: la voce torna a seguire il valore ereditato"
   }
 }

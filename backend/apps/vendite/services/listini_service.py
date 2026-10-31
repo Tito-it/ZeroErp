@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Any, NoReturn
@@ -17,7 +18,7 @@ from django.db import DatabaseError, IntegrityError, transaction
 from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.services.error_manager import ErrorManager
-from apps.core.services.list_helpers import collezione_completa, validate_order_params
+from apps.core.services.list_helpers import validate_order_params
 from apps.core.services.payload_helpers import (
     MISSING as _MISSING,
     MissingType as _MissingType,
@@ -34,11 +35,13 @@ from apps.vendite.db.listini_repository import (
     STATO_VERSIONE_ATTIVA,
     VERSIONE_CREATE_COLUMNS,
     VERSIONE_UPDATE_COLUMNS,
+    VERSIONI_ORDER_COLUMNS,
     ListiniRepository,
 )
 
 _ORDER_BY_VALIDI: frozenset[str] = frozenset(LISTINI_ORDER_COLUMNS.keys())
 _RIGHE_ORDER_BY_VALIDI: frozenset[str] = frozenset(RIGHE_ORDER_COLUMNS.keys())
+_VERSIONI_ORDER_BY_VALIDI: frozenset[str] = frozenset(VERSIONI_ORDER_COLUMNS.keys())
 _LISTINO_NULLABLE_FIELDS: frozenset[str] = frozenset({"meta"})
 _VERSIONE_NULLABLE_FIELDS: frozenset[str] = frozenset({"valido_al", "meta"})
 _RIGA_NULLABLE_FIELDS: frozenset[str] = frozenset(
@@ -48,6 +51,8 @@ _LISTINO_CREATE_ALLOWED_KEYS: frozenset[str] = frozenset(LISTINO_CREATE_COLUMNS.
 _LISTINO_UPDATE_ALLOWED_KEYS: frozenset[str] = frozenset(LISTINO_UPDATE_COLUMNS.keys())
 _VERSIONE_CREATE_ALLOWED_KEYS: frozenset[str] = frozenset(VERSIONE_CREATE_COLUMNS.keys())
 _VERSIONE_UPDATE_ALLOWED_KEYS: frozenset[str] = frozenset(VERSIONE_UPDATE_COLUMNS.keys())
+# I parametri del verbo `vendite.fn_clona_versione_listino`, oltre la sorgente.
+_VERSIONE_CLONE_ALLOWED_KEYS: frozenset[str] = frozenset({"codice_versione", "valido_dal", "valido_al"})
 _RIGA_CREATE_ALLOWED_KEYS: frozenset[str] = frozenset(RIGA_CREATE_COLUMNS.keys())
 _RIGA_UPDATE_ALLOWED_KEYS: frozenset[str] = frozenset(RIGA_UPDATE_COLUMNS.keys())
 
@@ -516,6 +521,19 @@ def _translate_integrity_error(exc: IntegrityError, *, function_name: str, entit
                 E_VENDITE_FK,
                 "Tipologia listino non valida.",
             ),
+            # La periodicita' della riga (G-0-bis): fuori vocabolario e' un
+            # dato del form, col campo, come su contratto e offerta.
+            "fk_listini_righe_periodicita": (
+                E_VENDITE_FK,
+                "Periodicità inesistente.",
+                "periodicita",
+            ),
+            # La periodicita' del kit sul listino (D-2-bis (B)): stesso campo.
+            "fk_listini_kit_periodicita": (
+                E_VENDITE_FK,
+                "Periodicità inesistente.",
+                "periodicita",
+            ),
             # Temporal FK PG18 (migration 20260514-12) — sostituisce il guard
             # trigger di coerenza BoM (guard 6 rimosso con migration 20260514-13).
             "fk_listrighe_comp_articoli_comp_temporal": (
@@ -850,6 +868,16 @@ def _extract_riga_payload(
     if attivo is not _MISSING:
         data["attivo"] = attivo
 
+    # La periodicita' del canone: un codice del vocabolario o NULL, letto col
+    # BB `optional_upper` come sulle righe di contratto e offerta
+    # (`normalizza_codici_riga`). Il vocabolario lo dice la FK
+    # (`fk_listini_righe_periodicita`); fuori bozza la riga e' ferma dal guard
+    # di stato della versione.
+    if "periodicita" in payload:
+        data["periodicita"] = _V.optional_upper(
+            payload, "periodicita", function_name=function_name,
+        )
+
     meta = _extract_meta(payload, function_name=function_name, message=message)
     if meta is not _MISSING:
         data["meta"] = meta
@@ -920,6 +948,7 @@ def fn_list_listini(
     utility_id: int | None = None,
     tipologia_id: int | None = None,
     attivo: bool | None = None,
+    in_scadenza: bool | None = None,
     search: str | None = None,
     order_by: str = "codice",
     order_dir: str | None = "asc",
@@ -958,6 +987,7 @@ def fn_list_listini(
         order_dir=order_dir,
         limit=limit,
         offset=offset,
+        in_scadenza=in_scadenza,
     )
 
 
@@ -1073,12 +1103,37 @@ def fn_delete_listino(listino_id: int) -> dict[str, Any]:
     return {"deleted": True, "id": listino_id}
 
 
-# Scopo: Restituisce la lista versioni del listino con envelope uniforme.
-def fn_list_versioni(listino_id: int) -> dict[str, Any]:
+# Scopo: La pagina delle versioni del listino (lista `vendite.listini_versioni`),
+#        con ricerca e ordinamento validato sulla whitelist del repository.
+#        404 se il listino non c'e' (o non si vede).
+def fn_list_versioni(
+    listino_id: int,
+    *,
+    search: str | None = None,
+    order_by: str = "valido_dal",
+    order_dir: str | None = None,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
+) -> tuple[list[dict[str, Any]], int]:
     function_name = "vendite.listini_service.fn_list_versioni"
     _get_listino_or_raise(listino_id, function_name=function_name)
+    order_by, order_dir = validate_order_params(
+        order_by,
+        order_dir,
+        allowed_columns=_VERSIONI_ORDER_BY_VALIDI,
+        error_code="E_VENDITE_VALIDATION",
+        nullable=True,
+        function_name=function_name,
+    )
     repository = ListiniRepository()
-    return collezione_completa(repository.list_versioni(listino_id))
+    return repository.list_versioni_pagina(
+        listino_id,
+        search=search,
+        order_by=order_by,
+        order_dir=order_dir,
+        limit=limit,
+        offset=offset,
+    )
 
 
 # Scopo: Restituisce il dettaglio singolo di una versione del listino.
@@ -1115,7 +1170,9 @@ def fn_update_versione(listino_id: int, versione_id: int, payload: dict[str, Any
     # ⛔ Quali campi si cambiano in quale stato lo dice il DB (L-5, giro 12):
     #    `vendite.trgfn_listini_versioni_guard_per_stato`, col codice
     #    E_LISTINO_VERSIONE_CAMPO_NON_MODIFICABILE. Ritirata la copia del service
-    #    (`_VERSIONE_PATCH_ALLOWED_BY_STATE`).
+    #    (`_VERSIONE_PATCH_ALLOWED_BY_STATE`). La fine di una ATTIVA non passa
+    #    da qui: E_LISTINO_VERSIONE_FINE_SOLO_DAL_VERBO (C-4 = a), la si cambia
+    #    da «Chiudi» (`fn_programma_chiusura_versione`).
     repository = ListiniRepository()
     try:
         updated = repository.update_versione(listino_id, versione_id, data)
@@ -1142,76 +1199,78 @@ def fn_update_versione(listino_id: int, versione_id: int, payload: dict[str, Any
 # Scopo: Clona una versione esistente in una nuova versione BOZZA dello stesso listino.
 #        Workflow operativo "cambio prezzi": l'utente clona V001 in V002, modifica
 #        i prezzi che cambiano, attiva V002. La versione sorgente non viene toccata.
-#        Vincolo D2 (decisioni listini v2): la nuova versione puo' essere retroattiva
-#        ma valido_dal non puo' essere inferiore al valido_dal della sorgente. Le
-#        retroattive sui documenti gia` emessi richiedono il dominio rettifiche DB-L4.
+#        La copia e' il verbo `vendite.fn_clona_versione_listino` (§16.14, C-1 = a:
+#        da qualunque stato, anche da una BOZZA), che rifiuta col suo codice.
+#        ⛔ Ritirato il 2026-10-29 (BE-C1) il controllo D2 del service («la copia
+#        non comincia prima della sorgente», `E_VENDITE_VALIDATION`): lo dice il
+#        verbo con E_LISTINO_VERSIONE_CLONE_PRIMA_DELLA_SORGENTE sul campo
+#        `valido_dal`, dalla stessa `fn_check`.
+# Ritorna: il dettaglio della versione nuova, piu' i conteggi della copia
+#          (`righe_copiate`, `componenti_copiati`, `componenti_saltati`: i
+#          componenti senza giorni in comune fra distinta e versione nuova).
 def fn_clone_versione(
     listino_id: int,
     src_versione_id: int,
     payload: dict[str, Any],
 ) -> dict[str, Any]:
     function_name = "vendite.listini_service.fn_clone_versione"
-    src_versione = _get_versione_or_raise(listino_id, src_versione_id, function_name=function_name)
+    # La sorgente di QUESTO listino: la rotta nomina il listino, il verbo no.
+    _get_versione_or_raise(listino_id, src_versione_id, function_name=function_name)
 
+    # ⛔ Del payload si prendono solo codice e date: `meta` e `attivo` non si
+    #    clonano (la copia nasce attiva e senza meta), e una chiave che il
+    #    verbo non riceve e' un 400, non un valore ignorato in silenzio.
+    _V.validate_allowed_keys(
+        payload, allowed=_VERSIONE_CLONE_ALLOWED_KEYS, function_name=function_name,
+    )
     # Riusa la pipeline di validazione per_create della versione: garantisce
     # codice_versione+valido_dal obbligatori, valido_al > valido_dal.
-    # Filtra i campi a quelli effettivamente clonabili (esclude attivo/meta dal clone).
     target_data = _extract_versione_payload(payload, for_update=False, function_name=function_name)
-    clonable_fields = {"codice_versione", "valido_dal", "valido_al"}
-    target_data = {key: value for key, value in target_data.items() if key in clonable_fields}
-
-    # Vincolo D2: la nuova decorrenza non puo' essere inferiore alla decorrenza
-    # della sorgente. Cio' protegge da cloni "indietro nel tempo" che precederebbero
-    # l'inizio della versione che si vuole sostituire.
-    src_valido_dal = src_versione.get("valido_dal")
-    target_valido_dal = target_data.get("valido_dal")
-    assert isinstance(src_valido_dal, date)
-    assert isinstance(target_valido_dal, date)
-    ErrorManager.require(
-        target_valido_dal >= src_valido_dal,
-        code="E_VENDITE_VALIDATION",
-        message="Data di decorrenza non valida.",
-        detail=(
-            f"valido_dal della nuova versione ({target_valido_dal.isoformat()}) "
-            f"non puo' essere inferiore alla decorrenza della versione sorgente "
-            f"({src_valido_dal.isoformat()})."
-        ),
-        context={
-            "src_versione_id": src_versione_id,
-            "src_valido_dal": src_valido_dal,
-            "target_valido_dal": target_valido_dal,
-        },
-        function_name=function_name,
-        log_to_db=True,
-    )
 
     repository = ListiniRepository()
     try:
         with transaction.atomic():
-            target_versione_id = repository.clone_versione(
-                listino_id=listino_id,
-                src_versione_id=src_versione_id,
-                target_data=target_data,
+            copia = repository.clone_versione(
+                src_versione_id,
+                codice_versione=target_data["codice_versione"],
+                valido_dal=target_data["valido_dal"],
+                valido_al=target_data.get("valido_al"),
             )
     except IntegrityError as exc:
         _translate_integrity_error(exc, function_name=function_name, entity="versione")
+    except DatabaseError as exc:
+        _rifiuto_del_db_su_versione(
+            exc, message="Clonazione versione non consentita.",
+            context={"listino_id": listino_id, "versione_id": src_versione_id},
+            function_name=function_name,
+        )
 
-    return fn_get_versione(listino_id, target_versione_id)
+    return {
+        **fn_get_versione(listino_id, int(copia["versione_id"])),
+        "righe_copiate": copia["righe_copiate"],
+        "componenti_copiati": copia["componenti_copiati"],
+        "componenti_saltati": copia["componenti_saltati"],
+    }
 
 
 # Scopo: Elimina una versione con tutte le sue righe (cascata).
 #        Decisione O2 (sviluppo-listini-v2): solo BOZZA e' eliminabile, perche'
 #        non e' mai stata visibile al pricing e nessuno snapshot e' propagato.
-#        ⛔ La regola la dice il DB (L-5, giro 12): il guard per stato della
-#        versione, E_LISTINO_VERSIONE_NON_ELIMINABILE. Ritirata la copia del
-#        service.
+#        ⛔ La regola e la cascata sono del DB (§16.11): il verbo
+#        `vendite.fn_elimina_versione_listino` rifiuta col primo motivo della
+#        stessa `fn_check` del pulsante (E_LISTINO_VERSIONE_NON_ELIMINABILE fuori
+#        dalla BOZZA, E_LISTINO_VERSIONE_CITATA se un documento la usa), poi
+#        cancella componenti, righe e versione. Inesistente o fuori perimetro:
+#        E_VENDITE_LISTINO_VERSIONE_NOT_FOUND dal verbo.
+# Ritorna: {deleted, id, righe_eliminate, componenti_eliminati}.
 def fn_delete_versione(listino_id: int, versione_id: int) -> dict[str, Any]:
     function_name = "vendite.listini_service.fn_delete_versione"
+    # La versione di QUESTO listino: la rotta nomina il listino, il verbo no.
     _get_versione_or_raise(listino_id, versione_id, function_name=function_name)
     repository = ListiniRepository()
     try:
         with transaction.atomic():
-            deleted = repository.delete_versione(listino_id, versione_id)
+            esito = repository.delete_versione(versione_id)
     except IntegrityError as exc:
         _translate_integrity_error(exc, function_name=function_name, entity="versione")
     except DatabaseError as exc:
@@ -1220,16 +1279,61 @@ def fn_delete_versione(listino_id: int, versione_id: int) -> dict[str, Any]:
             context={"listino_id": listino_id, "versione_id": versione_id},
             function_name=function_name,
         )
-    ErrorManager.require(
-        deleted,
-        code="E_VENDITE_LISTINO_VERSIONE_NOT_FOUND",
-        message="Versione listino non trovata.",
-        detail=f"Nessuna versione id={versione_id} per listino id={listino_id}.",
-        context={"listino_id": listino_id, "versione_id": versione_id},
-        function_name=function_name,
-        log_to_db=False,
+    return {
+        "deleted": True,
+        "id": versione_id,
+        "righe_eliminate": esito["righe_eliminate"],
+        "componenti_eliminati": esito["componenti_eliminati"],
+    }
+
+
+# Scopo: «Chiudi» e «Rimuovi chiusura» di una versione ATTIVA: fissa la fine
+#        della validita' (la chiusura programmata) o la toglie (`valido_al`
+#        null). Decide il verbo `vendite.fn_programma_chiusura_versione_listino`
+#        (§16.14, C-2 = a, C-3): non attiva E_LISTINO_VERSIONE_NON_CHIUDIBILE,
+#        fine prima di oggi E_LISTINO_VERSIONE_FINE_NEL_PASSATO sul campo
+#        `valido_al`. Lo stato non cambia: CHIUSA la scrive il job a scadenza.
+#        ⛔ Nessuna regola di stato qui: il PATCH generico della fine di una
+#        ATTIVA lo rifiuta il DB (C-4 = a, E_LISTINO_VERSIONE_FINE_SOLO_DAL_VERBO).
+# Ritorna: il dettaglio della versione.
+def fn_programma_chiusura_versione(
+    listino_id: int, versione_id: int, payload: dict[str, Any],
+) -> dict[str, Any]:
+    function_name = "vendite.listini_service.fn_programma_chiusura_versione"
+    # La versione di QUESTO listino: la rotta nomina il listino, il verbo no.
+    _get_versione_or_raise(listino_id, versione_id, function_name=function_name)
+    message = "Payload chiusura versione non valido."
+    _V.validate_allowed_keys(
+        payload, allowed=frozenset({"valido_al"}), function_name=function_name,
     )
-    return {"deleted": True, "id": versione_id}
+    # ⚠️ La chiave e' OBBLIGATORIA anche quando il valore e' null (toglie la
+    #    chiusura): un corpo vuoto non deve diventare una rimozione muta.
+    ErrorManager.require(
+        "valido_al" in payload,
+        code=E_VENDITE_VALIDATION,
+        message=message,
+        detail="valido_al obbligatorio (null toglie la chiusura).",
+        context={"field": "valido_al"},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    valido_al = _extract_payload_date(
+        payload, "valido_al", function_name=function_name, nullable=True, message=message,
+    )
+    assert not isinstance(valido_al, _MissingType)  # la chiave c'e', vedi sopra
+    repository = ListiniRepository()
+    try:
+        with transaction.atomic():
+            repository.programma_chiusura(versione_id, valido_al)
+    except IntegrityError as exc:
+        _translate_integrity_error(exc, function_name=function_name, entity="versione")
+    except DatabaseError as exc:
+        _rifiuto_del_db_su_versione(
+            exc, message="Chiusura versione non consentita.",
+            context={"listino_id": listino_id, "versione_id": versione_id},
+            function_name=function_name,
+        )
+    return fn_get_versione(listino_id, versione_id)
 
 
 # Scopo: Il cambio di stato della versione: l'ATTIVAZIONE (BOZZA -> ATTIVA),
@@ -1239,8 +1343,8 @@ def fn_delete_versione(listino_id: int, versione_id: int) -> dict[str, Any]:
 #        precedenti (decisione D3 di sviluppo-listini-v2) e lo stato attraverso
 #        la porta. Il 403 lo da' la catena dei permessi, dalla riga del passaggio
 #        (`PassaggioDocumento` della view, azione `attiva_listino`).
-#        ATTIVA -> CHIUSA e' di processo: la si programma con la fine (PATCH
-#        `valido_al`) e la scrive il job quando la fine passa; qui nessun verbo
+#        ATTIVA -> CHIUSA e' di processo: la si programma con la fine («Chiudi»,
+#        `fn_programma_chiusura_versione`) e la scrive il job quando la fine passa; qui nessun verbo
 #        la scrive, quindi chiederla e' un 400 sul campo.
 #
 #        Modalita` dry_run: se il payload contiene `dry_run=true` il verbo gira
@@ -1268,7 +1372,8 @@ def fn_change_versione_state(listino_id: int, versione_id: int, payload: dict[st
         message=message,
         detail=(
             f"Da qui si chiede solo {STATO_VERSIONE_ATTIVA} (l'attivazione): la "
-            "chiusura si programma con valido_al e la scrive il job a fine scaduta."
+            "chiusura si programma con «Chiudi» (rotta chiusura/) e la scrive il "
+            "job a fine scaduta."
         ),
         context={"field": "stato", "stato": nuovo_stato},
         function_name=function_name,
@@ -1417,32 +1522,6 @@ def fn_delete_riga(listino_id: int, versione_id: int, riga_id: int) -> dict[str,
         log_to_db=False,
     )
     return {"deleted": True, "id": riga_id}
-
-
-# --- N2: Alert scadenze versioni ---
-
-_ALERT_GIORNI_DEFAULT = 15
-_ALERT_GIORNI_MIN = 1
-_ALERT_GIORNI_MAX = 365
-
-
-# Scopo: Restituisce lista versioni ATTIVE in scadenza entro N giorni senza successore.
-def fn_alert_scadenze(giorni: int | None = None) -> dict[str, Any]:
-    function_name = "vendite.listini_service.fn_alert_scadenze"
-    if giorni is None:
-        giorni = _ALERT_GIORNI_DEFAULT
-    ErrorManager.require(
-        _ALERT_GIORNI_MIN <= giorni <= _ALERT_GIORNI_MAX,
-        code="E_VENDITE_VALIDATION",
-        message="Parametro giorni non valido.",
-        detail=f"giorni deve essere tra {_ALERT_GIORNI_MIN} e {_ALERT_GIORNI_MAX}.",
-        context={"giorni": giorni},
-        function_name=function_name,
-        log_to_db=False,
-    )
-    repository = ListiniRepository()
-    results = repository.listini_in_scadenza(giorni)
-    return {"results": results, "count": len(results), "giorni": giorni}
 
 
 # --- N6: Rettifica controllata su riga ATTIVA non propagata ---
@@ -1804,6 +1883,13 @@ _KNOWN_BUNDLE_DB_ERROR_MARKERS: tuple[tuple[str, tuple[str, ...]], ...] = (
         "E_LISTINO_RIGA_COMP_BOM_INCOERENTE",
         ("E_LISTINO_RIGA_COMP_BOM_INCOERENTE",),
     ),
+    # Guard `vendite.trgfn_listini_kit_guard` (D-2-bis (B)): la periodicita'
+    # a parte si scrive solo per un composito. Fuori bozza parla
+    # `E_RIGA_LISTINO_VERSIONE_CHIUSA`, la stessa dei componenti.
+    (
+        "E_LISTINO_KIT_NON_COMPOSITO",
+        ("E_LISTINO_KIT_NON_COMPOSITO",),
+    ),
 )
 
 
@@ -1958,9 +2044,81 @@ def fn_save_bundle(
 #        Idempotente: 0 disattivati su composito senza prezzi bundle,
 #        nessun errore. Guard BOZZA via `_assert_versione_bozza_for_riga_op`
 #        ereditata da `fn_save_bundle`.
+#        ⭐ Con i prezzi se ne va anche il kit (`vendite.listini_kit`, la sua
+#        periodicita'): restando, sarebbe un kit sul listino senza prezzo.
 def fn_delete_bundle(
     listino_id: int,
     versione_id: int,
     articolo_padre_id: str,
 ) -> dict[str, int]:
-    return fn_save_bundle(listino_id, versione_id, articolo_padre_id, rows=[])
+    with transaction.atomic():
+        result = fn_save_bundle(listino_id, versione_id, articolo_padre_id, rows=[])
+        _kit_db_errors(
+            lambda: ListiniRepository().elimina_kit(
+                versione_id=versione_id, articolo_padre_id=str(articolo_padre_id),
+            ),
+            function_name="vendite.listini_service.fn_delete_bundle",
+            context={"versione_id": versione_id, "articolo_padre_id": str(articolo_padre_id)},
+        )
+    return result
+
+
+# Scopo: La periodicita' del KIT sulla versione di listino (D-2-bis (B),
+#        `vendite.listini_kit`): il kit non ha una riga di listino, e la
+#        periodicita' con cui si addebita a canone sta li'. Un codice del
+#        vocabolario la scrive, `null` (o vuoto) la toglie. Solo in bozza e
+#        solo su un composito: lo dice il guard DB, tradotto qui.
+#        ⛔ Che sia obbligatoria su una quota fissa lo dice il controllo
+#        all'attivazione della versione (`E_LISTINO_VERSIONE_QUOTA_FISSA_SENZA_
+#        PERIODICITA`), non questo verbo: la bozza resta libera.
+# Ritorna: {articolo_padre_id, periodicita}.
+def fn_save_kit_periodicita(
+    listino_id: int,
+    versione_id: int,
+    articolo_padre_id: str,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    function_name = "vendite.listini_service.fn_save_kit_periodicita"
+    _get_listino_or_raise(listino_id, function_name=function_name)
+    _get_versione_or_raise(listino_id, versione_id, function_name=function_name)
+    _V.validate_allowed_keys(payload, allowed=frozenset({"periodicita"}), function_name=function_name)
+    ErrorManager.require(
+        "periodicita" in payload,
+        code="E_VENDITE_VALIDATION",
+        message="Campo 'periodicita' obbligatorio: un codice, o null per toglierla.",
+        context={"field": "periodicita"},
+        function_name=function_name,
+    )
+    periodicita = _V.optional_upper(payload, "periodicita", function_name=function_name)
+    scritta = _kit_db_errors(
+        lambda: ListiniRepository().salva_kit_periodicita(
+            versione_id=versione_id,
+            articolo_padre_id=str(articolo_padre_id),
+            periodicita=periodicita,
+        ),
+        function_name=function_name,
+        context={"versione_id": versione_id, "articolo_padre_id": str(articolo_padre_id)},
+    )
+    return {"articolo_padre_id": str(articolo_padre_id), "periodicita": scritta}
+
+
+# Scopo: Le scritture di `vendite.listini_kit` con gli errori del DB tradotti:
+#        i vincoli col campo (`_translate_integrity_error`), i guard col loro
+#        codice (`_KNOWN_BUNDLE_DB_ERROR_MARKERS`, gli stessi del bundle).
+def _kit_db_errors(
+    scrittura: Callable[[], Any], *, function_name: str, context: dict[str, Any],
+) -> Any:
+    try:
+        with transaction.atomic():
+            return scrittura()
+    except IntegrityError as exc:
+        _translate_integrity_error(exc, function_name=function_name, entity="kit")
+    except DatabaseError as exc:
+        ErrorManager.raise_from_database_error(
+            exc,
+            known_markers=_KNOWN_BUNDLE_DB_ERROR_MARKERS,
+            fallback_code="E_VENDITE_VALIDATION",
+            message="Impossibile salvare il kit sul listino.",
+            context=context,
+            function_name=function_name,
+        )

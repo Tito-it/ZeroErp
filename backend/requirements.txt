@@ -54,7 +54,7 @@ drf-spectacular==0.30.0
     # via -r ../requirements.in
 et-xmlfile==2.0.0
     # via openpyxl
-fonttools[woff]==4.67.0
+fonttools[woff]==4.68.0
     # via weasyprint
 gunicorn==26.2.0
     # via -r ../requirements.in
@@ -82,7 +82,7 @@ markupsafe==3.0.4
     # via jinja2
 openpyxl==3.1.5
     # via -r ../requirements.in
-opentelemetry-api==1.45.1
+opentelemetry-api==1.45.2
     # via anthropic
 packaging==26.3
     # via -r ../requirements.in
@@ -96,11 +96,11 @@ psycopg-binary==3.3.6
     # via -r ../requirements.in
 pycparser==3.12
     # via cffi
-pydantic==2.14.1
+pydantic==2.14.2
     # via
     #   -r ../requirements.in
     #   anthropic
-pydantic-core==2.50.1
+pydantic-core==2.50.2
     # via pydantic
 pydyf==0.13.0
     # via weasyprint

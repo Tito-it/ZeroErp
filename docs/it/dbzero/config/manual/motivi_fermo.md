@@ -7,7 +7,8 @@
 
 ---
 ### 🎯 Scopo Principale
-(latest review 06-07-2026)
+> **Ultimo aggiornamento**: 31 ottobre 2026
+
 Vocabolario dei **motivi di fermo** della dashboard fatturazione (cruscotti a
 due lenti) con la **classe di azionabilità**: la gravità di un fermo non si
 deriva dallo stato grezzo del documento ma dal `motivo_fermo` che i resolver
@@ -25,12 +26,24 @@ decisa dal dominio (decisione DL-6, Tid 2026-07-04), collocata qui DB-first.
 | `ANOMALIA` | 🔴 | Non un semplice ritardo: serve revisione | vedi colonna `azione` |
 | `SOLLECITO_CLIENTE` | 🔵 | Palla al cliente (non lavoro interno): filtro dedicato | sollecito |
 
-### Whitelist operativa (seed, 14 codici)
+### Whitelist operativa (seed, 15 codici)
 
 `RIGA_RESIDUA`, `PUSH_NON_ESEGUITO`, `PUSH_PARZIALE`, `ATTIVITA_NON_APPROVATA`,
-`ATTIVITA_NON_EMESSA`, **`RICONSEGNA_NON_ESEGUITA`** → 🟠 · `FIGLIO_ABORTITO` → 🔴 ·
-`IN_ATTESA_ACCETTAZIONE` → 🔵 · `DOC_BOZZA`, `CANONE_NON_GENERATO`, `SENZA_FIGLIO`,
-**`IN_TRANSITO`**, **`IN_ATTESA_DDT`**, **`MERCE_RESA_GIA_FATTURATA`** → 🟢.
+`ATTIVITA_NON_EMESSA`, **`RICONSEGNA_NON_ESEGUITA`**, `CANONE_NON_GENERATO` → 🟠 ·
+`FIGLIO_ABORTITO`, **`CANONE_NON_GENERABILE`** → 🔴 · `IN_ATTESA_ACCETTAZIONE` → 🔵 ·
+`DOC_BOZZA`, `SENZA_FIGLIO`, **`IN_TRANSITO`**, **`IN_ATTESA_DDT`**,
+**`MERCE_RESA_GIA_FATTURATA`** → 🟢.
+
+#### I due motivi dei contratti (2026-10-31)
+
+Li emette `vw_dash_fatturazione_contratti`, che dal `20261031-04` giudica di nuovo i contratti dalla
+regola del push (`vendite.fn_contratti_addebiti_maturati`). Brief
+`brief-db-contratto-righe-periodiche-in-commessa` §6.13, decisioni F-13 … F-15.
+
+| `codice_interno` | Classe | Azione | Perché quella classe |
+|---|---|---|---|
+| `CANONE_NON_GENERATO` | 🟠 (era 🟢 fino al 2026-10-31) | Esegui il push dei canoni | Un addebito maturato (canone, una tantum, storno) non è in commessa: è lo stesso caso dell'ordine confermato senza push. Era 🟢 «limite strutturale» finché il push dei canoni non esisteva |
+| `CANONE_NON_GENERABILE` | 🔴 | Rivedi il contratto | Un canone che il push salta (senza periodicità, durata senza calendario, prezzo che manca alla data). Non è un ritardo: le righe sono chiuse fuori dalla bozza, il rimedio è fuori dalla riga |
 
 #### I quattro codici aggiunti dalla slice DDT/resi (2026-07-18)
 

@@ -1,82 +1,109 @@
 <script setup>
-// Scopo: Widget che mostra le versioni listino ATTIVE in scadenza senza successore.
-//        Usabile nella toolbar della lista listini o in una dashboard vendite.
-import { ref, onMounted } from 'vue'
+// Scopo: Badge dei listini con la versione in vigore IN SCADENZA SENZA
+//        SUCCESSORE, nella toolbar della lista listini. Il clic emette
+//        `filtra`: chi lo monta applica il filtro `in_scadenza` alla sua lista
+//        (D-1 di brief-db-liste-datatable-grezze-secondo-giro, Tid 2026-10-31:
+//        il gesto che segue, creare il successore, parte dal listino).
+// ⭐ La regola e il preavviso sono del DB (`vendite.fn_listini_in_scadenza_
+//    senza_successore`, N dal parametro `LISTINI_SCADENZA_PREAVVISO_GIORNI`):
+//    il conteggio e' il totale della lista listini filtrata, una riga.
+//    ⛔ Fino al 2026-10-31 il widget aveva un endpoint suo (`alert-scadenze/`),
+//    un default di 15 giorni in casa (l'altro era nel backend) e un popover
+//    con una `DataTable` che ripeteva la lista: ritirati tutti e tre.
+// ⭐ IL NUMERO E LE RIGHE DEVONO COINCIDERE. Il clic accende `in_scadenza`
+//    SOPRA i filtri correnti della lista: il badge conta quindi con gli STESSI
+//    filtri (`filtri`, li passa chi lo monta: ricerca, utility, tipologia,
+//    attivo — senza paginazione, ordinamento e senza `in_scadenza` stesso).
+//    ⛔ Fino al 2026-10-31 contava con il solo `in_scadenza`: il badge diceva 5
+//    e il clic ne mostrava 2.
+// ⭐ Quando si rilegge: alla nascita (una volta), quando cambiano i filtri, e
+//    quando chi lo monta lo chiede (`load`, esposto: una versione nuova toglie
+//    un listino dal conteggio). ⛔ Non a ogni pagina o ordinamento: il numero
+//    non cambia. Le risposte superate si scartano (guard di sequenza): coi
+//    filtri che cambiano a raffica vincerebbe l'ultima ad ARRIVARE.
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { alertScadenze } from '../api/listini'
-import { displayDate } from '../../core/utils/date'
+import { listListini } from '../api/listini'
 import Badge from 'primevue/badge'
 import Button from 'primevue/button'
-import Popover from 'primevue/popover'
-// eslint-disable-next-line no-restricted-imports -- eccezione nel registro DataTable (scripts/datatable.baseline.json)
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
 import { STATUS_ICONS } from '../../core/constants'
-
-const { t } = useI18n()
+import { eAccessoNegato } from '../../core/utils/apiError'
 
 const props = defineProps({
-  giorni: { type: Number, default: 15 }
+  // I parametri di filtro della lista che lo monta (`store.paramsFiltro()`),
+  // SENZA paginazione, ordinamento e `in_scadenza`: il widget aggiunge il suo.
+  filtri: { type: Object, default: () => ({}) },
 })
+const emit = defineEmits(['filtra'])
+const { t } = useI18n()
 
-const items = ref([])
 const count = ref(0)
 const loading = ref(false)
-const op = ref(null)
+// La lettura e' fallita e non ce n'e' una buona da mostrare: il widget lo DICE.
+const nonVerificabile = ref(false)
+// L'endpoint ha risposto 401/403: l'utente non vede i listini, e il widget
+// non si mostra (non e' un errore da segnalare).
+const negato = ref(false)
+// C'e' stata almeno una lettura buona. ⚠️ Non e' `count > 0`: «letto, zero
+// scadenze» e' un valore buono da tenere, «mai letto» no.
+const letto = ref(false)
 
+// Scopo: conta i listini in scadenza. ⛔ Su errore NON azzera: fino al
+//        2026-10-31 un `catch {}` metteva il conteggio a zero e il widget
+//        spariva, cioe' un errore si leggeva come «nessun listino in
+//        scadenza» — il caso che il widget esiste per segnalare. Stessa regola
+//        dei contatori ambientali (`usePresidiPolling`): 401/403 nasconde, ogni
+//        altro errore tiene l'ultimo valore, e senza un valore buono si vede.
+// ⚠️ Solo l'ULTIMA lettura partita scrive: una risposta superata (filtri
+//    cambiati mentre era in volo) non tocca ne' il numero ne' gli stati.
+let sequenza = 0
 async function load() {
+  const mia = ++sequenza
   loading.value = true
   try {
-    const res = await alertScadenze(props.giorni)
-    const data = res.data.data
-    items.value = data.results || []
-    count.value = data.count || 0
-  } catch {
-    items.value = []
-    count.value = 0
+    const res = await listListini({ ...props.filtri, in_scadenza: true, limit: 1, offset: 0 })
+    if (mia !== sequenza) return
+    count.value = res.data.data.count || 0
+    letto.value = true
+    nonVerificabile.value = false
+  } catch (err) {
+    if (mia !== sequenza) return
+    if (eAccessoNegato(err)) negato.value = true
+    else nonVerificabile.value = !letto.value
   } finally {
-    loading.value = false
+    if (mia === sequenza) loading.value = false
   }
 }
 
-function toggle(event) {
-  op.value.toggle(event)
-}
+// La CHIAVE dei filtri, non l'oggetto: chi lo monta lo ricostruisce a ogni
+// giro (una `computed`), e un oggetto nuovo con gli stessi valori non e' un
+// filtro cambiato. `immediate`: e' anche la lettura della nascita, l'unica.
+const chiaveFiltri = computed(() => JSON.stringify(props.filtri ?? {}))
+watch(chiaveFiltri, load, { immediate: true })
 
-onMounted(load)
+// Chi lo monta lo rilegge quando il conteggio puo' cambiare a filtri fermi:
+// una versione nuova (il successore) toglie un listino dal conteggio.
+defineExpose({ load })
 </script>
 
 <template>
-  <span v-if="count > 0" class="alert-scadenze-widget">
-    <Button type="button" :icon="STATUS_ICONS.ERRORE" severity="warn"
-      text rounded size="small" @click="toggle" :loading="loading">
+  <span v-if="!negato && nonVerificabile" class="alert-scadenze-widget">
+    <Button type="button" :icon="STATUS_ICONS.ERRORE" severity="secondary"
+      text rounded size="small" :loading="loading"
+      v-tooltip.bottom="t('vendite.listini.alert_scadenze_non_verificabili')"
+      :aria-label="t('vendite.listini.alert_scadenze_non_verificabili')"
+      @click="load" />
+  </span>
+  <span v-else-if="!negato && count > 0" class="alert-scadenze-widget">
+    <Button type="button" severity="warn" text rounded size="small" :loading="loading"
+      v-tooltip.bottom="t('vendite.listini.alert_scadenze_filtra')"
+      :aria-label="t('vendite.listini.alert_scadenze_filtra')"
+      @click="emit('filtra')">
       <template #icon>
         <i :class="STATUS_ICONS.ERRORE" />
         <Badge :value="count" severity="danger" class="alert-scadenze-badge" />
       </template>
     </Button>
-
-    <Popover ref="op" :style="{ width: '550px' }">
-      <h4>{{ t('vendite.listini.alert_scadenze_titolo') }}</h4>
-      <DataTable :value="items" striped-rows class="app-datatable" data-key="versione_id"
-        scrollable scroll-height="250px">
-        <Column field="listino_codice" :header="t('vendite.listini.col_codice')" style="width: 120px;" />
-        <Column field="codice_versione" :header="t('vendite.listini.col_codice_versione')" style="width: 110px;" />
-        <Column field="valido_al" :header="t('vendite.listini.field_valido_al')" style="width: 110px;">
-          <template #body="{ data }">{{ displayDate(data.valido_al) }}</template>
-        </Column>
-        <Column :header="t('vendite.listini.col_stato')" style="width: 110px;">
-          <template #body="{ data }">
-            <span v-if="data.giorni_rimanenti <= 0" class="font-bold">
-              {{ t('vendite.listini.alert_scadenze_scaduto') }}
-            </span>
-            <span v-else>
-              {{ t('vendite.listini.alert_scadenze_giorni_rimanenti', { giorni: data.giorni_rimanenti }) }}
-            </span>
-          </template>
-        </Column>
-      </DataTable>
-    </Popover>
   </span>
 </template>
 

@@ -1,0 +1,57 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL MONTAGGIO DEL GUARD DEL KIT SUL LISTINO: trg_listini_kit_a10_guard_ins_upd_dlt
+#   Brief: brief-db-contratto-righe-periodiche-in-commessa §7.7 (L12, D-2-bis).
+#
+#   BEFORE INSERT OR UPDATE OR DELETE, per riga, fase _a10_ (guard). Senza
+#   UPDATE OF: la regola «solo in bozza» vale per ogni colonna, e il guard
+#   giudica anche un UPDATE che non cambia niente, come quello dei componenti.
+#   Sul lucchetto dell'identita' (generato, _a10_lock_columns_upd) parla prima
+#   «guard»: fuori dalla bozza l'operatore legge che la versione e' ferma, la
+#   cosa da sistemare.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261031-31-create-trigger-listini-kit-guard-mctit.yaml
+
+  - changeSet:
+      id: 20261031-31-create-trigger-listini-kit-guard
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Montaggio di vendite.trgfn_listini_kit_guard su vendite.listini_kit, BEFORE INSERT OR UPDATE
+        OR DELETE, fase _a10_. Brief: brief-db-contratto-righe-periodiche-in-commessa §7.7 (L12).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: listini_kit
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_proc
+                   WHERE oid = to_regprocedure('vendite.trgfn_listini_kit_guard()')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_listini_kit_a10_guard_ins_upd_dlt ON vendite.listini_kit;
+              CREATE TRIGGER trg_listini_kit_a10_guard_ins_upd_dlt
+                  BEFORE INSERT OR UPDATE OR DELETE ON vendite.listini_kit
+                  FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_listini_kit_guard();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_listini_kit_a10_guard_ins_upd_dlt ON vendite.listini_kit;

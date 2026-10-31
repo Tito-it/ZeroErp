@@ -65,7 +65,8 @@ export function emettiOfferta(id, { allegati = [], templateId = null } = {}) {
 
 // EMESSA -> ACCETTATA o RIFIUTATA. Motivazione obbligatoria su RIFIUTATA: lo
 // dice la riga del passaggio, al verbo DB (E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA).
-// Su ACCETTATA niente motivazione: una non vuota e' un 400 col campo.
+// Su ACCETTATA niente motivazione: una non vuota la rifiuta il verbo DB
+// (E_OFFERTA_MOTIVAZIONE_NON_AMMESSA, 400 col campo).
 export function registraEsitoOfferta(id, { esito, motivazione }) {
   return api.post(`${BASE}/${id}/registra-esito/`, {
     esito,

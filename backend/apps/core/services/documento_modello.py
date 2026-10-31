@@ -17,6 +17,10 @@
 #       ⭐ E per l'annullo (brief-modello-documento-vendita §9.8): quale stato
 #       sia l'annullo lo dice il vocabolario (`is_abortito`), non i letterali
 #       `STATO_ANNULLATO` / `STATO_ANNULLATA` di `_annullo_con_legami`.
+#       ⭐ E per cessazione e accettazione (brief-modello-documento-vendita
+#       §17.6): le colonne `cessazione` e `accettazione` del vocabolario, non
+#       `STATO_CESSATO` dei contratti ne' gli `"ACCETTATO"` / `ACCETTATA` di
+#       preventivo e offerta.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -63,16 +67,44 @@ def rifiuta_stato_di_emissione(
 #        errore di cablaggio, non di dati: la factory monta «Emetti» solo dove
 #        l'emissione esiste, e il CHECK del vocabolario la vuole attiva.
 def stato_di_emissione(testata: str, *, function_name: str) -> StatoDocumento:
-    stato = DocumentoModelloRepository().stato_di_emissione(testata)
+    return _stato_del_vocabolario(
+        DocumentoModelloRepository().stato_di_emissione(testata),
+        testata=testata, ruolo="emissione", function_name=function_name,
+    )
+
+
+# Scopo: Lo stato che l'accettazione scrive, letto dal vocabolario della
+#        testata. Gemello di `stato_di_emissione`: un documento senza stato di
+#        accettazione che arriva qui e' un errore di cablaggio.
+def stato_di_accettazione(testata: str, *, function_name: str) -> StatoDocumento:
+    return _stato_del_vocabolario(
+        DocumentoModelloRepository().stato_di_accettazione(testata),
+        testata=testata, ruolo="accettazione", function_name=function_name,
+    )
+
+
+# Scopo: Lo stato di un ruolo (emissione, accettazione) gia' letto dal
+#        vocabolario, o l'errore di cablaggio `E_CONFIG_MANCANTE` se manca: la
+#        stessa regola dei due lettori qui sopra, scritta una volta.
+def _stato_del_vocabolario(
+    stato: StatoDocumento | None, *, testata: str, ruolo: str, function_name: str,
+) -> StatoDocumento:
     ErrorManager.require(
         stato is not None,
         code="E_CONFIG_MANCANTE",
-        message="Il documento non ha uno stato di emissione nel suo vocabolario.",
+        message=f"Il documento non ha uno stato di {ruolo} nel suo vocabolario.",
         detail=f"testata={testata}",
         function_name=function_name,
     )
     assert stato is not None
     return stato
+
+
+# Scopo: Lo stato (codice) e' l'emissione del documento? Per chi decide su uno
+#        stato gia' letto (lo stato corrente), non sullo stato chiesto: per
+#        quello c'e' `rifiuta_stato_di_emissione`.
+def e_stato_di_emissione(testata: str, stato_codice: str) -> bool:
+    return DocumentoModelloRepository().e_stato_di_emissione(testata, stato_codice)
 
 
 # Scopo: Lo stato chiesto e' l'annullo del documento? Il cambio stato generico
@@ -82,3 +114,25 @@ def stato_di_emissione(testata: str, *, function_name: str) -> StatoDocumento:
 #        nel codice.
 def e_stato_di_annullo(testata: str, stato_codice: str) -> bool:
     return DocumentoModelloRepository().e_stato_di_annullo(testata, stato_codice)
+
+
+# Scopo: Lo stato chiesto e' la cessazione del documento (colonna `cessazione`
+#        del vocabolario)? Il cambio stato del contratto la instrada al verbo
+#        della cessazione, con la sua data.
+def e_stato_di_cessazione(testata: str, stato_codice: str) -> bool:
+    return DocumentoModelloRepository().e_stato_di_cessazione(testata, stato_codice)
+
+
+# Scopo: Lo stato e' quello in cui il documento nasce (colonna `iniziale` del
+#        vocabolario, la bozza)? Lo leggono le regole che valgono «solo in
+#        bozza» (l'eliminazione del preventivo orfano): mai `'DRAFT'` scritto
+#        nel service.
+def e_stato_iniziale(testata: str, stato_codice: str) -> bool:
+    return DocumentoModelloRepository().e_stato_iniziale(testata, stato_codice)
+
+
+# Scopo: Lo stato e' l'accettazione del documento (colonna `accettazione` del
+#        vocabolario)? Lo leggono le regole che valgono «da accettato»
+#        (fatturazione, pratica del preventivo).
+def e_stato_di_accettazione(testata: str, stato_codice: str) -> bool:
+    return DocumentoModelloRepository().e_stato_di_accettazione(testata, stato_codice)

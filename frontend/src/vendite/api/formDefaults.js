@@ -60,7 +60,8 @@ export function getVersioneNewDefaults(listinoId) {
 }
 
 // Scopo: Defaults clone versione: codice = source + suffisso, valido_dal =
-//        oggi + lead_gg, min_valido_dal = source.valido_dal, is_retroactive_default.
+//        oggi + lead_gg, is_retroactive_default. D2 (la copia non comincia
+//        prima della sorgente) la dice il verbo del DB, sul campo valido_dal.
 export function getVersioneCloneDefaults(listinoId, srcVersioneId) {
   return api.get(`/vendite/listini/${listinoId}/versioni/${srcVersioneId}/clone-defaults/`)
 }

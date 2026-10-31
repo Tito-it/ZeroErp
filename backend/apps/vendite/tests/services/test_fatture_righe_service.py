@@ -97,6 +97,9 @@ class _RepoMock:
                  competenze=None):
         self.batch_insert_and_mark_calls = 0
         self.running_calls = 0
+        # L'ordine delle chiamate che contano (natura dal segno fra «in
+        # lavorazione» e testate, D-1).
+        self.ordine_chiamate: list[str] = []
         self.last_kwargs: dict = {}
         self._attivita = attivita if attivita is not None else [_attivita_base(11)]
         # prezzo per attivita_id: consente di far divergere la chiave di gruppo.
@@ -167,6 +170,7 @@ class _RepoMock:
 
     # Scopo: Batch fetch di GroupAttivitaInput per lista di attivita_id.
     def batch_get_group_attivita_inputs(self, attivita_ids):
+        self.ordine_chiamate.append("group_inputs")
         return {aid: self._make_group_input(aid) for aid in attivita_ids}
 
     # Scopo: Restituisce elenco `attivita_da_fatturare` in base ai filtri disponibili.
@@ -176,10 +180,17 @@ class _RepoMock:
     # Scopo: Marca RUNNING le attività lockate sul lotto.
     def mark_attivita_running(self, lotto_id):
         self.running_calls += 1
+        self.ordine_chiamate.append("running")
         return len(self._attivita)
+
+    # Scopo: il verbo DB della natura dal segno (D-1): qui solo la traccia.
+    def applica_natura_dal_segno(self, lotto_id):
+        self.ordine_chiamate.append("natura_dal_segno")
+        return 0
 
     # Scopo: Batch header creation per lista di attivita_id.
     def batch_get_or_create_fattura_headers(self, lotto_id, attivita_ids):
+        self.ordine_chiamate.append("testate")
         return {aid: self._fatture.get(aid, 500) for aid in attivita_ids}
 
     # Scopo: il contesto di testata che il risolutore IVA vuole.
@@ -455,6 +466,16 @@ class FattureRigheServiceAggregazioneTests(SimpleTestCase):
         repo = _RepoMock()
         _genera(repo)
         self.assertEqual(repo.running_calls, 1)
+
+    # Scopo: la natura dal segno (D-1, §7.9) gira una volta, dopo «in
+    #        lavorazione» e PRIMA di group input e testate: la natura entra
+    #        nella chiave della testata.
+    def test_natura_dal_segno_prima_delle_testate(self):
+        repo = _RepoMock()
+        _genera(repo)
+        self.assertEqual(
+            repo.ordine_chiamate, ["running", "natura_dal_segno", "group_inputs", "testate"],
+        )
 
 
 class FattureRigheServiceKitTests(SimpleTestCase):

@@ -142,7 +142,7 @@ class ParameterSettingsViewTests(TestCase):
         mock_svc = MagicMock()
         mock_svc_cls.return_value = mock_svc
         mock_svc.get_emittente_fiscale_id_for_user.return_value = 3
-        mock_svc.list_parameters_for_user.return_value = [
+        mock_svc.list_parameters_for_user.return_value = ([
             {
                 "code": "DEFAULT_IVA_ID",
                 "description": "IVA default",
@@ -153,7 +153,7 @@ class ParameterSettingsViewTests(TestCase):
                 "user_override_id": 42,
                 "resolved_value": "5",
             },
-        ]
+        ], 1)
 
         view = ParameterSettingsView()
         request = _make_request(user_id=1)
@@ -162,15 +162,16 @@ class ParameterSettingsViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         import json
         body = json.loads(response.content)
-        self.assertIsInstance(body["data"], list)
-        self.assertEqual(len(body["data"]), 1)
-        self.assertEqual(body["data"][0]["code"], "DEFAULT_IVA_ID")
-        self.assertEqual(body["data"][0]["resolved_value"], "5")
+        # La pagina della lista `config.parametri_impostazioni` (dal 2026-10-31).
+        self.assertEqual(body["data"]["count"], 1)
+        self.assertEqual(body["data"]["results"][0]["code"], "DEFAULT_IVA_ID")
+        self.assertEqual(body["data"]["results"][0]["resolved_value"], "5")
         mock_svc.list_parameters_for_user.assert_called_once_with(
             django_user_id=1,
             group_ids=[10, 20],
             emittente_fiscale_id=3,
             categoria_cliente_id=None,
+            search=None, order_by="code", order_dir=None, limit=25, offset=0,
         )
 
     # Scopo: Verifica che un superuser riceva l'identita' reale (user_id,
@@ -186,7 +187,7 @@ class ParameterSettingsViewTests(TestCase):
         mock_svc = MagicMock()
         mock_svc_cls.return_value = mock_svc
         mock_svc.get_emittente_fiscale_id_for_user.return_value = 7
-        mock_svc.list_parameters_for_user.return_value = []
+        mock_svc.list_parameters_for_user.return_value = ([], 0)
 
         view = ParameterSettingsView()
         request = _make_request(user_id=1, is_superuser=True)
@@ -198,6 +199,7 @@ class ParameterSettingsViewTests(TestCase):
             group_ids=[10, 20],
             emittente_fiscale_id=7,
             categoria_cliente_id=None,
+            search=None, order_by="code", order_dir=None, limit=25, offset=0,
         )
 
     # Scopo: Verifica che il query param `categoria_cliente_id` venga propagato
@@ -209,7 +211,7 @@ class ParameterSettingsViewTests(TestCase):
         mock_svc = MagicMock()
         mock_svc_cls.return_value = mock_svc
         mock_svc.get_emittente_fiscale_id_for_user.return_value = 3
-        mock_svc.list_parameters_for_user.return_value = []
+        mock_svc.list_parameters_for_user.return_value = ([], 0)
 
         view = ParameterSettingsView()
         request = _make_request(user_id=1, query_params={"categoria_cliente_id": "12"})
@@ -221,6 +223,7 @@ class ParameterSettingsViewTests(TestCase):
             group_ids=[10, 20],
             emittente_fiscale_id=3,
             categoria_cliente_id=12,
+            search=None, order_by="code", order_dir=None, limit=25, offset=0,
         )
 
     # Scopo: Verifica derivazione automatica `categoria_cliente_id` da BA via
@@ -234,7 +237,7 @@ class ParameterSettingsViewTests(TestCase):
         mock_svc = MagicMock()
         mock_svc_cls.return_value = mock_svc
         mock_svc.get_emittente_fiscale_id_for_user.return_value = 3
-        mock_svc.list_parameters_for_user.return_value = []
+        mock_svc.list_parameters_for_user.return_value = ([], 0)
         mock_ba_repo = MagicMock()
         mock_ba_repo_cls.return_value = mock_ba_repo
         mock_ba_repo.get_categoria_cliente_id.return_value = 42
@@ -250,6 +253,7 @@ class ParameterSettingsViewTests(TestCase):
             group_ids=[10, 20],
             emittente_fiscale_id=3,
             categoria_cliente_id=42,
+            search=None, order_by="code", order_dir=None, limit=25, offset=0,
         )
 
     # Scopo: F-6 — BA che non risulta (inesistente, o fuori scope: la RLS di
@@ -318,7 +322,7 @@ class ParameterSettingsViewTests(TestCase):
         mock_svc = MagicMock()
         mock_svc_cls.return_value = mock_svc
         mock_svc.get_emittente_fiscale_id_for_user.return_value = 3
-        mock_svc.list_parameters_for_user.return_value = []
+        mock_svc.list_parameters_for_user.return_value = ([], 0)
         mock_ba_repo = MagicMock()
         mock_ba_repo_cls.return_value = mock_ba_repo
 
@@ -336,6 +340,7 @@ class ParameterSettingsViewTests(TestCase):
             group_ids=[10, 20],
             emittente_fiscale_id=3,
             categoria_cliente_id=12,
+            search=None, order_by="code", order_dir=None, limit=25, offset=0,
         )
 
 

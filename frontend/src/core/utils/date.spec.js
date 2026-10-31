@@ -22,7 +22,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
   addDaysToToday, displayDate, displayTime, displayTimestamp, fusoAziendale,
   giornoAziendale, giornoDi, impostaFusoAziendale, istanteComeOraAziendale,
-  nomeGiornoSettimana, oggiAziendale, oggiAziendaleString, oraAziendaleComeIstante,
+  nomeGiornoSettimana, nomiMesi, oggiAziendale, oggiAziendaleString, oraAziendaleComeIstante,
   toDateString, toMeseString,
 } from './date'
 
@@ -99,6 +99,9 @@ describe('date nel fuso dell\'azienda', () => {
     expect(toMeseString(new Date(2026, 8, 14))).toBe('2026-09')
     expect(toMeseString('2026-09-14')).toBe('2026-09')
     expect(nomeGiornoSettimana(0, 'it-IT')).toBe('lunedì')
+    expect(nomiMesi('it-IT')).toHaveLength(12)
+    expect(nomiMesi('it-IT')[0]).toBe('gennaio')
+    expect(nomiMesi('it-IT')[11]).toBe('dicembre')
   })
 
   it('un fuso sconosciuto al browser non si imposta', () => {

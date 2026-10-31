@@ -146,9 +146,11 @@ fatturazione, push commessa).
    Il FE distingue queste azioni dal `key` e usa routing speciale nel drawer.
 4. **Capability derivate**:
    - `can_edit_testata / can_edit_righe = (stato = 'DRAFT')`
-   - `can_push_commessa = (stato = 'ACCETTATO') AND vendite.fn_preventivo_ha_residuo_commessa(id)` *(rev 12-06-2026)*
-   - `can_genera_ordine = (stato = 'ACCETTATO') AND vendite.fn_preventivo_ha_residuo_ordine(id)` *(rev 09-06-2026)*
-   - `can_create_revisione = (stato = 'EMESSO')`
+   - `can_push_commessa = (stato di accettazione) AND vendite.fn_preventivo_ha_residuo_commessa(id)` *(rev 12-06-2026)*
+   - `can_genera_ordine = (stato di accettazione) AND vendite.fn_preventivo_ha_residuo_ordine(id)` *(rev 09-06-2026)*
+   - `can_create_revisione = (stato di emissione)`
+   - Accettazione, emissione e annullo si leggono dalle colonne del vocabolario
+     (`accettazione`, `emissione`, `is_abortito`), non dal codice *(rev 31-10-2026)*
    - `non_editable_fields`: dal montaggio del lock di testata, nello stato.
 5. **Build JSONB** — `jsonb_build_object` con tutte le chiavi.
 

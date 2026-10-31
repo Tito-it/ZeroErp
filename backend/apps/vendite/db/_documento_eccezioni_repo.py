@@ -63,8 +63,7 @@ def listino_versione_operativa(
 
 # Scopo: Le combinazioni (tipo_erogazione, fonte_quantita_attesa) che una riga
 #        con questo articolo puo' avere sul documento, col default in testa
-#        (`e_default`), la `generazione_canone` da proporre sulle CANONE e
-#        l'`origine` (TIPOLOGIA | NATURA | DISTINTA). Lista vuota se la
+#        (`e_default`) e l'`origine` (TIPOLOGIA | NATURA | DISTINTA). Lista vuota se la
 #        tipologia dell'articolo e' fuori dalla utility del documento, o se
 #        documento o articolo non si vedono: chi chiama verifica PRIMA il
 #        documento, cosi' «non lo vedi» resta un 404 e non una lista vuota.
@@ -74,8 +73,7 @@ def list_erogazioni_riga(
     with connection.cursor() as cursor:
         cursor.execute(
             """
-            SELECT tipo_erogazione, fonte_quantita_attesa, e_default,
-                   generazione_canone, origine
+            SELECT tipo_erogazione, fonte_quantita_attesa, e_default, origine
               FROM vendite.fn_documento_riga_erogazioni(%s, %s, %s::uuid)
             """,
             [documento, int(documento_id), str(articolo_id)],

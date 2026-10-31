@@ -44,7 +44,7 @@ vi.mock('../api/catalogo', () => ({
   updateArticolo: (...a) => updateArticolo(...a),
   disattivaArticolo: vi.fn(),
   riattivaArticolo: vi.fn(),
-  listArticoloUom: vi.fn().mockResolvedValue({ data: { data: { results: [] } } }),
+  lookupArticoloUom: vi.fn().mockResolvedValue({ data: { data: { results: [] } } }),
   listArticoloComponenti: vi.fn().mockResolvedValue({ data: { data: { results: [] } } }),
   makeArticoloNotesApi: () => ({ list: vi.fn().mockResolvedValue({ data: { data: { results: [] } } }) }),
   getArticoloFormDefaults: vi.fn().mockResolvedValue({ data: { data: {} } }),

@@ -29,7 +29,10 @@
 --   la soglia
 --    6) dbops.fn_idempotency_soglia_secondi() restituisce il default del seed
 --   le copie ritirate
---    7) ⛔ la regex della regola sta in una funzione sola: il building block
+--    7) ⛔ la regex della regola sta in una funzione sola: il BB delle forme
+--       script.fn_valore_parametro_non_conforme (dal 2026-10-31, D-5 di
+--       brief-db-liste-datatable-grezze-secondo-giro: la usa anche il guard
+--       in scrittura, e fn_intero_positivo_da_testo la prende da li')
 --    8) fn_idempotency_prenota e fn_login_parametri chiamano il building block
 --       (direttamente o attraverso la soglia)
 --    9) fn_login_parametri restituisce i cinque parametri del seed
@@ -126,8 +129,8 @@ SELECT results_eq(
                             'documenti', 'maintenance', 'ui', 'acquisti', 'contabilita')
           AND strpos(pg_get_functiondef(p.oid), '^[1-9][0-9]{0,5}$') > 0
         ORDER BY 1$q$,
-    $q$VALUES ('script.fn_intero_positivo_da_testo'::text)$q$,
-    '7) La regex della regola sta solo nel building block: nessuna copia nelle funzioni');
+    $q$VALUES ('script.fn_valore_parametro_non_conforme'::text)$q$,
+    '7) La regex della regola sta solo nel BB delle forme: nessuna copia nelle funzioni');
 
 SELECT ok(
     strpos(pg_get_functiondef('dbops.fn_idempotency_prenota'::regproc),

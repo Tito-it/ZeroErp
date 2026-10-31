@@ -118,6 +118,9 @@ INSERT INTO _atteso VALUES
   ('offerte_commerciali','listino_versione_id',''),('offerte_commerciali','tipo_variazione_globale',''),
   ('offerte_commerciali','valore_variazione_globale',''),('offerte_commerciali','validita_dal',''),
   ('offerte_commerciali','validita_al',''),
+  -- rev 2026-10-29 (brief-db-contratto-righe-periodiche-in-commessa §6.6, 20261029-20): i canoni
+  -- della testata sono condizioni, ferme fuori dalla bozza (confermato da Tid).
+  ('offerte_commerciali','generazione_canone',''),('offerte_commerciali','mese_partenza_canone',''),
   ('offerte_commerciali','meta','ACCETTATA,EMESSA'),('offerte_commerciali','motivazione_rifiuto','ACCETTATA,EMESSA'),
   -- contratto (D-3, D-5, D-6, D-7, D-10)
   ('contratti','data',''),('contratti','valuta_id',''),('contratti','billing_account_id',''),
@@ -126,6 +129,7 @@ INSERT INTO _atteso VALUES
   ('contratti','valore_variazione_globale',''),('contratti','ambito',''),('contratti','valido_dal',''),
   ('contratti','parent_contratto_id',''),('contratti','categoria_cliente_id_snapshot',''),('contratti','offerta_id',''),('contratti','sorgente_tipo_id',''),
   ('contratti','sorgente_uid',''),
+  ('contratti','generazione_canone',''),('contratti','mese_partenza_canone',''),
   ('contratti','valido_al','ATTIVO'),('contratti','codice_cig','ATTIVO'),('contratti','codice_cup','ATTIVO'),
   ('contratti','codice_commessa','ATTIVO'),('contratti','meta','ATTIVO');
 
