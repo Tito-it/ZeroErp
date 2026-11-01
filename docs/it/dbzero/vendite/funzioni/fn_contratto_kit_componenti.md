@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/fn_contratto_kit_componenti.md" %}
 # ⚙️ Funzione `fn_contratto_kit_componenti`
 
 ```sql

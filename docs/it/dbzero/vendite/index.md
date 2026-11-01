@@ -56,7 +56,7 @@ search:
 - [fatture_sdi_eventi](tabelle/fatture_sdi_eventi.md) — (latest review 16-02-2026)   `vendite.fatture_sdi_eventi` mantiene lo **storico cronologico eventi SDI** per ciascun tentativo (`fattura_sdi_id`).
 - [fatture_stampa_coda](tabelle/fatture_stampa_coda.md) — `vendite.fatture_stampa_coda` è la **coda (outbox) della stampa massiva delle fatture**. Il task di pipeline `stampa_documenti_lotto` vi **accoda** un work-item per fattura al momento della numerazione (step DEFINITIVA), poi lo step chiude subito la transazione; un **worker** esterno drena la coda, garantisce la numerazione (backstop idempotente) e delega il render al processo di stampa generico. Così il rendering dei PDF **non** avviene dentro la transazione di numerazione e **non** tiene il lock del registro fiscale.
 - [listini](tabelle/listini.md) — La tabella `vendite.listini` rappresenta la testata anagrafica dei listini prezzo del dominio vendite.
-- [listini_kit](tabelle/listini_kit.md)
+- [listini_kit](tabelle/listini_kit.md) — (31-10-2026 — brief `brief-db-contratto-righe-periodiche-in-commessa` §7.2, D-2-bis, decisione B di Tid)
 - [listini_righe](tabelle/listini_righe.md) — La tabella `vendite.listini_righe` contiene i prezzi elementari per articolo/UOM, eventualmente specializzati per contesto (BA, utility, emittente fiscale).
 - [listini_righe_componenti](tabelle/listini_righe_componenti.md)
 - [listini_versioni](tabelle/listini_versioni.md) — (ultima revisione 28-10-2026 — brief `brief-modello-documento-vendita` §16)

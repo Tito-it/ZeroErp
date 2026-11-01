@@ -1,5 +1,8 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-11-01 (20261101-04/-06, brief-db-contratto-righe-periodiche-in-commessa passo 4):
+--   la riga a canone vuole la periodicita'. Le AGGIUNTA a canone del 12, del 15 e del 17 la
+--   scrivono (MENSILE): non e' il soggetto di questi test. Nessuna attesa cambiata.
 -- pgTAP test per Zero ERP
 --
 -- Test: vendite.contratti_righe — coerenza fonte_quantita_attesa × tipo_erogazione
@@ -143,8 +146,8 @@ CREATE TEMP TABLE tmp_norm_fonte (test_num int, fonte_value text);
 -- Test 12: CANONE + fonte NULL → aspettato FISSA (articolo seq=1)
 WITH ins AS (
     INSERT INTO vendite.contratti_righe
-        (contratto_id, articolo_id, tipo_eccezione, tipo_erogazione, prezzo_unitario, qta_operativa)
-    SELECT c.id, na.articolo_id, 'AGGIUNTA', 'CANONE', 100, 1
+        (contratto_id, articolo_id, tipo_eccezione, tipo_erogazione, prezzo_unitario, qta_operativa, periodicita)
+    SELECT c.id, na.articolo_id, 'AGGIUNTA', 'CANONE', 100, 1, 'MENSILE'
       FROM vendite.contratti c, tmp_norm_arts na
      WHERE c.numero = 'PGTAP_FONTE_CNT' AND na.seq = 1
     RETURNING fonte_quantita_attesa
@@ -180,8 +183,8 @@ CREATE TEMP TABLE tmp_riga_15 (id bigint);  -- vendite.contratti_righe.id (%TYPE
 
 WITH ins AS (
     INSERT INTO vendite.contratti_righe
-        (contratto_id, articolo_id, tipo_eccezione, tipo_erogazione, fonte_quantita_attesa, prezzo_unitario, qta_operativa)
-    SELECT c.id, na.articolo_id, 'AGGIUNTA', 'CANONE', 'FISSA', 100, 1
+        (contratto_id, articolo_id, tipo_eccezione, tipo_erogazione, fonte_quantita_attesa, prezzo_unitario, qta_operativa, periodicita)
+    SELECT c.id, na.articolo_id, 'AGGIUNTA', 'CANONE', 'FISSA', 100, 1, 'MENSILE'
       FROM vendite.contratti c, tmp_norm_arts na
      WHERE c.numero = 'PGTAP_FONTE_CNT' AND na.seq = 4
     RETURNING id
@@ -468,8 +471,8 @@ SELECT CASE
         format(
             $$INSERT INTO vendite.contratti_righe
                 (contratto_id, articolo_id, tipo_eccezione,
-                 tipo_erogazione, fonte_quantita_attesa, prezzo_unitario)
-              VALUES (%s, %L::uuid, 'AGGIUNTA', 'CANONE', 'FISSA', 100)$$,
+                 tipo_erogazione, fonte_quantita_attesa, prezzo_unitario, periodicita)
+              VALUES (%s, %L::uuid, 'AGGIUNTA', 'CANONE', 'FISSA', 100, 'MENSILE')$$,
             (SELECT id FROM vendite.contratti WHERE numero = 'PGTAP_FONTE_CNT'),
             (SELECT articolo_id FROM tmp_fonte_arts_ext WHERE seq = 2)
         ),

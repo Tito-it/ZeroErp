@@ -18,6 +18,15 @@
 Proietta sul legame **documento ↔ documento** (`vendite.fatture_rettifiche`)
 ciò che le righe già dicono tramite `fatture_righe.riga_rettificata_id`.
 
+**Rev 2026-10-31** (`20261031-48`, brief `brief-db-contratto-righe-periodiche-in-commessa`
+§7.9, D-1-ter): sulla **nota di credito** anche le fatture dei pezzi di canone che storna. Il
+cammino: la riga di commessa dello storno → `meta.storno_di_attivita_id` → il pezzo addebitato →
+la sua attività fatturabile → la sua riga di fattura → la fattura. Le righe dello storno restano
+`NORMALE`: non sono rettifiche di riga (quelle prendono prezzo e IVA dalla riga rettificata), e
+la citazione è del documento. Un pezzo non ancora fatturato non dà niente da citare: lo storno
+si è compensato nella stessa fattura. La nota di credito dal segno è in
+[vendite.fn_lotto_natura_dal_segno](/dbzero/vendite/manual/fn_lotto_natura_dal_segno).
+
 ---
 
 ### La tabella che esisteva e non è mai stata usata

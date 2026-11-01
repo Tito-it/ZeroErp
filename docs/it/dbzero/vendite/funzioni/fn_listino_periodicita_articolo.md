@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/fn_listino_periodicita_articolo.md" %}
 # ⚙️ Funzione `fn_listino_periodicita_articolo`
 
 ```sql

@@ -1,5 +1,10 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-11-01 (20261101-04/-06, passo 4 del brief): una riga a canone senza periodicita'
+--   non si scrive piu'. K2 la costruiva con un'ADESIONE su P che dal listino ereditava una
+--   periodicita' vuota: ora il suo canone che non puo' partire e' la quota P del listino, come
+--   per K4 (l'unica strada che il modello lascia: il catalogo che cambia dopo l'attivazione).
+--   Nessuna attesa cambiata.
 -- pgTAP test per Zero ERP
 --
 -- Test: la dashboard giudica di nuovo i contratti dal push
@@ -22,8 +27,8 @@
 --   4) K1 nella situazione aperta
 --   5) K1 mandato il giro: transitato, nessun motivo
 --   6) K1 mandato: esce dalla situazione aperta e dal Backlog
---   7) K2 (OVERRIDE su O e ADESIONE su P senza periodicita'): vince
---      CANONE_NON_GENERABILE
+--   7) K2 (OVERRIDE su O da mandare, e la quota P del listino senza
+--      periodicita'): vince CANONE_NON_GENERABILE
 --   8) K2 nel Backlog: ANOMALIA, «Rivedi il contratto»
 --   9) K2 mandato quello che si puo': resta CANONE_NON_GENERABILE
 --  10) K3 in bozza: sospeso (is_transitato e motivo NULL), resta nella
@@ -119,14 +124,12 @@ SELECT m.k, (SELECT x.contratto_id
 CREATE OR REPLACE FUNCTION pg_temp.ctr(p text) RETURNS bigint LANGUAGE sql STABLE AS
 $fx$ SELECT id FROM tmp_dg_ctr WHERE k = p $fx$;
 
--- L'OVERRIDE prende il posto della quota O. Su K2 l'ADESIONE a P eredita dal
--- listino una periodicita' vuota; K1 e K3 escludono P; K4 non la tocca, e la
--- quota P del listino resta senza periodicita'.
+-- L'OVERRIDE prende il posto della quota O. K1 e K3 escludono P; K2 e K4 non la
+-- toccano, e la quota P del listino resta senza periodicita'.
 INSERT INTO vendite.contratti_righe (contratto_id, articolo_id, tipo_eccezione, prezzo_unitario,
        tipo_erogazione, fonte_quantita_attesa, qta_operativa, quantita, periodicita)
 VALUES (pg_temp.ctr('K1'), pg_temp.art('O'), 'OVERRIDE', 80,   'CANONE', 'FISSA', 1, 1, 'MENSILE'),
        (pg_temp.ctr('K2'), pg_temp.art('O'), 'OVERRIDE', 80,   'CANONE', 'FISSA', 1, 1, 'MENSILE'),
-       (pg_temp.ctr('K2'), pg_temp.art('P'), 'ADESIONE', NULL, 'CANONE', 'FISSA', 1, 1, NULL),
        (pg_temp.ctr('K3'), pg_temp.art('O'), 'OVERRIDE', 80,   'CANONE', 'FISSA', 1, 1, 'MENSILE'),
        (pg_temp.ctr('K4'), pg_temp.art('O'), 'OVERRIDE', 80,   'CANONE', 'FISSA', 1, 1, 'MENSILE');
 INSERT INTO vendite.contratti_righe (contratto_id, articolo_id, tipo_eccezione)

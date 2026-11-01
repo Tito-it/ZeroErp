@@ -1,0 +1,95 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA RIGA A CANONE DICE OGNI QUANTO SI ADDEBITA: la periodicita' e' obbligatoria
+#   chk_contrighe_canone_periodicita          (vendite.contratti_righe)
+#   chk_offerte_eccezioni_canone_periodicita  (vendite.offerte_commerciali_eccezioni)
+#   Brief: brief-db-contratto-righe-periodiche-in-commessa §6.11 (passo 4), decisioni
+#   G-0-bis (2026-10-28), F-9 e la (b) del Lotto 4b di Tid (2026-10-29).
+#
+# -- PERCHE' ORA -------------------------------------------------------------------
+#   La (b) di Tid: l'obbligo entra col passaggio BE/FE, quando il form la chiede.
+#   Il passo 3 BE/FE e' chiuso (§7.11): la periodicita' e' nel form della riga a
+#   canone, e la tendina legge config.periodicita. Fino a oggi una riga a canone
+#   senza periodicita' si salvava, e il push la scartava (SENZA_PERIODICITA):
+#   un canone che nessuno addebita, visibile solo dalla dashboard.
+#
+# -- LA REGOLA -----------------------------------------------------------------------
+#   Su una riga CANONE la periodicita' c'e'. Nessuna meta' della condizione
+#   vale NULL: tipo_erogazione IS DISTINCT FROM 'CANONE' copre le righe senza
+#   erogazione (ESCLUSIONE). Chi la scrive:
+#     · ADESIONE e OVERRIDE: la ereditano dal listino quando il listino la dice
+#       (script.trgfn_righe_default_periodicita_da_listino, L4b);
+#     · AGGIUNTA: la scrive l'operatore (F-9). Un default «mensile» farebbe
+#       passare in silenzio l'errore: un canone annuale fatturato dodici volte.
+#   Il guard col campo (20261101-05/-06) parla prima di questo CHECK, che resta
+#   la rete delle strade senza trigger.
+#
+# -- ⚠️ SU dbdev --------------------------------------------------------------------
+#   Le righe di prova a canone senza periodicita' fermano l'apply su questo
+#   CHECK: prima dell'apply, da owner, lo script di F-10 (brief §6.10). Su un DB
+#   da zero (CI) non ci sono: nessun seed scrive righe di contratto o di offerta.
+#
+#   Due vincoli nuovi, non una riscrittura di chk_*_coerenza_canone: un vincolo,
+#   un campo (la traduzione del backend va per nome).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261101-04-alter-righe-eccezione-chk-canone-periodicita-mctit.yaml
+
+  - changeSet:
+      id: 20261101-04-alter-righe-eccezione-chk-canone-periodicita
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        CHECK chk_contrighe_canone_periodicita e chk_offerte_eccezioni_canone_periodicita: una riga
+        a canone di contratto o di offerta ha la periodicita'. Brief:
+        brief-db-contratto-righe-periodiche-in-commessa §6.11 (passo 4).
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: vendite
+            tableName: contratti_righe
+            columnName: periodicita
+        - columnExists:
+            schemaName: vendite
+            tableName: offerte_commerciali_eccezioni
+            columnName: periodicita
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.contratti_righe
+                  DROP CONSTRAINT IF EXISTS chk_contrighe_canone_periodicita,
+                  ADD CONSTRAINT chk_contrighe_canone_periodicita CHECK (
+                      tipo_erogazione IS DISTINCT FROM 'CANONE'
+                      OR periodicita IS NOT NULL);
+
+              ALTER TABLE vendite.offerte_commerciali_eccezioni
+                  DROP CONSTRAINT IF EXISTS chk_offerte_eccezioni_canone_periodicita,
+                  ADD CONSTRAINT chk_offerte_eccezioni_canone_periodicita CHECK (
+                      tipo_erogazione IS DISTINCT FROM 'CANONE'
+                      OR periodicita IS NOT NULL);
+
+              COMMENT ON CONSTRAINT chk_contrighe_canone_periodicita ON vendite.contratti_righe IS
+                  'Una riga a canone dice ogni quanto si addebita: tipo_erogazione = CANONE vuole periodicita. ADESIONE e OVERRIDE la ereditano dal listino quando la dice (script.trgfn_righe_default_periodicita_da_listino), l''AGGIUNTA la scrive l''operatore (F-9). Il guard script.trgfn_righe_guard_periodicita_canone parla prima, col campo (E_RIGA_CANONE_SENZA_PERIODICITA); questo resta la rete. 20261101-04, brief-db-contratto-righe-periodiche-in-commessa §6.11 (passo 4).';
+
+              COMMENT ON CONSTRAINT chk_offerte_eccezioni_canone_periodicita ON vendite.offerte_commerciali_eccezioni IS
+                  'Come chk_contrighe_canone_periodicita su vendite.contratti_righe: il passaggio offerta → contratto copia la periodicita'', e la regola e'' la stessa ai due capi.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.contratti_righe
+                  DROP CONSTRAINT IF EXISTS chk_contrighe_canone_periodicita;
+              ALTER TABLE vendite.offerte_commerciali_eccezioni
+                  DROP CONSTRAINT IF EXISTS chk_offerte_eccezioni_canone_periodicita;

@@ -1,5 +1,8 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-11-01 (20261101-04/-06, brief-db-contratto-righe-periodiche-in-commessa passo 4): la
+--   riga a canone vuole la periodicita'. La AGGIUNTA a canone la scrive (MENSILE): non e' il soggetto di questo test. Nessuna attesa
+--   cambiata.
 -- pgTAP test per Zero ERP
 --
 -- Test: la quantita' di una riga di contratto o di offerta la porta la sua FONTE.
@@ -122,9 +125,11 @@ CREATE OR REPLACE FUNCTION pg_temp.agg(p_sigla text, p_erog text, p_fonte text,
                                        p_qta_op numeric, p_qta numeric DEFAULT NULL)
 RETURNS text LANGUAGE sql STABLE AS $fx$
     SELECT format($$INSERT INTO vendite.contratti_righe (contratto_id, articolo_id, tipo_eccezione,
-                         prezzo_unitario, qta_operativa, quantita, tipo_erogazione, fonte_quantita_attesa)
-                   VALUES (%s, %L, 'AGGIUNTA', 10, %L, %L, %L, %L)$$,
-                  (SELECT id FROM tmp_qpf_ctr), pg_temp.art(p_sigla), p_qta_op, p_qta, p_erog, p_fonte);
+                         prezzo_unitario, qta_operativa, quantita, tipo_erogazione, fonte_quantita_attesa,
+                         periodicita)
+                   VALUES (%s, %L, 'AGGIUNTA', 10, %L, %L, %L, %L, %L)$$,
+                  (SELECT id FROM tmp_qpf_ctr), pg_temp.art(p_sigla), p_qta_op, p_qta, p_erog, p_fonte,
+                  CASE WHEN p_erog = 'CANONE' THEN 'MENSILE' END);
 $fx$;
 
 -- Scopo: la riga del contratto per l'articolo, «EROG/FONTE/QTA_OPERATIVA/QUANTITA».

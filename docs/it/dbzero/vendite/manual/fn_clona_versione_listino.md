@@ -7,11 +7,11 @@
 > [vendite.fn_elimina_versione_listino](/dbzero/vendite/funzioni/fn_elimina_versione_listino)
 
 ### 🎯 Scopo
-(29-10-2026 — brief `brief-modello-documento-vendita` §16.14, C-1)
+(29-10-2026 — brief `brief-modello-documento-vendita` §16.14, C-1; rivisto il 1-11-2026)
 
 **Il verbo «Clona» di una versione di listino.** Il «cambio prezzi»: si copia una versione in una
 nuova, si cambiano i prezzi che cambiano, si attiva la nuova. Copia la versione con i suoi prezzi
-(righe e componenti dei compositi), in una sola transazione. Prende il posto della copia che il
+(righe e componenti dei compositi) e i suoi kit, in una sola transazione. Prende il posto della copia che il
 backend faceva su tre tabelle.
 
 ### Il percorso
@@ -22,9 +22,14 @@ backend faceva su tre tabelle.
    [`script.fn_check_versione_listino_clonabile`](/dbzero/script/funzioni/fn_check_versione_listino_clonabile)
    (la copia comincerebbe prima della sorgente), sul campo `valido_dal`.
 3. La versione nuova, dello stesso listino, con codice e date scelti: nasce in bozza.
-4. Le righe attive della sorgente.
+4. Le righe attive della sorgente, con la loro periodicità.
 5. I componenti attivi, con la validità ricalcolata sul periodo comune alla distinta e alla
    versione nuova: i prezzi valgono per il periodo nuovo.
+6. I kit ([`vendite.listini_kit`](/dbzero/vendite/manual/listini_kit)), con la loro periodicità.
+
+Fino al 31-10-2026 la periodicità delle righe non si copiava: una versione clonata da un listino
+di quota fissa la perdeva (`20261031-38`, brief `brief-db-contratto-righe-periodiche-in-commessa`
+§7.7).
 
 Restituisce la versione nuova, quante righe e quanti componenti ha copiato e quanti componenti ha
 saltato.

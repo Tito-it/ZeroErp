@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/fn_lotto_natura_dal_segno.md" %}
 # ⚙️ Funzione `fn_lotto_natura_dal_segno`
 
 ```sql

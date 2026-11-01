@@ -11,8 +11,10 @@
 -- (p_campi_ricerca, in coda): i campo_sorgente accesi nel catalogo della lista
 -- anagrafiche.ricerca_soggetti. Brief: brief-db-liste-datatable-grezze-
 -- secondo-giro §4.5.1 (D-4 di Tid del 2026-10-31), changeSet 20261031-58.
+-- Rev 2026-11-01 (§7.7.2, D-6, changeSet 20261101-03): la funzione non ha
+-- piu' una soglia sua; la lunghezza minima e' quella del catalogo della lista.
 --
--- Elenco test (plan 11):
+-- Elenco test (plan 12):
 --   1) una funzione sola con quel nome: la firma a sei argomenti e' ritirata
 --   2) p_campi_ricerca NULL: si cerca su tutti e tre (il CF trova)
 --   3) solo ragione sociale: il CF non trova
@@ -24,6 +26,7 @@
 --   9) elenco vuoto: nessuna riga
 --  10) * un campo fuori whitelist (utility_list) -> E_SCRIPT_CHIAMATA_NON_VALIDA
 --  11) * un elemento NULL -> E_SCRIPT_CHIAMATA_NON_VALIDA
+--  12) un termine di UN carattere trova: la soglia la giudica il chiamante (D-6)
 --
 -- Scopo:
 --  - il difetto che chiude: la funzione cercava sempre su codice, ragione
@@ -42,7 +45,7 @@ BEGIN;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(11);
+SELECT plan(12);
 
 -- Contesto applicativo: un'azienda col suo operatore, costruita, e il contesto
 -- aperto su di lui. Il cliente costruito dopo si lega a quest'azienda.
@@ -64,7 +67,7 @@ SELECT tr.codice_interno, tr.id FROM config.tipi_ruoli tr;
 --   builder non vede la riga che il builder crea.
 CREATE TEMP TABLE _re_sr ON COMMIT DROP AS
 SELECT dbops.fn_pgtap_crea_soggetto_ruolo(
-           dbops.fn_pgtap_crea_soggetto_pg('ZQCAMPIRE pgTAP campi ricerca'),
+           dbops.fn_pgtap_crea_soggetto_pg('ZQCAMPIRE § pgTAP campi ricerca'),
            'RE'::character varying) AS sr_id;
 
 CREATE TEMP TABLE _re ON COMMIT DROP AS
@@ -158,6 +161,16 @@ SELECT throws_like(
            (SELECT id FROM _ruoli WHERE codice_interno = 'RE')),
     '%campo di ricerca non ammesso: NULL%',
     '11. un elemento NULL -> E_SCRIPT_CHIAMATA_NON_VALIDA');
+
+-- ============================================================
+-- 12) Nessuna soglia nella funzione (D-6)
+-- ============================================================
+-- ⭐ Il «§» della ragione sociale della fixture e' il termine di un carattere:
+--   la soglia della lista 113 sta nel catalogo (ricerca_min_caratteri) e la
+--   giudica il chiamante. Fino al 2026-11-01 il corpo rifiutava ogni termine
+--   sotto i 3 caratteri: questo test distingue il corpo nuovo dal vecchio.
+SELECT ok(pg_temp.trova('§', 'RE', (SELECT sr_id FROM _re), ARRAY['ragione_sociale_completa']),
+    '12. un termine di un carattere trova: la soglia non e'' della funzione');
 
 SELECT * FROM finish();
 ROLLBACK;

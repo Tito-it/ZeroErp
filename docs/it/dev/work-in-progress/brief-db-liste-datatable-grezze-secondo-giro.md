@@ -2,9 +2,9 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-01
 
-**Riparte: team DB** (`dev/db-tid`) con il §7.7.1 (nei due guard a07 il campo va sotto
-`'campo'`, non `'field'`) e il §7.7.2 (D-6: la funzione della ricerca universale perde la sua
-soglia). Il BE ha chiuso il §7.6.5 (§7.7); dopo il DB allinea la view e si archivia il brief.
+**Riparte: BE** (`dev/backend-tid`) con il §7.8.5: la view della ricerca legge la soglia dal
+catalogo (D-6). Il lato DB è chiuso: `20261101-01…03` applicati e pgTAP verdi (Tid, 2026-11-01).
+Poi si archivia il brief.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -21,15 +21,16 @@ soglia). Il BE ha chiuso il §7.6.5 (§7.7); dopo il DB allinea la view e si arc
 | 10 | team DB | ✅ La forma del valore di ogni parametro, rispettata in scrittura (§4.6.1, D-5), scritta il 2026-10-31 (§7.6) | `config`, `script` | — |
 | 10-bis | Tid | ✅ Apply di `20261031-53…59` e dei mirror, 2026-10-31 (verificato: 56 parametri tipizzati, una firma della ricerca, i due trigger a07, i due codici d'errore, `filtrabile = f`). ✅ Corsa pgTAP verde (Tid, 2026-10-31) | dbdev | — |
 | 9-bis | BE | ✅ L'elenco chiuso del §7.6.5, fatto il 2026-10-31 (§7.7): `p_campi_ricerca` dal BB `colonne_ricerca_attive`, la 113 registrata, l'eccezione al nucleo dichiarata, i due codici nuovi, l'helper col tipo | `dev/backend-tid` | — |
-| 9-ter | team DB | 🔴 I due guard a07 mettono il campo sotto `'field'`: `fn_log_and_raise_error` legge solo `'campo'`, e il campo non arriva (§7.7.1). Più l'asserzione nel pgTAP | `20_code/config/`, `db/pgtap/config/` | — |
+| 9-ter | team DB | ✅ I due guard a07 mettono il campo sotto `'campo'` (§7.7.1), e il pgTAP legge il canale `COLUMN`: scritto il 2026-11-01 (§7.8) | `20_code/config/`, `db/pgtap/config/` | — |
 | 9-quater | Tid | ✅ D-6 decisa il 2026-11-01: la soglia della 113 viene dal catalogo, come per ogni lista (§7.7.2) | questo brief | — |
-| 9-quinquies | team DB | D-6: `fn_search_soggetti_universale` senza la soglia scritta nel corpo (§7.7.2) | `20_code/script/`, `db/pgtap/script/` | — |
-| 9-sexies | BE | D-6: la view della ricerca usa `soglia_ricerca('anagrafiche.ricerca_soggetti')` al posto di `RICERCA_MIN_CARATTERI` | `dev/backend-tid` | 9-quinquies |
+| 9-quinquies | team DB | ✅ D-6: `fn_search_soggetti_universale` senza la soglia scritta nel corpo (§7.7.2), scritto il 2026-11-01 (§7.8) | `20_code/script/`, `db/pgtap/script/` | — |
+| 9-quinquies-bis | Tid | ✅ Apply di `20261101-01…03` su dbdev e corsa dei tre pgTAP verde, 2026-11-01 (§7.8.4) | dbdev | — |
+| 9-sexies | BE | §7.8.5, D-6: la view della ricerca usa `soglia_ricerca('anagrafiche.ricerca_soggetti')` al posto di `RICERCA_MIN_CARATTERI`. Il test `test_valore_fuori_forma_non_si_salva` diventa verde da solo (§7.7.1) | `dev/backend-tid` | 9-quinquies-bis |
 | 11 | BE/FE | ✅ Revisione critica del lavoro non committato, 2026-10-31 (§4.7) | `dev/backend-tid` | — |
-| 12 | BE/FE | Archiviare il brief in `work-done/` | — | 9-ter, 9-sexies |
+| 12 | BE/FE | Archiviare il brief in `work-done/` | — | 9-sexies |
 
 **Decisioni aperte di Tid:** nessuna. D-6 decisa il 2026-11-01 (§7.7.2); D-3, D-4 e D-5 decise il 2026-10-31 (§4.5.1, §4.6.1); D-1, D-2, B1-bis, B8 e l'ordinamento per utility della 113 (§4.5) decisi il 2026-10-31.
-**Committato:** il lato DB, primo e secondo giro (§7.1-§7.6, con guida e pagine manual), è su `dev/db-tid` e mergiato in `dev/backend-tid` (#1988); il lato BE del §7.7 è committato su `dev/backend-tid`; il lato BE/FE (righe 6-8 e 11) è su `Tito-dev` (`82ea9e3a1`, PR #1987). Il rotto temporaneo
+**Committato:** il terzo giro DB (§7.8) è committato su `dev/db-tid` (2026-11-01). Il lato DB, primo e secondo giro (§7.1-§7.6, con guida e pagine manual), è su `dev/db-tid` e mergiato in `dev/backend-tid` (#1988); il lato BE del §7.7 è committato su `dev/backend-tid`; il lato BE/FE (righe 6-8 e 11) è su `Tito-dev` (`82ea9e3a1`, PR #1987). Il rotto temporaneo
 dichiarato fino alla conversione BE (Tid, 2026-10-31: «non ci preoccupiamo se
 alcune liste andranno in errore temporaneamente») è **chiuso**: §7.4 tutto
 fatto, verificato il 2026-10-31 (§7.4, in fondo).
@@ -846,3 +847,60 @@ catalogo, come per ogni lista. **Al team DB**: togliere il controllo `< 3` dal c
 rifiuto della funzione, ma la lunghezza minima la giudica il chiamante dalla soglia della
 lista. Va aggiornato il pgTAP che oggi la prova, se c'è. **Al BE, dopo**: la view usa
 `soglia_ricerca('anagrafiche.ricerca_soggetti')`, sempre con il 400 sotto soglia.
+
+## 7.8 Terzo giro DB — §7.7.1 e D-6 (2026-11-01, applicato)
+
+### 7.8.1 I changeSet
+
+| changeSet | Cosa |
+| --- | --- |
+| `20_code/config/20261101-01` | `config.trgfn_parameters_guard_tipo_valore`: `'campo'` al posto di `'field'` nei due rami (`default_value` sul default, `tipo_valore` sul cambio di tipo) |
+| `20_code/config/20261101-02` | `config.trgfn_parameter_overrides_guard_tipo_valore`: `'campo'` al posto di `'field'` (`value`) |
+| `20_code/script/20261101-03` | `script.fn_search_soggetti_universale` senza `length(btrim(p_search_term)) < 3`. Il termine vuoto (NULL o soli spazi) resta `E_PARAMETRO_INVALIDO`; esce dal contesto la chiave `minimo_caratteri` |
+
+Tutti e tre sono `CREATE OR REPLACE` sul corpo dello YAML precedente (`-56`, `-57`, `-58`),
+confrontato riga per riga con la doc auto-gen: identico. La firma della ricerca viene dallo YAML,
+che conserva il `%TYPE`. Trigger e GRANT non cambiano. Codici, messaggi e regole sono invariati.
+
+Censimenti fatti:
+- `'field'` come chiave di contesto: nella doc auto-gen la usano solo i due guard (tre punti);
+- consumatori della soglia nel DB: nessun altro pgTAP chiama la ricerca con un termine corto
+  aspettandosi il rifiuto, e nessuno legge `minimo_caratteri`.
+
+### 7.8.2 pgTAP
+
+| File | Cosa |
+| --- | --- |
+| `config/test-parameters-tipo-valore-v1.sql` (20 → 23) | 21-23: codice (`CONSTRAINT`) e campo (`COLUMN`) dell'eccezione per override, default e cambio di tipo |
+| `script/test-search-universale-campi-ricerca-v1.sql` (11 → 12) | 12: un termine di **un** carattere (`§`, nella ragione sociale della fixture) trova il soggetto costruito |
+| `script/test-search-soggetti-universale.sql` (22) | il test 6 pinnava «`'ab'` rifiutato»: ora pinna il termine di soli spazi |
+
+### 7.8.3 Prova (2026-11-01, SQL estratto in transazione annullata)
+
+- Scratch `zeroerp_ruoli`, come owner:
+  - `test-parameters-tipo-valore`: **23/23** con l'SQL estratto, **20/23** senza. I tre nuovi
+    distinguono il corpo nuovo dal vecchio;
+  - `test-search-universale-campi-ricerca`: **12/12** con, senza si ferma al 12 sul rifiuto
+    «minimo 3 caratteri»;
+  - `test-search-soggetti-universale`: si ferma al test 7 **prima e dopo**, ed è il rosso noto
+    dello scratch (§7.6.3: pesca un cliente dai dati). Il test 6 nuovo è verde.
+- dbdev, come owner, solo la versione con l'SQL estratto di `test-search-soggetti-universale`:
+  **22/22**. L'md5 delle tre funzioni è lo stesso prima e dopo.
+- Guardrail statici verdi (`run_on_change`, `precondition_seed`, `ddl_su_trigger_automazione`,
+  `grant_ruolo_batch`, `v1_congelato`, `sql_letterali`, `timestamp_senza_fuso`). Il preambolo
+  pgTAP ha le due violazioni preesistenti di `test-grammatica-presidio-tipo-documento-v1`.
+  Debito `throws_ok` invariato (110).
+
+### 7.8.4 Per Tid — apply e corsa
+
+`20261101-01`, `-02`, `-03`. Nessun mirror si sveglia. Corsa pgTAP: i tre file del §7.8.2.
+✅ **Fatto il 2026-11-01** (Tid): migrazione applicata su dbdev, pgTAP verdi.
+
+### 7.8.5 Per il BE (`dev/backend-tid`), dopo l'apply
+
+1. **D-6**: la view della ricerca usa `soglia_ricerca('anagrafiche.ricerca_soggetti')` al posto
+   di `RICERCA_MIN_CARATTERI`, sempre con il 400 sotto soglia. Il DB rifiuta solo il termine
+   vuoto (`E_PARAMETRO_INVALIDO`, campo `search_term`).
+2. **§7.7.1**: niente da cambiare. `test_valore_fuori_forma_non_si_salva` diventa verde da solo.
+   Il campo arriva anche sul default (`default_value`) e sul cambio di tipo (`tipo_valore`), se
+   un form del BE li scrive.

@@ -9,7 +9,7 @@
 > [linee guida SQL](/linee-guida-sql) §12.5
 
 ### 🎯 Scopo
-(28-10-2026 — brief `brief-modello-documento-vendita` §16.11, E-1, E-2, E-3)
+(28-10-2026 — brief `brief-modello-documento-vendita` §16.11, E-1, E-2, E-3; rivisto il 1-11-2026)
 
 **Perché una versione di listino non si elimina.** Restituisce l'elenco dei motivi
 (`codice`, `reason`, `reason_key`, `dettaglio`, `valori`); il primo è quello che si solleva.
@@ -25,7 +25,7 @@ Elenco vuoto = si elimina. Non solleva.
 * Con il motivo 1 si esce: una versione uscita dalla bozza non si elimina comunque.
 * **Chi usa la versione non è scritto a mano**: lo dicono i legami del database
   (`script.fn_tabelle_che_trattengono`). Un documento nuovo che fissa una versione entra da solo.
-  Le righe e i componenti della versione non contano: si eliminano con lei. `dettaglio.dove`
+  Le righe, i componenti e i kit della versione non contano: si eliminano con lei. `dettaglio.dove`
   elenca le tabelle.
 * Versione inesistente o fuori perimetro: nessun motivo.
 * La chiamano il verbo (prima di cancellare), il guard per stato (ramo DELETE) e la superficie

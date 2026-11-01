@@ -8,6 +8,8 @@
 > • [catalogo.articoli](/dbzero/catalogo/tabelle/articoli)  
 > • [catalogo.unita_misura](/dbzero/catalogo/tabelle/unita_misura)  
 >
+> **Ultimo aggiornamento**: 1 novembre 2026
+
 ### 🎯 Scopo Principale
 La tabella `vendite.listini_righe` contiene i prezzi elementari per articolo/UOM,
 eventualmente specializzati per contesto (BA, utility, emittente fiscale).
@@ -36,6 +38,18 @@ specifico rispetto al contesto operativo.
   [vendite.trgfn_attivita_guard_listino_riga](/dbzero/vendite/manual/trgfn_attivita_guard_listino_riga)
   tiene sulle righe di commessa e sulle attività fatturabili che citano la riga: se la riga di
   listino cambiasse articolo, chi la cita resterebbe incoerente.
+* **`periodicita`** (FK su `config.periodicita`, nullable): su una quota fissa è il ritmo con cui
+  ogni contratto del listino la paga; altrove la proposta all'adesione. Un **kit** non ha una riga
+  qui: la sua periodicità sta in [vendite.listini_kit](/dbzero/vendite/manual/listini_kit), e la
+  sede che le legge tutte e due è
+  [vendite.fn_listino_periodicita_articolo](/dbzero/vendite/manual/fn_listino_periodicita_articolo).
+* ⭐ **Una quota fissa a canone non resta senza periodicità fuori dalla bozza** (rev 2026-10-31,
+  decisione di Tid): toglierla su una versione attiva è rifiutato da
+  [vendite.trgfn_listini_righe_guard_periodicita_quota_fissa](/dbzero/vendite/funzioni/trgfn_listini_righe_guard_periodicita_quota_fissa)
+  (`E_LISTINO_QUOTA_FISSA_PERIODICITA_FERMA`, sul campo). Cambiarla con un'altra resta una
+  rettifica, come il prezzo. È l'altra metà del controllo all'attivazione
+  ([script.fn_check_versione_listino_attivabile](/dbzero/script/manual/fn_check_versione_listino_attivabile),
+  motivo 3): senza, la quota la perdeva dopo.
 
 ---
 
