@@ -1,0 +1,46 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# anagrafiche.fn_crea_indirizzi_ruolo — solo il COMMENT: nomina la chiave
+#   nuova tipo_indirizzo_codice_interno (la legge il BB, 20261101-08). Il
+#   corpo non la nomina e non cambia (20261019-38).#
+# -- PERCHE' ---------------------------------------------------------------------
+#   Il guardrail CI scripts/sql/check_naming_stato_codice.sql (regola C,
+#   linee-guida-sql §6c) era rosso: la chiave d'ingresso degli indirizzi si
+#   chiamava tipo_indirizzo_codice ma portava il CODICE INTERNO (RES, FATT...).
+#   In uscita lo stesso nome (vw_indirizzi_resolved_*, repository BE dei tipi)
+#   e' ti.codice, il display: una chiave con due significati. La chiave
+#   d'ingresso diventa tipo_indirizzo_codice_interno; l'uscita non cambia.
+#   Rottura voluta, niente alias: tipo_indirizzo_codice in ingresso ora e'
+#   E_CAMPO_NON_AMMESSO. Richiesta al BE nello stesso giro (schema_indirizzo.py
+#   e i suoi test). Decisione di Tid del 2026-11-01.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261101-10-comment-fn-crea-indirizzi-ruolo-chiave-codice-interno-mctit.yaml
+
+  - changeSet:
+      id: 20261101-10-comment-fn-crea-indirizzi-ruolo-chiave-codice-interno
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        fn_crea_indirizzi_ruolo: COMMENT con la chiave tipo_indirizzo_codice_interno (20261101-08).
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION anagrafiche.fn_crea_indirizzi_ruolo(anagrafiche.soggetti_ruoli.id%TYPE, jsonb) IS
+                  'Madre (2026-10-17): scrive gli indirizzi di un ruolo in una sola istruzione. p_indirizzi: array di oggetti, ciascuno col tipo (tipo_indirizzo_id o tipo_indirizzo_codice_interno, codice interno) e l''indirizzo in una di tre forme: libero (indirizzo_libero con stato, poi comune e CAP del catalogo oppure locality e postal_code), dettaglio gia'' risolto (indirizzo_dettaglio_id), via da risolvere (stradario_id oppure toponomastica_id + descrizione_via + comune_id + codice_postale_id, piu'' il civico). AUTO-CLONE: i tipi obbligatori della matrice del ruolo (config.tipi_ruolo_tipi_indirizzo, attivi) assenti dal payload si copiano dal primo indirizzo; un tipo che il ruolo ha gia'' si salta; payload vuoto: nessuna scrittura. Il tipo del ruolo si legge dal ruolo. Ritorna quanti indirizzi ha scritto. Rifiuti: elenco malformato E_SCRIPT_CHIAMATA_NON_VALIDA, ruolo inesistente E_SOGGETTO_RUOLO_NON_TROVATO; l''elemento lo legge anagrafiche.fn_indirizzo_elemento (oggetto, chiavi ammesse, tipo: E_SCRIPT_CHIAMATA_NON_VALIDA, E_CAMPO_NON_AMMESSO, E_TIPO_INDIRIZZO_NON_TROVATO) e la via la risolve anagrafiche.fn_indirizzo_elemento_dettaglio (fn_create_indirizzo, idempotente): la stessa grammatica di fn_crea_indirizzo_soggetto (rev 2026-10-18, D-4 di Tid). Il tipo ammesso per il ruolo e la forma dell''indirizzo libero li dicono i guard della tabella (anagrafiche.trgfn_indirizzi_guard_forma_libera). Non valida i campi di una via nuova (pre-check del backend) ne'' il permesso (dominio anagrafiche, B-5). INVOKER. Brief: brief-db-processi-accensione-per-ambiente (2b-1, lotto 2; §6.11). ⭐ Rev 2026-10-19 (20261019-38, R-BE-6 e R-BE-12, D-16a di Tid): ogni riga la scrive la singolare anagrafiche.fn_crea_indirizzo_ruolo (sede unica dell''INSERT); il salto dei tipi presenti guarda solo gli indirizzi del ruolo SENZA istanza (la chiave di uq_indirizzi_ruolo_tipo_no_istanza: prima un indirizzo di un''istanza dello stesso tipo faceva saltare quello del ruolo).';
+      rollback:
+        - sql:
+            sql: >
+              SELECT 1; -- il COMMENT precedente e' in 20261019-38

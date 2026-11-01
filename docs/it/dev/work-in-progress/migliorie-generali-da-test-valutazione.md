@@ -1,26 +1,24 @@
 # Migliorie generali da test valutazione
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-28
+## ⏭️ Chi riparte — aggiornato al 2026-11-01
 
-**Riparte: il team DB** su D7 (i 24 rossi dello scratch), e **Tid** con le decisioni che tengono ferme
-le altre voci aperte di §3.
+**Riparte: il team DB** su D7 (i 23 rossi del registro della CI), e **Tid** con le decisioni che
+tengono ferme le altre voci aperte di §3.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
 | 1 | Tid | D18: le cinque decisioni della catena delle istanze | `brief-db-catena-istanze-pdp.md` §6 | — |
-| 2 | team DB | D31: analisi della forma del canone in commessa sulle decisioni G-0 … G-6 di Tid (2026-10-28) | `brief-db-contratto-righe-periodiche-in-commessa.md` §4.1 | — |
+| 2 | Tid | D31: collaudo a video del canone in commessa e archiviazione del brief (lato DB e BE fatti); orario e consumo aspettano le loro sorgenti | `brief-db-contratto-righe-periodiche-in-commessa.md`, «Chi riparte» | — |
 | 3 | Tid | D17 Q-2: riprendere o no le GUC di bypass (rimandata il 2026-10-04) | §3 D17 | — |
 | 4 | Tid | D7: i test legati a dati di macchina; il ramo «ultimo SUPER_ADMIN» | §3 D7 | — |
 | 5 | team DB | D24 (la vista del presidio C2 e i `tgargs`), D6-bis, D11-bis, D16: lavori senza decisioni aperte | §3 | il via di Tid |
-| 6 | Tid | una corsa CI su `Tito-dev` con `pgtap-baseline-ci-rientrati.sh` lo stesso giorno: il registro della CI è fermo | §3 D7 | — |
-| 7 | team DB | D7: i 24 rossi dello scratch (famiglia 5 del lotto 4 e residui dei lotti 1-2), uno per uno | §3 D7 | — |
+| 6 | Tid | commit di `baseline-rossi-ci.tsv` (358 → 23, corsa `41326840441`); poi `pgtap-baseline-ci-rientrati.sh` il giorno di ogni push su `Tito-dev` che tocca `db/` | §3 D7 | — |
+| 7 | team DB | D7: i 23 rossi della CI (17 `ASSERZIONE`, 6 `ERRORE_FIXTURE`), uno per uno | §3 D7 | — |
 
-Decisioni aperte di Tid: righe 1-4. Lavoro da committare: il riallineamento del 2026-10-23 di questo
-documento, il lotto 3 di D7 (due pgTAP di `pratiche`, la soglia `throws_ok`, i due registri), il
-lotto 4, famiglie 1-4, con il cancello `throws_ok` e il test ritirato, e la separazione di questo
-documento dal suo archivio in `work-done/` (2026-10-27).
+Decisioni aperte di Tid: righe 1-4. Lavoro da committare: questo riallineamento (2026-11-01) e il
+registro della CI (riga 6).
 
-> **Ultima revisione: 2026-10-27.** Valutazione dello strato DB, aperta il 2026-09-08. Qui sta
+> **Ultima revisione: 2026-11-01.** Valutazione dello strato DB, aperta il 2026-09-08. Qui sta
 > **solo ciò che è vivo**: chi riparte, i difetti aperti (§3), cosa non è un difetto (§4), la
 > scorecard (§5) e la checklist delle voci aperte (§6). La valutazione di febbraio (§1), ciò che è
 > nato in sette mesi (§2), la valutazione del design del 04-10 (§2-bis), le voci chiuse (§7) e i
@@ -28,12 +26,13 @@ documento dal suo archivio in `work-done/` (2026-10-27).
 > [migliorie-generali-da-test-valutazione-storia.md](../work-done/migliorie-generali-da-test-valutazione-storia.md), con la stessa numerazione: un
 > rimando «§D13» o «§7 D7» da un changeSet o da un brief si legge lì.
 >
-> **Numeri del 2026-10-27** (D7, lotti 3 e 4; corsa di Tid sullo scratch `zeroerp_ruoli`): suite
-> pgTAP a **916** file; `baseline-rossi-scratch.tsv` a **24** (4 `ERRORE_FIXTURE`, 20 `ASSERZIONE`:
-> verde al 97%; 147 su 887 il 20-10); `baseline-rossi.tsv` a **4**; `baseline-rossi-ci.tsv` a **359**,
-> fermo, nessun rientrato certificato dal 26-09; `SOGLIA_THROWS_SENZA_DISCRIMINANTE` a **110**, e il
-> cancello vede anche `NULL::text`; utente `'1'` a zero; 119 file con `skip()`, 145 con
-> `pgtap-runner: owner`. Gli indicatori vivono in [qualita-db-indicatori.md](../qualita-db-indicatori.md).
+> **Numeri del 2026-11-01** (corsa CI `41326840441` su `Tito-dev`, `84de5e28d`): suite pgTAP a
+> **936** file, **23 rossi in CI** (verde al 97,5%; 227 su 714 il 26-09); `baseline-rossi-ci.tsv`
+> **certificato** a **23** (6 `ERRORE_FIXTURE`, 17 `ASSERZIONE`; era 358: 335 rientrati);
+> `baseline-rossi-scratch.tsv` a **22** (4 `ERRORE_FIXTURE`, 18 `ASSERZIONE`); `baseline-rossi.tsv` a
+> **4**; `SOGLIA_THROWS_SENZA_DISCRIMINANTE` a **110**; utente `'1'` a zero; smoke non verdi a **0**
+> (dal 28-10); 119 file con `skip()`, 146 con `pgtap-runner: owner`. Gli indicatori vivono in
+> [qualita-db-indicatori.md](../qualita-db-indicatori.md).
 >
 > ⛔ **Di una vista di presidio si conta il registro, mai la misura** (correzione del 2026-10-27,
 > nell'archivio): `vw_codici_errore_da_dichiarare` è la misura del terzo lato, il debito è
@@ -227,15 +226,24 @@ cercarlo (§7 D7).
 ✅ **Al 2026-10-27** (lotti 3 e 4 di D7, corsa di Tid): il registro dello scratch è a **24** su 916
 (4 `ERRORE_FIXTURE`, 20 `ASSERZIONE`), cioè verde al **97%**. `pratiche` e `vendite` non hanno più
 rossi di fixture: quelli che restano sono asserzioni, più quattro fixture in `anagrafiche` e
-`script`. ⛔ Resta vero quanto sopra: **lo scratch non è la CI**, e il registro della CI è fermo.
+`script`.
 
-⚠️ **Il registro però non lo sa ancora.** `db/pgtap/baseline-rossi-ci.tsv` è
-**fermo a 361 righe** dal 22-09 (**360** dal 20-10 e **359** dal 27-10, per due test ritirati, nessuno rientrato), mentre la CI del 26-09 ne vede rossi 227: le righe rientrate le toglie
-`scripts/pgtap-baseline-ci-rientrati.sh` leggendo il **log della corsa CI**, e
-il log scade — va lanciato **il giorno stesso** della push su `Tito-dev` che
-tocca `db/`. Finché non succede, il cancello tollera come «noti» file che sono già verdi —
-circa 134 alla misura CI del 26-09, e dopo i lotti 3 e 4 molti di più: lo scratch del 27-10 ne
-vede rossi 24 su 916 —, e una regressione su uno di loro **non ferma il merge**.
+✅ **Al 2026-11-01 lo dice la CI, e il registro lo sa.** La corsa `41326840441` su `Tito-dev`
+(`84de5e28d`, push del merge della PR #5, database ricostruito da zero col modello dei ruoli) dà
+**23 rossi su 936**, tutti già noti: verde al **97,5%**, contro 227 su 714 il 26-09 e 407 su 601
+il 09-09. Lo stesso giorno `pgtap-baseline-ci-rientrati.sh` ha tolto dal registro i **335
+rientrati**: `baseline-rossi-ci.tsv` passa da 358 a **23** righe (6 `ERRORE_FIXTURE`, 17
+`ASSERZIONE`). Il verde guadagnato dai lotti 1-4 ora è **protetto**: una regressione su uno di
+quei file ferma il merge. La misura della CI e quella dello scratch (22 il 01-11) coincidono quasi
+del tutto: la fixture che costruisce funziona anche fuori dalla macchina di sviluppo.
+
+⛔ **La corsa precedente non era una misura** (corsa `41325095742`, stesso giorno): il B-7 rosso
+aveva saltato «Django migrate», la suite era partita lo stesso su un database senza schema
+`django`, e ha dato **909 rossi su 936**, tutti `relation "django.auth_user" does not exist`. La
+condizione della suite guardava `ci_apply`, che viene **prima** del secondo migratore. Corretto in
+`ci-validate.yaml`: la suite parte su `steps.fase_post`, e il migrate e la fase post hanno il loro
+`if` su `ci_apply`, così un cancello in mezzo non zittisce la suite. ⚠️ Il log di una corsa scade
+in pochi giorni: i rientrati si tolgono **il giorno stesso** della push che tocca `db/`.
 
 ⚠️ E il difetto vero non è la percentuale: è che quei file **passano sul DB di
 sviluppo**. Cioè la suite verifica in larga parte *lo stato di una macchina*,
@@ -254,19 +262,20 @@ lasciato
 ([brief-db-fixture-che-costruiscono-giro-2.md](../work-done/brief-db-fixture-che-costruiscono-giro-2.md)
 §5, §7, §9, §11):
 
-* ⏳ **certificare in CI** i rientrati dei lotti 1 e 2 — corsa e
-  `pgtap-baseline-ci-rientrati.sh` lo stesso giorno (361 → 227, misura CI del
-  26-09);
-* ⏳ **i 18 rossi del lotto 2**, da guardare uno per uno (elenco nel brief, §11
-  «Stato di chiusura»; ⚠️ per nome sono 19, scarto di uno da riconciliare), più
-  i 3 del lotto 1 da riconciliare (16 + 21 + 3 = 40 su 43);
+* ⏳ **i 23 rossi della CI** (registro certificato il 2026-11-01), uno per uno: 17 `ASSERZIONE`
+  (fra cui i file su identità digitali e `auth_user`, il caso dei «due mondi» di `django` in CI, e
+  la famiglia 5 del lotto 4 in `vendite`) e 6 `ERRORE_FIXTURE` (`test-catasto-unita-immobiliare`,
+  `test-indirizzi-fallback`, `test-processi-jobname-wrapper`, `test-search-soggetti-universale`,
+  `test-vw-giornale-entita`, `test-snapshot-indirizzi-fattura-v1`). Sostituiscono i residui dei
+  lotti 1 e 2, che si contavano sul registro vecchio;
 * ✅ **lotto 3** — `pratiche`: chiuso il 2026-10-27 (corsa di Tid). Dettaglio nell'archivio, §7 D7.
 * 🟡 **lotto 4** — `vendite`: famiglie 1-4 (commesse e attività, fatture-lotti-registri, preventivi-ordini-
   valuta, listini e prezzi; 77 file) chiuse il 2026-10-27, dettaglio e verdi falsi trovati nell'archivio,
-  §7 D7. ⏳ Resta la **famiglia 5**: i 10 rossi `ASSERZIONE` di `vendite`, uno per uno. Con loro i 14
-  rossi dello scratch fuori da `vendite` (`anagrafiche`, `script`, `config`, `ui`): errori di sintassi in
-  SQL dinamico, test stantii sullo schema, dati di macchina (decisione di Tid sotto), pesche. ⚠️ Lo
-  scratch da solo non prova un file che pesca ancora: ogni famiglia si chiude con la corsa di Tid su dev.
+  §7 D7. ⏳ Resta la **famiglia 5**: i rossi `ASSERZIONE` di `vendite` (8 nel registro della CI al
+  01-11), uno per uno. Con loro gli altri rossi della CI fuori da `vendite` (`anagrafiche`, `script`,
+  `config`, `dbops`, `ui`): errori di sintassi in SQL dinamico, test stantii sullo schema, dati di
+  macchina (decisione di Tid sotto), pesche. ⚠️ Lo scratch da solo non prova un file che pesca ancora:
+  ogni famiglia si chiude con la corsa di Tid su dev.
   Da guardare: in `vw-af-merce-per-riga` le asserzioni filtrano per id di riga sintetici (9000xx) senza il
   documento del test; il test 3 di `trgfn-preventivi-default-emittente` non distingue «non sovrascrive»
   (serve un secondo emittente nel perimetro dell'operatore);
@@ -284,9 +293,9 @@ lasciato
   la famiglia 2 del lotto 4: l'utente di sessione è l'operatore del contesto;
 * ⏳ la **baseline di sviluppo** (`baseline-rossi.tsv`): **4** file al 27-10 (6 al 23-10,
   7 al 13-10, 12 al 26-09), di cui **3** muoiono nella fixture, tutti in `anagrafiche`;
-* ⏳ i file con `pgtap-runner: owner` (**145** al 23-10, 130 al 13-10, 109 al 22-09): crescono coi
+* ⏳ i file con `pgtap-runner: owner` (**146** al 01-11, 145 al 23-10, 130 al 13-10, 109 al 22-09): crescono coi
   file nuovi, e quanti di quei motivi siano ancora veri dopo la rev `20260912-38` non è misurato;
-* ⏳ i file con uno `skip()` condizionato: **119** al 27-10 (122 al 23-10, 110 all'08-09);
+* ⏳ i file con uno `skip()` condizionato: **119** al 01-11, come al 27-10 (122 al 23-10, 110 all'08-09);
 * 🔵 **decisione (Tid)**: i file legati a dati di **questa** macchina (gestore,
   CF, PIVA, PDP GAS) — si riscrivono o si dichiarano test di macchina;
 * 🔵 **decisione (Tid)**: il ramo «ultimo SUPER_ADMIN» sull'identità è
@@ -424,23 +433,26 @@ trigger nuovi nascono con la fase, i vecchi senza restano senza.
 Un registro di debito è una buona invenzione **a condizione che scenda**. Stato
 al 2026-09-08, salvo dove è scritta un'altra data:
 
-| Registro                                   | Oggi (2026-10-23; i registri pgTAP al 2026-10-27)                                          |
+| Registro                                   | Oggi (2026-10-23; i registri pgTAP e gli smoke al 2026-11-01)                              |
 | ------------------------------------------ | ------------------------------------------------------------------------------------------ |
 | `dbops.codici_errore_senza_policy`         | ✅ **0** dal 2026-08-07 — ⛔ *non* il conteggio di `vw_codici_errore_da_dichiarare` (702 al 23-10), che è la misura: vedi sotto |
-| `db/pgtap/baseline-rossi-ci.tsv`           | **359** file (291 `ERRORE_FIXTURE`, 68 `ASSERZIONE`), fermo dal 2026-09-22 salvo due test ritirati (20-10, 27-10) — nato il 09-09 con 407; la CI del 26-09 misura **227 rossi su 714**: il registro scende con `pgtap-baseline-ci-rientrati.sh` (D7) |
-| `db/pgtap/baseline-rossi-scratch.tsv`      | **24** file su 916 (4 `ERRORE_FIXTURE`, 20 `ASSERZIONE`) al 27-10 — 147 su 887 al 20-10 (D7, lotti 3 e 4) |
+| `db/pgtap/baseline-rossi-ci.tsv`           | ✅ **23** file su 936 (6 `ERRORE_FIXTURE`, 17 `ASSERZIONE`) al 01-11, certificati dalla corsa CI `41326840441` — era 358 (291 `ERRORE_FIXTURE` al 27-10), fermo dal 22-09; nato il 09-09 con 407 (D7) |
+| `db/pgtap/baseline-rossi-scratch.tsv`      | **22** file (4 `ERRORE_FIXTURE`, 18 `ASSERZIONE`) al 01-11 — 24 su 916 al 27-10, 147 su 887 al 20-10 (D7, lotti 3 e 4) |
+| `db/baseline-codici-errore-famiglie.tsv` (B-7) | **219** codici al 01-11, riallineata dopo i rossi del 01-11 (2 codici nati dopo il 13-10, 2 ristretti, 13 rientrati: 12 non più leggibili dalla misura, uno ritirato) — 212 al 13-10 |
 | `SOGLIA_THROWS_SENZA_DISCRIMINANTE`        | **110** al 27-10, e il cancello vede anche `NULL::text` (115 al 13-10, 117 al 26-09, 129 all'08-09) |
 | `dbops.vw_fk_con_indice_missing_policy`    | **57**, fermo dall'08-09                                                                   |
 | `db/pgtap/baseline-rossi.tsv`              | **4** file (3 `ERRORE_FIXTURE`, 1 `ASSERZIONE`) al 27-10 — 6 al 23-10, 7 al 13-10, 12 al 24-09, 16 al 12-09, erano 19 |
 | `dbops.rls_perimetro_debito`               | **6** righe nel seed (7 al 20-09, era 10 → D2)                                             |
-| `backend/scripts/tests/baseline-smoke.tsv` | **2** su 52 script (7 al 13-10; 2 su 16 al 12-09, prima che il perimetro comprendesse i bash) |
+| `backend/scripts/tests/baseline-smoke.tsv` | ✅ **0** dal 28-10 (2 su 52 script al 23-10, 7 al 13-10; 2 su 16 al 12-09, prima che il perimetro comprendesse i bash) |
 | Header di licenza mancanti                 | 2.042 file (misura 2026-08-26, non rifatta)                                                |
 | `dbops.vw_indici_ridondanti_prefisso`      | 1                                                                                          |
 | Codici vivi senza messaggio                | 6 (tutti `W_`, §2.3) — gli stessi sei                                                      |
 | `dbops.vw_processi_che_bypassano`          | ✅ **0** dal 2026-10-15 (era 1, dichiarato con la data di ritiro: ritirato nei tempi)      |
 
 ⭐ L'ultima riga è l'unica fatta bene: **una** voce, con il motivo e il momento in
-cui sparisce — ✅ ed è sparita quando diceva. Le tre liste lunghe (i rossi della CI, la soglia `throws_ok`, le FK senza indice) no, e la guida sui presidi dice
+cui sparisce — ✅ ed è sparita quando diceva. ✅ Il 01-11 i rossi della CI sono scesi da 358 a 23:
+il verso c'era (`pgtap-baseline-ci-rientrati.sh`), mancava la corsa che lo facesse girare. Le due
+liste lunghe che restano (la soglia `throws_ok`, le FK senza indice) no, e la guida sui presidi dice
 esattamente perché è un problema: *«il registro nasce piccolo. Se parte con
 trenta righe, nessuno lo leggerà»*. `rls_perimetro_debito` è nato nella forma
 giusta — ogni riga con la sua ragione — ed è calato di due terzi nel cantiere
@@ -457,7 +469,7 @@ ce l'ha: il cancello `test_error_codes_db_policy_guardrail` è rosso su un codic
 sta in `dbops.presidi` (questa vista è `CANCELLO`) e nel `COMMENT` della vista.
 
 ⚠️ Le due baseline pgTAP meritano una riga a parte: i file `ERRORE_FIXTURE`
-(292 in CI e 6 in sviluppo al 13-10) non eseguono **nessuna**
+(6 in CI e 3 in sviluppo al 01-11; 292 e 6 al 13-10) non eseguono **nessuna**
 asserzione. La loro copertura vale zero, non «parziale» — e sono aree che
 *sembrano* coperte.
 
@@ -561,8 +573,10 @@ la competenza di tutto il contratto: un canone diventava un addebito unico. D-2 
 `20261013-24` il push manda solo le UNA_TANTUM; la generazione per periodo del canone e le quantità di
 orario e consumo dalle loro fonti si progettano nel brief
 [brief-db-contratto-righe-periodiche-in-commessa.md](brief-db-contratto-righe-periodiche-in-commessa.md).
-📝 Aperto, non iniziato: decisioni G-0 … G-6 prese da Tid il 2026-10-28 (solo il canone; orario e consumo
-aspettano le loro sorgenti); tocca all'analisi del team DB.
+✅ **Al 2026-11-01 il canone è fatto**: decisioni G-0 … G-11 (28-10), lotti L1 … L9 e il giro del §7 lato
+DB, il passaggio BE/FE (§7.6, §7.11, §7.13.4). Resta a Tid il collaudo a video (il form della riga a
+canone, la colonna «Periodicità» della lista 37), poi il brief si archivia. ⏳ Orario e consumo
+aspettano le loro sorgenti: la voce resta aperta per loro.
 
 ## 4. Cosa NON è un difetto
 
@@ -592,24 +606,24 @@ aspettano le loro sorgenti); tocca all'analisi del team DB.
 
 ---
 
-## 5. Scorecard — pesata, non mediata (2026-09-08; voti rivisti il 2026-10-23 e il 2026-10-27)
+## 5. Scorecard — pesata, non mediata (2026-09-08; voti rivisti il 2026-10-23, il 2026-10-27 e il 2026-11-01)
 
 Il peso è **la conseguenza di un difetto in quell'area**, non la sua estensione. La colonna
-«prima» è il voto del 2026-10-23 (la «Simmetria del dominio» non è votata dal 04-10). Il 27-10
-si muovono Copertura test e Gestione del debito (D7, lotti 3 e 4); la Catena di verifica resta
-dov'è, ma col perché riscritto.
+«prima» è il voto del 2026-10-27 (la «Simmetria del dominio» non è votata dal 04-10). Il 01-11
+si muovono Catena di verifica, Copertura test e Gestione del debito: la corsa CI certifica il
+verde dei lotti 1-4 (D7).
 
-| Area                                   | Peso    | Prima  | Voto al 27-10 | Perché |
+| Area                                   | Peso    | Prima  | Voto al 01-11 | Perché |
 | -------------------------------------- | ------- | ------ | ------------- | ------ |
-| **Catena di verifica (CI)**            | 🔴 alto  | 7,5    | **7,5/10**    | Il cancello tiene dal 09-09, e dal 15-10 la CI ricostruisce il database col modello dei ruoli di sistema (owner `zeroerp_owner`), cioè come lo si installerà; dal 27-10 il cancello `throws_ok` vede anche `NULL::text`. Non sale, e il rischio è cresciuto: il registro della CI è a 359, mentre lo scratch ricostruito da zero ne vede rossi 24 (27-10). Più di 300 file già verdi sono tollerati come rossi, e una loro regressione non ferma il merge. Il guadagno della fixture non è protetto finché una corsa CI non lo certifica (D7) |
+| **Catena di verifica (CI)**            | 🔴 alto  | 7,5    | **8,5/10**    | Il cancello tiene dal 09-09, la CI ricostruisce il database col modello dei ruoli di sistema (dal 15-10), e dal 01-11 il registro è **certificato**: 23 rossi su 936, tutti noti, quindi una regressione su uno dei 335 file rientrati ferma il merge. Nello stesso giro è stato chiuso un buco della catena: la suite partiva anche col secondo migratore saltato (909 finti rossi alla corsa `41325095742`), e ora parte solo sul database completo (`fase_post`), senza che un cancello in mezzo possa zittirla. Non di più: i rientrati si tolgono a mano, con uno script, prima che il log scada (pochi giorni), e lo script ne riporta male le regressioni quando sono tante |
 | **Perimetro dei dati (RLS)**           | 🔴 alto  | 8      | **8/10**      | D2, D3, D13 e Q-1 chiusi; l'ultimo processo che aggirava la RLS (`zeroerp_batch_fatturazione`) è ritirato il 15-10, e il perimetro dell'operatore si calcola una volta per istruzione (D26-2, D36). Non sale per due cose aperte e di sostanza: la catena delle istanze legge sotto RLS (D18) e i blocchi si spengono con una GUC (Q-2). Le due policy inerti di `acquisti` restano a registro (D8) |
-| **Copertura test**                     | 🔴 alto  | 4,5    | **5,5/10**    | Sale perché la proprietà che serve — le migrazioni ricostruiscono da zero un sistema che passa i test — è ora dimostrata fuori dalla macchina di sviluppo per quasi tutta la suite: sullo scratch **24** rossi su 916 (27-10; 147 su 887 il 20-10), e `pratiche` e `vendite` non hanno più rossi di fixture; utente `'1'` a zero, baseline di sviluppo a 4. Costruendo sono emersi una decina di verdi falsi (`skip` da zero, conteggi che non contavano ciò che dichiaravano, discriminanti che passavano per l'errore sbagliato), ora veri. Non di più: il numero della CI non è stato rimisurato dal 26-09 (227 su 714), `acquisti` è a zero, 119 file hanno uno `skip()` e 145 il runner `owner`, nessuno dei due riletto; e lo scratch da solo non prova un file che pesca ancora (D7) |
-| **Postura di sicurezza degli oggetti** | 🟠 medio | 7,5    | **8/10**      | I ruoli di sistema (15-10): un solo proprietario, `zeroerp_job` per i processi, presidio «nessun superuser al lavoro», `zeroerp_log` nella fase dei ruoli (D35). I rubinetti di D6-bis scesi a 16 e 4. Non di più finché Q-2 e D6-bis restano aperti |
+| **Copertura test**                     | 🔴 alto  | 5,5    | **6,5/10**    | Sale perché la proprietà che serve — le migrazioni ricostruiscono da zero un sistema che passa i test — è ora **misurata in CI**: 23 rossi su 936 (01-11), contro 227 su 714 il 26-09; lo scratch (22) e la CI coincidono quasi del tutto. Utente `'1'` a zero, baseline di sviluppo a 4. Non di più: 6 file ancora `ERRORE_FIXTURE` non eseguono nessuna asserzione, `acquisti` è a zero, 119 file hanno uno `skip()` e 146 il runner `owner`, nessuno dei due riletto (D7) |
+| **Postura di sicurezza degli oggetti** | 🟠 medio | 8      | **8/10**      | I ruoli di sistema (15-10): un solo proprietario, `zeroerp_job` per i processi, presidio «nessun superuser al lavoro», `zeroerp_log` nella fase dei ruoli (D35). I rubinetti di D6-bis scesi a 16 e 4. Non di più finché Q-2 e D6-bis restano aperti |
 | **Simmetria del dominio**              | 🟠 medio | —      | **non votata** | Che lo strato di comportamento di `acquisti` arrivi dopo è l'ordine di costruzione (§4). Resta vero, ed è in D8, il punto **sul modello**: le decisioni prese su `vendite` (dal 13-10 anche grammatica unica, modelli di documento standard, emissione dell'offerta) valgono anche per `acquisti`, e lì non sono scritte |
-| **Osservabilità dei presidi**          | 🟠 medio | 7      | **7,5/10**    | Ogni riga del presidio dei job dice la sua causa (`brief-db-presidio-job-run-a-chi-tocca`), una spia si spegne solo con un verdetto completo (`brief-db-intermittente-e-verdetto-completo`), il giornale registra il ruolo della corsa, le statistiche hanno un job con autoverifica (D15). Non 8 per il residuo di D10: i processi ritirati nella vista dei job |
-| **Gestione del debito**                | 🟠 medio | 6      | **6,5/10**    | I registri col verso giusto hanno funzionato (il bypass, ritirato nei tempi; i codici senza policy, a zero dal 07-08) e quelli piccoli calano (smoke 7 → 2, baseline di sviluppo 7 → 4, soglia `throws_ok` 115 → 110, utente `'1'` 4 → 0). Sale perché una voce aperta è stata lavorata davvero: D7, con i lotti 3 e 4 e un test che collaudava una funzione ritirata, cancellato. Non di più: il registro della CI è fermo dal 26-09, e D18 e Q-2 sono ferme dall'inizio di ottobre (§3). *(⛔ 27-10: il 23-10 era 5,5, sulla lettura sbagliata dei «702 codici da dichiarare», che sono la misura e non il debito; corretta a 6)* |
+| **Osservabilità dei presidi**          | 🟠 medio | 7,5    | **7,5/10**    | Ogni riga del presidio dei job dice la sua causa (`brief-db-presidio-job-run-a-chi-tocca`), una spia si spegne solo con un verdetto completo (`brief-db-intermittente-e-verdetto-completo`), il giornale registra il ruolo della corsa, le statistiche hanno un job con autoverifica (D15). Non 8 per il residuo di D10: i processi ritirati nella vista dei job |
+| **Gestione del debito**                | 🟠 medio | 6,5    | **7/10**      | I registri col verso giusto hanno funzionato (il bypass, ritirato nei tempi; i codici senza policy, a zero dal 07-08) e calano: il registro della CI 358 → 23 (01-11), smoke 2 → 0 (28-10), baseline di sviluppo 7 → 4, soglia `throws_ok` 115 → 110, utente `'1'` 4 → 0; la baseline B-7 è stata stretta (2 ristretti, 13 rientrati) invece di essere rigenerata alla cieca. Non di più: D18 e Q-2 sono ferme dall'inizio di ottobre (§3), e la soglia `throws_ok` e le FK senza indice non hanno un verso |
 | **Pattern trigger e automazioni**      | 🟡 basso | 7,5    | **7,5/10**    | Framework `ci_apply` eccellente; la forma per-figlia continua a crescere (816 trigger da due funzioni, 50 su `catalogo.articoli`), la fase sale al 68% solo perché i trigger nuovi nascono con lei (D9) |
-| **Error handling / codici errore**     | 🟡 basso | 8,5    | **8,5/10**    | Contratto a tre lati esplicito e presidiato, e la grammatica unica dà un nome solo al tipo di documento anche nelle eccezioni (lotto 1). Il registro dei codici senza policy è a zero; i sei `W_` sono ancora senza messaggio (D11-bis), e la misura non vede i codici negli argomenti dei trigger (D24) |
+| **Error handling / codici errore**     | 🟡 basso | 8,5    | **8,5/10**    | Contratto a tre lati esplicito e presidiato, e la grammatica unica dà un nome solo al tipo di documento anche nelle eccezioni (lotto 1). Il registro dei codici senza policy è a zero; il B-7 ha fatto il suo mestiere il 01-11 (due codici nuovi da giudicare, giudicati legittimi con la ragione nel commit); il guardrail del naming ha trovato una chiave d'ingresso `tipo_indirizzo_codice` che portava il codice interno, ora `tipo_indirizzo_codice_interno`. I sei `W_` sono ancora senza messaggio (D11-bis), e la misura non vede i codici negli argomenti dei trigger (D24) |
 | **Disciplina Liquibase**               | 🟡 basso | 9      | **9/10**      | Oltre 5.700 changeSet in `migrations_v2` (23-10; 3.354 all'08-09), cancelli dedicati nati da incidenti reali |
 | **Documentazione**                     | 🟡 basso | 8,5    | **8,5/10**    | Copertura piena; sottile dove il dominio è sottile |
 | **Naming**                             | 🟡 basso | 8      | **8/10**      | 94-99% sui vincoli; 68% sulla fase dei trigger, che è la voce con conseguenze; un vocabolario solo per i tipi di documento (grammatica unica) |
@@ -623,19 +637,16 @@ cose che in un ERP non si vedono quasi mai. Dal 13-10 vi si è aggiunto il model
 ruoli di sistema: il database si installa e si fa girare con i ruoli che avrà in produzione.
 
 ✅ **E la catena che deve rendere vero tutto questo, dal 2026-09-09, tiene**:
-la suite pgTAP ferma un merge su un rosso nuovo (D1). ⚠️ Con una cosa scomoda,
-misurata: fuori dalla macchina di sviluppo la suite era rossa per due
-terzi (09-09) e per un terzo alla misura della CI del 26-09 (227 file su 714); lo scratch
-ricostruito col modello nuovo la dà rossa per il 3% (24 su 916, 27-10; un sesto il 20-10), ma lo scratch non
-è la CI. La differenza fra «i test passano» e «le migrazioni sanno ricostruire un sistema che
-passa i test» è tutta lì dentro (D7).
+la suite pgTAP ferma un merge su un rosso nuovo (D1). Fuori dalla macchina di sviluppo la suite
+era rossa per due terzi (09-09) e per un terzo alla misura della CI del 26-09 (227 file su 714);
+✅ **il 01-11 la CI la dà rossa per il 2,5%** (23 su 936), e il registro lo certifica. La
+differenza fra «i test passano» e «le migrazioni sanno ricostruire un sistema che passa i test» si
+è quasi chiusa (D7).
 
 ⚠️ **Il rischio di oggi non è tecnico, è di attenzione.** Dal 13-10 il lavoro è andato a cantieri
-nuovi e ben chiusi, mentre le voci aperte qui sono rimaste ferme: D18 (un difetto vero, che non
-dà errore) dal 05-10, Q-2 dal 04-10, il registro della CI dal 26-09. Nessuna peggiora da sola, ma
-nessuna si chiude passandoci accanto. ✅ Il 27-10 D7 si è mossa (lotti 3 e 4), e ⚠️ proprio per
-questo il registro della CI pesa di più: tutto il verde guadagnato aspetta una corsa CI che lo
-certifichi, e fino ad allora non è protetto.
+nuovi e ben chiusi, mentre due voci aperte qui sono rimaste ferme: D18 (un difetto vero, che non
+dà errore) dal 05-10, Q-2 dal 04-10. Nessuna peggiora da sola, ma nessuna si chiude passandoci
+accanto. ✅ Il registro della CI, il terzo fermo, si è chiuso il 01-11.
 
 ⚠️ **«Production-ready»**: all'8 settembre non era la parola giusta, e non per
 la qualità del design — per D1, D2 e D3: righe di cinque famiglie di documento
@@ -643,8 +654,8 @@ su sei e tutto lo storico leggibili da chiunque. Chiusi tutti e tre fra il 9 e
 l'11 settembre, la frase torna difendibile sul perimetro dei dati — e il 13
 settembre è caduto anche D13, che su un'installazione a due emittenti avrebbe
 impedito al secondo di aprire clienti. Quello che resta sono le due policy
-inerti di `acquisti` (D4 → D8, a registro con la ragione), D18, Q-2, D6-bis e il registro dei
-rossi in CI.
+inerti di `acquisti` (D4 → D8, a registro con la ragione), D18, Q-2, D6-bis e i 23 rossi della
+CI.
 
 ---
 
@@ -675,19 +686,20 @@ rossi in CI.
 * [~] **D7** — far calare il registro della CI e portare a zero la baseline
       di sviluppo nella *fixture*. ✅ Fatto (§7 D7): il perimetro (12-09), il
       triage delle cause e la riga di contesto che costruisce (20/21-09), il BB
-      di composizione e i lotti 1 e 2 (22-24/09) — **227 rossi su 714** in
-      CI il 26-09, contro 407 su 601 il 09-09; sullo scratch `zeroerp_ruoli` **24 su 916** il 27-10
-      (147 su 887 il 20-10), dopo il lotto 3 (`pratiche`) e le famiglie 1-4 del lotto 4 (`vendite`).
-      ⏳ Resta (§3 D7): la corsa CI che certifica i rientrati (registro **fermo a 359**), i 24 rossi
-      dello scratch (la famiglia 5 del lotto 4 e i residui dei lotti 1-2), i 3 `ERRORE_FIXTURE`
-      della baseline di sviluppo (4 file al 27-10), due decisioni per Tid e due cancelli da disegnare.
+      di composizione e i lotti 1 e 2 (22-24/09), il lotto 3 (`pratiche`) e le famiglie 1-4 del
+      lotto 4 (`vendite`, 27-10), e la corsa CI che certifica i rientrati (01-11): **23 rossi su
+      936** in CI, contro 227 su 714 il 26-09 e 407 su 601 il 09-09; registro 358 → 23.
+      ⏳ Resta (§3 D7): i 23 rossi della CI (la famiglia 5 del lotto 4 e i residui fuori da
+      `vendite`), i 3 `ERRORE_FIXTURE` della baseline di sviluppo (4 file), due decisioni per Tid e
+      due cancelli da disegnare.
 * [~] **D11** — dare a ciascun registro lungo un **verso** (chi lo abbassa, di
       quanto, entro quando), o dichiararlo congelato con il motivo.
       ✅ La soglia `throws_ok` è scesa **129 → 117** fra il 20 e il 24-09, a
       **115** al 13-10 e a **110** al 27-10 (e il cancello vede ora anche `NULL::text`) —
       più volte con un test verde per l'errore sbagliato (§7 D11, §7 D7).
-      ⛔ Resta il registro grosso che non ha un verso: i rossi della CI (359 a
-      registro, 227 misurati il 26-09). I codici da dichiarare (508 → 545 → 702
+      ✅ I rossi della CI sono scesi da 358 a 23 il 01-11, col loro verso (la corsa e
+      `pgtap-baseline-ci-rientrati.sh` lo stesso giorno). ⛔ Restano senza verso la soglia
+      `throws_ok` e le FK senza indice (57). I codici da dichiarare (508 → 545 → 702
       al 23-10) non sono un registro ma la misura: il registro, i codici senza
       policy, è a zero (correzione del 27-10, in testa).
       ✅ Il bypass dichiarato è sparito alla data promessa (0 dal 15-10).
@@ -716,6 +728,9 @@ rossi in CI.
 * [ ] **D24** — la vista del presidio C2 (`dbops.vw_punti_canale_campo`) non vede i BB trigger col
       codice negli argomenti: al team DB (§3). Al rimedio, il BE toglie l'esenzione di
       `E_DOC_EMITTENTE_BA_INCOERENTE`.
-* [ ] **D31** — canone, orario e consumo del contratto in commessa: brief
-      `brief-db-contratto-righe-periodiche-in-commessa` (aperto il 2026-10-13, non iniziato; decisioni G-0 … G-6 prese il 2026-10-28, analisi del team DB).
+* [~] **D31** — canone, orario e consumo del contratto in commessa: brief
+      `brief-db-contratto-righe-periodiche-in-commessa` (aperto il 2026-10-13). ✅ Il canone è
+      fatto lato DB e BE (01-11): manca il collaudo a video di Tid, poi il brief si archivia.
+      ⏳ Orario e consumo aspettano le loro sorgenti.
+
 ---

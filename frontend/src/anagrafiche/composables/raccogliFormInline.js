@@ -13,7 +13,7 @@
 //       spazi); un oggetto annidato si confronterebbe per JSON, e un campo
 //       ripulito da '' a null risulterebbe una modifica.
 //       ⚠️ Dell'indirizzo NON si raccolgono:
-//       - `tipo_indirizzo_codice` e `_isLibera`: dicono QUALE tipo e in che
+//       - `tipo_indirizzo_codice_interno` e `_isLibera`: dicono QUALE tipo e in che
 //         modalita' si sta compilando, non cosa si salva. La matrice li scrive
 //         da se' quando arriva (in modo asincrono, dopo l'apertura), e da soli
 //         non salvano nulla. I tipi gia' compilati si contano in `compilati`.
@@ -21,7 +21,7 @@
 //         l'identita' (stradario o stradario generale).
 // ------------------------------------------------------------
 
-const INDIRIZZO_ESCLUSI = new Set(['tipo_indirizzo_codice', '_isLibera', '_comune_obj', 'via_obj'])
+const INDIRIZZO_ESCLUSI = new Set(['tipo_indirizzo_codice_interno', '_isLibera', '_comune_obj', 'via_obj'])
 
 // Scopo: copia le chiavi di `sorgente` in `dest` col prefisso dato.
 function _conPrefisso(dest, prefisso, sorgente, esclusi = null) {

@@ -36,8 +36,7 @@ Nessun valore restituito. Effetto: INSERT in `dbops.request_log` con i seguenti 
 
 - Logga solo request su path `/api/*`, autenticate o anonime.
 - NON logga body request/response (sicurezza + volume).
-- Path esclusi di default: `/health`, `/api/docs/`, `/api/schema/`, `/static/`, `/media/`.
-- Path esclusi configurabili via `settings.REQUEST_LOG_EXCLUDE_PATHS`.
+- Non logga i **percorsi tecnici** (BB `apps/core/services/percorsi_tecnici.py`, `e_percorso_tecnico`): sotto `/api/` contano `/api/docs/` e `/api/schema/`. L'elenco ha una sede sola, condivisa col middleware del fuso: non si configura da settings (fino al 2026-11-01 la doc citava un `REQUEST_LOG_EXCLUDE_PATHS` che nessun settings leggeva).
 - Disattivabile via `settings.REQUEST_LOG_ENABLED = False` (env var `DJANGO_REQUEST_LOG_ENABLED`).
 - Gestione errori **silent**: se l'INSERT fallisce, l'errore viene loggato ma la response non viene alterata.
 

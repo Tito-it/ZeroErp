@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Vista `anagrafiche.vw_indirizzi_resolved_base`
 
+> **Ultimo aggiornamento**: 1 novembre 2026
+
 > 👀 **Vedi anche**
 >
 Approfondimenti viste:
@@ -74,7 +76,7 @@ La vista è costruita come:
 | `soggetto_ruolo_id`          | `bigint`               | Valorizzato solo se scope=RUOLO.          |
 | `istanza_utility_id`         | `bigint`               | ID istanza utility (`anagrafiche.istanze_utilities.id`). Valorizzato solo se scope=RUOLO e indirizzo specifico per istanza. NULL per scope=SOGGETTO e per indirizzi generici. |
 | `tipo_indirizzo_id`          | `integer`              | Tipo indirizzo (ID tecnico).              |
-| `tipo_indirizzo_codice`      | `varchar`              | Codice interno del tipo indirizzo.        |
+| `tipo_indirizzo_codice`      | `varchar(15)`          | Codice del tipo indirizzo (display, `ti.codice`), intero: fino al 2026-11-01 usciva troncato a 10 caratteri. Il codice interno è `tipo_indirizzo_codice_interno`. |
 | `tipo_indirizzo_descrizione` | `text`                 | Descrizione del tipo indirizzo.           |
 | `is_normalizzato`            | `boolean`              | TRUE se basato su `indirizzi_dettaglio`.  |
 | `indirizzo_dettaglio_id`     | `bigint`               | FK al dettaglio civico.                   |
@@ -99,7 +101,11 @@ La vista è costruita come:
 | `sublocality`                | `text`                 | Sublocalità (uso internazionale).         |
 | `postal_code`                | `text`                 | Codice postale libero della forma estera (facoltativo). Fino al 18-10-2026 si chiamava `postal_box`. |
 
+| `tipo_indirizzo_codice_interno` | `varchar(10)`       | Codice interno del tipo (`ti.codice_interno`, immutabile): la chiave per confronti e logica. Ultima colonna. |
+
 (Sono esposti anche campi di audit e dettagli civico/stradario per completezza.)
+
+⛔ Le tre viste derivate hanno le **stesse colonne della base**, nello stesso ordine e con lo stesso tipo: una colonna nuova qui si aggiunge anche a loro. Lo presidia `db/pgtap/anagrafiche/test-vw-indirizzi-resolved-derivate-codice-interno-v1.sql`.
 
 ---
 

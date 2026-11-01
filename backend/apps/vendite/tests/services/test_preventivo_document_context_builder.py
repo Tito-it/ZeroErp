@@ -90,7 +90,7 @@ class BuildContextHappyPathTests(SimpleTestCase):
         repo.list_indirizzi.return_value = [
             {
                 "tipo_indirizzo_id": 10,
-                "tipo_indirizzo_codice": "CON",
+                "tipo_indirizzo_codice_interno": "CON",
                 "snapshot": {
                     "intestazione": "Acme Srl", "via": "VIA X 1", "cap": "00100",
                     "citta": "ROMA", "prov": "RM", "stato": "IT",

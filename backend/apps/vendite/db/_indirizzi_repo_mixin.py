@@ -68,7 +68,7 @@ class IndirizziDocumentoRepositoryMixin:
     def list_tipi_indirizzo_ammessi(self) -> list[dict[str, Any]]:
         sql = """
             SELECT ti.id AS tipo_indirizzo_id,
-                   ti.codice_interno AS tipo_indirizzo_codice,
+                   ti.codice_interno AS tipo_indirizzo_codice_interno,
                    ti.descrizione AS tipo_indirizzo_descrizione,
                    a.obbligatorio
               FROM config.tipi_indirizzi_allowed a
@@ -83,19 +83,19 @@ class IndirizziDocumentoRepositoryMixin:
 
     # Scopo: Indirizzi del documento con tipo denormalizzato (drawer + PDF
     #        context builder). Shape superset del vecchio list preventivi
-    #        (aggiunto tipo_indirizzo_codice, additivo).
+    #        (aggiunto il codice interno del tipo, additivo).
     def list_indirizzi(self, documento_id: int) -> list[dict[str, Any]]:
         fk = self._indirizzi_fk_documento
         sql = f"""
             SELECT di.id,
                    di.{fk},
                    di.tipo_indirizzo_id,
-                   ti.codice_interno AS tipo_indirizzo_codice,
+                   ti.codice_interno AS tipo_indirizzo_codice_interno,
                    ti.descrizione AS tipo_indirizzo_descrizione,
                    di.snapshot,
                    di.origine_indirizzo_id,
                    di.origine_soggetto_ruolo_id,
-                   tio.codice_interno AS origine_tipo_indirizzo_codice,
+                   tio.codice_interno AS origine_tipo_indirizzo_codice_interno,
                    tio.descrizione AS origine_tipo_indirizzo_descrizione
               FROM {self._indirizzi_table} di
               LEFT JOIN config.tipi_indirizzi ti ON ti.id = di.tipo_indirizzo_id

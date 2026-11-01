@@ -144,7 +144,7 @@ if [[ -z "$SOGG_ID" ]]; then
     exit 1
 fi
 SOGG_NOME="SmokeTest Cliente${SMOKE_TS}"
-IND_RUOLO_JSON="[{\"tipo_indirizzo_codice\": \"DOMFISC\", \"indirizzo_dettaglio_id\": ${IND_DET_ID}}]"
+IND_RUOLO_JSON="[{\"tipo_indirizzo_codice_interno\": \"DOMFISC\", \"indirizzo_dettaglio_id\": ${IND_DET_ID}}]"
 log_info "Soggetto per test: id=$SOGG_ID ($SOGG_NOME, CF $SOGG_CF)"
 
 # --- 2. Lista clienti ---

@@ -145,11 +145,11 @@ BEGIN
     -- rev 2026-10-18: la madre prende l'indirizzo in jsonb (20261018-96)
     PERFORM anagrafiche.fn_crea_indirizzo_soggetto(
         (SELECT soggetto_id FROM _t_sogg),
-        jsonb_build_object('tipo_indirizzo_codice',  'RES',
+        jsonb_build_object('tipo_indirizzo_codice_interno',  'RES',
                            'indirizzo_dettaglio_id', (SELECT dettaglio_id FROM _t_dett)));
     PERFORM anagrafiche.fn_crea_indirizzo_soggetto(
         (SELECT soggetto_id FROM _t_sogg),
-        jsonb_build_object('tipo_indirizzo_codice',  'DOMFISC',
+        jsonb_build_object('tipo_indirizzo_codice_interno',  'DOMFISC',
                            'indirizzo_dettaglio_id', (SELECT dettaglio_id FROM _t_dett)));
 END $ind$;
 

@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Vista `anagrafiche.vw_indirizzi_resolved_all`
 
+> **Ultimo aggiornamento**: 1 novembre 2026
+
 > 👀 **Vedi anche**
 >
 Approfondimenti viste:
@@ -19,10 +21,12 @@ Approfondimenti tabelle:
 (latest review 20-12-25)
 La vista **`anagrafiche.vw_indirizzi_resolved_all`** rappresenta il **punto unico e canonico di lettura** degli indirizzi in Zero ERP.
 
-È costruita come **UNION ALL** delle due viste “resolved” specialistiche:
+Legge **`anagrafiche.vw_indirizzi_resolved_base`** senza filtro di scope, quindi riporta insieme:
 
-* `anagrafiche.vw_indirizzi_resolved_soggetto`  → indirizzi legati direttamente al soggetto
-* `anagrafiche.vw_indirizzi_resolved_ruolo`     → indirizzi legati a un soggetto/ruolo
+* gli indirizzi legati direttamente al soggetto (`scope = 'SOGGETTO'`, come `vw_indirizzi_resolved_soggetto`);
+* gli indirizzi legati a un soggetto/ruolo (`scope = 'RUOLO'`, come `vw_indirizzi_resolved_ruolo`).
+
+Le tre viste derivate hanno le **stesse colonne della base**, nello stesso ordine: una colonna nuova della base si aggiunge anche a loro (presidio `db/pgtap/anagrafiche/test-vw-indirizzi-resolved-derivate-codice-interno-v1.sql`).
 
 L’obiettivo è fornire un **formato di output uniforme** che consenta:
 
@@ -70,20 +74,14 @@ La vista è **read-only** dal punto di vista logico: tutte le modifiche avvengon
 
 ### Struttura logica della vista
 
-La vista è definita come:
+La vista è la proiezione della base, colonna per colonna:
 
 ```sql
-CREATE OR REPLACE VIEW anagrafiche.vw_indirizzi_resolved_all AS
-SELECT * FROM anagrafiche.vw_indirizzi_resolved_soggetto
-UNION ALL
-SELECT * FROM anagrafiche.vw_indirizzi_resolved_ruolo;
+SELECT scope, source, indirizzo_id, …, tipo_indirizzo_codice_interno
+FROM anagrafiche.vw_indirizzi_resolved_base;
 ```
 
-L’uso di **UNION ALL** è intenzionale:
-
-* evita costi di deduplicazione (non necessari perché i record provengono da tabelle diverse)
-* mantiene prestazioni migliori e prevedibili
-* conserva la provenienza (grazie a `scope` e agli ID)
+Il corpo esatto è nella [pagina della vista](/dbzero/anagrafiche/views/vw_indirizzi_resolved_all). La UNION ALL fra i due layer (`anagrafiche.indirizzi` e `anagrafiche.indirizzi_soggetti`) sta nella base: lì i record arrivano da tabelle diverse, e la provenienza resta in `scope` e negli ID.
 
 ---
 
@@ -115,7 +113,8 @@ La vista espone un set uniforme di campi, coerente con le due viste sottostanti.
 | `soggetto_id`                | `uuid`                 | Soggetto proprietario dell’indirizzo.           |
 | `soggetto_ruolo_id`          | `bigint`               | Valorizzato solo se scope=RUOLO.                |
 | `tipo_indirizzo_id`          | `integer`              | Tipo indirizzo.                                 |
-| `tipo_indirizzo_codice`      | `varchar`              | Codice interno del tipo indirizzo.              |
+| `tipo_indirizzo_codice`      | `varchar`              | Codice del tipo indirizzo (display, `ti.codice`), non il codice interno. |
+| `tipo_indirizzo_codice_interno` | `varchar`          | Codice interno del tipo (`ti.codice_interno`, immutabile): la chiave per confronti e logica. Dal 2026-11-01, come la base. |
 | `tipo_indirizzo_descrizione` | `text`                 | Descrizione del tipo indirizzo.                 |
 | `is_normalizzato`            | `boolean`              | TRUE se `indirizzo_dettaglio_id` è valorizzato. |
 | `indirizzo_dettaglio_id`     | `bigint`               | FK al dettaglio civico se normalizzato.         |

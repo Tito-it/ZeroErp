@@ -37,7 +37,7 @@
 --   anche il motivo per cui questo file era diverso da tutti gli altri.
 --
 -- ⚠️ IL DEBITO CHE QUESTA RISCRITTURA RENDE VISIBILE. Il soggetto storico con
---   CF 'TTNMHL68E07D042Z' resta in tabella (non lo cancelliamo: vedi sotto),
+--   CF di una persona vera di dev resta in tabella (non lo cancelliamo: vedi sotto),
 --   ma da qui in avanti NESSUNO lo ricrea. Tre pgTAP lo cercano li' —
 --   test-contatti-soggetto-cliente (oggi verde), test-risorse-umane e
 --   soggetti-con-contatti (gia' rossi) — e oggi lo trovano solo perche' questo
@@ -80,7 +80,7 @@ SELECT plan(8);
 -- ⚠️ CF PROPRIO, diverso da quello storico. Il codice fiscale e' validato
 --   con l'algoritmo vero (script.fn_valida_codice_fiscale calcola il carattere
 --   di controllo), quindi non e' una stringa qualsiasi: questo e' generato e
---   verificato. E' DIVERSO da 'TTNMHL68E07D042Z' di proposito — quel soggetto
+--   verificato. E' DIVERSO da quello storico di proposito — quel soggetto
 --   esiste ancora in tabella, lasciato da quando questo file committava, ed e'
 --   letto da altri tre pgTAP. Riusarlo qui darebbe una violazione di
 --   uq_soggetto_idstato_id_fiscale_univoco; cancellarlo romperebbe loro.

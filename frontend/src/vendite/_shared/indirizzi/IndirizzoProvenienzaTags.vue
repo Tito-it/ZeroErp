@@ -32,8 +32,8 @@ const { t } = useI18n()
     :value="t('vendite.indirizzi.una_tantum')"
     severity="warn" />
   <Tag
-    v-if="row.origine_tipo_indirizzo_codice
-      && row.origine_tipo_indirizzo_codice !== row.tipo_indirizzo_codice"
+    v-if="row.origine_tipo_indirizzo_codice_interno
+      && row.origine_tipo_indirizzo_codice_interno !== row.tipo_indirizzo_codice_interno"
     v-tooltip.bottom="t('vendite.indirizzi.tt_da_tipo', { tipo: row.origine_tipo_indirizzo_descrizione })"
     :value="t('vendite.indirizzi.da_tipo', { tipo: row.origine_tipo_indirizzo_descrizione })"
     severity="warn" />

@@ -219,8 +219,8 @@ il volume e previene la registrazione accidentale di dati sensibili.
 1. Salva il timestamp di avvio in `process_request()`
 2. Al termine, calcola la durata e inserisce il record in `dbops.request_log`
 
-Il middleware filtra automaticamente path esclusi (`/health`, `/api/docs/`)
-configurabili tramite `DJANGO_REQUEST_LOG_EXCLUDE_PATHS`. Può essere
+Il middleware non registra i percorsi tecnici (`/health`, `/api/docs/`,
+`/api/schema/`, file statici e caricati). Può essere
 disabilitato completamente con `DJANGO_REQUEST_LOG_ENABLED = false`.
 
 L'inserimento è silenzioso: un errore di scrittura nel log non produce

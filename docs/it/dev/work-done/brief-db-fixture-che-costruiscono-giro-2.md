@@ -127,7 +127,7 @@ Registro `db/pgtap/baseline-rossi-ci.tsv`: **361 file** (292 `ERRORE_FIXTURE`,
 | fissano l'utente di sessione a `'1'` (in CI non esiste) | 28 |
 | pescano un **registro di fatturazione** | 9 |
 | vogliono `ART_TEST_BASE`/`ART_TEST_FALLBACK`, che non sono a seed | 7 |
-| dipendono da dati di **questa macchina** (CF `TTNMHL…`, PIVA `24551170426`, PDP GAS) | 7 |
+| dipendono da dati di **questa macchina** (CF di una persona vera, PIVA `24551170426`, PDP GAS) | 7 |
 | usano **un builder** | 3 |
 
 **Che cosa pescano** (occorrenze di `FROM <relazione> … LIMIT 1`, e su quanti
@@ -764,7 +764,7 @@ l'apply):
   `test-identita-digitali-unique-multi-veste`, `test-sync-auth-user-is-active-multi-role`);
 * **contatti/indirizzi obbligatori** (`test-fn-crea-utente-tecnico`,
   `test-identita-tecnica`, `test-identita-digitali-guard-coerenza`) e **dati di
-  macchina** (`test-contatti-soggetto-cliente`, CF `TTNMHL…`);
+  macchina** (`test-contatti-soggetto-cliente`, CF di una persona vera);
 * **casi singoli**: `test-catasto-unita-immobiliare` (colonna
   `istanza_utility_id` che non esiste più: il test è rimasto indietro rispetto al
   refactor del catasto), `test-indirizzi-fallback` (tipo di ritorno di una vista
@@ -1094,7 +1094,7 @@ misura.
   `test-identita-digitali-unique-multi-veste`, `test-sync-auth-user-is-active-multi-role`;
 * contatti/indirizzi obbligatori: `test-fn-crea-utente-tecnico`,
   `test-identita-tecnica`, `test-identita-digitali-guard-coerenza`; dato di
-  macchina: `test-contatti-soggetto-cliente` (CF `TTNMHL…`: da decidere se
+  macchina: `test-contatti-soggetto-cliente` (CF di una persona vera: da decidere se
   riscriverlo o dichiararlo test di macchina);
 * casi singoli: `test-catasto-unita-immobiliare`, `test-indirizzi-fallback`,
   `test-conto-incasso-un-solo-soggetto`, `test-categorie-clienti-listini-v1`,

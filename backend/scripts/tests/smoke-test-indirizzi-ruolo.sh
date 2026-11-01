@@ -212,10 +212,10 @@ fi
 [[ -z "$TIPO_IND_ID" ]] && do_curl GET "/api/v1/core/lookup/codici/?rel=config.tipi_indirizzi&limit=2"
 if [[ -z "$TIPO_IND_ID" && "$LAST_STATUS" == "200" ]]; then
     TIPO_IND_ID=$(json_get "$LAST_BODY" ".data.results.0.id")
-    # La creazione vuole il CODICE del tipo (`tipo_indirizzo_codice`, risolto in
-    # id dalla view): l'id nel payload risponde E_ANAG_VALIDAZIONE. ⚠️ Il codice
-    # STABILE (`COALESCE(codice_interno, codice)`, quello che la view cerca), non
-    # `codice`, che e' l'etichetta modificabile: «CONS» non lo trova, «CON» si'.
+    # La creazione vuole il CODICE INTERNO del tipo (`tipo_indirizzo_codice_interno`,
+    # risolto in id dalla madre `anagrafiche.fn_crea_indirizzi_ruolo`): l'id nel
+    # payload risponde E_ANAG_VALIDAZIONE. ⚠️ Il codice STABILE (`codice_interno`),
+    # non `codice`, che e' l'etichetta modificabile: «CONS» non lo trova, «CON» si'.
     TIPO_IND_CODICE=$(json_get "$LAST_BODY" ".data.results.0.codice_stabile")
     TIPO_IND_DESC=$(json_get "$LAST_BODY" ".data.results.0.descrizione")
     log_info "Tipo indirizzo id=$TIPO_IND_ID codice=$TIPO_IND_CODICE ($TIPO_IND_DESC)"
@@ -243,14 +243,14 @@ if [[ -n "$IND_DET_ID" && "$IND_DET_ID" != "" ]]; then
     # Modalita' normalizzata
     do_curl POST "/api/v1/anagrafiche/ruoli/${RUOLO_ID}/indirizzi/" \
         "{
-            \"tipo_indirizzo_codice\": \"${TIPO_IND_CODICE}\",
+            \"tipo_indirizzo_codice_interno\": \"${TIPO_IND_CODICE}\",
             \"indirizzo_dettaglio_id\": ${IND_DET_ID}
         }"
 else
     # Modalita' libera
     do_curl POST "/api/v1/anagrafiche/ruoli/${RUOLO_ID}/indirizzi/" \
         "{
-            \"tipo_indirizzo_codice\": \"${TIPO_IND_CODICE}\",
+            \"tipo_indirizzo_codice_interno\": \"${TIPO_IND_CODICE}\",
             \"indirizzo_libero\": \"Via Smoke Test 1, 00100 Roma\"
         }"
 fi
@@ -309,14 +309,14 @@ if [[ -n "$ISTANZA_UTILITY_ID" && "$ISTANZA_UTILITY_ID" != "" ]]; then
     if [[ -n "$IND_DET_ID" && "$IND_DET_ID" != "" ]]; then
         do_curl POST "/api/v1/anagrafiche/ruoli/${RUOLO_ID}/indirizzi/" \
             "{
-                \"tipo_indirizzo_codice\": \"${TIPO_IND_CODICE}\",
+                \"tipo_indirizzo_codice_interno\": \"${TIPO_IND_CODICE}\",
                 \"istanza_utility_id\": ${ISTANZA_UTILITY_ID},
                 \"indirizzo_dettaglio_id\": ${IND_DET_ID}
             }"
     else
         do_curl POST "/api/v1/anagrafiche/ruoli/${RUOLO_ID}/indirizzi/" \
             "{
-                \"tipo_indirizzo_codice\": \"${TIPO_IND_CODICE}\",
+                \"tipo_indirizzo_codice_interno\": \"${TIPO_IND_CODICE}\",
                 \"istanza_utility_id\": ${ISTANZA_UTILITY_ID},
                 \"indirizzo_libero\": \"Via Istanza Smoke 1, 62014 Corridonia\"
             }"
@@ -388,13 +388,13 @@ if [[ -n "$IND_RUOLO_GEN_ID" && "$IND_RUOLO_GEN_ID" != "" ]]; then
     if [[ -n "$IND_DET_ID" && "$IND_DET_ID" != "" ]]; then
         do_curl POST "/api/v1/anagrafiche/ruoli/${RUOLO_ID}/indirizzi/" \
             "{
-                \"tipo_indirizzo_codice\": \"${TIPO_IND_CODICE}\",
+                \"tipo_indirizzo_codice_interno\": \"${TIPO_IND_CODICE}\",
                 \"indirizzo_dettaglio_id\": ${IND_DET_ID}
             }"
     else
         do_curl POST "/api/v1/anagrafiche/ruoli/${RUOLO_ID}/indirizzi/" \
             "{
-                \"tipo_indirizzo_codice\": \"${TIPO_IND_CODICE}\",
+                \"tipo_indirizzo_codice_interno\": \"${TIPO_IND_CODICE}\",
                 \"indirizzo_libero\": \"Via Duplicato Test\"
             }"
     fi

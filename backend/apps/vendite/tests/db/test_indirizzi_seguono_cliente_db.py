@@ -103,7 +103,7 @@ class IndirizziSeguonoClienteDbTests(unittest.TestCase):
     @staticmethod
     def _slot(ddt_id: int) -> dict[str, Any]:
         righe = ddt_service.list_indirizzi(ddt_id)["indirizzi"]
-        return {r["tipo_indirizzo_codice"]: r["origine_soggetto_ruolo_id"] for r in righe}
+        return {r["tipo_indirizzo_codice_interno"]: r["origine_soggetto_ruolo_id"] for r in righe}
 
     def _rifiuto(self, fn: Callable[[], Any]) -> None:
         try:

@@ -29,7 +29,7 @@
 --   10) il tipo per codice interno
 --   i rifiuti
 --   11) tipo inesistente: E_TIPO_INDIRIZZO_NON_TROVATO
---   12) ... col campo tipo_indirizzo_codice sul canale COLUMN
+--   12) ... col campo tipo_indirizzo_codice_interno sul canale COLUMN
 --   13) chiave estranea: E_CAMPO_NON_AMMESSO
 --   14) un elemento che non e' un oggetto: E_SCRIPT_CHIAMATA_NON_VALIDA
 --   15) indirizzi che non sono un elenco: E_SCRIPT_CHIAMATA_NON_VALIDA
@@ -174,7 +174,7 @@ SELECT anagrafiche.fn_crea_indirizzi_ruolo(
                                   'indirizzo_dettaglio_id', c.det_id),
                jsonb_build_object('tipo_indirizzo_id', (SELECT tipo_id FROM t_tipi_cl WHERE n = 2),
                                   'stradario_id', d.stradario_id, 'civico', 9001),
-               jsonb_build_object('tipo_indirizzo_codice', lower((SELECT codice_interno FROM t_tipi_cl WHERE n = 3)),
+               jsonb_build_object('tipo_indirizzo_codice_interno', lower((SELECT codice_interno FROM t_tipi_cl WHERE n = 3)),
                                   'stradario_id', d.stradario_id, 'civico', 9002))) AS n
   FROM t_cl c
   JOIN anagrafiche.indirizzi_dettaglio d ON d.id = c.det_id;
@@ -203,14 +203,14 @@ SELECT ok(
 -- ============================================================
 SELECT is(
     pg_temp.codice_errore($$SELECT anagrafiche.fn_crea_indirizzi_ruolo(
-        (SELECT sr_id FROM t_sr), '[{"tipo_indirizzo_codice": "PGTAP-NON-ESISTE", "indirizzo_libero": "x"}]'::jsonb)$$),
+        (SELECT sr_id FROM t_sr), '[{"tipo_indirizzo_codice_interno": "PGTAP-NON-ESISTE", "indirizzo_libero": "x"}]'::jsonb)$$),
     'E_TIPO_INDIRIZZO_NON_TROVATO',
     '11. tipo inesistente: E_TIPO_INDIRIZZO_NON_TROVATO');
 
 SELECT is(
     pg_temp.colonna_errore($$SELECT anagrafiche.fn_crea_indirizzi_ruolo(
-        (SELECT sr_id FROM t_sr), '[{"tipo_indirizzo_codice": "PGTAP-NON-ESISTE", "indirizzo_libero": "x"}]'::jsonb)$$),
-    'tipo_indirizzo_codice',
+        (SELECT sr_id FROM t_sr), '[{"tipo_indirizzo_codice_interno": "PGTAP-NON-ESISTE", "indirizzo_libero": "x"}]'::jsonb)$$),
+    'tipo_indirizzo_codice_interno',
     '12. ... col campo sul canale COLUMN');
 
 SELECT is(

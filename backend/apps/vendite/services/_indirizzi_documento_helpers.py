@@ -121,7 +121,7 @@ def shape_indirizzi_context(
     *,
     codici_ammessi: tuple[str, ...],
 ) -> dict[str, Any]:
-    per_codice = {r.get("tipo_indirizzo_codice"): (r.get("snapshot") or {}) for r in rows}
+    per_codice = {r.get("tipo_indirizzo_codice_interno"): (r.get("snapshot") or {}) for r in rows}
     out: dict[str, Any] = {}
     for codice in codici_ammessi:
         slot = INDIRIZZO_SLOT_BY_CODICE.get(codice, codice.lower())

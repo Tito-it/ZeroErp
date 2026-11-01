@@ -155,7 +155,7 @@ presente) e gli indirizzi del ruolo.
 | `qualifica_scadenza` | date | No | Data scadenza qualifica (ISO 8601) |
 | `note` | string | No | Note libere |
 | `contatto` | object | No | Contatto del ruolo (`nominativo`, `tipo_contatto_id`, `email`, `telefono`, `cellulare`, `pec`, `unita_organizzativa_id`, `note`); vedi regola sotto |
-| `indirizzi` | array | No | Indirizzi del ruolo (stessa grammatica degli indirizzi ruolo: `tipo_indirizzo_codice` + indirizzo libero, `indirizzo_dettaglio_id` o via da risolvere). Non lista → 400 `E_ANAG_VALIDAZIONE` |
+| `indirizzi` | array | No | Indirizzi del ruolo (stessa grammatica degli indirizzi ruolo: `tipo_indirizzo_codice_interno` + indirizzo libero, `indirizzo_dettaglio_id` o via da risolvere). Non lista → 400 `E_ANAG_VALIDAZIONE` |
 
 I booleani vanno inviati come booleani JSON (`true`/`false`); stringhe o numeri → 400 `E_VALIDATION_INPUT`.
 Le stringhe vuote e i `null` valgono come campo assente (default DB).

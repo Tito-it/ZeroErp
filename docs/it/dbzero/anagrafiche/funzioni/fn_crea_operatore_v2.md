@@ -296,12 +296,12 @@ BEGIN
         -- Rev 2026-10-18 (D-4 di Tid): la madre prende l'indirizzo in jsonb.
         PERFORM anagrafiche.fn_crea_indirizzo_soggetto(
             v_soggetto_id,
-            jsonb_build_object('tipo_indirizzo_codice',  'RES',
+            jsonb_build_object('tipo_indirizzo_codice_interno',  'RES',
                                'indirizzo_dettaglio_id', p_indirizzo_resid_dettaglio_id));
 
         PERFORM anagrafiche.fn_crea_indirizzo_soggetto(
             v_soggetto_id,
-            jsonb_build_object('tipo_indirizzo_codice',  'DOMFISC',
+            jsonb_build_object('tipo_indirizzo_codice_interno',  'DOMFISC',
                                'indirizzo_dettaglio_id', COALESCE(
                                    p_indirizzo_domfisc_dettaglio_id,
                                    p_indirizzo_resid_dettaglio_id)));

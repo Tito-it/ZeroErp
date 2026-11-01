@@ -213,7 +213,7 @@ SELECT is(
 SELECT lives_ok(
     (SELECT format('SELECT anagrafiche.fn_crea_indirizzo_soggetto(%L::uuid, %L::jsonb)',
                    soggetto_id,
-                   jsonb_build_object('tipo_indirizzo_codice', 'SPED',
+                   jsonb_build_object('tipo_indirizzo_codice_interno', 'SPED',
                                       'indirizzo_libero', '12 rue pgTAP',
                                       'stato_id', fr_id,
                                       'locality', 'Parigi'))
@@ -229,7 +229,7 @@ SELECT ok(
 SELECT throws_like(
     (SELECT format('SELECT anagrafiche.fn_crea_indirizzo_soggetto(%L::uuid, %L::jsonb)',
                    soggetto_id,
-                   jsonb_build_object('tipo_indirizzo_codice', 'POSTA',
+                   jsonb_build_object('tipo_indirizzo_codice_interno', 'POSTA',
                                       'indirizzo_libero', '12 rue pgTAP',
                                       'stato_id', fr_id,
                                       'locality', 'Parigi',
@@ -241,7 +241,7 @@ SELECT throws_like(
 SELECT throws_like(
     (SELECT format('SELECT anagrafiche.fn_crea_indirizzo_soggetto(%L::uuid, %L::jsonb)',
                    soggetto_id,
-                   jsonb_build_object('tipo_indirizzo_codice', 'POSTA',
+                   jsonb_build_object('tipo_indirizzo_codice_interno', 'POSTA',
                                       'indirizzo_libero', 'Via pgTAP 9',
                                       'stato_id', it_id,
                                       'locality', 'Roma'))

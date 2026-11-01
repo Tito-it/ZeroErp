@@ -33,7 +33,7 @@ def _testo() -> serializers.CharField:
 #        risolvere). `extra` aggiunge i campi propri dell'endpoint.
 def campi_indirizzo_madre(**extra: serializers.Field) -> dict[str, Any]:
     return {
-        "tipo_indirizzo_codice": serializers.CharField(help_text="Codice interno del tipo indirizzo (es. RES, FATT)"),
+        "tipo_indirizzo_codice_interno": serializers.CharField(help_text="Codice interno del tipo indirizzo (es. RES, FATT)"),
         # Forma libera: lo stato, poi comune e CAP del catalogo oppure, per uno
         # stato senza catalogo dei comuni, localita' e codice postale.
         "indirizzo_libero": _testo(),

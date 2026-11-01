@@ -63,6 +63,7 @@ Senza `istanza_utility_id`, la cascata parte dal livello 2.
         "istanza_utility_id": 100,
         "tipo_indirizzo_id": 1,
         "tipo_indirizzo_codice": "FAT",
+        "tipo_indirizzo_codice_interno": "FATT",
         "tipo_indirizzo_descrizione": "Fatturazione",
         "is_normalizzato": true,
         "indirizzo_dettaglio_id": 100,
@@ -129,7 +130,7 @@ in una di tre forme: libera, dettaglio gia' risolto, via da risolvere.
 
 | Campo | Tipo | Obbligatorio | Descrizione |
 |---|---|---|---|
-| `tipo_indirizzo_codice` | string | Si` | Codice interno del tipo indirizzo (es. `RES`, `FATT`); validato dal trigger guard vs matrice ammessi |
+| `tipo_indirizzo_codice_interno` | string | Si` | Codice interno del tipo indirizzo (es. `RES`, `FATT`); validato dal trigger guard vs matrice ammessi |
 | `istanza_utility_id` | int | No | Se presente, indirizzo specifico per istanza |
 | **Forma libera** | | | |
 | `indirizzo_libero` | string | * | Testo libero dell'indirizzo |
@@ -176,7 +177,7 @@ forma dell'indirizzo libero la giudica il trigger della tabella. Stringhe vuote 
 
 | Codice | HTTP | Causa |
 |---|---|---|
-| `E_ANAG_VALIDAZIONE` | 400 | `tipo_indirizzo_codice` mancante; via da risolvere incompleta |
+| `E_ANAG_VALIDAZIONE` | 400 | `tipo_indirizzo_codice_interno` mancante; via da risolvere incompleta |
 | `E_ANAG_DUPLICATO` | 409 | Indirizzo con questo tipo gia' presente per il ruolo/istanza |
 
 ### Regole

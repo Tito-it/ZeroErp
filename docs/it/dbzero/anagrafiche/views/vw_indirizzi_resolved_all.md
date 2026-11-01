@@ -53,7 +53,8 @@ SELECT scope,
     data_insert,
     user_insert,
     data_update,
-    user_update
+    user_update,
+    tipo_indirizzo_codice_interno
    FROM anagrafiche.vw_indirizzi_resolved_base;
 ```
 

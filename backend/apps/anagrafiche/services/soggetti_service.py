@@ -132,7 +132,7 @@ def indirizzo_per_madre(ind: Any) -> dict[str, Any]:
 def indirizzo_singolo_per_madre(payload: Any) -> dict[str, Any]:
     # Il tipo prima della via: e' il campo che dice che cosa si sta scrivendo.
     if isinstance(payload, dict):
-        require_str(payload, "tipo_indirizzo_codice", "Codice tipo indirizzo obbligatorio.")
+        require_str(payload, "tipo_indirizzo_codice_interno", "Codice tipo indirizzo obbligatorio.")
     return indirizzo_per_madre(payload)
 
 

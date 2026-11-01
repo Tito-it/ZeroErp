@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_crea_indirizzo_soggetto()`
 
+> **Ultimo aggiornamento**: 1 novembre 2026
+
 > 👀 **Vedi anche**
 >
 **Approfondimento tabelle:**
@@ -39,8 +41,10 @@ stesse forme.
 | **dettaglio già risolto** | `indirizzo_dettaglio_id` |
 | **via da risolvere** | `stradario_id`, oppure una via nuova (`toponomastica_id`, `descrizione_via`, `comune_id`, `codice_postale_id`), più il civico |
 
-Il tipo si indica con `tipo_indirizzo_id` o con `tipo_indirizzo_codice` (codice interno,
-per esempio `RES`, `DOMFISC`, `SEDELEG`).
+Il tipo si indica con `tipo_indirizzo_id` o con `tipo_indirizzo_codice_interno` (codice
+interno, per esempio `RES`, `DOMFISC`, `SEDELEG`). La chiave `tipo_indirizzo_codice` in ingresso
+si rifiuta (`E_CAMPO_NON_AMMESSO`): `*_codice` è il display, come nelle viste degli indirizzi
+(linee-guida-sql §6c).
 
 ---
 
