@@ -1,8 +1,9 @@
 # Standard delle guide — checklist di revisione
 
-> **Ultimo aggiornamento**: 19 settembre 2026
+> **Ultimo aggiornamento**: 1 novembre 2026
 >
-> **Destinatari**: chiunque scriva o riveda una guida in `docs/it/guide/` (persone o agenti).
+> **Destinatari**: chiunque scriva o riveda una guida in `docs/it/guide/` o una pagina
+> `docs/it/dbzero/<schema>/manual/` (persone o agenti).
 >
 > **Vedi anche** — regole:
 >
@@ -116,8 +117,9 @@ non si eseguono.
   `docs/it/dev/work-in-progress/` **non si tocca**: è il verbale di quello che è stato deciso e
   fatto, ed è giusto che porti date e id di migrazione.
 * **Note di migrazione nei `manual/`.** Le pagine `docs/it/dbzero/<schema>/manual/` seguono lo
-  standard dei manuali (Scopo, Contesto, … Note di migrazione): lì la provenance di un oggetto è
-  contenuto legittimo, non changelog.
+  [standard delle pagine `manual/` del database](#le-pagine-manual-del-database): lì la
+  provenienza di un oggetto è contenuto legittimo, ma ha **una** sezione sua in coda, non è
+  sparsa nel corpo.
 
 ## Trappole note
 
@@ -137,9 +139,149 @@ non si eseguono.
 * Le pagine sotto `/dbzero/<schema>/tabelle`, `/views`, `/funzioni` sono **auto-generate**
   (`scripts/gen_db_docs.py`): si leggono, non si modificano. Si scrive solo in
   `<schema>/manual`.
+* Le pagine `manual/` del **database** seguono lo standard della sezione qui sotto.
 * Le pagine `manual/` del **backend** (Django) seguono una struttura fissa: Scopo, Contesto,
   Input, Output, Regole, Dipendenze DB, Note di migrazione (se applicabile). Template:
   `docs/it/backend/_templates/manual-standard.md`.
+
+## Le pagine `manual/` del database
+
+Una pagina `docs/it/dbzero/<schema>/manual/<nome>.md` racconta **il significato** di un
+oggetto: perché esiste, che regola regge, che cosa non fa. Il **contratto** (colonne, firma,
+vincoli, corpo, trigger agganciati) lo scrive la doc auto-generata, che include questa pagina
+in testa alla propria: la pagina `manual/` non lo ricopia.
+
+⛔ **In una pagina `manual/` non compare codice**: né SQL, né JSON, né frammenti di script,
+né esempi di chiamata, nemmeno in un'area esempi in coda. La pagina contiene solo concetti e
+spiegazioni. Chi deve leggere il codice ha tutto il sorgente nella doc auto-generata, nella
+stessa scheda. Restano ammessi i **nomi** degli oggetti, delle colonne e dei codici errore,
+scritti come codice inline, e i diagrammi che spiegano un flusso (`text`, `mermaid`).
+
+La pagina ha una **cornice fissa** e un **corpo libero**. La cornice è la stessa per tabelle,
+viste, funzioni, trigger e procedure; il corpo si organizza per temi, e i titoli delle sezioni
+dicono la cosa, non la categoria.
+
+### La cornice da copiare
+
+```markdown
+## 📘 Documentazione Concettuale – <Tipo> `<schema>.<nome>`
+
+> **Ultimo aggiornamento**: <giorno> <mese> <anno>
+>
+> 👀 **Vedi anche**
+>
+> Approfondimento tabelle:
+>
+> * [schema.tabella](/dbzero/schema/tabelle/tabella) — <che ruolo ha qui, in mezza riga>
+>
+> Approfondimento viste:
+>
+> * [schema.vw_nome](/dbzero/schema/views/vw_nome) — <…>
+>
+> Approfondimento funzioni:
+>
+> * [schema.fn_nome](/dbzero/schema/funzioni/fn_nome) — <…>
+>
+> Guide:
+>
+> * [Titolo della guida](/guide/nome-guida) — <…>
+
+---
+
+### 🎯 Scopo Principale
+
+<Un paragrafo: che cos'è l'oggetto o che cosa fa, nello stato di oggi.>
+
+<Altri paragrafi, se servono.>
+
+---
+
+### <Primo tema>
+
+…
+
+---
+
+### Codici errore
+
+---
+
+### Test
+
+---
+
+### Note di migrazione
+
+---
+
+{% include-markdown "signature-core.md" %}
+```
+
+### Le regole della cornice
+
+| Elemento | Regola | Perché |
+| --- | --- | --- |
+| **Titolo** | Un solo `##` per pagina. `<Tipo>` è uno fra `Tabella`, `Vista`, `Funzione`, `Trigger function`, `Procedura`. Il nome è qualificato con lo schema, senza `()` | Le sezioni sono tutte `###`: un secondo `##` spezza la pagina in due nella navigazione |
+| **Ultimo aggiornamento** | Prima riga del blocco in testa, aggiornata a ogni modifica, anche piccola | È l'unica data della pagina: dice da quanto non viene rivista |
+| **Vedi anche** | Un blocco citazione unico: **ogni** riga comincia con `>` seguito da uno spazio, comprese le etichette e le righe vuote. Le etichette sono le quattro della cornice, in quell'ordine, e un'etichetta senza link si omette. I link sono elenchi `*`, uno per riga | Una riga senza `>` chiude la citazione: il blocco esce in pezzi staccati |
+| **Destinazione dei link** | La scheda dell'oggetto (`/dbzero/<schema>/tabelle\|views\|funzioni/<nome>`), non la sua pagina `manual/`. Le guide con `/guide/…`, le linee guida con la loro pagina e l'anchor | La scheda contiene già la pagina `manual/` più il contratto: chi la apre ha tutto |
+| **Scopo Principale** | Si chiama esattamente `### 🎯 Scopo Principale` e c'è in **ogni** pagina. Il **primo paragrafo** è la descrizione dell'oggetto in una o due frasi, senza marcatori di revisione | `scripts/gen_db_docs.py` cerca questo titolo e copia il primo paragrafo nell'indice dello schema: un `(rev …)` lì diventa la descrizione dell'oggetto nell'indice |
+| **Separatori** | `---` fra il blocco in testa e lo Scopo, fra una sezione e l'altra, e prima della firma | — |
+| **Firma** | `{% include-markdown "signature-core.md" %}` in fondo, scritta a mano | `scripts/apply_signatures.py` salta le cartelle `manual/`: lì la firma non la aggiunge nessuno |
+
+### Il corpo
+
+* **Sezioni per tema.** Il titolo di una sezione dice la regola o il fatto («La chiave è
+  (articolo, codice)», «Un ledger non si spegne: si storna»), non una categoria generica.
+  I segni `⭐` (perché è fatto così), `⚠️` (punto d'attenzione) e `⛔` (che cosa non si fa) si
+  usano in testa al titolo quando aiutano chi legge.
+* **Sezioni ricorrenti in coda**, nell'ordine della cornice, quando hanno contenuto:
+  * `### Codici errore`: i codici che l'oggetto solleva e quando li solleva. Il testo del
+    messaggio sta in `config.messaggi_errore`, e qui non si ricopia;
+  * `### Test`: i file pgTAP che presidiano l'oggetto e che cosa provano;
+  * `### Note di migrazione`: vedi sotto.
+* **Che cosa non entra nel corpo** (le stesse regole delle guide, applicate alla scheda):
+
+| Residuo | Cosa farne |
+| --- | --- |
+| Firma, elenco di parametri e tipi, valore di ritorno, elenco delle colonne, DDL, corpo di una funzione, elenco dei trigger agganciati | Si cancella: lo scrive la doc auto-generata nella stessa pagina. Resta il **significato** di un parametro o di una colonna, quando non si capisce dal nome |
+| Marcatori di revisione nel testo: `(rev …)`, `(latest review …)`, titoli come «🔄 rev 19-10-2026 — …», «Dal 18-09 (Lotto 2)», frasi come «Dal 15 settembre 2026 la tabella…» | Il contenuto vivo entra nella sezione del tema, scritto al presente. La data va in «Ultimo aggiornamento». La provenienza, se serve, va in «Note di migrazione» |
+| Nomi di brief, di lotti, di analisi (`brief-db-…`, «Lotto 2», «M-1 → M-8») nel corpo o nel «Vedi anche» | Si tolgono: il lettore della scheda vuole la regola, non il cantiere che l'ha prodotta. Restano, se servono, in «Note di migrazione» |
+| Codice di qualsiasi tipo: esempi di chiamata, query, payload JSON, frammenti del corpo, pseudo-SQL | Si cancella. Se l'esempio spiegava una regola, la regola si scrive a parole nella sezione del tema. A differenza delle guide, qui non c'è un'area esempi: il sorgente è nella stessa scheda |
+| «Vantaggi operativi», «Best practice» generiche | Si tolgono, oppure diventano un tema con un titolo che dice la cosa |
+
+### Note di migrazione
+
+È l'**unico** posto della pagina in cui stanno date, nomi di brief e provenienza. È facoltativa,
+e serve solo a chi deve capire perché l'oggetto ha la forma che ha: che cosa ha sostituito, un
+nome che aveva prima, una regola che è cambiata e perché.
+
+* Un punto per fatto, con la data in testa: «2026-09-18 — prende il posto di `reservations`, …».
+* Niente id di changeSet: il file si trova da `git log -S`, e un id ricopiato non dice niente
+  a chi legge.
+* Un fatto che serve a capire il presente («il nome vecchio compare ancora nei log») si scrive
+  nel corpo, al presente; qui resta solo la provenienza.
+
+### Blocchi comuni di uno schema
+
+Un testo che vale per tutte le pagine di uno schema (lo stato del dominio, la spiegazione di
+una famiglia di partizioni) sta in **un** file `docs/it/dbzero/<schema>/_<nome>.md` e si include
+con `{% include-markdown "it/dbzero/<schema>/_<nome>.md" %}`, prima della firma.
+
+* Il blocco descrive lo stato attuale come una guida: ha la sua riga «Ultimo aggiornamento» e
+  si rivede quando cambia lo schema, non quando cambia una pagina.
+* Una pagina che è **solo** un include (le partizioni delle note) ha comunque cornice e Scopo:
+  una riga che dice che cos'è, così l'indice dello schema ha una descrizione.
+
+### Verifica di una pagina `manual/`
+
+1. `grep -nE '^(Approfondimento|Guide)' <pagina>` → zero righe: tutte le etichette cominciano con `>`.
+2. `grep -n '^### 🎯 Scopo Principale' <pagina>` → una riga, e la riga di testo che la segue
+   non comincia con `(`.
+3. `grep -nE '\(rev |latest review|brief-' <pagina>` → solo dentro «Note di migrazione».
+4. `grep -c '^## ' <pagina>` → `1`.
+5. In fondo c'è `signature-core.md`, e ogni link `/dbzero/…` punta a un file che esiste.
+6. `grep -n '^```' <pagina>` → solo blocchi `text` e `mermaid`.
 
 ## Build e anteprima
 

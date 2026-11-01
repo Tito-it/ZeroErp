@@ -1,32 +1,40 @@
-## 📘 Documentazione Concettuale – Funzione `magazzino.fn_get_magazzino_note()`
+## 📘 Documentazione Concettuale – Funzione `magazzino.fn_get_magazzino_note`
 
+> **Ultimo aggiornamento**: 1 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-> • [script.fn_get_note](/dbzero/script/funzioni/fn_get_note)
-> • [magazzino.note](/dbzero/magazzino/tabelle/note)
+> Approfondimento tabelle:
+>
+> * [magazzino.note](/dbzero/magazzino/tabelle/note) — le note che legge
+>
+> Approfondimento funzioni:
+>
+> * [script.fn_get_note](/dbzero/script/funzioni/fn_get_note) — il lettore generico che usano gli altri domini
 
 ---
+
 ### 🎯 Scopo Principale
 
-(rev 2026-08-21)
+Estrae le note di un documento di magazzino dalla tabella `magazzino.note`, con
+la stessa firma dei lettori di note degli altri domini.
 
-**Wrapper** su `script.fn_get_note` per la tabella `magazzino.note`: estrae le note di un
-documento di magazzino con la stessa firma usata dagli altri domini.
+Ordina prima le note di testata, poi quelle di riga, e dentro ciascun gruppo per
+posizione e sequenza: è l'ordine naturale di stampa.
 
-Non contiene logica propria — filtri, ancoraggio e ordinamento vivono nella funzione generica.
-Esiste per non far passare a ogni chiamante il `regclass` della partizione giusta.
-
-⭐ È il gemello esatto di `acquisti.fn_get_acquisti_note` e degli altri wrapper per dominio: la
-stessa funzione parametrizzata sulla tabella. Chi ne aggiunge uno per un dominio nuovo copia
-questa forma.
+⚠️ A differenza di `acquisti.fn_get_acquisti_note` e `vendite.fn_get_vendite_note`,
+**non delega** a `script.fn_get_note`: legge `magazzino.note` da sé, con filtri e
+ordinamento scritti nel proprio corpo. La forma è la stessa del lettore
+generico, ma è una copia della sua logica.
 
 ---
 
 ### I parametri che contano
 
 `_include_doc` e `_include_righe` decidono se raccogliere le note di testata, quelle di riga o
-entrambe; `_only_visible` filtra quelle non visibili. I default (`true`, `true`, `true`) danno
-il comportamento di stampa: tutto ciò che l'utente deve vedere.
+entrambe; `_only_visible` filtra quelle non visibili. I valori predefiniti (tutti e tre veri)
+danno il comportamento di stampa: tutto ciò che l'utente deve vedere. Il tipo del documento si
+confronta in maiuscolo, comunque lo si scriva.
 
 ---
 

@@ -1,40 +1,69 @@
 ## 📘 Documentazione Concettuale – Tabella `magazzino.trasferimenti`
 
+> **Ultimo aggiornamento**: 1 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento tabelle:
-> • [magazzino.trasferimenti_righe](/dbzero/magazzino/tabelle/trasferimenti_righe) — il dettaglio
-> • [magazzino.magazzini](/dbzero/magazzino/tabelle/magazzini) — origine e destinazione
-> • [magazzino.movimenti](/dbzero/magazzino/tabelle/movimenti) — le due righe OUT/IN
+> Approfondimento tabelle:
 >
-Approfondimento funzioni:
-> • [magazzino.trgfn_trasferimenti_guard_stesso_emittente](/dbzero/magazzino/funzioni/trgfn_trasferimenti_guard_stesso_emittente)
+> * [magazzino.trasferimenti_righe](/dbzero/magazzino/tabelle/trasferimenti_righe) — il dettaglio per articolo
+> * [magazzino.magazzini](/dbzero/magazzino/tabelle/magazzini) — origine e destinazione
+> * [magazzino.movimenti](/dbzero/magazzino/tabelle/movimenti) — le due righe di uscita e di entrata
+> * [vendite.ddt](/dbzero/vendite/tabelle/ddt) — il trasferimento con trasporto, che non passa da qui
 >
-Guide: brief `brief-db-magazzino-lotto-1-terreno-vuoto` (§4.7) · analisi carico e scarico (§7-sexies)
+> Approfondimento funzioni:
+>
+> * [magazzino.fn_posta_trasferimento](/dbzero/magazzino/funzioni/fn_posta_trasferimento) — l'operazione che registra il trasferimento
+> * [magazzino.trgfn_trasferimenti_guard_stesso_emittente](/dbzero/magazzino/funzioni/trgfn_trasferimenti_guard_stesso_emittente) — origine e destinazione dello stesso emittente
+> * [magazzino.fn_documento_interno_transizioni](/dbzero/magazzino/funzioni/fn_documento_interno_transizioni) — la matrice degli stati
+> * [magazzino.trgfn_documento_interno_guard_transizione](/dbzero/magazzino/funzioni/trgfn_documento_interno_guard_transizione) — chi la fa rispettare
+>
+> Guide:
+>
+> * [Linee guida SQL — sezione 10 RLS](/linee-guida-sql#10-row-level-security-rls) — il meccanismo comune del perimetro
 
 ---
+
 ### 🎯 Scopo Principale
 
-(rev 2026-09-15 — Lotto 1 del magazzino)
+**Il documento di trasferimento interno**: lo spostamento di merce dentro lo stesso magazzino,
+fra due ubicazioni, oppure fra due magazzini dello stesso emittente, **senza documento di
+trasporto**. Dice da dove parte la merce (`magazzino_id_from`), dove arriva
+(`magazzino_id_to`), quando e in che stato; il dettaglio per articolo sta nelle righe.
 
-**Il documento di trasferimento fra due magazzini**: da dove parte la merce
-(`magazzino_id_from`), dove arriva (`magazzino_id_to`), quando, in che stato. Il dettaglio
-per articolo sta nelle righe.
+Un trasferimento genera **due movimenti** per riga, `TRASF_OUT` dalla partenza e `TRASF_IN`
+nell'arrivo, con la stessa sorgente (`TRASFERIMENTO_RIGA`) e causali diverse: è così che le due
+righe non collidono nell'identità del registro. Il costo dell'entrata è ereditato da quello
+dell'uscita: spostare merce non cambia il suo valore, lo sposta.
 
-Un trasferimento genera **due movimenti** per riga — `TRASF_OUT` dall'origine, `TRASF_IN`
-nella destinazione — con la stessa sorgente (`TRASFERIMENTO_RIGA`) e causali diverse: è così
-che le due righe non collidono nell'identità del registro. Il costo della riga IN è ereditato
-da quella OUT: spostare merce non cambia il suo valore, lo sposta. Uno spostamento **dentro**
-lo stesso magazzino non è un trasferimento: è una coppia di movimenti fra due ubicazioni.
+---
+
+### Interno, non con trasporto
+
+Il trasferimento con trasporto fra due depositi non è questo documento: è il DDT con causale
+`TRASFERIMENTO` ([vendite.ddt](/dbzero/vendite/tabelle/ddt), causali in
+`config.causali_trasporto`), che porta il proprio magazzino di partenza e di arrivo.
+
+---
 
 ### Due magazzini, un emittente solo
 
 Origine e destinazione devono appartenere allo **stesso emittente**: fra due emittenti
 sarebbe una cessione con un documento, non uno spostamento. Lo fa rispettare il guard
 [trgfn_trasferimenti_guard_stesso_emittente](/dbzero/magazzino/funzioni/trgfn_trasferimenti_guard_stesso_emittente)
-(`E_MAG_TRASFERIMENTO_EMITTENTI_DIVERSI`, con il campo della destinazione acceso nel form). E
-un trasferimento da un magazzino a **se stesso** è rifiutato dal CHECK — che fino al 14-09
-era scritto in modo da non rifiutare nulla.
+(`E_MAG_TRASFERIMENTO_EMITTENTI_DIVERSI`, con il campo della destinazione acceso nel form).
+
+---
+
+### Lo stesso magazzino è ammesso, la stessa posizione no
+
+Partenza e arrivo possono essere lo **stesso magazzino**: è lo spostamento fra due ubicazioni.
+Allora ogni riga deve dire da quale ubicazione parte e in quale arriva, e le due devono essere
+diverse: due ubicazioni uguali le rifiuta già la riga, una riga senza le due ubicazioni la
+rifiuta la registrazione (`E_MAG_TRASFERIMENTO_STESSA_POSIZIONE`), perché partenza e arrivo
+coinciderebbero.
+
+---
 
 ### La sorgente, come sul registro
 
@@ -44,26 +73,55 @@ dichiara per quel tipo; senza tipo, nessuna chiave. Il guard tipizzato
 (`script.trgfn_guard_sorgente_polimorfa_tipizzata`) verifica che il record esista. Qui la
 sorgente è **facoltativa**: dice da quale documento l'operazione è nata, se ce n'è uno.
 
-Fino al 14-09 la tabella portava **due** coppie di colonne sorgente (`sorgenti_*` e
-`sorgente_*`) che dicevano la stessa cosa: il doppione è uscito.
+---
+
+### Il motore
+
+Gli stati sono quelli degli inventari e delle rettifiche (`DRAFT` → `CONFIRM` → `POSTED`, o
+`CANCEL`, con il ritorno da `CONFIRM` a `DRAFT`), dalla stessa matrice
+([fn_documento_interno_transizioni](/dbzero/magazzino/funzioni/fn_documento_interno_transizioni)).
+[fn_posta_trasferimento](/dbzero/magazzino/funzioni/fn_posta_trasferimento) registra un
+trasferimento confermato: per ogni riga scrive l'uscita dal magazzino e dall'ubicazione di
+partenza e l'entrata in quelli di arrivo, legate dall'identificativo del trasferimento perché
+l'entrata prenda il costo dell'uscita, e porta il documento a `POSTED`, tutto in una
+transazione. La porta `POSTED` la apre solo l'operazione, dentro il verbo, e il `DELETE` è
+ammesso solo in `DRAFT`
+([trgfn_documento_interno_guard_transizione](/dbzero/magazzino/funzioni/trgfn_documento_interno_guard_transizione)).
+
+---
 
 ### Chi può vedere e scrivere
 
 Il perimetro poggia sul magazzino di **origine** (`rls_trasferimenti_ef_whitelist`, via
-`magazzino_id_from`); la destinazione la copre il guard. Righe e note risalgono alla testata.
+`magazzino_id_from`); la destinazione la copre il guard sullo stesso emittente. Righe e note
+risalgono alla testata.
 Meccanismo comune: [Linee guida SQL — sezione 10 RLS](/linee-guida-sql#10-row-level-security-rls).
 
-### Che cos'è, dal 17-09 (decisione di Tid, D-L2-g)
+---
 
-Il trasferimento **interno**: dentro lo stesso magazzino fra ubicazioni, o fra magazzini diversi
-dello stesso emittente, **senza documento di trasporto**. Il trasferimento con trasporto fra due
-depositi è il DDT con causale `TRASFERIMENTO` (`config.causali_trasporto`), che oggi non sa da quale
-magazzino parte né dove arriva. Ne discende, per il lotto che ne scriverà il posting (non il Lotto
-2): `ubicazione_id_da`/`_a` sulle righe, il CHECK «magazzini diversi **oppure** ubicazioni
-diverse», un guard sullo stesso emittente, la coppia `TRASF_OUT`/`TRASF_IN` con lo stesso
-`transfer_uid` e l'entrata al costo dell'uscita (il ramo gemella della primitiva esiste ed è provato).
+### Codici errore
+
+* `E_MAG_TRASFERIMENTO_EMITTENTI_DIVERSI`: origine e destinazione di emittenti diversi.
+* `E_MAG_TRASFERIMENTO_STESSA_POSIZIONE`: alla registrazione, una riga nello stesso magazzino
+  senza le due ubicazioni.
+* `E_MAG_DOCUMENTO_TRANSIZIONE_NON_AMMESSA`: un cambio di stato fuori dalla matrice.
+* `E_MAG_DOCUMENTO_POSTED_SOLO_DA_OPERAZIONE`: `POSTED` scritto senza passare dall'operazione.
+* `E_MAG_DOCUMENTO_NON_ELIMINABILE`: cancellazione di un documento non in `DRAFT`.
 
 ---
+
+### Note di migrazione
+
+* 2026-09-14 — esce il doppione delle colonne sorgente (`sorgenti_*` accanto a `sorgente_*`, che
+  dicevano la stessa cosa); il CHECK che doveva rifiutare un trasferimento da un magazzino a se
+  stesso, scritto in modo da non rifiutare nulla, viene corretto.
+* 2026-09-15 — la tabella entra nel primo lotto del magazzino
+  (`brief-db-magazzino-lotto-1-terreno-vuoto`, §4.7; analisi carico e scarico, §7-sexies).
+* 2026-09-17 — si decide che il trasferimento è solo quello **interno** (D-L2-g): quello con
+  trasporto è il DDT.
+* 2026-09-28 — arriva il posting (`fn_posta_trasferimento`, `brief-db-magazzino-lotto-3-scarico-da-ddt`);
+  lo stesso magazzino in partenza e in arrivo diventa ammesso, con le ubicazioni di partenza e
+  di arrivo sulle righe.
 
 ---
 

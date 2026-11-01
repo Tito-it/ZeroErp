@@ -1,29 +1,54 @@
 ## 📘 Documentazione Concettuale – Tabella `magazzino.inventari`
 
+> **Ultimo aggiornamento**: 1 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento tabelle:
-> • [magazzino.inventari_righe](/dbzero/magazzino/tabelle/inventari_righe) — il dettaglio
-> • [magazzino.magazzini](/dbzero/magazzino/tabelle/magazzini) — l'ancora del perimetro
-> • [magazzino.movimenti](/dbzero/magazzino/tabelle/movimenti) — dove il conteggio finisce
+> Approfondimento tabelle:
 >
-Guide: brief `brief-db-magazzino-lotto-1-terreno-vuoto` (§4.7)
+> * [magazzino.inventari_righe](/dbzero/magazzino/tabelle/inventari_righe) — il dettaglio per articolo
+> * [magazzino.magazzini](/dbzero/magazzino/tabelle/magazzini) — l'ancora del perimetro
+> * [magazzino.movimenti](/dbzero/magazzino/tabelle/movimenti) — dove il conteggio finisce
+> * [dbops.automation_lock_columns](/dbzero/dbops/tabelle/automation_lock_columns) — da dove nasce il blocco sul magazzino
+>
+> Approfondimento funzioni:
+>
+> * [magazzino.fn_inventario_piano](/dbzero/magazzino/funzioni/fn_inventario_piano) — che cosa il posting scriverà, riga per riga
+> * [magazzino.fn_posta_inventario](/dbzero/magazzino/funzioni/fn_posta_inventario) — l'operazione che registra il conteggio
+> * [magazzino.fn_documento_interno_transizioni](/dbzero/magazzino/funzioni/fn_documento_interno_transizioni) — la matrice degli stati
+> * [magazzino.trgfn_documento_interno_guard_transizione](/dbzero/magazzino/funzioni/trgfn_documento_interno_guard_transizione) — chi la fa rispettare
+>
+> Guide:
+>
+> * [Linee guida SQL — sezione 10 RLS](/linee-guida-sql#10-row-level-security-rls) — il meccanismo comune del perimetro
 
 ---
+
 ### 🎯 Scopo Principale
 
-(rev 2026-09-15 — Lotto 1 del magazzino)
-
 **Il documento di conteggio fisico**: la rilevazione di quanto c'è davvero a scaffale, in un
-magazzino, a una data, con uno stato (`DRAFT` → `CONFIRM` → `POSTED`, o `CANCEL`; `COUNTING` è
-uscito il 17-09, D-L2-h: uno stato che non cambiava nessuna regola — e dal 18-09 `CONFIRM → DRAFT`
-riapre, perché il piano si legge in `CONFIRM` e le righe si correggono in bozza; oppure
-`CANCEL`). Il dettaglio per articolo sta nelle righe.
+magazzino, a una data, con uno stato. Il dettaglio per articolo sta nelle righe.
 
-Il conteggio non modifica la giacenza da sé: quando è confermato, le sue righe diventano la
+Il conteggio non modifica la giacenza da sé: quando è registrato, le sue righe diventano la
 **sorgente** dei movimenti di allineamento (`INVENTARIO_RIGA`), e la giacenza cambia sul
-registro. È la catena che tiene il ledger come unica fonte — anche una correzione da
-inventario è una scrittura tracciata. L'operazione che lo fa è un lotto successivo.
+registro. È la catena che tiene il registro come unica fonte: anche una correzione da
+inventario è una scrittura tracciata.
+
+---
+
+### Gli stati: bozza, conferma, registrazione
+
+Il documento nasce in `DRAFT`, passa a `CONFIRM` e da lì a `POSTED`; da `DRAFT` o da
+`CONFIRM` si può annullare (`CANCEL`). `POSTED` e `CANCEL` sono definitivi. Da `CONFIRM` si
+può anche **tornare in bozza**: il piano si legge in `CONFIRM`, e se mostra un errore le righe
+si correggono in `DRAFT`.
+
+La matrice degli stati sta in un posto solo,
+[fn_documento_interno_transizioni](/dbzero/magazzino/funzioni/fn_documento_interno_transizioni),
+la stessa per inventari, rettifiche e trasferimenti: la legge il guard che la fa rispettare e la
+leggono i pulsanti del drawer, così l'operatore non vede un'azione che verrebbe rifiutata.
+
+---
 
 ### La sorgente, come sul registro
 
@@ -33,11 +58,13 @@ dichiara per quel tipo; senza tipo, nessuna chiave. Il guard tipizzato
 (`script.trgfn_guard_sorgente_polimorfa_tipizzata`) verifica che il record esista. Qui la
 sorgente è **facoltativa**: dice da quale documento l'operazione è nata, se ce n'è uno.
 
+---
+
 ### Il magazzino si sceglie alla nascita
 
-**`magazzino_id` non si cambia** dopo la creazione, in nessuno stato (lock delle colonne,
-`E_MAG_DOCUMENTO_MAGAZZINO_IMMUTABILE`, dal 22-09): il magazzino di un conteggio è
-**identità**, non un attributo. Le righe nominano le ubicazioni *di quel* magazzino e
+**`magazzino_id` non si cambia** dopo la creazione, in nessuno stato (blocco delle colonne,
+`E_MAG_DOCUMENTO_MAGAZZINO_IMMUTABILE`): il magazzino di un conteggio è **identità**, non un
+attributo. Le righe nominano le ubicazioni *di quel* magazzino e
 [fn_inventario_piano](/dbzero/magazzino/funzioni/fn_inventario_piano) confronta il contato
 con la giacenza *di quel* magazzino; spostando la testata le righe resterebbero a puntare a
 posizioni che nel magazzino nuovo non esistono, e il database se ne accorgerebbe solo al
@@ -45,10 +72,12 @@ posting, con un errore che racconta un'altra storia
 (`E_MAG_UBICAZIONE_DI_ALTRO_MAGAZZINO`). Se il magazzino è sbagliato il conteggio si
 annulla e se ne apre uno dove la merce sta davvero.
 
-⚠️ La **`data`** invece resta modificabile, ed è una decisione esplicita (Q-2 del piano
-BE/FE, confermata il 22-09): il database non congela la testata oltre il magazzino. Il
-trigger del lock non lo scrive un changeSet — lo **genera l'automazione** dalla riga in
+⚠️ La **`data`** invece resta modificabile, ed è una decisione esplicita: il database non
+congela la testata oltre il magazzino. Il trigger del blocco non lo scrive un changeSet: lo
+**genera l'automazione** dalla riga in
 [dbops.automation_lock_columns](/dbzero/dbops/tabelle/automation_lock_columns).
+
+---
 
 ### Chi può vedere e scrivere
 
@@ -56,22 +85,51 @@ Un operatore vede e scrive gli inventari dei magazzini del **proprio emittente**
 (`rls_inventari_ef_whitelist`, via magazzino); le righe e le note risalgono alla testata.
 Meccanismo comune: [Linee guida SQL — sezione 10 RLS](/linee-guida-sql#10-row-level-security-rls).
 
-### Il motore (dal 18-09, Lotto 2)
+---
+
+### Il motore: piano, posting, porte
 
 * **Il piano**: [fn_inventario_piano](/dbzero/magazzino/funzioni/fn_inventario_piano) dice, riga per
   riga e posizione per posizione, che cosa il posting scriverà (`INV_INIZIALE`, `RETT_POS`,
   `RETT_NEG`, `INVARIATA`, `NON_CONTATA`, `NON_POSTABILE`): si legge al passaggio a `CONFIRM`.
 * **Il posting**: [fn_posta_inventario](/dbzero/magazzino/funzioni/fn_posta_inventario) posta la
-  **differenza** alla grana della riga, con la causale decisa dal registro, in una transazione.
-* **La matrice e la porta**: [trgfn_documento_interno_guard_transizione](/dbzero/magazzino/funzioni/trgfn_documento_interno_guard_transizione)
-  — `POSTED` solo dall'operazione, `DELETE` solo in `DRAFT` (le righe cascano: una registrata
-  lascerebbe orfani); le righe seguono la testata
+  **differenza** alla grana della riga, con la causale decisa dal piano, in una transazione:
+  se una riga fallisce non resta niente, e una sola riga `NON_POSTABILE` ferma tutto il
+  documento.
+* **La porta `POSTED`**: la apre solo l'operazione, firmandosi per quel documento e girando
+  dentro il verbo; l'applicazione da sola non può segnare un inventario come registrato
+  ([trgfn_documento_interno_guard_transizione](/dbzero/magazzino/funzioni/trgfn_documento_interno_guard_transizione)).
+* **Il `DELETE`** è ammesso solo in `DRAFT`, e le righe se ne vanno con la testata: un
+  documento già registrato lascerebbe orfani i movimenti che ha prodotto. Le righe seguono lo
+  stato della testata
   ([trgfn_documento_interno_righe_guard_testata](/dbzero/magazzino/funzioni/trgfn_documento_interno_righe_guard_testata)).
 * ⚠️ Un debito di nome: l'indice parziale `uq_mag_invetario_sorgente_fk` porta il refuso
-  «invetario» (il CHECK omonimo è stato rinominato `chk_mag_inventari_stato` il 18-09). Non si
-  rinomina un indice del passato in corsa: `DROP IF EXISTS` + ricrea, quando servirà.
+  «invetario». Un indice del passato non si rinomina in corsa: quando servirà, si cancella e
+  si ricrea col nome giusto.
 
 ---
+
+### Codici errore
+
+* `E_MAG_DOCUMENTO_MAGAZZINO_IMMUTABILE`: si prova a cambiare il magazzino della testata.
+* `E_MAG_DOCUMENTO_TRANSIZIONE_NON_AMMESSA`: un cambio di stato fuori dalla matrice.
+* `E_MAG_DOCUMENTO_POSTED_SOLO_DA_OPERAZIONE`: `POSTED` scritto senza passare dall'operazione.
+* `E_MAG_DOCUMENTO_NON_ELIMINABILE`: cancellazione di un documento non in `DRAFT`.
+
+---
+
+### Note di migrazione
+
+* 2026-09-15 — la tabella entra nel primo lotto del magazzino
+  (`brief-db-magazzino-lotto-1-terreno-vuoto`, §4.7).
+* 2026-09-17 — esce lo stato `COUNTING`: non cambiava nessuna regola.
+* 2026-09-18 — arrivano piano e posting; da `CONFIRM` si torna in `DRAFT`; il CHECK sullo stato,
+  che portava lo stesso refuso «invetario» dell'indice, prende il nome `chk_mag_inventari_stato`.
+* 2026-09-22 — `magazzino_id` diventa immutabile; la `data` resta modificabile per decisione
+  esplicita (Q-2 del piano BE/FE). La matrice degli stati passa in
+  `fn_documento_interno_transizioni`.
+* 2026-09-25 — la porta `POSTED` chiede, oltre alla firma dell'operazione, di girare dentro il
+  verbo (`brief-db-magazzino-verbi-con-permesso`).
 
 ---
 

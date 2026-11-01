@@ -1,31 +1,46 @@
 ## 📘 Documentazione Concettuale – Vista `magazzino.vw_giacenza`
 
+> **Ultimo aggiornamento**: 1 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento tabelle:
-> • [magazzino.movimenti](/dbzero/magazzino/tabelle/movimenti) — il registro
-> • [magazzino.valore_giacenza](/dbzero/magazzino/tabelle/valore_giacenza) — la copia del valore
+> Approfondimento tabelle:
 >
-Le cinque viste: [vw_giacenza](/dbzero/magazzino/views/vw_giacenza) · [vw_giacenza_ubicazione](/dbzero/magazzino/views/vw_giacenza_ubicazione) · [vw_costo_medio](/dbzero/magazzino/views/vw_costo_medio) · [vw_costo_medio_globale](/dbzero/magazzino/views/vw_costo_medio_globale) · [vw_giacenza_valorizzata](/dbzero/magazzino/views/vw_giacenza_valorizzata)
+> * [magazzino.movimenti](/dbzero/magazzino/tabelle/movimenti) — il registro che la vista somma
+> * [magazzino.valore_giacenza](/dbzero/magazzino/tabelle/valore_giacenza) — il valore, che qui non entra
 >
-Guide: brief `brief-db-magazzino-lotto-1-terreno-vuoto` (§4.8)
+> Approfondimento viste:
+>
+> * [magazzino.vw_giacenza_ubicazione](/dbzero/magazzino/views/vw_giacenza_ubicazione) — la stessa somma per posizione
+> * [magazzino.vw_giacenza_valorizzata](/dbzero/magazzino/views/vw_giacenza_valorizzata) — quantità, valore e costo insieme
+> * [magazzino.vw_disponibilita](/dbzero/magazzino/views/vw_disponibilita) — la giacenza insieme ai blocchi aperti
+>
+> Approfondimento funzioni:
+>
+> * [magazzino.trgfn_movimenti_guard_verso](/dbzero/magazzino/funzioni/trgfn_movimenti_guard_verso) — garantisce il segno su cui la somma si regge
 
 ---
-### 🎯 Scopo Principale
 
-(rev 2026-09-15 — Lotto 1 del magazzino)
+### 🎯 Scopo Principale
 
 **La giacenza per articolo e magazzino**: la somma delle quantità del registro. Non esiste
 una tabella «giacenze»: la giacenza è **sempre** questa somma, quindi non può divergere dal
 registro e non c'è nessun posto dove correggerla di nascosto.
 
+È la base delle altre viste del dominio: il costo medio, la giacenza valorizzata e la
+disponibilità partono tutte da qui.
+
+---
+
 ### Perché è corretta senza guardare le causali
 
-La quantità del registro è **firmata** — il guard del verso garantisce che il segno sia
-quello della causale — quindi `sum(qta)` è già la giacenza. Applicare il segno anche qui lo
-applicherebbe **due volte**: un'uscita −5 con segno −1 diventerebbe +5. Fino al 14-09
-questa pagina segnalava che nulla garantiva il verso; dal 15-09 lo garantisce
-[trgfn_movimenti_guard_verso](/dbzero/magazzino/funzioni/trgfn_movimenti_guard_verso).
+La quantità del registro è **firmata**: un'entrata è positiva, un'uscita negativa, e il
+guard [trgfn_movimenti_guard_verso](/dbzero/magazzino/funzioni/trgfn_movimenti_guard_verso)
+pretende che il segno sia quello della causale. Sommare le quantità dà quindi già la
+giacenza. Applicare il segno anche qui lo applicherebbe **due volte**: un'uscita di 5 pezzi
+diventerebbe un'entrata di 5.
+
+---
 
 ### Che cosa non fa
 
@@ -33,11 +48,28 @@ questa pagina segnalava che nulla garantiva il verso; dal 15-09 lo garantisce
 * nessuna riga per gli articoli mai movimentati;
 * nessuna posizione: per quella c'è [vw_giacenza_ubicazione](/dbzero/magazzino/views/vw_giacenza_ubicazione).
 
+---
+
 ### Legge con gli occhi di chi interroga
 
-La vista è `security_invoker`: la RLS del registro e dei magazzini passa attraverso, e un
-operatore vede i magazzini del **proprio emittente**. ⚠️ Fino al 14-09 nessuna delle viste
-di magazzino lo era. Meccanismo comune: [Linee guida SQL — sezione 10 RLS](/linee-guida-sql#10-row-level-security-rls).
+La vista è `security_invoker`: la row level security del registro e dei magazzini passa
+attraverso, e un operatore vede i magazzini del **proprio emittente**. Meccanismo comune:
+[Linee guida SQL — sezione 10 RLS](/linee-guida-sql#10-row-level-security-rls).
+
+---
+
+### Test
+
+* `db/pgtap/magazzino/test-valore-giacenza-forma-v1.sql` — la giacenza è la somma del
+  registro, senza passare dalle causali; la vista è `security_invoker`.
+
+---
+
+### Note di migrazione
+
+* 2026-09-15 — prende la forma di oggi con il Lotto 1 (`brief-db-magazzino-lotto-1-terreno-vuoto`):
+  la quantità vive solo nel registro, e il guard del verso ne garantisce il segno. Prima
+  nulla garantiva il verso, e nessuna vista di magazzino era `security_invoker`.
 
 ---
 
