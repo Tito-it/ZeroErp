@@ -237,6 +237,13 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 
 ### 🟡 Altri cantieri aperti
 
+- ✅ **Il canone del contratto in commessa: chiuso il 2026-11-01**
+  (`work-done/brief-db-contratto-righe-periodiche-in-commessa.md`, D31): periodicità sulla riga e sul kit
+  del listino (`vendite.listini_kit`), ADESIONE, push a periodi, storni, dashboard, la nota di credito dal
+  segno del documento (L17), la quota fissa che non perde la periodicità, l'obbligo della periodicità sulla
+  riga a canone (`E_RIGA_CANONE_SENZA_PERIODICITA`). DB `20261029-10` … `20261101-06`, BE/FE fino a
+  `62dafb6c86`. ORARIO e CONSUMO restano fuori (G-4): aspettano timesheet e letture, D31 resta aperta per
+  loro. I residui sono in § «Aperto — Media priorità».
 - ✅ **Il modello del documento di vendita: chiuso il 2026-10-31**
   (`work-done/brief-modello-documento-vendita.md`): un giro per documento (DDT, preventivo, ordine, contratto,
   offerta, commessa, fattura, versione di listino), poi gli stati con un significato dal vocabolario (cessazione,
@@ -421,15 +428,6 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   (`fn_articolo_colonne_struttura`) e il rifiuto se rende non valide righe aperte (A-11). DB Lotti 1-5 e
   `20261018-70…-74`, BE/FE §9.7 e §9.8.7, collaudo di Tid ok. Restano fuori: il ponte di
   `fn_articolo_riga_contesto` (brief della grammatica unica), D-5 (righe d'acquisto, col cantiere `acquisti`).
-- ⏳ **Canone, orario e consumo del contratto in commessa**
-  (`work-in-progress/brief-db-contratto-righe-periodiche-in-commessa.md`, D31): lotti L1 … L9 applicati
-  (periodicità, ADESIONE, push a periodi, storni, dashboard, `20261029-10` … `20261031-04`); BE/FE in
-  `9f3a16904`. Giro del §7 (2026-10-31): `20261031-28` … `-43` applicati e verdi (il kit sul
-  listino `vendite.listini_kit`, componenti del kit dal listino, controllo all'attivazione, lookup e
-  anteprima della periodicità); L17 `-44` … `-48` (la nota di credito dal segno, §7.9) e `-49` … `-52`
-  (la quota fissa non perde la periodicità fuori dalla bozza, §7.10) applicati e verdi. BE/FE passo 3
-  fatto e committato il 2026-10-31 (§7.11, `f9b9a0d81`). Restano: L18 documentazione, la colonna della
-  periodicità nella lista 37, il passo 4 DB e il collaudo a video.
 - ⏳ **Liste ancora su `DataTable` grezza, secondo giro**
   (`work-in-progress/brief-db-liste-datatable-grezze-secondo-giro.md`): sette liste a catalogo (107-113), la
   regola «listino in scadenza senza successore» a DB, la forma del valore dei parametri in scrittura, la
@@ -586,6 +584,14 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   cambio di licenza.
 
 ### Aperto — Media priorità
+- **Residui di `work-done/brief-db-contratto-righe-periodiche-in-commessa.md`** (ereditati il 2026-11-01
+  dalla chiusura, §7.14), nessuno bloccante:
+  - **il collaudo a video** del form della riga a canone (contratto e offerta) e della colonna «Periodicità»
+    della lista 37 (anche sul composito, e nell'export). Di Tid;
+  - **la colonna «Periodicità» della lista 37**: codice o descrizione (proposta: la descrizione, col JOIN
+    nella proiezione del repository), e se ordinabile (sul ritmo `config.periodicita.mesi`, con la voce in
+    `RIGHE_ORDER_COLUMNS` e `ordinabile = t` insieme). Di Tid; poi team DB e BE;
+  - gli smoke di `backend/scripts/tests/` non lanciati nel giro BE del §7.13.6.
 - **Residui di `work-done/brief-db-scadenza-preventivi.md`** (ereditati il 2026-11-01 dalla chiusura, §8.10),
   nessuno bloccante:
   - **`validita_al` dice due cose**: la scadenza dell'offerta e, come ripiego dietro `competenza_mese`, il periodo
