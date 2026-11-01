@@ -549,10 +549,11 @@ jobs:
             update --contexts=provision
 
       - name: Liquibase CI apply (run automations)
-        # ⭐ L'`id` non e' decorativo: e' la condizione da cui dipende la suite
-        #   pgTAP piu' in basso. Da qui in avanti il database e' COMPLETO — i
-        #   due migratori hanno finito e le automazioni sono passate — quindi
-        #   «il pgTAP puo' girare?» e' esattamente «questo passo e' andato?».
+        # ⭐ L'`id` non e' decorativo: da lui dipendono «Django migrate» e, a
+        #   catena, la «fase post» e la suite pgTAP piu' in basso. ⚠️ Qui il
+        #   database NON e' ancora completo: manca il secondo migratore
+        #   (`manage.py migrate`) e la fase post. Il database completo e'
+        #   `steps.fase_post` (rev 2026-11-01).
         id: ci_apply
         # Come lo step "standard, no provision": nessun bypass, la validazione
         # del tx_id resta attiva.
@@ -707,6 +708,13 @@ jobs:
           python ../scripts/check_mypy_baseline.py
 
       - name: Django migrate (schema django)
+        # ⭐ `id` e `if` per la suite pgTAP (vedi la sua condizione): il secondo
+        #   migratore dipende da `ci_apply`, non dal `success()` implicito.
+        #   ⛔ Il 2026-11-01 (corsa 41325095742) il B-7 rosso lo ha saltato, la
+        #   suite e' partita lo stesso e ha misurato un database senza
+        #   `django.auth_user`: 909 rossi su 936, centinaia di finte regressioni.
+        id: django_migrate
+        if: ${{ !cancelled() && steps.ci_apply.outcome == 'success' }}
         working-directory: ./backend
         run: |
           source .venv/bin/activate
@@ -725,6 +733,9 @@ jobs:
       #   «permission denied» nel log della corsa 34723456630.
       #   Brief: brief-db-ruoli-di-sistema, fasi 2 e 4.
       - name: Ruoli di sistema - fase post e verifica «un owner solo»
+        # ⭐ E' il passo che chiude il database: la suite pgTAP dipende da lui.
+        id: fase_post
+        if: ${{ !cancelled() && steps.django_migrate.outcome == 'success' }}
         env:
           PGPASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
         run: |
@@ -963,18 +974,24 @@ jobs:
         #   ⭐ *Un cancello non deve poter zittire un altro cancello*: sono due
         #     domande indipendenti e vogliono due risposte.
         #   ⚠️ Ma NON `always()`: il pgTAP ha senso solo su un database
-        #     COMPLETO. La condizione e' `steps.ci_apply.outcome == 'success'`,
-        #     cioe' «i due migratori hanno finito e le automazioni sono
-        #     passate». Se e' il migrate a fallire, saltare e' giusto: una
-        #     suite su un database a meta' non direbbe niente di vero, e
-        #     direbbe rosso per il motivo sbagliato.
+        #     COMPLETO. La condizione e' `steps.fase_post.outcome == 'success'`,
+        #     cioe' «i due migratori hanno finito, le automazioni sono passate
+        #     e la postura dei ruoli e' data». Se e' il migrate a fallire,
+        #     saltare e' giusto: una suite su un database a meta' non direbbe
+        #     niente di vero, e direbbe rosso per il motivo sbagliato.
+        #   ⛔ Fino al 2026-11-01 la condizione era `ci_apply`, che viene PRIMA
+        #     di «Django migrate»: un rosso nel mezzo (il B-7, corsa
+        #     41325095742) saltava il migrate e la suite girava lo stesso, su un
+        #     database senza schema `django`. Per questo il migrate e la fase
+        #     post hanno ora il loro `if` su `ci_apply`: un cancello in mezzo
+        #     non li salta, e quindi non zittisce la suite.
         #   ⚠️ E il job resta ROSSO lo stesso: qui non si perdona niente, si
         #     smette solo di perdere una risposta. Non e' un `continue-on-error`
         #     — quello e' vietato due paragrafi piu' sotto, e per un'altra
         #     ragione ancora.
         if: >-
           ${{ !cancelled()
-              && steps.ci_apply.outcome == 'success'
+              && steps.fase_post.outcome == 'success'
               && (github.base_ref == 'main'
                   || (github.event_name == 'push' && steps.db_cambiato.outputs.esito == 'si')) }}
         # ⭐ ARMATO IL 2026-09-09, e fino a quel giorno non lo era: `continue-on-error`
