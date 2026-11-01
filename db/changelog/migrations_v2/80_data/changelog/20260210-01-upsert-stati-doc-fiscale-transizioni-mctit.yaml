@@ -2,6 +2,23 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Liquibase changelog per Zero ERP
 # ------------------------------------------------------------
+# ⛔ 2026-11-01 — QUESTO MIRROR NON CARICA PIU'. Il CSV
+#   80_data/sql/config/stati_doc_fiscale_transizioni.csv lo carica il mirror
+#   RI-ANCORATO 20261101-07, che nella timeline sta dopo il seme di
+#   config.azioni_processo (20260228-18).
+#
+#   Il 2026-10-27 il CSV ha preso `azione_processo_codename` (00_schema
+#   20261027-01), con una FK dura verso config.azioni_processo. Questo mirror
+#   di febbraio gira PRIMA del proprio bersaglio: su un database ricostruito da
+#   zero (la CI) scriveva `numera_fatture_lotti` con azioni_processo vuota e il
+#   migrate moriva su fk_stati_doc_fiscale_transizioni_azioni_processo. Su dev
+#   non si vedeva: il catalogo delle azioni era pieno da mesi.
+#
+#   Si SPEGNE invece di mettere la colonna in `type: SKIP`: una sorgente, una
+#   ancora — stessa scelta del 20260720-10 (2026-09-05). Il file non si
+#   cancella: e' applicato, e la sua riga in databasechangelog racconta che a
+#   febbraio la matrice e' stata seminata.
+# ------------------------------------------------------------
 
 databaseChangeLog:
   - changeSet:
@@ -17,36 +34,8 @@ databaseChangeLog:
             schemaName: config
             tableName: stati_doc_fiscale_transizioni
       changes:
-        - loadUpdateData:
-            relativeToChangelogFile: true
-            file: ../sql/config/stati_doc_fiscale_transizioni.csv
-            tableName: stati_doc_fiscale_transizioni
-            schemaName: config
-            separator: ","
-            encoding: UTF-8
-            # 2026-10-27 (20261027-01): "NULL", non "": la cella vuota sarebbe '' e
-            # la FK di azione_processo_codename la rifiuterebbe (brief-modello-
-            # documento-vendita §7.5). Nessun'altra cella del CSV e' vuota.
-            nullValue: "NULL"
-            primaryKey: "id"
-            columns:
-              - column: { name: id, type: STRING }
-              - column: { name: stato_from_id, type: STRING }
-              - column: { name: stato_to_id, type: STRING }
-              - column: { name: ammesso, type: BOOLEAN }
-              - column: { name: solo_lotto, type: BOOLEAN }
-              - column: { name: solo_fattura, type: BOOLEAN }
-              - column:
-                  name: meta
-                  type: JSON
-                  defaultValue: "{}"
-              - column: { name: data_insert, type: STRING }
-              - column: { name: user_insert, type: STRING }
-              - column:
-                  name: data_update
-                  type: STRING
-                  defaultValue: "NOW()"
-              - column: { name: user_update, type: STRING }
-              # rev 2026-10-27 (20261027-01, brief-modello-documento-vendita §15):
-              # l'azione del passaggio; il token NULL = nessuna azione.
-              - column: { name: azione_processo_codename, type: STRING }
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Il caricamento e' passato a 20261101-07 (mirror ri-ancorato).
+              SELECT 1;

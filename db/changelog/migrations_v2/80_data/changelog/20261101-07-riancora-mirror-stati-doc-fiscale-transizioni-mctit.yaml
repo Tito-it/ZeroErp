@@ -1,0 +1,104 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Ri-ancora il mirror di config.stati_doc_fiscale_transizioni DOPO il
+#   20260228-18, che semina config.azioni_processo.
+#
+# ⚠️ IL PROBLEMA, ED E' UNA DIVERGENZA CI-vs-DEV. Il 2026-10-27 la matrice
+#   fiscale ha preso `azione_processo_codename` con una FK dura verso
+#   config.azioni_processo (00_schema/20261027-01), e la colonna e' stata
+#   aggiunta al mirror che gia' c'era:
+#     20260210-01  loadUpdateData del CSV            (mirror vivo, runOnChange)
+#     20260228-18  loadUpdateData di azioni_processo (il BERSAGLIO della FK)
+#   Nella timeline il primo viene PRIMA del secondo. Su un database ricostruito
+#   da zero — la CI — il mirror di febbraio scriveva
+#   `azione_processo_codename = 'numera_fatture_lotti'` con azioni_processo
+#   ancora vuota:
+#     «insert or update on table "stati_doc_fiscale_transizioni" violates
+#      foreign key constraint "fk_stati_doc_fiscale_transizioni_azioni_processo"
+#      — Key (azione_processo_codename)=(numera_fatture_lotti) is not present
+#      in table "azioni_processo"».
+#   Su dev non si vedeva: al migrate in cui il CSV ha preso la colonna, il
+#   catalogo delle azioni era pieno da mesi. Le altre matrici con la stessa
+#   colonna (preventivi, offerte, contratti, ordini, commessa, ddt, reso,
+#   listino) hanno il mirror dopo il 20260228-18: solo la fiscale era prima.
+#
+# ℹ️ PERCHE' UN MIRROR NUOVO E NON UNA CORREZIONE DEL 20260210-01: il numero di
+#   un changeSet e' la sua posizione nella timeline, e un fatto nato a ottobre
+#   non puo' essere scritto da un'ancora di febbraio. Il 20260210-01 e' spento
+#   (SELECT 1), non messo in SKIP: una sorgente, un'ancora — stessa forma del
+#   20260905-01 (coda_lavori_tipi → dbops.processi).
+#
+# ℹ️ E' lo STESSO CSV, con TUTTE le colonne: un loader parziale genererebbe un
+#   INSERT monco nel ramo «riga assente».
+#
+# ⚠️ La sede della matrice fiscale e' e resta il CSV
+#   80_data/sql/config/stati_doc_fiscale_transizioni.csv: nessun UPDATE SQL
+#   nuovo su questa tabella (linee-guida-sql §11.2).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261101-07-riancora-mirror-stati-doc-fiscale-transizioni-mctit.yaml
+
+  - changeSet:
+      id: 20261101-07-riancora-mirror-stati-doc-fiscale-transizioni
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Ri-ancora il mirror CSV di config.stati_doc_fiscale_transizioni dopo il
+        seme di config.azioni_processo (20260228-18): la colonna
+        azione_processo_codename porta una FK dura verso quel catalogo e
+        l'ancora di febbraio (20260210-01, ora spenta) girava prima del
+        bersaglio su un database ricostruito da zero. Stesso CSV, tutte le colonne.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                { schemaName: config, tableName: stati_doc_fiscale_transizioni }
+            - tableExists:
+                { schemaName: config, tableName: azioni_processo }
+            - columnExists:
+                { schemaName: config, tableName: stati_doc_fiscale_transizioni, columnName: azione_processo_codename }
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/stati_doc_fiscale_transizioni.csv
+            tableName: stati_doc_fiscale_transizioni
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            # "NULL", non "": la cella vuota sarebbe '' e la FK di
+            # azione_processo_codename la rifiuterebbe (brief-modello-documento-
+            # vendita §7.5). Nessun'altra cella del CSV e' vuota.
+            nullValue: "NULL"
+            primaryKey: "id"
+            columns:
+              - column: { name: id, type: STRING }
+              - column: { name: stato_from_id, type: STRING }
+              - column: { name: stato_to_id, type: STRING }
+              - column: { name: ammesso, type: BOOLEAN }
+              - column: { name: solo_lotto, type: BOOLEAN }
+              - column: { name: solo_fattura, type: BOOLEAN }
+              - column:
+                  name: meta
+                  type: JSON
+                  defaultValue: "{}"
+              - column: { name: data_insert, type: STRING }
+              - column: { name: user_insert, type: STRING }
+              - column:
+                  name: data_update
+                  type: STRING
+                  defaultValue: "NOW()"
+              - column: { name: user_update, type: STRING }
+              # ⭐ La colonna per cui esiste questo changeSet: qui la FK verso
+              #   config.azioni_processo e' soddisfatta, perche' il catalogo e'
+              #   stato seminato dal 20260228-18, che nella timeline sta prima.
+              - column: { name: azione_processo_codename, type: STRING }
