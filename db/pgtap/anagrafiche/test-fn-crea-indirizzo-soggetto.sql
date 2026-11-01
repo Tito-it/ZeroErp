@@ -16,8 +16,13 @@
 --   7. Errore: chiave estranea nell'oggetto (E_CAMPO_NON_AMMESSO)
 --   8. Errore: l'indirizzo non e' un oggetto (E_SCRIPT_CHIAMATA_NON_VALIDA)
 --   9. Errore: p_soggetto_id NULL
---  10. Errore: tipo_indirizzo_codice vuoto (E_TIPO_INDIRIZZO_NON_TROVATO)
+--  10. Errore: tipo_indirizzo_codice_interno vuoto (E_TIPO_INDIRIZZO_NON_TROVATO)
 --  11. Errore: tipo indirizzo inesistente (E_TIPO_INDIRIZZO_NON_TROVATO)
+--  12. Errore: la chiave ritirata tipo_indirizzo_codice (E_CAMPO_NON_AMMESSO)
+--
+-- Rev 2026-11-01 (20261101-08): il tipo per codice interno si chiama
+--   tipo_indirizzo_codice_interno (§6c); tipo_indirizzo_codice in ingresso si
+--   rifiuta, senza alias (il 12 lo fissa).
 --
 -- ⭐ Rev 2026-10-18 (20261018-96, D-4 di Tid): la madre prende l'indirizzo in
 --   jsonb, con la grammatica della gemella del ruolo (BB
@@ -65,7 +70,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 --   La finestra la riapre il file, e dice da se' cosa vuole.
 SET CONSTRAINTS ALL DEFERRED;
 
-SELECT plan(11);
+SELECT plan(12);
 
 -- =========================================================
 -- Setup
@@ -134,7 +139,7 @@ SELECT lives_ok(
     format(
       $$SELECT anagrafiche.fn_crea_indirizzo_soggetto(%L::uuid, %L::jsonb)$$,
       (SELECT soggetto_id FROM tmp_ind_sogg_ctx),
-      jsonb_build_object('tipo_indirizzo_codice', 'RES',
+      jsonb_build_object('tipo_indirizzo_codice_interno', 'RES',
                          'indirizzo_dettaglio_id', (SELECT indirizzo_dettaglio_id FROM tmp_ind_sogg_ctx))
     ),
     '3. Creazione indirizzo RESID normalizzato senza errori'
@@ -169,7 +174,7 @@ SELECT throws_matching(
     format(
       $$SELECT anagrafiche.fn_crea_indirizzo_soggetto(%L::uuid, %L::jsonb)$$,
       (SELECT soggetto_id FROM tmp_ind_sogg_ctx),
-      jsonb_build_object('tipo_indirizzo_codice', 'RES',
+      jsonb_build_object('tipo_indirizzo_codice_interno', 'RES',
                          'indirizzo_dettaglio_id', (SELECT indirizzo_dettaglio_id FROM tmp_ind_sogg_ctx))
     ),
     'uq_indirizzi_soggetti_soggetto_tipo',
@@ -183,7 +188,7 @@ SELECT lives_ok(
     format(
       $$SELECT anagrafiche.fn_crea_indirizzo_soggetto(%L::uuid, %L::jsonb)$$,
       (SELECT soggetto_id FROM tmp_ind_sogg_ctx),
-      jsonb_build_object('tipo_indirizzo_codice', 'DOMFISC',
+      jsonb_build_object('tipo_indirizzo_codice_interno', 'DOMFISC',
                          'indirizzo_dettaglio_id', (SELECT indirizzo_dettaglio_id FROM tmp_ind_sogg_ctx))
     ),
     '6. Creazione indirizzo DOMFISC senza errori'
@@ -196,7 +201,7 @@ SELECT throws_matching(
     format(
       $$SELECT anagrafiche.fn_crea_indirizzo_soggetto(%L::uuid, %L::jsonb)$$,
       (SELECT soggetto_id FROM tmp_ind_sogg_ctx),
-      jsonb_build_object('tipo_indirizzo_codice', 'SEDEOP',
+      jsonb_build_object('tipo_indirizzo_codice_interno', 'SEDEOP',
                          'p_indirizzo_libero', 'Via Test 1')
     ),
     'campo p_indirizzo_libero non si pu',
@@ -221,19 +226,19 @@ SELECT throws_matching(
 SELECT throws_matching(
     $$SELECT anagrafiche.fn_crea_indirizzo_soggetto(
       NULL::uuid,
-      jsonb_build_object('tipo_indirizzo_codice', 'RES', 'indirizzo_dettaglio_id', 1)) $$,
+      jsonb_build_object('tipo_indirizzo_codice_interno', 'RES', 'indirizzo_dettaglio_id', 1)) $$,
     'manca il soggetto',
     '9. Errore p_soggetto_id NULL'
   );
 
 -- =========================================================
--- 10) Errore: tipo_indirizzo_codice vuoto
+-- 10) Errore: tipo_indirizzo_codice_interno vuoto
 -- =========================================================
 SELECT throws_matching(
     format(
       $$SELECT anagrafiche.fn_crea_indirizzo_soggetto(%L::uuid, %L::jsonb)$$,
       (SELECT soggetto_id FROM tmp_ind_sogg_ctx),
-      jsonb_build_object('tipo_indirizzo_codice', '', 'indirizzo_dettaglio_id', 1)
+      jsonb_build_object('tipo_indirizzo_codice_interno', '', 'indirizzo_dettaglio_id', 1)
     ),
     'tipo di indirizzo - non esiste',
     '10. Errore tipo indirizzo codice vuoto'
@@ -246,10 +251,23 @@ SELECT throws_matching(
     format(
       $$SELECT anagrafiche.fn_crea_indirizzo_soggetto(%L::uuid, %L::jsonb)$$,
       (SELECT soggetto_id FROM tmp_ind_sogg_ctx),
-      jsonb_build_object('tipo_indirizzo_codice', 'ZZZZINESISTENTE', 'indirizzo_dettaglio_id', 1)
+      jsonb_build_object('tipo_indirizzo_codice_interno', 'ZZZZINESISTENTE', 'indirizzo_dettaglio_id', 1)
     ),
     'tipo di indirizzo ZZZZINESISTENTE non esiste',
     '11. Errore tipo indirizzo inesistente'
+  );
+
+-- =========================================================
+-- 12) Errore: la chiave ritirata tipo_indirizzo_codice (20261101-08)
+-- =========================================================
+SELECT throws_matching(
+    format(
+      $$SELECT anagrafiche.fn_crea_indirizzo_soggetto(%L::uuid, %L::jsonb)$$,
+      (SELECT soggetto_id FROM tmp_ind_sogg_ctx),
+      jsonb_build_object('tipo_indirizzo_codice', 'SEDEOP', 'indirizzo_dettaglio_id', 1)
+    ),
+    'campo tipo_indirizzo_codice non si pu',
+    '12. Errore chiave ritirata tipo_indirizzo_codice: E_CAMPO_NON_AMMESSO'
   );
 
 SELECT * FROM finish();

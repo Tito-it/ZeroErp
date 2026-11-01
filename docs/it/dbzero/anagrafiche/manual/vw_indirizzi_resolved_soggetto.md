@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Vista `anagrafiche.vw_indirizzi_resolved_soggetto`
 
+> **Ultimo aggiornamento**: 1 novembre 2026
+
 > 👀 **Vedi anche**
 >
 Approfondimenti tabelle:
@@ -75,7 +77,7 @@ Il risultato è un record **"resolved"**, semanticamente completo e coerente con
 | `soggetto_id`            | `uuid`                 | Identificativo del soggetto.                               |
 | `soggetto_ruolo_id`      | `bigint`               | Sempre NULL per questa vista.                              |
 | `tipo_indirizzo_id`      | `integer`              | Tipo indirizzo.                                            |
-| `tipo_indirizzo_codice`  | `varchar`              | Codice interno del tipo indirizzo.                         |
+| `tipo_indirizzo_codice`  | `varchar`              | Codice del tipo indirizzo (display, `ti.codice`), non il codice interno. |
 | `is_normalizzato`        | `boolean`              | TRUE se l’indirizzo è basato su `indirizzi_dettaglio`.     |
 | `indirizzo_dettaglio_id` | `bigint`               | FK al dettaglio civico, se presente.                       |
 | `indirizzo_display`      | `text`                 | Stringa pronta per UI/documenti.                           |

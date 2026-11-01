@@ -85,7 +85,7 @@ SELECT is(
 -- ============================================================
 CREATE TEMP TABLE _r3 ON COMMIT DROP AS
 SELECT anagrafiche.fn_crea_indirizzo_ruolo(
-           _f.sr_id, _el.base || jsonb_build_object('tipo_indirizzo_codice', 'POSTA')) AS id
+           _f.sr_id, _el.base || jsonb_build_object('tipo_indirizzo_codice_interno', 'POSTA')) AS id
   FROM _f, _el;
 
 SELECT is(
@@ -98,14 +98,14 @@ SELECT is(
 
 SELECT throws_ok(
     (SELECT format('SELECT anagrafiche.fn_crea_indirizzo_ruolo(%s, %L::jsonb)',
-                   _f.sr_id, _el.base || jsonb_build_object('tipo_indirizzo_codice', 'POSTA'))
+                   _f.sr_id, _el.base || jsonb_build_object('tipo_indirizzo_codice_interno', 'POSTA'))
        FROM _f, _el),
     '23505', NULL,
     '4) lo stesso tipo di nuovo: lo rifiuta uq_indirizzi_ruolo_tipo_no_istanza');
 
 CREATE TEMP TABLE _r5 ON COMMIT DROP AS
 SELECT anagrafiche.fn_crea_indirizzo_ruolo(
-           _f.sr_id, _el.base || jsonb_build_object('tipo_indirizzo_codice', 'SPED',
+           _f.sr_id, _el.base || jsonb_build_object('tipo_indirizzo_codice_interno', 'SPED',
                                                     'istanza_utility_id', _f.istanza_id)) AS id
   FROM _f, _el;
 
@@ -116,7 +116,7 @@ SELECT is(
 
 SELECT throws_like(
     (SELECT format('SELECT anagrafiche.fn_crea_indirizzo_ruolo(%s, %L::jsonb)',
-                   _f.sr_id, _el.base || jsonb_build_object('tipo_indirizzo_codice', 'POSTA',
+                   _f.sr_id, _el.base || jsonb_build_object('tipo_indirizzo_codice_interno', 'POSTA',
                                                             'postal_box', 'X'))
        FROM _f, _el),
     '%postal_box%',
@@ -124,7 +124,7 @@ SELECT throws_like(
 
 SELECT throws_like(
     (SELECT format('SELECT anagrafiche.fn_crea_indirizzo_ruolo(-1, %L::jsonb)',
-                   _el.base || jsonb_build_object('tipo_indirizzo_codice', 'POSTA'))
+                   _el.base || jsonb_build_object('tipo_indirizzo_codice_interno', 'POSTA'))
        FROM _el),
     '%-1%non esiste%',
     '7) un ruolo che non c''e'': E_SOGGETTO_RUOLO_NON_TROVATO');
@@ -135,7 +135,7 @@ SELECT throws_like(
 -- SPED il ruolo ce l'ha solo per l'istanza (test 5).
 CREATE TEMP TABLE _r8 ON COMMIT DROP AS
 SELECT anagrafiche.fn_crea_indirizzi_ruolo(
-           _f.sr_id, jsonb_build_array(_el.base || jsonb_build_object('tipo_indirizzo_codice', 'SPED'))) AS n
+           _f.sr_id, jsonb_build_array(_el.base || jsonb_build_object('tipo_indirizzo_codice_interno', 'SPED'))) AS n
   FROM _f, _el;
 
 SELECT is(
@@ -150,7 +150,7 @@ SELECT is(
 SELECT throws_like(
     (SELECT format('SELECT anagrafiche.fn_crea_indirizzi_ruolo(%s, %L::jsonb)',
                    _f.sr_id, jsonb_build_array(_el.base || jsonb_build_object(
-                                 'tipo_indirizzo_codice', 'RES', 'istanza_utility_id', _f.istanza_id)))
+                                 'tipo_indirizzo_codice_interno', 'RES', 'istanza_utility_id', _f.istanza_id)))
        FROM _f, _el),
     '%istanza_utility_id%',
     '9) l''istanza nella plurale: E_CAMPO_NON_AMMESSO, passa solo dalla singolare');
@@ -161,7 +161,7 @@ SELECT throws_like(
 SELECT is(
     (SELECT anagrafiche.fn_crea_indirizzi_soggetto(
                 _f.soggetto_id,
-                jsonb_build_array(_el.base || jsonb_build_object('tipo_indirizzo_codice', 'SEDELEG')))
+                jsonb_build_array(_el.base || jsonb_build_object('tipo_indirizzo_codice_interno', 'SEDELEG')))
        FROM _f, _el),
     0,
     '10) un tipo che il soggetto ha gia'': si salta');
@@ -178,7 +178,7 @@ CREATE TEMP TABLE _s11 ON COMMIT DROP AS
 SELECT anagrafiche.fn_crea_indirizzi_soggetto(
            _f.soggetto_id,
            jsonb_build_array(_el.base || jsonb_build_object(
-               'tipo_indirizzo_codice', 'FATT', 'indirizzo_libero', 'Via pgTAP fatture 7'))) AS n
+               'tipo_indirizzo_codice_interno', 'FATT', 'indirizzo_libero', 'Via pgTAP fatture 7'))) AS n
   FROM _f, _el;
 SET CONSTRAINTS ALL IMMEDIATE;
 
@@ -204,7 +204,7 @@ DELETE FROM anagrafiche.indirizzi_soggetti s
 CREATE TEMP TABLE _s13 ON COMMIT DROP AS
 SELECT anagrafiche.fn_crea_indirizzi_soggetto(
            _f.soggetto_id,
-           jsonb_build_array(_el.base || jsonb_build_object('tipo_indirizzo_codice', 'SPED')),
+           jsonb_build_array(_el.base || jsonb_build_object('tipo_indirizzo_codice_interno', 'SPED')),
            false) AS n
   FROM _f, _el;
 
@@ -218,13 +218,13 @@ SELECT is(
 
 -- L'obbligatorio torna, dalla singolare, prima di richiudere i differiti.
 SELECT anagrafiche.fn_crea_indirizzo_soggetto(
-           _f.soggetto_id, _el.base || jsonb_build_object('tipo_indirizzo_codice', 'SEDELEG'))
+           _f.soggetto_id, _el.base || jsonb_build_object('tipo_indirizzo_codice_interno', 'SEDELEG'))
   FROM _f, _el;
 SET CONSTRAINTS ALL IMMEDIATE;
 
 SELECT throws_like(
     (SELECT format('SELECT anagrafiche.fn_crea_indirizzi_soggetto(%L::uuid, %L::jsonb)',
-                   gen_random_uuid(), jsonb_build_array(_el.base || jsonb_build_object('tipo_indirizzo_codice', 'SPED')))
+                   gen_random_uuid(), jsonb_build_array(_el.base || jsonb_build_object('tipo_indirizzo_codice_interno', 'SPED')))
        FROM _el),
     '%non trovato%',
     '14) un soggetto che non c''e'': E_SOGGETTO_NOT_FOUND');

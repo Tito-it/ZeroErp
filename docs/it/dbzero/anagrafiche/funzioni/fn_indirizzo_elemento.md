@@ -24,7 +24,7 @@ DECLARE
     -- Le chiavi di un indirizzo: le colonne della riga, piu'
     -- quelle di una via da risolvere (fn_create_indirizzo).
     c_ammesse CONSTANT text[] := ARRAY[
-        'tipo_indirizzo_id', 'tipo_indirizzo_codice',
+        'tipo_indirizzo_id', 'tipo_indirizzo_codice_interno',
         'indirizzo_dettaglio_id', 'indirizzo_libero',
         'stato_id', 'comune_id', 'codice_postale_id',
         'administrative_area', 'locality', 'sublocality', 'postal_code',
@@ -35,7 +35,7 @@ BEGIN
     -- Scopo:
     --   Leggere un indirizzo in jsonb: un oggetto, solo chiavi
     --   ammesse, il tipo risolto (tipo_indirizzo_id, oppure
-    --   tipo_indirizzo_codice = codice interno). Ritorna
+    --   tipo_indirizzo_codice_interno = codice interno). Ritorna
     --   l'elemento con tipo_indirizzo_id e senza il codice.
     --   p_chi: la madre che chiama (per il log); p_contesto:
     --   le chiavi che la madre aggiunge al contesto dei rifiuti.
@@ -63,30 +63,30 @@ BEGIN
     END IF;
 
     v_tipo_id := (p_el ->> 'tipo_indirizzo_id')::integer;
-    IF v_tipo_id IS NULL AND NULLIF(btrim(p_el ->> 'tipo_indirizzo_codice'), '') IS NOT NULL THEN
+    IF v_tipo_id IS NULL AND NULLIF(btrim(p_el ->> 'tipo_indirizzo_codice_interno'), '') IS NOT NULL THEN
         SELECT ti.id
           INTO v_tipo_id
           FROM config.tipi_indirizzi ti
-         WHERE ti.codice_interno = upper(btrim(p_el ->> 'tipo_indirizzo_codice'));
+         WHERE ti.codice_interno = upper(btrim(p_el ->> 'tipo_indirizzo_codice_interno'));
     END IF;
 
     IF v_tipo_id IS NULL THEN
         PERFORM script.fn_log_and_raise_error(
             'anagrafiche', p_chi, 'E_TIPO_INDIRIZZO_NON_TROVATO',
             v_ctx || jsonb_build_object(
-                'campo', 'tipo_indirizzo_codice',
-                'tipo_indirizzo_codice', p_el ->> 'tipo_indirizzo_codice'),
+                'campo', 'tipo_indirizzo_codice_interno',
+                'tipo_indirizzo_codice_interno', p_el ->> 'tipo_indirizzo_codice_interno'),
             NULL::uuid,
-            COALESCE(NULLIF(btrim(p_el ->> 'tipo_indirizzo_codice'), ''), '-'));
+            COALESCE(NULLIF(btrim(p_el ->> 'tipo_indirizzo_codice_interno'), ''), '-'));
     END IF;
 
-    RETURN (p_el - 'tipo_indirizzo_codice')
+    RETURN (p_el - 'tipo_indirizzo_codice_interno')
            || jsonb_build_object('tipo_indirizzo_id', v_tipo_id);
 END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.fn_indirizzo_elemento(p_el jsonb, p_chi text, p_contesto jsonb)
-IS 'BB (2026-10-18): legge un indirizzo in jsonb per le madri degli indirizzi. Un oggetto (E_SCRIPT_CHIAMATA_NON_VALIDA), solo chiavi ammesse (E_CAMPO_NON_AMMESSO: le colonne della riga, tipo_indirizzo_codice e i campi di una via da risolvere), il tipo risolto da tipo_indirizzo_id o tipo_indirizzo_codice (codice interno; E_TIPO_INDIRIZZO_NON_TROVATO). Ritorna l''elemento con tipo_indirizzo_id e senza il codice. p_chi: la madre che chiama; p_contesto: chiavi aggiunte al contesto dei rifiuti. Non giudica completezza ne'' forma: e'' anagrafiche.trgfn_indirizzi_guard_forma_libera. Chiamanti: anagrafiche.fn_crea_indirizzi_ruolo e fn_crea_indirizzo_soggetto (una grammatica sola, D-4 di Tid, richiesta BE in brief-db-processi-accensione-per-ambiente §6.11).';
+IS 'BB (2026-10-18): legge un indirizzo in jsonb per le madri degli indirizzi. Un oggetto (E_SCRIPT_CHIAMATA_NON_VALIDA), solo chiavi ammesse (E_CAMPO_NON_AMMESSO: le colonne della riga, tipo_indirizzo_codice_interno e i campi di una via da risolvere), il tipo risolto da tipo_indirizzo_id o tipo_indirizzo_codice_interno (codice interno; E_TIPO_INDIRIZZO_NON_TROVATO). Ritorna l''elemento con tipo_indirizzo_id e senza il codice. p_chi: la madre che chiama; p_contesto: chiavi aggiunte al contesto dei rifiuti. Non giudica completezza ne'' forma: e'' anagrafiche.trgfn_indirizzi_guard_forma_libera. Chiamanti: anagrafiche.fn_crea_indirizzi_ruolo e fn_crea_indirizzo_soggetto (una grammatica sola, D-4 di Tid, richiesta BE in brief-db-processi-accensione-per-ambiente §6.11).';
 ```
 
 </div>

@@ -1,7 +1,6 @@
 # pgtap-runner: app
 db/pgtap/anagrafiche/create-soggetto-gestori.sql	ASSERZIONE
 db/pgtap/anagrafiche/test-catasto-unita-immobiliare.sql	ERRORE_FIXTURE
-db/pgtap/anagrafiche/test-contatti-soggetto-cliente.sql	ASSERZIONE
 db/pgtap/anagrafiche/test-fn-sync-auth-user-is-active-or.sql	ASSERZIONE
 db/pgtap/anagrafiche/test-identita-digitali-guard-coerenza.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-identita-digitali-unique-multi-veste.sql	ASSERZIONE

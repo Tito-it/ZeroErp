@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Vista `anagrafiche.vw_indirizzi_resolved_base`
 
+> **Ultimo aggiornamento**: 1 novembre 2026
+
 > 👀 **Vedi anche**
 >
 Approfondimenti viste:
@@ -74,7 +76,7 @@ La vista è costruita come:
 | `soggetto_ruolo_id`          | `bigint`               | Valorizzato solo se scope=RUOLO.          |
 | `istanza_utility_id`         | `bigint`               | ID istanza utility (`anagrafiche.istanze_utilities.id`). Valorizzato solo se scope=RUOLO e indirizzo specifico per istanza. NULL per scope=SOGGETTO e per indirizzi generici. |
 | `tipo_indirizzo_id`          | `integer`              | Tipo indirizzo (ID tecnico).              |
-| `tipo_indirizzo_codice`      | `varchar`              | Codice interno del tipo indirizzo.        |
+| `tipo_indirizzo_codice`      | `varchar`              | Codice del tipo indirizzo (display, `ti.codice`); il codice interno è `tipo_indirizzo_codice_interno`. |
 | `tipo_indirizzo_descrizione` | `text`                 | Descrizione del tipo indirizzo.           |
 | `is_normalizzato`            | `boolean`              | TRUE se basato su `indirizzi_dettaglio`.  |
 | `indirizzo_dettaglio_id`     | `bigint`               | FK al dettaglio civico.                   |

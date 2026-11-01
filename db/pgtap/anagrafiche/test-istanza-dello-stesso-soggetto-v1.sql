@@ -152,7 +152,7 @@ SELECT is(
 SELECT is(
     (SELECT pg_temp.esito(format(
          'SELECT anagrafiche.fn_crea_indirizzo_ruolo(%s, %L::jsonb)',
-         f.sr_a, e.base || jsonb_build_object('tipo_indirizzo_codice', 'SPED',
+         f.sr_a, e.base || jsonb_build_object('tipo_indirizzo_codice_interno', 'SPED',
                                               'istanza_utility_id', f.ist_b)))
        FROM _f f, _el e),
     'E_ISTANZA_ALTRO_SOGGETTO/istanza_utility_id',
@@ -160,7 +160,7 @@ SELECT is(
 
 CREATE TEMP TABLE _ind ON COMMIT DROP AS
 SELECT anagrafiche.fn_crea_indirizzo_ruolo(
-           f.sr_a, e.base || jsonb_build_object('tipo_indirizzo_codice', 'SPED',
+           f.sr_a, e.base || jsonb_build_object('tipo_indirizzo_codice_interno', 'SPED',
                                                 'istanza_utility_id', f.ist_a)) AS id
   FROM _f f, _el e;
 
@@ -172,7 +172,7 @@ SELECT is(
 SELECT is(
     (SELECT pg_temp.esito(format(
          'SELECT anagrafiche.fn_crea_indirizzo_ruolo(%s, %L::jsonb)',
-         f.sr_a, e.base || jsonb_build_object('tipo_indirizzo_codice', 'POSTA')))
+         f.sr_a, e.base || jsonb_build_object('tipo_indirizzo_codice_interno', 'POSTA')))
        FROM _f f, _el e),
     'ok',
     '6) indirizzo del ruolo di A senza istanza: passa');

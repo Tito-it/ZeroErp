@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_indirizzo_elemento()`
 
+> **Ultimo aggiornamento**: 1 novembre 2026
+
 > 👀 **Vedi anche**
 >
 [anagrafiche.fn_indirizzo_elemento_dettaglio](/dbzero/anagrafiche/manual/fn_indirizzo_elemento_dettaglio)
@@ -19,7 +21,7 @@ Controlla tre cose e ritorna l'elemento con `tipo_indirizzo_id` risolto:
 | --- | --- |
 | è un oggetto | `E_SCRIPT_CHIAMATA_NON_VALIDA` |
 | ha solo chiavi di un indirizzo | `E_CAMPO_NON_AMMESSO`, col nome della chiave |
-| il tipo esiste (`tipo_indirizzo_id`, oppure `tipo_indirizzo_codice` = codice interno) | `E_TIPO_INDIRIZZO_NON_TROVATO` |
+| il tipo esiste (`tipo_indirizzo_id`, oppure `tipo_indirizzo_codice_interno`) | `E_TIPO_INDIRIZZO_NON_TROVATO` |
 
 Le chiavi ammesse sono le colonne della riga (`indirizzo_libero`, `stato_id`, `comune_id`,
 `codice_postale_id`, `locality`, `postal_code`, `administrative_area`, `sublocality`,
