@@ -77,9 +77,6 @@ class RequestLogMiddlewareTests(TestCase):
         )
         self._mock_settings = patcher.start()
         self._mock_settings.REQUEST_LOG_ENABLED = True
-        self._mock_settings.REQUEST_LOG_EXCLUDE_PATHS = (
-            "/health", "/api/docs/", "/api/schema/", "/static/", "/media/",
-        )
         self.addCleanup(patcher.stop)
 
     # Scopo: Verifica che una request API venga loggata con INSERT.

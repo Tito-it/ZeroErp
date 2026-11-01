@@ -72,7 +72,7 @@ Risponde alle domande:
 ### Ruolo operativo
 
 1. Il middleware `RequestLogMiddleware` inserisce un record per ogni request `/api/*`.
-2. Path esclusi (health, docs, static) sono configurabili via `DJANGO_REQUEST_LOG_EXCLUDE_PATHS`.
+2. I percorsi tecnici (health, docs, schema, static, media) non si registrano: elenco nel BB backend `apps/core/services/percorsi_tecnici.py`, non configurabile.
 3. Il logging e` disattivabile via `DJANGO_REQUEST_LOG_ENABLED` (default: attivo).
 4. Il job di pulizia schedulato elimina i record oltre la retention configurata.
 5. L'API di consultazione (fase 2, solo ADMIN) espone i dati con filtri user/data/path/status.
