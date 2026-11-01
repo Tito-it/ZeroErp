@@ -1,0 +1,97 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# magazzino.fn_get_magazzino_note diventa un involucro di script.fn_get_note,
+#   come acquisti.fn_get_acquisti_note e vendite.fn_get_vendite_note.
+#
+# -- PERCHE' ---------------------------------------------------------------------
+#   Era una copia della logica del lettore generico (filtri, ordinamento),
+#   scritta a parte perche' magazzino.note portava stile e lingua come testo.
+#   Dal 20261101-17 la tabella ha la forma delle altre note (id_stile,
+#   id_lingua): la copia si ritira nello stesso giro (regola del 2) e il
+#   lettore e' uno solo. Il vecchio corpo nominava n.stile e n.lingua, che dal
+#   -17 non esistono piu': senza questo changeSet la funzione fallirebbe alla
+#   prima chiamata.
+#
+#   DROP + CREATE: cambia il RETURNS TABLE (target_tipo, anchor_tipo e posizione
+#   passano da varchar a text, stile e lingua da magazzino.note ai vocabolari),
+#   cioe' la stessa dichiarazione delle gemelle (20261010-35). Nessuna vista e
+#   nessuna funzione dipende da lei (pg_depend, verificato il 2026-11-01); il
+#   GRANT all'applicazione si rimette qui, come per le gemelle.
+#
+#   Il lettore comune, script.fn_get_note, falliva a ogni chiamata (varchar
+#   nelle tabelle contro il text dichiarato): lo ripara il 20261101-18, che
+#   quindi viene prima.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/magazzino/20261101-19-update-fn-get-magazzino-note-involucro-mctit.yaml
+
+  - changeSet:
+      id: 20261101-19-update-fn-get-magazzino-note-involucro
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        magazzino.fn_get_magazzino_note: involucro di script.fn_get_note, come le gemelle di vendite
+        e acquisti; la copia del lettore generico si ritira.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION magazzino.fn_get_magazzino_note(text, bigint, bigint, boolean, boolean, boolean);
+
+              CREATE OR REPLACE FUNCTION magazzino.fn_get_magazzino_note(
+                -- text e non %TYPE: target_tipo e' varchar nelle tabelle, e ancorarlo
+                -- cambierebbe l'identita' della funzione (overload). I tre booleani sono
+                -- interruttori del chiamante, senza colonna.
+                _target_tipo      text,
+                _target_id        magazzino.note.target_id%TYPE,
+                _target_riga_id   magazzino.note.target_riga_id%TYPE DEFAULT NULL,
+                _include_doc      boolean DEFAULT true,
+                _include_righe    boolean DEFAULT true,
+                _only_visible     boolean DEFAULT true
+              )
+              RETURNS TABLE (
+                -- Tipi espliciti: sono quelli di script.fn_get_note, che legge una tabella
+                -- polimorfa (regclass). Si ancorano i due valori che arrivano da un
+                -- vocabolario: stile e lingua.
+                target_tipo     text,
+                target_id       bigint,
+                target_riga_id  bigint,
+                anchor_tipo     text,
+                posizione       text,
+                seq             integer,
+                testo           text,
+                testo_md        text,
+                stile           config.note_stili.codice%TYPE,
+                lingua          config.lingue.codice_iso%TYPE,
+                visibile        boolean,
+                solo_stampa     boolean,
+                meta            jsonb,
+                data_insert     timestamptz,
+                user_insert     text,
+                data_update     timestamptz,
+                user_update     text
+              )
+              LANGUAGE sql
+              STABLE
+              AS $$
+                SELECT * FROM script.fn_get_note('magazzino.note'::regclass,
+                                                 _target_tipo, _target_id, _target_riga_id,
+                                                 _include_doc, _include_righe, _only_visible);
+              $$;
+
+              COMMENT ON FUNCTION magazzino.fn_get_magazzino_note(text, magazzino.note.target_id%TYPE, magazzino.note.target_riga_id%TYPE, boolean, boolean, boolean) IS
+                'Wrapper su script.fn_get_note per la tabella magazzino.note.';
+              GRANT EXECUTE ON FUNCTION magazzino.fn_get_magazzino_note(text, magazzino.note.target_id%TYPE, magazzino.note.target_riga_id%TYPE, boolean, boolean, boolean) TO zeroerp_app;
+      rollback:
+        - sql:
+            sql: >
+              SELECT 1; -- la versione precedente e' in 20261010-35

@@ -103,6 +103,7 @@ DECLARE
     v_sinv config.sorgenti.id%TYPE;
     r _w%ROWTYPE;
     v_mag2 magazzino.magazzini.id%TYPE;
+    v_stile config.note_stili.id%TYPE;
 BEGIN
     -- L'indirizzo si FABBRICA (dato di macchina: zero righe su un DB da zero);
     -- i vocabolari sotto sono seed di catalogo, presenti per contratto.
@@ -112,8 +113,10 @@ BEGIN
     SELECT s.id INTO v_sta FROM config.stati_assets s WHERE s.attivo ORDER BY s.id LIMIT 1;
     SELECT o.id INTO v_own FROM config.assets_ownership o WHERE o.attivo ORDER BY o.id LIMIT 1;
     SELECT e.id INTO v_tev FROM config.tipi_evento_assets e WHERE e.attivo ORDER BY e.id LIMIT 1;
-    IF v_art IS NULL OR v_tubi IS NULL OR v_sta IS NULL OR v_own IS NULL OR v_tev IS NULL THEN
-        RAISE EXCEPTION 'fixture: manca un vocabolario di seed (articolo, tipo ubicazione, stato asset, ownership, tipo evento)';
+    -- Lo stile della nota e' obbligatorio e senza default (20261101-17, come nelle altre note).
+    SELECT s.id INTO v_stile FROM config.note_stili s WHERE s.codice_interno = 'NORMALE';
+    IF v_art IS NULL OR v_tubi IS NULL OR v_sta IS NULL OR v_own IS NULL OR v_tev IS NULL OR v_stile IS NULL THEN
+        RAISE EXCEPTION 'fixture: manca un vocabolario di seed (articolo, tipo ubicazione, stato asset, ownership, tipo evento, stile nota)';
     END IF;
     SELECT id INTO v_cinv FROM magazzino.causali WHERE codice_interno = 'INV_INIZIALE';
     SELECT id INTO v_cout FROM magazzino.causali WHERE codice_interno = 'SCARICO_VEN';
@@ -140,16 +143,16 @@ BEGIN
         INSERT INTO magazzino.eventi_assets (asset_id, tipo_evento_id, magazzino_id_from) VALUES (r.asset, v_tev, r.mag) RETURNING id INTO r.evento;
 
         -- Una nota per partizione: nelle _riga target_id e' la TESTATA.
-        INSERT INTO magazzino.note (target_tipo, target_id, target_riga_id, anchor_tipo, posizione, testo) VALUES
-            ('ASSET',              r.asset,  NULL,       'DOCUMENTO', 'FOOTER', 'n ' || m.lato),
-            ('EVENTO_ASSET',       r.evento, NULL,       'DOCUMENTO', 'FOOTER', 'n ' || m.lato),
-            ('INVENTARIO',         r.inv,    NULL,       'DOCUMENTO', 'FOOTER', 'n ' || m.lato),
-            ('INVENTARIO_RIGA',    r.inv,    r.inv_riga, 'RIGA',      'AFTER',  'n ' || m.lato),
-            ('MOVIMENTO',          r.mov,    NULL,       'DOCUMENTO', 'FOOTER', 'n ' || m.lato),
-            ('RETTIFICA',          r.ret,    NULL,       'DOCUMENTO', 'FOOTER', 'n ' || m.lato),
-            ('RETTIFICA_RIGA',     r.ret,    r.ret_riga, 'RIGA',      'AFTER',  'n ' || m.lato),
-            ('TRASFERIMENTO',      r.tra,    NULL,       'DOCUMENTO', 'FOOTER', 'n ' || m.lato),
-            ('TRASFERIMENTO_RIGA', r.tra,    r.tra_riga, 'RIGA',      'AFTER',  'n ' || m.lato);
+        INSERT INTO magazzino.note (target_tipo, target_id, target_riga_id, anchor_tipo, posizione, testo, id_stile) VALUES
+            ('ASSET',              r.asset,  NULL,       'DOCUMENTO', 'FOOTER', 'n ' || m.lato, v_stile),
+            ('EVENTO_ASSET',       r.evento, NULL,       'DOCUMENTO', 'FOOTER', 'n ' || m.lato, v_stile),
+            ('INVENTARIO',         r.inv,    NULL,       'DOCUMENTO', 'FOOTER', 'n ' || m.lato, v_stile),
+            ('INVENTARIO_RIGA',    r.inv,    r.inv_riga, 'RIGA',      'AFTER',  'n ' || m.lato, v_stile),
+            ('MOVIMENTO',          r.mov,    NULL,       'DOCUMENTO', 'FOOTER', 'n ' || m.lato, v_stile),
+            ('RETTIFICA',          r.ret,    NULL,       'DOCUMENTO', 'FOOTER', 'n ' || m.lato, v_stile),
+            ('RETTIFICA_RIGA',     r.ret,    r.ret_riga, 'RIGA',      'AFTER',  'n ' || m.lato, v_stile),
+            ('TRASFERIMENTO',      r.tra,    NULL,       'DOCUMENTO', 'FOOTER', 'n ' || m.lato, v_stile),
+            ('TRASFERIMENTO_RIGA', r.tra,    r.tra_riga, 'RIGA',      'AFTER',  'n ' || m.lato, v_stile);
 
         INSERT INTO _w SELECT r.*;
     END LOOP;

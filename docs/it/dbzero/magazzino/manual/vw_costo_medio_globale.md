@@ -1,43 +1,61 @@
 ## 📘 Documentazione Concettuale – Vista `magazzino.vw_costo_medio_globale`
 
+> **Ultimo aggiornamento**: 1 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento tabelle:
-> • [magazzino.movimenti](/dbzero/magazzino/tabelle/movimenti) — il registro
-> • [magazzino.valore_giacenza](/dbzero/magazzino/tabelle/valore_giacenza) — la copia del valore
+> Approfondimento tabelle:
 >
-Le cinque viste: [vw_giacenza](/dbzero/magazzino/views/vw_giacenza) · [vw_giacenza_ubicazione](/dbzero/magazzino/views/vw_giacenza_ubicazione) · [vw_costo_medio](/dbzero/magazzino/views/vw_costo_medio) · [vw_costo_medio_globale](/dbzero/magazzino/views/vw_costo_medio_globale) · [vw_giacenza_valorizzata](/dbzero/magazzino/views/vw_giacenza_valorizzata)
+> * [magazzino.valore_giacenza](/dbzero/magazzino/tabelle/valore_giacenza) — il valore di ogni magazzino
+> * [magazzino.movimenti](/dbzero/magazzino/tabelle/movimenti) — il registro, da cui viene la quantità
 >
-Guide: brief `brief-db-magazzino-lotto-1-terreno-vuoto` (§4.8)
+> Approfondimento viste:
+>
+> * [magazzino.vw_costo_medio](/dbzero/magazzino/views/vw_costo_medio) — lo stesso costo per singolo magazzino
+> * [magazzino.vw_giacenza](/dbzero/magazzino/views/vw_giacenza) — la quantità per magazzino che qui si somma
+> * [magazzino.vw_disponibilita_articolo](/dbzero/magazzino/views/vw_disponibilita_articolo) — lo stesso «globale = visibile», per la disponibilità
 
 ---
-### 🎯 Scopo Principale
 
-(rev 2026-09-15 — Lotto 1 del magazzino)
+### 🎯 Scopo Principale
 
 **Il costo medio di un articolo su tutti i magazzini**: somma dei valori diviso somma delle
 quantità, con la quantità dal registro e il valore dalla copia. È una media **ponderata**,
-non la media delle medie — pesa un deposito con mille pezzi più di uno con tre.
+non la media delle medie: un deposito con mille pezzi pesa più di uno con tre.
 
-⭐ «Tutti i magazzini» significa **tutti quelli che chi interroga vede**: la vista è
-`security_invoker`, quindi per un operatore è il costo medio dell'articolo sui magazzini del
-proprio emittente. È la RLS a decidere il perimetro, non un filtro scritto qui.
+---
 
-Le stesse avvertenze della vista per magazzino: `NULL` a quantità **zero o negativa** (dal
-18-09, Lotto 2: la stessa regola di [vw_costo_medio](/dbzero/magazzino/views/vw_costo_medio),
-con `consente_stock_negativo` una somma può scendere sotto zero), e un valore anomalo su un
-singolo deposito qui si diluisce — per trovarlo si guarda la vista per magazzino.
+### ⭐ «Tutti i magazzini» vuol dire quelli che chi interroga vede
 
-### Legge con gli occhi di chi interroga
+La vista è `security_invoker`: per un operatore è il costo medio dell'articolo sui magazzini
+del **proprio emittente**. È la row level security a decidere il perimetro, non un filtro
+scritto qui. Meccanismo comune:
+[Linee guida SQL — sezione 10 RLS](/linee-guida-sql#10-row-level-security-rls).
 
-La vista è `security_invoker`: la RLS del registro e dei magazzini passa attraverso, e un
-operatore vede i magazzini del **proprio emittente**. ⚠️ Fino al 14-09 nessuna delle viste
-di magazzino lo era. Meccanismo comune: [Linee guida SQL — sezione 10 RLS](/linee-guida-sql#10-row-level-security-rls).
+---
 
-### Storia
+### ⚠️ Le stesse avvertenze della vista per magazzino
 
-* 2026-09-15 — nasce con il Lotto 1.
-* 2026-09-18 — `NULL` anche a quantità negativa (`20260918-17`, Lotto 2).
+* Il costo è vuoto (`NULL`) quando la quantità totale è **zero o negativa**, la stessa regola
+  di [vw_costo_medio](/dbzero/magazzino/views/vw_costo_medio): con una causale che ammette lo
+  stock negativo una somma può scendere sotto zero.
+* Un valore anomalo su un singolo deposito qui si diluisce: per trovarlo si guarda la vista
+  per magazzino.
+
+---
+
+### Test
+
+* `db/pgtap/magazzino/test-valore-giacenza-forma-v1.sql` — la vista somma quantità e valori
+  sui magazzini visibili dell'articolo; è `security_invoker`.
+
+---
+
+### Note di migrazione
+
+* 2026-09-15 — nasce con il Lotto 1 (`brief-db-magazzino-lotto-1-terreno-vuoto`).
+* 2026-09-18 — con il Lotto 2 (`brief-db-magazzino-lotto-2-motore`) il costo è vuoto anche a
+  quantità negativa, non solo a zero.
 
 ---
 

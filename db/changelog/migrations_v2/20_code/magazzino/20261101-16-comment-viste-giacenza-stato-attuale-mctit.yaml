@@ -1,0 +1,62 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Le sette viste di magazzino (giacenza, giacenza per ubicazione, giacenza
+# valorizzata, costo medio, costo medio globale, disponibilita', disponibilita'
+# per articolo) — solo i COMMENT. Le definizioni non cambiano (20260915-17,
+# 20260918-17 e successivi).
+#
+# -- PERCHE' ---------------------------------------------------------------------
+#   I COMMENT portavano la storia delle revisioni (rev, date, «fino al»), i
+#   nomi dei brief e le sigle delle analisi (M-1, D-L2-j, C6, 7-sexies). Il
+#   COMMENT lo legge chi interroga la vista e la doc auto-generata lo ripete:
+#   descrive la vista com'e' oggi, e la storia resta nei changeSet e nei brief.
+#   Il contenuto non cambia: escono solo i riferimenti al cantiere.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/magazzino/20261101-16-comment-viste-giacenza-stato-attuale-mctit.yaml
+
+  - changeSet:
+      id: 20261101-16-comment-viste-giacenza-stato-attuale
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Viste di giacenza, valore e disponibilita': COMMENT sullo stato attuale, senza storia ne' brief.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON VIEW magazzino.vw_giacenza IS
+                  'La GIACENZA: somma delle quantita'' del registro per articolo e magazzino. E'' corretta SENZA join alle causali perche'' la quantita'' del registro e'' gia'' firmata (segno della quantita'' = causali.segno, lo fa rispettare il guard trgfn_movimenti_guard_verso): applicare il segno qui lo applicherebbe due volte e trasformerebbe ogni uscita in un''entrata. Una sola fonte, il registro: valore_giacenza non porta quantita''. security_invoker: la RLS di movimenti passa attraverso, l''operatore vede i magazzini del suo emittente.';
+
+              COMMENT ON VIEW magazzino.vw_giacenza_ubicazione IS
+                  'La giacenza per POSIZIONE: somma delle quantita'' per articolo, magazzino e ubicazione (NULL = senza posizione, un gruppo come gli altri). Uno spostamento fra ubicazioni e'' una coppia OUT/IN sul registro con la stessa sorgente: in vw_giacenza si annulla, qui si vede. security_invoker.';
+
+              COMMENT ON VIEW magazzino.vw_giacenza_valorizzata IS
+                  'La SITUAZIONE della giacenza: quantita'' dal registro (vw_giacenza), valore dalla copia (valore_giacenza), costo medio = valore / quantita'' — con la stessa regola di vw_costo_medio (NULL se la quantita'' e'' <= 0 o senza riga di valore). Il join e'' fra due fonti, quindi una divergenza si vede: valore NULL su una giacenza con movimenti e'' un''anomalia da guardare (dbops.vw_magazzino_valore_giacenza_divergente), non un caso da nascondere. security_invoker.';
+
+              COMMENT ON VIEW magazzino.vw_costo_medio IS
+                  'Il COSTO MEDIO (un tasso) per articolo e magazzino: valore_giacenza.valore / vw_giacenza.qta. La quantita'' viene dal REGISTRO e il valore dalla COPIA ricostruibile: due fonti, non una letta due volte. ⭐ NULL quando la quantita'' e'' <= 0 — non solo a zero: con consente_stock_negativo la giacenza puo'' essere negativa e il rapporto non e'' un costo — oppure senza riga di valore. E'' la SEDE UNICA della «media corrente»: la primitiva magazzino.fn_scrivi_movimento la legge dentro il lock per valorizzare ogni uscita e le entrate senza costo. security_invoker.';
+
+              COMMENT ON VIEW magazzino.vw_costo_medio_globale IS
+                  'Il costo medio di un articolo su TUTTI i magazzini VISIBILI a chi interroga: «globale» = i magazzini dell''emittente in sessione, ed e'' la RLS di magazzini (via movimenti e valore_giacenza) a decidere il perimetro, non un filtro scritto qui. qta_tot dal registro, valore_tot dalla copia; stessa regola di vw_costo_medio (NULL se la quantita'' totale e'' <= 0). security_invoker.';
+
+              COMMENT ON VIEW magazzino.vw_disponibilita IS
+                  'La DISPONIBILITA'' per articolo e magazzino, la formula in colonne: giacenza (vw_giacenza, il registro), bloccata (somma FIRMATA degli attesi APERTA in USCITA: negativa — un atteso in entrata e'' merce in arrivo, non un blocco, e qui non si conta), disponibile = giacenza + bloccata (la somma, mai «meno»), n_blocchi. Lo stesso filtro di script.fn_check_disponibilita_uscita, che pero'' esclude i blocchi di chi chiede: qui si contano tutti. Un articolo con blocchi e senza movimenti compare (giacenza 0, disponibile negativo). Niente impegnata / potenziale / in_arrivo finche'' non c''e'' chi le riempie. Il drill-down dei blocchi sono le righe di movimenti_attesi APERTA. security_invoker: il perimetro e'' la RLS via magazzino.';
+
+              COMMENT ON VIEW magazzino.vw_disponibilita_articolo IS
+                  'La disponibilita'' di un articolo su TUTTI i magazzini VISIBILI a chi interroga: dentro l''emittente attivo e'' tutto, ed e'' la RLS di movimenti e attesi (via magazzino) a decidere il perimetro, non un filtro scritto qui (come vw_costo_medio_globale). giacenza, bloccata, disponibile sommate da vw_disponibilita; n_magazzini = quanti ne concorrono. security_invoker.';
+      rollback:
+        - sql:
+            sql: >
+              SELECT 1; -- i COMMENT precedenti sono nei changeSet delle viste (20260915-17, 20260918-17 e successivi)
