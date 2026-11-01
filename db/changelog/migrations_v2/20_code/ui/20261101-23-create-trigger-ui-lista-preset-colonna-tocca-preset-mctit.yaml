@@ -1,0 +1,65 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL TRIGGER DELLE COLONNE SU ui.lista_preset_colonna
+#   Richiesta del team BE/FE «la preferenza di lista per chiave», punto 2.
+#
+#   AFTER INSERT OR UPDATE OR DELETE, per riga, fase z10 (effetto a valle):
+#   una colonna del preset aggiunta, tolta o cambiata (ordine, larghezza,
+#   visibile, fissata) sposta data_update di ui.lista_preset
+#   (ui.trgfn_preset_riga_tocca_preset, 20261101-21). Una riscrittura uguale
+#   del seed (20260507-09) non tocca niente.
+#   ⚠️ Seed gia' scritti che passano di qui da zero: 20260507-09 (le colonne
+#   dei preset) e 20261006-03 (toglie la colonna azioni dai preset operatori).
+#   Toccano la data di preset appena nati, su un database senza preferenze.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/ui/20261101-23-create-trigger-ui-lista-preset-colonna-tocca-preset-mctit.yaml
+
+  - changeSet:
+      id: 20261101-23-create-trigger-ui-lista-preset-colonna-tocca-preset
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Trigger trg_ui_lista_preset_colonna_z10_tocca_preset_ins_upd_dlt (AFTER INSERT OR UPDATE OR
+        DELETE): una colonna del preset aggiunta, tolta o cambiata sposta data_update di ui.lista_preset.
+        Richiesta BE/FE «preferenza di lista per chiave» §2.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_proc p
+                    JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'ui' AND p.proname = 'trgfn_preset_riga_tocca_preset';
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_trigger t
+                   WHERE t.tgrelid = 'ui.lista_preset_colonna'::regclass
+                     AND t.tgname = 'trg_ui_lista_preset_colonna_z10_tocca_preset_ins_upd_dlt';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_ui_lista_preset_colonna_z10_tocca_preset_ins_upd_dlt
+                  AFTER INSERT OR UPDATE OR DELETE ON ui.lista_preset_colonna
+                  FOR EACH ROW
+                  EXECUTE FUNCTION ui.trgfn_preset_riga_tocca_preset('ui.lista_preset');
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ui_lista_preset_colonna_z10_tocca_preset_ins_upd_dlt
+                  ON ui.lista_preset_colonna;

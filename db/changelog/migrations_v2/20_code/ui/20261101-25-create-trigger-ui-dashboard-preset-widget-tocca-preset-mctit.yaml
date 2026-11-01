@@ -1,0 +1,62 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL TRIGGER DEI WIDGET SU ui.dashboard_preset_widget
+#   Richiesta del team BE/FE «la preferenza di lista per chiave», punto 4.
+#
+#   AFTER INSERT OR UPDATE OR DELETE, per riga, fase z10: un widget del
+#   preset aggiunto, tolto o cambiato (ordine, visibile) sposta data_update di
+#   ui.dashboard_preset (ui.trgfn_preset_riga_tocca_preset, 20261101-21).
+#   Seed gia' scritto che passa di qui da zero: 20260722-05 (i widget del
+#   preset home_default), su un database senza preferenze.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/ui/20261101-25-create-trigger-ui-dashboard-preset-widget-tocca-preset-mctit.yaml
+
+  - changeSet:
+      id: 20261101-25-create-trigger-ui-dashboard-preset-widget-tocca-preset
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Trigger trg_ui_dashboard_preset_widget_z10_tocca_preset_ins_upd_dlt (AFTER INSERT OR UPDATE OR
+        DELETE): un widget del preset aggiunto, tolto o cambiato sposta data_update di ui.dashboard_preset.
+        Richiesta BE/FE «preferenza di lista per chiave» §4.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_proc p
+                    JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'ui' AND p.proname = 'trgfn_preset_riga_tocca_preset';
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_trigger t
+                   WHERE t.tgrelid = 'ui.dashboard_preset_widget'::regclass
+                     AND t.tgname = 'trg_ui_dashboard_preset_widget_z10_tocca_preset_ins_upd_dlt';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_ui_dashboard_preset_widget_z10_tocca_preset_ins_upd_dlt
+                  AFTER INSERT OR UPDATE OR DELETE ON ui.dashboard_preset_widget
+                  FOR EACH ROW
+                  EXECUTE FUNCTION ui.trgfn_preset_riga_tocca_preset('ui.dashboard_preset');
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ui_dashboard_preset_widget_z10_tocca_preset_ins_upd_dlt
+                  ON ui.dashboard_preset_widget;
