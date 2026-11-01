@@ -71,7 +71,9 @@ weasyprint>=68,<71
 # Gia' installata come dipendenza di WeasyPrint: dichiarata qui dal 2026-10-01
 # (ok Tid) perche' ora il codice la importa direttamente, e una dipendenza
 # usata ma non dichiarata sparirebbe in silenzio al primo cambio di WeasyPrint.
-pillow>=12,<13
+# ⚠️ Dal 2026-11-01 (ok Tid) >=13: la 12.x ha 39 vulnerabilita' note (pip-audit),
+#    tutte chiuse in 13.0.0. WeasyPrint chiede solo Pillow>=9.1.0.
+pillow>=13,<14
 
 # Template engine documenti (Jinja2 stile, Decisione 4 sviluppo-documenti).
 # StrictUndefined per fail-fast su variabili context mancanti nel render.

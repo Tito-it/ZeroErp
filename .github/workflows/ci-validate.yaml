@@ -167,10 +167,22 @@ jobs:
         #    serve risolverli in un venv temporaneo (che costerebbe un install).
         # ⚠️ Un CVE pubblicato su un pin che NON cambia non arriva qui: il
         #    workflow gira solo sui cambi. Quel caso resta a Dependabot.
+        # ⛔ UNA CHIAMATA PER FILE (2026-11-01). I due file sono due AMBIENTI
+        #    diversi (venv del backend da pip-compile, venv degli strumenti da
+        #    freeze): un pacchetto puo' starci a due versioni, ed e' legittimo.
+        #    Con i due `-r` in una sola chiamata pip-audit li fonde in un solo
+        #    insieme di requisiti e si ferma («duplicate requirements»): e' caduto
+        #    su `pillow` 12.3.0 (backend, `<13` per WeasyPrint) contro 13.0.0
+        #    (root), un errore del cancello e non una vulnerabilita'.
+        #    ⚠️ Si audita anche il secondo se il primo e' rosso: un rosso non
+        #    deve nascondere l'altro.
         run: |
-          pip-audit --no-deps --disable-pip \
-            -r backend/requirements.txt \
-            -r requirements.txt
+          rc=0
+          for req in backend/requirements.txt requirements.txt; do
+            echo "== pip-audit $req"
+            pip-audit --no-deps --disable-pip -r "$req" || rc=1
+          done
+          exit $rc
 
       - name: Cache pre-commit
         uses: actions/cache@v5
