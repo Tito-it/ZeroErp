@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1155, di cui 124 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1157, di cui 124 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -1331,6 +1331,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # Il quarto motivo, arrivato col consolidamento §7.3 del brief: era la · regola che viveva DENTRO `fn_cambia_stato_preventivo` (col codice senza · prefisso `E_`, quindi invisibile all'estrattore e degradato a · E_DATABASE), ora assorbita in `fn_check_preventivo_annullabile` come · motivo a se'. Piu' preciso del fratello E_PREV_GIA_IN_COMMESSA: quello · dice che esiste un collegamento a commessa, questo che a valle esiste · gia' una FATTURA — e una fattura senza l'origine che la giustifica non · si crea annullando il preventivo, si corregge dal lato fatturazione.
     "E_PREV_ANNULLA_COMMESSA_EMESSA": "CONFLITTO_STATO",
     "E_PREV_COMPONENTE_NOT_FOUND": "NON_TROVATO",
+    # Motivo 4 di script.fn_check_preventivo_emettibile (20261031-67), sollevato dalla Regola 2 di vendite.trgfn_preventivi_guard_transizione entrando nello stato di emissione e mostrato dalla capability su «Emetti»: validita_al < script.fn_data_operativa() (validita_al e' l'ultimo giorno valido; NULL non scade). DATO_ERRATO e non CONFLITTO_STATO: in bozza la data si corregge sullo stesso documento; campo validita_al nel contesto (dal dettaglio del motivo). Gemello di E_PREV_VALIDITA_SCADUTA, che vale per l'accettazione (lì la data e' ferma e la strada e' la revisione). VARIADIC: il numero del preventivo e la data di fine validita'. Brief: brief-db-scadenza-preventivi (E-4 di Tid, 2026-10-31).
+    "E_PREV_EMISSIONE_VALIDITA_SCADUTA": "DATO_ERRATO",
     # Guard emittente<->BA: valore sbagliato in un campo scelto dall'operatore, non conflitto di stato. Da CONFLITTO_STATO a DATO_ERRATO il 2026-08-09 (rilievo BE). Ragioni: brief-db-be-classe-codici-errore.md §8.6. · Ritirato il 2026-10-10 (brief-db-guard-emittente-ba-unico, D-1 di Tid): i sei documenti sollevano E_DOC_EMITTENTE_BA_INCOERENTE dal BB script.trgfn_doc_guard_emittente_ba. Resta a catalogo per i messaggi gia' scritti nel log.
     # ⚠️ RITIRATO il 2026-10-10
     "E_PREV_EMITTENTE_BA_INCOERENTE": "DATO_ERRATO",
@@ -1369,6 +1371,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_PREV_TRANSIZIONE_NON_AMMESSA": "CONFLITTO_STATO",
     "E_PREV_UTILITY_ISTANZA_INCOERENTE": "CONFLITTO_STATO",
     "E_PREV_VALIDAZIONE": "DATO_ERRATO",
+    # Motivo 1 di script.fn_check_preventivo_accettabile (20261031-62), sollevato dalla Regola 3 di vendite.trgfn_preventivi_guard_transizione entrando in ACCETTATO (20261031-63) e mostrato dalla capability su «Accetta»: validita_al < script.fn_data_operativa() (validita_al e' l'ultimo giorno valido; NULL non scade). CONFLITTO_STATO e non DATO_ERRATO: il preventivo puo' essere giusto, e' il tempo a non ammettere l'accettazione; nessun campo nel contesto (validita_al fuori bozza non si corregge, la strada e' la revisione). VARIADIC: il numero del preventivo e la data di fine validita'. Brief: brief-db-scadenza-preventivi (E-2 di Tid, 2026-10-31).
+    "E_PREV_VALIDITA_SCADUTA": "CONFLITTO_STATO",
     "E_PREZZO_LISTINO_AMBIGUO": "CONFLITTO_STATO",
     # Ritirato il 2026-08-19. L'unico ramo che lo sollevava — «BA senza categoria» nel resolver prezzi — e' irraggiungibile da quando anagrafiche.billing_account.categoria_cliente_id e' NOT NULL (2026-04-14 · changeSet 20260414-03) ed e' stato rimosso dal changeSet 20260819-10, PRIMA di questa data come impone il controllo (D) del guardrail codici errore. · Il BE ha verificato di non produrlo: le righe di dbops.error_log a suo nome erano della loro suite di test. · Il ritiro chiude il NUOVO uso non la lettura del vecchio: il messaggio resta risolvibile e le righe di log storiche restano agganciate.
     # ⚠️ RITIRATO il 2026-08-19

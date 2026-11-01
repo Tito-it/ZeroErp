@@ -114,7 +114,7 @@ grammatica, i profili su dbdev che non hanno `emetti_offerta`/`emetti_contratto`
 `emetti_ordine`, la scadenza dei preventivi (brief nuovo, E-1…E-3 a Tid). Vedi
 [brief-modello-documento-vendita.md](work-done/brief-modello-documento-vendita.md),
 [brief-db-documento-nasce-nello-stato-iniziale.md](work-done/brief-db-documento-nasce-nello-stato-iniziale.md),
-[brief-db-scadenza-preventivi.md](work-in-progress/brief-db-scadenza-preventivi.md).
+[brief-db-scadenza-preventivi.md](work-done/brief-db-scadenza-preventivi.md).
 
 **Anello 3 (trasversale) — Un nome per ogni tipo di documento, e l'offerta che
 genera l'ordine.** La **grammatica unica** (18 → 25-10) dà al tipo di documento

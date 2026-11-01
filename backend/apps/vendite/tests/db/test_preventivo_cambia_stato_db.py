@@ -22,6 +22,7 @@ Indice test eseguiti:
 2) PreventivoCambiaStatoDbTests.test_accettato_si_aggiorna_senza_il_verbo — §8.7 punto 5
 3) PreventivoCambiaStatoDbTests.test_lo_stato_di_emissione_e_un_400 — M-2 dal vocabolario
 4) PreventivoCambiaStatoDbTests.test_il_secondo_emetti_e_rifiutato — §9.10
+5) PreventivoCambiaStatoDbTests.test_emetti_con_la_validita_finita_accende_il_campo — E-4
 """
 from __future__ import annotations
 
@@ -30,6 +31,7 @@ from datetime import date
 
 from django.db import DatabaseError, connection, transaction
 
+from apps.core.services.db_error_fields import diagnostica_db
 from apps.core.services.service_errors import ServiceError
 from apps.core.tests.db_e2e import apri_transazione_annullata, richiedi_db_provvisto
 from apps.vendite.services import preventivi_service
@@ -107,3 +109,29 @@ class PreventivoCambiaStatoDbTests(unittest.TestCase):
         diag = getattr(cm.exception.__cause__, "diag", None)
         self.assertEqual(getattr(diag, "constraint_name", None), "E_DOC_GIA_NELLO_STATO")
         self.assertEqual(self._stato()[0], "EMESSO")
+
+    # E-4 di brief-db-scadenza-preventivi: una bozza con la validita' gia'
+    # finita non si emette. Il rifiuto e' DATO_ERRATO e porta il campo
+    # `validita_al` nel canale strutturato: e' cio' che accende «Valido al» nel
+    # drawer (`PreventiviForm`, `campiErrati`). Il caso si costruisce: la data
+    # di ieri si scrive in bozza, dove la validita' non e' ferma (l'inizio
+    # la precede: `chk_preventivi_validita`).
+    def test_emetti_con_la_validita_finita_accende_il_campo(self) -> None:
+        with connection.cursor() as cur:
+            cur.execute(
+                "SELECT preventivo_id FROM dbops.fn_pgtap_crea_preventivo_con_righe("
+                "'BE emetti validita finita', 'DRAFT')",
+            )
+            bozza_id = int(cur.fetchone()[0])
+            cur.execute(
+                "UPDATE vendite.preventivi "
+                "   SET validita_dal = script.fn_data_operativa() - 2, "
+                "       validita_al  = script.fn_data_operativa() - 1 "
+                " WHERE id = %s",
+                [bozza_id],
+            )
+        with self.assertRaises(DatabaseError) as cm, transaction.atomic():
+            preventivi_service.emetti(bozza_id)
+        diagnostica = diagnostica_db(cm.exception)
+        self.assertEqual(diagnostica.codice, "E_PREV_EMISSIONE_VALIDITA_SCADUTA")
+        self.assertEqual(diagnostica.campo, "validita_al")
