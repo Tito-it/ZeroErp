@@ -148,8 +148,8 @@ smoke_soggetto_privato() {
                 \"telefono\": \"0123456789\"
             },
             \"indirizzi\": [
-                {\"tipo_indirizzo_codice\": \"RES\", \"indirizzo_dettaglio_id\": ${IND_DET_ID}},
-                {\"tipo_indirizzo_codice\": \"DOMFISC\", \"indirizzo_dettaglio_id\": ${IND_DET_ID}}
+                {\"tipo_indirizzo_codice_interno\": \"RES\", \"indirizzo_dettaglio_id\": ${IND_DET_ID}},
+                {\"tipo_indirizzo_codice_interno\": \"DOMFISC\", \"indirizzo_dettaglio_id\": ${IND_DET_ID}}
             ],
             \"auto_clone\": true
         }" \

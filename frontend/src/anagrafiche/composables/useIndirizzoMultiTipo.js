@@ -34,10 +34,10 @@ export function useIndirizzoMultiTipo({ baseSnapshot, baseRestore, baseReset, fo
     const primo = disponibili.find(m => m.obbligatorio) || disponibili[0] || null
     if (primo) {
       tipoAttivo.value = primo.codice
-      form.tipo_indirizzo_codice = primo.codice
+      form.tipo_indirizzo_codice_interno = primo.codice
     } else {
       tipoAttivo.value = null
-      form.tipo_indirizzo_codice = null
+      form.tipo_indirizzo_codice_interno = null
     }
   }
 
@@ -45,7 +45,7 @@ export function useIndirizzoMultiTipo({ baseSnapshot, baseRestore, baseReset, fo
   function _snapshot() {
     return {
       ...baseSnapshot(),
-      tipo_indirizzo_codice: form.tipo_indirizzo_codice,
+      tipo_indirizzo_codice_interno: form.tipo_indirizzo_codice_interno,
       isLibera: form._isLibera,
       ...campiLiberi(form),
     }
@@ -53,7 +53,7 @@ export function useIndirizzoMultiTipo({ baseSnapshot, baseRestore, baseReset, fo
 
   function _restore(snap) {
     baseRestore(snap)
-    form.tipo_indirizzo_codice = snap.tipo_indirizzo_codice ?? null
+    form.tipo_indirizzo_codice_interno = snap.tipo_indirizzo_codice_interno ?? null
     form._isLibera = snap.isLibera ?? false
     assegnaCampiLiberi(form, snap)
   }
@@ -72,7 +72,7 @@ export function useIndirizzoMultiTipo({ baseSnapshot, baseRestore, baseReset, fo
       _restore(snap)
     } else {
       baseReset()
-      form.tipo_indirizzo_codice = codice
+      form.tipo_indirizzo_codice_interno = codice
       form._isLibera = false
       assegnaCampiLiberi(form)
     }

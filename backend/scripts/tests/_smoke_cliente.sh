@@ -179,7 +179,7 @@ except Exception:
     tmp=$(mktemp)
     curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $TOKEN" \
         -H "Content-Type: application/json" \
-        -d "{\"soggetto_id\": \"${SOGG_ID}\", \"utility_id\": ${GIRO_UTILITY_ID:-null}, \"ba_categoria_cliente_id\": ${categoria:-null}, \"indirizzi\": [{\"tipo_indirizzo_codice\": \"DOMFISC\", \"indirizzo_dettaglio_id\": ${IND_DET_ID}}]}" \
+        -d "{\"soggetto_id\": \"${SOGG_ID}\", \"utility_id\": ${GIRO_UTILITY_ID:-null}, \"ba_categoria_cliente_id\": ${categoria:-null}, \"indirizzi\": [{\"tipo_indirizzo_codice_interno\": \"DOMFISC\", \"indirizzo_dettaglio_id\": ${IND_DET_ID}}]}" \
         "${BASE_URL}/api/v1/anagrafiche/clienti/" > "$tmp" 2>/dev/null
     GIRO_LAST_STATUS=$(tail -1 "$tmp")
     GIRO_LAST_BODY=$(sed '$d' "$tmp")

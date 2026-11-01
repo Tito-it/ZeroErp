@@ -64,7 +64,7 @@ class AssegnaRuoloIndirizziDbTests(unittest.TestCase):
 
         ruolo = SoggettiService().assign_ruolo(self.soggetto_id, {
             "codice_ruolo": "GESTORE",
-            "indirizzi": [{"tipo_indirizzo_codice": "SEDELEG", "indirizzo_dettaglio_id": self.dettaglio_id}],
+            "indirizzi": [{"tipo_indirizzo_codice_interno": "SEDELEG", "indirizzo_dettaglio_id": self.dettaglio_id}],
         })
         self._commit_simulato()
         with connection.cursor() as cur:

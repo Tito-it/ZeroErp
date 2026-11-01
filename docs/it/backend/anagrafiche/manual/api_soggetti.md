@@ -194,7 +194,7 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" \
       "telefono": "0212345678"
     },
     "indirizzo": {
-      "tipo_indirizzo_codice": "SEDE",
+      "tipo_indirizzo_codice_interno": "SEDE",
       "toponomastica_id": 1,
       "descrizione_via": "Garibaldi",
       "civico": 10,
@@ -228,7 +228,7 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" \
     },
     "indirizzi": [
       {
-        "tipo_indirizzo_codice": "SEDE",
+        "tipo_indirizzo_codice_interno": "SEDE",
         "toponomastica_id": 1,
         "descrizione_via": "Roma",
         "civico": 42,
@@ -594,7 +594,7 @@ curl -s -X DELETE -H "Authorization: Bearer $TOKEN" \
         "id": 1,
         "tipo_indirizzo_id": 2,
         "tipo_indirizzo_descrizione": "Sede legale",
-        "tipo_indirizzo_codice": "SEDELEG",
+        "tipo_indirizzo_codice_interno": "SEDELEG",
         "indirizzo_dettaglio_id": 100,
         "indirizzo_libero": null,
         "stato_id": null,
@@ -646,7 +646,7 @@ Crea un nuovo indirizzo associato al soggetto. Il payload supporta due modalita'
 
 | Campo | Tipo | Obbligatorio | Descrizione |
 |---|---|---|---|
-| `tipo_indirizzo_codice` | string | Si | Codice tipo indirizzo (es. `SEDE`, `SPED`, `AMMI`) |
+| `tipo_indirizzo_codice_interno` | string | Si | Codice tipo indirizzo (es. `SEDE`, `SPED`, `AMMI`) |
 | `indirizzo_dettaglio_id` | int | No | ID indirizzo dettaglio esistente |
 | `toponomastica_id` | int | No | ID tipo strada (Via, Piazza, ecc.) |
 | `descrizione_via` | string | No | Nome della via |
@@ -678,7 +678,7 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   "https://host/api/v1/anagrafiche/soggetti/a1b2c3d4-.../indirizzi/" \
   -d '{
-    "tipo_indirizzo_codice": "SPED",
+    "tipo_indirizzo_codice_interno": "SPED",
     "toponomastica_id": 1,
     "descrizione_via": "Mazzini",
     "civico": 5,
@@ -694,7 +694,7 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   "https://host/api/v1/anagrafiche/soggetti/a1b2c3d4-.../indirizzi/" \
   -d '{
-    "tipo_indirizzo_codice": "SEDE",
+    "tipo_indirizzo_codice_interno": "SEDE",
     "indirizzo_libero": "123 Main Street, New York, NY 10001",
     "stato_id": 42
   }'
@@ -743,7 +743,7 @@ curl -s -X PUT -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   "https://host/api/v1/anagrafiche/soggetti/a1b2c3d4-.../indirizzi/1/" \
   -d '{
-    "tipo_indirizzo_codice": "SEDE",
+    "tipo_indirizzo_codice_interno": "SEDE",
     "toponomastica_id": 1,
     "descrizione_via": "Verdi",
     "civico": 20,
@@ -870,7 +870,7 @@ assegnato, non viene duplicato.
 curl -s -X POST -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   "https://host/api/v1/anagrafiche/soggetti/a1b2c3d4-.../ruoli/" \
-  -d '{"codice_ruolo": "GESTORE", "indirizzi": [{"tipo_indirizzo_codice": "SEDELEG", "indirizzo_dettaglio_id": 123}]}'
+  -d '{"codice_ruolo": "GESTORE", "indirizzi": [{"tipo_indirizzo_codice_interno": "SEDELEG", "indirizzo_dettaglio_id": 123}]}'
 ```
 
 ### 9.3 Lookup ricco soggetti-ruoli (selezione contesto pratica)

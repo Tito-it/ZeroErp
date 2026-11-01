@@ -20,7 +20,7 @@ export function useIndirizzoSoggettoForm() {
   // Estendi il form reattivo di base con campi soggetto.
   // Vue 3 reactive() traccia le nuove proprieta' aggiunte dopo la creazione.
   const form = base.form
-  form.tipo_indirizzo_codice = null
+  form.tipo_indirizzo_codice_interno = null
   assegnaCampiLiberi(form)
   form._isLibera = false
 
@@ -82,7 +82,7 @@ export function useIndirizzoSoggettoForm() {
   // --- Validazione ---
   function validate() {
     const errors = []
-    if (!form.tipo_indirizzo_codice) errors.push('tipo_indirizzo_codice')
+    if (!form.tipo_indirizzo_codice_interno) errors.push('tipo_indirizzo_codice_interno')
 
     if (isLibera.value) {
       errors.push(...validaLibero(form, statoLibero.value))
@@ -102,15 +102,18 @@ export function useIndirizzoSoggettoForm() {
   // --- Payload ---
   // Scopo: Costruisce payload da snapshot. Libera ha path dedicato,
   // normalizzato delega a buildIndirizzoPayload (unica source of truth).
+  // ⚠️ Il tipo e' `tipo_indirizzo_codice_interno` in ingresso, in uscita e nello
+  //    stato del form (2026-11-01, regola C del naming): il DB rifiuta la vecchia
+  //    `tipo_indirizzo_codice` con E_CAMPO_NON_AMMESSO, che ora e' solo il display.
   function _buildPayload(snap, codice) {
     if (snap.isLibera) {
       return {
-        tipo_indirizzo_codice: codice,
+        tipo_indirizzo_codice_interno: codice,
         ...payloadLibero(snap, statoDi(statiLookup.items.value, snap.stato_id)),
       }
     }
     return {
-      tipo_indirizzo_codice: codice,
+      tipo_indirizzo_codice_interno: codice,
       ...buildIndirizzoPayload(snap),
     }
   }
@@ -127,7 +130,7 @@ export function useIndirizzoSoggettoForm() {
   // --- Reset completo ---
   function reset() {
     base.reset()
-    form.tipo_indirizzo_codice = null
+    form.tipo_indirizzo_codice_interno = null
     form._isLibera = false
     assegnaCampiLiberi(form)
     _savedNazionale.value = null
@@ -138,7 +141,7 @@ export function useIndirizzoSoggettoForm() {
   // --- Popola da dati esistenti ---
   function populate(data) {
     base.restore(data)
-    form.tipo_indirizzo_codice = data.tipo_indirizzo_codice ?? null
+    form.tipo_indirizzo_codice_interno = data.tipo_indirizzo_codice_interno ?? null
     form._isLibera = !!data.indirizzo_libero
     assegnaCampiLiberi(form, data)
   }

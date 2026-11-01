@@ -36,8 +36,8 @@ funzioni madre DB, filtrati sulla whitelist di destinazione (D-1).
 
 - Auth: area `vendite`, livello LETTURA.
 - Output `200`:
-  - `tipi_ammessi[]`: `{tipo_indirizzo_id, tipo_indirizzo_codice, tipo_indirizzo_descrizione, obbligatorio}` — gli SLOT del pannello (whitelist per ambito, ordinati obbligatori-prima).
-  - `indirizzi[]`: `{id, <doc>_id, tipo_indirizzo_id, tipo_indirizzo_codice, tipo_indirizzo_descrizione, snapshot (object), origine_indirizzo_id, origine_soggetto_ruolo_id}`.
+  - `tipi_ammessi[]`: `{tipo_indirizzo_id, tipo_indirizzo_codice_interno, tipo_indirizzo_descrizione, obbligatorio}` — gli SLOT del pannello (whitelist per ambito, ordinati obbligatori-prima).
+  - `indirizzi[]`: `{id, <doc>_id, tipo_indirizzo_id, tipo_indirizzo_codice_interno, tipo_indirizzo_descrizione, snapshot (object), origine_indirizzo_id, origine_soggetto_ruolo_id}`.
 - Errori: `E_<DOM>_NOT_FOUND` (404) su documento inesistente — mai pannello vuoto per documento fantasma.
 
 ### Upsert slot `POST .../<id>/indirizzi/` (uno-per-tipo)

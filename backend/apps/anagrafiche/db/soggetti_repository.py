@@ -606,7 +606,7 @@ class SoggettiRepository:
         sql = """
             SELECT isog.id, isog.tipo_indirizzo_id,
                    ti.descrizione AS tipo_indirizzo_descrizione,
-                   ti.codice_interno AS tipo_indirizzo_codice,
+                   ti.codice_interno AS tipo_indirizzo_codice_interno,
                    isog.indirizzo_dettaglio_id,
                    isog.indirizzo_libero,
                    isog.stato_id, isog.comune_id,

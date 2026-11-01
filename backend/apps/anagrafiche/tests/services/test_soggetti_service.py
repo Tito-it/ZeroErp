@@ -24,6 +24,7 @@ Indice test eseguiti:
 14) test_create_indirizzo_soggetto_ok — crea indirizzo
 14-bis) test_create_indirizzo_libero_porta_comune_e_cap — comune e CAP arrivano alla madre
 15) test_create_indirizzo_missing_tipo — tipo mancante → E_ANAG_VALIDAZIONE
+15-bis) test_create_indirizzo_chiave_vecchia_rifiutata — `tipo_indirizzo_codice` non e' piu' la chiave d'ingresso
 16) test_assign_ruolo_ok — assegna ruolo
 17) test_assign_ruolo_missing_codice — codice vuoto → E_ANAG_VALIDAZIONE
 18) test_auto_clone_tipi_obbligatori — gli indirizzi alla madre plurale, copia degli obbligatori accesa di default (2026-10-19)
@@ -645,7 +646,7 @@ class TestSoggettiIndirizzi(TestCase):
         repo.crea_indirizzo_soggetto.return_value = 42
         from apps.anagrafiche.services.soggetti_service import SoggettiService
         result = SoggettiService().create_indirizzo_soggetto(FAKE_UUID, {
-            "tipo_indirizzo_codice": "RES",
+            "tipo_indirizzo_codice_interno": "RES",
             "indirizzo_dettaglio_id": 100,
         })
         self.assertEqual(result["id"], 42)
@@ -660,11 +661,11 @@ class TestSoggettiIndirizzi(TestCase):
         repo.crea_indirizzo_soggetto.return_value = 43
         from apps.anagrafiche.services.soggetti_service import SoggettiService
         SoggettiService().create_indirizzo_soggetto(FAKE_UUID, {
-            "tipo_indirizzo_codice": "RES", "indirizzo_libero": "Hauptstrasse 5",
+            "tipo_indirizzo_codice_interno": "RES", "indirizzo_libero": "Hauptstrasse 5",
             "stato_id": 1, "locality": "Berlin", "postal_code": "10115", "administrative_area": "",
         })
         repo.crea_indirizzo_soggetto.assert_called_once_with(FAKE_UUID, {
-            "tipo_indirizzo_codice": "RES", "indirizzo_libero": "Hauptstrasse 5",
+            "tipo_indirizzo_codice_interno": "RES", "indirizzo_libero": "Hauptstrasse 5",
             "stato_id": 1, "locality": "Berlin", "postal_code": "10115",
         })
 
@@ -678,6 +679,22 @@ class TestSoggettiIndirizzi(TestCase):
                 "indirizzo_dettaglio_id": 100,
             })
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
+
+    @patch(SOGG_REPO)
+    def test_create_indirizzo_chiave_vecchia_rifiutata(self, mock_repo):
+        """La chiave d'ingresso e' `tipo_indirizzo_codice_interno` (2026-11-01,
+        regola C del naming): la vecchia `tipo_indirizzo_codice` vale come tipo
+        mancante, e il DB la rifiuterebbe con E_CAMPO_NON_AMMESSO. Nessun alias,
+        ne' qui ne' nella madre."""
+        repo = mock_repo.return_value
+        repo.exists_soggetto.return_value = True
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+        with self.assertRaises(ServiceError) as ctx:
+            SoggettiService().create_indirizzo_soggetto(FAKE_UUID, {
+                "tipo_indirizzo_codice": "RES", "indirizzo_dettaglio_id": 100,
+            })
+        self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
+        repo.crea_indirizzo_soggetto.assert_not_called()
 
 
 class TestSoggettiRuoli(TestCase):
@@ -737,10 +754,10 @@ class TestSoggettiRuoli(TestCase):
         from apps.anagrafiche.services.soggetti_service import SoggettiService
         SoggettiService().assign_ruolo(FAKE_UUID, {
             "codice_ruolo": "GESTORE",
-            "indirizzi": [{"tipo_indirizzo_codice": "SEDELEG", "indirizzo_dettaglio_id": 77, "scala": " "}],
+            "indirizzi": [{"tipo_indirizzo_codice_interno": "SEDELEG", "indirizzo_dettaglio_id": 77, "scala": " "}],
         })
         repo.crea_indirizzi_ruolo.assert_called_once_with(
-            5, [{"tipo_indirizzo_codice": "SEDELEG", "indirizzo_dettaglio_id": 77}],
+            5, [{"tipo_indirizzo_codice_interno": "SEDELEG", "indirizzo_dettaglio_id": 77}],
         )
 
     @patch(SOGG_REPO)
@@ -750,10 +767,10 @@ class TestSoggettiRuoli(TestCase):
         che non e' una lista (era un TypeError, cioe' un 500)."""
         from apps.anagrafiche.services.soggetti_service import SoggettiService
         for indirizzi in (
-            [{"tipo_indirizzo_codice": "FATT", "toponomastica_id": 1, "descrizione_via": "Roma", "codice_postale_id": 3}],
+            [{"tipo_indirizzo_codice_interno": "FATT", "toponomastica_id": 1, "descrizione_via": "Roma", "codice_postale_id": 3}],
             ["FATT"],
             5,
-            {"tipo_indirizzo_codice": "FATT"},
+            {"tipo_indirizzo_codice_interno": "FATT"},
         ):
             with self.subTest(indirizzi=indirizzi), self.assertRaises(ServiceError) as ctx:
                 SoggettiService().create_indirizzi_ruolo(5, indirizzi)
@@ -804,15 +821,15 @@ class TestAutoCloneIndirizzi(TestCase):
         SoggettiService().create_soggetto({
             **self._PAYLOAD,
             "indirizzi": [
-                {"tipo_indirizzo_codice": "RESID", "stradario_id": 100, "civico": 1, "scala": ""},
-                {"tipo_indirizzo_codice": "FATT", "stradario_id": 200, "civico": 9},
+                {"tipo_indirizzo_codice_interno": "RESID", "stradario_id": 100, "civico": 1, "scala": ""},
+                {"tipo_indirizzo_codice_interno": "FATT", "stradario_id": 200, "civico": 9},
             ],
         })
         repo.crea_indirizzi_soggetto.assert_called_once_with(
             FAKE_UUID,
             [
-                {"tipo_indirizzo_codice": "RESID", "stradario_id": 100, "civico": 1},
-                {"tipo_indirizzo_codice": "FATT", "stradario_id": 200, "civico": 9},
+                {"tipo_indirizzo_codice_interno": "RESID", "stradario_id": 100, "civico": 1},
+                {"tipo_indirizzo_codice_interno": "FATT", "stradario_id": 200, "civico": 9},
             ],
             copia_obbligatori=True,
         )
@@ -825,7 +842,7 @@ class TestAutoCloneIndirizzi(TestCase):
         from apps.anagrafiche.services.soggetti_service import SoggettiService
         SoggettiService().create_soggetto({
             **self._PAYLOAD,
-            "indirizzi": [{"tipo_indirizzo_codice": "RESID", "stradario_id": 100, "civico": 1}],
+            "indirizzi": [{"tipo_indirizzo_codice_interno": "RESID", "stradario_id": 100, "civico": 1}],
             "auto_clone": False,
         })
         self.assertIs(repo.crea_indirizzi_soggetto.call_args.kwargs["copia_obbligatori"], False)
@@ -846,7 +863,7 @@ class TestAutoCloneIndirizzi(TestCase):
         with self.assertRaises(ServiceError):
             SoggettiService().create_soggetto({
                 **self._PAYLOAD,
-                "indirizzi": [{"tipo_indirizzo_codice": "RESID", "civico": 1}],
+                "indirizzi": [{"tipo_indirizzo_codice_interno": "RESID", "civico": 1}],
             })
         repo.crea_indirizzi_soggetto.assert_not_called()
 
@@ -858,7 +875,7 @@ class TestAutoCloneIndirizzi(TestCase):
         with self.assertRaises(ServiceError) as ctx:
             SoggettiService().create_soggetto({
                 **self._PAYLOAD,
-                "indirizzi": [{"tipo_indirizzo_codice": "RESID", "stradario_id": 100, "civico": 1}],
+                "indirizzi": [{"tipo_indirizzo_codice_interno": "RESID", "stradario_id": 100, "civico": 1}],
                 "auto_clone": "false",
             })
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
@@ -870,7 +887,7 @@ class TestAutoCloneIndirizzi(TestCase):
         un 400: fino al 2026-10-19 si scartavano e il soggetto nasceva senza."""
         repo = self._repo(mock_sogg)
         from apps.anagrafiche.services.soggetti_service import SoggettiService
-        for indirizzi in ({"tipo_indirizzo_codice": "RESID"}, ["RESID"]):
+        for indirizzi in ({"tipo_indirizzo_codice_interno": "RESID"}, ["RESID"]):
             with self.subTest(indirizzi=indirizzi), self.assertRaises(ServiceError) as ctx:
                 SoggettiService().create_soggetto({**self._PAYLOAD, "indirizzi": indirizzi})
             self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
@@ -888,7 +905,7 @@ class TestAutoCloneIndirizzi(TestCase):
         with self.assertRaises(ServiceError) as ctx:
             SoggettiService().create_soggetto({
                 **self._PAYLOAD,
-                "indirizzi": [{"tipo_indirizzo_codice": "RESID", "stradario_id": 100, "civico": 1}],
+                "indirizzi": [{"tipo_indirizzo_codice_interno": "RESID", "stradario_id": 100, "civico": 1}],
             })
         self.assertEqual(ctx.exception.code, "E_ANAG_FK")
 

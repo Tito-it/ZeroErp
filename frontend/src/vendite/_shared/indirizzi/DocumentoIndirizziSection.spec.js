@@ -49,7 +49,7 @@ vi.mock('./documentoIndirizziApi', async (importOriginal) => ({
 list.mockImplementation(async () => ({
   data: {
     data: {
-      tipi_ammessi: [{ tipo_indirizzo_id: 1, tipo_indirizzo_codice: 'CON', obbligatorio: true }],
+      tipi_ammessi: [{ tipo_indirizzo_id: 1, tipo_indirizzo_codice_interno: 'CON', obbligatorio: true }],
       indirizzi: [],
     },
   },

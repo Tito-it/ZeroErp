@@ -19,6 +19,8 @@ Indice test eseguiti (opt-in `ZEROERP_TEST_DB_E2E=1`):
    guard differito passa
 3b) IndirizziRuoloDbTests.test_un_indirizzo_singolo_dalla_madre — `fn_crea_indirizzo_ruolo`: forma estera,
    la riga al client, lo stesso tipo due volte `E_ANAG_DUPLICATO` (R-DB-16b, 2026-10-19)
+3b-bis) IndirizziRuoloDbTests.test_la_lista_del_ruolo_porta_il_codice_interno — la GET del ruolo:
+   `tipo_indirizzo_codice_interno` uguale al catalogo, livello soggetto e livello ruolo (2026-11-01)
 3c) IndirizziSoggettoPluraleDbTests.test_gli_obbligatori_copiati_dal_primo — `fn_crea_indirizzi_soggetto`
    dalla creazione del soggetto; il guard differito passa
 3d) IndirizziSoggettoPluraleDbTests.test_senza_auto_clone_solo_quello_dato — `auto_clone: false`
@@ -197,7 +199,7 @@ class IndirizziRuoloDbTests(_MondoCostruito):
         stato_id = self._stato_estero()
         # Un indirizzo in forma libera, estero (`chk_indirizzi_free_requirements`).
         scritti = SoggettiService().create_indirizzi_ruolo(sr_id, [{
-            "tipo_indirizzo_codice": primo, "indirizzo_libero": "Via di prova 1",
+            "tipo_indirizzo_codice_interno": primo, "indirizzo_libero": "Via di prova 1",
             "stato_id": stato_id, "locality": "Prova", "postal_code": "PB1",
             "administrative_area": "Area", "scala": "  ",
         }])
@@ -205,7 +207,7 @@ class IndirizziRuoloDbTests(_MondoCostruito):
         self.assertEqual(len(obbligatori), scritti)
         self.assertEqual(obbligatori, presenti)
         self.assertEqual(0, SoggettiService().create_indirizzi_ruolo(sr_id, [{
-            "tipo_indirizzo_codice": primo, "indirizzo_libero": "Via di prova 2",
+            "tipo_indirizzo_codice_interno": primo, "indirizzo_libero": "Via di prova 2",
             "stato_id": stato_id, "locality": "Prova", "postal_code": "PB2", "sublocality": "Sub",
         }]))
         # Il COMMIT: il guard differito trova gli obbligatori.
@@ -227,7 +229,7 @@ class IndirizziRuoloDbTests(_MondoCostruito):
         primo = sorted(obbligatori)[0]
         stato_id = self._stato_estero()
         payload = {
-            "tipo_indirizzo_codice": primo, "indirizzo_libero": "Via singola 1",
+            "tipo_indirizzo_codice_interno": primo, "indirizzo_libero": "Via singola 1",
             "stato_id": stato_id, "locality": "Prova", "postal_code": "PS1", "scala": "",
         }
         riga = SoggettiService().create_indirizzo_ruolo(sr_id, dict(payload))
@@ -247,6 +249,63 @@ class IndirizziRuoloDbTests(_MondoCostruito):
 
         doppio = self._rifiuto(lambda: SoggettiService().create_indirizzo_ruolo(sr_id, dict(payload)))
         self.assertEqual("E_ANAG_DUPLICATO", doppio.code)
+
+    # Scopo: La lista del ruolo (`RuoloIndirizziView.get`, SQL nella view sulle
+    #        resolved derivate) porta `tipo_indirizzo_codice_interno` in OGNI
+    #        livello della cascata, uguale al catalogo: il drawer in contesto
+    #        ruolo la confronta col `codice` della matrice e la rimanda alla
+    #        madre per «sostituisci». Fino al 2026-11-01 le viste `_ruolo` e
+    #        `_soggetto` davano solo `tipo_indirizzo_codice`, il display. Due
+    #        viste, due livelli: il soggetto prima (nessun tipo del ruolo lo
+    #        copre ancora), poi il ruolo.
+    def test_la_lista_del_ruolo_porta_il_codice_interno(self):
+        from types import SimpleNamespace
+
+        from apps.anagrafiche.api.views_indirizzi_ruolo import RuoloIndirizziView
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+
+        sr_id = self._ruolo_fornitore()
+        obbligatori, _ = self._tipi(sr_id)
+        if not obbligatori:
+            self.skipTest("La matrice del ruolo FO non ha tipi obbligatori.")
+        stato_id = self._stato_estero()
+        with connection.cursor() as cur:
+            cur.execute("SELECT soggetto_id FROM anagrafiche.soggetti_ruoli WHERE id = %s", [sr_id])
+            soggetto_id = str(cur.fetchone()[0])
+
+        def _lista() -> dict:
+            resp = RuoloIndirizziView().get(SimpleNamespace(query_params={}), sr_id)
+            return json.loads(resp.content)["data"]
+
+        def _attesi(righe: list[dict]) -> dict[int, str]:
+            with connection.cursor() as cur:
+                cur.execute(
+                    "SELECT id, codice_interno FROM config.tipi_indirizzi WHERE id = ANY(%s)",
+                    [[r["tipo_indirizzo_id"] for r in righe]],
+                )
+                return dict(cur.fetchall())
+
+        SoggettiService().create_indirizzo_soggetto(soggetto_id, {
+            "tipo_indirizzo_codice_interno": "FATT", "indirizzo_libero": "Hauptstrasse 5",
+            "stato_id": stato_id, "locality": "Berlin", "postal_code": "10115",
+        })
+        del_soggetto = _lista()["indirizzi_soggetto"]
+        self.assertTrue(del_soggetto)
+        self.assertEqual(
+            _attesi(del_soggetto),
+            {r["tipo_indirizzo_id"]: r["tipo_indirizzo_codice_interno"] for r in del_soggetto},
+        )
+
+        SoggettiService().create_indirizzi_ruolo(sr_id, [{
+            "tipo_indirizzo_codice_interno": sorted(obbligatori)[0], "indirizzo_libero": "Via lista 1",
+            "stato_id": stato_id, "locality": "Prova", "postal_code": "PL1",
+        }])
+        del_ruolo = _lista()["indirizzi_ruolo"]
+        self.assertEqual(obbligatori, {r["tipo_indirizzo_codice_interno"] for r in del_ruolo})
+        self.assertEqual(
+            _attesi(del_ruolo),
+            {r["tipo_indirizzo_id"]: r["tipo_indirizzo_codice_interno"] for r in del_ruolo},
+        )
 
 
 class IndirizziSoggettoPluraleDbTests(_MondoCostruito):
@@ -297,7 +356,7 @@ class IndirizziSoggettoPluraleDbTests(_MondoCostruito):
                 "email": "indirizzi.plurale@test.invalid",
             },
             "indirizzi": [{
-                "tipo_indirizzo_codice": primo, "indirizzo_libero": "Via plurale 1",
+                "tipo_indirizzo_codice_interno": primo, "indirizzo_libero": "Via plurale 1",
                 "stato_id": stato_id, "locality": "Prova", "postal_code": "PP1", "scala": "",
             }],
             **extra,
@@ -365,7 +424,7 @@ class IstanzaDelloStessoSoggettoDbTests(_MondoCostruito):
             forma = {k: v for k, v in json.loads(cur.fetchone()[0]).items() if v is not None}
             cur.execute("SELECT script.fn_stato_id_da_iso2('IT')")
             self.indirizzo = {
-                "tipo_indirizzo_codice": "POSTA", "indirizzo_libero": "Via e2e istanza 1",
+                "tipo_indirizzo_codice_interno": "POSTA", "indirizzo_libero": "Via e2e istanza 1",
                 "stato_id": cur.fetchone()[0], **forma,
             }
 
@@ -521,7 +580,7 @@ class IndirizzoLiberoSoggettoDbTests(_MondoCostruito):
         comune_id, cap_id, stato_id = riga
         soggetto_id = self._soggetto_pg("Soggetto e2e indirizzo libero")
         esito = SoggettiService().create_indirizzo_soggetto(soggetto_id, {
-            "tipo_indirizzo_codice": "FATT", "indirizzo_libero": "Localita' Prova snc",
+            "tipo_indirizzo_codice_interno": "FATT", "indirizzo_libero": "Localita' Prova snc",
             "stato_id": stato_id, "comune_id": comune_id, "codice_postale_id": cap_id,
         })
         with connection.cursor() as cur:
@@ -538,7 +597,7 @@ class IndirizzoLiberoSoggettoDbTests(_MondoCostruito):
         stato_id = self._stato_estero()
         soggetto_id = self._soggetto_pg("Soggetto e2e indirizzo estero")
         esito = SoggettiService().create_indirizzo_soggetto(soggetto_id, {
-            "tipo_indirizzo_codice": "FATT", "indirizzo_libero": "Hauptstrasse 5",
+            "tipo_indirizzo_codice_interno": "FATT", "indirizzo_libero": "Hauptstrasse 5",
             "stato_id": stato_id, "locality": "Berlin", "postal_code": "10115",
         })
         with connection.cursor() as cur:
@@ -558,7 +617,7 @@ class IndirizzoLiberoSoggettoDbTests(_MondoCostruito):
         # middleware (`ErrorTranslator`): qui si legge come lo legge lui.
         with self.assertRaises(DatabaseError) as ctx, transaction.atomic():
             SoggettiService().create_indirizzo_soggetto(soggetto_id, {
-                "tipo_indirizzo_codice": "FATT", "indirizzo_libero": "Hauptstrasse 5",
+                "tipo_indirizzo_codice_interno": "FATT", "indirizzo_libero": "Hauptstrasse 5",
                 "stato_id": stato_id,
             })
         diagnostica = diagnostica_db(ctx.exception)
