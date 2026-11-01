@@ -1,0 +1,100 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE RIGHE DI UN PRESET SPOSTANO LA SUA DATA — ui.trgfn_preset_riga_tocca_preset
+#   Richiesta del team BE/FE «la preferenza di lista per chiave», punto 2
+#   (decisione di Tid del 2026-11-01).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   Il contenuto di un preset non sta solo nella sua riga: le colonne di un
+#   preset di lista sono in ui.lista_preset_colonna, i widget di un preset di
+#   dashboard in ui.dashboard_preset_widget. Aggiungere, togliere o cambiare
+#   una di quelle righe e' un cambio del preset, e deve spostare il suo
+#   data_update come lo sposta un cambio della riga (20261101-20).
+#
+# ── ⭐ LA FORMA ──────────────────────────────────────────────────────
+#   AFTER INSERT OR UPDATE OR DELETE, per riga. TG_ARGV[0] e' la tabella del
+#   preset: una funzione per le due coppie padre/figlio, perche' la regola
+#   e' la stessa. Un UPDATE che riscrive la riga uguale (il seed
+#   loadUpdateData lo fa a ogni giro) non tocca niente. Un UPDATE che sposta
+#   la riga su un altro preset tocca entrambi.
+#   ⚠️ Il confronto e' sulla riga INTERA: le due tabelle figlie non hanno
+#   colonne di audit. Se un giorno ne prendessero una scritta a ogni UPDATE,
+#   ogni riscrittura uguale toccherebbe il preset: il confronto andra'
+#   ristretto alle colonne di contenuto.
+#   ⚠️ L'UPDATE del padre non cambia il suo contenuto, quindi il trigger del
+#   padre (WHEN sul contenuto) non scatta e la data resta quella scritta qui.
+#   Alla cancellazione di un preset le righe vanno via in CASCADE e l'UPDATE
+#   non trova il padre: zero righe, nessun errore.
+#   I trigger: 20261101-23 (ui.lista_preset_colonna), 20261101-25
+#   (ui.dashboard_preset_widget).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/ui/20261101-21-create-trgfn-preset-riga-tocca-preset-mctit.yaml
+
+  - changeSet:
+      id: 20261101-21-create-trgfn-preset-riga-tocca-preset
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui.trgfn_preset_riga_tocca_preset: una riga di un preset (colonna di lista, widget di dashboard)
+        aggiunta, tolta o cambiata sposta il data_update del preset (TG_ARGV[0] = tabella del preset).
+        Una riscrittura uguale non tocca niente. Richiesta BE/FE «preferenza di lista per chiave» §2.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION ui.trgfn_preset_riga_tocca_preset()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: una riga di un preset aggiunta, tolta o cambiata e' un cambio
+              --   del preset: ne sposta data_update, la data che il flag
+              --   preset_aggiornato confronta con lo snapshot della preferenza.
+              --   TG_ARGV[0] = la tabella del preset (ui.lista_preset,
+              --   ui.dashboard_preset); la riga figlia porta preset_id.
+              -- ⚠️ Confronto sulla riga intera: le tabelle figlie non hanno audit.
+              DECLARE
+                  -- Tipo esplicito: %TYPE[] non e' sintassi PostgreSQL, e l'id viene da
+                  -- due tabelle (ui.lista_preset.id, ui.dashboard_preset.id, integer).
+                  v_preset_ids integer[];
+              BEGIN
+                  -- Una riscrittura uguale (il seed loadUpdateData lo fa a ogni giro)
+                  -- non e' un cambio.
+                  IF TG_OP = 'UPDATE' AND OLD IS NOT DISTINCT FROM NEW THEN
+                      RETURN NULL;
+                  END IF;
+
+                  v_preset_ids := CASE TG_OP
+                                      WHEN 'INSERT' THEN ARRAY[NEW.preset_id]
+                                      WHEN 'DELETE' THEN ARRAY[OLD.preset_id]
+                                      -- spostata su un altro preset: cambiano tutti e due
+                                      ELSE ARRAY[OLD.preset_id, NEW.preset_id]
+                                  END;
+
+                  -- Il padre cancellato (CASCADE) non c'e' piu': zero righe.
+                  EXECUTE format('UPDATE %s SET data_update = now() WHERE id = ANY ($1)',
+                                 TG_ARGV[0]::regclass)
+                    USING v_preset_ids;
+
+                  RETURN NULL;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION ui.trgfn_preset_riga_tocca_preset() IS
+                  'Trigger AFTER INSERT OR UPDATE OR DELETE delle righe di un preset (ui.lista_preset_colonna, ui.dashboard_preset_widget): la riga aggiunta, tolta o cambiata sposta data_update del preset, la data che il flag preset_aggiornato dei resolver confronta con lo snapshot della preferenza. TG_ARGV[0] = la tabella del preset. Una riscrittura uguale (il seed loadUpdateData riscrive ogni riga a ogni giro) non tocca niente; una riga spostata su un altro preset tocca entrambi. Confronto sulla riga intera: le tabelle figlie non hanno colonne di audit. Richiesta BE/FE «preferenza di lista per chiave» (2026-11-01) §2.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS ui.trgfn_preset_riga_tocca_preset();

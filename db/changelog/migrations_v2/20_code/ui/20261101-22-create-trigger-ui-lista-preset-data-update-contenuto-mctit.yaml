@@ -1,0 +1,75 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL TRIGGER DEL CONTENUTO SU ui.lista_preset
+#   Richiesta del team BE/FE «la preferenza di lista per chiave», punto 2.
+#
+#   BEFORE UPDATE, fase a20 (derivazione). Il contenuto della riga di un
+#   preset di lista e' cio' che il resolver ne legge: ordinamento_default,
+#   filtri_default, pagina_dimensione. Il confronto sta nel WHEN, come vuole
+#   linee-guida-trigger per chi reagisce a un CAMBIO di valore (UPDATE senza
+#   OF: OF scatterebbe anche a valore uguale, e il seed riscrive ogni riga).
+#   Le colonne del preset (ui.lista_preset_colonna) le copre 20261101-23.
+#   ⚠️ Non sono contenuto: codice, descrizione, ambito, is_default, attivo.
+#   Accendere o spegnere un preset cambia QUALE preset sta sotto una
+#   preferenza, non che cosa dice: e' preset_base_id, non la data.
+#   INSERT escluso: un preset nato non ha un prima da confrontare, e chi
+#   legge lo snapshot usa COALESCE(data_update, data_insert).
+#   Nasce in 20_code e non in 90_end: da zero, il seed dei preset ci passa
+#   (prima l'INSERT, che non scatta; le colonne in 20260507-09 toccano la data
+#   del preset tramite 20261101-23, e su un database nuovo non ci sono
+#   preferenze da avvisare).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/ui/20261101-22-create-trigger-ui-lista-preset-data-update-contenuto-mctit.yaml
+
+  - changeSet:
+      id: 20261101-22-create-trigger-ui-lista-preset-data-update-contenuto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Trigger trg_ui_lista_preset_a20_data_update_contenuto_upd (BEFORE UPDATE, WHEN ordinamento_default,
+        filtri_default o pagina_dimensione cambiano): data_update del preset di lista = data dell'ultimo
+        cambio del contenuto. Richiesta BE/FE «preferenza di lista per chiave» §2.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_proc p
+                    JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'ui' AND p.proname = 'trgfn_preset_data_update_contenuto';
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_trigger t
+                   WHERE t.tgrelid = 'ui.lista_preset'::regclass
+                     AND t.tgname = 'trg_ui_lista_preset_a20_data_update_contenuto_upd';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_ui_lista_preset_a20_data_update_contenuto_upd
+                  BEFORE UPDATE ON ui.lista_preset
+                  FOR EACH ROW
+                  WHEN (OLD.ordinamento_default IS DISTINCT FROM NEW.ordinamento_default
+                     OR OLD.filtri_default      IS DISTINCT FROM NEW.filtri_default
+                     OR OLD.pagina_dimensione   IS DISTINCT FROM NEW.pagina_dimensione)
+                  EXECUTE FUNCTION ui.trgfn_preset_data_update_contenuto();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ui_lista_preset_a20_data_update_contenuto_upd
+                  ON ui.lista_preset;

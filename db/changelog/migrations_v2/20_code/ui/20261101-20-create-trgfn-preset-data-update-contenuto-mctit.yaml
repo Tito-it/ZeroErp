@@ -1,0 +1,83 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA DATA DEL CONTENUTO DI UN PRESET — ui.trgfn_preset_data_update_contenuto
+#   Richiesta del team BE/FE «la preferenza di lista per chiave», punto 2
+#   (decisione di Tid del 2026-11-01).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   Il flag preset_aggiornato dei due resolver (ui.fn_resolve_lista_config,
+#   ui.fn_resolve_dashboard_config) confronta lo snapshot della preferenza
+#   con il data_update del preset di base. Ma su ui.lista_preset e
+#   ui.dashboard_preset nessuno scriveva data_update: lo schema ui e' fuori
+#   dallo scope delle automazioni (dbops.automation_scope), quindi il trigger
+#   di audit generato non c'e', e il seed non porta la colonna. Il preset
+#   cambiava e il flag non poteva accendersi.
+#
+# ── ⛔ PERCHE' NON IL TRIGGER DI AUDIT GENERICO ──────────────────────
+#   script.trgfn_audit_data_user_generic scrive la data a OGNI UPDATE. Il
+#   seed dei preset e' un loadUpdateData, che riscrive OGNI riga del CSV a
+#   ogni giro (INSERT ... ON CONFLICT DO UPDATE): con l'audit, ogni ritocco
+#   del CSV accenderebbe il banner su tutti i preset, anche quelli identici.
+#   E un trigger generato non si scrive a mano (linee-guida-trigger). Qui
+#   data_update vuol dire «l'ultima volta che il CONTENUTO e' cambiato».
+#
+# ── ⭐ LA FORMA ──────────────────────────────────────────────────────
+#   Quali colonne sono contenuto lo dice il WHEN di ciascun trigger (una
+#   tabella, un elenco): la funzione scrive soltanto la data. Una sola
+#   funzione per i due preset, perche' la regola e' la stessa.
+#   Un UPDATE che non cambia il contenuto lascia data_update com'e' scritto
+#   nell'istruzione: e' la porta da cui passa il trigger delle righe
+#   (20261101-21), che scrive la data del padre quando cambiano i figli.
+#   I trigger: 20261101-22 (ui.lista_preset), 20261101-24 (ui.dashboard_preset).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/ui/20261101-20-create-trgfn-preset-data-update-contenuto-mctit.yaml
+
+  - changeSet:
+      id: 20261101-20-create-trgfn-preset-data-update-contenuto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui.trgfn_preset_data_update_contenuto: data_update di un preset (lista o dashboard) e' la data
+        dell'ultimo cambio del suo contenuto, letta dal flag preset_aggiornato dei resolver. Le colonne
+        di contenuto le dice il WHEN del trigger; la funzione scrive la data. Richiesta BE/FE
+        «preferenza di lista per chiave» §2.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION ui.trgfn_preset_data_update_contenuto()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: data_update di un preset (ui.lista_preset, ui.dashboard_preset)
+              --   e' la data dell'ultimo cambio del suo CONTENUTO, quella che il flag
+              --   preset_aggiornato confronta con lo snapshot della preferenza.
+              --   Quali colonne sono contenuto lo dice il WHEN del trigger, tabella
+              --   per tabella: qui si scrive soltanto la data.
+              -- ⚠️ Non e' l'audit: un UPDATE che riscrive la riga uguale (il seed
+              --   loadUpdateData lo fa a ogni giro) non sposta la data.
+              BEGIN
+                  NEW.data_update := now();
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION ui.trgfn_preset_data_update_contenuto() IS
+                  'Trigger BEFORE UPDATE dei preset (ui.lista_preset, ui.dashboard_preset): data_update = now() quando cambia il CONTENUTO del preset. Le colonne di contenuto le dice il WHEN di ciascun trigger; la funzione scrive solo la data. Non e'' l''audit: una riscrittura uguale (il seed loadUpdateData riscrive ogni riga a ogni giro) non sposta la data, cosi'' il flag preset_aggiornato dei resolver si accende solo per un cambio vero. Le righe figlie la spostano col trigger ui.trgfn_preset_riga_tocca_preset. Richiesta BE/FE «preferenza di lista per chiave» (2026-11-01) §2.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS ui.trgfn_preset_data_update_contenuto();

@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Tabella `ui.dashboard_preset`
 
+> **Ultimo aggiornamento**: 1 novembre 2026
+
 > 👀 **Vedi anche**
 >
 > Tabelle correlate:
@@ -51,3 +53,5 @@ La tabella **`ui.dashboard_preset`** contiene i **default per ambito** di una da
 
 * I widget di un preset devono appartenere al pool della dashboard del preset (`ui.dashboard_widget`) — vincolo di seed, non strutturale: `dashboard_preset_widget.widget_id` è FK al catalogo globale, non al pool.
 * Un preset senza widget attivi produce un candidato NULL → la risoluzione scende al livello successivo della cascata (stesso comportamento delle liste).
+* La cascata è **per chiave** (dal 1-11-2026): il preset di base dà `widget` e `dimensione_max` alle chiavi che la preferenza non ha (vedi [ui.fn_resolve_dashboard_config](/dbzero/ui/funzioni/fn_resolve_dashboard_config)).
+* ⭐ **`data_update` è la data dell'ultimo cambio del contenuto**, quella che il flag `preset_aggiornato` confronta con lo snapshot della preferenza. La scrivono `trg_ui_dashboard_preset_a20_data_update_contenuto_upd` (quando cambia `dimensione_max`) e `trg_ui_dashboard_preset_widget_z10_tocca_preset_ins_upd_dlt` (quando un widget del preset si aggiunge, si toglie o cambia), sulle due funzioni condivise con i preset di lista ([`ui.trgfn_preset_data_update_contenuto`](/dbzero/ui/funzioni/trgfn_preset_data_update_contenuto), [`ui.trgfn_preset_riga_tocca_preset`](/dbzero/ui/funzioni/trgfn_preset_riga_tocca_preset)). Una riscrittura uguale (il seed `loadUpdateData`) non sposta la data. Il perché, per esteso, in [ui.lista_preset](/dbzero/ui/tabelle/lista_preset).
