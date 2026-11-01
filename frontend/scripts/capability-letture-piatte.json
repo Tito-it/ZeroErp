@@ -27,8 +27,8 @@
       "motivo": "`non_editable_fields` del registro dei lock (`dbops.fn_non_editable_fields` + gap Python in `catalogo_service`), non di una capability (brief §4.0).",
       "chiavi": { "non_editable_fields": 1 }
     },
-    "catalogo/components/ArticoloUomDrawer.vue": {
-      "motivo": "`non_editable_fields` del registro dei lock (`catalogo_service._compute_non_editable_fields`), non di una capability (brief §4.0).",
+    "catalogo/stores/articoloUom.js": {
+      "motivo": "`non_editable_fields` del registro dei lock (`catalogo_service._compute_non_editable_fields`), non di una capability (brief §4.0). Dal 2026-10-31 la busta la legge lo store per istanza, non piu' `ArticoloUomDrawer.vue` (brief-db-liste-datatable-grezze-secondo-giro riga 4).",
       "chiavi": { "non_editable_fields": 1 }
     },
     "catalogo/components/ConversioneUomDrawer.vue": {
