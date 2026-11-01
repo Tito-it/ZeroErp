@@ -50,7 +50,7 @@ Note:
 * L'header **contiene la lista delle tabelle**: non esiste più una sezione `## Tabelle coinvolte`.
 * Il `---` separa l'header dal primo `##`.
 * I blocchi vuoti si omettono: si tengono solo quelli che hanno contenuto.
-* Il footer `{% include-markdown "signature-core.md" %}` lo appende `scripts/apply_signatures.py`:
+* Il footer (l'include di `signature-core.md`) lo appende `scripts/apply_signatures.py`:
   non serve scriverlo a mano, ma non va rimosso.
 
 ## Checklist di revisione
@@ -214,7 +214,7 @@ dicono la cosa, non la categoria.
 
 ---
 
-{% include-markdown "signature-core.md" %}
+<firma: l'include di signature-core.md, su una riga sua>
 ```
 
 ### Le regole della cornice
@@ -227,7 +227,7 @@ dicono la cosa, non la categoria.
 | **Destinazione dei link** | La scheda dell'oggetto (`/dbzero/<schema>/tabelle\|views\|funzioni/<nome>`), non la sua pagina `manual/`. Le guide con `/guide/…`, le linee guida con la loro pagina e l'anchor | La scheda contiene già la pagina `manual/` più il contratto: chi la apre ha tutto |
 | **Scopo Principale** | Si chiama esattamente `### 🎯 Scopo Principale` e c'è in **ogni** pagina. Il **primo paragrafo** è la descrizione dell'oggetto in una o due frasi, senza marcatori di revisione | `scripts/gen_db_docs.py` cerca questo titolo e copia il primo paragrafo nell'indice dello schema: un `(rev …)` lì diventa la descrizione dell'oggetto nell'indice |
 | **Separatori** | `---` fra il blocco in testa e lo Scopo, fra una sezione e l'altra, e prima della firma | — |
-| **Firma** | `{% include-markdown "signature-core.md" %}` in fondo, scritta a mano | `scripts/apply_signatures.py` salta le cartelle `manual/`: lì la firma non la aggiunge nessuno |
+| **Firma** | L'include di `signature-core.md` in fondo, su una riga sua, scritto a mano: la riga si copia dal fondo di una pagina `manual/` esistente | `scripts/apply_signatures.py` salta le cartelle `manual/`: lì la firma non la aggiunge nessuno |
 
 ### Il corpo
 
@@ -265,8 +265,14 @@ nome che aveva prima, una regola che è cambiata e perché.
 ### Blocchi comuni di uno schema
 
 Un testo che vale per tutte le pagine di uno schema (lo stato del dominio, la spiegazione di
-una famiglia di partizioni) sta in **un** file `docs/it/dbzero/<schema>/_<nome>.md` e si include
-con `{% include-markdown "it/dbzero/<schema>/_<nome>.md" %}`, prima della firma.
+una famiglia di partizioni) sta in **un** file `docs/it/dbzero/<schema>/_<nome>.md`, e ogni
+pagina lo include con un `include-markdown` su una riga sua, col percorso `it/dbzero/<schema>/_<nome>.md`,
+prima della firma.
+
+⚠️ **In un documento che spiega gli include non si scrive mai il tag letterale**, nemmeno nel
+codice inline o in un blocco di codice: `scripts/build_docs_zensical.py` espande ogni tag che
+trova, senza riconoscere il codice. Un tag con un percorso segnaposto non si risolve, resta nel
+testo, e zensical ferma la build («include-markdown tags must be on their own lines»).
 
 * Il blocco descrive lo stato attuale come una guida: ha la sua riga «Ultimo aggiornamento» e
   si rivede quando cambia lo schema, non quando cambia una pagina.
@@ -292,8 +298,10 @@ con `{% include-markdown "it/dbzero/<schema>/_<nome>.md" %}`, prima della firma.
   genera `mkdocs.zensical.yml` e produce `site-zensical/`.
 * Anteprima: `bash scripts/serve_docs.sh` — build più server statico su `127.0.0.1:8010`,
   scrive solo in `/tmp/zeroerp-docs-preview`.
-* Se un markdown documenta la sintassi di include come esempio, il segnaposto va in un blocco
-  di codice, o il preprocess emette un warning.
+* Un markdown che documenta la sintassi di include **non scrive il tag letterale**, nemmeno in
+  un blocco di codice: il preprocess lo espande comunque, e un tag che non si risolve ferma la
+  build. Si descrive a parole («l'include di `signature-core.md`»), come nella
+  [cornice delle pagine `manual/`](#blocchi-comuni-di-uno-schema).
 
 ## Verifica finale
 
