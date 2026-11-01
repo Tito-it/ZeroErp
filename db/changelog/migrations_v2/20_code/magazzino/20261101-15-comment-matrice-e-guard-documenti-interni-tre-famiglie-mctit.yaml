@@ -1,0 +1,51 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# magazzino.fn_documento_interno_transizioni,
+# magazzino.trgfn_documento_interno_guard_transizione e
+# magazzino.trgfn_documento_interno_righe_guard_testata — solo i COMMENT. I
+# corpi non cambiano (20260922-18, 20260925-38).
+#
+# -- PERCHE' ---------------------------------------------------------------------
+#   I COMMENT dicevano «inventari e rettifiche» e «le due famiglie», ma i due
+#   guard sono montati anche su trasferimenti e trasferimenti_righe; la matrice
+#   nominava come lettori le capability per entita' (fn_available_actions_
+#   inventario / _rettifica), mentre a leggerla e' la capability comune
+#   script.fn_available_actions_documento_interno. La storia delle revisioni
+#   esce dal COMMENT, che descrive l'oggetto com'e' oggi.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/magazzino/20261101-15-comment-matrice-e-guard-documenti-interni-tre-famiglie-mctit.yaml
+
+  - changeSet:
+      id: 20261101-15-comment-matrice-e-guard-documenti-interni-tre-famiglie
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Matrice degli stati e guard dei documenti interni: COMMENT con le tre famiglie e i lettori di oggi.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION magazzino.fn_documento_interno_transizioni(text) IS
+                  'La matrice degli stati dei documenti interni di magazzino, la stessa per le tre famiglie (inventari, rettifiche, trasferimenti): le destinazioni ammesse da uno stato. DRAFT -> {CONFIRM, CANCEL}; CONFIRM -> {POSTED, CANCEL, DRAFT} (riapri); POSTED e CANCEL -> {} (terminali). Uno stato sconosciuto torna {}: il cancello sui valori e'' il CHECK di tabella. IMMUTABLE: non legge niente, la matrice e'' una costante del modello. ⭐ Esiste per avere UNA sede con due lettori: magazzino.trgfn_documento_interno_guard_transizione la fa rispettare, script.fn_available_actions_documento_interno disegna i pulsanti (linee-guida-sql §12.2 punto 1). ⚠️ POSTED e'' ammesso ma non richiedibile: la porta la apre solo l''operazione con la GUC transazionale, quindi la capability lo esclude dalle azioni e propone «registra».';
+
+              COMMENT ON FUNCTION magazzino.trgfn_documento_interno_guard_transizione() IS
+                  'Guard di famiglia dei documenti interni di magazzino (inventari, rettifiche, trasferimenti): fa rispettare la matrice degli stati, che LEGGE da magazzino.fn_documento_interno_transizioni invece di contenerla — la stessa sede da cui la capability del drawer disegna i pulsanti (linee-guida-sql §12.2 punto 1). Monta su BEFORE UPDATE OF <colonna stato> e BEFORE DELETE con TG_ARGV = (colonna di stato, nome della GUC di posting). Tre rifiuti: E_MAG_DOCUMENTO_NON_ELIMINABILE (DELETE fuori da DRAFT), E_MAG_DOCUMENTO_TRANSIZIONE_NON_AMMESSA (fuori matrice), E_MAG_DOCUMENTO_POSTED_SOLO_DA_OPERAZIONE (POSTED senza la GUC transazionale che l''operazione scrive, oppure fuori da un verbo). La porta POSTED chiede le DUE condizioni: la GUC porta NEW.id (quale operazione, quale documento) E chi esegue e'' il proprietario della tabella, script.fn_is_proprietario_tabella(TG_RELID) (chi scrive: un verbo DEFINER, non l''app che accende la GUC da se'').';
+
+              COMMENT ON FUNCTION magazzino.trgfn_documento_interno_righe_guard_testata() IS
+                  'Guard delle righe dei documenti interni di magazzino (inventari_righe, rettifiche_righe, trasferimenti_righe; TG_ARGV = tabella testata, colonna FK, colonna di stato, nome della GUC), BEFORE INSERT OR UPDATE OR DELETE: righe scrivibili solo con la testata in DRAFT; in CONFIRM scrive solo l''operazione — la stessa GUC transazionale della porta POSTED (nell''inventario e'' lei a fissare qta_sistema) — e solo dentro un verbo: chi esegue deve essere il proprietario della tabella, script.fn_is_proprietario_tabella(TG_RELID), perche'' la GUC l''app puo'' accenderla da se''; POSTED e CANCEL congelate (E_MAG_DOCUMENTO_RIGHE_CONGELATE, CONFLITTO_STATO). Un UPDATE che sposta la riga controlla entrambe le testate. Testata assente = cascata gia'' ammessa a monte (DELETE solo in DRAFT) o fuori perimetro: passa.';
+      rollback:
+        - sql:
+            sql: >
+              SELECT 1; -- i COMMENT precedenti sono in 20260922-18 e 20260925-38

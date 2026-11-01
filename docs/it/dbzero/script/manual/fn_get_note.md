@@ -1,119 +1,78 @@
 ## 📘 Documentazione Concettuale – Funzione `script.fn_get_note`
 
+> **Ultimo aggiornamento**: 1 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Approfondimento Tabelle**
-> 
-• [`config.note_stili`](/dbzero/config/tabelle/note_stili)   
-> • [`config.lingue`](/dbzero/config/tabelle/lingue)    
+> Approfondimento tabelle:
 >
-**Approfondimento Funzioni**
-> • [`script.fn_get_note`](/dbzero/script/funzioni/fn_get_note)   
+> * [config.note_stili](/dbzero/config/tabelle/note_stili) — il vocabolario degli stili
+> * [config.lingue](/dbzero/config/tabelle/lingue) — il vocabolario delle lingue
+> * [vendite.note](/dbzero/vendite/tabelle/note) — il meccanismo delle note, documentato per intero
 >
-**Esempi di uso**
-> • [`vendite.fn_get_vendite_note`](/dbzero/vendite/funzioni/fn_get_vendite_note)    
-> • [`acquisti.fn_get_acquisti_note`](/dbzero/acquisti/funzioni/fn_get_acquisti_note)    
+> Approfondimento funzioni:
+>
+> * [vendite.fn_get_vendite_note](/dbzero/vendite/funzioni/fn_get_vendite_note) — l'involucro di vendite
+> * [acquisti.fn_get_acquisti_note](/dbzero/acquisti/funzioni/fn_get_acquisti_note) — l'involucro di acquisti
+> * [magazzino.fn_get_magazzino_note](/dbzero/magazzino/funzioni/fn_get_magazzino_note) — l'involucro di magazzino
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 14-01-26)
-`script.fn_get_note` e' una funzione generica che **normalizza la lettura delle note** da una tabella `*.note` partizionata.  
-Restituisce sempre lo stesso set di colonne con **stile** e **lingua** risolti da `config.note_stili` e `config.lingue`.
+
+Il lettore comune delle note: estrae le note di un documento da una tabella di note che gli si
+passa per nome, e le restituisce tutte nella stessa forma, con stile e lingua risolti dai loro
+vocabolari.
+
+Serve le tabelle di note che hanno la stessa forma: `vendite.note`, `acquisti.note` e
+`magazzino.note`. Ogni dominio ha un involucro che la chiama sulla propria tabella, così il
+chiamante non deve conoscere il nome della tabella.
 
 ---
 
-### Parametri
+### Che cosa restituisce, e in che ordine
 
-| Parametro         | Tipo       | Descrizione                                            |
-| ----------------- | ---------- | ------------------------------------------------------ |
-| `p_note_table`    | `regclass` | Tabella note sorgente (es. `'vendite.note'::regclass`) |
-| `_target_tipo`    | `text`     | Tipo target (normalizzato a `UPPER`)                   |
-| `_target_id`      | `bigint`   | ID testata                                             |
-| `_target_riga_id` | `bigint`   | ID riga (opzionale)                                    |
-| `_include_doc`    | `boolean`  | Include note con `anchor_tipo = 'DOCUMENTO'`           |
-| `_include_righe`  | `boolean`  | Include note con `anchor_tipo = 'RIGA'`                |
-| `_only_visible`   | `boolean`  | Se `true`, filtra `visibile = true`                    |
+Per un documento (il tipo e l'id del bersaglio) restituisce le sue note, e si può restringere a
+una riga sola. Tre interruttori decidono che cosa raccogliere: le note di testata, quelle di
+riga, e se tenere solo quelle visibili.
 
----
+Lo stile e la lingua escono come **codice** del vocabolario, non come riferimento: chi stampa
+riceve `GRASSETTO` o `it`, non un id. Una nota senza lingua esce senza lingua.
 
-### Logica di estrazione
-
-1. Seleziona le note dalla tabella passata in `p_note_table`.
-2. Join su `config.note_stili` per ottenere il codice stile.
-3. Left join su `config.lingue` per ottenere il codice lingua.
-4. Filtra per `target_tipo`, `target_id`, e (se presente) `target_riga_id`.
-5. Applica i filtri su `anchor_tipo` e `visibile`.
-6. Ordina per **DOCUMENTO** prima di **RIGA**, poi per `posizione`, `seq`, `id`.
+L'ordine è quello di stampa: prima le note di testata, poi quelle di riga; dentro ciascun
+gruppo, per posizione, sequenza e infine ordine di inserimento.
 
 ---
 
-### Output (campi principali)
+### ⚠️ Una sola forma per tutte le tabelle
 
-* `target_tipo`, `target_id`, `target_riga_id`
-* `anchor_tipo`, `posizione`, `seq`
-* `testo`, `testo_md`
-* `stile`, `lingua`
-* `visibile`, `solo_stampa`
-* `meta`, `data_insert`, `user_insert`, `data_update`, `user_update`
+La funzione dichiara un risultato unico, e le tabelle di note lo devono rispettare: tipo,
+ancoraggio e posizione escono come testo anche se nelle tabelle sono stringhe di lunghezza
+fissata. È il lettore a convertirli: se mancasse la conversione, ogni chiamata fallirebbe per un
+tipo che non corrisponde, su tutte le famiglie insieme.
 
----
-
-### Esempi d’uso
-
-**1) Note documento (solo visibili)**
-
-```sql
-SELECT *
-FROM script.fn_get_note(
-  'vendite.note'::regclass,
-  'FATTURA',
-  :fattura_id,
-  NULL,
-  true,
-  false,
-  true
-);
-```
-
-**2) Note riga (incluse anche non visibili)**
-
-```sql
-SELECT *
-FROM script.fn_get_note(
-  'vendite.note'::regclass,
-  'FATTURA',
-  :fattura_id,
-  :riga_id,
-  false,
-  true,
-  false
-);
-```
-
-**3) Note documento + righe insieme**
-
-> Ultima revisione: 2026-10-25 (brief-db-grammatica-unica-documenti, lotto 3): `_target_tipo` è il codice di `config.tipi_entita` (`ORDINE_VENDITA`, non più `ORDINE`).
-
-```sql
-SELECT *
-FROM script.fn_get_note(
-  'vendite.note'::regclass,
-  'ORDINE_VENDITA',
-  :ordine_id,
-  :riga_id,
-  true,
-  true,
-  true
-);
-```
+`catalogo.note` non è servita da questo lettore: il suo bersaglio si identifica con un uuid e non
+con un id numerico.
 
 ---
 
-### Best practice
+### ⭐ Perché il nome della tabella si passa come riferimento
 
-* Passa sempre `p_note_table` come `regclass` per evitare SQL injection e garantire la risoluzione corretta della tabella.
-* Usa `_include_doc` / `_include_righe` per controllare con precisione l’ambito delle note.
-* Imposta `_only_visible = true` nei contesti di stampa e UI.
+La tabella si passa come riferimento a un oggetto del database, non come testo libero: il nome si
+risolve prima di entrare nella lettura, e una tabella che non esiste fa fallire la chiamata
+invece di costruire una lettura su un nome qualunque.
+
+---
+
+### Note di migrazione
+
+* 2026-10-10 — la lingua esce com'è, senza il riempimento a cinque caratteri che le aggiungeva
+  spazi in coda (`brief-db-character-n-spazi-di-riempimento`).
+* 2026-10-25 — il tipo del bersaglio è il codice della grammatica dei tipi (`ORDINE_VENDITA`, non
+  più `ORDINE`), `brief-db-grammatica-unica-documenti`, lotto 3.
+* 2026-11-01 — il lettore converte in testo tipo, ancoraggio e posizione: senza la conversione
+  ogni chiamata falliva (verificato quel giorno sugli involucri di vendite e acquisti). Dallo
+  stesso giorno serve anche `magazzino.note`, che ha preso la forma delle altre note.
 
 ---
 

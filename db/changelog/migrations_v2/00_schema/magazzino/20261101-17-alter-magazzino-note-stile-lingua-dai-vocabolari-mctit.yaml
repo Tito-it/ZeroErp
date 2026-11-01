@@ -1,0 +1,143 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# magazzino.note: stile e lingua diventano riferimenti ai vocabolari, come nelle
+#   note di vendite, acquisti e catalogo. stile varchar(16) -> id_stile bigint,
+#   FK a config.note_stili; lingua varchar(5) -> id_lingua bigint, FK a
+#   config.lingue. Decisione di Tid del 2026-11-01.
+#
+# -- PERCHE' ---------------------------------------------------------------------
+#   Le note di magazzino erano le sole a scrivere stile e lingua come testo:
+#   - stile accettava qualunque stringa (solo NOT NULL, default 'NORMALE'), cioe'
+#     anche uno stile che il vocabolario non conosce e la stampa non sa rendere;
+#     la lingua, qualunque stringa non vuota;
+#   - il lettore generico script.fn_get_note ricava stile e lingua da id_stile e
+#     id_lingua, quindi non poteva leggere magazzino.note, e
+#     magazzino.fn_get_magazzino_note ne era una copia. Con la stessa forma
+#     delle altre note diventa un involucro (20261101-19, stesso giro; il
+#     lettore comune si ripara nel -18).
+#   Il modello di arrivo e' quello delle altre note: id_stile NOT NULL senza
+#   default (lo stile lo dice chi scrive), id_lingua facoltativa, FK ON UPDATE
+#   CASCADE.
+#
+# -- LA FORMA: CONVERSIONE SUL POSTO, SUL PADRE -----------------------------------
+#   stile e lingua non sono la chiave di partizione: ALTER COLUMN ... TYPE e
+#   RENAME sul padre si propagano alle nove partizioni, e non serve ricostruire
+#   (a differenza di 20261025-56, che cambiava proprio la chiave). ALTER ...
+#   USING e' DDL: nessun trigger di riga scatta, audit invariato.
+#   * USING non ammette sottoquery: il codice si risolve con due funzioni in
+#     pg_temp, che vivono solo nella sessione del migrate e si tolgono in fondo.
+#   * Fail-closed: un codice che il vocabolario non conosce FERMA il migrate,
+#     invece di diventare NULL in silenzio (la lingua e' facoltativa: un NULL
+#     scritto resta NULL, un codice ignoto no).
+#   * chk_note_lingua_non_vuota non ha piu' oggetto (un riferimento non e' una
+#     stringa) e si toglie dal padre: le partizioni lo hanno solo ereditato.
+#   * Il NOT NULL del padre prende il nome delle altre note
+#     (note_id_stile_not_null). Quelli delle partizioni sono nati col nome
+#     generato e si lasciano: su un database ricostruito da zero il nome
+#     potrebbe non essere lo stesso.
+#   * Da zero l'ordine e' per numero (00_schema e 20_code insieme): le tabelle
+#     sono vuote, gli ALTER non convertono niente e le funzioni pg_temp non
+#     vengono chiamate. Una FK su tabella vuota non chiede il seed dei
+#     vocabolari (80_data).
+#   * Le FK nuove le registra in dbops.fk_index_policy l'automazione
+#     (consentito = false, come per le note delle altre famiglie).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/magazzino/20261101-17-alter-magazzino-note-stile-lingua-dai-vocabolari-mctit.yaml
+
+  - changeSet:
+      id: 20261101-17-alter-magazzino-note-stile-lingua-dai-vocabolari
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        magazzino.note: stile e lingua diventano id_stile e id_lingua, FK verso config.note_stili e
+        config.lingue, come nelle note delle altre famiglie; conversione sul posto, fail-closed.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_attribute
+               WHERE attrelid = 'magazzino.note'::regclass
+                 AND attname = 'stile' AND NOT attisdropped
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION pg_temp.fn_note_stile_id(p_codice text)
+              RETURNS bigint
+              LANGUAGE plpgsql
+              STABLE
+              AS $f$
+              DECLARE
+                  v_id config.note_stili.id%TYPE;
+              BEGIN
+                  IF p_codice IS NULL THEN
+                      RETURN NULL;
+                  END IF;
+                  SELECT s.id INTO v_id FROM config.note_stili AS s WHERE s.codice = p_codice;
+                  IF v_id IS NULL THEN
+                      RAISE EXCEPTION 'magazzino.note: lo stile "%" non e'' nel vocabolario config.note_stili', p_codice;
+                  END IF;
+                  RETURN v_id;
+              END;
+              $f$;
+
+              CREATE FUNCTION pg_temp.fn_note_lingua_id(p_codice text)
+              RETURNS bigint
+              LANGUAGE plpgsql
+              STABLE
+              AS $f$
+              DECLARE
+                  v_id config.lingue.id%TYPE;
+              BEGIN
+                  IF p_codice IS NULL THEN
+                      RETURN NULL;
+                  END IF;
+                  SELECT l.id INTO v_id FROM config.lingue AS l WHERE l.codice_iso = p_codice;
+                  IF v_id IS NULL THEN
+                      RAISE EXCEPTION 'magazzino.note: la lingua "%" non e'' nel vocabolario config.lingue', p_codice;
+                  END IF;
+                  RETURN v_id;
+              END;
+              $f$;
+
+              ALTER TABLE magazzino.note DROP CONSTRAINT chk_note_lingua_non_vuota;
+
+              ALTER TABLE magazzino.note
+                  ALTER COLUMN stile DROP DEFAULT,
+                  ALTER COLUMN stile TYPE bigint USING pg_temp.fn_note_stile_id(stile),
+                  ALTER COLUMN lingua TYPE bigint USING pg_temp.fn_note_lingua_id(lingua);
+
+              ALTER TABLE magazzino.note RENAME COLUMN stile TO id_stile;
+              ALTER TABLE magazzino.note RENAME COLUMN lingua TO id_lingua;
+              ALTER TABLE magazzino.note RENAME CONSTRAINT note_stile_not_null TO note_id_stile_not_null;
+
+              ALTER TABLE magazzino.note
+                  ADD CONSTRAINT fk_mag_note_id_stile FOREIGN KEY (id_stile)
+                      REFERENCES config.note_stili(id) ON UPDATE CASCADE,
+                  ADD CONSTRAINT fk_mag_note_id_lingua FOREIGN KEY (id_lingua)
+                      REFERENCES config.lingue(id) ON UPDATE CASCADE;
+
+              DROP FUNCTION pg_temp.fn_note_stile_id(text);
+              DROP FUNCTION pg_temp.fn_note_lingua_id(text);
+
+              COMMENT ON COLUMN magazzino.note.id_stile IS
+                  'Stile della nota: FK a config.note_stili(id). Obbligatorio, senza default: lo dice chi scrive.';
+              COMMENT ON COLUMN magazzino.note.id_lingua IS
+                  'Lingua della nota: FK a config.lingue(id). Facoltativa.';
+              COMMENT ON TABLE magazzino.note IS
+                  'Note testuali ancorabili a documenti/righe di magazzino; tabella padre partizionata per target_tipo, col codice di config.tipi_entita (ASSET, EVENTO_ASSET, INVENTARIO, INVENTARIO_RIGA, MOVIMENTO, RETTIFICA, RETTIFICA_RIGA, TRASFERIMENTO, TRASFERIMENTO_RIGA). Stessa forma delle note di vendite, acquisti e catalogo: stile e lingua sono riferimenti ai vocabolari (id_stile, id_lingua), e le legge il lettore comune script.fn_get_note.';
+      rollback:
+        - sql:
+            sql: >
+              SELECT 1; -- conversione di tipo: si torna indietro con un changeSet nuovo

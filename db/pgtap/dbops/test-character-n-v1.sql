@@ -18,8 +18,10 @@
 --  4) il registro delle funzioni non e' stantio
 --  5) gemello «esiste»: la lente delle colonne vede character(n) (il test 1
 --        non e' muto per un catalogo letto male)
---  6) le dodici colonne convertite dal 20261010-26 sono varchar, con la
---        STESSA lunghezza di prima (destinatario_fe: varchar(1) dal -37, D-6)
+--  6) le undici colonne convertite dal 20261010-26 sono varchar, con la
+--        STESSA lunghezza di prima (destinatario_fe: varchar(1) dal -37, D-6;
+--        magazzino.note.lingua e' uscita col 20261101-17: e' diventata
+--        id_lingua, un riferimento a config.lingue, e il suo «non vuoto» non c'e' piu')
 --  7) ognuna ha il suo CHECK (forma per la sigla, «non vuoto» per le altre)
 --  8) storico: solo le colonne a un carattere della macchina dello storico
 --
@@ -185,7 +187,7 @@ SELECT ok(
 );
 
 -- ============================================================
--- 6-7. Le dodici colonne del 20261010-26
+-- 6-7. Le undici colonne del 20261010-26 (la dodicesima, magazzino.note.lingua, e' id_lingua dal 20261101-17)
 -- ============================================================
 CREATE TEMP TABLE _convertite (colonna text, tipo text, vincolo text, definizione text) ON COMMIT DROP;
 INSERT INTO _convertite VALUES
@@ -200,8 +202,7 @@ INSERT INTO _convertite VALUES
     ('anagrafiche.catasto_unita_immobiliari.foglio_catastale',  'character varying(5)', 'chk_catasto_unita_immobiliari_foglio_catastale_non_vuoto',  'CHECK ((btrim((foglio_catastale)::text) <> ''''::text))'),
     ('anagrafiche.catasto_unita_immobiliari.particella',        'character varying(5)', 'chk_catasto_unita_immobiliari_particella_non_vuota',        'CHECK ((btrim((particella)::text) <> ''''::text))'),
     ('anagrafiche.catasto_unita_immobiliari.sezione_catastale', 'character varying(5)', 'chk_catasto_unita_immobiliari_sezione_catastale_non_vuota', 'CHECK ((btrim((sezione_catastale)::text) <> ''''::text))'),
-    ('anagrafiche.catasto_unita_immobiliari.subalterno',        'character varying(5)', 'chk_catasto_unita_immobiliari_subalterno_non_vuoto',        'CHECK ((btrim((subalterno)::text) <> ''''::text))'),
-    ('magazzino.note.lingua',                               'character varying(5)',   'chk_note_lingua_non_vuota',                        'CHECK ((btrim((lingua)::text) <> ''''::text))');
+    ('anagrafiche.catasto_unita_immobiliari.subalterno',        'character varying(5)', 'chk_catasto_unita_immobiliari_subalterno_non_vuoto',        'CHECK ((btrim((subalterno)::text) <> ''''::text))');
 
 SELECT is(
     (SELECT coalesce(string_agg(x.colonna || ' e'' ' || coalesce(format_type(a.atttypid, a.atttypmod), 'assente'), ', ' ORDER BY x.colonna), '')
@@ -211,7 +212,7 @@ SELECT is(
        LEFT JOIN pg_attribute a ON a.attrelid = c.oid AND a.attname = split_part(x.colonna, '.', 3) AND NOT a.attisdropped
       WHERE format_type(a.atttypid, a.atttypmod) IS DISTINCT FROM x.tipo),
     '',
-    '6) le dodici colonne del 20261010-26 sono varchar, con la lunghezza di prima'
+    '6) le undici colonne del 20261010-26 sono varchar, con la lunghezza di prima'
 );
 
 SELECT is(
