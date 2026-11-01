@@ -1,5 +1,7 @@
 # 🔒 Configurazione rete stabile – ZeroERP
 
+> **Ultimo aggiornamento**: 1 novembre 2026
+
 ⚠️ Non modificare più firewall / modalità di connessione se non strettamente necessario.
 Sistema attuale testato e funzionante.
 

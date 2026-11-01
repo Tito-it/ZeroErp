@@ -1,5 +1,7 @@
 # Proxmox – Nodo, Template e VM **DBDEV** (PostgreSQL)
 
+> **Ultimo aggiornamento**: 1 novembre 2026
+
 > **Obiettivo**: documentare lo stato attuale dell’infrastruttura Proxmox, il ruolo del nodo, il template di base **100–db01**, la VM **101–dbdev** con PostgreSQL, le regole firewall, e le linee guida per clonare le prossime VM (backend Django, frontend Vue).
 
 ---

@@ -1,6 +1,6 @@
 # Sicurezza e qualità statica — strumenti, presidi, configurazione
 
-> **Ultimo aggiornamento**: 20 ottobre 2026
+> **Ultimo aggiornamento**: 1 novembre 2026
 >
 > **Destinatari**: chi sviluppa su backend, frontend o DB, e chi mette in piedi una macchina.
 > La versione descrittiva, per tutti, è la guida [Sicurezza di ZeroErp](../guide/sicurezza.md).
@@ -231,9 +231,20 @@ vero entrerebbe per distrazione.
 ```bash
 pre-commit run gitleaks                                    # l'indice attuale
 pre-commit run gitleaks --from-ref origin/Tito-dev --to-ref HEAD   # i commit del branch
-# storia intera (lenta: minuti). Il binario lo installa pre-commit in ~/.cache/pre-commit
-gitleaks git --redact .
+
+# storia intera (lenta: minuti, senza output finché non finisce)
+GL=$(find ~/.cache/pre-commit -type f -name gitleaks -perm -u+x | head -1)
+"$GL" git --redact -c .gitleaks.toml .
 ```
+
+⚠️ Il binario **non è nel PATH**: lo compila pre-commit nella sua cache la prima volta che l'hook
+gira (`pre-commit run gitleaks`), per questo lo si cerca con `find`. Dopo il logo, la scansione
+della storia non stampa niente fino al riepilogo finale: non è ferma.
+
+**Quando serve la storia intera**: al commit e in CI l'hook guarda già tutto ciò che entra, quindi
+non va lanciata a scadenza fissa. Serve quando cambiano le regole di `.gitleaks.toml` (una regola
+nuova va provata sul passato, che l'hook non rivede) e prima di rendere pubblico il repository o
+una sua copia.
 
 ---
 

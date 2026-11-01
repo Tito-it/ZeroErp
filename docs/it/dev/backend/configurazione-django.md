@@ -1,6 +1,6 @@
 # backend-dev — Django + Gunicorn + Nginx (LAN + Tailscale)
 
-> **Ultimo aggiornamento**: 26 settembre 2026
+> **Ultimo aggiornamento**: 1 novembre 2026
 >
 > **Destinatari**: chi configura o mantiene la macchina `backend-dev`, e chi deve
 > replicarla su un'altra macchina.
