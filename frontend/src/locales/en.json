@@ -578,6 +578,7 @@
       "righe_lavorabili": "Workable lines",
       "ripartizione": "Split",
       "ripetibilita": "Repeatability",
+      "scadenza": "Expiry state",
       "schema_db": "DB schema",
       "schema_tabella": "Table schema",
       "scope": "Scope",
@@ -4102,7 +4103,8 @@
         "ordine_gia_generato": "The quote has already generated an order: cancel the linked order first.",
         "gia_in_commessa": "The quote has already been sent to invoicing: cancel the job order activities first.",
         "commessa_gia_emessa": "Some lines have already been invoiced through the job order: reverse them on the invoicing side, or create a new revision of the quote.",
-        "iva_mancante": "One or more rows with a quantity have a price but no VAT rate. The rate is not chosen on the document: set it on the item, and the row picks it up. Otherwise remove the price, if the goods are not valued."
+        "iva_mancante": "One or more rows with a quantity have a price but no VAT rate. The rate is not chosen on the document: set it on the item, and the row picks it up. Otherwise remove the price, if the goods are not valued.",
+        "validita_scaduta": "The quote's validity has expired."
       },
       "conferma_cambio_stato": "Move the quote to status {stato}?",
       "conferma_revisione": "Create a new revision? The current revision will be deactivated.",

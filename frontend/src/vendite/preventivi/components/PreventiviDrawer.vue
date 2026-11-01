@@ -1131,7 +1131,7 @@ const drawerActions = computed(() => {
               :form="form" :is-modificabile="testata.modificabile.value"
               :non-editable-fields="nonEditableFields"
               :is-edit="isEdit || createdId !== null"
-              :record="detail" />
+              :record="detail" :campi-errati="campiErrati" />
           </div>
 
           <!-- Righe: visibili appena c'e' detail (EDIT classico o CREATE post auto-save). -->

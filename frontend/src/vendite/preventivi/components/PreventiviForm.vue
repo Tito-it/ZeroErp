@@ -33,6 +33,10 @@ const props = defineProps({
   // round-trip aggiuntivo. In CREATE il record e' null e il campo si comporta
   // in base al profilo (operatore→read-only auto, admin globale→Select).
   record: { type: Object, default: null },
+  // Campi che il BACKEND indica come da correggere (envelope `error.fields`),
+  // dall'handler del drawer: per esempio `validita_al` quando l'emissione si
+  // rifiuta perche' la validita' e' gia' finita (E_PREV_EMISSIONE_VALIDITA_SCADUTA).
+  campiErrati: { type: Array, default: () => [] },
 })
 
 // Lookup O(1) per campo non editabile.
@@ -167,7 +171,8 @@ function onIstanzaClear() {
       <div class="form-field">
         <label>{{ t('vendite.preventivi.field_validita_al') }}</label>
         <DatePicker v-model="form.validita_al" :date-format="DATE_FORMAT"
-          show-icon show-button-bar :disabled="isLocked('validita_al')" />
+          show-icon show-button-bar :disabled="isLocked('validita_al')"
+          :invalid="campiErrati.includes('validita_al')" />
       </div>
     </div>
 

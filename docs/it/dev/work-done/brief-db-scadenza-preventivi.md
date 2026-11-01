@@ -2,8 +2,8 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-01
 
-**Riparte: team BE/FE** (`dev/backend-tid`), con le tre richieste del §8.8. Il lato DB è chiuso: tutto il
-giro (§8.2 e §8.7) è applicato da Tid, pgTAP verdi.
+**Chiuso il 2026-11-01**: collaudo a video di Tid superato, brief archiviato in `work-done/`. Nessuno riparte;
+i residui sono in PROJECT_CONTEXT § «Aperto — Media priorità» (§8.10).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -14,18 +14,18 @@ giro (§8.2 e §8.7) è applicato da Tid, pgTAP verdi.
 | 5 | ✅ Tid | Apply di `-60` … `-66`, pgTAP verdi (2026-10-31) | §8.2, §8.6 | 4 |
 | 6 | ✅ team DB | E-4 (decisa da Tid il 2026-10-31): l'emissione con la validità già finita | §8.7 | 5 |
 | 7 | ✅ Tid | Apply del `-67`, pgTAP verdi (2026-11-01) | §8.7 | 6 |
-| 8 | **team BE/FE** ⏭️ | Chiave i18n, i due codici nelle error policy, prova a video | §8.8 | 7 |
-| 9 | Tid | Prova a video e archiviazione del brief in `work-done/` | §8.8 | 8 |
+| 8 | ✅ team BE/FE | R-1, R-2, e due ricadute non elencate (2026-11-01) | §8.9 | 7 |
+| 9 | ✅ Tid | Prova a video (R-3) superata e archiviazione in `work-done/` (2026-11-01) | §8.10 | 8 |
 
-Decisioni aperte di Tid: nessuna. Lavoro da committare: tutto il giro DB (§8.2, §8.3, §8.6, §8.7) e questo
-brief.
+Decisioni aperte di Tid: nessuna in questo brief (una ereditata, §8.10). Lavoro da committare: il lavoro BE/FE
+del §8.9 e questo brief; il giro DB è nel merge #1991.
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-25. **A chi:** Tid, poi il team DB.
-> **Origine:** W-3 di [brief-modello-documento-vendita](../work-done/brief-modello-documento-vendita.md) §8.12 (debito X-2,
+> **Origine:** W-3 di [brief-modello-documento-vendita](brief-modello-documento-vendita.md) §8.12 (debito X-2,
 > dichiarato nel §8.6 del giro 6). Tid, 2026-10-25: «brief separato».
-> **Brief vicini verificati:** [brief-modello-documento-vendita](../work-done/brief-modello-documento-vendita.md) (il
+> **Brief vicini verificati:** [brief-modello-documento-vendita](brief-modello-documento-vendita.md) (il
 > verbo e i passaggi di processo: questo brief ne usa i pezzi comuni, non li cambia);
-> [brief-design-proiezione-stato-dominio](brief-design-proiezione-stato-dominio.md) (legge SCADUTO come stato
+> [brief-design-proiezione-stato-dominio](../work-in-progress/brief-design-proiezione-stato-dominio.md) (legge SCADUTO come stato
 > chiuso negativo: è un lettore, non uno scrittore). Nessun brief aperto scrive la scadenza.
 
 ## 1. Il caso
@@ -84,7 +84,7 @@ Si scrive dopo le decisioni: verbo di processo, job e sua registrazione nel cata
 ## 6. Riverifica del 2026-10-31
 
 Il brief è del 2026-10-25. Nel frattempo il modello del documento di vendita ha chiuso i giri 13-16
-([brief-modello-documento-vendita](../work-done/brief-modello-documento-vendita.md), archiviato il
+([brief-modello-documento-vendita](brief-modello-documento-vendita.md), archiviato il
 2026-10-31). Riletti il registro, i verbi e le guide: le §1 e la diagnosi restano vere, alcuni pezzi del
 §2, del §4 e del §5 sono stantii.
 
@@ -366,3 +366,36 @@ Le richieste al team BE/FE, nessuna bloccante per il DB:
 Da sapere: dalla prima notte dopo l'apply il job porta a SCADUTO, su dbdev, i preventivi EMESSI con la
 validità già finita; è il comportamento voluto. Dopo la prova a video di Tid il brief va in `work-done/`.
 
+### 8.9 Fatto dal team BE/FE (2026-11-01)
+
+| # | Che cosa | Dove |
+| --- | --- | --- |
+| R-1 | `vendite.preventivi.azione_reason.validita_scaduta` in it («La validità del preventivo è finita.») ed en | `frontend/src/locales/*.json`; `check_i18n_keys` pulito |
+| R-2 | i due codici in `error_policies_generated.py` (rigenerato: due voci in più, nessuna classe cambiata; `--check` allineato) e i loro ripieghi senza `%s` | `backend/apps/core/services/error_policies_generated.py`, `error_messages_fallback.py` |
+| R-2 bis | ⚠️ il campo «Valido al» **non si sarebbe acceso**: `PreventiviForm` non riceveva i `campiErrati` del drawer. Ora li riceve e li lega a `validita_al` | `PreventiviForm.vue`, `PreventiviDrawer.vue` |
+| R-2 ter | la giuntura provata sul DB vero: una bozza con la validità di ieri, «Emetti» → `E_PREV_EMISSIONE_VALIDITA_SCADUTA` col campo `validita_al` | `vendite/tests/db/test_preventivo_cambia_stato_db.py`, test 5 |
+| fuori lista | la colonna nuova `scadenza` di `config.stati_doc_preventivi` (D-1) compare nel pannello di configurazione e non aveva l'etichetta: `config_panel.campi.scadenza` («Stato di scadenza» / «Expiry state»). L'ha trovata `core/tests/db/test_config_panel_registro_db` | `frontend/src/locales/*.json` |
+| fuori lista | il ripiego di `E_PREV_REVISIONE_STATO_NON_AMMESSO` diceva ancora «solo da preventivo EMESSO»: allineato alla frase del catalogo (emesso o scaduto) | `error_messages_fallback.py` |
+
+Test: `apps.core.tests` + `apps.vendite.tests` con `ZEROERP_TEST_DB_E2E=1`. Resta un rosso **non di questo
+brief**: `core/tests/db/test_parameter_overrides_db.test_valore_fuori_forma_non_si_salva` (il campo `value` non
+arriva), già in carico al team DB nel §7.7.1 di
+[brief-db-liste-datatable-grezze-secondo-giro](../work-in-progress/brief-db-liste-datatable-grezze-secondo-giro.md).
+
+Per la prova a video (R-3): il ripiego nuovo è Python, il BE di sviluppo va ricaricato (`kill -HUP` sul master di
+gunicorn) e il FE ricompilato.
+
+### 8.10 Collaudo e chiusura (2026-11-01)
+
+Prova a video di Tid superata sui tre casi di R-3: la bozza con la validità passata («Emetti» spento col motivo),
+lo SCADUTO portato dal job («Crea revisione» acceso, la revisione nasce in bozza e si riemette con una data
+nuova), l'EMESSO con la validità finita prima del job (costruito spostando `SYSTEM_FUSO_ORARIO`: «Accetta»
+spento col motivo, «Crea revisione» acceso). Brief archiviato in `work-done/`.
+
+Residui, ereditati in PROJECT_CONTEXT § «Aperto — Media priorità», nessuno bloccante:
+
+* **`validita_al` dice due cose** (§6.3.2): la scadenza dell'offerta e, come ripiego dietro `competenza_mese`,
+  il periodo di competenza (`fn_list_preventivi_da_pushare`, `vw_dash_fatturazione_preventivi`). Da decidere,
+  di Tid, se la competenza debba avere una sede sua; poi team DB.
+* **Il verbo di chiusura del listino legge ancora i letterali** `'ATTIVA'`/`'CHIUSA'` (D-1): il gemello del
+  preventivo legge lo stato di scadenza dal vocabolario. Team DB, alla regola del giro 17 del modello.

@@ -805,7 +805,7 @@ le quattro `script/test-search-*`.
 
 ⚠️ **Lo status di `DATO_ERRATO` nel BE è 400**, non 422 come scrive il §7.6.1: vale la mappa del BE (`error_policies.py`).
 
-⚠️ **Rigenerando le policy è entrato `E_PREV_VALIDITA_SCADUTA`**, che sta su dbdev ma non nel CSV in git (è del giro di brief-db-scadenza-preventivi, `20261031-62`). È stato tolto a mano dal file generato: il BE non si aggancia a un changeSet non pushato. Finché quel giro non arriva in git, `genera_error_policies --check` su dbdev dà «DIVERGE»: è atteso.
+⚠️ **Rigenerando le policy è entrato `E_PREV_VALIDITA_SCADUTA`**, che sta su dbdev ma non nel CSV in git (è del giro di brief-db-scadenza-preventivi, `20261031-62`). È stato tolto a mano dal file generato: il BE non si aggancia a un changeSet non pushato. Finché quel giro non arriva in git, `genera_error_policies --check` su dbdev dà «DIVERGE»: è atteso. ✅ Superato il 2026-11-01: il giro è arrivato in git (#1991) e le policy sono state rigenerate con i due codici della scadenza ([brief-db-scadenza-preventivi](../work-done/brief-db-scadenza-preventivi.md) §8.9).
 
 ### 7.7.1 Richiesta al team DB — il campo dei due guard a07 non arriva
 
