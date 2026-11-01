@@ -1,6 +1,6 @@
 # Guida — Fatturazione (processo end-to-end)
 
-> **Ultimo aggiornamento**: 27 ottobre 2026
+> **Ultimo aggiornamento**: 1 novembre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend e database
 >
@@ -943,6 +943,39 @@ distinguerle.
 ⛔ **E non esistono stati `RETTIFICATA`/`NOTA_CREDITO_EMESSA`** sulla fattura
 originale: sarebbero una seconda verità accanto al legame di riga, che è il
 fatto. La fattura corretta resta nel suo stato.
+
+### La natura la dà il segno del documento
+
+**Un documento che somma negativo è una nota di credito**, comunque siano nate le
+sue righe e da qualunque sorgente vengano. Il caso tipico è lo storno di un canone
+anticipato già fatturato, quando il contratto cessa a metà periodo
+([guida dei contratti §4-bis.4](/guide/gestione-contratti#4-bis4-la-cessazione-e-gli-storni)).
+
+* Il segno si guarda sul **documento**, cioè sul gruppo di attività che diventa una
+  testata, non sulla commessa: una commessa può dare più documenti.
+* Le attività di natura `FATTURA` di un gruppo a totale negativo diventano
+  `NOTA_CREDITO`, e la testata nasce nota di credito con il suo registro e la sua
+  serie. Il **documento misto** a totale negativo (uno storno di −300 e una una
+  tantum di +50) è **una** nota di credito da −250, con dentro la riga positiva. A
+  totale zero o positivo resta una fattura, con la riga negativa.
+* Le attività nate già `NOTA_CREDITO` (l'accredito di un reso) restano un gruppo a
+  sé: una nota di credito che cita la riga che rettifica, mai compensata in una
+  fattura.
+* La decisione si prende **una volta per lotto**, prima delle testate, ed è
+  reversibile: l'attività battezzata dal segno porta la marca `natura_dal_segno`, e
+  quando torna libera (lotto annullato o riportato in bozza, fattura ripulita)
+  riprende la natura `FATTURA`. La composizione successiva decide di nuovo.
+
+La nota di credito nata dal segno **cita le fatture** dei periodi che storna:
+dallo storno si risale al pezzo addebitato, alla sua riga di fattura e alla fattura,
+e da lì esce `DatiFattureCollegate`. Le righe dello storno restano righe normali, non
+rettifiche di riga. Se il pezzo stornato non era ancora fatturato, lo storno si
+compensa nella stessa fattura e non c'è niente da citare.
+
+La regola sta in
+[vendite.fn_lotto_natura_dal_segno](/dbzero/vendite/manual/fn_lotto_natura_dal_segno),
+che il giro del backend chiama fra «in lavorazione» e la creazione delle testate; la
+citazione in [vendite.fn_popola_fatture_rettifiche](/dbzero/vendite/manual/fn_popola_fatture_rettifiche).
 
 ### Il legame è di riga, e l'indice documentale è una proiezione
 

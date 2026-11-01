@@ -11,7 +11,7 @@ L'obiettivo e` ridurre la complessita` superflua mantenendo rigore su dati, rego
 
 > **Sviluppo attivo — DB, backend e frontend operativi su core, anagrafiche, catalogo, ciclo attivo completo (preventivi, offerte, contratti, ordini, DDT, resi, fatture, commesse), pratiche, documenti e presentazione configurabile. Non ancora rilasciato per produzione.**
 >
-> *Ultima revisione: **28 ottobre 2026**.*
+> *Ultima revisione: **31 ottobre 2026**.*
 >
 > La fotografia dettagliata, lo stato per componente e la roadmap sono mantenuti in
 > un'unica fonte: la [Mappa Concentrica](./mappa-concentrica.md) (stato per anello +
@@ -162,6 +162,8 @@ datata è nel suo [changelog](./dev/mappa-concentrica-changelog.md).
 **Processi**
 
 - **Ciclo attivo completo**: preventivi, offerte commerciali, contratti, ordini, DDT, **resi**, fatture e **note di credito** — DB + backend + frontend, con la numerazione governata dal registro e l'IVA di riga decisa da un risolutore
+- **Un modello per tutti i documenti di vendita**: ogni cambio di stato passa da un verbo del database, si emette da un solo punto, un documento nasce nel suo stato iniziale — le regole stanno in [una guida](./guide/modello-documento-di-vendita.md), e tutti i documenti, fattura e listino compresi, la seguono
+- **Contratti a canone**: una riga di contratto si addebita una tantum o a periodi (mensile, trimestrale…), con il recupero degli arretrati e lo storno quando la fine si sposta
 - **Fatturazione**: pipeline batch a corsie, lotti, **cockpit da cui si agisce** (fattura adesso, rendi definitive, stampa massiva), tre lenti di lettura
 - **Commesse**: multi-sorgente, quantità immutabili dopo la fatturazione, oneri manuali con la propria IVA
 - **Motore pratiche**: operativo e **validato dal primo consumatore reale** (pratica PREVENTIVI); il secondo è ciò che ne promuoverà le astrazioni a contratti

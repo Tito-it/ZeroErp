@@ -1,5 +1,7 @@
 # 💻 Zero ERP – VM wrk1-dev – Configurazione Desktop di Sviluppo e Accesso Remoto
 
+> **Ultimo aggiornamento**: 1 novembre 2026
+
 > 🔧 **Scopo principale**
 > La VM **wrk1-dev** funge da postazione di sviluppo grafico principale per l'ambiente Zero ERP.
 > È progettata per fornire un ambiente **leggero, stabile e multi-utente**, capace di gestire sessioni XFCE indipendenti, connessioni RDP simultanee, doppio schermo e integrazione diretta con i server `dbdev` e `backend-dev` tramite **VS Code remoto**.

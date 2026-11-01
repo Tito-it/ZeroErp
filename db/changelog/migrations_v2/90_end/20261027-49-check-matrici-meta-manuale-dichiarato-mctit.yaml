@@ -24,6 +24,10 @@
 #   tabella giudicherebbe righe di seed scritte prima della chiave
 #   (ref: 20261020-23, stessa forma). Se una riga fosse scoperta il changeSet
 #   lo dice con una frase leggibile, non con un 23514 nudo.
+#
+# ⚠️ La preCondition conta gli otto vincoli PER NOME, non per pattern: le
+#   matrici nate dopo (20261028-03, listino versioni) portano lo stesso
+#   vincolo nella CREATE in `00_schema`, che da zero gira prima di `90_end`.
 # ------------------------------------------------------------
 
 databaseChangeLog:
@@ -43,7 +47,15 @@ databaseChangeLog:
             expectedResult: "0"
             sql: >
               SELECT count(*) FROM pg_catalog.pg_constraint c
-               WHERE c.conname LIKE 'ck\_%\_meta\_manuale\_dichiarato';
+               WHERE c.conname IN (
+                   'ck_transizioni_stati_preventivi_meta_manuale_dichiarato',
+                   'ck_stati_doc_offerte_transizioni_meta_manuale_dichiarato',
+                   'ck_transizioni_stati_contratti_meta_manuale_dichiarato',
+                   'ck_transizioni_stati_ordini_meta_manuale_dichiarato',
+                   'ck_transizioni_stati_ddt_meta_manuale_dichiarato',
+                   'ck_transizioni_stati_reso_meta_manuale_dichiarato',
+                   'ck_transizioni_stati_commessa_meta_manuale_dichiarato',
+                   'ck_stati_doc_fiscale_transizioni_meta_manuale_dichiarato');
       changes:
         - sql:
             dbms: postgresql

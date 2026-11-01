@@ -1,0 +1,123 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL GUARD SUL VALORE DI UN OVERRIDE NOMINA IL CAMPO
+#   config.trgfn_parameter_overrides_guard_tipo_valore
+#   Brief: brief-db-liste-datatable-grezze-secondo-giro §7.7.1 (2026-11-01)
+#
+# ── IL DIFETTO ───────────────────────────────────────────────────
+#   E_PARAMETER_VALORE_NON_CONFORME metteva il campo `value` nel contesto
+#   sotto 'field'. script.fn_log_and_raise_error porta sul canale COLUMN solo
+#   p_context->>'campo': il codice arrivava, il campo no, e il drawer degli
+#   override non evidenziava il valore sbagliato. Non dava errore. L'ha visto
+#   il BE (core/tests/db/test_parameter_overrides_db
+#   .test_valore_fuori_forma_non_si_salva, rosso su None != 'value').
+#
+# ── COSA CAMBIA ──────────────────────────────────────────────────
+#   Solo la chiave: 'campo' al posto di 'field'. Regola, codice, messaggio,
+#   fase (a07) e trigger restano quelli di 20261031-57.
+#
+# ⚠️ CORPO da 20261031-57, identico alla doc auto-gen
+#   (docs/it/dbzero/config/funzioni/trgfn_parameter_overrides_guard_tipo_valore.md).
+#   CREATE OR REPLACE: il trigger a07 punta alla funzione e resta com'e'.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20261101-02-update-trgfn-parameter-overrides-guard-tipo-valore-campo-mctit.yaml
+
+  - changeSet:
+      id: 20261101-02-update-trgfn-parameter-overrides-guard-tipo-valore-campo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config.trgfn_parameter_overrides_guard_tipo_valore: il campo value passa sotto la chiave
+        'campo' del contesto (era 'field'), l'unica che script.fn_log_and_raise_error porta sul
+        canale COLUMN. Regola e codice invariati. Brief:
+        brief-db-liste-datatable-grezze-secondo-giro §7.7.1.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >-
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'config' AND p.proname = 'trgfn_parameter_overrides_guard_tipo_valore'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION config.trgfn_parameter_overrides_guard_tipo_valore()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- =========================================================
+              -- Scopo: il valore di un override ha la forma del tipo del suo
+              --   parametro (script.fn_valore_parametro_non_conforme).
+              -- Parametro assente: lo giudica la FK fk_overrides_parameter.
+              -- Brief: brief-db-liste-datatable-grezze-secondo-giro §4.6.1.
+              -- Rev 2026-11-01 (§7.7.1): il campo va sotto 'campo', l'unica chiave
+              --   che fn_log_and_raise_error porta sul canale COLUMN.
+              -- =========================================================
+              DECLARE
+                  v_code  config.parameters.code%TYPE;
+                  v_tipo  config.parameters.tipo_valore%TYPE;
+                  -- La forma attesa in parole (NULL = conforme): nessuna colonna.
+                  v_forma text;
+              BEGIN
+                  -- UPDATE OF scatta anche a valore uguale: conta il cambio.
+                  IF TG_OP = 'UPDATE'
+                     AND NEW.parameter_id     IS NOT DISTINCT FROM OLD.parameter_id
+                     AND NEW.overridden_value IS NOT DISTINCT FROM OLD.overridden_value THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT p.code, p.tipo_valore
+                    INTO v_code, v_tipo
+                    FROM config.parameters p
+                   WHERE p.id = NEW.parameter_id;
+
+                  -- Zero righe: passa, e decide la FK.
+                  IF NOT FOUND THEN
+                      RETURN NEW;
+                  END IF;
+
+                  v_forma := script.fn_valore_parametro_non_conforme(v_tipo, NEW.overridden_value);
+                  IF v_forma IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'config.trgfn_parameter_overrides_guard_tipo_valore',
+                          'E_PARAMETER_VALORE_NON_CONFORME',
+                          jsonb_build_object(
+                              'campo',        'value',
+                              'override_id',  NEW.id,
+                              'parameter_id', NEW.parameter_id,
+                              'code',         v_code,
+                              'tipo_valore',  v_tipo,
+                              'valore',       NEW.overridden_value),
+                          NEW.tx_id,
+                          NEW.overridden_value::text, v_code::text, v_forma);
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION config.trgfn_parameter_overrides_guard_tipo_valore() IS
+                  'Guard di config.parameter_overrides (a07, BEFORE INSERT OR UPDATE OF parameter_id, overridden_value): overridden_value deve avere la forma di config.parameters.tipo_valore del parametro padre (script.fn_valore_parametro_non_conforme), altrimenti E_PARAMETER_VALORE_NON_CONFORME, sul campo value (canale COLUMN, chiave ''campo'' del contesto; fino al 2026-11-01 stava sotto ''field'' e non arrivava). Prima veniva accettato, e l''errore arrivava in lettura (E_CONFIG_MANCANTE) su ogni lettore del parametro. Dopo a05 (ammette_override), prima di a10 (FK-surrogata). Parametro assente: lo giudica la FK. Gemello: config.trgfn_parameters_guard_tipo_valore (default e cambio di tipo). Brief: brief-db-liste-datatable-grezze-secondo-giro (D-5).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Nessun rollback automatico: tornare indietro vuol dire il corpo
+              -- di 20261031-57, col campo che non arriva.
+              SELECT 1;

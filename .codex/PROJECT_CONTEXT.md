@@ -242,6 +242,13 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   offerta, commessa, fattura, versione di listino), poi gli stati con un significato dal vocabolario (cessazione,
   accettazione) e l'arco della revisione nel lineage. Prove a video di Tid tutte ok. La guida è
   `docs/it/guide/modello-documento-di-vendita.md`. I residui sono in § «Aperto — Media priorità».
+- ✅ **La scadenza dei preventivi: chiuso il 2026-11-01** (`work-done/brief-db-scadenza-preventivi.md`): EMESSO →
+  SCADUTO lo scrive il framework delle chiusure per scadenza (terza riga di `dbops.automazione_chiusura_scadenze`,
+  verbo `vendite.fn_chiudi_preventivi_scaduti`); l'accettazione e l'emissione con la validità finita si rifiutano
+  anche prima del job (`fn_check_preventivo_accettabile`, motivo 4 di `fn_check_preventivo_emettibile`); la
+  revisione si apre anche da SCADUTO; lo stato di scadenza si legge dal vocabolario (colonna `scadenza`). DB
+  `20261031-60…-67`, BE/FE i due codici e il campo «Valido al». Collaudo a video di Tid superato. I residui sono in
+  § «Aperto — Media priorità».
 - ✅ **Il reso costruito nei pgTAP: chiuso il 2026-10-25** (`work-done/brief-db-pgtap-reso-costruito.md`,
   seguito di `work-done/brief-db-pgtap-bolla-e-reso-costruiti`): i pgTAP non ricopiano più la strada del reso
   confermato, della bolla di ri-consegna, dell'ordine con righe, della bolla senza ordine e dell'attività fatturata;
@@ -421,8 +428,14 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   listino `vendite.listini_kit`, componenti del kit dal listino, controllo all'attivazione, lookup e
   anteprima della periodicità); L17 `-44` … `-48` (la nota di credito dal segno, §7.9) e `-49` … `-52`
   (la quota fissa non perde la periodicità fuori dalla bozza, §7.10) applicati e verdi. BE/FE passo 3
-  fatto il 2026-10-31 (§7.11, da committare). Restano: L18 documentazione, la colonna della periodicità
-  nella lista 37 e il passo 4 DB.
+  fatto e committato il 2026-10-31 (§7.11, `f9b9a0d81`). Restano: L18 documentazione, la colonna della
+  periodicità nella lista 37, il passo 4 DB e il collaudo a video.
+- ⏳ **Liste ancora su `DataTable` grezza, secondo giro**
+  (`work-in-progress/brief-db-liste-datatable-grezze-secondo-giro.md`): sette liste a catalogo (107-113), la
+  regola «listino in scadenza senza successore» a DB, la forma del valore dei parametri in scrittura, la
+  ricerca universale sui campi del catalogo; registro FE a 17 grezze, 0 senza motivo. Lato DB chiuso
+  (`20261101-01…03` compresi). Resta il BE del §7.8.5 (la soglia della ricerca dal catalogo), poi
+  l'archiviazione.
 - 📝 **Dove si addebita il trasporto di un ordine fatturato alla conferma**
   (`work-in-progress/brief-db-addebito-trasporto-ordine.md`, da A-9 del brief sopra): aperto, non iniziato.
 - ✅ **Codici d'errore per email, «accesso riservato» e «non trovato» del dettaglio ricerca: chiuso il 2026-10-10**
@@ -573,6 +586,13 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   cambio di licenza.
 
 ### Aperto — Media priorità
+- **Residui di `work-done/brief-db-scadenza-preventivi.md`** (ereditati il 2026-11-01 dalla chiusura, §8.10),
+  nessuno bloccante:
+  - **`validita_al` dice due cose**: la scadenza dell'offerta e, come ripiego dietro `competenza_mese`, il periodo
+    di competenza (`fn_list_preventivi_da_pushare`, `vw_dash_fatturazione_preventivi`). Se la competenza debba
+    avere una sede sua lo decide Tid; poi team DB;
+  - **il verbo di chiusura del listino** (`vendite.fn_chiudi_versioni_listino_scadute`) legge ancora i letterali
+    `'ATTIVA'`/`'CHIUSA'`, mentre il gemello del preventivo legge il vocabolario. Team DB.
 - **Residui di `work-done/brief-modello-documento-vendita.md`** (ereditati il 2026-10-31 dalla chiusura, §18.6),
   nessuno bloccante:
   - **i permessi `emetti_offerta`, `emetti_contratto`, `emetti_ordine`, `attiva_listino` ai profili** su dbdev:

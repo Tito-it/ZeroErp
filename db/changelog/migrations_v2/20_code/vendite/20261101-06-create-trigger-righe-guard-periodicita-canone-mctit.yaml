@@ -1,0 +1,76 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I DUE MONTAGGI DEL GUARD DELLA PERIODICITA' SULLA RIGA A CANONE
+#   trg_contratti_righe_a10_guard_periodicita_canone_ins_upd
+#   trg_offerte_eccezioni_a10_guard_periodicita_canone_ins_upd
+#   Brief: brief-db-contratto-righe-periodiche-in-commessa §6.11 (passo 4).
+#
+#   BEFORE INSERT OR UPDATE OF tipo_erogazione, periodicita, per riga, WHEN la
+#   riga e' a canone e senza periodicita'. Fase _a10_; il nome governa l'ordine:
+#     · dopo _a10_default_erogazione_articolo e _a10_default_periodicita_listino
+#       («guard» dopo «default»): l'erogazione e la periodicita' ereditate sono
+#       gia' sulla riga quando il guard la giudica;
+#     · dopo _a10_guard_erogazione_obbligatoria e _a10_guard_erogazione_perimetro
+#       («guard_p» dopo «guard_e»): a una riga che non puo' essere a canone parla
+#       prima il perimetro, non la periodicita' che le manca;
+#     · prima di _a10_guard_quantita_per_fonte e _a10_qta_from_operativa.
+#   ⚠️ UPDATE OF: un UPDATE che non nomina le due colonne non riaccende il
+#   guard. Non serve: una riga gia' scritta ha la periodicita' (lo tiene il
+#   CHECK del 20261101-04), e nessuno degli altri trigger BEFORE la toglie.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261101-06-create-trigger-righe-guard-periodicita-canone-mctit.yaml
+
+  - changeSet:
+      id: 20261101-06-create-trigger-righe-guard-periodicita-canone
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Montaggio di script.trgfn_righe_guard_periodicita_canone su vendite.contratti_righe e
+        vendite.offerte_commerciali_eccezioni. Brief:
+        brief-db-contratto-righe-periodiche-in-commessa §6.11 (passo 4).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc
+               WHERE oid = to_regprocedure('script.trgfn_righe_guard_periodicita_canone()')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_contratti_righe_a10_guard_periodicita_canone_ins_upd
+                  ON vendite.contratti_righe;
+              CREATE TRIGGER trg_contratti_righe_a10_guard_periodicita_canone_ins_upd
+                  BEFORE INSERT OR UPDATE OF tipo_erogazione, periodicita ON vendite.contratti_righe
+                  FOR EACH ROW
+                  WHEN (NEW.tipo_erogazione = 'CANONE' AND NEW.periodicita IS NULL)
+                  EXECUTE FUNCTION script.trgfn_righe_guard_periodicita_canone('contratto_id');
+
+              DROP TRIGGER IF EXISTS trg_offerte_eccezioni_a10_guard_periodicita_canone_ins_upd
+                  ON vendite.offerte_commerciali_eccezioni;
+              CREATE TRIGGER trg_offerte_eccezioni_a10_guard_periodicita_canone_ins_upd
+                  BEFORE INSERT OR UPDATE OF tipo_erogazione, periodicita ON vendite.offerte_commerciali_eccezioni
+                  FOR EACH ROW
+                  WHEN (NEW.tipo_erogazione = 'CANONE' AND NEW.periodicita IS NULL)
+                  EXECUTE FUNCTION script.trgfn_righe_guard_periodicita_canone('offerta_id');
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_contratti_righe_a10_guard_periodicita_canone_ins_upd
+                  ON vendite.contratti_righe;
+              DROP TRIGGER IF EXISTS trg_offerte_eccezioni_a10_guard_periodicita_canone_ins_upd
+                  ON vendite.offerte_commerciali_eccezioni;

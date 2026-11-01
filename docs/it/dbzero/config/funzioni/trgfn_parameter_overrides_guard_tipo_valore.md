@@ -20,6 +20,8 @@ AS $function$
 --   parametro (script.fn_valore_parametro_non_conforme).
 -- Parametro assente: lo giudica la FK fk_overrides_parameter.
 -- Brief: brief-db-liste-datatable-grezze-secondo-giro §4.6.1.
+-- Rev 2026-11-01 (§7.7.1): il campo va sotto 'campo', l'unica chiave
+--   che fn_log_and_raise_error porta sul canale COLUMN.
 -- =========================================================
 DECLARE
     v_code  config.parameters.code%TYPE;
@@ -51,7 +53,7 @@ BEGIN
             'config.trgfn_parameter_overrides_guard_tipo_valore',
             'E_PARAMETER_VALORE_NON_CONFORME',
             jsonb_build_object(
-                'field',        'value',
+                'campo',        'value',
                 'override_id',  NEW.id,
                 'parameter_id', NEW.parameter_id,
                 'code',         v_code,
@@ -66,7 +68,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION config.trgfn_parameter_overrides_guard_tipo_valore()
-IS 'Guard di config.parameter_overrides (a07, BEFORE INSERT OR UPDATE OF parameter_id, overridden_value): overridden_value deve avere la forma di config.parameters.tipo_valore del parametro padre (script.fn_valore_parametro_non_conforme), altrimenti E_PARAMETER_VALORE_NON_CONFORME, sul campo value. Prima veniva accettato, e l''errore arrivava in lettura (E_CONFIG_MANCANTE) su ogni lettore del parametro. Dopo a05 (ammette_override), prima di a10 (FK-surrogata). Parametro assente: lo giudica la FK. Gemello: config.trgfn_parameters_guard_tipo_valore (default e cambio di tipo). Brief: brief-db-liste-datatable-grezze-secondo-giro (D-5).';
+IS 'Guard di config.parameter_overrides (a07, BEFORE INSERT OR UPDATE OF parameter_id, overridden_value): overridden_value deve avere la forma di config.parameters.tipo_valore del parametro padre (script.fn_valore_parametro_non_conforme), altrimenti E_PARAMETER_VALORE_NON_CONFORME, sul campo value (canale COLUMN, chiave ''campo'' del contesto; fino al 2026-11-01 stava sotto ''field'' e non arrivava). Prima veniva accettato, e l''errore arrivava in lettura (E_CONFIG_MANCANTE) su ogni lettore del parametro. Dopo a05 (ammette_override), prima di a10 (FK-surrogata). Parametro assente: lo giudica la FK. Gemello: config.trgfn_parameters_guard_tipo_valore (default e cambio di tipo). Brief: brief-db-liste-datatable-grezze-secondo-giro (D-5).';
 ```
 
 </div>

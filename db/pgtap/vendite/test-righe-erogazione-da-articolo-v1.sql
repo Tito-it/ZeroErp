@@ -1,5 +1,8 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-11-01 (20261101-04/-06, brief-db-contratto-righe-periodiche-in-commessa passo 4): la
+--   riga a canone vuole la periodicita'. Le AGGIUNTA che sono (o ereditano) un canone la scrivono (MENSILE): non e' il soggetto di questo test. Nessuna attesa
+--   cambiata.
 -- pgTAP test per Zero ERP
 --
 -- Test: come si eroga una riga di contratto o di offerta lo dice l'ARTICOLO.
@@ -158,9 +161,13 @@ RETURNS text LANGUAGE sql STABLE AS $fx$
                (SELECT id FROM tmp_eda_ctr), pg_temp.art(p_sigla))
     ELSE
         format($$INSERT INTO vendite.contratti_righe (contratto_id, articolo_id, tipo_eccezione,
-                       prezzo_unitario, qta_operativa, tipo_erogazione, fonte_quantita_attesa)
-                 VALUES (%s, %L, 'AGGIUNTA', 10, %L, %L, %L)$$,
-               (SELECT id FROM tmp_eda_ctr), pg_temp.art(p_sigla), p_qta, p_erog, p_fonte)
+                       prezzo_unitario, qta_operativa, tipo_erogazione, fonte_quantita_attesa,
+                       periodicita)
+                 VALUES (%s, %L, 'AGGIUNTA', 10, %L, %L, %L, %L)$$,
+               (SELECT id FROM tmp_eda_ctr), pg_temp.art(p_sigla), p_qta, p_erog, p_fonte,
+               -- La riga che e' (o eredita) un canone porta la periodicita' (passo 4).
+               CASE WHEN p_erog = 'CANONE' OR (p_erog IS NULL AND p_fonte IS NULL)
+                    THEN 'MENSILE' END)
     END;
 $fx$;
 
@@ -320,8 +327,8 @@ INSERT INTO vendite.offerte_commerciali_utilities (offerta_id, istanza_utility_i
 SELECT o.id, c.istanza_utility_id, c.utility_id FROM tmp_eda_off o, tmp_eda_cli2 c;
 
 INSERT INTO vendite.offerte_commerciali_eccezioni
-       (offerta_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa)
-VALUES ((SELECT id FROM tmp_eda_off), pg_temp.art('R2'), 'AGGIUNTA', 10, 1);
+       (offerta_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa, periodicita)
+VALUES ((SELECT id FROM tmp_eda_off), pg_temp.art('R2'), 'AGGIUNTA', 10, 1, 'MENSILE');
 
 -- Lo stato dell'offerta dal verbo (la porta rifiuta l'UPDATE diretto): la
 -- fixture cammina BOZZA → EMESSA → ACCETTATA e concede da se' emetti_offerta.

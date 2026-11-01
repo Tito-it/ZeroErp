@@ -11,6 +11,7 @@
 --         20261031-54 (script.fn_valore_parametro_non_conforme)
 --         20261031-55 (script.fn_intero_positivo_da_testo dal BB)
 --         20261031-56 (guard su config.parameters, a07) · 20261031-57 (guard sugli override, a07)
+--         20261101-01, 20261101-02 (il campo sotto 'campo': esce sul canale COLUMN, §7.7.1)
 --
 -- ⭐ I parametri sono COSTRUITI dal test. L'unico parametro del catalogo che il
 --   test nomina e' LISTINI_SCADENZA_PREAVVISO_GIORNI (19), il caso da cui nasce
@@ -19,7 +20,7 @@
 --   verso opposto non serve: un ramo del BB fuori dal CHECK non si puo'
 --   scrivere su nessuna riga.
 --
--- Elenco test (plan 20):
+-- Elenco test (plan 23):
 --  1) colonna tipo_valore presente
 --  2) NOT NULL
 --  3) senza DEFAULT (lo toglie 90_end)
@@ -40,6 +41,9 @@
 -- 18) il caso del brief: un override '0' di LISTINI_SCADENZA_PREAVVISO_GIORNI -> rifiutato
 -- 19) il lettore fail-loud: fn_intero_positivo_da_testo('0') -> E_CONFIG_MANCANTE
 -- 20) il lettore: fn_intero_positivo_da_testo('15') = 15
+-- 21) il campo esce sul canale COLUMN: override fuori forma -> value
+-- 22) idem, default fuori forma -> default_value
+-- 23) idem, cambio di tipo con un override fuori forma -> tipo_valore
 --
 -- Scopo:
 --  - il difetto che chiude: un override «0» o «abc» del preavviso si salvava, e
@@ -52,7 +56,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(20);
+SELECT plan(23);
 
 -- ============================================================
 -- 1-3) La colonna
@@ -221,6 +225,41 @@ SELECT throws_like(
 
 SELECT is(script.fn_intero_positivo_da_testo('15', '_TEST_TIPO_INT_'), 15,
     '20) fn_intero_positivo_da_testo(''15'') = 15');
+
+-- ============================================================
+-- 21-23) Il campo da correggere esce sul canale COLUMN (§7.7.1)
+-- ============================================================
+-- ⭐ Il messaggio dei test 9, 12 e 13 c'era anche quando il campo non
+--   arrivava: fino al 2026-11-01 i due guard lo mettevano sotto 'field', e
+--   fn_log_and_raise_error porta su COLUMN solo 'campo'. Qui si legge il
+--   canale, insieme al codice (CONSTRAINT), come fa il BE.
+-- Stato di partenza: 99940 e' INTERO_NON_NEGATIVO con default '15' (test 15),
+--   l'override 99945 vale '30' ed e' spento (test 14).
+CREATE OR REPLACE FUNCTION pg_temp.codice_e_campo(p_sql text) RETURNS text
+LANGUAGE plpgsql AS $$
+DECLARE v_codice text; v_campo text;
+BEGIN
+    EXECUTE p_sql;
+    RETURN NULL;
+EXCEPTION WHEN SQLSTATE 'P0001' THEN
+    GET STACKED DIAGNOSTICS v_codice = CONSTRAINT_NAME, v_campo = COLUMN_NAME;
+    RETURN v_codice || ' / ' || v_campo;
+END $$;
+
+SELECT is(
+    pg_temp.codice_e_campo($$UPDATE config.parameter_overrides SET overridden_value = 'abc' WHERE id = 99945$$),
+    'E_PARAMETER_VALORE_NON_CONFORME / value',
+    '21) override fuori forma: il campo value esce sul canale COLUMN');
+
+SELECT is(
+    pg_temp.codice_e_campo($$UPDATE config.parameters SET default_value = 'abc' WHERE id = 99940$$),
+    'E_PARAMETER_VALORE_NON_CONFORME / default_value',
+    '22) default fuori forma: il campo default_value esce sul canale COLUMN');
+
+SELECT is(
+    pg_temp.codice_e_campo($$UPDATE config.parameters SET tipo_valore = 'BOOLEANO', default_value = 'true' WHERE id = 99940$$),
+    'E_PARAMETER_OVERRIDE_NON_CONFORME_AL_TIPO / tipo_valore',
+    '23) cambio di tipo con un override fuori forma: il campo tipo_valore esce sul canale COLUMN');
 
 SELECT * FROM finish();
 ROLLBACK;

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/listini_kit.md" %}
 # 📚 Tabella `listini_kit`
 
 > 📝 **Descrizione**

@@ -1,6 +1,6 @@
 # Mappa Concentrica — Changelog
 
-> **Ultimo aggiornamento**: 28 ottobre 2026
+> **Ultimo aggiornamento**: 31 ottobre 2026
 
 > Cronologia datata degli aggiornamenti della [Mappa Concentrica](../mappa-concentrica.md).
 > La mappa mostra solo lo **stato corrente** per anello; questo documento conserva la storia,
@@ -18,6 +18,16 @@
 > mese siano **tutti in `work-done`**, altrimenti si comprime rimandando a
 > documenti ancora in movimento.
 >
+> ⭐ **Un documento aperto non ferma il mese intero** (Tid, 2026-11-01). Alcuni
+> documenti restano in `work-in-progress` per costruzione o senza data: la
+> valutazione dello strato DB è permanente, un copione di collaudo vive finché non
+> si esegue, un piano può essere fermo su una decisione. Aspettarli vorrebbe dire
+> non compattare mai. Quindi si compattano i temi i cui documenti sono **tutti** in
+> `work-done`, e i paragrafi che citano un documento aperto restano **per intero**,
+> in una sezione «Rimasti per intero» in fondo alla voce del mese, con la data
+> della voce d'origine. Quando quel documento si chiude, il paragrafo si compatta
+> come gli altri. Primo caso: settembre 2026.
+>
 > **Che cosa sopravvive alla compressione**, ed è la parte che conta:
 >
 > 1. il **nome del tema** — è la chiave con cui ci si ritorna;
@@ -33,6 +43,106 @@
 > si toccano: l'URL di questo changelog deve restare uno.
 
 ---
+
+## 31 ottobre 2026
+
+> Copre il periodo **27 – 31 ottobre**, per chiudere il mese: fotografato al 31-10 alle 23:59
+> più un'ora, cioè al commit `40b3a35fb` (1° novembre, 00:30, l'ultimo prima dell'01:00). Cinque
+> giorni, **217 changeSet** aggiunti (121 in `vendite`, 44 in `script`, 16 in `80_data`, 15 in
+> `dbops`, 14 in `config`, 5 in `90_end`, 2 in `catalogo`), **29 PR** (dalla #1962 alla #1991),
+> **due documenti entrati in `work-done`** (il brief del modello del documento di vendita e
+> l'archivio della valutazione DB). Si scrive per **temi**: sono sei. La voce del 28 ottobre, qui
+> sotto, resta com'è: riguarda la pulizia della roadmap, non il lavoro del periodo.
+>
+> ⚠️ Fuori da questa voce, perché dopo l'01:00 del 1° novembre: il passo 4 del canone in commessa
+> (l'obbligo della periodicità sulla riga a canone) e la documentazione del suo giro del §7 (L18).
+
+**Anello 3 (`vendite`) — Il modello del documento di vendita è chiuso: tutti i documenti
+portati.** I giri 11-14 completano il cantiere aperto il 21-10. **La fattura** (giro 11,
+27-10) entra nel modello dal suo **lotto**: i pulsanti restano sul lotto e il processo dei lotti
+non cambia (Tid), ma le fatture seguono il lotto attraverso il verbo e non con un `UPDATE`; la
+fattura ha anche un verbo suo (l'esito dello SDI), non ha un annullo (si storna con la nota di
+credito), e «numera» e «riporta in bozza» chiedono la stessa azione, `numera_fattura`, mentre le
+azioni mai usate si ritirano. Lo stato del job si allinea al DB senza copia nel backend. Le
+**azioni per riga** hanno un pezzo standard (registro DB, lookup `azioni-riga`, BB FE
+`useAzioneRiga`, `azioni_permesse` per riga di lista) e la stampa della fattura porta la **catena
+delle origini** (forma 6) al posto del riquadro «origine» sempre vuoto (D-G1). **La versione di
+listino** (giro 12, 28/29-10): lo stato diventa una colonna d'id verso il vocabolario, CHIUSA è
+scritta dal job delle scadenze come la cessazione del contratto, l'attivazione è un verbo con la
+sua azione `attiva_listino`, e «Elimina», «Chiudi» e «Clona» sono verbi coi motivi dei pulsanti
+spenti — E-1 è una **revoca parziale**, dichiarata, di una regola del 13-05. **Il giro 13**
+(31-10) dà agli stati un **significato dal vocabolario** (cessazione, accettazione, accanto a
+emissione e aborto) con un lettore comune, e ritira i letterali `'CESSATO'`, `'ACCETTATO'`… da
+verbi, lister, push e capability; **il giro 14** mette la revisione dell'offerta nel lineage
+(l'arco V, anche nei «Passaggi») e ammette la motivazione solo dove il passaggio la chiede. Il BE
+legge gli stati di cessazione, accettazione e iniziale dal vocabolario e ritira le sue copie; il
+presidio di avvio di gunicorn gira in un processo figlio, e un `kill -HUP` torna a bastare. Chiuso
+il 31-10 con le prove a video di Tid tutte ok, D-G2 compreso; i residui (le azioni `emetti_*` e
+`attiva_listino` ai profili di dbdev, due rami del preventivo senza strada dall'interfaccia, il
+drawer che non si carica in silenzio) passano a PROJECT_CONTEXT. Vedi
+[brief-modello-documento-vendita.md](work-done/brief-modello-documento-vendita.md).
+
+**Anello 3 (`vendite`) — La scadenza dei preventivi esiste.** EMESSO → SCADUTO era nella matrice
+e nessuno lo scriveva. Decise il 31-10: lo stato resta **scritto da un processo** — la terza riga
+del registro delle chiusure per scadenza, `vendite.fn_chiudi_preventivi_scaduti`, gemello della
+cessazione dei contratti (E-1, completa il modello, non lo revoca); l'accettazione oltre «Valido
+al» è rifiutata anche **per data**, così la regola non dipende dall'ora del job (E-2); la revisione
+si apre anche da SCADUTO (E-3); e un preventivo non si emette con la validità già finita (E-4,
+applicata il 1° novembre). Il passaggio BE/FE (i due codici, il campo «Valido al») e il collaudo a
+video si chiudono lo stesso giorno. Vedi
+[brief-db-scadenza-preventivi.md](work-done/brief-db-scadenza-preventivi.md).
+
+**Anello 3 (`vendite`) — Il contratto si addebita anche a canone (D31).** Decisioni G-0 … G-11 il
+28-10, lotti L1 … L9 dal 29 al 31-10: il vocabolario delle **periodicità** (la riga a canone la
+porta, la quota fissa la prende dal listino), il tipo di riga **ADESIONE**, mese di partenza e
+anticipato/normale sulla testata di contratto e offerta, la regola dei periodi in una funzione
+sola (`vendite.fn_canone_periodi`: periodi dal giorno 1, proporzione sul periodo incompleto, un
+periodo che scavalca l'anno si spezza, gli arretrati si recuperano), il push a periodi con gli
+**storni** come differenza quando la fine si sposta, e la dashboard che torna a giudicare i
+contratti (`CANONE_NON_GENERATO`, `CANONE_NON_GENERABILE`) leggendo la stessa sede del push. Il
+giro del §7 (31-10): il **kit sul listino** con la sua periodicità, la **nota di credito dal segno**
+del documento con le fatture citate, il controllo all'attivazione della versione, la quota fissa
+che non perde la periodicità fuori dalla bozza. BE/FE del passo 3 fatto e committato, con il BB
+`_campi_canone`. ⚠️ Aperti: il passo 4 (l'obbligo della periodicità sulla riga a canone), la
+documentazione del giro (L18), la colonna «Periodicità» nella lista delle righe di listino, il
+collaudo a video. Vedi
+[brief-db-contratto-righe-periodiche-in-commessa.md](work-in-progress/brief-db-contratto-righe-periodiche-in-commessa.md).
+
+**Anello 1 (`ui`, `config`) — Le liste ancora su `DataTable` grezza, secondo giro.** Sette liste
+nascono a catalogo (107-113: definizioni di workflow, parametri, note di vendita e di catalogo,
+UoM dell'articolo, versioni di listino, ricerca dei soggetti), e la conversione chiude due difetti
+che non davano errore: le note **troncate a 200** senza paginatore, e la regola «versione di
+listino in scadenza senza successore» scritta in SQL nel repository BE, ora
+`vendite.fn_listini_in_scadenza_senza_successore` col preavviso a parametro. Un presidio pgTAP
+tiene allineate le liste gemelle delle note. Nello stesso giro: la ricerca universale cerca sui
+campi del catalogo e prende la soglia dal catalogo come ogni lista (D-6), e la **forma del valore
+di un parametro** è rispettata in scrittura (D-5). Lato FE i BB `TabellaSelezioneRighe` (i tre
+dialog di selezione righe) e `MatriceCatalogo` (la base di ogni matrice limitata dal catalogo, di
+cui `MatriceOverride` è uno strato); il registro del presidio scende da **28 a 17** `DataTable`
+grezze, da **9 a 0** senza motivo, e il motivo deve stare attaccato all'import. ⚠️ Aperto: la view
+della ricerca che legge la soglia dal catalogo (§7.8.5, BE), poi l'archiviazione. Vedi
+[brief-db-liste-datatable-grezze-secondo-giro.md](work-in-progress/brief-db-liste-datatable-grezze-secondo-giro.md).
+
+**Anello 1 (permessi) — Il profilo del reparto per area, e il tetto d'area detto dal DB.** Il
+profilo del reparto si gestisce **per area**, come l'operatore, sopra un BB nuovo,
+`ElencoDettaglio` (elenco a sinistra, dettaglio a destra; il pannello dell'operatore migrato), e
+in sola lettura i controlli sono spenti anche dentro un drawer in sola lettura. Sui valori salvati
+il limite dell'area lo dice il DB (`limitata_da_area`, da `script.fn_area_consente_azione`): il
+FE lo calcola solo in anteprima («sola regola DB», Tid). La documentazione della v3 dava ancora il
+tetto d'area per aperto: è chiuso dal 04-10, e ora lo dice. Nello stesso giro le Utilities
+dell'emittente salvano anche una configurazione nuova e hanno i decimali del CHECK DB. Vedi
+[permessi-e-autorizzazioni-v3.md](work-in-progress/permessi-e-autorizzazioni-v3.md),
+[brief-db-permessi-tetto-area.md](work-done/brief-db-permessi-tetto-area.md).
+
+**Trasversale — La catena di verifica: il documento vivo si separa dal suo archivio.** Il 27-10 la
+valutazione dello strato DB tiene **solo ciò che è vivo** (chi riparte, difetti aperti, scorecard)
+e il resto — la valutazione di febbraio, le voci chiuse, i riallineamenti — passa a un archivio in
+`work-done` con la stessa numerazione, perché i rimandi «§D13» dai changeSet restino validi. D7,
+lotti 3 e 4: il registro dello scratch scende da 104 a 23 righe, quello di sviluppo da 6 a 4,
+quello della CI da 360 a 358 (le misure del 28-10, qui sotto). Al 31-10 la suite pgTAP conta
+**935** file, i tre registri sono invariati. Vedi
+[migliorie-generali-da-test-valutazione.md](work-in-progress/migliorie-generali-da-test-valutazione.md),
+[migliorie-generali-da-test-valutazione-storia.md](work-done/migliorie-generali-da-test-valutazione-storia.md).
 
 ## 28 ottobre 2026
 
@@ -114,7 +224,7 @@ grammatica, i profili su dbdev che non hanno `emetti_offerta`/`emetti_contratto`
 `emetti_ordine`, la scadenza dei preventivi (brief nuovo, E-1…E-3 a Tid). Vedi
 [brief-modello-documento-vendita.md](work-done/brief-modello-documento-vendita.md),
 [brief-db-documento-nasce-nello-stato-iniziale.md](work-done/brief-db-documento-nasce-nello-stato-iniziale.md),
-[brief-db-scadenza-preventivi.md](work-in-progress/brief-db-scadenza-preventivi.md).
+[brief-db-scadenza-preventivi.md](work-done/brief-db-scadenza-preventivi.md).
 
 **Anello 3 (trasversale) — Un nome per ogni tipo di documento, e l'offerta che
 genera l'ordine.** La **grammatica unica** (18 → 25-10) dà al tipo di documento
@@ -602,89 +712,321 @@ nessun controllo aveva già due eccezioni silenziose.*
 
 ---
 
-## 30 settembre 2026
+## settembre 2026
 
-> Copre il periodo **20 – 30 settembre**. Undici giorni, **400 changeSet**
-> datati fra il 20 e il 30 (109 in `script`, 94 in `vendite`, 54 in `90_end`,
-> 40 in `dbops`, 34 in `config`, 21 in `ui`, 14 in `magazzino`, 11 in
-> `anagrafiche`, 10 in `documenti`), **quaranta documenti chiusi in
-> `work-done`** e **109 merge** (dalla PR #1628 alla #1737). Si scrive per
-> **temi**: sono dieci.
+> **Riepilogo del mese** (le voci datate **10**, **14**, **19** e **30 settembre** sono state
+> compattate qui il 2026-11-01). Il dettaglio non è andato perso: vive nei brief linkati, tutti in
+> `work-done`. ⚠️ **Cinque paragrafi e i quattro «In breve» restano per intero**, in fondo alla voce:
+> i primi citano un documento ancora in `work-in-progress` (la valutazione dello strato DB, il piano
+> degli accessi, il collaudo degli incassi, il piano PrimeVue), i secondi non hanno un brief a cui
+> delegare.
 >
-> ⚠️ Fuori da questa voce, perché nati il **1° ottobre**:
-> `brief-db-esigibilita-iva-per-cassa-emittente.md`,
-> `brief-db-esposizione-componenti-kit-in-fattura.md`,
-> `brief-db-totp-ricifra-segreto.md`, e lo spostamento in `work-done` di
-> `brief-db-codici-cancello-obblighi-e-sfida-totp.md` — al 30-09 era
-> **consegnato a file e da applicare**.
+> Il mese copre **31 agosto → 30 settembre**: **996 changeSet** (384 dal 31-08 al 10-09, 103
+> dall'11 al 14, 109 dal 15 al 19, 400 dal 20 al 30) e **116 documenti chiusi in `work-done`**. ⚠️
+> Il **1° ottobre** è fuori: i brief nati quel giorno (esigibilità IVA per cassa, esposizione dei
+> componenti del kit in fattura, ricifratura del segreto TOTP) e il cancello degli obblighi, che al
+> 30-09 era consegnato a file e da applicare, stanno nelle voci di ottobre.
 >
-> ⭐ **Il tema portante è *una regola, una sede* — e la sede di un permesso è
-> il verbo che scrive.** Lo stesso difetto si è presentato in quasi ogni
-> cantiere: un fatto scritto in tre, cinque, sette posti che **dissentivano in
-> silenzio** (lo spareggio dei profili, la soglia della ricerca, le misure di
-> pagina, l'imponibile di riga, la versione del listino in vigore, il prezzo
-> autorizzato, le righe lavorabili di una distinta). E sotto, una frase che
-> cambia il nucleo: *il DB **calcola** i permessi ma non li **applica*** — da
-> qui il modello *una scrittura = un verbo*, con il magazzino come primo caso
-> e il pannello config come secondo.
+> ⭐ **I temi portanti, uno per voce.** *La catena di verifica* (10-09): la CI che misura davvero,
+> i presidi con un catalogo, il perimetro con un criterio, i motivi da un posto solo. *I presidi
+> allo specchio* (14-09): tre presidi hanno mentito, e la causa stava nel metro — *un presidio si
+> prova dal percorso che lo attraversa*. *Il collaudo in-app che scrive le regole* (19-09): il
+> copione degli incassi diventa tre giri e venti decisioni. *Una regola, una sede* (30-09): e la
+> sede di un permesso è il verbo che scrive — *il DB calcolava i permessi ma non li applicava*.
 
-**Anello 0 — Il DB applica i permessi, non solo li calcola.** Il modello sta
-in un brief che resta aperto per costruzione
-([brief-db-permesso-nel-verbo-di-scrittura.md](work-done/brief-db-permesso-nel-verbo-di-scrittura.md),
-D-1…D-5 del 24-09): il verbo dichiara il permesso **nella prima riga** con un
-BB unico (`fn_guard_azione` per i processi, `fn_guard_livello` per il CRUD; la
-terza forma, `fn_guard_super_admin`, nasce il 25-09 col blocco login), e
-l'applicazione perde la scrittura sulle tabelle protette e l'`EXECUTE` sulle
-primitive. *Una tabella non è un'operazione*: niente policy RLS sul livello.
-Primo caso il **magazzino** (24/25-09): `fn_posta_inventario` e
-`fn_posta_rettifica` chiedono `registra_magazzino`, l'app perde la porta
-`fn_scrivi_movimento` — *la porta decideva **da dove** si scrive, non **chi***.
-Secondo caso il **pannello config** (25→28-09, D-P1…D-P9): «Gestione tabelle»
-scrive con **un verbo** che controlla il livello sull'**oggetto della riga**,
-la lista ammessa è un dato (`config.tabelle_gestibili`, 87 voci, 63 nel
-pannello), e le tabelle con RLS escono — *un verbo generico non sa rimettere un
-perimetro*. ⚠️ Strada facendo un difetto vero: chi aveva `TUTTO` su
-Configurazione modificava `config.profili_accesso` e **si alzava i privilegi**
-— *il verbo applica fedelmente una lista sbagliata* (D-P6: 19 righe fuori;
-D-P9: `config.aree_funzionali` in sola lettura per l'app). Il verso opposto lo
-chiude il BE: ogni `GET`/`HEAD` gira in `SET TRANSACTION READ ONLY` — *«una
-lettura non scrive» passa da promessa del codice a garanzia del DB* (194 GET
-provate, nessuna scrive; le GET di dettaglio con parametri restano da vedere
-in-app). E la postura: `dbops.sec_functions_owner` è in sola lettura per l'app
-e la sync **si difende nel corpo** — *una `SECURITY DEFINER` di `postgres` non
-si chiude con l'ACL* (D6-registro, 26-09). ⚠️ Aperto: il **passo 3** (i domini
-esistenti), senza data. Vedi
+### Verifica, presidi e processi automatici
+
+**Anello 0 — I presidi hanno un catalogo, e un contatore che non mente.** Nasce `dbops.presidi`:
+un presidio che non ha mai girato non conta come copertura, e *un cancello non deve poter zittire
+un altro cancello*. Vedi
+[brief-db-un-destinatario-per-i-presidi.md](work-done/brief-db-un-destinatario-per-i-presidi.md).
+
+**Anello 0 — Presidi e fixture: il mondo si costruisce, i presidi del percorso storto esistono.**
+C1 (un valore ammesso dal CHECK e mai scritto) e C2 (la `ui_action` a catalogo e il canale che la
+realizza) si chiudono; il giro 2 delle fixture porta il BB di composizione del mondo cliente e
+nessun file della suite fa più `COMMIT`. D7 chiude il perimetro con fixture che costruiscono i
+soggetti, e i rientrati li toglie uno script dal log della corsa. Le analisi dei presidi del
+percorso storto e della diagnostica di produzione si chiudono **senza aprire cantieri**. Vedi
+[brief-db-presidio-stati-mai-scritti.md](work-done/brief-db-presidio-stati-mai-scritti.md),
+[brief-be-presidio-ui-action-e-canale-campi.md](work-done/brief-be-presidio-ui-action-e-canale-campi.md),
+[brief-db-fixture-che-costruiscono-giro-2.md](work-done/brief-db-fixture-che-costruiscono-giro-2.md),
+[brief-db-fixture-che-costruiscono-d7-d6-d4.md](work-done/brief-db-fixture-che-costruiscono-d7-d6-d4.md),
+[analisi-presidi-percorso-storto.md](work-done/analisi-presidi-percorso-storto.md),
+[analisi-diagnostica-produzione-senza-accesso-db.md](work-done/analisi-diagnostica-produzione-senza-accesso-db.md).
+
+**Anello 0 — Ciò che la CI non vedeva: trigger generati e giro notturno.** Un dato che viaggia
+negli argomenti del trigger non si trova cercando nei corpi: il codice ritirato sollevato da 69
+trigger, i lock scritti a mano cancellati dal job, lo storico che cercava la colonna FK sbagliata.
+Il registro diventa l'unica sede di un lock, i **job notturni girano in CI** in ordine dichiarato,
+e la regola «`valido_al` non precede `valido_dal`» ha una sede sola. Vedi
+[brief-db-codici-ritirati-negli-argomenti-dei-trigger.md](work-done/brief-db-codici-ritirati-negli-argomenti-dei-trigger.md),
+[brief-db-lock-di-colonna-fuori-registro.md](work-done/brief-db-lock-di-colonna-fuori-registro.md),
+[brief-db-storico-colonna-fk-dei-trigger.md](work-done/brief-db-storico-colonna-fk-dei-trigger.md),
+[brief-db-job-notturni-in-ci.md](work-done/brief-db-job-notturni-in-ci.md),
+[brief-db-guard-date-validita.md](work-done/brief-db-guard-date-validita.md).
+
+**Anello 0 — I processi automatici: un'identità, un contratto di vitalità, «Esegui ora».** Ogni
+processo del backend ha un artefatto di deploy e un'identità, quindi un perimetro. La tolleranza
+diventa un dato di catalogo, il panorama dice `MUTO` e `MAI_PARTITO`, il listener si presidia
+dalla sessione, un guardiano accoda la notifica se il digest tace, e una mail stampata a video è
+`SIMULATA`, non inviata. «Esegui ora» entra in esercizio con tre celle di CSV; «Riavvia» resta
+dietro D1, perché senza un *host* nel modello riavvierebbe una macchina a caso. Vedi
+[brief-db-processi-automatici-identita-e-perimetro.md](work-done/brief-db-processi-automatici-identita-e-perimetro.md),
+[brief-db-sveglia-dei-processi.md](work-done/brief-db-sveglia-dei-processi.md),
+[brief-db-processi-automatici-residui-be.md](work-done/brief-db-processi-automatici-residui-be.md),
+[piano-be-fe-processi-automatici-identita-e-perimetro.md](work-done/piano-be-fe-processi-automatici-identita-e-perimetro.md),
+[brief-db-quattro-processi-senza-presidio.md](work-done/brief-db-quattro-processi-senza-presidio.md),
+[brief-db-stato-email-console-non-e-inviata.md](work-done/brief-db-stato-email-console-non-e-inviata.md),
+[brief-db-avvio-manuale-di-un-processo.md](work-done/brief-db-avvio-manuale-di-un-processo.md),
+[piano-be-fe-avvio-manuale-di-un-processo.md](work-done/piano-be-fe-avvio-manuale-di-un-processo.md),
+[analisi-riavvio-processi-da-interfaccia.md](work-done/analisi-riavvio-processi-da-interfaccia.md).
+
+**Anello 0 — Osservabilità: l'ultimo miglio, e il pallino in topbar.** Errori tecnici dietro
+permesso, Giornale eventi, retention e pallino dei presidi; il verdetto «lotto fermo» nasce a DB
+invece di vivere in Python. ⚠️ Restava aperto il `USAGE` di `zeroerp_log` su `dbops` in CI
+(PROJECT_CONTEXT). Vedi
+[analisi-osservabilita-log.md](work-done/analisi-osservabilita-log.md),
+[piano-be-fe-osservabilita-pallino-e-superfici.md](work-done/piano-be-fe-osservabilita-pallino-e-superfici.md),
+[brief-db-osservabilita-lotto-fermo-r6-indici.md](work-done/brief-db-osservabilita-lotto-fermo-r6-indici.md),
+[brief-db-privilegio-app-job-run-log.md](work-done/brief-db-privilegio-app-job-run-log.md).
+
+### Perimetro, permessi e sicurezza
+
+**Anello 0 + 3 — Il perimetro dei dati smette di fermarsi alla testata, e arriva allo storico.**
+L'elenco a mano diventa un **criterio transitivo** (ogni tabella con una FK verso una protetta),
+nove famiglie armate, il debito da 33 a 8 righe. Lo storico porta il proprio perimetro: lo scope
+**si cattura, non si deriva**, 37 shadow armate, e `dbops.audit_log` ha un cancello alla scrittura.
+D13: un BA non ancora collegato appartiene a chi lo sta creando. Vedi
+[brief-db-perimetro-emittente-righe-documento.md](work-done/brief-db-perimetro-emittente-righe-documento.md),
+[brief-db-viste-security-invoker-criterio.md](work-done/brief-db-viste-security-invoker-criterio.md),
+[brief-db-rls-storico-scope-congelato.md](work-done/brief-db-rls-storico-scope-congelato.md),
+[brief-db-ba-riserva-emittente-operatore-d13.md](work-done/brief-db-ba-riserva-emittente-operatore-d13.md).
+
+**Anello 0 — Il DB applica i permessi, non solo li calcola.** Il modello *una scrittura = un
+verbo*: il verbo dichiara il permesso nella prima riga (`fn_guard_azione`, `fn_guard_livello`,
+`fn_guard_super_admin`) e l'app perde la scrittura diretta. Primo caso il magazzino, secondo il
+pannello config, dove è emerso chi si alzava i privilegi da Configurazione; ogni `GET` gira in sola
+lettura; la sync dell'owner si difende nel corpo. ⚠️ Restava aperto il passo 3, i domini
+esistenti. Vedi
+[brief-db-permesso-nel-verbo-di-scrittura.md](work-done/brief-db-permesso-nel-verbo-di-scrittura.md),
 [brief-db-magazzino-verbi-con-permesso.md](work-done/brief-db-magazzino-verbi-con-permesso.md),
 [brief-db-pannello-config-verbo-generico.md](work-done/brief-db-pannello-config-verbo-generico.md),
 [brief-be-letture-in-transazione-sola-lettura.md](work-done/brief-be-letture-in-transazione-sola-lettura.md),
 [brief-db-registro-owner-e-sync-riservati-al-migratore.md](work-done/brief-db-registro-owner-e-sync-riservati-al-migratore.md).
 
-**Anello 0/1 — Le porte dicono la stessa cosa.** Il **catalogo degli oggetti
-personalizzabili** (28-09) ora coincide con le **quattro porte** — BE
-`model_permission`, FE `READONLY_MODELS`, il verbo DB, il catalogo: prima il
-pannello offriva override che nessuno applicava (*un override che **mente***),
-e ne applicava altri che non offriva. La regola «override solo su oggetto a
-catalogo e non riservato» va a DB con una FK composita, la blacklist Python si
-ritira; 27 righe (17 personalizzabili, 10 riservate), `model_permission` su 58
-view. ⭐ *Applicato dal FE ma non dal BE*: un `BLOCCATO` che nasconde i
-pulsanti e lascia aperta l'API — A e B si chiudono **insieme**, per oggetto.
-L'**ereditato** del pannello permessi si calcola a DB (25-09): lo spareggio
-era scritto in **cinque** posti, i resolver ora chiamano la stessa funzione;
-D-1 i permessi da operatore contano solo i profili della veste `OPERATORE` (un
-operatore multi-veste si portava dietro il `PORTALE` del cliente), D-3 *il più
-specifico vince* (prima, a parità, `LIMIT 1` sceglieva a caso). E la
-**capability annidata** (23/24-09): *il blob sta sotto `capabilities`, non
-fuso nel dettaglio* — preventivi riscriveva in Python campi decisi dal DB, ed
-era l'**unica sede di metà della regola**: *una regola che non sta dove si
-legge non esiste*. Vedi
+**Anello 0/1 — Le porte dicono la stessa cosa.** Il catalogo degli oggetti personalizzabili
+coincide con le quattro porte (BE, FE, verbo DB, catalogo) e la regola sta in una FK; l'ereditato
+del pannello permessi si calcola a DB, dove lo spareggio era in cinque posti; la capability è
+annidata, non fusa nel dettaglio. Vedi
 [brief-db-be-fe-catalogo-oggetti-permessi.md](work-done/brief-db-be-fe-catalogo-oggetti-permessi.md),
 [brief-db-pgtap-permessi-ereditati.md](work-done/brief-db-pgtap-permessi-ereditati.md),
 [brief-be-fe-capability-annidata.md](work-done/brief-be-fe-capability-annidata.md),
 [brief-db-messaggio-ba-senza-emittente.md](work-done/brief-db-messaggio-ba-senza-emittente.md).
 
-### Accessi e sicurezza — 30 settembre
+**Trasversale — Sicurezza in profondità, dalla superficie al secondo fattore.** Superficie
+pubblica ridotta (gunicorn su loopback, admin Django tolto), segreti fuori da git con gitleaks in
+pre-commit e in CI, refresh token nel cookie `HttpOnly` e chiave di cifratura separata dalla
+`SECRET_KEY`; il **TOTP** lato DB, con l'obbligo sulla credenziale o sul profilo e l'anti-replay
+sul passo. Vedi
+[brief-be-fe-sicurezza-header-token-mfa.md](work-done/brief-be-fe-sicurezza-header-token-mfa.md),
+[brief-db-secondo-fattore-totp.md](work-done/brief-db-secondo-fattore-totp.md),
+[configurazione-django.md](backend/configurazione-django.md).
 
-**Anello 0/1 — La credenziale è una, le porte sono tante.** L'analisi degli
+**Anello 0 + 1 — Il software che serviva dati morti.** Otto voci ritirate — viste coi nomi vecchi,
+shadow legacy, tabelle di backup, alias deprecati —, e *«tenere per sicurezza» è la forma da cui
+ogni voce era nata*. Dietro, in CI, un GRANT su `django.auth_user` dato a mano su dev: *un
+privilegio che esiste su una macchina è un ricordo*. Vedi
+[analisi-software-per-dati-morti.md](work-done/analisi-software-per-dati-morti.md).
+
+**Anello 0 — Quando nasce un building block, le copie si ritirano nello stesso giro.**
+L'emittente di default è una funzione sola su undici tabelle, le quattro copie di `vendite`
+ritirate: *non c'è produzione, non c'è niente da aspettare*. Vedi
+[brief-db-emittente-di-default-un-bb-solo.md](work-done/brief-db-emittente-di-default-un-bb-solo.md).
+
+**Anello 0 — Il primo motivo di un controllo esce da un posto solo.**
+`script.fn_raise_primo_motivo_se_presente` al posto di tredici copie della stessa coda. Vedi
+[brief-db-coda-primo-motivo-in-un-posto-solo.md](work-done/brief-db-coda-primo-motivo-in-un-posto-solo.md),
+[brief-db-i-motivi-si-fermano-dentro-la-check.md](work-done/brief-db-i-motivi-si-fermano-dentro-la-check.md).
+
+### Liste e interfaccia
+
+**Anello 1 (`ui`) — Il perimetro emittente arriva ai cataloghi globali.** Sei liste dichiarate
+`perimetro_emittente = false`; il valore sta nella colonna del CSV della lista, non in un seed
+laterale, che si ritira. Vedi
+[brief-db-perimetro-emittente-cataloghi-globali.md](work-done/brief-db-perimetro-emittente-cataloghi-globali.md).
+
+**Anello 1 (`ui`) — La lista dice da sé che cosa è.** La ricerca libera legge il catalogo, la
+soglia è una colonna, le misure di pagina hanno un catalogo, le azioni portano un significato e il
+FE ne ricava icona e colore. Vedi
+[brief-be-ricerca-full-liste-residue.md](work-done/brief-be-ricerca-full-liste-residue.md),
+[brief-db-ricerca-full-colonne-permessi.md](work-done/brief-db-ricerca-full-colonne-permessi.md),
+[brief-db-ricerca-full-colonne-da-accendere.md](work-done/brief-db-ricerca-full-colonne-da-accendere.md),
+[brief-db-be-fe-ricerca-soglia-per-lista.md](work-done/brief-db-be-fe-ricerca-soglia-per-lista.md),
+[brief-db-misure-pagina-catalogo.md](work-done/brief-db-misure-pagina-catalogo.md),
+[brief-db-icone-azioni-per-significato.md](work-done/brief-db-icone-azioni-per-significato.md),
+[brief-db-lista-articoli-colonne-data.md](work-done/brief-db-lista-articoli-colonne-data.md).
+
+**Anello 1 / frontend — Una sola macchina per ogni gesto.** Le `DataTable` grezze riclassificate
+(eccezioni vere contro liste a catalogo 83-96, tre troncavano in silenzio), le righe di documento
+come liste (97-103) col BB `useFormInline`, i filtri compatti in un drawer su tutte le view, il
+verso delle dipendenze fra domini, OpenAPI a zero rilievi. Vedi
+[brief-db-liste-datatable-grezze.md](work-done/brief-db-liste-datatable-grezze.md),
+[brief-db-liste-righe-documento.md](work-done/brief-db-liste-righe-documento.md),
+[brief-fe-filtri-lista-su-schermo-compatto.md](work-done/brief-fe-filtri-lista-su-schermo-compatto.md),
+[analisi-fe-regole-standard-violate-dal-codice.md](work-done/analisi-fe-regole-standard-violate-dal-codice.md).
+
+### Documenti, vendite, pagamenti e magazzino
+
+**Anello 2 (`documenti`) — Il patto fra la versione di template e la forma dei dati.** Ogni
+versione di template dichiara la forma che legge e si stampa solo se coincide con quella del
+builder: *Jinja non si lamenta*. Vedi
+[brief-db-documenti-versione-contesto-template.md](work-done/brief-db-documenti-versione-contesto-template.md).
+
+**Anello 3 (`vendite`) — Un documento rotto non tiene più in ostaggio il giro, e l'esito ha casa
+propria.** Un documento non emettibile esce dal giro e il lotto prosegue; il trattenuto ha una
+sede sola; l'esito di un documento nel lotto è un dato, e la segnalazione dice di quale documento
+parla. Al rilancio la discovery rivede le commesse trattenute dal lotto stesso, e a valle di un
+task eseguito nessun task si salta. Vedi
+[brief-db-uscita-documento-dal-giro.md](work-done/brief-db-uscita-documento-dal-giro.md),
+[brief-db-documento-trattenuto-da-un-lotto-vivo.md](work-done/brief-db-documento-trattenuto-da-un-lotto-vivo.md),
+[brief-db-il-trattenuto-passa-lo-stesso.md](work-done/brief-db-il-trattenuto-passa-lo-stesso.md),
+[brief-db-il-marcatore-scrive-su-un-documento-uscito.md](work-done/brief-db-il-marcatore-scrive-su-un-documento-uscito.md),
+[brief-db-esito-gruppo-lotto.md](work-done/brief-db-esito-gruppo-lotto.md),
+[brief-be-db-gruppo-key-sulle-segnalazioni.md](work-done/brief-be-db-gruppo-key-sulle-segnalazioni.md),
+[brief-residuo-fatturabili-e-bandiere-esito-parziale.md](work-done/brief-residuo-fatturabili-e-bandiere-esito-parziale.md),
+[brief-db-rilancio-step-non-rivede-le-proprie-commesse.md](work-done/brief-db-rilancio-step-non-rivede-le-proprie-commesse.md),
+[collaudo-in-app-esito-parziale-pull-commessa.md](work-done/collaudo-in-app-esito-parziale-pull-commessa.md),
+[brief-be-fan-out-isolato-e-esito-parziale.md](work-done/brief-be-fan-out-isolato-e-esito-parziale.md),
+[fatturazione-roadmap.md](work-done/fatturazione-roadmap.md).
+
+**Anello 1 + 3 — La numerazione finisce il trasloco, e l'IVA arriva ai consumatori.** La
+commessa passa sui registri, la chiave del contatore è esplicita, il CRUD dei registri c'è; il
+risolutore IVA arriva ai consumatori applicativi e il default IVA usa una chiave naturale. Vedi
+[brief-db-registri-di-numerazione-emittente-e-trasloco.md](work-done/brief-db-registri-di-numerazione-emittente-e-trasloco.md),
+[brief-db-registri-numerazione-chiave-del-contatore.md](work-done/brief-db-registri-numerazione-chiave-del-contatore.md),
+[brief-be-fe-crud-registri-di-numerazione.md](work-done/brief-be-fe-crud-registri-di-numerazione.md),
+[brief-be-fe-iva-fase-3-consumatori-risolutore.md](work-done/brief-be-fe-iva-fase-3-consumatori-risolutore.md),
+[brief-db-default-iva-chiave-naturale.md](work-done/brief-db-default-iva-chiave-naturale.md).
+
+**Anello 1 + 3 — L'articolo dice da dove arriva, la riga d'ordine sa quando, la commessa si
+legge.** Le date di consegna richiesta e confermata sulle righe d'ordine (vendite e acquisti), il
+modo di approvvigionamento dell'articolo, descrizione, apertura e responsabile della commessa.
+⚠️ Dichiarato e non deciso: il verbo per la promessa di consegna. Vedi
+[brief-db-modifiche-certe-ciclo-vendita-e-articolo.md](work-done/brief-db-modifiche-certe-ciclo-vendita-e-articolo.md).
+
+**Anello 3 (`vendite`, `pagamenti`) — Le forme che reggono, e annullare vuol dire chiudere.** D14:
+la partita di merce si legge per documento, e hanno retto le forme, non i millisecondi; un prezzo
+non autorizzato non esce dalla bozza; un lotto si annulla solo se vuoto; le righe di una distinta
+`ANNULLATA` escono dalle code. Vedi
+[brief-db-partita-merce-per-documento.md](work-done/brief-db-partita-merce-per-documento.md),
+[brief-db-preventivi-congelamento-pricing.md](work-done/brief-db-preventivi-congelamento-pricing.md),
+[brief-db-annullamento-chiude-la-vita.md](work-done/brief-db-annullamento-chiude-la-vita.md),
+[brief-db-righe-distinta-annullata-fuori-dalle-code.md](work-done/brief-db-righe-distinta-annullata-fuori-dalle-code.md).
+
+**Anello 3 (`pagamenti`) — La distinta prende il numero dal registro, e impara a cercare le rate.**
+La distinta dice di quale emittente è e prende il numero dal motore dei registri; il lookup
+fattura diventa ricco, nasce la lista rate e la modalità multipla — *la domanda vera non è «quale
+fattura?» ma «quale rata?»*. Vedi
+[brief-db-distinta-numerata-sul-registro.md](work-done/brief-db-distinta-numerata-sul-registro.md),
+[brief-db-distinta-ricerca-rate.md](work-done/brief-db-distinta-ricerca-rate.md).
+
+**Anello 3 (`magazzino`) — Dal terreno vuoto alla merce che esce e rientra.** Lotto 1: sorgente
+obbligatoria, verso nella quantità, emittente come ancora. Lotto 2: la porta unica del registro,
+inventario e rettifica, e il BE/FE. Le anagrafiche di magazzino escono dal pannello config. Lotto
+3: la merce esce con la bolla; Lotto 3-bis: rientra col reso, al costo dell'uscita d'origine — *un'asimmetria
+fra due versi si chiude subito*. Vedi
+[brief-db-magazzino-lotto-1-terreno-vuoto.md](work-done/brief-db-magazzino-lotto-1-terreno-vuoto.md),
+[brief-db-magazzino-lotto-2-motore.md](work-done/brief-db-magazzino-lotto-2-motore.md),
+[piano-be-fe-magazzino-lotto-2-motore.md](work-done/piano-be-fe-magazzino-lotto-2-motore.md),
+[brief-db-magazzino-lotto-2-bis-be-fe.md](work-done/brief-db-magazzino-lotto-2-bis-be-fe.md),
+[brief-db-magazzino-anagrafiche-guard-ubicazioni-e-codici.md](work-done/brief-db-magazzino-anagrafiche-guard-ubicazioni-e-codici.md),
+[piano-be-fe-magazzino-anagrafiche-fuori-dal-pannello-config.md](work-done/piano-be-fe-magazzino-anagrafiche-fuori-dal-pannello-config.md),
+[brief-db-magazzino-lotto-3-scarico-da-ddt.md](work-done/brief-db-magazzino-lotto-3-scarico-da-ddt.md),
+[brief-db-magazzino-lotto-3-bis-carico-da-reso.md](work-done/brief-db-magazzino-lotto-3-bis-carico-da-reso.md).
+
+### Rimasti per intero — citano un documento ancora aperto
+
+> Testo com'era nella voce d'origine, indicata fra parentesi.
+
+*(voce del 10 settembre)* **Anello 0 — I pgTAP misurano davvero, e la CI misura la CI.** La suite era un
+cancello che si poteva attraversare: `continue-on-error` la rendeva un parere, e
+la baseline dei rossi era compilata **a mano** su una macchina di sviluppo — cioè
+descriveva quella macchina, non il contratto. Il 9 settembre la baseline della CI
+viene **misurata dalla CI** su un database ricostruito da zero, il
+`continue-on-error` sparisce, e il ramo di bootstrap **fallisce invece di
+passare**. Escono tre difetti d'ambiente che tenevano rossi interi gruppi di file
+e due building block di fixture riusabili. ⛔ E si scopre la forma peggiore del
+difetto: *un cancello che passa perché non ha misurato niente è peggio di un
+cancello assente*. Vedi
+[migliorie-generali-da-test-valutazione.md](work-in-progress/migliorie-generali-da-test-valutazione.md).
+
+*(voce del 14 settembre)* **Anello 0 — La postura degli oggetti si presidia per criterio, e il registro
+della CI cala.** Le tre `SECURITY DEFINER` di `postgres` senza `search_path` —
+una sul percorso di 305 trigger `tx_id` — hanno il pin (12-09), nella timeline
+normale e senza superuser, col **prestito di proprietà** via
+`fn_sync_functions_owner`. ⚠️ Con una lezione presa dal verso opposto: la forma
+«prudente» `pg_catalog, pg_temp` avrebbe **accecato** `dblink`, che vive in
+`public`, dentro un `WHEN OTHERS` — spegnendo il tracciamento delle transazioni
+**senza un rosso da nessuna parte**. *Una forma canonica uguale per tutte non
+esiste: si decide per funzione, guardando ciò che chiama.* Il terzo invariante di
+D5 ha ora il suo pgTAP sul catalogo (`test-security-definer-search-path-v1`),
+come i primi due. Sul registro della CI il triage è partito **dal perimetro**:
+21 file (le `fn_scope_*`, il fail-closed, le `rls/`) morivano nella fixture
+perché **cercavano** i soggetti fra i dati esistenti, e su un database
+ricostruito `anagrafiche` è a zero — riscritti con fixture che **costruiscono**
+il mondo, e nessun ramo `skip` residuo. Il registro passa da 406 (09-09) a 403
+(12-09) a **372** (14-09), e i RIENTRATI li toglie ora uno script che legge il
+log della corsa, non una mano. Lato applicazione, D15: `skip_area_check` era
+**muto** su 15 view che dichiaravano anche `area_funzionale` — sei delle quali
+scrivevano senza permesso — e le famiglie hanno deciso quale delle due parole
+vale; le due vulnerabilità npm e `weasyprint 70` sanate senza dipendenze nuove.
+Vedi
+[brief-db-fixture-che-costruiscono-d7-d6-d4.md](work-done/brief-db-fixture-che-costruiscono-d7-d6-d4.md),
+[migliorie-generali-da-test-valutazione.md](work-in-progress/migliorie-generali-da-test-valutazione.md) §D4-D7 e §D13,
+[migliorie-generali-BE-FE-da-test-valutazione.md](work-done/migliorie-generali-BE-FE-da-test-valutazione.md) §D1, §D15.
+
+*(voce del 19 settembre)* **Anello 3 (`pagamenti`) — Il collaudo in-app scrive venti decisioni di
+dominio.** Tre giri in cinque giorni, e ogni giro ha lasciato il modello
+diverso da com'era. **D16-D18** (14→15-09): la riga manuale **nasce cercando la
+fattura** e compare già `ABBINATA`; «Non riesco ad associarlo» è un gesto
+dichiarato e non un ripiego; **Elimina** in bozza fa tornare la quadratura;
+sotto `VALIDATA` il contenuto è fermo. **D20** (18→19-09): 🔴 **le righe che
+restano indietro hanno un futuro** — una `SOSPESA` o una `SCARTATA` sotto una
+distinta registrata non entrava più in nessun conto e non poteva più
+diventarlo: ora `fn_posta_riga_tardiva` la riprende, la distinta resta `CHIUSA`
+e la quadratura non cambia; e i «Porta a» da `ABBINATA` escono dalla matrice.
+⭐ Due cose da tenere: *un pulsante che finisce in errore è un difetto di
+modello* — «Registra» era acceso in BOZZA mentre il DB rispondeva
+`E_CONTABILE_NON_REGISTRABILE`; e il brief chiude sul **percorso**, l'**esito**
+lo prova il copione, che per questo vive in `work-in-progress/` e non in un
+brief chiuso. I due piani, DB e BE/FE, sono **chiusi e archiviati il 19-09**:
+non resta codice da scrivere. Vedi
+[brief-db-riga-manuale-nasce-abbinata-ed-elimina-riga.md](work-done/brief-db-riga-manuale-nasce-abbinata-ed-elimina-riga.md),
+[brief-db-validata-e-registrazione-tardiva.md](work-done/brief-db-validata-e-registrazione-tardiva.md),
+[brief-db-posting-e-abbinamento-rata.md](work-done/brief-db-posting-e-abbinamento-rata.md),
+[brief-be-fe-posting-e-abbinamento-rata.md](work-done/brief-be-fe-posting-e-abbinamento-rata.md),
+[collaudo-in-app-incassi-distinte-e-sistemazioni.md](work-in-progress/collaudo-in-app-incassi-distinte-e-sistemazioni.md).
+
+*(voce del 19 settembre)* **Anello 1 (`ui`) — Il frontend: le classi che non esistevano, e il chrome che
+sta in una sede sola.** Tre passate il **17-09**, tutte nate guardando i fogli
+di stile invece del codice: **21 utility PrimeFlex mai installate** (`w-full` in
+245 punti) che non facevano niente; **60 `var()`** che puntavano a nomi di
+PrimeVue 3 o a token `--app-*` mai scritti — e queste **facevano eccome**,
+perché `border: 1px solid var(--surface-border)` con la variabile assente
+annulla l'intera dichiarazione (i pannelli di `pratiche` senza bordi, senza
+hover, senza voce selezionata) e il **body era senza font** senza che si
+vedesse; **26 identificatori orfani**. Da lì nasce il presidio
+`scripts/check_classi_morte.py` (pre-commit: tiene il conto a **zero**) e, il
+giorno dopo, il **chrome del dialog in una sede unica** con la sua guardia
+(`check-dialog-chrome.mjs`). ⛔ *Un difetto che **toglie** un colore non si
+vede*: il testo «sottotono» era testo normale in 135 siti. Nello stesso giro il
+frontend prende liste **responsive senza scrollbar orizzontale**, content tab
+comprimibili, `app-dialog-lista` e la pagina compatta degli store. Vedi
+[frontend/catalogo-building-block-frontend.md](frontend/catalogo-building-block-frontend.md)
+e
+[piano-migrazione-primevue-5.md](work-in-progress/piano-migrazione-primevue-5.md).
+
+*(voce del 30 settembre)* **Anello 0/1 — La credenziale è una, le porte sono tante.** L'analisi degli
 accessi (D-1…D-10, decise il 24-09, chiusa il 28) separa due oggetti: la
 **credenziale** (password, tentativi, blocco, sessioni) e la **veste**, la
 porta da cui si entra — *cambia la porta, non il ciclo di vita*. Il lato DB
@@ -711,404 +1053,31 @@ L-6 del piano BE/FE. Vedi
 [brief-db-area-funzionale-assistente-ai.md](work-done/brief-db-area-funzionale-assistente-ai.md),
 [piano-be-fe-accessi-credenziale-e-vesti.md](work-in-progress/piano-be-fe-accessi-credenziale-e-vesti.md).
 
-**Trasversale — Sicurezza in profondità, dalla superficie al secondo
-fattore.** Tre passate sul BE e sull'infrastruttura, scritte come *regole, non
-opzioni*: il **21-09** la superficie pubblica (gunicorn solo su loopback, rate
-limit in Nginx, admin Django tolto — `/admin/` rispondeva 200 —, Swagger solo
-se acceso, test `test_superficie_pubblica`); il **26-09** i segreti fuori da
-git (`backend/.env` → `.env.example`), **gitleaks** in pre-commit e in CI,
-`check --deploy` in CI, `SECRET_KEY` obbligatoria e `DEBUG` spento di default;
-il **28-09** HSTS e redirect, **refresh token nel cookie `HttpOnly`** e access
-token solo in memoria (10 minuti), chiave di cifratura separata dalla
-`SECRET_KEY` — *ruotare la `SECRET_KEY` non spegne più i dati cifrati*. Il
-**secondo fattore TOTP** chiude il lato DB il 29-09 (22 changeSet, D-T1…D-T5):
-l'obbligo sta sulla credenziale **o** sul profilo (sempre acceso sul
-SUPER_ADMIN, garantito da un CHECK), sei verbi del device, ⭐ anti-replay *sul
-passo, non sul codice*, sblocco d'emergenza solo dalla sessione del migratore
-con traccia. I tre codici del **cancello degli obblighi** sono consegnati a
-file il 30-09, **da applicare**. ⚠️ Aperto: il TOTP lato BE/FE (lotti
-T-0…T-5, dal 30-09). Vedi
-[brief-be-fe-sicurezza-header-token-mfa.md](work-done/brief-be-fe-sicurezza-header-token-mfa.md),
-[brief-db-secondo-fattore-totp.md](work-done/brief-db-secondo-fattore-totp.md),
-[configurazione-django.md](backend/configurazione-django.md).
+### Rimasti per intero — «In breve», senza un brief
 
-### Controlli automatici e test — 30 settembre
+*(voce del 10 settembre)* **In breve, senza un tema proprio** — il **fondo fattura** con ricalcolo e governo
+applicato il 31 agosto; l'**archiviazione delle righe di coda** e la
+storicizzazione dei bersagli spariti; il **perimetro delle email** e l'invio di
+sistema; i **riferimenti contratto** sugli atti di fattura; tre giri di **seed
+liste** (lotto, titolo IVA, admin `ui`); due **design** che preparano il magazzino
+— la partita merce generalizzata e la situazione merce di un ordine; e la
+migrazione della clausola `ORDER BY` lato backend.
 
-**Anello 0 — Ciò che la CI non vedeva: trigger generati e giro notturno.**
-Quattro brief, lo stesso difetto di forma — una funzione generica riceve il
-dato **negli argomenti del trigger** e nessuno confronta il vivo con la sede.
-`CODICE_NON_MODIFICABILE`, ritirato il 05-08, era ancora sollevato da **69
-trigger** col presidio verde, perché guardava i corpi e il codice viaggiava in
-`tgargs` — *un valore che viaggia come DATO non si trova cercando CODICE*
-(23-09). Il job delle 21:10 **cancellava i lock scritti a mano**: il registro
-diventa l'**unica sede** di un lock, un runner solo converge, e *dev non era
-fuori modello: era l'unico ambiente in cui il modello girava per intero*
-(26-09). Su 5 tabelle il trigger di **storico** cercava una colonna FK col nome
-sbagliato e ogni UPDATE di una riga storicizzata moriva — ora il rubinetto
-verifica la colonna prima di montare (25-09). E i **job notturni girano in
-CI** (26-09): `85_pgagent` è `MARK_RAN` e tutto ciò che faceva solo un job era
-invisibile; `dbops.processi` dichiara `ci_ordine`/`ci_procedura`/
-`ci_esclusione` e un `ci_apply` chiama in ordine le 11 procedure — al primo
-giro ha trovato due tabelle mancanti dalla storicizzazione. *La copia da
-togliere non è l'elenco, sono i corpi.* Nella stessa famiglia la regola
-«`valido_al` non precede `valido_dal`» prende **una sede sola** montata per
-presenza della coppia di colonne (25 tabelle, cinque copie e due codici
-ritirati). Vedi
-[brief-db-codici-ritirati-negli-argomenti-dei-trigger.md](work-done/brief-db-codici-ritirati-negli-argomenti-dei-trigger.md),
-[brief-db-lock-di-colonna-fuori-registro.md](work-done/brief-db-lock-di-colonna-fuori-registro.md),
-[brief-db-storico-colonna-fk-dei-trigger.md](work-done/brief-db-storico-colonna-fk-dei-trigger.md),
-[brief-db-job-notturni-in-ci.md](work-done/brief-db-job-notturni-in-ci.md),
-[brief-db-guard-date-validita.md](work-done/brief-db-guard-date-validita.md).
+*(voce del 14 settembre)* **In breve, senza un tema proprio** — la **copertura della doc API** rimisurata
+il 12-09 (613 rotte, la misura vecchia contava come «coperte» rotte servite da
+segnaposto, e `pagamenti` passa da 1/25 a 25/25 con una pagina sola); le
+**rotte senza porta** (D7) hanno tutte una risposta scritta (due candidate al ritiro,
+una schermata da aprire: il registro email dell'operatore); l'**area funzionale
+dell'assistente AI** ha il brief e attende la riga di catalogo, perché la
+decisione è che lo usino anche gli operatori; l'analisi dell'osservabilità
+riletta contro il repo (B e C erano «mossi da fuori» dal cantiere dei presidi);
+in `api.md` cinque voci dicevano ancora «la testata ha la RLS, il figlio no» e
+ora il fatto sta in una sede sola; e in `AGENTS.md` tre regole nuove nate da
+altrettanti incidenti — *un privilegio su una macchina è un ricordo*,
+`unittest.TestCase` non è `SimpleTestCase`, e dove si legge l'errore vero di un
+pgTAP in CI (nel log del container, non nella baseline).
 
-**Anello 0 — Presidi e fixture: il mondo si costruisce, i presidi del
-percorso storto esistono.** I due brief aperti il 19-09 si chiudono: **C1**
-(21-09) — un valore ammesso dal CHECK di una colonna di stato e mai scritto è
-*una promessa vuota*, e la scrittura ha smentito il brief (32 colonne, 114
-valori invece di 18: c'era una seconda forma di cast) —, e **C2** (22-09) — la
-`ui_action` promessa a catalogo e il canale che la realizza viaggiavano su due
-binari; sanati 13 codici Python e 49 siti PL/pgSQL, e *il rosso si è spento per
-la sanatura, non per il presidio*. Il **giro 2 delle fixture** (23-09) porta il
-BB di composizione `fn_pgtap_crea_mondo_cliente()` e i builder di fattura,
-gestore, listino…: *ciò che non esiste è la composizione*; nessun file della
-suite fa più `COMMIT`. I presidi a catalogo passano da **42 a 49** (C1, C2,
-`vw_funzioni_check_codici`, il lotto chiuso con errori, il DDT emesso senza
-scarico, il reso confermato senza carico). pgTAP: **12 rossi su 738 file** su
-dev (16 su 671 il 19-09); il registro della CI è a **361** (362), mentre le
-misure vere — **229 su 687** il 24-09, **227 su 714** nella corsa del 26-09 —
-**non sono ancora certificate** nel registro. ⚠️ D7 resta aperto come debito
-residuo (18 rossi del lotto 2 tornati lì). Vedi
-[brief-db-presidio-stati-mai-scritti.md](work-done/brief-db-presidio-stati-mai-scritti.md),
-[brief-be-presidio-ui-action-e-canale-campi.md](work-done/brief-be-presidio-ui-action-e-canale-campi.md),
-[brief-db-fixture-che-costruiscono-giro-2.md](work-done/brief-db-fixture-che-costruiscono-giro-2.md).
-
-### Liste e interfaccia — 30 settembre
-
-**Anello 1 (`ui`) — La lista dice da sé che cosa è.** Cinque fatti della
-lista scritti in più sedi scendono nel catalogo. La **ricerca libera** di
-tutte le liste legge `ricercabile_full` a ogni ricerca (`_DEBITO_RICERCA_A_MANO`
-da 32 a 0; Preventivi, Offerte e Contratti cercavano su 2 colonne invece che
-su 4; **12 liste cercavano senza dichiararlo**): *cosa si PUÒ cercare* lo dice
-il codice, *cosa si CERCA* il catalogo già filtrato dai permessi
-(`ui.fn_lista_colonne_ricerca_full`, 23-09). La **soglia** diventa una colonna
-(`ricerca_min_caratteri`, 1 sulle 14 liste di configurazione, 3 sulle altre):
-«KG» partiva senza `search` e senza errore (26-09). Le **misure di pagina**
-hanno un catalogo (`ui.misure_pagina`: 10/25/50/100) — un preset a 15 lasciava
-il selettore vuoto, e il resolver *non inventa* più (30-09). Le **azioni
-portano un significato, non un glifo**: icona **e** colore escono dal DB e il
-FE li ricava dal verbo, un segno per verbo in tutti i domini (27/28-09, 39
-righe di `meta` tolte da otto CSV). Vedi
-[brief-be-ricerca-full-liste-residue.md](work-done/brief-be-ricerca-full-liste-residue.md),
-[brief-db-ricerca-full-colonne-permessi.md](work-done/brief-db-ricerca-full-colonne-permessi.md),
-[brief-db-ricerca-full-colonne-da-accendere.md](work-done/brief-db-ricerca-full-colonne-da-accendere.md),
-[brief-db-be-fe-ricerca-soglia-per-lista.md](work-done/brief-db-be-fe-ricerca-soglia-per-lista.md),
-[brief-db-misure-pagina-catalogo.md](work-done/brief-db-misure-pagina-catalogo.md),
-[brief-db-icone-azioni-per-significato.md](work-done/brief-db-icone-azioni-per-significato.md),
-[brief-db-lista-articoli-colonne-data.md](work-done/brief-db-lista-articoli-colonne-data.md).
-
-**Anello 1 / frontend — Una sola macchina per ogni gesto.** Le `DataTable`
-grezze vengono riclassificate (28-09): dei 44 file, 10 sono eccezioni vere e
-le altre diventano liste a catalogo (83-96) — tre **troncavano in silenzio** a
-50/100 righe; la catena delle revisioni dell'offerta diventa *un fatto della
-riga, fissato alla nascita*. Il registro scende a **31** (11 senza
-motivazione). Le **righe di un documento** diventano `<ListaConfigurabile>`
-(liste 97-103, lato DB chiuso il 28-09): *il motivo sta nel modello, non nel
-dispositivo*; la macchina del form inline è un BB (`useFormInline`, trovata in
-dieci sedi perché *lo standard prescriveva la duplicazione*), l'imponibile di
-riga passa da otto copie a una, la versione del listino in vigore da sette a
-una. I **filtri su schermo compatto** (24-09, 70 view su 70): *un filtro è
-stato della LISTA, non decorazione della view*, e *un filtro attivo che non si
-vede è una lista che mente per omissione*. L'analisi delle **regole FE violate**
-(26-09) mette il verso delle FK fra i domini (`core` non importa più nessun
-dominio) e i presidi FE passano da 6 a 13. Lo schema **OpenAPI** è a zero
-rilievi drf-spectacular (W001 54 → 0, W002 73 → 0). ⚠️ Aperto: il lotto D
-delle righe documento (FE fermo sulla richiesta §9.11 al DB: le righe
-AGGIUNTA escono con l'UdM dell'articolo, non della riga). Vedi
-[brief-db-liste-datatable-grezze.md](work-done/brief-db-liste-datatable-grezze.md),
-[brief-db-liste-righe-documento.md](work-done/brief-db-liste-righe-documento.md),
-[brief-fe-filtri-lista-su-schermo-compatto.md](work-done/brief-fe-filtri-lista-su-schermo-compatto.md),
-[analisi-fe-regole-standard-violate-dal-codice.md](work-done/analisi-fe-regole-standard-violate-dal-codice.md).
-
-### Magazzino, vendite e documenti — 30 settembre
-
-**Anello 3 (`magazzino`) — Dal motore a video alla merce che esce e
-rientra.** Il **Lotto 2** è consegnato intero il 22-09 (CI da zero verde,
-prova del lock a due sessioni: *la disponibilità si legge dopo il lock*) e il
-suo BE/FE chiude il 23/25-09 (2-bis: capability dei documenti interni,
-azione `registra_magazzino`, lucchetto su `magazzino_id`; piano: inventario e
-rettifica *una implementazione, due configurazioni*, 19 rotte). Le
-**anagrafiche di magazzino escono dal pannello config** (21-09, decisione B):
-magazzini, ubicazioni e lotti sono anagrafiche con FK, non vocabolari, con
-guard sul padre dell'ubicazione e anti-ciclo. Poi il primo documento vero: il
-**Lotto 3** (28-09, 24 changeSet, D-L3-a…k) — la merce esce con la **bolla**,
-la sorgente è il **prelievo**, il cambio di stato del DDT è un **verbo**
-(`fn_cambia_stato_ddt`), il trasferimento entra al `CONSEGNATO`; e il suo
-inverso, il **Lotto 3-bis** (29-09, 19 changeSet): il reso confermato
-ricarica al **costo dell'uscita d'origine**, lotto e seriale *si ritrovano,
-non si scelgono* — *un'asimmetria fra due versi si chiude subito* (senza il
-3-bis la ri-consegna scaricava due volte). ⚠️ Aperto: il **BE/FE dei Lotti 3 e
-3-bis** (R-1…R-5: senza, la bolla che muove merce non si emette), CI da zero,
-il collaudo a video dell'inventario. Vedi
-[brief-db-magazzino-lotto-2-motore.md](work-done/brief-db-magazzino-lotto-2-motore.md),
-[piano-be-fe-magazzino-lotto-2-motore.md](work-done/piano-be-fe-magazzino-lotto-2-motore.md),
-[brief-db-magazzino-lotto-2-bis-be-fe.md](work-done/brief-db-magazzino-lotto-2-bis-be-fe.md),
-[brief-db-magazzino-anagrafiche-guard-ubicazioni-e-codici.md](work-done/brief-db-magazzino-anagrafiche-guard-ubicazioni-e-codici.md),
-[piano-be-fe-magazzino-anagrafiche-fuori-dal-pannello-config.md](work-done/piano-be-fe-magazzino-anagrafiche-fuori-dal-pannello-config.md),
-[brief-db-magazzino-lotto-3-scarico-da-ddt.md](work-done/brief-db-magazzino-lotto-3-scarico-da-ddt.md),
-[brief-db-magazzino-lotto-3-bis-carico-da-reso.md](work-done/brief-db-magazzino-lotto-3-bis-carico-da-reso.md).
-
-**Anello 3 (`vendite`, `pagamenti`) — Le forme che reggono, e annullare vuol
-dire chiudere.** **D14 è chiusa il 22-09**: la capability di un DDT pagava le
-partite di tutti, ora la partita si legge **per documento**, l'eleggibilità al
-push ha una sola implementazione, `vw_contatore_merce` è ritirata e nasce il BB
-*le righe di un documento si toccano solo in bozza*. Sette giri applicati,
-l'ottavo ritirato lo stesso giorno: hanno retto le **forme**, i millisecondi
-erano colore — *il corpo eseguito come query non predice il piano dentro la
-funzione*, e 🔴 in `vendite` **82 tabelle su 87 non sono mai state
-analizzate**. *Un prezzo non autorizzato non esce dalla bozza* (24-09): cinque
-sedi DB che dissentivano più una copia nel BE diventano un BB, e il `REJECTED`
-lo guarda finalmente qualcuno. *L'annullamento chiude la vita* (23-09): il
-lotto si annulla solo se vuoto, quindi l'annullo **è** lo svuotamento, e
-«COMPLETATO con documenti in ERRORE» è impossibile a DB. E in `pagamenti` le
-righe di una distinta `ANNULLATA` escono dalle code (30-09): *tre sedi, tre
-risposte* diventano una bandiera a catalogo (`righe_lavorabili`) —
-`ANNULLATA` vuol dire *non è mai successa*. ⚠️ Aperto: il BE/FE delle righe di
-distinta (il brief è in `work-done` ma il suo §10.5 lo dichiara aperto fino al
-collaudo). Vedi
-[brief-db-partita-merce-per-documento.md](work-done/brief-db-partita-merce-per-documento.md),
-[brief-db-preventivi-congelamento-pricing.md](work-done/brief-db-preventivi-congelamento-pricing.md),
-[brief-db-annullamento-chiude-la-vita.md](work-done/brief-db-annullamento-chiude-la-vita.md),
-[brief-db-righe-distinta-annullata-fuori-dalle-code.md](work-done/brief-db-righe-distinta-annullata-fuori-dalle-code.md).
-
-**Anello 2 (`documenti`) — Il patto fra la versione di template e la forma dei
-dati.** *Jinja non si lamenta*: la fattura v3 usciva senza i componenti dei kit
-e nessuno se ne accorgeva. Ogni versione di template dichiara ora la forma che
-legge (`versione_contesto`, NOT NULL, senza default) e si stampa o si pubblica
-solo se coincide con quella del builder — *non è un caso isolato, è il
-modello*: con i template per azienda diventa la norma. DB applicato il 30-09
-(D-C1…D-C4, backfill su 20 versioni); lo stesso giorno il BE (R-1…R-5: una
-costante `CONTEXT_VERSION` per builder, controllo prima del render e alla
-pubblicazione) e la fattura alla **forma 2**, con la versione 4 del template che
-scorre `riga.componenti`, pubblicata dall'app. ✅ Chiuso il 2026-10-01. Vedi
-[brief-db-documenti-versione-contesto-template.md](work-done/brief-db-documenti-versione-contesto-template.md).
-
-**In breve, senza un tema proprio** — la verifica «doc API contro codice» su
-47 documenti di `core` apre un'analisi BE che chiude in quattro giorni una
-ventina di voci (fra cui 90 letture grezze di `request.data` passate al BB
-`corpo_oggetto`), con dodici ancora aperte
-([analisi-be-difetti-emersi-verifica-doc-api-core.md](work-done/analisi-be-difetti-emersi-verifica-doc-api-core.md));
-nelle migliorie BE/FE i primi **test di componente** del frontend (23-09),
-`pip-audit` in CI e la schermata del log email (D7); i **copioni di collaudo
-in-app** scritti e da eseguire salgono a otto (capability annidata e prezzi,
-casella di ricerca, consenso al riuso della credenziale, inventario e
-rettifica, permessi ereditati, osservabilità, incassi, UI permessi
-operatore); 🔴 dal 21-09 sera la CI su GitHub **non partiva** per un blocco di
-billing (fatto datato, dal brief del Lotto 2); invariati il `USAGE` di
-`zeroerp_log` su `dbops` in CI e «Riavvia» (D1), entrambi decisioni di Tid.
-
----
-
-## 19 settembre 2026
-
-> Copre il periodo **15 – 19 settembre**. Cinque giorni, **109 changeSet**
-> datati fra il 15 e il 19 (26 in `pagamenti`, 26 in `magazzino`, 22 in
-> `vendite`, 10 in `script`, 7 in `dbops`), **diciannove documenti chiusi in
-> `work-done`** e **37 merge** (dalla PR #1589 alla #1625). Si scrive per
-> **temi**: sono nove.
->
-> ⚠️ Il **16 settembre** non ha prodotto né changeSet né commit, e il **20
-> settembre** è volutamente fuori: la revisione delle guide di
-> `docs/it/guide/` era in corso mentre questa voce veniva scritta.
->
-> ⭐ **Il tema portante è il collaudo in-app che scrive le regole.** Il copione
-> del giro incassi nasce il 14 settembre come lista di cose da spuntare; in
-> questi cinque giorni diventa **tre giri e venti decisioni di dominio**
-> (D16…D20) — e in più di un caso aveva ragione la schermata: il modello
-> c'era, era l'interfaccia a dire il contrario. È la lezione della voce
-> precedente dal verso opposto: *i presidi si provano dal percorso che li
-> attraversa, e le regole si provano dalla schermata che le mostra*.
-
-**Anello 0 — «Esegui ora» entra in esercizio, «Riavvia» aspetta di sapere che
-cosa è un host.** Far partire un processo dall'interfaccia si consegna il **15
-settembre** con **tre celle di CSV e nessun changeSet**: `dbops.processi`
-dichiara `avvio_manuale`, `coda_lavori_tipi` prende `ESEGUI_PROCESSO` attivo,
-`config.azioni_processo` l'azione `processo_avvia`; lato BE `avvio_manuale.py`
-è la **sede unica** del predicato (capability, endpoint e handler lo leggono da
-lì) e il FE monta il tab «Sveglie» nel `ProcessoDrawer` col motivo dell'azione
-spenta. Collaudo in-app lo stesso giorno: due run `origine = COMMAND` sul
-giornale, email `SENT` e ricevute. ⭐ **Il discriminante è che cosa serve
-sapere**: «Esegui ora» non ha bisogno di sapere *su quale macchina* gira — un
-timer è un comando che parla col DB — mentre un `systemctl restart` **sì**, e
-senza un *host* nel modello il pulsante riavvia «un host a caso» alla seconda
-macchina, in silenzio. ⇒ «Riavvia» resta dietro **D1** (forma A: nome
-dichiarato in `env.sh`, `host` obbligatorio nella richiesta, claim del
-drenatore filtrato), **zero righe scritte per scelta**: è fra le «Decisioni
-aperte» della mappa. Vedi
-[brief-db-avvio-manuale-di-un-processo.md](work-done/brief-db-avvio-manuale-di-un-processo.md),
-[piano-be-fe-avvio-manuale-di-un-processo.md](work-done/piano-be-fe-avvio-manuale-di-un-processo.md),
-[analisi-riavvio-processi-da-interfaccia.md](work-done/analisi-riavvio-processi-da-interfaccia.md).
-
-**Anello 3 (`magazzino`) — Il terreno vuoto, e il giorno dopo il motore.** Il
-**Lotto 1** atterra il 15-09: 26 changeSet che danno al registro `movimenti` la
-**sorgente obbligatoria a catalogo** e il **verso nella quantità**
-(`trgfn_movimenti_guard_verso`), `movimenti_attesi` al posto di `reservations`,
-`valore_giacenza` al posto di `costo_medio`, `lotti` nuova, l'**emittente come
-ancora** su `magazzini`/`assets` — più 23 policy RLS, cinque viste
-`security_invoker` e cinque pgTAP. Merge PR #1593, BE/FE PR #1595, CI verde
-dalle 16:45. ⚠️ **La sera ha insegnato più della scrittura**: sette cose erano
-verdi in sessione **per ragioni sbagliate**, e le ha trovate solo il database
-ricostruito da zero — la lista è in coda a §5, ed è il punto di partenza
-dichiarato del Lotto 2. Il **Lotto 2** («il motore», brief del 17-09 con
-**quattordici decisioni** prese da Tid) è applicato su dbdev il **18-09 alle
-12:23**: la **porta** `magazzino.fn_scrivi_movimento` (`SECURITY DEFINER`:
-unica scrittura del registro, copia del valore, lock in uscita, disponibilità),
-il `REVOKE` all'app su `movimenti`/`valore_giacenza` in **tre sedi**, inventario
-e rettifica postati dalla porta, `vw_disponibilita`, quattro spie in
-`dbops.presidi`, 27 codici `E_MAG_*`, 21 changeSet e dodici pgTAP. ⚠️ Aperto:
-pgTAP come applicazione, CI da zero, commit; `requires_lotto` nel drawer
-articolo e le operazioni BE/FE. Vedi
-[brief-db-magazzino-lotto-1-terreno-vuoto.md](work-done/brief-db-magazzino-lotto-1-terreno-vuoto.md),
-[brief-db-magazzino-lotto-2-motore.md](work-done/brief-db-magazzino-lotto-2-motore.md).
-
-**Anello 0 — Quando nasce un building block, le copie si ritirano nello stesso
-giro.** L'emittente di default diventa **una funzione sola** in `script`
-(`trgfn_default_emittente_fiscale`, undici changeSet, `20260915-36 → -46`)
-montata su **undici** tabelle: le **quattro copie di `vendite` sono ritirate**,
-tre codici errore ritirati, zero copie in `pg_proc` a database vivo, e il BE
-allinea con `E_EMITTENTE_NON_RISOLTO`. La raccomandazione «il BB ora, le copie
-quando c'è tempo» è stata **respinta**, e con una ragione che vale come regola:
-*non c'è produzione, non c'è niente da aspettare* — un refactor rimandato è un
-debito che nessuno rilegge. ⭐ Nello stesso periodo, due BB estratti alla
-**seconda** occorrenza: `core/db.sql_lateral_primo_motivo` e
-`pagamenti/composables/useAzioniRigaContabile`. Vedi
-[brief-db-emittente-di-default-un-bb-solo.md](work-done/brief-db-emittente-di-default-un-bb-solo.md).
-
-### Incassi e distinte — 19 settembre
-
-**Anello 3 (`pagamenti`) — Il collaudo in-app scrive venti decisioni di
-dominio.** Tre giri in cinque giorni, e ogni giro ha lasciato il modello
-diverso da com'era. **D16-D18** (14→15-09): la riga manuale **nasce cercando la
-fattura** e compare già `ABBINATA`; «Non riesco ad associarlo» è un gesto
-dichiarato e non un ripiego; **Elimina** in bozza fa tornare la quadratura;
-sotto `VALIDATA` il contenuto è fermo. **D20** (18→19-09): 🔴 **le righe che
-restano indietro hanno un futuro** — una `SOSPESA` o una `SCARTATA` sotto una
-distinta registrata non entrava più in nessun conto e non poteva più
-diventarlo: ora `fn_posta_riga_tardiva` la riprende, la distinta resta `CHIUSA`
-e la quadratura non cambia; e i «Porta a» da `ABBINATA` escono dalla matrice.
-⭐ Due cose da tenere: *un pulsante che finisce in errore è un difetto di
-modello* — «Registra» era acceso in BOZZA mentre il DB rispondeva
-`E_CONTABILE_NON_REGISTRABILE`; e il brief chiude sul **percorso**, l'**esito**
-lo prova il copione, che per questo vive in `work-in-progress/` e non in un
-brief chiuso. I due piani, DB e BE/FE, sono **chiusi e archiviati il 19-09**:
-non resta codice da scrivere. Vedi
-[brief-db-riga-manuale-nasce-abbinata-ed-elimina-riga.md](work-done/brief-db-riga-manuale-nasce-abbinata-ed-elimina-riga.md),
-[brief-db-validata-e-registrazione-tardiva.md](work-done/brief-db-validata-e-registrazione-tardiva.md),
-[brief-db-posting-e-abbinamento-rata.md](work-done/brief-db-posting-e-abbinamento-rata.md),
-[brief-be-fe-posting-e-abbinamento-rata.md](work-done/brief-be-fe-posting-e-abbinamento-rata.md),
-[collaudo-in-app-incassi-distinte-e-sistemazioni.md](work-in-progress/collaudo-in-app-incassi-distinte-e-sistemazioni.md).
-
-**Anello 3 (`pagamenti`) — La distinta prende il numero dal registro, e impara
-a cercare le rate.** Chiesto da Tid il 15-09: la distinta contabile aveva un
-`codice` da `DEFAULT` di colonna, non un numero. Il **motore non si tocca** —
-cinque famiglie ci passano già — quello che cambia è **la distinta**, che
-diventa `DIS-<sigla>-<anno>-<7 cifre>` e per farlo deve dire **di quale
-emittente è** (D1), con la RLS che passa sulla colonna emittente della riga
-(D3); ✏️ *il primo numero è uscito a video* il 17-09. Il seguito arriva da un
-rilievo del giro in-app dello stesso giorno, e vale come regola: *chi digita un
-incasso non riconosce il documento da un numero nudo, e la domanda vera non è
-«quale fattura?» ma «quale rata?»* — il lookup fattura diventa **ricco**, nasce
-la **lista rate paginata** (primo consumatore dello scadenzario) e la **modalità
-multipla** che accumula N rate e genera N righe al salvataggio. ⚠️ Due cose
-restano, con destinazione scritta: la **scala di `importo`** (P-8: `numeric`
-senza scala, quindi un `CHECK` che **rifiuta** — deciso il 18-09), e il
-**`runOnChange` + `dbms:`**, che in Liquibase 5.0.4 fa ri-eseguire il change
-**una volta** e il checksum non torna: è così che `20260831-03` è morto dopo il
-merge di PR #1598, e i 28 changeSet interessati sono una voce aperta in
-`PROJECT_CONTEXT.md`. Vedi
-[brief-db-distinta-numerata-sul-registro.md](work-done/brief-db-distinta-numerata-sul-registro.md),
-[brief-db-distinta-ricerca-rate.md](work-done/brief-db-distinta-ricerca-rate.md).
-
-### Interfaccia, osservabilità e verifiche — 19 settembre
-
-**Anello 1 (`ui`) — Il perimetro emittente arriva ai cataloghi globali, e il
-seed laterale si ritira.** Sei liste in più dichiarate `perimetro_emittente =
-false`: con «Tutti gli emittenti» nella combo, *Processi automatici* era
-sbarrata dal cancello di perimetro su un registro che **un emittente non ce
-l'ha**. Sette globali rientrano, `operatori` e `lista_preset` vengono
-certificate `multi_emittente` (colonne 872/873 a catalogo), `list_logs`
-proietta la ragione sociale, e il presidio BE tiene i due versi. ⛔ **La
-decisione di metodo vale più delle righe**: il valore **non** sta in un CSV
-laterale — «il rischio è troppo, si rischia disallineamento con i csv» — ma
-nella **colonna** di `lista_definizione.csv`, come `multi_emittente`; il
-laterale `20260902-02` è **ritirato** insieme al meccanismo, e l'ordine
-**colonna → flag** è scritto nel pgTAP, dove chi accende il flag deve venire a
-dichiararlo. Vedi
-[brief-db-perimetro-emittente-cataloghi-globali.md](work-done/brief-db-perimetro-emittente-cataloghi-globali.md).
-
-**Anello 0 — Osservabilità: l'ultimo miglio, e il pallino in topbar.** I sette
-passi dell'analisi arrivano a codice nello stesso giorno in cui l'analisi si
-chiude: `error_log` consultabile dietro permesso (**E**, «Errori tecnici»), il
-**Giornale eventi** (**G**), la retention (**D**) e il **pallino dei presidi**
-in topbar (**P**). ⭐ Il pezzo che vale più degli altri è il **verdetto «lotto
-fermo»**, che smette di vivere in Python e **nasce a DB**: un presidio scritto
-a mano sarebbe stata la **seconda sede** dello stesso predicato, quindi si
-sposta la sede, non si copia — con la finestra dichiarata finché il BE non
-legge il dato nuovo. Con R-6 (una riga `TASK_RUN` che usciva col giorno del
-task successivo) e i due indici delle letture trasversali. ⚠️ **Due rossi in CI
-la sera del 19-09**, entrambi presidi che hanno funzionato: la lista
-`dbops.error_log` entrata nel CSV globale senza dichiararsi nell'elenco del
-pgTAP, e un `SELECT` su `maintenance.job_run_log` che esisteva **solo su dev** —
-emerso perché i test Django girano ora **come l'applicazione**. Da lì la quarta
-occorrenza di *un privilegio che esiste su una macchina è un ricordo*, chiusa
-con un blocco in `provision_db_roles.sql` e un pgTAP di postura; 🔴 e resta
-aperto, con la sua riga in `PROJECT_CONTEXT.md`, che `zeroerp_log` in CI **non
-ha `USAGE` su `dbops`**: ogni test Django lavora con `tx_id = uuid_nil` (16 114
-righe `permission denied` nella corsa verde), due strade e la decisione a Tid.
-Vedi [analisi-osservabilita-log.md](work-done/analisi-osservabilita-log.md),
-[piano-be-fe-osservabilita-pallino-e-superfici.md](work-done/piano-be-fe-osservabilita-pallino-e-superfici.md),
-[brief-db-osservabilita-lotto-fermo-r6-indici.md](work-done/brief-db-osservabilita-lotto-fermo-r6-indici.md),
-[brief-db-privilegio-app-job-run-log.md](work-done/brief-db-privilegio-app-job-run-log.md).
-
-**Anello 0 — La catena di verifica: D7 chiuso, e due analisi che si chiudono
-invece di rimisurare.** **D7** finisce il 19-09: i 21 file del perimetro non
-*ricercano* più il mondo nella fixture, lo **costruiscono**
-(`dbops.fn_pgtap_crea_emittente_operatore`), e i loro rientrati li toglie
-`scripts/pgtap-baseline-ci-rientrati.sh` leggendo il log della corsa, non una
-mano — 363 → 362 rossi sul database ricostruito da zero. Il pezzo nuovo di
-**D6** ha il suo brief (`sec_functions_owner` e la sync riservati al migratore).
-Sullo stesso asse, due analisi si chiudono **senza aprire cantieri**: i
-**presidi del percorso storto** — C3 e C4 li ha chiusi il lavoro ordinario, C1 e
-C2 hanno un brief di mezza pagina — e la **diagnostica di produzione senza
-accesso al DB**, **archiviata senza costruire**, perché una produzione da
-diagnosticare oggi non esiste. ⭐ Le due lezioni sono la stessa: *i presidi del
-percorso storto non nascono da soli — un'analisi non li sostituisce, li
-sostituisce un brief*; e *un'analisi che aspetta una validazione senza data
-invecchia senza dirlo*. Le sei domande della diagnostica restano come
-**decisione** e non come lavoro, fra le «Decisioni aperte» della mappa. Vedi
-[brief-db-fixture-che-costruiscono-d7-d6-d4.md](work-done/brief-db-fixture-che-costruiscono-d7-d6-d4.md),
-[analisi-presidi-percorso-storto.md](work-done/analisi-presidi-percorso-storto.md),
-[brief-db-registro-owner-e-sync-riservati-al-migratore.md](work-done/brief-db-registro-owner-e-sync-riservati-al-migratore.md),
-[analisi-diagnostica-produzione-senza-accesso-db.md](work-done/analisi-diagnostica-produzione-senza-accesso-db.md).
-
-**Anello 1 (`ui`) — Il frontend: le classi che non esistevano, e il chrome che
-sta in una sede sola.** Tre passate il **17-09**, tutte nate guardando i fogli
-di stile invece del codice: **21 utility PrimeFlex mai installate** (`w-full` in
-245 punti) che non facevano niente; **60 `var()`** che puntavano a nomi di
-PrimeVue 3 o a token `--app-*` mai scritti — e queste **facevano eccome**,
-perché `border: 1px solid var(--surface-border)` con la variabile assente
-annulla l'intera dichiarazione (i pannelli di `pratiche` senza bordi, senza
-hover, senza voce selezionata) e il **body era senza font** senza che si
-vedesse; **26 identificatori orfani**. Da lì nasce il presidio
-`scripts/check_classi_morte.py` (pre-commit: tiene il conto a **zero**) e, il
-giorno dopo, il **chrome del dialog in una sede unica** con la sua guardia
-(`check-dialog-chrome.mjs`). ⛔ *Un difetto che **toglie** un colore non si
-vede*: il testo «sottotono» era testo normale in 135 siti. Nello stesso giro il
-frontend prende liste **responsive senza scrollbar orizzontale**, content tab
-comprimibili, `app-dialog-lista` e la pagina compatta degli store. Vedi
-[frontend/catalogo-building-block-frontend.md](frontend/catalogo-building-block-frontend.md)
-e
-[piano-migrazione-primevue-5.md](work-in-progress/piano-migrazione-primevue-5.md).
-
-**In breve, senza un tema proprio** — la **revisione delle guide** di
+*(voce del 19 settembre)* **In breve, senza un tema proprio** — la **revisione delle guide** di
 `docs/it/guide/` parte il 19-09 e prosegue oltre questa voce: header standard,
 il changelog in testa **dissolto nel corpo** invece che cancellato, accenti,
 tabelle rialineate, con le regole in
@@ -1126,365 +1095,21 @@ dirà); lo `.pyc` di `gen_seed_lista` **tracciato in git** e una lista mai
 montata, rimossi; `check_i18n_keys` e i guard del frontend (liste, pinia,
 drawer, icone, keepalive, DataTable) verdi a ogni giro.
 
----
-
-## 14 settembre 2026
-
-> Copre il periodo **11 – 14 settembre**. Quattro giorni, **103 changeSet**
-> (25 in `dbops`, 23 in `vendite`, 10 in `anagrafiche`, 8 in `script`, 4 in
-> `storico`) e **undici documenti chiusi in `work-done`**. Anche qui si scrive
-> per **temi**: sono sei.
->
-> ⚠️ Due brief di questo periodo restano in `work-in-progress` per scelta, non
-> per incompiutezza: quello delle **modifiche certe** ha un fatto di modello
-> dichiarato e non deciso (il verbo per la promessa di consegna), e quello delle
-> **fixture che costruiscono il mondo** tiene in coda il pezzo nuovo di D6.
-> Sono linkati dove stanno.
->
-> ⭐ **Il tema portante è ancora la CATENA DI VERIFICA, ma stavolta dal verso
-> dei presidi che si guardano allo specchio.** Il 10 settembre i presidi avevano
-> ricevuto un catalogo e un destinatario; in questi quattro giorni **tre di loro
-> hanno mentito** — il digest contava 784 riferimenti morti che non c'erano, un
-> listener vivo risultava `MUTO`, un checker dava una risposta diversa per ruolo
-> — e in tutti e tre i casi la causa stava nel **metro**, non nel misurato. È
-> il motivo per cui la lezione che resta non è «un presidio in più» ma *un
-> presidio si prova dal percorso che lo attraversa*.
-
-**Anello 0 — Lo storico porta il proprio perimetro, e il perimetro finisce di
-chiudersi.** Il cantiere del perimetro si chiude formalmente l'11 settembre con
-l'ultima famiglia armata (`arrotondamenti_scope`) e un ritiro
-(`attivita_fatturabili_log`): registro del debito da 33 a **10** righe, tutte
-decisioni di modello o cantieri di un altro dominio. Ma il criterio transitivo
-**non vede lo `storico`** — le shadow sono gemelle delle madri, non figlie — e
-lì il dato vivo di `vendite.fatture` era protetto da due policy mentre **ogni
-sua versione precedente era leggibile da chiunque**. La decisione portante è che
-lo scope **si cattura, non si deriva**: una riga di storico è un fatto datato,
-e il suo perimetro fa parte del fatto — se si ricalcolasse dalla madre viva, il
-presente riscriverebbe la visibilità del passato. Ogni shadow prende
-`origine_schema` (cinque shadow erano **condivise** fra `vendite` e `acquisti`
-senza saperlo: due `BIGSERIAL` nella stessa colonna, e la chiusura dello
-snapshot chiudeva quello dell'altro schema) e `scope_emittente_fiscale_id`,
-scritti dal trigger una volta sola; la mappa `dbops.storico_scope_policy` dice
-per ogni madre *dove* sta lo scope (colonna EF, colonna SR, risalita al padre —
-con **ripiego sull'archivio del padre** quando un `DELETE … CASCADE` l'ha già
-cancellato — o via billing account), ed è anche il presidio. **37 shadow armate**
-con policy generata, 65.751 versioni attribuite, `REVOKE DELETE` all'app su
-tutto lo schema, e le shadow nuove nascono armate dal generatore. ⭐
-`dbops.audit_log` era la stessa famiglia di difetto e un rimedio **diverso**:
-non è un registro di dominio (ci scrivono solo `dbops` e `maintenance`), quindi
-il presidio non è una policy ma un **cancello** alla scrittura, più il `REVOKE`
-di `UPDATE`/`DELETE` all'app dichiarato nel loop dei grant — *un registro di
-audit modificabile da chi è auditato non è un registro*. Nello stesso giro
-`shop.ricevute` viene armata (12-09, il debito scende a **8**), il benchmark RLS
-«pre/post ENABLE» viene ritirato dalla documentazione perché sbagliato nella
-premessa (la canonica è plpgsql: il predicato non è indicizzabile), e il 13-09
-cade **D13**: come `zeroerp_app`, l'operatore di un emittente **non di default**
-non riusciva a creare un billing account, perché il `RETURNING` chiedeva di
-vedere la riga *prima* che il trigger `AFTER` scrivesse il legame e il resolver
-ricadeva su un'altra azienda. Ora *un BA non ancora collegato appartiene a chi
-lo sta creando* — riserva a tre livelli, e la seconda copia della regola
-(`fn_get_emittente_fiscale_pk`) delega; lato BE le tre copie inline della regola
-vecchia delegano a `fn_check_ba_visible_for_emittenti`. Vedi
-[brief-db-perimetro-emittente-righe-documento.md](work-done/brief-db-perimetro-emittente-righe-documento.md) §12,
-[brief-db-rls-storico-scope-congelato.md](work-done/brief-db-rls-storico-scope-congelato.md),
-[brief-db-ba-riserva-emittente-operatore-d13.md](work-done/brief-db-ba-riserva-emittente-operatore-d13.md).
-
-**Anello 0 — I processi automatici hanno un contratto di vitalità.** Dei sei
-processi che il backend dichiara di svegliare, due avevano un presidio che si
-accorge se smettono di girare; gli altri quattro no — e `send_pending_emails`,
-che gira ogni cinque minuti, era rimasto **non installato** senza che nessuno se
-ne accorgesse. *Il discriminante non è «ogni quanto gira»: è «qualcuno aspetta
-l'esito, e in quanto tempo se ne accorge?»*. La tolleranza diventa un dato di
-catalogo (`dbops.processi.tolleranza_minuti`, che esce da `sveglie.json`), il
-panorama dice `MUTO` e `MAI_PARTITO`, il listener si presidia dalla **sessione**
-(`pg_stat_activity` + `application_name`, un fatto e non una dichiarazione), le
-email e la coda stampa hanno la loro vista `ZERO`, e un **guardiano pgAgent**
-accoda su `coda_lavori` la notifica se il digest stesso tace — *chi guarda il
-guardiano*. ⚠️ Il primo digest utile (14-09) ha contato un `MUTO` su un listener
-**vivo**: `pg_stat_activity` maschera `backend_start` a chi non è lo stesso
-utente della sessione, e il pgTAP non poteva vederlo perché usava la propria
-sessione. Corretto leggendo l'**esistenza** della riga, che è visibile a
-chiunque, con un test che costruisce la sessione altrui via `dblink`. Sullo
-stesso asse, «una mail stampata a video non è una mail inviata»: il digest era
-stato dichiarato `SENT` su un host col placeholder SMTP del seed, e ora esiste lo
-stato `SIMULATA` (terminale e voluto), con `inviato_at` a NULL. E il cantiere dei
-presidi si chiude scoprendo che **il presidio dei presidi mentiva**: 784
-riferimenti morti nel digest contro zero nella lettura diretta, perché la
-funzione ereditava il `search_path` blindato della `DEFINER` che la chiamava e
-non risolveva più `plpgsql_check` in `public` — *una funzione che dipende dal
-`search_path` del chiamante non ha un comportamento, ne ha uno per chiamante*.
-Il primo settimanale (14-09) ne ha trovato un terzo: il checker dava una
-risposta **per ruolo** su una `SECURITY DEFINER` di un altro proprietario
-(ottava classe `FP_DEFINER_PRIVILEGIO`, e l'esenzione pgAgent del registro
-**segue la macchina**). ⚠️ Nel working tree del 14-09, non ancora consolidato:
-`job_liveness` del backend prendeva l'esito dalla riga più recente — cioè dalla
-propria corsa in esecuzione — e `last_ok` è sostituito da `in_corso` +
-`ultima_conclusa` nelle tre sedi. Aperto: far partire o riavviare un processo
-**dall'interfaccia** — «Esegui ora» passa dalla coda e non aspetta l'host, il
-brief DB è scritto; «Riavvia» resta dietro la decisione su che cosa sia un host.
-✅ *Aggiornamento*: «Esegui ora» è **in esercizio dal 15-09** e l'analisi è
-archiviata — il seguito, con la **D1**, sta nella voce del **19 settembre**.
-Vedi
-[brief-db-quattro-processi-senza-presidio.md](work-done/brief-db-quattro-processi-senza-presidio.md),
-[brief-db-stato-email-console-non-e-inviata.md](work-done/brief-db-stato-email-console-non-e-inviata.md),
-[brief-db-un-destinatario-per-i-presidi.md](work-done/brief-db-un-destinatario-per-i-presidi.md) §13-§14,
-[analisi-riavvio-processi-da-interfaccia.md](work-done/analisi-riavvio-processi-da-interfaccia.md),
-[brief-db-avvio-manuale-di-un-processo.md](work-done/brief-db-avvio-manuale-di-un-processo.md).
-
-### Dati non più usati e postura degli oggetti — 14 settembre
-
-**Anello 0 + 1 — Il software che serviva dati morti.** Nato dalla coda del
-cantiere dello storico, dove si stava per scrivere codice che mostrasse la
-storia di una tabella già dismessa: la domanda diventa *c'è software in
-servizio il cui unico lavoro è tenere in vita dati — o nomi — che il modello ha
-già lasciato?* Otto voci, tutte chiuse il 12-09: la vista col nome vecchio
-`anagrafiche.risorse_umane_auth_user` (una proiezione filtrata su `OPERATORE`
-che rispondeva **zero righe** in silenzio su un'identità portale) ritirata con i
-lettori DB riscritti sulla **madre** `identita_digitali` e un guard scritto a
-mano; le shadow legacy droppate; `dbops._defaults_backup_usercols` e
-`public.version_info` **droppate** (la seconda in due giri: nata nel
-provisioning come `postgres`, si ritira nel provisioning — *ciò che nasce nel
-provisioning si ritira nel provisioning*); l'alias «deprecato»
-`get_emittenti_ids` con nove chiamanti, due ripieghi su forme di `meta` che
-nessuno scrive più, e `isAdmin` sul frontend. ⛔ La lezione: *«tenere per
-sicurezza» è la forma da cui ogni voce di quell'elenco è nata*, e il precedente
-mostra dove porta — a un endpoint a 500 e a una policy scritta per sei righe di
-test. ⭐ Il giorno dopo la CI ha detto due cose che lo scratch locale non poteva
-vedere: le 15 shadow create a mano in `00_schema` nascevano senza
-`origine_schema` su un DB da zero (convergenza in `ci_apply`), e sotto c'era una
-**seconda causa, non di oggi**: `zeroerp_app` non aveva nessuna sede che gli
-desse `django.auth_user` — su dev il GRANT era **dato a mano**, e lo scratch
-copiava le ACL di dev insieme allo schema. *Un privilegio che esiste su una
-macchina è un ricordo, non una configurazione*: lo schema `django` entra nel
-provisioning, il passo in CI si sposta dopo entrambi i migratori, e un pgTAP
-pinna la postura. Vedi
-[analisi-software-per-dati-morti.md](work-done/analisi-software-per-dati-morti.md).
-
-**Anello 0 — La postura degli oggetti si presidia per criterio, e il registro
-della CI cala.** Le tre `SECURITY DEFINER` di `postgres` senza `search_path` —
-una sul percorso di 305 trigger `tx_id` — hanno il pin (12-09), nella timeline
-normale e senza superuser, col **prestito di proprietà** via
-`fn_sync_functions_owner`. ⚠️ Con una lezione presa dal verso opposto: la forma
-«prudente» `pg_catalog, pg_temp` avrebbe **accecato** `dblink`, che vive in
-`public`, dentro un `WHEN OTHERS` — spegnendo il tracciamento delle transazioni
-**senza un rosso da nessuna parte**. *Una forma canonica uguale per tutte non
-esiste: si decide per funzione, guardando ciò che chiama.* Il terzo invariante di
-D5 ha ora il suo pgTAP sul catalogo (`test-security-definer-search-path-v1`),
-come i primi due. Sul registro della CI il triage è partito **dal perimetro**:
-21 file (le `fn_scope_*`, il fail-closed, le `rls/`) morivano nella fixture
-perché **cercavano** i soggetti fra i dati esistenti, e su un database
-ricostruito `anagrafiche` è a zero — riscritti con fixture che **costruiscono**
-il mondo, e nessun ramo `skip` residuo. Il registro passa da 406 (09-09) a 403
-(12-09) a **372** (14-09), e i RIENTRATI li toglie ora uno script che legge il
-log della corsa, non una mano. Lato applicazione, D15: `skip_area_check` era
-**muto** su 15 view che dichiaravano anche `area_funzionale` — sei delle quali
-scrivevano senza permesso — e le famiglie hanno deciso quale delle due parole
-vale; le due vulnerabilità npm e `weasyprint 70` sanate senza dipendenze nuove.
-Vedi
-[brief-db-fixture-che-costruiscono-d7-d6-d4.md](work-done/brief-db-fixture-che-costruiscono-d7-d6-d4.md),
-[migliorie-generali-da-test-valutazione.md](work-in-progress/migliorie-generali-da-test-valutazione.md) §D4-D7 e §D13,
-[migliorie-generali-BE-FE-da-test-valutazione.md](work-done/migliorie-generali-BE-FE-da-test-valutazione.md) §D1, §D15.
-
-### Vendite e articoli — 14 settembre
-
-**Anello 3 (vendite) — Il rilancio rivede le proprie commesse.** Trovato dal
-collaudo in-app dell'esito parziale, prova 5: ripristinate le ROOT, «Riprova
-step» portava il lotto a `COMPLETATO` **senza emettere niente**, perché la
-discovery scartava le commesse `TRATTENUTA` — anche quando a trattenerle era il
-lotto stesso che stava riprovando. L'auto-esclusione esisteva, ma solo
-nell'emit, un cancello più a valle che non veniva mai raggiunto. La parte comune
-ai due predicati ha ora **una sede** (`fn_classe_emittibilita_per_giro`, SQL
-`IMMUTABLE` che il planner inlina: *una riga trattenuta soltanto dal mio giro,
-per il mio giro è pronta*), e gli esiti `ERRORE` **contano nel verdetto** del
-lotto. ⭐ Sotto c'era un **secondo difetto**, nell'orchestratore: i task a valle
-del pull erano `COMPLETATO` a vuoto e il resolver li saltava come «già fatti»
-su un input appena cambiato — *a valle di un task eseguito in questo giro nessun
-task si salta*; `RESUME_STEP` era una distinzione senza differenza ed è ritirato.
-E sotto ancora: `fn_cleanup_fatture_by_ids` usciva su «zero fatture» e non
-liberava **nessuna** attività di un lotto fermo prima della generazione. Il
-collaudo chiude verde, e con lui la linea del fan-out **per intero**. Nello
-stesso giro `ANNULLATA` prende `applica_lotto` (il catalogo diceva il falso), e
-la **roadmap fatturazione** viene archiviata: tre riverifiche in fila avevano
-aggiunto un blocco senza togliere il precedente, e il documento si leggeva a
-quattro date sovrapposte — lo stato delle voci aperte vive ora in una riga
-ciascuna in `PROJECT_CONTEXT.md`. Vedi
-[brief-db-rilancio-step-non-rivede-le-proprie-commesse.md](work-done/brief-db-rilancio-step-non-rivede-le-proprie-commesse.md),
-[collaudo-in-app-esito-parziale-pull-commessa.md](work-done/collaudo-in-app-esito-parziale-pull-commessa.md),
-[brief-be-fan-out-isolato-e-esito-parziale.md](work-done/brief-be-fan-out-isolato-e-esito-parziale.md),
-[fatturazione-roadmap.md](work-done/fatturazione-roadmap.md).
-
-**Anello 1 + 3 — L'articolo dice da dove arriva, la riga d'ordine sa quando, la
-commessa si legge.** Tre buchi del modello, tutti *certi* perché nessuna delle
-decisioni aperte su magazzino e produzione li cambia — ed è il filtro che ha
-prodotto il brief: fra due analisi contigue (commessa/produzione e magazzino) si
-è estratto ciò che vale in qualunque esito. **Blocco A**: non esisteva alcuna
-data di consegna in tutto il database — `vendite.ordini_righe` e
-`acquisti.ordini_righe` prendono richiesta e conferma (con la convenzione dei
-nomi *non marcato = nostro, marcato = della controparte*), `preventivi_righe` la
-sola richiesta, che il push porta sull'ordine; niente CHECK fra le due date e
-niente colonna di testata (il `min` lo dà la vista di lista); il **ritardo** vive
-in `vw_situazione_merce_ordine`, dove c'è già il residuo, e distingue «in tempo»
-da «niente da spedire». **Blocco B**: nasce il vocabolario
-`config.modi_approvvigionamento` (acquisto / produzione / stock / non
-applicabile) e `catalogo.articoli` prende `modo_approvvigionamento_id`,
-`gestito_a_magazzino` (default fail-safe `false`) e `lead_time_giorni` — è il
-perno da cui partiranno acquisti e magazzino, il prossimo cantiere. **Blocco C**:
-`vendite.commesse` ha `descrizione`, `data_apertura` e un responsabile che è una
-**risorsa umana**, come in `pratiche`; `PATCH /commesse/<id>/` e un lookup
-dedicato `GET /anagrafiche/risorse-umane/lookup/`. **B-bis**:
-`famiglie_documento.colonna_billing_account` diventa facoltativa come
-`colonna_serie` — la porta per il primo documento senza cliente, l'ordine di
-acquisto. ⭐ Due cose emerse facendolo: il `DEFAULT` di una colonna che punta a
-un seed di `80_data` (o a una funzione che lo legge) **non può stare in
-`00_schema`** — tre passi, come `natura_vendita_id`; e `E_ATTIVO_REQUIRE`, il
-codice del require generato dal framework ATTIVO, è **TECNICO** anche quando il
-dato sbagliato l'ha scelto una persona — il service pre-verifica e risponde 400,
-candidato allo split. ⚠️ Dichiarato e non deciso: le righe d'ordine si scrivono
-solo in `DRAFT`, ma la promessa di consegna si decide alla conferma — serve un
-verbo suo. ⚠️ E `fn_crea_revisione_preventivo` non copia la data richiesta sulla
-nuova revisione. Vedi
-[brief-db-modifiche-certe-ciclo-vendita-e-articolo.md](work-done/brief-db-modifiche-certe-ciclo-vendita-e-articolo.md),
-§5.5 e §10.
-
-**In breve, senza un tema proprio** — la **copertura della doc API** rimisurata
-il 12-09 (613 rotte, la misura vecchia contava come «coperte» rotte servite da
-segnaposto, e `pagamenti` passa da 1/25 a 25/25 con una pagina sola); le
-**rotte senza porta** (D7) hanno tutte una risposta scritta (due candidate al ritiro,
-una schermata da aprire: il registro email dell'operatore); l'**area funzionale
-dell'assistente AI** ha il brief e attende la riga di catalogo, perché la
-decisione è che lo usino anche gli operatori; l'analisi dell'osservabilità
-riletta contro il repo (B e C erano «mossi da fuori» dal cantiere dei presidi);
-in `api.md` cinque voci dicevano ancora «la testata ha la RLS, il figlio no» e
-ora il fatto sta in una sede sola; e in `AGENTS.md` tre regole nuove nate da
-altrettanti incidenti — *un privilegio su una macchina è un ricordo*,
-`unittest.TestCase` non è `SimpleTestCase`, e dove si legge l'errore vero di un
-pgTAP in CI (nel log del container, non nella baseline).
+*(voce del 30 settembre)* **In breve, senza un tema proprio** — la verifica «doc API contro codice» su
+47 documenti di `core` apre un'analisi BE che chiude in quattro giorni una
+ventina di voci (fra cui 90 letture grezze di `request.data` passate al BB
+`corpo_oggetto`), con dodici ancora aperte
+([analisi-be-difetti-emersi-verifica-doc-api-core.md](work-done/analisi-be-difetti-emersi-verifica-doc-api-core.md));
+nelle migliorie BE/FE i primi **test di componente** del frontend (23-09),
+`pip-audit` in CI e la schermata del log email (D7); i **copioni di collaudo
+in-app** scritti e da eseguire salgono a otto (capability annidata e prezzi,
+casella di ricerca, consenso al riuso della credenziale, inventario e
+rettifica, permessi ereditati, osservabilità, incassi, UI permessi
+operatore); 🔴 dal 21-09 sera la CI su GitHub **non partiva** per un blocco di
+billing (fatto datato, dal brief del Lotto 2); invariati il `USAGE` di
+`zeroerp_log` su `dbops` in CI e «Riavvia» (D1), entrambi decisioni di Tid.
 
 ---
-
-## 10 settembre 2026
-
-> Copre il periodo **31 agosto – 10 settembre**. Undici giorni, **384 changeSet**
-> nuovi (175 in `vendite`, 60 in `dbops`, 58 in `script`) e **46 brief chiusi**
-> — il ritmo più alto finora. Anche qui si scrive per **temi**: sono otto.
->
-> ⚠️ **L'11 settembre è volutamente fuori**, per la stessa ragione del 31 agosto
-> nella voce precedente: quel giorno era in corso mentre questa voce veniva
-> scritta. Ciò che è atterrato l'11 — la chiusura formale del cantiere del
-> perimetro e due slice piccole — entra nella voce successiva.
->
-> ⭐ **Il tema portante non è un dominio, è la CATENA DI VERIFICA.** Quattro degli
-> otto temi qui sotto riguardano *come si sa che una cosa è vera*: la CI che
-> misura davvero, i presidi che hanno un catalogo, il perimetro dei dati che ha
-> un criterio invece di un elenco, e i motivi d'errore che escono da un posto
-> solo. Il resto del periodo poggia su quelli.
-
-**Anello 0 — I pgTAP misurano davvero, e la CI misura la CI.** La suite era un
-cancello che si poteva attraversare: `continue-on-error` la rendeva un parere, e
-la baseline dei rossi era compilata **a mano** su una macchina di sviluppo — cioè
-descriveva quella macchina, non il contratto. Il 9 settembre la baseline della CI
-viene **misurata dalla CI** su un database ricostruito da zero, il
-`continue-on-error` sparisce, e il ramo di bootstrap **fallisce invece di
-passare**. Escono tre difetti d'ambiente che tenevano rossi interi gruppi di file
-e due building block di fixture riusabili. ⛔ E si scopre la forma peggiore del
-difetto: *un cancello che passa perché non ha misurato niente è peggio di un
-cancello assente*. Vedi
-[migliorie-generali-da-test-valutazione.md](work-in-progress/migliorie-generali-da-test-valutazione.md).
-
-**Anello 0 — I presidi hanno un catalogo, e un contatore che non mente.** I
-presidi del progetto erano una ventina di file che nessun elenco teneva insieme:
-per sapere *quanti sono e cosa coprono* bisognava cercarli. Nasce `dbops.presidi`
-— il catalogo — con **il contatore onesto**: un presidio che non ha mai girato non
-conta come copertura. Il 10 settembre arriva il corollario in CI: *un cancello non
-deve poter zittire un altro cancello*, perché un guardrail che fallisce e ne
-maschera un secondo lascia passare due difetti al prezzo di uno. Vedi
-[brief-db-un-destinatario-per-i-presidi.md](work-done/brief-db-un-destinatario-per-i-presidi.md).
-
-**Anello 0 + 3 — Il perimetro dei dati smette di fermarsi alla testata.** Delle
-sei famiglie di documento di `vendite`, **una sola** era protetta fino in fondo:
-le righe delle altre cinque erano leggibili da qualunque operatore, e non per
-dimenticanza — perché il perimetro era stato scritto come **elenco a mano**, e un
-elenco ha per confine ciò che chi lo scriveva aveva in mente. Il cantiere (9 → 11
-settembre) arma **nove famiglie**, ritira una tabella residua, e soprattutto
-sostituisce l'elenco con un **criterio transitivo**: `dbops.vw_rls_perimetro_scoperto`
-più il registro `dbops.rls_perimetro_debito` vedono *ogni* tabella con una FK
-verso una protetta, comprese quelle che nasceranno domani. Il debito passa da
-**33 a 10 righe**, e le dieci che restano sono decisioni di modello dichiarate,
-non lavoro rimandato. ⭐ Nello stesso giro il contesto RLS dei test esce da
-venti copie e trova una sede sola (`apri_contesto_operatore`). Vedi
-[brief-db-perimetro-emittente-righe-documento.md](work-done/brief-db-perimetro-emittente-righe-documento.md),
-[brief-db-viste-security-invoker-criterio.md](work-done/brief-db-viste-security-invoker-criterio.md).
-
-**Anello 0 — I processi automatici hanno un'identità e un perimetro.** I job che
-girano da soli — sveglie, code, pipeline — entravano nel database senza dire *chi
-sono*: nessuna identità applicativa, quindi nessun perimetro da rispettare e
-nessuna riga di log che sapesse attribuirli. Il cantiere (4 → 7 settembre) dà a
-ogni processo del backend un **artefatto di deploy** e un'identità, e chiude i
-residui lato BE. ⇒ Da qui un processo automatico è un attore come gli altri,
-soggetto alle stesse regole. Vedi
-[brief-db-processi-automatici-identita-e-perimetro.md](work-done/brief-db-processi-automatici-identita-e-perimetro.md),
-[brief-db-sveglia-dei-processi.md](work-done/brief-db-sveglia-dei-processi.md),
-[brief-db-processi-automatici-residui-be.md](work-done/brief-db-processi-automatici-residui-be.md),
-[piano-be-fe-processi-automatici-identita-e-perimetro.md](work-done/piano-be-fe-processi-automatici-identita-e-perimetro.md).
-
-**Anello 3 (vendite) — Un documento rotto non tiene più in ostaggio il giro di
-fatturazione.** Un lotto che incontrava un documento non emettibile si fermava, e
-con lui tutti gli altri documenti di quel giro: il difetto di uno diventava il
-blocco di tutti. Il tema si apre in tre tempi — **l'uscita dal giro** (un
-documento può uscire e il lotto prosegue), **il trattenuto** (una sede sola per la
-domanda *«questa riga può entrare in un giro?»*, invece della stessa condizione
-riscritta in più punti) e **il marcatore**, che non scrive più su un documento già
-uscito. ⭐ La lezione che resta: *una condizione scritta in tre posti diverge, e
-diverge in silenzio*. Vedi
-[brief-db-uscita-documento-dal-giro.md](work-done/brief-db-uscita-documento-dal-giro.md),
-[brief-db-documento-trattenuto-da-un-lotto-vivo.md](work-done/brief-db-documento-trattenuto-da-un-lotto-vivo.md),
-[brief-db-il-trattenuto-passa-lo-stesso.md](work-done/brief-db-il-trattenuto-passa-lo-stesso.md),
-[brief-db-il-marcatore-scrive-su-un-documento-uscito.md](work-done/brief-db-il-marcatore-scrive-su-un-documento-uscito.md).
-
-**Anello 3 (vendite) — L'esito di un documento nel lotto ha casa propria.**
-L'esito di ogni documento dentro un giro si deduceva dagli stati altrui, e sui
-giri di massa la deduzione non reggeva. Ora è un dato, con la sua sede, e vale
-anche per i giri massivi; la **segnalazione di un lotto dichiara di quale
-documento parla**, invece di lasciarlo capire. Chiusi anche due residui di
-performance (la `LATERAL` costosa sul riferimento gruppi) e le bandiere
-dell'esito parziale. Vedi
-[brief-db-esito-gruppo-lotto.md](work-done/brief-db-esito-gruppo-lotto.md),
-[brief-be-db-gruppo-key-sulle-segnalazioni.md](work-done/brief-be-db-gruppo-key-sulle-segnalazioni.md),
-[brief-residuo-fatturabili-e-bandiere-esito-parziale.md](work-done/brief-residuo-fatturabili-e-bandiere-esito-parziale.md).
-
-**Anello 0 — Il primo motivo di un controllo esce da un posto solo.** Le funzioni
-`script.fn_check_*` producono un array di motivi, e chi doveva sollevarne il primo
-ricopiava la stessa coda di codice — tredici volte, con tredici occasioni di
-divergere. Nasce `script.fn_raise_primo_motivo_se_presente`, e la regola che
-decide è una riga: *il codice che sollevo lo sto **leggendo** da un array o lo sto
-**scrivendo** come letterale?* ⭐ Sbagliare funzione **non compila** — i tipi non
-legano — quindi l'unico modo di sbagliare è non usarla, e quello ha il suo
-presidio. Vedi
-[brief-db-coda-primo-motivo-in-un-posto-solo.md](work-done/brief-db-coda-primo-motivo-in-un-posto-solo.md),
-[brief-db-i-motivi-si-fermano-dentro-la-check.md](work-done/brief-db-i-motivi-si-fermano-dentro-la-check.md).
-
-**Anello 1 + 3 — La numerazione finisce il trasloco, e l'IVA arriva ai
-consumatori.** Il 31 agosto atterra l'esecuzione decisa il giorno prima: la
-commessa passa **sui registri**, con il prefisso e l'allineamento dei contatori, e
-la chiave del contatore diventa esplicita. ⇒ La voce «il trasloco sui registri»
-esce dalla roadmap: **è fatta**, CRUD dei registri compreso — che era anche una
-voce dei «Previsti». Nello stesso periodo il risolutore IVA arriva ai suoi
-consumatori applicativi (fase 3), i titoli IVA del soggetto prendono i movimenti
-di annullo, e il default IVA smette di dipendere da un id di seed per passare a
-una **chiave naturale**. Vedi
-[brief-db-registri-di-numerazione-emittente-e-trasloco.md](work-done/brief-db-registri-di-numerazione-emittente-e-trasloco.md),
-[brief-db-registri-numerazione-chiave-del-contatore.md](work-done/brief-db-registri-numerazione-chiave-del-contatore.md),
-[brief-be-fe-crud-registri-di-numerazione.md](work-done/brief-be-fe-crud-registri-di-numerazione.md),
-[brief-be-fe-iva-fase-3-consumatori-risolutore.md](work-done/brief-be-fe-iva-fase-3-consumatori-risolutore.md),
-[brief-db-default-iva-chiave-naturale.md](work-done/brief-db-default-iva-chiave-naturale.md).
-
-**In breve, senza un tema proprio** — il **fondo fattura** con ricalcolo e governo
-applicato il 31 agosto; l'**archiviazione delle righe di coda** e la
-storicizzazione dei bersagli spariti; il **perimetro delle email** e l'invio di
-sistema; i **riferimenti contratto** sugli atti di fattura; tre giri di **seed
-liste** (lotto, titolo IVA, admin `ui`); due **design** che preparano il magazzino
-— la partita merce generalizzata e la situazione merce di un ordine; e la
-migrazione della clausola `ORDER BY` lato backend.
 
 ## agosto 2026
 
@@ -1500,7 +1125,7 @@ migrazione della clausola `ORDER BY` lato backend.
 > settimane del cantiere a cavallo di luglio. ⚠️ Il **31 agosto** era volutamente
 > fuori quando queste voci furono scritte: ciò che è atterrato quel giorno — il
 > trasloco dei registri, i consumatori BE/FE del risolutore IVA, l'apply del
-> fondo fattura — sta nella voce del 10 settembre.
+> fondo fattura — sta nella voce di settembre.
 
 **Anello 3 (vendite) — La nota di credito, e il ramo economico dei resi.** Il
 reso portava indietro merce e motivo e **nessun valore**: `resi_righe_accrediti`
@@ -1522,7 +1147,7 @@ registro e data prevista si vedono in lista *prima* di generare. ⭐ L'analisi s
 **due motori di numerazione** prende la decisione portante — la commessa passa
 sui registri, e la periodicità dentro `config.sistema_codici` **non si fa più**
 perché senza la commessa quella colonna non ha più un cliente — e l'esecuzione è
-del giorno dopo (voce del 10 settembre). Vedi
+del giorno dopo (voce di settembre). Vedi
 [brief-db-numerazione-data-documento-e-sequenza.md](work-done/brief-db-numerazione-data-documento-e-sequenza.md),
 [brief-db-limite-emissione-e-data-verificata.md](work-done/brief-db-limite-emissione-e-data-verificata.md),
 [analisi-db-numerazione-documenti-e-due-motori.md](work-done/analisi-db-numerazione-documenti-e-due-motori.md).
@@ -1549,7 +1174,7 @@ distinta di correzione; e `enti_incasso`, che di row security non ne aveva,
 smette di mostrare l'**IBAN** di ogni emittente a qualunque operatore.
 ⛔ **Ma di questo dominio è provato il percorso, mai l'esito**: lo schema ha
 ancora zero righe e il collaudo in-app è **aperto** — è il cantiere che occupa
-la voce del 19 settembre. Vedi
+la voce di settembre. Vedi
 [brief-db-posting-e-abbinamento-rata.md](work-done/brief-db-posting-e-abbinamento-rata.md),
 [brief-be-fe-posting-e-abbinamento-rata.md](work-done/brief-be-fe-posting-e-abbinamento-rata.md),
 [collaudo-in-app-incassi-distinte-e-sistemazioni.md](work-in-progress/collaudo-in-app-incassi-distinte-e-sistemazioni.md).
@@ -1679,7 +1304,7 @@ e la guida [pgtap-come-si-scrive-un-test](../guide/pgtap-come-si-scrive-un-test.
 **Anello 0 — Presidio dei riferimenti morti (04 agosto).** 34 difetti sanati e
 cancello in CI: un riferimento a un oggetto DB che non esiste più non arriva più
 al merge. ⚠️ Il guardrail gira **dopo** `manage.py migrate` — non spostarlo (a
-settembre si prenderà due lezioni, voce del 14 settembre). Vedi [brief-db-bonifica-riferimenti-morti.md](work-done/brief-db-bonifica-riferimenti-morti.md),
+settembre si prenderà due lezioni, voce di settembre). Vedi [brief-db-bonifica-riferimenti-morti.md](work-done/brief-db-bonifica-riferimenti-morti.md),
 [brief-be-bonifica-riferimenti-morti.md](work-done/brief-be-bonifica-riferimenti-morti.md).
 
 **Anello 3 (vendite) — I satelliti della fattura: il documento si racconta per

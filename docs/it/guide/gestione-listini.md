@@ -1,17 +1,20 @@
 # Guida — Gestione Listini e Pricing
 
-> **Ultimo aggiornamento**: 31 ottobre 2026
+> **Ultimo aggiornamento**: 1 novembre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend/frontend, DBA
 >
 > **Vedi anche** — schemi DB:
 >
 > * [vendite.listini](/dbzero/vendite/tabelle/listini) / [vendite.listini_versioni](/dbzero/vendite/tabelle/listini_versioni) / [vendite.listini_righe](/dbzero/vendite/tabelle/listini_righe)
+> * [vendite.listini_kit](/dbzero/vendite/manual/listini_kit) — il kit sul listino, con la sua periodicità
 > * [anagrafiche.categorie_clienti](/dbzero/anagrafiche/tabelle/categorie_clienti) + [categorie_clienti_listini](/dbzero/anagrafiche/tabelle/categorie_clienti_listini)
 > * [vendite.contratti](/dbzero/vendite/tabelle/contratti) + [contratti_righe](/dbzero/vendite/tabelle/contratti_righe) + [contratti_utilities](/dbzero/vendite/tabelle/contratti_utilities)
 > * [vendite.promo_articoli](/dbzero/vendite/tabelle/promo_articoli)
 > * [catalogo.articoli_componenti](/dbzero/catalogo/tabelle/articoli_componenti) (BoM versionata immutabile)
 > * [vendite.fn_resolve_prezzo_listino_v2](/dbzero/vendite/funzioni/fn_resolve_prezzo_listino_v2)
+> * [vendite.fn_listino_periodicita_articolo](/dbzero/vendite/manual/fn_listino_periodicita_articolo) — la periodicità di un articolo sul listino, kit compresi
+> * [vendite.fn_articolo_quota_fissa_a_canone](/dbzero/vendite/manual/fn_articolo_quota_fissa_a_canone) — quando una voce è una quota fissa a canone
 >
 > **Vedi anche** — API e service backend:
 >
@@ -67,9 +70,24 @@ Un listino contiene:
   * sulle altre voci è la periodicità che il contratto (o l'offerta) **propone** quando il cliente
     la prende con un'adesione.
 
-  Una quota fissa senza periodicità non si addebita, e i contratti del listino compaiono nel
-  Backlog come anomalia. Come il contratto addebita, lo spiega la
+  Una **quota fissa a canone** (tipologia di quota fissa, che si eroga a canone) deve avere la
+  periodicità: senza, la versione non si attiva (sotto), e fuori dalla bozza non la si può
+  togliere (`E_LISTINO_QUOTA_FISSA_PERIODICITA_FERMA`); cambiarla con un'altra resta una
+  rettifica, come il prezzo. Resta una strada sola per una quota senza periodicità su una
+  versione in uso: il catalogo che cambia dopo l'attivazione (la tipologia dell'articolo, o la sua
+  erogazione). Allora la quota non si addebita, e i contratti del listino compaiono nel Backlog
+  come anomalia. Come il contratto addebita, lo spiega la
   [guida dei contratti §4-bis](/guide/gestione-contratti#4-bis-come-il-contratto-si-addebita-una-tantum-e-canoni).
+* **Kit** (`listini_kit`) — un kit sul listino **non ha una riga** in `listini_righe`: il suo prezzo
+  è la somma dei prezzi dei suoi componenti (§5.2). Quello che del kit non è un prezzo ha una riga
+  sua, una per versione e kit: oggi la **periodicità**, con lo stesso significato di quella di una
+  riga (il ritmo di una quota fissa, o la proposta all'adesione). Si scrive solo in bozza e solo per
+  un articolo composito (`E_LISTINO_KIT_NON_COMPOSITO`). Nel form si imposta dalla riga del kit,
+  «Periodicità del kit».
+
+  La periodicità di un articolo sul listino, kit o no, la dice una funzione sola,
+  [vendite.fn_listino_periodicita_articolo](/dbzero/vendite/manual/fn_listino_periodicita_articolo):
+  la leggono l'addebito dei contratti, il default della riga a canone e l'anteprima delle righe.
 
 ⭐ **Come finisce un listino.** Dipende dalla sua **storia**: un listino ha storia se ha
 almeno una versione che è stata attivata (oggi ATTIVA o CHIUSA, anche spenta); una bozza
@@ -88,8 +106,11 @@ i passaggi una matrice ([config.transizioni_stati_listino_versioni](/dbzero/conf
 e lo stato lo cambiano solo due operazioni del database.
 
 * **Attiva** ([vendite.fn_attiva_versione_listino](/dbzero/vendite/funzioni/fn_attiva_versione_listino)), con
-  l'azione `attiva_listino`: la versione deve essere accesa e avere almeno un prezzo (una riga, o un
-  composito col prezzo bundle); le versioni attive precedenti che si sovrappongono si chiudono il giorno
+  l'azione `attiva_listino`: la versione deve essere accesa, avere almeno un prezzo (una riga, o un
+  composito col prezzo bundle) e dare la periodicità a ogni quota fissa a canone, riga o kit
+  (`E_LISTINO_VERSIONE_QUOTA_FISSA_SENZA_PERIODICITA`, sul campo; i motivi li dice
+  [script.fn_check_versione_listino_attivabile](/dbzero/script/manual/fn_check_versione_listino_attivabile)).
+  La bozza resta libera di essere incompleta. Le versioni attive precedenti che si sovrappongono si chiudono il giorno
   prima della decorrenza nuova, nella stessa operazione. Il dialogo di conferma mostra quali, dallo stesso
   lettore ([vendite.fn_versioni_listino_da_chiudere](/dbzero/vendite/funzioni/fn_versioni_listino_da_chiudere)).
 * **La chiusura a scadenza**: una versione ATTIVA con la fine validità passata diventa CHIUSA col job
@@ -99,6 +120,10 @@ e lo stato lo cambiano solo due operazioni del database.
 Che cosa si cambia in ogni stato: in **bozza** tutto, e la versione si può eliminare; di una versione
 **attiva** solo la fine validità; di una **chiusa** niente. Una versione nasce sempre in bozza.
 Per cambiare i prezzi di una versione in uso si crea una versione nuova (anche clonandola) e la si attiva.
+Il clone ([vendite.fn_clona_versione_listino](/dbzero/vendite/manual/fn_clona_versione_listino)) copia
+righe con la loro periodicità, componenti e kit; l'eliminazione di una bozza
+([vendite.fn_elimina_versione_listino](/dbzero/vendite/manual/fn_elimina_versione_listino)) li porta via
+tutti.
 
 ### 2.2 Categoria cliente
 
@@ -274,6 +299,13 @@ Logica completa in [vendite.fn_resolve_prezzo_listino_v2](/dbzero/vendite/funzio
 che è **bundle-aware** tramite `p_articolo_padre_contesto`: il vecchio
 `fn_resolve_prezzo_composito` è stato ritirato e il resolver canonico è uno solo
 (cfr. `dev/work-done/brief-db-drop-fn-resolve-prezzo-composito.md`).
+
+Il kit che un contratto **non negozia** (una quota fissa del listino, un'adesione) non ha
+componenti sul documento: componenti e prezzi li prende dal listino del contratto, alla data del
+pezzo addebitato, da
+[vendite.fn_contratto_kit_componenti](/dbzero/vendite/manual/fn_contratto_kit_componenti). Il prezzo
+di ogni componente lo dice il resolver nel contesto del kit, e il prezzo del kit è la loro somma.
+Vedi la [guida dei contratti §4-bis](/guide/gestione-contratti#4-bis-come-il-contratto-si-addebita-una-tantum-e-canoni).
 
 #### 5.2.1 Componenti CASO A nel ciclo preventivo → commessa
 
@@ -557,6 +589,9 @@ Il database rafforza la determinismo con vincoli espliciti (non è "responsabili
 | `ex_promo_articoli_no_overlap`                | `promo_articoli`            | Una sola promo attiva per (articolo, uom) nel periodo                         |
 | `ex_listini_versioni_no_overlap`              | `listini_versioni`          | Una sola versione in vigore (ATTIVA o CHIUSA) per listino nel periodo         |
 | `uq_listini_righe_key_attiva`                 | `listini_righe`             | Una sola riga attiva per (versione, articolo, uom)                            |
+| `uq_listini_kit_versione_articolo`            | `listini_kit`               | Un kit compare una volta per versione                                         |
+| `vendite.trgfn_listini_kit_guard`             | trigger                     | Il kit sul listino si scrive solo in bozza, e solo per un composito           |
+| `vendite.trgfn_listini_righe_guard_periodicita_quota_fissa` | trigger       | Fuori dalla bozza una quota fissa a canone non resta senza periodicità        |
 | `script.fn_check_articolo_riga` (guard `script.trgfn_righe_guard_articolo_ammesso`) | check + trigger | Articolo e listino della stessa tipologia; niente solo componente; il kit coi componenti (dal 2026-10-13) |
 | `trgfn_contratti_modalita_c_righe_complete`   | trigger                     | Modalità C: attivazione blocca se righe incomplete                            |
 | `script.fn_check_articolo_riga` (guard su `promo_articoli`) | check + trigger | Nessuna promo su un articolo solo componente (dal 2026-10-14) |
@@ -577,6 +612,10 @@ Nessun fallback silenzioso. Ogni scenario non risolvibile produce un errore stru
 | `E_PREZZO_LISTINO_RIGA_NON_TROVATA`       | Listino risolto ma nessuna riga prezzo per (articolo, uom)                                                                                 |
 | `E_ARTICOLO_NON_NEGOZIATO_SU_CONTRATTO_C` | Contratto modalità C senza riga per l'articolo richiesto                                                                                   |
 | `E_ARTICOLO_TIPOLOGIA_INCOMPATIBILE`      | Articolo in listino di tipologia diversa                                                                                                   |
+| `E_LISTINO_KIT_NON_COMPOSITO`             | Periodicità di kit su un articolo che non è composito: la sua periodicità sta sulla riga di listino                                        |
+| `E_LISTINO_VERSIONE_QUOTA_FISSA_SENZA_PERIODICITA` | Attivazione di una versione con una quota fissa a canone (riga o kit) senza periodicità                                           |
+| `E_LISTINO_QUOTA_FISSA_PERIODICITA_FERMA` | Tolta la periodicità a una quota fissa a canone su una versione non in bozza                                                               |
+| `E_RIGA_LISTINO_VERSIONE_CHIUSA`          | Componenti o kit scritti su una versione non in bozza                                                                                      |
 | `E_PREZZO_OVERRIDE_NON_AUTORIZZATO`       | L1: override prezzo non autorizzato                                                                                                        |
 | `E_VENDITE_PRICING_FAILED`                | Errore generico pricing (envelope, dettaglio in `detail`)                                                                                  |
 | `E_BOM_MODIFICA_VIETATA`                  | Tentata modifica/eliminazione campo struttura BoM. Risolvere con pattern chiudi+inserisci nuova versione (vedi §5.3)                       |

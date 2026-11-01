@@ -1,5 +1,9 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-11-01 (20261101-04/-06, brief-db-contratto-righe-periodiche-in-commessa passo 4): la
+--   riga a canone vuole la periodicita'. La fixture sceglie la tipologia «pescando», e oggi la
+--   pesca da' una quota fissa: la riga che eredita un canone scrive MENSILE. Non e' il
+--   soggetto di questo test. Nessuna attesa cambiata.
 -- pgTAP test per Zero ERP
 -- rev 2026-10-28 (brief-modello-documento-vendita §16, giro 12): la versione di oggi nasce in bozza
 --   senza stato e si attiva dal verbo (dbops.fn_pgtap_porta_a_stato), non con un UPDATE dello stato.
@@ -207,11 +211,15 @@ RETURNS text LANGUAGE sql STABLE AS $fx$
       $$INSERT INTO vendite.%I (%I, articolo_id, tipo_eccezione) VALUES (%s, %L, 'ESCLUSIONE')$$,
       p_tab, p_col, p_id, pg_temp.art(p_sigla))
   ELSE format(
-      $$INSERT INTO vendite.%I (%I, articolo_id, tipo_eccezione, prezzo_unitario, quantita, qta_operativa, uom_operativa_id)
-        SELECT %s, a.id, %L, 80.00, q.qta, q.qta, a.uom_id
+      $$INSERT INTO vendite.%I (%I, articolo_id, tipo_eccezione, prezzo_unitario, quantita, qta_operativa, uom_operativa_id,
+                                periodicita)
+        SELECT %s, a.id, %L, 80.00, q.qta, q.qta, a.uom_id, p.periodicita
           FROM catalogo.articoli a
           LEFT JOIN LATERAL (SELECT 1::numeric AS qta FROM vendite.fn_articolo_erogazioni(a.id) e
                               WHERE e.e_default AND e.fonte_quantita_attesa = 'FISSA' LIMIT 1) q ON true
+          -- rev 2026-11-01 (passo 4): la riga che eredita un canone porta la periodicita'.
+          LEFT JOIN LATERAL (SELECT 'MENSILE'::text AS periodicita FROM vendite.fn_articolo_erogazioni(a.id) e
+                              WHERE e.e_default AND e.tipo_erogazione = 'CANONE' LIMIT 1) p ON true
          WHERE a.id = %L$$,
       p_tab, p_col, p_id, p_tipo, pg_temp.art(p_sigla))
   END;

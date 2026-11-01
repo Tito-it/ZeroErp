@@ -1,5 +1,7 @@
 ## Documentazione Concettuale -- Funzione `script.fn_search_soggetti_universale`
 
+> **Ultimo aggiornamento**: 1 novembre 2026
+
 > Vedi anche
 >
 Approfondimento tabelle:
@@ -64,7 +66,7 @@ La funzione **`script.fn_search_soggetti_universale`** implementa il **livello 1
 
 | Nome              | Tipo       | Obbligatorio | Default | Descrizione                                            |
 | ----------------- | ---------- | ------------ | ------- | ------------------------------------------------------ |
-| `p_search_term`   | `TEXT`     | Si           | —       | Testo di ricerca (minimo 3 caratteri)                  |
+| `p_search_term`   | `TEXT`     | Si           | —       | Testo di ricerca, non vuoto (la lunghezza minima è del catalogo, vedi sotto) |
 | `p_tipo_ruolo_id` | `INTEGER`  | Si           | —       | ID tipo ruolo da `config.tipi_ruoli` (> 0)             |
 | `p_limit`         | `INTEGER`  | No           | `50`    | Righe per pagina (max 200, cap automatico)             |
 | `p_offset`        | `INTEGER`  | No           | `0`     | Offset paginazione                                     |
@@ -76,8 +78,13 @@ La funzione **`script.fn_search_soggetti_universale`** implementa il **livello 1
 `<= 0` → `E_PARAMETRO_INVALIDO`, inesistente → `E_TIPO_RUOLO_NON_TROVATO`, **non
 ricercabile** (`config.tipi_ruoli.ricerca_visibile = false`) →
 `E_TIPO_RUOLO_NON_RICERCABILE`. Prima del 2026-10-10 un ruolo inesistente dava zero
-righe, e la ricercabilità la controllava solo il backend. `p_search_term` (minimo 3
-caratteri) e `p_order_by` (whitelist) → `E_PARAMETRO_INVALIDO`.
+righe, e la ricercabilità la controllava solo il backend. `p_search_term` vuoto (NULL o
+soli spazi) e `p_order_by` fuori whitelist → `E_PARAMETRO_INVALIDO`.
+
+**La lunghezza minima del termine non è della funzione** *(dal 2026-11-01)*: è la soglia della
+lista `anagrafiche.ricerca_soggetti` (`ui.lista_definizione.ricerca_min_caratteri`), come per
+ogni lista, e la giudica il chiamante. Fino al 2026-11-01 il corpo rifiutava i termini sotto i 3
+caratteri: una copia della regola che avrebbe scartato i termini ammessi da una soglia più bassa.
 
 Fino al 2026-10-10 c'era un terzo parametro, `p_emittente_ids`: dal 2026-10-08 non
 si leggeva più, e il 2026-10-10 è uscito dalla firma. ⚠️ Chi chiama per posizione

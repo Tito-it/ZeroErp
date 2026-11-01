@@ -54,6 +54,7 @@ search:
 - [fatture_sdi_eventi](manual/fatture_sdi_eventi.md) — (latest review 16-02-2026)   `vendite.fatture_sdi_eventi` mantiene lo **storico cronologico eventi SDI** per ciascun tentativo (`fattura_sdi_id`).
 - [fatture_stampa_coda](manual/fatture_stampa_coda.md) — `vendite.fatture_stampa_coda` è la **coda (outbox) della stampa massiva delle fatture**. Il task di pipeline `stampa_documenti_lotto` vi **accoda** un work-item per fattura al momento della numerazione (step DEFINITIVA), poi lo step chiude subito la transazione; un **worker** esterno drena la coda, garantisce la numerazione (backstop idempotente) e delega il render al processo di stampa generico. Così il rendering dei PDF **non** avviene dentro la transazione di numerazione e **non** tiene il lock del registro fiscale.
 - [listini](manual/listini.md) — La tabella `vendite.listini` rappresenta la testata anagrafica dei listini prezzo del dominio vendite.
+- [listini_kit](manual/listini_kit.md) — (31-10-2026 — brief `brief-db-contratto-righe-periodiche-in-commessa` §7.2, D-2-bis, decisione B di Tid)
 - [listini_righe](manual/listini_righe.md) — La tabella `vendite.listini_righe` contiene i prezzi elementari per articolo/UOM, eventualmente specializzati per contesto (BA, utility, emittente fiscale).
 - [listini_righe_componenti](manual/listini_righe_componenti.md)
 - [listini_versioni](manual/listini_versioni.md) — (ultima revisione 28-10-2026 — brief `brief-modello-documento-vendita` §16)
@@ -109,6 +110,7 @@ search:
 - [fn_applica_fondi_fattura](manual/fn_applica_fondi_fattura.md) — (latest review 15-08-2026)
 - [fn_applica_fondi_lotto](manual/fn_applica_fondi_lotto.md) — (latest review 15-08-2026)
 - [fn_approva_commessa_attivita](manual/fn_approva_commessa_attivita.md) — (rev 2026-06-07) `vendite.fn_approva_commessa_attivita(p_commessa_id, p_righe_ids, p_user)` porta le righe `commesse_attivita` da `stato_approvazione = 'BOZZA'` a `'APPROVATA'`.
+- [fn_articolo_quota_fissa_a_canone](manual/fn_articolo_quota_fissa_a_canone.md)
 - [fn_assegna_numero_documento](manual/fn_assegna_numero_documento.md) — (rev 2026-08-31, sera)
 - [fn_assign_numero_fattura](manual/fn_assign_numero_fattura.md) — (latest review 09-02-2026) La funzione **`vendite.fn_assign_numero_fattura()`** assegna il progressivo in base al registro e aggiorna `anno`, `serie` e `numero` sulla testata fattura.
 - [fn_attiva_versione_listino](manual/fn_attiva_versione_listino.md)
@@ -146,6 +148,7 @@ search:
 - [fn_componi_numero_documento](manual/fn_componi_numero_documento.md) — (rev 2026-08-31, sera)
 - [fn_conferma_reso](manual/fn_conferma_reso.md) — (rev 2026-07-13)
 - [fn_contratti_addebiti_maturati](manual/fn_contratti_addebiti_maturati.md) — Gli **addebiti maturati** dei contratti ATTIVO e CESSATO a questo giro e non ancora in commessa, **con gli scartati** e il motivo (`scarto`). È la **sede unica** della regola del push dei contratti (dal 2026-10-31, `20261031-02`), letta da due posti:
+- [fn_contratto_kit_componenti](manual/fn_contratto_kit_componenti.md)
 - [fn_contratto_riga_componenti_init](manual/fn_contratto_riga_componenti_init.md)
 - [fn_contratto_riga_componenti_preview](manual/fn_contratto_riga_componenti_preview.md)
 - [fn_contratto_righe_preview](manual/fn_contratto_righe_preview.md)
@@ -229,6 +232,7 @@ search:
 - [fn_list_ordini_da_pushare](manual/fn_list_ordini_da_pushare.md) — `vendite.fn_list_ordini_da_pushare(...)` seleziona le righe ordine pronte per il push verso `commesse_attivita`, restituendo un payload completo per l’handler di acquisizione.
 - [fn_list_preventivi_da_pushare](manual/fn_list_preventivi_da_pushare.md) — `vendite.fn_list_preventivi_da_pushare(...)` seleziona le righe preventivo pronte per il push verso `commesse_attivita`, restituendo un payload completo per l’handler di acquisizione.
 - [fn_listino_ha_storia](manual/fn_listino_ha_storia.md) — (rev 2026-10-22, decisione di Tid del 2026-10-21 e D-1 del 2026-10-22)
+- [fn_listino_periodicita_articolo](manual/fn_listino_periodicita_articolo.md)
 - [fn_listino_versione_in_vigore](manual/fn_listino_versione_in_vigore.md) — (funzione nata il 2026-09-28, `20260928-35`)
 - [fn_log_event](manual/fn_log_event.md) — `vendite.fn_log_event` fornisce un entrypoint unico (DB) per registrare eventi append-only in `vendite.event_log`, sia da servizi Python sia da funzioni SQL.
 - [fn_log_lotto_esito_fatture](manual/fn_log_lotto_esito_fatture.md) — (latest review 29-01-2026)   La funzione **`vendite.fn_log_lotto_esito_fatture()`** registra un log di esito lotto dedotto dai log fatture associate al lotto.
@@ -236,6 +240,7 @@ search:
 - [fn_lookup_registro_documento](manual/fn_lookup_registro_documento.md) — (latest review 31-08-2026)
 - [fn_lookup_registro_id](manual/fn_lookup_registro_id.md) — **Cercare il sezionale di numerazione, e basta.**
 - [fn_lotto_da_emit_batch](manual/fn_lotto_da_emit_batch.md) — (latest review 12-09-2026)
+- [fn_lotto_natura_dal_segno](manual/fn_lotto_natura_dal_segno.md)
 - [fn_lotto_proietta_stato_step](manual/fn_lotto_proietta_stato_step.md)
 - [fn_numera_fattura_opz_emessa](manual/fn_numera_fattura_opz_emessa.md) — (latest review 09-02-2026) La funzione **`vendite.fn_numera_fattura_opz_emessa()`** assegna il numero fattura in modo **idempotente** e, opzionalmente, imposta lo stato documento **EMESSA** usando `codice_interno`.
 - [fn_numero_documento_fattura](manual/fn_numero_documento_fattura.md) — **È la sede unica che dice come si scrive il numero di una fattura.**

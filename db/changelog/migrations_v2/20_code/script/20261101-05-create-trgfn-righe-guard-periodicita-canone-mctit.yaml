@@ -1,0 +1,112 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL GUARD COL CAMPO DELLA PERIODICITA' SULLA RIGA A CANONE: script.trgfn_righe_guard_periodicita_canone
+#   Brief: brief-db-contratto-righe-periodiche-in-commessa §6.11 (passo 4).
+#
+# -- PERCHE' UN GUARD, OLTRE AL CHECK (20261101-04) ------------------------------------
+#   Il CHECK rifiuta con 23514 e il nome del vincolo. Il guard parla prima e
+#   col codice di dominio (E_RIGA_CANONE_SENZA_PERIODICITA, DATO_ERRATO) e col
+#   campo (periodicita): il form accende il campo giusto e l'operatore legge
+#   che cosa manca. E' la stessa forma dell'obbligo dell'erogazione
+#   (script.trgfn_righe_guard_erogazione_obbligatoria, 20261004-31).
+#
+# -- LA REGOLA -----------------------------------------------------------------------
+#   Una riga CANONE senza periodicita' si rifiuta. L'ESCLUSIONE non ha
+#   erogazione e non si giudica. Il default dal listino
+#   (script.trgfn_righe_default_periodicita_da_listino) e' gia' passato: il
+#   montaggio (20261101-06) ordina dopo, «guard» dopo «default».
+#   Una funzione per le due tabelle gemelle, come gli altri guard di riga:
+#   fn_push_offerta_a_contratto e fn_crea_revisione_offerta copiano la
+#   periodicita', e la regola e' la stessa ai due capi.
+#   TG_ARGV[0] = colonna del documento padre (contratto_id, offerta_id), solo
+#   per il contesto.
+#
+#   Il commento del default (20261029-44) diceva «l'obbligo non e' qui: entra
+#   col passaggio BE/FE»: si aggiorna, con la sede della periodicita' del L12.
+#   Funzione nuova: %TYPE, SECURITY INVOKER esplicito.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261101-05-create-trgfn-righe-guard-periodicita-canone-mctit.yaml
+
+  - changeSet:
+      id: 20261101-05-create-trgfn-righe-guard-periodicita-canone
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.trgfn_righe_guard_periodicita_canone: una riga a canone di contratto o di offerta
+        senza periodicita' si rifiuta, col codice e col campo. Brief:
+        brief-db-contratto-righe-periodiche-in-commessa §6.11 (passo 4).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc
+               WHERE oid = to_regprocedure('script.trgfn_righe_default_periodicita_da_listino()')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_righe_guard_periodicita_canone()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: rifiutare una riga di contratto o di offerta a canone senza
+              --   periodicita'. Regola completa nell'intestazione del changeSet
+              --   20261101-05.
+              -- Uso:   BEFORE INSERT OR UPDATE OF tipo_erogazione, periodicita
+              --        FOR EACH ROW, fascia _a10_, dopo il default dal listino, su
+              --        vendite.contratti_righe e vendite.offerte_commerciali_eccezioni.
+              -- TG_ARGV[0]: colonna del documento padre ('contratto_id',
+              --   'offerta_id'), solo per il contesto dell'errore.
+              DECLARE
+                  v_col_padre text := TG_ARGV[0];
+              BEGIN
+                  IF NEW.tipo_erogazione IS DISTINCT FROM 'CANONE'
+                     OR NEW.periodicita IS NOT NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  PERFORM script.fn_log_and_raise_error(
+                      'vendite',
+                      TG_NAME::text,
+                      'E_RIGA_CANONE_SENZA_PERIODICITA',
+                      jsonb_build_object(
+                          'campo',          'periodicita',
+                          'riga_id',        NEW.id,
+                          v_col_padre,      to_jsonb(NEW) -> v_col_padre,
+                          'articolo_id',    NEW.articolo_id,
+                          'tipo_eccezione', NEW.tipo_eccezione),
+                      NEW.tx_id,
+                      VARIADIC ARRAY[]::text[]);
+
+                  RETURN NEW;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION script.trgfn_righe_guard_periodicita_canone() IS
+                'Guard: una riga a canone di vendite.contratti_righe o di vendite.offerte_commerciali_eccezioni dice ogni quanto si addebita (E_RIGA_CANONE_SENZA_PERIODICITA, DATO_ERRATO, campo = periodicita). ADESIONE e OVERRIDE la ereditano dal listino prima di qui (script.trgfn_righe_default_periodicita_da_listino), l''AGGIUNTA la scrive l''operatore (F-9). L''ESCLUSIONE non ha erogazione e non si giudica. Una funzione per le due tabelle gemelle: il passaggio offerta → contratto copia la periodicita''. TG_ARGV[0] = colonna del documento padre, solo per il contesto. Trigger _a10_ BEFORE INSERT OR UPDATE OF tipo_erogazione, periodicita, dopo il default: parla prima dei CHECK chk_contrighe_canone_periodicita / chk_offerte_eccezioni_canone_periodicita, che restano la rete. Contesto: campo, riga_id, la colonna padre, articolo_id, tipo_eccezione. Nasce il 2026-11-01 (20261101-05), brief-db-contratto-righe-periodiche-in-commessa §6.11 (passo 4, la (b) di Tid del 2026-10-29: l''obbligo entra col form).';
+
+              COMMENT ON FUNCTION script.trgfn_righe_default_periodicita_da_listino() IS
+                'Trigger generico (vendite.contratti_righe, vendite.offerte_commerciali_eccezioni), BEFORE INSERT OR UPDATE OF tipo_erogazione WHEN la riga è a canone e senza periodicità: su una riga ADESIONE o OVERRIDE la periodicità viene dal listino dell''articolo nella versione operativa del documento (vendite.fn_documento_listino_operativo), dalla sede vendite.fn_listino_periodicita_articolo (la riga di listino, o il kit di vendite.listini_kit; rev 20261031-33). Riempie solo il vuoto. L''AGGIUNTA (fuori listino) non eredita: la periodicità la scrive l''operatore (F-9). L''obbligo lo tiene il guard che viene dopo, script.trgfn_righe_guard_periodicita_canone (20261101-05). TG_ARGV[0] = documento (CONTRATTO | OFFERTA_COMMERCIALE), TG_ARGV[1] = colonna del padre. Nasce il 2026-10-29 (20261029-44), brief-db-contratto-righe-periodiche-in-commessa G-0-bis.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.trgfn_righe_guard_periodicita_canone();

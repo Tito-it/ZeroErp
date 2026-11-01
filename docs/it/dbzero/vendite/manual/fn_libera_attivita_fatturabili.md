@@ -86,7 +86,10 @@ della primitiva.
    dell'`UPDATE`, che azzera il legame e il lucchetto: dopo, l'insieme non
    sarebbe più ricostruibile;
 2. **libera** le attività: `lock_in_fatturazione`, `lock_batch_id`,
-   `fattura_riga_id`, `stato_esecuzione`;
+   `fattura_riga_id`, `stato_esecuzione`; l'attività che il segno del documento
+   aveva fatto nota di credito (`natura_dal_segno`, rev 2026-10-31) riprende la
+   natura `FATTURA` e perde la marca: la prossima composizione del lotto decide
+   di nuovo ([vendite.fn_lotto_natura_dal_segno](/dbzero/vendite/manual/fn_lotto_natura_dal_segno));
 3. **riporta a `NON_EMESSA`** le sole righe di commessa in `EMESSA`.
 
 ⚠️ **Solo le `EMESSA`**: le `ANNULLATA` sono state annullate di proposito e non

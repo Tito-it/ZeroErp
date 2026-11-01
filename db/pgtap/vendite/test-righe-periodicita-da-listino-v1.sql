@@ -1,5 +1,10 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-11-01 (20261101-04/-05/-06, passo 4 del brief): la periodicita' sulla riga a
+--   canone e' obbligatoria. Il 2 e il 3 dicevano «vuota, e si salva»: ora la riga senza
+--   periodicita' si rifiuta col codice (E_RIGA_CANONE_SENZA_PERIODICITA). Il default che
+--   questo file presidia non cambia: l'obbligo ha il suo pgTAP,
+--   vendite/test-righe-canone-periodicita-obbligatoria-v1.
 -- pgTAP test per Zero ERP
 --
 -- Test: la riga a canone di contratto o di offerta eredita la periodicita' dalla
@@ -16,8 +21,8 @@
 --
 -- Indice test (1..6):
 --   1) contratto: ADESIONE a canone su A senza periodicita' -> TRIMESTRALE dal listino
---   2) contratto: OVERRIDE a canone su B (listino senza periodicita') -> vuota, e si salva
---   3) contratto: AGGIUNTA a canone su X (fuori listino) -> vuota: la scrive l'operatore (F-9)
+--   2) contratto: OVERRIDE a canone su B (listino senza periodicita') -> non eredita, e si rifiuta
+--   3) contratto: AGGIUNTA a canone su X (fuori listino) -> non eredita (F-9), e si rifiuta
 --   4) offerta: ADESIONE a canone su A -> TRIMESTRALE (la gemella)
 --   5) offerta: ADESIONE su B con MENSILE scritta -> MENSILE (la scelta dell'operatore vince)
 --   6) la forma: i due montaggi, BEFORE INSERT OR UPDATE OF tipo_erogazione
@@ -148,11 +153,14 @@ $fx$;
 SELECT is(pg_temp.riga('contratto', 'A', 'ADESIONE'), 'TRIMESTRALE',
     '1) contratto: ADESIONE a canone su A senza periodicita'' -> quella della riga di listino');
 
-SELECT is(pg_temp.riga('contratto', 'B', 'OVERRIDE'), '-',
-    '2) contratto: OVERRIDE a canone su B, il listino non la dice -> vuota, e la riga si salva (nessun obbligo)');
+-- ⚠️ Sul testo del messaggio a catalogo: il 23514 del CHECK non deve passare per questo.
+SELECT throws_like($$SELECT pg_temp.riga('contratto', 'B', 'OVERRIDE')$$,
+    '%Manca la periodicità%',
+    '2) contratto: OVERRIDE a canone su B, il listino non la dice -> non eredita, e si rifiuta (passo 4)');
 
-SELECT is(pg_temp.riga('contratto', 'X', 'AGGIUNTA'), '-',
-    '3) contratto: AGGIUNTA a canone fuori listino -> vuota, non eredita (F-9: la scrive l''operatore)');
+SELECT throws_like($$SELECT pg_temp.riga('contratto', 'X', 'AGGIUNTA')$$,
+    '%Manca la periodicità%',
+    '3) contratto: AGGIUNTA a canone fuori listino -> non eredita (F-9: la scrive l''operatore), e si rifiuta');
 
 SELECT is(pg_temp.riga('offerta', 'A', 'ADESIONE'), 'TRIMESTRALE',
     '4) offerta: ADESIONE a canone su A -> quella della riga di listino (la gemella)');

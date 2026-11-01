@@ -70,19 +70,30 @@ BEGIN
   -- =========================================================
   v_predicato := script.fn_predicato_soggetto_ruolo_visibile(p_tipo_ruolo_id, 'sr');
 
-  -- Guard: termine ricerca minimo 3 caratteri
-  IF p_search_term IS NULL OR length(btrim(p_search_term)) < 3 THEN
+  -- =========================================================
+  -- Guard: il termine c'e' (rev 2026-11-01, D-6).
+  --
+  -- ⛔ Nessuna lunghezza minima qui. La soglia e' quella del
+  --   catalogo della lista anagrafiche.ricerca_soggetti
+  --   (ui.lista_definizione.ricerca_min_caratteri), come per
+  --   ogni lista, e la giudica il chiamante. Fino al 2026-11-01
+  --   il corpo diceva «3»: una terza copia della regola, che
+  --   avrebbe scartato i termini ammessi da una soglia piu'
+  --   bassa scelta dall'amministratore.
+  -- Il termine vuoto (NULL o soli spazi) resta un rifiuto: non
+  --   e' una soglia, e' una chiamata senza termine.
+  -- =========================================================
+  IF p_search_term IS NULL OR btrim(p_search_term) = '' THEN
     PERFORM script.fn_log_and_raise_error(
       'database',
       'script.fn_search_soggetti_universale',
       'E_PARAMETRO_INVALIDO',
       jsonb_build_object(
         'parametro', 'p_search_term',
-        'valore', p_search_term,
-        'minimo_caratteri', 3
+        'valore', p_search_term
       ),
       NULL::uuid,
-      'p_search_term obbligatorio (minimo 3 caratteri)'
+      'p_search_term obbligatorio'
     );
   END IF;
 
@@ -284,7 +295,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_search_soggetti_universale(p_search_term text, p_tipo_ruolo_id integer, p_limit integer, p_offset integer, p_order_by text, p_order_dir text, p_campi_ricerca text[])
-IS 'Ricerca universale soggetti per tipo ruolo (livello 1). ⭐ Cerca sui campi di p_campi_ricerca (rev 2026-10-31, brief-db-liste-datatable-grezze-secondo-giro D-4): i campo_sorgente accesi nel catalogo della lista anagrafiche.ricerca_soggetti, che il chiamante legge da ui.fn_lista_colonne_ricerca_full (ricercabile_full e livello di colonna dell''utente: una colonna BLOCCATA non si sonda cercandola). Whitelist: soggetto_codice (codice del soggetto e codice dell''entita'' di config.tipi_ruoli.entita_tabella), ragione_sociale_completa, id_fiscale_univoco; un campo fuori whitelist o NULL: E_SCRIPT_CHIAMATA_NON_VALIDA. Elenco vuoto: nessuna riga (nessuna colonna accesa non trova niente). p_campi_ricerca NULL (il default): i tre campi. ⭐ Conteggio, ordine e pagina (rev 2026-10-10, brief-db-ricerca-universale-tetto-10000, strada B di Tid) si fanno sulle colonne semplici del soggetto, su TUTTE le corrispondenze: total_count e'' il totale vero e le pagine sono contigue (tie-breaker soggetto_ruolo_id). Gli aggregati utility_list ed emittente_ragione_sociale si calcolano solo per le righe della pagina. Ordinamento: p_order_by in whitelist (ragione_sociale_completa, soggetto_codice, id_fiscale_univoco; utility_list tolta il 2026-10-10, D-2, confermata il 2026-10-31: gli aggregati non sono ordinabili), p_order_dir ASC/DESC. Paginazione LIMIT/OFFSET, p_limit al massimo 200. ⭐ Chi si vede (rev 2026-10-10, brief-db-codici-non-trovato-email-e-permessi R-6): il filtro di riga e'' il predicato della regola unica script.fn_predicato_soggetto_ruolo_visibile, lo stesso della verifica d''esistenza di fn_get_search_detail. Tipo ruolo validato dal BB: NULL o <= 0 E_PARAMETRO_INVALIDO, inesistente E_TIPO_RUOLO_NON_TROVATO, non ricercabile E_TIPO_RUOLO_NON_RICERCABILE. ⭐ emittente_ragione_sociale: AGGREGATA (string_agg), una riga per soggetto. ⚠️ Elenca solo gli emittenti dei clienti che la RLS restituisce. NULL sui rami non-CL. SECURITY INVOKER: la RLS vale con l''identita'' di chi chiama.';
+IS 'Ricerca universale soggetti per tipo ruolo (livello 1). ⭐ Termine obbligatorio (NULL o soli spazi: E_PARAMETRO_INVALIDO), senza lunghezza minima (rev 2026-11-01, D-6): la soglia e'' quella del catalogo della lista anagrafiche.ricerca_soggetti (ricerca_min_caratteri) e la giudica il chiamante; fino al 2026-11-01 il corpo diceva 3. ⭐ Cerca sui campi di p_campi_ricerca (rev 2026-10-31, brief-db-liste-datatable-grezze-secondo-giro D-4): i campo_sorgente accesi nel catalogo della lista anagrafiche.ricerca_soggetti, che il chiamante legge da ui.fn_lista_colonne_ricerca_full (ricercabile_full e livello di colonna dell''utente: una colonna BLOCCATA non si sonda cercandola). Whitelist: soggetto_codice (codice del soggetto e codice dell''entita'' di config.tipi_ruoli.entita_tabella), ragione_sociale_completa, id_fiscale_univoco; un campo fuori whitelist o NULL: E_SCRIPT_CHIAMATA_NON_VALIDA. Elenco vuoto: nessuna riga (nessuna colonna accesa non trova niente). p_campi_ricerca NULL (il default): i tre campi. ⭐ Conteggio, ordine e pagina (rev 2026-10-10, brief-db-ricerca-universale-tetto-10000, strada B di Tid) si fanno sulle colonne semplici del soggetto, su TUTTE le corrispondenze: total_count e'' il totale vero e le pagine sono contigue (tie-breaker soggetto_ruolo_id). Gli aggregati utility_list ed emittente_ragione_sociale si calcolano solo per le righe della pagina. Ordinamento: p_order_by in whitelist (ragione_sociale_completa, soggetto_codice, id_fiscale_univoco; utility_list tolta il 2026-10-10, D-2, confermata il 2026-10-31: gli aggregati non sono ordinabili), p_order_dir ASC/DESC. Paginazione LIMIT/OFFSET, p_limit al massimo 200. ⭐ Chi si vede (rev 2026-10-10, brief-db-codici-non-trovato-email-e-permessi R-6): il filtro di riga e'' il predicato della regola unica script.fn_predicato_soggetto_ruolo_visibile, lo stesso della verifica d''esistenza di fn_get_search_detail. Tipo ruolo validato dal BB: NULL o <= 0 E_PARAMETRO_INVALIDO, inesistente E_TIPO_RUOLO_NON_TROVATO, non ricercabile E_TIPO_RUOLO_NON_RICERCABILE. ⭐ emittente_ragione_sociale: AGGREGATA (string_agg), una riga per soggetto. ⚠️ Elenca solo gli emittenti dei clienti che la RLS restituisce. NULL sui rami non-CL. SECURITY INVOKER: la RLS vale con l''identita'' di chi chiama.';
 ```
 
 </div>

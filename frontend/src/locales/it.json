@@ -578,6 +578,7 @@
       "righe_lavorabili": "Righe lavorabili",
       "ripartizione": "Ripartizione",
       "ripetibilita": "Ripetibilità",
+      "scadenza": "Stato di scadenza",
       "schema_db": "Schema DB",
       "schema_tabella": "Schema tabella",
       "scope": "Ambito",
@@ -4102,7 +4103,8 @@
         "ordine_gia_generato": "Il preventivo ha già generato un ordine: annulla prima l'ordine collegato.",
         "gia_in_commessa": "Il preventivo è già stato inviato a fatturazione: annulla prima le attività in commessa.",
         "commessa_gia_emessa": "Alcune righe sono già state fatturate in commessa: stornale dal lato fatturazione, oppure crea una revisione del preventivo.",
-        "iva_mancante": "Una o più righe con quantità hanno un prezzo ma nessuna aliquota IVA. L'aliquota non si sceglie sul documento: si imposta sull'articolo, e la riga la riprende. In alternativa togli il prezzo, se la merce non si valorizza."
+        "iva_mancante": "Una o più righe con quantità hanno un prezzo ma nessuna aliquota IVA. L'aliquota non si sceglie sul documento: si imposta sull'articolo, e la riga la riprende. In alternativa togli il prezzo, se la merce non si valorizza.",
+        "validita_scaduta": "La validità del preventivo è finita."
       },
       "conferma_cambio_stato": "Portare il preventivo nello stato {stato}?",
       "conferma_revisione": "Creare una nuova revisione? La revisione corrente verra' disattivata.",

@@ -20,6 +20,8 @@ AS $function$
 --   cambiando il tipo, anche ogni override esistente (anche spento).
 -- La forma la dice script.fn_valore_parametro_non_conforme.
 -- Brief: brief-db-liste-datatable-grezze-secondo-giro §4.6.1.
+-- Rev 2026-11-01 (§7.7.1): il campo va sotto 'campo', l'unica chiave
+--   che fn_log_and_raise_error porta sul canale COLUMN.
 -- =========================================================
 DECLARE
     -- La forma attesa in parole (NULL = conforme): nessuna colonna.
@@ -42,7 +44,7 @@ BEGIN
             'config.trgfn_parameters_guard_tipo_valore',
             'E_PARAMETER_VALORE_NON_CONFORME',
             jsonb_build_object(
-                'field',        'default_value',
+                'campo',        'default_value',
                 'parameter_id', NEW.id,
                 'code',         NEW.code,
                 'tipo_valore',  NEW.tipo_valore,
@@ -67,7 +69,7 @@ BEGIN
                 'config.trgfn_parameters_guard_tipo_valore',
                 'E_PARAMETER_OVERRIDE_NON_CONFORME_AL_TIPO',
                 jsonb_build_object(
-                    'field',        'tipo_valore',
+                    'campo',        'tipo_valore',
                     'parameter_id', NEW.id,
                     'code',         NEW.code,
                     'tipo_valore',  NEW.tipo_valore,
@@ -84,7 +86,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION config.trgfn_parameters_guard_tipo_valore()
-IS 'Guard di config.parameters (a07, BEFORE INSERT OR UPDATE OF default_value, tipo_valore): default_value deve avere la forma di tipo_valore (script.fn_valore_parametro_non_conforme), altrimenti E_PARAMETER_VALORE_NON_CONFORME. Quando cambia il tipo, anche ogni override esistente del parametro, acceso o spento, deve averne la forma, altrimenti E_PARAMETER_OVERRIDE_NON_CONFORME_AL_TIPO (CONFLITTO_STATO). Parla prima del dispatcher FK-surrogata (a10): prima la forma, poi l''esistenza nel catalogo. Gemello: config.trgfn_parameter_overrides_guard_tipo_valore. Brief: brief-db-liste-datatable-grezze-secondo-giro (D-5).';
+IS 'Guard di config.parameters (a07, BEFORE INSERT OR UPDATE OF default_value, tipo_valore): default_value deve avere la forma di tipo_valore (script.fn_valore_parametro_non_conforme), altrimenti E_PARAMETER_VALORE_NON_CONFORME. Quando cambia il tipo, anche ogni override esistente del parametro, acceso o spento, deve averne la forma, altrimenti E_PARAMETER_OVERRIDE_NON_CONFORME_AL_TIPO (CONFLITTO_STATO). Parla prima del dispatcher FK-surrogata (a10): prima la forma, poi l''esistenza nel catalogo. Il campo da correggere esce sul canale COLUMN (chiave ''campo'' del contesto: default_value, o tipo_valore sul cambio di tipo; fino al 2026-11-01 stava sotto ''field'' e non arrivava). Gemello: config.trgfn_parameter_overrides_guard_tipo_valore. Brief: brief-db-liste-datatable-grezze-secondo-giro (D-5).';
 ```
 
 </div>
