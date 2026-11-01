@@ -1,6 +1,6 @@
 # Migliorie generali da test valutazione — archivio
 
-> **Ultima revisione: 2026-10-27.** Archivio della valutazione dello strato DB aperta il 2026-09-08.
+> **Ultima revisione: 2026-11-01.** Archivio della valutazione dello strato DB aperta il 2026-09-08.
 > Il documento vivo — chi riparte, difetti aperti, scorecard, checklist — è
 > [migliorie-generali-da-test-valutazione.md](../work-in-progress/migliorie-generali-da-test-valutazione.md).
 > Qui, con la numerazione originale: i riallineamenti della testata fino al 2026-10-27, la
@@ -719,6 +719,32 @@ il brief d'origine è archiviato in `work-done/` (V-3 di Tid, §8.11).
 > Le date sono quelle dichiarate nei brief, e i brief restano la sede del
 > dettaglio: qui si dice **che cosa è cambiato nel sistema**, non come ci si è
 > arrivati.
+
+### ✅ D7 — Il registro della CI certificato: 358 → 23 — 2026-11-01
+
+Il punto «certificare in CI i rientrati dei lotti 1 e 2» di §3 D7, aperto dal 26-09, chiuso il giorno
+in cui la CI è tornata a misurare. Il registro era fermo dal 22-09: 361 righe, poi 359 per due test
+ritirati, nessun rientrato tolto, mentre la CI del 26-09 ne vedeva rossi 227 e lo scratch del 27-10
+24.
+
+* **La misura**: corsa CI-Validate `41326840441`, push su `Tito-dev` del merge della PR #5
+  (`84de5e28d`), database ricostruito da zero col modello dei ruoli e schema `django` migrato. **23
+  rossi su 936**, tutti già a registro, nessuna regressione.
+* **Il registro**: `scripts/pgtap-baseline-ci-rientrati.sh 41326840441` ha tolto i **335**
+  rientrati (vendite 199, pratiche 37, anagrafiche 32, script 27, config 12, pagamenti 11, catalogo
+  6, documenti 6, ui 3, dbops 2). `baseline-rossi-ci.tsv` passa da 358 a **23** righe (6
+  `ERRORE_FIXTURE`, 17 `ASSERZIONE`), senza aggiungerne nessuna.
+* ⛔ **La corsa precedente non valeva come misura** (`41325095742`, stesso giorno): il B-7 rosso aveva
+  saltato «Django migrate», e la suite, condizionata a `ci_apply`, era partita su un database senza
+  schema `django`: **909 rossi su 936**, tutti `relation "django.auth_user" does not exist`. Lo script
+  dei rientrati ne riportava una sola regressione: con tante regressioni, il suo riepilogo è più
+  rassicurante del log. Rimedio in `ci-validate.yaml`: la suite parte su `steps.fase_post`, e
+  «Django migrate» e la fase post hanno un `if` su `ci_apply`, così un cancello in mezzo non zittisce la
+  suite (la regola del 10-09) e la suite non misura un database a metà.
+* Nello stesso giro: la baseline B-7 (`db/baseline-codici-errore-famiglie.tsv`, 212 → 219) e la
+  chiave d'ingresso degli indirizzi `tipo_indirizzo_codice` → `tipo_indirizzo_codice_interno` (il
+  guardrail del naming, `20261101-08` … `-12`), i due rossi che tenevano la CI ferma prima della
+  suite.
 
 ### ✅ D7 — I lotti 3 e 4: `pratiche` e le famiglie 1-4 di `vendite` — 2026-10-27
 

@@ -1,0 +1,457 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# RICREA LA CATENA anagrafiche.vw_indirizzi_resolved_* (base, ruolo,
+#   soggetto, all) e le due funzioni sul tipo riga della vista soggetto
+#   (script.fn_get_indirizzo_by_soggetto, script.fn_get_indirizzi_by_soggetto).
+#   Corpi vivi (pg_get_viewdef letto il 2026-11-01 = doc auto-generata;
+#   funzioni = 20261010-31), con due cambi:
+#
+# -- 1. LE DERIVATE PROIETTANO tipo_indirizzo_codice_interno ----------------------
+#   Le tre derivate sono la base ristretta per scope: stesso contratto,
+#   stesse colonne. La base proietta ti.codice_interno AS
+#   tipo_indirizzo_codice_interno (20260628-09), le derivate elencano le
+#   colonne una per una e quella non l'avevano: chi le legge vedeva solo
+#   tipo_indirizzo_codice, cioe' ti.codice, il display (§6c). Il drawer
+#   indirizzi del ruolo (RuoloIndirizziView) confronta i tipi presenti con il
+#   codice_interno della matrice: senza la colonna «aggiungi» riproponeva i
+#   tipi gia' presenti, il conteggio degli obbligatori era sbagliato e
+#   «sostituisci» mandava alla madre una chiave vuota (400). Dal 2026-11-01
+#   la chiave d'ingresso della madre e' tipo_indirizzo_codice_interno
+#   (20261101-08). La colonna va in coda, come nella base.
+#
+# -- 2. IL DISPLAY NON SI TRONCA PIU' ---------------------------------------------
+#   La base scriveva ti.codice::character varying(10), ma
+#   config.tipi_indirizzi.codice e' varchar(15): un codice rinominato oltre
+#   i 10 caratteri usciva tagliato, senza errore. Ora ti.codice, col tipo
+#   della colonna. Decisione di Tid del 2026-11-01.
+#   ⛔ E' il motivo della DROP: CREATE OR REPLACE VIEW non cambia il tipo di
+#   una colonna (nemmeno il solo typmod), e il tipo passa alle derivate.
+#
+# -- CHI DIPENDE (censito sul vivo il 2026-11-01) ---------------------------------
+#   * viste: solo le tre derivate, che si ricreano qui;
+#   * funzioni con dipendenza registrata: le due RETURNS SETOF
+#     vw_indirizzi_resolved_soggetto, ricreate identiche qui (COMMENT e GRANT
+#     inclusi; nessuna clausola SET, COST/ROWS di default);
+#   * funzioni senza dipendenza registrata (corpo a stringa): fn_get_indirizzo
+#     (chiama fn_get_indirizzo_by_soggetto per nome), fn_get_indirizzi_by_ruolo
+#     (RETURNS TABLE con tipo_indirizzo varchar senza lunghezza),
+#     fn_snapshot_indirizzo e fn_snapshot_indirizzo_soggetto (colonne per
+#     nome): restano valide, non si toccano;
+#   * nessun changeSet di 80_data, 85 o 90_end nomina questi oggetti;
+#   * viste DEFINER come prima (nessuna reloption), nessun COMMENT sulle viste.
+#   GRANT SELECT all'applicazione esplicito come in 20261010-29; il resto
+#   dei privilegi lo da' il loop dei grant, come prima.
+#
+# -- PRESIDIO --------------------------------------------------------------------
+#   db/pgtap/anagrafiche/test-vw-indirizzi-resolved-derivate-codice-interno-v1.sql:
+#   le derivate hanno le colonne della base (nome, ordine, tipo), il valore
+#   e' config.tipi_indirizzi.codice_interno anche quando il codice e'
+#   diverso, e il display esce intero oltre i 10 caratteri.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261101-13-recreate-catena-vw-indirizzi-resolved-codice-interno-mctit.yaml
+
+  - changeSet:
+      id: 20261101-13-recreate-catena-vw-indirizzi-resolved-codice-interno
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Ricrea vw_indirizzi_resolved_base/_ruolo/_soggetto/_all e le due funzioni sul tipo
+        riga della vista soggetto: le derivate proiettano in coda tipo_indirizzo_codice_interno
+        come la base (richiesta BE, drawer indirizzi del ruolo) e tipo_indirizzo_codice non e'
+        piu' troncato a varchar(10) (config.tipi_indirizzi.codice e' varchar(15)).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Dalle foglie alla radice. Le due funzioni dipendono dal tipo riga di
+              -- vw_indirizzi_resolved_soggetto (RETURNS SETOF): senza DROP la vista non cade.
+              DROP FUNCTION script.fn_get_indirizzo_by_soggetto(uuid, character varying);
+              DROP FUNCTION script.fn_get_indirizzi_by_soggetto(uuid);
+              DROP VIEW anagrafiche.vw_indirizzi_resolved_all;
+              DROP VIEW anagrafiche.vw_indirizzi_resolved_ruolo;
+              DROP VIEW anagrafiche.vw_indirizzi_resolved_soggetto;
+              DROP VIEW anagrafiche.vw_indirizzi_resolved_base;
+
+              -- anagrafiche.vw_indirizzi_resolved_base
+              CREATE VIEW anagrafiche.vw_indirizzi_resolved_base AS
+               SELECT b.scope,
+                  b.scope AS source,
+                  b.indirizzo_id,
+                  b.soggetto_id,
+                  b.soggetto_ruolo_id,
+                  b.istanza_utility_id,
+                  b.tipo_indirizzo_id,
+                  ti.codice AS tipo_indirizzo_codice,
+                  ti.descrizione AS tipo_indirizzo_descrizione,
+                  b.indirizzo_dettaglio_id IS NOT NULL AS is_normalizzato,
+                  b.indirizzo_dettaglio_id,
+                  COALESCE(vidd.indirizzo_normalizzato, NULLIF(btrim(b.indirizzo_libero), ''::text), NULLIF(btrim(concat_ws(', '::text, NULLIF(btrim(b.postal_box::text), ''::text), NULLIF(btrim(b.sublocality::text), ''::text), NULLIF(btrim(b.locality::text), ''::text), NULLIF(btrim(b.administrative_area::text), ''::text))), ''::text)) AS indirizzo_display,
+                  b.indirizzo_libero,
+                  b.administrative_area,
+                  b.locality,
+                  b.sublocality,
+                  b.postal_box AS postal_code,
+                  COALESCE(vidd.comune_id, b.comune_id) AS comune_id,
+                  COALESCE(vidd.descrizione_comune, co_ai.descrizione, co_s.descrizione, ic.comune) AS comune_descrizione,
+                  COALESCE(vidd.cap, ic.codice_postale) AS cap,
+                  COALESCE(vidd.provincia, ic.provincia) AS provincia,
+                  COALESCE(pr_ai.id, pr_s.id) AS provincia_id,
+                  COALESCE(pr_ai.sigla, pr_s.sigla) AS provincia_sigla,
+                  COALESCE(pr_ai.descrizione, pr_s.descrizione) AS provincia_descrizione,
+                  COALESCE(re_ai.id, re_s.id) AS regione_id,
+                  COALESCE(re_ai.descrizione, re_s.descrizione) AS regione_descrizione,
+                  COALESCE(b.stato_id, re_ai.stato_id, re_s.stato_id) AS stato_id,
+                  st.descrizione AS stato_descrizione,
+                  st.codice_iso2 AS stato_iso2,
+                  COALESCE(b.codice_postale_id, cp_s.id) AS codice_postale_id,
+                  COALESCE(cp_ai.codice, cp_s.codice) AS cap_codice,
+                  vidd.stradario_id,
+                  vidd.via_norm,
+                  vidd.civico,
+                  vidd.estensione_civico,
+                  vidd.palazzina,
+                  vidd.scala,
+                  vidd.piano,
+                  vidd.interno,
+                  vidd.altro,
+                  COALESCE(vidd.civic_geoloc, vidd.street_geoloc, b.geoloc) AS geoloc,
+                  b.storicizza,
+                  b.tx_id,
+                  b.data_insert,
+                  b.user_insert,
+                  b.data_update,
+                  b.user_update,
+                  ti.codice_interno AS tipo_indirizzo_codice_interno
+                 FROM ( SELECT 'RUOLO'::text AS scope,
+                          i.id AS indirizzo_id,
+                          sr.soggetto_id,
+                          i.soggetto_ruolo_id,
+                          i.istanza_utility_id,
+                          i.tipo_indirizzo_id,
+                          i.indirizzo_dettaglio_id,
+                          i.indirizzo_libero,
+                          i.stato_id,
+                          i.administrative_area,
+                          i.locality,
+                          i.sublocality,
+                          i.postal_code AS postal_box,
+                          i.comune_id,
+                          i.codice_postale_id,
+                          i.geoloc,
+                          i.storicizza,
+                          i.tx_id,
+                          i.data_insert,
+                          i.user_insert,
+                          i.data_update,
+                          i.user_update
+                         FROM anagrafiche.indirizzi i
+                           JOIN anagrafiche.soggetti_ruoli sr ON sr.id = i.soggetto_ruolo_id
+                      UNION ALL
+                       SELECT 'SOGGETTO'::text AS scope,
+                          isg.id AS indirizzo_id,
+                          isg.soggetto_id,
+                          NULL::bigint AS soggetto_ruolo_id,
+                          NULL::bigint AS istanza_utility_id,
+                          isg.tipo_indirizzo_id,
+                          isg.indirizzo_dettaglio_id,
+                          isg.indirizzo_libero,
+                          isg.stato_id,
+                          isg.administrative_area,
+                          isg.locality,
+                          isg.sublocality,
+                          isg.postal_code AS postal_box,
+                          isg.comune_id,
+                          isg.codice_postale_id,
+                          isg.geoloc,
+                          isg.storicizza,
+                          isg.tx_id,
+                          isg.data_insert,
+                          isg.user_insert,
+                          isg.data_update,
+                          isg.user_update
+                         FROM anagrafiche.indirizzi_soggetti isg) b
+                   JOIN config.tipi_indirizzi ti ON ti.id = b.tipo_indirizzo_id
+                   LEFT JOIN anagrafiche.vw_indirizzi_dettaglio vidd ON vidd.indirizzo_dettaglio_id = b.indirizzo_dettaglio_id
+                   LEFT JOIN script.vw_indirizzo_completo ic ON ic.id_comune = b.comune_id
+                   LEFT JOIN config.stradario s ON s.id = vidd.stradario_id
+                   LEFT JOIN config.comuni co_s ON co_s.id = s.comune_id
+                   LEFT JOIN config.codici_postali cp_s ON cp_s.id = s.codice_postale_id
+                   LEFT JOIN config.comuni co_ai ON co_ai.id = b.comune_id
+                   LEFT JOIN config.codici_postali cp_ai ON cp_ai.id = b.codice_postale_id
+                   LEFT JOIN config.province pr_ai ON pr_ai.id = co_ai.provincia_id
+                   LEFT JOIN config.province pr_s ON pr_s.id = co_s.provincia_id
+                   LEFT JOIN config.regioni re_ai ON re_ai.id = pr_ai.regione_id
+                   LEFT JOIN config.regioni re_s ON re_s.id = pr_s.regione_id
+                   LEFT JOIN config.stati st ON st.id = COALESCE(b.stato_id, re_ai.stato_id, re_s.stato_id);
+
+              -- anagrafiche.vw_indirizzi_resolved_ruolo
+              CREATE VIEW anagrafiche.vw_indirizzi_resolved_ruolo AS
+               SELECT scope,
+                  source,
+                  indirizzo_id,
+                  soggetto_id,
+                  soggetto_ruolo_id,
+                  istanza_utility_id,
+                  tipo_indirizzo_id,
+                  tipo_indirizzo_codice,
+                  tipo_indirizzo_descrizione,
+                  is_normalizzato,
+                  indirizzo_dettaglio_id,
+                  indirizzo_display,
+                  indirizzo_libero,
+                  administrative_area,
+                  locality,
+                  sublocality,
+                  postal_code,
+                  comune_id,
+                  comune_descrizione,
+                  cap,
+                  provincia,
+                  provincia_id,
+                  provincia_sigla,
+                  provincia_descrizione,
+                  regione_id,
+                  regione_descrizione,
+                  stato_id,
+                  stato_descrizione,
+                  stato_iso2,
+                  codice_postale_id,
+                  cap_codice,
+                  stradario_id,
+                  via_norm,
+                  civico,
+                  estensione_civico,
+                  palazzina,
+                  scala,
+                  piano,
+                  interno,
+                  altro,
+                  geoloc,
+                  storicizza,
+                  tx_id,
+                  data_insert,
+                  user_insert,
+                  data_update,
+                  user_update,
+                  tipo_indirizzo_codice_interno
+                 FROM anagrafiche.vw_indirizzi_resolved_base
+                WHERE scope = 'RUOLO'::text;
+
+              -- anagrafiche.vw_indirizzi_resolved_soggetto
+              CREATE VIEW anagrafiche.vw_indirizzi_resolved_soggetto AS
+               SELECT scope,
+                  source,
+                  indirizzo_id,
+                  soggetto_id,
+                  soggetto_ruolo_id,
+                  istanza_utility_id,
+                  tipo_indirizzo_id,
+                  tipo_indirizzo_codice,
+                  tipo_indirizzo_descrizione,
+                  is_normalizzato,
+                  indirizzo_dettaglio_id,
+                  indirizzo_display,
+                  indirizzo_libero,
+                  administrative_area,
+                  locality,
+                  sublocality,
+                  postal_code,
+                  comune_id,
+                  comune_descrizione,
+                  cap,
+                  provincia,
+                  provincia_id,
+                  provincia_sigla,
+                  provincia_descrizione,
+                  regione_id,
+                  regione_descrizione,
+                  stato_id,
+                  stato_descrizione,
+                  stato_iso2,
+                  codice_postale_id,
+                  cap_codice,
+                  stradario_id,
+                  via_norm,
+                  civico,
+                  estensione_civico,
+                  palazzina,
+                  scala,
+                  piano,
+                  interno,
+                  altro,
+                  geoloc,
+                  storicizza,
+                  tx_id,
+                  data_insert,
+                  user_insert,
+                  data_update,
+                  user_update,
+                  tipo_indirizzo_codice_interno
+                 FROM anagrafiche.vw_indirizzi_resolved_base
+                WHERE scope = 'SOGGETTO'::text;
+
+              -- anagrafiche.vw_indirizzi_resolved_all
+              CREATE VIEW anagrafiche.vw_indirizzi_resolved_all AS
+               SELECT scope,
+                  source,
+                  indirizzo_id,
+                  soggetto_id,
+                  soggetto_ruolo_id,
+                  istanza_utility_id,
+                  tipo_indirizzo_id,
+                  tipo_indirizzo_codice,
+                  tipo_indirizzo_descrizione,
+                  is_normalizzato,
+                  indirizzo_dettaglio_id,
+                  indirizzo_display,
+                  indirizzo_libero,
+                  administrative_area,
+                  locality,
+                  sublocality,
+                  postal_code,
+                  comune_id,
+                  comune_descrizione,
+                  cap,
+                  provincia,
+                  provincia_id,
+                  provincia_sigla,
+                  provincia_descrizione,
+                  regione_id,
+                  regione_descrizione,
+                  stato_id,
+                  stato_descrizione,
+                  stato_iso2,
+                  codice_postale_id,
+                  cap_codice,
+                  stradario_id,
+                  via_norm,
+                  civico,
+                  estensione_civico,
+                  palazzina,
+                  scala,
+                  piano,
+                  interno,
+                  altro,
+                  geoloc,
+                  storicizza,
+                  tx_id,
+                  data_insert,
+                  user_insert,
+                  data_update,
+                  user_update,
+                  tipo_indirizzo_codice_interno
+                 FROM anagrafiche.vw_indirizzi_resolved_base;
+
+              GRANT SELECT ON anagrafiche.vw_indirizzi_resolved_base TO zeroerp_app;
+              GRANT SELECT ON anagrafiche.vw_indirizzi_resolved_ruolo TO zeroerp_app;
+              GRANT SELECT ON anagrafiche.vw_indirizzi_resolved_soggetto TO zeroerp_app;
+              GRANT SELECT ON anagrafiche.vw_indirizzi_resolved_all TO zeroerp_app;
+
+              -- Le due funzioni sul tipo riga, identiche (corpo, COMMENT e GRANT di 20261010-31 = vivo).
+              CREATE FUNCTION script.fn_get_indirizzo_by_soggetto(p_soggetto_id anagrafiche.soggetti.id%TYPE, p_tipo_codice config.tipi_indirizzi.codice_interno%TYPE)
+               RETURNS SETOF anagrafiche.vw_indirizzi_resolved_soggetto
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              DECLARE
+                v_tipo_soggetto_dettaglio_id anagrafiche.soggetti.tipo_soggetto_dettaglio_id%TYPE;
+                v_current_codice config.tipi_indirizzi.codice_interno%TYPE := p_tipo_codice;
+                v_current_tipo_id config.tipi_indirizzi.id%TYPE;
+                v_fallback_tipo_id config.tipi_soggetto_dettaglio_tipi_indirizzo.fallback_tipo_indirizzo_id%TYPE;
+                v_rows_found integer;
+                v_visited_tipo_ids config.tipi_indirizzi.id%TYPE[] := '{}'::integer[];
+              BEGIN
+                /*
+                  Restituisce l'indirizzo di un soggetto per tipo_codice richiesto.
+                  Se non trova indirizzi per quel tipo, segue la catena di fallback
+                  configurata in config.tipi_soggetto_dettaglio_tipi_indirizzo
+                  fino a trovare un match o esaurire i fallback.
+
+                  Regole:
+                    - Recupera tipo_soggetto_dettaglio_id dal soggetto
+                    - Loop: cerca indirizzo per tipo corrente
+                    - Se trovato: ritorna. Se non trovato: segue fallback
+                    - Protezione anti-loop circolare via v_visited_tipo_ids
+                */
+
+                -- Recupera il tipo soggetto dettaglio per determinare la catena fallback
+                SELECT s.tipo_soggetto_dettaglio_id INTO v_tipo_soggetto_dettaglio_id
+                FROM anagrafiche.soggetti s WHERE s.id = p_soggetto_id;
+                IF v_tipo_soggetto_dettaglio_id IS NULL THEN RETURN; END IF;
+
+                LOOP
+                  -- Il tipo si confronta per ID (rev 20260923-49): la vista espone in
+                  -- tipo_indirizzo_codice il CODICE (display, mutabile), il parametro e' il
+                  -- CODICE_INTERNO. Confrontati come testo non si incontravano mai.
+                  SELECT ti.id INTO v_current_tipo_id
+                  FROM config.tipi_indirizzi ti WHERE ti.codice_interno = v_current_codice;
+                  IF v_current_tipo_id IS NULL THEN RETURN; END IF;
+
+                  -- Cerca indirizzi per il tipo corrente
+                  RETURN QUERY
+                  SELECT * FROM anagrafiche.vw_indirizzi_resolved_soggetto r
+                  WHERE r.soggetto_id = p_soggetto_id AND r.tipo_indirizzo_id = v_current_tipo_id;
+
+                  GET DIAGNOSTICS v_rows_found = ROW_COUNT;
+                  IF v_rows_found > 0 THEN RETURN; END IF;
+
+                  -- Nessun indirizzo trovato: cerca fallback
+                  -- Protezione anti-loop circolare
+                  IF v_current_tipo_id = ANY (v_visited_tipo_ids) THEN RETURN; END IF;
+                  v_visited_tipo_ids := array_append(v_visited_tipo_ids, v_current_tipo_id);
+
+                  -- Legge il fallback dalla matrice tipo_soggetto_dettaglio / tipo_indirizzo
+                  SELECT m.fallback_tipo_indirizzo_id INTO v_fallback_tipo_id
+                  FROM config.tipi_soggetto_dettaglio_tipi_indirizzo m
+                  WHERE m.tipo_soggetto_dettaglio_id = v_tipo_soggetto_dettaglio_id
+                    AND m.tipo_indirizzo_id = v_current_tipo_id
+                    AND m.attivo = TRUE
+                    AND (m.valido_dal IS NULL OR m.valido_dal <= (SELECT script.fn_data_operativa()))
+                    AND (m.valido_al IS NULL OR m.valido_al >= (SELECT script.fn_data_operativa()))
+                  LIMIT 1;
+                  IF v_fallback_tipo_id IS NULL THEN RETURN; END IF;
+
+                  -- Risolve il codice del tipo fallback per il prossimo ciclo
+                  SELECT ti.codice_interno INTO v_current_codice
+                  FROM config.tipi_indirizzi ti WHERE ti.id = v_fallback_tipo_id;
+                  IF v_current_codice IS NULL THEN RETURN; END IF;
+                END LOOP;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_indirizzo_by_soggetto(anagrafiche.soggetti.id%TYPE, config.tipi_indirizzi.codice_interno%TYPE) IS
+                'Restituisce l''indirizzo di un soggetto per tipo richiesto, con fallback configurato in tipi_soggetto_dettaglio_tipi_indirizzo.';
+              GRANT EXECUTE ON FUNCTION script.fn_get_indirizzo_by_soggetto(anagrafiche.soggetti.id%TYPE, config.tipi_indirizzi.codice_interno%TYPE) TO zeroerp_app;
+
+              CREATE FUNCTION script.fn_get_indirizzi_by_soggetto(
+                p_soggetto_id  anagrafiche.soggetti.id%TYPE
+              )
+               RETURNS SETOF anagrafiche.vw_indirizzi_resolved_soggetto
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                -- Restituisce tutti gli indirizzi identitari (layer SOGGETTO)
+                -- per il soggetto indicato, ordinati per tipo indirizzo e id.
+                -- Legge la vista che DICHIARA come tipo di ritorno (rev 20261010-31):
+                -- e' la base filtrata per scope = SOGGETTO, con le sue colonne. Proiettare
+                -- r.* dalla base, come prima, si rompe a ogni colonna aggiunta alla base.
+                SELECT r.*
+                FROM anagrafiche.vw_indirizzi_resolved_soggetto r
+                WHERE r.soggetto_id = p_soggetto_id
+                ORDER BY r.tipo_indirizzo_codice, r.indirizzo_id;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_indirizzi_by_soggetto(anagrafiche.soggetti.id%TYPE) IS
+                'Restituisce tutti gli indirizzi layer SOGGETTO (identitario) per un dato soggetto_id, ordinati per tipo e id. Legge vw_indirizzi_resolved_soggetto, il suo tipo di ritorno (rev 20261010-31: proiettava la base e restituiva troppe colonne).';
+              GRANT EXECUTE ON FUNCTION script.fn_get_indirizzi_by_soggetto(anagrafiche.soggetti.id%TYPE) TO zeroerp_app;
