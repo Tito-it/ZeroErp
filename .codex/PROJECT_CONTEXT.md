@@ -428,8 +428,14 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   listino `vendite.listini_kit`, componenti del kit dal listino, controllo all'attivazione, lookup e
   anteprima della periodicità); L17 `-44` … `-48` (la nota di credito dal segno, §7.9) e `-49` … `-52`
   (la quota fissa non perde la periodicità fuori dalla bozza, §7.10) applicati e verdi. BE/FE passo 3
-  fatto il 2026-10-31 (§7.11, da committare). Restano: L18 documentazione, la colonna della periodicità
-  nella lista 37 e il passo 4 DB.
+  fatto e committato il 2026-10-31 (§7.11, `f9b9a0d81`). Restano: L18 documentazione, la colonna della
+  periodicità nella lista 37, il passo 4 DB e il collaudo a video.
+- ⏳ **Liste ancora su `DataTable` grezza, secondo giro**
+  (`work-in-progress/brief-db-liste-datatable-grezze-secondo-giro.md`): sette liste a catalogo (107-113), la
+  regola «listino in scadenza senza successore» a DB, la forma del valore dei parametri in scrittura, la
+  ricerca universale sui campi del catalogo; registro FE a 17 grezze, 0 senza motivo. Lato DB chiuso
+  (`20261101-01…03` compresi). Resta il BE del §7.8.5 (la soglia della ricerca dal catalogo), poi
+  l'archiviazione.
 - 📝 **Dove si addebita il trasporto di un ordine fatturato alla conferma**
   (`work-in-progress/brief-db-addebito-trasporto-ordine.md`, da A-9 del brief sopra): aperto, non iniziato.
 - ✅ **Codici d'errore per email, «accesso riservato» e «non trovato» del dettaglio ricerca: chiuso il 2026-10-10**
