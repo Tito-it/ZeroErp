@@ -1,10 +1,11 @@
 # Brief DB — Le righe di contratto che non sono «una volta»: canone, orario e consumo in commessa
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-01 (§7.13.4 fatto lato BE)
+## ✅ Chiuso il 2026-11-01 (archiviato su indicazione di Tid, §7.14)
 
-**Riparte: Tid**, col collaudo a video del form della riga a canone e della colonna «Periodicità»
-della lista 37, le due domande del §7.13.6 e il commit del giro BE. Poi si archivia il brief.
-Lato DB il giro è chiuso (§7.13.5); lato BE la richiesta del §7.13.4 è fatta e provata (§7.13.6).
+**Nessuno riparte da qui.** Il canone è fatto lato DB (§7.13.5) e BE/FE (§7.13.6), tutto committato.
+Il collaudo a video e le due domande sulla colonna «Periodicità» della lista 37 passano ai residui di
+`.codex/PROJECT_CONTEXT.md` § «Aperto — Media priorità» (§7.14). ORARIO e CONSUMO restano fuori per
+G-4: aspettano le loro sorgenti, e li tiene aperti D31 del registro.
 
 I lotti L1 … L9 e il giro del §7 lato DB restano finiti (§6.3, §7.8); i punti BE/FE del §6.12 e
 del §7 sono entrati col passaggio del §7.6 (`9f3a16904`) e col passo 3 (§7.11, `be8579d0c`).
@@ -52,10 +53,10 @@ del §7 sono entrati col passaggio del §7.6 (`9f3a16904`) e col passo 3 (§7.11
 | 4 | ✅ team DB | l'obbligo della periodicità sulla riga a canone (guard + CHECK), scritto e provato (2026-11-01) | §7.13.2 | 3 |
 | 4-bis | ✅ Tid | su dbdev lo script di F-10, poi l'apply di `20261101-04` … `-06` e dei CSV; pgTAP verdi (2026-11-01) | §7.13.5 | 4 |
 | 4-ter | ✅ BE/FE | la richiesta del §7.13.4: codice nuovo col ripiego, test DB, e2e del trasporto (2026-11-01) | §7.13.6 | 4-bis |
-| 4-quater | Tid | collaudo a video (form della riga a canone, colonna 1165), le due domande del §7.13.6, commit del giro BE | §7.13.6 | 4-ter |
-| 5 | Tid | archiviazione del brief | — | 4-quater |
+| 4-quater | ✅ Tid | commit del giro BE (`62dafb6c86`); collaudo a video e le due domande del §7.13.6 passati ai residui (2026-11-01) | §7.13.6, §7.14 | 4-ter |
+| 5 | ✅ Tid | archiviazione del brief (2026-11-01) | §7.14 | 4-quater |
 
-Decisioni aperte di Tid: le due del §7.13.6 (colonna «Periodicità» ordinabile? codice o descrizione?). Il giro DB del §7.12-§7.13 è committato (`f662345ab`); da committare su `dev/backend-tid` il giro BE del §7.13.6. Il passo 3 BE/FE è entrato in `be8579d0c` (PR #1989). La forma di L17 e la periodicità ferma della quota fissa decise il 2026-10-31. D-1-ter (A) e D-2-bis (B) prese il 2026-10-31. F-1 … F-10 prese il 2026-10-29, F-11 … F-13 il 2026-10-30, F-14 e F-15 il 2026-10-31, D-1 … D-4 il 2026-10-31. G-0 … G-11 prese il 2026-10-28. Lavoro committato il 2026-10-31 su `dev/db-tid` (un commit: L1 … L9): i changeSet `20261029-10` …
+Decisioni aperte di Tid: nessuna qui; le due del §7.13.6 (colonna «Periodicità» ordinabile? codice o descrizione?) sono fra i residui di PROJECT_CONTEXT (§7.14). Il giro DB del §7.12-§7.13 è committato (`f662345ab`); il giro BE del §7.13.6 in `62dafb6c86`. Il passo 3 BE/FE è entrato in `be8579d0c` (PR #1989). La forma di L17 e la periodicità ferma della quota fissa decise il 2026-10-31. D-1-ter (A) e D-2-bis (B) prese il 2026-10-31. F-1 … F-10 prese il 2026-10-29, F-11 … F-13 il 2026-10-30, F-14 e F-15 il 2026-10-31, D-1 … D-4 il 2026-10-31. G-0 … G-11 prese il 2026-10-28. Lavoro committato il 2026-10-31 su `dev/db-tid` (un commit: L1 … L9): i changeSet `20261029-10` …
 `-45`, `20261030-01` e `20261031-01` … `-04` (§6.5 … §6.13, applicati su dbdev), i CSV e i seed
 toccati, i pgTAP nuovi e aggiornati, la documentazione del L9 (§6.14), questo documento. Il giro che lo ha aperto, `20261013-24`, è nella risposta al team BE del 2026-10-13.
 
@@ -63,7 +64,7 @@ toccati, i pgTAP nuovi e aggiornati, la documentazione del L9 (§6.14), questo d
 > **Origine:** decisione D-2 (a) di Tid, 2026-10-13, sulla segnalazione BE del push batch CONTRATTO
 > (registro 2724: un contratto senza `valido_al` cadeva sul NOT NULL di
 > `commesse_attivita.competenza_al`). Registro: **D31** di
-> [migliorie-generali-da-test-valutazione](migliorie-generali-da-test-valutazione.md).
+> [migliorie-generali-da-test-valutazione](../work-in-progress/migliorie-generali-da-test-valutazione.md).
 
 ## 1. Il caso
 
@@ -1650,3 +1651,21 @@ questo documento.
    * la si vuole **ordinabile**? Se sì: la voce in `RIGHE_ORDER_COLUMNS` (BE) e `ordinabile = t`
      nel CSV (team DB) insieme;
    * mostra il **codice** del vocabolario (`TRIMESTRALE`…): va bene, o serve la descrizione?
+
+### 7.14 Chiusura (2026-11-01)
+
+Archiviato su indicazione di Tid. Lato DB tutto applicato e committato (`f662345ab`), lato BE/FE il
+giro del §7.13.6 in `62dafb6c86`. Passano ai residui di `.codex/PROJECT_CONTEXT.md` § «Aperto — Media
+priorità», nessuno bloccante:
+
+* **il collaudo a video** del form della riga a canone (contratto e offerta: il campo solo sul canone,
+  il rifiuto `E_RIGA_CANONE_SENZA_PERIODICITA` col solo campo «Periodicità» acceso, la modifica che la
+  toglie, «Aderisci» che propone la periodicità del listino) e della colonna 1165 della lista 37 (anche
+  sul composito, dal kit; nell'export);
+* **le due domande del §7.13.6**: la colonna ordinabile (sul ritmo, `config.periodicita.mesi`, non sul
+  codice), e codice o descrizione. Proposta: la descrizione, col JOIN nella proiezione del repository,
+  come le altre colonne di display;
+* gli smoke di `backend/scripts/tests/` non lanciati nel giro del §7.13.6.
+
+ORARIO e CONSUMO restano fuori per G-4: aspettano le loro sorgenti (timesheet, letture), e D31 del
+registro resta aperta per loro.

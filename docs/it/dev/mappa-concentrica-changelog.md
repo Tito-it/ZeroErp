@@ -106,7 +106,7 @@ che non perde la periodicità fuori dalla bozza. BE/FE del passo 3 fatto e commi
 `_campi_canone`. ⚠️ Aperti: il passo 4 (l'obbligo della periodicità sulla riga a canone), la
 documentazione del giro (L18), la colonna «Periodicità» nella lista delle righe di listino, il
 collaudo a video. Vedi
-[brief-db-contratto-righe-periodiche-in-commessa.md](work-in-progress/brief-db-contratto-righe-periodiche-in-commessa.md).
+[brief-db-contratto-righe-periodiche-in-commessa.md](work-done/brief-db-contratto-righe-periodiche-in-commessa.md).
 
 **Anello 1 (`ui`, `config`) — Le liste ancora su `DataTable` grezza, secondo giro.** Sette liste
 nascono a catalogo (107-113: definizioni di workflow, parametri, note di vendita e di catalogo,
