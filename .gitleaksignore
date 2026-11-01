@@ -11,3 +11,8 @@ cba16128150f4f56e189ef932c3e76760ee19a32:docs/it/dev/mappa-concentrica-changelog
 bc30234bd6bfacb98b9d1d9851ae4dc1bc132b22:backend/apps/ui/services/lista_colonna_admin_service.py:generic-api-key:352
 bc30234bd6bfacb98b9d1d9851ae4dc1bc132b22:backend/apps/ui/services/lista_colonna_admin_service.py:generic-api-key:459
 678939a49120d124dcd333a64f3ac9ee438b0261:docs/it/dev/work-in-progress/brief-db-blocco-f2-i18n-seed-clienti.md:generic-api-key:71
+# 2026-11-01: db/changelog/v1-congelato.json mappa nome file → checksum; il nome contiene
+# «key»/«tokens» (rename_index_..._key_to_uq, fn_fix_triggers_event_tokens) e l'hash
+# sembra una chiave.
+4617fabe6c4631345b323d9ace00f60e6ab2d0a5:db/changelog/v1-congelato.json:generic-api-key:129
+4617fabe6c4631345b323d9ace00f60e6ab2d0a5:db/changelog/v1-congelato.json:generic-api-key:554

@@ -1,6 +1,6 @@
 # Guida – Gestione Mail
 
-> (latest review 06-09-2026)
+> **Ultimo aggiornamento**: 1 novembre 2026
 >
 > Destinatari: amministratori di sistema, sviluppatori backend, analisti funzionali
 >

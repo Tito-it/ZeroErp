@@ -1,5 +1,7 @@
 # API Reset Password Dimenticata
 
+> **Ultimo aggiornamento**: 1 novembre 2026
+
 ## Scopo
 
 Permette all'operatore di reimpostare la propria password via email, senza intervento admin.

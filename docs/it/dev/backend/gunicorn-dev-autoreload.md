@@ -1,6 +1,6 @@
 # Gunicorn in sviluppo — ricarica del codice
 
-> **Ultimo aggiornamento**: 26 settembre 2026
+> **Ultimo aggiornamento**: 1 novembre 2026
 >
 > **Destinatari**: chi sviluppa sul backend nella macchina `backend-dev`.
 >

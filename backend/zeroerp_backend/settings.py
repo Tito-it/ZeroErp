@@ -119,13 +119,6 @@ FIELD_ENCRYPTION_KEYS = parse_chiavi_cifratura(env("DJANGO_FIELD_ENCRYPTION_KEYS
 #DEBUG = True
 
 
-#ALLOWED_HOSTS = [
-#    "backend-dev",                       # hostname locale
-#    "localhost", "127.0.0.1",
-#    "backend-dev.tailXXXX.ts.net",       # MagicDNS Tailscale (nome lungo)
-#    "dbdev.tailXXXX.ts.net",             # se un giorno servi il BE anche dal nodo DB
-#]
-
 # ⛔ Default SPENTO: il DEBUG si accende esplicitamente (`DJANGO_DEBUG=1`) sulla
 #    macchina che lo vuole. Col default acceso, un env file dimenticato apre
 #    le pagine d'errore con le impostazioni e Swagger (che segue DEBUG).
@@ -624,21 +617,20 @@ SECURE_HSTS_PRELOAD = False
 SECURE_SSL_REDIRECT = env("DJANGO_SECURE_SSL_REDIRECT", "0" if DEBUG else "1") == "1"
 SECURE_REDIRECT_EXEMPT = [r"^health$"]
 
+# L'origine fidata e' l'ingresso Nginx, cioe' FRONTEND_URL: un nome di macchina
+# scritto qui sarebbe la rete di chi sviluppa, non una configurazione.
+CSRF_TRUSTED_ORIGINS = [FRONTEND_URL]
+
 if DEBUG:
     SESSION_COOKIE_SECURE = False
     CSRF_COOKIE_SECURE = False
-
-    CSRF_TRUSTED_ORIGINS = [
-        "https://backend-dev.tailXXXX.ts.net",
-        "http://backend-dev.tailXXXX.ts.net",
-    ]
+    # In DEBUG si lavora anche in HTTP: si fida pure della variante http://
+    if FRONTEND_URL.startswith("https://"):
+        CSRF_TRUSTED_ORIGINS.append("http://" + FRONTEND_URL.removeprefix("https://"))
 
 else:
     SESSION_COOKIE_SECURE = True   # invia il cookie di sessione solo su HTTPS
     CSRF_COOKIE_SECURE = True      # invia il cookie CSRF solo su HTTPS
-    CSRF_TRUSTED_ORIGINS = [
-            "https://backend-dev.tailXXXX.ts.net",
-        ]
 
 # Il cookie del refresh JWT (`apps.core.api.refresh_cookie`) segue i cookie di
 # sessione: `Secure` fuori da DEBUG. In DEBUG si puo' lavorare in HTTP (Vite

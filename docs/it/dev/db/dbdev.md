@@ -1,5 +1,7 @@
 # Guida Operativa — Server “dbdev” su Proxmox con PostgreSQL
 
+> **Ultimo aggiornamento**: 1 novembre 2026
+
 > **Obiettivo**
 > Preparare e gestire un server *dbdev* (VM) con **PostgreSQL 17** su **Proxmox VE**, accessibile in sicurezza via **Tailscale**/**SSH tunnel**, con **Liquibase** per le migrazioni e **backup Proxmox → NAS Synology**.
 >

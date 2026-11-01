@@ -1,5 +1,7 @@
 # Runbook dettagliato – Nodo Proxmox + VM (dbdev/backend)
 
+> **Ultimo aggiornamento**: 1 novembre 2026
+
 ## Indice
 
 1. Panoramica rapida (cheatsheet)

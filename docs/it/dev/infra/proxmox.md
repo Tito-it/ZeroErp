@@ -1,5 +1,7 @@
 # Guida operativa Proxmox — Stack DEV
 
+> **Ultimo aggiornamento**: 1 novembre 2026
+
 > 👀 **Vedi anche**    
 >    
 > * [Comandi utili/Run book](comandi-utili-run-book.md).
