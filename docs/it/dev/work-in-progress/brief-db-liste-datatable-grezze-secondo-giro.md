@@ -1,10 +1,9 @@
 # Brief DB — Liste ancora su `DataTable` grezza, secondo giro
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-01
+## ⏭️ Chi riparte — aggiornato al 2026-11-01 (§7.8.5 fatto)
 
-**Riparte: BE** (`dev/backend-tid`) con il §7.8.5: la view della ricerca legge la soglia dal
-catalogo (D-6). Il lato DB è chiuso: `20261101-01…03` applicati e pgTAP verdi (Tid, 2026-11-01).
-Poi si archivia il brief.
+**Riparte: Tid**, col commit del giro BE (§7.9) e l'ok all'archiviazione. Lato DB e lato BE il
+lavoro è chiuso: D-6 fatta e provata (§7.9).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -25,9 +24,10 @@ Poi si archivia il brief.
 | 9-quater | Tid | ✅ D-6 decisa il 2026-11-01: la soglia della 113 viene dal catalogo, come per ogni lista (§7.7.2) | questo brief | — |
 | 9-quinquies | team DB | ✅ D-6: `fn_search_soggetti_universale` senza la soglia scritta nel corpo (§7.7.2), scritto il 2026-11-01 (§7.8) | `20_code/script/`, `db/pgtap/script/` | — |
 | 9-quinquies-bis | Tid | ✅ Apply di `20261101-01…03` su dbdev e corsa dei tre pgTAP verde, 2026-11-01 (§7.8.4) | dbdev | — |
-| 9-sexies | BE | §7.8.5, D-6: la view della ricerca usa `soglia_ricerca('anagrafiche.ricerca_soggetti')` al posto di `RICERCA_MIN_CARATTERI`. Il test `test_valore_fuori_forma_non_si_salva` diventa verde da solo (§7.7.1) | `dev/backend-tid` | 9-quinquies-bis |
+| 9-sexies | BE | ✅ §7.8.5, D-6: la view della ricerca usa `soglia_ricerca('anagrafiche.ricerca_soggetti')` al posto di `RICERCA_MIN_CARATTERI`; `test_valore_fuori_forma_non_si_salva` verde da solo (§7.7.1). Fatto il 2026-11-01 (§7.9) | `dev/backend-tid` | 9-quinquies-bis |
+| 9-septies | Tid | commit del giro BE del §7.9 | `dev/backend-tid` | 9-sexies |
 | 11 | BE/FE | ✅ Revisione critica del lavoro non committato, 2026-10-31 (§4.7) | `dev/backend-tid` | — |
-| 12 | BE/FE | Archiviare il brief in `work-done/` | — | 9-sexies |
+| 12 | BE/FE | Archiviare il brief in `work-done/`, con l'ok di Tid | — | 9-septies |
 
 **Decisioni aperte di Tid:** nessuna. D-6 decisa il 2026-11-01 (§7.7.2); D-3, D-4 e D-5 decise il 2026-10-31 (§4.5.1, §4.6.1); D-1, D-2, B1-bis, B8 e l'ordinamento per utility della 113 (§4.5) decisi il 2026-10-31.
 **Committato:** il terzo giro DB (§7.8) è committato su `dev/db-tid` (2026-11-01). Il lato DB, primo e secondo giro (§7.1-§7.6, con guida e pagine manual), è su `dev/db-tid` e mergiato in `dev/backend-tid` (#1988); il lato BE del §7.7 è committato su `dev/backend-tid`; il lato BE/FE (righe 6-8 e 11) è su `Tito-dev` (`82ea9e3a1`, PR #1987). Il rotto temporaneo
@@ -904,3 +904,29 @@ Censimenti fatti:
 2. **§7.7.1**: niente da cambiare. `test_valore_fuori_forma_non_si_salva` diventa verde da solo.
    Il campo arriva anche sul default (`default_value`) e sul cambio di tipo (`tipo_valore`), se
    un form del BE li scrive.
+
+## 7.9 Giro BE — §7.8.5 (2026-11-01, `dev/backend-tid`)
+
+1. **D-6, fatto.** `SearchUniversaleView.get` (`apps/core/api/search_view.py`) chiama
+   `require_min_search_length` con `min_length=soglia_ricerca(RICERCA_SOGGETTI.lista_codice)`:
+   il codice della lista è quello della dichiarazione `RicercaFull` del repository, non una
+   stringa ricopiata. Il 400 sotto soglia resta (`E_SEARCH_VALIDATION`, campo `q`). Il commento
+   di `RICERCA_MIN_CARATTERI` (`apps/core/db/_helpers.py`) non elenca più la ricerca universale
+   tra i suoi lettori: restano i lookup e i tool dell'assistente.
+   Il frontend leggeva già la soglia dalla configurazione (`SearchDrawer.vue`,
+   `store.ricercaMinCaratteri`): nessun cambiamento lato FE.
+2. **§7.7.1, niente da cambiare.** Nessun form del BE scrive `default_value` né `tipo_valore` di
+   `config.parameters` (il BE li legge soltanto): l'unico campo da accendere è `value`
+   dell'override, già cablato in `ImpostazioniOverrideDrawer.vue`.
+
+Test:
+
+* `apps/core/tests/api/test_search_view.py` — la soglia si fissa nel `setUp` (patch di
+  `soglia_ricerca`, è una query); `test_search_q_troppo_corto` prova che la soglia è quella
+  della 113 (chiamata col codice della lista) e che la view la segue: a 5 «ross» è un 400 e il
+  repository non viene chiamato, a 1 «r» passa. 22/22.
+* e2e (`ZEROERP_TEST_DB_E2E=1`, dbdev): `test_parameter_overrides_db` (con
+  `test_valore_fuori_forma_non_si_salva`), `test_search_ordinamento_db`,
+  `test_search_detail_non_trovato_db`, `test_ricerca_full_db`: 30/30. Suite `apps.vendite`,
+  `apps.core`, `apps.ui`, `apps.ai_assistant` in e2e: 4937 test verdi, 1 skip.
+

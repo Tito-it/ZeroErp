@@ -1196,6 +1196,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_RESO_STATO_SOLO_DA_VERBO": "Il reso fa rientrare merce: il cambio di stato si fa solo dall'operazione del reso, che registra i movimenti di magazzino.",
     "E_RESO_STATO_TRANSIZIONE": "Operazione non ammessa nello stato corrente del reso.",
     "E_RESO_VALIDAZIONE": "Parametri reso non validi.",
+    "E_RIGA_CANONE_SENZA_PERIODICITA": "Manca la periodicita': una riga a canone deve dire ogni quanto si addebita.",
     "E_RIGA_COMMESSA_GIA_ANNULLATA": "La riga era gia` stata annullata.",
     "E_RIGA_COMMESSA_GIA_EMESSA": "Riga gia` entrata nella catena di fatturazione: la correzione passa dalla nota di credito.",
     "E_RIGA_COMMESSA_MOTIVO_OBBLIGATORIO": "Motivo obbligatorio per annullare la riga.",
