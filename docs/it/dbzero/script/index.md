@@ -372,6 +372,7 @@ search:
 - [trgfn_righe_guard_esclusione_immutabile](funzioni/trgfn_righe_guard_esclusione_immutabile.md) — (funzione nata il 2026-10-04, `20261004-46`; trigger `20261004-48` e `-49`)
 - [trgfn_righe_guard_esclusione_senza_dati](funzioni/trgfn_righe_guard_esclusione_senza_dati.md) — (funzione nata il 2026-10-04, `20261004-47`; trigger `20261004-48` e `-49`)
 - [trgfn_righe_guard_pending](funzioni/trgfn_righe_guard_pending.md) — (rev 2026-06-01 — estrazione)
+- [trgfn_righe_guard_periodicita_canone](funzioni/trgfn_righe_guard_periodicita_canone.md) — (funzione nata il 2026-11-01, `20261101-05`; trigger `20261101-06`; CHECK `20261101-04` — brief `brief-db-contratto-righe-periodiche-in-commessa` §6.11, passo 4)
 - [trgfn_righe_guard_quantita_per_fonte](funzioni/trgfn_righe_guard_quantita_per_fonte.md)
 - [trgfn_righe_natura_vendita](funzioni/trgfn_righe_natura_vendita.md) — (latest review 2026-10-13, brief-db-articoli-ammessi-per-documento A-4; `20261013-14`)
 - [trgfn_storico_generic](funzioni/trgfn_storico_generic.md) — (latest review 02-02-26) * **Unificazion- logica**: evitare duplicazioni del codice di storicizzazione in diverse funzioni trigger. * **Flessibilità**: applicabile a qualsiasi tabella storica semplicemente specificando il parametro `TG_ARGV[0]` con il nome della colonna di riferimento. * **Robustezza**: gestione completa degli errori con logging, senza interrompere il flusso DML principale.

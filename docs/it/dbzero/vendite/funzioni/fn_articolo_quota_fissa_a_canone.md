@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/fn_articolo_quota_fissa_a_canone.md" %}
 # ⚙️ Funzione `fn_articolo_quota_fissa_a_canone`
 
 ```sql

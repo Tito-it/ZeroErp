@@ -53,7 +53,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.trgfn_righe_default_periodicita_da_listino()
-IS 'Trigger generico (vendite.contratti_righe, vendite.offerte_commerciali_eccezioni), BEFORE INSERT OR UPDATE OF tipo_erogazione WHEN la riga è a canone e senza periodicità: su una riga ADESIONE o OVERRIDE la periodicità viene dalla riga di listino dell''articolo nella versione operativa del documento (vendite.fn_documento_listino_operativo), se la dice. Riempie solo il vuoto. L''AGGIUNTA (fuori listino) non eredita: la periodicità la scrive l''operatore (F-9). L''obbligo non è qui: entra col passaggio BE/FE (decisione (b) di Tid). TG_ARGV[0] = documento (CONTRATTO | OFFERTA_COMMERCIALE), TG_ARGV[1] = colonna del padre. Nasce il 2026-10-29 (20261029-44), brief-db-contratto-righe-periodiche-in-commessa G-0-bis.';
+IS 'Trigger generico (vendite.contratti_righe, vendite.offerte_commerciali_eccezioni), BEFORE INSERT OR UPDATE OF tipo_erogazione WHEN la riga è a canone e senza periodicità: su una riga ADESIONE o OVERRIDE la periodicità viene dal listino dell''articolo nella versione operativa del documento (vendite.fn_documento_listino_operativo), dalla sede vendite.fn_listino_periodicita_articolo (la riga di listino, o il kit di vendite.listini_kit; rev 20261031-33). Riempie solo il vuoto. L''AGGIUNTA (fuori listino) non eredita: la periodicità la scrive l''operatore (F-9). L''obbligo lo tiene il guard che viene dopo, script.trgfn_righe_guard_periodicita_canone (20261101-05). TG_ARGV[0] = documento (CONTRATTO | OFFERTA_COMMERCIALE), TG_ARGV[1] = colonna del padre. Nasce il 2026-10-29 (20261029-44), brief-db-contratto-righe-periodiche-in-commessa G-0-bis.';
 ```
 
 </div>

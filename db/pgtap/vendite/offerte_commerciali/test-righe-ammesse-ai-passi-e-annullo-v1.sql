@@ -2,6 +2,9 @@
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgtap-runner: owner
 -- pgtap-runner-motivo: la fixture cambia il vocabolario del perimetro (config.nature_vendita_erogazioni), un seed che nessun operatore scrive, per far uscire dal perimetro righe gia' scritte: e' la strada che il modello lascia aperta, e il caso da provare
+-- rev 2026-11-01 (20261101-04/-06, brief-db-contratto-righe-periodiche-in-commessa passo 4): la
+--   riga a canone vuole la periodicita'. La riga dell'offerta la scrive (MENSILE) quando e' a
+--   canone (SERV): non e' il soggetto di questo test. Nessuna attesa cambiata.
 -- pgTAP test per Zero ERP
 --
 -- Test: le righe gia' scritte le intercetta il primo passo che le usa; «Genera
@@ -160,8 +163,9 @@ BEGIN
 
     INSERT INTO vendite.offerte_commerciali_eccezioni (
         offerta_id, articolo_id, tipo_eccezione, prezzo_unitario,
-        qta_operativa, tipo_erogazione, fonte_quantita_attesa)
-    VALUES (v_id, pg_temp.art(p_sigla), 'AGGIUNTA', 10, p_qta, p_erog, p_fonte)
+        qta_operativa, tipo_erogazione, fonte_quantita_attesa, periodicita)
+    VALUES (v_id, pg_temp.art(p_sigla), 'AGGIUNTA', 10, p_qta, p_erog, p_fonte,
+            CASE WHEN p_erog = 'CANONE' THEN 'MENSILE' END)
     RETURNING id INTO v_riga;
 
     INSERT INTO tmp_ra_doc VALUES (p_slot, v_id, v_riga);

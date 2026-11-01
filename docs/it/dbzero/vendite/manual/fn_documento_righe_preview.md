@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_documento_righe_preview`
 
+> **Ultimo aggiornamento**: 1 novembre 2026
+
 > 👀 **Vedi anche**
 >
 > **Gli ingressi per documento:** [vendite.fn_contratto_righe_preview](/dbzero/vendite/funzioni/fn_contratto_righe_preview) ·
@@ -29,8 +31,9 @@ Ogni riga dice da dove viene (`origine`) e che cosa ci si può fare (`azioni`):
 
 | Origine | Che cos'è | Azioni |
 | --- | --- | --- |
-| `DA_LISTINO` | un articolo del listino, senza eccezione | forza il prezzo, escludi |
+| `DA_LISTINO` | un articolo del listino, senza eccezione | forza il prezzo, escludi, aderisci |
 | `OVERRIDE` | un articolo del listino a un prezzo forzato | modifica, ripristina il prezzo del listino |
+| `ADESIONE` | un articolo del listino che il documento prende (quantità, periodicità) | modifica, rimuovi l'adesione |
 | `ESCLUSIONE` | un articolo del listino che il documento non vende | ripristina l'articolo (e basta: un'esclusione non si modifica) |
 | `AGGIUNTA` | un articolo fuori listino | modifica, rimuovi |
 
@@ -51,7 +54,15 @@ solo, il componente di un bundle), lo stesso con cui il guard rifiuterebbe.
 
 Ogni riga ha una chiave (`riga_key`): `L:<articolo>:<unità>` per le righe del
 listino, `A:<id>` per le aggiunte. In coda, `ordine` e `uom_operativa_id` della
-riga eccezione, che il form di modifica rimanda al salvataggio.
+riga eccezione, che il form di modifica rimanda al salvataggio, poi `periodicita` e
+`generazione_canone` (26 colonne):
+
+* sulla riga con un'eccezione, quelle della riga: il form in modifica le rimanda come
+  sono scritte, e non le cancella;
+* sulla riga `DA_LISTINO`, la periodicità del listino
+  ([`fn_listino_periodicita_articolo`](/dbzero/vendite/manual/fn_listino_periodicita_articolo),
+  il kit compreso), che è la proposta di «Aderisci»; nessuna generazione, che allora è
+  quella della testata.
 
 ⚠️ Il blocco «documento fuori bozza» non è qui: è una regola del documento, non
 della riga.

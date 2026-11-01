@@ -84,7 +84,9 @@ di `contratti_righe`:
   sul composito solo la `FISSA`; `CANONE/MANUALE` ritirata il 2026-10-29, al suo posto
   `CANONE/DURATA`.
 - `periodicita` — FK a `config.periodicita`; su ADESIONE e OVERRIDE a canone, se vuota, la
-  propone la riga del listino (come sul contratto).
+  propone il listino (come sul contratto); sull'AGGIUNTA la scrive l'operatore. Su una riga a
+  canone è obbligatoria (dal 2026-11-01): `E_RIGA_CANONE_SENZA_PERIODICITA` sul campo, rete
+  `chk_offerte_eccezioni_canone_periodicita`, la stessa regola del contratto.
 - `generazione_canone` — `INIZIO_PERIODO` o `FINE_PERIODO`, oppure vuota = segue la testata
   dell'offerta (`chk_offerte_eccezioni_coerenza_canone`). `PRORATA` è ritirato, e
   `competenza_canone` pure (2026-10-29): sono gli stessi campi del contratto, che il passaggio

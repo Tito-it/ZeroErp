@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Vista `vendite.vw_dash_fatturazione_contratti`
 
-> **Ultimo aggiornamento**: 31 ottobre 2026
+> **Ultimo aggiornamento**: 1 novembre 2026
 
 > 👀 **Vedi anche**
 >
@@ -40,7 +40,7 @@ al giro di oggi.
 |---------|--------|
 | Grana | 1 riga per contratto con `esito IS DISTINCT FROM 'NEGATIVO'` (D-6 alla fonte) |
 | Chi si giudica | i contratti **ATTIVO** e **CESSATO** (quelli che il push legge: gli stati di emissione e di cessazione, dalle colonne `emissione` e `cessazione` del vocabolario). La **bozza** resta sospesa: `is_transitato`, `unita_transitate`, `motivo_fermo` NULL |
-| `motivo_fermo` | `CANONE_NON_GENERABILE` se la funzione dà uno scartato (fonte senza periodicità, durata senza calendario, prezzo che manca alla data); altrimenti `CANONE_NON_GENERATO` se dà un addebito da mandare (canone, una tantum, storno); altrimenti NULL. Il primo vince: il push da solo non lo chiude |
+| `motivo_fermo` | `CANONE_NON_GENERABILE` se la funzione dà uno scartato (fonte senza periodicità, quota fissa che non si eroga a canone, durata senza calendario, prezzo che manca alla data); altrimenti `CANONE_NON_GENERATO` se dà un addebito da mandare (canone, una tantum, storno); altrimenti NULL. Il primo vince: il push da solo non lo chiude |
 | `is_transitato` | `true` se non c'è niente né da mandare né di scartato; `false` se c'è un motivo |
 | `unita_transitate` | 1 se transitato, 0 se fermo (`unita_totali = 1`) |
 | `competenza_mese` | `NULL` (senza asse mese non ha significato) |

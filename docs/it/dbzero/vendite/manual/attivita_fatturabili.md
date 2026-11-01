@@ -83,6 +83,12 @@ Tipico filtro di eleggibilità per il motore:
   `tipo_doc_fiscale_id`, `valuta_id`, `prezzo_unitario` (snapshot economico),
   `prezzo_bloccato` (freeze prezzo da override/policy).
   In fase di alimentazione il tipo documento segue l’ordine: sorgente → utility (fallback).
+  `natura_doc_id` (fattura, nota di credito, nota di debito) viene dalla commessa;
+  `natura_dal_segno` (rev 2026-10-31) marca l'attività che è diventata `NOTA_CREDITO` perché il
+  suo documento somma negativo
+  ([vendite.fn_lotto_natura_dal_segno](/dbzero/vendite/manual/fn_lotto_natura_dal_segno)): quando
+  torna libera ([vendite.fn_libera_attivita_fatturabili](/dbzero/vendite/manual/fn_libera_attivita_fatturabili))
+  o viene riemessa dalla commessa riprende la natura `FATTURA` e la marca cade.
 * **Misure & dettaglio sorgente**:
   `sorgente_riga` (riferimento tecnico riga sorgente), `uom_id` (u.m. base), `qta_operativa` (quantita operativa), `uom_operativa_id` (u.m. operativa), `factor_to_base` (fattore conversione verso base).
 

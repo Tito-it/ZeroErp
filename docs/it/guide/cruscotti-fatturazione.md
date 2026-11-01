@@ -1,6 +1,6 @@
 # Guida — Cruscotti fatturazione (le tre lenti)
 
-> **Ultimo aggiornamento**: 31 ottobre 2026
+> **Ultimo aggiornamento**: 1 novembre 2026
 >
 > **Destinatari**: analisti funzionali, operatori vendite/amministrazione,
 > sviluppatori backend/frontend.
@@ -259,7 +259,7 @@ qui compare solo quando c'è qualcosa da fare **adesso**.
 | Cosa leggi a schermo | Colore | Cosa significa davvero |
 | --- | --- | --- |
 | *Contratto con addebiti maturati non ancora in commessa* | 🟠 | Un canone (o la una tantum, o lo storno di una cessazione) è maturato e non è ancora in commessa. L'azione è «Esegui il push dei canoni»: dopo il push il contratto esce dall'elenco, e ci torna quando matura il periodo dopo |
-| *Contratto con un canone che non può partire* | 🔴 | Una riga a canone (o una quota fissa del listino) non ha la periodicità, oppure il listino non ha un prezzo alla data: il push la salta e la salterà sempre. L'azione è «Rivedi il contratto». Le righe di un contratto attivo non si modificano: il rimedio è un contratto nuovo, o il prezzo nel listino quando manca quello |
+| *Contratto con un canone che non può partire* | 🔴 | Una quota fissa del listino (riga o kit) non ha la periodicità o non si eroga più a canone, oppure il listino non ha un prezzo alla data: il push la salta e la salterà sempre. L'azione è «Rivedi il contratto». Le righe di un contratto attivo non si modificano: il rimedio è un contratto nuovo, o il prezzo nel listino quando manca quello. Una quota fissa senza periodicità o non più a canone nasce da un cambio del catalogo dopo l'attivazione del listino: il listino stesso non la lascia passare |
 
 Se un contratto ha tutte e due le cose, vince il rosso: il push da solo non lo sblocca.
 L'anzianità parte dall'addebito più vecchio che aspetta (per il canone che non può partire,

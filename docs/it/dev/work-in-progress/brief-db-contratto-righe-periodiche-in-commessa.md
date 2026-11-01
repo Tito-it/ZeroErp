@@ -1,17 +1,16 @@
 # Brief DB — Le righe di contratto che non sono «una volta»: canone, orario e consumo in commessa
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-31 (passo 3 BE/FE chiuso, con la revisione del §7.11.4)
+## ⏭️ Chi riparte — aggiornato al 2026-11-01 (passo 4 e 3-ter applicati, pgTAP verdi)
 
-**Riparte il team DB**: L18 (la documentazione), il passo 4 (l'obbligo della periodicità sulla riga a
-canone e lo script di F-10, ora che il form la chiede) e una richiesta nuova del BE/FE (§7.11: la colonna
-«Periodicità» nella lista delle righe di listino). Il **passo 3 BE/FE** è chiuso: fatto, rivisto e
-provato (§7.11, revisione al §7.11.4), da committare; ⏳ il collaudo a video Tid lo fa alla fine.
+**Riparte il team BE/FE** con la richiesta del §7.13.4 (tre punti). Lato DB il giro è chiuso: Tid ha
+lanciato su dbdev lo script di F-10, applicato `20261101-04` … `-06` e i CSV, e i pgTAP sono verdi
+(2026-11-01, §7.13.5). L18, la documentazione del giro del §7, è scritta (§7.12): solo testo.
 
 **Cosa resta lato DB** (§7.8):
 * ~~L17~~ applicato (§7.9);
 * ~~la periodicità della quota fissa ferma fuori dalla bozza~~ applicata (§7.10);
-* la documentazione del giro del §7 (guida dei listini, manual delle funzioni e della tabella nuova);
-* il passo 4: l'obbligo della periodicità sulla riga a canone e lo script di F-10, dopo il passo 3 del BE/FE;
+* ~~la documentazione del giro del §7~~ scritta (§7.12, L18);
+* ~~il passo 4~~ e ~~la colonna «Periodicità» della lista 37~~ applicati, pgTAP verdi (§7.13);
 
 I lotti L1 … L9 lato DB restano finiti (§6.3).
 
@@ -63,14 +62,17 @@ I lotti L1 … L9 lato DB restano finiti (§6.3).
 | 2-ter-bis | ✅ Tid | apply di `20261031-44` … `-48` (2026-10-31) | §7.9 | 2-ter |
 | 2-ter-ter | ✅ team DB | la quota fissa non perde la periodicità fuori dalla bozza, decisione di Tid; `-49` … `-52` scritti e provati (2026-10-31) | §7.10 | 2-ter-bis |
 | 2-ter-quater | ✅ Tid | apply di `20261031-49` … `-52`, pgTAP verdi, nessuna regressione (2026-10-31) | §7.10 | 2-ter-ter |
-| 2-quater | team DB | documentazione del giro del §7 (L18) | §7.8 | 2-bis |
+| 2-quater | ✅ team DB | documentazione del giro del §7 (L18), scritta (2026-11-01) | §7.12 | 2-bis |
 | 3 | ✅ BE/FE | i nove punti del §7.7 e del §7.9 e il codice del §7.10, provati (2026-10-31) | §7.11 | 2-bis |
 | 3-bis-bis | ✅ BE/FE | revisione critica del passo 3: BB `_campi_canone` (regola del 2, ok Tid) e note minori, provati (2026-10-31) | §7.11.4 | 3 |
 | 3-bis | Tid | commit del passo 3; collaudo a video alla fine | §7.11 | 3-bis-bis |
-| 3-ter | team DB | la colonna «Periodicità» nella lista 37 (`vendite.listini_righe`) | §7.11 | 3 |
-| 4 | DB | l'obbligo della periodicità sulla riga a canone (guard + CHECK) e lo script di F-10 | §6.11 | 3 |
+| 3-ter | ✅ team DB | la colonna «Periodicità» nella lista 37 (`vendite.listini_righe`), scritta (2026-11-01) | §7.13.1 | 3 |
+| 4 | ✅ team DB | l'obbligo della periodicità sulla riga a canone (guard + CHECK), scritto e provato (2026-11-01) | §7.13.2 | 3 |
+| 4-bis | ✅ Tid | su dbdev lo script di F-10, poi l'apply di `20261101-04` … `-06` e dei CSV; pgTAP verdi (2026-11-01) | §7.13.5 | 4 |
+| 4-ter | BE/FE | la richiesta del §7.13.4 (codice nuovo, test DB, collaudo del form) | §7.13.4 | 4-bis |
+| 5 | Tid | archiviazione del brief | — | 4-ter |
 
-Decisioni aperte di Tid: nessuna. Da committare: il passo 3 BE/FE con la sua revisione (§7.11, §7.11.4), su `dev/backend-tid`. La forma di L17 e la periodicità ferma della quota fissa decise il 2026-10-31. D-1-ter (A) e D-2-bis (B) prese il 2026-10-31. F-1 … F-10 prese il 2026-10-29, F-11 … F-13 il 2026-10-30, F-14 e F-15 il 2026-10-31, D-1 … D-4 il 2026-10-31. G-0 … G-11 prese il 2026-10-28. Lavoro committato il 2026-10-31 su `dev/db-tid` (un commit: L1 … L9): i changeSet `20261029-10` …
+Decisioni aperte di Tid: nessuna. Da committare su `dev/db-tid`: L18 (§7.12), il passo 3-ter e il passo 4 (§7.13). Il passo 3 BE/FE è entrato in `be8579d0c` (PR #1989). La forma di L17 e la periodicità ferma della quota fissa decise il 2026-10-31. D-1-ter (A) e D-2-bis (B) prese il 2026-10-31. F-1 … F-10 prese il 2026-10-29, F-11 … F-13 il 2026-10-30, F-14 e F-15 il 2026-10-31, D-1 … D-4 il 2026-10-31. G-0 … G-11 prese il 2026-10-28. Lavoro committato il 2026-10-31 su `dev/db-tid` (un commit: L1 … L9): i changeSet `20261029-10` …
 `-45`, `20261030-01` e `20261031-01` … `-04` (§6.5 … §6.13, applicati su dbdev), i CSV e i seed
 toccati, i pgTAP nuovi e aggiornati, la documentazione del L9 (§6.14), questo documento. Il giro che lo ha aperto, `20261013-24`, è nella risposta al team BE del 2026-10-13.
 
@@ -1384,8 +1386,8 @@ misto negativo, misto positivo, accredito di reso dentro una commessa con addebi
 | # | Che cosa | Aspetta | Dove |
 | --- | --- | --- | --- |
 | 1 | ~~**L17**~~ applicato (§7.9) | — | §7.9 |
-| 2 | **L18**, la documentazione del giro: `guide/gestione-listini.md` (il kit sul listino e la sua periodicità, il motivo nuovo dell'attivazione, il clone che porta periodicità e kit), `guide/gestione-contratti.md` §4-bis (la quota fissa del kit, il prezzo del kit aderito, lo scarto `QUOTA_FISSA_SENZA_CANONE`), i manual di `listini_kit`, `fn_listino_periodicita_articolo`, `fn_contratto_kit_componenti` e quelli stantii di `fn_contratti_addebiti_maturati` e della preview | — | — |
-| 3 | **Passo 4**: l'obbligo della periodicità sulla riga a canone (guard col campo + CHECK) e lo script di F-10 sui dati di prova | il passo 3 del BE/FE (il form la chiede) | §6.11 |
+| 2 | ~~**L18**~~ scritta (§7.12). La documentazione del giro: `guide/gestione-listini.md` (il kit sul listino e la sua periodicità, il motivo nuovo dell'attivazione, il clone che porta periodicità e kit), `guide/gestione-contratti.md` §4-bis (la quota fissa del kit, il prezzo del kit aderito, lo scarto `QUOTA_FISSA_SENZA_CANONE`), i manual di `listini_kit`, `fn_listino_periodicita_articolo`, `fn_contratto_kit_componenti` e quelli stantii di `fn_contratti_addebiti_maturati` e della preview | — | — |
+| 3 | ~~**Passo 4**~~ scritto e provato (§7.13): l'obbligo della periodicità sulla riga a canone (guard col campo + CHECK) e lo script di F-10 sui dati di prova | il passo 3 del BE/FE (il form la chiede) | §6.11 |
 | 4 | ~~la periodicità di una quota fissa ferma fuori dalla bozza~~ applicata (§7.10) | — | §7.10 |
 
 Fuori da questo brief, per decisione: ORARIO e CONSUMO aspettano le loro sorgenti (G-4); il default per
@@ -1511,3 +1513,132 @@ Prove (2026-10-31, dbdev, `ZEROERP_TEST_DB_E2E=1`): suite `apps.vendite` 2644 te
 `test_campi_canone` (6), `test_offerte_service` 68–69 e `test_kit_dal_listino_una_lettura_per_pezzo`;
 ruff e mypy puliti. Frontend: vitest `src/vendite` 195/195, lint pulito. ⚠️ Dopo l'aggiornamento serve
 il `kill -HUP` al master di gunicorn: il comportamento Python dell'offerta è cambiato.
+
+### 7.12 L18 — la documentazione del giro del §7, scritta (team DB, 2026-11-01)
+
+Solo testo: nessun changeSet. Copre il giro del §7 per intero, L17 e §7.10 compresi (il §7.8 era stato
+scritto prima). Fatti presi dalla doc auto-generata alla stessa data.
+
+| File | Che cosa |
+| --- | --- |
+| `guide/gestione-listini.md` | §2.1: il kit sul listino (`listini_kit`) e la sua periodicità, la sede `fn_listino_periodicita_articolo`; la quota fissa a canone che deve avere la periodicità (attivazione, ferma fuori bozza, la strada del catalogo); il terzo motivo dell'attivazione; clone ed eliminazione che portano periodicità e kit. §5.2: il kit non negoziato prende i componenti dal listino. §9 tre garanzie, §10 quattro codici |
+| `guide/gestione-contratti.md` | §4-bis.1 la quota fissa del kit; §4-bis.3 il prezzo del kit non negoziato (somma dei componenti, oggi senza variazione globale: la regola del resolver); §4-bis.4 lo storno che fa nota di credito e cita le fatture; §4-bis.5 lo scarto `QUOTA_FISSA_SENZA_CANONE` |
+| `guide/fatturazione.md` | sezione nuova «La natura la dà il segno del documento» (L17, D-1, D-1-bis, D-1-ter) |
+| `guide/cruscotti-fatturazione.md` | §4.2: il rosso dei contratti con i motivi di oggi |
+| `vendite/manual/listini_kit.md`, `fn_listino_periodicita_articolo.md`, `fn_contratto_kit_componenti.md`, `fn_articolo_quota_fissa_a_canone.md`, `fn_lotto_natura_dal_segno.md` | nuovi |
+| `vendite/manual/fn_contratti_addebiti_maturati.md` | stantio dal L14: il kit di quota fissa, il prezzo del kit, lo scarto nuovo, la periodicità dalla sede |
+| `vendite/manual/fn_documento_righe_preview.md` | stantio dal L4a e dal L16: l'origine ADESIONE e i suoi verbi, «Aderisci», le due colonne in coda (26) |
+| `vendite/manual/fn_clona_versione_listino.md`, `fn_elimina_versione_listino.md`, `script/manual/fn_check_versione_listino_eliminabile.md`, `script/manual/fn_check_versione_listino_attivabile.md`, `vendite/manual/listini_righe.md` | il kit, la periodicità del clone, il motivo 3, il guard della quota fissa ferma |
+| `vendite/manual/attivita_fatturabili.md`, `fn_libera_attivita_fatturabili.md`, `fn_popola_fatture_rettifiche.md` | la marca `natura_dal_segno` e la citazione delle fatture (L17) |
+| `vendite/manual/vw_dash_fatturazione_contratti.md` | lo scarto nuovo fra i motivi del rosso |
+
+Link verificati: ogni bersaglio esiste sotto `docs/`; le ancore nuove verso le guide (`#21-listino`,
+`#4-bis3-il-canone`, `#4-bis4-…`) lette dal sito già costruito, senza lanciare la build.
+
+### 7.13 Il passo 3-ter e il passo 4 — scritti e provati (team DB, 2026-11-01; via di Tid lo stesso giorno)
+
+#### 7.13.1 La colonna «Periodicità» nella lista 37 (la richiesta del §7.11.3)
+
+* `lista_colonna.csv`, riga **1165**: lista 37, `periodicita`, etichetta `vendite.canoni.field_periodicita`,
+  dopo il prezzo (ordine 45), `informazione`/`string`, esportabile. **Non ordinabile e non filtrabile**:
+  `RIGHE_ORDER_COLUMNS` non la conosce, e `test_whitelist_copre_le_colonne_ordinabili` farebbe rosso
+  sull'`ordinabile = t` senza la voce BE. Se va ordinata, la voce BE e il flag si accendono insieme.
+* `lista_preset_colonna.csv`: la colonna visibile nel preset di default della lista (37, 1165, 45).
+* Nessun changeSet: i due CSV li carica il loro mirror (`runOnChange`).
+
+#### 7.13.2 Il passo 4 — la periodicità obbligatoria sulla riga a canone
+
+Decisioni di Tid: G-0-bis (2026-10-28), F-9 e la (b) del Lotto 4b (2026-10-29: l'obbligo entra col form,
+che dal passo 3 la chiede).
+
+| changeSet | Che cosa |
+| --- | --- |
+| `00_schema/vendite/20261101-04-alter-righe-eccezione-chk-canone-periodicita` | `chk_contrighe_canone_periodicita` e `chk_offerte_eccezioni_canone_periodicita`: `tipo_erogazione IS DISTINCT FROM 'CANONE' OR periodicita IS NOT NULL` (nessuna metà vale NULL). Due vincoli nuovi, non una riscrittura di `chk_*_coerenza_canone`: un vincolo, un campo |
+| `20_code/script/20261101-05-create-trgfn-righe-guard-periodicita-canone` | `script.trgfn_righe_guard_periodicita_canone`: la riga CANONE senza periodicità → `E_RIGA_CANONE_SENZA_PERIODICITA` (DATO_ERRATO, campo `periodicita`). Gemello di `trgfn_righe_guard_erogazione_obbligatoria`; una funzione per le due tabelle. Aggiorna anche il COMMENT del default (diceva «l'obbligo non è qui») |
+| `20_code/vendite/20261101-06-create-trigger-righe-guard-periodicita-canone` | i due montaggi, BEFORE INSERT OR UPDATE OF `tipo_erogazione`, `periodicita`, WHEN canone e senza periodicità. **Il nome governa l'ordine**: dopo i default (erogazione, periodicità dal listino) e dopo i guard dell'erogazione («guard_p» dopo «guard_e»: a una riga fuori perimetro parla prima il perimetro), prima della quantità per fonte |
+| `codici_errore.csv`, `messaggi_errore.csv` | il codice nuovo, messaggio 1419 (frase chiusa) |
+
+⚠️ **Trovato nel giro.** Il primo nome, `guard_canone_periodicita`, ordinava **prima** del perimetro: a una
+riga che non può essere a canone il guard diceva «manca la periodicità». Lo ha visto il prima/dopo
+(il test 8 di `test-righe-erogazione-da-articolo-v1`, il 9 di `test-righe-esclusione-solo-non-si-vende-v1`,
+l'8 di `test-righe-quantita-per-fonte-v1`). Rinominato prima di consegnare, e il test 5 del pgTAP nuovo
+ne presidia l'ordine.
+
+Chi copia le righe porta già la periodicità: `fn_push_offerta_a_contratto` e `fn_crea_revisione_offerta`
+(corpo vivo). Nessun builder `dbops` e nessun seed scrive righe di contratto o di offerta: su un DB da zero
+il CHECK nasce su tabelle vuote.
+
+**Prova (2026-11-01, dbdev, owner, transazione annullata; SQL estratto dai changeSet `-04` … `-06`, seed
+simulato con le due righe nuove dei CSV, script di F-10 in testa).**
+* L'SQL si applica nell'ordine e torna indietro; dopo F-10 nessuna riga a canone senza periodicità e
+  nessun trigger spento.
+* **Nuovo** `vendite/test-righe-canone-periodicita-obbligatoria-v1`: 14 test, tutto costruito (CHECK, montaggi,
+  ordine, rifiuto col codice e col campo su contratto e offerta, UPDATE che la toglie, una tantum che passa).
+  14/14; sul corpo vivo rosso, atteso.
+* `vendite/test-righe-periodicita-da-listino-v1`: il 2 e il 3 dicevano «vuota, e si salva»; ora «si rifiuta».
+  Prima 4/6, dopo 6/6.
+* **Prima/dopo su 75 pgTAP**: i 44 che scrivono le due tabelle, i 15 che le nominano in altra forma, i
+  presidi trasversali (catalogo dei messaggi, identità dei codici, motivo nominato, valore atteso, rubinetto
+  del primo motivo, riferimenti morti, `user_update`, search_path, viste invoker, struttura delle tabelle).
+  Sette fixture creavano righe a canone senza periodicità, e nessuna ne faceva il soggetto: la scrivono
+  (MENSILE), con una riga di revisione in testa. Dopo: uguali, test per test.
+  * `test-vw-dash-contratti-giudizio-v1`: **K2 sì** ne faceva il soggetto (un'ADESIONE che dal listino
+    ereditava una periodicità vuota, per il rosso). Il modello non lo ammette più: il rosso di K2 viene ora
+    dalla quota P del listino senza periodicità, l'unica strada che resta (il catalogo che cambia dopo
+    l'attivazione). Attese invariate.
+  * `test-righe-eccezioni-articolo-ammesso-v1`: la fixture «pesca» la tipologia e oggi la pesca dà una quota
+    fissa; la riga che eredita un canone scrive la periodicità.
+* Guardrail statici puliti sui file nuovi (licenza, run_on_change, precondition_seed, ddl su trigger
+  d'automazione, grant ai batch, letterali, timestamp). Il preambolo pgTAP segnala due violazioni in
+  `config/test-grammatica-presidio-tipo-documento-v1.sql`: non di questo giro.
+
+#### 7.13.3 Per Tid: lo script di F-10, prima dell'apply
+
+Su dbdev ci sono righe di prova a canone senza periodicità (2026-11-01, fatto datato: 10 di contratto, 12 di
+offerta): il CHECK del `-04` le rifiuta, e l'apply si ferma. Lo script (F-10, §6.10; Tid, 2026-10-29), da
+owner, **prima** dell'apply:
+
+```sql
+BEGIN;
+ALTER TABLE vendite.contratti_righe DISABLE TRIGGER USER;
+ALTER TABLE vendite.offerte_commerciali_eccezioni DISABLE TRIGGER USER;
+UPDATE vendite.contratti_righe
+   SET periodicita = 'MENSILE'
+ WHERE tipo_erogazione = 'CANONE' AND periodicita IS NULL;
+UPDATE vendite.offerte_commerciali_eccezioni
+   SET periodicita = 'MENSILE'
+ WHERE tipo_erogazione = 'CANONE' AND periodicita IS NULL;
+ALTER TABLE vendite.contratti_righe ENABLE TRIGGER USER;
+ALTER TABLE vendite.offerte_commerciali_eccezioni ENABLE TRIGGER USER;
+COMMIT;
+```
+
+In CI non serve: il DB nasce vuoto.
+
+#### 7.13.4 Richiesta al team BE/FE, elenco chiuso, dopo l'apply (apply fatto: si parte)
+
+1. **Catalogo errori**: rigenerare `error_policies_generated.py` e il ripiego per
+   `E_RIGA_CANONE_SENZA_PERIODICITA` (DATO_ERRATO, campo `periodicita`, nessun segnaposto). Il form della
+   riga a canone accende il campo; nessuna regola ricopiata nel form.
+2. **Test DB** (`ZEROERP_TEST_DB_E2E=1`): i test che scrivono righe a canone senza periodicità diventano rossi
+   per costruzione. Da guardare per primo `vendite/tests/db/test_righe_erogazione_obbligatoria_db.py` (righe
+   che ereditano CANONE/FISSA); poi la suite `apps.vendite`, e gli smoke in `backend/scripts/tests/` se
+   creano righe di contratto o di offerta.
+3. **Lista 37**: la colonna «Periodicità» arriva dal seed (§7.13.1). Se la si vuole ordinabile, la voce in
+   `RIGHE_ORDER_COLUMNS` e `ordinabile = t` nel CSV vanno insieme (lo chiede `test_liste_configurabili_seed`).
+   Collaudo a video: la colonna mostra il codice del vocabolario; se serve la descrizione, va detto.
+
+Con questo il brief arriva all'archiviazione.
+
+#### 7.13.5 Apply e pgTAP (Tid, 2026-11-01)
+
+* Primo apply fermo sul `-04` (`chk_contrighe_canone_periodicita` violato): F-10 non era ancora passato.
+  Liquibase non ha registrato nulla del giro, nessun trigger è rimasto spento.
+* Script di F-10 da owner (§7.13.3), poi apply: `20261101-04`, `-05`, `-06` `EXECUTED` nel
+  `databasechangelog`, con i CSV (`E_RIGA_CANONE_SENZA_PERIODICITA` in `config.codici_errore`, colonna
+  1165 nella lista 37).
+* Dopo l'apply, fatto datato: 0 righe a canone senza periodicità su `vendite.contratti_righe` e su
+  `vendite.offerte_commerciali_eccezioni`.
+* pgTAP verdi, compreso il nuovo `test-righe-canone-periodicita-obbligatoria-v1`.
+
+Da committare su `dev/db-tid`: L18 (§7.12), il passo 3-ter e il passo 4 (§7.13), questo documento.

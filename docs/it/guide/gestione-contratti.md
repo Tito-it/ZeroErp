@@ -1,6 +1,6 @@
 # Guida — Gestione Contratti vendita
 
-> **Ultimo aggiornamento**: 31 ottobre 2026
+> **Ultimo aggiornamento**: 1 novembre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend/frontend, DBA.
 >
@@ -23,6 +23,8 @@
 > * [vendite.fn_contratti_addebiti_maturati](/dbzero/vendite/manual/fn_contratti_addebiti_maturati) — che cosa il contratto addebita a ogni giro (una tantum, canoni, storni), e che cosa non può partire
 > * [vendite.fn_list_contratti_da_pushare](/dbzero/vendite/manual/fn_list_contratti_da_pushare) — il lister del push dei contratti
 > * [vendite.fn_canone_periodi](/dbzero/vendite/funzioni/fn_canone_periodi) — la regola dei periodi del canone
+> * [vendite.fn_contratto_kit_componenti](/dbzero/vendite/manual/fn_contratto_kit_componenti) — i componenti del kit che il contratto non negozia, dal listino
+> * [vendite.fn_listino_periodicita_articolo](/dbzero/vendite/manual/fn_listino_periodicita_articolo) — la periodicità di un articolo sul listino, kit compresi
 >
 > **Vedi anche** — guide correlate:
 >
@@ -346,9 +348,11 @@ Due regole da sapere:
 * **Le quote fisse del listino si addebitano da sole.** Una voce del listino di
   tipologia «quota fissa» (canone o quota periodica indipendente dal consumo) la paga
   ogni contratto di quel listino, senza bisogno di una riga: una volta per periodo, con
-  la periodicità scritta sulla riga del listino. Il contratto la cambia con una riga
-  sua: un OVERRIDE ne cambia il prezzo (e qui l'OVERRIDE si addebita, al posto della
-  quota), un'ESCLUSIONE la toglie.
+  la periodicità scritta sul listino. Vale anche per un **kit** di quota fissa: sul
+  listino il kit non ha una riga, ma ha i suoi componenti e la sua periodicità
+  ([Gestione listini §2.1](/guide/gestione-listini#21-listino)). Il contratto la cambia
+  con una riga sua: un OVERRIDE ne cambia il prezzo (e qui l'OVERRIDE si addebita, al
+  posto della quota), un'ESCLUSIONE la toglie.
 
 Le altre voci del listino (servizi, prodotti) sono solo prezzi: il cliente le paga se
 le prende, cioè con un'ADESIONE.
@@ -364,7 +368,7 @@ Una riga **a canone** si addebita a periodi. Lo decidono tre dati:
 
 | Dato | Dove sta | Che cosa dice |
 | --- | --- | --- |
-| **Periodicità** | sulla riga (sulla quota fissa: sulla riga del listino) | mensile, bimestrale, trimestrale, quadrimestrale, semestrale, annuale. Sull'ADESIONE la propone il listino |
+| **Periodicità** | sulla riga (sulla quota fissa: sul listino, riga o kit) | mensile, bimestrale, trimestrale, quadrimestrale, semestrale, annuale. Sull'ADESIONE e sull'OVERRIDE la propone il listino, sull'AGGIUNTA la sceglie l'operatore. Una riga a canone senza periodicità non si salva |
 | **Mese di partenza** | sulla testata | da quale mese si contano i periodi. Gennaio = il calendario normale (trimestri gen-mar, apr-giu…); febbraio = feb-apr, mag-lug… |
 | **Anticipato o normale** | sulla testata; una riga può forzarlo | *anticipato*: il periodo si addebita appena **comincia**; *normale*: appena **finisce** |
 
@@ -388,6 +392,13 @@ La quantità del periodo:
 Il prezzo è quello della riga (OVERRIDE, AGGIUNTA), oppure quello del listino del
 contratto **all'inizio del periodo**, con la variazione globale (ADESIONE, quota fissa).
 
+Un **kit** che il contratto non negozia (la quota fissa di un kit, l'ADESIONE su un kit,
+una tantum o a canone) non ha componenti sulla riga: li prende dal listino del contratto,
+alla data del pezzo, ciascuno al prezzo che il listino gli dà dentro il kit. Il prezzo del
+kit è la loro somma (prezzo × coefficiente della distinta). Oggi, sui componenti di un kit,
+la variazione globale non si applica: è la regola del resolver, la stessa dell'anteprima
+delle righe. In commessa il kit arriva coi suoi componenti, come quello negoziato (§5).
+
 > **Esempio.** Contratto dal 15 febbraio, trimestrale, anticipato, mese di partenza
 > gennaio, quota fissa da 100 € a trimestre. Primo giro, a ottobre:
 >
@@ -404,7 +415,10 @@ come **periodo** le date del pezzo addebitato.
 Con il canone anticipato, quando il contratto cessa a metà periodo il periodo è già
 stato addebitato per intero. Il push allora **storna la parte non goduta**: una riga
 negativa, allo stesso prezzo, per quanto si sarebbe addebitato in meno con la fine
-nota. Le righe negative vanno nella fattura successiva.
+nota. Le righe negative vanno nella fattura successiva: se lì si compensano con altri
+addebiti, la fattura resta una fattura con una riga negativa; se il documento somma
+negativo, nasce **nota di credito**, e cita le fatture dei periodi che storna (vedi
+[Fatturazione](/guide/fatturazione#la-natura-la-da-il-segno-del-documento)).
 
 La data di fine si può cambiare finché il contratto è attivo (§6.1): anticiparla,
 spostarla più avanti, toglierla. Lo storno segue: è sempre la **differenza** fra
@@ -417,7 +431,10 @@ fine di oggi.
 
 Un canone **non parte** se:
 
-* la riga (o la quota fissa del listino) non ha la periodicità;
+* la quota fissa del listino non ha la periodicità (la riga del contratto ce l'ha sempre:
+  senza, non si salva);
+* la quota fissa del listino non si eroga più a canone (il catalogo è cambiato dopo
+  l'attivazione del listino);
 * è a durata su un'unità di misura che non si conta dal calendario;
 * il listino non ha un prezzo alla data del periodo.
 
@@ -425,7 +442,10 @@ Il contratto compare allora nel **Backlog** come anomalia, «Rivedi il contratto
 che ha solo addebiti maturati da mandare compare come «Esegui il push dei canoni» (vedi
 [Cruscotti fatturazione §4](/guide/cruscotti-fatturazione)). Le righe sono chiuse fuori
 dalla bozza (§6.2): un canone che non può partire su un contratto attivo si risolve fuori
-dalla riga, con un contratto nuovo o con il prezzo nel listino.
+dalla riga, con un contratto nuovo o con il prezzo nel listino. Una quota fissa del listino
+senza periodicità, invece, nasce solo da un cambio del catalogo: il listino la pretende
+all'attivazione e non la lascia togliere dopo
+([Gestione listini §2.1](/guide/gestione-listini#21-listino)).
 
 Le righe **a ore** e **a consumo** non arrivano ancora dal contratto: aspettano le loro
 fonti (rendicontazione ore, letture). Il **pacchetto di ore fisse** al periodo è un
