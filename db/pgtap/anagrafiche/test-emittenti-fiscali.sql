@@ -211,7 +211,7 @@ indirizzi AS (
     -- rev 2026-10-18: la madre prende l'indirizzo in jsonb (20261018-96)
     SELECT anagrafiche.fn_crea_indirizzo_soggetto(
         s.soggetto_id,
-        jsonb_build_object('tipo_indirizzo_codice',  ti.codice_interno,
+        jsonb_build_object('tipo_indirizzo_codice_interno',  ti.codice_interno,
                            'indirizzo_dettaglio_id', d.indirizzo_dettaglio_id)
     )
     FROM sogg s
@@ -261,7 +261,7 @@ indirizzi AS (
     -- rev 2026-10-18: la madre prende l'indirizzo in jsonb (20261018-96)
     SELECT anagrafiche.fn_crea_indirizzo_soggetto(
         s.soggetto_id,
-        jsonb_build_object('tipo_indirizzo_codice',  ti.codice_interno,
+        jsonb_build_object('tipo_indirizzo_codice_interno',  ti.codice_interno,
                            'indirizzo_dettaglio_id', d.indirizzo_dettaglio_id)
     )
     FROM sogg s

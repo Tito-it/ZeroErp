@@ -2,11 +2,11 @@
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
 --
--- Test soggetto: codice_fiscale = 'TTNMHL68E07D042Z'
+-- Test soggetto: un cliente COSTRUITO da dbops.fn_pgtap_crea_cliente.
 --
 -- Scenario:
---   - Recupero soggetto per codice_fiscale
---   - Recupero primo ruolo (anagrafiche.soggetti_ruoli) per quel soggetto
+--   - Costruzione del cliente (soggetto + ruolo CL)
+--   - Ruolo CL del cliente come ruolo dei contatti
 --   - Pulizia SOLO dei contatti legati a quel ruolo
 --   - Inserimento contatto di ruolo is_default = TRUE
 --   - Verifica:
@@ -72,34 +72,42 @@ SELECT ok(
 );
 
 -- =========================================================
--- 2) Recupero soggetto per codice_fiscale = 'TTNMHL68E07D042Z'
+-- 2) Il soggetto del test: un cliente COSTRUITO
 -- =========================================================
+-- ⛔ 2026-11-01: il file cercava il soggetto per il codice fiscale di una
+--   persona vera del database di sviluppo. Su un database ricostruito dai
+--   changelog non c'era (rosso in CI), e un dato personale non sta in un
+--   repository pubblico. Stessa cura di test-risorse-umane (2026-09-23).
+-- ⚠️ BASE e non GAS: le utility con richiede_pdp pretendono un punto di
+--   prelievo, estraneo a cio' che questo file verifica.
+CREATE TEMP TABLE tmp_cliente_test AS
+SELECT *
+FROM dbops.fn_pgtap_crea_cliente(
+         'contatti di ruolo',
+         (SELECT u.id FROM config.utilities u WHERE u.codice_interno = 'BASE'));
+
 CREATE TEMP TABLE tmp_soggetto_test AS
-SELECT id
-FROM anagrafiche.soggetti
-WHERE codice_fiscale = 'TTNMHL68E07D042Z';
+SELECT soggetto_id AS id
+FROM tmp_cliente_test;
 
 SELECT is(
-    (SELECT count(*)::int FROM tmp_soggetto_test),
+    (SELECT count(*)::int FROM tmp_soggetto_test WHERE id IS NOT NULL),
     1,
-    'Trovato esattamente 1 soggetto con codice_fiscale = ''TTNMHL68E07D042Z'''
+    'Costruito il soggetto cliente del test'
 );
 
 -- =========================================================
--- 3) Recupero primo ruolo per il soggetto (es. CL)
+-- 3) Il ruolo dei contatti: il ruolo CL del cliente
 -- =========================================================
 CREATE TEMP TABLE tmp_soggetto_ruolo_test AS
 SELECT
-    id          AS soggetto_ruolo_id,
-    soggetto_id AS soggetto_id
-FROM anagrafiche.soggetti_ruoli
-WHERE soggetto_id = (SELECT id FROM tmp_soggetto_test)
-ORDER BY id
-LIMIT 1;
+    soggetto_ruolo_id,
+    soggetto_id
+FROM tmp_cliente_test;
 
 SELECT ok(
-    (SELECT count(*) FROM tmp_soggetto_ruolo_test) = 1,
-    'Trovato almeno un ruolo per il soggetto (uso il primo in soggetti_ruoli)'
+    (SELECT count(*) FROM tmp_soggetto_ruolo_test WHERE soggetto_ruolo_id IS NOT NULL) = 1,
+    'Il cliente costruito ha il suo ruolo CL'
 );
 
 -- =========================================================
@@ -145,11 +153,11 @@ WITH ins AS (
         sr.soggetto_id,
         sr.soggetto_ruolo_id,
         'Contatto RUOLO PGTAP',
-        'ruolo.titnmhl@example.com',
+        'ruolo.pgtap@example.com',
         NULL,
         NULL,
         NULL,
-        'PGTAP – contatto default di ruolo per soggetto TTNMHL68E07D042Z',
+        'PGTAP – contatto default di ruolo per il cliente del test',
         TRUE
     FROM tmp_soggetto_ruolo_test sr,
          tmp_tipo_contatto_test tc
@@ -197,7 +205,7 @@ WITH ins AS (
         sr.soggetto_ruolo_id,
         uo.unita_organizzativa_id,
         'Contatto RUOLO UO PGTAP',
-        'ruolo.uo.titnmhl@example.com',
+        'ruolo.uo.pgtap@example.com',
         'PGTAP – contatto ruolo con unita_organizzativa e secondo tipo_contatto',
         FALSE
     FROM tmp_soggetto_ruolo_test sr,

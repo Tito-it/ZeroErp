@@ -179,7 +179,7 @@ BEGIN
                          p_capitale_sociale           := 10000.00,
                          p_socio_unico                := 'SM',
                          p_liquidazione               := 'LN');
-            PERFORM anagrafiche.fn_crea_indirizzo_soggetto(v_sog, jsonb_build_object('tipo_indirizzo_codice', ti.codice_interno, 'indirizzo_dettaglio_id', v_det))
+            PERFORM anagrafiche.fn_crea_indirizzo_soggetto(v_sog, jsonb_build_object('tipo_indirizzo_codice_interno', ti.codice_interno, 'indirizzo_dettaglio_id', v_det))
                FROM config.tipi_soggetto_dettaglio_tipi_indirizzo m
                JOIN config.tipi_indirizzi ti ON ti.id = m.tipo_indirizzo_id
               WHERE m.tipo_soggetto_dettaglio_id = v_tsd_sc AND m.attivo AND m.obbligatorio;
@@ -226,7 +226,7 @@ BEGIN
                          p_capitale_sociale           := 10000.00,
                          p_socio_unico                := 'SM',
                          p_liquidazione               := 'LN');
-            PERFORM anagrafiche.fn_crea_indirizzo_soggetto(v_sog, jsonb_build_object('tipo_indirizzo_codice', ti.codice_interno, 'indirizzo_dettaglio_id', v_det))
+            PERFORM anagrafiche.fn_crea_indirizzo_soggetto(v_sog, jsonb_build_object('tipo_indirizzo_codice_interno', ti.codice_interno, 'indirizzo_dettaglio_id', v_det))
                FROM config.tipi_soggetto_dettaglio_tipi_indirizzo m
                JOIN config.tipi_indirizzi ti ON ti.id = m.tipo_indirizzo_id
               WHERE m.tipo_soggetto_dettaglio_id = v_tsd_sc AND m.attivo AND m.obbligatorio;
@@ -239,7 +239,7 @@ BEGIN
                                                                     'valuta_id', v_valuta),
                 p_indirizzi                   := jsonb_build_array(jsonb_build_object(
                                                      'indirizzo_dettaglio_id', v_det,
-                                                     'tipo_indirizzo_codice', 'FATT')),
+                                                     'tipo_indirizzo_codice_interno', 'FATT')),
                 p_emittente_soggetto_ruolo_id := (v_emittenti -> (v_el ->> 'emittente') ->> 'sr')::bigint);
             v_esito := 'creata';
         ELSE
@@ -272,7 +272,7 @@ BEGIN
                          p_capitale_sociale           := 10000.00,
                          p_socio_unico                := 'SM',
                          p_liquidazione               := 'LN');
-            PERFORM anagrafiche.fn_crea_indirizzo_soggetto(v_sog, jsonb_build_object('tipo_indirizzo_codice', ti.codice_interno, 'indirizzo_dettaglio_id', v_det))
+            PERFORM anagrafiche.fn_crea_indirizzo_soggetto(v_sog, jsonb_build_object('tipo_indirizzo_codice_interno', ti.codice_interno, 'indirizzo_dettaglio_id', v_det))
                FROM config.tipi_soggetto_dettaglio_tipi_indirizzo m
                JOIN config.tipi_indirizzi ti ON ti.id = m.tipo_indirizzo_id
               WHERE m.tipo_soggetto_dettaglio_id = v_tsd_sc AND m.attivo AND m.obbligatorio;
@@ -281,7 +281,7 @@ BEGIN
             PERFORM anagrafiche.fn_crea_fornitore(
                 v_sog, '{}'::jsonb, NULL::jsonb,
                 jsonb_build_array(jsonb_build_object('indirizzo_dettaglio_id', v_det,
-                                                     'tipo_indirizzo_codice', 'FATT')));
+                                                     'tipo_indirizzo_codice_interno', 'FATT')));
             v_esito := 'creata';
         ELSE
             v_esito := 'riallineata';

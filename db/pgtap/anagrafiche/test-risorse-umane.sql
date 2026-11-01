@@ -67,7 +67,7 @@ SELECT ok(
 -- 2) Il soggetto del test: una persona fisica COSTRUITA
 -- =========================================================
 -- ⛔ 2026-09-23: il file cercava il soggetto per un codice fiscale di QUESTA
---   macchina (`TTNMHL…`, una persona vera del database di sviluppo). Su un
+--   macchina (una persona vera del database di sviluppo). Su un
 --   database ricostruito dai changelog non c'e', e la fixture moriva su
 --   «soggetto_id mancante per il ruolo RIS_UMANA».
 -- ⭐ Si costruisce dal percorso di produzione — anagrafiche.fn_crea_soggetto_pf
@@ -92,9 +92,9 @@ SELECT anagrafiche.fn_crea_soggetto_pf(
 -- rev 2026-10-18: la madre prende l'indirizzo in jsonb (20261018-96)
 SELECT anagrafiche.fn_crea_indirizzo_soggetto(
            (SELECT id FROM tmp_soggetto_test),
-           jsonb_build_object('tipo_indirizzo_codice',  t.codice,
+           jsonb_build_object('tipo_indirizzo_codice_interno',  t.codice_interno,
                               'indirizzo_dettaglio_id', dbops.fn_pgtap_crea_indirizzo_dettaglio('risorse umane')))
-  FROM (VALUES ('RES'), ('DOMFISC')) AS t(codice);
+  FROM (VALUES ('RES'), ('DOMFISC')) AS t(codice_interno);
 
 SET CONSTRAINTS ALL IMMEDIATE;
 

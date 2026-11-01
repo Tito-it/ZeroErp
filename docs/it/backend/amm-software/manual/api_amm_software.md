@@ -267,7 +267,7 @@ Il dettaglio e' generato da `script.fn_get_operatore_detail(p_auth_user_id)`
     "soggetto_nome": "Michele",
     "soggetto_id": "8a1f...uuid",
     "ragione_sociale_completa": "Titini Michele",
-    "codice_fiscale": "TTNMHL75A01H501Z",
+    "codice_fiscale": "RSSMRA80A01H501U",
     "is_super_admin": true,
     "ruolo_applicativo": "OPERATORE",
     "is_active": true,

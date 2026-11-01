@@ -335,6 +335,11 @@ jobs:
               tags: |
                 ${{ env.REGISTRY }}/${{ steps.imgvars.outputs.owner_lc }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
                 ${{ env.REGISTRY }}/${{ steps.imgvars.outputs.owner_lc }}/${{ env.IMAGE_NAME }}:latest
+              # Il pacchetto GHCR si collega al repo di `image.source`: dal
+              # contesto, non scritto a mano, cosi' segue il repo in cui gira.
+              labels: |
+                org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+                org.opencontainers.image.revision=${{ github.sha }}
               push: true
               cache-from: type=gha
               cache-to: type=gha,mode=max
