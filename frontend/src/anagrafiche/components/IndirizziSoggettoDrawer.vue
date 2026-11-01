@@ -141,7 +141,7 @@ async function loadMatrice() {
 
 // Tipi gia' associati (per filtrare in aggiungi)
 const tipiEsistenti = computed(() =>
-  new Set(indirizziList.value.map(i => i.tipo_indirizzo_codice))
+  new Set(indirizziList.value.map(i => i.tipo_indirizzo_codice_interno))
 )
 
 // Matrice filtrata: solo tipi non ancora associati (per aggiungi)
@@ -197,7 +197,7 @@ async function onStartReplace(ind) {
     indirizzo.reset()
     // La matrice per il replace ha solo il tipo da sostituire
     indirizzo.setMatrice([{
-      codice: ind.tipo_indirizzo_codice,
+      codice: ind.tipo_indirizzo_codice_interno,
       descrizione: ind.tipo_indirizzo_descrizione,
       obbligatorio: true,
     }])

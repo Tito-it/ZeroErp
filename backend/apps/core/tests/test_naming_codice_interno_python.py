@@ -97,7 +97,6 @@ _REGOLE = (
 #    per il motivo sbagliato, e un presidio che boccia a caso viene spento.
 _DEBITO: dict[tuple[str, str], int] = {
     ("apps/anagrafiche/db/soggetti_repository.py", "codice"): 1,
-    ("apps/anagrafiche/db/soggetti_repository.py", "tipo_indirizzo_codice"): 1,
     # ⚠️ La lookup generica: `codice` e' il nome del campo nel CONTRATTO della
     #    lookup, non una svista. Candidata a diventare un'esclusione DICHIARATA
     #    invece che una voce di debito — da decidere, non da assumere.
@@ -106,8 +105,11 @@ _DEBITO: dict[tuple[str, str], int] = {
     ("apps/pagamenti/db/pagamenti_repository.py", "stato_codice"): 2,
     ("apps/pratiche/db/pratiche_repository.py", "tipo_allegato_codice"): 1,
     ("apps/pratiche/db/pratiche_repository.py", "tipo_nota_codice"): 1,
-    ("apps/vendite/db/_indirizzi_repo_mixin.py", "origine_tipo_indirizzo_codice"): 1,
-    ("apps/vendite/db/_indirizzi_repo_mixin.py", "tipo_indirizzo_codice"): 2,
+    # ⭐ `tipo_indirizzo_codice` (anagrafiche 1, vendite 2) e
+    #    `origine_tipo_indirizzo_codice` (vendite 1) sono USCITE il 2026-11-01,
+    #    insieme alla chiave d'ingresso delle madri (regola C, lato DB): ora
+    #    sono `*_codice_interno`, e `tipo_indirizzo_codice` resta il display
+    #    (`ti.codice`) delle viste e della matrice per ruolo.
     # ⭐ `natura_doc_codice` era qui con 3, poi 1, e il 2026-08-29 e' USCITA:
     #    le prime due (`get_fattura_testata`, `_legame_rettifiche`) si potevano
     #    muovere da sole, la terza (`list_lotto_fatture`) no — la legava il

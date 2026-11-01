@@ -57,7 +57,7 @@ class TestIndirizziRuoloCrudApi(JwtMockedApiTest):
         resp = self.client.post(
             "/api/v1/anagrafiche/ruoli/10/indirizzi/",
             data=json.dumps({
-                "tipo_indirizzo_codice": "RES",
+                "tipo_indirizzo_codice_interno": "RES",
                 "indirizzo_dettaglio_id": 100,
             }),
             content_type="application/json",
@@ -65,7 +65,7 @@ class TestIndirizziRuoloCrudApi(JwtMockedApiTest):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()["data"]["id"], 50)
         mock_repo.crea_indirizzo_ruolo.assert_called_once_with(
-            10, {"tipo_indirizzo_codice": "RES", "indirizzo_dettaglio_id": 100},
+            10, {"tipo_indirizzo_codice_interno": "RES", "indirizzo_dettaglio_id": 100},
         )
 
     @patch(_AUTH, return_value=(Mock(), None))
@@ -80,7 +80,7 @@ class TestIndirizziRuoloCrudApi(JwtMockedApiTest):
         resp = self.client.post(
             "/api/v1/anagrafiche/ruoli/10/indirizzi/",
             data=json.dumps({
-                "tipo_indirizzo_codice": "RES",
+                "tipo_indirizzo_codice_interno": "RES",
                 "indirizzo_dettaglio_id": 100,
                 "istanza_utility_id": 5,
             }),
@@ -103,7 +103,7 @@ class TestIndirizziRuoloCrudApi(JwtMockedApiTest):
         resp = self.client.post(
             "/api/v1/anagrafiche/ruoli/10/indirizzi/",
             data=json.dumps({
-                "tipo_indirizzo_codice": "EST",
+                "tipo_indirizzo_codice_interno": "EST",
                 "indirizzo_libero": "123 Main St, London",
                 "stato_id": 2,
             }),

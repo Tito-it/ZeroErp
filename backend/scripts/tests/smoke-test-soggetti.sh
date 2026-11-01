@@ -261,7 +261,7 @@ try:
     d = json.load(sys.stdin)
     results = d.get('data', {}).get('results', d.get('data', []))
     if isinstance(results, list):
-        print(' '.join(r.get('tipo_indirizzo_codice','') for r in results))
+        print(' '.join(r.get('tipo_indirizzo_codice_interno','') for r in results))
     else:
         print('')
 except: print('')
@@ -272,7 +272,7 @@ except: print('')
     for TIPO in FATT SPED; do
         if [[ ! " $TIPI_ESISTENTI " =~ " $TIPO " ]]; then
             do_curl POST "/api/v1/anagrafiche/soggetti/${SOGG_ID}/indirizzi/" \
-                "{\"tipo_indirizzo_codice\": \"${TIPO}\", \"indirizzo_dettaglio_id\": ${IND_DET_ID}}"
+                "{\"tipo_indirizzo_codice_interno\": \"${TIPO}\", \"indirizzo_dettaglio_id\": ${IND_DET_ID}}"
             check "Indirizzo $TIPO aggiunto" "200" || true
         fi
     done
@@ -341,8 +341,8 @@ if [[ -n "$IND_DET_ID" && "$IND_DET_ID" != "" ]]; then
                 \"email\": \"dup@test.it\"
             },
             \"indirizzi\": [
-                {\"tipo_indirizzo_codice\": \"RES\", \"indirizzo_dettaglio_id\": ${IND_DET_ID}},
-                {\"tipo_indirizzo_codice\": \"DOMFISC\", \"indirizzo_dettaglio_id\": ${IND_DET_ID}}
+                {\"tipo_indirizzo_codice_interno\": \"RES\", \"indirizzo_dettaglio_id\": ${IND_DET_ID}},
+                {\"tipo_indirizzo_codice_interno\": \"DOMFISC\", \"indirizzo_dettaglio_id\": ${IND_DET_ID}}
             ]
         }"
     check "CF duplicato → errore 409" "409"
@@ -373,8 +373,8 @@ if [[ -n "$IND_DET_ID" && "$IND_DET_ID" != "" ]]; then
             \"codice_fiscale\": \"${CF_SENZA}\",
             \"contatto\": {\"tipo_contatto_id\": ${TIPO_CONTATTO_ID}, \"nominativo\": \"SmokeTest Senzasesso\", \"email\": \"smoke${SMOKE_TS}ss@test.it\"},
             \"indirizzi\": [
-                {\"tipo_indirizzo_codice\": \"RES\", \"indirizzo_dettaglio_id\": ${IND_DET_ID}},
-                {\"tipo_indirizzo_codice\": \"DOMFISC\", \"indirizzo_dettaglio_id\": ${IND_DET_ID}}
+                {\"tipo_indirizzo_codice_interno\": \"RES\", \"indirizzo_dettaglio_id\": ${IND_DET_ID}},
+                {\"tipo_indirizzo_codice_interno\": \"DOMFISC\", \"indirizzo_dettaglio_id\": ${IND_DET_ID}}
             ]
         }"
     if check "Privato senza sesso → 400" "400"; then
@@ -414,8 +414,8 @@ if [[ -n "$IND_DET_ID" && -n "$DI_ID" ]]; then
             \"partita_iva\": \"${SMOKE_PIVA}\",
             \"contatto\": {\"tipo_contatto_id\": ${TIPO_CONTATTO_ID}, \"nominativo\": \"SmokeTest Ditta\", \"email\": \"smoke${SMOKE_TS}di@test.it\"},
             \"indirizzi\": [
-                {\"tipo_indirizzo_codice\": \"RES\", \"indirizzo_dettaglio_id\": ${IND_DET_ID}},
-                {\"tipo_indirizzo_codice\": \"DOMFISC\", \"indirizzo_dettaglio_id\": ${IND_DET_ID}}
+                {\"tipo_indirizzo_codice_interno\": \"RES\", \"indirizzo_dettaglio_id\": ${IND_DET_ID}},
+                {\"tipo_indirizzo_codice_interno\": \"DOMFISC\", \"indirizzo_dettaglio_id\": ${IND_DET_ID}}
             ],
             \"auto_clone\": true
         }"

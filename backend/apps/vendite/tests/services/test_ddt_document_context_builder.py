@@ -185,7 +185,7 @@ class BuildContextDdtTests(SimpleTestCase):
         repo.list_indirizzi.return_value = [
             {
                 "id": 7,
-                "tipo_indirizzo_codice": "CON",
+                "tipo_indirizzo_codice_interno": "CON",
                 "tipo_indirizzo_descrizione": "Consegna",
                 "snapshot": {
                     "via": "Via Roma 1",

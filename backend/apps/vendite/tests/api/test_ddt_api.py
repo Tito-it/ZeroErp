@@ -250,14 +250,14 @@ class TestDdtApi(JwtMockedApiTest):
     def test_indirizzi_get_ok(self, mock_list, _auth) -> None:
         mock_list.return_value = {
             "tipi_ammessi": [{"tipo_indirizzo_id": 10,
-                              "tipo_indirizzo_codice": "CON",
+                              "tipo_indirizzo_codice_interno": "CON",
                               "obbligatorio": True}],
             "indirizzi": [],
         }
         resp = self.client.get(f"{_BASE}7/indirizzi/")
         self.assertEqual(resp.status_code, 200)
         data = resp.json()["data"]
-        self.assertEqual(data["tipi_ammessi"][0]["tipo_indirizzo_codice"], "CON")
+        self.assertEqual(data["tipi_ammessi"][0]["tipo_indirizzo_codice_interno"], "CON")
         mock_list.assert_called_once_with(7)
 
     @patch(_AUTH, return_value=(Mock(), None))

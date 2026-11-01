@@ -29,12 +29,14 @@ export function formatSnapshotDisplay(row) {
 
 // Scopo: Regola del tipo di default per il documento (decisa con Tid
 //        2026-07-12): CON (Consegna, standard cross-dominio) → fallback
-//        FATT → primo ammesso. Unica copia FE (sezione + drawer); mirror
-//        del BE `_tipo_default` (_indirizzi_documento_helpers).
+//        FATT → primo ammesso. Unica copia FE (sezione + drawer). Vale solo
+//        per la UI: il BE `_tipo_default` non c'e' piu' (f371e614b7), alla
+//        creazione gli indirizzi li assegna il DB (gli indirizzi seguono il
+//        cliente).
 export function pickTipoDefault(tipiAmmessi) {
   const tipi = tipiAmmessi ?? []
-  return tipi.find((x) => x.tipo_indirizzo_codice === 'CON')
-    ?? tipi.find((x) => x.tipo_indirizzo_codice === 'FATT')
+  return tipi.find((x) => x.tipo_indirizzo_codice_interno === 'CON')
+    ?? tipi.find((x) => x.tipo_indirizzo_codice_interno === 'FATT')
     ?? tipi[0]
     ?? null
 }

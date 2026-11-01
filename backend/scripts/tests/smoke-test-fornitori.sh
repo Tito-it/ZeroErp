@@ -137,7 +137,7 @@ try:
     d = json.load(sys.stdin)
     results = d.get('data', {}).get('results', d.get('data', []))
     if isinstance(results, list):
-        print(' '.join(r.get('tipo_indirizzo_codice','') for r in results))
+        print(' '.join(r.get('tipo_indirizzo_codice_interno','') for r in results))
     else:
         print('')
 except: print('')
@@ -147,7 +147,7 @@ except: print('')
     for TIPO in FATT SEDE SPED RES DOMFISC; do
         if [[ ! " $TIPI_ESISTENTI " =~ " $TIPO " ]]; then
             do_curl POST "/api/v1/anagrafiche/soggetti/${SOGG_ID}/indirizzi/" \
-                "{\"tipo_indirizzo_codice\": \"${TIPO}\", \"indirizzo_dettaglio_id\": ${IND_DET_ID}}"
+                "{\"tipo_indirizzo_codice_interno\": \"${TIPO}\", \"indirizzo_dettaglio_id\": ${IND_DET_ID}}"
             if [[ "$LAST_STATUS" == "200" ]]; then
                 log_ok "Indirizzo $TIPO aggiunto"
             else
