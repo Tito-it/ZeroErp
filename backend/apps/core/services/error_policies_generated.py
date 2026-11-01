@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1157, di cui 124 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1158, di cui 124 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -1511,6 +1511,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_RESO_STATO_SOLO_DA_VERBO": "TECNICO",
     "E_RESO_STATO_TRANSIZIONE": "CONFLITTO_STATO",
     "E_RESO_VALIDAZIONE": "DATO_ERRATO",
+    # script.trgfn_righe_guard_periodicita_canone (trigger _a10_ BEFORE INSERT OR UPDATE OF tipo_erogazione, periodicita su vendite.contratti_righe e vendite.offerte_commerciali_eccezioni; 2026-11-01, brief-db-contratto-righe-periodiche-in-commessa §6.11, passo 4, la (b) di Tid del 2026-10-29): una riga a canone dice ogni quanto si addebita. ADESIONE e OVERRIDE la ereditano dal listino quando la dice; l'AGGIUNTA la scrive l'operatore (F-9). Rete: i CHECK chk_contrighe_canone_periodicita e chk_offerte_eccezioni_canone_periodicita. * DATO_ERRATO: c'e' un campo da correggere, campo = periodicita nel contesto (con riga_id, contratto_id o offerta_id, articolo_id, tipo_eccezione). * Frase chiusa, nessun valore: l'operatore e' gia' sulla riga.
+    "E_RIGA_CANONE_SENZA_PERIODICITA": "DATO_ERRATO",
     "E_RIGA_COMMESSA_GIA_ANNULLATA": "CONFLITTO_STATO",
     "E_RIGA_COMMESSA_GIA_EMESSA": "CONFLITTO_STATO",
     "E_RIGA_COMMESSA_MOTIVO_OBBLIGATORIO": "DATO_ERRATO",

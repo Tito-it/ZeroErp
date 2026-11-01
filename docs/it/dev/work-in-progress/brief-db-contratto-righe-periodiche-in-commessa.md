@@ -1,31 +1,13 @@
 # Brief DB — Le righe di contratto che non sono «una volta»: canone, orario e consumo in commessa
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-01 (passo 4 e 3-ter applicati, pgTAP verdi)
+## ⏭️ Chi riparte — aggiornato al 2026-11-01 (§7.13.4 fatto lato BE)
 
-**Riparte il team BE/FE** con la richiesta del §7.13.4 (tre punti). Lato DB il giro è chiuso: Tid ha
-lanciato su dbdev lo script di F-10, applicato `20261101-04` … `-06` e i CSV, e i pgTAP sono verdi
-(2026-11-01, §7.13.5). L18, la documentazione del giro del §7, è scritta (§7.12): solo testo.
+**Riparte: Tid**, col collaudo a video del form della riga a canone e della colonna «Periodicità»
+della lista 37, le due domande del §7.13.6 e il commit del giro BE. Poi si archivia il brief.
+Lato DB il giro è chiuso (§7.13.5); lato BE la richiesta del §7.13.4 è fatta e provata (§7.13.6).
 
-**Cosa resta lato DB** (§7.8):
-* ~~L17~~ applicato (§7.9);
-* ~~la periodicità della quota fissa ferma fuori dalla bozza~~ applicata (§7.10);
-* ~~la documentazione del giro del §7~~ scritta (§7.12, L18);
-* ~~il passo 4~~ e ~~la colonna «Periodicità» della lista 37~~ applicati, pgTAP verdi (§7.13);
-
-I lotti L1 … L9 lato DB restano finiti (§6.3).
-
-**Cosa resta:**
-* **BE/FE** (la richiesta, da scrivere come elenco chiuso a giro DB provato):
-  * la commessa del contratto si apre **senza periodo** (§6.12, G-6): senza, dal secondo pezzo di
-    canone il push va in errore;
-  * i campi nuovi nei form: tipo `ADESIONE` e le azioni `ADERISCI` / `RIMUOVI_ADESIONE` (§6.10), il
-    mese di partenza e anticipato/normale sulla testata di contratto e offerta (§6.6), la periodicità
-    sulla riga di listino;
-  * i due motivi nuovi della dashboard (`CANONE_NON_GENERATO` arancio, `CANONE_NON_GENERABILE`
-    rosso, §6.13), e il contratto attivo che esce dalla situazione aperta;
-  * gli altri punti del §6.12: kit sulle quote fisse del listino, riga negativa sola in fattura.
-* **DB, col passaggio BE/FE e non prima:** l'obbligo della periodicità sulla riga a canone (guard +
-  CHECK) e lo script di F-10 sui dati di prova (§6.11).
+I lotti L1 … L9 e il giro del §7 lato DB restano finiti (§6.3, §7.8); i punti BE/FE del §6.12 e
+del §7 sono entrati col passaggio del §7.6 (`9f3a16904`) e col passo 3 (§7.11, `be8579d0c`).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -69,10 +51,11 @@ I lotti L1 … L9 lato DB restano finiti (§6.3).
 | 3-ter | ✅ team DB | la colonna «Periodicità» nella lista 37 (`vendite.listini_righe`), scritta (2026-11-01) | §7.13.1 | 3 |
 | 4 | ✅ team DB | l'obbligo della periodicità sulla riga a canone (guard + CHECK), scritto e provato (2026-11-01) | §7.13.2 | 3 |
 | 4-bis | ✅ Tid | su dbdev lo script di F-10, poi l'apply di `20261101-04` … `-06` e dei CSV; pgTAP verdi (2026-11-01) | §7.13.5 | 4 |
-| 4-ter | BE/FE | la richiesta del §7.13.4 (codice nuovo, test DB, collaudo del form) | §7.13.4 | 4-bis |
-| 5 | Tid | archiviazione del brief | — | 4-ter |
+| 4-ter | ✅ BE/FE | la richiesta del §7.13.4: codice nuovo col ripiego, test DB, e2e del trasporto (2026-11-01) | §7.13.6 | 4-bis |
+| 4-quater | Tid | collaudo a video (form della riga a canone, colonna 1165), le due domande del §7.13.6, commit del giro BE | §7.13.6 | 4-ter |
+| 5 | Tid | archiviazione del brief | — | 4-quater |
 
-Decisioni aperte di Tid: nessuna. Da committare su `dev/db-tid`: L18 (§7.12), il passo 3-ter e il passo 4 (§7.13). Il passo 3 BE/FE è entrato in `be8579d0c` (PR #1989). La forma di L17 e la periodicità ferma della quota fissa decise il 2026-10-31. D-1-ter (A) e D-2-bis (B) prese il 2026-10-31. F-1 … F-10 prese il 2026-10-29, F-11 … F-13 il 2026-10-30, F-14 e F-15 il 2026-10-31, D-1 … D-4 il 2026-10-31. G-0 … G-11 prese il 2026-10-28. Lavoro committato il 2026-10-31 su `dev/db-tid` (un commit: L1 … L9): i changeSet `20261029-10` …
+Decisioni aperte di Tid: le due del §7.13.6 (colonna «Periodicità» ordinabile? codice o descrizione?). Il giro DB del §7.12-§7.13 è committato (`f662345ab`); da committare su `dev/backend-tid` il giro BE del §7.13.6. Il passo 3 BE/FE è entrato in `be8579d0c` (PR #1989). La forma di L17 e la periodicità ferma della quota fissa decise il 2026-10-31. D-1-ter (A) e D-2-bis (B) prese il 2026-10-31. F-1 … F-10 prese il 2026-10-29, F-11 … F-13 il 2026-10-30, F-14 e F-15 il 2026-10-31, D-1 … D-4 il 2026-10-31. G-0 … G-11 prese il 2026-10-28. Lavoro committato il 2026-10-31 su `dev/db-tid` (un commit: L1 … L9): i changeSet `20261029-10` …
 `-45`, `20261030-01` e `20261031-01` … `-04` (§6.5 … §6.13, applicati su dbdev), i CSV e i seed
 toccati, i pgTAP nuovi e aggiornati, la documentazione del L9 (§6.14), questo documento. Il giro che lo ha aperto, `20261013-24`, è nella risposta al team BE del 2026-10-13.
 
@@ -1641,4 +1624,29 @@ Con questo il brief arriva all'archiviazione.
   `vendite.offerte_commerciali_eccezioni`.
 * pgTAP verdi, compreso il nuovo `test-righe-canone-periodicita-obbligatoria-v1`.
 
-Da committare su `dev/db-tid`: L18 (§7.12), il passo 3-ter e il passo 4 (§7.13), questo documento.
+Committato su `dev/db-tid` (`f662345ab`, 2026-11-01): L18 (§7.12), il passo 3-ter e il passo 4 (§7.13),
+questo documento.
+
+#### 7.13.6 Giro BE del §7.13.4 (2026-11-01, `dev/backend-tid`)
+
+1. **Catalogo errori, fatto.** `genera_error_policies` rigenerato con il catalogo allineato a git
+   (il codice è nel CSV di `f662345ab`): una voce in più, `E_RIGA_CANONE_SENZA_PERIODICITA →
+   DATO_ERRATO`, nessuna classe cambiata; `--check` pulito. Il ripiego in
+   `error_messages_fallback.py` è la frase del catalogo, senza segnaposto. Il form
+   (`RigheEccezioniDrawer.vue`) accendeva già il campo da `campiErrati.includes('periodicita')`
+   (passo 3): nessuna regola ricopiata, nessun cambiamento FE.
+2. **Test DB.** `test_righe_erogazione_obbligatoria_db` resta verde: le sue righe sono sulla
+   combinazione di default dell'articolo, che non è un canone. Suite `apps.vendite`, `apps.core`,
+   `apps.ui`, `apps.ai_assistant` in e2e su dbdev: 4937 verdi, 1 skip. Gli smoke in
+   `backend/scripts/tests/` non sono stati lanciati.
+   ⭐ **Nuovo**, `vendite/tests/db/test_righe_canone_periodicita_db.py`: il gemello BE del pgTAP
+   `test-righe-canone-periodicita-obbligatoria-v1`, sul **trasporto**. Un'AGGIUNTA a canone senza
+   periodicità, da `ContrattiService.create_riga` e da `OfferteService.crea_eccezione`, arriva al
+   `ServiceError` col codice del guard e con `periodicita` nei campi. Mondo costruito (articolo
+   di quota fissa, contratto senza listino, offerta su listino vuoto), transazione annullata. 2/2.
+3. **Lista 37.** La colonna 1165 arriva dal seed con `ordinabile = f`, e la proiezione del
+   repository la porta (presidio della proiezione verde in suite). Nessuna voce aggiunta in
+   `RIGHE_ORDER_COLUMNS`. **Due domande per Tid**, al collaudo:
+   * la si vuole **ordinabile**? Se sì: la voce in `RIGHE_ORDER_COLUMNS` (BE) e `ordinabile = t`
+     nel CSV (team DB) insieme;
+   * mostra il **codice** del vocabolario (`TRIMESTRALE`…): va bene, o serve la descrizione?

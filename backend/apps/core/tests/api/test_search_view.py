@@ -10,7 +10,7 @@ Indice test eseguiti:
  1) SearchUniversaleApiTests.test_search_ok
  2) SearchUniversaleApiTests.test_search_requires_jwt
  3) SearchUniversaleApiTests.test_search_q_obbligatorio
- 4) SearchUniversaleApiTests.test_search_q_troppo_corto
+ 4) SearchUniversaleApiTests.test_search_q_troppo_corto — la soglia e' quella della lista 113 a catalogo (D-6)
  5) SearchUniversaleApiTests.test_search_tipo_ruolo_obbligatorio
  6) SearchUniversaleApiTests.test_search_tipo_ruolo_non_visibile — lo decide il DB, la view passa
  7) SearchUniversaleApiTests.test_search_paginazione
@@ -68,10 +68,15 @@ _DETAIL_RESULT = {
 
 class SearchUniversaleApiTests(JwtMockedApiTest):
     # Scopo: Prepara il contesto comune del test.
+    # ⭐ La soglia arriva dal catalogo (`soglia_ricerca`, una query): qui la
+    #    si fissa a 3, il valore del seed della lista 113.
     def setUp(self) -> None:
         super().setUp()
         cache.clear()
         self.client = Client()
+        patcher = patch("apps.core.api.search_view.soglia_ricerca", return_value=3)
+        self.mock_soglia = patcher.start()
+        self.addCleanup(patcher.stop)
 
     # Scopo: Verifica ricerca con risultati OK.
     @patch("apps.core.api.search_view.SearchRepository.search_soggetti")
@@ -97,13 +102,27 @@ class SearchUniversaleApiTests(JwtMockedApiTest):
         body = response.json()["error"]
         self.assertEqual(body["code"], "E_SEARCH_VALIDATION")
 
-    # Scopo: Verifica che q con meno di 3 caratteri restituisce 400.
+    # Scopo: Verifica che q sotto la soglia della lista a catalogo restituisce
+    #        400, e che la soglia e' quella della 113 e non un numero della view
+    #        (D-6): alzata a 5, «ross» non passa; abbassata a 1, «r» passa.
+    @patch("apps.core.api.search_view.SearchRepository.search_soggetti", return_value=([], 0))
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
-    def test_search_q_troppo_corto(self, _mock_auth):
+    def test_search_q_troppo_corto(self, _mock_auth, mock_search):
         response = self.client.get(_SEARCH_URL + "?q=ro&tipo_ruolo_id=1")
         self.assertEqual(response.status_code, 400)
         body = response.json()["error"]
         self.assertEqual(body["code"], "E_SEARCH_VALIDATION")
+        self.mock_soglia.assert_called_with("anagrafiche.ricerca_soggetti")
+
+        self.mock_soglia.return_value = 5
+        response = self.client.get(_SEARCH_URL + "?q=ross&tipo_ruolo_id=1")
+        self.assertEqual(response.status_code, 400)
+        mock_search.assert_not_called()
+
+        self.mock_soglia.return_value = 1
+        response = self.client.get(_SEARCH_URL + "?q=r&tipo_ruolo_id=1")
+        self.assertEqual(response.status_code, 200)
+        mock_search.assert_called_once()
 
     # Scopo: Verifica che senza tipo_ruolo_id restituisce 400.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))

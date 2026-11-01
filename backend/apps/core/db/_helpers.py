@@ -230,9 +230,12 @@ def pattern_contiene(termine: str | None) -> str | None:
 
 
 # Soglia di progetto delle ricerche che NON sono una lista a catalogo: il 400
-# di `require_min_search_length` (ricerca universale, lookup), i tool
-# dell'assistente. ⛔ Non il resolver soggetti: cerca con la lista
-# `anagrafiche.soggetti`, e ne usa la soglia a catalogo (§6 b del brief sotto).
+# di `require_min_search_length` (lookup), i tool dell'assistente.
+# ⛔ Non il resolver soggetti: cerca con la lista `anagrafiche.soggetti`, e ne
+# usa la soglia a catalogo (§6 b del brief sotto). ⛔ Non la ricerca
+# universale: dal 2026-11-01 la sua soglia e' quella della lista
+# `anagrafiche.ricerca_soggetti` (D-6 di brief-db-liste-datatable-grezze-
+# secondo-giro), come per ogni lista a catalogo.
 # ⛔ Non e' la soglia delle liste configurabili: quella e' un fatto della LISTA
 #    (`ui.lista_definizione.ricerca_min_caratteri`, brief-db-be-fe-ricerca-
 #    soglia-per-lista) e il BB `add_ricerca_full_condition` la legge dal

@@ -21,7 +21,8 @@ from apps.core.api.payload_validators import envelope_da_offset, pagina_da_query
 from apps.core.api.search_validators import require_min_search_length, validate_order_params
 from apps.core.api.success_responses import success_response
 from apps.core.api.throttling import SearchBurstRateThrottle
-from apps.core.db.search_repository import SearchRepository
+from apps.core.db._helpers import soglia_ricerca
+from apps.core.db.search_repository import RICERCA_SOGGETTI, SearchRepository
 from apps.core.services.payload_helpers import INTEGER_MAX, INTEGER_MIN
 from apps.core.services.service_errors import ServiceError
 
@@ -177,7 +178,13 @@ class SearchUniversaleView(DomainAPIView):
                 message="Parametri ricerca non validi.",
                 detail="Il parametro 'q' e' obbligatorio.",
             )
-        require_min_search_length(q, field_name="q")
+        # ⭐ La soglia e' quella della lista a catalogo (D-6 di brief-db-liste-
+        #    datatable-grezze-secondo-giro, Tid 2026-11-01), la stessa che il
+        #    frontend legge dalla configurazione: cambiata dal pannello admin,
+        #    il 400 la segue. La funzione DB rifiuta solo il termine vuoto.
+        require_min_search_length(
+            q, min_length=soglia_ricerca(RICERCA_SOGGETTI.lista_codice), field_name="q",
+        )
 
         tipo_ruolo_id = _require_tipo_ruolo_id(request.query_params)
 
