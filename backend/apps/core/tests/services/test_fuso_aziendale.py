@@ -24,16 +24,22 @@ AttivazioneTests
  8. test_il_middleware_attiva_il_fuso_e_lo_ritira
  9. test_il_middleware_ritira_il_fuso_anche_su_errore
 10. test_il_comando_gira_nel_fuso_dell_azienda
+PercorsiTecniciTests
+11. test_health_risponde_col_db_irraggiungibile
+12. test_un_api_col_db_irraggiungibile_fallisce_ancora
 """
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from unittest import TestCase
 from unittest.mock import patch
 
 from django.core.exceptions import ImproperlyConfigured
+from django.db import OperationalError, connections
+from django.db.backends.base.base import BaseDatabaseWrapper
 from django.http import HttpRequest, HttpResponse
-from django.test import SimpleTestCase, override_settings
+from django.test import Client, RequestFactory, SimpleTestCase, override_settings
 from django.utils import timezone
 
 from apps.core.management.comando_aziendale import ComandoAziendale
@@ -170,3 +176,48 @@ class AttivazioneTests(SimpleTestCase):
         Comando().execute(no_color=True, force_color=False, skip_checks=True)
         self.assertEqual(visto, ["Asia/Tokyo"])
         self.assertEqual(timezone.get_current_timezone_name(), "UTC")
+
+
+class PercorsiTecniciTests(TestCase):
+    """I percorsi tecnici non leggono il fuso: `/health` vive senza DB."""
+
+    # ⚠️ `unittest.TestCase`, non `SimpleTestCase`: deve essere il DB a
+    #    rifiutare (`ensure_connection` patchata). Col recinto di
+    #    `SimpleTestCase` la query cadrebbe prima, con
+    #    `DatabaseOperationForbidden`, e il test 11 senza la correzione sarebbe
+    #    rosso per il motivo sbagliato. Nessun database dichiarato: il runner
+    #    non ne crea (vedi `zeroerp_backend/test_runner.py`).
+
+    # Scopo: cache del fuso VUOTA (altrimenti il middleware non toccherebbe il
+    #        DB e il test sarebbe verde per sottrazione) e DB che rifiuta ogni
+    #        connessione, come nel job `docker` della CI senza Postgres.
+    def setUp(self) -> None:
+        precedente = modulo._fuso
+        modulo._fuso = None
+        self.addCleanup(setattr, modulo, "_fuso", precedente)
+        for conn in connections.all():
+            conn.close()
+
+        def db_giu(_self: BaseDatabaseWrapper) -> None:
+            raise OperationalError("connection refused (simulato)")
+
+        patcher = patch.object(BaseDatabaseWrapper, "ensure_connection", db_giu)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    # 11. ⭐ La sonda di vita del processo, con TUTTA la catena dei middleware:
+    #     200 col DB irraggiungibile. Fino al 2026-11-01 il fuso la leggeva e
+    #     rispondeva 500 (CI `docker`, «Run container and smoke-test»).
+    def test_health_risponde_col_db_irraggiungibile(self) -> None:
+        risposta = Client().get("/health", secure=True)
+        self.assertEqual(risposta.status_code, 200)
+        self.assertEqual(risposta.json(), {"status": "ok"})
+        self.assertIsNone(modulo._fuso)
+
+    # 12. Controprova: fuori dai percorsi tecnici il fail-loud resta. Un'API
+    #     col DB irraggiungibile non riceve un fuso di ripiego.
+    def test_un_api_col_db_irraggiungibile_fallisce_ancora(self) -> None:
+        richiesta = RequestFactory().get("/api/v1/core/qualsiasi/")
+        with self.assertRaises(OperationalError):
+            FusoAziendaleMiddleware(lambda _r: HttpResponse())(richiesta)
+        self.assertIsNone(modulo._fuso)

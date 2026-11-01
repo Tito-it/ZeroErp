@@ -17,6 +17,7 @@ from django.db import connection
 from django.http import HttpRequest, HttpResponse
 from django.utils.deprecation import MiddlewareMixin
 
+from apps.core.services.percorsi_tecnici import e_percorso_tecnico
 from apps.core.services.request_context import (
     get_client_ip,
     get_idempotency_key,
@@ -25,10 +26,6 @@ from apps.core.services.request_context import (
 )
 
 logger = logging.getLogger(__name__)
-
-# Path esclusi dal logging (configurabili via settings).
-_DEFAULT_EXCLUDE_PATHS = ("/health", "/api/docs/", "/api/schema/", "/static/", "/media/")
-
 
 class RequestLogMiddleware(MiddlewareMixin):
     """Registra ogni request /api/* nella tabella dbops.request_log.
@@ -61,8 +58,10 @@ class RequestLogMiddleware(MiddlewareMixin):
         path = request.path
         if not path.startswith("/api/"):
             return False
-        exclude = getattr(settings, "REQUEST_LOG_EXCLUDE_PATHS", _DEFAULT_EXCLUDE_PATHS)
-        return not any(path.startswith(p) for p in exclude)
+        # I percorsi tecnici dal BB `core/services/percorsi_tecnici`. Fino al
+        # 2026-11-01 erano una tupla di questo modulo, sovrascrivibile da un
+        # `REQUEST_LOG_EXCLUDE_PATHS` che nessun settings impostava.
+        return not e_percorso_tecnico(path)
 
     # Scopo: Esegue INSERT nella tabella dbops.request_log.
     # Gestisce errori silenziosamente per non interrompere la response.
