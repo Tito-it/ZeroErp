@@ -321,17 +321,20 @@ SELECT is(
 --   - in config.tipi_ruolo_tipi_indirizzo per GE:
 --       SEDEOP has fallback_tipo_indirizzo_id = SEDELEG
 
+-- Il tipo si confronta per id (rev 2026-11-01): tipo_indirizzo e' il codice
+-- di display, che l'utente puo' rinominare; la funzione non espone il
+-- codice interno.
 SELECT results_eq(
     $$
-    SELECT tipo_indirizzo
+    SELECT tipo_indirizzo_id
     FROM script.fn_get_indirizzo(
         (SELECT soggetto_ruolo_id FROM tmp_gestore_guard),
         'SEDEOP'
     )
-    ORDER BY tipo_indirizzo
+    ORDER BY tipo_indirizzo_id
     $$,
     $$
-    VALUES ('SEDELEG'::varchar)
+    SELECT id FROM tmp_tipo_sedeleg_guard
     $$,
     'fn_get_indirizzo: richiesta SEDEOP per Gestore usa fallback SEDELEG'
 );
@@ -366,7 +369,7 @@ SELECT is(
       FROM script.fn_get_indirizzi_by_ruolo(
           (SELECT soggetto_ruolo_id FROM tmp_gestore_guard)
       ) f
-      WHERE f.tipo_indirizzo = 'SEDELEG'
+      WHERE f.tipo_indirizzo_id = (SELECT id FROM tmp_tipo_sedeleg_guard)  -- per id, non sul display
     ),
     1,
     'fn_get_indirizzi_by_ruolo include SEDELEG del soggetto_ruolo di test'
@@ -414,7 +417,7 @@ SELECT is(
     SELECT count(*)::int
     FROM anagrafiche.vw_indirizzi_resolved_all a
     WHERE a.soggetto_ruolo_id = (SELECT soggetto_ruolo_id FROM tmp_gestore_guard)
-      AND a.tipo_indirizzo_codice = 'SEDELEG'
+      AND a.tipo_indirizzo_codice_interno = 'SEDELEG'  -- rev 2026-11-01: il codice interno, non il display
       AND a.source = 'RUOLO'
   ),
   1,

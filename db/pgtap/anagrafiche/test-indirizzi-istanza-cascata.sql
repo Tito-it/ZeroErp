@@ -293,7 +293,7 @@ SELECT ok(
         SELECT count(*)::int
         FROM anagrafiche.vw_indirizzi_resolved_ruolo r
         JOIN tmp_ctx g ON g.soggetto_ruolo_id = r.soggetto_ruolo_id
-        WHERE r.tipo_indirizzo_codice = 'FATT'
+        WHERE r.tipo_indirizzo_codice_interno = 'FATT'  -- rev 2026-11-01: il codice interno, non il display
           AND r.istanza_utility_id = g.istanza_utility_id
     ) = 1,
     '12) vw_indirizzi_resolved_ruolo: FATT con istanza_utility_id valorizzato'
@@ -307,7 +307,7 @@ SELECT ok(
         SELECT count(*)::int
         FROM anagrafiche.vw_indirizzi_resolved_all r
         JOIN tmp_ctx g ON g.soggetto_ruolo_id = r.soggetto_ruolo_id
-        WHERE r.tipo_indirizzo_codice = 'FATT'
+        WHERE r.tipo_indirizzo_codice_interno = 'FATT'  -- rev 2026-11-01: il codice interno, non il display
           AND r.istanza_utility_id IS NOT NULL
     ) = 1,
     '13) vw_indirizzi_resolved_all: FATT con istanza_utility_id valorizzato'

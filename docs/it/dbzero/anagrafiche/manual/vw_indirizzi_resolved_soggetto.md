@@ -78,6 +78,7 @@ Il risultato è un record **"resolved"**, semanticamente completo e coerente con
 | `soggetto_ruolo_id`      | `bigint`               | Sempre NULL per questa vista.                              |
 | `tipo_indirizzo_id`      | `integer`              | Tipo indirizzo.                                            |
 | `tipo_indirizzo_codice`  | `varchar`              | Codice del tipo indirizzo (display, `ti.codice`), non il codice interno. |
+| `tipo_indirizzo_codice_interno` | `varchar`       | Codice interno del tipo (`ti.codice_interno`, immutabile): la chiave per confronti e logica. Dal 2026-11-01, come la base. |
 | `is_normalizzato`        | `boolean`              | TRUE se l’indirizzo è basato su `indirizzi_dettaglio`.     |
 | `indirizzo_dettaglio_id` | `bigint`               | FK al dettaglio civico, se presente.                       |
 | `indirizzo_display`      | `text`                 | Stringa pronta per UI/documenti.                           |

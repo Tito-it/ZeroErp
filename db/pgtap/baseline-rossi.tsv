@@ -1,5 +1,4 @@
 # pgtap-runner: app
 db/pgtap/anagrafiche/test-catasto-unita-immobiliare.sql	ERRORE_FIXTURE
-db/pgtap/anagrafiche/test-indirizzi-fallback.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-istanze-dati-precontrattuali.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-sync-auth-user-is-active-multi-role.sql	ASSERZIONE
