@@ -1,6 +1,6 @@
 # Configurazione GitHub — branch, CI e pubblicazione
 
-> **Ultimo aggiornamento**: 24 ottobre 2026
+> **Ultimo aggiornamento**: 1 novembre 2026
 >
 > **Destinatari**: chi sviluppa su ZeroERP (DB, backend, frontend) e chi deve capire perché una corsa della CI è rossa
 >
@@ -165,7 +165,7 @@ valori non si scrivono in nessun documento.
 | Segreto                                   | Lo usa                                            | A che cosa serve                                                        |
 | ----------------------------------------- | ------------------------------------------------- | ----------------------------------------------------------------------- |
 | `POSTGRES_ADMIN_PASSWORD`                 | `ci-validate.yaml`                                | la password del superuser del PostgreSQL usa-e-getta della corsa         |
-| `ACTIONS_DEPLOY_KEY`                      | `ci.yaml`                                         | la chiave che pubblica il sito su `Tito-it/ZeroERP-Docs`                 |
+| `ACTIONS_DEPLOY_KEY`                      | `ci.yaml`                                         | la chiave che pubblica il sito su `Tito-it/ZeroErp-docs`                 |
 | `GITHUB_TOKEN`                            | `ci.yaml` (automatico, non si configura)          | il push dell'immagine su GHCR                                            |
 
 Sono gli unici. Un segreto che nessun workflow legge si cancella: un segreto morto è una
@@ -182,7 +182,7 @@ della corsa.
 
 | Che cosa             | Dove                                                                 | Quando                    |
 | -------------------- | -------------------------------------------------------------------- | ------------------------- |
-| sito della doc       | branch `gh-pages` del repository `Tito-it/ZeroERP-Docs` (GitHub Pages) | a ogni push su `main`     |
+| sito della doc       | branch `gh-pages` del repository `Tito-it/ZeroErp-docs` (GitHub Pages) | a ogni push su `main`     |
 | immagine Docker      | `ghcr.io/<owner>/zeroerp`, con i tag `:<sha>` e `:latest`             | a ogni push su `main`     |
 
 La doc auto-generata del database (`docs/it/dbzero/<schema>/tabelle|views|funzioni`) è rigenerata

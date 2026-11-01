@@ -259,10 +259,13 @@ jobs:
         uses: peaceiris/actions-gh-pages@v4
         with:
           deploy_key: ${{ secrets.ACTIONS_DEPLOY_KEY }}
-          external_repository: Tito-it/ZeroERP-Docs
+          external_repository: Tito-it/ZeroErp-docs
           publish_branch: gh-pages
           publish_dir: ./site-zensical
           enable_jekyll: false
+          # Ogni deploy sostituisce il sito con un commit solo: il repo e'
+          # pubblico, e una pagina pubblicata per sbaglio non resta nella storia.
+          force_orphan: true
 
 
       
