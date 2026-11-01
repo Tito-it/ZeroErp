@@ -1,18 +1,19 @@
 # .gitleaksignore — rilievi gitleaks gia' valutati, per impronta (commit:file:regola:riga).
-# ⚠️ Solo falsi positivi della STORIA, valutati uno per uno il 2026-09-26.
+# ⚠️ Solo falsi positivi della STORIA, valutati uno per uno il 2026-09-26; impronte
+#    riscritte il 2026-11-01 sugli hash del repo travasato (stessi file e righe).
 #    Un rilievo vero NON si mette qui: si ruota il segreto.
 # Idempotency-Key d'esempio nei test API; `etichetta_i18n_key` (nome di campo);
 # il testo «token monouso» nella documentazione.
-c3b8dbd815c28a0759091ba8c7112fc7c6d91712:docs/it/readme.md:generic-api-key:154
-fc5bd2f7501598ac3e4942b51a673cd6c7762f39:backend/apps/vendite/tests/api/test_commesse_api.py:generic-api-key:437
-fc5bd2f7501598ac3e4942b51a673cd6c7762f39:backend/apps/vendite/tests/api/test_commesse_api.py:generic-api-key:462
-cba16128150f4f56e189ef932c3e76760ee19a32:docs/it/readme.md:generic-api-key:150
-cba16128150f4f56e189ef932c3e76760ee19a32:docs/it/dev/mappa-concentrica-changelog.md:generic-api-key:67
-bc30234bd6bfacb98b9d1d9851ae4dc1bc132b22:backend/apps/ui/services/lista_colonna_admin_service.py:generic-api-key:352
-bc30234bd6bfacb98b9d1d9851ae4dc1bc132b22:backend/apps/ui/services/lista_colonna_admin_service.py:generic-api-key:459
-678939a49120d124dcd333a64f3ac9ee438b0261:docs/it/dev/work-in-progress/brief-db-blocco-f2-i18n-seed-clienti.md:generic-api-key:71
+5c43aadfd22089a85541a1e87dd691039ed4a530:docs/it/readme.md:generic-api-key:154
+94c0404aea713176705a07517a35f83ef55184b2:backend/apps/vendite/tests/api/test_commesse_api.py:generic-api-key:437
+94c0404aea713176705a07517a35f83ef55184b2:backend/apps/vendite/tests/api/test_commesse_api.py:generic-api-key:462
+3a76415df6c1c3b40ecf8d07eb7983edb62468d7:docs/it/readme.md:generic-api-key:150
+3a76415df6c1c3b40ecf8d07eb7983edb62468d7:docs/it/dev/mappa-concentrica-changelog.md:generic-api-key:67
+fe807417fdb9c26106eccb77b0f191d927a39472:backend/apps/ui/services/lista_colonna_admin_service.py:generic-api-key:352
+fe807417fdb9c26106eccb77b0f191d927a39472:backend/apps/ui/services/lista_colonna_admin_service.py:generic-api-key:459
+3a0d41b83e06c7fef115aca10336a48b130a9a46:docs/it/dev/work-in-progress/brief-db-blocco-f2-i18n-seed-clienti.md:generic-api-key:71
 # 2026-11-01: db/changelog/v1-congelato.json mappa nome file → checksum; il nome contiene
 # «key»/«tokens» (rename_index_..._key_to_uq, fn_fix_triggers_event_tokens) e l'hash
 # sembra una chiave.
-4617fabe6c4631345b323d9ace00f60e6ab2d0a5:db/changelog/v1-congelato.json:generic-api-key:129
-4617fabe6c4631345b323d9ace00f60e6ab2d0a5:db/changelog/v1-congelato.json:generic-api-key:554
+09e8e1f37657c64f84d8806d56186db81d2a7af0:db/changelog/v1-congelato.json:generic-api-key:129
+09e8e1f37657c64f84d8806d56186db81d2a7af0:db/changelog/v1-congelato.json:generic-api-key:554

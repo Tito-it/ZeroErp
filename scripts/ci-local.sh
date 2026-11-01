@@ -56,6 +56,8 @@
 #   scripts/ci-local.sh --fresh      # ricostruisce il database scratch da zero
 #   scripts/ci-local.sh --ci-apply   # + la passata delle automazioni (vedi sopra)
 #   CI_DB=altro_nome scripts/ci-local.sh
+#   La password del superuser: da ~/.pgpass, o chiesta al terminale (vedi
+#   «L'utenza admin» piu' sotto). PGPASSWORD_POSTGRES resta, ma va in history.
 #
 # ── ⭐ E PREPARA LO SCRATCH ANCHE PER I pgTAP, sempre e da solo ────────
 #   Il migrate costruisce lo schema, ma la suite pretende altre tre cose che in
@@ -181,6 +183,46 @@ psql_admin() { sudo -u postgres psql --no-psqlrc -v ON_ERROR_STOP=1 -X -q "$@"; 
 ADMIN_USER="${CI_ADMIN_USER:-postgres}"
 ADMIN_PWD="${PGPASSWORD_POSTGRES:-}"
 
+# ⭐ La password del superuser NON si scrive sulla riga di comando (finirebbe
+#   nella history della shell). Se PGPASSWORD_POSTGRES e' vuota la si prende
+#   dalla riga di ~/.pgpass (o $PGPASSFILE) per host, porta e utente admin;
+#   se manca anche li', e c'e' un terminale, la si chiede senza eco.
+#   ⚠️ Serve leggerla a mano: Liquibase usa JDBC, che ~/.pgpass non lo legge.
+#   Le regole del file sono quelle di libpq: `*` vale per tutto, `\:` e `\\`
+#   sono i caratteri letterali, vince la prima riga che combacia.
+pgpass_password() {   # host porta database utente → stampa la password, o niente
+  local f="${PGPASSFILE:-$HOME/.pgpass}" riga campo c i
+  local -a campi
+  [[ -r "$f" ]] || return 0
+  while IFS= read -r riga || [[ -n "$riga" ]]; do
+    [[ -z "$riga" || "$riga" == \#* ]] && continue
+    campi=(); campo=""
+    for (( i = 0; i < ${#riga}; i++ )); do
+      c="${riga:i:1}"
+      if [[ "$c" == '\' ]]; then (( i++ )); campo+="${riga:i:1}"
+      elif [[ "$c" == ':' && ${#campi[@]} -lt 4 ]]; then campi+=("$campo"); campo=""
+      else campo+="$c"
+      fi
+    done
+    campi+=("$campo")
+    (( ${#campi[@]} == 5 )) || continue
+    [[ "${campi[0]}" == '*' || "${campi[0]}" == "$1" ]] || continue
+    [[ "${campi[1]}" == '*' || "${campi[1]}" == "$2" ]] || continue
+    [[ "${campi[2]}" == '*' || "${campi[2]}" == "$3" ]] || continue
+    [[ "${campi[3]}" == '*' || "${campi[3]}" == "$4" ]] || continue
+    printf '%s' "${campi[4]}"
+    return 0
+  done < "$f"
+}
+if [[ -z "$ADMIN_PWD" ]]; then
+  ADMIN_PWD="$(pgpass_password "$PGHOST" "$PGPORT" postgres "$ADMIN_USER")"
+  [[ -n "$ADMIN_PWD" ]] && echo "── password di '$ADMIN_USER' presa da ${PGPASSFILE:-~/.pgpass}"
+fi
+if [[ -z "$ADMIN_PWD" && -t 0 ]]; then
+  read -r -s -p "Password di '$ADMIN_USER' (per Liquibase, non viene mostrata): " ADMIN_PWD
+  echo
+fi
+
 # ⛔ PRE-VOLO. Liquibase si connette via TCP, non col socket: `sudo -u postgres`
 #   qui non aiuta, serve una PASSWORD. Meglio scoprirlo adesso, in due secondi,
 #   che dopo aver creato il database e macinato meta' provisioning.
@@ -197,10 +239,13 @@ if ! PGPASSWORD="$ADMIN_PWD" psql -X -q -A -t -w \
    richiedono un superuser con password.
 
    Due strade:
-     1) se il ruolo '$ADMIN_USER' ha gia' una password, passala:
-          PGPASSWORD_POSTGRES='<password>' CI_DB=$CI_DB $0 ${*:-}
-     2) se hai un ALTRO superuser con password, usalo:
-          CI_ADMIN_USER=<ruolo> PGPASSWORD_POSTGRES='<password>' CI_DB=$CI_DB $0 ${*:-}
+     1) se il ruolo '$ADMIN_USER' ha gia' una password, mettila in ~/.pgpass
+        (permessi 600), che lo script legge da solo:
+          $PGHOST:$PGPORT:*:$ADMIN_USER:<password>
+        oppure lancia lo script da un terminale: la chiede senza mostrarla.
+     2) se hai un ALTRO superuser con password, usalo, con la sua riga in ~/.pgpass:
+          CI_ADMIN_USER=<ruolo> CI_DB=$CI_DB $0 ${*:-}
+   (PGPASSWORD_POSTGRES='<password>' funziona ancora, ma resta nella history.)
 
    ⚠️ Assegnare una password a 'postgres' e' una modifica al CLUSTER, quindi
    condivisa col database di sviluppo: falla solo se sai di volerla.
