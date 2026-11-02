@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: la DIMENSIONE `motivo_non_fatturata` e la CHIAVE del verbo
 --       (brief-db-residui-competenza-dimensione-e-chiave, D-1 · D-2 · D-3)

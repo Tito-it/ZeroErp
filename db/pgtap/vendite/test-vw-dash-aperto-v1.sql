@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2d): l'area della dashboard e' il codice della sorgente.
 -- rev 2026-10-24 (brief-modello-documento-vendita Q-2/Q-4): il contratto ATTIVO nasce da dbops.fn_pgtap_crea_contratto (madre di produzione) invece che da un INSERT a mano; date multi-mese e listino in bozza.
 -- rev 2026-10-24 (brief-modello-documento-vendita R-2/R-9): l'azienda A nasce da dbops.fn_pgtap_crea_mondo_cliente (contesto aperto sul suo operatore, whitelist gia' sua: tolta la riscrittura a mano); B ha il suo operatore e il suo cliente e preventivo nascono sotto il suo contesto; il contratto nasce ATTIVO col periodo, la data e il listino dal builder; la commessa nasce da dbops.fn_pgtap_crea_commessa in BOZZA.

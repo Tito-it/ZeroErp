@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: la DATA DEL DOCUMENTO — cantiere numerazione-data-documento (2026-08-25)
 --       script.fn_data_operativa · vendite.fn_calcola_data_documento

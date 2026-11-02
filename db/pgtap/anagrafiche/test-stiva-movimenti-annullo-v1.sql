@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: annullo di una forzatura nel registro plafond IVA, e registro append-only
 -- Brief: brief-db-titoli-iva-movimenti-annullo, §6.7 (Fase F-1)

@@ -1,5 +1,5 @@
 # ------------------------------------------------------------
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Liquibase changelog per Zero ERP
 # Seed pratiche.tipi_prestazione — tipo APPROVAZIONE_PREZZO
 # Sprint E listini v5 §14.6 (workflow L3 approvazione out-of-policy).

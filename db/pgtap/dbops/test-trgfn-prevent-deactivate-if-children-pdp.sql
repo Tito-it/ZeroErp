@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Trigger: dbops.trgfn_prevent_deactivate_if_children
 -- Caso: config.stati_pdp (padre) -> anagrafiche.pdp (figlio con attivo)

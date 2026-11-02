@@ -1,6 +1,6 @@
 # Politica di sicurezza
 
-ZeroErp è un ERP open source (GPL-3.0) attualmente in **fase di sviluppo
+ZeroErp è un ERP open source (AGPL-3.0, con doppia licenza commerciale) attualmente in **fase di sviluppo
 pre-produzione**: non esistono ancora release stabili con versionamento
 semantico. Lo sviluppo avviene sul branch `main` del repository
 [Tito-it/ZeroErp](https://github.com/Tito-it/ZeroErp).

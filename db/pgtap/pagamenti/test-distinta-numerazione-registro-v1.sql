@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2c): la famiglia della distinta e' DISTINTA_INCASSO, e la sua tabella viene dalla sorgente (config.fn_sorgente_tabella).
 -- pgTAP test per Zero ERP
 -- Test: la distinta contabile prende il numero dal REGISTRO, e sa di chi e'

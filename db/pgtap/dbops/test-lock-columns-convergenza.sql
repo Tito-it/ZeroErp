@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgtap-runner: owner
 -- pgtap-runner-motivo: il test fa DDL — crea uno schema di prova con tabelle e trigger di lock scritti a mano, e scrive nel registro dbops.automation_lock_columns
 -- pgTAP test per Zero ERP

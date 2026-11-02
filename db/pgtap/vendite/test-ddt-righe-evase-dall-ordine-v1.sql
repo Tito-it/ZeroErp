@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): gli ordini senza bolla (re_mk_ordine) da dbops.fn_pgtap_crea_ordine_con_righe, la bolla J da dbops.fn_pgtap_crea_ddt_senza_ordine (DRAFT); restano a mano la bolla standalone di D col legame scritto a mano e il legame in piu' di E (sono il caso).
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito): il reso di F dal builder dbops.fn_pgtap_crea_reso, in bozza; restano a mano la conferma (fn_conferma_reso, il test 30 ne misura l'effetto: resta anche l'azione conferma_reso in testa) e la ri-consegna dalla madre in bozza (fn_genera_ddt_riconsegna e' il verbo del 30, e i 31-35 lavorano sulla bolla in bozza).

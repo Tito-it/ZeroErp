@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): la riga dell'ordine di A da dbops.fn_pgtap_crea_ordine_con_righe sulla testata del caso (p_ordine_id, resta DRAFT: la conferma e' il 29), l'ordine di E2 da dbops.fn_pgtap_crea_ordine; restano a mano le testate di ordini e bolle (il caso: BA, utility, causali, BA NULL) e la riga di pg_temp.ddt_bozza (nessun builder scrive una riga su una testata del test; le bolle senza BA il builder non le fa).
 --

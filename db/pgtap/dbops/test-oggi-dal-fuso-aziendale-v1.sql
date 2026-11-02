@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: NESSUN «OGGI» PRESO DAL FUSO DELLA SESSIONE — presidio sul catalogo
 --       brief-be-db-fe-un-solo-fuso-aziendale §5.1 D-8 (20261009-40..60)

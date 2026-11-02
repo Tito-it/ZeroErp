@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: ambito di compensazione degli arrotondamenti — idempotenza del
 --       ricalcolo, separazione degli ambiti, storno alla cancellazione

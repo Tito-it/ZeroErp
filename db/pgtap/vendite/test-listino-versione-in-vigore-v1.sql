@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- rev 2026-10-28 (brief-modello-documento-vendita §16, giro 12): le bozze nascono senza stato e
 --   prendono un prezzo (un articolo del test) prima dell'attivazione; i passaggi dal verbo

@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgtap-runner: owner
 -- pgtap-runner-motivo: la fixture cambia il vocabolario del perimetro (config.nature_vendita_erogazioni), un seed che nessun operatore scrive, per far uscire dal perimetro righe gia' scritte: e' la strada che il modello lascia aperta, e il caso da provare
 -- rev 2026-11-01 (20261101-04/-06, brief-db-contratto-righe-periodiche-in-commessa passo 4): la

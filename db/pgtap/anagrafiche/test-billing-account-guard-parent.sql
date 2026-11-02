@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): commessa (sorgente ROOT), attivita' e attivita' fatturabile da dbops.fn_pgtap_crea_commessa / _attivita e dall'emissione della madre; la fattura agganciata da dbops.fn_pgtap_fattura_attivita; lo smontaggio col verbo vero vendite.fn_cleanup_fatture_by_ids (E-4) al posto dello sgancio a mano con la GUC. Restano a mano istanze e BA padre/figli (il caso: la gerarchia) e il cleanup, ora per id.
 -- pgTAP test per Zero ERP
 --

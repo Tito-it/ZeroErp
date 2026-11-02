@@ -41,6 +41,7 @@ on:
       - requirements.txt
       - .python-version
       - .pre-commit-config.yaml
+      - .gitleaks.toml # config dell'hook gitleaks: cambiarla deve rimisurare
       - scripts/**
       - .github/workflows/ci-validate.yaml
   pull_request:
@@ -51,6 +52,7 @@ on:
       - requirements.txt
       - .python-version
       - .pre-commit-config.yaml
+      - .gitleaks.toml # config dell'hook gitleaks: cambiarla deve rimisurare
       - scripts/**
       - .github/workflows/ci-validate.yaml
 

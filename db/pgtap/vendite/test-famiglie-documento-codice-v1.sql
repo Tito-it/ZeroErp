@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2c): le famiglie di prova nascono come sorgenti (dbops.fn_pgtap_crea_sorgente); niente schema_tabella/nome_tabella; la madre ha la firma nuova.
 -- rev 2026-10-21 (brief-db-grammatica-unica-documenti, G-3, 20261021-18/-19): test 15-17, il codice e' largo quanto il codice_interno che il trigger ci copia.
 -- pgTAP test per Zero ERP

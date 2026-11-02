@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-26 (brief-modello-documento-vendita §14, giro 10):
 --   la commessa del caso 7 nasce APERTA con l'attivita' del builder (p_con_attivita
 --   => true, prima false): BOZZA -> APERTA e' spenta, APERTA si raggiunge solo da
@@ -15,7 +15,7 @@
 -- pgTAP test per Zero ERP
 -- Copyright (C) 2026 Tid (Michele Carlo Titini)
 --
--- Rilasciato sotto GNU GPLv3 o versione successiva.
+-- Rilasciato sotto GNU AGPLv3 o versione successiva.
 -- Vedi LICENSE.md per il testo completo della licenza.
 -- ------------------------------------------------------------
 -- Test: T.2 — il livello 1 di vendite.fn_resolve_termini_pagamento

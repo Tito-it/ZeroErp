@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: Fase 4.3 / 4.3-bis — armamento del task genera_scadenze_lotto
 --       sullo step EMESSA e invariante sui `processi` esteso a TUTTE

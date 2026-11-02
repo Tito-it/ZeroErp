@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgtap-runner: owner
 -- pgtap-runner-motivo: la fixture costruisce soggetti, ruoli e un cliente di
 --   un'azienda nuova; il soggetto del test sono conteggio, ordine e pagina

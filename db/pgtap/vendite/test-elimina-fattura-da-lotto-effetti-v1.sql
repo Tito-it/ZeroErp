@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): CURATO — pescava il billing account «il primo per id» e moriva sulla commessa (billing_account_id nullo), zero asserzioni. Ora il mondo si costruisce: due commesse emittibili di DUE clienti (dbops.fn_pgtap_crea_commessa), il lotto DRAFT massivo (dbops.fn_pgtap_crea_lotto), le due fatture nel lotto con riga, lucchetto e aggancio da dbops.fn_pgtap_fattura_attivita (p_lotto_id). Niente resta a mano. ⚠️ Lo stato_esecuzione 'COMPLETED' che la vecchia fixture scriveva sull'attivita' non lo scrive il builder, e a mano dopo l'aggancio il guard lo rifiuta («Riga gia' fatturata»): la clausola stato_esecuzione IS NULL del 6 oggi parte gia' vera (debito del builder, dichiarato nel rapporto).
 -- pgTAP test per Zero ERP
 -- Test: gli EFFETTI di «Elimina dal lotto» su un lotto con DUE fatture

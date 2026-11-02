@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # ------------------------------------------------------------
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Guardrail CI — i privilegi dei ruoli batch stanno nel PROVISIONING,
 #                mai in un changeSet
 #   Regola: docs/it/linee-guida-sql.md §11.6

@@ -1,6 +1,6 @@
 # 💻 Zero ERP – VM wrk1-dev – Configurazione Desktop di Sviluppo e Accesso Remoto
 
-> **Ultimo aggiornamento**: 1 novembre 2026
+> **Ultimo aggiornamento**: 2 novembre 2026
 
 > 🔧 **Scopo principale**
 > La VM **wrk1-dev** funge da postazione di sviluppo grafico principale per l'ambiente Zero ERP.
@@ -251,4 +251,4 @@ Offre un ambiente stabile, multi-utente e facilmente manutenibile, con:
 📁 *Posizione consigliata:* `docs/it/infrastruttura/virtual-machines/workstation-dev.md`
 ✳️ **Autore:** M.C. Titini (tid)
 📅 **Data configurazione:** 2025-10-15
-🔖 **Licenza:** GPL v3 – Zero ERP Documentation
+🔖 **Licenza:** AGPL v3 – Zero ERP Documentation

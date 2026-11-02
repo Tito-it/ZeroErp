@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgtap-runner: owner
 -- pgtap-runner-motivo: la fixture CREA emittenti fiscali, e nessun operatore ne
 --   vede piu' di uno (config.user_emittenti_fiscali ha UNIQUE su auth_user_id).

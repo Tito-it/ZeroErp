@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-28 (brief-modello-documento-vendita §16, giro 12): la versione di oggi del listino nasce
 --   in bozza senza stato e si attiva dal verbo (dbops.fn_pgtap_porta_a_stato), non con un UPDATE dello stato.
 -- rev 2026-10-26 (brief-modello-documento-vendita §13, giro 9): l'emissione di OFF_EMETTI (prima del 13) dal

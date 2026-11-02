@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgtap-contesto: escluso — questo file non interroga NESSUN dato di dominio:
 --   legge il catalogo di PostgreSQL (pg_constraint, pg_attrdef, pg_proc) e il
 --   registro delle dichiarazioni. Un contesto operatore non cambierebbe una

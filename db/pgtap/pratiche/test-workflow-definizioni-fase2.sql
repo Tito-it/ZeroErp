@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgtap-runner: owner
 -- pgtap-runner-motivo: il test collauda i guard su pratiche.workflow_definizioni, che difendono da chi
 --   scrive DIRETTAMENTE sulla tabella. Il ruolo applicativo ha solo SELECT, e ha

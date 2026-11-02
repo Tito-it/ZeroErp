@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgtap-runner: owner
 -- pgtap-runner-motivo: CREATE TABLE dbops._test_overlap_wp / _test_overlap_tot: l'automazione risolve
 --   schema.tabella dal registry e ci applica sopra un EXCLUDE reale.

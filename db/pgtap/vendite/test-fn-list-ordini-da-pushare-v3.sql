@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): gli ordini D (DRAFT) e E (ANNULLATO) da dbops.fn_pgtap_crea_ordine_con_righe (5 x 15, data 2026-07-08); il BA e' costruito, quindi via i ripieghi «OR push_ba_id IS NULL» (e «stato ANNULLATO assente»: il builder solleva) e le colonne dei riferimenti rimaste senza lettori.
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): le bolle da ordine (A, B, C) dal builder dbops.fn_pgtap_crea_ddt_da_ordine, col trigger e lo stato finale del caso; restano a mano gli ordini D (DRAFT) e E (ANNULLATO), che non hanno bolla.
 -- pgTAP test per Zero ERP

@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: porta oneri (vendite.fn_aggiungi_onere_commessa).
 -- Brief: brief-db-immutabilita-quantita-e-porta-oneri §4c (step 4/5/6/7, 2026-07-21).

@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-26 (brief-modello-documento-vendita §14, giro 10): il passaggio a PRONTA_FATTURAZIONE del caso 8 non e' piu' un UPDATE della colonna di stato, che la porta ferma (E_DOC_STATO_SOLO_DAL_VERBO): passa da dbops.fn_pgtap_porta_a_stato (il verbo, con l'azione concessa dalla fixture). Attese invariate.
 -- pgTAP test per Zero ERP
 --

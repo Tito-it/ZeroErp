@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: la NOTA DI CREDITO ha UNA rata — P-5 / D19-e per intero
 --       (changeSet 20260917-11 · -12 · -13 · -14)

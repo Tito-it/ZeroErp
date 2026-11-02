@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test STRUTTURALE — postura di `zeroerp_app` sui registri append-only
 --   dbops.audit_log · dbops.error_log
 --

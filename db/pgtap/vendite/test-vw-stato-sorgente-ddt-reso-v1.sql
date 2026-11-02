@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito): il reso in bozza dal builder dbops.fn_pgtap_crea_reso; restano scritti a mano la conferma e l'annullo fn_annulla_reso, che sono i passi dei test 7 e 8 (per loro resta concessa conferma_reso).
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine (CONSEGNATO, EMESSO; ANNULLATO = EMESSO + il verbo vendite.fn_annulla_ddt, che resta perche' l'annullo con legami passa da li'); il reso resta scritto a mano (giro 2).
 -- pgTAP test per Zero ERP

@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2d): area_documento diventa documento_apribile (config.sorgenti.area ritirata).
 -- pgTAP test per Zero ERP
 -- Test: vendite.vw_dash_competenza_gruppi (elenco dei gruppi fatturabili)

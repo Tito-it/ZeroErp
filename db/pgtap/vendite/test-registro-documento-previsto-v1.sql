@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP — il sezionale e la data che il documento prendera', in lista
 -- Copyright (C) 2026 Tid (Michele Carlo Titini)
 --

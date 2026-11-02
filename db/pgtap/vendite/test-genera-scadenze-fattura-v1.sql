@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: vendite.fn_genera_scadenze_fattura — il generatore del piano rate
 --       (piano-db-satelliti-fattura.md Fase 4.1, rilievi C-4/C-5, decisioni D-D/D-E/D-F)

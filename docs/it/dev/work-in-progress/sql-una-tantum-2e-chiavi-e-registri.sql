@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- SQL una tantum per Zero ERP — NON e' un changeSet
 --
 -- Sotto-giri 2c-2e (brief-db-grammatica-unica-documenti §13): i DATI di dbdev che

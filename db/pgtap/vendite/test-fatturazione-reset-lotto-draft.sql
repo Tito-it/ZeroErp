@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): emissione col marchio del lotto, testata dalla madre del lotto, riga di fattura, lucchetto e aggancio da dbops.fn_pgtap_fattura_attivita (p_lotto_id), per i due slot; gli ok dei passi 3-5 leggono cio' che il builder ha scritto. Restano i due annulli (il caso).
 -- pgTAP test per Zero ERP
 -- Test: rollback tecnico lotto MASSIVO in DRAFT

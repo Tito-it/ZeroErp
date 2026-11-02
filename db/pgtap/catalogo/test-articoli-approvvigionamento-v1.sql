@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test — da dove arriva un articolo: le tre colonne di approvvigionamento
 --   catalogo.articoli.modo_approvvigionamento_id / gestito_a_magazzino / lead_time_giorni
 --   config.modi_approvvigionamento (vocabolario, 20260913-04/-09)

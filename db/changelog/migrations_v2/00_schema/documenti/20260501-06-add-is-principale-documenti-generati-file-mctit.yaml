@@ -1,5 +1,5 @@
 # -----------------------------------------------------------
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Liquibase changelog per Zero ERP
 # Aggiunge is_principale a documenti_generati_file
 # (Step C — adattamento per Fase B con multipli file per tipo)

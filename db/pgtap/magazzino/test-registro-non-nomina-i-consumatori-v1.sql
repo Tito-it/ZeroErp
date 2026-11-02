@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgtap-runner: owner
 -- pgtap-runner-motivo: il test fa DDL nello schema magazzino (funzioni, una vista, una tabella con FK, trigger, policy e default testimoni, portati via dal ROLLBACK): l'applicazione non crea oggetti, e il soggetto del test e' il catalogo, non un percorso applicativo.
 -- pgTAP test per Zero ERP

@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): l'ordine B da dbops.fn_pgtap_crea_ordine_con_righe, la commessa da dbops.fn_pgtap_crea_commessa (sorgente ROOT), le attivita' da dbops.fn_pgtap_crea_commessa_attivita con la sorgente vera (ORDINE_VENDITA / DDT_VENDITA, E-3), la fattura del caso 2 da dbops.fn_pgtap_fattura_attivita; helper ch_mk_ordine e ch_fattura ritirati. Resta a mano l'ONERE del caso 5 (il caso; il builder dell'attivita' scrive solo NORMALE).
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito): il reso dal builder dbops.fn_pgtap_crea_reso, le due ri-spedizioni da dbops.fn_pgtap_crea_ddt_riconsegna (parziali dalla stessa riga del reso, alle loro date); helper ch_mk_reso e ch_rispedisci ritirati, l'azione conferma_reso la concede il builder.
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, D-1): gli ordini costruiti dal builder nascono al 2026-08-05 (p_data_ordine), come gli ordini scritti a mano prima del giro 1: nessuna bolla piu' vecchia del suo ordine.

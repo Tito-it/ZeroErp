@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: colonna prezzo_bloccato su vendite.attivita_fatturabili (changeset 20260224-04)
 -- ------------------------------------------------------------

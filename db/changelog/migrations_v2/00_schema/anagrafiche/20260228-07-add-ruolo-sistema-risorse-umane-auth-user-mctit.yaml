@@ -1,5 +1,5 @@
 # ------------------------------------------------------------
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Liquibase changelog per Zero ERP
 # ALTER risorse_umane_auth_user: aggiunta colonna ruolo_sistema
 # per classificazione nella catena di risoluzione permessi

@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgtap-differiti: escluso — la fixture costruisce un OPERATORE con la madre
 --   fn_crea_operatore_v2, che passa da fn_crea_soggetto_pf: per contratto del
 --   dominio quel soggetto nasce SENZA indirizzo, e il guard sugli indirizzi e'

@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: un contratto arriva in commessa dalla madre delle righe.
 --   vendite.fn_list_contratti_da_pushare -> vendite.fn_upsert_commessa_attivita,

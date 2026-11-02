@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-23 (brief-be-verifica-documentazione-api D1, 20261023-01): E_FAMIGLIA_DOCUMENTO_RIFERIMENTO_INESISTENTE e' DATO_ERRATO e porta il campo; test 10-13.
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2c): le famiglie di prova nascono come sorgenti (dbops.fn_pgtap_crea_sorgente), la tabella e' quella della sorgente; il test 7 legge config.fn_sorgente_tabella.
 -- pgtap-runner: owner

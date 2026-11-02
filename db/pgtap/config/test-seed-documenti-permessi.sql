@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: seed area + azioni processo per dominio documenti
 --   - area config.aree_funzionali: 'documenti' attiva, schema_db coerente

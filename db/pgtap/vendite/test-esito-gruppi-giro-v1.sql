@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): CURATO — pescava il billing account «il primo per id» e moriva sulla commessa (billing_account_id nullo), un'asserzione su dodici. Ora il mondo si costruisce: la commessa da dbops.fn_pgtap_crea_commessa (sorgente ROOT), le tre righe sui tre gruppi da dbops.fn_pgtap_crea_commessa_attivita con la sorgente ORDINE_VENDITA di tre ordini veri (dbops.fn_pgtap_crea_ordine_con_righe; prima tre uid PREVENTIVO inventati, che la madre della riga rifiuta), i due lotti da dbops.fn_pgtap_crea_lotto, emissione, fatture, righe e aggancio da dbops.fn_pgtap_fattura_attivita (p_lotto_id: G1 su L1, G3 su L2). Resta a mano il PERIMETRO del giro su L1 (fatturazione_lotti_gruppi, lo scrive il backend): con la distribuzione dei gruppi nei lotti e' il caso.
 -- pgTAP test per Zero ERP
 --

@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito): i resi A, B, C dal builder dbops.fn_pgtap_crea_reso (C in bozza a due righe, con p_reso_id); restano scritte a mano la riga di C spenta in bozza e la conferma che la segue, che sono il caso del test 9 (per lei resta concessa conferma_reso).
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine; restano scritti a mano i resi A, B, C (il caso del test, e giro 2).
 -- pgTAP test per Zero ERP

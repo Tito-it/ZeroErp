@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgtap-runner: owner
 -- pgtap-runner-motivo: ALTER TABLE vendite.commesse_attivita_log ADD/DROP CONSTRAINT temporaneo:
 --   fault injection per dimostrare che l'INSERT del log fallisce davvero e che

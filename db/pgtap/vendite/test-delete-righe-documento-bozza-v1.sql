@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): i DDT in bozza da dbops.fn_pgtap_crea_ddt_senza_ordine (DRAFT), gli ordini in bozza e confermato da dbops.fn_pgtap_crea_ordine_con_righe; restano a mano i sei DELETE (sono il caso).
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine (test 5 e 6); restano scritti a mano i DDT in bozza senza ordine e gli ordini in bozza/confermato (sono il caso: righe che si tolgono o no), e i DELETE.
 -- pgTAP test per Zero ERP

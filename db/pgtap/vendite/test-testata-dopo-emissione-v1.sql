@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): i due ordini (CONFERMATO, ANNULLATO) da dbops.fn_pgtap_crea_ordine_con_righe (2 x 10, trigger SPEDITO scritto in bozza); il preventivo resta a mano: e' fuori dalle tre strade del giro (c'e' dbops.fn_pgtap_crea_preventivo, da valutare a parte).
 -- pgTAP test per Zero ERP
 --

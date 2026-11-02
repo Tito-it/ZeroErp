@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: il PRESIDIO del registro delle azioni di riga (config.azioni_riga,
 --   20261027-23) e la prima superficie, vendite.vw_lotti_gruppi_azioni (20261027-24).

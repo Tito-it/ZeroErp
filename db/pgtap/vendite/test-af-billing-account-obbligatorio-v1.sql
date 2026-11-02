@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgtap-runner: owner
 -- pgtap-runner-motivo: la fixture costruisce un'AZIENDA — emittente fiscale,
 --   utente tecnico e identita' digitale (dbops.fn_pgtap_crea_emittente_operatore)

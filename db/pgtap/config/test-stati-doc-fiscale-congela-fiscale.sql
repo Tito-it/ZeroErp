@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: config.stati_doc_fiscale.congela_fiscale (I10 / D15)
 --       + vendite.fn_ricalcola_riepilogo_iva_fattura che la legge

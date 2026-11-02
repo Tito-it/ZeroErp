@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-26 (brief-modello-documento-vendita §13, giro 9): l'emissione dell'offerta del test 18 da dbops.fn_pgtap_porta_a_stato (il verbo), non con un UPDATE diretto: la porta dell'offerta lo rifiuta. Le attese non cambiano.
 -- rev 2026-10-25 (brief-modello-documento-vendita §7, giro 5): l'emissione della bolla (16, 17) da dbops.fn_pgtap_porta_a_stato (il verbo), che solleva lo stesso errore del guard degli indirizzi: lo stato della bolla non si cambia piu' con un UPDATE diretto (E_DOC_STATO_SOLO_DAL_VERBO). Le attese non cambiano.
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2d): test 1 con gli ambiti col codice della sorgente.

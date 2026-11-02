@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: vendite.fn_genera_ddt_da_ordine (evasione ordine -> DDT)
 --       + macchina a stati DDT + numero a EMESSO + sync stato ordine

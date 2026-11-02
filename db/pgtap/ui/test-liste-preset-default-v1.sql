@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: ogni lista a catalogo nasce con la sua CONFIGURAZIONE DICHIARATA
 --       (brief-db-residui-competenza-dimensione-e-chiave, §8 — segnalazione BE)

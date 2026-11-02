@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgtap-differiti: escluso — le persone fisiche costruite qui restano SENZA
 --   indirizzi e contatti completi: il soggetto del test e' il guard BEFORE ROW
 --   del regime PA, che scatta all'INSERT/UPDATE, non la saga di completezza,

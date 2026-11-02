@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine, col trigger e lo stato finale del caso (ritirata pg_temp.mk_caso); resta a mano l'annullo di C col verbo vendite.fn_annulla_ddt, che e' la strada del caso.
 -- rev 2026-10-25 (brief-modello-documento-vendita §7, giro 5): la bolla RESO (caso D) non si chiede piu' al builder (CONSEGNATO->RESO e' un passaggio di processo, la porta_a_stato non ci arriva): si costruisce CONSEGNATA e si conferma un reso totale con dbops.fn_pgtap_crea_reso.

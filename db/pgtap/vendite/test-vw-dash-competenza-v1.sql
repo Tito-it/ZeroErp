@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): il file pescava dal database BA, articolo, emittente, registro e un operatore (rosso in partenza: «billing_account_id nullo» sulla commessa); ora il mondo da dbops.fn_pgtap_crea_mondo_cliente, la commessa da dbops.fn_pgtap_crea_commessa, la fattura da dbops.fn_pgtap_crea_fattura; il reset del test 13 e' il verbo vero vendite.fn_cleanup_fatture_by_ids (E-4: attesa dichiarata, test spostato in coda). Restano a mano le attivita' nei loro stati, le attivita' fatturabili col data_insert, la riga di fattura e i lotti: sono il caso.
 -- pgTAP test per Zero ERP
 --

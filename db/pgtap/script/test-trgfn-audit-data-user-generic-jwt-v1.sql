@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: trgfn_audit_data_user_generic con JWT (app.jwt_user)
 -- (changeset 20260227-07, 20260227-08)

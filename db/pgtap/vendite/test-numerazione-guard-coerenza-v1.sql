@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: Fase 4b / D-K — guard di coerenza alla numerazione
 --       (vendite.fn_assign_numero_fattura, changeSet 20260802-24).

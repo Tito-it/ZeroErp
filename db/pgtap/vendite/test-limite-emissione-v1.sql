@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: IL LIMITE DI EMISSIONE — cantiere limite-emissione-e-data-verificata
 --       vendite.fn_get_limite_emissione_default

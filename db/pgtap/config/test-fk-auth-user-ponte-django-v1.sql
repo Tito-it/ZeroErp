@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgtap-contesto: escluso — test STRUTTURALE sul catalogo (pg_constraint):
 --   nessuna tabella sotto RLS viene letta, il contesto operatore non
 --   cambierebbe nessuna risposta.

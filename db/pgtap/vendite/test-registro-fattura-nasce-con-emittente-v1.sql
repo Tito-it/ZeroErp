@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-28 (20261028-33): 14) e 15), lo spostamento di un collegamento con UPDATE; il guard sulla coppia non conta piu' la riga che si sposta.
 -- pgTAP test per Zero ERP
 --

@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: le ORIGINI di una nota di credito (vendite.fn_fattura_origini,
 --   20261027-26): le sorgenti di ogni tipo. Brief: brief-modello-documento-vendita

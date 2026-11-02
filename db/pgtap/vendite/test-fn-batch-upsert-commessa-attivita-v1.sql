@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: fn_batch_upsert_commessa_attivita + fn_upsert is_new
 -- (changeset 20260227-12, 20260227-13)

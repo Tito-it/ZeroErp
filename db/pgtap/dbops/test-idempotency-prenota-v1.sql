@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgtap-contesto: escluso — il soggetto sono dbops.idempotency_keys e
 --   dbops.request_log, senza RLS e senza perimetro di emittente: una veste
 --   applicativa non cambierebbe nessuna risposta. Il file gira come

@@ -1,5 +1,5 @@
 // ------------------------------------------------------------
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Tid (Michele Carlo Titini)
 // Doc: JavaScript
 // Scopo: ⭐ IL CLIENTE (E LA FORNITURA) DI UN FORM, RICOSTRUITI PER IL LOOKUP

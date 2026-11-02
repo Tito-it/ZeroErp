@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- rev 2026-10-25 (brief-modello-documento-vendita §9, giro 7): anche l'ordine esce dalla bozza con dbops.fn_pgtap_porta_a_stato (il verbo vendite.fn_cambia_stato_ordine), non piu' con un UPDATE diretto dello stato: la porta lo rifiuta (E_DOC_STATO_SOLO_DAL_VERBO) e il test si fermava li'. Attese invariate.
 -- rev 2026-10-25 (brief-modello-documento-vendita §8, giro 6): anche il preventivo esce dalla bozza con dbops.fn_pgtap_porta_a_stato (il verbo), non piu' con un UPDATE diretto dello stato: la porta lo rifiuta (E_DOC_STATO_SOLO_DAL_VERBO) e il test si fermava li'.

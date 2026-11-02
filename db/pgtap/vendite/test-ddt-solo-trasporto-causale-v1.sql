@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine, in bozza con la causale del caso, poi a CONSEGNATO per la matrice (ritirata pg_temp.porta_a); restano a mano il prezzo tolto dalla riga e la causale tolta (test 2), le emissioni di 2-4 (sono il caso: i gate) e la bolla standalone di 3 (non nasce da un ordine).
 -- rev 2026-10-25 (brief-modello-documento-vendita §7, giro 5): la porta sullo stato rifiuta ogni

@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2d): l'ambito dei tipi d'indirizzo ammessi e' il codice della sorgente (FATTURE -> FATTURA).
 -- rev 2026-10-24 (brief-modello-documento-vendita N-1): le fatture nascono in
 --   bozza e la «definitiva» si porta avanti con dbops.fn_pgtap_porta_a_stato

@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgtap-runner: owner
 -- pgtap-runner-motivo: la proprieta' sotto esame e' la SEPARAZIONE fra due
 --   emittenti, e nessun operatore ne vede due: config.user_emittenti_fiscali ha

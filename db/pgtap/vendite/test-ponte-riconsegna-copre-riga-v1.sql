@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: l'ASSUNZIONE del ponte di ri-consegna — §23.3 di
 --       brief-design-partita-merce-generalizzata.md

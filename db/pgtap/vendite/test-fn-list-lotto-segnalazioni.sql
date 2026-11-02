@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: vendite.fn_list_lotto_segnalazioni — la union, i filtri, l'ordine
 --       (changeSet 20260821-44, cantiere brief-db-liste-drawer-lotto L2/P-7)

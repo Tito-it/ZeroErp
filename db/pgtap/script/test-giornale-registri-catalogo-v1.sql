@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test — il catalogo dei registri del giornale e la vista che li cuce
 --   config.registri_giornale (20260919-08, seed 20260919-09)
 --   script.vw_giornale_entita (rev 20260919-04)

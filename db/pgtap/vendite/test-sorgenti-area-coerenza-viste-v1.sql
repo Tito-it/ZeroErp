@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: GUARDRAIL — il letterale `area` scritto dentro le 6 viste
 --       vw_dash_fatturazione_<sorgente> e' il codice della sua sorgente

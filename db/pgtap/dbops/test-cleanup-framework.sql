@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgtap-runner: owner
 -- pgtap-runner-motivo: CREATE TABLE dbops.tst_cleanup_framework: il framework di cleanup si collauda
 --   su una tabella vera registrata nel registry, e dbops e' schema di strumenti

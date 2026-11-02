@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgtap-contesto: escluso — il file legge solo lo scope e le regole delle
 --   automazioni e il catalogo di PostgreSQL: nessun dato di dominio, nessuna
 --   RLS. Una veste applicativa non cambierebbe nessuna risposta.

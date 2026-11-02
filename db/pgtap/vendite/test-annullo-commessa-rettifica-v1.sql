@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-26 (brief-modello-documento-vendita §14, giro 10): test 2, l'annullo «diretto» non e'
 --   piu' un UPDATE dello stato (la porta lo ferma prima, E_DOC_STATO_SOLO_DAL_VERBO, e il motivo D-3
 --   non si vedrebbe): e' il verbo vendite.fn_annulla_commessa senza conferma dei legami, che prova

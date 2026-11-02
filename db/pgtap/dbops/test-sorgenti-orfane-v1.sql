@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- pgtap-runner: owner
 -- pgtap-runner-motivo: il soggetto e' un orfano CREATO cancellando il

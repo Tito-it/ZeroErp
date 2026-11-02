@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ------------------------------------------------------------
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Ritira dal CLUSTER uno o piu' ruoli PostgreSQL dismessi.
 #   Copyright (C) 2026 Tid (Michele Carlo Titini)
 #   Brief: docs/it/dev/work-done/brief-db-ruoli-di-sistema.md §18

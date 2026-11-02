@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-26 (brief-modello-documento-vendita §14, giro 10): il verbo di stato ha la firma nuova
 --   (test 7 senza p_user) e chiede l'azione cambia_stato_commessa sull'annullo fuori dalla bozza (anche
 --   dentro vendite.fn_annulla_commessa): il file prova i legami, non il permesso, e la concede

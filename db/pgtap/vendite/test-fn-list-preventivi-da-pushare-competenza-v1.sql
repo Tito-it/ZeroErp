@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-24 (brief-modello-documento-vendita R-6/Q-4): cliente ed
 --   emittente dal mondo costruito (dbops.fn_pgtap_crea_mondo_cliente); prima
 --   erano il primo billing account e il primo emittente attivo del database,

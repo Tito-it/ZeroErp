@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: script.fn_check_preventivo_emettibile + Regola 2 di
 --       vendite.trgfn_preventivi_guard_transizione + lato lettura

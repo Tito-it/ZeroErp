@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgtap-runner: owner
 -- pgtap-runner-motivo: ⚠️ IL MOTIVO ORIGINALE E' DECADUTO IL 2026-08-26, e il
 --   marcatore resta in attesa di D-5.

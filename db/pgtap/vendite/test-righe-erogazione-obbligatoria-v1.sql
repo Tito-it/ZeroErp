@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-31 (brief-db-contratto-righe-periodiche-in-commessa §5, L9): solo testo. Dal 20261030-01
 --   il push manda anche i canoni, e il 19 resta vero per DUE ragioni: CONSUMO non si genera dal
 --   contratto (G-4), e l'OVERRIDE non si addebita (F-1; solo su una quota fissa, e A e' CONSUMO).

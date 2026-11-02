@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: le ORIGINI di una fattura (vendite.fn_fattura_origini, 20261027-22) e il
 --   registro dei tipi che si citano (config.sorgenti.citato_in_fattura, 20261027-21).

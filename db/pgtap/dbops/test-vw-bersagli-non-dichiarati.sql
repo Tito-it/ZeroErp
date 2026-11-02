@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test — dbops.vw_bersagli_non_dichiarati: il cancello del vocabolario
 --   Brief: brief-db-bersaglio-errore.md §6 L3, T-4
 --

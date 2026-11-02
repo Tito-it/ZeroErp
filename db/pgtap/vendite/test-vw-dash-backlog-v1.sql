@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-31 (brief-db-contratto-righe-periodiche-in-commessa §6.13, F-13): CANONE_NON_GENERATO
 --   passa da FISIOLOGICO a RECUPERABILE (test 2: 6 arancio, 2 verdi); il giudizio dei contratti e'
 --   riacceso (20261031-04), il contratto ATTIVO della fixture non ha righe: transitato, fuori dal

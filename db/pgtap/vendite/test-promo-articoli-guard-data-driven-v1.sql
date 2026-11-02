@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgtap-runner: owner
 -- pgtap-runner-motivo: ALTER TABLE vendite.promo_articoli DISABLE TRIGGER del guard sotto test, per
 --   piantare le fixture nei tre stati pre-esistenti che il guard oggi vieta.

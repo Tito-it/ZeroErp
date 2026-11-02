@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-31 (brief-db-contratto-righe-periodiche-in-commessa §6.13, 20261031-04): il giudizio dei contratti e' riacceso dal push. Il contratto della fixture non ha niente da mandare (il listino ha solo la riga d'appoggio, che non matura canoni): e' transitato (1, motivo NULL); il canone EMESSO scritto a mano non cambia il giudizio, che e' del push. Sempre 1 riga.
 -- rev 2026-10-25 (brief-modello-documento-vendita §9): la conferma dell'ordine passa da
 --   dbops.fn_pgtap_porta_a_stato (il verbo dell'ordine), non da un UPDATE dello stato: la porta lo

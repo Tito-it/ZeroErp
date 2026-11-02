@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2c): le famiglie di numerazione col codice della sorgente (DDT_VENDITA, ORDINE_VENDITA, RESO_VENDITA, DISTINTA_INCASSO).
 -- pgtap-runner: owner
 -- pgtap-runner-motivo: la fixture CREA un emittente e i suoi registri per

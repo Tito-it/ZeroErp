@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): gli ordini da dbops.fn_pgtap_crea_ordine_con_righe (p_righe con la richiesta del cliente, p_data_ordine a -40, trigger SPEDITO); restano a mano le date scritte dopo (la promessa a ordine CONFERMATO, la richiesta in bozza del test 8): sono il caso.
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla del test 9 dal builder dbops.fn_pgtap_crea_ddt_da_ordine (p_ordine_id); l'ordine resta scritto dal test: data a -40 (una data di consegna non precede l'ordine) e la promessa a -3 scritta a ordine CONFERMATO prima della spedizione.
 -- pgtap-runner: owner

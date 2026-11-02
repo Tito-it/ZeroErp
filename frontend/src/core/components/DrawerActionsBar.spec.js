@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // ------------------------------------------------------------
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Tid (Michele Carlo Titini)
 // Doc: JavaScript
 // Scopo: IL PRIMO TEST DI COMPONENTE DEL PROGETTO (2026-09-23) — la barra
