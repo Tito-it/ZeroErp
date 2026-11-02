@@ -30,9 +30,7 @@ SOSTITUZIONI = [
 ]
 
 # I testi completi della licenza, la storia dei brief chiusi e questo script.
-ESCLUSI_PREFISSI = (
-    "docs/it/dev/work-done/",
-)
+ESCLUSI_PREFISSI = ("docs/it/dev/work-done/",)
 ESCLUSI_FILE = {
     "LICENSE",
     "docs/it/LICENSE.md",
@@ -77,7 +75,7 @@ def main() -> int:
 
     modo = "APPLICATO" if applica else "MISURA (nessun file scritto; --applica per scrivere)"
     print(f"{modo}: {toccati} file")
-    for (vecchio, nuovo), n in zip(SOSTITUZIONI, conteggi):
+    for (vecchio, nuovo), n in zip(SOSTITUZIONI, conteggi, strict=True):
         print(f"  {n:6d} × {vecchio.decode()} → {nuovo.decode()}")
     return 0
 
