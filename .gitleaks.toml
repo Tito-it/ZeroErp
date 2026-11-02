@@ -43,3 +43,25 @@ keywords = ["secret", "password", "passwd", "pwd", "token", "key"]
 description = "Segnaposto e riferimenti a variabili"
 regexTarget = "secret"
 regexes = ['''^<[^>]*>$''', '''^\$''']
+
+# ⭐ Il manifesto del guardrail v1 congelato (`db/changelog/v1-congelato.json`)
+#    e' un elenco `"percorso": "<sha256>"`. `generic-api-key` scambia
+#    l'impronta per una chiave quando il NOME del file contiene `key`/`token`
+#    (es. `..._from_key_to_uq-mctit.yml`): visto il 2026-11-02, rigenerando il
+#    manifesto per il cambio di licenza.
+#    L'eccezione e' in AND e la piu' stretta possibile: SOLO `generic-api-key`,
+#    SOLO in quel file, SOLO su una riga che e' per intero `"percorso": "<sha256>"`.
+#    Provato lo stesso giorno: in quel file una chiave di altra forma resta
+#    rossa, e la stessa riga `"x_key": "<sha256>"` in un altro file pure.
+# ⛔ `regexTarget = "line"` e `targetRules` NON sono decorazione: un'eccezione
+#    globale con i soli `paths` esclude il file INTERO prima di valutare l'AND
+#    (provato: spariva anche una chiave Stripe finta messa nel manifesto).
+# ⚠️ Per provarla in locale con `gitleaks dir` serve `--config .gitleaks.toml`:
+#    senza, `dir` cerca la configurazione nella cartella scansionata.
+[[allowlists]]
+description = "Impronte sha256 del manifesto v1 congelato"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''^db/changelog/v1-congelato\.json$''']
+regexTarget = "line"
+regexes = ['''^\s*"[^"]+": "[0-9a-f]{64}",?\s*$''']
