@@ -1,20 +1,25 @@
-## 📘 Documentazione Concettuale – Funzione `magazzino.trgfn_magazzini_normalize()`
+## 📘 Documentazione Concettuale – Trigger function `magazzino.trgfn_magazzini_normalize`
 
+> **Ultimo aggiornamento**: 1 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-> • [magazzino.magazzini](/dbzero/magazzino/tabelle/magazzini)
+> Approfondimento tabelle:
+>
+> * [magazzino.magazzini](/dbzero/magazzino/tabelle/magazzini) — la tabella su cui è montato
 
 ---
+
 ### 🎯 Scopo Principale
 
-(rev 2026-08-21)
+Normalizza il **codice del magazzino** all'inserimento e all'aggiornamento: toglie gli spazi in
+testa e in coda e lo porta in maiuscolo.
 
-Normalizza il **codice del magazzino**: `upper(btrim(...))`.
+Un effetto concreto: «mag1», «MAG1» con uno spazio in coda e «Mag1» con uno spazio in testa
+diventano lo stesso codice, e l'unicità del
+codice smette di dipendere da come è stato digitato.
 
-Due righe di codice, un effetto concreto: `mag1`, `MAG1 ` e ` Mag1` diventano lo stesso
-codice, e l'unicità del codice smette di dipendere da come è stato digitato.
-
-⚠️ Agisce **solo se `codice` non è nullo**, e non impone che lo sia: l'obbligatorietà la dà il
+⚠️ Agisce **solo se il codice c'è**, e non impone che ci sia: l'obbligatorietà la dà il
 vincolo di colonna, non questo trigger.
 
 ---

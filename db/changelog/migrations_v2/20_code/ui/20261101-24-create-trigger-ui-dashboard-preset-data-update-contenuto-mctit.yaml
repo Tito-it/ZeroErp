@@ -1,0 +1,64 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL TRIGGER DEL CONTENUTO SU ui.dashboard_preset
+#   Richiesta del team BE/FE «la preferenza di lista per chiave», punto 4
+#   (simmetria con la dashboard): stesso difetto del punto 2.
+#
+#   BEFORE UPDATE, fase a20, WHEN dimensione_max cambia: e' l'unica colonna
+#   della riga che ui.fn_resolve_dashboard_config legge come contenuto. I
+#   widget del preset (ui.dashboard_preset_widget) li copre 20261101-25.
+#   Stesse ragioni di 20261101-22: non sono contenuto codice, descrizione,
+#   ambito, is_default, attivo; INSERT escluso.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/ui/20261101-24-create-trigger-ui-dashboard-preset-data-update-contenuto-mctit.yaml
+
+  - changeSet:
+      id: 20261101-24-create-trigger-ui-dashboard-preset-data-update-contenuto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Trigger trg_ui_dashboard_preset_a20_data_update_contenuto_upd (BEFORE UPDATE, WHEN dimensione_max
+        cambia): data_update del preset di dashboard = data dell'ultimo cambio del contenuto. Richiesta
+        BE/FE «preferenza di lista per chiave» §4.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_proc p
+                    JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'ui' AND p.proname = 'trgfn_preset_data_update_contenuto';
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_trigger t
+                   WHERE t.tgrelid = 'ui.dashboard_preset'::regclass
+                     AND t.tgname = 'trg_ui_dashboard_preset_a20_data_update_contenuto_upd';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_ui_dashboard_preset_a20_data_update_contenuto_upd
+                  BEFORE UPDATE ON ui.dashboard_preset
+                  FOR EACH ROW
+                  WHEN (OLD.dimensione_max IS DISTINCT FROM NEW.dimensione_max)
+                  EXECUTE FUNCTION ui.trgfn_preset_data_update_contenuto();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ui_dashboard_preset_a20_data_update_contenuto_upd
+                  ON ui.dashboard_preset;

@@ -1,0 +1,85 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE PREFERENZE DI LISTA PERDONO LE CHIAVI CONGELATE — una tantum
+#   Richiesta del team BE/FE «la preferenza di lista per chiave», punto 3
+#   (decisione di Tid del 2026-11-01: «le preferenze esistenti si puliscono»).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   Il FE salvava la configurazione RISOLTA: ogni preferenza porta
+#   ordinamento, filtri e pagina_dimensione copiati dal preset del momento,
+#   e nessuna schermata scrive quelle chiavi come scelta. Con la cascata per
+#   chiave (20_code/ui/20261101-26) una chiave presente e' una scelta: se
+#   restassero, quelle copie continuerebbero a scavalcare il preset. Si
+#   tolgono; colonne resta (quella si', e' scelta dall'utente).
+#
+# ── ⭐ CHI RESTA SENZA CHIAVI SI CANCELLA ────────────────────────────
+#   Una riga con configurazione {} si legge «tutto come lo standard», cioe'
+#   come nessuna preferenza; ma porta ancora lo snapshot del preset di base
+#   (preset_base_id, preset_base_data_update), e il flag preset_aggiornato
+#   del resolver si accenderebbe al primo cambio del preset per un utente che
+#   non ha niente da riconciliare. Cancellarla la rende quello che e':
+#   nessuna preferenza.
+#
+# ── ⚠️ DA SAPERE ─────────────────────────────────────────────────────
+#   · runOnChange false: fotografa le righe del minuto in cui gira. Finche' il
+#     FE rimanda la configurazione intera, ogni salvataggio rimette le tre
+#     chiavi: questa pulizia va applicata insieme al cambio FE che rimanda
+#     solo le chiavi con origine 'preferenza'. Non e' un difetto da ripetere
+#     con un'altra pulizia: la sorgente e' il salvataggio del FE;
+#   · la preCondition chiede il resolver per chiave (20_code gira prima di
+#     80_data): con il resolver di prima, una preferenza di sole colonne
+#     risponderebbe ordinamento vuoto e la misura di default, scavalcando il
+#     preset — peggio di adesso;
+#   · l'UPDATE passa dal guard della misura (UPDATE OF configurazione): con
+#     la chiave tolta il valore e' NULL, che il guard ammette;
+#   · niente '?' sull'operatore jsonb (Liquibase lo legge come parametro):
+#     jsonb_exists_any.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261101-28-pulisci-lista-preferenza-utente-chiavi-congelate-mctit.yaml
+
+  - changeSet:
+      id: 20261101-28-pulisci-lista-preferenza-utente-chiavi-congelate
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Una tantum: da ui.lista_preferenza_utente.configurazione si tolgono ordinamento, filtri e
+        pagina_dimensione (copie del preset congelate dal FE, mai scelte); colonne resta. Le righe rimaste
+        senza chiavi si cancellano (nessuna preferenza, e niente flag preset_aggiornato su uno snapshot
+        senza scelte). Richiesta BE/FE «preferenza di lista per chiave» §3.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'ui' AND p.proname = 'fn_resolve_lista_config'
+                 AND p.prosrc LIKE '%pagina_dimensione_standard%';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              UPDATE ui.lista_preferenza_utente
+                 SET configurazione = configurazione - 'ordinamento' - 'filtri' - 'pagina_dimensione'
+               WHERE jsonb_exists_any(configurazione, ARRAY['ordinamento', 'filtri', 'pagina_dimensione']);
+
+              DELETE FROM ui.lista_preferenza_utente
+               WHERE configurazione = '{}'::jsonb;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Le chiavi tolte erano copie del preset: non si ricostruiscono.
+              SELECT 1;

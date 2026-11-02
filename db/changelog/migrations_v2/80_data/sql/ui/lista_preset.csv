@@ -25,7 +25,7 @@ id,lista_id,codice,descrizione,ambito,profilo_accesso_id,emittente_fiscale_id,is
 24,24,template_documenti_default,Vista standard template documenti,sistema,,,t,25,"[{""col"":""codice"",""dir"":""asc""}]",t,2026-08-01 00:00:00,mctit
 25,25,template_asset_default,Vista standard asset template,sistema,,,t,25,"[{""col"":""codice"",""dir"":""asc""}]",t,2026-08-01 00:00:00,mctit
 26,26,articoli_default,Vista standard articoli,sistema,,,t,25,"[{""col"":""codice"",""dir"":""asc""}]",t,2026-08-01 00:00:00,mctit
-27,27,listini_default,Vista standard listini,sistema,,,t,10,"[{""col"":""codice"",""dir"":""asc""}]",t,2026-08-01 00:00:00,mctit
+27,27,listini_default,Vista standard listini,sistema,,,t,25,"[{""col"":""codice"",""dir"":""asc""}]",t,2026-08-01 00:00:00,mctit
 28,28,operatori_default,Vista standard operatori,sistema,,,t,25,"[{""col"":""soggetto_cognome"",""dir"":""asc""}]",t,2026-08-01 00:00:00,mctit
 29,29,email_account_default,Vista standard account email,sistema,,,t,25,"[{""col"":""codice"",""dir"":""asc""}]",t,2026-08-01 00:00:00,mctit
 30,30,email_template_default,Vista standard template email,sistema,,,t,25,"[{""col"":""codice"",""dir"":""asc""}]",t,2026-08-01 00:00:00,mctit

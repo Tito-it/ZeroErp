@@ -23,10 +23,18 @@ AS $function$
 -- deep_link/contatore_key/soglia (campi opachi restituiti freschi).
 -- 2026-09-23: la veste la legge ui.fn_veste_corrente(), building block
 -- condiviso con il risolutore delle liste e con la ricerca libera.
+-- 2026-11-01: la cascata va PER CHIAVE, come quella delle liste
+-- (richiesta BE/FE «preferenza di lista per chiave» §4): widget e
+-- dimensione_max vengono ognuna dal primo livello che la contiene
+-- (preferenza -> preset di base -> catalogo). Uscite nuove: origine e
+-- dimensione_max_standard.
 DECLARE
   v_dashboard_id     ui.dashboard_definizione.id%TYPE;
   v_config_widget    JSONB;    -- widget della configurazione candidata
-  v_dimensione_max   INTEGER  := 8;   -- fallback catalogo grezzo (brief §3c)
+  -- Il ripiego del catalogo grezzo (brief §3c): niente preset, o un preset
+  -- senza dimensione.
+  v_dimensione_catalogo CONSTANT ui.dashboard_preset.dimensione_max%TYPE := 8;
+  v_dimensione_max   ui.dashboard_preset.dimensione_max%TYPE;
   v_profili_ids      INTEGER[];
   v_widget_nuovi     INTEGER  := 0;
 
@@ -37,6 +45,17 @@ DECLARE
   -- Veste corrente dalla GUC. NULL = tutte le vesti, anche per un valore
   -- fuori dominio: la regola sta nel building block (2026-09-23).
   v_ruolo_guc        config.ruolo_applicativo := ui.fn_veste_corrente();
+
+  -- 2026-11-01: le due chiavi della preferenza, ognuna per conto suo.
+  --   NULL = chiave assente (o null): «come lo standard».
+  v_pref_widget      ui.dashboard_preferenza_utente.configurazione%TYPE;
+  v_pref_dimensione  ui.dashboard_preset.dimensione_max%TYPE;
+  -- 2026-11-01: il preset di base (passi 2b-2d), letto anche quando c'e'
+  --   una preferenza: e' lo standard delle chiavi che la preferenza non ha.
+  v_preset_widget     JSONB;
+  v_preset_dimensione ui.dashboard_preset.dimensione_max%TYPE;
+  v_preset_livello    ui.dashboard_preset.ambito%TYPE;
+  v_dimensione_standard ui.dashboard_preset.dimensione_max%TYPE;
 
   -- Snapshot preset di base dalla preferenza utente (DEF-2)
   v_pref_preset_base_id    ui.dashboard_preferenza_utente.preset_base_id%TYPE;
@@ -81,24 +100,35 @@ BEGIN
   v_azioni_map := script.fn_get_user_actions_map(p_auth_user_id);
 
   -- -------------------------------------------------------
-  -- 2. Cascata: trova la configurazione candidata
+  -- 2. Cascata PER CHIAVE (2026-11-01): si leggono la preferenza e il
+  --    preset di base, poi ogni chiave prende il primo dei due che la
+  --    contiene, e il catalogo se nessuno dei due.
+  --    ⚠️ Prima la cascata sceglieva un livello solo, il primo con i
+  --    widget: una preferenza di soli widget rispondeva dimensione_max 8,
+  --    scavalcando quella del preset.
   -- -------------------------------------------------------
 
-  -- 2a. Preferenza personale utente
+  -- 2a. Preferenza personale utente: ogni chiave per conto suo.
+  --     dimensione_max vale se e' un intero positivo: nessun cast che
+  --     possa cadere (prima un valore non numerico fermava la funzione).
   SELECT
-      (pu.configurazione -> 'widget'),
-      COALESCE((pu.configurazione ->> 'dimensione_max')::INTEGER, 8),
+      NULLIF(pu.configurazione -> 'widget', 'null'::JSONB),
+      CASE WHEN (pu.configurazione ->> 'dimensione_max') ~ '^[1-9][0-9]{0,8}$'
+           THEN (pu.configurazione ->> 'dimensione_max')::INTEGER END,
       pu.preset_base_id,
       pu.preset_base_data_update,
       pu.preset_aggiornato_ignored_at
-    INTO v_config_widget, v_dimensione_max,
+    INTO v_pref_widget, v_pref_dimensione,
          v_pref_preset_base_id, v_pref_preset_base_ts, v_pref_preset_ignored_at
     FROM ui.dashboard_preferenza_utente pu
    WHERE pu.auth_user_id = p_auth_user_id
      AND pu.dashboard_id = v_dashboard_id;
 
+  -- Il preset di base: il primo, nell'ordine 2b -> 2c -> 2d, con almeno
+  -- un widget attivo. Si cerca SEMPRE (2026-11-01).
+
   -- 2b. Preset di ruolo (priorita ASC: AD_HOC prio 1 > REPARTO/PORTALE prio 2)
-  IF v_config_widget IS NULL AND array_length(v_profili_ids, 1) > 0 THEN
+  IF array_length(v_profili_ids, 1) > 0 THEN
     SELECT
         (
           SELECT jsonb_agg(
@@ -114,8 +144,9 @@ BEGIN
          WHERE pw.preset_id = lp.id
            AND w.attivo = TRUE
         ),
-        COALESCE(lp.dimensione_max, 8)
-      INTO v_config_widget, v_dimensione_max
+        lp.dimensione_max,
+        lp.ambito
+      INTO v_preset_widget, v_preset_dimensione, v_preset_livello
       FROM ui.dashboard_preset lp
       JOIN script.fn_get_profili_accesso_applicabili(p_auth_user_id, v_ruolo_guc) pa
         ON pa.profilo_accesso_id = lp.profilo_accesso_id
@@ -128,7 +159,7 @@ BEGIN
   END IF;
 
   -- 2c. Preset di emittente fiscale
-  IF v_config_widget IS NULL AND p_emittente_fiscale_id IS NOT NULL THEN
+  IF v_preset_widget IS NULL AND p_emittente_fiscale_id IS NOT NULL THEN
     SELECT
         (
           SELECT jsonb_agg(
@@ -144,8 +175,9 @@ BEGIN
          WHERE pw.preset_id = lp.id
            AND w.attivo = TRUE
         ),
-        COALESCE(lp.dimensione_max, 8)
-      INTO v_config_widget, v_dimensione_max
+        lp.dimensione_max,
+        lp.ambito
+      INTO v_preset_widget, v_preset_dimensione, v_preset_livello
       FROM ui.dashboard_preset lp
      WHERE lp.dashboard_id         = v_dashboard_id
        AND lp.ambito               = 'emittente_fiscale'
@@ -156,7 +188,7 @@ BEGIN
   END IF;
 
   -- 2d. Preset di sistema
-  IF v_config_widget IS NULL THEN
+  IF v_preset_widget IS NULL THEN
     SELECT
         (
           SELECT jsonb_agg(
@@ -172,8 +204,9 @@ BEGIN
          WHERE pw.preset_id = lp.id
            AND w.attivo = TRUE
         ),
-        COALESCE(lp.dimensione_max, 8)
-      INTO v_config_widget, v_dimensione_max
+        lp.dimensione_max,
+        lp.ambito
+      INTO v_preset_widget, v_preset_dimensione, v_preset_livello
       FROM ui.dashboard_preset lp
      WHERE lp.dashboard_id = v_dashboard_id
        AND lp.ambito       = 'sistema'
@@ -182,8 +215,15 @@ BEGIN
      LIMIT 1;
   END IF;
 
-  -- 2e. Catalogo grezzo (fallback finale "mai vuota"): tutti i widget
-  --     attivi del pool della dashboard, ordinati per ordine_default.
+  -- La dimensione: la preferenza, poi il preset di base, poi il ripiego.
+  v_dimensione_standard := COALESCE(v_preset_dimensione, v_dimensione_catalogo);
+  v_dimensione_max      := COALESCE(v_pref_dimensione, v_dimensione_standard);
+
+  v_config_widget := COALESCE(v_pref_widget, v_preset_widget);
+
+  -- 2e. Catalogo grezzo (fallback finale "mai vuota"), solo per i widget:
+  --     tutti i widget attivi del pool della dashboard, ordinati per
+  --     ordine_default, se ne' la preferenza ne' un preset li hanno.
   IF v_config_widget IS NULL THEN
     SELECT jsonb_agg(
       jsonb_build_object(
@@ -307,6 +347,20 @@ BEGIN
   RETURN jsonb_build_object(
     'widget',            v_config_widget,
     'dimensione_max',    v_dimensione_max,
+    -- ⭐ 2026-11-01: la dimensione SENZA la preferenza. Chiave ADDITIVA.
+    'dimensione_max_standard', v_dimensione_standard,
+    -- ⭐ 2026-11-01: per ogni chiave il livello da cui viene ('preferenza',
+    --   un ambito di ui.ambito_preset o 'catalogo'), gemella delle liste: il
+    --   FE rimanda al salvataggio solo le chiavi 'preferenza', piu' quella
+    --   toccata. Chiave ADDITIVA.
+    'origine', jsonb_build_object(
+      'widget',         CASE WHEN v_pref_widget   IS NOT NULL THEN 'preferenza'
+                             WHEN v_preset_widget IS NOT NULL THEN v_preset_livello::text
+                             ELSE 'catalogo' END,
+      'dimensione_max', CASE WHEN v_pref_dimensione   IS NOT NULL THEN 'preferenza'
+                             WHEN v_preset_dimensione IS NOT NULL THEN v_preset_livello::text
+                             ELSE 'catalogo' END
+    ),
     'widget_nuovi',      v_widget_nuovi,
     'preset_aggiornato', v_preset_aggiornato
   );
@@ -315,7 +369,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION ui.fn_resolve_dashboard_config(p_dashboard_codice character varying, p_auth_user_id integer, p_emittente_fiscale_id bigint)
-IS 'Risolve la configurazione effettiva di una dashboard per un utente: cascata preset (GUC-aware, deterministica per priorita), merge widget nuovi, filtro permessi via resolver script.* (mappe aggregate, fail-closed non-OPERATORE), arricchimento campi opachi (deep_link/contatore_key/soglia). Ritorna JSONB { widget[], dimensione_max, widget_nuovi, preset_aggiornato }. Mirror di ui.fn_resolve_lista_config (brief-db-dashboard-home §3). 2026-09-23: la veste la legge ui.fn_veste_corrente(), building block condiviso con fn_resolve_lista_config e fn_lista_colonne_ricerca_full. Brief: brief-db-ricerca-full-colonne-permessi.';
+IS 'Risolve la configurazione effettiva di una dashboard per un utente: cascata PER CHIAVE (2026-11-01: widget e dimensione_max vengono ognuna dal primo livello che la contiene — preferenza, poi il preset di base, il primo con widget fra ruolo GUC-aware deterministico per priorita, emittente e sistema, poi il catalogo; nella preferenza una chiave assente vuol dire «come lo standard»), merge widget nuovi, filtro permessi via resolver script.* (mappe aggregate, fail-closed non-OPERATORE), arricchimento campi opachi (deep_link/contatore_key/soglia). Ritorna JSONB { widget[], dimensione_max, dimensione_max_standard, origine, widget_nuovi, preset_aggiornato }; dimensione_max_standard e origine (per chiave: preferenza, ruolo, emittente_fiscale, sistema o catalogo) sono del 2026-11-01, ADDITIVE, gemelle di ui.fn_resolve_lista_config. Richiesta BE/FE «preferenza di lista per chiave» §4. Mirror di ui.fn_resolve_lista_config (brief-db-dashboard-home §3). 2026-09-23: la veste la legge ui.fn_veste_corrente(), building block condiviso con fn_resolve_lista_config e fn_lista_colonne_ricerca_full. Brief: brief-db-ricerca-full-colonne-permessi.';
 ```
 
 </div>

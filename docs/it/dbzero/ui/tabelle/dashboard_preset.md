@@ -43,5 +43,10 @@
 | uq_ui_dashboard_preset_dashboard_codice | `CREATE UNIQUE INDEX uq_ui_dashboard_preset_dashboard_codice ON ui.dashboard_preset USING btree (dashboard_id, codice)` |
 | uq_ui_dashboard_preset_default | `CREATE UNIQUE INDEX uq_ui_dashboard_preset_default ON ui.dashboard_preset USING btree (dashboard_id, ambito, COALESCE(profilo_accesso_id, 0), COALESCE(emittente_fiscale_id, 0)) WHERE (is_default = true)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_ui_dashboard_preset_a20_data_update_contenuto_upd | BEFORE | UPDATE | `EXECUTE FUNCTION ui.trgfn_preset_data_update_contenuto()` |
+
 ---
 {% include-markdown "signature-core.md" %}

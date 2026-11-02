@@ -104,6 +104,14 @@ function move(codice, direzione) {
 }
 
 function onSave() {
+  // ⭐ Senza modifiche i widget non si mandano: la rinumerazione qui sotto li
+  //    farebbe sembrare scelti (`preferenzaPerChiave`) e congelerebbe quelli
+  //    dello standard. Il genitore salva lo stesso: resta la preferenza che
+  //    c'era, o nessuna.
+  if (!modificato.value) {
+    emit('apply', {})
+    return
+  }
   // Rinumerazione difensiva anche senza riordino: garantisce ordini
   // contigui pure quando l'utente ha solo acceso/spento delle card.
   const widget = localWidget.value.map((w, i) => ({

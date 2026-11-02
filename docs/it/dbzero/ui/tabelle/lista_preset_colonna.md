@@ -28,5 +28,12 @@
 | ix_ui_lista_preset_colonna_colonna_id | `CREATE INDEX ix_ui_lista_preset_colonna_colonna_id ON ui.lista_preset_colonna USING btree (colonna_id)` |
 | pk_ui_lista_preset_colonna | `CREATE UNIQUE INDEX pk_ui_lista_preset_colonna ON ui.lista_preset_colonna USING btree (preset_id, colonna_id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_ui_lista_preset_colonna_z10_tocca_preset_ins_upd_dlt | AFTER | INSERT | `EXECUTE FUNCTION ui.trgfn_preset_riga_tocca_preset('ui.lista_preset')` |
+| trg_ui_lista_preset_colonna_z10_tocca_preset_ins_upd_dlt | AFTER | DELETE | `EXECUTE FUNCTION ui.trgfn_preset_riga_tocca_preset('ui.lista_preset')` |
+| trg_ui_lista_preset_colonna_z10_tocca_preset_ins_upd_dlt | AFTER | UPDATE | `EXECUTE FUNCTION ui.trgfn_preset_riga_tocca_preset('ui.lista_preset')` |
+
 ---
 {% include-markdown "signature-core.md" %}

@@ -25,14 +25,17 @@ BEGIN
     - p_note_table: regclass della tabella (es. 'vendite.note'::regclass)
     - lingua  da config.lingue (l.codice_iso) via id_lingua
     - stile   da config.note_stili (s.codice) via id_stile
+    - target_tipo, anchor_tipo, posizione: varchar nelle tabelle, text nel
+      RETURNS TABLE; RETURN QUERY EXECUTE pretende il tipo esatto, quindi
+      il cast sta qui.
   */
   sql := $q$
     SELECT
-      n.target_tipo,
+      n.target_tipo::text,
       n.target_id,
       n.target_riga_id,
-      n.anchor_tipo,
-      n.posizione,
+      n.anchor_tipo::text,
+      n.posizione::text,
       n.seq,
       n.testo,
       n.testo_md,
@@ -72,7 +75,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_get_note(p_note_table regclass, _target_tipo text, _target_id bigint, _target_riga_id bigint, _include_doc boolean, _include_righe boolean, _only_visible boolean)
-IS 'Funzione generica: legge note normalizzate da una tabella *.note (passata come regclass); stile/lingua da domini. La lingua esce com''e'' (varchar), senza il cast a char(5) che la riempiva di spazi (20261010-35).';
+IS 'Funzione generica: legge le note normalizzate di una tabella *.note (passata come regclass) con id_stile e id_lingua: vendite.note, acquisti.note, magazzino.note. Stile e lingua escono come codice dai loro vocabolari (config.note_stili, config.lingue), com''e'' (varchar); target_tipo, anchor_tipo e posizione come text. Filtri: tipo e id del bersaglio, riga facoltativa, note di testata e/o di riga, solo visibili. Ordine di rendering: prima la testata, poi le righe; dentro, posizione, seq, id. Non serve catalogo.note (target_id uuid).';
 ```
 
 </div>

@@ -1,9 +1,12 @@
+> **Ultimo aggiornamento**: 1 novembre 2026
+
 ### 🗒️ Le partizioni di note in `magazzino`
 
-Questa tabella è una **partizione** del meccanismo note del progetto, partizionato per
-`target_tipo`. Non è una tabella a sé: struttura, ancoraggio (testata/riga), posizionamento,
-ordinamento di rendering e regole comuni stanno tutti nel documento principale
-**[vendite.note](/dbzero/vendite/tabelle/note)**.
+Questa tabella è una **partizione** di [magazzino.note](/dbzero/magazzino/tabelle/note), il
+padre delle note del dominio, partizionato per `target_tipo`: una partizione per ciascun
+oggetto che si può annotare. Non è una tabella a sé: struttura, ancoraggio (testata o riga),
+posizionamento, ordinamento di rendering e regole comuni sono quelli del meccanismo note del
+progetto, documentato per intero in **[vendite.note](/dbzero/vendite/tabelle/note)**.
 
 Qui non si documentano le colonne una per una: sono quelle del padre.
 
@@ -11,26 +14,20 @@ Qui non si documentano le colonne una per una: sono quelle del padre.
 
 ### Perché una partizione per ciascun bersaglio
 
-Il partizionamento esiste perché ogni partizione possa avere la propria **FK forte** verso la
-tabella che annota. Sul padre `vendite.note` quella FK non potrebbe esistere: il bersaglio
-cambia natura — e talvolta tipo di chiave — da una partizione all'altra.
+Il partizionamento esiste perché ogni partizione possa avere la propria **chiave esterna
+forte** verso la tabella che annota. Sul padre `magazzino.note` quella chiave non potrebbe
+esistere: il bersaglio cambia natura da una partizione all'altra.
 
-Conseguenza pratica: **le note seguono il ciclo di vita di ciò che annotano**. Con
-`ON DELETE RESTRICT`, un documento con note non si cancella finché le note ci sono.
-
----
-
-### ⚠️ Le note di `magazzino` sono tutte vuote
-
-Misurato il 2026-08-21: **zero righe** in tutte le partizioni di questo schema, coerentemente
-con lo stato del dominio (nessun movimento, nessun documento). Sono strutture pronte per un
-processo che non è ancora partito.
+Conseguenza pratica: **le note seguono il ciclo di vita di ciò che annotano**. Se si cancella
+l'oggetto annotato, le sue note se ne vanno con lui; una nota di riga se ne va anche quando si
+cancella il documento a cui la riga appartiene.
 
 ---
 
 ### ⚠️ Annotare il documento o la riga non è la stessa cosa
 
-Le partizioni `note_<documento>` e `note_<documento>_riga` esistono in coppia proprio perché
-sono due ancoraggi diversi: la nota di testata vale per l'intero documento, quella di riga per
-una singola voce. Sceglierne una per l'altra produce note che compaiono nel posto sbagliato in
-stampa — ed è l'errore più comune di questo meccanismo.
+Le partizioni di un documento e delle sue righe (per esempio `note_inventario` e
+`note_inventario_riga`) esistono in coppia proprio perché sono due ancoraggi diversi: la nota
+di testata vale per l'intero documento, quella di riga per una singola voce. Sceglierne una
+per l'altra produce note che compaiono nel posto sbagliato in stampa, ed è l'errore più
+comune di questo meccanismo.

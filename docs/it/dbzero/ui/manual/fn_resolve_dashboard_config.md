@@ -1,5 +1,7 @@
 # fn_resolve_dashboard_config
 
+> **Ultimo aggiornamento**: 1 novembre 2026
+
 ### 🎯 Scopo Principale
 
 Punto centrale di risoluzione della configurazione di una **dashboard** per un utente. Applica la cascata di preset, il merge automatico dei widget nuovi e il filtro autorizzativo dei widget. Restituisce un JSONB pronto per il frontend, senza logica di business lato applicazione. È il gemello di [ui.fn_resolve_lista_config](/dbzero/ui/funzioni/fn_resolve_lista_config), semplificato: nessun livello per-elemento, nessuna normalizzazione `esportabile`/`identificatore`.
@@ -36,14 +38,12 @@ ui.fn_resolve_dashboard_config(
 
   Entrambe sono GUC-aware: con veste corrente ≠ `OPERATORE` producono `BLOCCATO`/`false` (fail-closed).
 
-**2. Cascata configurazione** — scende in ordine fino al primo risultato non NULL:
-  1. Preferenza personale utente (`ui.dashboard_preferenza_utente`) — legge anche `preset_base_id`, `preset_base_data_update`, `preset_aggiornato_ignored_at` per lo step 2.5
-  2. Preset di ruolo (`ambito='ruolo'`, join su `fn_get_profili_accesso_applicabili` con `ORDER BY priorita ASC`, `is_default=TRUE`)
-  3. Preset di emittente fiscale (`ambito='emittente_fiscale'`, `is_default=TRUE`)
-  4. Preset di sistema (`ambito='sistema'`, `is_default=TRUE`)
-  5. **Catalogo grezzo** (fallback "mai vuota"): tutti i widget attivi del pool della dashboard (`ui.dashboard_widget ⋈ ui.widget`), ordinati per `ordine_default`, `visibile=TRUE`
+**2. Cascata per chiave** (dal 1-11-2026, gemella delle liste) — `widget` e `dimensione_max` si risolvono **ognuna per conto suo**, dal primo livello che la contiene:
+  1. Preferenza personale utente (`ui.dashboard_preferenza_utente`): una chiave presente è una scelta; assente (o `null`) vuol dire «come lo standard». `dimensione_max` vale se è un intero positivo. Si legge anche `preset_base_id`, `preset_base_data_update`, `preset_aggiornato_ignored_at` per lo step 2.5
+  2. Il **preset di base**: il primo, in quest'ordine, con almeno un widget attivo — di ruolo (`ambito='ruolo'`, join su `fn_get_profili_accesso_applicabili` con `ORDER BY priorita ASC`), di emittente fiscale, di sistema; sempre `is_default=TRUE`. Si cerca **sempre**, anche con una preferenza
+  3. **Catalogo grezzo** (fallback "mai vuota"): per i widget, tutti quelli attivi del pool della dashboard (`ui.dashboard_widget ⋈ ui.widget`), ordinati per `ordine_default`, `visibile=TRUE`; per `dimensione_max`, 8
 
-  `dimensione_max` è risolta insieme al candidato (dalla preferenza, dal preset, o default 8 nel catalogo grezzo).
+  Lo **standard** di `dimensione_max` è quella del preset di base, o 8. ⚠️ Fino al 31-10-2026 la cascata sceglieva un livello solo, il primo con i widget: una preferenza di soli widget rispondeva 8 invece della dimensione del preset, e il frontend congelava nella preferenza la dimensione del preset di quel momento (ripulite dal changeSet `20261101-29`).
 
 **2.5 DEF-2: calcolo flag `preset_aggiornato`** — identico alla funzione liste. Se la preferenza ha `preset_base_id` e `preset_base_data_update` valorizzati, legge `dashboard_preset.data_update` corrente e calcola:
 
@@ -82,6 +82,8 @@ JSONB con le chiavi:
 |--------|------|-------------|
 | `widget` | `jsonb[]` | Array di widget con `codice`, `ordine`, `visibile`, `tipo_widget`, `etichetta`, `etichetta_i18n_key`, `deep_link`, `contatore_key`, `soglia` |
 | `dimensione_max` | `integer` | Numero massimo di card mostrabili (mirror di `pagina_dimensione` delle liste) |
+| `dimensione_max_standard` | `integer` | La dimensione **senza** la preferenza: quella del preset di base, o 8 (dal 1-11-2026) |
+| `origine` | `jsonb` | Per `widget` e `dimensione_max`, il livello da cui viene: `preferenza`, `ruolo`, `emittente_fiscale`, `sistema` o `catalogo`. Il frontend rimanda al salvataggio solo le chiavi `preferenza`, più quella toccata (dal 1-11-2026) |
 | `widget_nuovi` | `integer` | Numero di widget aggiunti dal merge automatico (>0 = badge "aggiornato" nel frontend) |
 | `preset_aggiornato` | `boolean` | DEF-2: `TRUE` se il preset di base è cambiato dopo lo snapshot della preferenza utente E l'utente non ha ancora ignorato. `FALSE` in tutti gli altri casi. |
 

@@ -24,6 +24,7 @@ import {
   deleteListaPreferenza,
   ignorePresetUpdate as apiIgnorePresetUpdate,
 } from '../api/ui-api'
+import { chiaviScelte } from '../preferenzaPerChiave'
 
 /**
  * Composable per una singola lista identificata da `codice`.
@@ -151,7 +152,13 @@ export function useListaConfig(codice, opzioni = {}) {
     // qui — altrimenti il PUT non le invia. Se il BE rimuove chiavi,
     // il PUT le invierebbe ma il PayloadValidator BE le rifiuterebbe
     // con E_UI_PREFERENZA_VALIDAZIONE: errore parlante, no danni.
-    const payload = _extractWritablePayload(config.value)
+    // ⭐ Per chiave (2026-11-01, BB `preferenzaPerChiave`): solo le chiavi
+    //    scelte — gia' della preferenza o toccate —, le altre restano «come lo
+    //    standard». Nessuna chiave scelta = nessuna preferenza: DELETE.
+    const payload = _extractWritablePayload(
+      chiaviScelte(config.value, savedSnapshot.value, _PAYLOAD_ROOT_KEYS),
+    )
+    if (Object.keys(payload).length === 0) return reset()
     const result = await execute(
       () => putListaPreferenza(codice, payload),
     )

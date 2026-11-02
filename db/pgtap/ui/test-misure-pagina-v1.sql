@@ -29,7 +29,7 @@
 --   10) un valore che numero non e' ("25") -> E_UI_MISURA_PAGINA_NON_AMMESSA
 --   11) senza misura passa (e' il default)
 --   Il resolver
---   12) preferenza senza misura: risponde il default PAGINA del catalogo
+--   12) preferenza senza misura: risponde lo standard (cascata per chiave, 2026-11-01)
 --   13) preferenza con una misura del catalogo: risponde quella
 --   14) il corpo non ha piu' un numero di default scritto a mano
 --   La porta
@@ -152,8 +152,19 @@ SELECT lives_ok($$ SELECT pg_temp.preferenza('{"colonne": []}'::jsonb) $$,
 -- ============================================================
 -- 12-14 Il resolver
 -- ============================================================
-SELECT is(pg_temp.risolta(), ui.fn_misura_pagina_default('PAGINA'),
-    '12) preferenza senza misura: il resolver risponde il default PAGINA del catalogo');
+-- ⚠️ 2026-11-01 (cascata per chiave, 20_code/ui/20261101-26): senza misura la
+--   preferenza segue lo STANDARD, cioe' la misura del preset di base della lista
+--   d'appoggio, o il default PAGINA se il preset non ne ha. Fino al 2026-10-31 qui
+--   si asseriva il default PAGINA: dopo il cambio sarebbe stato verde solo quando
+--   il preset della prima lista ha proprio quella misura. Il ripiego sul default lo
+--   prova, con un mondo costruito, test-fn-resolve-lista-config-cascata-per-chiave-v1 (9).
+SELECT is(
+    -- ::text esplicito: format('%s') su un booleano stampa t/f.
+    (SELECT format('%s|%s', ((r ->> 'pagina_dimensione') = (r ->> 'pagina_dimensione_standard'))::text,
+                   (r -> 'origine' ->> 'pagina_dimensione' <> 'preferenza')::text)
+       FROM (SELECT ui.fn_resolve_lista_config((SELECT lista_codice FROM _l), (SELECT auth_user_id FROM _u), NULL) AS r) x),
+    'true|true',
+    '12) preferenza senza misura: il resolver risponde lo standard, e non la dice una scelta');
 
 SELECT pg_temp.preferenza(jsonb_build_object('colonne', jsonb_build_array(),
                                              'pagina_dimensione', (SELECT max(misura) FROM ui.misure_pagina)));

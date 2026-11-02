@@ -1,36 +1,61 @@
-## 📘 Documentazione Concettuale – Funzione `magazzino.trgfn_magazzini_guard_usa_ubicazioni`
+## 📘 Documentazione Concettuale – Trigger function `magazzino.trgfn_magazzini_guard_usa_ubicazioni`
 
+> **Ultimo aggiornamento**: 1 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-> • [magazzino.magazzini](/dbzero/magazzino/tabelle/magazzini) — `usa_ubicazioni`, dove è montato
-> • [magazzino.movimenti](/dbzero/magazzino/tabelle/movimenti) — ciò che legge
+> Approfondimento tabelle:
 >
-Guide: brief `brief-db-magazzino-lotto-2-motore` (§3 D-L2-m)
+> * [magazzino.magazzini](/dbzero/magazzino/tabelle/magazzini) — `usa_ubicazioni`, dove è montato
+> * [magazzino.movimenti](/dbzero/magazzino/tabelle/movimenti) — ciò che legge
 
 ---
+
 ### 🎯 Scopo Principale
 
-(rev 2026-09-18 — Lotto 2 del magazzino)
-
 **`usa_ubicazioni` si cambia solo a registro vuoto.** Il flag decide la *grana* del registro
-di quel magazzino (ogni movimento nomina un'ubicazione, o nessuno). Cambiarlo con merce a
-registro lascerebbe righe scritte con l'altra grana — cioè la convivenza «con e senza
-posizione» che il flag esiste per rendere impossibile. Si decide alla nascita; se esiste un
-movimento del magazzino il cambio è rifiutato con `E_MAG_MAGAZZINO_CON_GIACENZA` (campo
-`usa_ubicazioni`, il codice del magazzino nella frase). Con merce dentro, la strada è un
-magazzino nuovo con l'impostazione giusta e un trasferimento.
-
-Contano i **movimenti**, non il saldo (anche a saldo zero le righe hanno la grana vecchia), e
-non gli attesi (una promessa non è merce a registro). Riscrivere lo stesso valore non è un
-cambio. Montato `BEFORE UPDATE OF usa_ubicazioni`.
-
-Presidio: `db/pgtap/magazzino/test-fn-scrivi-movimento-controlli-v1.sql` (16-17).
+di quel magazzino (ogni movimento nomina un'ubicazione, o nessuno); se esiste un movimento del
+magazzino, il cambio è rifiutato.
 
 ---
 
-### Storia
+### Perché si decide alla nascita
 
-* 2026-09-18 — nasce con il Lotto 2 (`20260918-09`).
+Cambiare il flag con merce a registro lascerebbe righe scritte con l'altra grana — cioè la
+convivenza «con e senza posizione» che il flag esiste per rendere impossibile. Si decide alla
+nascita del magazzino, prima del primo movimento. Con merce dentro, la strada è un magazzino
+nuovo con l'impostazione giusta e un trasferimento.
+
+---
+
+### Che cosa conta
+
+* Contano i **movimenti**, non il saldo: anche a saldo zero le righe hanno la grana vecchia.
+* Non contano gli attesi: una promessa non è merce a registro.
+* Riscrivere lo stesso valore non è un cambio.
+
+Il guard legge i movimenti con i permessi di chi scrive, sotto la sicurezza di riga del
+magazzino: è lo stesso perimetro della riga che si sta modificando. È montato prima
+dell'aggiornamento di `usa_ubicazioni`.
+
+---
+
+### Codici errore
+
+* `E_MAG_MAGAZZINO_CON_GIACENZA` — cambio di `usa_ubicazioni` su un magazzino con movimenti a
+  registro; il campo è `usa_ubicazioni`, la frase nomina il codice del magazzino.
+
+---
+
+### Test
+
+`db/pgtap/magazzino/test-fn-scrivi-movimento-controlli-v1.sql` (test 16-17).
+
+---
+
+### Note di migrazione
+
+* 2026-09-18 — nasce con `brief-db-magazzino-lotto-2-motore` (§3 D-L2-m).
 
 ---
 

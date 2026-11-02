@@ -1,0 +1,145 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_get_note — solo il corpo: le colonne testuali della tabella si
+#   leggono come text, il tipo che la funzione dichiara. Firma, RETURNS e
+#   GRANT non cambiano (20261010-35).
+#
+# -- PERCHE' ---------------------------------------------------------------------
+#   Il lettore comune delle note falliva a OGNI chiamata, per tutte le famiglie:
+#   «structure of query does not match function result type — Returned type
+#   character varying(50) does not match expected type text in column
+#   target_tipo». Il RETURNS TABLE dichiara target_tipo, anchor_tipo e posizione
+#   text (la tabella e' polimorfa, non c'e' una colonna a cui ancorarli), mentre
+#   nelle tabelle delle note sono varchar; RETURN QUERY EXECUTE non converte:
+#   pretende il tipo esatto. Verificato il 2026-11-01 su dbdev con una chiamata
+#   a vendite.fn_get_vendite_note e acquisti.fn_get_acquisti_note: falliscono
+#   entrambe. Nessuno se n'era accorto perche' i tre lettori (vendite, acquisti,
+#   magazzino) non li chiama ne' il backend ne' un pgTAP.
+#
+#   Il cast e' nella SELECT dinamica, sulle tre colonne testuali che la
+#   funzione dichiara text: le altre colonne hanno gia' il tipo dichiarato.
+#   catalogo.note non e' servita da questo lettore (target_id e' uuid, la firma
+#   dice bigint), e non cambia.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261101-18-update-fn-get-note-colonne-testo-mctit.yaml
+
+  - changeSet:
+      id: 20261101-18-update-fn-get-note-colonne-testo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_get_note: target_tipo, anchor_tipo e posizione si leggono come text, il tipo
+        dichiarato; il lettore comune delle note falliva a ogni chiamata.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_note(
+                -- Tipi espliciti: la tabella e' polimorfa (regclass), nessuna colonna sola
+                -- di cui i parametri siano il riflesso; i booleani sono interruttori.
+                p_note_table     regclass,  -- es. 'vendite.note'::regclass o 'acquisti.note'::regclass
+                _target_tipo     text,
+                _target_id       bigint,
+                _target_riga_id  bigint DEFAULT NULL,
+                _include_doc     boolean DEFAULT true,
+                _include_righe   boolean DEFAULT true,
+                _only_visible    boolean DEFAULT true
+              )
+              RETURNS TABLE (
+                -- Tipi espliciti: la tabella delle note e' polimorfa (regclass), nessuna
+                -- colonna sola di cui questi siano il riflesso. Si ancorano i due valori
+                -- che arrivano da un vocabolario: stile e lingua.
+                target_tipo     text,
+                target_id       bigint,
+                target_riga_id  bigint,
+                anchor_tipo     text,
+                posizione       text,
+                seq             integer,
+                testo           text,
+                testo_md        text,
+                stile           config.note_stili.codice%TYPE,
+                lingua          config.lingue.codice_iso%TYPE,
+                visibile        boolean,
+                solo_stampa     boolean,
+                meta            jsonb,
+                data_insert     timestamptz,
+                user_insert     text,
+                data_update     timestamptz,
+                user_update     text
+              )
+              LANGUAGE plpgsql
+              STABLE
+              AS $$
+              DECLARE
+                sql text;
+              BEGIN
+                /*
+                  Funzione generica per estrarre note normalizzate da una tabella *.note:
+                  - p_note_table: regclass della tabella (es. 'vendite.note'::regclass)
+                  - lingua  da config.lingue (l.codice_iso) via id_lingua
+                  - stile   da config.note_stili (s.codice) via id_stile
+                  - target_tipo, anchor_tipo, posizione: varchar nelle tabelle, text nel
+                    RETURNS TABLE; RETURN QUERY EXECUTE pretende il tipo esatto, quindi
+                    il cast sta qui.
+                */
+                sql := $q$
+                  SELECT
+                    n.target_tipo::text,
+                    n.target_id,
+                    n.target_riga_id,
+                    n.anchor_tipo::text,
+                    n.posizione::text,
+                    n.seq,
+                    n.testo,
+                    n.testo_md,
+                    s.codice                      AS stile,
+                    l.codice_iso                  AS lingua,
+                    n.visibile,
+                    n.solo_stampa,
+                    n.meta,
+                    n.data_insert,
+                    n.user_insert,
+                    n.data_update,
+                    n.user_update
+                  FROM %s AS n
+                  JOIN config.note_stili AS s
+                    ON s.id = n.id_stile
+                  LEFT JOIN config.lingue AS l
+                    ON l.id = n.id_lingua
+                  WHERE n.target_tipo = UPPER($1)
+                    AND n.target_id   = $2
+                    AND ($3 IS NULL OR n.target_riga_id = $3)
+                    AND (
+                          ($4 AND n.anchor_tipo = 'DOCUMENTO')
+                       OR ($5 AND n.anchor_tipo = 'RIGA')
+                    )
+                    AND (NOT $6 OR n.visibile IS TRUE)
+                  ORDER BY
+                    CASE n.anchor_tipo WHEN 'DOCUMENTO' THEN 1 ELSE 2 END,
+                    n.posizione,
+                    n.seq,
+                    n.id
+                $q$;
+
+                RETURN QUERY
+                EXECUTE format(sql, p_note_table::text)
+                USING _target_tipo, _target_id, _target_riga_id, _include_doc, _include_righe, _only_visible;
+              END;
+              $$;
+
+              COMMENT ON FUNCTION script.fn_get_note(regclass, text, bigint, bigint, boolean, boolean, boolean) IS
+                'Funzione generica: legge le note normalizzate di una tabella *.note (passata come regclass) con id_stile e id_lingua: vendite.note, acquisti.note, magazzino.note. Stile e lingua escono come codice dai loro vocabolari (config.note_stili, config.lingue), com''e'' (varchar); target_tipo, anchor_tipo e posizione come text. Filtri: tipo e id del bersaglio, riga facoltativa, note di testata e/o di riga, solo visibili. Ordine di rendering: prima la testata, poi le righe; dentro, posizione, seq, id. Non serve catalogo.note (target_id uuid).';
+      rollback:
+        - sql:
+            sql: >
+              SELECT 1; -- la versione precedente e' in 20261010-35

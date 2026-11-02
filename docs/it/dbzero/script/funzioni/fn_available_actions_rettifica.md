@@ -25,7 +25,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_rettifica(p_rettifica_id bigint)
-IS 'Capability di una rettifica di magazzino per il detail API: involucro di script.fn_available_actions_documento_interno(''RETTIFICA'', id), dove sta la regola — una sola per le due famiglie di documenti interni (D-L2-h). NULL se la rettifica non si legge. Brief: brief-db-magazzino-lotto-2-bis-be-fe R-1.';
+IS 'Capability di una rettifica di magazzino per il detail API: involucro di script.fn_available_actions_documento_interno(''RETTIFICA'', id), dove sta la regola — una sola per le tre famiglie di documenti interni. Esiste perche'' il backend chiama la capability per entita''. NULL se la rettifica non si legge.';
 ```
 
 </div>

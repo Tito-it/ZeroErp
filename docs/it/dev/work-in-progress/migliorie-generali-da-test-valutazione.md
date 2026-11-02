@@ -8,7 +8,7 @@ tengono ferme le altre voci aperte di §3.
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
 | 1 | Tid | D18: le cinque decisioni della catena delle istanze | `brief-db-catena-istanze-pdp.md` §6 | — |
-| 2 | Tid | D31: collaudo a video del canone in commessa e archiviazione del brief (lato DB e BE fatti); orario e consumo aspettano le loro sorgenti | `brief-db-contratto-righe-periodiche-in-commessa.md`, «Chi riparte» | — |
+| 2 | Tid | D31: il canone è chiuso (brief archiviato il 2026-11-01, collaudo a video fra i residui di PROJECT_CONTEXT); orario e consumo aspettano le loro sorgenti | `work-done/brief-db-contratto-righe-periodiche-in-commessa.md` §7.14 | le sorgenti |
 | 3 | Tid | D17 Q-2: riprendere o no le GUC di bypass (rimandata il 2026-10-04) | §3 D17 | — |
 | 4 | Tid | D7: i test legati a dati di macchina; il ramo «ultimo SUPER_ADMIN» | §3 D7 | — |
 | 5 | team DB | D24 (la vista del presidio C2 e i `tgargs`), D6-bis, D11-bis, D16: lavori senza decisioni aperte | §3 | il via di Tid |
@@ -572,11 +572,11 @@ cadeva sul NOT NULL di `competenza_al`). Il lister dei contratti mandava ogni ri
 la competenza di tutto il contratto: un canone diventava un addebito unico. D-2 (a) di Tid: dal
 `20261013-24` il push manda solo le UNA_TANTUM; la generazione per periodo del canone e le quantità di
 orario e consumo dalle loro fonti si progettano nel brief
-[brief-db-contratto-righe-periodiche-in-commessa.md](brief-db-contratto-righe-periodiche-in-commessa.md).
+[brief-db-contratto-righe-periodiche-in-commessa.md](../work-done/brief-db-contratto-righe-periodiche-in-commessa.md).
 ✅ **Al 2026-11-01 il canone è fatto**: decisioni G-0 … G-11 (28-10), lotti L1 … L9 e il giro del §7 lato
-DB, il passaggio BE/FE (§7.6, §7.11, §7.13.4). Resta a Tid il collaudo a video (il form della riga a
-canone, la colonna «Periodicità» della lista 37), poi il brief si archivia. ⏳ Orario e consumo
-aspettano le loro sorgenti: la voce resta aperta per loro.
+DB, il passaggio BE/FE (§7.6, §7.11, §7.13.4). Brief archiviato il 2026-11-01: il collaudo a video
+(il form della riga a canone, la colonna «Periodicità» della lista 37) è fra i residui di
+PROJECT_CONTEXT. ⏳ Orario e consumo aspettano le loro sorgenti: la voce resta aperta per loro.
 
 ## 4. Cosa NON è un difetto
 
@@ -729,8 +729,9 @@ CI.
       codice negli argomenti: al team DB (§3). Al rimedio, il BE toglie l'esenzione di
       `E_DOC_EMITTENTE_BA_INCOERENTE`.
 * [~] **D31** — canone, orario e consumo del contratto in commessa: brief
-      `brief-db-contratto-righe-periodiche-in-commessa` (aperto il 2026-10-13). ✅ Il canone è
-      fatto lato DB e BE (01-11): manca il collaudo a video di Tid, poi il brief si archivia.
+      `brief-db-contratto-righe-periodiche-in-commessa` (aperto il 2026-10-13, archiviato in
+      `work-done/` il 2026-11-01). ✅ Il canone è fatto lato DB e BE; il collaudo a video è fra i
+      residui di PROJECT_CONTEXT.
       ⏳ Orario e consumo aspettano le loro sorgenti.
 
 ---

@@ -27,7 +27,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_inventario(p_inventario_id bigint)
-IS 'Capability di un inventario di magazzino per il detail API: involucro di script.fn_available_actions_documento_interno(''INVENTARIO'', id), dove sta la regola — una sola per le due famiglie di documenti interni (D-L2-h). NULL se l''inventario non si legge. Brief: brief-db-magazzino-lotto-2-bis-be-fe R-1.';
+IS 'Capability di un inventario di magazzino per il detail API: involucro di script.fn_available_actions_documento_interno(''INVENTARIO'', id), dove sta la regola — una sola per le tre famiglie di documenti interni. Esiste perche'' il backend chiama la capability per entita''. NULL se l''inventario non si legge.';
 ```
 
 </div>

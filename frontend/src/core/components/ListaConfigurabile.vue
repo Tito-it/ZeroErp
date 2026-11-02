@@ -559,9 +559,13 @@ function comprimiTutte() {
 //    ⚠️ Trovato in collaudo. Prima si era corretto solo il valore INIZIALE
 //    (allineamento su `@config-loaded`): non bastava, perche' il difetto non e'
 //    nel valore di partenza — e' che la scelta dell'operatore non era MAI letta.
+// ⚠️ `pagina_dimensione: null` e' «come lo standard» (voce del drawer, finche'
+//    il salvataggio non rilegge la config — o se fallisce): vale lo standard
+//    della config, non il default di catalogo.
 const pageSize = computed(
   () => props.paginatorOptions?.rows
     ?? config.value?.pagina_dimensione
+    ?? config.value?.pagina_dimensione_standard
     ?? misuraDefault(USO_MISURA.PAGINA),
 )
 // Offset 0-based del paginator, con la stessa cascata e per la stessa ragione:
@@ -751,14 +755,25 @@ async function onIgnorePresetUpdate() {
 async function onApply(payload) {
   applyChange((c) => {
     if (payload.colonne) c.colonne = payload.colonne
+    // `null` = «come lo standard»: `save()` toglie la chiave dalla preferenza
+    // (BB `preferenzaPerChiave`), e la lista riprende la misura dal reload.
+    if ('pagina_dimensione' in payload) c.pagina_dimensione = payload.pagina_dimensione
   })
   modalVisible.value = false
-  await save()
+  if ((await save()) !== null) emettiConfigRiletta()
 }
 
 async function onReset() {
   modalVisible.value = false
-  await reset()
+  if ((await reset()) !== null) emettiConfigRiletta()
+}
+
+// Scopo: dopo salvataggio e ripristino la config e' riletta dal composable:
+//        lo si dice al caller come al primo caricamento. Senza, la misura di
+//        pagina scelta nel drawer non arrivava alla lista (il caller la legge
+//        da `config-loaded`, BB `allineaMisuraConfig`).
+function emettiConfigRiletta() {
+  if (config.value) emit('config-loaded', config.value)
 }
 
 // Merge default-pattern + override caller. removable-sort/striped/scrollable

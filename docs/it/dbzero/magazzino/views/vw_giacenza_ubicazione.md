@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> La giacenza per POSIZIONE: sum(qta) per articolo, magazzino e ubicazione (NULL = senza posizione, un gruppo come gli altri). Uno spostamento fra ubicazioni e' una coppia OUT/IN sul registro con la stessa sorgente: in vw_giacenza si annulla, qui si vede (M-5, 7-quater). security_invoker. Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.8.
+> La giacenza per POSIZIONE: somma delle quantita' per articolo, magazzino e ubicazione (NULL = senza posizione, un gruppo come gli altri). Uno spostamento fra ubicazioni e' una coppia OUT/IN sul registro con la stessa sorgente: in vw_giacenza si annulla, qui si vede. security_invoker.
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 

@@ -35,6 +35,7 @@
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { USO_MISURA, misuraDefault, misureOpzioni } from '../misurePagina'
+import { allineaMisuraConfig } from '../allineaMisuraConfig'
 import { extractApiError } from '../utils/apiError'
 import { useNotify } from './useNotify'
 
@@ -64,10 +65,10 @@ export function useListaDrawerPaginata(fetcher, { sortBy = null, sortDir = 1 } =
   const pageSize = ref(misuraDefault(USO_MISURA.COMPATTA))
   const sortField = ref(sortBy)
   const sortOrder = ref(sortDir)
-  // La dimensione pagina risolta dal BE si applica UNA volta sola: dopo, il
-  // valore lo governa l'operatore dal paginatore, e riapplicare il preset gli
-  // annullerebbe la scelta a ogni ricarica.
-  const configAllineata = ref(false)
+  // La dimensione pagina risolta dal BE si applica quando la misura della
+  // configurazione CAMBIA (BB `allineaMisuraConfig`): una ricarica con la
+  // stessa misura non annulla la scelta fatta dal paginatore.
+  const misuraConfig = allineaMisuraConfig()
 
   async function carica() {
     loading.value = true
@@ -106,9 +107,7 @@ export function useListaDrawerPaginata(fetcher, { sortBy = null, sortDir = 1 } =
   }
 
   function onConfigLoaded(config) {
-    if (configAllineata.value) return
-    configAllineata.value = true
-    const nuovo = config?.pagina_dimensione
+    const nuovo = misuraConfig.daApplicare(config)
     if (nuovo && nuovo !== pageSize.value) {
       pageSize.value = nuovo
       page.value = 1
@@ -126,7 +125,7 @@ export function useListaDrawerPaginata(fetcher, { sortBy = null, sortDir = 1 } =
   }))
 
   // Scopo: riporta la lista allo stato iniziale (riapertura del drawer su un
-  //        altro padre). ⚠️ Azzera anche `configAllineata`: il preset della
+  //        altro padre). ⚠️ Azzera anche l'allineatore della misura: il preset della
   //        lista va riapplicato, perché la scelta dell'operatore valeva per la
   //        sessione precedente.
   function reset() {
@@ -135,7 +134,7 @@ export function useListaDrawerPaginata(fetcher, { sortBy = null, sortDir = 1 } =
     page.value = 1
     sortField.value = sortBy
     sortOrder.value = sortDir
-    configAllineata.value = false
+    misuraConfig.reset()
   }
 
   return {

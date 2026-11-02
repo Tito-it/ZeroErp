@@ -1,0 +1,63 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE PREFERENZE DI DASHBOARD PERDONO LA DIMENSIONE CONGELATA — una tantum
+#   Richiesta del team BE/FE «la preferenza di lista per chiave», punto 4
+#   (simmetria con la dashboard), gemella di 20261101-28.
+#
+#   Il FE rimanda la configurazione risolta (useDashboardConfig,
+#   _PAYLOAD_ROOT_KEYS = widget, dimensione_max): dimensione_max e' la copia
+#   del preset del momento, e nessuna schermata la sceglie. Con la cascata per
+#   chiave (20_code/ui/20261101-27) scavalcherebbe il preset: si toglie,
+#   widget resta. Le righe rimaste senza chiavi si cancellano, per la stessa
+#   ragione di 20261101-28 (lo snapshot del preset accenderebbe il flag senza
+#   niente da riconciliare).
+#   ⚠️ Stessa avvertenza di 20261101-28: va applicata insieme al cambio FE,
+#   altrimenti il prossimo salvataggio rimette la chiave.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261101-29-pulisci-dashboard-preferenza-utente-dimensione-congelata-mctit.yaml
+
+  - changeSet:
+      id: 20261101-29-pulisci-dashboard-preferenza-utente-dimensione-congelata
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Una tantum: da ui.dashboard_preferenza_utente.configurazione si toglie dimensione_max (copia del
+        preset congelata dal FE, mai scelta); widget resta. Le righe rimaste senza chiavi si cancellano.
+        Richiesta BE/FE «preferenza di lista per chiave» §4.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'ui' AND p.proname = 'fn_resolve_dashboard_config'
+                 AND p.prosrc LIKE '%dimensione_max_standard%';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              UPDATE ui.dashboard_preferenza_utente
+                 SET configurazione = configurazione - 'dimensione_max'
+               WHERE jsonb_exists(configurazione, 'dimensione_max');
+
+              DELETE FROM ui.dashboard_preferenza_utente
+               WHERE configurazione = '{}'::jsonb;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- La chiave tolta era una copia del preset: non si ricostruisce.
+              SELECT 1;

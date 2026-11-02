@@ -6,58 +6,58 @@ search:
 # Schema `magazzino`
 
 ## 📚 Tabelle
-- [assets](tabelle/assets.md) — (rev 2026-09-15 — Lotto 1 del magazzino; rev 2026-10-01 — il contratto esce)
-- [causali](tabelle/causali.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
-- [eventi_assets](tabelle/eventi_assets.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
-- [inventari](tabelle/inventari.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
-- [inventari_righe](tabelle/inventari_righe.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
-- [lotti](tabelle/lotti.md) — (rev 2026-09-15 — Lotto 1 del magazzino; tabella nuova)
-- [magazzini](tabelle/magazzini.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
-- [movimenti](tabelle/movimenti.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
-- [movimenti_attesi](tabelle/movimenti_attesi.md) — (rev 2026-09-15 — Lotto 1 del magazzino; si chiamava `reservations`)
-- [note](tabelle/note.md)
-- [note_asset](tabelle/note_asset.md)
-- [note_evento_asset](tabelle/note_evento_asset.md)
-- [note_inventario](tabelle/note_inventario.md)
-- [note_inventario_riga](tabelle/note_inventario_riga.md)
-- [note_movimento](tabelle/note_movimento.md)
-- [note_rettifica](tabelle/note_rettifica.md)
-- [note_rettifica_riga](tabelle/note_rettifica_riga.md)
-- [note_trasferimento](tabelle/note_trasferimento.md)
-- [note_trasferimento_riga](tabelle/note_trasferimento_riga.md)
-- [rettifiche](tabelle/rettifiche.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
-- [rettifiche_righe](tabelle/rettifiche_righe.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
-- [trasferimenti](tabelle/trasferimenti.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
-- [trasferimenti_righe](tabelle/trasferimenti_righe.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
-- [ubicazioni](tabelle/ubicazioni.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
-- [valore_giacenza](tabelle/valore_giacenza.md) — (rev 2026-09-15 — Lotto 1 del magazzino; si chiamava `costo_medio`)
+- [assets](tabelle/assets.md) — **Il pezzo serializzato**: l'istanza fisica di un bene con matricola — un contatore, un'apparecchiatura, una stampante — che il magazzino sposta **uno alla volta** (`movimenti.asset_id`, con quantità 1). Un asset è un bene che esce dal magazzino ma non smette di essere nostro: installato presso un cliente, in comodato, in riparazione.
+- [causali](tabelle/causali.md) — **Il catalogo delle causali di movimento.** La causale dice tre cose di un movimento: il **verso** (`segno`: `+1` entrata, `−1` uscita), se è una **rettifica** (`is_rettifica`), se ammette lo **stock negativo** (`consente_stock_negativo`). È uno dei due cataloghi che guidano la primitiva di scrittura; l'altro è l'articolo (lotto, seriale, gestito a magazzino).
+- [eventi_assets](tabelle/eventi_assets.md) — **Il ciclo di vita di un asset**: installazione, rientro, sostituzione, manutenzione. Ogni riga dice che cosa è successo a un asset (`tipo_evento_id`), quando, da quale stato a quale, ed eventualmente da quale magazzino a quale (se ci sono entrambi, sono diversi).
+- [inventari](tabelle/inventari.md) — **Il documento di conteggio fisico**: la rilevazione di quanto c'è davvero a scaffale, in un magazzino, a una data, con uno stato. Il dettaglio per articolo sta nelle righe.
+- [inventari_righe](tabelle/inventari_righe.md) — **Le righe di [magazzino.inventari](/dbzero/magazzino/tabelle/inventari)**: per ogni articolo (ed eventualmente lotto, pezzo serializzato, ubicazione) quanto è stato contato (`qta_contata`, mai negativa) e quanto il sistema si aspettava (`qta_sistema`). Una riga da sola non ha contesto: data, magazzino e stato stanno nella testata.
+- [lotti](tabelle/lotti.md) — **La partita di merce**: i pezzi di un articolo arrivati (o prodotti) insieme, con la data da cui si conta la rotazione e l'eventuale scadenza. È l'unità della tracciabilità — «dove è passato questo lotto», «ritira il lotto difettoso» — e la dimensione che i movimenti e le righe di inventario, rettifica e trasferimento nominano quando l'articolo lo richiede.
+- [magazzini](tabelle/magazzini.md) — **Anagrafica dei magazzini e depositi.** Un magazzino è un *luogo*, non un soggetto: il suo indirizzo è legato ad `anagrafiche.indirizzi_dettaglio` e non passa da un ruolo anagrafico — è la differenza rispetto a clienti, fornitori e vettori. ⚠️ `indirizzo_dettaglio_id` è obbligatorio: serve un indirizzo prima del magazzino.
+- [movimenti](tabelle/movimenti.md) — **Il registro dei movimenti**: una riga per ogni entrata o uscita di un articolo da un magazzino. È l'unica scrittura che conta — la giacenza è la somma di queste righe, il valore è la ri-somma dei loro costi — e non esiste un posto dove «correggere la giacenza» senza passare da qui.
+- [movimenti_attesi](tabelle/movimenti_attesi.md) — **I movimenti che devono ancora accadere e che nessun documento sa dire.** Quanto è impegnato da un ordine di vendita o in arrivo da un ordine al fornitore lo dicono le righe di quei documenti: non si ricopia qui. Qui stanno le due cose che un documento non contiene:
+- [note](tabelle/note.md) — La tabella madre delle note di magazzino, divisa in partizioni per `target_tipo`: non annota un bersaglio proprio, le note stanno nelle partizioni `note_<bersaglio>`, una per ciascuna tabella annotata.
+- [note_asset](tabelle/note_asset.md) — La partizione delle note di magazzino che annotano un pezzo serializzato ([magazzino.assets](/dbzero/magazzino/tabelle/assets)).
+- [note_evento_asset](tabelle/note_evento_asset.md) — La partizione delle note di magazzino che annotano un evento del ciclo di vita di un asset ([magazzino.eventi_assets](/dbzero/magazzino/tabelle/eventi_assets)).
+- [note_inventario](tabelle/note_inventario.md) — La partizione delle note di testata di un inventario ([magazzino.inventari](/dbzero/magazzino/tabelle/inventari)): la nota vale per l'intero documento di conteggio.
+- [note_inventario_riga](tabelle/note_inventario_riga.md) — La partizione delle note di riga di un inventario ([magazzino.inventari_righe](/dbzero/magazzino/tabelle/inventari_righe)): la nota vale per una singola voce del conteggio, dentro la sua testata.
+- [note_movimento](tabelle/note_movimento.md) — La partizione delle note di magazzino che annotano un movimento del registro ([magazzino.movimenti](/dbzero/magazzino/tabelle/movimenti)).
+- [note_rettifica](tabelle/note_rettifica.md) — La partizione delle note di testata di una rettifica ([magazzino.rettifiche](/dbzero/magazzino/tabelle/rettifiche)): la nota vale per l'intero documento.
+- [note_rettifica_riga](tabelle/note_rettifica_riga.md) — La partizione delle note di riga di una rettifica ([magazzino.rettifiche_righe](/dbzero/magazzino/tabelle/rettifiche_righe)): la nota vale per una singola correzione, dentro la sua testata.
+- [note_trasferimento](tabelle/note_trasferimento.md) — La partizione delle note di testata di un trasferimento interno ([magazzino.trasferimenti](/dbzero/magazzino/tabelle/trasferimenti)): la nota vale per l'intero documento.
+- [note_trasferimento_riga](tabelle/note_trasferimento_riga.md) — La partizione delle note di riga di un trasferimento interno ([magazzino.trasferimenti_righe](/dbzero/magazzino/tabelle/trasferimenti_righe)): la nota vale per una singola voce spostata, dentro la sua testata.
+- [rettifiche](tabelle/rettifiche.md) — **Il documento di rettifica**: la correzione dichiarata di una giacenza, in un magazzino, a una data, con uno stato (`DRAFT` → `CONFIRM` → `POSTED`, o `CANCEL`). Il dettaglio, quanto in più o in meno per articolo, sta nelle righe.
+- [rettifiche_righe](tabelle/rettifiche_righe.md) — **Le righe di [magazzino.rettifiche](/dbzero/magazzino/tabelle/rettifiche)**: per ogni articolo (ed eventualmente lotto, pezzo serializzato, ubicazione) di quanto la giacenza va corretta (`qta_delta`, con segno, mai zero) e perché (`motivo`). Ogni riga è la **sorgente** del movimento di rettifica (`RETTIFICA_RIGA`, causale `RETT_POS` o `RETT_NEG` secondo il verso).
+- [trasferimenti](tabelle/trasferimenti.md) — **Il documento di trasferimento interno**: lo spostamento di merce dentro lo stesso magazzino, fra due ubicazioni, oppure fra due magazzini dello stesso emittente, **senza documento di trasporto**. Dice da dove parte la merce (`magazzino_id_from`), dove arriva (`magazzino_id_to`), quando e in che stato; il dettaglio per articolo sta nelle righe.
+- [trasferimenti_righe](tabelle/trasferimenti_righe.md) — **Le righe di [magazzino.trasferimenti](/dbzero/magazzino/tabelle/trasferimenti)**: per ogni articolo (ed eventualmente lotto o pezzo serializzato) quanto viene spostato (`qta`, sempre positiva) e, quando servono, l'ubicazione di partenza (`ubicazione_id_da`) e quella di arrivo (`ubicazione_id_a`). Ogni riga è la **sorgente** della coppia di movimenti di uscita e di entrata (`TRASFERIMENTO_RIGA`): due righe del registro con la stessa sorgente e due causali.
+- [ubicazioni](tabelle/ubicazioni.md) — **Le posizioni dentro un magazzino**: dove fisicamente sta la merce. La posizione è descritta da coordinate progressive — `area`, `corsia`, `scaffale` e seguenti — e il **tipo** viene da `config.tipi_ubicazione` (`PICK`, `STORAGE`, `STAGING`, `BUFFER`, `IN_TRANSIT`, `DAMAGED`). `parent_id` rende le ubicazioni gerarchiche: un'area contiene corsie, che contengono scaffali.
+- [valore_giacenza](tabelle/valore_giacenza.md) — **Quanto vale la giacenza** di un articolo in un magazzino. Una riga per coppia (articolo, magazzino), con il **valore** totale corrente.
 
 ## ⚙️ Funzioni
 - [fn_apri_blocco](funzioni/fn_apri_blocco.md)
-- [fn_crea_magazzino](funzioni/fn_crea_magazzino.md)
-- [fn_documento_interno_transizioni](funzioni/fn_documento_interno_transizioni.md) — (scritta il 22-09-2026)
-- [fn_get_magazzino_note](funzioni/fn_get_magazzino_note.md) — (rev 2026-08-21)
-- [fn_inventario_piano](funzioni/fn_inventario_piano.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
+- [fn_crea_magazzino](funzioni/fn_crea_magazzino.md) — **Aprire un magazzino** di un'azienda: codice, descrizione, indirizzo e, se servono, l'uso delle ubicazioni e il «predefinito».
+- [fn_documento_interno_transizioni](funzioni/fn_documento_interno_transizioni.md) — Dice quali **destinazioni** sono ammesse a partire da uno stato, per i documenti interni di magazzino — l'inventario, la rettifica e il trasferimento interno, che hanno la stessa matrice.
+- [fn_get_magazzino_note](funzioni/fn_get_magazzino_note.md) — Estrae le note di un documento di magazzino: è l'involucro del lettore comune delle note, applicato alla tabella `magazzino.note`, con la stessa firma e lo stesso risultato delle gemelle di vendite e acquisti.
+- [fn_inventario_piano](funzioni/fn_inventario_piano.md) — **Che cosa scriverà il posting di un inventario, prima di confermare**: una riga per ogni posizione del magazzino che il registro ha o che il conteggio nomina, con l'esito che avrà.
 - [fn_libera_blocco](funzioni/fn_libera_blocco.md)
-- [fn_posta_inventario](funzioni/fn_posta_inventario.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
-- [fn_posta_rettifica](funzioni/fn_posta_rettifica.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
+- [fn_posta_inventario](funzioni/fn_posta_inventario.md) — **Registra un inventario confermato.** Legge il [piano](/dbzero/magazzino/funzioni/fn_inventario_piano), scrive su ogni riga la quantità che il registro diceva (`qta_sistema`: la fotografia contro cui il conteggio è stato posto, e resta), posta con la primitiva ogni riga con differenza, porta la testata a `POSTED`. Ritorna, riga per riga, il movimento scritto.
+- [fn_posta_rettifica](funzioni/fn_posta_rettifica.md) — **Registra una rettifica confermata**: la *correzione a mano* che il modello promette («la correzione a mano È una rettifica»). Per ogni riga posta con la primitiva il delta **dato** (`qta_delta`, con segno) con `RETT_POS` o `RETT_NEG` secondo il segno, sorgente `RETTIFICA_RIGA`, il costo della riga solo su un'entrata; poi porta la testata a `POSTED`. Una transazione sola; ritorna i movimenti scritti.
 - [fn_posta_trasferimento](funzioni/fn_posta_trasferimento.md)
-- [fn_ricalcola_valore_giacenza](funzioni/fn_ricalcola_valore_giacenza.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
-- [fn_scrivi_movimento](funzioni/fn_scrivi_movimento.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
+- [fn_ricalcola_valore_giacenza](funzioni/fn_ricalcola_valore_giacenza.md) — **Riscrive la copia del valore di magazzino dal registro**, per un magazzino e, se si vuole, per un solo articolo. Ritorna, coppia per coppia, il valore prima e dopo.
+- [fn_scrivi_movimento](funzioni/fn_scrivi_movimento.md) — **L'unica funzione che scrive un movimento di magazzino**: fa tutti i controlli nell'ordine del contratto, scrive la riga sul registro e aggiorna la copia del valore. Ritorna l'id del movimento.
 - [fn_storna_movimenti_sorgente](funzioni/fn_storna_movimenti_sorgente.md)
-- [trgfn_documento_interno_guard_transizione](funzioni/trgfn_documento_interno_guard_transizione.md) — (rev 2026-09-22 — R-1 del Lotto 2-bis: la matrice **esce dal corpo**)
-- [trgfn_documento_interno_righe_guard_testata](funzioni/trgfn_documento_interno_righe_guard_testata.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
-- [trgfn_magazzini_guard_usa_ubicazioni](funzioni/trgfn_magazzini_guard_usa_ubicazioni.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
-- [trgfn_magazzini_normalize](funzioni/trgfn_magazzini_normalize.md) — (rev 2026-08-21)
-- [trgfn_movimenti_guard_verso](funzioni/trgfn_movimenti_guard_verso.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
-- [trgfn_trasferimenti_guard_stesso_emittente](funzioni/trgfn_trasferimenti_guard_stesso_emittente.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
-- [trgfn_ubicazioni_guard_parent](funzioni/trgfn_ubicazioni_guard_parent.md) — (rev 2026-09-21 — anagrafiche di magazzino fuori dal pannello config)
+- [trgfn_documento_interno_guard_transizione](funzioni/trgfn_documento_interno_guard_transizione.md) — **Fa rispettare la matrice degli stati** dei documenti interni di magazzino — inventari, rettifiche e trasferimenti — e tiene la porta `POSTED` e il cestino. Una funzione sola per le tre famiglie: ogni tabella le passa il nome della propria colonna di stato e quello della propria impostazione di registrazione. È montata prima dell'aggiornamento della colonna di stato e prima della cancellazione.
+- [trgfn_documento_interno_righe_guard_testata](funzioni/trgfn_documento_interno_righe_guard_testata.md) — **Le righe dei documenti interni di magazzino seguono lo stato della testata.** Una funzione per le tre famiglie (inventari, rettifiche, trasferimenti): ogni tabella di righe le passa il nome della testata, della colonna che la collega, della colonna di stato e dell'impostazione di registrazione. È montata prima di ogni inserimento, aggiornamento e cancellazione di riga.
+- [trgfn_magazzini_guard_usa_ubicazioni](funzioni/trgfn_magazzini_guard_usa_ubicazioni.md) — **`usa_ubicazioni` si cambia solo a registro vuoto.** Il flag decide la *grana* del registro di quel magazzino (ogni movimento nomina un'ubicazione, o nessuno); se esiste un movimento del magazzino, il cambio è rifiutato.
+- [trgfn_magazzini_normalize](funzioni/trgfn_magazzini_normalize.md) — Normalizza il **codice del magazzino** all'inserimento e all'aggiornamento: toglie gli spazi in testa e in coda e lo porta in maiuscolo.
+- [trgfn_movimenti_guard_verso](funzioni/trgfn_movimenti_guard_verso.md) — **La rete del verso**: rifiuta un movimento — o un atteso — la cui quantità non ha il segno della causale (il verso, più uno o meno uno). È montato prima dell'inserimento e dell'aggiornamento su `movimenti` e su `movimenti_attesi`: una funzione, due trigger.
+- [trgfn_trasferimenti_guard_stesso_emittente](funzioni/trgfn_trasferimenti_guard_stesso_emittente.md) — **Nessuna operazione di magazzino attraversa due emittenti**: rifiuta un trasferimento i cui due magazzini appartengono a emittenti diversi. Fra due emittenti sarebbe una cessione, con un documento, non uno spostamento interno.
+- [trgfn_ubicazioni_guard_parent](funzioni/trgfn_ubicazioni_guard_parent.md) — **Il padre di un'ubicazione sta nello stesso magazzino, e la gerarchia non torna mai su sé stessa.** È montato prima dell'inserimento e dell'aggiornamento delle ubicazioni.
 
 ## 🔍 Views
-- [vw_costo_medio](views/vw_costo_medio.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
-- [vw_costo_medio_globale](views/vw_costo_medio_globale.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
-- [vw_disponibilita](views/vw_disponibilita.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
-- [vw_disponibilita_articolo](views/vw_disponibilita_articolo.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
-- [vw_giacenza](views/vw_giacenza.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
-- [vw_giacenza_ubicazione](views/vw_giacenza_ubicazione.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
-- [vw_giacenza_valorizzata](views/vw_giacenza_valorizzata.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
+- [vw_costo_medio](views/vw_costo_medio.md) — **Il costo medio** — un tasso — per articolo e magazzino: il valore della copia ([valore_giacenza](/dbzero/magazzino/tabelle/valore_giacenza)) diviso la quantità del **registro** ([vw_giacenza](/dbzero/magazzino/views/vw_giacenza)).
+- [vw_costo_medio_globale](views/vw_costo_medio_globale.md) — **Il costo medio di un articolo su tutti i magazzini**: somma dei valori diviso somma delle quantità, con la quantità dal registro e il valore dalla copia. È una media **ponderata**, non la media delle medie: un deposito con mille pezzi pesa più di uno con tre.
+- [vw_disponibilita](views/vw_disponibilita.md) — **Il numero su cui si decide**: quanto c'è, quanto è promesso, quanto se ne può ancora usare, per articolo e magazzino.
+- [vw_disponibilita_articolo](views/vw_disponibilita_articolo.md) — **La disponibilità di un articolo su tutti i magazzini visibili**: giacenza, quota bloccata e disponibile sommate da [vw_disponibilita](/dbzero/magazzino/views/vw_disponibilita), più `n_magazzini`, quanti magazzini concorrono alla somma.
+- [vw_giacenza](views/vw_giacenza.md) — **La giacenza per articolo e magazzino**: la somma delle quantità del registro. Non esiste una tabella «giacenze»: la giacenza è **sempre** questa somma, quindi non può divergere dal registro e non c'è nessun posto dove correggerla di nascosto.
+- [vw_giacenza_ubicazione](views/vw_giacenza_ubicazione.md) — **La giacenza per posizione**: la somma delle quantità del registro per articolo, magazzino **e ubicazione**. La merce senza posizione dichiarata (ubicazione vuota) è un gruppo come gli altri.
+- [vw_giacenza_valorizzata](views/vw_giacenza_valorizzata.md) — **La situazione della giacenza**: per articolo e magazzino, la **quantità** (dal registro), il **valore** (dalla copia) e il **costo medio** (valore diviso quantità). È la vista che risponde a «quanto vale il mio magazzino».

@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Tabella `ui.dashboard_preferenza_utente`
 
+> **Ultimo aggiornamento**: 1 novembre 2026
+
 > 👀 **Vedi anche**
 >
 > Tabelle correlate:
@@ -19,7 +21,7 @@ La tabella **`ui.dashboard_preferenza_utente`** contiene la **preferenza persona
 
 ### 🎯 Scopo Principale
 
-* **Override utente**: la selezione e l'ordine dei widget scelti dall'utente, che vincono sul default di ruolo/emittente/sistema nella cascata di risoluzione.
+* **Override utente, chiave per chiave**: la selezione e l'ordine dei widget scelti dall'utente vincono sul default di ruolo/emittente/sistema. Dal 1-11-2026 la preferenza porta solo le chiavi scelte (`widget`, `dimensione_max`): una chiave assente (o `null`) segue lo standard, e chi salva rimanda solo le chiavi che il resolver dice di `origine` `preferenza`, più quella toccata. Una preferenza senza chiavi si cancella (vuota, lo snapshot del preset accenderebbe il banner senza niente da riconciliare). Vedi [ui.fn_resolve_dashboard_config](/dbzero/ui/funzioni/fn_resolve_dashboard_config).
 * **Configurazione in JSONB**: la preferenza si legge sempre intera ed è resiliente a evoluzioni future della struttura. I codici widget nel JSONB referenziano `ui.widget.codice` (stringa), mai l'`id`: protegge da cambi di ID cross-ambiente e permette di ignorare silenziosamente widget disattivati/rimossi.
 * **Rilevamento preset aggiornato (DEF-2)**: `preset_base_id` + `preset_base_data_update` + `preset_aggiornato_ignored_at` permettono di sapere se il preset di base è cambiato dopo l'ultimo salvataggio dell'utente, per il banner FE "preset aggiornato".
 
@@ -32,8 +34,7 @@ La tabella **`ui.dashboard_preferenza_utente`** contiene la **preferenza persona
   "widget": [
     {"codice": "resi_da_accreditare", "ordine": 1, "visibile": true},
     {"codice": "benvenuto", "ordine": 2, "visibile": true}
-  ],
-  "dimensione_max": 8
+  ]
 }
 ```
 
@@ -48,7 +49,7 @@ La tabella **`ui.dashboard_preferenza_utente`** contiene la **preferenza persona
 | `preset_base_id` | FK `ui.dashboard_preset` (`ON DELETE SET NULL`): preset da cui è partita la personalizzazione |
 | `preset_base_data_update` | Snapshot di `dashboard_preset.data_update` al salvataggio |
 | `preset_aggiornato_ignored_at` | Tombstone: l'utente ha ignorato l'avviso "preset aggiornato" fino a qui |
-| `configurazione` | JSONB: widget (codice, ordine, visibile) + dimensione_max |
+| `configurazione` | JSONB, chiavi facoltative: widget (codice, ordine, visibile), dimensione_max; una chiave assente segue lo standard |
 
 **UNIQUE** `(auth_user_id, dashboard_id)`: un solo record per utente/dashboard.
 
