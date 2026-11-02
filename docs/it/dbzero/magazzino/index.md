@@ -36,7 +36,7 @@ search:
 - [fn_apri_blocco](funzioni/fn_apri_blocco.md)
 - [fn_crea_magazzino](funzioni/fn_crea_magazzino.md) — **Aprire un magazzino** di un'azienda: codice, descrizione, indirizzo e, se servono, l'uso delle ubicazioni e il «predefinito».
 - [fn_documento_interno_transizioni](funzioni/fn_documento_interno_transizioni.md) — Dice quali **destinazioni** sono ammesse a partire da uno stato, per i documenti interni di magazzino — l'inventario, la rettifica e il trasferimento interno, che hanno la stessa matrice.
-- [fn_get_magazzino_note](funzioni/fn_get_magazzino_note.md) — Estrae le note di un documento di magazzino dalla tabella `magazzino.note`, con la stessa firma dei lettori di note degli altri domini.
+- [fn_get_magazzino_note](funzioni/fn_get_magazzino_note.md) — Estrae le note di un documento di magazzino: è l'involucro del lettore comune delle note, applicato alla tabella `magazzino.note`, con la stessa firma e lo stesso risultato delle gemelle di vendite e acquisti.
 - [fn_inventario_piano](funzioni/fn_inventario_piano.md) — **Che cosa scriverà il posting di un inventario, prima di confermare**: una riga per ogni posizione del magazzino che il registro ha o che il conteggio nomina, con l'esito che avrà.
 - [fn_libera_blocco](funzioni/fn_libera_blocco.md)
 - [fn_posta_inventario](funzioni/fn_posta_inventario.md) — **Registra un inventario confermato.** Legge il [piano](/dbzero/magazzino/funzioni/fn_inventario_piano), scrive su ogni riga la quantità che il registro diceva (`qta_sistema`: la fotografia contro cui il conteggio è stato posto, e resta), posta con la primitiva ogni riga con differenza, porta la testata a `POSTED`. Ritorna, riga per riga, il movimento scritto.

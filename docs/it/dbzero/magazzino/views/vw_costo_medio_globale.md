@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Il costo medio di un articolo su TUTTI i magazzini VISIBILI a chi interroga: «globale» = i magazzini dell'emittente in sessione, ed e' la RLS di magazzini (via movimenti e valore_giacenza) a decidere il perimetro, non un filtro scritto qui (7-sexies, 6). qta_tot dal registro, valore_tot dalla copia; stessa regola di vw_costo_medio (rev 2026-09-18, C6: NULL se la quantita' totale e' &lt;= 0). security_invoker. Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.8.
+> Il costo medio di un articolo su TUTTI i magazzini VISIBILI a chi interroga: «globale» = i magazzini dell'emittente in sessione, ed e' la RLS di magazzini (via movimenti e valore_giacenza) a decidere il perimetro, non un filtro scritto qui. qta_tot dal registro, valore_tot dalla copia; stessa regola di vw_costo_medio (NULL se la quantita' totale e' &lt;= 0). security_invoker.
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
