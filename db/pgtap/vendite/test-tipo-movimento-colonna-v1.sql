@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2d/2e): chiavi del push e ambito degli indirizzi col codice della sorgente.
 -- pgTAP test per Zero ERP
 -- Test: tipo_movimento promosso da meta (jsonb) a COLONNA su

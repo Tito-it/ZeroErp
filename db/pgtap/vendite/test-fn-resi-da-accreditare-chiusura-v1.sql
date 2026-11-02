@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): l'ordine B2 da dbops.fn_pgtap_crea_ordine_con_righe, la commessa da dbops.fn_pgtap_crea_commessa (sorgente ROOT), le attivita' fatturate da dbops.fn_pgtap_crea_commessa_attivita con la sorgente DDT_VENDITA (E-3) e dbops.fn_pgtap_fattura_attivita; helper ca_mk_ordine, ca_mk_af e ca_fattura ritirati. Resta a mano il legame della riga MULTIPLA (il caso del 7).
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito): i resi dal builder dbops.fn_pgtap_crea_reso (i due resi A e B sulla stessa riga, nell'ordine che decide la greedy; il tipo per codice); helper ca_mk_reso ritirato, l'azione conferma_reso la concede il builder.
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, D-1): gli ordini costruiti dal builder nascono al 2026-08-05 (p_data_ordine), come gli ordini scritti a mano prima del giro 1: nessuna bolla piu' vecchia del suo ordine.

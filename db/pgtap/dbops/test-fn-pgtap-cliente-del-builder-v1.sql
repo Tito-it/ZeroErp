@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 --
 -- Test: dbops.fn_pgtap_cliente_del_builder e dbops.fn_pgtap_azienda_di_chi_agisce

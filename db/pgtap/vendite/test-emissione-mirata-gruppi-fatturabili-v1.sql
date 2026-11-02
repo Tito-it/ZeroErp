@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: emissione mirata per GRUPPO FATTURABILE
 --       (chiave, persistenza del criterio, filtri su pull e select)

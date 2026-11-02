@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: script.vw_stati_doc_ddt_merce_partita — il BB «in questo stato del DDT la
 --       merce e' partita?» e le sedi che ne erano copie

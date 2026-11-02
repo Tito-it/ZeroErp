@@ -1,5 +1,5 @@
 # ------------------------------------------------------------
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: Mettere il `request_id` su OGNI riga di log, invece che su quelle in

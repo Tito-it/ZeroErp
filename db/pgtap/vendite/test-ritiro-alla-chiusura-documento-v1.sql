@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-25 (brief-modello-documento-vendita §9, giro 7): i test 2 e 4 chiudevano
 --   l'ordine con un UPDATE nudo della testata, che ora la porta ferma prima di ogni
 --   altro guard (E_DOC_STATO_SOLO_DAL_VERBO). La chiusura passa dal verbo di stato

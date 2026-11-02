@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 --
 -- Test regression end-to-end §4.8.4 WIP multi-face-auth:

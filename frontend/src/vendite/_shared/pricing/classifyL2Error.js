@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Tid (Michele Carlo Titini)
 // Scopo: Helper puro condiviso (regola del 2, refactor-prezzi 2026-06-01) per
 //        classificare un errore axios come violazione L2 del pricing

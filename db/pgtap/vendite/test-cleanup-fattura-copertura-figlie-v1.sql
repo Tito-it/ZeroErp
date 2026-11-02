@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgtap-runner: owner
 -- pgtap-runner-motivo: dieci asserzioni su undici leggono il CATALOGO
 --   (pg_constraint, pg_proc), che la RLS non filtra. L undicesima, il test 5,

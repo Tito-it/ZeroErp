@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: la COMMESSA porta gli assi del contatore nelle sue colonne
 --       vendite.commesse.registro_id / .anno        (20260902-07)

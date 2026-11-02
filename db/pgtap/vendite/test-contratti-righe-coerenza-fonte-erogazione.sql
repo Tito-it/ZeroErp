@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-11-01 (20261101-04/-06, brief-db-contratto-righe-periodiche-in-commessa passo 4):
 --   la riga a canone vuole la periodicita'. Le AGGIUNTA a canone del 12, del 15 e del 17 la
 --   scrivono (MENSILE): non e' il soggetto di questi test. Nessuna attesa cambiata.

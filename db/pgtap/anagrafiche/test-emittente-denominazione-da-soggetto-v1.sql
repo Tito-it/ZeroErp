@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: la denominazione dell'emittente viene dal SOGGETTO, non da
 --       anagrafiche.emittenti_fiscali.descrizione

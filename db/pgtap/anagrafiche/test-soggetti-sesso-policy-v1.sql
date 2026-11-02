@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgtap-differiti: escluso — i soggetti persona fisica costruiti qui restano
 --   SENZA indirizzi e contatti completi: il soggetto del test e' il guard
 --   BEFORE ROW del sesso (e il CHECK di riga), che scattano all'INSERT/UPDATE,

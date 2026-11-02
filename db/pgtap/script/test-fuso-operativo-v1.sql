@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: IL FUSO DELL'AZIENDA HA UNA SEDE SOLA, E I CONFINI DEL GIORNO LO SEGUONO
 --       script.fn_fuso_operativo · script.fn_inizio_giorno_operativo

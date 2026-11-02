@@ -1,5 +1,5 @@
 <!--
-  SPDX-License-Identifier: GPL-3.0-or-later
+  SPDX-License-Identifier: AGPL-3.0-or-later
   Copyright (C) 2026 Tid (Michele Carlo Titini)
   Scopo: Il secondo fattore di una CREDENZIALE, dal lato dell'amministratore
          (brief sicurezza §3.4-bis, T-4): lo stato, l'obbligo sulla credenziale

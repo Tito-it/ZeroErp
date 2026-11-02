@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: config.stati_doc_* — colonne pdf_mode / pdf_allow_allegati
 --       (bottone PDF data-driven via capabilities)

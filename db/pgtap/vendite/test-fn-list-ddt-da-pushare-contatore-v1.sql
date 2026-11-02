@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-26 (brief-modello-documento-vendita §14, giro 10): il passaggio a PRONTA_FATTURAZIONE dal verbo chiede l'azione cambia_stato_commessa: il file prova il contatore, non il permesso, e la concede all'utente del contesto.
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito): i resi dal builder dbops.fn_pgtap_crea_reso (pg_temp.mk_reso ritirata), la bolla di ri-consegna di D da dbops.fn_pgtap_crea_ddt_riconsegna (via indirizzo e causale a mano); nulla della strada del reso resta scritto a mano.
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine (le due spedizioni di F con p_qta_da_evadere e p_ordine_id; ritirate pg_temp.mk_partita_ordine, mk_ddt_consegnato, mk_partita); il reso (pg_temp.mk_reso) resta scritto a mano (giro 2), la bolla di ri-consegna di D resta del verbo fn_genera_ddt_riconsegna (con causale e indirizzo) e va a CONSEGNATO per la matrice.

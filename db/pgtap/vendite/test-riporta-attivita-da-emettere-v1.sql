@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: il verbo «Riporta da emettere»
 --       (brief-db-lavoro-che-non-torna-indietro, lotto L5 / D-4)

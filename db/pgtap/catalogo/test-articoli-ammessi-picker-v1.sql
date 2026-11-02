@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2b, 20261019-87 … -99):
 --   la natura merce ha destinazione ORDINE_VENDITA, il codice della sorgente (era ORDINE).
 -- rev 2026-10-28 (brief-modello-documento-vendita §16, giro 12): la versione propria nasce senza stato (BOZZA) e si attiva dalla fixture dbops.fn_pgtap_porta_a_stato, non con l'UPDATE dello stato.

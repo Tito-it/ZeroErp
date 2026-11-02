@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: vendite.fn_list_lotto_task_runs — paginazione, whitelist, `attivo`
 --       (changeSet 20260821-38, cantiere brief-db-liste-drawer-lotto L1/P-1)

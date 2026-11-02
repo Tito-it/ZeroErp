@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgtap-runner: owner
 -- pgtap-runner-motivo: la fixture semina su pratiche.template_flussi_avanzamento_proiezione, che a runtime
 --   scrive solo pratiche.fn_copia_definizione — e quella gira dentro

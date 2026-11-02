@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2b, 20261019-87 … -99):
 --   il tipo dell'origine non ha piu' un CHECK col suo vocabolario: e' una FK verso
 --   config.sorgenti(codice_interno) (G-3). Il test 8 cerca la FK, il 12 che nessun CHECK

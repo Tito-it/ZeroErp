@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- Zero ERP — estrazione diagnostica (NON e' un changeSet)
 --
 -- Tira fuori i corpi dei template documento per poterli LEGGERE.

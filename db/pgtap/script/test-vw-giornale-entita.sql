@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: script.vw_giornale_entita — la cucitura dei quattro registri
 --       (changeSet 20260822-70, brief-db-event-log-scope-e-riga-parlante §3.6)

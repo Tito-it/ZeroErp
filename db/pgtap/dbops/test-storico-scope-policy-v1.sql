@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test — la mappa dello scope di storico e chi la legge
 --   dbops.storico_scope_policy · dbops.fn_storico_risolvi_scope
 --

@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgtap-contesto: escluso — il soggetto e' una funzione che non legge tabelle
 --   (script.fn_intero_positivo_da_testo) e una che legge un parametro di
 --   sistema senza override (dbops.fn_idempotency_soglia_secondi): nessuna RLS,

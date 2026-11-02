@@ -1,5 +1,5 @@
 <!--
-  SPDX-License-Identifier: GPL-3.0-or-later
+  SPDX-License-Identifier: AGPL-3.0-or-later
   Copyright (C) 2026 Tid (Michele Carlo Titini)
   Scopo: La scheda dell'utente collegato, aperta dal suo badge nella topbar:
          chi e' (nome, utente, ruolo) e le azioni sul PROPRIO accesso — il

@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: vendite.trgfn_registri_fatturazione_guard_forma_numero  (20260901-03)
 --       script.fn_check_registro_forma_modificabile             (20260901-02)

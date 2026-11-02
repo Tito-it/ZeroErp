@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-25 (brief-modello-documento-vendita §9): l'ordine ha la porta sulla colonna di stato e
 --   la conferma chiede emetti_ordine. L'azione si concede all'operatore del contesto prima del test 4
 --   (senza, la capability nasconde «Conferma» e la reason esce NULL); i test 5 e 6 passano dal

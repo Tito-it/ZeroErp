@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test — vendite.trgfn_event_log_append_only
 --   Brief: brief-db-event-log-scope-e-riga-parlante.md §3.4
 --

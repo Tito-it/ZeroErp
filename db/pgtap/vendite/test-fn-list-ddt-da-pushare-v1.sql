@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): le bolle da ordine dei casi A (tmp_ddt_a, tmp_ddt_conf) da dbops.fn_pgtap_crea_ddt_da_ordine (p_data, p_data_ordine, p_fatturazione_trigger), la bolla autonoma del caso B da dbops.fn_pgtap_crea_ddt_senza_ordine (8 a 45, SPEDITO); resta a mano la bolla senza BA del test 9 (il caso). La riga della bolla A perde in bozza il prezzo che la madre copia (A-2): il test 5 prova il fallback via fulfillment.
 -- rev 2026-10-25 (brief-modello-documento-vendita §7, giro 5): pg_temp.spedisci porta la bolla a SPEDITO con dbops.fn_pgtap_porta_a_stato, non piu' con gli UPDATE diretti dello stato che la porta ora rifiuta.
 -- rev 2026-10-24 (brief-modello-documento-vendita Q-4): il mondo (azienda, operatore, contesto, cliente con BA) si costruisce con dbops.fn_pgtap_crea_mondo_cliente; prima BA, emittente e ruolo del cliente erano «il primo BA del database con un emittente», assente su un database ricostruito da zero.

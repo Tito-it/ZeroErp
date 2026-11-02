@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgtap-differiti: escluso — i soggetti costruiti qui restano SENZA indirizzi:
 --   il soggetto del test e' la nascita dei dati societari (il BB, le due porte
 --   di creazione, il verbo e i suoi guard BEFORE ROW), che scatta dentro la

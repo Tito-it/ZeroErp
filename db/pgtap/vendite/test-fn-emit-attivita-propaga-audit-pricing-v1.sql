@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: fn_emit_attivita_fatturabili_da_commessa propaga lo snapshot
 --       audit pricing v5 (8 colonne) da commesse_attivita ad attivita_fatturabili

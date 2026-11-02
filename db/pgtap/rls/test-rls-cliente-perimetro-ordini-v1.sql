@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgtap-contesto: escluso — il file prova la veste CLIENTE_PORTALE, non l'operatore: il
 --   contesto lo imposta a mano dentro il blocco $perimetro$, con l'identita' costruita.
 -- pgtap-runner: owner

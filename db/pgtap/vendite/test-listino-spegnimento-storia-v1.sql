@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- rev 2026-10-28 (brief-modello-documento-vendita §16, giro 12): la BOZZA nasce senza stato (trigger
 --   della nascita); lo stato si legge dal vocabolario config.stati_doc_listino_versioni.

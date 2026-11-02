@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // ------------------------------------------------------------
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Tid (Michele Carlo Titini)
 // Doc: JavaScript
 // Scopo: il tab «Versioni» del drawer listino (2026-10-31, brief-db-liste-

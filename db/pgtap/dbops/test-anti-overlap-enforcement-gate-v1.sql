@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 --
 -- Test: CANCELLO ANTI-REGRESSIONE anti-overlap (refactor-overlap §3.5 / v2 §4.4).

@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: fondamenta della chiusura ri-consegna (Fase 1)
 --   vendite.resi_righe_rinunce + fn_resi_riga_residuo_riconsegna

@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: vendite.vw_dash_commesse_respinte — una riga per commessa respinta
 -- Piano: brief-residuo-fatturabili-e-bandiere-esito-parziale, sezioni 4 e 9 (D3)

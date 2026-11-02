@@ -1,5 +1,5 @@
 # ------------------------------------------------------------
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Bash
 # Scopo: Il RIFIUTO atteso negli smoke bash, in un posto solo: lo status HTTP

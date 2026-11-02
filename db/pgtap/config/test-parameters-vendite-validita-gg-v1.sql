@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: param VENDITE_PREVENTIVO_DEFAULT_VALIDITA_GG presente e collisione
 --       id=38 risolta (seed parameters_vendite_defaults, id 38 -> 53)

@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: IL SALDO DELLA FATTURA IN TRE NUMERI — pagamenti.fn_get_saldo_fattura
 --       e, dal 2026-09-18, l'ESCLUSIONE di una riga (P-6)

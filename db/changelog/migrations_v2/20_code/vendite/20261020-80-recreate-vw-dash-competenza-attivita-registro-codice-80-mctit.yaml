@@ -1,9 +1,9 @@
 # ------------------------------------------------------------
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Liquibase changelog per Zero ERP
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 #
-# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 # timestamp-senza-fuso: ammesso — e' la definizione viva della vista, ricreata identica: `(fn_giorno_operativo(...))::timestamp` e' il passaggio con cui un GIORNO (date) entra in date_trunc('month') e torna date; nessun istante memorizzato. PostgreSQL stampa per esteso il cast che il changeSet d'origine scriveva implicito.

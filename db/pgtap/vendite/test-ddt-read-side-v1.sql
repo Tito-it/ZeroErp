@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine (in bozza); resta scritta a mano l'emissione del test 11, che e' l'asserzione.
 -- rev 2026-10-25 (brief-modello-documento-vendita §7, giro 5): lo stato si cambia solo dal verbo
 --   (la porta rifiuta l'UPDATE diretto) e «emetti» si nasconde a chi non ha emetti_ddt. Il file

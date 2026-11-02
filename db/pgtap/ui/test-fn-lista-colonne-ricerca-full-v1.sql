@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: ui.fn_lista_colonne_ricerca_full — in quali colonne l'utente corrente
 --       puo' fare la ricerca libera — e i due building block da cui dipende,

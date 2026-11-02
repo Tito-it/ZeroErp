@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Tid (Michele Carlo Titini)
 // Scopo: API client per gli endpoint form-defaults vendite (Fase 2.B3-B5
 //        refactor frontend vendite). Tutti GET, area `vendite` LETTURA.

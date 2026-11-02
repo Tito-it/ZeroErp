@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP — registrazione run job headless: colonne origine/meta + funzioni
 --         script.fn_job_run_start / fn_job_run_end (J1/J2/J3).
 --

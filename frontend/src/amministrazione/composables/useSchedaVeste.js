@@ -1,5 +1,5 @@
 // ------------------------------------------------------------
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Tid (Michele Carlo Titini)
 // Doc: JavaScript
 // Scopo: Da una VESTE della lista «Altri accessi» alla scheda del soggetto che

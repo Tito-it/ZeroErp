@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-26 (brief-modello-documento-vendita §13, giro 9): l'offerta della fixture
 --   (pg_temp.al_mk_offerta) arriva ACCETTATA dal verbo, con dbops.fn_pgtap_porta_a_stato, non con
 --   due UPDATE diretti dello stato: la porta dell'offerta li ferma. Attese invariate.

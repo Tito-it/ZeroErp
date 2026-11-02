@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgtap-runner: owner
 -- pgtap-runner-motivo: la fixture costruisce TRE aziende e un billing account
 --   legato a un emittente che NON e' quello di default: come `zeroerp_app`

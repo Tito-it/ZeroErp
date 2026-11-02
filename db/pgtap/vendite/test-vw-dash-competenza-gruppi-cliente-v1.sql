@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: vendite.vw_dash_competenza_gruppi — colonne del CLIENTE DI FATTURAZIONE
 -- Brief: brief-db-dash-competenza-gruppi-cliente-e-ricerca (D-2/D-3/D-4/D-5, §5.2)

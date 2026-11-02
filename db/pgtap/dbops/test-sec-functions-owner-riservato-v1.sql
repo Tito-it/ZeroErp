@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test STRUTTURALE — il registro degli owner e la sync riservati al migratore
 --   dbops.sec_functions_owner · dbops.fn_sync_functions_owner()
 --

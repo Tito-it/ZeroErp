@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine; restano scritti a mano i resi (giro 2), che sono il caso del test; la colonna stato_ddt_consegnato_id resta in tmp_refs perche' la legge il test 2.
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito): i resi A, B, D1, D2 dal builder dbops.fn_pgtap_crea_reso (A e D1 in DRAFT: la conferma e' il passo del test, 8 e 26); restano scritti a mano la riga oltre il consegnato (7), il reso da una bolla non consegnata (24) e le ri-spedizioni dal verbo (14, 16), che sono il caso; tipi e stati di tmp_refs restano perche' li legge il test 2.
 -- pgTAP test per Zero ERP

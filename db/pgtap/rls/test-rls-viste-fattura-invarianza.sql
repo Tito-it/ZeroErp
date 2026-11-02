@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): emissione, fattura in bozza, riga e legame da dbops.fn_pgtap_fattura_attivita, la sorgente ROOT da dbops.fn_pgtap_crea_commessa (p_con_sorgente_root); ritirato l'UPDATE diretto dello stato della commessa a PRONTA_FATTURAZIONE (aggirava la matrice; l'emissione non lo chiede). Della catena non resta niente a mano.
 -- pgtap-contesto: escluso — la ragione e' scritta per esteso piu' sotto in
 --   questo stesso file. Dichiarazione leggibile dal cancello

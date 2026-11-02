@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: la coppia apri/chiudi del giro di push commesse
 --       vendite.fn_start_commessa_push_run · vendite.fn_close_commessa_push_run

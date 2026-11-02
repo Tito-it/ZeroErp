@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: deprecabilità catalogo pratiche via obsoleto_dal
 --       (brief-db-deprecabilita-catalogo-vs-istanze, P1; migrazioni 20260630-01/02)

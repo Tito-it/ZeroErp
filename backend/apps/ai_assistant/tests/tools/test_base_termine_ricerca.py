@@ -1,5 +1,5 @@
 # ------------------------------------------------------------
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: Il termine di ricerca che arriva da un LLM: sotto soglia e' un errore,

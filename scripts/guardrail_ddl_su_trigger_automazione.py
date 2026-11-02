@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # ------------------------------------------------------------
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Guardrail CI — niente DDL INCONDIZIONATA su un trigger che lo crea `ci_apply`
 #   Regola: docs/it/linee-guida-sql.md §11.5
 #

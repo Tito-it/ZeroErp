@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- Zero ERP — controllo diagnostico (NON e' un changeSet)
 --
 -- Funzioni plpgsql con riferimenti che non si risolvono piu'.

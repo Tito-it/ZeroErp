@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: §26 B+D — sorgente_origine_tipo_id + tipo_doc_fiscale_id
 -- ------------------------------------------------------------

@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: stati_commessa lookup + refactor FK + fn_list_commesse_emittibili
 -- (changeset 20260226-01..06)

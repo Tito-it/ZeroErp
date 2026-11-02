@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: GRANT SELECT a zeroerp_app su pratiche.azioni_ui e
 --       pratiche.template_flussi_handler_eventi (changeset 20260615-12)

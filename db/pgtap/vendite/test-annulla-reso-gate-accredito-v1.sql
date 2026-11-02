@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): la commessa da dbops.fn_pgtap_crea_commessa (sorgente ROOT), le attivita' da dbops.fn_pgtap_crea_commessa_attivita (sorgente DDT_VENDITA, E-3) e la fattura agganciata da dbops.fn_pgtap_fattura_attivita (pg_temp.agr_fattura resta: compone i due builder per le due partite fatturate); l'ordine a due righe della partita D da dbops.fn_pgtap_crea_ddt_da_ordine con p_righe_ordine (ritirato pg_temp.agr_mk_ordine).
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito): il reso dal builder dbops.fn_pgtap_crea_reso (anche in bozza, e a due righe con p_reso_id); restano scritti a mano l'annullo fn_annulla_reso (il caso: per lui resta concessa conferma_reso), l'ordine a due righe e la commessa con la fattura.
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine; resta scritto a mano l'ordine a DUE righe della partita D (ordine speciale: la bolla dal builder con p_ordine_id), il reso (giro 2) e la commessa con la fattura, che sono il caso del test.

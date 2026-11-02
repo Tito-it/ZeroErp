@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgtap-runner: owner
 -- pgtap-runner-motivo: il soggetto e' lo SCORRERE DEL TEMPO (freno scaduto, attesa trascorsa, scadenza ricalcolata). Per costruirlo la fixture retrodata config.credenziali e config.credenziali_provenienze, che all'applicazione sono chiuse in scrittura per costruzione (90_end/20260925-24: scrivono solo le funzioni DEFINER). Un helper DEFINER che retrodatasse lo stato sarebbe chiamabile in esercizio e azzererebbe il freno: meglio un test marcato che una porta aperta. Le funzioni sotto test si chiamano come in esercizio.
 -- pgTAP test per Zero ERP

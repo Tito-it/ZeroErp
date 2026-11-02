@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: la coda di stampa dice CHE COSA stampare, non solo quale fattura
 --   (brief-db-modelli-documento-standard §9; changeSet 20261020-28 … -31)

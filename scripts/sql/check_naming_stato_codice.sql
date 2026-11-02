@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- Guardrail naming codice_interno / codice (linee-guida-sql §6c,
 -- brief-naming-stato-codice-interno.md).
 --

@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2b, 20261019-87 … -99):
 --   l'ordine nato dall'offerta porta documento_origine_tipo = OFFERTA_COMMERCIALE, il
 --   codice della sorgente (era OFFERTA: ora la FK verso config.sorgenti lo rifiuta).

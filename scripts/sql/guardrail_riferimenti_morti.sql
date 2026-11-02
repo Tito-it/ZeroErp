@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- Guardrail CI — riferimenti morti nelle funzioni plpgsql
 --   Brief: docs/it/dev/work-done/brief-db-bonifica-riferimenti-morti.md §5
 --

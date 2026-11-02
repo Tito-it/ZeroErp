@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): i due ordini CONFERMATI da dbops.fn_pgtap_crea_ordine_con_righe (10 x 25, data 2026-07-15, trigger CONSEGNATO / CONFERMATO scritto in bozza), ritirato l'helper pg_temp.mk_ordine e i riferimenti rimasti senza lettori.
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2d): l'area della dashboard e' il codice della sorgente (ORDINE_VENDITA).
 -- pgTAP test per Zero ERP

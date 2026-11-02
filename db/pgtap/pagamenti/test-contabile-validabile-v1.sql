@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: che cosa deve essere vero per VALIDARE — script.fn_check_contabile_validabile
 --       e il guard che la chiama (D20-a), piu' la coppia spenta di D20-e

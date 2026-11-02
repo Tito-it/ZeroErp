@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): ritirato pg_temp.lr_mk_ordine, copia della strada dell'ordine confermato definita e mai chiamata (con le colonne di tmp_lr_refs che solo lei leggeva, e due gia' senza lettori); nessun builder serve: l'ordine del caso C nasce dal push del preventivo, che e' il caso.
 -- pgTAP test per Zero ERP
 -- Test: il LEGAME di un arco della lineage, oltre allo stato del nodo

@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-26 (brief-modello-documento-vendita §11): i quattro contratti (OV, ESC, AGG, LV) si attivano
 --   con dbops.fn_pgtap_porta_a_stato (il verbo del contratto), non con un UPDATE dello stato: la porta
 --   lo ferma. Nessuna attesa cambiata.

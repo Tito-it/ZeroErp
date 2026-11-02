@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: immutabilità quantita su commesse_attivita (EMESSA) e mirror-enforcement
 --       su attivita_fatturabili (= quantita della commessa madre).

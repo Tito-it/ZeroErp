@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): la commessa da dbops.fn_pgtap_crea_commessa (sorgente ROOT); pg_temp.ric_fattura compone ora dbops.fn_pgtap_crea_commessa_attivita (sorgente DDT_VENDITA, E-3) e dbops.fn_pgtap_fattura_attivita, per le due partite fatturate.
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito): i resi dal builder dbops.fn_pgtap_crea_reso, le ri-spedizioni da dbops.fn_pgtap_crea_ddt_riconsegna (ritirati pg_temp.ric_mk_reso e pg_temp.ric_rispedisci, con indirizzo e causale a mano); nulla della strada del reso resta scritto a mano.
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine; la bolla di ri-consegna (fn_genera_ddt_riconsegna) tiene indirizzo e causale scritti a mano, gli stati per dbops.fn_pgtap_porta_a_stato; i resi restano a mano (giro 2).

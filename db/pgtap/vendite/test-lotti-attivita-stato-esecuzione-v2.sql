@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: allineamento lotti/attivita stato_esecuzione (changeset 20260222-01..07)
 -- rev 2026-10-27 (brief-modello-documento-vendita §15, giro 11, F-4):

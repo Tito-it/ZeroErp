@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2e): chiavi del push e corsia col codice della sorgente (ORDINE_VENDITA, DDT_VENDITA).
 -- pgTAP test per Zero ERP
 -- Test: vendite.vw_af_merce_per_riga — la base del contatore merce

@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-26 (brief-modello-documento-vendita §14, giro 10):
 --   la commessa del caso 7 nasce APERTA con l'attivita' del builder (p_con_attivita
 --   => true, prima false): BOZZA -> APERTA e' spenta, APERTA si raggiunge solo da
