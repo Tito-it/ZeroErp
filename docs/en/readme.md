@@ -1,5 +1,7 @@
 # ZeroERP
 
+> **Last updated**: 2 November 2026
+
 **Open-source ERP for Italian companies, designed with a DB-first and concentric development approach.**
 
 ZeroERP is built from hands-on experience in enterprise software for utilities and SMEs.
@@ -184,7 +186,7 @@ Main documentation entry points:
 
 ## License
 
-ZeroERP is distributed under **GNU GPL v3 or later**.
+ZeroERP is dual-licensed: **GNU AGPL v3 or later**, or a commercial license (see `LICENSE.md`).
 
 References:
 

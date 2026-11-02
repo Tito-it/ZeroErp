@@ -8,7 +8,7 @@
 ## Identità del Progetto
 
 - Nome: ZeroErp
-- Tipo: ERP open-source (GPL v3), progetto serio orientato alla produzione
+- Tipo: ERP open-source (AGPL v3, doppia licenza con licenza commerciale), progetto serio orientato alla produzione
 - Autore: Tid (Michele Carlo Titini) — 30+ anni di esperienza ERP (AS/400)
 - Repo: https://github.com/Tito-it/ZeroErp
 - Lingua doc/commenti: it-IT

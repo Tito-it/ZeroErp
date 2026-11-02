@@ -4,7 +4,9 @@
 
 # Zero ERP
 
-Benvenuto nella documentazione di **Zero ERP** — un ERP open-source (GPL v3) per
+> **Ultimo aggiornamento**: 2 novembre 2026
+
+Benvenuto nella documentazione di **Zero ERP** — un ERP open-source (AGPL v3, con doppia licenza commerciale) per
 aziende italiane, costruito **DB-first**: le regole di dominio vivono nel
 database, Django orchestra ed espone le API, il frontend presenta e basta.
 
