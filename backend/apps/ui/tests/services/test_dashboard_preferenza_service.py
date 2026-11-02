@@ -107,6 +107,29 @@ class DashboardPreferenzaUpsertTests(SimpleTestCase):
         self.assertEqual(ctx.exception.code, E_UI_DASHBOARD_NON_TROVATA)
         repo.upsert_preferenza.assert_not_called()
 
+    # ⭐ Preferenza per chiave (2026-11-01): ogni chiave e' facoltativa, quella
+    #    assente vale «come lo standard».
+    @_PATCH_EMITTENTE
+    def test_upsert_una_chiave_sola_arriva_da_sola(self, _mock_em) -> None:
+        repo = _make_repo()
+        svc = DashboardPreferenzaService(repository=repo)
+
+        svc.upsert(_make_user(), "home", {"widget": _VALID_PAYLOAD["widget"]})
+        cfg = repo.upsert_preferenza.call_args.kwargs["configurazione"]
+        self.assertEqual(set(cfg), {"widget"})
+
+    # ⛔ Una preferenza senza chiavi si toglie col DELETE: il PUT vuoto e' un 400.
+    @_PATCH_EMITTENTE
+    def test_upsert_senza_chiavi_raises(self, _mock_em) -> None:
+        repo = _make_repo()
+        svc = DashboardPreferenzaService(repository=repo)
+
+        for payload in ({}, {"dimensione_max": None}):
+            with self.subTest(payload=payload), self.assertRaises(ServiceError) as ctx:
+                svc.upsert(_make_user(), "home", payload)
+            self.assertEqual(ctx.exception.code, E_UI_PREFERENZA_VALIDAZIONE)
+        repo.upsert_preferenza.assert_not_called()
+
     @_PATCH_EMITTENTE
     def test_upsert_payload_non_dict_raises(self, _mock_em) -> None:
         svc = DashboardPreferenzaService(repository=_make_repo())

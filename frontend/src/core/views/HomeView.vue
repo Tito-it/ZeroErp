@@ -83,8 +83,9 @@ function onApriWidget(widget) {
 // coi widget correnti per codice, non sostituito — altrimenti la griglia
 // perde i campi di catalogo (etichetta, deep_link, contatore_key) finche'
 // il reload post-save non riesce, e a save fallito resterebbe rotta.
+// ⚠️ Senza `widget` la modale non ha cambiato niente: si salva senza toccarli.
 async function onPersonalizzaApply(payload) {
-  applyDashChange(c => {
+  if (payload.widget) applyDashChange(c => {
     const perCodice = new Map((c.widget || []).map(w => [w.codice, w]))
     c.widget = payload.widget.map(w => ({
       ...perCodice.get(w.codice),

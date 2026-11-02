@@ -136,7 +136,7 @@ export function useDrawerTabLista(
   //    le righe del padre precedente restavano a video fino alla risposta, con
   //    i comandi di riga che puntavano al padre nuovo.
   // ⚠️ Resta il passo della pagina (`limit`): e' allineato alla
-  //    `pagina_dimensione` della lista una volta sola (`onConfigLoaded`), e
+  //    `pagina_dimensione` della lista quando la sua misura cambia (`onConfigLoaded`, BB `allineaMisuraConfig`), e
   //    `reset()` lo riporterebbe al default dello store.
   function ripartiDaCapo(valori) {
     const limit = store.filters?.limit

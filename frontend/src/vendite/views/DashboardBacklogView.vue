@@ -42,6 +42,7 @@ import { useDashboardBacklogStore } from '../stores/dashboardBacklog'
 import FiltriLista from '../../core/components/FiltriLista.vue'
 import { useContrattoFiltriLocali } from '../../core/composables/useContrattoFiltriLocali'
 import { misureOpzioni } from '../../core/misurePagina'
+import { allineaMisuraConfig } from '../../core/allineaMisuraConfig'
 
 const { t, te } = useI18n()
 const notify = useNotify()
@@ -80,14 +81,15 @@ const documentiPaginatorOptions = computed(() => ({
   rowsPerPageOptions: misureOpzioni(),
 }))
 
-// Scopo: allinea una volta la dimensione pagina a quella risolta dal BE.
-const configAllineata = ref(false)
+// Scopo: allinea la dimensione pagina a quella risolta dal BE quando la
+//        misura della configurazione cambia (BB `allineaMisuraConfig`).
+const misuraConfig = allineaMisuraConfig()
 function onConfigLoaded(config) {
-  if (configAllineata.value) return
-  configAllineata.value = true
-  const nuovoLimit = config?.pagina_dimensione
+  const nuovoLimit = misuraConfig.daApplicare(config)
   if (nuovoLimit && nuovoLimit !== documentiPageSize.value) {
     documentiPageSize.value = nuovoLimit
+    // ⚠️ Con un passo nuovo la pagina di prima non e' piu' la stessa.
+    documentiPage.value = 1
     store.fetchDocumenti()
   }
 }

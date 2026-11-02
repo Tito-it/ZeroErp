@@ -40,6 +40,7 @@ import { useSearchTable } from './useSearchTable'
 import { useListaAzioni } from './useListaAzioni'
 import { MANAGE_ICONS } from '../constants'
 import { paramsRicerca } from '../utils/listParams'
+import { allineaMisuraConfig } from '../allineaMisuraConfig'
 
 // Scopo: la soglia della ricerca libera dalla configurazione risolta
 //        (`ricerca_min_caratteri`): un intero >= 1, altrimenti `null` («non
@@ -107,11 +108,12 @@ export function useListaConfigurabilePage(
   )
   const mostraSearchHint = computed(() => !mostraLista.value)
 
-  // Allinea store.filters.limit alla pagina_dimensione risolta dal BE (una volta).
-  const configAligned = ref(false)
+  // Allinea store.filters.limit alla pagina_dimensione risolta dal BE quando
+  // la misura della configurazione cambia (BB `allineaMisuraConfig`).
+  const misuraConfig = allineaMisuraConfig()
   function onConfigLoaded(config) {
-    // ⚠️ PRIMA della guardia `configAligned`: quella protegge l'allineamento
-    // del limit, che si fa una volta sola. Il cancello no — e' uno stato che
+    // ⚠️ PRIMA dell'allineamento della misura: quello tocca il `limit` solo
+    // quando la misura della configurazione cambia. Il cancello no — e' uno stato che
     // cambia quando cambia l'emittente attivo, e leggerlo dopo un `return`
     // significherebbe lasciarlo fermo al primo valore.
     perimetroBloccato.value = config?.richiede_scelta_emittente === true
@@ -135,7 +137,7 @@ export function useListaConfigurabilePage(
     const sbloccata = eraSospesa && !perimetroBloccato.value
     // ⭐ La casella di ricerca si mostra solo se la lista cerca davvero
     //    (`ricerca_full`, brief-be-ricerca-full-liste-residue §7-bis): la
-    //    legge `FiltriLista` dallo store. Prima della guardia `configAligned`,
+    //    legge `FiltriLista` dallo store. Prima dell'allineamento della misura,
     //    come il cancello: l'amministratore puo' spegnere le colonne, e la
     //    configurazione si ricarica (salvataggio della personalizzazione).
     // ⚠️ Assegnata senza guard `in`: gli store scritti a mano senza il core
@@ -152,7 +154,7 @@ export function useListaConfigurabilePage(
     //    be-fe-ricerca-soglia-per-lista): un fatto della lista, letto dalla
     //    stessa colonna con cui il BB del backend decide se filtrare. Lo tiene
     //    lo store (dichiarato dal BB di stato), lo usano `termineCorto` e
-    //    `paramsRicerca`. Prima della guardia `configAligned`, come
+    //    `paramsRicerca`. Prima dell'allineamento della misura, come
     //    `ricercaFull`: e' un fatto della lista, e si rilegge a ogni config.
     // ⚠️ Un valore che non e' un intero >= 1 non si prende per buono: `null`
     //    = soglia di progetto. Un `0` o una stringa manderebbero ogni lettera.
@@ -170,13 +172,12 @@ export function useListaConfigurabilePage(
     // Su una lista che non cerca il termine e' appena stato tolto dalla
     // casella, e la fetch la rifa' il `watch` di `useSearchTable`.
     let ricarica = (cambiaLaRicerca && store.ricercaFull !== false) || (sbloccata && !store.loading)
-    if (!configAligned.value) {
-      configAligned.value = true
-      const newLimit = config?.pagina_dimensione
-      if (newLimit && newLimit !== store.filters.limit) {
-        store.filters.limit = newLimit
-        if (store.hasSearched) ricarica = true
-      }
+    const newLimit = misuraConfig.daApplicare(config)
+    if (newLimit && newLimit !== store.filters.limit) {
+      store.filters.limit = newLimit
+      // ⚠️ Con un passo nuovo l'offset di prima non e' piu' una pagina.
+      store.filters.offset = 0
+      if (store.hasSearched) ricarica = true
     }
     // Una fetch sola anche quando cambiano insieme pagina e soglia.
     if (ricarica) store.fetchList()

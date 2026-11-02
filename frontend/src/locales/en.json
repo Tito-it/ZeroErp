@@ -6006,6 +6006,9 @@
     }
   },
   "lista_config": {
+    "pagina_dimensione": "Rows per page",
+    "pagina_standard": "As the default ({n})",
+    "pagina_tooltip": "How many rows the list shows. «As the default» follows the standard view, even when it changes.",
     "modal_title": "Customize columns",
     "personalizza_colonne": "Customize columns",
     "stato_temporanea": "Temporary — not saved",

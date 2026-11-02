@@ -19,6 +19,11 @@ from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import PayloadValidator
 from apps.core.services.permissions_resolver import PermissionResolver
 from apps.ui.db.ui_repository import UiRepository
+from apps.ui.services._preferenza import (
+    E_UI_PREFERENZA_NON_TROVATA,
+    E_UI_PREFERENZA_VALIDAZIONE,
+    richiedi_preferenza_non_vuota,
+)
 
 __all__ = [
     "ListaPreferenzaService",
@@ -29,8 +34,6 @@ __all__ = [
 
 
 E_UI_LISTA_NON_TROVATA = "E_UI_LISTA_NON_TROVATA"
-E_UI_PREFERENZA_VALIDAZIONE = "E_UI_PREFERENZA_VALIDAZIONE"
-E_UI_PREFERENZA_NON_TROVATA = "E_UI_PREFERENZA_NON_TROVATA"
 
 # Whitelist root del payload preferenza.
 _PAYLOAD_KEYS = frozenset(
@@ -216,7 +219,11 @@ class ListaPreferenzaService:
         if pagina_dim is not None:
             config["pagina_dimensione"] = pagina_dim
 
-        return config
+        # Ogni chiave e' facoltativa, ma una preferenza senza chiavi si toglie
+        # col DELETE (BB `richiedi_preferenza_non_vuota`).
+        return richiedi_preferenza_non_vuota(
+            config, message="Preferenza lista non valida.",
+        )
 
     # Scopo: Legge una colonna della preferenza (lettore di `PayloadValidator.voci`,
     #        che ha gia' giudicato la forma: un oggetto). Whitelist chiavi,

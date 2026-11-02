@@ -6006,6 +6006,9 @@
     }
   },
   "lista_config": {
+    "pagina_dimensione": "Righe per pagina",
+    "pagina_standard": "Come lo standard ({n})",
+    "pagina_tooltip": "Quante righe mostra la lista. «Come lo standard» segue la vista standard anche quando cambia.",
     "modal_title": "Personalizza colonne",
     "personalizza_colonne": "Personalizza colonne",
     "stato_temporanea": "Temporanea — non salvata",

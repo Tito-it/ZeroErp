@@ -16,8 +16,11 @@ tabelle (`lista_definizione`, `lista_colonna`, `lista_preset`,
 e la funzione `ui.fn_resolve_lista_config(VARCHAR, INTEGER, BIGINT)` che
 applica:
 
-1. cascata preferenza utente -> preset di ruolo (priorita ASC) ->
-   preset di emittente -> preset di sistema -> catalogo grezzo;
+1. cascata **per chiave** (dal 2026-11-01): `colonne`, `ordinamento`,
+   `filtri` e `pagina_dimensione` vengono ognuna dal primo livello che la
+   contiene — preferenza utente -> preset di ruolo (priorita ASC) ->
+   preset di emittente -> preset di sistema -> catalogo grezzo. Una chiave
+   assente dalla preferenza vale «come lo standard»;
 2. merge automatico delle nuove colonne aggiunte al catalogo dopo
    l'ultimo salvataggio della preferenza (con `visibile=false`);
 3. normalizzazione colonne obbligatorie (`identificatore`/`azione`
@@ -91,6 +94,13 @@ sistema o sul catalogo grezzo.
     "ordinamento": [{"col": "ragione_sociale", "dir": "asc"}],
     "filtri": {"attivo": true},
     "pagina_dimensione": 25,
+    "pagina_dimensione_standard": 25,
+    "origine": {
+      "colonne": "preferenza",
+      "ordinamento": "sistema",
+      "filtri": "sistema",
+      "pagina_dimensione": "sistema"
+    },
     "colonne_nuove": 0,
     "ricerca_full": true,
     "richiede_scelta_emittente": false
@@ -126,6 +136,15 @@ Campi top-level:
   `ui.misure_pagina`). ⭐ Dal 2026-09-30 `pagina_dimensione` e' **sempre
   una misura del catalogo**: quella scelta se ammessa, altrimenti il
   default — mai `NULL`, mai un numero che il paginatore non offre
+- `origine` — per ognuna delle quattro chiavi, il livello da cui viene:
+  `preferenza`, `ruolo`, `emittente_fiscale`, `sistema` o `catalogo` (dal
+  2026-11-01). ⭐ Il FE rimanda al salvataggio **solo** le chiavi
+  `preferenza`, piu' quella toccata: rimandare la configurazione intera
+  congelerebbe nella preferenza le chiavi del preset (era il difetto fino
+  al 2026-10-31)
+- `pagina_dimensione_standard` — la misura che la cascata darebbe **senza**
+  la preferenza; il drawer di personalizzazione la mostra come «Come lo
+  standard (N)»
 - `ricerca_full` — `true` se la lista ha, **per l'utente corrente**, almeno
   una colonna in cui la ricerca libera cerca (`ricercabile_full = t`,
   attiva, non `BLOCCATO` per i permessi di colonna). Il frontend mostra la
@@ -268,7 +287,11 @@ Errori:
 ```
 
 Whitelist root payload: `colonne`, `ordinamento`, `filtri`,
-`pagina_dimensione`. Whitelist colonna: `codice`, `ordine`, `larghezza`,
+`pagina_dimensione`. ⭐ **Ogni chiave e' facoltativa** (dal 2026-11-01):
+quella assente (o `null`) vale «come lo standard», e la preferenza contiene
+solo le chiavi scelte. ⛔ Una preferenza **senza chiavi** si toglie col
+`DELETE` (endpoint 4): il `PUT` vuoto risponde `400
+E_UI_PREFERENZA_VALIDAZIONE`. Whitelist colonna: `codice`, `ordine`, `larghezza`,
 `visibile`, `fissata`. Vincoli:
 
 - `codice` (string) — obbligatorio; deve essere presente nel catalogo
@@ -310,7 +333,7 @@ Errori:
 
 - `400` `E_IDEMPOTENCY_KEY_REQUIRED` — header `Idempotency-Key` mancante
 - `400` `E_UI_PREFERENZA_VALIDAZIONE` — payload non whitelisted, tipi
-  errati, ecc. Il dettaglio indica esattamente quale chiave/colonna ha
+  errati, nessuna chiave valorizzata, ecc. Il dettaglio indica esattamente quale chiave/colonna ha
   violato il vincolo.
 - `400` `E_UI_MISURA_PAGINA_NON_AMMESSA` — `pagina_dimensione` non e' una
   misura del catalogo (dal guard a DB; il messaggio elenca le ammesse)
