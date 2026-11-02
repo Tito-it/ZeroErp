@@ -35,6 +35,11 @@ senza l'obbligo di rilasciare il codice sorgente delle tue modifiche,
 
 Per informazioni: <mc.titini@gmail.com>  
 
+## Contributi
+
+Per mantenere possibile la doppia licenza, ogni contributo esterno richiede la
+firma del [CLA](CLA.md). Le regole sono in [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## In sintesi
 
 |                                                | AGPL3    | Commerciale  |

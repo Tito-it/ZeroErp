@@ -1,0 +1,75 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+#
+# ⭐ FIRMA DEL CLA SULLE PULL REQUEST (2026-11-02).
+#
+# ZeroERP ha una doppia licenza (AGPL + commerciale): un contributo esterno
+# puo' entrare solo se chi lo scrive ha firmato il CLA (CLA.md), che concede il
+# diritto di distribuirlo anche sotto licenza commerciale. Senza firma la PR
+# resta col check rosso.
+#
+# ⭐ PERCHE' QUESTA ACTION e non il servizio cla-assistant.io: le firme restano
+# NEL REPO, in un JSON versionato sul branch `cla-firme` (chi, quando, quale
+# PR). La prova sta nella storia git del progetto, non sui server di altri.
+#
+# ⛔ SICUREZZA — `pull_request_target` gira con i permessi del repo ANCHE sulle
+# PR che arrivano dai fork. E' sicuro solo perche' questo workflow NON fa
+# checkout e NON esegue il codice della PR: legge solo autori e commenti.
+# Non aggiungere mai qui `actions/checkout` del ref della PR, ne' step che
+# lanciano script del repo.
+# ⛔ L'action e' fissata allo SHA del commit (v2.6.1), non al tag: un tag si
+# puo' spostare, uno SHA no.
+#
+# ⚠️ Il trigger `issue_comment` usa SEMPRE la versione del workflow sul branch
+# di default: la firma via commento funziona solo dopo il merge su `main`.
+# ⚠️ Il branch `cla-firme` deve esistere prima della prima PR esterna, e NON
+# va protetto: ci scrive il bot.
+# ⚠️ La frase di firma compare DUE volte (nell'`if` e in
+# `custom-pr-sign-comment`): devono restare identiche carattere per carattere.
+
+name: CLA
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_target:
+    types: [opened, closed, synchronize]
+
+permissions:
+  actions: write
+  contents: write
+  pull-requests: write
+  statuses: write
+
+jobs:
+  cla:
+    name: Firma CLA
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'pull_request_target'
+      || (github.event.issue.pull_request
+          && (github.event.comment.body == 'recheck'
+              || github.event.comment.body == 'Ho letto il CLA e lo sottoscrivo / I have read the CLA Document and I hereby sign the CLA'))
+    steps:
+      - name: Verifica firme CLA
+        uses: contributor-assistant/github-action@ca4a40a7d1004f18d9960b404b97e5f30a505a08 # v2.6.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          path-to-document: 'https://github.com/Tito-it/ZeroErp/blob/main/CLA.md'
+          path-to-signatures: 'firme/cla-v1.json'
+          branch: 'cla-firme'
+          # Il titolare e i bot non firmano.
+          allowlist: 'Tito-it,dependabot[bot],github-actions[bot],*[bot]'
+          lock-pullrequest-aftermerge: false
+          custom-notsigned-prcomment: |
+            Grazie per il contributo! ZeroERP ha una doppia licenza (AGPL + commerciale): prima di unire la pull request serve la firma del [CLA](https://github.com/Tito-it/ZeroErp/blob/main/CLA.md). Per firmare, leggi il documento e rispondi qui con la frase qui sotto.
+
+            Thanks for your contribution! ZeroERP is dual-licensed (AGPL + commercial): before merging, please sign our [CLA](https://github.com/Tito-it/ZeroErp/blob/main/CLA.md) by replying with the sentence below.
+          custom-pr-sign-comment: 'Ho letto il CLA e lo sottoscrivo / I have read the CLA Document and I hereby sign the CLA'
+          custom-allsigned-prcomment: 'CLA firmato da tutti gli autori. / All contributors have signed the CLA. ✅'
