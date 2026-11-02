@@ -13,8 +13,8 @@
 | seq | integer | NO | 10 |
 | testo | text | YES |  |
 | testo_md | text | YES |  |
-| stile | character varying(16) | NO | 'NORMALE'::character varying |
-| lingua | character varying(5) | YES |  |
+| id_stile | bigint | NO |  |
+| id_lingua | bigint | YES |  |
 | visibile | boolean | NO | true |
 | solo_stampa | boolean | NO | false |
 | meta | jsonb | NO | '{}'::jsonb |
@@ -28,9 +28,10 @@
 |------|------|---------|
 | CHECK | chk_note_anchor_tipo |  |
 | CHECK | chk_note_inventario_riga_anchor |  |
-| CHECK | chk_note_lingua_non_vuota |  |
 | CHECK | chk_note_posizione |  |
 | CHECK | chk_note_seq_pos |  |
+| FOREIGN KEY | fk_mag_note_id_lingua | id_lingua |
+| FOREIGN KEY | fk_mag_note_id_stile | id_stile |
 | FOREIGN KEY | fk_mag_note_target_tipo | target_tipo |
 | FOREIGN KEY | fk_note_inventario_riga_riga | target_riga_id |
 | FOREIGN KEY | fk_note_inventario_riga_testata | target_id |

@@ -51,6 +51,7 @@
 |------|--------|--------|--------|
 | trg_ui_lista_preset_a10_guard_pagina_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION ui.trgfn_ui_lista_preset_guard_pagina_dimensione()` |
 | trg_ui_lista_preset_a10_guard_pagina_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION ui.trgfn_ui_lista_preset_guard_pagina_dimensione()` |
+| trg_ui_lista_preset_a20_data_update_contenuto_upd | BEFORE | UPDATE | `EXECUTE FUNCTION ui.trgfn_preset_data_update_contenuto()` |
 
 ---
 {% include-markdown "signature-core.md" %}

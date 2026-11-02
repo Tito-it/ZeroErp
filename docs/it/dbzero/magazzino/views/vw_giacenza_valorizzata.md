@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> La SITUAZIONE della giacenza: quantita' dal registro (vw_giacenza), valore dalla copia (valore_giacenza), costo medio = valore / qta — con la stessa regola di vw_costo_medio (rev 2026-09-18, C6: NULL se qta &lt;= 0 o senza riga di valore). Fino al 2026-09-15 era tautologica (qta * (valore / qta) = valore, con qta nell'accumulatore): ora il join e' fra due fonti e una divergenza si vede — valore NULL su una giacenza con movimenti e' un'anomalia da guardare (vw_magazzino_valore_giacenza_divergente), non un caso da nascondere. security_invoker. Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.8; Lotto 2, C6.
+> La SITUAZIONE della giacenza: quantita' dal registro (vw_giacenza), valore dalla copia (valore_giacenza), costo medio = valore / quantita' — con la stessa regola di vw_costo_medio (NULL se la quantita' e' &lt;= 0 o senza riga di valore). Il join e' fra due fonti, quindi una divergenza si vede: valore NULL su una giacenza con movimenti e' un'anomalia da guardare (dbops.vw_magazzino_valore_giacenza_divergente), non un caso da nascondere. security_invoker.
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 

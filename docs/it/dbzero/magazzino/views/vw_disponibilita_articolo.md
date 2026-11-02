@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> La disponibilita' di un articolo su TUTTI i magazzini VISIBILI a chi interroga: dentro l'emittente attivo e' tutto, ed e' la RLS di movimenti e attesi (via magazzino) a decidere il perimetro, non un filtro scritto qui (c/s 7-sexies, 6 — come vw_costo_medio_globale). giacenza, bloccata, disponibile sommate da vw_disponibilita; n_magazzini = quanti ne concorrono. security_invoker. Brief: brief-db-magazzino-lotto-2-motore, sezione 4.6.
+> La disponibilita' di un articolo su TUTTI i magazzini VISIBILI a chi interroga: dentro l'emittente attivo e' tutto, ed e' la RLS di movimenti e attesi (via magazzino) a decidere il perimetro, non un filtro scritto qui (come vw_costo_medio_globale). giacenza, bloccata, disponibile sommate da vw_disponibilita; n_magazzini = quanti ne concorrono. security_invoker.
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
