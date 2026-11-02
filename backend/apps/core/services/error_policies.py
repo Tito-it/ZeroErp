@@ -1,5 +1,5 @@
 # ------------------------------------------------------------
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2025 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: Il registro delle policy errore — ma non piu' l'elenco: le REGOLE.

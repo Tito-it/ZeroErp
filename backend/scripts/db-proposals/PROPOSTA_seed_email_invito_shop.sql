@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- PROPOSTA seed template email INVITO_SHOP (B1 §13.7 admin-driven)
 --
 -- Da applicare sul branch `dev/db-tid`: aggiungere una riga al file

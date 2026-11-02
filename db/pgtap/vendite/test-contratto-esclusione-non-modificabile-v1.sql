@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- rev 2026-10-28 (brief-modello-documento-vendita §16, giro 12): la versione PGTAP_CEN_V2 nasce senza stato (BOZZA) e si attiva dalla fixture dbops.fn_pgtap_porta_a_stato, non con l'UPDATE dello stato.
 --

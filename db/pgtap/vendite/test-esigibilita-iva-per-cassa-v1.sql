@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: l'esigibilita' IVA col regime dell'emittente (IVA per cassa)
 --   script.fn_esigibilita_iva (la regola) · script.fn_esigibilita_iva_documento ·

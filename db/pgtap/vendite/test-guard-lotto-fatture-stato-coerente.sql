@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: guard di coerenza stato lotto <-> stato fatture
 --       vendite.fn_guard_lotto_fatture_stato_coerente

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // ------------------------------------------------------------
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Tid (Michele Carlo Titini)
 // Doc: JavaScript
 // Scopo: Fissa `ResoRientroVoce` (3-bis R-1b, piano-be-fe-magazzino-lotto-3

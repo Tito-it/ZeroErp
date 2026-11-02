@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): la commessa da dbops.fn_pgtap_crea_commessa (sorgente ROOT), le attivita' da dbops.fn_pgtap_crea_commessa_attivita (sorgente DDT_VENDITA, E-3), le fatture agganciate da dbops.fn_pgtap_fattura_attivita: ritirato pg_temp.ann_fattura; il reset del lotto (pg_temp.ann_reset_lotto, UPDATE a mano) diventa il verbo vero vendite.fn_cleanup_fatture_by_ids sulle note che fatturano le rettifiche (E-4); restano a mano la seconda riga di fattura e la seconda coppia sul ponte (il caso del plurale).
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito): il reso dal builder dbops.fn_pgtap_crea_reso (che concede da se' conferma_reso); resta scritta a mano la commessa con la fattura e la seconda coppia sul ponte, che sono il caso del test.
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine; resta scritto a mano il reso (giro 2) e la commessa con la fattura, che sono il caso del test.

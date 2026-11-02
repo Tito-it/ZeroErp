@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2d): test 11 su config.sorgenti.apribile (area ritirata).
 -- rev 2026-10-21 (brief-db-grammatica-unica-documenti, G-1, 20261021-20): test 18 ordina per sorgente_etichetta; sorgente_codice e' ritirata.
 -- pgTAP test per Zero ERP

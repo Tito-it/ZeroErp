@@ -1,5 +1,5 @@
 # ------------------------------------------------------------
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Liquibase changelog per Zero ERP
 # Funzione pratiche.fn_coda_lavoro_operatore: restituisce la
 # coda di lavoro di un operatore su tre livelli:

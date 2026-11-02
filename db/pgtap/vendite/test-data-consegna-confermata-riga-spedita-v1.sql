@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): l'ordine con le due righe (10 e 5, data di consegna confermata) dal builder dbops.fn_pgtap_crea_ordine_con_righe (p_righe, p_data_ordine, lo stato chiesto); niente resta a mano nella strada dell'ordine.
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine (p_ordine_id, p_righe), l'emissione da dbops.fn_pgtap_porta_a_stato; restano scritti a mano gli ordini (due righe con la data di consegna confermata, che e' il caso) e l'annullo dal verbo (test 15).
 -- pgTAP test per Zero ERP

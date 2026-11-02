@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): i due ordini CONFERMATI da dbops.fn_pgtap_crea_ordine_con_righe (10 x 25, trigger CONFERMATO, data 2026-07-19), ritirato l'helper pg_temp.mk_ordine; restano a mano la commessa ospite e le attivita' con le chiavi del caso.
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
 -- pgTAP test per Zero ERP

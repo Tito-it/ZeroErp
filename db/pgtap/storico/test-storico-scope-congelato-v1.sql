@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgtap-runner: owner
 -- pgtap-runner-motivo: il test fa DDL — crea madri di prova in vendite/acquisti
 --   con le loro shadow e i loro trigger, e mette FORCE ROW LEVEL SECURITY sulla

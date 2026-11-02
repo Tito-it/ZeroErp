@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # ------------------------------------------------------------
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Zero ERP - Liquibase master autogenerator (timeline globale)
 # ------------------------------------------------------------
 # Genera un changelog Liquibase autogenerato che include tutti i file

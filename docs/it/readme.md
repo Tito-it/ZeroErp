@@ -1,5 +1,7 @@
 # ZeroERP
 
+> **Ultimo aggiornamento**: 2 novembre 2026
+
 **ERP open-source per aziende italiane, progettato con approccio DB-first e sviluppo concentrico.**
 
 ZeroERP nasce da esperienza diretta su sistemi gestionali in contesti utilities e PMI.
@@ -343,7 +345,7 @@ Le regole operative e il cantiere aperto:
 
 ## Licenza
 
-ZeroERP e` distribuito con licenza **GNU GPL v3 o successiva**.
+ZeroERP ha una doppia licenza: **GNU AGPL v3 o successiva**, oppure una licenza commerciale (vedi `LICENSE.md`).
 
 Riferimenti:
 

@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgtap-runner: owner
 -- pgtap-runner-motivo: ALTER TABLE pratiche.sospensioni DROP CONSTRAINT + riapplicazione via
 --   dbops.fn_apply_automazione_overlap(): il soggetto del test E' l'automazione

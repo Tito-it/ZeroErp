@@ -165,7 +165,7 @@ sede al primo aggiornamento, e allora questo file diventa fuorviante.
 
 ## Progetto
 
-- ERP open-source GPL v3. **DB-first**: la logica di business sta in PostgreSQL;
+- ERP open-source AGPL v3 con doppia licenza (commerciale per chi la acquista; contributi esterni solo con [CLA](../CLA.md)). **DB-first**: la logica di business sta in PostgreSQL;
   Django orchestra ed espone le API; Vue fa solo presentazione.
 - Struttura: `backend/`, `frontend/`, migrazioni DB in `db/changelog/migrations_v2/`, pgTAP in `db/pgtap/`.
 - Lingua: it-IT per documentazione e commenti (Python, SQL, JS).

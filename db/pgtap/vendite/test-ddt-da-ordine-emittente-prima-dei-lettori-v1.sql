@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): l'ordine confermato con la riga gestita da dbops.fn_pgtap_crea_ordine_con_righe (p_articolo_id); restano a mano il magazzino, il carico e la bolla (il caso: generazione, emissione, magazzino scelto).
 -- pgTAP test per Zero ERP
 --

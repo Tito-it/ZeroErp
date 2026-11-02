@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: script.fn_available_actions_commessa (capability ciclo di vita commessa)
 -- (changeset 20260616-03 + seed transizioni manuali 20260607-05 arricchito)

@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2d/2e): chiavi del push e ambito degli indirizzi col codice della sorgente.
 -- rev 2026-10-24 (brief-modello-documento-vendita §4-octies): il mondo si COSTRUISCE. Prima la fixture pescava «il primo BA con utility», l'articolo, l'unita' di misura, il tipo documento e «il primo stato commessa per id», e usava un uuid sintetico come sorgente (che il guard sulle sorgenti oggi respinge): su un database ricostruito moriva al test 3. Ora: commessa dal builder, un preventivo VERO come sorgente, le due righe dal builder dell'attivita' con la chiave del dominio (script.fn_segment_key). Il caso provato non cambia.
 -- pgTAP test per Zero ERP

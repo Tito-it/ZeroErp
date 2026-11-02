@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-26 (brief-modello-documento-vendita §13, giro 9): l'offerta ha la porta sulla colonna
 --   di stato e l'emissione chiede emetti_offerta. Concessa all'operatore del contesto prima del 22
 --   (senza, «Emetti» e' nascosta e la reason esce NULL); 23 e 24 passano dal verbo

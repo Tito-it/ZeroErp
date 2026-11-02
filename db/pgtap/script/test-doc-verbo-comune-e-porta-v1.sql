@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-28 (brief-modello-documento-vendita §16, giro 12): la versione di listino e' portata al
 --   modello. Test 9 e 10: la porta anche sulla versione di listino, dieci testate.
 -- ⚠️ Attesa cambiata: test 9 (la lista dichiarata + vendite.listini_versioni) e 10 (il conteggio

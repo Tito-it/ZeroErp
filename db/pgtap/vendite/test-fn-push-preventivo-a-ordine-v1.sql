@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgtap-runner: owner
 -- pgtap-runner-motivo: CREATE TRIGGER su vendite.preventivi — fault injection sulla transizione a
 --   EVASO, per dimostrare che il push e' atomico. Il ruolo applicativo ha la

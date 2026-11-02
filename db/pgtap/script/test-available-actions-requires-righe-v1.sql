@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti §6.4): le due bolle in bozza si COSTRUISCONO
 --   (vuota: dbops.fn_pgtap_crea_ddt; con una riga: dbops.fn_pgtap_crea_ddt_da_ordine in DRAFT) e il
 --   mondo pure. Prima si pescavano dal database: su un database ricostruito i test 8-12 passavano in

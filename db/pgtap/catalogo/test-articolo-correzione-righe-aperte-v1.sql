@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): l'ordine aperto con B da
 --   dbops.fn_pgtap_crea_ordine_con_righe (DRAFT, la riga con l'IVA del test); le righe dei
 --   preventivi restano a mano (nessun builder di righe di preventivo).

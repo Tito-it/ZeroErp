@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: P-6 / 5e — i registri di numerazione sono intestati a un emittente
 --       (changeset 20260819-04 + automazione + 20260819-05)

@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: eliminazione di UNA fattura da un lotto pre-fiscale
 --       (piano-db-ritorno-lotto-a-draft.md, Slice 6-B — RD-7)

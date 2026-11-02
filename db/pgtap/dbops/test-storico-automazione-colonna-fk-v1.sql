@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test — l'automazione STORICO non monta un trigger che non potra' chiudere
 --   dbops.fn_run_automations_storico (rubinetto E_STORICO_FK_COL_ASSENTE)
 --

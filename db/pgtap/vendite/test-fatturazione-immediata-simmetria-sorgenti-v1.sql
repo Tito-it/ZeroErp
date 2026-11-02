@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: simmetria del flag fatturazione_immediata su ordini/contratti/DDT
 --       + presidio di immutabilita' dopo il push in commessa

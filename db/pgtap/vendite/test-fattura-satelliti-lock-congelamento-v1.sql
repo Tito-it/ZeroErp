@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: vendite.trgfn_fattura_satellite_guard_congelamento (Fase 1.1)
 --       montata su fatture_indirizzi e fatture_scadenze (Fase 1.2)

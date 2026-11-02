@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-11-01 (20261101-04/-05/-06, passo 4 del brief): la periodicita' sulla riga a
 --   canone e' obbligatoria. Il 2 e il 3 dicevano «vuota, e si salva»: ora la riga senza
 --   periodicita' si rifiuta col codice (E_RIGA_CANONE_SENZA_PERIODICITA). Il default che

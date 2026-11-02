@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: l'applicazione LEGGE il modello standard e non lo scrive (D-2)
 --   brief-db-modelli-documento-standard §4.1 Q-1, Q-2

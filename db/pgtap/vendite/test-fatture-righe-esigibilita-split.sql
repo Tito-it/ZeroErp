@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: vendite.trgfn_fatture_righe_guard_normalize — esigibilita e split_payment
 --       brief-db-be-iva-risolutore-e-regime-cliente, voce `I5` (meta' DB)

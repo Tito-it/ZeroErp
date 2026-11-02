@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgtap-differiti: escluso — la fixture non soddisfa un vincolo DIFFERITO e la
 --   ragione e' scritta per esteso piu' sotto. Debito noto (§22.4): quando la
 --   fixture viene completata, si toglie questa riga e si rimette il
@@ -7,7 +7,7 @@
 -- pgTAP per Zero ERP
 -- Copyright (C) 2026 Tid (Michele Carlo Titini)
 --
--- Rilasciato sotto GNU GPLv3 o versione successiva.
+-- Rilasciato sotto GNU AGPLv3 o versione successiva.
 -- Vedi LICENSE.md per il testo completo della licenza.
 -- ------------------------------------------------------------
 --

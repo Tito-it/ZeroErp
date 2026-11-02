@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: vendite.fn_list_emittibili_lane (changeset 20260619-01, 20260619-11)
 --   Discovery corsie (emittente, tipo_doc_fiscale, utility, competenza_mese) per il driver batch.

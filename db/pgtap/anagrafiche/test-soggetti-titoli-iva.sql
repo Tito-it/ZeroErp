@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: I7 — anagrafiche.soggetti_titoli_iva, il suo ambito, il registro dei
 --       movimenti di plafond e la primitiva di consumo.

@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: la soglia della ricerca libera e' un fatto della lista
 --       ui.lista_definizione.ricerca_min_caratteri   (20260925-75)

@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: chi annulla un lotto ABBASSA LA BANDIERA — vendite.fn_annulla_lotto_da_draft
 -- Piano: brief-residuo-fatturabili-e-bandiere-esito-parziale, sezioni 5 e 9.4 (D4)

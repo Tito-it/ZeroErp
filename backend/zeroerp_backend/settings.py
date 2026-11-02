@@ -519,7 +519,7 @@ FRONTEND_URL = env("FRONTEND_URL", required=True).rstrip("/")
 # ⭐ A CHI ARRIVA LA POSTA E' UN FATTO DI QUESTA INSTALLAZIONE, non del software
 # (decisione di Tid, 2026-09-10; brief-db-un-destinatario-per-i-presidi §7.7a).
 # Vive qui, cioe' in `.env.systemd`, che e' per-host e NON versionato: un
-# indirizzo aziendale committato in un repository pubblico (GPL v3, su GitHub) e'
+# indirizzo aziendale committato in un repository pubblico (AGPL v3, su GitHub) e'
 # ricognizione regalata e non si ritira piu'.
 # ⛔ E per la stessa ragione NON sta in `deploy/sveglie.json`, che invece e'
 # versionato: li' c'e' la cadenza, che non e' un dato di nessuno.

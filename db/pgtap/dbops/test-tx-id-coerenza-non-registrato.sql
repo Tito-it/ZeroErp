@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: coerenza tx_id — dbops.fn_get_or_create_session_tx_id
 --       + dbops.trgfn_tx_id_managed (ramo "id non registrato")

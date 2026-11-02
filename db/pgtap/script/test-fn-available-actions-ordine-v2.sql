@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): l'ordine C (trigger SPEDITO, confermato
 --   senza bolla, 5 x 15) da dbops.fn_pgtap_crea_ordine_con_righe; la testata D in bozza senza righe da
 --   dbops.fn_pgtap_crea_ordine. Il BA pushabile e' costruito: tolti gli «OR push_ba_id IS NULL»

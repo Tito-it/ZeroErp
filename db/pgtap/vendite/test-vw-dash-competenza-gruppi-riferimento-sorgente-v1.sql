@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: vendite.vw_dash_competenza_gruppi — `riferimento` e `documento_id`
 --       risolti da vendite.fn_get_sorgente_documento_ref

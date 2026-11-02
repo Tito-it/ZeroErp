@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test — script.fn_log_and_raise_error: il canale del BERSAGLIO
 --   L'errore, oltre a DIRE cosa e' successo, dice SU QUALE COSA — in una
 --   casella strutturata dell'eccezione, non dentro la frase.

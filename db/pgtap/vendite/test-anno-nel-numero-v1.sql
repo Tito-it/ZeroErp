@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: l'ANNO dentro la stringa del numero
 --       vendite.famiglie_documento.anno_nel_numero_default   (20260908-11)

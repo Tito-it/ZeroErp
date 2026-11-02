@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2a): la finestra di
 --   conferma chiede i legami col codice della sorgente (ORDINE_VENDITA, DDT_VENDITA).
 -- pgTAP test per Zero ERP

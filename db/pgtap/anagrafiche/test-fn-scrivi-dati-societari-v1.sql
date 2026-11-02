@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgtap-differiti: escluso — gli enti costruiti con fn_crea_soggetto_pg restano
 --   SENZA indirizzi: il soggetto del test sono il verbo dei dati societari e i
 --   guard BEFORE ROW della forma, non la saga di completezza, che ha i suoi

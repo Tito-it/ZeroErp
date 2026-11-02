@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: fondamenta (G1) del cockpit stampa fatture
 --       (brief-db-processi-fatturazione-cockpit §3/§4/§5;

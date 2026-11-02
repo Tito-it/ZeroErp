@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2c): la tabella della famiglia viene dalla sorgente (config.fn_sorgente_tabella); la famiglia del reso e' RESO_VENDITA.
 -- pgTAP test per Zero ERP
 -- Test: la CHIAVE DEL CONTATORE e gli assi dichiarati

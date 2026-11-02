@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgtap-contesto: escluso — il contesto operatore NON si prende dall'helper di
 --   sessione: questo file lo COSTRUISCE tre volte, con tre whitelist diverse,
 --   ed e' il soggetto stesso del test. Un contesto fissato in testa

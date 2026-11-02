@@ -1,6 +1,8 @@
 
 # Zero ERP - Open Source ERP Framework
-**Licenza: GPL v3**
+**Licenza: AGPL v3** (doppia licenza: open source o commerciale)
+
+> **Ultimo aggiornamento**: 2 novembre 2026
 
 ---
 

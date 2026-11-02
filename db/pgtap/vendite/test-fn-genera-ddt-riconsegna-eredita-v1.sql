@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): l'ordine con la riga scontata e la bolla ORD in un colpo da dbops.fn_pgtap_crea_ddt_da_ordine (p_righe_ordine con lo sconto 5); restano a mano i blocchi «relazione»/«viaggio» e l'origine dell'indirizzo sulla bolla in bozza, la bolla STD e quella del C-1 (sono il caso).
 -- rev 2026-10-25 (brief-modello-documento-vendita §7, giro 5): le emissioni dei test 9, 13, 14 e 16 da dbops.fn_pgtap_porta_a_stato (il verbo), che solleva gli stessi errori dei guard d'emissione: lo stato della bolla non si cambia piu' con un UPDATE diretto (E_DOC_STATO_SOLO_DAL_VERBO). Le attese non cambiano.
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito): i due resi per ri-consegna (ORD e STD) dal builder dbops.fn_pgtap_crea_reso, che li conferma e concede da se' l'azione conferma_reso; la bolla di ri-consegna resta dalla madre vendite.fn_genera_ddt_riconsegna, in bozza e senza completamenti: e' lei sotto test (cio' che eredita), non una fixture.

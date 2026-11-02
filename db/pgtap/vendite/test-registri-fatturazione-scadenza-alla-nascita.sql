@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test — Passo D dell'osservabilita': i registri di fatturazione e push
 --   scadono, e la scadenza si scrive alla nascita.
 --   Analisi: analisi-osservabilita-log.md §4 Passo D

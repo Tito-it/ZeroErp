@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: il pull FIRMA cio' che consegna — vendite.attivita_fatturabili.emit_batch_id
 -- Piano: brief-residuo-fatturabili-e-bandiere-esito-parziale, sezione 9 (D1+D2)

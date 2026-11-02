@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- rev 2026-10-29 (brief-db-contratto-righe-periodiche-in-commessa §6.10, G-0-ter; 20261029-39): la riga
 --   di listino ha anche l'azione ADERISCI (test 3).

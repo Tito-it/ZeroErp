@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: script.fn_check_ddt_emittibile (single source dei motivi ostativi
 --       all'emissione DDT) + capability fn_available_actions_ddt che la

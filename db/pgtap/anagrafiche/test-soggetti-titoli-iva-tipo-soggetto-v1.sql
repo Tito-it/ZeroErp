@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgtap-differiti: escluso — le persone fisiche costruite qui restano SENZA
 --   indirizzi e contatti completi: il soggetto del test sono i guard BEFORE ROW
 --   sui titoli e sul cambio di natura, non la saga di completezza, che ha i

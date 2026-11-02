@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine; la bolla nasce in DRAFT perche' il test le aggiunge la riga a mano (il caso: la spedizione mista), poi CONSEGNATA con dbops.fn_pgtap_porta_a_stato; restano scritti a mano il reso e le sue righe (il caso del test, e giro 2).
 -- pgTAP test per Zero ERP
 -- Test: vendite.trgfn_resi_righe_guard_origine_coerente — il riferimento

@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine (in bozza), l'emissione da dbops.fn_pgtap_porta_a_stato; niente resta scritto a mano.
 -- pgTAP test per Zero ERP
 -- Test: script.fn_available_actions_ddt — blocco pdf {mode, allow_allegati}

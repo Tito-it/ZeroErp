@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: R-1 — l'orario dei registri e' quello della SCRITTURA
 --       (changeSet 20260824-16 + 20260824-17)

@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): i due ordini in bozza con la
 --   riga da dbops.fn_pgtap_crea_ordine_con_righe (DRAFT, trigger SPEDITO, 2 x 10 con

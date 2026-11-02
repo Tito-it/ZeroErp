@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # ------------------------------------------------------------
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Guardrail CI — `runOnChange` vietato in 00_schema e 20_code
 #   Regola: docs/it/linee-guida-sql.md §11.1 (indice in .codex/AGENTS.md §Database e Liquibase)
 #           docs/it/linee-guida-sql.md §11.1

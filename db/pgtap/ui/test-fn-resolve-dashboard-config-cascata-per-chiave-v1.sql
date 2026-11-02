@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgtap-runner: owner
 -- pgtap-runner-motivo: la fixture semina su ui.dashboard_definizione, che a runtime NON scrive nessuno
 --   (ne' una funzione DB ne' il backend): e' seed di migrazione, e il SELECT-only del ruolo

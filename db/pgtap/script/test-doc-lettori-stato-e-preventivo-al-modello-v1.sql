@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-26 (brief-modello-documento-vendita §9.10): test 19 nuovo, il secondo «Emetti»
 --   (20261026-01, E_DOC_GIA_NELLO_STATO); i test 19-22 passano a 20-23.
 -- pgTAP test per Zero ERP

@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test — vendite.trgfn_event_log_deriva_scope (+ dbops.trgfn_cleanup_at_alla_nascita)
 --   ⏱️ 2026-09-18 (Passo D): la scadenza non la scrive piu' deriva_scope ma il
 --   BB generico dbops.trgfn_cleanup_at_alla_nascita (trigger _m50_, 20260918-31),

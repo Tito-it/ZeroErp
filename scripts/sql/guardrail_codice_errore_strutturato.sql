@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- Guardrail CI — il contratto del codice errore strutturato
 --   Brief: docs/it/dev/work-done/brief-db-codice-errore-strutturato.md §10
 --   Funzione presidiata: script.fn_log_and_raise_error (20260805-05)

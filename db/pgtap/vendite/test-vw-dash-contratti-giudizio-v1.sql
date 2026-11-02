@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-11-01 (20261101-04/-06, passo 4 del brief): una riga a canone senza periodicita'
 --   non si scrive piu'. K2 la costruiva con un'ADESIONE su P che dal listino ereditava una
 --   periodicita' vuota: ora il suo canone che non puo' partire e' la quota P del listino, come

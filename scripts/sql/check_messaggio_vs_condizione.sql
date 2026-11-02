@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- LENTE (non cancello) — il quarto lato del codice errore:
 --   «il messaggio descrive la condizione che solleva davvero?»
 --   Brief: docs/it/dev/work-done/brief-db-be-terzo-lato-presidio-codici.md §18

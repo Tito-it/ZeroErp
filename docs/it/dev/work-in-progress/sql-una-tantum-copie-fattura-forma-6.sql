@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- SQL una tantum per Zero ERP — NON e' un changeSet
 --
 -- K-S2 (brief-modello-documento-vendita §15.16.1 R-S2, §15.17; D-S1 = forma

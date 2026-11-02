@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Funzioni: dbops.fn_check_pipeline_task_registered, dbops.fn_get_pipeline_task_implementation
 -- ------------------------------------------------------------

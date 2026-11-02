@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-26 (brief-modello-documento-vendita §11): il contratto ha la porta sulla colonna di
 --   stato (E_DOC_STATO_SOLO_DAL_VERBO) e il guard di transizione legge la matrice. Le transizioni
 --   provate (1, 2, 3, 6, 8) passano dal verbo vendite.fn_cambia_stato_contratto, che arriva al

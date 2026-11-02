@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgtap-runner: owner
 -- pgtap-runner-motivo: la fixture costruisce fornitori, vettori e clienti di
 --   soggetti nuovi, e prova il guard di config.tipi_ruoli con un UPDATE del

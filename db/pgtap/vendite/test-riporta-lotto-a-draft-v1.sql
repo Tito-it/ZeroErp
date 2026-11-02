@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): CURATO — sceglieva dal DB un lotto pre-fiscale con fatture e uno con righe accreditate, e saltava 10 asserzioni su 14. Ora i due lotti si costruiscono: commessa (dbops.fn_pgtap_crea_commessa), lotto DRAFT (dbops.fn_pgtap_crea_lotto), fattura agganciata nel lotto (dbops.fn_pgtap_fattura_attivita con p_lotto_id), una corsa COMPLETATA dalle primitive della pipeline; per il 13 bolla, reso a credito e accredito (dbops.fn_pgtap_crea_ddt_da_ordine, fn_pgtap_crea_reso, vendite.fn_accredita_riga_reso). Gli skip del 4, 8 e 13 ritirati: a fixture costruita un'assenza e' un rosso. Il lotto resta DRAFT: a EMESSA la fattura della madre del lotto non arriva (indirizzi FATT, intestazione).
 -- pgTAP test per Zero ERP
 -- Test: ritorno di un lotto a DRAFT (piano-db-ritorno-lotto-a-draft.md, A4)

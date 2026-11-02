@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: param VENDITE_DASHBOARD_RITARDO_DATA_MINIMA presente nel seed e
 --       leggibile come data ISO (seed parameters_vendite_defaults, id 60)

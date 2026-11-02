@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgtap-runner: owner
 -- pgtap-runner-motivo: DROP/CREATE TRIGGER su tabelle di anagrafiche. Il test 3
 --   chiama dbops.fn_apply_automazione_guard_utility_tipo_ruolo('AUTO', false),

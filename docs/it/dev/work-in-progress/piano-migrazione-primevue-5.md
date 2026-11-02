@@ -41,7 +41,7 @@
 > `@primeuix/themes` e `primeicons` erano **MIT** fino alla versione
 > precedente e passano tutti e tre alla **licenza PrimeUI**
 > (community/commerciale, con chiave di licenza) dalla nuova. ZeroErp è
-> **GPL v3 pubblica**. Questo non è un rischio di migrazione: è una decisione
+> **AGPL v3 pubblica, con doppia licenza commerciale**. Questo non è un rischio di migrazione: è una decisione
 > di licenza, e non la prende un piano operativo. **Vedi §1-bis.**
 >
 > Tutto il lavoro tecnico di §4 resta corretto e utile — semplicemente non è
@@ -135,12 +135,21 @@ Il `LICENSE.md` è **identico** nei tre pacchetti e dice, in sintesi:
 
 ### Perché riguarda ZeroErp
 
-ZeroErp è **GPL v3** e pubblica su GitHub. La GPL v3 non ammette che si
+ZeroErp è **AGPL v3** e pubblica su GitHub (fino al 2026-11-02 era GPL v3: il
+punto non cambia, l'AGPL v3 ha lo stesso divieto al §10). L'AGPL v3 non ammette che si
 aggiungano restrizioni oltre le proprie a chi riceve il codice, e la Community
 License ne aggiunge parecchie: tetti di fatturato, di sviluppatori, di
 dipendenti, e un rinnovo annuale. Il punto **non è** se ZeroErp sia idonea —
 quasi certamente lo è — ma che **non può trasmettere a valle** una libertà che
 lei stessa riceve con condizioni.
+
+⚠️ **Con la doppia licenza il punto pesa su due fronti.** Oltre alla versione
+AGPL, ZeroErp si vende anche con **licenza commerciale**: chi la compra
+riceverebbe un prodotto che dipende da una libreria con tetti di fatturato,
+sviluppatori e rinnovo annuale che ZeroErp non controlla e non può
+sublicenziare. Una dipendenza permissiva (MIT, BSD, Apache-2.0) è l'unica che
+va bene per **entrambe** le licenze — è anche la regola di
+[CONTRIBUTING.md](https://github.com/Tito-it/ZeroErp/blob/main/CONTRIBUTING.md) per il codice di terzi.
 
 ⚠️ Questa non è consulenza legale, e chi scrive non è un legale. È un
 segnale: la decisione appartiene a Tid come titolare del copyright, e va presa
@@ -2624,10 +2633,11 @@ Elencate perché siano note, non per sceglierne una ora:
 
 1. **Restare sulla 4.5.5** congelata (MIT, nessuna scadenza fino a Vue 4).
 2. **Accettare la Community License** — ZeroErp con ogni probabilità è idonea;
-   ma va allora affrontata la GPL, e come titolare del copyright Tid può anche
-   ri-licenziare il progetto.
+   ma va allora affrontata l'AGPL (il passaggio GPL → AGPL del 2026-11-02
+   non la risolve: ha lo stesso divieto di restrizioni aggiuntive), e restano
+   esposti i clienti della licenza commerciale.
 3. **Licenza commerciale** — toglie il problema dell'idoneità, non quello
-   della GPL verso valle.
+   dell'AGPL verso valle.
 4. **Migrare a un'altra libreria** — costo dominato da DataTable, vedi sopra.
 5. **Fork comunitario della 4.x** — MIT lo consente a chiunque.
 

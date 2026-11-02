@@ -1,5 +1,5 @@
 # ------------------------------------------------------------
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2025 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: Lettura del riepilogo segnalazioni lotto e del verdetto `fermo` (a DB dal 2026-09-19) per il blocco avanzamento step.

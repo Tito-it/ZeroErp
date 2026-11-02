@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: capability del lotto di fatturazione e sorgente unica delle
 --       precondizioni (risposta-db-azioni-lista-lotto.md §3)

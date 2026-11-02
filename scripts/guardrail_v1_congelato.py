@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # ------------------------------------------------------------
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Guardrail CI — la prima generazione dei changelog (v1) non si tocca
 #   Regola: docs/it/linee-guida-sql.md §11.11 (indice in .codex/AGENTS.md
 #           §Database e Liquibase). Decisione di Tid del 2026-10-04.

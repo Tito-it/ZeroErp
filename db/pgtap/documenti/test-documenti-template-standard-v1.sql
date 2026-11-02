@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgtap-runner: owner
 -- pgtap-runner-motivo: la fixture costruisce modelli STANDARD, che solo il proprietario della tabella scrive (seed e changeSet, D-2): l'applicazione non puo' allestirli, ed e' proprio cio' che il guard le vieta. Il rifiuto all'app ha il suo file, test-documenti-template-standard-app-v1.sql
 -- pgTAP test per Zero ERP

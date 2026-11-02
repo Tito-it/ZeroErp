@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test — il trigger di storico trova la colonna FK della gemella
 --   script.trgfn_storico_generic · dbops.fn_run_automations_storico
 --

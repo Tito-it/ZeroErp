@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: porta oneri — il CONTO DELLA MERCE è cieco alle righe MAN (della porta).
 -- Brief: brief-db-immutabilita-quantita-e-porta-oneri §5 (step 9) +

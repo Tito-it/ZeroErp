@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgtap-runner: owner
 -- pgtap-runner-motivo: la prima meta' prova il ramo SENZA sessione (il
 --   provisioning, il builder da owner): nessun operatore, quindi il legame

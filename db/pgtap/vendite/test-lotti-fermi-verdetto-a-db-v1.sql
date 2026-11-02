@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test — il verdetto «lotto fermo» nasce a DB, e da li' il presidio
 --   (P-1 di brief-db-osservabilita-lotto-fermo-r6-indici; D-1 di Tid, 18-09:
 --   «la regola va a DB»). ChangeSet: 20260919-01 (la sede,

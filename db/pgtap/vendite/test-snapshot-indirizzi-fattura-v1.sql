@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2d): l'ambito dei tipi d'indirizzo ammessi e' il codice della sorgente (FATTURE -> FATTURA).
 -- pgTAP test per Zero ERP
 -- Test: vendite.fn_snapshot_indirizzi_fattura (Fase 2.1)

@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test STRUTTURALE — postura di `zeroerp_app` sullo schema `django`
 --   django.auth_user · django.auth_user_id_seq · tutte le tabelle dello schema
 --

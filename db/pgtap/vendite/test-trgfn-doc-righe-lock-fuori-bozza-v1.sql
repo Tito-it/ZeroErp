@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-26 (brief-modello-documento-vendita §11): pg_temp.lr_mk_contratto porta lo stato dal verbo
 --   (la porta ferma l'UPDATE diretto): ATTIVO da dbops.fn_pgtap_porta_a_stato, CESSATO da
 --   vendite.fn_cessa_contratto con la data di oggi; il contratto cessato (test 18) nasce nell'anno della

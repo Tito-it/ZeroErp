@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: pagamenti.fn_get_saldi_rate — il NUCLEO dei saldi delle rate, le sue
 --       tre porte, e l'IMPUTAZIONE derivata dei movimenti senza rata

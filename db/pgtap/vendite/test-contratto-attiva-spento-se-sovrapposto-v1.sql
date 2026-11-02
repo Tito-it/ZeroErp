@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-26 (brief-modello-documento-vendita §11): il contratto ha la porta sulla colonna di
 --   stato e verso CESSATO la data di fine deve essere arrivata. CES e B_CES vanno nel passato
 --   (CES 2020-01-01 .. 2020-12-31 CESSATO, B_CES 2020-06-01 .. 2021-03-31 sopra CES): un CESSATO

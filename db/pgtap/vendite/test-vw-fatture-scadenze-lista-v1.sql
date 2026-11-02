@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: vendite.vw_fatture_scadenze_lista — la vista d'identita' delle RATE
 --       (changeSet 20260917-06, brief-db-distinta-ricerca-rate §4-bis.3, P-2)

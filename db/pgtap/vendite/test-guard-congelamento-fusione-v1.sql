@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: la guardia di congelamento e' UNA sola, e non ha perso nulla fondendosi
 --       brief-db-be-iva-risolutore-e-regime-cliente, `D34`

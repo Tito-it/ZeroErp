@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # ------------------------------------------------------------
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Guardrail CI — una `preCondition` di `00_schema`/`20_code` non interroga
 #                il CONTENUTO di `80_data`
 #   Regola: docs/it/linee-guida-sql.md §11.4

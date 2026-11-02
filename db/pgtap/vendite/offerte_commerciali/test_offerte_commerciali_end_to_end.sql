@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- rev 2026-10-26 (brief-modello-documento-vendita §13, giro 9): lo stato dell'offerta si
 --   cambia solo dal verbo vendite.fn_cambia_stato_offerta; i flussi A, B, C lo chiamano al

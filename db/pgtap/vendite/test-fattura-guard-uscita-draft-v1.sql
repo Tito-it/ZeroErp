@@ -1,9 +1,9 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Copyright (C) 2026 Tid (Michele Carlo Titini)
 --
--- Rilasciato sotto GNU GPLv3 o versione successiva.
+-- Rilasciato sotto GNU AGPLv3 o versione successiva.
 -- Vedi LICENSE.md per il testo completo della licenza.
 -- ------------------------------------------------------------
 -- Test: vendite.trgfn_fatture_guard_uscita_draft (changeSet 20260731-11)

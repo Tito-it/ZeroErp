@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: vendite.fn_genera_scadenze_lotto — il wrapper di lotto del piano rate
 --       (piano-db-satelliti-fattura.md Fase 4.2, decisioni D-F e D-Q)

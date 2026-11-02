@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: P-2 — IL RUBINETTO della coda «solleva il primo motivo»
 --       Piano: brief-db-coda-primo-motivo-in-un-posto-solo, sezione 7

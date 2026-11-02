@@ -1,5 +1,5 @@
 # ------------------------------------------------------------
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Liquibase changelog per Zero ERP
 # UPDATE script.fn_get_user_profile: delta solo sul blocco 4b (fallback emittente)
 #

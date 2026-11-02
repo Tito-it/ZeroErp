@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // ------------------------------------------------------------
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Tid (Michele Carlo Titini)
 // Doc: JavaScript
 // Scopo: Test dell'interceptor di risposta di `core/api` sui 403 del cancello

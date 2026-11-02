@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgtap-runner: owner
 -- pgtap-runner-motivo: CREATE TRIGGER su pratiche.pratiche_sorgenti — fault injection sull'INSERT
 --   del link, per dimostrare l'atomicita' della generazione. Il ruolo
@@ -7,7 +7,7 @@
 -- pgTAP per Zero ERP
 -- Copyright (C) 2026 Tid (Michele Carlo Titini)
 --
--- Rilasciato sotto GNU GPLv3 o versione successiva.
+-- Rilasciato sotto GNU AGPLv3 o versione successiva.
 -- Vedi LICENSE.md per il testo completo della licenza.
 -- ------------------------------------------------------------
 --

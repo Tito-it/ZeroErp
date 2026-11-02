@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: il TERZO CASO del perimetro emittente di una lista
 --       ui.lista_definizione.perimetro_emittente   (20260902-01)

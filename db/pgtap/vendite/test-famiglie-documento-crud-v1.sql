@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2c): famiglie di prova nate come sorgenti; DDT_VENDITA; test 11 sulla serie, test 20 sul guard (E_FAMIGLIA_DOCUMENTO_TABELLA_GIA_NUMERATA), test 25 su una sorgente di prova su acquisti.ordini (L2c-1).
 -- pgTAP test per Zero ERP
 -- Test: il CRUD delle FAMIGLIE DI DOCUMENTO — i tre guard, le due porte del

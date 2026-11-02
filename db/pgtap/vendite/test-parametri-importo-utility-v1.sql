@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: i parametri d'importo hanno un valore di sistema, e la riga
 --   dell'emittente per l'utility e' un override (brief-db-modelli-documento-

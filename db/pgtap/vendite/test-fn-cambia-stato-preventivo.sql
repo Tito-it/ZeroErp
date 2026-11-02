@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- SPDX-License-Identifier: GPL-3.0-or-later
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 -- rev 2026-10-25 (brief-modello-documento-vendita §8, giro 6): il verbo ha la
 --   firma a DUE argomenti (id, stato): p_user e' uscito perche' user_update lo
 --   scrive il trigger di audit. L'emissione chiede l'azione di processo
