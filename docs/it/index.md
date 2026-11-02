@@ -120,5 +120,5 @@ Il livello concettuale, diviso in due:
 
 ---
 
-[README del progetto](./readme.md) · [Licenza GPL v3](./LICENSE-GPL3.md) ·
+[README del progetto](./readme.md) · [Licenza AGPL v3](./LICENSE-AGPL3.md) ·
 [Versioni supportate](./versioni-supportate.md)

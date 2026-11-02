@@ -72,7 +72,7 @@ nav:
         - Installazione:
                   - Prerequisiti: it/installazione.md
                   - Preparare ZeroERP all'uso: it/configurazione-iniziale.md
-                  - Licenza: it/LICENSE-GPL3.md
+                  - Licenza: it/LICENSE-AGPL3.md
         - Architettura:
                   - it/architettura.md
                   - Database:
