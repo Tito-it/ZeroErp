@@ -177,6 +177,43 @@ class ListaPreferenzaUpsertTests(SimpleTestCase):
         cfg = repo.upsert_preferenza.call_args.kwargs["configurazione"]
         self.assertEqual(cfg["pagina_dimensione"], 5000)
 
+    # ⭐ Preferenza per chiave (2026-11-01): ogni chiave e' facoltativa, quella
+    #    assente vale «come lo standard». Arriva al repository la sola chiave
+    #    mandata, senza le altre riempite.
+    @patch(
+        "apps.ui.services.lista_preferenza_service.PermissionResolver"
+        ".get_emittente_for_user",
+        return_value=11,
+    )
+    def test_upsert_una_chiave_sola_arriva_da_sola(self, _mock_em) -> None:
+        repo = MagicMock()
+        repo.get_lista_id.return_value = 1
+        repo.get_preset_base_snapshot.return_value = (5, "2026-05-06T00:00")
+        repo.upsert_preferenza.return_value = 7
+        svc = ListaPreferenzaService(repository=repo)
+
+        svc.upsert(_make_user(), "anagrafiche.clienti", {"colonne": _VALID_PAYLOAD["colonne"]})
+        cfg = repo.upsert_preferenza.call_args.kwargs["configurazione"]
+        self.assertEqual(set(cfg), {"colonne"})
+
+    # ⛔ Una preferenza senza chiavi si toglie col DELETE: il PUT vuoto, o con
+    #    le sole chiavi a null, e' un 400 e non scrive niente.
+    @patch(
+        "apps.ui.services.lista_preferenza_service.PermissionResolver"
+        ".get_emittente_for_user",
+        return_value=11,
+    )
+    def test_upsert_senza_chiavi_raises(self, _mock_em) -> None:
+        repo = MagicMock()
+        repo.get_lista_id.return_value = 1
+        svc = ListaPreferenzaService(repository=repo)
+
+        for payload in ({}, {"pagina_dimensione": None, "colonne": None}):
+            with self.subTest(payload=payload), self.assertRaises(ServiceError) as ctx:
+                svc.upsert(_make_user(), "anagrafiche.clienti", payload)
+            self.assertEqual(ctx.exception.code, E_UI_PREFERENZA_VALIDAZIONE)
+        repo.upsert_preferenza.assert_not_called()
+
     @patch(
         "apps.ui.services.lista_preferenza_service.PermissionResolver"
         ".get_emittente_for_user",

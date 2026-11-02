@@ -27,6 +27,7 @@ import {
   deleteDashboardPreferenza,
   ignoreDashboardPresetUpdate as apiIgnorePresetUpdate,
 } from '../api/ui-api'
+import { chiaviScelte } from '../preferenzaPerChiave'
 
 /**
  * Composable per una singola dashboard identificata da `codice`.
@@ -117,7 +118,13 @@ export function useDashboardConfig(codice) {
   // E_UI_PREFERENZA_VALIDAZIONE — errore parlante, nessun danno.
   async function save() {
     if (!config.value) return null
-    const payload = _extractWritablePayload(config.value)
+    // ⭐ Per chiave (2026-11-01, BB `preferenzaPerChiave`): solo le chiavi
+    //    scelte — gia' della preferenza o toccate —, le altre restano «come lo
+    //    standard». Nessuna chiave scelta = nessuna preferenza: DELETE.
+    const payload = _extractWritablePayload(
+      chiaviScelte(config.value, savedSnapshot.value, _PAYLOAD_ROOT_KEYS),
+    )
+    if (Object.keys(payload).length === 0) return reset()
     const result = await execute(
       () => putDashboardPreferenza(codice, payload),
     )

@@ -1,7 +1,7 @@
 <script setup>
 // Scopo: Modale di personalizzazione colonne per <ListaConfigurabile>.
 // Permette: toggle visibilita', riordino colonne (▲/▼), edit larghezza,
-// reset preferenza utente. Le colonne tipo 'identificatore' e 'azione'
+// righe per pagina, reset preferenza utente. Le colonne tipo 'identificatore' e 'azione'
 // non sono toggleabili (UI-disabled, tooltip esplicativo).
 //
 // Pattern: lavora su una copia locale `localConfig`, propaga al composable
@@ -21,10 +21,13 @@ import AppDrawer from './AppDrawer.vue'
 import ToggleSwitch from 'primevue/toggleswitch'
 import InputNumber from 'primevue/inputnumber'
 import Tag from 'primevue/tag'
+import Select from 'primevue/select'
 import { etichettaColonna } from '../utils/i18nLabel'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../constants'
 import { useConfirmAction } from '../composables/useConfirmAction'
-import { useDrawerFormPreserve } from '../composables/useDrawerFormPreserve'
+import { useDrawerFormPreserve, valoriUguali } from '../composables/useDrawerFormPreserve'
+import { misureOpzioni } from '../misurePagina'
+import { ORIGINE_PREFERENZA } from '../preferenzaPerChiave'
 
 
 const { confirmAction } = useConfirmAction()
@@ -55,20 +58,25 @@ const { t, te } = useI18n()
 // Copia locale modificabile della config. Resetata ad ogni open per
 // scartare modifiche di una sessione precedente di apertura modale.
 const localColonne = ref([])
+// Righe per pagina: la misura SCELTA dall'utente, `null` = «come lo standard»
+// (preferenza per chiave, 2026-11-01). Una misura che viene dal preset non e'
+// una scelta: il campo parte su «Come lo standard».
+const localPagina = ref(null)
 
 // Modifiche non salvate: si confronta l'elenco senza `ordine`, che il
 // riordino rinumera 1..N (l'ordine lo dice gia' la posizione: spostare e
 // rimettere a posto non e' una modifica), e con `visibile` come lo mostra
 // il toggle (assente = visibile). Prima del watch immediate (TDZ).
-const colonneDaSalvare = computed(() =>
-  localColonne.value.map((c) => ({
+const statoDaSalvare = computed(() => ({
+  colonne: localColonne.value.map((c) => ({
     codice: c.codice,
     visibile: c.visibile !== false,
     larghezza: c.larghezza ?? null,
   })),
-)
-const { fissa, modificato, chiudiConConferma } =
-  useDrawerFormPreserve(colonneDaSalvare, { visibile: () => props.visible })
+  pagina: localPagina.value,
+}))
+const { fissa, modificato, chiudiConConferma, fotografia } =
+  useDrawerFormPreserve(statoDaSalvare, { visibile: () => props.visible })
 
 watch(
   () => [props.visible, props.config],
@@ -76,11 +84,26 @@ watch(
     if (open && props.config?.colonne) {
       // Deep-clone per non mutare la config del genitore prima di Salva.
       localColonne.value = JSON.parse(JSON.stringify(props.config.colonne))
+      localPagina.value = props.config.origine?.pagina_dimensione === ORIGINE_PREFERENZA
+        ? props.config.pagina_dimensione
+        : null
       fissa()
     }
   },
   { immediate: true },
 )
+
+// Le voci di «Righe per pagina»: «Come lo standard (N)» e le misure del
+// catalogo (`ui.misure_pagina`), le stesse del paginatore.
+// ⚠️ La voce `null` e' anche il placeholder: col valore `null` il Select di
+//    PrimeVue mostra il placeholder, non l'etichetta della voce.
+const opzioniPagina = computed(() => [
+  {
+    label: t('lista_config.pagina_standard', { n: props.config?.pagina_dimensione_standard ?? '' }),
+    value: null,
+  },
+  ...misureOpzioni().map((m) => ({ label: String(m), value: m })),
+])
 
 // Map metadata catalogo per codice — lookup O(1) durante render.
 const catalogoByCodice = computed(() => {
@@ -145,8 +168,17 @@ function move(codice, direction) {
 
 // Scopo: salva le modifiche — emit verso il genitore con la nuova
 // lista colonne. Il genitore chiama useListaConfig.applyChange + save.
+// ⭐ Le colonne si mandano solo se sono cambiate davvero, con lo stesso
+//    confronto di `modificato`: la preferenza e' per chiave
+//    (`preferenzaPerChiave`), e colonne riscritte uguali — spostate e rimesse
+//    a posto, spente e riaccese — sembrerebbero scelte e congelerebbero quelle
+//    dello standard a chi ha cambiato solo le righe per pagina.
 function onSave() {
-  emit('apply', { colonne: localColonne.value })
+  const payload = { pagina_dimensione: localPagina.value }
+  if (!fotografia.value || !valoriUguali(statoDaSalvare.value.colonne, fotografia.value.colonne)) {
+    payload.colonne = localColonne.value
+  }
+  emit('apply', payload)
 }
 
 // Scopo: reset preferenza utente. Conferma dialog -> emit('reset').
@@ -187,6 +219,19 @@ function onReset() {
     @save="onSave"
   >
     <div class="lista-config-body">
+      <div class="lista-config-pagina">
+        <label for="lista-config-pagina">{{ t('lista_config.pagina_dimensione') }}</label>
+        <Select
+          v-model="localPagina"
+          input-id="lista-config-pagina"
+          :options="opzioniPagina"
+          option-label="label"
+          option-value="value"
+          :placeholder="opzioniPagina[0].label"
+          class="app-filter-w-md"
+          v-tooltip.bottom="t('lista_config.pagina_tooltip')"
+        />
+      </div>
       <div
         v-for="(gruppo, gIdx) in gruppiOrdinati"
         :key="gruppo.label"
@@ -282,6 +327,12 @@ function onReset() {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+}
+.lista-config-pagina {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
 }
 .lista-config-gruppo-label {
   margin: 0 0 0.25rem 0;

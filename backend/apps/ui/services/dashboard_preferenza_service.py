@@ -24,6 +24,11 @@ from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import PayloadValidator
 from apps.core.services.permissions_resolver import PermissionResolver
 from apps.ui.db.dashboard_repository import DashboardRepository
+from apps.ui.services._preferenza import (
+    E_UI_PREFERENZA_NON_TROVATA,
+    E_UI_PREFERENZA_VALIDAZIONE,
+    richiedi_preferenza_non_vuota,
+)
 
 __all__ = [
     "DashboardPreferenzaService",
@@ -34,8 +39,6 @@ __all__ = [
 
 
 E_UI_DASHBOARD_NON_TROVATA = "E_UI_DASHBOARD_NON_TROVATA"
-E_UI_PREFERENZA_VALIDAZIONE = "E_UI_PREFERENZA_VALIDAZIONE"
-E_UI_PREFERENZA_NON_TROVATA = "E_UI_PREFERENZA_NON_TROVATA"
 
 # Whitelist root del payload preferenza dashboard.
 _PAYLOAD_KEYS = frozenset({"widget", "dimensione_max"})
@@ -216,7 +219,11 @@ class DashboardPreferenzaService:
             )
             config["dimensione_max"] = dimensione_max
 
-        return config
+        # Ogni chiave e' facoltativa, ma una preferenza senza chiavi si toglie
+        # col DELETE (BB `richiedi_preferenza_non_vuota`).
+        return richiedi_preferenza_non_vuota(
+            config, message="Preferenza dashboard non valida.",
+        )
 
     # Scopo: Valida un singolo widget della preferenza. Whitelist chiavi,
     #        codice obbligatorio, ordine int positivo, visibile bool.
