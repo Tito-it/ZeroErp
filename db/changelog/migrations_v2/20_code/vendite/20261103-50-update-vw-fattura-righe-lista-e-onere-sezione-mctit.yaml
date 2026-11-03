@@ -1,0 +1,191 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE RIGHE DI FATTURA DICONO SE SONO ONERI, E IN CHE SEZIONE STANNO — vendite.vw_fattura_righe_lista
+#   Brief: brief-db-addebito-trasporto-ordine §9.8 (richiesta del team BE,
+#   2026-11-03, punto 2), §7.3 (stampa: gli oneri dopo gli articoli).
+#
+# ── 🔴 IL DIFETTO ────────────────────────────────────────────────────
+#   Il §7.3 prometteva che il DB dicesse anche sulla fattura quale riga e' un
+#   onere. La vista della lista (sorgente anche della stampa) non lo diceva, e
+#   l'ordine del documento (ordinamento, riga_nr) tiene insieme kit e parti di
+#   plafond: mettere gli oneri in fondo e' una decisione su quell'ordine, e la
+#   prende il DB.
+#
+# ── ⭐ COSA CAMBIA (colonne IN CODA) ─────────────────────────────────
+#   · tipo_movimento: quello delle attivita' fatturabili della riga (prima per
+#     id; l'indice ix_attivita_fatturabili_fattura_riga_id c'e'); NULL sul padre
+#     di un kit;
+#   · e_onere, causale_onere_id: l'articolo della riga ha la causale onere. Si
+#     legge dall'articolo: la riga di fattura non ha la natura congelata, e
+#     cosi' e' onere anche la rettifica di un onere (nota di credito);
+#   · sezione_documento smallint: 1 articoli, 2 oneri. L'ordine del documento
+#     e' sezione_documento, ordinamento, riga_nr, riga_key.
+#   ⚠️ Una colonna di ordinamento e non un numero di posizione calcolato con
+#   una finestra: la vista si legge anche per una riga sola, e una finestra
+#   sulla fattura costringerebbe a valutarla intera.
+#
+# ── ⚠️ COSA NON CAMBIA ──────────────────────────────────────────────
+#   Le colonne esistenti, nello stesso ordine; security_invoker. Corpo dal vivo
+#   (dbdev, 2026-11-03, pg_get_viewdef). BE: _righe_ordine_documento =
+#   "sezione_documento", extra ("ordinamento", "riga_nr") (brief §9.8).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261103-50-update-vw-fattura-righe-lista-e-onere-sezione-mctit.yaml
+
+  - changeSet:
+      id: 20261103-50-update-vw-fattura-righe-lista-e-onere-sezione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.vw_fattura_righe_lista: in coda tipo_movimento, e_onere, causale_onere_id e sezione_documento
+        (1 articoli, 2 oneri). L'ordine del documento diventa sezione_documento, ordinamento, riga_nr: gli
+        oneri in fondo. brief-db-addebito-trasporto-ordine §9.8, richiesta BE punto 2.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_fattura_righe_lista
+              WITH (security_invoker=true) AS
+               SELECT x.riga_key,
+                  x.fattura_id,
+                  x.tipo_riga,
+                  x.riga_nr,
+                  x.ordinamento,
+                  x.fatture_righe_id,
+                  x.articolo_id,
+                  x.articolo_codice,
+                  x.articolo_descrizione,
+                  x.descrizione,
+                  x.uom_id,
+                  x.uom_codice,
+                  x.qta AS quantita,
+                  x.prezzo_unitario,
+                  x.sconto_percentuale,
+                  x.iva_id,
+                  x.iva_codice,
+                  x.iva_descrizione,
+                  x.iva_aliquota,
+                  x.iva_natura,
+                  x.imponibile AS importo_riga,
+                  x.dest_billing_account_id,
+                  x.riga_capofila_id,
+                  fr.riga_rettificata_id,
+                  orig.riga_nr AS riga_rettificata_nr,
+                  forig.id AS riga_rettificata_fattura_id,
+                  vendite.fn_numero_documento_fattura(forig.numero, forig.serie) AS riga_rettificata_documento,
+                  x.componenti,
+                  x.componenti_numero,
+                  x.competenza_dal,
+                  x.competenza_al,
+                  x.ha_periodo,
+                      CASE
+                          WHEN x.ha_periodo THEN x.competenza_dal
+                          ELSE NULL::date
+                      END AS periodo_dal,
+                      CASE
+                          WHEN x.ha_periodo THEN x.competenza_al
+                          ELSE NULL::date
+                      END AS periodo_al,
+                  afm.tipo_movimento,
+                  x.causale_onere_id IS NOT NULL AS e_onere,
+                  x.causale_onere_id,
+                      CASE
+                          WHEN x.causale_onere_id IS NOT NULL THEN 2
+                          ELSE 1
+                      END::smallint AS sezione_documento
+                 FROM ( SELECT e.fattura_id,
+                          e.tipo_riga,
+                          e.riga_nr,
+                          e.ordinamento,
+                          e.livello,
+                          e.fatture_righe_id,
+                          e.articolo_id,
+                          a.codice AS articolo_codice,
+                          a.descrizione AS articolo_descrizione,
+                          a.causale_onere_id,
+                          e.descrizione,
+                          e.uom_id,
+                          um.codice AS uom_codice,
+                          e.qta,
+                          e.prezzo_unitario,
+                          e.sconto_percentuale,
+                          e.iva_id,
+                          iva.codice AS iva_codice,
+                          iva.descrizione AS iva_descrizione,
+                          iva.aliquota_iva AS iva_aliquota,
+                          e.iva_natura,
+                          e.imponibile,
+                          e.dest_billing_account_id,
+                          e.riga_capofila_id,
+                          e.competenza_dal,
+                          e.competenza_al,
+                          e.ha_periodo,
+                              CASE
+                                  WHEN e.fatture_righe_id IS NOT NULL THEN 'R:'::text || e.fatture_righe_id::text
+                                  ELSE (('K:'::text || e.fattura_id::text) || ':'::text) || md5(concat_ws('|'::text, e.kit_key, e.iva_id, e.dest_billing_account_id, e.articolo_id, e.descrizione, e.competenza_dal, e.competenza_al))
+                              END AS riga_key,
+                          jsonb_agg(jsonb_build_object('fatture_righe_id', e.fatture_righe_id, 'riga_nr', e.riga_nr, 'articolo_id', e.articolo_id, 'articolo_codice', a.codice, 'descrizione', e.descrizione, 'quantita', e.qta, 'uom_codice', um.codice, 'esposizione', e.esposizione, 'prezzo_unitario', e.prezzo_unitario, 'sconto_percentuale', e.sconto_percentuale, 'importo_riga', e.imponibile)) FILTER (WHERE e.livello = 1) OVER kit AS componenti,
+                          count(*) FILTER (WHERE e.livello = 1) OVER kit::integer AS componenti_numero
+                         FROM vendite.vw_fattura_righe_esposte e
+                           LEFT JOIN catalogo.articoli a ON a.id = e.articolo_id
+                           LEFT JOIN catalogo.unita_misura um ON um.id = e.uom_id
+                           LEFT JOIN config.iva iva ON iva.id = e.iva_id
+                        WINDOW kit AS (PARTITION BY e.fattura_id, e.kit_key, e.iva_id, e.dest_billing_account_id, e.competenza_dal, e.competenza_al ORDER BY e.riga_nr, e.fatture_righe_id ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING)) x
+                   LEFT JOIN vendite.fatture_righe fr ON fr.id = x.fatture_righe_id
+                   LEFT JOIN vendite.fatture_righe orig ON orig.id = fr.riga_rettificata_id
+                   LEFT JOIN vendite.fatture forig ON forig.id = orig.fattura_id
+                   LEFT JOIN LATERAL ( SELECT af.tipo_movimento
+                         FROM vendite.attivita_fatturabili af
+                        WHERE af.fattura_riga_id = x.fatture_righe_id
+                        ORDER BY af.id
+                       LIMIT 1) afm ON true
+                WHERE x.livello = 0;
+
+              COMMENT ON VIEW vendite.vw_fattura_righe_lista IS
+                  'Le righe di una fattura come LISTA (brief-db-liste-righe-documento, D-8.3, 2026-09-28): '
+                  'SOLO il primo livello di vw_fattura_righe_esposte (NORMALE, PARTE_PLAFOND, KIT_PADRE), '
+                  'cosi'' ordinamento e paginazione lavorano sulle righe del documento e un kit si muove '
+                  'intero. riga_key identifica ogni riga: R:<id> per le righe vere, K:<fattura>:<md5> per '
+                  'il padre di un kit (che non ha PK), costruita sulla stessa tupla con cui la vista madre '
+                  'lo compone. I componenti ESPOSTI stanno nel padre (componenti jsonb, componenti_numero). '
+                  '⭐ rev 2026-10-01 (brief-db-esposizione-componenti-kit-in-fattura): ogni componente '
+                  'porta esposizione (DESCRITTIVO | VALORIZZATO), prezzo_unitario, sconto_percentuale e '
+                  'importo_riga, valorizzati solo sul VALORIZZATO. ⚠️ Quindi importo_riga della lista NON '
+                  'somma al totale del documento: l''importo dei valorizzati sta dentro componenti, e il '
+                  'padre di un kit senza resto ha importo_riga NULL. E'' voluto: il componente resta '
+                  'legato al kit. Il totale si legge dalla testata. Nessun calcolo rifatto: la '
+                  'rappresentazione resta di vw_fattura_righe_esposte. Il numero della fattura rettificata '
+                  'e'' quello parlante (fn_numero_documento_fattura). Nessun ORDER BY: l''ordine del '
+                  'documento e'' ordinamento, riga_nr, riga_key. security_invoker: fatture_righe e'' in RLS. '
+                  '⭐ rev 2026-10-02 (brief-db-bom-flag-quantita-e-kit-in-fattura): lo stesso kit su due '
+                  'periodi sono due padri, quindi il periodo entra nella partizione dei componenti e '
+                  'nella tupla di riga_key; in coda competenza_dal, competenza_al e ha_periodo dalla '
+                  'vista madre (si stampa il periodo quando ha_periodo e'' vero). '
+                  '⭐ rev 2026-10-03 (stesso brief, R-DB-B9): in coda periodo_dal e periodo_al, il periodo '
+                  'da mostrare: competenza_dal/_al quando ha_periodo, NULL sulle righe puntuali. Sono le '
+                  'sorgenti delle colonne di lista «Periodo dal» e «Periodo al» (video ed export).'
+                  ' ⭐ rev 2026-11-03 (20261103-50, brief-db-addebito-trasporto-ordine §9.8, richiesta BE): in coda '
+                  'tipo_movimento (dalle attivita'' fatturabili della riga: NORMALE, RETTIFICA, ONERE; NULL sul padre di un kit), '
+                  'e_onere e causale_onere_id (l''articolo della riga e'' un articolo-onere: un addebito come trasporto o urgenza, '
+                  'da un documento o dalla porta oneri di commessa) e sezione_documento (1 articoli, 2 oneri). '
+                  'L''ordine del documento diventa sezione_documento, ordinamento, riga_nr, riga_key: gli oneri in fondo, '
+                  'decisione del DB (Tid, 2026-11-03), gemella di vw_ordini_righe_dettaglio e vw_ddt_righe_dettaglio.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Una vista non perde colonne con CREATE OR REPLACE: il ritorno indietro e'
+              -- un DROP + CREATE dal 20261003-06, da fare a mano se servisse.
+              SELECT 1;

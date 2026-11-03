@@ -2,7 +2,7 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-03
 
-**Riparte: il team BE**, con la richiesta del §9.3 (bloccante per il push degli oneri), poi il FE (§9.4). Lato DB i giri 1 e 2 sono chiusi e applicati (`20261103-16…-48` e i seed del trasporto, 2026-11-03); corsa pgTAP di Tid verde come applicazione e lavoro committato (2026-11-03); l'archiviazione dopo BE e FE. Tid ha scelto la forma (2026-11-03): **oneri come righe del documento**, a cura dell'operatore come gli articoli.
+**Riparte: il team BE**, con l'elenco chiuso del §9.8 (più il §9.3), poi il FE (§9.4). Lato DB tutto applicato, verde e committato (`20261103-16…-52`, 2026-11-03). Lato DB i giri 1 e 2 sono chiusi e applicati (`20261103-16…-48` e i seed del trasporto, 2026-11-03); corsa pgTAP di Tid verde come applicazione e lavoro committato (2026-11-03); l'archiviazione dopo BE e FE. Tid ha scelto la forma (2026-11-03): **oneri come righe del documento**, a cura dell'operatore come gli articoli.
 Tid ha deciso T-4 (2026-11-03): **prima** si lega l'onere al documento, **poi** il trasporto.
 
 | # | Chi | Che cosa | Dove | Aspetta |
@@ -23,6 +23,7 @@ Tid ha deciso T-4 (2026-11-03): **prima** si lega l'onere al documento, **poi** 
 | 10 | ✅ Tid | T-3 bis come da proposta; migrate dei seed (2026-11-03) | §10.2 | — |
 | 11 | ✅ DB | T-3 bis: `-47`, `-48`, pgTAP, guide; applicati (12:33) | §10.2 | — |
 | 12 | ✅ Tid / DB | corsa pgTAP del giro 2 verde (Tid); commit dei giri 1 e 2 (2026-11-03) | §10.4 | — |
+| 12-bis | ✅ DB / Tid | richiesta BE §9.8: `-49`…`-52`, applicati, pgTAP verdi, committati (2026-11-03) | §9.8 | — |
 | 13 | Tid | archiviazione del brief, dopo BE e FE | — | 7, 8 |
 
 Decisioni aperte di Tid: nessuna. Lavoro da committare: nessuno (committato il 2026-11-03, §10.4).
@@ -425,8 +426,8 @@ riga ONERE del push di ordini e bolle è rifiutata.
 2. `backend/apps/vendite/services/commesse_source_handlers.py`, `_build_attivita_input`:
    `causale_onere_id=row.causale_onere_id` (`tipo_movimento` lo legge già dalla riga). Da verificare il
    resolver di prezzo su un articolo-onere.
-3. Stampa (§7.3): nei `*_document_context_builder` di ordine, bolla e fattura gli oneri dopo gli
-   articoli, da `e_onere` delle viste di dettaglio (fattura: `tipo_movimento`).
+3. ~~Stampa (§7.3): ordinamento nei `*_document_context_builder`~~ → sostituito dal §9.8: l'ordine lo
+   dà il DB con `sezione_documento`.
 
 ### 9.4 Richiesta al FE
 
@@ -560,3 +561,40 @@ perché di altri cantieri o da rigenerare: le pagine di `pagamenti/`, il `202611
 degli schemi `catalogo`, `script`, `vendite` — la loro descrizione è lo «Scopo» del manual, e in quattro
 pagine la riga della data era finita lì (spostata sotto il titolo): si rigenerano alla prossima
 generazione della doc.
+
+### 9.8 Richiesta del team BE (2026-11-03) — chiusa
+
+Il BE, preparando il §9.3, ha trovato due mancanze **del DB**. Erano entrambe giuste.
+
+| # | Mancanza | Causa | Risposta DB |
+| --- | --- | --- | --- |
+| 1 | il push degli oneri resta rifiutato anche col BE allineato | il push non chiama la madre: passa dal wrapper `vendite.fn_batch_upsert_commessa_attivita`, che legge dal JSON tutte le chiavi della madre tranne `causale_onere_id`. Il §9.3 lo dava per «se il batch compone la chiamata»: la compone il DB. Il pgTAP del giro 1 chiamava la madre a mano, per questo non l'aveva visto | `-49`: chiave facoltativa `causale_onere_id` → `p_causale_onere_id` |
+| 2 | la fattura non dice quale riga è un onere, e l'ordine delle righe lo decide il BE | il §7.3 lo prometteva («fattura: da `tipo_movimento`») ma `vw_fattura_righe_lista` non lo esponeva; l'ordine del documento (`ordinamento, riga_nr`) tiene insieme kit e plafond | `-50`: in coda `tipo_movimento`, `e_onere`, `causale_onere_id`, `sezione_documento`. `-51`, `-52`: `sezione_documento` anche su ordine e bolla |
+
+**La regola dell'ordine sta nel DB, uguale sui tre documenti**: `sezione_documento` (1 articoli,
+2 oneri) è la **prima chiave** dell'ordine del documento — fattura `sezione_documento, ordinamento,
+riga_nr`; ordine e bolla `sezione_documento, riga_nr`. Vale a video e in stampa (il BE legge le righe
+con la stessa lettura). Una colonna e non un numero di posizione con una funzione finestra: le viste si
+leggono anche per una riga sola, e la finestra le farebbe valutare intere. Sulla fattura «è un onere» si
+legge dall'**articolo** (la riga di fattura non ha la natura congelata), così è onere anche la
+rettifica di un onere; `tipo_movimento` dice il movimento.
+
+Prove (dbdev, transazione annullata, da owner): presidi statici verdi; pgTAP nuovo
+`vendite/test-onere-batch-e-sezione-documento-v1` (10/10) che fa il percorso **vero**: ordine →
+lister → **wrapper batch** → commessa → fattura → `vw_fattura_righe_lista`. Controprova col vecchio
+corpo del wrapper (`20261013-17`): test 1 e 2 rossi. Aggiornato `test-vw-righe-dettaglio-sorgente-lista-v1`
+(colonna nuova). Non regressione su 18 pgTAP (viste di riga, fattura, batch, presidi globali): stesso
+esito, salvo i due file sopra; un rosso **preesistente** da owner (`test-ddt-righe-evase-dall-ordine-v1`
+t.43, la porta che vuole il proprietario della tabella) era rosso anche prima del giro 1.
+`-49`, `-50` applicati da Tid alle 13:07, `-51`, `-52` alle 13:14 (`databasechangelog`); **corsa pgTAP di Tid verde**, come applicazione. Committato il 2026-11-03.
+
+**Elenco chiuso per il BE** (sostituisce il punto 3 del §9.3):
+
+1. push: `causale_onere_id` in `_inp_to_jsonb_row` (oltre al §9.3, punti 1 e 2);
+2. ordine del documento: `FattureRepository._righe_ordine_documento = "sezione_documento"`,
+   `_righe_ordine_documento_extra = ("ordinamento", "riga_nr")`; `OrdiniRepository` e `DdtRepository`
+   `_righe_ordine_documento = "sezione_documento"`, extra `("riga_nr",)`. Nessun ordinamento nei
+   `*_document_context_builder`: le righe arrivano già in ordine dalla lettura completa.
+
+Fuori elenco, da decidere se servirà: il preventivo (anche lui ammette gli oneri, K-10) ordina per la
+sua colonna `ordine`; oggi non è nel perimetro.

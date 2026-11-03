@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_batch_upsert_commessa_attivita`
 
+> **Ultimo aggiornamento**: 3 novembre 2026
+
 > 👀 **Vedi anche**
 >
 **Approfondimento tabelle:**
@@ -174,3 +176,11 @@ Output:
 ---
 
 {% include-markdown "signature-core.md" %}
+
+### La causale dell'onere (rev 2026-11-03)
+
+Dal `20261103-49` il payload porta la chiave facoltativa `causale_onere_id`, passata a
+`p_causale_onere_id` della madre. Il push di ordini e bolle passa da qui, e gli oneri del documento
+arrivano come `tipo_movimento = 'ONERE'`: la madre vuole ONERE ⇔ causale, quindi senza la chiave
+ogni riga-onere era rifiutata (errore raccolto in `errors`). Assente o `null` = nessuna causale, come
+per la merce.

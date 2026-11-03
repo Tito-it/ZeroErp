@@ -62,7 +62,7 @@ search:
 - [fn_check_lotto_riportabile_a_draft](manual/fn_check_lotto_riportabile_a_draft.md) — (latest review 04-08-2026) Elenca i **motivi che impediscono il ritorno in bozza** di un lotto di fatturazione. Funzione **pura** (`fn_check_*`): non solleva errori di dominio e non scrive. Ritorna `[]` quando il ritorno è lecito.
 - [fn_check_operatore_invitabile](manual/fn_check_operatore_invitabile.md)
 - [fn_check_ordine_annullabile](manual/fn_check_ordine_annullabile.md) — (rev 2026-08-21 — funzione rev 2026-08-15)
-- [fn_check_ordine_confermabile](manual/fn_check_ordine_confermabile.md) — (rev 2026-08-29 — funzione nata il 2026-08-29)
+- [fn_check_ordine_confermabile](manual/fn_check_ordine_confermabile.md) — (rev 2026-11-03 — il motivo dei soli oneri · funzione nata il 2026-08-29)
 - [fn_check_ordine_data_consegna_confermata](manual/fn_check_ordine_data_consegna_confermata.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 1)
 - [fn_check_parameter_fk_surrogate](manual/fn_check_parameter_fk_surrogate.md) — (latest review 02-05-2026)
 - [fn_check_preventivo_accettabile](manual/fn_check_preventivo_accettabile.md)
@@ -122,6 +122,7 @@ search:
 - [fn_get_ba_emittente_sr_id_installazione](manual/fn_get_ba_emittente_sr_id_installazione.md) — (latest review 10-10-26)
 - [fn_get_ba_id_da_coppia](manual/fn_get_ba_id_da_coppia.md) — (nata il 2026-10-21, `20261021-24`)
 - [fn_get_catasto_source_by_istanza](manual/fn_get_catasto_source_by_istanza.md) — La funzione **`script.fn_get_catasto_source_by_istanza(p_istanza_utilities_id)`** recupera il record catastale **"sorgente"** da utilizzare come base per una **clonazione** in caso di **subentro**.
+- [fn_get_contabile_stato_origine](manual/fn_get_contabile_stato_origine.md) — Risponde lo **stato** e l'**origine** di una distinta contabile, letti fuori dalla row security. È il building block dei guard delle righe contabili, che devono giudicare la distinta anche quando chi scrive la riga non la vede.
 - [fn_get_contatti](manual/fn_get_contatti.md) — (latest review 25-03-26) * **Selezione univoca per tipo**   Per ogni `tipo_contatto_id` vengono restituiti **al più** un record, che rappresenta il contatto “migliore” in base al contesto richiesto.
 - [fn_get_contatto_default](manual/fn_get_contatto_default.md) — (latest review 25-03-26) La funzione **`script.fn_get_contatto_default`** restituisce **il contatto “di default”** per un determinato **soggetto** e, opzionalmente, per un determinato:
 - [fn_get_conto_bancario_predefinito](manual/fn_get_conto_bancario_predefinito.md) — (latest review 25-03-26)

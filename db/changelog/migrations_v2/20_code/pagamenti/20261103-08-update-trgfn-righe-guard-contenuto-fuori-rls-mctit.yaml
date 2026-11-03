@@ -1,0 +1,419 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA PORTA 2 GUARDA LA DISTINTA ANCHE QUANDO CHI SCRIVE NON LA VEDE
+#   pagamenti.trgfn_vendite_contabili_righe_guard_contenuto()
+#
+# ── IL DIFETTO ─────────────────────────────────────────────────────
+#   La porta 2 (i fatti di una riga congelati sotto una MANUALE validata)
+#   legge origine e stato della distinta sotto la row security di chi scrive.
+#   Un operatore che vede la riga dalla FATTURA, e non la sua distinta, non
+#   trova la testata: l'origine e' NULL, la condizione «MANUALE e non in
+#   BOZZA» e' falsa, e l'importo si cambia sotto una distinta validata.
+#
+# ── LA CORREZIONE ──────────────────────────────────────────────────
+#   Origine e stato passano da script.fn_get_contabile_stato_origine
+#   (SECURITY DEFINER, 20261103-06); il codice, che serve solo al messaggio,
+#   resta letto sotto la RLS. La porta 1 non cambia: la check
+#   dell'eliminazione rifiuta gia' quando non trova la riga. Corpo dalla doc
+#   auto-generata del 2026-11-03.
+#
+# Verifica: db/pgtap/pagamenti/test-righe-guard-distinta-vista-dalla-fattura-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pagamenti/20261103-08-update-trgfn-righe-guard-contenuto-fuori-rls-mctit.yaml
+
+  - changeSet:
+      id: 20261103-08-update-trgfn-righe-guard-contenuto-fuori-rls
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        La porta 2 del guard del contenuto legge origine e stato della distinta fuori dalla
+        row security (script.fn_get_contabile_stato_origine): chi vede una riga dalla
+        fattura non vede la sua distinta, e letta sotto RLS l'origine era NULL e la porta
+        taceva. Il codice resta letto sotto RLS, per il messaggio. Corpo dalla doc auto-gen
+        del 2026-11-03.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                  WHERE n.nspname = 'pagamenti'
+                    AND p.proname = 'trgfn_vendite_contabili_righe_guard_contenuto'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                  WHERE n.nspname = 'script'
+                    AND p.proname = 'fn_get_contabile_stato_origine'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pagamenti.trgfn_vendite_contabili_righe_guard_contenuto()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  -- NUDI di proposito: l'array e la GUC non riflettono nessuna colonna.
+                  v_motivi     jsonb;
+                  v_override   text;
+                  v_testata_id pagamenti.vendite_contabili.id%TYPE;
+                  v_codice     pagamenti.vendite_contabili.codice%TYPE;
+                  v_origine    pagamenti.vendite_contabili.origine%TYPE;
+                  v_stato      pagamenti.vendite_contabili_stati.codice_interno%TYPE;
+                  v_is_final   pagamenti.vendite_contabili_stati.is_final%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Custodire il CONTENUTO di una distinta contabile: chi
+                  --   puo' togliere, aggiungere o cambiare una riga, e quando.
+                  --
+                  --   PORTA 1 — ELIMINAZIONE (D17): attivo true -> false, e
+                  --     DELETE. Ammessa solo su una MANUALE in BOZZA. Il
+                  --     predicato NON sta qui: sta in
+                  --     script.fn_check_riga_contabile_eliminabile, che si
+                  --     chiama e di cui si solleva il PRIMO motivo.
+                  --   PORTA 2 — CONGELAMENTO (D18): INSERT, riattivazione,
+                  --     spostamento, e UPDATE di un FATTO (importo, le tre
+                  --     date, riferimento_ente) sotto una MANUALE che non e'
+                  --     piu' in BOZZA. Le DECISIONI (stato, abbinamento,
+                  --     forzatura, motivi, meta) restano libere: il trigger
+                  --     e' UPDATE OF sui soli fatti, e su quelle non scatta.
+                  --
+                  -- Uso: BEFORE INSERT OR UPDATE OF attivo, contabile_id,
+                  --      importo, data_pagamento, data_valuta,
+                  --      data_operazione, riferimento_ente OR DELETE
+                  --      FOR EACH ROW
+                  -- =========================================================
+
+                  -- ── PORTA 1a — DELETE fisico ─────────────────────────────
+                  IF TG_OP = 'DELETE' THEN
+                      -- ⭐ La madre del giro dei fondi (fn_cancella_fondo_fattura)
+                      --    cancella FISICAMENTE le righe del suo atto sotto una
+                      --    GENERATA, e ha gia' letto il SUO criterio
+                      --    (fn_check_fondo_cancellabile). Dichiara «sono io» con
+                      --    questa GUC, transazionale, e la richiude subito dopo.
+                      --    Stesso contratto di fn_change_user_emittenti_scope
+                      --    su trgfn_user_emittenti_fiscali_guard_delete.
+                      -- ⚠️ SOLO qui: sulla disattivazione nessuna madre passa.
+                      v_override := current_setting('zeroerp.allow_contabile_riga_delete_override', true);
+                      IF COALESCE(lower(v_override), 'off') IN ('on', 'true', '1') THEN
+                          RETURN OLD;
+                      END IF;
+
+                      v_motivi := script.fn_check_riga_contabile_eliminabile(OLD.id);
+
+                      -- ⚠️ Nessun `campo`: CONFLITTO_STATO, non c'e' un input da
+                      --    accendere. `reason` viaggia nel contesto per il
+                      --    frontend (§12.5.1); `motivi` lo mette l'helper.
+                      PERFORM script.fn_raise_primo_motivo_se_presente(
+                          'database',
+                          'pagamenti.trgfn_vendite_contabili_righe_guard_contenuto',
+                          v_motivi,
+                          NULL,
+                          OLD.tx_id,
+                          jsonb_build_object(
+                              'contabile_riga_id', OLD.id,
+                              'contabile_id',      OLD.contabile_id,
+                              'operazione',        TG_OP,
+                              'reason',            v_motivi -> 0 ->> 'reason'));
+
+                      RETURN OLD;
+                  END IF;
+
+                  -- ── PORTA 1b — attivo true -> false ──────────────────────
+                  -- ⚠️ Solo la DISATTIVAZIONE e' un'eliminazione. La
+                  --    riattivazione e' un ingresso di contenuto, e la guarda
+                  --    la porta 2 (sotto una FINALE la guarda gia'
+                  --    guard_distinta_finale, che e' la sua sede).
+                  IF TG_OP = 'UPDATE'
+                     AND OLD.attivo IS TRUE
+                     AND NEW.attivo IS NOT TRUE
+                  THEN
+                      v_motivi := script.fn_check_riga_contabile_eliminabile(OLD.id);
+
+                      PERFORM script.fn_raise_primo_motivo_se_presente(
+                          'database',
+                          'pagamenti.trgfn_vendite_contabili_righe_guard_contenuto',
+                          v_motivi,
+                          NULL,
+                          NEW.tx_id,
+                          jsonb_build_object(
+                              'contabile_riga_id', NEW.id,
+                              'contabile_id',      NEW.contabile_id,
+                              'operazione',        TG_OP,
+                              'reason',            v_motivi -> 0 ->> 'reason'));
+
+                      -- ⚠️ Nessun RETURN qui: passata la check la distinta di
+                      --    PARTENZA e' MANUALE in BOZZA, ma nello stesso UPDATE
+                      --    la riga potrebbe anche SPOSTARSI — e la testata di
+                      --    arrivo la guarda la porta 2.
+                  END IF;
+
+                  -- ── PORTA 2 — CONGELAMENTO sotto VALIDATA (D18) ──────────
+                  -- Un UPDATE OF scatta anche a valore invariato (il backend
+                  -- scrive piu' colonne in una SET): se nessuno dei fatti e'
+                  -- cambiato non c'e' contenuto che si muove.
+                  IF TG_OP = 'UPDATE'
+                     AND NEW.contabile_id     IS NOT DISTINCT FROM OLD.contabile_id
+                     AND NEW.attivo           IS NOT DISTINCT FROM OLD.attivo
+                     AND NEW.importo          IS NOT DISTINCT FROM OLD.importo
+                     AND NEW.data_pagamento   IS NOT DISTINCT FROM OLD.data_pagamento
+                     AND NEW.data_valuta      IS NOT DISTINCT FROM OLD.data_valuta
+                     AND NEW.data_operazione  IS NOT DISTINCT FROM OLD.data_operazione
+                     AND NEW.riferimento_ente IS NOT DISTINCT FROM OLD.riferimento_ente
+                  THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- Le testate da guardare: quella di ARRIVO sempre; quella di
+                  -- PARTENZA se la riga si sposta (uscire da una distinta
+                  -- validata ne cambia il contenuto quanto entrarci).
+                  FOR v_testata_id IN
+                      SELECT DISTINCT t.id
+                        FROM unnest(ARRAY[
+                                 NEW.contabile_id,
+                                 CASE WHEN TG_OP = 'UPDATE' THEN OLD.contabile_id END
+                             ]) AS t(id)
+                       WHERE t.id IS NOT NULL
+                  LOOP
+                      -- 🔴 Stato e origine FUORI dalla row security
+                      --    (script.fn_get_contabile_stato_origine, 2026-11-03): la
+                      --    riga si vede anche dalla FATTURA, e chi la vede cosi' non
+                      --    vede la sua distinta — letta sotto RLS, v_origine era NULL
+                      --    e la porta taceva. Il CODICE resta sotto RLS (solo per il
+                      --    messaggio): chi non vede la distinta ne legge l'id.
+                      SELECT d.origine, s.codice_interno, s.is_final
+                        INTO v_origine, v_stato, v_is_final
+                        FROM script.fn_get_contabile_stato_origine(v_testata_id) d
+                        JOIN pagamenti.vendite_contabili_stati s ON s.id = d.stato_id;
+
+                      SELECT c.codice
+                        INTO v_codice
+                        FROM pagamenti.vendite_contabili c
+                       WHERE c.id = v_testata_id;
+
+                      -- ⛔ SOLO LA MANUALE (prima di tutto): il sync dei fondi
+                      --    inserisce e aggiorna righe sotto GENERATE gia'
+                      --    VALIDATE, e una sistemazione sotto una GENERATA in
+                      --    BOZZA. ⚠️ Sotto una FINALE si tace: parla
+                      --    guard_distinta_finale. ⚠️ Whitelist (= BOZZA), non
+                      --    blacklist: uno stato nuovo cade nel rifiuto.
+                      -- ⚠️ E' il MOTIVO 3 di fn_check_riga_contabile_eliminabile,
+                      --    scritto qui perche' sull'INSERT non c'e' una riga da
+                      --    passare alla check: il pgTAP lega le due porte.
+                      IF v_origine = 'MANUALE'
+                         AND v_is_final IS NOT TRUE
+                         AND v_stato IS DISTINCT FROM 'BOZZA'
+                      THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              'pagamenti.trgfn_vendite_contabili_righe_guard_contenuto',
+                              'E_RIGA_CONTABILE_DISTINTA_VALIDATA',
+                              jsonb_build_object(
+                                  'contabile_riga_id', NEW.id,
+                                  'contabile_id',      v_testata_id,
+                                  'contabile_codice',  v_codice,
+                                  'stato_distinta',    v_stato,
+                                  'operazione',        TG_OP,
+                                  'reason',            'DISTINTA_VALIDATA'),
+                              NEW.tx_id,
+                              COALESCE(v_codice, v_testata_id::text));
+                      END IF;
+                  END LOOP;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pagamenti.trgfn_vendite_contabili_righe_guard_contenuto()
+              IS 'Il guard del CONTENUTO della distinta contabile: chi puo'' togliere, aggiungere o cambiare una riga, e quando. DUE PORTE. (1) ELIMINAZIONE (D17): attivo true -> false, e DELETE — ammessa solo su una MANUALE in BOZZA. Il predicato NON sta qui: sta in script.fn_check_riga_contabile_eliminabile, che il guard CHIAMA sollevando il PRIMO motivo con fn_raise_primo_motivo_se_presente (§12.5.2: tooltip del cestino e rifiuto non possono divergere). (2) CONGELAMENTO (D18, confermata da Tid il 2026-09-14): INSERT, riattivazione, spostamento da/verso un''altra distinta e UPDATE di un FATTO (importo, data_pagamento, data_valuta, data_operazione, riferimento_ente) sono rifiutati sotto una MANUALE che non e'' piu'' in BOZZA — E_RIGA_CONTABILE_DISTINTA_VALIDATA. ⭐ Le DECISIONI restano libere anche a distinta validata (stato_id, fattura_id, billing_account_id, scadenza_id, forzata, motivo_forzatura, motivo_sospeso, meta): l''abbinamento non tocca la quadratura (D12-e) e la madre del posting muove lo stato delle righe mentre la distinta e'' ancora VALIDATA — per questo il trigger e'' UPDATE OF sui soli fatti e su quelle non scatta. ⛔ La porta 2 e'' SOLO della MANUALE: fn_sync_contabili_fondo_fattura inserisce e aggiorna righe sotto GENERATE che nascono VALIDATE, fn_conferma_sistemazione sotto una GENERATA in BOZZA. L''immutabilita'' di GENERATA e AUTOMATICA e'' di D12-d e arriva con l''import. ⚠️ La condizione della porta 2 e'' il motivo 3 della check, scritta due volte perche'' sull''INSERT non c''e'' una riga da passare: copia dichiarata, legata dal pgTAP. ⭐ IL DELETE FISICO passa dalla stessa check (D12-d, tre porte), e la riga POSTATA riceve il messaggio giusto PRIMA della FK del movimento. 🔴 Ma vendite.fn_cancella_fondo_fattura — sede unica dei DELETE del giro dei fondi — cancella fisicamente le righe del suo atto sotto una GENERATA, dove la check risponde DISTINTA_NON_MANUALE: la madre APRE la porta con la GUC transazionale zeroerp.allow_contabile_riga_delete_override (SET LOCAL ''on'' prima, '''' dopo; changeSet 20260914-06), che questo guard onora SOLO su DELETE — precedente identico: fn_change_user_emittenti_scope su trgfn_user_emittenti_fiscali_guard_delete. Non e'' un permesso, e'' la madre che dichiara «sono io» dopo aver letto il SUO criterio (fn_check_fondo_cancellabile). ⚠️ Ordine alfabetico dei BEFORE ROW: parla PRIMA degli altri guard di riga; sotto una FINALE la porta 2 tace e lascia il messaggio a guard_distinta_finale, che e'' la sua sede. ⚠️ Residuo dichiarato, ristretto il 2026-09-30: sotto una distinta ANNULLATA (righe_lavorabili = false) nessuna scrittura passa piu'' — la quinta mossa di guard_distinta_finale rifiuta ogni UPDATE con E_RIGA_CONTABILE_DISTINTA_ANNULLATA, e su attivo -> false e DELETE parla gia'' qui la check (motivo DISTINTA_ANNULLATA, prima di DISTINTA_FINALE); sotto una CHIUSA l''importo di una riga — anche POSTATA — resta modificabile da SQL, perche'' li'' le righe si lavorano ancora (tardiva, «Riprendi») e guard_distinta_finale lascia di proposito le altre scritture (brief-db-righe-distinta-annullata-fuori-dalle-code §8.1). Brief: brief-db-riga-manuale-nasce-abbinata-ed-elimina-riga §2.2, §2.3, §4 P-2/P-5. 🔴 rev 2026-11-03: nella porta 2 origine e stato della distinta si leggono FUORI dalla row security con script.fn_get_contabile_stato_origine. Una riga si vede anche dalla FATTURA, e chi la vede cosi'' non vede la sua distinta: letta sotto RLS l''origine era NULL e la porta taceva. Il codice resta letto sotto RLS, solo per il messaggio.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Rollback: si riapplica il corpo precedente (doc auto-gen del
+              -- 2026-11-03), che legge la distinta sotto la row security.
+              CREATE OR REPLACE FUNCTION pagamenti.trgfn_vendite_contabili_righe_guard_contenuto()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  -- NUDI di proposito: l'array e la GUC non riflettono nessuna colonna.
+                  v_motivi     jsonb;
+                  v_override   text;
+                  v_testata_id pagamenti.vendite_contabili.id%TYPE;
+                  v_codice     pagamenti.vendite_contabili.codice%TYPE;
+                  v_origine    pagamenti.vendite_contabili.origine%TYPE;
+                  v_stato      pagamenti.vendite_contabili_stati.codice_interno%TYPE;
+                  v_is_final   pagamenti.vendite_contabili_stati.is_final%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Custodire il CONTENUTO di una distinta contabile: chi
+                  --   puo' togliere, aggiungere o cambiare una riga, e quando.
+                  --
+                  --   PORTA 1 — ELIMINAZIONE (D17): attivo true -> false, e
+                  --     DELETE. Ammessa solo su una MANUALE in BOZZA. Il
+                  --     predicato NON sta qui: sta in
+                  --     script.fn_check_riga_contabile_eliminabile, che si
+                  --     chiama e di cui si solleva il PRIMO motivo.
+                  --   PORTA 2 — CONGELAMENTO (D18): INSERT, riattivazione,
+                  --     spostamento, e UPDATE di un FATTO (importo, le tre
+                  --     date, riferimento_ente) sotto una MANUALE che non e'
+                  --     piu' in BOZZA. Le DECISIONI (stato, abbinamento,
+                  --     forzatura, motivi, meta) restano libere: il trigger
+                  --     e' UPDATE OF sui soli fatti, e su quelle non scatta.
+                  --
+                  -- Uso: BEFORE INSERT OR UPDATE OF attivo, contabile_id,
+                  --      importo, data_pagamento, data_valuta,
+                  --      data_operazione, riferimento_ente OR DELETE
+                  --      FOR EACH ROW
+                  -- =========================================================
+
+                  -- ── PORTA 1a — DELETE fisico ─────────────────────────────
+                  IF TG_OP = 'DELETE' THEN
+                      -- ⭐ La madre del giro dei fondi (fn_cancella_fondo_fattura)
+                      --    cancella FISICAMENTE le righe del suo atto sotto una
+                      --    GENERATA, e ha gia' letto il SUO criterio
+                      --    (fn_check_fondo_cancellabile). Dichiara «sono io» con
+                      --    questa GUC, transazionale, e la richiude subito dopo.
+                      --    Stesso contratto di fn_change_user_emittenti_scope
+                      --    su trgfn_user_emittenti_fiscali_guard_delete.
+                      -- ⚠️ SOLO qui: sulla disattivazione nessuna madre passa.
+                      v_override := current_setting('zeroerp.allow_contabile_riga_delete_override', true);
+                      IF COALESCE(lower(v_override), 'off') IN ('on', 'true', '1') THEN
+                          RETURN OLD;
+                      END IF;
+
+                      v_motivi := script.fn_check_riga_contabile_eliminabile(OLD.id);
+
+                      -- ⚠️ Nessun `campo`: CONFLITTO_STATO, non c'e' un input da
+                      --    accendere. `reason` viaggia nel contesto per il
+                      --    frontend (§12.5.1); `motivi` lo mette l'helper.
+                      PERFORM script.fn_raise_primo_motivo_se_presente(
+                          'database',
+                          'pagamenti.trgfn_vendite_contabili_righe_guard_contenuto',
+                          v_motivi,
+                          NULL,
+                          OLD.tx_id,
+                          jsonb_build_object(
+                              'contabile_riga_id', OLD.id,
+                              'contabile_id',      OLD.contabile_id,
+                              'operazione',        TG_OP,
+                              'reason',            v_motivi -> 0 ->> 'reason'));
+
+                      RETURN OLD;
+                  END IF;
+
+                  -- ── PORTA 1b — attivo true -> false ──────────────────────
+                  -- ⚠️ Solo la DISATTIVAZIONE e' un'eliminazione. La
+                  --    riattivazione e' un ingresso di contenuto, e la guarda
+                  --    la porta 2 (sotto una FINALE la guarda gia'
+                  --    guard_distinta_finale, che e' la sua sede).
+                  IF TG_OP = 'UPDATE'
+                     AND OLD.attivo IS TRUE
+                     AND NEW.attivo IS NOT TRUE
+                  THEN
+                      v_motivi := script.fn_check_riga_contabile_eliminabile(OLD.id);
+
+                      PERFORM script.fn_raise_primo_motivo_se_presente(
+                          'database',
+                          'pagamenti.trgfn_vendite_contabili_righe_guard_contenuto',
+                          v_motivi,
+                          NULL,
+                          NEW.tx_id,
+                          jsonb_build_object(
+                              'contabile_riga_id', NEW.id,
+                              'contabile_id',      NEW.contabile_id,
+                              'operazione',        TG_OP,
+                              'reason',            v_motivi -> 0 ->> 'reason'));
+
+                      -- ⚠️ Nessun RETURN qui: passata la check la distinta di
+                      --    PARTENZA e' MANUALE in BOZZA, ma nello stesso UPDATE
+                      --    la riga potrebbe anche SPOSTARSI — e la testata di
+                      --    arrivo la guarda la porta 2.
+                  END IF;
+
+                  -- ── PORTA 2 — CONGELAMENTO sotto VALIDATA (D18) ──────────
+                  -- Un UPDATE OF scatta anche a valore invariato (il backend
+                  -- scrive piu' colonne in una SET): se nessuno dei fatti e'
+                  -- cambiato non c'e' contenuto che si muove.
+                  IF TG_OP = 'UPDATE'
+                     AND NEW.contabile_id     IS NOT DISTINCT FROM OLD.contabile_id
+                     AND NEW.attivo           IS NOT DISTINCT FROM OLD.attivo
+                     AND NEW.importo          IS NOT DISTINCT FROM OLD.importo
+                     AND NEW.data_pagamento   IS NOT DISTINCT FROM OLD.data_pagamento
+                     AND NEW.data_valuta      IS NOT DISTINCT FROM OLD.data_valuta
+                     AND NEW.data_operazione  IS NOT DISTINCT FROM OLD.data_operazione
+                     AND NEW.riferimento_ente IS NOT DISTINCT FROM OLD.riferimento_ente
+                  THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- Le testate da guardare: quella di ARRIVO sempre; quella di
+                  -- PARTENZA se la riga si sposta (uscire da una distinta
+                  -- validata ne cambia il contenuto quanto entrarci).
+                  FOR v_testata_id IN
+                      SELECT DISTINCT t.id
+                        FROM unnest(ARRAY[
+                                 NEW.contabile_id,
+                                 CASE WHEN TG_OP = 'UPDATE' THEN OLD.contabile_id END
+                             ]) AS t(id)
+                       WHERE t.id IS NOT NULL
+                  LOOP
+                      SELECT c.codice, c.origine, s.codice_interno, s.is_final
+                        INTO v_codice, v_origine, v_stato, v_is_final
+                        FROM pagamenti.vendite_contabili c
+                        JOIN pagamenti.vendite_contabili_stati s ON s.id = c.stato_id
+                       WHERE c.id = v_testata_id;
+
+                      -- ⛔ SOLO LA MANUALE (prima di tutto): il sync dei fondi
+                      --    inserisce e aggiorna righe sotto GENERATE gia'
+                      --    VALIDATE, e una sistemazione sotto una GENERATA in
+                      --    BOZZA. ⚠️ Sotto una FINALE si tace: parla
+                      --    guard_distinta_finale. ⚠️ Whitelist (= BOZZA), non
+                      --    blacklist: uno stato nuovo cade nel rifiuto.
+                      -- ⚠️ E' il MOTIVO 3 di fn_check_riga_contabile_eliminabile,
+                      --    scritto qui perche' sull'INSERT non c'e' una riga da
+                      --    passare alla check: il pgTAP lega le due porte.
+                      IF v_origine = 'MANUALE'
+                         AND v_is_final IS NOT TRUE
+                         AND v_stato IS DISTINCT FROM 'BOZZA'
+                      THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              'pagamenti.trgfn_vendite_contabili_righe_guard_contenuto',
+                              'E_RIGA_CONTABILE_DISTINTA_VALIDATA',
+                              jsonb_build_object(
+                                  'contabile_riga_id', NEW.id,
+                                  'contabile_id',      v_testata_id,
+                                  'contabile_codice',  v_codice,
+                                  'stato_distinta',    v_stato,
+                                  'operazione',        TG_OP,
+                                  'reason',            'DISTINTA_VALIDATA'),
+                              NEW.tx_id,
+                              COALESCE(v_codice, v_testata_id::text));
+                      END IF;
+                  END LOOP;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pagamenti.trgfn_vendite_contabili_righe_guard_contenuto()
+              IS 'Il guard del CONTENUTO della distinta contabile: chi puo'' togliere, aggiungere o cambiare una riga, e quando. DUE PORTE. (1) ELIMINAZIONE (D17): attivo true -> false, e DELETE — ammessa solo su una MANUALE in BOZZA. Il predicato NON sta qui: sta in script.fn_check_riga_contabile_eliminabile, che il guard CHIAMA sollevando il PRIMO motivo con fn_raise_primo_motivo_se_presente (§12.5.2: tooltip del cestino e rifiuto non possono divergere). (2) CONGELAMENTO (D18, confermata da Tid il 2026-09-14): INSERT, riattivazione, spostamento da/verso un''altra distinta e UPDATE di un FATTO (importo, data_pagamento, data_valuta, data_operazione, riferimento_ente) sono rifiutati sotto una MANUALE che non e'' piu'' in BOZZA — E_RIGA_CONTABILE_DISTINTA_VALIDATA. ⭐ Le DECISIONI restano libere anche a distinta validata (stato_id, fattura_id, billing_account_id, scadenza_id, forzata, motivo_forzatura, motivo_sospeso, meta): l''abbinamento non tocca la quadratura (D12-e) e la madre del posting muove lo stato delle righe mentre la distinta e'' ancora VALIDATA — per questo il trigger e'' UPDATE OF sui soli fatti e su quelle non scatta. ⛔ La porta 2 e'' SOLO della MANUALE: fn_sync_contabili_fondo_fattura inserisce e aggiorna righe sotto GENERATE che nascono VALIDATE, fn_conferma_sistemazione sotto una GENERATA in BOZZA. L''immutabilita'' di GENERATA e AUTOMATICA e'' di D12-d e arriva con l''import. ⚠️ La condizione della porta 2 e'' il motivo 3 della check, scritta due volte perche'' sull''INSERT non c''e'' una riga da passare: copia dichiarata, legata dal pgTAP. ⭐ IL DELETE FISICO passa dalla stessa check (D12-d, tre porte), e la riga POSTATA riceve il messaggio giusto PRIMA della FK del movimento. 🔴 Ma vendite.fn_cancella_fondo_fattura — sede unica dei DELETE del giro dei fondi — cancella fisicamente le righe del suo atto sotto una GENERATA, dove la check risponde DISTINTA_NON_MANUALE: la madre APRE la porta con la GUC transazionale zeroerp.allow_contabile_riga_delete_override (SET LOCAL ''on'' prima, '''' dopo; changeSet 20260914-06), che questo guard onora SOLO su DELETE — precedente identico: fn_change_user_emittenti_scope su trgfn_user_emittenti_fiscali_guard_delete. Non e'' un permesso, e'' la madre che dichiara «sono io» dopo aver letto il SUO criterio (fn_check_fondo_cancellabile). ⚠️ Ordine alfabetico dei BEFORE ROW: parla PRIMA degli altri guard di riga; sotto una FINALE la porta 2 tace e lascia il messaggio a guard_distinta_finale, che e'' la sua sede. ⚠️ Residuo dichiarato, ristretto il 2026-09-30: sotto una distinta ANNULLATA (righe_lavorabili = false) nessuna scrittura passa piu'' — la quinta mossa di guard_distinta_finale rifiuta ogni UPDATE con E_RIGA_CONTABILE_DISTINTA_ANNULLATA, e su attivo -> false e DELETE parla gia'' qui la check (motivo DISTINTA_ANNULLATA, prima di DISTINTA_FINALE); sotto una CHIUSA l''importo di una riga — anche POSTATA — resta modificabile da SQL, perche'' li'' le righe si lavorano ancora (tardiva, «Riprendi») e guard_distinta_finale lascia di proposito le altre scritture (brief-db-righe-distinta-annullata-fuori-dalle-code §8.1). Brief: brief-db-riga-manuale-nasce-abbinata-ed-elimina-riga §2.2, §2.3, §4 P-2/P-5.';
