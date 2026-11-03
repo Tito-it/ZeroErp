@@ -22,7 +22,7 @@ lascerebbe la capofila e le sue parti di plafond in un ordine qualunque.
 
 Indice test:
 
- 1) test_pagina_parte_dall_ordine_del_documento_su_due_colonne
+ 1) test_pagina_parte_dall_ordine_del_documento_su_tre_colonne
  2) test_nessun_filtro_attivo_e_chiave_di_riga
  3) test_ordinamento_chiesto_sparegia_su_riga_nr_e_chiave
  4) test_lettura_completa_nello_stesso_ordine
@@ -65,9 +65,13 @@ def _completa():
 
 class RigheFatturaListaTests(unittest.TestCase):
 
-    def test_pagina_parte_dall_ordine_del_documento_su_due_colonne(self):
+    # ⭐ La sezione (1 articoli, 2 oneri; 20261103-50) e' la prima chiave: gli
+    #    oneri dopo gli articoli, poi capofila e plafond, poi la posizione.
+    def test_pagina_parte_dall_ordine_del_documento_su_tre_colonne(self):
         sql, _, _ = _pagina(order_by="", order_dir=None)
-        self.assertIn("ORDER BY v.ordinamento ASC NULLS FIRST, v.riga_nr, v.riga_key ASC", sql)
+        self.assertIn(
+            "ORDER BY v.sezione_documento ASC NULLS FIRST, v.ordinamento, v.riga_nr, v.riga_key ASC", sql,
+        )
 
     def test_nessun_filtro_attivo_e_chiave_di_riga(self):
         sql, params, kw = _pagina()
@@ -80,20 +84,21 @@ class RigheFatturaListaTests(unittest.TestCase):
     def test_ordinamento_chiesto_sparegia_su_riga_nr_e_chiave(self):
         sql, _, _ = _pagina(order_by="importo_riga", order_dir="desc")
         self.assertIn("ORDER BY importo_riga DESC NULLS LAST", sql)
-        self.assertIn("v.riga_nr, v.riga_key", sql)
+        self.assertIn("v.ordinamento, v.riga_nr, v.riga_key", sql)
 
     def test_lettura_completa_nello_stesso_ordine(self):
         sql, params = _completa()
-        self.assertIn(f"FROM {_VISTA} v WHERE v.fattura_id = %s ORDER BY v.ordinamento, v.riga_nr, v.riga_key", sql)
+        self.assertIn(f"FROM {_VISTA} v WHERE v.fattura_id = %s ORDER BY v.sezione_documento, v.ordinamento, v.riga_nr, v.riga_key", sql)
         self.assertNotIn("attivo", sql)
         self.assertEqual(params, [835])
 
     def test_la_ricerca_nomina_la_lista_della_fattura(self):
         self.assertEqual(FattureRepository._righe_ricerca.lista_codice, "vendite.fattura_righe")
 
-    # ⛔ Gli attributi nuovi hanno default che lasciano i quattro documenti
-    #    com'erano: `attivo` filtrato, `id` come chiave, ordine su una colonna.
+    # ⛔ Gli attributi nuovi hanno default che lasciano i documenti con tabella
+    #    com'erano: `attivo` filtrato, `id` come chiave. L'ordine ha la sua
+    #    sezione davanti (20261103-51), la chiave resta `id`.
     def test_i_documenti_con_tabella_non_cambiano(self):
         sql, _, _ = _pagina(OrdiniRepository, order_by="", order_dir=None)
         self.assertIn("v.ordine_id = %s AND v.attivo IS TRUE", sql)
-        self.assertIn("ORDER BY v.riga_nr ASC NULLS FIRST, v.id ASC", sql)
+        self.assertIn("ORDER BY v.sezione_documento ASC NULLS FIRST, v.riga_nr, v.id ASC", sql)

@@ -107,8 +107,9 @@ class LookupArticoliTroncamentoTests(unittest.TestCase):
         self.assertFalse(esito["troncato"], "nessun taglio, eppure lo dichiara")
 
     # 3. ⭐ IL RAMO CON I JOIN, che e' la ragione di questa classe. Con
-    #    `solo_oneri` la query monta due JOIN (la base `articoli` e la causale):
-    #    se uno di quelli moltiplicasse le righe, la sonda conterebbe doppioni.
+    #    `solo_oneri` la query monta il JOIN della causale (fino al 2026-11-03
+    #    anche quello della base `articoli`): se moltiplicasse le righe, la
+    #    sonda conterebbe doppioni.
     #    Il presidio e' il confronto con la lista SENZA filtro: restringere agli
     #    oneri puo' solo togliere righe, mai aggiungerne. (Fino al 2026-10-14 il
     #    ramo era quello di `escludi_destinazione_tipi`, ritirato col picker

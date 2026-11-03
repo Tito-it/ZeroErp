@@ -57,15 +57,17 @@ _TABELLE = {
     ResiRepository: "vendite.resi_righe",
 }
 
-# (repository, vista, FK, colonna d'ordine del documento, lista, data DESC o None)
+# (repository, vista, FK, colonne d'ordine del documento, lista, data DESC o None)
+# ⭐ Ordine e bolla partono dalla SEZIONE della vista (1 articoli, 2 oneri;
+#    20261103-51/-52): gli oneri dopo gli articoli, poi la posizione della riga.
 _DOCUMENTI = (
-    (PreventiviRepository, "vendite.vw_preventivi_righe_dettaglio", "preventivo_id", "ordine",
+    (PreventiviRepository, "vendite.vw_preventivi_righe_dettaglio", "preventivo_id", ("ordine",),
      "vendite.preventivo_righe", "data_consegna_richiesta_cliente"),
-    (OrdiniRepository, "vendite.vw_ordini_righe_dettaglio", "ordine_id", "riga_nr",
+    (OrdiniRepository, "vendite.vw_ordini_righe_dettaglio", "ordine_id", ("sezione_documento", "riga_nr"),
      "vendite.ordine_righe", "data_consegna_confermata"),
-    (DdtRepository, "vendite.vw_ddt_righe_dettaglio", "ddt_id", "riga_nr",
+    (DdtRepository, "vendite.vw_ddt_righe_dettaglio", "ddt_id", ("sezione_documento", "riga_nr"),
      "vendite.ddt_righe", None),
-    (ResiRepository, "vendite.vw_resi_righe_dettaglio", "reso_id", "riga_nr",
+    (ResiRepository, "vendite.vw_resi_righe_dettaglio", "reso_id", ("riga_nr",),
      "vendite.reso_righe", None),
 )
 
@@ -102,8 +104,10 @@ class RigheDocumentoListaTests(unittest.TestCase):
         for repo, _, _, ordine, _, _ in _DOCUMENTI:
             with self.subTest(repo=repo.__name__):
                 sql, _, _ = _pagina(repo, order_by="", order_dir=None)
-                self.assertIn(f"ORDER BY v.{ordine} ASC", sql)
-                self.assertIn("v.id ASC", sql)
+                self.assertIn(f"ORDER BY v.{ordine[0]} ASC", sql)
+                # Le colonne che seguono la prima entrano nello spareggio,
+                # crescenti, prima della chiave.
+                self.assertIn(", ".join([*(f"v.{c}" for c in ordine[1:]), "v.id ASC"]), sql)
 
     # Scopo: la pagina e' del documento indicato, e solo delle righe attive.
     def test_pagina_filtra_documento_e_righe_attive(self):
@@ -149,7 +153,7 @@ class RigheDocumentoListaTests(unittest.TestCase):
             with self.subTest(repo=repo.__name__):
                 sql, params = _lettura(lambda r=repo: r().list_righe(9))
                 self.assertIn(f"FROM {vista} v WHERE v.{fk} = %s AND v.attivo IS TRUE", sql)
-                self.assertIn(f"ORDER BY v.{ordine}, v.id", sql)
+                self.assertIn("ORDER BY " + ", ".join([*(f"v.{c}" for c in ordine), "v.id"]), sql)
                 self.assertEqual(params, [9])
 
     # Scopo: la riga singola ha la stessa proiezione della lista, e una riga

@@ -2033,6 +2033,7 @@
     "field_requires_serial": "Richiede Seriale",
     "field_requires_lotto": "Richiede lotto",
     "hint_requires_lotto": "L'articolo si movimenta per partite: ogni movimento nomina un lotto",
+    "hint_onere_struttura": "E' un onere: un addebito, non un bene. Niente magazzino, composito, lotti o matricola",
     "field_desc_fattura": "Descrizione Fattura",
     "field_fattore": "Fattore",
     "field_vendita": "Vendita",
@@ -3062,13 +3063,17 @@
         "magazzino_arrivo_mancante": "La bolla di trasferimento non indica il magazzino di arrivo.",
         "prelievi_incompleti": "Una o più righe non hanno prelievi che ne coprano la quantità: completa i prelievi prima di emettere.",
         "merce_non_prelevabile": "Un prelievo indicato non è ammesso dal magazzino (lotto, seriale o ubicazione non validi per l'articolo): aprilo dai prelievi della riga.",
-        "merce_non_disponibile": "La merce da spedire non è disponibile a magazzino in quantità sufficiente."
+        "merce_non_disponibile": "La merce da spedire non è disponibile a magazzino in quantità sufficiente.",
+        "solo_oneri": "La bolla ha solo oneri e nessuna merce: non si emette. Aggiungi la merce, oppure togli gli oneri e addebitali in commessa.",
+        "onere_non_fatturabile": "Una riga è un onere che non verrebbe mai fatturato: la causale della bolla non è fatturabile, oppure l'ordine si fattura alla conferma e allora l'onere va messo sull'ordine.",
+        "trasporto_non_dovuto": "La bolla addebita il trasporto al cliente, ma è in porto assegnato o con addebito a terzi: il cliente non ce lo deve. Togli la riga del trasporto, o cambia l'addebito del trasporto."
       },
       "correggi_qta_evasa_reason": {
         "ddt_non_in_bozza": "La quantità evasa si corregge solo finché la bolla è in bozza.",
         "riga_non_evasa": "La riga non viene da un ordine o da un reso: la quantità si modifica dalla riga.",
         "ddt_senza_origine": "La bolla non nasce da un ordine o da un reso: la quantità si modifica dalla riga.",
-        "legami_multipli": "La riga è legata a più righe d'origine: la quantità evasa non si può correggere da sola."
+        "legami_multipli": "La riga è legata a più righe d'origine: la quantità evasa non si può correggere da sola.",
+        "riga_onere": "La riga è un addebito: la correzione della quantità evasa vale solo per la merce."
       },
       "correggi_qta_evasa": "Correggi quantità evasa",
       "correggi_qta_evasa_ok": "Quantità evasa corretta",
@@ -3875,7 +3880,8 @@
       "azione_reason": {
         "ddt_collegati": "L'ordine ha già DDT collegati: la merce è uscita e per farla rientrare si registra un reso.",
         "gia_in_commessa": "L'ordine è già stato inviato a fatturazione: annulla prima le attività in commessa.",
-        "iva_mancante": "Una o più righe hanno un prezzo ma nessuna aliquota IVA. L'aliquota non si sceglie sul documento: si imposta sull'articolo, e la riga la riprende. In alternativa togli il prezzo, se la merce non si valorizza."
+        "iva_mancante": "Una o più righe hanno un prezzo ma nessuna aliquota IVA. L'aliquota non si sceglie sul documento: si imposta sull'articolo, e la riga la riprende. In alternativa togli il prezzo, se la merce non si valorizza.",
+        "solo_oneri": "L'ordine ha solo oneri e nessuna merce: non si può confermare. Aggiungi la merce a cui l'onere si riferisce, o addebitalo in commessa."
       },
       "stato_info": {
         "evaso": "L'ordine è evaso: lo stato si ricalcola dai DDT, non si imposta a mano.",
@@ -3905,7 +3911,8 @@
       "data_consegna_confermata_reason": {
         "in_bozza": "In bozza la data si cambia modificando la riga.",
         "stato_non_ammette": "In questo stato la data di consegna non si cambia più.",
-        "riga_spedita": "La merce di questa riga è già partita con un DDT: la data di consegna confermata resta quella con cui è partita."
+        "riga_spedita": "La merce di questa riga è già partita con un DDT: la data di consegna confermata resta quella con cui è partita.",
+        "riga_onere": "La riga è un onere: un onere non si spedisce e non porta date di consegna."
       },
       "azione_data_consegna_confermata": "Cambia la data di consegna confermata",
       "data_consegna_confermata_titolo": "Data di consegna confermata",
@@ -3914,6 +3921,8 @@
       "data_consegna_confermata_salvata": "Data di consegna confermata aggiornata.",
       "evasione_titolo": "Genera DDT",
       "evasione_intro": "Seleziona le righe da evadere e genera il documento di trasporto. Il DDT nasce in bozza.",
+      "evasione_oneri_nota": "Un onere dell'ordine è ancora da passare: non si evade, va da solo e intero nella prossima bolla. | {n} oneri dell'ordine sono ancora da passare: non si evadono, vanno da soli e interi nella prossima bolla.",
+      "evasione_oneri_in_bolla_nota": "Un onere dell'ordine è già partito con una bolla. | {n} oneri dell'ordine sono già partiti con una bolla.",
       "evasione_col_qta_ordinata": "Qtà ordinata",
       "evasione_col_qta_evasa": "Qtà evasa",
       "evasione_col_qta_residua": "Residuo",

@@ -190,7 +190,7 @@ function onCrea() {
     @cancel="close"
   >
     <div class="form-grid">
-      <p style="margin: 0; font-size: 0.85rem; color: var(--app-text-muted);">
+      <p class="app-dialog-intro">
         {{ t('vendite.resi.crea_intro') }}
       </p>
 

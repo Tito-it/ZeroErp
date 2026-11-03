@@ -17,7 +17,7 @@ Handler registrati:
 - HandlerConsumi     — consumi utility → commesse mensili AUTO (fan-out 1→N)
 
 Architettura:
-  Tutte le 5 fn_list_*_da_pushare SQL restituiscono 26 colonne condivise
+  Tutte le 5 fn_list_*_da_pushare SQL restituiscono le colonne condivise
   normalizzate in PushableRow. _process_rows è l'unico punto di
   orchestrazione: cicla le righe, crea/riusa commesse e upsert attivita.
 """
@@ -758,6 +758,7 @@ class BaseSourceHandler(ABC):
             prezzo_bloccato=row.prezzo_bloccato,
             pricing_mode=row.pricing_mode,
             tipo_movimento=row.tipo_movimento,
+            causale_onere_id=row.causale_onere_id,
             istanza_utility_id=row.istanza_utility_id,
             data_attivita=row.data_attivita,
             competenza_dal=row.competenza_dal,

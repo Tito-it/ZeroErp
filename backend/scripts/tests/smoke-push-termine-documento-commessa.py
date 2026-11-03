@@ -76,7 +76,6 @@ from decimal import Decimal
 
 from django.db import connection, transaction
 
-from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.vendite.db.commesse_repository import CommesseRepository
 from apps.vendite.db.pipeline_repository import VenditePipelineRepository
 from apps.vendite.services.commesse_service import pr_run_commesse_push_one
@@ -87,6 +86,7 @@ from scripts.tests._smoke_fatturazione import (
     costruisci_base_fatturazione,
     crea_articolo_di_prova,
     crea_lotto_di_prova,
+    data_documento_isolata,
 )
 
 FAIL: list[str] = []
@@ -222,7 +222,7 @@ with transaction.atomic():
 
         # Competenza ISOLATA: ~14 mesi nel futuro, meta' mese. La selezione
         # del lotto non incrocia nulla di vivo.
-        data_doc = (oggi_aziendale() + timedelta(days=425)).replace(day=15)
+        data_doc = data_documento_isolata()
         competenza = data_doc.replace(day=1)
 
         # --- la base: cliente di prova sull'emittente di prova
