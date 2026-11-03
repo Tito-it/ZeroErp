@@ -1,69 +1,96 @@
 ## 📘 Documentazione Concettuale – Funzione `pagamenti.fn_get_saldo_fattura_contabili`
 
+> **Ultimo aggiornamento**: 3 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Approfondimento tabelle:**
+> Approfondimento tabelle:
 >
-• [pagamenti.vendite_contabili_righe](/dbzero/pagamenti/tabelle/vendite_contabili_righe)  
-> • [pagamenti.vendite_contabili_righe_stati](/dbzero/pagamenti/tabelle/vendite_contabili_righe_stati)  
-> • [pagamenti.vendite_contabili](/dbzero/pagamenti/tabelle/vendite_contabili)  
+> * [pagamenti.vendite_contabili_righe](/dbzero/pagamenti/tabelle/vendite_contabili_righe) — le righe che somma
+> * [pagamenti.vendite_contabili_righe_stati](/dbzero/pagamenti/tabelle/vendite_contabili_righe_stati) — quali stati sono postabili
+> * [pagamenti.vendite_contabili](/dbzero/pagamenti/tabelle/vendite_contabili) — la testata, che deve essere non finale
+> * [pagamenti.vendite_contabili_stati](/dbzero/pagamenti/tabelle/vendite_contabili_stati) — quali stati della testata sono finali
 >
+> Approfondimento funzioni:
+>
+> * [pagamenti.fn_get_saldo_fattura](/dbzero/pagamenti/funzioni/fn_get_saldo_fattura) — le delega il dichiarato, la sua colonna `in_lavorazione`
+> * [vendite.fn_saldo_sorgente_fondo](/dbzero/vendite/funzioni/fn_saldo_sorgente_fondo) — la chiama per sapere quanto è in lavorazione sulla sorgente del fondo
+
+---
+
 ### 🎯 Scopo Principale
-(latest review 18-09-2026)  
-La funzione **`pagamenti.fn_get_saldo_fattura_contabili()`** restituisce il
-saldo contabile di una fattura calcolato sulle sole righe in stato
-`is_postabile = true`.
+
+La funzione **`pagamenti.fn_get_saldo_fattura_contabili`** restituisce il **dichiarato** di una
+fattura: la somma delle righe contabili attive, in uno stato postabile, sotto una testata non
+finale. È la sede unica di questo numero.
+
+Risponde con `saldo_contabile`, la somma, e `has_righe_postabili`, se almeno una riga conta.
 
 ---
 
-### Regole principali
+### Una riga conta finché è pronta e la sua distinta è viva
 
-* `p_fattura_id` obbligatorio (`> 0`); un valore non positivo è un errore
-  **tecnico** (`E_PAGAMENTI_CHIAMATA_NON_VALIDA`): non esce da nessuna
-  interfaccia.
-* ⭐ `p_escludi_contabile_riga_id` (facoltativo, dal 18-09-2026): la riga
-  indicata **non si conta**. È «quanto era dichiarato *prima* di me» per chi
-  sta scrivendo o correggendo proprio quella riga — lo stesso parametro, con lo
-  stesso mestiere, di `fn_get_saldo_rata` e del nucleo `fn_get_saldi_rate`. La
-  riceve da [`fn_get_saldo_fattura`](/dbzero/pagamenti/funzioni/fn_get_saldo_fattura),
-  che **delega** il dichiarato a questa funzione invece di riscriverne il
-  predicato. Se è fornito e non positivo: errore tecnico.
-* Considera solo:
-  * `vendite_contabili_righe.attivo = true`
-  * `vendite_contabili_righe_stati.is_postabile = true`
-  * testata contabile con stato **non finale** (`vendite_contabili_stati.is_final = false`).
-    ⚠️ Dal 21-08-2026 lo stato della testata è obbligatorio: il vecchio ripiego
-    «`stato_id NULL` trattato come non finale» non esiste più.
+Entrano nella somma solo le righe che hanno insieme queste tre cose:
+
+* la riga è attiva;
+* il suo stato è postabile (`vendite_contabili_righe_stati.is_postabile`);
+* la sua testata contabile è in uno stato **non finale** (`vendite_contabili_stati.is_final`).
+
+Una riga sotto una distinta chiusa non è in lavorazione: è ferma. Lo stato della testata è
+sempre valorizzato, quindi non c'è un caso «testata senza stato» da trattare.
 
 ---
 
-### 🕘 Storia
+### ⭐ Una sede sola per il dichiarato
 
-* **18-09-2026** — `p_escludi_contabile_riga_id` (P-6 di
-  `brief-db-distinta-ricerca-rate`, `20260918-01`). Cambia la firma: `DROP` +
-  `CREATE`, perché un secondo overload accanto alla vecchia `(bigint)` sarebbe
-  stato ambiguo per ogni chiamata a un argomento.
-* **21-08-2026** — cade il ramo «testata senza stato»; guard di chiamata sul
-  codice registrato.
-* **13-02-2026** — prima stesura.
+[`fn_get_saldo_fattura`](/dbzero/pagamenti/funzioni/fn_get_saldo_fattura) non riscrive il
+predicato: chiede a questa funzione il proprio `in_lavorazione`. Due formule per la stessa regola
+divergono al primo aggiustamento.
 
----
-
-### Output
-
-Ritorna una riga con:
-
-* `saldo_contabile` (numeric)
-* `has_righe_postabili` (boolean)
+⚠️ Chi legge il saldo di un documento prende `in_lavorazione` da `fn_get_saldo_fattura`, non da
+qui: il numero è lo stesso, e leggerlo da due funzioni gli darebbe due sorgenti con lo stesso
+nome.
 
 ---
 
-### Esempio d’uso
+### ⭐ Escludere una riga: «quanto era dichiarato prima di me»
 
-```sql
-SELECT *
-FROM pagamenti.fn_get_saldo_fattura_contabili(123);
-```
+`p_escludi_contabile_riga_id`, facoltativo: la riga indicata **non si conta**. Serve a chi sta
+scrivendo o correggendo proprio quella riga, che altrimenti si confronterebbe con sé stessa. È lo
+stesso parametro, con lo stesso mestiere, di `fn_get_saldo_rata` e del nucleo
+`fn_get_saldi_rate`; lo riceve da `fn_get_saldo_fattura`, che glielo passa.
+
+---
+
+### Codici errore
+
+* `E_PAGAMENTI_CHIAMATA_NON_VALIDA` (`TECNICO`) — `p_fattura_id` nullo o non positivo, oppure
+  un'esclusione fornita e non positiva: valori che nessuna interfaccia produce, e l'operatore non
+  ha niente da correggere.
+
+---
+
+### Test
+
+* `db/pgtap/pagamenti/test-vendite-contabili-stato-obbligatorio.sql` — una riga postabile sotto
+  una distinta non finale entra nel saldo, ed esce quando la distinta passa a uno stato finale;
+  `has_righe_postabili` segue lo stesso confine; il rifiuto del parametro.
+* `db/pgtap/pagamenti/test-fn-get-saldo-fattura-tre-numeri.sql` — coincide con
+  `in_lavorazione` della funzione del documento, riceve l'esclusione, rifiuta un'esclusione non
+  positiva.
+* `db/pgtap/pagamenti/test-righe-contabili-eliminazione-v1.sql` — una riga nuova in bozza entra
+  nel dichiarato, una riga eliminata ne esce.
+
+---
+
+### Note di migrazione
+
+* 2026-02-13 — prima stesura.
+* 2026-08-21 — cade il ramo «testata senza stato», reso impossibile dal `NOT NULL` sullo stato
+  della testata; il rifiuto dei parametri passa al codice registrato.
+* 2026-09-18 — nasce `p_escludi_contabile_riga_id`.
+  Cambiando la firma la funzione è stata ricreata, perché un secondo overload accanto alla
+  vecchia versione a un argomento sarebbe stato ambiguo per ogni chiamata.
 
 ---
 

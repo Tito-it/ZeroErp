@@ -1,142 +1,152 @@
 ## 📘 Documentazione Concettuale – Funzione `pagamenti.fn_get_saldo_fattura`
 
+> **Ultimo aggiornamento**: 3 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Approfondimento tabelle:**
+> Approfondimento tabelle:
 >
-• [pagamenti.vendite_movimenti](/dbzero/pagamenti/tabelle/vendite_movimenti)  
-> • [pagamenti.centri_riscossione](/dbzero/pagamenti/tabelle/centri_riscossione)  
-> • [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
+> * [pagamenti.vendite_movimenti](/dbzero/pagamenti/tabelle/vendite_movimenti) — i movimenti registrati che abbassano il residuo
+> * [pagamenti.centri_riscossione](/dbzero/pagamenti/tabelle/centri_riscossione) — i due flag che separano la cassa dai trasferimenti
+> * [vendite.fatture](/dbzero/vendite/tabelle/fatture) — il totale da pagare del documento
 >
-**Funzioni sorelle:**
+> Approfondimento viste:
 >
-• [pagamenti.fn_get_saldo_rata](/dbzero/pagamenti/funzioni/fn_get_saldo_rata)  
-> • [pagamenti.fn_get_saldo_fattura_contabili](/dbzero/pagamenti/funzioni/fn_get_saldo_fattura_contabili)  
+> * [pagamenti.vw_eccedenze_da_sistemare](/dbzero/pagamenti/views/vw_eccedenze_da_sistemare) — legge il saldo del documento per trovare le eccedenze
 >
+> Approfondimento funzioni:
+>
+> * [pagamenti.fn_get_saldo_fattura_contabili](/dbzero/pagamenti/funzioni/fn_get_saldo_fattura_contabili) — la sede del dichiarato, a cui delega `in_lavorazione`
+> * [pagamenti.fn_get_saldo_rata](/dbzero/pagamenti/funzioni/fn_get_saldo_rata) — la sorella della rata, con la stessa forma
+> * [vendite.fn_saldo_sorgente_fondo](/dbzero/vendite/funzioni/fn_saldo_sorgente_fondo) — chi ne usa il residuo per il fondo fattura
+>
+> Guide:
+>
+> * [Gestione dei pagamenti](/guide/gestione-dei-pagamenti) — la regola dei saldi, per chi non è tecnico
+
+---
+
 ### 🎯 Scopo Principale
-(latest review 18-09-2026)  
-La funzione **`pagamenti.fn_get_saldo_fattura()`** risponde a **tre domande
-diverse su un documento**, e tenerle separate è il motivo per cui esiste:
+
+La funzione **`pagamenti.fn_get_saldo_fattura`** restituisce il saldo di una fattura in tre
+numeri: quanto manca da registrare, quanto è già dichiarato e non registrato, e quanto di ciò che
+è registrato è denaro davvero arrivato. Tenere separate le tre domande è il motivo per cui esiste.
 
 | Colonna | Domanda a cui risponde |
 | --- | --- |
-| `saldo` | quanto manca ancora da **registrare** su questa fattura |
+| `saldo` | quanto manca ancora da **registrare** su questa fattura: il totale da pagare meno i movimenti attivi |
 | `in_lavorazione` | quanto è già stato **dichiarato** e non ancora registrato |
 | `incassato` | quanto di ciò che è registrato è **denaro davvero arrivato** |
+| `has_movimenti` | se almeno un movimento attivo ha toccato la fattura |
+
+⭐ È la **stessa forma e lo stesso ordine** di
+[`fn_get_saldo_rata`](/dbzero/pagamenti/funzioni/fn_get_saldo_rata): documento e rata
+rispondono con lo stesso vocabolario, ed è la base su cui nascerà il saldo **cliente**.
 
 ---
 
-### ⭐ Perché «incassato» non è «saldato»
+### ⭐ «Incassato» non è «saldato»
 
-Un movimento su un centro di riscossione **interno** — il fondo fattura, la
-compensazione — **salda il documento**: il denaro si è mosso davvero, per
-trasferimento. Ma **in banca non è entrato niente**.
+Un movimento su un centro di riscossione **interno** (il fondo fattura, la
+compensazione) **salda il documento**: il denaro si è mosso davvero, per trasferimento. Ma **in banca non è
+entrato niente**.
 
-Chi misura gli incassi sommando tutti i movimenti sta misurando un'altra cosa e
-non lo sa. Da qui la terza colonna, che somma **solo** i movimenti il cui centro
-è di cassa.
+Chi misura gli incassi sommando tutti i movimenti sta misurando un'altra cosa e non lo sa. Da qui
+la terza colonna, che somma **solo** i movimenti il cui centro è di cassa.
 
-⚠️ Un movimento **senza centro** non entra in `incassato`: «canale non
-dichiarato» non è «denaro arrivato», e su una misura di cassa si sta dalla parte
-prudente.
+⚠️ Un movimento **senza centro** non entra in `incassato`: «canale non dichiarato» non è
+«denaro arrivato», e su una misura di cassa si sta dalla parte prudente.
 
 ⇒ **Regola d'uso**: qualunque colonna, badge o totale che dica «incassato» deve
-dichiarare **quale dei due** è. «Questa fattura è a posto?» si risponde col
-`saldo`; «quanto è entrato in banca?» con `incassato`.
+dichiarare **quale dei due** è. «Questa fattura è a posto?» si risponde col `saldo`; «quanto è entrato in
+banca?» con `incassato`.
 
 ---
 
-### ⭐ `in_lavorazione` non è calcolato qui
+### ⭐ `in_lavorazione` non si calcola qui
 
 Il **dichiarato** ha una sede sola, ed è
 [`fn_get_saldo_fattura_contabili`](/dbzero/pagamenti/funzioni/fn_get_saldo_fattura_contabili):
-somma le righe contabili in stato *postabile* sotto una testata **non finale**.
-Questa funzione gliela **chiede**, non la ricalcola.
+somma le righe contabili in stato *postabile* sotto una testata **non finale**. Questa funzione
+gliela **chiede**, non la ricalcola.
 
-Non è pignoleria: due formule per la stessa regola divergono al primo
-aggiustamento, e sono numeri su cui qualcuno decide se sollecitare un cliente.
-⚠️ La funzione del dichiarato **resta** anche perché espone `has_righe_postabili`,
-che serve a `vendite.fn_saldo_sorgente_fondo` e che questa non dà.
+Non è pignoleria: due formule per la stessa regola divergono al primo aggiustamento, e sono
+numeri su cui qualcuno decide se sollecitare un cliente.
 
-⚠️ E `saldo` e `in_lavorazione` **non si sommano**: sono due stati diversi dello
-stesso denaro (promesso / registrato), e sommarli fa perdere di vista quale si
-sta guardando.
+⚠️ E `saldo` e `in_lavorazione` **non si sommano**: sono due stati diversi dello stesso denaro
+(promesso, registrato), e sommarli fa perdere di vista quale si sta guardando.
 
 ---
 
-### Regole principali
+### ⭐ Escludere una riga: «quanto c'era prima di me»
 
-* `p_fattura_id` obbligatorio (`> 0`); se manca o non è positivo l'errore è
-  **tecnico**: quel valore non esce da nessuna interfaccia, lo produce un
+`p_escludi_contabile_riga_id`, facoltativo, serve a chi sta correggendo una riga contabile:
+chiede il saldo del documento *senza* quella riga, altrimenti si confronterebbe con sé stesso e
+leggerebbe come «già dichiarato» l'importo che sta cambiando.
+
+La riga esclusa esce da **entrambi** i conti:
+
+* dal dichiarato, ed è la funzione delegata a toglierla, non una seconda esclusione scritta qui;
+* dal registrato: il movimento che quella riga ha scritto, se è già stata registrata.
+
+È la stessa forma e lo stesso parametro della sorella
+[`fn_get_saldo_rata`](/dbzero/pagamenti/funzioni/fn_get_saldo_rata): lo stesso nome deve
+rispondere alla stessa domanda su rata e documento, o il pannello dei saldi direbbe due cose
+diverse con le stesse parole. Senza esclusione i numeri sono quelli di sempre.
+
+---
+
+### ⚠️ «Non esiste» e «non la vedi» sono lo stesso errore
+
+La fattura ha la row security: una fattura inesistente e una fuori perimetro danno lo **stesso**
+errore, per scelta. Chi ha bisogno della differenza la chiede a una funzione che gira fuori dalla
+row security.
+
+Conta solo i movimenti attivi.
+
+---
+
+### ⚠️ Non è dichiarata `STABLE`
+
+Il ramo d'errore scrive nel registro degli errori, e promettere stabilità su una funzione che in
+un ramo scrive autorizzerebbe il planner a scelte che quel ramo non regge.
+
+---
+
+### Codici errore
+
+* `E_PAGAMENTI_CHIAMATA_NON_VALIDA` (`TECNICO`) — `p_fattura_id` nullo o non positivo, oppure
+  un'esclusione fornita e non positiva: valori che nessuna interfaccia produce, li produce un
   chiamante rotto.
-* ⭐ `p_escludi_contabile_riga_id` (facoltativo, dal 18-09-2026): **«quanto c'era
-  prima di me»**. Chi sta correggendo una riga contabile chiede il saldo del
-  documento *senza* quella riga — altrimenti si confronterebbe con sé stesso e
-  leggerebbe come «già dichiarato» l'importo che sta cambiando. La riga esclusa
-  esce da **entrambi** i conti: dal dichiarato (è la delegata a toglierla, non
-  una seconda esclusione scritta qui) e dal registrato (il movimento che quella
-  riga ha scritto, se è già stata registrata). È la stessa forma e lo stesso
-  parametro della sorella
-  [`fn_get_saldo_rata`](/dbzero/pagamenti/funzioni/fn_get_saldo_rata): lo stesso
-  nome deve rispondere alla stessa domanda su rata e documento. Se è fornito e
-  non positivo, l'errore è tecnico come per il primo parametro.
-* La fattura deve esistere. ⚠️ La tabella ha la **RLS**: «non esiste» e «non la
-  vedi» danno lo **stesso** errore, per scelta — chi ha bisogno della differenza
-  la chiede a una funzione che gira fuori dalla row security.
-* Considera solo i movimenti `attivo = true`.
-* ⚠️ Non è dichiarata `STABLE`: il ramo d'errore scrive nel registro degli
-  errori, e promettere stabilità su una funzione che in un ramo scrive
-  autorizzerebbe il planner a scelte che quel ramo non regge.
+* `E_FATTURA_NON_TROVATA` (`NON_TROVATO`) — la fattura non esiste, oppure non è visibile.
 
 ---
 
-### Output
+### Test
 
-Ritorna **una** riga con:
-
-* `saldo` (numeric) — residuo del documento
-* `in_lavorazione` (numeric) — dichiarato non ancora registrato
-* `incassato` (numeric) — cassa vera
-* `has_movimenti` (boolean)
-
-⭐ È la **stessa forma e lo stesso ordine** di
-[`fn_get_saldo_rata`](/dbzero/pagamenti/funzioni/fn_get_saldo_rata): documento e
-rata rispondono con lo stesso vocabolario, ed è la base su cui nascerà il saldo
-**cliente**.
+* `db/pgtap/pagamenti/test-fn-get-saldo-fattura-tre-numeri.sql` — i tre numeri lungo la vita
+  di una fattura: una riga pronta entra in `in_lavorazione` senza muovere il residuo, il posting
+  su banca abbassa il residuo e alza `incassato`, un movimento su un centro fondo fattura abbassa
+  il residuo e **non** tocca `incassato`; `in_lavorazione` coincide con la funzione delegata;
+  l'esclusione di una riga, pronta o già postata; la quadratura residuo = totale − movimenti; i
+  rifiuti dei parametri e della fattura inesistente.
 
 ---
 
-### Esempio d’uso
+### Note di migrazione
 
-```sql
-SELECT *
-FROM pagamenti.fn_get_saldo_fattura(123);
-
--- Il pannello dei saldi mentre si corregge la riga contabile 4567:
--- i suoi 500 non compaiono fra gli «in lavorazione».
-SELECT *
-FROM pagamenti.fn_get_saldo_fattura(123, 4567);
-```
-
----
-
-### 🕘 Storia
-
-* **18-09-2026** — `p_escludi_contabile_riga_id` (P-6 di
-  `brief-db-distinta-ricerca-rate`): l'esclusione «prima di sé» esisteva solo
-  sulla rata, e chi correggeva una riga **senza rata** (fondo fattura, riga
-  manuale «fattura sì, rata no») leggeva un dichiarato che contava la riga
-  stessa. Cambia la firma, quindi `DROP` + `CREATE` — e la vista
-  `vw_eccedenze_da_sistemare`, che dipende dalla funzione, è stata ricreata
-  identica nello stesso changeSet (`20260918-02`). Nessun numero cambia per chi
-  chiama a un argomento.
-* **25-08-2026** — da due colonne a quattro (S5-1 del cantiere incassi). Fino a
-  qui la distinzione fra *registrato* e *incassato* esisteva sulla **rata** e non
-  sul **documento**, cioè mancava proprio al livello che si guarda per primo.
-  ⚠️ Nessun predicato preesistente è cambiato: `saldo` e `has_movimenti`
-  rispondono esattamente come prima.
-* **21-08-2026** — i due `E_GENERICO` passano ai codici registrati.
-* **13-02-2026** — prima stesura.
+* 2026-02-13 — prima stesura.
+* 2026-08-21 — i due `E_GENERICO` passano ai codici registrati.
+* 2026-08-25 — da due colonne a quattro. Fino ad allora la
+  distinzione fra registrato e incassato esisteva sulla rata e non sul documento, cioè mancava
+  proprio al livello che si guarda per primo. Nessun predicato preesistente è cambiato: `saldo`
+  e `has_movimenti` rispondevano come prima.
+* 2026-09-18 — nasce `p_escludi_contabile_riga_id`:
+  l'esclusione «prima di sé» esisteva solo sulla rata, e chi correggeva una riga **senza rata**
+  (fondo fattura, riga manuale «fattura sì, rata no») leggeva un dichiarato che contava la riga
+  stessa. Cambiando la firma la funzione è stata ricreata, e con lei, identica, la vista
+  `vw_eccedenze_da_sistemare` che ne dipende. Nessun numero è cambiato per chi chiama con un
+  argomento solo.
 
 ---
 

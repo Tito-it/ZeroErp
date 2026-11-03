@@ -1,76 +1,115 @@
 ## 📘 Documentazione Concettuale – Tabella `pagamenti.vendite_contabili_stati`
 
+> **Ultimo aggiornamento**: 3 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Approfondimento tabelle:**
+> Approfondimento tabelle:
 >
-• [pagamenti.vendite_contabili](/dbzero/pagamenti/tabelle/vendite_contabili)  
-> • [pagamenti.vendite_contabili_righe_stati](/dbzero/pagamenti/tabelle/vendite_contabili_righe_stati)  
+> * [pagamenti.vendite_contabili](/dbzero/pagamenti/tabelle/vendite_contabili) — la testata che porta lo stato
+> * [pagamenti.transizioni_stati_contabile](/dbzero/pagamenti/tabelle/transizioni_stati_contabile) — i passaggi ammessi fra questi stati
+> * [pagamenti.vendite_contabili_righe_stati](/dbzero/pagamenti/tabelle/vendite_contabili_righe_stati) — il catalogo gemello, per le righe
 >
+> Approfondimento funzioni:
+>
+> * [pagamenti.fn_posta_contabile](/dbzero/pagamenti/funzioni/fn_posta_contabile) — legge `is_registrabile`
+> * [pagamenti.trgfn_vendite_contabili_guard_validazione](/dbzero/pagamenti/funzioni/trgfn_vendite_contabili_guard_validazione) — legge `righe_lavorabili` per l'annullo
+> * [pagamenti.trgfn_vendite_contabili_righe_guard_distinta_finale](/dbzero/pagamenti/funzioni/trgfn_vendite_contabili_righe_guard_distinta_finale) — congela le righe sotto `righe_lavorabili = false`
+>
+> Guide:
+>
+> * [Frontend standards](/dev/frontend/frontend-standards) — l'informazione di stato nel drawer (`infoKey`)
+
+---
+
 ### 🎯 Scopo Principale
-(latest review 13-02-2026)  
-La tabella **`pagamenti.vendite_contabili_stati`** definisce il lookup
-degli stati della **testata contabile vendite**.
+
+Il catalogo degli stati della distinta contabile: `BOZZA`, `IMPORTATA`, `VALIDATA`,
+`CHIUSA`, `ANNULLATA`. Oltre al codice, ogni stato dichiara se è finale, se da lì si può
+registrare e se le righe sotto di lui si lavorano ancora.
 
 ---
 
-### Campi chiave (semantica)
+### ⭐ Le domande si fanno al catalogo, non al nome dello stato
 
-* `codice`: codice stato funzionale (BOZZA, IMPORTATA, VALIDATA, CHIUSA, ANNULLATA).
-* `descrizione`: testo descrittivo dello stato.
-* `is_final`: indica se lo stato e` terminale.
-* `is_registrabile` *(18-09-2026, D20-d)*: «da questo stato si puo` registrare?».
-  `true` **solo** su `VALIDATA`. La legge `pagamenti.fn_posta_contabile` (guard 3)
-  al posto del letterale `'VALIDATA'` — stesso codice `E_CONTABILE_NON_REGISTRABILE`,
-  stessa frase, cambia **chi lo dice** — e il dettaglio della distinta la espone
-  come `stato_is_registrabile`: «Registra» si spegne col motivo invece di finire in
-  409 (rilievo §1 del terzo collaudo). Una bandiera e non una `fn_check`: il
-  motivo e` uno e statico, lo stato. Default `false`, fail-closed su uno stato
-  nuovo. ⚠️ Il valore sta nel CSV (mirror `20260821-30`), mai in un `UPDATE`.
-* `righe_lavorabili` *(30-09-2026, D-1)*: «sotto questo stato le righe della
-  distinta si lavorano ancora?». `false` **solo** su `ANNULLATA`. ⭐ `is_final` non
-  basta: `CHIUSA` e `ANNULLATA` sono entrambe finali ma opposte per le righe.
-  Sotto una chiusa una sospesa ha ancora la registrazione tardiva e una scartata
-  si riprende; sotto un'annullata non c'e` niente da dire, perche` quel denaro per
-  il registro non e` mai arrivato. La leggono il guard delle righe (quinta mossa:
-  sotto `false` ogni `UPDATE` e` rifiutato), la check di eliminabilita`, la coda del
-  riconciliatore (le righe escono dalla lista di lavoro) e il frontend (azioni di
-  riga spente). Default `false`, fail-closed. ⚠️ Il valore sta nel CSV, mai in un
-  `UPDATE`. Brief: `brief-db-righe-distinta-annullata-fuori-dalle-code`.
-* `ordine`: priorita`/sequenza di avanzamento stato.
-* `attivo`: abilita/disabilita stato per nuovi processi.
-* `meta`: estensioni configurative. Dal 2026-09-15 porta su **tutte e cinque**
-  le righe la chiave i18n `nessuna_azione_key` (`pagamenti.distinte.stato_info.<stato>`):
-  e` il testo che il drawer della distinta mostra per dire *dove si e`* (bozza: si
-  digita · validata: pronta da registrare, il denaro non e` ancora registrato ·
-  registrata …). Il backend la trasporta come `stato_info_key`, il frontend la passa
-  a `DrawerActionsBar :info-key`: e` lo stesso meccanismo degli altri cataloghi di
-  stato, descritto in
-  [frontend-standards §«L'informazione di stato — prop `infoKey`»](/dev/frontend/frontend-standards).
-  ⚠️ Il testo **non** sta qui: qui c'e` solo l'indirizzo i18n, e cambiarlo e` un
-  edit del CSV (`80_data/sql/pagamenti/vendite_contabili_stati.csv`), mai un `UPDATE`.
+Due bandiere rispondono alle domande che il codice altrimenti scriverebbe come letterali:
+
+* **`is_registrabile`** — «da questo stato si può registrare?». Vera **solo** su
+  `VALIDATA`. La legge [fn_posta_contabile](/dbzero/pagamenti/funzioni/fn_posta_contabile)
+  per rifiutare la registrazione (`E_CONTABILE_NON_REGISTRABILE`), e il dettaglio della
+  distinta la espone per spegnere «Registra» col motivo invece di finire in un rifiuto. Una
+  bandiera e non una funzione di check: il motivo è uno e statico, lo stato.
+* **`righe_lavorabili`** — «sotto questo stato le righe della distinta si lavorano
+  ancora?». Falsa **solo** su `ANNULLATA`.
+
+Entrambe valgono `false` per default: uno stato nuovo è fail-closed finché qualcuno non
+dichiara il contrario.
 
 ---
 
-### Regole principali
+### ⚠️ `is_final` non basta: le due finali sono opposte per le righe
 
-* `codice` univoco.
-* Stati finali marcati con `is_final = true`.
-* Si registra **solo** dagli stati con `is_registrabile = true` — oggi `VALIDATA`.
-* Sotto gli stati con `righe_lavorabili = false` — oggi `ANNULLATA` — le righe si
-  **leggono soltanto**; e in quegli stati entra solo una distinta `MANUALE`.
-* `ordine` usato come supporto per ordinamento operativo.
+`CHIUSA` e `ANNULLATA` sono entrambe finali, ma per le righe dicono cose opposte. Sotto una
+chiusa una sospesa ha ancora la registrazione tardiva e una scartata si riprende; sotto
+un'annullata non c'è niente da dire, perché quel denaro per il registro non è mai arrivato.
+
+Per questo esiste `righe_lavorabili`, e la leggono:
+
+* il guard delle righe ([trgfn_vendite_contabili_righe_guard_distinta_finale](/dbzero/pagamenti/funzioni/trgfn_vendite_contabili_righe_guard_distinta_finale)):
+  sotto `false` ogni scrittura su una riga è rifiutata;
+* la check di eliminabilità della riga;
+* la coda del riconciliatore: le righe escono dalla lista di lavoro;
+* il frontend, che spegne le azioni di riga;
+* il guard di validazione della testata
+  ([trgfn_vendite_contabili_guard_validazione](/dbzero/pagamenti/funzioni/trgfn_vendite_contabili_guard_validazione)):
+  in uno stato con `righe_lavorabili = false` entra solo una distinta `MANUALE`.
 
 ---
 
-### Esempio d’uso
+### Il testo dello stato è un indirizzo, non una frase
 
-```sql
-SELECT id, codice, descrizione, is_final
-FROM pagamenti.vendite_contabili_stati
-WHERE attivo IS TRUE
-ORDER BY ordine, id;
-```
+Il `meta` di ogni stato porta la chiave i18n `nessuna_azione_key`
+(`pagamenti.distinte.stato_info.<stato>`): è il testo che il drawer della distinta mostra
+per dire *dove si è* (bozza: si digita · validata: pronta da registrare, il denaro non è
+ancora registrato · registrata …). Il backend la trasporta come `stato_info_key`, il
+frontend la passa alla barra delle azioni del drawer: è lo stesso meccanismo degli altri
+cataloghi di stato, descritto in
+[frontend-standards](/dev/frontend/frontend-standards) («L'informazione di stato»).
+
+⚠️ Il testo **non** sta qui: qui c'è solo l'indirizzo.
+
+---
+
+### ⛔ I valori si cambiano nel CSV, mai con un `UPDATE`
+
+Le bandiere e il `meta` sono seme del catalogo: la loro sede è il CSV
+`80_data/sql/pagamenti/vendite_contabili_stati.csv`. Un `UPDATE` a mano non sta nel seme:
+un database costruito da zero non lo avrebbe, e il prossimo caricamento del CSV lo
+riscriverebbe.
+
+L'id di `BOZZA` (1) è un contratto: è il default della colonna `stato_id` della testata,
+perché un default di colonna non può cercare uno stato per codice.
+
+---
+
+### Test
+
+* `db/pgtap/pagamenti/test-vendite-contabili-stato-obbligatorio.sql` — l'id 1 è `BOZZA`,
+  contratto del default della testata.
+* `db/pgtap/pagamenti/test-righe-distinta-annullata-congelate-v1.sql` — `righe_lavorabili`:
+  la bandiera c'è, fail-closed, e sotto un'annullata le righe si leggono soltanto.
+* `db/pgtap/pagamenti/test-fn-posta-contabile.sql` — una distinta non registrabile non si
+  registra.
+
+---
+
+### Note di migrazione
+
+* 2026-02-13 — prima revisione del catalogo.
+* 2026-09-15 — il `meta` di tutti e cinque gli stati riceve `nessuna_azione_key`.
+* 2026-09-18 — nasce `is_registrabile`: la registrazione smette di confrontare il
+  letterale `'VALIDATA'`.
+* 2026-09-30 — nasce `righe_lavorabili`.
 
 ---
 

@@ -3,7 +3,7 @@
 -- pgTAP test per Zero ERP
 -- Test: il REGISTRO delle sistemazioni — la tabella e i suoi guard
 --
--- Elenco test (plan 12):
+-- Elenco test (plan 14):
 --  1) Riferimenti minimi presenti
 --  2) La tabella si chiama `sistemazioni`, e `compensazioni` non esiste piu'
 --  3) ⭐ E nessun oggetto suo nomina ancora il vecchio nome
@@ -15,7 +15,9 @@
 --  9) ⭐ Due documenti di clienti diversi sono rifiutati, e la frase lo dice
 -- 10) Un emittente dichiarato diverso da quello della fattura e' rifiutato
 -- 11) Un atto non nasce gia' CONFERMATO
--- 12) Assert finale cleanup
+-- 12) 🔴 Una COMPENSAZIONE che registra su una distinta fuori dal centro delle compensazioni e' rifiutata
+-- 13) ...e l'atto e' rimasto in BOZZA
+-- 14) Assert finale cleanup
 --
 -- Scopo:
 --  - collaudare S4-1 e S4-2: il guscio `compensazioni` e' diventato il registro
@@ -31,6 +33,11 @@
 --    `throws_like` sulla FRASE, non solo sullo SQLSTATE: la domanda «di chi
 --    sono?» si fa fuori dalla row security, e un guard che la facesse sotto
 --    direbbe «di un altro cliente» anche quando il cliente e' lo stesso.
+--  - 🔴 il test 12 presidia E_CENTRO_NON_ABILITATO_COMPENSAZIONE: la distinta
+--    di una compensazione sta sul centro dedicato (is_compensazione), perche'
+--    quel denaro non entra da nessuna banca. La madre la crea li', ma il guard
+--    tiene la regola per ogni scrittore: si prova con un UPDATE scritto a
+--    mano, nell'istruzione unica con cui un atto diventa CONFERMATO.
 --
 -- Piano: brief-db-posting-e-abbinamento-rata.md
 --        §2.3-bis S4-1/S4-2 · Decisioni: brief madre D15-b, D15-c, D15-e · lotto 7
@@ -45,7 +52,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 -- ⚠️ 3. VINCOLI DIFFERITI.
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(12);
+SELECT plan(14);
 
 -- ============================================================
 -- Fixture — due fatture dello stesso cliente e una di un altro
@@ -248,9 +255,75 @@ SELECT throws_ok(
 ) FROM tmp_ref r;
 
 -- ============================================================
--- 12. Cleanup
+-- 12/13. La distinta di una compensazione sta sul centro delle compensazioni
 -- ============================================================
-SELECT ok(true, '12) Cleanup: la transazione viene annullata, nessun residuo');
+CREATE FUNCTION pg_temp.codice_rifiuto(p_sql text)
+RETURNS text
+LANGUAGE plpgsql
+AS $fn$
+DECLARE
+    v_codice text;
+BEGIN
+    BEGIN
+        EXECUTE p_sql;
+        RETURN 'NESSUN_RIFIUTO';
+    EXCEPTION WHEN OTHERS THEN
+        GET STACKED DIAGNOSTICS v_codice = CONSTRAINT_NAME;
+        RETURN COALESCE(NULLIF(v_codice, ''), 'SQLSTATE ' || SQLSTATE);
+    END;
+END;
+$fn$;
+
+CREATE TEMP TABLE tmp_atto_comp AS
+WITH ins AS (
+  INSERT INTO pagamenti.sistemazioni
+      (destinazione, importo, cliente_soggetto_ruolo_id, emittente_soggetto_ruolo_id,
+       fattura_origine_id, fattura_destinazione_id, motivo, meta)
+  SELECT 'COMPENSAZIONE', 20, r.cliente_sr, r.emittente_sr, r.fattura_a, r.fattura_b,
+         'test centro compensazione',
+         jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti))
+    FROM tmp_ref r
+  RETURNING id
+)
+SELECT id AS atto FROM ins;
+
+-- Una distinta sul centro BANCA: quello di un incasso, non di una compensazione.
+CREATE TEMP TABLE tmp_distinta_banca AS
+WITH ins AS (
+  INSERT INTO pagamenti.vendite_contabili
+      (centro_riscossione_id, data_contabile, data_registrazione, stato_id, origine, meta)
+  SELECT (SELECT c.id FROM pagamenti.centri_riscossione c
+           WHERE c.attivo IS TRUE AND c.codice_interno = 'BANCA' ORDER BY c.id LIMIT 1),
+         script.fn_data_operativa(), script.fn_data_operativa(),
+         (SELECT s.id FROM pagamenti.vendite_contabili_stati s
+           WHERE s.codice_interno = 'BOZZA' ORDER BY s.id LIMIT 1),
+         'GENERATA',
+         jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti))
+  RETURNING id
+)
+SELECT id FROM ins;
+
+SELECT is(
+  pg_temp.codice_rifiuto(format(
+    $sql$UPDATE pagamenti.sistemazioni
+            SET stato = 'CONFERMATA', contabile_id = %s,
+                data_esecuzione = now(), user_esecuzione = current_user
+          WHERE id = %s$sql$,
+    (SELECT id FROM tmp_distinta_banca), (SELECT atto FROM tmp_atto_comp))),
+  'E_CENTRO_NON_ABILITATO_COMPENSAZIONE',
+  '12) Una COMPENSAZIONE che registra su una distinta del centro BANCA e'' rifiutata dal guard'
+);
+
+SELECT is(
+  (SELECT s.stato::text FROM pagamenti.sistemazioni s WHERE s.id = (SELECT atto FROM tmp_atto_comp)),
+  'BOZZA',
+  '13) ...e l''atto e'' rimasto in BOZZA, senza distinta'
+);
+
+-- ============================================================
+-- 14. Cleanup
+-- ============================================================
+SELECT ok(true, '14) Cleanup: la transazione viene annullata, nessun residuo');
 
 SELECT * FROM finish();
 ROLLBACK;
