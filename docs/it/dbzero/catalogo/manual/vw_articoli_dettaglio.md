@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Vista `catalogo.vw_articoli_dettaglio`
 
+> **Ultimo aggiornamento**: 3 novembre 2026
+
 > 👀 **Vedi anche**
 >
 Approfondimenti tabelle:  
@@ -14,7 +16,7 @@ Approfondimenti tabelle:
 
 ---
 ### 🎯 Scopo Principale
-(latest review 14-01-26)
+
 La vista **`catalogo.vw_articoli_dettaglio`** espone i dati dell’articolo con le
 anagrafiche di supporto (unita misura, tipologie, gruppi, spese, iva e natura di
 vendita), evitando join ripetitivi in applicazione.
@@ -49,6 +51,7 @@ La vista parte da `catalogo.articoli` e aggiunge:
 | `natura_vendita_id` + `natura_vendita_codice_interno`, `natura_vendita_descrizione`, `natura_vendita_destinazione_tipo` | Natura di vendita: instradamento split post-accettazione (`destinazione_tipo` = ORDINE/COMMESSA/CONTRATTO). |
 | `attivo`, `storicizza`, `tx_id`                                | Stato e tracciamento.                  |
 | `is_solo_componente`                                           | Articolo utilizzabile solo come componente. |
+| `e_onere`, `causale_onere_id`                                  | L'articolo è un onere (un addebito, non un bene) e la sua causale. |
 
 (Sono esposti anche i campi di audit e note di `catalogo.articoli`.)
 
@@ -97,6 +100,24 @@ quando è vera, e l'operatore deve poterla vedere e impostare. **Senza il lock B
 `requires_serial` (il lotto non entra nella distinta): il BE non la mette fra i
 `non_editable_fields`, il drawer non la disabilita. Nessuna `security_invoker`, e non va
 aggiunta. Brief: `brief-db-magazzino-lotto-2-motore`, sezione 4.9.
+
+### 🔄 rev 2026-11-03 — l'articolo dice se è un onere
+
+Due colonne in coda (`20261103-53`): `e_onere`, vero quando l'articolo ha una
+causale d'onere, e `causale_onere_id`, la causale stessa (vuota sulla merce).
+Servono al picker delle righe di documento: sulla riga d'ordine nuova il form
+nasconde le date di consegna se l'articolo scelto è un onere, invece di
+lasciarle compilare e farsi rispondere `E_RIGA_ONERE_DATA_CONSEGNA`. E al form
+articolo, che può spegnere magazzino, composito, lotto e matricola, le
+caratteristiche che il DB rifiuta su un onere.
+
+Sulla **riga** di documento la domanda «è un onere?» si fa alla vista di riga
+(`e_onere` di [vw_ordini_righe_dettaglio](/dbzero/vendite/views/vw_ordini_righe_dettaglio)),
+che guarda la natura fissata sulla riga; qui si parla dell'articolo.
+
+⚠️ Come per le colonne precedenti, il backend le elenca per nome: finché non le
+aggiunge, al frontend non arrivano. Brief: `brief-db-addebito-trasporto-ordine`,
+sezione 9.9. Verifica: `db/pgtap/catalogo/test-vw-articoli-dettaglio-e-onere-v1.sql`.
 
 ---
 {% include-markdown "signature-core.md" %}
