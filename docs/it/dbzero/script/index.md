@@ -72,7 +72,7 @@ search:
 - [fn_check_offerta_annullabile](funzioni/fn_check_offerta_annullabile.md)
 - [fn_check_operatore_invitabile](funzioni/fn_check_operatore_invitabile.md)
 - [fn_check_ordine_annullabile](funzioni/fn_check_ordine_annullabile.md) — (rev 2026-08-21 — funzione rev 2026-08-15)
-- [fn_check_ordine_confermabile](funzioni/fn_check_ordine_confermabile.md) — (rev 2026-08-29 — funzione nata il 2026-08-29)
+- [fn_check_ordine_confermabile](funzioni/fn_check_ordine_confermabile.md) — (rev 2026-11-03 — il motivo dei soli oneri · funzione nata il 2026-08-29)
 - [fn_check_ordine_data_consegna_confermata](funzioni/fn_check_ordine_data_consegna_confermata.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 1)
 - [fn_check_ordine_riga_data_consegna_confermata](funzioni/fn_check_ordine_riga_data_consegna_confermata.md)
 - [fn_check_parameter_fk_surrogate](funzioni/fn_check_parameter_fk_surrogate.md) — (latest review 02-05-2026)
@@ -144,6 +144,7 @@ search:
 - [fn_get_ba_id_da_coppia](funzioni/fn_get_ba_id_da_coppia.md) — (nata il 2026-10-21, `20261021-24`)
 - [fn_get_catasto_source_by_istanza](funzioni/fn_get_catasto_source_by_istanza.md) — La funzione **`script.fn_get_catasto_source_by_istanza(p_istanza_utilities_id)`** recupera il record catastale **"sorgente"** da utilizzare come base per una **clonazione** in caso di **subentro**.
 - [fn_get_cliente_testata_documento](funzioni/fn_get_cliente_testata_documento.md)
+- [fn_get_contabile_stato_origine](funzioni/fn_get_contabile_stato_origine.md) — Risponde lo **stato** e l'**origine** di una distinta contabile, letti fuori dalla row security. È il building block dei guard delle righe contabili, che devono giudicare la distinta anche quando chi scrive la riga non la vede.
 - [fn_get_contatti](funzioni/fn_get_contatti.md) — (latest review 25-03-26) * **Selezione univoca per tipo**   Per ogni `tipo_contatto_id` vengono restituiti **al più** un record, che rappresenta il contatto “migliore” in base al contesto richiesto.
 - [fn_get_contatto_default](funzioni/fn_get_contatto_default.md) — (latest review 25-03-26) La funzione **`script.fn_get_contatto_default`** restituisce **il contatto “di default”** per un determinato **soggetto** e, opzionalmente, per un determinato:
 - [fn_get_conto_bancario_predefinito](funzioni/fn_get_conto_bancario_predefinito.md) — (latest review 25-03-26)
@@ -225,6 +226,7 @@ search:
 - [fn_login_freno_passo](funzioni/fn_login_freno_passo.md) — (scritta il 25-09-2026)
 - [fn_login_parametri](funzioni/fn_login_parametri.md) — (scritta il 25-09-2026)
 - [fn_magazzino_dell_emittente](funzioni/fn_magazzino_dell_emittente.md)
+- [fn_natura_e_merce](funzioni/fn_natura_e_merce.md)
 - [fn_norm_testo](funzioni/fn_norm_testo.md) — (rev 2026-08-21)
 - [fn_norm_via](funzioni/fn_norm_via.md) — (rev 2026-08-21)
 - [fn_notify_permessi_catalogo](funzioni/fn_notify_permessi_catalogo.md) — (scritta il 04-10-2026)

@@ -32,7 +32,7 @@ search:
 - [trgfn_articoli_guard_flags_struttura_bom_attiva](manual/trgfn_articoli_guard_flags_struttura_bom_attiva.md)
 - [trgfn_articoli_guard_iva_bom_attiva](manual/trgfn_articoli_guard_iva_bom_attiva.md)
 - [trgfn_articoli_guard_listino_se_composito](manual/trgfn_articoli_guard_listino_se_composito.md)
-- [trgfn_articoli_guard_onere_natura](manual/trgfn_articoli_guard_onere_natura.md) — (latest review 2026-10-13)
+- [trgfn_articoli_guard_onere_natura](manual/trgfn_articoli_guard_onere_natura.md) — Un **articolo-onere** (`causale_onere_id` valorizzato) rappresenta un addebito — trasferta, urgenza, spese amministrative, penale. Dal 2026-11-03 entra anche nelle righe di ordine e bolla, come un articolo, ma resta un addebito: **non è merce** (la sua natura non va in ordine) e **non è un bene** (non sta a magazzino, non ha distinta, lotti né matricole).
 - [trgfn_articoli_guard_struttura_se_usato](manual/trgfn_articoli_guard_struttura_se_usato.md) — (latest review 2026-10-13, brief-db-articoli-ammessi-per-documento A-10)
 - [trgfn_articoli_seed_uom_base](manual/trgfn_articoli_seed_uom_base.md) — (rev 2026-08-21)
 - [trgfn_unita_misura_guard_tipo_update](manual/trgfn_unita_misura_guard_tipo_update.md) — (rev 2026-08-21)

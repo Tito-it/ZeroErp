@@ -179,6 +179,7 @@ search:
 - [fn_ddt_riga_correggi_qta_evasa](funzioni/fn_ddt_riga_correggi_qta_evasa.md)
 - [fn_ddt_riga_evasa](funzioni/fn_ddt_riga_evasa.md)
 - [fn_ddt_riga_ritira_legami](funzioni/fn_ddt_riga_ritira_legami.md)
+- [fn_ddt_trigger_ordine_testata](funzioni/fn_ddt_trigger_ordine_testata.md)
 - [fn_ddt_vincoli_cliente](funzioni/fn_ddt_vincoli_cliente.md) — (nata il 2026-10-11, brief `brief-db-testata-dopo-emissione`, §11, R-DB-1)
 - [fn_diagnostica_gruppi_fatturabili](funzioni/fn_diagnostica_gruppi_fatturabili.md) — (latest review 15-08-2026)
 - [fn_doc_fornitura_da_anagrafica](funzioni/fn_doc_fornitura_da_anagrafica.md)
@@ -280,14 +281,14 @@ search:
 - [fn_offerta_proietta_stato_revisione](funzioni/fn_offerta_proietta_stato_revisione.md)
 - [fn_offerta_righe_espanse](funzioni/fn_offerta_righe_espanse.md)
 - [fn_offerta_righe_preview](funzioni/fn_offerta_righe_preview.md) — (funzione nata il 2026-10-04, `20261004-72`)
-- [fn_ordine_ha_residuo_evasione](funzioni/fn_ordine_ha_residuo_evasione.md) — (rev 2026-07-13 — **reso-aware**)
+- [fn_ordine_ha_residuo_evasione](funzioni/fn_ordine_ha_residuo_evasione.md) — (rev 2026-07-13 — **reso-aware**; rev 2026-11-03 — **solo merce**, `20261103-22`)
 - [fn_ordine_proietta_stato_evasione](funzioni/fn_ordine_proietta_stato_evasione.md)
 - [fn_ordine_riga_componenti_init](funzioni/fn_ordine_riga_componenti_init.md)
 - [fn_ordine_riga_componenti_preview](funzioni/fn_ordine_riga_componenti_preview.md)
 - [fn_ordine_riga_qta_riconsegna](funzioni/fn_ordine_riga_qta_riconsegna.md) — (rev 2026-07-26)
 - [fn_ordine_riga_spedita](funzioni/fn_ordine_riga_spedita.md)
 - [fn_parametri_importo_riga](funzioni/fn_parametri_importo_riga.md)
-- [fn_partite_merce](funzioni/fn_partite_merce.md) — (latest review 2026-09-21)
+- [fn_partite_merce](funzioni/fn_partite_merce.md) — `vendite.fn_partite_merce` è **il conto della merce** — lo stesso di [`vw_partite_merce`](views/vw_partite_merce.md), che ne è la proiezione senza filtro — calcolato **per i documenti che si chiedono**, non per tutti.
 - [fn_popola_fatture_rettifiche](funzioni/fn_popola_fatture_rettifiche.md) — (rev 2026-08-18)
 - [fn_posta_ddt](funzioni/fn_posta_ddt.md)
 - [fn_posta_reso](funzioni/fn_posta_reso.md)
@@ -341,7 +342,7 @@ search:
 - [fn_set_arrotondamento_scope](funzioni/fn_set_arrotondamento_scope.md) — (latest review 10-02-2026)   La funzione **`vendite.fn_set_arrotondamento_scope()`** imposta (upsert) il **saldo tecnico** degli arrotondamenti per l'ambito di fatturazione.
 - [fn_set_documento_canale_stato](funzioni/fn_set_documento_canale_stato.md) — (latest review 24-02-2026) Gestisce in modo uniforme la transizione stato dei canali fatturabili per documento sorgente.
 - [fn_set_runtime_task_run_esito](funzioni/fn_set_runtime_task_run_esito.md) — Helper condiviso per applicare l'esito runtime di un task-run nei domini `LOTTO` e `ATTIVITA_FATTURABILI`.
-- [fn_situazione_merce_ordine](funzioni/fn_situazione_merce_ordine.md) — (latest review 2026-09-21)
+- [fn_situazione_merce_ordine](funzioni/fn_situazione_merce_ordine.md) — (latest review 2026-11-03)
 - [fn_snapshot_fattura_lotto](funzioni/fn_snapshot_fattura_lotto.md) — (latest review 02-08-2026)
 - [fn_snapshot_indirizzi_fattura](funzioni/fn_snapshot_indirizzi_fattura.md) — (latest review 02-08-2026)
 - [fn_snapshot_intestazione_fattura](funzioni/fn_snapshot_intestazione_fattura.md) — (latest review 02-08-2026)
@@ -454,6 +455,7 @@ search:
 - [trgfn_ordini_normalize](funzioni/trgfn_ordini_normalize.md) — La trigger function `vendite.trgfn_ordini_normalize()` normalizza i campi minimi dell’ordine **in fase di creazione**: completa anno/data quando il `numero` è presente ed eredita il `fatturazione_trigger` dal billing account.
 - [trgfn_ordini_righe_componenti_guard_pending](funzioni/trgfn_ordini_righe_componenti_guard_pending.md) — - **Decisione L3 sul componente esatto** — quando un componente di una riga ordine ha un prezzo out-of-policy in attesa di approvazione, l'approvatore L3 deve decidere sulla riga esatta proposta. Cambi strutturali durante la fase di approvazione renderebbero la decisione ambigua. - **Pattern denylist difensivo** — elenco esplicito dei campi struttura. Se `ordini_righe_componenti` viene estesa con nuove colonne struttura, il trigger va aggiornato.
 - [trgfn_ordini_righe_guard_data_consegna_spedita](funzioni/trgfn_ordini_righe_guard_data_consegna_spedita.md)
+- [trgfn_ordini_righe_guard_onere_senza_data_consegna](funzioni/trgfn_ordini_righe_guard_onere_senza_data_consegna.md)
 - [trgfn_ordini_righe_ricalcola_totali](funzioni/trgfn_ordini_righe_ricalcola_totali.md) — (latest review 05-06-2026)
 - [trgfn_preventivi_default_valuta](funzioni/trgfn_preventivi_default_valuta.md) — (rev 2026-08-21)
 - [trgfn_preventivi_gen_codice](funzioni/trgfn_preventivi_gen_codice.md) — La trigger function `vendite.trgfn_preventivi_gen_codice()` genera automaticamente `numero` preventivo quando il campo non viene valorizzato.
@@ -530,7 +532,7 @@ search:
 - [vw_offerte_commerciali_lista](views/vw_offerte_commerciali_lista.md) — (rev 2026-06-03 — rev1)
 - [vw_ordini_lista](views/vw_ordini_lista.md) — (rev 2026-06-03 — rev1)
 - [vw_ordini_riepilogo_iva_dettaglio](views/vw_ordini_riepilogo_iva_dettaglio.md) — (latest review 05-06-2026)
-- [vw_ordini_righe_dettaglio](views/vw_ordini_righe_dettaglio.md) — (vista nata il 2026-09-28, `20260928-18`)
+- [vw_ordini_righe_dettaglio](views/vw_ordini_righe_dettaglio.md) — (vista nata il 2026-09-28, `20260928-18`; ultima revisione 2026-11-03, `20261103-25`)
 - [vw_ordini_righe_iva_base](views/vw_ordini_righe_iva_base.md) — (latest review 05-06-2026)
 - [vw_partite_merce](views/vw_partite_merce.md) — (latest review 2026-08-17)
 - [vw_preventivi](views/vw_preventivi.md) — (rev 15-05-2026 · aggiornata 2026-08-28)
@@ -548,7 +550,7 @@ search:
 - [vw_resi_righe_dettaglio](views/vw_resi_righe_dettaglio.md) — (latest review 25-08-2026)
 - [vw_resi_righe_effettive](views/vw_resi_righe_effettive.md) — (latest review 2026-07-18)
 - [vw_segnalazioni_con_documento_ignoto](views/vw_segnalazioni_con_documento_ignoto.md) — (latest review 2026-09-08)
-- [vw_situazione_merce_ordine](views/vw_situazione_merce_ordine.md) — (rev 2026-09-21 — la vista è la proiezione di `fn_situazione_merce_ordine` · rev 2026-09-13 — le date e il ritardo · rev 2026-08-18 — soglia dell'impegno · rev 2026-08-17 — nuova)
+- [vw_situazione_merce_ordine](views/vw_situazione_merce_ordine.md) — (rev 2026-11-03 — solo righe merce, gli oneri no · rev 2026-09-21 — la vista è la proiezione di `fn_situazione_merce_ordine` · rev 2026-09-13 — le date e il ritardo · rev 2026-08-18 — soglia dell'impegno · rev 2026-08-17 — nuova)
 - [vw_stato_sorgente_contratto](views/vw_stato_sorgente_contratto.md) — (latest review 2026-07-02) `vendite.vw_stato_sorgente_contratto` è il **resolver del dominio CONTRATTO** per la proiezione dello stato di dominio (brief-db-proiezione-stato-dominio, deliverable D2): espone il **descrittore normalizzato** dello stato **vivo** di ogni contratto — stato nativo + mapping `fase`/`esito`/`terminale` dichiarato su `config.stati_doc_contratti` — con chiave `(sorgente_tipo_id, sorgente_uid)` coerente con `pratiche.pratiche_sorgenti`.
 - [vw_stato_sorgente_ddt](views/vw_stato_sorgente_ddt.md) — (latest review 2026-07-18)
 - [vw_stato_sorgente_offerta](views/vw_stato_sorgente_offerta.md) — (latest review 2026-07-02) `vendite.vw_stato_sorgente_offerta` è il **resolver del dominio OFFERTA** per la proiezione dello stato di dominio (brief-db-proiezione-stato-dominio, deliverable D2): espone il **descrittore normalizzato** dello stato **vivo** di ogni offerta commerciale — stato nativo + mapping `fase`/`esito`/`terminale` dichiarato su `config.stati_doc_offerte` — con chiave `(sorgente_tipo_id, sorgente_uid)` coerente con `pratiche.pratiche_sorgenti`.
