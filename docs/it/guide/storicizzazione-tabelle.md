@@ -1,6 +1,6 @@
 # Guida — Storicizzazione delle Tabelle
 
-> **Ultimo aggiornamento**: 19 settembre 2026
+> **Ultimo aggiornamento**: 3 novembre 2026
 >
 > **Destinatari**: sviluppatori database e backend
 >
@@ -229,7 +229,7 @@ Da un punto di vista tecnico:
 
 | Colonna          | Tipo        | Nullable | Default        | Descrizione                                                       |
 | ---------------- | ----------- | :------: | -------------- | ----------------------------------------------------------------- |
-| `table_name`     | TEXT, PK    |    no    | —              | Nome della tabella operativa (senza schema)                       |
+| `table_name`     | TEXT, PK    |    no    | —              | Nome della tabella operativa, qualificato con lo schema           |
 | `insert_manuale` | BOOLEAN     |    no    | true           | `true` = inserita manualmente, `false` = rilevata automaticamente |
 | `data_insert`    | TIMESTAMPTZ |    no    | `now()`        | Timestamp inserimento                                             |
 | `user_insert`    | TEXT        |    no    | `CURRENT_USER` | Utente inserimento                                                |

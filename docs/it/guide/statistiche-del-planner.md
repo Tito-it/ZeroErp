@@ -1,15 +1,15 @@
 # Guida — Le statistiche del planner
 
-> **Ultimo aggiornamento**: 14 ottobre 2026
+> **Ultimo aggiornamento**: 3 novembre 2026
 >
 > **Destinatari**: sviluppatori database e backend, chi gestisce il database, e chi
 > misura le prestazioni di una query
 >
 > **Vedi anche** — funzioni e viste DB:
 >
-> * [maintenance.fn_analyze_statistiche](/dbzero/maintenance/manual/fn_analyze_statistiche) — il lavoro: `ANALYZE` e la prova di esserci riuscito
-> * [maintenance.vw_statistiche_mancanti](/dbzero/maintenance/manual/vw_statistiche_mancanti) — le tabelle che resterebbero senza statistiche
-> * [maintenance.proc_analyze_statistiche_job](/dbzero/maintenance/manual/proc_analyze_statistiche_job) — il lavoro notturno, che passa dal giornale
+> * [maintenance.fn_analyze_statistiche](/dbzero/maintenance/funzioni/fn_analyze_statistiche) — il lavoro: `ANALYZE` e la prova di esserci riuscito
+> * [maintenance.vw_statistiche_mancanti](/dbzero/maintenance/views/vw_statistiche_mancanti) — le tabelle che resterebbero senza statistiche
+> * [maintenance.proc_analyze_statistiche_job](/dbzero/maintenance/funzioni/proc_analyze_statistiche_job) — il lavoro notturno, che passa dal giornale
 >
 > **Vedi anche** — guide correlate:
 >
@@ -75,10 +75,10 @@ tabella resti senza fotografia.
 
 | | |
 | --- | --- |
-| **Processo** | `analyze_statistiche`, in [dbops.processi](/dbzero/dbops/manual/processi), natura `MANUTENZIONE` |
+| **Processo** | `analyze_statistiche`, in [dbops.processi](/dbzero/dbops/tabelle/processi), natura `MANUTENZIONE` |
 | **Quando** | ogni notte alle 02:30, da pgAgent |
 | **Che cosa** | `ANALYZE` di tutto il database, poi la verifica (capitolo 4) |
-| **Dove lascia traccia** | [maintenance.job_run_log](/dbzero/maintenance/manual/job_run_log), sotto il codice del processo |
+| **Dove lascia traccia** | [maintenance.job_run_log](/dbzero/maintenance/tabelle/job_run_log), sotto il codice del processo |
 
 Gira alle 02:30 per stare lontano dagli altri lavori: le automazioni alle 21,
 la chiusura delle scadenze a mezzanotte, la sincronizzazione degli utenti alle 6.
@@ -109,7 +109,7 @@ salta con un avviso e va avanti. Senza un controllo, un lavoro che salta metà
 delle tabelle scriverebbe «fatto» nel giornale.
 
 Per questo, subito dopo `ANALYZE` e nella stessa transazione, il lavoro legge
-[vw_statistiche_mancanti](/dbzero/maintenance/manual/vw_statistiche_mancanti). Se
+[vw_statistiche_mancanti](/dbzero/maintenance/views/vw_statistiche_mancanti). Se
 resta anche una sola tabella, **fallisce** con `E_STATISTICHE_MANCANTI` e nomina
 le tabelle:
 
@@ -120,7 +120,7 @@ le tabelle:
 
 Il fallimento lascia una riga rossa nel giornale, che resta anche se la
 transazione viene annullata. Da lì la vede
-[vw_job_run_da_guardare](/dbzero/maintenance/manual/vw_job_run_da_guardare), e
+[vw_job_run_da_guardare](/dbzero/maintenance/views/vw_job_run_da_guardare), e
 quindi il pannello dei presidi e il digest.
 
 ⚠️ La verifica sta **dentro** il lavoro e non in un controllo guardato durante il

@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_guardiano_digest`
 
+> **Ultimo aggiornamento**: 3 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 Approfondimenti viste:
@@ -19,7 +21,6 @@ Approfondimenti funzioni:
 
 ---
 ### 🎯 Scopo Principale
-(latest review 11-09-2026)
 
 **Chi guarda il guardiano.** Il digest dei presidi segnala tutti gli altri; se
 muore lui, l'unica cosa che lo direbbe è il battito — che sta *dentro* il
@@ -79,16 +80,14 @@ del backend, ogni minuto, con badge in topbar — che spedisce col destinatario
 
 ---
 
-### ⚠️ Finché il backend non ha l'handler
+### ⭐ Se il tipo di lavoro fosse spento, la corsa diventerebbe rossa
 
-Il tipo `NOTIFICA_DIGEST_MUTO` nasce `attivo = false`: è la regola del binding
-(seed spento fino alla release del backend). Questa funzione **non lo aggira**:
-finché il digest è vivo il job è verde; il giorno in cui il digest tace *prima*
-che l'handler esista, `fn_accoda_lavoro` solleva `E_JOB_TYPE_NON_ATTIVO` e la
-corsa è **rossa** in `maintenance.vw_job_run_da_guardare` — cioè nel pannello.
-
-È esattamente ciò che è successo: *«ho visto, e non ho potuto dirlo a nessuno»*.
-Un ritorno silenzioso sarebbe un presidio che tace proprio quando serve.
+Il tipo `NOTIFICA_DIGEST_MUTO` è acceso e il backend ha il suo handler, quindi
+l'avviso parte davvero. Questa funzione **non aggira** il binding: se il tipo
+venisse spento, il giorno in cui il digest tace `fn_accoda_lavoro` solleverebbe
+`E_JOB_TYPE_NON_ATTIVO` e la corsa sarebbe **rossa** in
+`maintenance.vw_job_run_da_guardare`, cioè nel pannello. Un ritorno silenzioso
+sarebbe un presidio che tace proprio quando serve.
 
 ---
 

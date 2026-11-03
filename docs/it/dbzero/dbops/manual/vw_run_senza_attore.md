@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – View `dbops.vw_run_senza_attore`
 
+> **Ultimo aggiornamento**: 3 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 Approfondimenti tabelle:
@@ -10,7 +12,6 @@ Approfondimenti tabelle:
 
 ---
 ### 🎯 Scopo Principale
-(latest review 04-09-2026)
 
 Elenca i lavori automatici che, nell'**ultima corsa**, non hanno detto **quale
 processo** fossero.
@@ -53,9 +54,12 @@ notte.
 del job**, perché il codice del processo e il nome del job sono la stessa
 stringa. Chi vuole essere esplicito passa comunque il parametro, che vince.
 
-⚠️ Un nome di job che non corrisponde a nessun processo resta senza attore — e
-compare qui. Che è esattamente il comportamento voluto: non si inventa un
-attore, si dice che manca.
+⚠️ Un nome di job che non corrisponde a nessun processo non può più restare
+senza attore: il CHECK `chk_job_run_log_processo_dichiarato` su
+`maintenance.job_run_log` respinge la riga nuova, e la corsa fallisce prima di
+partire. Il vincolo è `NOT VALID` e non rivaluta il passato: la vista mostra
+quindi il solo residuo storico, le righe scritte prima che il vincolo
+esistesse.
 
 ---
 

@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Procedura `dbops.apply_fk_index_policy()`
 
+> **Ultimo aggiornamento**: 3 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 Approfondimento Tabelle:  
@@ -15,7 +17,6 @@ Approfondimento funzioni :
 
 ---
 ### 🎯 Scopo Principale
-(latest update 27-07-26)
 Applicare in modo automatico le regole di indicizzazione definite nella tabella `dbops.fk_index_policy`:  
 
 *  **Creare** gli indici sulle foreign key contrassegnate come `consentito = true`, **se ancora servono**.
@@ -62,7 +63,7 @@ Il motivo è che la policy poggia su un flag booleano, e un flag può essere rim
 
 Il ramo `consentito = false` esegue `DROP INDEX` sul nome estratto dal comando. Se quel nome appartenesse a un `UNIQUE`, a una `PRIMARY KEY`, a un indice a supporto di un constraint o alla `REPLICA IDENTITY`, un semplice flag avrebbe tolto un **vincolo di integrità** o rotto la replica.
 
-**Warning e non eccezione.** La procedura gira `runAlways` in `90_end` a ogni `migrate` e nel job settimanale: sollevare un errore bloccherebbe ogni deploy finché qualcuno non interviene, e il costo di un indice di troppo è incomparabilmente minore di quello di una pipeline ferma. Il warning finisce nel log di `maintenance.fn_run_and_log`.
+**Warning e non eccezione.** La procedura gira `runAlways` in `90_end` a ogni `migrate` e nel job settimanale: sollevare un errore bloccherebbe ogni deploy finché qualcuno non interviene, e il costo di un indice di troppo è incomparabilmente minore di quello di una pipeline ferma. Il warning arriva al client e al log del server, non al giornale: `maintenance.fn_run_and_log` registra la corsa come riuscita, e un indice risparmiato dalla guardia non rende rossa la corsa.
 
 > La difesa è ridondante per scelta: anche [vw_fk_con_indice_missing_policy](/dbzero/dbops/views/vw_fk_con_indice_missing_policy) impedisce che righe pericolose entrino in policy. Ma questa guardia sta nel punto in cui il `DROP` viene davvero eseguito, ed è l'unica che regge anche a un `INSERT` fatto a mano nella tabella.
 

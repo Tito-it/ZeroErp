@@ -51,7 +51,7 @@ search:
 - [transaction_ids](manual/transaction_ids.md) — (latest review 10-01-26) La tabella **`dbops.transaction_ids`** funge da **registro centrale** di tutti gli identificativi di transazione (UUID) utilizzati in Zero ERP: ogni volta che viene avviata un’operazione di modifica dati (inserimento, aggiornamento o cancellazione) che coinvolge più tabelle, si genera un nuovo **`tx_id`** in questa tabella e lo si propaga a tutte le righe interessate, garantendo la **tracciabilità** e il **raggruppamento** coerente delle modifiche.
 
 ## ⚙️ Funzioni (manuale)
-- [apply_fk_index_policy](manual/apply_fk_index_policy.md) — (latest update 27-07-26) Applicare in modo automatico le regole di indicizzazione definite nella tabella `dbops.fk_index_policy`:  
+- [apply_fk_index_policy](manual/apply_fk_index_policy.md) — Applicare in modo automatico le regole di indicizzazione definite nella tabella `dbops.fk_index_policy`:  
 - [fn_accoda_chiusura_scadenze](manual/fn_accoda_chiusura_scadenze.md) — (latest review 05-09-2026)
 - [fn_accoda_lavoro](manual/fn_accoda_lavoro.md) — (latest review 20-07-2026)
 - [fn_admin_merge_comune](manual/fn_admin_merge_comune.md) — (rev 2026-09-12)
@@ -82,7 +82,7 @@ search:
 - [fn_get_or_create_session_tx_id](manual/fn_get_or_create_session_tx_id.md) — (latest review 22-07-2026) * **Unicità per transazione**: restituisce un `tx_id` costante per la durata della transazione. La GUC è impostata con `set_config(..., TRUE)`, quindi **locale**: ogni nuova transazione ottiene il proprio identificativo. È coerente col nome — un identificativo *di transazione* non deve sopravvivere alla transazione. * **Fallback sicuro**: se il canale di log non è disponibile, restituisce l’UUID “nil” per non bloccare i processi. * **Contesto centralizzato**: memorizza il `tx_id` nella GUC `dbops.tx_id` per gli accessi successivi.
 - [fn_get_override_col](manual/fn_get_override_col.md) — (latest review 10-01-26) La funzione **`dbops.fn_get_override_col(p_schema, p_table, p_role, p_default)`** permette di ottenere in modo centralizzato il nome di una colonna “override” per un ruolo specifico, qualora sia stato definito nella tabella di configurazione `dbops.automation_overrides_cols`. Se non esiste un override registrato, viene restituito il valore di default passato come parametro.
 - [fn_get_pipeline_task_implementation](manual/fn_get_pipeline_task_implementation.md) — (latest review 08-02-2026) Risoluzione controllata dell'implementazione di un task: usa la variante richiesta se valida, altrimenti il **default**.
-- [fn_guardiano_digest](manual/fn_guardiano_digest.md) — (latest review 11-09-2026)
+- [fn_guardiano_digest](manual/fn_guardiano_digest.md) — **Chi guarda il guardiano.** Il digest dei presidi segnala tutti gli altri; se muore lui, l'unica cosa che lo direbbe è il battito — che sta *dentro* il digest. Un digest morto non manda il messaggio che dice che è morto, e l'assenza di una mail non si nota.
 - [fn_imposta_accensione_processo](manual/fn_imposta_accensione_processo.md)
 - [fn_list_indices](manual/fn_list_indices.md) — (rev 2026-08-21)
 - [fn_lock_columns_divergenze](manual/fn_lock_columns_divergenze.md) — (latest review 26-09-26)
@@ -127,7 +127,7 @@ search:
 - [fn_ritira_attivo_orfani](manual/fn_ritira_attivo_orfani.md)
 - [fn_run_automations](manual/fn_run_automations.md) — (latest review 07-02-26) La funzione **`dbops.fn_run_automations`** è l’**orchestratore principale** del framework di automazioni. Coordina l’applicazione delle regole di sistema (Tx ID, aggiornamento audit, storico, lock colonne, gestione flag attivo, cleanup) sugli schemi e tabelle nell'ambito.
 - [fn_run_automations_attivo](manual/fn_run_automations_attivo.md) — *(latest review 13‑11‑2026)* La funzione **`dbops.fn_run_automations_attivo(p_exec_mode, p_schemas, p_dry_run)`** applica in modo automatico e coerente le **regole di gestione del campo `attivo`** (soft‑delete / stato di validità) **sulle relazioni di chiave esterna**, creando e riconciliando **trigger di BLOCCO sul padre** e **trigger REQUIRE sul figlio**.
-- [fn_run_automations_audit_update](manual/fn_run_automations_audit_update.md) — (latest review 25-12-25) La funzione **`dbops.fn_run_automations_audit_update(p_exec_mode, p_schemas, p_dry_run)`** applica in modo automatico (o simula) la **regola di aggiornamento audit** sulle tabelle nell'ambito, creando – dove mancante secondo le policy – un **trigger BEFORE UPDATE** che aggiorna `data_update` e `user_update` tramite la funzione `script.trgfn_audit_data_user_generic()`.
+- [fn_run_automations_audit_update](manual/fn_run_automations_audit_update.md) — La funzione **`dbops.fn_run_automations_audit_update(p_exec_mode, p_schemas, p_dry_run)`** applica in modo automatico (o simula) la **regola di aggiornamento audit** sulle tabelle nell'ambito, creando – dove mancante secondo le policy – un **trigger BEFORE INSERT OR UPDATE** che aggiorna `data_update` e `user_update` tramite la funzione `script.trgfn_audit_data_user_generic()`.
 - [fn_run_automations_cleanup](manual/fn_run_automations_cleanup.md) — (latest review 07-02-26) La funzione **`dbops.fn_run_automations_cleanup(p_exec_mode, p_schemas, p_dry_run)`** è l’orchestratore del framework di cleanup basato su `cleanup_at`.
 - [fn_run_automations_delete_block](manual/fn_run_automations_delete_block.md) — (latest review 23-01-26) La funzione **`dbops.fn_run_automations_delete_block(p_exec_mode, p_schemas, p_dry_run)`** applica (o simula) i trigger **DELETE_BLOCK** sulle tabelle configurate in `dbops.automation_delete_block`, con bypass via GUC.
 - [fn_run_automations_lock_columns](manual/fn_run_automations_lock_columns.md) — (latest review 26-09-26)
@@ -205,7 +205,7 @@ search:
 - [vw_riferimenti_morti_da_sanare](manual/vw_riferimenti_morti_da_sanare.md) — (rev 2026-08-21)
 - [vw_riferimenti_morti_rientrati](manual/vw_riferimenti_morti_rientrati.md) — (rev 2026-08-21)
 - [vw_rls_perimetro_scoperto](manual/vw_rls_perimetro_scoperto.md) — (latest review 09-09-2026)
-- [vw_run_senza_attore](manual/vw_run_senza_attore.md) — (latest review 04-09-2026)
+- [vw_run_senza_attore](manual/vw_run_senza_attore.md) — Elenca i lavori automatici che, nell'**ultima corsa**, non hanno detto **quale processo** fossero.
 - [vw_sorgenti_orfane](manual/vw_sorgenti_orfane.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
 - [vw_stati_check_da_sanare](manual/vw_stati_check_da_sanare.md) — (latest review 21-09-2026)
 - [vw_stati_check_scrittori](manual/vw_stati_check_scrittori.md) — (latest review 21-09-2026)

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/maintenance/manual/proc_accoda_chiusura_scadenze_job.md" %}
 # ⚙️ Procedura `proc_accoda_chiusura_scadenze_job`
 
 ```sql
