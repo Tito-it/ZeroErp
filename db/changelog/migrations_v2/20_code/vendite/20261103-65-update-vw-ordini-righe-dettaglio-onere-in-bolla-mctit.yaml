@@ -1,0 +1,134 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'ONERE DICE SE E' GIA' PASSATO IN UNA BOLLA — vendite.vw_ordini_righe_dettaglio
+#   Brief: brief-db-addebito-trasporto-ordine (richiesta del team FE,
+#   2026-11-03).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   Il dialog «Genera DDT» toglie le righe-onere dalla tabella e mostra la
+#   nota «l'onere passa intero nella prima bolla». Su un ordine che ha gia'
+#   una bolla l'onere e' gia' partito, ma la vista non lo dice: evaso e
+#   residuo sono NULL sull'onere per scelta (-25), e nessun'altra colonna
+#   dice se ha il suo legame.
+#
+# ── ⭐ COSA CAMBIA ───────────────────────────────────────────────────
+#   + onere_in_bolla (boolean, in coda): NULL sulla merce; sull'onere,
+#   r.quantita - somma dei legami <= 0. E' il predicato della copia
+#   (vendite.fn_genera_ddt_da_ordine, -36: residuo base <= 0, la riga salta),
+#   sulla somma dei legami che la vista legge gia' (ful). Il legame e' il
+#   «gia' passato» dell'onere (§8.2); il guard 5-ter lo vuole intero, quindi
+#   «c'e' il legame» e «il residuo e' zero» coincidono.
+#   Il nome non e' «evaso»: l'onere non si evade.
+#   Il legame non ha un attivo: si cancella col ritiro della riga di bolla
+#   (vendite.fn_ddt_riga_ritira_legami), e l'onere torna da passare.
+#
+# ── ⚠️ COSA NON CAMBIA ──────────────────────────────────────────────
+#   Il resto, riga per riga. Corpo dal 20261103-51 (applicato, = vivo);
+#   security_invoker e COMMENT ON COLUMN ripetuti come li ripete il -51.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261103-65-update-vw-ordini-righe-dettaglio-onere-in-bolla-mctit.yaml
+
+  - changeSet:
+      id: 20261103-65-update-vw-ordini-righe-dettaglio-onere-in-bolla
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.vw_ordini_righe_dettaglio: in coda onere_in_bolla (l'onere e' gia' passato in una bolla; NULL sulla
+        merce), col predicato della copia. brief-db-addebito-trasporto-ordine, richiesta del FE.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_ordini_righe_dettaglio
+              WITH (security_invoker=true) AS
+              SELECT r.id,
+                  r.ordine_id,
+                  r.riga_nr,
+                  r.attivo,
+                  r.articolo_id,
+                  a.codice AS articolo_codice,
+                  a.descrizione AS articolo_descrizione,
+                  r.descrizione,
+                  r.quantita,
+                  r.qta_operativa,
+                  r.factor_to_base,
+                  r.uom_operativa_id,
+                  um.codice AS uom_codice,
+                  r.prezzo_unitario,
+                  r.sconto_percentuale,
+                  r.iva_id,
+                  iva.codice AS iva_codice,
+                  iva.descrizione AS iva_descrizione,
+                  iva.aliquota_iva AS iva_aliquota,
+                  round(script.fn_imponibile_riga(r.quantita, r.prezzo_unitario, r.sconto_percentuale), 2) AS importo_riga,
+                  script.fn_imponibile_riga(r.quantita, r.prezzo_unitario, r.sconto_percentuale) AS imponibile_riga_full,
+                  -- ⭐ rev 2026-11-03: l'onere non si evade — evaso e residuo NULL.
+                  CASE WHEN NOT k.e_onere THEN
+                      round((COALESCE(ful.qta_evasa_base, (0)::numeric) / NULLIF(r.factor_to_base, (0)::numeric)), 6)
+                  END AS qta_evasa_operativa,
+                  CASE WHEN NOT k.e_onere THEN
+                      round((GREATEST((r.quantita - COALESCE(ful.qta_evasa_base, (0)::numeric)), (0)::numeric) / NULLIF(r.factor_to_base, (0)::numeric)), 6)
+                  END AS qta_residua_operativa,
+                  r.meta,
+                  r.data_insert,
+                  r.data_update,
+                  r.data_consegna_richiesta_cliente,
+                  r.data_consegna_confermata,
+                  (EXISTS ( SELECT 1
+                         FROM vendite.ordini_righe_componenti rc
+                        WHERE ((rc.riga_ordine_id = r.id) AND (rc.attivo IS TRUE)))) AS is_composito_caso_a,
+                  (script.fn_check_ordine_riga_data_consegna_confermata(r.id) -> 0) ->> 'reason' AS data_consegna_confermata_blocco,
+                  -- rev 2026-11-03: colonne nuove IN CODA.
+                  k.e_onere,
+                  a.causale_onere_id,
+                  -- rev 2026-11-03 (20261103-51): la sezione del documento, prima
+                  --   chiave dell'ordine (sezione_documento, riga_nr): oneri in fondo.
+                  (CASE WHEN k.e_onere THEN 2 ELSE 1 END)::smallint AS sezione_documento,
+                  -- rev 2026-11-03 (20261103-54): l'onere e' gia' passato in una bolla. Lo stesso
+                  --   predicato della copia (vendite.fn_genera_ddt_da_ordine: residuo base <= 0,
+                  --   la riga salta), sulla stessa somma dei legami. NULL sulla merce.
+                  CASE WHEN k.e_onere THEN r.quantita - COALESCE(ful.qta_evasa_base, 0) <= 0 END AS onere_in_bolla
+                 FROM ((((vendite.ordini_righe r
+                   LEFT JOIN catalogo.articoli a ON ((a.id = r.articolo_id)))
+                   LEFT JOIN catalogo.unita_misura um ON ((um.id = r.uom_operativa_id)))
+                   LEFT JOIN config.iva iva ON ((iva.id = r.iva_id)))
+                   LEFT JOIN LATERAL ( SELECT sum(f.qta_evasa) AS qta_evasa_base
+                         FROM vendite.ordini_righe_fulfillment f
+                        WHERE (f.ordine_riga_id = r.id)) ful ON (true))
+                   -- La riga e' un onere: il predicato unico, sulla natura congelata.
+                   CROSS JOIN LATERAL ( SELECT NOT script.fn_natura_e_merce(r.natura_vendita_id) AS e_onere) k;
+
+              COMMENT ON VIEW vendite.vw_ordini_righe_dettaglio IS
+                  'Righe dell''ordine con articolo, UoM, IVA, evaso e residuo: la SORGENTE delle righe per la lista configurabile vendite.ordine_righe e per il repository (brief-db-liste-righe-documento, D-8.6, 2026-09-28; prima esistevano solo come due query Python con proiezioni diverse). Tutte le righe, anche le non attive: il filtro lo mette chi legge. Nessun ORDER BY. importo_riga = round(…, 2) per mostrare, imponibile_riga_full pieno per chi aggrega, entrambi da script.fn_imponibile_riga. qta_evasa_operativa / qta_residua_operativa: somma dei fulfillment (UoM base) divisa per factor_to_base, residuo mai negativo, 6 decimali, NULL se il fattore e'' zero. security_invoker: ordini_righe e i fulfillment sono in RLS. rev 2026-11-03 (20261103-25, brief-db-addebito-trasporto-ordine §7.3, §8.1): + e_onere e causale_onere_id in coda; sulla riga-onere qta_evasa_operativa e qta_residua_operativa sono NULL (l''onere non si evade). Rev 2026-11-03 (20261103-51, brief-db-addebito-trasporto-ordine §9.8): in coda sezione_documento smallint (1 articoli, 2 oneri, da e_onere): l''ordine del documento e'' sezione_documento, riga_nr, cosi'' lista e stampa mettono gli oneri dopo gli articoli e la regola sta nel DB. Gemella di vw_fattura_righe_lista. Rev 2026-11-03 (20261103-54, brief-db-addebito-trasporto-ordine, richiesta del FE): in coda onere_in_bolla, l''onere e'' gia'' passato in una bolla (NULL sulla merce).';
+
+              COMMENT ON COLUMN vendite.vw_ordini_righe_dettaglio.e_onere IS
+                  'La riga e'' un onere (addebito, non merce): NOT script.fn_natura_e_merce sulla natura CONGELATA della riga. Su ordine «non merce» = onere, perche'' l''ammissione (script.fn_check_articolo_riga_su_contesto) lascia entrare solo merce e articoli-onere. Lo legge il BE per la stampa (oneri dopo gli articoli, brief-db-addebito-trasporto-ordine §7.3) e per la maschera: la regola non si ricostruisce fuori dal DB. Sulla riga-onere evaso e residuo sono NULL.';
+
+              COMMENT ON COLUMN vendite.vw_ordini_righe_dettaglio.causale_onere_id IS
+                  'La causale dell''onere (config.causali_onere), letta dall''articolo (catalogo.articoli.causale_onere_id). NULL sulla merce. Il discrimine «e'' un onere» resta e_onere (natura congelata della riga): questa colonna porta il valore per chi raggruppa o etichetta. brief-db-addebito-trasporto-ordine §7.3.';
+
+              COMMENT ON COLUMN vendite.vw_ordini_righe_dettaglio.sezione_documento IS
+                'Sezione del documento: 1 articoli, 2 oneri (e_onere). Prima chiave dell''ordine del documento (sezione_documento, riga_nr): gli oneri dopo gli articoli, a video e in stampa. Rev 2026-11-03, brief-db-addebito-trasporto-ordine §9.8.';
+
+              COMMENT ON COLUMN vendite.vw_ordini_righe_dettaglio.onere_in_bolla IS
+                'Solo sulla riga-onere (NULL sulla merce): l''onere e'' gia'' passato in una bolla. L''onere non si evade: passa intero, una volta, nella prima bolla, e il legame (vendite.ordini_righe_fulfillment) e'' il suo «gia'' passato». Lo stesso predicato della copia (vendite.fn_genera_ddt_da_ordine: residuo base <= 0, la riga salta), sulla stessa somma dei legami di qta_evasa_operativa. Il legame si ritira con la riga di bolla (vendite.fn_ddt_riga_ritira_legami): allora l''onere torna da passare. Lo legge il dialog «Genera DDT»: la nota «passa intero nella prima bolla» solo sugli oneri ancora da passare. Rev 2026-11-03, brief-db-addebito-trasporto-ordine (richiesta del FE).';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Una vista non perde colonne con CREATE OR REPLACE: il ritorno indietro e'
+              -- un DROP + CREATE dal changeSet precedente, da fare a mano se servisse.
+              SELECT 1;

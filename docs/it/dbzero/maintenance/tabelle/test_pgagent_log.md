@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/maintenance/manual/test_pgagent_log.md" %}
 # 📚 Tabella `test_pgagent_log`
 
 ## 🗂️ Campi principali

@@ -14,7 +14,7 @@
 
 ### 🎯 Scopo Principale
 
-(vista nata il 2026-09-28, `20260928-18`; ultima revisione 2026-11-03, `20261103-25`)
+(vista nata il 2026-09-28, `20260928-18`; ultima revisione 2026-11-03, `20261103-65`)
 
 **Le righe di un ordine**, con articolo, unità di misura, IVA, importo, evaso e
 residuo: la sorgente della lista configurabile `vendite.ordine_righe` e del
@@ -63,10 +63,27 @@ coda: `CREATE OR REPLACE VIEW` non sposta le colonne che ci sono.
 
 ---
 
-{% include-markdown "signature-core.md" %}
-
 ### Sezione del documento (rev 2026-11-03)
 
 Dal `20261103-51`, in coda `sezione_documento` (1 articoli, 2 oneri, da `e_onere`). L'ordine del
 documento è `sezione_documento, riga_nr`: gli oneri dopo gli articoli, a video e in stampa, come
 sulla fattura (`vw_fattura_righe_lista`).
+
+### L'onere è già passato in una bolla? (rev 2026-11-03)
+
+Dal `20261103-65`, in coda `onere_in_bolla`. Sulla **riga-onere** dice se l'onere è già partito
+con una bolla; sulla merce è **NULL**. Il nome non dice «evaso» perché l'onere non si evade:
+passa intero, una volta sola, nella prima bolla, e il suo legame con la riga di bolla è il suo «già
+passato».
+
+La regola è quella della copia (`vendite.fn_genera_ddt_da_ordine`): la riga che non ha più residuo
+non entra nella bolla. Così il dialog «Genera DDT» e la copia non possono dirsi cose diverse.
+Se la riga di bolla si ritira, il legame se ne va con lei (`vendite.fn_ddt_riga_ritira_legami`) e
+l'onere torna da passare.
+
+Il dialog «Genera DDT» la usa per mostrare la nota «l'onere passa intero nella prima bolla» solo
+sugli oneri ancora da passare. Verifica: `db/pgtap/vendite/test-ordine-onere-in-bolla-v1.sql`.
+
+---
+
+{% include-markdown "signature-core.md" %}

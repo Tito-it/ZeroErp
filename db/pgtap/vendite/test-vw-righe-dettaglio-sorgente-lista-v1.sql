@@ -90,13 +90,15 @@ SELECT columns_are('vendite', 'vw_ordini_righe_dettaglio', ARRAY[
     'qta_residua_operativa', 'meta', 'data_insert', 'data_update',
     'data_consegna_richiesta_cliente', 'data_consegna_confermata',
     'is_composito_caso_a', 'data_consegna_confermata_blocco',
-    'e_onere', 'causale_onere_id', 'sezione_documento'],
+    'e_onere', 'causale_onere_id', 'sezione_documento', 'onere_in_bolla'],
     -- rev 2026-10-11 (20261012-07, brief-db-date-consegna-righe-in-blocco D-7):
     --   + data_consegna_confermata_blocco, il motivo per cui la data
     --   confermata della riga non si cambia (NULL = si cambia).
     -- rev 2026-11-03 (20261103-25, brief-db-addebito-trasporto-ordine §8.1):
     --   + e_onere e causale_onere_id in coda (la stampa mette gli oneri dopo
     --   gli articoli). rev 2026-11-03 (20261103-51, §9.8): + sezione_documento.
+    -- rev 2026-11-03 (20261103-65, richiesta FE): + onere_in_bolla, l'onere gia'
+    --   passato in una bolla.
     '6) righe ordine: le colonne del repository, evaso e residuo compresi, piu'' il blocco della data confermata');
 
 SELECT columns_are('vendite', 'vw_ddt_righe_dettaglio', ARRAY[

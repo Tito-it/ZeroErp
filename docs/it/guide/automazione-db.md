@@ -1,6 +1,6 @@
 # Guida — Framework di Automazione DB
 
-> **Ultimo aggiornamento**: 24 ottobre 2026
+> **Ultimo aggiornamento**: 3 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali; chi amministra un'installazione (§9)
 >
@@ -173,7 +173,7 @@ Sono le regole fondamentali, applicate a **tutte** (o quasi) le tabelle del sist
 | Regola                | Cosa fa                                                          | Scatta se la tabella ha…         | Trigger generato                |
 | --------------------- | ---------------------------------------------------------------- | -------------------------------- | ------------------------------- |
 | **TX_ID**             | Assegna un UUID di transazione a ogni riga inserita/modificata   | `tx_id uuid`                     | `BEFORE INSERT OR UPDATE`       |
-| **AUDIT_UPDATE**      | Aggiorna i campi `data_update` e `user_update` a ogni modifica   | le due colonne di audit          | `BEFORE UPDATE`                 |
+| **AUDIT_UPDATE**      | Aggiorna i campi `data_update` e `user_update` a ogni modifica   | le due colonne di audit          | `BEFORE INSERT OR UPDATE`       |
 | **STORICO**           | Salva uno snapshot del record prima di modificarlo o cancellarlo | la tabella `storico.<tabella>`   | `BEFORE UPDATE OR DELETE`       |
 | **STORICO_PROVISION** | Crea la tabella `storico.<tabella>` se non esiste                | la colonna `storicizza`          | Nessun trigger (crea struttura) |
 
@@ -215,7 +215,7 @@ Ogni modifica a un record aggiorna automaticamente **chi** ha fatto la modifica 
 
 **Come funziona:**
 
-* Trigger `BEFORE UPDATE` che chiama `script.trgfn_audit_data_user_generic()`
+* Trigger `BEFORE INSERT OR UPDATE` che chiama `script.trgfn_audit_data_user_generic()`
 * Aggiorna `data_update` (timestamp) e `user_update` (utente corrente)
 * Le colonne devono esistere sulla tabella (i nomi possono essere personalizzati via override)
 

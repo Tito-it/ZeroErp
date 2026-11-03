@@ -1,6 +1,6 @@
 # Guida — I lavori automatici: che natura hanno e per conto di chi girano
 
-> **Ultimo aggiornamento**: 24 ottobre 2026
+> **Ultimo aggiornamento**: 3 novembre 2026
 >
 > Destinatari: chiunque debba capire, aggiungere o controllare un lavoro che il
 > sistema fa da solo — sviluppatori, analisti, e chi guarda se stanotte è andato
@@ -13,7 +13,7 @@
 > * [Framework automazione DB, §9-§10](/guide/automazione-db) — i giri delle automazioni (`automations_*`): la convergenza del rilascio, le notti, come si vedono in **Processi automatici**
 > * [Tracciamento processi e job](/guide/analisi-tracciamento-processi-e-job) — dove si leggono le esecuzioni
 > * [Presidi e registri del debito](/guide/presidi-e-registri-del-debito) — come funzionano i controlli che si vedono qui
-> * [dbops.processi](/dbzero/dbops/manual/processi) — il registro di cui parla tutta questa guida
+> * [dbops.processi](/dbzero/dbops/tabelle/processi) — il registro di cui parla tutta questa guida
 
 ---
 
@@ -49,7 +49,7 @@ Questa guida racconta come è stato chiuso quel silenzio.
 
 ## 2. Il registro: l'elenco di ciò che esiste
 
-Il punto di partenza è un elenco: [dbops.processi](/dbzero/dbops/manual/processi).
+Il punto di partenza è un elenco: [dbops.processi](/dbzero/dbops/tabelle/processi).
 
 Una riga per ogni lavoro automatico. C'è il suo nome, che cosa fa, e le due cose
 che decidono tutto il resto: **di che natura è** e **dove gira**.
@@ -122,7 +122,7 @@ accesi.
    andata al lavoro fermo da febbraio.
 
 Il passaggio si vede bene sulla chiusura di ciò che è scaduto: l'orologio ora
-chiama [fn_accoda_chiusura_scadenze](/dbzero/dbops/manual/fn_accoda_chiusura_scadenze),
+chiama [fn_accoda_chiusura_scadenze](/dbzero/dbops/funzioni/fn_accoda_chiusura_scadenze),
 che **accoda un lavoro per ogni azienda** invece di farne uno solo per tutte. Se
 l'azienda A dà problemi, B e C vengono comunque servite — prima un intoppo su
 una fermava tutto, per tutti, in silenzio.
@@ -186,7 +186,7 @@ guardavano il **dichiarato**, non l'installato.
 
 ⭐ **Dal 2026-09-11 il catalogo dichiara che cosa aspettarsi.** Ogni `COMMAND`
 puo' portare un **contratto di liveness** su
-[dbops.processi](/dbzero/dbops/manual/processi): *«se sto bene, lascio un segno
+[dbops.processi](/dbzero/dbops/tabelle/processi): *«se sto bene, lascio un segno
 almeno ogni N minuti»* (`tolleranza_minuti`), oppure *«sono un servizio sempre
 acceso: guardate se la mia connessione e' viva»* (`segno_di_vita = SESSIONE`,
 il caso del listener). Con il contratto il panorama non dice piu' «non posso
@@ -210,7 +210,7 @@ database se ne accorge.
 ⚠️ Il criterio non e' «non ha mai girato»: darebbe un falso allarme su ogni
 lavoro appena creato fino alla sua prima corsa, e non vedrebbe mai il
 programmatore fermo per i lavori che hanno gia' girato una volta. Dettaglio in
-[vw_processi_programmazione](/dbzero/dbops/manual/vw_processi_programmazione).
+[vw_processi_programmazione](/dbzero/dbops/views/vw_processi_programmazione).
 
 ⚠️ Non e' che il database veda systemd: vede **l'effetto** — la corsa che non
 arriva, la connessione che non c'e'. Cio' che non vede e' quali processi sono
@@ -219,7 +219,7 @@ fatturazione automatica e' spenta per decisione di prodotto (senza contratto).
 
 ⭐ **E chi guarda il guardiano?** Il digest segnala tutti gli altri; se muore lui,
 nessuno manda il messaggio che lo dice. Da quel giorno un job pgAgent —
-[guardiano_digest](/dbzero/dbops/manual/fn_guardiano_digest), che vive dentro il
+[guardiano_digest](/dbzero/dbops/funzioni/fn_guardiano_digest), che vive dentro il
 database e non muore con systemd — legge ogni ora lo stato del digest e, se e'
 `MUTO`, mette in coda un lavoro che il drenatore esegue spedendo una mail. Il
 digest guarda il guardiano, il guardiano guarda il digest.
@@ -246,14 +246,14 @@ lì non lo fermava nessuno.
 
 ⭐ **Oggi ogni lavoro di DOMINIO ha un suo tesserino**, uno per azienda: è un
 utente tecnico, creato da
-[fn_crea_utente_tecnico](/dbzero/script/manual/fn_crea_utente_tecnico), a cui è
+[fn_crea_utente_tecnico](/dbzero/script/funzioni/fn_crea_utente_tecnico), a cui è
 associato l'elenco delle aziende che quel lavoro può servire.
 
 ⇒ Il perimetro non è più una promessa scritta nella ricerca: è il database che
 lo garantisce, come per le persone.
 
 L'elenco di chi lavora per chi si legge in un posto solo:
-[vw_processi_roster](/dbzero/dbops/manual/vw_processi_roster) — per ogni lavoro,
+[vw_processi_roster](/dbzero/dbops/views/vw_processi_roster) — per ogni lavoro,
 tutte le aziende che serve e con quale tesserino.
 
 ⚠️ **Un tesserino si spegne a quattro livelli diversi** (il legame, l'identità,
@@ -274,7 +274,7 @@ fatturare sarebbe stato regalare potere che nessuno aveva chiesto.
 ### Il giornale delle esecuzioni
 
 Ogni corsa lascia una riga in
-[maintenance.job_run_log](/dbzero/maintenance/manual/job_run_log): quando è
+[maintenance.job_run_log](/dbzero/maintenance/tabelle/job_run_log): quando è
 partita, quanto ci ha messo, com'è finita — e adesso anche **chi era**: quale
 lavoro, e con quale tesserino.
 
@@ -284,8 +284,8 @@ Un lavoro di **coda** lascia due tracce, e la domanda a cui rispondono è divers
 
 | Registro | Che cosa registra |
 | --- | --- |
-| [maintenance.job_run_log](/dbzero/maintenance/manual/job_run_log) | **il giro** di chi ha lavorato: il drenaggio, il job dell'orologio, il comando |
-| [dbops.coda_lavori](/dbzero/dbops/manual/coda_lavori) | **il singolo lavoro**: quando è stato preso in carico, quando è iniziato e finito, quanti tentativi, l'ultimo errore, il risultato |
+| [maintenance.job_run_log](/dbzero/maintenance/tabelle/job_run_log) | **il giro** di chi ha lavorato: il drenaggio, il job dell'orologio, il comando |
+| [dbops.coda_lavori](/dbzero/dbops/tabelle/coda_lavori) | **il singolo lavoro**: quando è stato preso in carico, quando è iniziato e finito, quanti tentativi, l'ultimo errore, il risultato |
 
 Le due si tengono per mano con la colonna **`coda_lavori.job_run_id`**, che punta
 al giro dentro cui quel lavoro è stato eseguito.
@@ -314,7 +314,7 @@ tornava com'era: nessuna traccia. In sei mesi, nessun lavoro dell'orologio è
 mai riuscito a lasciare una riga rossa.
 
 Oggi il verbale del fallimento viene scritto su **una linea separata**
-([fn_job_run_log_failure](/dbzero/maintenance/manual/fn_job_run_log_failure)),
+([fn_job_run_log_failure](/dbzero/maintenance/funzioni/fn_job_run_log_failure)),
 che l'annullamento non porta via. Il lavoro fallisce come prima — ma stavolta
 lo dice.
 
@@ -325,18 +325,18 @@ Non si va a memoria: ci sono viste che rispondono a una domanda ciascuna, e che
 
 | Vista | La domanda a cui risponde |
 | --- | --- |
-| [vw_processi_dominio_senza_emittente](/dbzero/dbops/manual/vw_processi_dominio_senza_emittente) | c'è un lavoro di dominio che non sa dire di chi sono i dati che tocca? |
-| [vw_processi_dominio_senza_difesa](/dbzero/dbops/manual/vw_processi_dominio_senza_difesa) | c'è una tabella toccata da un lavoro di dominio e non protetta? |
-| [vw_processi_dominio_senza_identita](/dbzero/dbops/manual/vw_processi_dominio_senza_identita) | c'è un lavoro di dominio senza tesserino? |
-| [vw_emittenti_non_serviti](/dbzero/dbops/manual/vw_emittenti_non_serviti) | c'è un'azienda che nessuno sta servendo? |
-| [vw_processi_dominio_su_pgagent](/dbzero/dbops/manual/vw_processi_dominio_su_pgagent) | qualcuno sta ancora eseguendo dentro l'orologio? |
-| [vw_processi_che_bypassano](/dbzero/dbops/manual/vw_processi_che_bypassano) | è rimasto in giro un passe-partout? |
-| [vw_run_senza_attore](/dbzero/dbops/manual/vw_run_senza_attore) | c'è una corsa che non dice chi l'ha fatta? |
-| [vw_coda_lavori_da_guardare](/dbzero/dbops/manual/vw_coda_lavori_da_guardare) | c'è un lavoro in coda che si è fermato e nessuno se n'è accorto? |
-| [vw_fatture_stampa_coda_da_guardare](/dbzero/dbops/manual/vw_fatture_stampa_coda_da_guardare) | c'è una stampa in coda che si è fermata? (la gemella, per la coda stampa) |
-| [vw_email_da_guardare](/dbzero/dbops/manual/vw_email_da_guardare) | c'è un'email che la coda deve a qualcuno da più di un'ora e nessuno ha preso in mano? |
-| [vw_processi_programmazione_da_guardare](/dbzero/dbops/manual/vw_processi_programmazione_da_guardare) | c'è un processo che doveva farsi vivo e non l'ha fatto — un job pgAgent, o un COMMAND col suo contratto? |
-| [vw_lotti_fermi_da_guardare](/dbzero/dbops/manual/vw_lotti_fermi_da_guardare) | c'è un giro di fatturazione fermo da più di un'ora che nessuno ha rilanciato né sciolto? (dal 19-09-2026: il verdetto «fermo» è quello del banner, letto dalla stessa sede) |
+| [vw_processi_dominio_senza_emittente](/dbzero/dbops/views/vw_processi_dominio_senza_emittente) | c'è un lavoro di dominio che non sa dire di chi sono i dati che tocca? |
+| [vw_processi_dominio_senza_difesa](/dbzero/dbops/views/vw_processi_dominio_senza_difesa) | c'è una tabella toccata da un lavoro di dominio e non protetta? |
+| [vw_processi_dominio_senza_identita](/dbzero/dbops/views/vw_processi_dominio_senza_identita) | c'è un lavoro di dominio senza tesserino? |
+| [vw_emittenti_non_serviti](/dbzero/dbops/views/vw_emittenti_non_serviti) | c'è un'azienda che nessuno sta servendo? |
+| [vw_processi_dominio_su_pgagent](/dbzero/dbops/views/vw_processi_dominio_su_pgagent) | qualcuno sta ancora eseguendo dentro l'orologio? |
+| [vw_processi_che_bypassano](/dbzero/dbops/views/vw_processi_che_bypassano) | è rimasto in giro un passe-partout? |
+| [vw_run_senza_attore](/dbzero/dbops/views/vw_run_senza_attore) | c'è una corsa che non dice chi l'ha fatta? |
+| [vw_coda_lavori_da_guardare](/dbzero/dbops/views/vw_coda_lavori_da_guardare) | c'è un lavoro in coda che si è fermato e nessuno se n'è accorto? |
+| [vw_fatture_stampa_coda_da_guardare](/dbzero/dbops/views/vw_fatture_stampa_coda_da_guardare) | c'è una stampa in coda che si è fermata? (la gemella, per la coda stampa) |
+| [vw_email_da_guardare](/dbzero/dbops/views/vw_email_da_guardare) | c'è un'email che la coda deve a qualcuno da più di un'ora e nessuno ha preso in mano? |
+| [vw_processi_programmazione_da_guardare](/dbzero/dbops/views/vw_processi_programmazione_da_guardare) | c'è un processo che doveva farsi vivo e non l'ha fatto — un job pgAgent, o un COMMAND col suo contratto? |
+| [vw_lotti_fermi_da_guardare](/dbzero/dbops/views/vw_lotti_fermi_da_guardare) | c'è un giro di fatturazione fermo da più di un'ora che nessuno ha rilanciato né sciolto? (dal 19-09-2026: il verdetto «fermo» è quello del banner, letto dalla stessa sede) |
 
 ### ⚠️ Un debito dichiarato non è un allarme
 
@@ -358,19 +358,19 @@ si fa distrattamente.
 
 In ordine, e nessuno dei passi è facoltativo:
 
-1. **Registralo** in [dbops.processi](/dbzero/dbops/manual/processi): nome,
+1. **Registralo** in [dbops.processi](/dbzero/dbops/tabelle/processi): nome,
    natura, canale.
 2. **Dichiara che cosa tocca** in
    [dbops.processi_bersagli](/dbzero/dbops/tabelle/processi_bersagli): le
    tabelle su cui scrive e, per ciascuna, come si risale all'azienda.
 3. **Se è di DOMINIO**, dagli un tesserino per ogni azienda che deve servire, e
-   poi controlla che [vw_emittenti_non_serviti](/dbzero/dbops/manual/vw_emittenti_non_serviti)
+   poi controlla che [vw_emittenti_non_serviti](/dbzero/dbops/views/vw_emittenti_non_serviti)
    sia vuota.
 4. **Se deve girare a orario e ha natura di dominio**, l'orologio lo **accoda**,
-   non lo esegue: vedi [fn_accoda_lavoro](/dbzero/dbops/manual/fn_accoda_lavoro)
+   non lo esegue: vedi [fn_accoda_lavoro](/dbzero/dbops/funzioni/fn_accoda_lavoro)
    e la [guida delle code](/guide/gestione-code-di-lavoro).
 5. **Fai in modo che firmi le proprie corse**, così non finisce in
-   [vw_run_senza_attore](/dbzero/dbops/manual/vw_run_senza_attore).
+   [vw_run_senza_attore](/dbzero/dbops/views/vw_run_senza_attore).
 
 ⚠️ Un lavoro registrato come DOMINIO **non può essere accodato senza operatore**:
 il sistema lo rifiuta. Non è una formalità — è la regola che impedisce a un

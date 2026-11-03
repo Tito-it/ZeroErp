@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_run_automations_audit_update`
 
+> **Ultimo aggiornamento**: 3 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 Guide:
@@ -19,8 +21,7 @@ Approfondimento funzioni:
 
 ---
 ### 🎯 Scopo Principale
-(latest review 25-12-25)
-La funzione **`dbops.fn_run_automations_audit_update(p_exec_mode, p_schemas, p_dry_run)`** applica in modo automatico (o simula) la **regola di aggiornamento audit** sulle tabelle nell'ambito, creando – dove mancante secondo le policy – un **trigger BEFORE UPDATE** che aggiorna `data_update` e `user_update` tramite la funzione `script.trgfn_audit_data_user_generic()`.
+La funzione **`dbops.fn_run_automations_audit_update(p_exec_mode, p_schemas, p_dry_run)`** applica in modo automatico (o simula) la **regola di aggiornamento audit** sulle tabelle nell'ambito, creando – dove mancante secondo le policy – un **trigger BEFORE INSERT OR UPDATE** che aggiorna `data_update` e `user_update` tramite la funzione `script.trgfn_audit_data_user_generic()`.
 
 ---
 

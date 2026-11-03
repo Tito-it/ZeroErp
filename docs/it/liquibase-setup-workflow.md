@@ -1,6 +1,6 @@
 # Liquibase — struttura e workflow (v2)
 
-> **Ultimo aggiornamento**: 24 ottobre 2026
+> **Ultimo aggiornamento**: 3 novembre 2026
 >
 > **Destinatari**: chi scrive changeSet per il database di ZeroERP
 >
@@ -40,7 +40,7 @@ l'estensione c'è (`onFail: MARK_RAN`): in CI vengono saltati, e il primo ambien
 davvero è un'installazione vera. Lì **devono** girare.
 
 **Il lavoro delle statistiche deve poter analizzare ogni tabella.**
-[fn_analyze_statistiche](dbzero/maintenance/manual/fn_analyze_statistiche.md) lancia `ANALYZE` e
+[fn_analyze_statistiche](/dbzero/maintenance/funzioni/fn_analyze_statistiche) lancia `ANALYZE` e
 poi verifica di esserci riuscito (`E_STATISTICHE_MANCANTI`). Per analizzare una tabella bisogna
 esserne proprietari: la procedura gira come `zeroerp_owner`, che possiede tutto, comprese le tabelle
 che il primo passo di Liquibase crea da superuser (`databasechangelog`, `databasechangeloglock`,

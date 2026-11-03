@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/maintenance/manual/proc_sync_auth_user_expired_job.md" %}
 # ⚙️ Procedura `proc_sync_auth_user_expired_job`
 
 ```sql

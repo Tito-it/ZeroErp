@@ -1,14 +1,14 @@
 # Guida — Un database che resta veloce
 
-> **Ultimo aggiornamento**: 18 ottobre 2026
+> **Ultimo aggiornamento**: 3 novembre 2026
 >
 > **Destinatari**: sviluppatori database e backend, e chiunque debba capire perché
 > una schermata o un test è diventato lento
 >
 > **Vedi anche** — funzioni e viste DB:
 >
-> * [maintenance.vw_statistiche_mancanti](/dbzero/maintenance/manual/vw_statistiche_mancanti) — le tabelle senza statistiche
-> * [dbops.fk_index_policy](/dbzero/dbops/manual/fk_index_policy) — quali chiavi esterne hanno un indice, e perché
+> * [maintenance.vw_statistiche_mancanti](/dbzero/maintenance/views/vw_statistiche_mancanti) — le tabelle senza statistiche
+> * [dbops.fk_index_policy](/dbzero/dbops/tabelle/fk_index_policy) — quali chiavi esterne hanno un indice, e perché
 >
 > **Vedi anche** — regole e guide correlate:
 >
@@ -153,7 +153,7 @@ test che la pretende per nome.
 | --- | --- |
 | Indici doppi o coperti da un altro più largo | due viste, [§8.6](/linee-guida-sql#86-gestione-indici-ridondanti) |
 | Chiavi esterne senza indice | [§8.7](/linee-guida-sql#87-automazione-indici-fk) |
-| Tabelle senza statistiche | [vw_statistiche_mancanti](/dbzero/maintenance/manual/vw_statistiche_mancanti) |
+| Tabelle senza statistiche | [vw_statistiche_mancanti](/dbzero/maintenance/views/vw_statistiche_mancanti) |
 
 ### Fuori perimetro, oggi
 
