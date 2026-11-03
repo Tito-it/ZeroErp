@@ -5,7 +5,7 @@
 --   contesto operatore non cambierebbe una riga del risultato, e metterlo
 --   darebbe l'impressione che la RLS qui sia esercitata, che sarebbe falso.
 -- pgtap-runner: owner
--- pgtap-runner-motivo: i test 3..16 CREANO uno schema di prova e funzioni
+-- pgtap-runner-motivo: i test 3..18 CREANO uno schema di prova e funzioni
 --   plpgsql (in transazione, poi annullata) perche' un criterio si prova
 --   COSTRUENDO i casi. E' DDL piu' CREATE FUNCTION: il ruolo applicativo non
 --   ne fa e non ne deve fare. Stesso criterio del gemello
@@ -17,10 +17,12 @@
 -- ChangeSet di riferimento: 20260921-40 (risalita condivisa), 20260921-42
 --                           (la misura), 20260921-43..49 (la sanatura, 30 A),
 --                           20260922-11..13 (i 9 A del §4-ter.2),
---                           20260924-08 (la delega fra check, t.15-16)
+--                           20260924-08 (la delega fra check, t.15-16),
+--                           20261103-01..03 (il codice negli argomenti del
+--                           trigger, t.17-18 — D24)
 -- Brief: brief-be-presidio-ui-action-e-canale-campi §2, §3-bis.4, §4, §4-bis, §4-ter
 --
--- Indice test (plan 16):
+-- Indice test (plan 18):
 --   1) ⛔ LA SANATURA NON SI DISFA: i 27 guard sanati il 21-09 e le 8 funzioni
 --      del 22-09 portano ancora il canale (IN_CHIAMATA, chiave campo) per i
 --      loro codici — un corpo riemesso da uno YAML stantio qui diventa rosso
@@ -56,6 +58,14 @@
 --  16) ⛔ IL CONSUMO non e' delega: una check che CONTA i motivi di un'altra
 --      emette il suo, e non eredita ne' codici ne' `valori` (COSTRUITO — il
 --      falso che la prima stesura di -08 dava al rubinetto)
+--  17) ⭐ IL CODICE NEGLI ARGOMENTI DEL TRIGGER (20261103-02, D24): un BB che
+--      riceve il codice da TG_ARGV e lo solleva da una variabile e' un sito
+--      DIRETTO / IN_VARIABILE; una forma di codice dentro un argomento piu'
+--      lungo non e' un codice (COSTRUITO — la forma di
+--      script.trgfn_doc_guard_emittente_ba, prima invisibile)
+--  18) ⛔ la stessa lettura nella MISURA del terzo lato (20261103-01, -03):
+--      vw_codici_errore_argomenti_trigger dice tabella e posizione, e
+--      vw_codici_errore_da_dichiarare conta il codice, da trigger (COSTRUITO)
 --
 -- ────────────────────────────────────────────────────────────────
 -- ⛔ IL PROBLEMA, E PERCHE' NON SI VEDE.
@@ -86,7 +96,7 @@ BEGIN;
 -- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(16);
+SELECT plan(18);
 
 -- ============================================================
 -- I casi costruiti — da qui in giu' si semina
@@ -321,6 +331,30 @@ BEGIN
 END
 $f$;
 
+-- 17-18) ⭐ IL CODICE NEGLI ARGOMENTI DEL TRIGGER (20261103-01..03, D24): la
+--     forma di script.trgfn_doc_guard_emittente_ba. Il corpo non nomina
+--     nessun codice; lo riceve da TG_ARGV e lo solleva da una variabile, col
+--     contesto (e 'campo') in un'altra. Due trigger, due codici; il terzo
+--     argomento CONTIENE una forma di codice senza esserlo (ORDINE_VENDITA
+--     conteneva E_VENDITA).
+CREATE FUNCTION pgtap_c2.trgfn_codice_negli_argomenti() RETURNS trigger LANGUAGE plpgsql AS $f$
+DECLARE
+    v_codice   config.codici_errore.codice%TYPE := TG_ARGV[0];
+    v_contesto jsonb;
+BEGIN
+    v_contesto := jsonb_build_object('campo', TG_ARGV[1], 'tabella', TG_TABLE_NAME);
+    PERFORM script.fn_log_and_raise_error('dbops', 'pgtap', v_codice,
+        v_contesto, NULL::uuid, VARIADIC ARRAY[]::text[]);
+    RETURN NEW;
+END
+$f$;
+
+CREATE TABLE pgtap_c2.t_argomenti (id int);
+CREATE TRIGGER trg_t_argomenti_a10_pgtap_uno_ins BEFORE INSERT ON pgtap_c2.t_argomenti
+    FOR EACH ROW EXECUTE FUNCTION pgtap_c2.trgfn_codice_negli_argomenti('E_PGTAP_TGARGS_UNO', 'quantita', 'ORDINE_E_PGTAP_FINTO');
+CREATE TRIGGER trg_t_argomenti_a10_pgtap_due_ins BEFORE INSERT ON pgtap_c2.t_argomenti
+    FOR EACH ROW EXECUTE FUNCTION pgtap_c2.trgfn_codice_negli_argomenti('E_PGTAP_TGARGS_DUE', 'data');
+
 -- ⚠️ Le due viste si leggono UNA volta sola, dopo la semina, e le asserzioni
 --   leggono le copie. Sono scansioni di tutto pg_proc (~3,8 s la prima, ~1,1 s
 --   la seconda, misura del 2026-09-26 su dbdev) e un filtro su `funzione` NON
@@ -543,6 +577,38 @@ SELECT is(
       WHERE funzione = 'pgtap_c2.fn_consumo'),
     'E_PGTAP_CONTATO:false',
     '16. IL CONSUMO non e'' delega: una check che CONTA i motivi di un''altra emette il suo, non eredita codici ne'' `valori`'
+);
+
+-- ============================================================
+-- 17..18. ⭐ Il codice negli ARGOMENTI del trigger (D24)
+-- ============================================================
+-- ⛔ Prima del 20261103-02 la funzione non aveva NESSUNA riga: il corpo non
+--   nomina codici, e il sito di E_DOC_EMITTENTE_BA_INCOERENTE (vero, col
+--   campo) per il presidio non esisteva. Il canale e' quello della chiamata
+--   del BB — contesto in variabile -> IN_VARIABILE, mai IN_CHIAMATA (t.8).
+--   La forma di codice dentro un argomento piu' lungo non e' un codice.
+SELECT is(
+    (SELECT string_agg(codice || ':' || via || '/' || canale || '/' || chiave, ', ' ORDER BY codice)
+       FROM _c2 WHERE funzione = 'pgtap_c2.trgfn_codice_negli_argomenti'),
+    'E_PGTAP_TGARGS_DUE:DIRETTO/IN_VARIABILE/campo, E_PGTAP_TGARGS_UNO:DIRETTO/IN_VARIABILE/campo',
+    '17. il codice negli ARGOMENTI del trigger: un sito DIRETTO / IN_VARIABILE per ciascun codice — e ORDINE_E_PGTAP_FINTO non e'' un codice'
+);
+
+-- ⛔ La stessa cecita' nella misura del terzo lato: un codice passato cosi',
+--   senza policy, non faceva rosso il cancello BE. La sede unica dice dove
+--   sta (tabella, posizione da 1); la misura lo conta, agganciato.
+SELECT is(
+    (SELECT string_agg(codice || '@' || tabella || '#' || posizione, ', ' ORDER BY codice)
+       FROM dbops.vw_codici_errore_argomenti_trigger
+      WHERE funzione = 'pgtap_c2.trgfn_codice_negli_argomenti')
+    || ' | ' ||
+    (SELECT string_agg(codice || ':' || da_trigger || '/' || funzioni, ', ' ORDER BY codice)
+       FROM dbops.vw_codici_errore_da_dichiarare
+      WHERE codice LIKE 'E\_PGTAP\_TGARGS\_%' OR codice LIKE 'E\_PGTAP\_FINTO%'),
+    'E_PGTAP_TGARGS_DUE@pgtap_c2.t_argomenti#1, E_PGTAP_TGARGS_UNO@pgtap_c2.t_argomenti#1'
+    || ' | ' ||
+    'E_PGTAP_TGARGS_DUE:true/pgtap_c2.trgfn_codice_negli_argomenti, E_PGTAP_TGARGS_UNO:true/pgtap_c2.trgfn_codice_negli_argomenti',
+    '18. la sede unica vede i codici degli argomenti (tabella, posizione) e la misura del terzo lato li conta, da trigger — nessun falso da ORDINE_E_PGTAP_FINTO'
 );
 
 DROP SCHEMA pgtap_c2 CASCADE;

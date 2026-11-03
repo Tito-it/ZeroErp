@@ -16,12 +16,18 @@ CREATE OR REPLACE FUNCTION vendite.trgfn_ordini_ful_guard_consistenza()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
+  -- rev 2026-11-03 (20261103-37, brief-db-addebito-trasporto-ordine §8.2):
+  --   + punto 5-ter, la riga-onere passa INTERA (E_ORD_FUL_ONERE_NON_INTERO).
   DECLARE
     v_art_ordine  vendite.ordini_righe.articolo_id%TYPE;
     v_uom_ordine  vendite.ordini_righe.uom_operativa_id%TYPE;
     v_art_ddt     vendite.ddt_righe.articolo_id%TYPE;
     v_uom_ddt     vendite.ddt_righe.uom_operativa_id%TYPE;
     v_qta_ordine  vendite.ordini_righe.quantita%TYPE;
+    v_riga_nr_ord vendite.ordini_righe.riga_nr%TYPE;
+    -- ⚠️ `boolean` esplicito: la risposta di script.fn_natura_e_merce, non
+    --    una colonna.
+    v_e_onere     boolean;
     v_qta_evasa   vendite.ordini_righe_fulfillment.qta_evasa%TYPE;
     v_residuo     numeric;
     v_ba_ordine   vendite.ordini.billing_account_id%TYPE;
@@ -64,8 +70,12 @@ AS $function$
     FOR UPDATE;
 
     -- 2) Leggo riga ordine (valori coerenti dopo lock)
-    SELECT articolo_id, COALESCE(uom_operativa_id, 0), quantita
-      INTO v_art_ordine, v_uom_ordine, v_qta_ordine
+    --    rev 2026-11-03: + numero di riga e «e' un onere» (natura
+    --    CONGELATA della riga d'ordine, script.fn_natura_e_merce; IS FALSE:
+    --    una natura sconosciuta resta merce).
+    SELECT articolo_id, COALESCE(uom_operativa_id, 0), quantita, riga_nr,
+           script.fn_natura_e_merce(natura_vendita_id) IS FALSE
+      INTO v_art_ordine, v_uom_ordine, v_qta_ordine, v_riga_nr_ord, v_e_onere
       FROM vendite.ordini_righe
     WHERE id = NEW.ordine_riga_id;
 
@@ -148,6 +158,35 @@ AS $function$
       );
     END IF;
 
+    -- 5-ter) L'ONERE PASSA INTERO — rev 2026-11-03 (brief-db-addebito-
+    --    trasporto-ordine §8.2, K-4/K-6). L'onere non si evade: passa una
+    --    volta sola, con la sua quantita' intera, nella prima bolla; il
+    --    legame e' il suo «gia' passato». La regola sta QUI e non nella madre
+    --    della copia (vendite.fn_genera_ddt_da_ordine): vale per ogni porta
+    --    che scrive un legame — la copia, un legame scritto a mano, la
+    --    correzione della quantita' evasa.
+    -- ⚠️ Prima del residuo: una seconda copia intera la ferma il residuo
+    --    (E_QTA_SUPERA_RESIDUO), una parziale questo punto.
+    -- ⚠️ L'onere non si rende (guard del reso), quindi l'addendo della
+    --    ri-consegna non lo tocca: l'intero e' la quantita' della riga.
+    IF v_e_onere AND NEW.qta_evasa <> v_qta_ordine THEN
+      PERFORM script.fn_log_and_raise_error(
+        'database','trgfn_ordini_ful_guard_consistenza','E_ORD_FUL_ONERE_NON_INTERO',
+        jsonb_build_object('campo',          'qta_evasa',
+                           'ordine_riga_id', NEW.ordine_riga_id,
+                           'ddt_riga_id',    NEW.ddt_riga_id,
+                           'qta_ordine',     v_qta_ordine,
+                           'qta_evasa',      NEW.qta_evasa),
+        NULL::uuid,
+        -- Nel VARIADIC cio' che una persona riconosce: il numero di riga,
+        -- l'ordine per numero, le due quantita'.
+        COALESCE(v_riga_nr_ord::text, '?'),
+        v_ordine_lbl,
+        trim_scale(v_qta_ordine)::text,
+        trim_scale(NEW.qta_evasa)::text
+      );
+    END IF;
+
     -- 6) Residuo = quantita ordine - sum(evasa esistente, esclusa
     --    riga corrente in UPDATE) + addendo reso (ri-consegna).
     SELECT COALESCE(SUM(q.qta_evasa), 0)
@@ -181,7 +220,7 @@ AS $function$
   $function$
 
 COMMENT ON FUNCTION vendite.trgfn_ordini_ful_guard_consistenza()
-IS 'Guard consistenza fulfillment: articolo/uom/residuo + over-fulfillment (E_QTA_SUPERA_RESIDUO). RESO-AWARE: residuo include addendo ri-consegna (fn_ordine_riga_qta_riconsegna), coerente con fn_ordine_ha_residuo_evasione. rev 2026-07-13. rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-6): + il cliente, E_DOC_CLIENTE_DIVERSO_DA_SORGENTE — la riga di DDT evade solo righe d''ordine dello stesso billing account.';
+IS 'Guard consistenza fulfillment: articolo/uom/residuo + over-fulfillment (E_QTA_SUPERA_RESIDUO). RESO-AWARE: residuo include addendo ri-consegna (fn_ordine_riga_qta_riconsegna), coerente con fn_ordine_ha_residuo_evasione. rev 2026-07-13. rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-6): + il cliente, E_DOC_CLIENTE_DIVERSO_DA_SORGENTE — la riga di DDT evade solo righe d''ordine dello stesso billing account. ⭐ Rev 2026-11-03 (20261103-37, brief-db-addebito-trasporto-ordine §8.2, K-4/K-6): + punto 5-ter, E_ORD_FUL_ONERE_NON_INTERO — se la riga d''ordine e'' un onere (script.fn_natura_e_merce = false sulla natura congelata) il legame porta la sua quantita'' INTERA. L''onere non si evade: passa una volta sola, nella prima bolla, e il legame e'' il suo «gia'' passato». La regola sta nel guard e non nella madre della copia, perche'' vale per ogni porta che scrive il legame (copia, legame a mano, correzione della quantita'' evasa). Prima del residuo: una seconda copia intera la ferma E_QTA_SUPERA_RESIDUO, una parziale il 5-ter. VARIADIC: numero di riga, ordine, quantita'' intera, quantita'' chiesta.';
 ```
 
 </div>

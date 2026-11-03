@@ -15,7 +15,7 @@ CREATE OR REPLACE FUNCTION vendite.fn_check_commessa_sorgente_emittente_omogeneo
  RETURNS boolean
  LANGUAGE plpgsql
  STABLE SECURITY DEFINER
- SET search_path TO 'pg_catalog', 'public'
+ SET search_path TO 'pg_catalog', 'public', 'pg_temp'
 AS $function$
 DECLARE
     v_ef_commessa vendite.commesse.emittente_soggetto_ruolo_id%TYPE;

@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_partite_merce(p_ddt_ids, p_ordine_ids)`
 
+> **Ultimo aggiornamento**: 3 novembre 2026
+
 > 👀 **Vedi anche**
 >
 > [vendite.vw_partite_merce](/dbzero/vendite/views/vw_partite_merce) — la stessa cosa, senza filtro
@@ -11,7 +13,6 @@
 
 ---
 ### 🎯 Scopo Principale
-(latest review 2026-09-21)
 
 `vendite.fn_partite_merce` è **il conto della merce** — lo stesso di
 [`vw_partite_merce`](vw_partite_merce.md), che ne è la proiezione senza filtro —
@@ -147,6 +148,26 @@ Prima c'era una CTE `soglia` con l'ordine di `EMESSO`, e la stessa regola era
 ricopiata in `vendite.fn_ordine_riga_spedita` e in
 `dbops.vw_ddt_emessi_senza_scarico` (lì come elenco di codici). Uscita
 identica: provata su dbdev come app, nei tre modi (tutte, per DDT, per ordine).
+
+---
+
+### Solo la merce della bolla
+
+(rev 3-11-2026, `20261103-30`, brief `brief-db-addebito-trasporto-ordine` §8.1)
+
+Dal 2026-11-03 una bolla puo' portare anche gli **oneri** (trasporto, spese):
+articoli-onere scritti sulle righe come gli articoli. Un onere non e' merce
+consegnata: non ha partita, non si rende, non si accredita, non si
+riconsegna. La funzione tiene in `dr_in` (nei due rami) solo le righe la cui
+natura — quella **congelata** sulla riga — e' merce per il building block
+[`script.fn_natura_e_merce`](/dbzero/script/funzioni/fn_natura_e_merce).
+
+Il building block si chiama **una volta per natura** (CTE `nature_merce`),
+non una per riga: e' una funzione SQL con `FROM`, non incorporabile, e nel
+ramo «tutte» la chiamata per riga avrebbe pesato su ogni riga di bolla. I semi
+non cambiano: un onere fra i semi allarga la chiusura solo di se stesso e non
+esce. Sulle bolle di sola merce l'uscita e' identica (provata nei due versi,
+nei tre modi, prima dell'apply).
 
 ---
 

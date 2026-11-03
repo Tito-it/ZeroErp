@@ -15,7 +15,7 @@ CREATE OR REPLACE FUNCTION vendite.fn_guard_commessa_sorgente_emittente(p_commes
  RETURNS void
  LANGUAGE plpgsql
  SECURITY DEFINER
- SET search_path TO 'pg_catalog', 'public'
+ SET search_path TO 'pg_catalog', 'public', 'pg_temp'
 AS $function$
 DECLARE
     v_codice_commessa vendite.commesse.codice%TYPE;

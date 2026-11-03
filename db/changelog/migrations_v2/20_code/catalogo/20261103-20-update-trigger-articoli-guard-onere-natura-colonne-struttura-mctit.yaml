@@ -1,0 +1,83 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# MONTAGGIO ALLARGATO: trg_articoli_a10_guard_onere_natura_ins_upd
+#   Brief: brief-db-addebito-trasporto-ordine §8.1 (decisione 10 di Tid,
+#   2026-11-03).
+#
+#   La funzione (20261103-18) giudica anche gestito_a_magazzino,
+#   is_composito, requires_lotto, requires_serial. Con il montaggio di
+#   20261013-06 (UPDATE OF natura_vendita_id, causale_onere_id) un UPDATE che
+#   tocca SOLO uno dei quattro flag non farebbe scattare il guard, e un onere
+#   diventerebbe gestito a magazzino senza essere giudicato
+#   (linee-guida-trigger, «una colonna nuova entra anche nell'elenco OF»).
+#
+#   UPDATE OF resta la forma giusta: nessun trigger BEFORE di
+#   catalogo.articoli scrive le sei colonne (li leggono soltanto i guard
+#   flags_struttura_bom_attiva, struttura_se_usato, listino_se_composito); la
+#   funzione confronta comunque OLD e NEW.
+#   Stesso nome (lo leggono i pgTAP; fascia _a10_, l'ordine alfabetico fra i
+#   BEFORE ROW non cambia: guard_onere_natura prima di guard_struttura_se_
+#   usato). Trigger scritto a mano (20261013-06), non generato da ci_apply.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20261103-20-update-trigger-articoli-guard-onere-natura-colonne-struttura-mctit.yaml
+
+  - changeSet:
+      id: 20261103-20-update-trigger-articoli-guard-onere-natura-colonne-struttura
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        catalogo.articoli: trg_articoli_a10_guard_onere_natura_ins_upd scatta anche su UPDATE OF
+        gestito_a_magazzino, is_composito, requires_lotto, requires_serial (la regola 2 di
+        catalogo.trgfn_articoli_guard_onere_natura, 20261103-18). Decisione 10,
+        brief-db-addebito-trasporto-ordine §8.1.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_trigger t
+               WHERE NOT t.tgisinternal
+                 AND t.tgrelid = 'catalogo.articoli'::regclass
+                 AND t.tgname = 'trg_articoli_a10_guard_onere_natura_ins_upd';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER trg_articoli_a10_guard_onere_natura_ins_upd ON catalogo.articoli;
+              CREATE TRIGGER trg_articoli_a10_guard_onere_natura_ins_upd
+                  BEFORE INSERT OR UPDATE OF natura_vendita_id, causale_onere_id,
+                                             gestito_a_magazzino, is_composito,
+                                             requires_lotto, requires_serial
+                  ON catalogo.articoli
+                  FOR EACH ROW
+                  EXECUTE FUNCTION catalogo.trgfn_articoli_guard_onere_natura();
+
+              COMMENT ON TRIGGER trg_articoli_a10_guard_onere_natura_ins_upd ON catalogo.articoli IS
+                  'Un articolo-onere e'' un addebito, non un bene: la natura non e'' merce '
+                  '(E_ARTICOLO_ONERE_NATURA_MERCE) e non e'' gestito a magazzino, composito, a lotti o a '
+                  'matricola (E_ARTICOLO_ONERE_STRUTTURA). Fascia _a10_. UPDATE OF le sei colonne che la '
+                  'funzione giudica: nessun trigger BEFORE della tabella le scrive. Brief: '
+                  'brief-db-articoli-ammessi-per-documento (A-9); rev 2026-11-03 (20261103-20, '
+                  'brief-db-addebito-trasporto-ordine §8.1, decisione 10).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER trg_articoli_a10_guard_onere_natura_ins_upd ON catalogo.articoli;
+              CREATE TRIGGER trg_articoli_a10_guard_onere_natura_ins_upd
+                  BEFORE INSERT OR UPDATE OF natura_vendita_id, causale_onere_id
+                  ON catalogo.articoli
+                  FOR EACH ROW
+                  EXECUTE FUNCTION catalogo.trgfn_articoli_guard_onere_natura();

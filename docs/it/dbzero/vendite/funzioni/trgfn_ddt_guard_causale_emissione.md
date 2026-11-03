@@ -29,6 +29,11 @@ AS $function$
 --   rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-2):
 --   + E_DDT_CLIENTE_OBBLIGATORIO (la causale vuole un cliente e il
 --   billing account manca).
+--   rev 2026-11-03 (20261103-42, brief-db-addebito-trasporto-ordine §8.3):
+--   + E_DDT_EMISSIONE_SOLO_ONERI (righe, ma nessuna di merce: K-2) e
+--   + E_DDT_ONERE_NON_FATTURABILE (un onere che non verrebbe mai
+--   fatturato: causale non fatturabile, o onere senza legame su una bolla
+--   di un ordine che fattura alla conferma).
 --
 -- ⚠️ IL NOME NOMINA LA SOLA CAUSALE, ed e' rimasto quello di quando
 --   il motivo era uno. Non si rinomina — costerebbe il trigger, ogni
@@ -112,6 +117,51 @@ BEGIN
                 COALESCE(NEW.numero, NEW.id::text),
                 COALESCE(v_motivo->'dettaglio'->>'riga_nr', '?')
             );
+        ELSIF v_motivo->>'codice' = 'E_DDT_EMISSIONE_SOLO_ONERI' THEN
+            -- rev 2026-11-03 (K-2): la bolla ha righe, ma nessuna di merce.
+            --   VARIADIC: il documento. CONFLITTO_STATO come i fratelli: la
+            --   richiesta e' «emetti», nessun campo da accendere.
+            PERFORM script.fn_log_and_raise_error(
+                'database', TG_NAME, 'E_DDT_EMISSIONE_SOLO_ONERI',
+                jsonb_build_object(
+                    'ddt_id', NEW.id,
+                    'numero', NEW.numero),
+                NEW.tx_id,
+                COALESCE(NEW.numero, NEW.id::text)
+            );
+        ELSIF v_motivo->>'codice' = 'E_DDT_ONERE_NON_FATTURABILE' THEN
+            -- rev 2026-11-03 (§8.3, K-7/K-8): la riga-onere che non verrebbe
+            --   mai fatturata. VARIADIC: documento e NUMERO di riga (la frase
+            --   la legge una persona); l'id resta nel context.
+            PERFORM script.fn_log_and_raise_error(
+                'database', TG_NAME, 'E_DDT_ONERE_NON_FATTURABILE',
+                jsonb_build_object(
+                    'ddt_id',   NEW.id,
+                    'numero',   NEW.numero,
+                    'riga_id',  (v_motivo->'dettaglio'->>'riga_id')::bigint,
+                    'riga_nr',  (v_motivo->'dettaglio'->>'riga_nr')::integer),
+                NEW.tx_id,
+                COALESCE(NEW.numero, NEW.id::text),
+                COALESCE(v_motivo->'dettaglio'->>'riga_nr', '?')
+            );
+        ELSIF v_motivo->>'codice' = 'E_DDT_TRASPORTO_NON_DOVUTO' THEN
+            -- rev 2026-11-03 (20261103-48, T-3 bis): l'onere di trasporto su
+            --   una bolla in porto assegnato o con addebito a terzi. VARIADIC:
+            --   documento, NUMERO di riga, modalita' leggibile; l'id resta nel
+            --   context. CONFLITTO_STATO come i fratelli.
+            PERFORM script.fn_log_and_raise_error(
+                'database', TG_NAME, 'E_DDT_TRASPORTO_NON_DOVUTO',
+                jsonb_build_object(
+                    'ddt_id',   NEW.id,
+                    'numero',   NEW.numero,
+                    'riga_id',  (v_motivo->'dettaglio'->>'riga_id')::bigint,
+                    'riga_nr',  (v_motivo->'dettaglio'->>'riga_nr')::integer,
+                    'modalita', v_motivo->'dettaglio'->>'modalita'),
+                NEW.tx_id,
+                COALESCE(NEW.numero, NEW.id::text),
+                COALESCE(v_motivo->'dettaglio'->>'riga_nr', '?'),
+                COALESCE(v_motivo->'dettaglio'->>'modalita_descrizione', v_motivo->'dettaglio'->>'modalita', '?')
+            );
         END IF;
     END LOOP;
 
@@ -120,7 +170,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_ddt_guard_causale_emissione()
-IS 'Gate all''emissione DDT sul VALORE DELLA RIGA (brief-db-fatturazione-ddt-resi §4a, DL-28), in tre facce: (1) causale di trasporto obbligatoria — in DRAFT il NULL resta legittimo; (2) se la causale e'' fatturabile, ogni riga attiva deve avere un prezzo risolvibile (proprio o ereditato dalla riga ordine via fulfillment); (3) ogni riga attiva CHE PORTA UN PREZZO deve avere anche l''aliquota. rev 2026-07-19: valutazione delegata a script.fn_check_ddt_emittibile (single source con fn_available_actions_ddt); codici errore e argomenti invariati (544/545). ⭐ rev 2026-08-28 (brief-db-ddt-riconsegna-eredita-testata, Fase C / R4-ter): + E_DDT_RIGA_IVA_MANCANTE. Si e'' esteso questo guard invece di crearne uno nuovo perche'' e'' gia'' il gate del valore della riga e il LOOP con ELSIF per codice e'' fatto per crescere cosi''. ⚠️ Nel VARIADIC del codice nuovo va il NUMERO di riga e non l''id: quel valore compone la frase che legge una persona, e un id tecnico non si cerca a mano; l''id resta nel context. ⚠️ Il nome nomina la sola causale ed e'' rimasto quello di quando il motivo era uno: non si rinomina (costerebbe trigger, doc auto-gen e pgTAP per sola leggibilita''), ma lo Scopo nel corpo lo dichiara. rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-2/D-2-bis): + E_DDT_CLIENTE_OBBLIGATORIO, la causale manda merce a un cliente (config.causali_trasporto.richiede_cliente) e la bolla non ha il billing account; VARIADIC: documento e codice della causale.';
+IS 'Gate all''emissione DDT sul VALORE DELLA RIGA (brief-db-fatturazione-ddt-resi §4a, DL-28), in tre facce: (1) causale di trasporto obbligatoria — in DRAFT il NULL resta legittimo; (2) se la causale e'' fatturabile, ogni riga attiva deve avere un prezzo risolvibile (proprio o ereditato dalla riga ordine via fulfillment); (3) ogni riga attiva CHE PORTA UN PREZZO deve avere anche l''aliquota. rev 2026-07-19: valutazione delegata a script.fn_check_ddt_emittibile (single source con fn_available_actions_ddt); codici errore e argomenti invariati (544/545). ⭐ rev 2026-08-28 (brief-db-ddt-riconsegna-eredita-testata, Fase C / R4-ter): + E_DDT_RIGA_IVA_MANCANTE. Si e'' esteso questo guard invece di crearne uno nuovo perche'' e'' gia'' il gate del valore della riga e il LOOP con ELSIF per codice e'' fatto per crescere cosi''. ⚠️ Nel VARIADIC del codice nuovo va il NUMERO di riga e non l''id: quel valore compone la frase che legge una persona, e un id tecnico non si cerca a mano; l''id resta nel context. ⚠️ Il nome nomina la sola causale ed e'' rimasto quello di quando il motivo era uno: non si rinomina (costerebbe trigger, doc auto-gen e pgTAP per sola leggibilita''), ma lo Scopo nel corpo lo dichiara. rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-2/D-2-bis): + E_DDT_CLIENTE_OBBLIGATORIO, la causale manda merce a un cliente (config.causali_trasporto.richiede_cliente) e la bolla non ha il billing account; VARIADIC: documento e codice della causale. ⭐ Rev 2026-11-03 (20261103-42, brief-db-addebito-trasporto-ordine §8.3, K-2/K-7/K-8): solleva i due motivi nuovi di script.fn_check_ddt_emittibile sugli oneri di bolla — E_DDT_EMISSIONE_SOLO_ONERI (righe attive, nessuna di merce; VARIADIC: documento) e E_DDT_ONERE_NON_FATTURABILE (un onere che non verrebbe mai fatturato: causale non fatturabile, anche se copiato, o onere senza legame su una bolla il cui ordine sorgente di testata fattura alla conferma; VARIADIC: documento e numero di riga). Qui e non in trgfn_ddt_guard_transizione: e'' il gate del valore della riga, e il LOOP per codice e'' fatto per crescere cosi''. CONFLITTO_STATO come i fratelli. Rev 2026-11-03 (20261103-48, brief-db-addebito-trasporto-ordine §10.2, T-3 bis): + E_DDT_TRASPORTO_NON_DOVUTO, l''onere di causale TRASPORTO su una bolla in porto ASSEGNATO o con addebito a TERZI; VARIADIC: documento, numero di riga, modalita'' leggibile.';
 ```
 
 </div>

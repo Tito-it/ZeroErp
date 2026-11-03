@@ -40,7 +40,7 @@ BEGIN ATOMIC
              orr_1.data_consegna_richiesta_cliente,
              orr_1.data_consegna_confermata
             FROM vendite.ordini_righe orr_1
-           WHERE ((orr_1.attivo IS TRUE) AND (orr_1.ordine_id = ANY (fn_situazione_merce_ordine.p_ordine_ids)))
+           WHERE ((orr_1.attivo IS TRUE) AND (orr_1.ordine_id = ANY (fn_situazione_merce_ordine.p_ordine_ids)) AND script.fn_natura_e_merce(orr_1.natura_vendita_id))
          UNION
           SELECT orr_1.id,
              orr_1.ordine_id,
@@ -51,7 +51,7 @@ BEGIN ATOMIC
              orr_1.data_consegna_confermata
             FROM (vendite.ordini_righe orr_1
               JOIN righe_toccate t ON ((t.ordine_riga_id = orr_1.id)))
-           WHERE (orr_1.attivo IS TRUE)
+           WHERE ((orr_1.attivo IS TRUE) AND script.fn_natura_e_merce(orr_1.natura_vendita_id))
          ), orr_in AS MATERIALIZED (
           SELECT s.id,
              s.ordine_id,
@@ -71,7 +71,7 @@ BEGIN ATOMIC
              orr_1.data_consegna_richiesta_cliente,
              orr_1.data_consegna_confermata
             FROM vendite.ordini_righe orr_1
-           WHERE ((orr_1.attivo IS TRUE) AND ((fn_situazione_merce_ordine.p_ddt_ids IS NULL) AND (fn_situazione_merce_ordine.p_ordine_ids IS NULL)))
+           WHERE ((orr_1.attivo IS TRUE) AND script.fn_natura_e_merce(orr_1.natura_vendita_id) AND ((fn_situazione_merce_ordine.p_ddt_ids IS NULL) AND (fn_situazione_merce_ordine.p_ordine_ids IS NULL)))
          ), pm_src AS (
           SELECT p.ordine_riga_id,
              p.consegnato,
@@ -202,7 +202,7 @@ BEGIN ATOMIC
 END
 
 COMMENT ON FUNCTION vendite.fn_situazione_merce_ordine(p_ddt_ids bigint[], p_ordine_ids bigint[])
-IS 'LA SITUAZIONE MERCE PER RIGA D''ORDINE, PER DOCUMENTO (D14 giro 2 — D3, 2026-09-21): lo stesso aggregato parlante di vendite.vw_situazione_merce_ordine — che ne e'' la proiezione senza filtro, fn(NULL, NULL) — ristretto alle righe d''ordine chieste. Semi, nello stesso ordine di fn_partite_merce: p_ddt_ids (i DDT: le righe d''ordine che hanno TOCCATO via fulfillment, con la loro situazione INTERA, non la sola partita di quel DDT) e p_ordine_ids (gli ordini: tutte le loro righe attive); entrambi NULL = tutte; un array VUOTO semina zero righe; entrambi valorizzati = unione. Le partite si chiedono a fn_partite_merce(NULL, <ordini della chiusura>): l''aggregato di una riga d''ordine e'' completo per costruzione, perche'' la partita esce sotto `ordine_id` della riga minima e l''ordine porta tutte le sue righe. `ful` sulle righe dell''uscita; `ord` (corsia ORD di fn_af_merce_per_riga) PER CHIAVE dal giro 4 (D5, 2026-09-21): una chiave ORD per riga in uscita, chiave BASE (i suffissi #CMP li risolve la funzione). BEGIN ATOMIC: dipendenze in pg_depend, catena RLS leggibile dal presidio security_invoker attraverso fn_partite_merce. I due modi sono rami in UNION ALL, mai `p IS NULL OR`; sulla partita anche perche'' il seme calcolato (sub-select) non si inlina — Function Scan, che regge in piano generico — mentre il ramo TUTTI con due letterali resta inlinato, identico alla vista. COALESCE(array_agg, ''{}''): un DDT senza fulfillment non deve diventare «tutte». INVOKER: la RLS resta di chi legge. Chiamanti per documento: BE list_situazione_merce_ordine (per ordine ARRAY[%s] nel secondo seme, per DDT nel primo). Brief: brief-db-partita-merce-per-documento §7 giro 2. Rev 2026-10-20 (20261020-88, brief-db-grammatica-unica-documenti 2e, G-8): le chiavi chieste al contatore le compone script.fn_segment_key; la corsia e'' ORDINE_VENDITA.';
+IS 'LA SITUAZIONE MERCE PER RIGA D''ORDINE, PER DOCUMENTO (D14 giro 2 — D3, 2026-09-21): lo stesso aggregato parlante di vendite.vw_situazione_merce_ordine — che ne e'' la proiezione senza filtro, fn(NULL, NULL) — ristretto alle righe d''ordine chieste. Semi, nello stesso ordine di fn_partite_merce: p_ddt_ids (i DDT: le righe d''ordine che hanno TOCCATO via fulfillment, con la loro situazione INTERA, non la sola partita di quel DDT) e p_ordine_ids (gli ordini: tutte le loro righe attive); entrambi NULL = tutte; un array VUOTO semina zero righe; entrambi valorizzati = unione. Le partite si chiedono a fn_partite_merce(NULL, <ordini della chiusura>): l''aggregato di una riga d''ordine e'' completo per costruzione, perche'' la partita esce sotto `ordine_id` della riga minima e l''ordine porta tutte le sue righe. `ful` sulle righe dell''uscita; `ord` (corsia ORD di fn_af_merce_per_riga) PER CHIAVE dal giro 4 (D5, 2026-09-21): una chiave ORD per riga in uscita, chiave BASE (i suffissi #CMP li risolve la funzione). BEGIN ATOMIC: dipendenze in pg_depend, catena RLS leggibile dal presidio security_invoker attraverso fn_partite_merce. I due modi sono rami in UNION ALL, mai `p IS NULL OR`; sulla partita anche perche'' il seme calcolato (sub-select) non si inlina — Function Scan, che regge in piano generico — mentre il ramo TUTTI con due letterali resta inlinato, identico alla vista. COALESCE(array_agg, ''{}''): un DDT senza fulfillment non deve diventare «tutte». INVOKER: la RLS resta di chi legge. Chiamanti per documento: BE list_situazione_merce_ordine (per ordine ARRAY[%s] nel secondo seme, per DDT nel primo). Brief: brief-db-partita-merce-per-documento §7 giro 2. Rev 2026-10-20 (20261020-88, brief-db-grammatica-unica-documenti 2e, G-8): le chiavi chieste al contatore le compone script.fn_segment_key; la corsia e'' ORDINE_VENDITA. Rev 2026-11-03 (20261103-24, brief-db-addebito-trasporto-ordine §8.1): la situazione e'' della MERCE — le righe-onere (natura congelata non merce, script.fn_natura_e_merce) non entrano nei semi (p_ordine_ids e righe toccate da p_ddt_ids) ne'' nel ramo «tutte»; vendite.vw_situazione_merce_ordine segue da se''.';
 ```
 
 </div>

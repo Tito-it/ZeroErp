@@ -1,5 +1,7 @@
 ## 🧾 Tabella `vendite.ordini_righe`
 
+> **Ultimo aggiornamento**: 3 novembre 2026
+
 > 👀 **Vedi anche**
 >
 Approfondimento tabelle: 
@@ -61,6 +63,13 @@ Righe dell’**ordine cliente** con snapshot di descrizione/UoM/IVA e idempotenz
   la stessa check della colonna `data_consegna_confermata_blocco` di
   [vw_ordini_righe_dettaglio](/dbzero/vendite/views/vw_ordini_righe_dettaglio)
   (2026-10-11, `brief-db-date-consegna-righe-in-blocco` D-7).
+* **Una riga-onere non porta date di consegna** (dal 2026-11-03, `20261103-27`,
+  brief-db-addebito-trasporto-ordine K-3): `trg_ordini_righe_a10_riga_onere_senza_date_consegna_ins_upd`
+  → su una riga che non è merce (`script.fn_natura_e_merce` sulla natura congelata: su ordine è
+  un articolo-onere) `data_consegna_richiesta_cliente` e `data_consegna_confermata` restano
+  vuote (`E_RIGA_ONERE_DATA_CONSEGNA`): un onere non si spedisce. Senza `UPDATE OF` (la natura
+  la deriva `…_a10_natura_vendita_` al cambio di articolo) e con un `WHEN` sulle date; il nome
+  lo fa parlare dopo la natura e l'ammissione dell'articolo.
 * **Quantità da operativa**: `trg_a10_ins_upd_ordini_righe_qta_from_operativa` → invoca `script.trgfn_qta_from_operativa('true','false')` per calcolare `quantita` e aggiornare `factor_to_base` a ogni INSERT/UPDATE.
 * **Natura di vendita** (dal 2026-10-13, brief-db-articoli-ammessi-per-documento A-4):
   `natura_vendita_id` (NOT NULL) è la natura con cui la riga è stata venduta. La scrive

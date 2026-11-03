@@ -13,10 +13,15 @@ CREATE FUNCTION fn_list_ddt_da_pushare(p_competenza_mese date, p_billing_account
 
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_list_ddt_da_pushare(p_competenza_mese date DEFAULT NULL::date, p_billing_account_id bigint DEFAULT NULL::bigint, p_limit integer DEFAULT NULL::integer, p_ddt_id bigint DEFAULT NULL::bigint)
- RETURNS TABLE(ddt_id bigint, ddt_uid uuid, riga_id bigint, billing_account_id bigint, utility_id integer, emittente_soggetto_ruolo_id bigint, competenza_dal date, competenza_al date, fatturazione_immediata boolean, sorgente_tipo_id bigint, sorgente_uid text, segment_key character varying, articolo_id uuid, istanza_utility_id bigint, data_attivita date, uom_id bigint, quantita numeric, qta_operativa numeric, uom_operativa_id bigint, factor_to_base numeric, competenza_mese date, prezzo_snapshot numeric, prezzo_bloccato boolean, pricing_mode character varying, tipo_movimento character varying, valuta_id integer, meta jsonb, tipo_doc_fiscale_id bigint, termine_pagamento_id bigint, modalita_pagamento_id integer)
+ RETURNS TABLE(ddt_id bigint, ddt_uid uuid, riga_id bigint, billing_account_id bigint, utility_id integer, emittente_soggetto_ruolo_id bigint, competenza_dal date, competenza_al date, fatturazione_immediata boolean, sorgente_tipo_id bigint, sorgente_uid text, segment_key character varying, articolo_id uuid, istanza_utility_id bigint, data_attivita date, uom_id bigint, quantita numeric, qta_operativa numeric, uom_operativa_id bigint, factor_to_base numeric, competenza_mese date, prezzo_snapshot numeric, prezzo_bloccato boolean, pricing_mode character varying, tipo_movimento character varying, valuta_id integer, meta jsonb, tipo_doc_fiscale_id bigint, termine_pagamento_id bigint, modalita_pagamento_id integer, causale_onere_id bigint)
  LANGUAGE plpgsql
  SET plan_cache_mode TO 'force_generic_plan'
 AS $function$
+-- rev 2026-11-03 (20261103-40, brief-db-addebito-trasporto-ordine §8.1, K-1):
+--   la riga-onere (script.fn_natura_e_merce = false sulla natura congelata)
+--   esce tipo_movimento ONERE con la causale dell'articolo, nella colonna
+--   nuova causale_onere_id (DROP + CREATE). Sorgente: la bolla. Chi e'
+--   eleggibile e la dose li dice ancora la diagnosi (20261103-39).
 -- rev 2026-10-20 (20261020-91, brief-db-grammatica-unica-documenti, 2e G-8):
 --   la chiave e' DDT_VENDITA:<uid>:R:<riga>, composta da
 --   script.fn_segment_key (era DDT:...). Firma e RETURNS ancorati.
@@ -94,6 +99,10 @@ BEGIN
       dr.factor_to_base   AS dr_factor,
       dr.prezzo_unitario  AS dr_prezzo,
       a.uom_id        AS a_uom,
+      -- rev 2026-11-03: proiezione, non eleggibilita' (quella e' della
+      -- diagnosi). IS FALSE: una natura sconosciuta resta merce.
+      (script.fn_natura_e_merce(dr.natura_vendita_id) IS FALSE) AS dr_e_onere,
+      a.causale_onere_id AS a_causale_onere,
       o_src.uid                  AS src_ordine_uid,
       o_src.fatturazione_trigger AS src_fatturazione_trigger,
       or_r.prezzo_unitario       AS src_prezzo_unitario,
@@ -144,7 +153,9 @@ BEGIN
     -- INDIPENDENTE dal flag di corsia.
     (COALESCE(x.dr_prezzo, x.src_prezzo_unitario) IS NOT NULL),
     'FIXED'::varchar,
-    'NORMALE'::varchar,
+    -- rev 2026-11-03 (K-1): la riga-onere va in commessa come ONERE, con la
+    -- causale dell'articolo e la bolla come sorgente.
+    CASE WHEN x.dr_e_onere THEN 'ONERE' ELSE 'NORMALE' END::varchar,
     COALESCE(x.d_valuta, x.src_valuta_id),
     jsonb_build_object(
       'ddt_numero',          x.d_numero,
@@ -157,7 +168,12 @@ BEGIN
     ),
     v_tipo_doc_fiscale_id,
     NULL::bigint,
-    NULL::integer
+    NULL::integer,
+    -- La causale dall'articolo solo qui, dove serve il valore (decisione 2
+    -- di Tid). ONERE <=> causale: lo pretende la madre
+    -- vendite.fn_upsert_commessa_attivita; un articolo-onere rimasto senza
+    -- causale esce ONERE senza causale e la madre lo rifiuta (rumoroso).
+    CASE WHEN x.dr_e_onere THEN x.a_causale_onere END
   FROM cand x
   ORDER BY x.d_id, x.dr_id
   LIMIT p_limit;
@@ -165,7 +181,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_list_ddt_da_pushare(p_competenza_mese date, p_billing_account_id bigint, p_limit integer, p_ddt_id bigint)
-IS 'rev 2026-09-21 (D14, seconda leva, forma B2): il lister DERIVA da vendite.fn_ddt_push_diagnosi — FROM fn_ddt_push_diagnosi(p_ddt_id) WHERE motivo IS NULL — e aggiunge solo i filtri di chiamata (competenza, BA, limit) e la proiezione dei 31 campi; BA, riga d''ordine sorgente e DOSE (quantita_push) li riceve dalla diagnosi. L''eleggibilita'' sta scritta in UN posto: un predicato nuovo si aggiunge alla diagnosi come rank, non qui. Contratto verso la pipeline invariato, stesse righe e stesse quantita'' per costruzione. rev 2026-09-21 (D14, quarta leva): la partita si legge da vendite.fn_partite_merce con il DDT chiesto come SEME (la chiusura del documento, non le partite di tutti); p_ddt_id NULL (lista push, cockpit) = tutte. Lista righe DDT eligible al push su commessa. rev 2026-08-17 (partita generalizzata S5): la quantita'' da fatturare e'' la DIFFERENZA della partita di merce, gia'' per riga di DDT — spariscono la ridistribuzione greedy della differenza d''ordine e il caso speciale standalone/compositi. ⚠️ Una partita NON MISURABILE non viene spinta (rank 9 della diagnosi). ⚠️ Nota per la nota di credito: quando una RETTIFICA abbassera'' il fatturato, la differenza tornera'' positiva e solo script.fn_get_stato_push_segment = LIBERA (rank 4) impedira'' la ri-spinta. rev 2026-07-18 (step 5b): esclude i DDT con causale di trasporto NON fatturabile (DL-28). rev 2026-07-18 (step 5): eleggibilita'' order-backed DALLO stato-trigger IN POI, cintura XOR != CONFERMATO PRESERVATA. rev 2026-06-28: sorgente/stato per codice_interno. rev 2026-07-19: esclusione su ALLOCAZIONE via fn_get_stato_push_segment. rev 2026-07-27: fatturazione_immediata dalla colonna. Espone termine_pagamento_id e modalita_pagamento_id a NULL (rev 2026-08-03, T.1). rev 2026-10-13 (20261013-21): tipo_consumo RITIRATO in tutta la catena del push (madre, batch, cinque lister, builder pgTAP). Non aveva un lettore, e il vocabolario della madre (ACCONTO/CONGUAGLIO/STORNO) non lo produceva nessuna sorgente con un significato: preventivi, ordini e DDT scrivevano la costante CONGUAGLIO, contratti (l''erogazione della riga) e consumi (CONSUMO) un valore che la madre rifiutava, quindi il loro push falliva sempre (E_PARAMETRO_INVALIDO). L''erogazione resta dove gia'' stava, in meta.tipo_erogazione. Decisione A di Tid, 2026-10-13. Colonna tipo_consumo tolta dal RETURNS TABLE (DROP + CREATE). Rev 2026-10-20 (20261020-91, brief-db-grammatica-unica-documenti 2e, G-8): la chiave e'' DDT_VENDITA:<uid>:R:<riga>, composta da script.fn_segment_key (era DDT:...).';
+IS 'rev 2026-09-21 (D14, seconda leva, forma B2): il lister DERIVA da vendite.fn_ddt_push_diagnosi — FROM fn_ddt_push_diagnosi(p_ddt_id) WHERE motivo IS NULL — e aggiunge solo i filtri di chiamata (competenza, BA, limit) e la proiezione dei 31 campi; BA, riga d''ordine sorgente e DOSE (quantita_push) li riceve dalla diagnosi. L''eleggibilita'' sta scritta in UN posto: un predicato nuovo si aggiunge alla diagnosi come rank, non qui. Contratto verso la pipeline invariato, stesse righe e stesse quantita'' per costruzione. rev 2026-09-21 (D14, quarta leva): la partita si legge da vendite.fn_partite_merce con il DDT chiesto come SEME (la chiusura del documento, non le partite di tutti); p_ddt_id NULL (lista push, cockpit) = tutte. Lista righe DDT eligible al push su commessa. rev 2026-08-17 (partita generalizzata S5): la quantita'' da fatturare e'' la DIFFERENZA della partita di merce, gia'' per riga di DDT — spariscono la ridistribuzione greedy della differenza d''ordine e il caso speciale standalone/compositi. ⚠️ Una partita NON MISURABILE non viene spinta (rank 9 della diagnosi). ⚠️ Nota per la nota di credito: quando una RETTIFICA abbassera'' il fatturato, la differenza tornera'' positiva e solo script.fn_get_stato_push_segment = LIBERA (rank 4) impedira'' la ri-spinta. rev 2026-07-18 (step 5b): esclude i DDT con causale di trasporto NON fatturabile (DL-28). rev 2026-07-18 (step 5): eleggibilita'' order-backed DALLO stato-trigger IN POI, cintura XOR != CONFERMATO PRESERVATA. rev 2026-06-28: sorgente/stato per codice_interno. rev 2026-07-19: esclusione su ALLOCAZIONE via fn_get_stato_push_segment. rev 2026-07-27: fatturazione_immediata dalla colonna. Espone termine_pagamento_id e modalita_pagamento_id a NULL (rev 2026-08-03, T.1). rev 2026-10-13 (20261013-21): tipo_consumo RITIRATO in tutta la catena del push (madre, batch, cinque lister, builder pgTAP). Non aveva un lettore, e il vocabolario della madre (ACCONTO/CONGUAGLIO/STORNO) non lo produceva nessuna sorgente con un significato: preventivi, ordini e DDT scrivevano la costante CONGUAGLIO, contratti (l''erogazione della riga) e consumi (CONSUMO) un valore che la madre rifiutava, quindi il loro push falliva sempre (E_PARAMETRO_INVALIDO). L''erogazione resta dove gia'' stava, in meta.tipo_erogazione. Decisione A di Tid, 2026-10-13. Colonna tipo_consumo tolta dal RETURNS TABLE (DROP + CREATE). Rev 2026-10-20 (20261020-91, brief-db-grammatica-unica-documenti 2e, G-8): la chiave e'' DDT_VENDITA:<uid>:R:<riga>, composta da script.fn_segment_key (era DDT:...). ⭐ Rev 2026-11-03 (20261103-40, brief-db-addebito-trasporto-ordine §8.1, K-1): la riga-onere (script.fn_natura_e_merce = false sulla natura congelata) esce con tipo_movimento = ''ONERE'' (era la costante NORMALE per tutte) e con la causale dell''articolo nella colonna NUOVA causale_onere_id, in coda (NULL sulla merce): in commessa l''onere arriva dal push della bolla, con la bolla come sorgente. L''eleggibilita'' e la dose restano della diagnosi (che dal 20261103-39 ha il ramo dell''onere: niente partita merce, dose = quantita'' della riga); qui la natura e'' solo PROIEZIONE. RETURNS TABLE cambiato: DROP + CREATE, plan_cache_mode ridichiarato. ⚠️ Il backend legge le colonne per nome (PushableRow): finche'' non passa causale_onere_id a vendite.fn_upsert_commessa_attivita, una riga ONERE senza causale la madre la rifiuta (E_PARAMETRO_INVALIDO).';
 ```
 
 </div>

@@ -40,6 +40,7 @@ DECLARE
     v_tip_listino  vendite.listini.tipologia_id%TYPE := (p_contesto ->> 'listino_tipologia_id')::bigint;
     v_padre_codice catalogo.articoli.codice%TYPE := p_contesto ->> 'padre_codice';
     v_padre_iva    catalogo.articoli.iva_id%TYPE := (p_contesto ->> 'padre_iva_id')::bigint;
+    v_causale      catalogo.articoli.causale_onere_id%TYPE;
 BEGIN
     -- =========================================================
     -- Scopo:
@@ -65,8 +66,8 @@ BEGIN
 
     SELECT a.codice, a.is_solo_componente,
            COALESCE(p_natura_vendita_id, a.natura_vendita_id),
-           a.is_composito, a.listino_tipologia_id, a.iva_id
-      INTO v_codice, v_solo_comp, v_natura_id, v_composito, v_tipologia, v_iva
+           a.is_composito, a.listino_tipologia_id, a.iva_id, a.causale_onere_id
+      INTO v_codice, v_solo_comp, v_natura_id, v_composito, v_tipologia, v_iva, v_causale
       FROM catalogo.articoli a
      WHERE a.id = p_articolo_id;
     IF NOT FOUND THEN
@@ -364,6 +365,12 @@ BEGIN
     -- 3. La natura, secondo la destinazione. rev 2026-10-19
     --    (20261019-99, lotto 2b): la destinazione e' il codice della
     --    sorgente, come il documento (ORDINE_VENDITA, era ORDINE).
+    --    rev 2026-11-03 (20261103-17, brief-db-addebito-trasporto-ordine
+    --    §8.1): ordine e bolla ammettono la merce OPPURE l'articolo-onere
+    --    (causale_onere_id valorizzato: la sua natura non e' mai merce,
+    --    lo tiene catalogo.trgfn_articoli_guard_onere_natura). Un servizio
+    --    che non e' un onere resta fuori. «E' merce» e' il BB
+    --    script.fn_natura_e_merce (sede unica del predicato).
     IF v_documento = 'PREVENTIVO' AND v_destinazione = 'CONTRATTO' THEN
         v_motivi := v_motivi || jsonb_build_object(
             'codice',     'E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA',
@@ -378,7 +385,8 @@ BEGIN
                               'destinazione_tipo', v_destinazione),
             'valori',     jsonb_build_array(COALESCE(v_codice, p_articolo_id::text)));
     ELSIF v_documento IN ('ORDINE_VENDITA', 'DDT_VENDITA')
-          AND v_destinazione IS DISTINCT FROM 'ORDINE_VENDITA' THEN
+          AND script.fn_natura_e_merce(v_natura_id) IS NOT TRUE
+          AND v_causale IS NULL THEN
         v_motivi := v_motivi || jsonb_build_object(
             'codice',     'E_RIGA_NATURA_NON_AMMESSA',
             'reason',     'NATURA_NON_MERCE',
@@ -399,7 +407,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_check_articolo_riga_su_contesto(p_contesto jsonb, p_articolo_id uuid, p_natura_vendita_id bigint)
-IS 'Check pura (fn_check_*): i motivi, in ordine DICHIARATO, per cui l''articolo p_articolo_id non puo'' stare in una riga del documento descritto da p_contesto (costruito da script.fn_articolo_riga_contesto: mai a mano; senza documento E_PARAMETRO_INVALIDO). ''[]'' = ammesso; altrimenti {codice, reason, reason_key, dettaglio, valori}. Le regole, per documento, sono quelle scritte nel COMMENT di script.fn_check_articolo_riga, che e'' questa funzione sul contesto letto da quella firma; rev 2026-10-14 (20261014-06, D-7): KIT_SENZA_COMPONENTI (E_ARTICOLO_KIT_SENZA_COMPONENTI), un composito senza nessun legame attivo in catalogo.articoli_componenti, motivo 2 di preventivo, ordine, bolla e di AGGIUNTA e OVERRIDE di offerta e contratto (dopo il solo componente); il caso date-dipendente resta all''init dei componenti (E_DOC_COMPOSITO_BOM_VUOTA). In piu'' PROMO_ARTICOLO (D-6, 2026-10-14): 1. solo componente (E_PROMO_ARTICOLO_SOLO_COMPONENTE: nessun prezzo a se'', e il resolver salta la promo in contesto bundle); il composito non e'' un motivo (riceve la promo quando il contratto gli da'' un prezzo con un''eccezione). p_natura_vendita_id: la natura congelata della riga, se c''e''; altrimenti quella dell''articolo. Due chiamanti, una regola (A-2): la firma di sempre script.fn_check_articolo_riga (i guard di tabella) e il picker catalogo.fn_articoli_ammessi, che legge il contesto una volta e giudica ogni articolo trovato (R-5). Nasce il 2026-10-14 dal corpo di 20261013-59, brief-db-articoli-ammessi-per-documento (Lotto 4, §9.4). ⭐ rev 2026-10-19 (20261019-32, brief-db-grammatica-unica-documenti lotto 1, G-1 di Tid): il documento si nomina col codice della sorgente, CONTRATTO | OFFERTA_COMMERCIALE (era OFFERTA); dove sopra si legge OFFERTA come selettore, oggi e'' OFFERTA_COMMERCIALE. Le due check del listino (fn_check_esclusione_articolo_documento, fn_check_riga_erogazione) ricevono il documento del contesto com''e'': la chiave doc_listino non c''e'' piu'' (20261019-31). ⭐ rev 2026-10-19 (20261019-99, brief-db-grammatica-unica-documenti lotto 2b): la destinazione della natura e'' il codice della sorgente (ORDINE_VENDITA, era ORDINE): il motivo NATURA_NON_MERCE di ordine e bolla confronta due codici dello stesso vocabolario.';
+IS 'Check pura (fn_check_*): i motivi, in ordine DICHIARATO, per cui l''articolo p_articolo_id non puo'' stare in una riga del documento descritto da p_contesto (costruito da script.fn_articolo_riga_contesto: mai a mano; senza documento E_PARAMETRO_INVALIDO). ''[]'' = ammesso; altrimenti {codice, reason, reason_key, dettaglio, valori}. Le regole, per documento, sono quelle scritte nel COMMENT di script.fn_check_articolo_riga, che e'' questa funzione sul contesto letto da quella firma; rev 2026-10-14 (20261014-06, D-7): KIT_SENZA_COMPONENTI (E_ARTICOLO_KIT_SENZA_COMPONENTI), un composito senza nessun legame attivo in catalogo.articoli_componenti, motivo 2 di preventivo, ordine, bolla e di AGGIUNTA e OVERRIDE di offerta e contratto (dopo il solo componente); il caso date-dipendente resta all''init dei componenti (E_DOC_COMPOSITO_BOM_VUOTA). In piu'' PROMO_ARTICOLO (D-6, 2026-10-14): 1. solo componente (E_PROMO_ARTICOLO_SOLO_COMPONENTE: nessun prezzo a se'', e il resolver salta la promo in contesto bundle); il composito non e'' un motivo (riceve la promo quando il contratto gli da'' un prezzo con un''eccezione). p_natura_vendita_id: la natura congelata della riga, se c''e''; altrimenti quella dell''articolo. Due chiamanti, una regola (A-2): la firma di sempre script.fn_check_articolo_riga (i guard di tabella) e il picker catalogo.fn_articoli_ammessi, che legge il contesto una volta e giudica ogni articolo trovato (R-5). Nasce il 2026-10-14 dal corpo di 20261013-59, brief-db-articoli-ammessi-per-documento (Lotto 4, §9.4). ⭐ rev 2026-10-19 (20261019-32, brief-db-grammatica-unica-documenti lotto 1, G-1 di Tid): il documento si nomina col codice della sorgente, CONTRATTO | OFFERTA_COMMERCIALE (era OFFERTA); dove sopra si legge OFFERTA come selettore, oggi e'' OFFERTA_COMMERCIALE. Le due check del listino (fn_check_esclusione_articolo_documento, fn_check_riga_erogazione) ricevono il documento del contesto com''e'': la chiave doc_listino non c''e'' piu'' (20261019-31). ⭐ rev 2026-10-19 (20261019-99, brief-db-grammatica-unica-documenti lotto 2b): la destinazione della natura e'' il codice della sorgente (ORDINE_VENDITA, era ORDINE): il motivo NATURA_NON_MERCE di ordine e bolla confronta due codici dello stesso vocabolario. ⭐ rev 2026-11-03 (20261103-17, brief-db-addebito-trasporto-ordine §8.1, decisione 1 di Tid): ordine e bolla ammettono la merce OPPURE l''articolo-onere (catalogo.articoli.causale_onere_id valorizzato); un servizio che non e'' un onere resta fuori con NATURA_NON_MERCE (E_RIGA_NATURA_NON_AMMESSA). «E'' merce» e'' il BB script.fn_natura_e_merce sulla natura giudicata (quella congelata della riga, altrimenti quella dell''articolo): ritirata la copia in linea della condizione sulla destinazione. Seguono da se'' il guard di riga, il picker catalogo.fn_articoli_ammessi e catalogo.fn_articolo_righe_vive_non_ammesse.';
 ```
 
 </div>

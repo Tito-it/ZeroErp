@@ -56,33 +56,20 @@ SELECT plan(14);
 -- 14) Coerenza cardinalita viste: ALL = RUOLO + SOGGETTO
 --
 -- =========================================================
--- 0) Costanti per indirizzo_dettaglio di test
+-- 1) Gestore e soggetto_ruolo
 -- =========================================================
-CREATE TEMP TABLE tmp_costanti_indirizzo_guard AS
-SELECT
-    'VIA TEST GUARD'::text AS via_norm_test,
-    '1'::text              AS civico_norm_test,
-    NULL::text             AS interno_test,
-    NULL::text             AS piano_test,
-    NULL::text             AS palazzina_test;
-
--- =========================================================
--- 1) Recupero Gestore e soggetto_ruolo
--- =========================================================
-CREATE TEMP TABLE tmp_first_gestore_guard AS
-SELECT MIN(id) AS gestore_id
-FROM anagrafiche.gestori;
-
+-- ⛔ Rev 2026-11-03: il gestore si PRENDE-O-COSTRUISCE, non si pesca.
+--   anagrafiche.gestori e' dato di macchina: su un database ricostruito da
+--   zero (CI, scratch zeroerp_ruoli) e' vuota, MIN(id) dava NULL e ogni
+--   scrittura del file lavorava su zero righe — rosso su tutte le asserzioni,
+--   senza un errore. Il builder risponde il gestore che c'e' (dbdev) o ne
+--   costruisce uno col ruolo GE completo dei suoi obbligatori.
 CREATE TEMP TABLE tmp_gestore_guard AS
 SELECT
-    g.id                AS gestore_id,
-    g.soggetto_ruolo_id AS soggetto_ruolo_id,
-    sr.soggetto_id      AS soggetto_id
-FROM anagrafiche.gestori g
-JOIN tmp_first_gestore_guard fg
-  ON g.id = fg.gestore_id
-JOIN anagrafiche.soggetti_ruoli sr
-  ON sr.id = g.soggetto_ruolo_id;
+    g.gestore_id                AS gestore_id,
+    g.gestore_soggetto_ruolo_id AS soggetto_ruolo_id,
+    g.gestore_soggetto_id       AS soggetto_id
+FROM dbops.fn_pgtap_crea_gestore('indirizzi fallback') g;
 
 SELECT ok(
     (SELECT count(*) FROM tmp_gestore_guard) = 1,
@@ -117,63 +104,13 @@ CREATE TEMP TABLE tmp_tipo_sedeop_guard AS
 SELECT * FROM tmp_tipi_indirizzo_guard WHERE codice_interno = 'SEDEOP';
 
 -- =========================================================
--- 3) Upsert indirizzo_dettaglio di test
+-- 3) indirizzo_dettaglio di test
 -- =========================================================
-CREATE TEMP TABLE tmp_stradario_guard AS
-SELECT s.id
-FROM config.stradario s
-ORDER BY s.id
-LIMIT 1;
-
-WITH dati AS (
-    SELECT
-        s.id               AS stradario_id,
-        1                  AS civico,
-        NULL::text         AS estensione_civico,
-        k.palazzina_test   AS palazzina,
-        k.interno_test     AS interno,
-        k.piano_test       AS piano,
-        k.via_norm_test    AS via_norm,
-        k.civico_norm_test AS civico_norm
-    FROM tmp_stradario_guard s,
-         tmp_costanti_indirizzo_guard k
-),
-upsert AS (
-    INSERT INTO anagrafiche.indirizzi_dettaglio (
-        stradario_id,
-        civico,
-        estensione_civico,
-        palazzina,
-        interno,
-        piano,
-        altro,
-        via_norm,
-        civico_norm,
-        attivo,
-        storicizza
-    )
-    SELECT
-        d.stradario_id,
-        d.civico,
-        d.estensione_civico,
-        d.palazzina,
-        d.interno,
-        d.piano,
-        'Indirizzo test GUARD (pgTAP)',
-        d.via_norm,
-        d.civico_norm,
-        TRUE,
-        FALSE
-    FROM dati d
-    ON CONFLICT (stradario_id, civico, estensione_civico, palazzina, scala, piano, interno)
-    DO UPDATE
-       SET data_update = now(),
-           user_update = CURRENT_USER
-    RETURNING id
-)
-SELECT id
-INTO TEMP TABLE tmp_indirizzo_dettaglio_guard
-FROM upsert;
+-- Rev 2026-11-03: dal builder, non da un upsert scritto a mano che ne
+-- ricopiava la logica (stradario di seed + ON CONFLICT sulla chiave
+-- normalizzata).
+CREATE TEMP TABLE tmp_indirizzo_dettaglio_guard AS
+SELECT dbops.fn_pgtap_crea_indirizzo_dettaglio('fallback') AS id;
 
 SELECT is(
     (SELECT count(*)::int FROM tmp_indirizzo_dettaglio_guard),

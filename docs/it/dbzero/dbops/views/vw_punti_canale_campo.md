@@ -7,6 +7,7 @@
 > via: DIRETTO (chiamata a fn_log_and_raise_error col codice letterale, o col codice in variabile), PRIMO_MOTIVO (il codice di un motivo, via fn_raise_primo_motivo_se_presente o a mano: codici = UNIONE delle fn_check_* del corpo, da vw_funzioni_check_codici), MOTIVO (la fn_check_* che lo emette: sede del campo, non un sito), NOMINATO (letterale nel corpo, mai sollevato con l'helper: canale NULL).
 > canale: IN_CHIAMATA (chiave nella chiamata, o p_campo letterale, o nel motivo della check), IN_VARIABILE (in una variabile del corpo, o non attribuibile — mai un «ok» silenzioso), CHIAVE_NON_LETTA (la colonna sta nel context come CHIAVE: sanabile, nome_in_chiave dice quale), NESSUNO. chiave: campo / parametro.
 > ⭐ Per (funzione, codice) il canale e' il MIGLIORE fra le chiamate attribuite — la regola e' «almeno un punto» — e n_chiamate / n_con_canale dicono quando una funzione lo porta in 2 chiamate su 3. Il verso 1 del presidio si legge da canale IN (IN_CHIAMATA, IN_VARIABILE) su via IN (DIRETTO, PRIMO_MOTIVO); il verso 2 da n_con_canale = n_chiamate.
+> ⭐ rev 20261103-02: i codici della funzione sono quelli del corpo PIU' quelli che un trigger le passa negli ARGOMENTI (dbops.vw_codici_errore_argomenti_trigger): un building block trigger che riceve il codice da TG_ARGV e lo solleva da una variabile e' un sito DIRETTO, attribuito al massimo IN_VARIABILE. Prima per la vista quel sito non esisteva (D24).
 > ⚠️ Euristica sul sorgente senza commenti: chiamata = testo fino al primo `;`; p_campo letto a un livello di parentesi; solo plpgsql; i RAISE diretti non si vedono. Gli helper sono esclusi. Presidio: db/pgtap/dbops/test-punti-canale-campo-v1.sql.
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
@@ -28,11 +29,17 @@ WITH funzioni AS MATERIALIZED (
                    FROM pg_language
                   WHERE (pg_language.lanname = 'plpgsql'::name))) AND (NOT ((n.nspname = 'script'::name) AND (p.proname = ANY (ARRAY['fn_log_and_raise_error'::name, 'fn_raise_primo_motivo_se_presente'::name])))))
         ), letterali AS (
-         SELECT DISTINCT f.oid,
+         SELECT f.oid,
             f.funzione,
             m.m[1] AS codice
            FROM (funzioni f
              CROSS JOIN LATERAL regexp_matches(f.sorgente, '''(E_[A-Z0-9_]+)'''::text, 'g'::text) m(m))
+        UNION
+         SELECT f.oid,
+            f.funzione,
+            t.codice
+           FROM (funzioni f
+             JOIN dbops.vw_codici_errore_argomenti_trigger t ON ((t.funzione_oid = f.oid)))
         ), variabili_con_chiave AS MATERIALIZED (
          SELECT DISTINCT f.oid,
             m.m[1] AS variabile,

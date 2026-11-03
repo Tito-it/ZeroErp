@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_genera_ddt_da_ordine`
 
+> **Ultimo aggiornamento**: 3 novembre 2026
+
 > 👀 **Vedi anche**
 >
 > Tabelle:
@@ -46,6 +48,23 @@ vendita crea un **DDT** (testata `DRAFT` + righe + componenti) e il **fulfillmen
    (rollback della testata orfana).
 7. **Proiezione stato ordine**: residuo pieno → `CONFERMATO`, `0 < residuo < pieno` →
    `PARZIALMENTE_EVASO`, residuo 0 → `EVASO` (predicato `fn_ordine_ha_residuo_evasione`, atomico).
+
+### La riga-onere passa intera, una volta sola (rev 2026-11-03)
+
+Dal giro 1 degli oneri come righe del documento (`20261103-36`, brief-db-addebito-trasporto-ordine §8.2,
+K-4/K-5) l'ordine può portare articoli-onere. La copia li tratta così:
+
+* la riga-onere (`script.fn_natura_e_merce(natura_vendita_id)` falso, sulla natura **congelata**) entra
+  nella **prima** bolla anche se `p_righe` non la nomina, e sempre **intera**: `qta_da_evadere` per lei
+  non conta. La natura congelata viaggia come per le altre righe;
+* il legame è il fulfillment, con la quantità intera: è il suo «già passato». La bolla dopo trova
+  residuo 0 e la salta; annullando la bolla il legame si ritira e l'onere torna copiabile;
+* «nulla da evadere» (passo 6) conta la sola **merce**: una bolla che porterebbe solo oneri è
+  `E_DDT_NIENTE_DA_EVADERE` (un addebito senza merce si fa in commessa, K-2).
+
+La regola «intero» non sta qui: la tiene il guard del legame
+([`vendite.trgfn_ordini_ful_guard_consistenza`](/dbzero/vendite/funzioni/trgfn_ordini_ful_guard_consistenza)).
+Presidio: `db/pgtap/vendite/test-ordine-onere-copia-push-v1.sql`.
 
 ### Note
 

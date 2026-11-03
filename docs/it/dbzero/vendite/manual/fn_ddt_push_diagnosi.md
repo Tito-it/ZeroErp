@@ -1,5 +1,7 @@
 ## Documentazione Concettuale – Funzione `vendite.fn_ddt_push_diagnosi(p_ddt_id)`
 
+> **Ultimo aggiornamento**: 3 novembre 2026
+
 > **Vedi anche**
 >
 > [vendite.ddt](/dbzero/vendite/tabelle/ddt)
@@ -59,6 +61,23 @@ I motivi 7–9 non ri-derivano niente: sono la colonna `stato` della partita,
 che è già la decomposizione di «differenza vuota» nelle sue cause.
 
 ---
+
+### Il ramo della riga-onere (rev 2026-11-03)
+
+Dal `20261103-39` (brief-db-addebito-trasporto-ordine §8.1, §8.3) la riga-onere
+(`script.fn_natura_e_merce` falso sulla natura congelata) non ha partita di merce:
+
+* le rank 7–11 (ri-consegna, non fatturabile, non misurabile, senza partita, contatore) non la
+  guardano, e la dose è la quantità della riga (l'anti doppione resta il segmento, rank 4);
+* le rank 1–6 valgono come per la merce. Per l'onere **senza legame** (scritto a mano) il trigger di
+  fatturazione si legge dall'ordine sorgente della **testata**: sulla bolla di un ordine che fattura
+  alla conferma è `DDT_FATTURA_DA_ORDINE` (prima risultava pushabile). Con il legame (copiato
+  dall'ordine) il trigger resta quello del legame.
+  Quel trigger di testata lo dà il building block `vendite.fn_ddt_trigger_ordine_testata`
+  (`20261103-43`/`-44`), lo stesso che usa la check di emissione: una sede sola.
+
+Sulle righe di merce nulla cambia (prova pre-apply: diagnosi e lister identici prima e dopo, su una
+popolazione costruita di bolle di sola merce).
 
 ### I quattro fatti esposti
 

@@ -1,0 +1,111 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA RIGA DI BOLLA DICE SE E' UN ONERE — vendite.vw_ddt_righe_dettaglio
+#   Brief: brief-db-addebito-trasporto-ordine §7.3 (stampa: gli oneri dopo gli
+#   articoli, lo fa il BE col dato del DB), §8.1 (riga «Stampa e maschera») e
+#   decisione 9 di Tid del 2026-11-03.
+#
+# ── ⭐ COSA CAMBIA (colonne IN CODA: CREATE OR REPLACE VIEW non sposta le altre)
+#   · e_onere (boolean) = NOT script.fn_natura_e_merce(r.natura_vendita_id):
+#     la natura CONGELATA della riga, il predicato del building block
+#     (20261103-16). Su bolla «non merce» = onere (lo garantisce l'ammissione,
+#     20261103-17). Il BE ordina la stampa con questo, non ricostruisce la regola;
+#   · causale_onere_id = catalogo.articoli.causale_onere_id (gia' in join):
+#     NULL sulla merce;
+#   · COMMENT della vista e delle colonne evasa / correggi_qta_evasa_blocco
+#     riscritti (RIGA_ONERE fra i motivi, 20261103-33).
+#
+# ── ⚠️ COSA NON CAMBIA ──────────────────────────────────────────────
+#   · evasa resta vendite.fn_ddt_riga_evasa: un onere copiato dall'ordine porta
+#     il legame ed e' davvero «fermo» (il guard E_DDT_RIGA_EVASA_FERMA lo
+#     blocca), e il form (DdtRigaForm, isEvasa) deve saperlo. La decisione 9
+#     («residuo/evasa a NULL per l'onere») qui non ha colonna di quantita' su
+#     cui agire: la vista non espone residui ne' quantita' evase;
+#   · le altre colonne, i join, security_invoker (ri-specificata: si azzera su
+#     CREATE OR REPLACE).
+#
+#   Corpo dal vivo (= doc auto-gen, confrontato colonna per colonna il
+#   2026-11-03 nel generatore), cambiato solo in coda.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261103-34-update-vw-ddt-righe-dettaglio-e-onere-mctit.yaml
+
+  - changeSet:
+      id: 20261103-34-update-vw-ddt-righe-dettaglio-e-onere
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.vw_ddt_righe_dettaglio: in coda e_onere (NOT script.fn_natura_e_merce sulla natura congelata) e
+        causale_onere_id (dall'articolo), per la stampa con gli oneri dopo gli articoli. evasa invariata.
+        brief-db-addebito-trasporto-ordine §7.3, §8.1.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_ddt_righe_dettaglio
+              WITH (security_invoker=true) AS
+              SELECT r.id,
+                  r.ddt_id,
+                  r.riga_nr,
+                  r.attivo,
+                  r.articolo_id,
+                  a.codice AS articolo_codice,
+                  a.descrizione AS articolo_descrizione,
+                  r.descrizione,
+                  r.quantita,
+                  r.qta_operativa,
+                  r.factor_to_base,
+                  r.uom_operativa_id,
+                  um.codice AS uom_codice,
+                  r.prezzo_unitario,
+                  r.sconto_percentuale,
+                  r.iva_id,
+                  iva.codice AS iva_codice,
+                  iva.descrizione AS iva_descrizione,
+                  iva.aliquota_iva AS iva_aliquota,
+                  round(script.fn_imponibile_riga(r.quantita, r.prezzo_unitario, r.sconto_percentuale), 2) AS importo_riga,
+                  script.fn_imponibile_riga(r.quantita, r.prezzo_unitario, r.sconto_percentuale) AS imponibile_riga_full,
+                  r.meta,
+                  r.data_insert,
+                  r.data_update,
+                  (EXISTS ( SELECT 1
+                         FROM vendite.ddt_righe_componenti rc
+                        WHERE rc.riga_ddt_id = r.id AND rc.attivo IS TRUE)) AS is_composito_caso_a,
+                  vendite.fn_ddt_riga_evasa(r.id) AS evasa,
+                  (script.fn_check_ddt_riga_correggi_qta_evasa(r.id) -> 0) ->> 'reason'::text AS correggi_qta_evasa_blocco,
+                  -- rev 2026-11-03 (20261103-34): in coda, la riga-onere e la sua causale.
+                  NOT script.fn_natura_e_merce(r.natura_vendita_id) AS e_onere,
+                  a.causale_onere_id
+                 FROM vendite.ddt_righe r
+                   LEFT JOIN catalogo.articoli a ON a.id = r.articolo_id
+                   LEFT JOIN catalogo.unita_misura um ON um.id = r.uom_operativa_id
+                   LEFT JOIN config.iva iva ON iva.id = r.iva_id;
+
+              COMMENT ON VIEW vendite.vw_ddt_righe_dettaglio IS
+                  'Righe del DDT con articolo, UoM e IVA: la SORGENTE delle righe per la lista configurabile vendite.ddt_righe e per il repository (brief-db-liste-righe-documento, D-8.6, 2026-09-28; prima esistevano solo come due query Python con proiezioni diverse). Tutte le righe, anche le non attive: il filtro lo mette chi legge. Nessun ORDER BY. importo_riga = round(…, 2) per mostrare, imponibile_riga_full pieno per chi aggrega, entrambi da script.fn_imponibile_riga: NULL sulla riga senza prezzo (DDT di solo trasporto), mai uno zero finto (V-2/DEC-6). security_invoker: ddt_righe e'' in RLS. Rev 2026-10-11 (20261011-19): evasa e correggi_qta_evasa_blocco. Rev 2026-11-03 (20261103-34, brief-db-addebito-trasporto-ordine §7.3, §8.1, decisione 9 di Tid): gli oneri diventano righe della bolla; in coda e_onere (la riga e'' un onere: NOT script.fn_natura_e_merce sulla natura congelata) e causale_onere_id (dall''articolo), perche'' il BE in stampa metta gli oneri dopo gli articoli senza ricostruire la regola. evasa resta il predicato del guard (un onere copiato dall''ordine e'' evaso: la sua quantita'' e'' ferma); il blocco della correzione dice RIGA_ONERE.';
+              COMMENT ON COLUMN vendite.vw_ddt_righe_dettaglio.evasa IS
+                  'TRUE se la riga porta un legame con una riga d''ordine o con una riga di reso da ri-consegnare (vendite.fn_ddt_riga_evasa, lo stesso predicato del guard): articolo, UoM e quantita'' sono fermi, la quantita'' si corregge col verbo vendite.fn_ddt_riga_correggi_qta_evasa. Brief: brief-db-ddt-righe-evase-dall-ordine. Un onere copiato dall''ordine e'' evaso (porta il legame) ma la sua quantita'' non si corregge: correggi_qta_evasa_blocco = RIGA_ONERE (rev 2026-11-03).';
+              COMMENT ON COLUMN vendite.vw_ddt_righe_dettaglio.correggi_qta_evasa_blocco IS
+                  'Il reason del primo motivo per cui la quantita'' evasa NON si corregge ora (script.fn_check_ddt_riga_correggi_qta_evasa): DDT_NON_IN_BOZZA, RIGA_ONERE (rev 2026-11-03), RIGA_NON_EVASA, DDT_SENZA_ORIGINE, LEGAMI_MULTIPLI. NULL = azione ammessa. reason_key vendite.ddt.correggi_qta_evasa_reason.<reason minuscolo>.';
+              COMMENT ON COLUMN vendite.vw_ddt_righe_dettaglio.e_onere IS
+                  'TRUE se la riga e'' un onere (trasporto, spese…), FALSE se e'' merce: NOT script.fn_natura_e_merce sulla natura CONGELATA della riga. Su bolla «non merce» = onere, perche'' l''ammissione lascia entrare solo merce e articoli-onere. Serve alla stampa (oneri dopo gli articoli, §7.3) e alla maschera. rev 2026-11-03, brief-db-addebito-trasporto-ordine.';
+              COMMENT ON COLUMN vendite.vw_ddt_righe_dettaglio.causale_onere_id IS
+                  'La causale dell''onere (config.causali_onere), letta dall''articolo; NULL sulla merce. rev 2026-11-03, brief-db-addebito-trasporto-ordine.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Togliere due colonne da una vista e' un DROP + CREATE: il ripristino e'
+              -- il ripristino del giro. Il corpo precedente e' nella doc auto-gen.
+              SELECT 1;

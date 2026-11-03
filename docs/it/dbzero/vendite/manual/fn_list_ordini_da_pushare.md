@@ -1,5 +1,7 @@
 ## Documentazione Concettuale – Funzione `vendite.fn_list_ordini_da_pushare(...)`
 
+> **Ultimo aggiornamento**: 3 novembre 2026
+
 > **Vedi anche**
 >
 [vendite.ordini](/dbzero/vendite/tabelle/ordini)
@@ -73,6 +75,18 @@ la signature al client Python `CommesseRepository.fetch_pushable_rows` (4 args p
 Il valore di `fatturazione_trigger` e` ereditato da
 `billing_account.fatturazione_ordini` al momento dell’inserimento ordine
 (via `trgfn_ordini_normalize`).
+
+---
+
+### La riga-onere va in commessa come ONERE (rev 2026-11-03)
+
+Dal `20261103-38` (brief-db-addebito-trasporto-ordine §8.1, K-1) la riga-onere dell'ordine
+(`script.fn_natura_e_merce` falso sulla natura congelata) esce con `tipo_movimento = 'ONERE'` e con la
+causale dell'articolo nella colonna **nuova** `causale_onere_id`, in coda (NULL sulla merce). La
+sorgente è l'ordine, come per le altre righe. Il RETURNS TABLE è cambiato (DROP + CREATE).
+
+⚠️ La madre `vendite.fn_upsert_commessa_attivita` vuole `ONERE` ⇔ causale: il backend deve passare
+`causale_onere_id` (`p_causale_onere_id`), o la riga ONERE si rifiuta (`E_PARAMETRO_INVALIDO`).
 
 ---
 

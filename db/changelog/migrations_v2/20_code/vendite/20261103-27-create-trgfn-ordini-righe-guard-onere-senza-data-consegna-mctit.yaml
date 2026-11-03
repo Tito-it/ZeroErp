@@ -1,0 +1,164 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA RIGA-ONERE NON PORTA DATE DI CONSEGNA — guard di riga su vendite.ordini_righe
+#   Brief: brief-db-addebito-trasporto-ordine §8.4 K-3 (Tid, 2026-11-03: le
+#   date di consegna di un onere restano vuote).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   Un onere non si spedisce: una data di consegna sulla sua riga falserebbe
+#   la data minima della lista ordini, il «riga spedita» e il ritardo della
+#   situazione merce. Le due date (data_consegna_richiesta_cliente,
+#   data_consegna_confermata) sulla riga-onere devono essere NULL.
+#
+# ── ⭐ LA FORMA: un guard di riga nuovo, non un CHECK esteso ─────────
+#   · un CHECK di tabella non puo': «e' un onere» si legge dal catalogo delle
+#     nature (script.fn_natura_e_merce), non dalla riga sola;
+#   · il guard delle date che c'e' (script.trgfn_doc_righe_guard_data_consegna,
+#     date contro la data del documento) e' un BB comune a ordine e preventivo
+#     e giudica il VALORE di una data; questa regola dice che la data NON c'e'.
+#     Mescolarle darebbe al BB un ramo che vale per una testata sola;
+#   · la check di riga della data confermata
+#     (script.fn_check_ordine_riga_data_consegna_confermata) risponde «si
+#     cambia ADESSO?» (stato, riga spedita) e in bozza tace: non e' la sede.
+#   Quindi vendite.trgfn_ordini_righe_guard_onere_senza_data_consegna, solo su
+#   ordini_righe. ⚠️ vendite.ddt_righe NON ha date di consegna: nulla da fare.
+#
+# ── ⭐ IL MONTAGGIO ──────────────────────────────────────────────────
+#   BEFORE INSERT OR UPDATE, senza OF, WHEN almeno una data NON NULL:
+#   · senza OF perche' natura_vendita_id la scrive un altro trigger BEFORE
+#     (_a10_natura_vendita_, al cambio di articolo): un UPDATE OF la
+#     aggirerebbe cambiando l'articolo (linee-guida-trigger «UPDATE OF»);
+#   · il WHEN tiene fuori, senza chiamare niente, ogni riga senza date: la
+#     quasi totalita' degli UPDATE;
+#   · il nome _a10_riga_onere_ ordina il guard DOPO _a10_natura_vendita_ (la
+#     natura e' gia' derivata quando parla) e dopo _a10_regole_articolo_ (un
+#     articolo non ammesso parla prima con la sua frase). ⚠️ Parla dopo
+#     _a10_guard_data_consegna_vs_doc_: un onere con una data anteriore al
+#     documento sente prima quella frase; non si puo' anticipare senza
+#     anticipare la natura, che deriva un trigger non di questo giro.
+#
+# ── ⚠️ COSA NON CAMBIA ──────────────────────────────────────────────
+#   La merce e le sue date; il lock fuori bozza; il guard della riga spedita.
+#   ⚠️ Codice nuovo E_RIGA_ONERE_DATA_CONSEGNA: righe CSV dal coordinatore.
+#   Seed di 80_data che scrivono ordini_righe: nessuno (cercato il 2026-11-03).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261103-27-create-trgfn-ordini-righe-guard-onere-senza-data-consegna-mctit.yaml
+
+  - changeSet:
+      id: 20261103-27-create-trgfn-ordini-righe-guard-onere-senza-data-consegna
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.trgfn_ordini_righe_guard_onere_senza_data_consegna + trigger
+        trg_ordini_righe_a10_riga_onere_senza_date_consegna_ins_upd: una riga-onere dell'ordine non porta
+        date di consegna (E_RIGA_ONERE_DATA_CONSEGNA). brief-db-addebito-trasporto-ordine §8.4 K-3.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_trigger t
+               WHERE t.tgrelid = 'vendite.ordini_righe'::regclass
+                 AND t.tgname = 'trg_ordini_righe_a10_riga_onere_senza_date_consegna_ins_upd';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION vendite.trgfn_ordini_righe_guard_onere_senza_data_consegna()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  -- Il nome della prima colonna fuori regola: va nel contesto
+                  -- (campo), e' un nome di colonna, non un suo valore.
+                  v_campo     text;
+                  -- La frase (script.fn_get_stato_testata_documento, RETURNS
+                  -- TABLE di text): composta.
+                  v_etichetta text;
+                  v_codice    catalogo.articoli.codice%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Una riga-onere dell'ordine non porta date di consegna
+                  --   (K-3, brief-db-addebito-trasporto-ordine §8.4): un onere
+                  --   non si spedisce. BEFORE INSERT OR UPDATE FOR EACH ROW,
+                  --   WHEN almeno una data e' valorizzata (il resto non arriva qui).
+                  -- ⭐ «E' un onere» = NOT script.fn_natura_e_merce sulla natura
+                  --   CONGELATA della riga, gia' derivata da _a10_natura_vendita_
+                  --   (il nome di questo trigger ordina dopo). Su ordine «non
+                  --   merce» = onere: lo garantisce l'ammissione.
+                  -- =========================================================
+                  IF script.fn_natura_e_merce(NEW.natura_vendita_id) IS NOT FALSE THEN
+                      -- Merce, o natura che non si risolve: parla la FK.
+                      RETURN NEW;
+                  END IF;
+
+                  v_campo := CASE
+                                 WHEN NEW.data_consegna_richiesta_cliente IS NOT NULL
+                                     THEN 'data_consegna_richiesta_cliente'
+                                 WHEN NEW.data_consegna_confermata IS NOT NULL
+                                     THEN 'data_consegna_confermata'
+                             END;
+
+                  IF v_campo IS NULL THEN
+                      RETURN NEW;   -- nessuna data: in regola (il WHEN lo fa gia')
+                  END IF;
+
+                  SELECT t.etichetta
+                    INTO v_etichetta
+                    FROM script.fn_get_stato_testata_documento('ORDINE_VENDITA', NEW.ordine_id) AS t;
+
+                  SELECT a.codice INTO v_codice
+                    FROM catalogo.articoli a
+                   WHERE a.id = NEW.articolo_id;
+
+                  -- «%s, riga %s: l'articolo %s e' un onere, e un onere non porta date di consegna.»
+                  PERFORM script.fn_log_and_raise_error(
+                      'vendite', TG_NAME::text,
+                      'E_RIGA_ONERE_DATA_CONSEGNA',
+                      jsonb_build_object('campo',     v_campo,
+                                         'riga_id',   NEW.id,
+                                         'ordine_id', NEW.ordine_id,
+                                         'bersaglio', jsonb_build_array(
+                                             jsonb_build_object('tipo', 'ORDINE_VENDITA_RIGA', 'id', NEW.id))),
+                      NEW.tx_id,
+                      COALESCE(v_etichetta, 'Ordine #' || NEW.ordine_id::text),
+                      COALESCE(NEW.riga_nr::text, '?'),
+                      COALESCE(v_codice::text, '?'));
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_ordini_righe_guard_onere_senza_data_consegna() IS
+                  'Guard di riga (K-3, brief-db-addebito-trasporto-ordine §8.4, 2026-11-03): una riga-onere di vendite.ordini_righe non porta date di consegna — data_consegna_richiesta_cliente e data_consegna_confermata devono essere NULL, perche'' un onere non si spedisce (falserebbe la data minima della lista, il «riga spedita» e il ritardo). «E'' un onere» = NOT script.fn_natura_e_merce sulla natura CONGELATA della riga, gia'' derivata da _a10_natura_vendita_ (il trigger ordina dopo per nome, e dopo _a10_regole_articolo_). Solleva E_RIGA_ONERE_DATA_CONSEGNA (DATO_ERRATO, campo = la prima data valorizzata; valori: etichetta dell''ordine, numero di riga, codice articolo). Montato BEFORE INSERT OR UPDATE senza OF (la natura la scrive un altro trigger) e WHEN almeno una data NOT NULL. vendite.ddt_righe non ha date di consegna: nessun gemello.';
+
+              CREATE TRIGGER trg_ordini_righe_a10_riga_onere_senza_date_consegna_ins_upd
+                BEFORE INSERT OR UPDATE ON vendite.ordini_righe
+                FOR EACH ROW
+                WHEN (NEW.data_consegna_richiesta_cliente IS NOT NULL
+                      OR NEW.data_consegna_confermata IS NOT NULL)
+                EXECUTE FUNCTION vendite.trgfn_ordini_righe_guard_onere_senza_data_consegna();
+
+              COMMENT ON TRIGGER trg_ordini_righe_a10_riga_onere_senza_date_consegna_ins_upd ON vendite.ordini_righe IS
+                  'Una riga-onere non porta date di consegna (E_RIGA_ONERE_DATA_CONSEGNA, K-3). Senza OF: la natura la deriva _a10_natura_vendita_ al cambio di articolo. Il nome ordina dopo _a10_natura_vendita_ e _a10_regole_articolo_. brief-db-addebito-trasporto-ordine §8.4.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ordini_righe_a10_riga_onere_senza_date_consegna_ins_upd ON vendite.ordini_righe;
+              DROP FUNCTION IF EXISTS vendite.trgfn_ordini_righe_guard_onere_senza_data_consegna();

@@ -16,7 +16,7 @@ CREATE OR REPLACE FUNCTION script.fn_log_error_only(p_area text, p_function_name
  RETURNS void
  LANGUAGE plpgsql
  SECURITY DEFINER
- SET search_path TO 'public', 'pg_temp'
+ SET search_path TO 'pg_catalog', 'public', 'pg_temp'
 AS $function$
 DECLARE
   v_id bigint;

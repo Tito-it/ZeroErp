@@ -1,6 +1,6 @@
 # Guida — Fatturazione (processo end-to-end)
 
-> **Ultimo aggiornamento**: 1 novembre 2026
+> **Ultimo aggiornamento**: 3 novembre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend e database
 >
@@ -1170,6 +1170,13 @@ Card «Da emettere» (29 attività)
 La seconda forma non è un dettaglio: senza, gli oneri sarebbero **contati** nel
 numero della card ma irraggiungibili da qualunque azione mirata — lavoro
 invisibile, recuperabile solo dal giro schedulato.
+
+⚠️ **Gli oneri di commessa sono solo quelli senza documento.** Un onere scritto su un
+ordine o su una bolla (il trasporto di quell'ordine: vedi
+[Gestione Ordini](/guide/gestione-ordini) §3.6 e [Gestione DDT](/guide/gestione-ddt) §3.6)
+arriva in commessa **con il suo documento**, ed è nel gruppo di quel documento:
+fatturando `ORD-0033` si fattura anche il suo trasporto. Il gruppo «Oneri · commessa»
+raccoglie gli addebiti aggiunti dalla commessa, che non riguardano nessun documento.
 
 #### Cosa garantisce
 

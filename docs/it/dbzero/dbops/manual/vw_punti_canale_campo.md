@@ -10,7 +10,7 @@ Approfondimenti viste:
 
 ---
 ### 🎯 Scopo Principale
-(latest review 22-09-2026)
+(latest review 03-11-2026)
 
 Risponde a una domanda sola:
 
@@ -137,8 +137,26 @@ SELECT codice, funzione, canale, nome_in_chiave, n_chiamate, n_con_canale
  ORDER BY codice, funzione;
 ```
 
+### 🔄 rev 2026-11-03 — il codice che arriva dal **trigger**
+
+Certe regole sono scritte una volta, in una funzione generica, e montate su
+molte tabelle: il codice d'errore lo sceglie il trigger e lo passa alla
+funzione come argomento. Nel testo della funzione il codice non c'è, e questa
+vista non vedeva il punto: la coerenza fra emittente e cliente, che evidenzia
+il campo davvero, risultava «senza sito», e il backend aveva un'eccezione
+scritta apposta.
+
+Da questo giorno i codici di una funzione sono quelli del suo testo **più**
+quelli che i trigger le passano, letti da
+[`vw_codici_errore_argomenti_trigger`](/dbzero/dbops/manual/vw_codici_errore_argomenti_trigger).
+La funzione generica solleva il codice da una variabile, quindi la lettura non
+concede il beneficio del dubbio: il canale è al massimo `IN_VARIABILE`, come
+per ogni codice in variabile. Il lucchetto di colonna, che non indica il campo,
+risulta `NESSUNO`, ed è la verità. Test: casi 17 e 18.
+
 Origine: `docs/it/dev/work-done/brief-be-presidio-ui-action-e-canale-campi.md`
-(§4, §4-bis e §4-ter). Test: `db/pgtap/dbops/test-punti-canale-campo-v1.sql`.
+(§4, §4-bis e §4-ter); la revisione: voce D24 di
+`migliorie-generali-da-test-valutazione`. Test: `db/pgtap/dbops/test-punti-canale-campo-v1.sql`.
 
 ---
 

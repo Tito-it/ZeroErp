@@ -1,6 +1,6 @@
 # Guida Tecnica – API Commesse (DB layer)
 
-> **Ultimo aggiornamento**: 26 ottobre 2026
+> **Ultimo aggiornamento**: 3 novembre 2026
 >
 > Destinatari: sviluppatori backend e database di Zero ERP
 >
@@ -145,7 +145,8 @@ Che cosa succede a ogni riga non emessa (un **legame** per riga, letto da
 | un preventivo, un ordine, un contratto, una bolla | la riga esce dalla commessa (`ANNULLATA`, col registro) e il documento torna **da mandare in commessa**. Il preventivo `EVASO` torna `ACCETTATO` |
 | un consumo | il consumo torna da mandare in commessa |
 | la rettifica di un reso | l'accredito si annulla: il reso torna **da accreditare**. ⚠️ Oggi il caso non si presenta: la rettifica sta nella commessa della riga fatturata che corregge, quella riga resta emessa finché l'accredito c'è (una fattura con un accredito non si disfa), e una commessa con righe emesse non si annulla. Prima si annulla l'accredito |
-| un onere | non c'è niente a monte: l'onere **si annulla** con la commessa |
+| un onere aggiunto dalla commessa | non c'è niente a monte: l'onere **si annulla** con la commessa |
+| un onere di un ordine o di una bolla (il trasporto di quell'ordine) | come le altre righe del documento: esce dalla commessa e il documento torna **da mandare in commessa**. Si corregge sul documento, non dalla commessa |
 
 ⚠️ **L'ordine non cambia stato.** `EVASO` vuol dire «la merce è partita», e lo dicono
 solo le bolle: né l'invio in commessa né il suo annullo lo toccano. Le righe dell'ordine

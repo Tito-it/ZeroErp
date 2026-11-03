@@ -202,7 +202,8 @@ search:
 - [vw_bersagli_non_dichiarati](views/vw_bersagli_non_dichiarati.md)
 - [vw_catalogo_oggetti](views/vw_catalogo_oggetti.md) — * Offrire una vista unificata degli oggetti PostgreSQL definiti nei due schemi principali di amministrazione. * Agevolare operazioni di discovery e auditing, bypassando query dirette sulle catalog tables.
 - [vw_coda_lavori_da_guardare](views/vw_coda_lavori_da_guardare.md) — (latest review 05-09-2026)
-- [vw_codici_errore_da_dichiarare](views/vw_codici_errore_da_dichiarare.md) — (rev 2026-10-27)
+- [vw_codici_errore_argomenti_trigger](views/vw_codici_errore_argomenti_trigger.md) — (latest review 03-11-2026)
+- [vw_codici_errore_da_dichiarare](views/vw_codici_errore_da_dichiarare.md) — (rev 2026-11-03)
 - [vw_codici_errore_forme_condizione](views/vw_codici_errore_forme_condizione.md) — (rev 2026-09-07)
 - [vw_credenziali_da_sanare](views/vw_credenziali_da_sanare.md)
 - [vw_ddt_emessi_senza_scarico](views/vw_ddt_emessi_senza_scarico.md)
@@ -235,7 +236,7 @@ search:
 - [vw_processi_programmazione](views/vw_processi_programmazione.md) — (latest review 07-09-2026)
 - [vw_processi_programmazione_da_guardare](views/vw_processi_programmazione_da_guardare.md) — (latest review 07-09-2026)
 - [vw_processi_roster](views/vw_processi_roster.md) — (latest review 05-09-2026)
-- [vw_punti_canale_campo](views/vw_punti_canale_campo.md) — (latest review 22-09-2026)
+- [vw_punti_canale_campo](views/vw_punti_canale_campo.md) — (latest review 03-11-2026)
 - [vw_punti_primo_motivo](views/vw_punti_primo_motivo.md)
 - [vw_radici_di_prova_in_produzione](views/vw_radici_di_prova_in_produzione.md)
 - [vw_resi_confermati_senza_carico](views/vw_resi_confermati_senza_carico.md)

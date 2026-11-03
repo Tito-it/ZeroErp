@@ -28,6 +28,10 @@ AS $function$
 --   CONFERMATO chiede conferma_reso), prima di qualunque scrittura; lo
 --   stato del reso e quello della bolla dalla scrittura comune
 --   (script.fn_doc_scrivi_stato), attraverso la porta.
+-- rev 2026-11-03 (20261103-32, brief-db-addebito-trasporto-ordine §8.1):
+--   il flip CONSEGNATO -> RESO (reso totale) conta solo la MERCE della bolla
+--   (script.fn_natura_e_merce): un onere non si rende, e senza il
+--   filtro una bolla con un onere non cambierebbe mai stato.
 DECLARE
     v_utente            config.user_override_azioni.auth_user_id%TYPE;
     v_reso              vendite.resi%ROWTYPE;
@@ -154,7 +158,9 @@ BEGIN
                GROUP BY e.ddt_riga_id
           ) reso_riga ON reso_riga.ddt_riga_id = dr.id
          WHERE dr.ddt_id = v_ddt_id
-           AND dr.attivo IS TRUE;
+           AND dr.attivo IS TRUE
+           -- rev 2026-11-03: solo la merce (un onere non si rende).
+           AND script.fn_natura_e_merce(dr.natura_vendita_id);
 
         IF COALESCE(v_tutto_reso, false) THEN
             SELECT id INTO v_stato_reso_ddt_id FROM config.stati_doc_ddt
@@ -172,7 +178,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_conferma_reso(p_reso_id bigint)
-IS 'Madre conferma reso: DRAFT->CONFERMATO (numero+guard), proiezione stato ordine (residuo reso-aware -> PARZIALMENTE_EVASO/EVASO), flip DDT origine CONSEGNATO->RESO se reso totale. brief §5. rev 2026-07-13. rev 2026-07-17 (step 2b): il flip conta solo i resi CONFERMATI. rev 2026-07-17 (step 2): il flip legge l helper unico vw_resi_righe_effettive (CONFERMATE+attive, tutti i tipi). ⭐ rev 2026-09-28 (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-b/-c/-f): VERBO. SECURITY DEFINER con search_path bloccato; testata FOR UPDATE nel perimetro (script.fn_scope_ef_whitelist_via_reso nella WHERE, fuori perimetro E_RESO_NOT_FOUND); permesso conferma_reso su OGNI conferma (script.fn_guard_azione, E_PERMESSO_NEGATO). Su un reso che fa rientrare merce (vendite.fn_reso_muove_merce): lock della bolla d''origine, primo motivo di script.fn_check_reso_merce, rientri automatici, poi lo stato con la porta del registro aperta (GUC zeroerp.reso_cambio_stato) e in coda i carichi (vendite.fn_posta_reso, CARICO_RESO_VEN al costo dell''uscita). UNA transazione. La firma non cambia (RETURNS void). rev 2026-10-01 (brief-db-magazzino-registro-anello-interno, D-2): il posting sta in vendite, non nel registro. ⭐ rev 2026-10-11 (brief-db-ddt-righe-evase-dall-ordine §5.2): la proiezione dello stato dell''ordine e'' il building block vendite.fn_ordine_proietta_stato_evasione; la copia scritta a mano qui si ritira (regola del 2). Comportamento invariato. ⭐ rev 2026-10-25 (20261025-17, brief-modello-documento-vendita §7): il permesso dalla riga DRAFT -> CONFERMATO della matrice (config.transizioni_stati_reso.azione_processo_codename = conferma_reso) con script.fn_guard_passaggio, al posto di script.fn_guard_azione scritto nel corpo; un reso fuori bozza risponde E_RESO_STATO_NON_CONFERMABILE anche a chi non ha l''azione. Lo stato del reso e il flip della bolla (CONSEGNATO -> RESO, passaggio di processo) dalla scrittura comune script.fn_doc_scrivi_stato, attraverso la porta script.trgfn_doc_stato_solo_dal_verbo: la GUC zeroerp.reso_cambio_stato si ritira.';
+IS 'Madre conferma reso: DRAFT->CONFERMATO (numero+guard), proiezione stato ordine (residuo reso-aware -> PARZIALMENTE_EVASO/EVASO), flip DDT origine CONSEGNATO->RESO se reso totale. brief §5. rev 2026-07-13. rev 2026-07-17 (step 2b): il flip conta solo i resi CONFERMATI. rev 2026-07-17 (step 2): il flip legge l helper unico vw_resi_righe_effettive (CONFERMATE+attive, tutti i tipi). ⭐ rev 2026-09-28 (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-b/-c/-f): VERBO. SECURITY DEFINER con search_path bloccato; testata FOR UPDATE nel perimetro (script.fn_scope_ef_whitelist_via_reso nella WHERE, fuori perimetro E_RESO_NOT_FOUND); permesso conferma_reso su OGNI conferma (script.fn_guard_azione, E_PERMESSO_NEGATO). Su un reso che fa rientrare merce (vendite.fn_reso_muove_merce): lock della bolla d''origine, primo motivo di script.fn_check_reso_merce, rientri automatici, poi lo stato con la porta del registro aperta (GUC zeroerp.reso_cambio_stato) e in coda i carichi (vendite.fn_posta_reso, CARICO_RESO_VEN al costo dell''uscita). UNA transazione. La firma non cambia (RETURNS void). rev 2026-10-01 (brief-db-magazzino-registro-anello-interno, D-2): il posting sta in vendite, non nel registro. ⭐ rev 2026-10-11 (brief-db-ddt-righe-evase-dall-ordine §5.2): la proiezione dello stato dell''ordine e'' il building block vendite.fn_ordine_proietta_stato_evasione; la copia scritta a mano qui si ritira (regola del 2). Comportamento invariato. ⭐ rev 2026-10-25 (20261025-17, brief-modello-documento-vendita §7): il permesso dalla riga DRAFT -> CONFERMATO della matrice (config.transizioni_stati_reso.azione_processo_codename = conferma_reso) con script.fn_guard_passaggio, al posto di script.fn_guard_azione scritto nel corpo; un reso fuori bozza risponde E_RESO_STATO_NON_CONFERMABILE anche a chi non ha l''azione. Lo stato del reso e il flip della bolla (CONSEGNATO -> RESO, passaggio di processo) dalla scrittura comune script.fn_doc_scrivi_stato, attraverso la porta script.trgfn_doc_stato_solo_dal_verbo: la GUC zeroerp.reso_cambio_stato si ritira. Rev 2026-11-03 (20261103-32, brief-db-addebito-trasporto-ordine §8.1, decisioni di Tid del 2026-11-03): gli oneri diventano righe della bolla e non si rendono (guard vendite.trgfn_resi_righe_guard_origine_coerente, E_RESO_RIGA_ONERE): il bool_and(reso >= quantita) sulle righe della bolla che decide il flip CONSEGNATO -> RESO conta solo le righe di MERCE (script.fn_natura_e_merce sulla natura congelata). Senza il filtro una bolla con un onere non andrebbe mai a RESO. Firma ancorata (p_reso_id vendite.resi.id%TYPE, stesso tipo).';
 ```
 
 </div>

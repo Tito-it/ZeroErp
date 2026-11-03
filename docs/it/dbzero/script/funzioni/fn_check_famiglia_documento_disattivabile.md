@@ -16,7 +16,7 @@ CREATE OR REPLACE FUNCTION script.fn_check_famiglia_documento_disattivabile(p_fa
  RETURNS jsonb
  LANGUAGE plpgsql
  STABLE SECURITY DEFINER
- SET search_path TO 'pg_catalog', 'public'
+ SET search_path TO 'pg_catalog', 'public', 'pg_temp'
 AS $function$
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti, 2c G-5):
 --   la tabella dei documenti e' la target_table della sorgente

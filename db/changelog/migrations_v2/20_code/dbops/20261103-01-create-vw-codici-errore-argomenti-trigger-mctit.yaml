@@ -1,0 +1,136 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D24 di migliorie-generali-da-test-valutazione — I CODICI CHE UN TRIGGER
+# PASSA ALLA SUA FUNZIONE: la sede unica di una lettura che due presidi
+# facevano senza
+#   dbops.vw_codici_errore_argomenti_trigger
+#
+# ── ⛔ IL DIFETTO ──────────────────────────────────────────────────────
+#   Un building block trigger riceve il codice d'errore da TG_ARGV, non lo
+#   scrive nel corpo: `script.trgfn_lock_columns` (16 codici),
+#   `vendite.trgfn_doc_testata_lock_fuori_bozza` (12),
+#   `script.trgfn_doc_guard_emittente_ba`… Il codice sta in
+#   `pg_trigger.tgargs`. I due presidi che cercano i codici li cercano nel
+#   CORPO (`pg_proc.prosrc`), e quindi per loro questi siti non esistono:
+#   * il presidio C2 (dbops.vw_punti_canale_campo) non vede il sito di
+#     E_DOC_EMITTENTE_BA_INCOERENTE, che il campo lo manda davvero — lato BE
+#     c'e' un'esenzione della MISURA in test_ui_action_e_canale_campi.py;
+#   * la misura del terzo lato (dbops.vw_codici_errore_da_dichiarare) non vede
+#     30 codici che arrivano solo dagli argomenti (dbdev, 2026-11-03): oggi
+#     hanno tutti la policy, ma un codice NUOVO passato cosi', senza policy,
+#     non farebbe rosso il verso 1 del cancello.
+#
+# ── ⭐ PERCHE' UNA VISTA SUA (regola del 2) ─────────────────────────────
+#   I due presidi hanno bisogno della stessa lettura: «quali codici E_* un
+#   trigger passa alla sua funzione». Scritta dentro ciascuno, sarebbero due
+#   copie della stessa grammatica, e il giorno che una cambia le due misure
+#   dissentono sullo stesso fatto. Gli argomenti si tagliano con
+#   dbops.fn_trigger_argomenti (il building block che gia' esiste: NUL, codifica
+#   del server, posizione da 1), non con un encode/rtrim ricopiato.
+#
+# ── ⚠️ CHE COSA E' UN CODICE QUI ───────────────────────────────────────
+#   Un argomento INTERO della forma ^E_[A-Z0-9_]+$. Non una sottostringa: con
+#   la ricerca libera `ORDINE_VENDITA` e `PARZIALMENTE_EVASO` davano E_VENDITA
+#   ed E_EVASO (i due falsi della misura del 27-10). Censito su dbdev il
+#   2026-11-03: i codici veri stanno SEMPRE in un argomento a se', mai in una
+#   lista a virgole; le liste a virgole sono stati (CONFERMATO,…).
+#   ⚠️ Non e' la grammatica di un BB (quale indice e' cosa): e' la forma di un
+#   codice di progetto, uguale per tutti. Un BB che domani passasse i codici
+#   in una lista andrebbe letto dalla SUA funzione di grammatica (memoria del
+#   progetto: il lettore di tgargs condivide la grammatica col trigger).
+#
+# ── LE COLONNE ────────────────────────────────────────────────────────
+#   funzione_oid, funzione (schema.nome della funzione trigger), trigger_oid,
+#   trigger_nome, tabella (schema.nome, come TESTO: un regclass in colonna si
+#   stampa secondo il search_path di chi legge), posizione (1-based, come
+#   fn_trigger_argomenti), codice. Una riga per (trigger, argomento).
+#
+# Lettori: dbops.vw_punti_canale_campo (20261103-02) e
+#   dbops.vw_codici_errore_da_dichiarare (20261103-03).
+# Catalogo dei presidi: riga INVENTARIO in 80_data/sql/dbops/presidi.csv.
+# Presidio: db/pgtap/dbops/test-punti-canale-campo-v1.sql (t.17-18, casi
+#   COSTRUITI).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261103-01-create-vw-codici-errore-argomenti-trigger-mctit.yaml
+
+  - changeSet:
+      id: 20261103-01-create-vw-codici-errore-argomenti-trigger
+      author: mctit
+      failOnError: true
+      comment: >
+        dbops.vw_codici_errore_argomenti_trigger: sede unica della lettura «i
+        codici E_* che un trigger passa alla sua funzione negli argomenti»
+        (pg_trigger.tgargs, tagliati da dbops.fn_trigger_argomenti). Letta dal
+        presidio C2 e dalla misura del terzo lato, che cercavano i codici solo
+        nel corpo delle funzioni (D24).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'dbops' AND p.proname = 'fn_trigger_argomenti'
+            - sqlCheck:
+                expectedResult: 0
+                sql: >-
+                  SELECT count(*) FROM pg_views
+                   WHERE schemaname = 'dbops' AND viewname = 'vw_codici_errore_argomenti_trigger'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE VIEW dbops.vw_codici_errore_argomenti_trigger
+              WITH (security_invoker=true) AS
+              SELECT tg.tgfoid                                   AS funzione_oid,
+                     fn.nspname::text || '.' || p.proname::text  AS funzione,
+                     tg.oid                                      AS trigger_oid,
+                     tg.tgname::text                             AS trigger_nome,
+                     tn.nspname::text || '.' || c.relname::text  AS tabella,
+                     a.posizione::int                            AS posizione,
+                     a.argomento                                 AS codice
+                FROM pg_trigger tg
+                JOIN pg_proc p       ON p.oid  = tg.tgfoid
+                JOIN pg_namespace fn ON fn.oid = p.pronamespace
+                JOIN pg_class c      ON c.oid  = tg.tgrelid
+                JOIN pg_namespace tn ON tn.oid = c.relnamespace
+                CROSS JOIN LATERAL unnest(dbops.fn_trigger_argomenti(tg.tgargs))
+                     WITH ORDINALITY AS a(argomento, posizione)
+               WHERE NOT tg.tgisinternal
+                 AND tg.tgnargs > 0
+                 -- un argomento INTERO, non una sottostringa: ORDINE_VENDITA
+                 -- non contiene il codice E_VENDITA
+                 AND a.argomento ~ '^E_[A-Z0-9_]+$';
+
+              COMMENT ON VIEW dbops.vw_codici_errore_argomenti_trigger IS
+              'SEDE UNICA della lettura «i codici E_* che un trigger passa alla sua funzione negli argomenti» (pg_trigger.tgargs, tagliati da dbops.fn_trigger_argomenti): una riga per (trigger, argomento) che e'' per INTERO un codice (^E_[A-Z0-9_]+$ — una sottostringa no: ORDINE_VENDITA non e'' E_VENDITA). Serve ai building block trigger che ricevono il codice da TG_ARGV (trgfn_lock_columns, trgfn_doc_*_lock_fuori_bozza, trgfn_doc_guard_emittente_ba…), che il corpo della funzione non nomina.
+              LETTORI: dbops.vw_punti_canale_campo (presidio C2) e dbops.vw_codici_errore_da_dichiarare (misura del terzo lato). Prima tutti e due cercavano i codici solo nel corpo, e per loro questi siti non esistevano.
+              tabella e funzione sono TESTO schema.nome (un regclass in colonna si stampa col search_path di chi legge); posizione parte da 1, come fn_trigger_argomenti. ⚠️ Riconosce la forma di un codice di progetto, non la grammatica di un BB: un BB che passasse i codici in una lista va letto dalla funzione di grammatica che usa il trigger stesso. Origine: D24 di migliorie-generali-da-test-valutazione.';
+
+              DO $grant$
+              BEGIN
+                  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+                              WHERE rolname = 'zeroerp_app') THEN
+                      GRANT SELECT ON dbops.vw_codici_errore_argomenti_trigger TO zeroerp_app;
+                  ELSE
+                      RAISE NOTICE 'ruolo zeroerp_app assente: GRANT saltato';
+                  END IF;
+              END
+              $grant$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS dbops.vw_codici_errore_argomenti_trigger;
