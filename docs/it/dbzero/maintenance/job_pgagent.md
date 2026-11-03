@@ -7,7 +7,7 @@
 | Job | Acceso | Quando | Processo |
 | --- | --- | --- | --- |
 | `analyze_statistiche` | si | alle 02:30, ogni giorno | `analyze_statistiche` |
-| `apply_storicizza_weekly` | si | alle 07:00, di sabato | `apply_storicizza_weekly` |
+| `apply_storicizza_weekly` | si | alle 07:05, di sabato | `apply_storicizza_weekly` |
 | `automations_apply_fk_indexes_policy` | si | alle 23:00, di domenica | `apply_fk_index_policy` |
 | `automations_attivo` | si | alle 21:00, ogni giorno | `automations_attivo` |
 | `automations_audit_update` | si | alle 21:00, ogni giorno | `automations_audit_update` |
@@ -21,7 +21,7 @@
 | `chiusura_scadenze_daily` | si | ogni ora, al minuto 05 | `chiusura_scadenze_daily` |
 | `guardiano_digest` | si | ogni ora, al minuto 20 | `guardiano_digest` |
 | `sync_auth_user_expired_daily` | si | ogni ora, al minuto 10 | `sync_auth_user_expired_daily` |
-| `sync_storico_set_storicizza` | si | alle 07:05, di sabato | `sync_storico_set_storicizza` |
+| `sync_storico_set_storicizza` | si | alle 07:00, di sabato | `sync_storico_set_storicizza` |
 
 ## `analyze_statistiche`
 
@@ -47,13 +47,13 @@ $sveglia$;
 
 ## `apply_storicizza_weekly`
 
-Setta DEFAULT=true su colonne "storicizza" ogni sabato ore 07:00
+Mette DEFAULT true sulle colonne storicizza delle tabelle di config.storico_set_storicizza: ogni sabato alle 07:05, dopo sync_storico_set_storicizza.
 
 | Step | Acceso | Tipo | Database | Chiama |
 | --- | --- | --- | --- | --- |
-| `run_apply_storicizza` | si | SQL | zeroerp | vedi sotto |
+| `run_proc_apply_storicizza` | si | SQL | zeroerp | vedi sotto |
 
-Step `run_apply_storicizza`:
+Step `run_proc_apply_storicizza`:
 
 ```sql
 DO $sveglia$
@@ -333,7 +333,7 @@ $sveglia$;
 
 ## `sync_auth_user_expired_daily`
 
-Disattiva auth_user per risorse umane con finestra temporale scaduta (giornaliero ore 06:00)
+Disattiva gli auth_user delle risorse umane con la finestra temporale scaduta: ogni ora al minuto 10, una volta per giorno aziendale.
 
 | Step | Acceso | Tipo | Database | Chiama |
 | --- | --- | --- | --- | --- |
@@ -355,13 +355,13 @@ $sveglia$;
 
 ## `sync_storico_set_storicizza`
 
-Setta DEFAULT=true su colonne "storicizza" ogni sabato ore 07:05
+Allinea config.storico_set_storicizza alla sua derivazione (aggiunge le tabelle con la colonna storicizza, pota le righe senza bersaglio): ogni sabato alle 07:00, prima di apply_storicizza_weekly.
 
 | Step | Acceso | Tipo | Database | Chiama |
 | --- | --- | --- | --- | --- |
-| `run_apply_storicizza` | si | SQL | zeroerp | vedi sotto |
+| `run_sync_storico_set_storicizza` | si | SQL | zeroerp | vedi sotto |
 
-Step `run_apply_storicizza`:
+Step `run_sync_storico_set_storicizza`:
 
 ```sql
 DO $sveglia$

@@ -61,7 +61,8 @@ processi e il digest. Il dettaglio del meccanismo è nella scheda di `fn_run_and
 
 La procedura non passa una chiave di lock: non c'è il salto della corsa sovrapposta. Il numero
 di righe che il giornale registra per questa corsa è quello dell'istruzione eseguita, non il
-numero delle tabelle analizzate.
+numero delle tabelle analizzate. Il valore che la funzione restituisce — quante tabelle restano
+senza statistiche, zero in una corsa riuscita — il giornale lo conserva in `meta.esito`.
 
 ⚠️ Il nome del job che passa al giornale è il **codice del processo** (`analyze_statistiche`),
 uguale al nome del job pgAgent: è così che il giornale risale al processo, e che la convergenza
@@ -111,6 +112,8 @@ rossa del giornale la nomina con il motivo `NON_ANALIZZABILE`.
 * 2026-10-15 — la CI sostituisce il `GRANT pg_maintain` al ruolo della migrazione col passaggio
   di proprietà a `zeroerp_owner`, e le passate girano come `zeroerp_owner`
   (`brief-db-ruoli-di-sistema`, fase 2).
+* 2026-11-03 — il valore restituito dalla funzione arriva nel giornale, in `meta.esito`. Prima
+  `fn_run_and_log` lo scartava (`brief-db-revisione-maintenance` D5).
 
 ---
 

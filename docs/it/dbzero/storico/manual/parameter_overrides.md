@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Tabella `storico.parameter_overrides`
 
+> **Ultimo aggiornamento**: 3 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 Approfondimento Tabelle:
@@ -48,7 +50,7 @@ La tabella **`storico.parameter_overrides`** memorizza gli snapshot delle modifi
 * **Consistenza e performance**
   FK e indici BTree su `parameter_override_id` assicurano integrità referenziale e query efficienti.
 * **Integrazione unificata**
-  Utilizzo della stessa funzione generic per storicizzazione (`script.trgfn_upd_dlt_storico_generic`) riduce la complessità e mantiene lo stesso pattern per tutte le entità.
+  Utilizzo della stessa funzione generic per storicizzazione (`script.trgfn_storico_generic`) riduce la complessità e mantiene lo stesso pattern per tutte le entità.
 
 ---
 

@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Tabella `storico.dati_societari`
 
+> **Ultimo aggiornamento**: 3 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 Approfondimento Tabelle:
@@ -37,7 +39,7 @@ La tabella **`storico.dati_societari`** mantiene lo **storico** delle modifiche 
 * **Triggers**
 
   * `trg_Z90_storico_dati_societari_upd_dlt` deve seguire la convenzione di naming per essere eseguito per ultimo.
-  * Il trigger richiama `script.trgfn_upd_dlt_storico_generic('dati_societari_id')`.
+  * Il trigger richiama `script.trgfn_storico_generic('dati_societari_id')`.
 
 ---
 

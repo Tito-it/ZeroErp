@@ -8,7 +8,7 @@ search:
 ## 📚 Tabelle (manuale)
 - [bank_branches](manual/bank_branches.md) — (latest review 02-12-25) La tabella **`anagrafiche.bank_branches`** rappresenta le **filiali di istituti di credito** (branch bancarie) collegate a un determinato **ruolo di soggetto** di tipo *ISTITUTO_CREDITO* (`anagrafiche.soggetti_ruoli`).
 - [billing_account](manual/billing_account.md) — (latest review 20-04-2026 — aggiunta colonna `canale_origine`)
-- [catasto_unita_immobiliari](manual/catasto_unita_immobiliari.md) — (latest review 10-12-25) La tabella `anagrafiche.catasto_unita_immobiliari` archivia i **dati catastali** associati a un `indirizzo_dettaglio` e a una specifica `istanza_utility`. Questo approccio:
+- [catasto_unita_immobiliari](manual/catasto_unita_immobiliari.md) — La tabella `anagrafiche.catasto_unita_immobiliari` archivia i **dati catastali** associati a un `indirizzo_dettaglio` e a una specifica `istanza_utility`. Questo approccio:
 - [catasto_unita_immobiliari_indirizzi](manual/catasto_unita_immobiliari_indirizzi.md) — (latest review 16-12-25) La tabella `anagrafiche.catasto_unita_immobiliari_indirizzi` è una **tabella ponte** che esplicita la relazione tra:
 - [categorie_clienti](manual/categorie_clienti.md) — (latest review 14-04-26)
 - [categorie_clienti_listini](manual/categorie_clienti_listini.md) — (latest review 14-04-26)

@@ -63,8 +63,9 @@ fallimento scritto fuori transazione, l'errore rilanciato — lo descrive la sch
 Il guardiano non torna mai in silenzio quando non può fare il suo lavoro: se il digest non è a
 catalogo, o se l'avviso non si può accodare, `dbops.fn_guardiano_digest` solleva un errore, e la
 corsa è rossa in `maintenance.vw_job_run_da_guardare`. L'esito di una corsa riuscita — digest
-vivo, avviso già mandato oggi, avviso accodato — la funzione lo restituisce come testo, ma
-`fn_run_and_log` non lo conserva: nel giornale resta solo che la corsa è riuscita.
+vivo, avviso già mandato oggi, avviso accodato — la funzione lo restituisce come testo, e
+`fn_run_and_log` lo scrive nel giornale, in `meta.esito`: dalla riga si legge che cosa il
+guardiano ha visto, non solo che la corsa è riuscita.
 
 ---
 
@@ -101,6 +102,8 @@ operativo.
   (`brief-db-ruoli-di-sistema`).
 * 2026-10-16 — lo step chiama la procedura solo a sveglia accesa
   (`brief-db-processi-accensione-per-ambiente`).
+* 2026-11-03 — l'esito testuale arriva nel giornale, in `meta.esito`. Prima `fn_run_and_log` lo
+  scartava (`brief-db-revisione-maintenance` D5).
 
 ---
 

@@ -1,6 +1,6 @@
 # Tutorial — Portare una tabella nuova nel framework di automazione DB
 
-> **Ultimo aggiornamento**: 24 ottobre 2026
+> **Ultimo aggiornamento**: 3 novembre 2026
 >
 > **Destinatari**: sviluppatori database che creano una tabella nuova e vogliono che il framework la governi
 >
@@ -315,7 +315,7 @@ rifiuto della modifica di `codice_interno`. Come si scrive e dove va:
 | Il flag `storicizza` si azzera dopo il primo UPDATE           | tabella non ancora in `config.storico_set_storicizza`               | `DEFAULT true` sulla colonna; la registra `sync_storico_set_storicizza`   |
 | Il giro dei lucchetti si ferma nominando una colonna          | un trigger vivo blocca una colonna che il registro non dichiara     | dichiararla in `automation_lock_columns.csv`, non scrivere il lock a mano |
 | Migrazione ferma su `PROCESSI_CI: …`                          | una procedura strutturale non ha lasciato una corsa riuscita        | leggere `maintenance.job_run_log` e `dbops.audit_log` del processo nominato |
-| Il trigger esiste ma in `audit_log` c'è `SKIP_EXISTS`         | il framework è idempotente: l'aveva già montato                     | nessuna azione                                                            |
+| In `audit_log` c'è `WARN` con azione `SKIP_EXISTS`            | il nome del trigger era già preso da un altro trigger sulla tabella | guardare quel trigger: se esegue un'altra funzione, è lui da sistemare    |
 | Nome troppo lungo (oltre 63 caratteri)                        | nome di tabella lungo                                               | il framework abbrevia con un hash; verificare il nome in `pg_trigger`     |
 
 ---

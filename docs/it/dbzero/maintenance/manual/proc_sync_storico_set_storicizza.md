@@ -10,7 +10,7 @@
 >
 > Approfondimento funzioni:
 >
-> * [maintenance.proc_apply_storicizza_defaults](/dbzero/maintenance/funzioni/proc_apply_storicizza_defaults) — il consumatore dell'insieme, che rimette il default
+> * [maintenance.fn_apply_storicizza_defaults](/dbzero/maintenance/funzioni/fn_apply_storicizza_defaults) — il consumatore dell'insieme, che rimette il default
 > * [maintenance.proc_sync_storico_set_storicizza_job](/dbzero/maintenance/funzioni/proc_sync_storico_set_storicizza_job) — il wrapper del job settimanale
 >
 > Guide:
@@ -73,7 +73,8 @@ ritrova la propria riga, e la potatura, che risolve il nome, sarebbe la prima a 
 ### Che cosa NON fa
 
 * Non tocca lo schema delle tabelle: mette a posto solo la **configurazione**. Il `DEFAULT` lo
-  applica `maintenance.proc_apply_storicizza_defaults`.
+  applica `maintenance.fn_apply_storicizza_defaults`, che gira subito dopo questa, in CI come su
+  pgAgent: l'insieme che il sync allinea è quello che l'apply consuma nello stesso giro.
 * Non segnala niente a nessuno. Il riepilogo («N aggiunte, M potate») è un `NOTICE`: lo riceve il
   client che l'ha lanciata, e con le impostazioni di registrazione di default non arriva al log
   del server. Lanciata dal job, la traccia della corsa è la riga del giornale delle esecuzioni,
@@ -100,6 +101,9 @@ schema-qualificati.
   hanno fatto fallire `apply_storicizza_weekly` ogni settimana per sei mesi senza che nessuno se
   ne accorgesse, perché allora il verbale del fallimento veniva annullato insieme al lavoro.
   Dallo stesso giorno `maintenance.fn_run_and_log` lo scrive fuori transazione.
+* 2026-11-03 — su pgAgent il sync gira prima dell'apply (sabato alle 07:00, l'apply alle 07:05),
+  come nella convergenza in CI. Prima girava cinque minuti dopo, e l'apply consumava l'insieme
+  della settimana precedente (`brief-db-revisione-maintenance` D7).
 
 ---
 

@@ -77,8 +77,11 @@ nessuno lo direbbe malato.
 un lavoro che ha fallito cinque minuti fa ha appena fallito. Per i lavori a verdetto completo
 la regola è un'altra, nella sezione che segue.
 
-`falliti_ultimi_7_giorni` dice quanti rossi ha avuto il lavoro nei sette giorni che precedono
-la sua **ultima corsa vera**, per tutti i lavori, anche quando non accendono più la riga. ⚠️ La
+`falliti_ultimi_7_giorni` dice quante **corse** fallite ha avuto il lavoro nei sette giorni che
+precedono la sua **ultima corsa vera**, per tutti i lavori, anche quando non accendono più la
+riga. ⭐ Conta le corse distinte (`run_uuid`), non le righe rosse: quando il chiamante di
+`maintenance.fn_run_and_log` cattura l'eccezione, una corsa fallita lascia nel giornale due righe
+rosse con lo stesso `run_uuid`, e contarle tutte direbbe due fallimenti dove ce n'è uno. ⚠️ La
 finestra che decide l'intermittenza invece parte da adesso: per un lavoro che non gira da giorni
 le due finestre non coincidono.
 
@@ -164,6 +167,10 @@ agisce».
 l'ultima corsa è andata bene e non ha errore. `ultimo_rosso_job_run_id` dice da quale corsa è
 stata letta; `job_run_id` è l'ultima corsa vera.
 
+Una corsa **riuscita con scarti** (`E_JOB_ESITO_CON_SCARTI`: il lavoro è finito, ma alcuni
+elementi sono falliti) è rossa come le altre, e il suo codice non dichiara una causa: decide il
+processo, al punto 4, perché ogni scarto ha la sua.
+
 ⚠️ Per i lavori del backend il punto 2 vede il guasto dell'ambiente solo quando il backend scrive
 il codice del database nel giornale (`job_run_log.sqlstate`).
 
@@ -212,6 +219,8 @@ e il rimedio cambiano con la causa della riga.
 * `db/pgtap/maintenance/test-vw-job-run-da-guardare-causa-v1.sql` — la causa, ramo per ramo.
 * `db/pgtap/maintenance/test-vw-job-run-da-guardare-verdetto-completo-v1.sql` — verdetto completo
   contro parziale, con la stessa storia di corse.
+* `db/pgtap/maintenance/test-vw-job-run-da-guardare-corse-distinte-v1.sql` — una corsa fallita con
+  due righe rosse dello stesso `run_uuid` conta una volta in `falliti_ultimi_7_giorni`.
 
 ---
 
@@ -229,6 +238,12 @@ e il rimedio cambiano con la causa della riga.
 * 2026-10-18 — il verdetto completo: per quei lavori l'intermittenza scatta solo sulla ricaduta. Il
   comando del 2026-09-05 riallineava tutti gli utenti a ogni corsa: era un verdetto completo
   instabile (`brief-db-intermittente-e-verdetto-completo`).
+* 2026-11-03 — `falliti_ultimi_7_giorni` conta i `run_uuid` distinti. Prima contava le righe
+  rosse, e una corsa fallita il cui chiamante catturava l'eccezione contava due volte. Niente
+  vincolo unico su `run_uuid`: il verbale fuori transazione resterebbe ad aspettare la
+  transazione che lo chiama (`brief-db-revisione-maintenance` D10).
+* 2026-11-03 — le corse riuscite con scarti diventano rosse (`E_JOB_ESITO_CON_SCARTI`) e la vista
+  le vede: prima risultavano verdi (`brief-db-revisione-maintenance` D5).
 
 ---
 

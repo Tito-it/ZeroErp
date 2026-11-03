@@ -1,0 +1,86 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Il giro di pulizia esegue tutte le regole che il registro dichiara.
+#   Brief: brief-db-revisione-maintenance D4 (decisione di Tid, 2026-11-03).
+#
+# ⚠️ IL DIFETTO. proc_automations_cleanup_job passava ARRAY['dbops'] al
+#   runner: le regole CLEANUP_AT del registro su vendite.* e config.* (i log
+#   di fatturazione, di push, le provenienze delle credenziali) e la
+#   CLEANUP_PURGE generica non le eseguiva nessuno — ne' il giro della
+#   domenica ne' la convergenza in CI, che chiama la stessa procedura. Le
+#   righe scadute di quelle tabelle non venivano mai cancellate.
+#
+# ⭐ LA DECISIONE. L'ambito si legge dal registro: p_schemas NULL, come per
+#   gli altri runner. dbops.fn_resolve_scope prende gli schemi di
+#   dbops.automation_scope, e le regole di dbops.automation_rules_tbl dicono
+#   quali tabelle. Una regola attiva ha un esecutore, o non sta nel registro.
+#
+# ℹ️ Perche' allargare non accorcia la vita di nessun log: con
+#   apply_on_update falso la scadenza si scrive solo dove manca, e le regole
+#   girano in ordine di priorita'. La regola della tabella (190) scrive prima
+#   di quella generica *all (200), che poi non trova piu' niente da fare.
+#
+# ⚠️ Le proprieta' invisibili nel corpo si ripetono: SECURITY DEFINER e
+#   search_path, come nella doc auto-generata.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/maintenance/20261103-58-update-proc-automations-cleanup-job-ambito-dal-registro-mctit.yaml
+
+  - changeSet:
+      id: 20261103-58-update-proc-automations-cleanup-job-ambito-dal-registro
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        maintenance.proc_automations_cleanup_job: il runner di pulizia riceve l'ambito NULL e
+        lo legge dal registro (dbops.automation_scope), invece del solo schema dbops.
+        Brief: brief-db-revisione-maintenance D4.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc p
+              JOIN pg_namespace n ON n.oid = p.pronamespace
+              WHERE n.nspname = 'maintenance'
+                AND p.proname = 'proc_automations_cleanup_job'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE PROCEDURE maintenance.proc_automations_cleanup_job()
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'topology', 'pg_temp'
+              AS $procedure$
+                -- ⭐ Ambito NULL: lo decide il registro (dbops.automation_scope
+                --   per gli schemi, dbops.automation_rules_tbl per le tabelle).
+                --   Brief: brief-db-revisione-maintenance D4.
+                BEGIN
+                  PERFORM maintenance.fn_run_and_log(
+                    p_jobname  := 'automations_cleanup',
+                    p_stepname := 'run_automations_cleanup',
+                    p_sql      := 'SELECT dbops.fn_run_automations_cleanup(''SCHEDULED'', NULL, false);',
+                    p_lock_key := hashtext('automations_cleanup')
+                  );
+                END;
+              $procedure$;
+
+              COMMENT ON PROCEDURE maintenance.proc_automations_cleanup_job()
+              IS 'Wrapper del processo automations_cleanup: chiama dbops.fn_run_automations_cleanup in modo SCHEDULED, con l''ambito letto dal registro (p_schemas NULL: gli schemi di dbops.automation_scope, le tabelle dalle regole CLEANUP_AT e CLEANUP_PURGE), passando da maintenance.fn_run_and_log con lock. La chiamano il job pgAgent della domenica e la convergenza in CI.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo (corpo del 20260207-12).
+              SELECT 1;

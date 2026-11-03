@@ -34,29 +34,33 @@ chiude transazioni: segue quella del chiamante.
 
 | Dove | Chi la chiama | Quando |
 | --- | --- | --- |
-| dbdev e installazioni | il job pgAgent `sync_storico_set_storicizza` | ogni sabato alle 07:05, cinque minuti dopo l'apply |
+| dbdev e installazioni | il job pgAgent `sync_storico_set_storicizza`, step `run_sync_storico_set_storicizza` | ogni sabato alle 07:00, cinque minuti prima dell'apply |
 | CI e scratch | la convergenza dei job strutturali (passata `ci_apply`) | in ordine `ci_ordine` 100, prima dell'apply (110) |
 
 Lo step pgAgent chiama la procedura solo se
 `maintenance.fn_sveglia_accesa('sync_storico_set_storicizza')` è vero: a sveglia spenta il
 lavoro non parte, e il giornale non scrive niente.
 
+⭐ L'ordine è lo stesso nelle due strade: prima il sync allinea l'insieme, poi l'apply lo consuma.
+Così una tabella nuova riceve il default nello stesso giro in cui entra nell'insieme.
+
 ---
 
-### ⚠️ Lo step ha due nomi
+### Un nome solo per lo step
 
-Lo step del job pgAgent si chiama `run_apply_storicizza`, lo stesso nome dello step del job
-dell'apply. Nel giornale, invece, lo step registrato è `run_sync_storico_set_storicizza`. Le
-corse di questo lavoro si riconoscono dal nome del job, `sync_storico_set_storicizza`, che è
-anche il codice del processo in `dbops.processi`: è così che il giornale risale al processo.
+Lo step del job pgAgent e lo step registrato nel giornale si chiamano tutti e due
+`run_sync_storico_set_storicizza`. Le corse di questo lavoro si riconoscono dal nome del job,
+`sync_storico_set_storicizza`, che è anche il codice del processo in `dbops.processi`: è così che
+il giornale risale al processo.
 
 ---
 
 ### Che cosa resta nel giornale
 
-* **Corsa riuscita** — la riga si chiude con esito positivo e messaggio «done». Il numero di
-  righe registrato è quello dell'istruzione eseguita, cioè della chiamata alla procedura: non è
-  il numero di righe aggiunte o potate, che la procedura dice solo nel suo riepilogo al client.
+* **Corsa riuscita** — la riga si chiude con esito positivo e messaggio «done». Il lavoro è una
+  `CALL`, che non restituisce un risultato: la corsa non ha esito in `meta`, e il numero di righe
+  registrato è quello dell'istruzione eseguita, non il numero di righe aggiunte o potate, che la
+  procedura dice solo nel suo riepilogo al client.
 * **Corsa fallita** — il verbale è scritto **fuori transazione** (con
   `maintenance.fn_job_run_log_failure`) e l'errore viene **rilanciato**: lo step pgAgent
   fallisce. Il lavoro si annulla, il verbale resta.
@@ -87,6 +91,9 @@ la convergenza in CI — la sincronizzazione legge il catalogo e scrive l'insiem
   `dbops.processi`.
 * `db/pgtap/dbops/test-processi-convergenza-ci.sql` — la procedura dichiarata esiste, ha girato
   sul database con esito positivo, e nella convergenza viene prima dell'apply.
+* `db/pgtap/dbops/test-pgagent-storicizza-ordine-v1.sql` — su pgAgent la sveglia del sync viene
+  prima di quella dell'apply, nello stesso ordine della convergenza (in skip dove pgAgent non è
+  installato).
 
 ---
 
@@ -98,6 +105,11 @@ la convergenza in CI — la sincronizzazione legge il catalogo e scrive l'insiem
   (`brief-db-storicizzazione-bersagli-spariti`, R-12).
 * 2026-10-14 — diventa `SECURITY DEFINER` con `search_path` fissato, come tutte le
   `maintenance.proc_*_job` (`brief-db-ruoli-di-sistema`).
+* 2026-11-03 — il job pgAgent passa alle 07:00 del sabato, prima dell'apply delle 07:05: prima
+  girava cinque minuti dopo, e l'apply consumava l'insieme della settimana precedente. Lo step
+  pgAgent prende il nome che il giornale registra, `run_sync_storico_set_storicizza` (prima
+  `run_apply_storicizza`, copiato dall'apply), e la descrizione del job dice che cosa fa il sync
+  invece di ripetere quella dell'apply (`brief-db-revisione-maintenance` D7, M1, M2).
 
 ---
 

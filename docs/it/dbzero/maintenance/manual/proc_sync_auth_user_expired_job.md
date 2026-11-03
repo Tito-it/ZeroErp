@@ -58,8 +58,8 @@ comportamento della corsa — la riga nel giornale, il verbale del fallimento sc
 transazione, l'errore rilanciato — lo descrive la scheda di
 [fn_run_and_log](/dbzero/maintenance/funzioni/fn_run_and_log).
 
-La funzione restituisce quante credenziali ha riallineato, ma `fn_run_and_log` non conserva il
-risultato: nel giornale resta che la corsa è riuscita, non quante credenziali ha cambiato.
+La funzione restituisce quante credenziali ha riallineato, e `fn_run_and_log` scrive quel numero
+nel giornale, in `meta.esito`: la riga dice anche quante credenziali la corsa ha cambiato.
 
 ---
 
@@ -114,6 +114,9 @@ La convergenza dei job in CI non la chiama: il processo è operativo, agisce su 
   (`brief-db-ruoli-di-sistema`).
 * 2026-10-16 — lo step chiama la procedura solo a sveglia accesa
   (`brief-db-processi-accensione-per-ambiente`).
+* 2026-11-03 — il numero di credenziali riallineate arriva nel giornale, in `meta.esito`. Prima
+  `fn_run_and_log` lo scartava (`brief-db-revisione-maintenance` D5). Lo stesso giorno la
+  descrizione del job pgAgent smette di dire «giornaliero ore 06:00».
 
 ---
 

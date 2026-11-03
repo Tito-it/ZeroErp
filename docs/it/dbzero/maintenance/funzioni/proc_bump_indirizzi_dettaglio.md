@@ -15,40 +15,29 @@ CREATE PROCEDURE proc_bump_indirizzi_dettaglio(IN p_stradario_id integer)
 CREATE OR REPLACE PROCEDURE maintenance.proc_bump_indirizzi_dettaglio(IN p_stradario_id integer)
  LANGUAGE plpgsql
 AS $procedure$
--- Scopo: rinormalizzare anagrafiche.indirizzi_dettaglio dopo un
---   cambio di via, attraversando il guard che in condizioni
---   normali blocca la modifica di stradario_id.
+-- Scopo: rinormalizzare anagrafiche.indirizzi_dettaglio di una via
+--   (via_norm, civico_norm, indirizzo_normalizzato) dopo che e'
+--   cambiato qualcosa da cui dipendono: il nome della via, il
+--   toponimo, il comune.
 --
--- ⚠️ IL BYPASS DEVE DURARE QUANTO LA PROCEDURA, NON DI PIU'.
---   `set_config(..., true)` vale per la TRANSAZIONE: lasciandolo
---   acceso, ogni istruzione successiva della stessa transazione
---   girerebbe senza la protezione di
---   trgfn_indirizzi_dettaglio_protect_update, e nessuno se ne
---   accorgerebbe. Prima non veniva mai spento: funzionava solo
---   perche' la procedura veniva chiamata da sola, in autocommit,
---   e la transazione moriva subito dopo.
---   Il blocco EXCEPTION serve a spegnerlo anche quando l'UPDATE
---   fallisce: una porta che si richiude solo se tutto va bene non
---   e' una porta chiusa.
---   Brief: brief-db-pgtap-runner-rls-baseline §18.
+-- ⭐ L'aggiornamento e' NEUTRO: riscrive lo stesso stradario_id.
+--   Basta a far girare su ogni riga il trigger di normalizzazione,
+--   che rilegge la via da script.vw_indirizzo_completo.
+--
+-- ℹ️ Niente flag di manutenzione: il guard
+--   trgfn_indirizzi_dettaglio_protect_update blocca solo un
+--   CAMBIO di stradario_id, e qui non ce n'e'. Il flag resta la
+--   porta del verbo che spostera' gli indirizzi su un'altra via,
+--   quando nascera'. Brief: brief-db-revisione-maintenance D8.
 BEGIN
-  PERFORM set_config('zeroerp.maintenance_indirizzi_dettaglio', 'on', true);
-
-  BEGIN
-    UPDATE anagrafiche.indirizzi_dettaglio
-    SET stradario_id = stradario_id
-    WHERE stradario_id = p_stradario_id;
-  EXCEPTION WHEN OTHERS THEN
-    PERFORM set_config('zeroerp.maintenance_indirizzi_dettaglio', 'off', true);
-    RAISE;
-  END;
-
-  PERFORM set_config('zeroerp.maintenance_indirizzi_dettaglio', 'off', true);
+  UPDATE anagrafiche.indirizzi_dettaglio
+     SET stradario_id = stradario_id
+   WHERE stradario_id = p_stradario_id;
 END;
 $procedure$
 
 COMMENT ON PROCEDURE maintenance.proc_bump_indirizzi_dettaglio(IN p_stradario_id integer)
-IS 'Rinormalizza anagrafiche.indirizzi_dettaglio per una via, attraversando trgfn_indirizzi_dettaglio_protect_update tramite il flag zeroerp.maintenance_indirizzi_dettaglio. Il flag viene rimesso a ''off'' prima di uscire, anche in caso di errore: altrimenti il bypass resterebbe attivo per tutta la transazione chiamante e ogni modifica successiva a indirizzi_dettaglio girerebbe senza protezione.';
+IS 'Rinormalizza anagrafiche.indirizzi_dettaglio di una via con un aggiornamento neutro (stesso stradario_id): il trigger di normalizzazione ricalcola via_norm, civico_norm e indirizzo_normalizzato da script.vw_indirizzo_completo. Non accende il flag zeroerp.maintenance_indirizzi_dettaglio: il guard su stradario_id blocca solo un cambio di via, e qui la via non cambia. La chiama anche maintenance.proc_bump_toponomastica, per ogni via del toponimo corretto.';
 ```
 
 </div>

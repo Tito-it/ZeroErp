@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.automation_overrides_cols`
 
+> **Ultimo aggiornamento**: 3 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 Approfondimento funzioni: 
@@ -8,7 +10,6 @@ Approfondimento funzioni:
 
 > Esempio Helper: [dbops.fn_get_override_col(schema, table, key, default)]
 ### 🎯 Scopo Principale
-(latest review 10-01-26)
 Centralizzare le **eccezioni di naming delle colonne** usate dagli automatismi (audit, soft‑delete, storico, ecc.).
 Quando il tuo schema usa nomi diversi dagli standard (es. `attivo` → `is_enabled`, `data_update` → `modified_at`), qui definisci l’override **per tabella**.
 
@@ -101,7 +102,7 @@ VALUES ('catalogo','articoli','STORICO_FK','articolo_id','storico con fk esplici
 
 * **AUDIT_UPDATE**: legge `AUDIT_TS` e `AUDIT_USER` per scegliere la funzione `script.trgfn_audit_data_user_generic()`.
 * **ATTIVO**: legge `ATTIVO_COL` su **padre** e **figlio** per i tre trigger (cascade/require/block).
-* **STORICO**: legge `STORICO_FK` per i trigger `trgfn_upd_dlt_storico_generic()`.
+* **STORICO**: legge `STORICO_FK` per i trigger `trgfn_storico_generic()`.
 
 ---
 

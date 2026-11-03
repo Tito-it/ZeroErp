@@ -55,7 +55,10 @@ morirebbe alla prima chiusura di uno snapshot, cioè su ogni modifica di una rig
 
 La gemella **non** la crea questa procedura: la crea
 `maintenance.proc_automations_storico_provision_job`. Il runner **aggiunge e non toglie**:
-riconosce il trigger già montato dal nome, e su una tabella già allineata non fa niente.
+riconosce il trigger già montato, e su una tabella già allineata non fa niente. Come lo
+riconosce lo dice la regola del registro: dal nome, dalla funzione che il trigger esegue
+(`script.trgfn_storico_generic`) o da tutte e due; la regola del seed li accetta tutti e due,
+quindi basta il nome o la funzione.
 
 ---
 
@@ -161,6 +164,10 @@ scrive nel registro errori e lo rilancia col suo SQLSTATE.
   girato con esito positivo sul database, e `automations_storico_provision` viene prima di `automations_storico`.
 * `db/pgtap/dbops/test-storico-automazione-colonna-fk-v1.sql` — il runner: non monta un trigger
   che non potrebbe chiudere uno snapshot.
+* `db/pgtap/dbops/test-storico-nome-funzione-ritirato-v1.sql` — la funzione generica esiste col
+  nome vivo, e nessuna funzione cerca più il trigger col nome che aveva prima; con
+  `existence_strategy` `BY_FUNCTION` e `BOTH`, una tabella che ha già il trigger generico con un
+  altro nome non ne riceve un secondo, e una senza trigger lo riceve.
 
 ---
 
@@ -177,6 +184,10 @@ scrive nel registro errori e lo rilancia col suo SQLSTATE.
   descriveva un giornale che non esiste (`maintenance.job_log`, `start_time`, `status`,
   `tx_id`), un errore che non interrompeva lo scheduler, un orario notturno inventato e lo
   step come una chiamata nuda.
+* 2026-11-03 — il runner riconosce il trigger anche dalla funzione viva,
+  `script.trgfn_storico_generic`. Prima il controllo per funzione cercava il nome ritirato
+  `script.trgfn_upd_dlt_storico_generic`: con la strategia per funzione il trigger non risultava
+  mai presente, con quella doppia decideva solo il nome (`brief-db-revisione-maintenance` D3).
 
 ---
 

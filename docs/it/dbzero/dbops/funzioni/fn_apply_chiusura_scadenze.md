@@ -241,7 +241,7 @@ AS $function$
                                   'lo stato si scrive solo da un verbo, e la testata non ha il verbo di chiusura'
                               );
                           END IF;
-                          
+
                           -- Il verbo dichiarato (rev 2026-10-28, 20261028-14): una
                           -- funzione viva, senza argomenti. L'identificatore lo da' il
                           -- catalogo, non il testo del registro.
@@ -262,7 +262,7 @@ AS $function$
                                   'il verbo di chiusura dichiarato non e'' una funzione senza argomenti'
                               );
                           END IF;
-                          
+
                           EXECUTE format('SELECT %s()', v_verbo::regproc) INTO v_count;
                       ELSE
                       -- UPDATE con id risolti.
@@ -326,7 +326,11 @@ AS $function$
               BEGIN
                   PERFORM dbops.fn_audit_log_once(
                       p_function_name => 'dbops.fn_apply_chiusura_scadenze',
-                      p_status        => 'INFO',
+                      -- ⛔ Rev 2026-11-03 (brief-db-revisione-maintenance R5):
+                      --   INFO non e' nel vocabolario di chk_audit_status, e il
+                      --   WHEN OTHERS qui sotto inghiottiva il 23514: l'audit
+                      --   non si scriveva mai. Un giro arrivato fin qui e' OK.
+                      p_status        => 'OK',
                       p_params        => v_result
                   );
               EXCEPTION WHEN OTHERS THEN

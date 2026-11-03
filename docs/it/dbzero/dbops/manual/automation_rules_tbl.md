@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.automation_rules_tbl`
 
+> **Ultimo aggiornamento**: 3 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 Approfondimento tabelle
@@ -35,7 +37,7 @@ Gli orchestratori leggono questa tabella e applicano le regole nell'ordine di **
 
   * `TX_ID` → trigger `BEFORE INSERT/UPDATE` con `dbops.trgfn_tx_id_managed()` su tabelle che hanno `tx_id uuid`.
   * `AUDIT_UPDATE` → trigger `BEFORE UPDATE` con `script.trgfn_audit_data_user_generic()`.
-  * `STORICO` → trigger su `BEFORE UPDATE` e `BEFORE DELETE` verso `storico.<table>_storico` con `script.trgfn_upd_dlt_storico_generic(...)`.
+  * `STORICO` → trigger su `BEFORE UPDATE` e `BEFORE DELETE` verso `storico.<table>_storico` con `script.trgfn_storico_generic(...)`.
   * `LOCK_COLUMNS` → trigger `BEFORE UPDATE OF ...` con `script.trgfn_lock_columns(...)` su colonne critiche.
   * `CLEANUP_AT` → calcolo `cleanup_at` con TTL fisso per tabella.
   * `CLEANUP_PURGE` → cancellazione record scaduti (batch) su `cleanup_at`.

@@ -1,5 +1,7 @@
 ## 📘 Documentazione concettuale - Tabella  `storico.pdp`
 
+> **Ultimo aggiornamento**: 3 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 **Approfondimento tabelle:**
@@ -8,7 +10,7 @@
 >
 **Approfondimento funzioni:**
 >
-• [`script.trgfn_upd_dlt_storico_generic`](/dbzero/script/funzioni/trgfn_storico_generic)   
+• [`script.trgfn_storico_generic`](/dbzero/script/funzioni/trgfn_storico_generic)   
 > • [`dbops.trgfn_tx_id_managed`](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
 
 
@@ -39,7 +41,7 @@
 
 ### 3. Popolamento e trigger
 
-* **UPDATE/DELETE**: `anagrafiche.pdp` aggancia `script.trgfn_upd_dlt_storico_generic('pdp_id')` per creare le righe di storico su variazione/cancellazione.
+* **UPDATE/DELETE**: `anagrafiche.pdp` aggancia `script.trgfn_storico_generic('pdp_id')` per creare le righe di storico su variazione/cancellazione.
 * **INSERT**: dal DDL sorgente non risulta un trigger specifico. Per una timeline completa si consiglia un **trigger `AFTER INSERT`** alla creazione del PDP che inserisca una riga con `tipo_operazione='I'`, `valid_from=now()`, `valid_to=NULL` e `snapshot=to_jsonb(NEW)`.
 
 **Regola temporale**

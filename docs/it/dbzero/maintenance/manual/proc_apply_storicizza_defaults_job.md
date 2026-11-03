@@ -11,7 +11,7 @@
 >
 > Approfondimento funzioni:
 >
-> * [maintenance.proc_apply_storicizza_defaults](/dbzero/maintenance/funzioni/proc_apply_storicizza_defaults) — il lavoro vero
+> * [maintenance.fn_apply_storicizza_defaults](/dbzero/maintenance/funzioni/fn_apply_storicizza_defaults) — il lavoro vero
 > * [maintenance.fn_run_and_log](/dbzero/maintenance/funzioni/fn_run_and_log) — il giornale e il lock da cui passa la chiamata
 > * [maintenance.fn_sveglia_accesa](/dbzero/maintenance/funzioni/fn_sveglia_accesa) — il cancello dello step pgAgent
 >
@@ -23,7 +23,7 @@
 
 ### 🎯 Scopo Principale
 
-Il wrapper del job `apply_storicizza_weekly`: esegue `maintenance.proc_apply_storicizza_defaults`
+Il wrapper del job `apply_storicizza_weekly`: esegue `maintenance.fn_apply_storicizza_defaults`
 passando dal giornale delle esecuzioni, con un lock che impedisce due corse sovrapposte.
 
 La procedura non aggiunge logica: delega tutto a `maintenance.fn_run_and_log`, che registra la
@@ -35,24 +35,24 @@ corsa in `maintenance.job_run_log`, esegue il lavoro e chiude la riga con l'esit
 
 | Dove | Chi la chiama | Quando |
 | --- | --- | --- |
-| dbdev e installazioni | il job pgAgent `apply_storicizza_weekly`, step `run_apply_storicizza` | ogni sabato alle 07:00 |
+| dbdev e installazioni | il job pgAgent `apply_storicizza_weekly`, step `run_proc_apply_storicizza` | ogni sabato alle 07:05, cinque minuti dopo il sync |
 | CI e scratch | la convergenza dei job strutturali (passata `ci_apply`) | in ordine `ci_ordine` 110, dopo il sync dell'insieme (100) |
 
 Lo step pgAgent chiama la procedura solo se
 `maintenance.fn_sveglia_accesa('apply_storicizza_weekly')` è vero: a sveglia spenta il lavoro
 non parte, e il giornale non scrive niente.
 
-⚠️ Su pgAgent l'ordine con il sync è l'opposto di quello della CI: l'apply gira cinque minuti
-**prima** del sync settimanale. Perché la procedura regge lo stesso, lo spiega la sua scheda.
+L'ordine con il sync è lo stesso nelle due strade: prima il sync che allinea l'insieme, poi
+l'apply che lo consuma. Perché la procedura regge anche una riga che il sync non ha ancora
+potato, lo spiega la sua scheda.
 
 ---
 
 ### Che cosa resta nel giornale
 
 Il nome del job registrato è `apply_storicizza_weekly`, che è anche il codice del processo in
-`dbops.processi`: così il giornale risale al processo. Lo step registrato si chiama invece
-`run_proc_apply_storicizza`, diverso dal nome dello step pgAgent: le corse si cercano per nome
-del job.
+`dbops.processi`: così il giornale risale al processo. Lo step registrato si chiama
+`run_proc_apply_storicizza`, come lo step pgAgent.
 
 * **Corsa riuscita** — la riga si chiude con esito positivo e messaggio «done». Le righe
   dell'insieme saltate o fallite non la rendono rossa: le racconta la procedura con un `WARNING`
@@ -89,6 +89,9 @@ giornale registra come ruolo della sessione chi si è collegato.
   `dbops.processi`.
 * `db/pgtap/dbops/test-processi-convergenza-ci.sql` — la procedura dichiarata esiste, ha girato
   sul database con esito positivo, e nella convergenza viene dopo il sync dell'insieme.
+* `db/pgtap/dbops/test-pgagent-storicizza-ordine-v1.sql` — su pgAgent la sveglia del sync viene
+  prima di quella dell'apply, nello stesso ordine della convergenza (in skip dove pgAgent non è
+  installato).
 
 ---
 
@@ -100,6 +103,10 @@ giornale registra come ruolo della sessione chi si è collegato.
   settimana (`brief-db-storicizzazione-bersagli-spariti`, R-12).
 * 2026-10-14 — diventa `SECURITY DEFINER` con `search_path` fissato, come tutte le
   `maintenance.proc_*_job` (`brief-db-ruoli-di-sistema`).
+* 2026-11-03 — il job pgAgent passa alle 07:05 del sabato, dopo il sync delle 07:00: prima girava
+  cinque minuti prima del sync, e consumava l'insieme della settimana precedente. Lo step pgAgent
+  prende il nome che il giornale registra, `run_proc_apply_storicizza`; prima si chiamava
+  `run_apply_storicizza` (`brief-db-revisione-maintenance` D7, M2).
 
 ---
 

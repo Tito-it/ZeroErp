@@ -152,7 +152,7 @@ Tutti i runner accettano gli stessi tre parametri — modo di esecuzione, schemi
 
 Ogni azione del framework viene registrata in `dbops.audit_log` con:
 
-* `status` — `DRYRUN`, `OK`, `ERROR`, `SKIP_EXISTS`
+* `status` — `DRYRUN`, `OK`, `ERROR`, `WARN` (un salto, per esempio un trigger già presente: l'azione `SKIP_EXISTS` sta in `params`)
 * `rule_type` — quale regola
 * `params` — dettagli strutturati (tabella, trigger, azione)
 * `duration_ms` — tempo di esecuzione
@@ -674,7 +674,7 @@ Verifica in ordine:
 
 1. La tabella è nell'ambito? → controlla `automation_scope` o passa lo schema nel parametro `p_schemas`
 2. La regola è abilitata? → controlla `enabled = true` in `automation_rules_tbl`
-3. Il trigger esiste già? → il runner lo salta con `SKIP_EXISTS`
+3. Il trigger esiste già? → il runner lo salta; se il nome era preso da un altro trigger, lo dice in `audit_log` con status `WARN` e azione `SKIP_EXISTS`
 4. La tabella ha le colonne necessarie? → es. `tx_id` per TX_ID, `attivo` per ATTIVO, `storicizza` per lo storico
 5. Per STORICO: la tabella di storico esiste? → finché STORICO_PROVISION non l'ha creata, il trigger non compare nemmeno in dry-run
 
@@ -750,7 +750,8 @@ Dove pgAgent c'è, i job di `85_pgagent` rieseguono le stesse procedure:
 | ------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | ogni giorno, 21:00  | `automations_audit_update`, `automations_storico_provision`, `automations_storico`, `automations_tx_id`, `automations_attivo`, `automations_overlap` |
 | ogni giorno, 21:10  | `automations_lock_columns` (con DATE_VALIDITA), `automations_delete_block`                                             |
-| sabato, 07:00       | `apply_storicizza_weekly`, `sync_storico_set_storicizza`                                                               |
+| sabato, 07:00       | `sync_storico_set_storicizza`                                                                                          |
+| sabato, 07:05       | `apply_storicizza_weekly`: dopo il sync, nello stesso ordine della convergenza                                         |
 | domenica, 23:00     | `automations_cleanup_weekly`, `automations_apply_fk_indexes_policy`                                                   |
 
 * Ogni passo è avvolto nel cancello [maintenance.fn_sveglia_accesa](/dbzero/maintenance/manual/fn_sveglia_accesa): un processo **spento** non si sveglia, e non lascia righe nel giornale. La convergenza del rilascio invece gira sempre: spegnere ferma la sveglia, non l'aggiornamento.
@@ -807,7 +808,7 @@ flowchart TB
     E --> F{Dry-run?}
     F -->|Si| G[Log DRYRUN in audit_log]
     F -->|No| H{Trigger esiste?}
-    H -->|Si| I[SKIP_EXISTS]
+    H -->|Si| I[Salta il trigger]
     H -->|No| J[Crea trigger/oggetto]
     J --> K[Log OK in audit_log]
     J -->|Errore| L[Log ERROR in audit_log]

@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_run_automations_storico`
 
+> **Ultimo aggiornamento**: 3 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 Guide:
@@ -61,7 +63,7 @@ La funzione **`dbops.fn_run_automations_storico(p_exec_mode, p_schemas, p_dry_ru
 7. **Azione**:
 
    * `p_dry_run=true` → registra evento `DRYRUN_CREATE_TRIGGER_UD` con `fn_audit_log_once`.
-   * `p_dry_run=false` → esegue `CREATE TRIGGER ... EXECUTE FUNCTION script.trgfn_storico_generic(fk_col)`; gestisce duplicate con log `SKIP_EXISTS`.
+   * `p_dry_run=false` → esegue `CREATE TRIGGER ... EXECUTE FUNCTION script.trgfn_storico_generic(fk_col)`; se il nome del trigger è già preso (`duplicate_object`) salta la tabella e lo scrive in `audit_log` con status `WARN` e azione `SKIP_EXISTS` nei `params`. Fino al 3 novembre 2026 lo status era `SKIP_EXISTS`, che `chk_audit_status` rifiuta: il salto fermava il runner (`brief-db-revisione-maintenance` R4, presidio `db/pgtap/dbops/test-storico-salto-trigger-presente-v1.sql`).
 ~~8. **Pulizia legacy (opz.)**: se `params->>'drop_legacy_ud' = true`, rimuove eventuali vecchi trigger separati `upd/dlt`.~~
 
 > ⛔ **Il passo 8 è stato RIMOSSO il 2026-09-01** (changeSet `20260901-01`), e

@@ -19,7 +19,7 @@
 > * [dbops.fn_ensure_storico_table](/dbzero/dbops/funzioni/fn_ensure_storico_table) — il provisioning idempotente di una tabella
 > * [dbops.fn_storico_arma_scope](/dbzero/dbops/manual/fn_storico_arma_scope) / [dbops.fn_storico_backfill_scope](/dbzero/dbops/manual/fn_storico_backfill_scope) — arma lo scope e converte il pregresso
 > * [dbops.fn_run_automations_storico](/dbzero/dbops/funzioni/fn_run_automations_storico) / [dbops.fn_run_automations_storico_provision](/dbzero/dbops/funzioni/fn_run_automations_storico_provision) — creazione dei trigger e delle tabelle
-> * [maintenance.proc_sync_storico_set_storicizza](/dbzero/maintenance/funzioni/proc_sync_storico_set_storicizza) / [maintenance.proc_apply_storicizza_defaults](/dbzero/maintenance/funzioni/proc_apply_storicizza_defaults) — sincronizzazione del catalogo e applicazione dei default
+> * [maintenance.proc_sync_storico_set_storicizza](/dbzero/maintenance/funzioni/proc_sync_storico_set_storicizza) / [maintenance.fn_apply_storicizza_defaults](/dbzero/maintenance/funzioni/fn_apply_storicizza_defaults) — sincronizzazione del catalogo e applicazione dei default
 >
 > **Vedi anche** — guide correlate:
 >
@@ -458,20 +458,19 @@ Scansiona il catalogo PostgreSQL per rilevare automaticamente tutte le tabelle c
 
 **Job wrapper:** `proc_sync_storico_set_storicizza_job` — esecuzione schedulata con advisory lock e logging via `fn_run_and_log`.
 
-### Applicazione default: `proc_apply_storicizza_defaults`
+### Applicazione default: `fn_apply_storicizza_defaults`
 
-Itera tutte le tabelle registrate in `config.storico_set_storicizza` e applica `ALTER TABLE ... ALTER COLUMN storicizza SET DEFAULT true`.
+Itera tutte le tabelle registrate in `config.storico_set_storicizza`, rimette il default `true` sulla colonna `storicizza` di ciascuna e restituisce il riepilogo del giro: quante applicate, saltate, fallite. Dal job, una tabella fallita rende la corsa rossa nel giornale delle esecuzioni, senza annullare le tabelle applicate.
 
 > ⭐ **Una riga guasta non ferma le altre.** Una sola riga che punta a una tabella
 > inesistente non deve interrompere il giro per tutte le altre.
 >
 > ⚠️ E non è una conseguenza della potatura qui sopra: chi produce l'elenco e chi lo
-> consuma sono **due lavori distinti, su due orari diversi**. Se l'applicazione gira
-> prima della sincronizzazione — e prima o poi capita — la riga vecchia c'è ancora.
-> Chi consuma un elenco costruito da altri non può morire perché una riga non è
-> ancora stata ripulita.
+> consuma sono **due lavori distinti**. Se la sincronizzazione fallisce o è spenta, o una
+> tabella viene ritirata fra le due corse, la riga vecchia c'è ancora. Chi consuma un
+> elenco costruito da altri non può morire perché una riga non è ancora stata ripulita.
 
-**Scheduling:** ogni sabato alle 07:00 UTC tramite pgAgent job `apply_storicizza_weekly`.
+**Scheduling:** ogni sabato alle 07:05 (ora del server del database) tramite pgAgent job `apply_storicizza_weekly`, cinque minuti dopo la sincronizzazione (`sync_storico_set_storicizza`, alle 07:00): lo stesso ordine della convergenza in CI.
 
 **Job wrapper:** `proc_apply_storicizza_defaults_job` — esecuzione schedulata con advisory lock e logging.
 

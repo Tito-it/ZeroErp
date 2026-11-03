@@ -1,6 +1,6 @@
 # Guida — Sistema di Audit Logging
 
-> **Ultimo aggiornamento**: 19 settembre 2026
+> **Ultimo aggiornamento**: 3 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali
 >
@@ -91,7 +91,7 @@ Da un punto di vista tecnico:
 | `function_name` | TEXT        |    no    | —              | Nome della funzione/processo                                                                               |
 | `executed_by`   | TEXT        |    no    | `current_user` | **Ruolo di database** che ha scritto la riga (non l'operatore: quello sta nelle GUC `app.*` e nel `tx_id`) |
 | `executed_at`   | TIMESTAMPTZ |    no    | `now()`        | Timestamp di inizio                                                                                        |
-| `status`        | TEXT        |    no    | —              | Stato: `START`, `OK`, `ERROR`, `DRYRUN`, `SKIP_EXISTS`, `WARN`                                             |
+| `status`        | TEXT        |    no    | —              | Stato: `START`, `OK`, `ERROR`, `DRYRUN`, `WARN` (vincolo `chk_audit_status`)                               |
 | `message`       | TEXT        |    si    | —              | Messaggio descrittivo                                                                                      |
 | `duration_ms`   | INTEGER     |    si    | —              | Durata in millisecondi (calcolata da `fn_audit_end`)                                                       |
 | `params`        | JSONB       |    si    | —              | Parametri di input / contesto strutturato                                                                  |
@@ -299,8 +299,8 @@ L'audit log e il sistema di tracciamento principale del [framework di automazion
 | --------------- | ----------------------------------------------------- |
 | `function_name` | Nome dell'orchestratore (es. `run_automations_tx_id`) |
 | `rule_type`     | Tipo regola (`TX_ID`, `AUDIT_UPDATE`, `STORICO`, ...) |
-| `status`        | `DRYRUN`, `OK`, `ERROR`, `SKIP_EXISTS`                |
-| `params`        | Tabella target, trigger creato, azione eseguita       |
+| `status`        | `DRYRUN`, `OK`, `ERROR`, `WARN`                       |
+| `params`        | Tabella target, trigger, azione (es. `SKIP_EXISTS`)   |
 | `exec_mode`     | `AUTO`, `CI`, `SCHEDULED`                             |
 | `duration_ms`   | Tempo di esecuzione                                   |
 

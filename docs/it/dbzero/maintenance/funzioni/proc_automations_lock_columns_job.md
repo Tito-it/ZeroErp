@@ -33,7 +33,7 @@ AS $procedure$
 $procedure$
 
 COMMENT ON PROCEDURE maintenance.proc_automations_lock_columns_job()
-IS 'Job wrapper per dbops.fn_run_automations_lock_columns, che converge i trigger di lock columns verso il registro (crea, rigenera, toglie). Rev 20260923-46: monta anche il guard delle date di validita'' (dbops.fn_run_automations_date_validita, automazione DATE_VALIDITA), stessa famiglia del lock. Rev 20260926-05: non chiama piu'' dbops.fn_run_automations_drop_lock_trg (ritirata), che cancellava per funzione anche i lock scritti a mano.';
+IS 'Wrapper del processo automations_lock_columns: in una sola corsa esegue in modo SCHEDULED dbops.fn_run_automations_lock_columns e poi dbops.fn_run_automations_date_validita su tutto l''ambito, passando da maintenance.fn_run_and_log, che registra la corsa in maintenance.job_run_log sotto il codice del processo e tiene un advisory lock contro due corse sovrapposte. Non aggiunge logica. Il primo runner porta i trigger di lock di colonna al registro dichiarato: li crea, li rigenera, li toglie; se un lock vivo blocca una colonna che il registro non nomina, si ferma con E_LOCK_COLUMNS prima di ogni DDL. Il secondo monta, sulle tabelle con valido_dal e valido_al, il guard che rifiuta una fine precedente all''inizio. Le due istruzioni stanno nella stessa transazione e lasciano una riga sola nel giornale: se il lock si ferma, il guard delle date quella volta non gira. Lo chiamano il job pgAgent automations_lock_columns e la convergenza del rilascio (dbops.processi.ci_ordine). SECURITY DEFINER: gira come il proprietario, non come il ruolo con cui si collega pgAgent.';
 ```
 
 </div>

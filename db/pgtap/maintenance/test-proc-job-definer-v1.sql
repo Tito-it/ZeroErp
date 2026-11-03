@@ -30,8 +30,9 @@
 -- ⭐ Il perimetro e' il NOME (`proc_%_job` in maintenance), come per il
 --   presidio dei jobname (dbops/test-processi-jobname-wrapper): una procedura
 --   nuova ci entra da sola, senza che nessuno aggiorni un elenco.
--- ⚠️ Il proprietario atteso e' quello dello SCHEMA, non un nome: titodb su
---   dbdev, zeroerp in CI, zeroerp_owner dopo la fase 3. Il test vale in tutti.
+-- ⚠️ Il proprietario atteso e' quello dello SCHEMA, non un nome: oggi e'
+--   zeroerp_owner in CI (che migra come zeroerp_owner), sullo scratch e su
+--   dbdev. Il test non lo scrive, quindi vale anche dove fosse un altro.
 -- ⚠️ Legge solo il catalogo: gira come zeroerp_app, nessuna fixture.
 -- ------------------------------------------------------------
 
