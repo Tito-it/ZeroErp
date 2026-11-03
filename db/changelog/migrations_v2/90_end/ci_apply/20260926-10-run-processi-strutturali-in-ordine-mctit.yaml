@@ -27,8 +27,9 @@
 #
 # ── ⭐ UN SALTO NON E' UN SUCCESSO ──────────────────────────────────
 #   maintenance.fn_run_and_log salta il giro se l'advisory lock del job e' gia'
-#   preso, e scrive una riga ok = true «skip: another run in progress». Dopo
-#   ogni CALL si pretende una riga di QUESTO giro, ok, e non di salto; se
+#   preso, e scrive una riga saltata = TRUE, chiusa e con ok vuoto (NULL),
+#   «skip: another run in progress». Dopo ogni CALL si pretende una riga di
+#   QUESTO giro con ok vero, che un salto non ha; se
 #   manca, la migrazione si ferma nominando il processo. Un errore della
 #   procedura invece arriva da solo: fn_run_and_log lo rilancia (rev R-12).
 #

@@ -532,7 +532,7 @@ search:
 - [vw_offerte_commerciali_lista](views/vw_offerte_commerciali_lista.md) — (rev 2026-06-03 — rev1)
 - [vw_ordini_lista](views/vw_ordini_lista.md) — (rev 2026-06-03 — rev1)
 - [vw_ordini_riepilogo_iva_dettaglio](views/vw_ordini_riepilogo_iva_dettaglio.md) — (latest review 05-06-2026)
-- [vw_ordini_righe_dettaglio](views/vw_ordini_righe_dettaglio.md) — (vista nata il 2026-09-28, `20260928-18`; ultima revisione 2026-11-03, `20261103-25`)
+- [vw_ordini_righe_dettaglio](views/vw_ordini_righe_dettaglio.md) — (vista nata il 2026-09-28, `20260928-18`; ultima revisione 2026-11-03, `20261103-65`)
 - [vw_ordini_righe_iva_base](views/vw_ordini_righe_iva_base.md) — (latest review 05-06-2026)
 - [vw_partite_merce](views/vw_partite_merce.md) — (latest review 2026-08-17)
 - [vw_preventivi](views/vw_preventivi.md) — (rev 15-05-2026 · aggiornata 2026-08-28)

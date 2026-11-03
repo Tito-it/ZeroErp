@@ -30,9 +30,11 @@
 ### 🎯 Scopo Principale
 
 Esegue il lavoro di un job del database e ne registra la corsa nel giornale
-`maintenance.job_run_log`: apre la riga, esegue l'istruzione, la chiude con l'esito. Se il
-lavoro fallisce, scrive il verbale del fallimento in un posto che l'annullamento non
-raggiunge, e poi rilancia l'errore.
+`maintenance.job_run_log`: apre la riga, esegue l'istruzione, la chiude con l'esito. Quando
+il lavoro restituisce un riepilogo, lo porta nel giornale, e un riepilogo che dichiara degli
+scarti rende la corsa rossa senza annullare ciò che è riuscito. Se il lavoro fallisce, scrive
+il verbale del fallimento in un posto che l'annullamento non raggiunge, e poi rilancia
+l'errore.
 
 La chiamano i wrapper `maintenance.proc_*_job`, che sono ciò che pgAgent, la convergenza
 del rilascio e chi lavora a mano lanciano. È una delle porte di scrittura del giornale: i
@@ -81,6 +83,12 @@ Una riga saltata non è una corsa riuscita: non ha fatto lavoro, quindi non ha e
 chiede «qual è l'ultima corsa vera?» la scarta; chi chiede «la sveglia è viva?» la conta.
 Il dettaglio sta nella scheda di `maintenance.job_run_log`.
 
+⛔ **Il lock preso si rilascia su ogni uscita.** È un lock di sessione: se restasse preso,
+ogni corsa successiva dello stesso job sulla stessa connessione risulterebbe saltata, fino
+alla chiusura della connessione. Per questo si rilascia anche quando a fallire è l'apertura
+della corsa — la riga nuova respinta dal CHECK sul processo dichiarato o dalla FK verso
+`dbops.processi` — prima che l'errore torni al chiamante.
+
 ⚠️ Il lock è nella forma a **un** argomento, e di proposito: è uno spazio distinto da quello
 di `script.fn_job_run_start`, che usa la forma a due. Le corsie dei job del database e
 quelle dei lavori del backend non si bloccano a vicenda.
@@ -89,9 +97,39 @@ quelle dei lavori del backend non si bloccano a vicenda.
 
 ### La corsa riuscita
 
-La riga si apre prima del lavoro. Poi l'istruzione gira con il suo conteggio di righe, e la
-riga si chiude con la fine, `ok` vero, le righe toccate e il messaggio `done`. Il lock, se
-preso, si rilascia.
+La riga si apre prima del lavoro. Poi l'istruzione gira, e la riga si chiude con la fine, `ok`
+vero, `rows_affected` e il messaggio `done`. Il lock, se preso, si rilascia.
+
+L'istruzione si esegue in due modi, secondo la sua forma:
+
+* **una sola `SELECT`** — il caso dei wrapper, che chiamano la funzione del lavoro con una
+  `SELECT` — si **legge**: la prima riga del risultato diventa l'**esito** della corsa e va nel
+  campo `meta` del giornale, sotto la chiave `esito`. Se la riga ha una colonna sola, l'esito è
+  il valore di quella colonna (il riepilogo, il testo, il conteggio che la funzione
+  restituisce). Una funzione che non restituisce niente (`void`, come i runner delle
+  automazioni) dà un valore vuoto, che non è un esito e non si scrive. `rows_affected` è il
+  numero di righe del risultato, zero se non ce ne sono; della prima riga si tiene solo quella;
+* **tutto il resto** — una `CALL`, o più istruzioni nella stessa stringa — si esegue senza
+  leggerne il risultato, come un'istruzione qualsiasi: `rows_affected` è il conteggio di righe
+  dell'ultima istruzione, e la corsa non ha esito. Più istruzioni non si possono leggere come
+  una sola.
+
+---
+
+### ⭐ La riuscita con scarti: rossa, ma il lavoro resta
+
+Alcuni lavori trattano un elemento alla volta, per esempio un'azienda, e isolano chi fallisce
+perché gli altri vadano avanti. Il loro riepilogo dice quanti elementi sono falliti nella
+chiave `_falliti`. Se l'esito è un oggetto con `_falliti` maggiore di zero, la corsa si chiude
+**rossa**: `ok` falso, `error_code` = `E_JOB_ESITO_CON_SCARTI`, un messaggio con il numero dei
+falliti, e il riepilogo intero in `meta.esito`.
+
+⛔ La funzione **non solleva**: sollevare annullerebbe anche il lavoro degli elementi riusciti,
+che è proprio ciò che l'isolamento per elemento protegge. La corsa è rossa perché qualcuno la
+guardi, e il lavoro fatto resta. Non c'è un verbale fuori transazione, perché la transazione non
+si annulla: la riga è una sola. I presidi del giornale la vedono come una corsa fallita.
+
+Un esito con `_falliti` uguale a zero, o senza quella chiave, è una corsa verde con il suo esito.
 
 La funzione non apre né chiude transazioni: il lavoro e la sua riga stanno nella
 transazione di chi chiama. In CI, dentro la convergenza del rilascio, sono la transazione
@@ -121,7 +159,12 @@ dove l'annullamento non arriva. **È quella la riga del fallimento che resta nel
 L'aggiornamento in transazione non è un doppione inutile: resta solo se il chiamante cattura
 l'eccezione senza propagarla, e allora la transazione sopravvive. ⚠️ In quel caso nel giornale
 le righe rosse diventano due, con lo stesso `run_uuid`: quella in transazione e il verbale
-già scritto fuori.
+già scritto fuori. È la stessa corsa, e chi conta i fallimenti conta i `run_uuid` distinti:
+così fa `maintenance.vw_job_run_da_guardare`.
+
+⛔ Un vincolo unico su `run_uuid` non è la risposta: il verbale fuori transazione nasce mentre
+la riga in transazione non è ancora confermata, e la seconda connessione aspetterebbe la
+transazione che la sta chiamando. La corsa si bloccherebbe invece di fallire.
 
 Il verbale fuori transazione non solleva mai: se il canale manca emette un avviso nel log del
 server, e il fallimento resta senza riga. Il lock, se preso, si rilascia anche qui.
@@ -133,6 +176,10 @@ server, e il fallimento resta senza riga. Il lock, se preso, si rilascia anche q
 La funzione non solleva codici suoi: rilancia l'errore del lavoro così com'è. Sulla riga
 nuova, un processo non dichiarato o inesistente fa fallire la scrittura con il CHECK
 `chk_job_run_log_processo_dichiarato` o con la FK `fk_job_run_log_processi`.
+
+`E_JOB_ESITO_CON_SCARTI` non è un errore sollevato: la funzione lo **scrive** in `error_code`
+quando l'esito dichiara degli scarti (`_falliti` maggiore di zero). La causa del fallimento la
+dice il processo, perché ogni scarto ha la sua.
 
 ---
 
@@ -150,6 +197,13 @@ nuova, un processo non dichiarato o inesistente fa fallire la scrittura con il C
   testo, perché il ramo di fallimento lascerebbe una riga vera nel giornale.
 * `db/pgtap/maintenance/test-job-run-log-failure-out-of-tx.sql` — la funzione chiama il
   verbale fuori transazione, e continua a rilanciare.
+* `db/pgtap/maintenance/test-fn-run-and-log-lock-ed-esito-v1.sql` — una corsa con lock e senza
+  processo dichiarato è respinta e il lock non resta preso (lo guarda sui lock della sessione,
+  perché un advisory lock è rientrante); un esito con `_falliti` maggiore di zero rende la corsa
+  rossa con `E_JOB_ESITO_CON_SCARTI`, il riepilogo in `meta.esito` e il lavoro non annullato; un
+  esito con `_falliti` a zero è verde; `rows_affected` di una `SELECT` è il numero di righe, zero
+  per un risultato vuoto; più istruzioni nella stessa stringa non hanno esito, né ce l'ha una
+  funzione `void`.
 * `db/pgtap/dbops/test-processi-jobname-wrapper.sql` — ogni nome passato da un wrapper esiste
   in `dbops.processi`.
 
@@ -170,6 +224,19 @@ nuova, un processo non dichiarato o inesistente fa fallire la scrittura con il C
 * 2026-10-15 — le due scritture portano `ruolo_sessione` (`brief-db-ruoli-di-sistema`).
 * 2026-10-16 — lo SQLSTATE va nella sua colonna e `error_code` riceve il codice di dominio;
   prima un errore di dominio lasciava solo `P0001` (`brief-db-presidio-job-run-a-chi-tocca`).
+* 2026-11-03 — il lock si rilascia anche quando fallisce l'apertura della corsa. Prima
+  l'apertura stava fuori dal gestore d'errore, e una riga respinta lasciava il lock preso per
+  tutta la vita della connessione: le corse successive risultavano saltate
+  (`brief-db-revisione-maintenance` D2).
+* 2026-11-03 — l'esito di una `SELECT` si legge e va in `meta.esito`, e nasce la riuscita con
+  scarti (`E_JOB_ESITO_CON_SCARTI`). Prima il risultato si scartava: una corsa con aziende
+  fallite risultava verde, e il presidio taceva proprio quando serviva
+  (`brief-db-revisione-maintenance` D5).
+* 2026-11-03 — un esito vuoto (funzione `void`) non si scrive più in `meta.esito`, e la prima riga
+  si legge senza raccogliere tutte le altre.
+* 2026-11-03 — il commento della funzione non dice più «mai due righe»: con il chiamante che
+  cattura l'eccezione le righe rosse sono due, e le viste contano le corse distinte
+  (`brief-db-revisione-maintenance` D10).
 
 ---
 

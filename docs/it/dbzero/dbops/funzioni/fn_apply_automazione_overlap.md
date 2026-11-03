@@ -46,7 +46,28 @@ BEGIN
        AND (upper(btrim(exec_mode)) = 'AUTO' OR exec_mode = p_exec_mode)
      ORDER BY target_schema, target_table
   LOOP
-    v_rel := (quote_ident(rconf.target_schema)||'.'||quote_ident(rconf.target_table))::regclass;
+    -- ⚠️ to_regclass e non ::regclass: il registro non ha una FK verso il
+    --   catalogo, e una riga su una tabella che non esiste piu' (rinominata,
+    --   ritirata) col cast fermava l'intero giro (42P01), lasciando senza
+    --   vincolo anche le tabelle che venivano dopo. Ora e' un salto
+    --   dichiarato, come gli altri. Brief: brief-db-revisione-maintenance D6.
+    v_rel := to_regclass(format('%I.%I', rconf.target_schema, rconf.target_table));
+    IF v_rel IS NULL THEN
+      PERFORM dbops.fn_audit_log_once(
+        p_function_name => 'dbops.fn_apply_automazione_overlap',
+        p_status        => v_skip_status,
+        p_rule_type     => 'OVERLAP',
+        p_exec_mode     => p_exec_mode,
+        p_parts         => ARRAY['OVERLAP'],
+        p_dry_run       => p_dry_run,
+        p_params        => jsonb_build_object(
+                            'table', rconf.target_schema||'.'||rconf.target_table,
+                            'reason', 'TABLE_NOT_FOUND'
+                          ),
+        p_message       => 'Skip: la tabella del registro non esiste'
+      );
+      CONTINUE;
+    END IF;
 
     -- Serve almeno una chiave: colonna semplice o espressione
     IF (rconf.key_columns IS NULL OR array_length(rconf.key_columns, 1) IS NULL)
@@ -280,7 +301,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_apply_automazione_overlap(p_exec_mode text, p_dry_run boolean)
-IS 'Applica i vincoli EXCLUDE GiST in base a dbops.automazione_overlap. Chiavi: key_columns (colonne validate+quotate) + key_expressions (espressioni as-is). EXCLUDE parziali via where_predicate (NULL = totale). Dual codepath periodo (range_col o valido_dal/al). Idempotente per EXCLUDE/temporal UNIQUE PG18. key_expressions/where_predicate sono DDL di fiducia DBA-only.';
+IS 'Applica i vincoli EXCLUDE GiST in base a dbops.automazione_overlap (righe active, exec_mode AUTO o uguale a p_exec_mode). Chiavi: key_columns (colonne validate e quotate) + key_expressions (espressioni as-is). EXCLUDE parziali via where_predicate (NULL = totale). Dual codepath periodo (range_col o valido_dal/al). Idempotente: salta se trova gia'' un EXCLUDE sulla colonna periodo o un temporal UNIQUE WITHOUT OVERLAPS. Una riga su una tabella che non esiste e'' un salto dichiarato (TABLE_NOT_FOUND), non un errore che ferma il giro. key_expressions e where_predicate sono DDL di fiducia, solo DBA.';
 ```
 
 </div>

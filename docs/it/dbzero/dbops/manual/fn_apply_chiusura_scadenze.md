@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_apply_chiusura_scadenze`
 
+> **Ultimo aggiornamento**: 3 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 Guide:
@@ -91,7 +93,8 @@ non dopo, così la migrazione non richiede di toccare il job.
    * `tipo_stato='VARCHAR'`: UPDATE diretto.
    * `tipo_stato='FK'`: lookup combinato id_attivo/id_chiuso (via pivot `MAX(CASE...)` in 1 round-trip), poi UPDATE con id risolti.
 4. **Aggregazione** del conteggio righe chiuse in JSONB.
-5. **Audit log** (best-effort): chiamata a `dbops.fn_audit_log_once(p_function_name='dbops.fn_apply_chiusura_scadenze', p_status='INFO', p_params=<risultato JSONB>)`. Eventuali errori di audit sono catturati con `EXCEPTION WHEN OTHERS THEN NULL` per non bloccare il caller (il JSONB con i conteggi viene comunque ritornato).
+5. **Audit log** (best-effort): chiamata a `dbops.fn_audit_log_once(p_function_name='dbops.fn_apply_chiusura_scadenze', p_status='OK', p_params=<risultato JSONB>)`. Eventuali errori di audit sono catturati con `EXCEPTION WHEN OTHERS THEN NULL` per non bloccare il caller (il JSONB con i conteggi viene comunque ritornato).
+   ⚠️ Lo stesso `WHEN OTHERS` rende muto un audit che non si scrive: fino al 3 novembre 2026 lo status era `INFO`, che `chk_audit_status` rifiuta, e l'audit di questa funzione non si è mai scritto (`brief-db-revisione-maintenance` R5). Lo presidia `db/pgtap/dbops/test-chiusura-scadenze-audit-v1.sql`.
 
 ---
 

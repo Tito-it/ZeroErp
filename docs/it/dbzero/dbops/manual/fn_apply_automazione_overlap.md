@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_apply_automazione_overlap`
 
+> **Ultimo aggiornamento**: 3 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 Guide:
@@ -32,9 +34,13 @@ i vincoli `EXCLUDE USING gist` alle tabelle marcate `active=true` in
 ### Logica operativa (sintesi)
 
 1. Legge le righe `active=true` compatibili con `exec_mode`.
-2. Verifica esistenza colonne chiave e colonne periodo.
-3. Salta la tabella se trova gia' un `EXCLUDE` equivalente.
-4. Crea il vincolo `EXCLUDE` usando:
+2. Salta, con il motivo `TABLE_NOT_FOUND` nell'audit, una riga che punta a una tabella che non
+   esiste piu': il registro non ha una FK verso il catalogo, e una riga rimasta indietro non
+   ferma il giro per le altre tabelle.
+3. Verifica esistenza colonne chiave e colonne periodo.
+4. Salta la tabella se trova gia' un `EXCLUDE` sulla colonna periodo o un temporal
+   `UNIQUE ... WITHOUT OVERLAPS`.
+5. Crea il vincolo `EXCLUDE` usando:
    * `key_columns` (colonne semplici, validate e quotate) con `WITH =`;
    * `key_expressions` (chiavi su espressione, es. `COALESCE(classe,-1)`, iniettate
      as-is) con `WITH =`, appese alle colonne;

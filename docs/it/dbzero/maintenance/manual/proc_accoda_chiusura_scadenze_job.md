@@ -72,13 +72,16 @@ nessuno se ne accorga.
 
 ---
 
-### ⚠️ Il riepilogo della sveglia non arriva nel giornale
+### ⭐ Un'azienda fallita rende rossa la corsa, senza annullare le altre
 
 `dbops.fn_accoda_chiusura_scadenze` non si ferma all'errore di un'azienda: lo conta e passa alla
-successiva, e restituisce un riepilogo con accodati, falliti e saltati. `fn_run_and_log` però
-esegue la chiamata senza conservarne il risultato: la corsa è registrata come riuscita anche
-quando per un'azienda l'accodamento è fallito. Chi vuole sapere quali aziende sono rimaste
-scoperte guarda la coda e `dbops.vw_emittenti_non_serviti`, non il giornale.
+successiva, e restituisce un riepilogo con accodati, falliti e saltati. `fn_run_and_log` legge
+quel riepilogo e lo scrive nel giornale, in `meta.esito`. Se almeno un'azienda è fallita la corsa
+si chiude **rossa**, con `E_JOB_ESITO_CON_SCARTI`, e compare in
+`maintenance.vw_job_run_da_guardare`; i lavori accodati per le altre aziende restano, perché la
+corsa non si annulla. Quali aziende sono fallite, e perché, lo dice il dettaglio del riepilogo.
+Il contratto «riuscita con scarti» sta nella scheda di
+[fn_run_and_log](/dbzero/maintenance/funzioni/fn_run_and_log).
 
 ---
 
@@ -104,6 +107,9 @@ La convergenza dei job in CI non la chiama: il processo è operativo, agisce su 
 * `db/pgtap/dbops/test-fn-accoda-chiusura-scadenze.sql` e
   `db/pgtap/dbops/test-chiusura-scadenze-una-volta-al-giorno-v1.sql` — il lavoro che la procedura
   sveglia.
+* `db/pgtap/maintenance/test-fn-run-and-log-lock-ed-esito-v1.sql` — il contratto su cui conta la
+  corsa: un esito con `_falliti` maggiore di zero è rosso con `E_JOB_ESITO_CON_SCARTI`, e il
+  lavoro fatto resta.
 
 ---
 
@@ -117,6 +123,9 @@ La convergenza dei job in CI non la chiama: il processo è operativo, agisce su 
   (`brief-db-ruoli-di-sistema`).
 * 2026-10-16 — lo step chiama la procedura solo a sveglia accesa
   (`brief-db-processi-accensione-per-ambiente`).
+* 2026-11-03 — il riepilogo arriva nel giornale, e un'azienda fallita rende la corsa rossa. Prima
+  `fn_run_and_log` scartava il risultato, e la corsa risultava riuscita anche con accodamenti
+  falliti (`brief-db-revisione-maintenance` D5).
 
 ---
 

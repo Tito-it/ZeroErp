@@ -5,13 +5,17 @@
 -- Test: il canale fuori transazione del giornale dei job
 -- ChangeSet: 20260905-35 / -36 / -38 · Brief: brief-db-storicizzazione-bersagli-spariti §2.3
 --
--- Elenco test (plan 6):
+-- Elenco test (plan 7):
 --  1) la funzione c'e', ed e' SECURITY DEFINER
 --  2) ⛔ il suo owner e' un SUPERUSER — senza, dblink rifiuta la connessione
 --  3) ⛔ l'utente del canale puo' entrare in `maintenance`
 --  4) ⛔ e puo' scrivere sul giornale…
 --  5) ✅ …ma NON leggerlo
 --  6) ⭐ `fn_run_and_log` la chiama, e continua a RILANCIARE
+--  7) ⭐ agent_host del verbale e' l'indirizzo del client (inet_client_addr()),
+--     come per le righe nate col default, non il nome del cluster. PRESIDIO SUL
+--     TESTO del corpo: provarlo davvero vuole il canale dblink, che committa
+--     fuori transazione. 20261103-66, brief-db-revisione-maintenance M17.
 --
 -- ────────────────────────────────────────────────────────────────
 -- ⛔ CHE COSA QUESTO FILE NON PROVA, ED E' LA COSA PIU' IMPORTANTE DA SAPERE.
@@ -40,7 +44,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(6);
+SELECT plan(7);
 
 -- ============================================================
 -- 1..2. La funzione, e il privilegio che la fa funzionare
@@ -122,6 +126,15 @@ SELECT ok(
       WHERE n.nspname = 'maintenance'
         AND p.proname = 'fn_run_and_log'),
     '6. fn_run_and_log scrive il verbale fuori transazione E continua a rilanciare'
+);
+
+SELECT ok(
+    (SELECT p.prosrc LIKE '%inet_client_addr()%' AND p.prosrc NOT LIKE '%cluster_name%'
+       FROM pg_proc p
+       JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'maintenance'
+        AND p.proname = 'fn_job_run_log_failure'),
+    '7. il verbale scrive in agent_host l''indirizzo del client, non il nome del cluster'
 );
 
 SELECT * FROM finish();

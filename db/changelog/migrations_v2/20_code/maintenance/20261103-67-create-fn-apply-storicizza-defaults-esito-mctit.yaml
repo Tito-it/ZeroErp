@@ -1,0 +1,203 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'apply della storicizzazione restituisce il suo riepilogo: una corsa con
+# tabelle fallite e' rossa.
+#   Brief: brief-db-revisione-maintenance D11 (decisione di Tid, 2026-11-03).
+#
+# ⚠️ IL DIFETTO. maintenance.proc_apply_storicizza_defaults isola le righe:
+#   una tabella su cui il DEFAULT non si applica lascia un WARNING e il giro
+#   prosegue — ed e' giusto, una riga non deve fermare le altre cento. Ma a
+#   fine giro la procedura chiudeva «done», e il riepilogo (applicate,
+#   saltate, fallite) era un RAISE NOTICE che nessuno legge: una corsa con
+#   tabelle non applicate era VERDE nel pannello. E' D5 su una procedura: il
+#   job la chiamava con CALL, e una procedura non restituisce niente a chi la
+#   chiama, quindi il contratto «riuscita con scarti» di fn_run_and_log non
+#   la vedeva.
+#
+# ⭐ LA CORREZIONE.
+#   * maintenance.fn_apply_storicizza_defaults(): stessa logica, riga per
+#     riga, ma RESTITUISCE il riepilogo come jsonb — _applicate, _saltate,
+#     _saltate_manuali, _falliti, _dettaglio (le righe saltate o fallite, col
+#     motivo). I WARNING per riga restano, per chi la lancia a mano;
+#   * il wrapper proc_apply_storicizza_defaults_job la chiama con una SELECT:
+#     fn_run_and_log legge l'esito, e _falliti > 0 rende la corsa rossa con
+#     E_JOB_ESITO_CON_SCARTI senza annullare le tabelle applicate;
+#   * la procedura si RITIRA: i chiamanti erano il wrapper e un pgTAP
+#     (test-storicizza-set-potatura, aggiornato), nessun changeSet di una fase
+#     successiva la nomina.
+#
+# ℹ️ _falliti conta i DEFAULT che non si applicano. Le righe che non risolvono
+#   restano _saltate: una derivata la pota il sync, che dal 20261103-61 gira
+#   prima; una manuale e' una decisione che ha perso il bersaglio, e si
+#   conta a parte in _saltate_manuali perche' si veda nell'esito.
+#
+# ⚠️ Le proprieta' invisibili del wrapper si ripetono: SECURITY DEFINER e
+#   search_path, come nella doc auto-generata.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/maintenance/20261103-67-create-fn-apply-storicizza-defaults-esito-mctit.yaml
+
+  - changeSet:
+      id: 20261103-67-create-fn-apply-storicizza-defaults-esito
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        maintenance.fn_apply_storicizza_defaults prende il posto di
+        proc_apply_storicizza_defaults: stessa logica per riga, ma restituisce il riepilogo
+        (_falliti compreso). Il wrapper la chiama con una SELECT, cosi' una corsa con tabelle
+        fallite e' rossa (E_JOB_ESITO_CON_SCARTI). La procedura si ritira.
+        Brief: brief-db-revisione-maintenance D11.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc p
+              JOIN pg_namespace n ON n.oid = p.pronamespace
+              WHERE n.nspname = 'maintenance'
+                AND p.proname = 'proc_apply_storicizza_defaults_job'
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_proc p
+              JOIN pg_namespace n ON n.oid = p.pronamespace
+              WHERE n.nspname = 'maintenance'
+                AND p.proname = 'fn_apply_storicizza_defaults'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION maintenance.fn_apply_storicizza_defaults()
+               RETURNS jsonb
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: rimettere DEFAULT true sulla colonna storicizza di ogni
+              --   tabella di config.storico_set_storicizza, una riga alla volta,
+              --   e RESTITUIRE il riepilogo: chi la lancia (il job, via
+              --   maintenance.fn_run_and_log) legge _falliti e sa se la corsa e'
+              --   riuscita a meta'. Brief: brief-db-revisione-maintenance D11.
+              --
+              -- ⭐ E' il consumatore di un insieme DERIVATO, popolato e potato da
+              --   maintenance.proc_sync_storico_set_storicizza, che gira prima.
+              --   Una riga stantia puo' comunque esserci (un sync fallito o
+              --   spento, una tabella ritirata fra le due corse, una riga
+              --   manuale): morirci sopra fermerebbe il lavoro per tutte le altre.
+              DECLARE
+                  rec               record;
+                  v_applicate       integer := 0;
+                  v_saltate         integer := 0;
+                  v_saltate_manuali integer := 0;
+                  v_falliti         integer := 0;
+                  v_dettaglio       jsonb   := '[]'::jsonb;
+              BEGIN
+                  -- Ordine stabile: due corse devono essere confrontabili.
+                  FOR rec IN
+                      SELECT s.table_name,
+                             s.insert_manuale,
+                             -- ⭐ Il nome si risolve UNA volta e non si smonta
+                             --   mai: `split_part` sul punto sbaglia su un nome
+                             --   con piu' punti o su un identificatore quotato.
+                             to_regclass(s.table_name) AS rel
+                        FROM config.storico_set_storicizza s
+                       ORDER BY s.table_name
+                  LOOP
+                      IF rec.rel IS NULL THEN
+                          -- Nessun referente: si salta e si dice, non si muore.
+                          -- ⚠️ I due casi hanno due rimedi opposti: una riga
+                          --   DERIVATA la togliera' il sync da sola; una MANUALE
+                          --   il sync non la tocca mai, e va guardata.
+                          v_saltate := v_saltate + 1;
+                          IF rec.insert_manuale THEN
+                              v_saltate_manuali := v_saltate_manuali + 1;
+                              RAISE WARNING
+                                  'storicizza: % e'' una riga MANUALE che non risolve a '
+                                  'nessun oggetto: una decisione che ha perso il suo '
+                                  'bersaglio, e il sync non la potera'' — va guardata da '
+                                  'una persona', rec.table_name;
+                          ELSE
+                              RAISE WARNING
+                                  'storicizza: % non risolve a nessun oggetto, riga '
+                                  'saltata (la potera'' il prossimo sync)', rec.table_name;
+                          END IF;
+                          v_dettaglio := v_dettaglio || jsonb_build_object(
+                              'tabella', rec.table_name,
+                              'esito',   CASE WHEN rec.insert_manuale
+                                              THEN 'SALTATA_MANUALE'
+                                              ELSE 'SALTATA_DERIVATA' END);
+                          CONTINUE;
+                      END IF;
+
+                      BEGIN
+                          EXECUTE format(
+                              'ALTER TABLE %s ALTER COLUMN storicizza SET DEFAULT true',
+                              rec.rel);
+                          v_applicate := v_applicate + 1;
+                      EXCEPTION WHEN OTHERS THEN
+                          -- ⭐ Isolamento per riga: un permesso mancante o una
+                          --   colonna che non c'e' piu' riguarda QUELLA tabella,
+                          --   non le altre cento. Ma si CONTA: e' cio' che rende
+                          --   rossa la corsa.
+                          v_falliti := v_falliti + 1;
+                          RAISE WARNING 'storicizza: % non applicata: %',
+                                        rec.table_name, SQLERRM;
+                          v_dettaglio := v_dettaglio || jsonb_build_object(
+                              'tabella', rec.table_name,
+                              'esito',   'FALLITA',
+                              'errore',  left(SQLERRM, 200),
+                              'sqlstate', SQLSTATE);
+                      END;
+                  END LOOP;
+
+                  RETURN jsonb_build_object(
+                      '_applicate',       v_applicate,
+                      '_saltate',         v_saltate,
+                      '_saltate_manuali', v_saltate_manuali,
+                      '_falliti',         v_falliti,
+                      '_dettaglio',       v_dettaglio);
+              END
+              $function$;
+
+              COMMENT ON FUNCTION maintenance.fn_apply_storicizza_defaults()
+              IS 'Rimette DEFAULT true sulla colonna storicizza di ogni tabella di config.storico_set_storicizza, una riga alla volta in ordine di nome, e restituisce il riepilogo: _applicate, _saltate (righe che non risolvono a nessun oggetto), _saltate_manuali (quante di quelle sono manuali: decisioni che hanno perso il bersaglio), _falliti (DEFAULT che non si applicano), _dettaglio (le righe saltate o fallite, col motivo). Una riga che fallisce non ferma le altre e lascia un WARNING. Chiamata dal job via maintenance.fn_run_and_log, _falliti maggiore di zero rende la corsa rossa con E_JOB_ESITO_CON_SCARTI senza annullare le tabelle applicate. Il nome si risolve una volta con to_regclass e non si smonta mai.';
+
+              CREATE OR REPLACE PROCEDURE maintenance.proc_apply_storicizza_defaults_job()
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'topology', 'pg_temp'
+              AS $procedure$
+                -- ⭐ Una SELECT e non una CALL: fn_run_and_log legge l'esito
+                --   e una corsa con tabelle fallite e' rossa.
+                --   Brief: brief-db-revisione-maintenance D11.
+                BEGIN
+                  PERFORM maintenance.fn_run_and_log(
+                    p_jobname  := 'apply_storicizza_weekly',
+                    p_stepname := 'run_proc_apply_storicizza',
+                    p_sql      := 'SELECT maintenance.fn_apply_storicizza_defaults();',
+                    p_lock_key := hashtext('proc_apply_storicizza_defaults')  -- evita overlap
+                  );
+                END;
+              $procedure$;
+
+              COMMENT ON PROCEDURE maintenance.proc_apply_storicizza_defaults_job()
+              IS 'Wrapper del processo apply_storicizza_weekly: chiama maintenance.fn_apply_storicizza_defaults con una SELECT, passando da maintenance.fn_run_and_log con lock. L''esito (applicate, saltate, fallite) va in meta.esito, e una corsa con tabelle fallite e'' rossa (E_JOB_ESITO_CON_SCARTI). La chiamano il job pgAgent del sabato, dopo il sync, e la convergenza in CI.';
+
+              -- ⛔ La procedura si ritira: il suo posto lo prende la funzione.
+              DROP PROCEDURE maintenance.proc_apply_storicizza_defaults();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo (procedura del 20260905-29,
+              -- wrapper del 20260105-02).
+              SELECT 1;

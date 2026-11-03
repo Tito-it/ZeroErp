@@ -58,28 +58,26 @@ Il campo `stradario_id` su `anagrafiche.indirizzi_dettaglio` è protetto dal gua
 
 ## Procedure di manutenzione
 
-Tutte e due accendono un flag che vale per la **transazione** in cui sono chiamate, non per la sessione.
+I flag di manutenzione valgono per la **transazione** in cui sono accesi, non per la sessione: per questo una procedura che ne accende uno lo spegne prima di proseguire, anche in caso di errore.
 
 ### Rinormalizzazione degli indirizzi di una via
 
 La procedura [`maintenance.proc_bump_indirizzi_dettaglio`](/dbzero/maintenance/funzioni/proc_bump_indirizzi_dettaglio):
 
-* accende il flag `zeroerp.maintenance_indirizzi_dettaglio` e lo rispegne prima di uscire, anche in caso di errore;
 * riscrive senza cambiarle le righe di `indirizzi_dettaglio` di un dato `stradario_id`, così i trigger di normalizzazione ricalcolano `via_norm` e `indirizzo_normalizzato`;
+* non accende il flag `zeroerp.maintenance_indirizzi_dettaglio`: lo `stradario_id` non cambia, e il guard non scatta. Il flag resta la porta del verbo che sposterà gli indirizzi su un'altra via, quando nascerà;
 * lascia la storicizzazione ai trigger standard, che storicizzano solo le righe con `storicizza` attivo.
 
 ### Correzione della descrizione di un toponimo
 
 La procedura [`maintenance.proc_bump_toponomastica`](/dbzero/maintenance/funzioni/proc_bump_toponomastica):
 
-* accende il flag `zeroerp.maintenance_toponomastica`, con cui il guard lascia cambiare la descrizione di un toponimo già in uso;
+* accende il flag `zeroerp.maintenance_toponomastica`, con cui il guard lascia cambiare la descrizione di un toponimo già in uso, e lo spegne subito dopo la scrittura, anche in caso di errore;
 * scrive la nuova descrizione su `config.toponomastica`;
-* fa rinormalizzare dai trigger le righe di `config.stradario_generale` che usano quel toponimo.
+* fa rinormalizzare dai trigger le righe di `config.stradario_generale` che usano quel toponimo;
+* chiama `proc_bump_indirizzi_dettaglio` per ogni via che usa il toponimo, nella stessa transazione: anche gli indirizzi di dettaglio prendono la descrizione nuova.
 
-⚠️ Due limiti di oggi:
-
-* la rinormalizzazione si ferma allo stradario generale: gli indirizzi di dettaglio su quelle vie tengono la via normalizzata vecchia finché non si lancia `proc_bump_indirizzi_dettaglio` via per via;
-* il flag resta acceso fino alla fine della transazione chiamante: la procedura va chiamata da sola, non dentro un'unità di lavoro più grande.
+Si può chiamare anche dentro un'unità di lavoro più grande: il flag non resta acceso dopo la procedura.
 
 In alternativa alla correzione sul posto, si può creare una **nuova** voce in `config.toponomastica` e riallineare i record di `config.stradario_generale` interessati.
 

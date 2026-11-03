@@ -23,14 +23,16 @@
 # ── ⚠️ ALLE 02:30, lontano dagli altri ──────────────────────────────
 #   ANALYZE gira in una transazione sola e tiene SHARE UPDATE EXCLUSIVE su ogni
 #   tabella fino alla fine: blocca DDL e autovacuum (non letture e scritture).
-#   Lontano dalle automazioni delle 21, dal job delle 00:05 e da quello delle
-#   06:00.
+#   Lontano dalle automazioni della sera (21:00 e 21:10) e dai giri settimanali
+#   della domenica alle 23:00.
 #
 # ── ⚠️ IL DIRITTO NON STA QUI ───────────────────────────────────────
-#   Il ruolo con cui si collega pgAgent deve poter analizzare le tabelle
-#   (proprietario, superuser o pg_maintain): e' provisioning, non un changeSet
-#   (linee-guida-sql §11.6). Se manca, l'autoverifica lo dice la prima notte,
-#   nominando le tabelle (riga rossa nel giornale).
+#   La procedura e' SECURITY DEFINER e appartiene a zeroerp_owner: l'analisi
+#   gira come il proprietario, non come il ruolo con cui si collega pgAgent.
+#   Il diritto di analizzare viene dalla proprieta' delle tabelle a
+#   zeroerp_owner: e' provisioning, non un changeSet (linee-guida-sql §11.6).
+#   Se una tabella resta di un altro, l'autoverifica lo dice la prima notte,
+#   nominandola (riga rossa nel giornale, motivo NON_ANALIZZABILE).
 #
 # ── ⚠️ IL DEBITO DI SEMPRE: `85_pgagent` in CI e' `MARK_RAN` ────────
 #   In CI il job non esiste; il lavoro gira lo stesso, perche' il processo

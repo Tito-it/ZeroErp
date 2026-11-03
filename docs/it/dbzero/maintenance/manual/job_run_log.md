@@ -43,6 +43,21 @@ riepilogo generico, come i conteggi per esito.
 
 ---
 
+### L'esito del lavoro sta in `meta.esito`
+
+Per i job del database, quando il lavoro è una `SELECT` sola, `maintenance.fn_run_and_log` ne
+legge il risultato e lo scrive in `meta`, sotto la chiave `esito`: il riepilogo, il testo o il
+conteggio che la funzione del lavoro restituisce. `rows_affected` resta il numero di righe del
+risultato. Una corsa che esegue una `CALL` o più istruzioni non ha esito.
+
+⭐ **Una corsa può essere rossa senza essere fallita.** Se l'esito dichiara degli elementi falliti
+(la chiave `_falliti` maggiore di zero), la riga si chiude con `ok` falso ed `error_code` =
+`E_JOB_ESITO_CON_SCARTI`, ma il lavoro degli elementi riusciti resta: è la riuscita con scarti.
+Quale elemento è fallito, e perché, lo dice il riepilogo in `meta.esito`. La riga è una sola: la
+transazione non si annulla, e il verbale fuori transazione non serve.
+
+---
+
 ### Da dove arriva una corsa: `origine`
 
 `origine` dice come è stato lanciato il lavoro, ed è vincolata da `chk_job_run_log_origine`:
@@ -133,7 +148,8 @@ il giornale storico non è stato bonificato.
 ### Il codice dell'errore e lo SQLSTATE stanno separati
 
 * **`error_code`** è «il codice più preciso che chi scrive ha»: il codice di dominio (`E_…`) o
-  quello del backend, e in mancanza lo SQLSTATE o il nome dell'eccezione.
+  quello del backend, e in mancanza lo SQLSTATE o il nome dell'eccezione. Per una riuscita con
+  scarti è `E_JOB_ESITO_CON_SCARTI`, con `sqlstate` vuoto: nessun errore è passato dal database.
 * **`sqlstate`** è il codice del database per l'errore che ha fermato la corsa, quando l'errore
   è passato dal database. Il CHECK `chk_job_run_log_sqlstate_forma` pretende la forma di uno
   SQLSTATE: cinque caratteri fra cifre e lettere maiuscole. È vuoto per una corsa riuscita e per
@@ -190,6 +206,9 @@ schema per concedere una lettura.
   SQLSTATE, e le porte che lo scrivono separato dal codice.
 * `db/pgtap/maintenance/test-app-postura-job-run-log-v1.sql` — l'applicazione legge il giornale
   e una sua scrittura diretta è respinta.
+* `db/pgtap/maintenance/test-fn-run-and-log-lock-ed-esito-v1.sql` — l'esito in `meta.esito`, la
+  riuscita con scarti scritta con `ok` falso ed `E_JOB_ESITO_CON_SCARTI`, `rows_affected` di una
+  `SELECT`.
 
 ---
 
@@ -208,6 +227,9 @@ schema per concedere una lettura.
 * 2026-10-15 — nasce `ruolo_sessione` (`brief-db-ruoli-di-sistema`).
 * 2026-10-16 — nasce `sqlstate`, con la conversione sul posto delle righe di prima
   (`brief-db-presidio-job-run-a-chi-tocca`).
+* 2026-11-03 — `meta.esito` e la riuscita con scarti (`E_JOB_ESITO_CON_SCARTI`). Prima
+  `fn_run_and_log` scartava il risultato del lavoro, e una corsa con elementi falliti risultava
+  verde (`brief-db-revisione-maintenance` D5).
 
 ---
 

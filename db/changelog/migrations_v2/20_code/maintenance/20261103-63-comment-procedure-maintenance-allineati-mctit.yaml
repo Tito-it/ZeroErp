@@ -1,0 +1,103 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I COMMENT delle funzioni e procedure di maintenance, allineati a cio' che
+#   fanno oggi. Brief: brief-db-revisione-maintenance §3 (M12, M13, M14).
+#
+# ── M12: fn_sveglia_accesa ──────────────────────────────────────────
+#   Fra i casi di E_CONFIG_MANCANTE mancava la scelta a mano di accensione
+#   non ammessa dal divieto di produzione, con l'ambiente non dichiarato.
+#
+# ── M13: sync e apply della storicizzazione ─────────────────────────
+#   Dicevano che il riepilogo finisce nel log del server: e' un RAISE NOTICE,
+#   che va al client e con log_min_messages di default nel log non arriva.
+#   E l'apply diceva che un'eccezione cancellava il proprio verbale: oggi il
+#   verbale di un fallimento lo scrive fuori transazione
+#   maintenance.fn_job_run_log_failure.
+#
+# ── M14: le procedure dei job ───────────────────────────────────────
+#   Cinque wrapper non avevano COMMENT; quello del lock aveva marcatori «Rev».
+#
+# Un COMMENT descrive l'oggetto al presente: niente storia, niente brief. La
+#   storia sta nelle pagine manual/ di ciascuno. Solo COMMENT: nessun cambio
+#   di comportamento. Si riscrivono interi.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/maintenance/20261103-63-comment-procedure-maintenance-allineati-mctit.yaml
+
+  - changeSet:
+      id: 20261103-63-comment-procedure-maintenance-allineati
+      author: mctit
+
+      runOnChange: false
+      failOnError: true
+      comment: >
+        COMMENT al presente di maintenance.fn_sveglia_accesa (anche la scelta a mano
+        non ammessa da E_CONFIG_MANCANTE), di proc_sync_storico_set_storicizza e
+        proc_apply_storicizza_defaults (riepilogo RAISE NOTICE al client, verbale del
+        fallimento fuori transazione) e dei sei wrapper proc_automations_*_job.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM (
+                SELECT 1
+                  FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'maintenance'
+                   AND ((p.prokind = 'f' AND p.proname = 'fn_sveglia_accesa'
+                         AND pg_get_function_identity_arguments(p.oid) = 'p_processo_codice text')
+                     OR (p.prokind = 'p' AND p.pronargs = 0 AND p.proname IN (
+                           'proc_sync_storico_set_storicizza',
+                           'proc_apply_storicizza_defaults',
+                           'proc_automations_attivo_job',
+                           'proc_automations_audit_update_job',
+                           'proc_automations_storico_job',
+                           'proc_automations_storico_provision_job',
+                           'proc_automations_tx_id_job',
+                           'proc_automations_lock_columns_job')))
+                HAVING count(*) = 9
+              ) t
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION maintenance.fn_sveglia_accesa(p_processo_codice text)
+              IS 'La sveglia del processo deve far partire il lavoro? true o false, mai NULL: e'' la lettura per chi decide. La chiedono il passo di ogni job pgAgent di un processo (se la risposta e'' false il passo non lancia la procedura e il giornale non scrive niente), le sveglie systemd dei comandi del backend e «Esegui ora». Non la chiede la convergenza del rilascio, che chiama le procedure strutturali sempre: spegnere ferma la sveglia, non l''aggiornamento. La regola sta in dbops.fn_processo_acceso_su_valori, la lettura in dbops.fn_processo_acceso_dichiarato; qui un NULL diventa l''errore giusto. Errori: E_PROCESSO_NON_TROVATO (codice inesistente); E_PROCESSO_SENZA_SVEGLIA (canale CODA, o processo ritirato); E_CONFIG_MANCANTE in tre casi: ambiente non dichiarato senza una scelta a mano che decida da sola, scelta a mano di accensione non ammessa dal divieto di accensione in produzione con l''ambiente non dichiarato, catalogo senza il default di accensione per l''ambiente. SECURITY DEFINER: pgAgent si collega come zeroerp_job, che non legge dbops. La porta e'' stretta: un codice in, un booleano fuori.';
+
+              COMMENT ON PROCEDURE maintenance.proc_sync_storico_set_storicizza()
+              IS 'Tiene config.storico_set_storicizza allineato alla sua derivazione, le tabelle ordinarie con la colonna storicizza a DEFAULT true: aggiunge cio'' che la derivazione produce, come righe derivate (insert_manuale false), e pota le righe derivate il cui nome non risolve piu'' a nessun oggetto. Una tabella che esiste ma ha perso il DEFAULT non si pota: e'' il caso transitorio che maintenance.proc_apply_storicizza_defaults ripara. Le righe manuali (insert_manuale true) non si toccano mai: se il loro bersaglio sparisce, lo segnala il consumatore. La chiave si scrive schema-qualificata in modo esplicito, perche'' regclass::text omette lo schema che sta nel search_path del chiamante. Non tocca lo schema delle tabelle. Il riepilogo (aggiunte, potate) e'' un RAISE NOTICE: va al client che l''ha lanciata e, con le impostazioni di registrazione di default, non arriva al log del server. Lanciata dal job, la traccia e'' la riga di maintenance.job_run_log; se fallisce, il verbale lo scrive fuori transazione maintenance.fn_job_run_log_failure.';
+
+              COMMENT ON PROCEDURE maintenance.proc_apply_storicizza_defaults()
+              IS 'Rimette DEFAULT true sulla colonna storicizza di ogni tabella di config.storico_set_storicizza, una riga alla volta in ordine di nome. Una riga che non risolve a nessun oggetto si salta; un cambio di default che fallisce per un altro motivo isola quella riga sola, e le altre proseguono: chi consuma un insieme derivato non puo'' morire per una riga non ancora potata da maintenance.proc_sync_storico_set_storicizza. Ogni riga saltata o fallita lascia un WARNING nel log del server, che distingue la riga derivata (la potera'' il sync) da quella manuale (una decisione che ha perso il bersaglio, da guardare). La corsa resta riuscita. Il riepilogo finale (applicate, saltate, fallite) e'' un RAISE NOTICE: va al client che l''ha lanciata e, con le impostazioni di registrazione di default, non arriva al log del server. Il nome della tabella si risolve una volta con to_regclass e non si smonta mai. Se la procedura fallisce per intero, il verbale lo scrive fuori transazione maintenance.fn_job_run_log_failure.';
+
+              COMMENT ON PROCEDURE maintenance.proc_automations_attivo_job()
+              IS 'Wrapper del processo automations_attivo: esegue dbops.fn_run_automations_attivo in modo SCHEDULED su tutto l''ambito, passando da maintenance.fn_run_and_log, che registra la corsa in maintenance.job_run_log sotto il codice del processo e tiene un advisory lock contro due corse sovrapposte. Non aggiunge logica. Il runner porta le chiavi esterne alla regola ATTIVO: sul padre il trigger che rifiuta di spegnerlo con figli attivi, sul figlio quello che rifiuta l''aggancio a un padre spento; toglie i trigger che non devono piu'' esserci. Lo chiamano il job pgAgent automations_attivo e la convergenza del rilascio (dbops.processi.ci_ordine). SECURITY DEFINER: gira come il proprietario, non come il ruolo con cui si collega pgAgent.';
+
+              COMMENT ON PROCEDURE maintenance.proc_automations_audit_update_job()
+              IS 'Wrapper del processo automations_audit_update: esegue dbops.fn_run_automations_audit_update in modo SCHEDULED su tutto l''ambito, passando da maintenance.fn_run_and_log, che registra la corsa in maintenance.job_run_log sotto il codice del processo e tiene un advisory lock contro due corse sovrapposte. Non aggiunge logica. Il runner monta, sulle tabelle che hanno le colonne di audit, il trigger script.trgfn_audit_data_user_generic, che a ogni scrittura dice chi ha toccato la riga e quando. Aggiunge e non toglie. Lo chiamano il job pgAgent automations_audit_update e la convergenza del rilascio (dbops.processi.ci_ordine). SECURITY DEFINER: gira come il proprietario, non come il ruolo con cui si collega pgAgent.';
+
+              COMMENT ON PROCEDURE maintenance.proc_automations_storico_job()
+              IS 'Wrapper del processo automations_storico: esegue dbops.fn_run_automations_storico in modo SCHEDULED su tutto l''ambito, passando da maintenance.fn_run_and_log, che registra la corsa in maintenance.job_run_log sotto il codice del processo e tiene un advisory lock contro due corse sovrapposte. Non aggiunge logica. Il runner monta il trigger script.trgfn_storico_generic sulle tabelle che hanno gia'' la gemella nello schema storico; se nella gemella manca la colonna verso la madre si ferma con E_STORICO_FK_COL_ASSENTE. Aggiunge e non toglie. La gemella non la crea lui: la crea maintenance.proc_automations_storico_provision_job. Lo chiamano il job pgAgent automations_storico e la convergenza del rilascio (dbops.processi.ci_ordine), che lo mette dopo la creazione delle gemelle. SECURITY DEFINER: gira come il proprietario, non come il ruolo con cui si collega pgAgent.';
+
+              COMMENT ON PROCEDURE maintenance.proc_automations_storico_provision_job()
+              IS 'Wrapper del processo automations_storico_provision: esegue dbops.fn_run_automations_storico_provision in modo SCHEDULED su tutto l''ambito, passando da maintenance.fn_run_and_log, che registra la corsa in maintenance.job_run_log sotto il codice del processo e tiene un advisory lock contro due corse sovrapposte. Non aggiunge logica. Il runner crea o aggiorna nello schema storico la gemella di ogni tabella che ha la colonna storicizza, con dbops.fn_ensure_storico_table. Il trigger che scrive nella gemella non lo monta lui: lo monta maintenance.proc_automations_storico_job. Lo chiamano il job pgAgent automations_storico_provision e la convergenza del rilascio (dbops.processi.ci_ordine), che lo mette prima del trigger. SECURITY DEFINER: gira come il proprietario, non come il ruolo con cui si collega pgAgent.';
+
+              COMMENT ON PROCEDURE maintenance.proc_automations_tx_id_job()
+              IS 'Wrapper del processo automations_tx_id: esegue dbops.fn_run_automations_tx_id in modo SCHEDULED su tutto l''ambito, passando da maintenance.fn_run_and_log, che registra la corsa in maintenance.job_run_log sotto il codice del processo e tiene un advisory lock contro due corse sovrapposte. Non aggiunge logica. Il runner monta il trigger dbops.trgfn_tx_id_managed sulle tabelle che hanno la colonna tx_id di tipo uuid: le righe toccate nella stessa transazione ricevono lo stesso identificativo. Non crea la colonna. Aggiunge e non toglie. Lo chiamano il job pgAgent automations_tx_id e la convergenza del rilascio (dbops.processi.ci_ordine). SECURITY DEFINER: gira come il proprietario, non come il ruolo con cui si collega pgAgent.';
+
+              COMMENT ON PROCEDURE maintenance.proc_automations_lock_columns_job()
+              IS 'Wrapper del processo automations_lock_columns: in una sola corsa esegue in modo SCHEDULED dbops.fn_run_automations_lock_columns e poi dbops.fn_run_automations_date_validita su tutto l''ambito, passando da maintenance.fn_run_and_log, che registra la corsa in maintenance.job_run_log sotto il codice del processo e tiene un advisory lock contro due corse sovrapposte. Non aggiunge logica. Il primo runner porta i trigger di lock di colonna al registro dichiarato: li crea, li rigenera, li toglie; se un lock vivo blocca una colonna che il registro non nomina, si ferma con E_LOCK_COLUMNS prima di ogni DDL. Il secondo monta, sulle tabelle con valido_dal e valido_al, il guard che rifiuta una fine precedente all''inizio. Le due istruzioni stanno nella stessa transazione e lasciano una riga sola nel giornale: se il lock si ferma, il guard delle date quella volta non gira. Lo chiamano il job pgAgent automations_lock_columns e la convergenza del rilascio (dbops.processi.ci_ordine). SECURITY DEFINER: gira come il proprietario, non come il ruolo con cui si collega pgAgent.';
+      rollback:
+        # Solo COMMENT: il rollback non rimette i testi superati di prima.
+        - sql:
+            sql: SELECT 1;

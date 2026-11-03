@@ -20,16 +20,19 @@
 --  5) fn_job_run_start sul ramo «skip» — SKIP dichiarato (serve una 2a sessione)
 --  6) fn_run_and_log gira senza che il chiamante passi il codice
 --  7) fn_run_and_log DERIVA il codice dal jobname
---  8) fn_run_and_log NON inventa: un jobname sconosciuto resta senza attore
+--  8) fn_run_and_log NON inventa: un jobname sconosciuto non entra affatto
+--     (chk_job_run_log_processo_dichiarato lo respinge con 23514)
 --  9) nessun overload residuo di fn_job_run_start
 -- 10) nessun overload residuo di fn_run_and_log
--- 11) vw_run_senza_attore elenca il job la cui ultima corsa e' senza attore
+-- 11) vw_run_senza_attore guarda l'ULTIMA corsa: un job che si e' dichiarato
+--     dopo non compare
 -- 12) fn_job_run_start non e' aperta a PUBLIC dopo il DROP+CREATE
 --
 -- Scopo:
 --  - fissare che l'attore arriva sul giornale per ENTRAMBI i canali;
 --  - fissare che la derivazione dal jobname copre i job pgAgent e NON maschera
---    il caso non derivabile (che resta NULL e finisce nel presidio);
+--    il caso non derivabile: il CHECK respinge la riga senza attore (23514),
+--    quindi il job si ferma invece di lasciare una riga muta;
 --  - fissare che dopo il DROP non e' rimasta la firma vecchia: e' il difetto
 --    che si vedrebbe solo come «l'attore non arriva mai», mesi dopo;
 --  - fissare la POSTURA DEI PRIVILEGI dopo un DROP+CREATE (test 12), che e'

@@ -17,18 +17,21 @@ CREATE OR REPLACE PROCEDURE maintenance.proc_automations_cleanup_job()
  SECURITY DEFINER
  SET search_path TO 'pg_catalog', 'public', 'topology', 'pg_temp'
 AS $procedure$
+  -- ⭐ Ambito NULL: lo decide il registro (dbops.automation_scope
+  --   per gli schemi, dbops.automation_rules_tbl per le tabelle).
+  --   Brief: brief-db-revisione-maintenance D4.
   BEGIN
     PERFORM maintenance.fn_run_and_log(
       p_jobname  := 'automations_cleanup',
       p_stepname := 'run_automations_cleanup',
-      p_sql      := 'SELECT dbops.fn_run_automations_cleanup(''SCHEDULED'', ARRAY[''dbops''], false);',
+      p_sql      := 'SELECT dbops.fn_run_automations_cleanup(''SCHEDULED'', NULL, false);',
       p_lock_key := hashtext('automations_cleanup')
     );
   END;
 $procedure$
 
 COMMENT ON PROCEDURE maintenance.proc_automations_cleanup_job()
-IS 'Job wrapper per chiamare fn_run_automations_cleanup con logging e lock.';
+IS 'Wrapper del processo automations_cleanup: chiama dbops.fn_run_automations_cleanup in modo SCHEDULED, con l''ambito letto dal registro (p_schemas NULL: gli schemi di dbops.automation_scope, le tabelle dalle regole CLEANUP_AT e CLEANUP_PURGE), passando da maintenance.fn_run_and_log con lock. La chiamano il job pgAgent della domenica e la convergenza in CI.';
 ```
 
 </div>

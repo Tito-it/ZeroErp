@@ -47,8 +47,9 @@ che impedisce a due righe con la stessa chiave di avere periodi sovrapposti: la 
 di colonne e di espressioni, il periodo è una colonna intervallo o la coppia delle date, e un
 predicato rende il vincolo parziale.
 
-Salta la riga, e lo scrive nel registro delle azioni, quando manca la chiave, quando mancano le
-colonne del periodo, e quando sulla tabella c'è già un vincolo che fa il lavoro: un `EXCLUDE`
+Salta la riga, e lo scrive nel registro delle azioni, quando la tabella non esiste
+(`TABLE_NOT_FOUND`), quando manca la chiave, quando mancano le colonne del periodo, e quando
+sulla tabella c'è già un vincolo che fa il lavoro: un `EXCLUDE`
 che nomina la colonna del periodo (`EXCLUDE_EXISTS`) o un vincolo temporale
 `UNIQUE … WITHOUT OVERLAPS` (`TEMPORAL_UNIQUE_EXISTS`). A regime quindi non fa niente; ma se un
 `EXCLUDE` viene tolto per errore, il giro dopo lo ricrea.
@@ -58,15 +59,17 @@ togliere prima il vincolo vecchio, che altrimenti il giro trova e salta.
 
 ---
 
-### ⚠️ Due modi in cui la corsa diventa rossa
+### ⚠️ Una tabella sparita si salta, righe sovrapposte fermano il giro
 
-Il runner non cattura gli errori, e un errore ferma la corsa intera, non solo la sua tabella:
+Il registro non ha una chiave esterna verso il catalogo, e non può averla: una riga può restare
+indietro rispetto a una tabella rinominata o ritirata. Quella riga è un **salto dichiarato**,
+come gli altri: il runner la scrive nel registro delle azioni col motivo `TABLE_NOT_FOUND` e
+passa alla successiva, e le altre tabelle ricevono il loro vincolo.
 
-* una riga della configurazione che nomina una tabella che non esiste più;
-* una tabella che ha già righe sovrapposte, su cui il vincolo non si può creare.
-
-In tutti e due i casi l'errore arriva col suo SQLSTATE, e la corsa annulla anche i vincoli
-creati prima nello stesso giro.
+Il runner invece non cattura gli altri errori, e un errore ferma la corsa intera, non solo la sua
+tabella: il caso tipico è una tabella che ha già righe sovrapposte, su cui il vincolo non si può
+creare. L'errore arriva col suo SQLSTATE, e la corsa annulla anche i vincoli creati prima nello
+stesso giro.
 
 ---
 
@@ -153,6 +156,9 @@ col suo SQLSTATE, e `error_code` del giornale riporta quello.
 * `db/pgtap/dbops/test-fn-apply-automazione-overlap-key-expressions-v1.sql` e
   `db/pgtap/dbops/test-fn-apply-automazione-overlap-where-predicate-v1.sql` — il runner: le
   chiavi su espressione e i vincoli parziali.
+* `db/pgtap/dbops/test-overlap-tabella-sparita-v1.sql` — una riga del registro su una tabella
+  che non esiste non ferma il giro, e lascia nel registro delle azioni il salto col motivo
+  `TABLE_NOT_FOUND`.
 
 ---
 
@@ -166,6 +172,9 @@ col suo SQLSTATE, e `error_code` del giornale riporta quello.
   (`brief-db-ruoli-di-sistema`).
 * 2026-10-16 — lo step pgAgent passa dal cancello `maintenance.fn_sveglia_accesa`
   (`brief-db-processi-accensione-per-ambiente`).
+* 2026-11-03 — una riga del registro su una tabella sparita diventa un salto dichiarato
+  (`TABLE_NOT_FOUND`). Prima fermava il giro intero con lo SQLSTATE grezzo, e le tabelle che
+  venivano dopo restavano senza vincolo (`brief-db-revisione-maintenance` D6).
 
 ---
 

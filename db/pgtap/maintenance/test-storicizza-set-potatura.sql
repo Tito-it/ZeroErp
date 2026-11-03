@@ -142,7 +142,8 @@ SELECT is(
 -- ⚠️ La riga stantia c'e' ancora ed e' quella MANUALE del test 3: il sync non
 --   la pota, quindi l'apply la incontra davvero. Il caso non e' simulato.
 SELECT lives_ok(
-    $$CALL maintenance.proc_apply_storicizza_defaults()$$,
+    -- 20261103-67: l'apply e' una funzione che restituisce il riepilogo.
+    $$SELECT maintenance.fn_apply_storicizza_defaults()$$,
     '6. l''apply non muore su una riga stantia: la salta e finisce il giro'
 );
 

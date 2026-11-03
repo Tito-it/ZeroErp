@@ -9,6 +9,7 @@
 > * [dbops.processi](/dbzero/dbops/tabelle/processi) — il processo `automations_cleanup`: job pgAgent, procedura e posto nella convergenza del rilascio
 > * [maintenance.job_run_log](/dbzero/maintenance/tabelle/job_run_log) — il giornale in cui ogni corsa lascia la sua riga
 > * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl) — le regole `CLEANUP_AT` e `CLEANUP_PURGE`, coi loro parametri
+> * [dbops.automation_scope](/dbzero/dbops/tabelle/automation_scope) — gli schemi dell'ambito, che la procedura non fissa
 > * [dbops.automation_cleanup_exclusions](/dbzero/dbops/tabelle/automation_cleanup_exclusions) — le tabelle che la pulizia salta
 > * [dbops.audit_log](/dbzero/dbops/tabelle/audit_log) — dove resta scritta una tabella che si è opposta
 >
@@ -32,7 +33,7 @@
 
 ### 🎯 Scopo Principale
 
-Il wrapper del processo `automations_cleanup`: esegue `dbops.fn_run_automations_cleanup` sullo schema `dbops`, che dà una scadenza
+Il wrapper del processo `automations_cleanup`: esegue `dbops.fn_run_automations_cleanup` sull'ambito che il registro dichiara, che dà una scadenza
 alle righe temporanee e cancella quelle scadute, passando dal giornale delle esecuzioni
 sotto il codice del processo.
 
@@ -55,12 +56,18 @@ registro delle azioni. ⛔ Non pulisce oggetti: non toglie trigger, tabelle o vi
 
 ---
 
-### ⚠️ Solo lo schema `dbops`
+### ⭐ L'ambito lo decide il registro
 
-La procedura passa al runner come ambito esplicito il solo schema `dbops`: un elenco indicato si
-usa così com'è, e `dbops.automation_scope` non conta. Le regole del seed dichiarate su tabelle di
-altri schemi — i log di `vendite`, le tabelle dei tentativi di `config` — da questa procedura non
-vengono eseguite, né di notte né nella convergenza del rilascio.
+La procedura non fissa gli schemi: passa al runner l'ambito vuoto, e il runner lo legge dal
+registro, come fanno gli altri processi delle automazioni. Gli schemi sono quelli di
+`dbops.automation_scope`, le tabelle quelle delle regole `CLEANUP_AT` e `CLEANUP_PURGE`. Così le
+regole dichiarate su tabelle di qualunque schema — i log di `vendite`, le tabelle dei tentativi di
+`config` — girano di notte e nella convergenza del rilascio. ⛔ Una regola attiva ha un
+esecutore, o non sta nel registro.
+
+Allargare l'ambito non accorcia la vita di nessun log. La scadenza si scrive solo dove manca, e
+le regole girano in ordine di priorità: la regola dichiarata su una tabella scrive prima di
+quella generica su tutte, che su quella tabella non trova più niente da fare.
 
 ---
 
@@ -123,7 +130,7 @@ Per chi legge il giornale di questo processo:
 
 ---
 
-### `SCHEDULED`, lo schema `dbops`, mai in simulazione
+### `SCHEDULED`, l'ambito del registro, mai in simulazione
 
 La procedura chiama il runner con tre scelte fisse:
 
@@ -131,7 +138,7 @@ La procedura chiama il runner con tre scelte fisse:
   è `AUTO` oppure uguale al modo della chiamata. Le regole `CLEANUP_AT` e `CLEANUP_PURGE` del seed
   sono `AUTO`, e girano qui come in ogni altro modo. ⚠️ Il modo dice **chi** chiama, non **quando**: anche la
   convergenza del rilascio passa da questa procedura, e quindi chiama in `SCHEDULED`.
-* **il solo schema `dbops`**, come detto sopra.
+* **l'ambito del registro**, come detto sopra.
 * **niente simulazione.** Le scadenze si scrivono e le righe si cancellano. Per sapere che cosa farebbe un giro non si passa dalla
   procedura: si chiama il runner con la simulazione accesa, e `dbops.audit_log` registra le
   azioni previste.
@@ -156,6 +163,9 @@ tabella non è un errore della corsa (sopra); un annullamento sì, e arriva col 
   girato con esito positivo sul database.
 * `db/pgtap/dbops/test-cleanup-framework.sql` — il runner: la scadenza, la cancellazione e la
   tabella che si oppone.
+* `db/pgtap/maintenance/test-cleanup-job-ambito-registro-v1.sql` — la procedura passa l'ambito
+  vuoto (presidio sul testo del corpo); ogni regola `CLEANUP_*` attiva punta a uno schema che
+  l'ambito del registro comprende; il runner gira in simulazione con quell'ambito.
 
 ---
 
@@ -174,6 +184,10 @@ tabella non è un errore della corsa (sopra); un annullamento sì, e arriva col 
 * 2026-10-16 — lo step pgAgent passa dal cancello `maintenance.fn_sveglia_accesa`
   (`brief-db-processi-accensione-per-ambiente`).
 * 2026-11-03 — pagina riscritta allo standard.
+* 2026-11-03 — l'ambito si legge dal registro. Prima la procedura passava il solo schema `dbops`,
+  e le regole su `vendite` e `config` e la cancellazione generica non le eseguiva nessuno: le
+  righe scadute di quelle tabelle non venivano mai cancellate (`brief-db-revisione-maintenance`
+  D4).
 
 ---
 

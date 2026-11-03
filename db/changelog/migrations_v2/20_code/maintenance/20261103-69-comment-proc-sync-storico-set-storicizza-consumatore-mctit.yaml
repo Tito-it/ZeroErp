@@ -1,0 +1,67 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Il COMMENT di proc_sync_storico_set_storicizza nomina il consumatore vivo.
+#   Brief: brief-db-revisione-maintenance §10.5 R1 (decisione di Tid,
+#   2026-11-03).
+#
+# ⚠️ IL DIFETTO. Il COMMENT (dal 20261103-63) dice «il caso transitorio che
+#   maintenance.proc_apply_storicizza_defaults ripara»: quella procedura e'
+#   ritirata dal 20261103-67, il suo posto l'ha preso la funzione
+#   maintenance.fn_apply_storicizza_defaults. Il censimento dei chiamanti del
+#   -67 guardava i corpi, non i COMMENT.
+#
+# ⭐ LA CORREZIONE. Il COMMENT si riscrive intero, identico salvo il nome del
+#   consumatore. Solo COMMENT: nessun cambio di comportamento.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/maintenance/20261103-69-comment-proc-sync-storico-set-storicizza-consumatore-mctit.yaml
+
+  - changeSet:
+      id: 20261103-69-comment-proc-sync-storico-set-storicizza-consumatore
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        COMMENT di maintenance.proc_sync_storico_set_storicizza: il consumatore che ripara il
+        caso transitorio e' maintenance.fn_apply_storicizza_defaults, non la procedura ritirata.
+        Brief: brief-db-revisione-maintenance §10.5 R1.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc p
+              JOIN pg_namespace n ON n.oid = p.pronamespace
+              WHERE n.nspname = 'maintenance'
+                AND p.prokind = 'p'
+                AND p.pronargs = 0
+                AND p.proname = 'proc_sync_storico_set_storicizza'
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc p
+              JOIN pg_namespace n ON n.oid = p.pronamespace
+              WHERE n.nspname = 'maintenance'
+                AND p.proname = 'fn_apply_storicizza_defaults'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON PROCEDURE maintenance.proc_sync_storico_set_storicizza()
+              IS 'Tiene config.storico_set_storicizza allineato alla sua derivazione, le tabelle ordinarie con la colonna storicizza a DEFAULT true: aggiunge cio'' che la derivazione produce, come righe derivate (insert_manuale false), e pota le righe derivate il cui nome non risolve piu'' a nessun oggetto. Una tabella che esiste ma ha perso il DEFAULT non si pota: e'' il caso transitorio che maintenance.fn_apply_storicizza_defaults ripara. Le righe manuali (insert_manuale true) non si toccano mai: se il loro bersaglio sparisce, lo segnala il consumatore. La chiave si scrive schema-qualificata in modo esplicito, perche'' regclass::text omette lo schema che sta nel search_path del chiamante. Non tocca lo schema delle tabelle. Il riepilogo (aggiunte, potate) e'' un RAISE NOTICE: va al client che l''ha lanciata e, con le impostazioni di registrazione di default, non arriva al log del server. Lanciata dal job, la traccia e'' la riga di maintenance.job_run_log; se fallisce, il verbale lo scrive fuori transazione maintenance.fn_job_run_log_failure.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo (COMMENT del 20261103-63).
+              SELECT 1;

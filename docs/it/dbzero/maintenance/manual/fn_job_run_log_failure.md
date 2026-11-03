@@ -57,9 +57,10 @@ dettaglio e SQLSTATE dell'errore. Il `meta` dice di lei che è stata **scritta f
 transazione**, e perché: senza, sembrerebbe una riga normale di un giro che invece è stato
 annullato.
 
-⚠️ `ruolo_sessione` si legge **qui**, nella sessione del job, e si passa alla scrittura: dentro
-la connessione separata il ruolo collegato sarebbe quello del canale di log, non quello della
-corsa. `agent_host` porta il nome del cluster.
+⚠️ `ruolo_sessione` e `agent_host` si leggono **qui**, nella sessione del job, e si passano alla
+scrittura: dentro la connessione separata il ruolo collegato e l'indirizzo del client sarebbero
+quelli del canale di log, non quelli della corsa. Così `agent_host` dice da dove è partita la
+corsa, come per le righe che nascono col valore di default della colonna.
 
 ---
 
@@ -107,7 +108,8 @@ un avviso.
 `db/pgtap/maintenance/test-job-run-log-failure-out-of-tx.sql` — controlla i **presupposti**,
 non la scrittura: la funzione è `SECURITY DEFINER` di un superuser, l'utente del canale entra
 nello schema e scrive il giornale senza poterlo leggere, e `fn_run_and_log` la chiama e continua
-a rilanciare. La scrittura non si prova qui perché una riga fuori transazione sopravvive al
+a rilanciare; il corpo scrive in `agent_host` l'indirizzo del client e non il nome del
+cluster (presidio sul testo). La scrittura non si prova qui perché una riga fuori transazione sopravvive al
 ROLLBACK del test e sporcherebbe il giornale a ogni giro: la prova completa si fa a mano, dopo
 ogni cambio del canale, facendo fallire un lavoro e guardando
 `maintenance.vw_job_run_da_guardare`.
@@ -128,6 +130,9 @@ in coda, e la scrittura della colonna (presidio sul testo).
 * 2026-10-16 — parametro `p_sqlstate` in coda, con default vuoto; `p_error_code` resta «il
   codice più preciso che si ha». La firma è cambiata con `DROP` e `CREATE` nel provision-post,
   perché la funzione è di un superuser (`brief-db-presidio-job-run-a-chi-tocca`).
+* 2026-11-03 — `agent_host` scrive l'indirizzo del client della sessione del job invece del nome del
+  cluster: la colonna ha un solo significato anche sulle righe dei fallimenti; le righe già
+  scritte restano (`brief-db-revisione-maintenance` M17).
 
 ---
 

@@ -1,0 +1,207 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# agent_host ha un solo significato: da dove e' partita la corsa.
+#   Brief: brief-db-revisione-maintenance M17 (decisione di Tid, 2026-11-03).
+#
+# ⚠️ IL DIFETTO. In maintenance.job_run_log.agent_host le corse scritte col
+#   default della colonna (fn_run_and_log, script.fn_job_run_start) hanno
+#   l'indirizzo del client, inet_client_addr(); il verbale di un fallimento,
+#   scritto da maintenance.fn_job_run_log_failure via dblink, ci metteva il
+#   nome del cluster (cluster_name). La stessa colonna, letta dal backend,
+#   diceva «da dove» su una riga verde e «su quale server» su una rossa.
+#
+# ⭐ LA CORREZIONE. Il verbale scrive inet_client_addr(), letto nella
+#   sessione del job: la funzione gira li', e solo l'INSERT viaggia sul canale
+#   (la' l'indirizzo sarebbe quello della connessione di servizio). Le righe
+#   gia' scritte col nome del cluster restano: sono storia.
+#
+# ⚠️ LA FORMA. La funzione e' SECURITY DEFINER di postgres (registro
+#   dbops.sec_functions_owner): il migratore non puo' sostituirla. Si prende
+#   la proprieta' in prestito via dbops.fn_sync_functions_owner(), si
+#   verifica il prestito, si ridefinisce e si restituisce: la forma di
+#   20260807-19. ⛔ Non context: provision: il giro di sviluppo gira senza
+#   contesti, e il changeSet lo eseguirebbe il migratore, rifiutato.
+#   Corpo dalla doc auto-generata (= 20261016-39); cambia solo agent_host.
+#   Firma invariata: niente DROP.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/maintenance/20261103-66-update-fn-job-run-log-failure-agent-host-mctit.yaml
+
+  - changeSet:
+      id: 20261103-66-update-fn-job-run-log-failure-agent-host
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        maintenance.fn_job_run_log_failure: agent_host = inet_client_addr() della sessione del
+        job, come le righe che nascono col default, invece del nome del cluster. Proprieta'
+        in prestito via dbops.fn_sync_functions_owner. Firma invariata.
+        Brief: brief-db-revisione-maintenance M17.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            # ⛔ Rev 2026-11-03 (brief-db-revisione-maintenance §11.5): la
+            #   preCondition leggeva la voce di dbops.sec_functions_owner, che
+            #   arriva con 80_data, dopo: su un database da zero il migrate
+            #   moriva qui. Si controlla la funzione, come 20260807-19. Il
+            #   corpo da zero regge senza la voce: il prestito non trova
+            #   righe e la funzione e' gia' del migratore.
+            sql: >
+              SELECT count(*) FROM pg_proc p
+              JOIN pg_namespace n ON n.oid = p.pronamespace
+              WHERE n.nspname = 'maintenance'
+                AND p.proname = 'fn_job_run_log_failure'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              UPDATE dbops.sec_functions_owner
+                 SET required_owner = current_user
+               WHERE schema_name   = 'maintenance'
+                 AND function_name = 'fn_job_run_log_failure';
+
+              SELECT dbops.fn_sync_functions_owner();
+
+              DO $guard$
+              DECLARE
+                v_owner text;
+              BEGIN
+                SELECT pg_get_userbyid(p.proowner)
+                  INTO v_owner
+                  FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'maintenance'
+                   AND p.proname = 'fn_job_run_log_failure';
+
+                IF v_owner IS DISTINCT FROM current_user THEN
+                  RAISE EXCEPTION
+                    'fn_job_run_log_failure e'' di %, non di % : il prestito della proprieta'' via dbops.fn_sync_functions_owner() non e'' riuscito. Verificare che dbops.fn_sync_functions_owner sia SECURITY DEFINER e posseduta da postgres, e che esista la voce in dbops.sec_functions_owner.',
+                    coalesce(v_owner, '(funzione assente)'), current_user;
+                END IF;
+              END
+              $guard$;
+
+              CREATE OR REPLACE FUNCTION maintenance.fn_job_run_log_failure(p_jobname text, p_stepname text, p_started_at timestamp with time zone, p_run_uuid uuid, p_origine character varying, p_processo_codice text, p_auth_user_id integer, p_message text, p_error_code text, p_error_detail text, p_sqlstate text DEFAULT NULL::text)
+               RETURNS void
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_sql  text;
+                  v_dsn  text;
+                  v_open boolean := false;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Scrivere il verbale di un run FALLITO dove il rollback
+                  --   non arriva: su una connessione separata.
+                  --
+                  -- ⛔ Chi chiama e' un gestore d'eccezione: qualunque cosa
+                  --   vada storta qui si risolve in un WARNING. Non si fa
+                  --   fallire un lavoro perche' non si e' riusciti a scrivere
+                  --   una nota su di lui.
+                  -- =========================================================
+
+                  -- ⚠️ L'INSERT lo costruisce QUESTA funzione, con %L su ogni
+                  --   valore. Non esiste un parametro che permetta di farle
+                  --   scrivere qualcos'altro: e' cio' che la distingue da una
+                  --   primitiva di esecuzione SQL arbitraria in SECURITY
+                  --   DEFINER di un superuser.
+                  v_sql := format(
+                      'INSERT INTO maintenance.job_run_log '
+                      '(jobname, stepname, started_at, ended_at, ok, message, '
+                      ' error_code, error_detail, agent_host, run_uuid, origine, '
+                      ' meta, processo_codice, auth_user_id, ruolo_sessione, sqlstate) '
+                      'VALUES (%L, %L, %L, now(), false, %L, %L, %L, %L, %L, %L, '
+                      '        %L::jsonb, %L, %s, %L, %L)',
+                      p_jobname, p_stepname, p_started_at,
+                      p_message, p_error_code, p_error_detail,
+                      -- ⭐ agent_host = da dove e' partita la corsa, come per le righe
+                                --   che nascono col default: inet_client_addr() letto QUI, nella
+                                --   sessione del job, non in quella del canale dblink.
+                                --   Brief: brief-db-revisione-maintenance M17.
+                                inet_client_addr()::text,
+                      p_run_uuid, p_origine,
+                      -- ⭐ La riga dice di se stessa come e' arrivata: senza,
+                      --   sembrerebbe una riga normale scritta da un giro che
+                      --   invece e' stato annullato.
+                      jsonb_build_object(
+                          'scritta_fuori_transazione', true,
+                          'motivo', 'il RAISE avrebbe annullato il verbale insieme al lavoro'
+                      )::text,
+                      p_processo_codice,
+                      COALESCE(p_auth_user_id::text, 'NULL'),
+                      -- ⭐ Rev 2026-10-15 (D-5): il ruolo che si e' COLLEGATO per la corsa.
+                      --   Si legge QUI, nella sessione del job: la INSERT gira via dblink
+                      --   in un'altra sessione, dove session_user sarebbe il canale di log.
+                      --   Dentro questa funzione DEFINER session_user resta il chiamante.
+                      session_user,
+                      -- ⭐ Rev 2026-10-16: lo SQLSTATE, separato da error_code (che e'
+                      --   «il codice piu' preciso che si ha»). NULL dai chiamanti di
+                      --   prima: il parametro e' in coda, con default.
+                      --   brief-db-presidio-job-run-a-chi-tocca §4.4.
+                      p_sqlstate);
+
+                  BEGIN
+                      -- 1. la connessione nominata, gestita dal canale esistente
+                      PERFORM script.fn_ensure_logconn();
+                      v_open := 'logconn' = ANY (
+                          COALESCE(public.dblink_get_connections(), ARRAY[]::text[]));
+
+                      IF v_open THEN
+                          PERFORM public.dblink_exec('logconn', v_sql, true);
+                          RETURN;
+                      END IF;
+
+                      -- 2. altrimenti la DSN diretta, come fa fn_log_error_only
+                      v_dsn := COALESCE(
+                          NULLIF(current_setting('myapp.logconn', true), ''),
+                          NULLIF(current_setting('myapp.dblink_log_connection', true), ''));
+
+                      IF v_dsn IS NOT NULL THEN
+                          PERFORM public.dblink_exec(v_dsn, v_sql, true);
+                          RETURN;
+                      END IF;
+
+                      -- 3. nessun canale: si dichiara, non si finge
+                      RAISE WARNING
+                          'maintenance.fn_job_run_log_failure: nessun canale fuori '
+                          'transazione configurato, il run fallito di % non lascia '
+                          'traccia nel giornale', p_jobname;
+                  EXCEPTION WHEN OTHERS THEN
+                      RAISE WARNING
+                          'maintenance.fn_job_run_log_failure: verbale non scritto '
+                          'per % (%)', p_jobname, SQLERRM;
+                  END;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION maintenance.fn_job_run_log_failure(p_jobname text, p_stepname text, p_started_at timestamp with time zone, p_run_uuid uuid, p_origine character varying, p_processo_codice text, p_auth_user_id integer, p_message text, p_error_code text, p_error_detail text, p_sqlstate text)
+              IS 'Scrive la riga di una corsa FALLITA in maintenance.job_run_log su una connessione separata (dblink, il canale logconn di script.fn_log_error_only), cosi'' che sopravviva al RAISE che annulla la transazione del lavoro. La chiama maintenance.fn_run_and_log dal suo gestore d''eccezione, con le coordinate della corsa (run_uuid, started_at, origine), il processo e l''errore (error_code e sqlstate). Costruisce da sola il proprio INSERT con format(%L): non e'' una primitiva di esecuzione SQL arbitraria. ruolo_sessione (session_user) e agent_host (inet_client_addr()) si leggono nella sessione del job, non in quella del canale: agent_host dice da dove e'' partita la corsa, come per le righe che nascono col default della colonna. Ogni via d''uscita e'' un WARNING, mai un errore: non si fa fallire due volte un lavoro gia'' fallito; il rovescio e'' che senza canale tace. SECURITY DEFINER di postgres, perche'' dblink rifiuta a un non-superuser una connessione senza password: la proprieta'' la allinea dbops.fn_sync_functions_owner() da dbops.sec_functions_owner.';
+
+              -- La proprieta' torna a postgres: nemmeno per il tempo di una migrazione
+              -- una SECURITY DEFINER del canale resta del migratore.
+              UPDATE dbops.sec_functions_owner
+                 SET required_owner = 'postgres'
+               WHERE schema_name   = 'maintenance'
+                 AND function_name = 'fn_job_run_log_failure';
+
+              SELECT dbops.fn_sync_functions_owner();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo (corpo del 20261016-39).
+              SELECT 1;
