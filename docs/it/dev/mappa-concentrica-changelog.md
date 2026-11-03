@@ -119,9 +119,9 @@ campi del catalogo e prende la soglia dal catalogo come ogni lista (D-6), e la *
 di un parametro** è rispettata in scrittura (D-5). Lato FE i BB `TabellaSelezioneRighe` (i tre
 dialog di selezione righe) e `MatriceCatalogo` (la base di ogni matrice limitata dal catalogo, di
 cui `MatriceOverride` è uno strato); il registro del presidio scende da **28 a 17** `DataTable`
-grezze, da **9 a 0** senza motivo, e il motivo deve stare attaccato all'import. ⚠️ Aperto: la view
-della ricerca che legge la soglia dal catalogo (§7.8.5, BE), poi l'archiviazione. Vedi
-[brief-db-liste-datatable-grezze-secondo-giro.md](work-in-progress/brief-db-liste-datatable-grezze-secondo-giro.md).
+grezze, da **9 a 0** senza motivo, e il motivo deve stare attaccato all'import. Chiuso il
+2026-11-03: la view della ricerca legge la soglia dal catalogo (§7.9, `62dafb6c86`). Vedi
+[brief-db-liste-datatable-grezze-secondo-giro.md](work-done/brief-db-liste-datatable-grezze-secondo-giro.md).
 
 **Anello 1 (permessi) — Il profilo del reparto per area, e il tetto d'area detto dal DB.** Il
 profilo del reparto si gestisce **per area**, come l'operatore, sopra un BB nuovo,

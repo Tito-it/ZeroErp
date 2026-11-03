@@ -670,9 +670,8 @@ operativo può prenderle al posto di una persona.
 - **`DataTable` grezze**: **17 file** nel registro del presidio
   (`frontend/scripts/datatable.baseline.json`), **nessuno senza
   motivazione**: ogni file rimasto porta il suo motivo in un commento attaccato all'import.
-  Il secondo giro, che ha portato a catalogo le sei liste vere che restavano, ha un passo BE aperto, la soglia
-  della ricerca letta dal catalogo
-  ([brief del secondo giro](dev/work-in-progress/brief-db-liste-datatable-grezze-secondo-giro.md)).
+  Il secondo giro, che ha portato a catalogo le sei liste vere che restavano, è chiuso il 2026-11-03
+  ([brief del secondo giro](dev/work-done/brief-db-liste-datatable-grezze-secondo-giro.md)).
   ⚠️ **Il contatore non misura le liste**: drawer, dialog e pannelli annidati sono
   l'eccezione che `AGENTS.md` ammette, e i wrapper stessi contano come file; il debito vero
   sta nelle **view di lista** e nelle `*SearchTable` di dominio che non passano dal

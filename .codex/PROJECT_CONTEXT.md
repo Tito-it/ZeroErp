@@ -237,6 +237,12 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 
 ### 🟡 Altri cantieri aperti
 
+- ✅ **Liste ancora su `DataTable` grezza, secondo giro: chiuso il 2026-11-03**
+  (`work-done/brief-db-liste-datatable-grezze-secondo-giro.md`): sette liste a catalogo (107-113), la
+  regola «listino in scadenza senza successore» a DB, la forma del valore dei parametri in scrittura, la
+  ricerca universale sui campi del catalogo con la soglia dal catalogo (D-6); registro FE a 17 grezze, 0
+  senza motivo. DB fino a `20261101-01…03`, BE/FE fino a `62dafb6c86`. Fuori, già dichiarati nel codice: il
+  gruppo C (`CollectionEditorPanel`, `DefinizioneEditorView`) e le eccezioni con motivo scritto (§6).
 - ✅ **Il canone del contratto in commessa: chiuso il 2026-11-01**
   (`work-done/brief-db-contratto-righe-periodiche-in-commessa.md`, D31): periodicità sulla riga e sul kit
   del listino (`vendite.listini_kit`), ADESIONE, push a periodi, storni, dashboard, la nota di credito dal
@@ -428,12 +434,6 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   (`fn_articolo_colonne_struttura`) e il rifiuto se rende non valide righe aperte (A-11). DB Lotti 1-5 e
   `20261018-70…-74`, BE/FE §9.7 e §9.8.7, collaudo di Tid ok. Restano fuori: il ponte di
   `fn_articolo_riga_contesto` (brief della grammatica unica), D-5 (righe d'acquisto, col cantiere `acquisti`).
-- ⏳ **Liste ancora su `DataTable` grezza, secondo giro**
-  (`work-in-progress/brief-db-liste-datatable-grezze-secondo-giro.md`): sette liste a catalogo (107-113), la
-  regola «listino in scadenza senza successore» a DB, la forma del valore dei parametri in scrittura, la
-  ricerca universale sui campi del catalogo; registro FE a 17 grezze, 0 senza motivo. Lato DB chiuso
-  (`20261101-01…03` compresi). Resta il BE del §7.8.5 (la soglia della ricerca dal catalogo), poi
-  l'archiviazione.
 - 📝 **Dove si addebita il trasporto di un ordine fatturato alla conferma**
   (`work-in-progress/brief-db-addebito-trasporto-ordine.md`, da A-9 del brief sopra): aperto, non iniziato.
 - ✅ **Codici d'errore per email, «accesso riservato» e «non trovato» del dettaglio ricerca: chiuso il 2026-10-10**
