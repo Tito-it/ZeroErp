@@ -2,7 +2,7 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-03
 
-**Riparte: il team BE**, con l'elenco chiuso del §9.8 (più il §9.3), poi il FE (§9.4). Lato DB tutto applicato, verde e committato (`20261103-16…-52`, 2026-11-03). Lato DB i giri 1 e 2 sono chiusi e applicati (`20261103-16…-48` e i seed del trasporto, 2026-11-03); corsa pgTAP di Tid verde come applicazione e lavoro committato (2026-11-03); l'archiviazione dopo BE e FE. Tid ha scelto la forma (2026-11-03): **oneri come righe del documento**, a cura dell'operatore come gli articoli.
+**Riparte: Tid**, col commit di BE e FE (`dev/backend-tid`) e l'archiviazione del brief: BE e FE del §9.3, §9.4, §9.8 e §9.9 sono fatti (2026-11-03), compresi 8-ter e P-6 sopra il `-53` del DB, la rilettura critica (8-quater) e le due note di «Genera DDT» sopra il `-65` (8-sexies). Lato DB tutto applicato, verde e committato (`20261103-16…-53`, 2026-11-03). Lato DB i giri 1 e 2 sono chiusi e applicati (`20261103-16…-48` e i seed del trasporto, 2026-11-03); corsa pgTAP di Tid verde come applicazione e lavoro committato (2026-11-03); l'archiviazione dopo BE e FE. Tid ha scelto la forma (2026-11-03): **oneri come righe del documento**, a cura dell'operatore come gli articoli.
 Tid ha deciso T-4 (2026-11-03): **prima** si lega l'onere al documento, **poi** il trasporto.
 
 | # | Chi | Che cosa | Dove | Aspetta |
@@ -17,16 +17,21 @@ Tid ha deciso T-4 (2026-11-03): **prima** si lega l'onere al documento, **poi** 
 | 6-ter | ✅ DB | P-1, P-2 scritti e provati: `-43`…`-46` | §9.6 | — |
 | 6-quater | ✅ Tid | apply `-43`…`-46` (12:03), corsa pgTAP verde (2026-11-03) | §9.6 | — |
 | 6-quinquies | ✅ Tid | P-3…P-6 come proposti («procedi», 2026-11-03) | §9.5 | — |
-| 7 | BE | causale dell'onere nel push (bloccante), stampa con gli oneri dopo gli articoli | §9.3 | — |
-| 8 | FE | chiavi i18n, dettaglio riga dell'onere | §9.4 | — |
+| 7 | ✅ BE | causale dell'onere nel push, ordine delle righe dalla sezione, codici nuovi (2026-11-03) | §9.3, §9.8, §9.9 | — |
+| 8 | ✅ FE | chiavi i18n, date e evasione sull'onere (2026-11-03) | §9.4, §9.9 | — |
+| 8-bis | ✅ DB | `e_onere` e `causale_onere_id` in `vw_articoli_dettaglio` (`-53`, 2026-11-03) | §9.9 | — |
+| 8-ter | ✅ BE / FE | colonne nel picker e nel dettaglio; date spente sulla riga nuova; P-6 (2026-11-03) | §9.9 | — |
+| 8-quater | ✅ BE / FE | rilettura critica del codice del giro: tre correzioni, due estrazioni (regola del 2, ok Tid), il perché sull'interruttore magazzino (2026-11-03) | §9.9 | — |
+| 8-quinquies | ✅ DB | `onere_in_bolla` in `vw_ordini_righe_dettaglio` (`-65`, applicato, su `Tito-dev`, 2026-11-03) | §9.9 | — |
+| 8-sexies | ✅ FE | «Genera DDT»: oneri da passare e già partiti, ognuno nella sua nota (2026-11-03) | §9.9 | — |
 | 9 | ✅ DB | giro 2: seed TRASPORTO, guide, T-1…T-3 riletti (2026-11-03) | §10 | — |
 | 10 | ✅ Tid | T-3 bis come da proposta; migrate dei seed (2026-11-03) | §10.2 | — |
 | 11 | ✅ DB | T-3 bis: `-47`, `-48`, pgTAP, guide; applicati (12:33) | §10.2 | — |
 | 12 | ✅ Tid / DB | corsa pgTAP del giro 2 verde (Tid); commit dei giri 1 e 2 (2026-11-03) | §10.4 | — |
 | 12-bis | ✅ DB / Tid | richiesta BE §9.8: `-49`…`-52`, applicati, pgTAP verdi, committati (2026-11-03) | §9.8 | — |
-| 13 | Tid | archiviazione del brief, dopo BE e FE | — | 7, 8 |
+| 13 | Tid | commit di BE e FE, poi archiviazione del brief | — | — |
 
-Decisioni aperte di Tid: nessuna. Lavoro da committare: nessuno (committato il 2026-11-03, §10.4).
+Decisioni aperte di Tid: nessuna. Lavoro da committare: BE e FE del §9.9, da 8-ter a 8-sexies (`dev/backend-tid`, 2026-11-03).
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-13. **A chi:** Tid, poi il team DB.
 > **Origine:** decisione A-9 di Tid (2026-10-12) in
@@ -451,7 +456,7 @@ hook (`SKIP=check-i18n-keys`); si chiude quando il FE aggiunge le chiavi.
 | **P-3** | `vw_ddt_righe_dettaglio.evasa` **resta com'è** sull'onere (decisione 9 diceva NULL): lì non è una quantità, è il flag con cui il form ferma la quantità della riga copiata; con NULL il form la lascerebbe modificare e il DB la rifiuterebbe | tenerla |
 | **P-4** | `vw_dash_competenza_gruppi.ha_oneri` conterà anche gli oneri arrivati da un documento: la stessa etichetta copre la porta oneri e il push | da guardare nel giro 2 (o accettare) |
 | **P-5** | Il nome `trgfn_articoli_guard_onere_natura` ora giudica anche la struttura | tenere il nome (lo leggono pgTAP e doc) |
-| **P-6** | FE: spegnere nel form articolo i flag magazzino/composito/lotto/seriale su un articolo-onere | facoltativo, gemello del guard `-18` |
+| **P-6** ✅ | FE: spegnere nel form articolo i flag magazzino/composito/lotto/seriale su un articolo-onere | ✅ fatto il 2026-11-03 sopra il `-53` (§9.9) |
 
 Dopo P-1/P-2: apply di `-43`…`-46`, corsa pgTAP come applicazione, poi la richiesta BE/FE (§9.3,
 §9.4) e il giro 2 (trasporto). P-3…P-6: proposte del team DB, da confermare.
@@ -598,3 +603,74 @@ t.43, la porta che vuole il proprietario della tabella) era rosso anche prima de
 
 Fuori elenco, da decidere se servirà: il preventivo (anche lui ammette gli oneri, K-10) ordina per la
 sua colonna `ordine`; oggi non è nel perimetro.
+
+### 9.9 BE e FE (team BE/FE, 2026-11-03)
+
+Fatto su `dev/backend-tid`, sopra `20261103-16…-52` (verificati su dbdev prima di partire: wrapper batch
+con la causale, `e_onere`/`sezione_documento` sulle tre viste).
+
+| Richiesta | Fatto |
+| --- | --- |
+| §9.3 punti 1-2, §9.8 punto 1 | `causale_onere_id` in `_PUSHABLE_SHARED_COLS`, `PushableRow`, `CommessaAttivitaInput`, `_build_attivita_input`, `upsert_attivita` (`p_causale_onere_id`) e `_inp_to_jsonb_row` (la chiave del wrapper) |
+| §9.8 punto 2 | `_righe_ordine_documento = "sezione_documento"` su ordine, bolla e fattura (extra `riga_nr`; fattura `ordinamento, riga_nr`). Nessun ordinamento nei builder di stampa |
+| codici nuovi | policy rigenerate (`genera_error_policies`: i nove codici del giro, nessun altro) e frasi di ripiego; quella di `E_RIGA_NATURA_NON_AMMESSA` allineata («merci e articoli-onere») |
+| §9.4 | le sei chiavi i18n (`check-i18n-keys` pulito); form della riga d'ordine senza date sull'onere (da `e_onere`); dialog «Genera DDT» senza le righe-onere, con una nota che passano intere nella prima bolla |
+| D24 (`8ac576ec2d`) | tolta l'esenzione di `E_DOC_EMITTENTE_BA_INCOERENTE` da `test_ui_action_e_canale_campi.py` (la chiedeva il test stesso) |
+
+Prove: suite BE sul DB vero (`ZEROERP_TEST_DB_E2E=1`) 7120 verdi; mypy senza rilievi nuovi; smoke
+nuovo `backend/scripts/tests/smoke-push-onere-ordine.py` (6/6), che **costruisce** il caso: ordine con
+`ONERE_TRASPORTO` alla riga 1 e la merce alla 2 → lister → push dal wrapper batch → in commessa l'onere è
+`ONERE`, causale `TRASPORTO`, sorgente l'ordine; la lettura completa e la stampa mettono l'onere dopo la
+merce. FE: 1087 test verdi, lint e build puliti.
+
+**Richiesta al DB (8-bis).** Il picker articoli legge `catalogo.vw_articoli_dettaglio`, che non espone
+`causale_onere_id`: sulla riga **nuova** il form non sa che l'articolo scelto è un onere, e mostra le date
+di consegna (nascono vuote; se l'operatore le scrive risponde `E_RIGA_ONERE_DATA_CONSEGNA`). Proposta:
+`causale_onere_id` in coda alla vista (o un `e_onere` dell'articolo). Con quella il FE spegne le date anche
+in creazione, e P-6 (flag magazzino/composito/lotto/seriale spenti nel form articolo) ha il dato.
+
+Fuori dal giro, verificato: il prezzo di un articolo-onere nel push resta quello della riga del documento;
+il calcolo d'audit del prezzo è facoltativo e sull'ambiente di sviluppo non trova la mappa
+categoria→listino alla data dello smoke (avviso, nessun errore: vale anche per la merce).
+
+**8-ter, sopra il `-53` (2026-11-03).** Il DB ha esposto `e_onere` e `causale_onere_id` in coda a
+`vw_articoli_dettaglio` (fast-forward di `Tito-dev` su `dev/backend-tid`, colonne verificate su dbdev).
+
+| Chi | Fatto |
+| --- | --- |
+| BE | le due colonne in `_LOOKUP_ARTICOLI_COLONNE` (i due picker) e in `ARTICOLI_DETAIL_COLUMNS` (lista e drawer). Il filtro `solo_oneri` legge `a.e_onere` e `a.causale_onere_id` dalla vista: ritirato il JOIN sulla base `catalogo.articoli`, che serviva solo a quello; resta il JOIN del vocabolario per la decodifica. Nuovo `test_articolo_e_onere_db.py` (DB vero, 3 test: picker di riga, picker degli oneri, dettaglio), che cade tutto togliendo le colonne |
+| FE riga d'ordine | le date di consegna spente anche in creazione, da `e_onere` dell'articolo scelto; scegliendo un onere le date già scritte si svuotano (nascoste ma piene partirebbero al salvataggio). Nuovo `OrdiniRigaForm.spec.js` (3 test) |
+| FE P-6 | nel drawer articolo, su un onere magazzino, composito, lotto e seriale sono spenti, anche nella correzione di struttura (il guard non ha porta amministratore), con una nota (`catalogo.hint_onere_struttura`). Il solo componente resta libero. `ArticoloDrawer.spec.js` +2 test |
+| FE «Genera DDT» | il filtro delle righe-onere ha il suo spec, `OrdineEvasioneDialog.spec.js` (4 test, dialog e macchina di selezione veri): l'onere non è in tabella e la nota lo conta; la conferma e il payload (`righe` null) contano le sole merci; un ordine con la sola riga-onere da evadere dà solo chiusura. Togliendo il filtro ne cadono 3 |
+
+**8-quater, rilettura critica del codice del giro (2026-11-03).** Il contratto è stato verificato sulla doc
+auto-generata: `e_onere`/`causale_onere_id` della vista articoli, `p_causale_onere_id` della funzione
+singola e del wrapper batch, la colonna esposta solo dai lister di ordini e bolle, e l'ordine del documento
+delle tre viste (`sezione_documento`, poi la posizione della riga; sulla fattura lo spareggio `riga_key` lo
+aggiunge il mixin). Nessun difetto lì.
+
+| Chi | Fatto |
+| --- | --- |
+| FE «Genera DDT» | il conto degli oneri si azzera a ogni lettura: senza ordine, o con una lettura fallita, la nota restava quella dell'ordine aperto prima |
+| smoke | `smoke-push-onere-ordine` sceglieva la natura di merce ricopiando la regola (`destinazione_tipo = 'ORDINE_VENDITA'`): ora chiede il predicato del DB, `script.fn_natura_e_merce` |
+| regola del 2, FE (ok Tid) | classe `app-dialog-intro` in `main.css` per la frase introduttiva di un dialog di processo: era uno `style` inline copiato quattro volte in tre dialog (`OrdineEvasioneDialog` due, `DdtResoDialog`, `ResoRiconsegnaDialog`), ritirate nello stesso giro; registrata nel catalogo BB frontend |
+| regola del 2, smoke (ok Tid) | `data_documento_isolata()` in `_smoke_fatturazione.py` (~14 mesi avanti, al 15): era la stessa espressione in `smoke-push-termine-documento-commessa` e `smoke-push-onere-ordine`, ritirate; registrata nel catalogo BB backend |
+| FE P-6 (ok Tid) | sull'onere anche la sezione magazzino del drawer articolo dice perché l'interruttore è spento (`hint_onere_struttura` al posto di `hint_gestito_a_magazzino`); prima la frase stava solo sotto «composito». `ArticoloDrawer.spec.js`: i test 4 e 5 lo verificano |
+
+Prove: BE 135 test verdi sulle sette suite toccate (`ZEROERP_TEST_DB_E2E=1`, 1 skip fra i mockati); FE
+verdi le spec di `ArticoloDrawer`, `OrdineEvasioneDialog`, `OrdiniRigaForm` e dei dialog di bolla e reso
+toccati, eslint pulito sui file toccati. Non rilanciati gli smoke dopo l'estrazione (scrivono su dbdev): compilano, e chiamano solo il
+nuovo helper.
+
+**8-sexies, sopra il `-65` (2026-11-03).** La rilettura critica aveva trovato che «Genera DDT» diceva
+«l'onere passa nella prima bolla» anche su un onere già partito: sulla riga-onere la vista non diceva se
+era già legato a una bolla (evaso e residuo NULL per scelta, `-25`). Il DB ha esposto in coda a
+`vw_ordini_righe_dettaglio` `onere_in_bolla` (vero se l'onere è già partito con una bolla, falso se è da
+passare, NULL sulla merce), con la regola della copia nella bolla (fast-forward di `Tito-dev` su
+`dev/backend-tid`; colonna `boolean` verificata su dbdev). Il BE non cambia: `list_righe` legge `v.*`.
+
+| Chi | Fatto |
+| --- | --- |
+| FE «Genera DDT» | gli oneri restano fuori dalla tabella e si contano in due: da passare (`evasione_oneri_nota`, ora «nella prossima bolla»: dopo il ritiro di una riga di bolla l'onere torna da passare, e la bolla dopo non è la prima) e già partiti (`evasione_oneri_in_bolla_nota`, nuova). «Già partito» si legge dalla colonna, mai ricostruito dai legami. `OrdineEvasioneDialog.spec.js` +2 test (6): l'onere partito, un onere partito e uno da passare |
+
+Prove: spec del dialog 6/6, eslint pulito, `check_i18n_keys` pulito.

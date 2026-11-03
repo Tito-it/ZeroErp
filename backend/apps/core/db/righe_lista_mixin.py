@@ -64,8 +64,9 @@ class RigheListaMixin:
     - ``_righe_fk_documento``: colonna FK al padre (``"ordine_id"``, ``"prodotto_id"``);
     - ``_righe_ordine_documento``: l'ordine del PADRE, colonna di posizione
       (``"riga_nr"``; ``"ordine"`` sul preventivo; ``"valido_dal"`` sulla
-      distinta). E' l'ordine di partenza della lista e quello della lettura
-      completa;
+      distinta; ``"sezione_documento"`` su ordine, bolla e fattura, dove la
+      vista mette gli oneri dopo gli articoli). E' l'ordine di partenza della
+      lista e quello della lettura completa;
     - ``_righe_ordinamento``: whitelist `campo_sorgente -> colonna` delle
       colonne `ordinabile = t` della lista a catalogo;
     - ``_righe_ricerca``: la `RicercaFull` della lista a catalogo.
@@ -82,7 +83,8 @@ class RigheListaMixin:
     - ``_righe_solo_attive``: filtra ``attivo IS TRUE`` (default ``True``);
     - ``_righe_ordine_documento_extra``: colonne che seguono
       ``_righe_ordine_documento`` nell'ordine del padre, sempre crescenti
-      (default nessuna; ``("riga_nr",)`` sulla fattura);
+      (default nessuna; ``("riga_nr",)`` su ordine e bolla,
+      ``("ordinamento", "riga_nr")`` sulla fattura);
     - ``_righe_funzione``: nome FQN di una funzione ``fn(padre_id)`` che
       restituisce le righe, al posto di ``_righe_vista`` e
       ``_righe_fk_documento`` (default ``None``);

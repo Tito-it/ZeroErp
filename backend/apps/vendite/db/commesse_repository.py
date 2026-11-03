@@ -121,7 +121,7 @@ ATTIVITA_SORT_COLUMNS: frozenset[str] = frozenset({
     "gruppo_key",
 })
 
-# Nomi delle 26 colonne condivise da tutte le fn_list_*_da_pushare.
+# Nomi delle colonne condivise da tutte le fn_list_*_da_pushare.
 # La colonna opzionale `riga_id` (presente in preventivi/ordini/contratti/ddt,
 # assente in consumi) e' aggiunta al col_map a runtime dentro
 # `fetch_pushable_rows` e mappata su `PushableRow.riga_sorgente_id`
@@ -164,6 +164,11 @@ _PUSHABLE_SHARED_COLS = (
     # successo davvero (smoke-push-termine-documento-commessa, test 0).
     "termine_pagamento_id",
     "modalita_pagamento_id",
+    # La causale della riga ONERE (20261103-38/-40, brief-db-addebito-trasporto-
+    # ordine §9.3): gli oneri sono righe di ordine e bolla, e la madre vuole
+    # ONERE <=> causale. Solo ordini e bolle la espongono; per gli altri lister
+    # resta None, ed e' giusto: le loro righe non sono ONERE.
+    "causale_onere_id",
 )
 
 
@@ -260,6 +265,8 @@ class CommessaAttivitaInput:
     stato_approvazione: str = STATO_APPROVAZIONE_BOZZA
     stato_emissione: str = STATO_EMISSIONE_NON_EMESSA
     tipo_movimento: str = TIPO_MOVIMENTO_NORMALE
+    # Valorizzata se e solo se tipo_movimento = ONERE (guard della madre).
+    causale_onere_id: int | None = None
 
     # === Campi opzionali ===
     istanza_utility_id: int | None = None
@@ -295,7 +302,7 @@ class CommessaAttivitaInput:
 
 @dataclass(frozen=True)
 class PushableRow:
-    """Riga normalizzata da fn_list_*_da_pushare — 26 colonne condivise."""
+    """Riga normalizzata da fn_list_*_da_pushare — le colonne condivise."""
 
     billing_account_id: int
     utility_id: int | None
@@ -340,6 +347,9 @@ class PushableRow:
     # (brief scadenze §8).
     termine_pagamento_id: int | None = None
     modalita_pagamento_id: int | None = None
+    # La causale della riga ONERE (righe-onere di ordini e bolle). None per i
+    # lister che non la espongono: preventivi, contratti e consumi.
+    causale_onere_id: int | None = None
 
 
 def _map_pushable_row(col_map: dict[str, int], row: tuple) -> PushableRow:
@@ -412,6 +422,7 @@ def _map_pushable_row(col_map: dict[str, int], row: tuple) -> PushableRow:
         tipo_doc_fiscale_id=_col("tipo_doc_fiscale_id"),
         termine_pagamento_id=_opt_int("termine_pagamento_id"),
         modalita_pagamento_id=_opt_int("modalita_pagamento_id"),
+        causale_onere_id=_opt_int("causale_onere_id"),
     )
 
 
@@ -1029,6 +1040,7 @@ class CommesseRepository(EventLogRepositoryMixin):
                     p_sorgente_uid => %s,
                     p_tipo_movimento => %s,
                     p_meta => %s::jsonb,
+                    p_causale_onere_id => %s,
                     p_listino_riga_id => %s
                 )
                 """,
@@ -1069,6 +1081,7 @@ class CommesseRepository(EventLogRepositoryMixin):
                     inp.sorgente_uid,
                     inp.tipo_movimento,
                     self._to_jsonb_param(inp.meta),
+                    inp.causale_onere_id,
                     inp.listino_riga_id,
                 ],
             )
@@ -1116,6 +1129,9 @@ class CommesseRepository(EventLogRepositoryMixin):
             "sorgente_tipo_id": inp.sorgente_tipo_id,
             "sorgente_uid": inp.sorgente_uid,
             "tipo_movimento": inp.tipo_movimento,
+            # Chiave facoltativa del wrapper (20261103-49): senza, ogni riga
+            # ONERE del push e' rifiutata dalla madre.
+            "causale_onere_id": inp.causale_onere_id,
             "meta": inp.meta or {},
             # Snapshot pricing v5 (F2-BE-11). Il wrapper batch DB deve
             # estrarre queste chiavi e passarle a fn_upsert_commessa_attivita

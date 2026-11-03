@@ -29,6 +29,7 @@ Indice test eseguiti:
 13b) CommesseRepositoryUnitTests.test_fetch_pushable_rows_righe_ids_preventivo
 13c) CommesseRepositoryUnitTests.test_fetch_pushable_rows_righe_ids_sorgente_non_supportata
 14) CommesseRepositoryUnitTests.test_fetch_pushable_rows_maps_shared_columns
+14b) CommesseRepositoryUnitTests.test_fetch_pushable_rows_maps_causale_onere
 15) CommesseRepositoryUnitTests.test_get_or_create_commessa_uses_defaults
 16) CommesseRepositoryUnitTests.test_validate_sorgente_map_ok
 17) CommesseRepositoryUnitTests.test_validate_sorgente_map_missing_in_map
@@ -41,6 +42,7 @@ Indice test eseguiti:
 24) CommesseRepositoryUnitTests.test_batch_upsert_attivita_empty_list
 25) CommesseRepositoryUnitTests.test_upsert_attivita_passes_snapshot_v5_params
 26) CommesseRepositoryUnitTests.test_inp_to_jsonb_row_includes_snapshot_v5_keys
+26b) CommesseRepositoryUnitTests.test_inp_to_jsonb_row_porta_la_causale_onere
 27) DiagnosticaGruppiTernePronteTests.test_terne_pronte_stringa_json_viene_decodificata
 28) DiagnosticaGruppiTernePronteTests.test_terne_pronte_vuote_restano_lista_vuota
 29) DiagnosticaGruppiTernePronteTests.test_terne_pronte_gia_lista_passa_intatta
@@ -84,6 +86,8 @@ _ORDINI_COLS = [
     ("tipo_movimento",), ("valuta_id",),
     ("meta",), ("tipo_doc_fiscale_id",),
     ("termine_pagamento_id",), ("modalita_pagamento_id",),
+    # La causale della riga ONERE, in coda (20261103-38).
+    ("causale_onere_id",),
 ]
 
 # Tupla di test che simula una riga ordine.
@@ -103,6 +107,7 @@ _ORDINI_ROW = (
     7,   # tipo_doc_fiscale_id
     3,   # termine_pagamento_id (le condizioni del DOCUMENTO)
     5,   # modalita_pagamento_id
+    None,  # causale_onere_id (riga di merce)
 )
 
 
@@ -511,6 +516,21 @@ class CommesseRepositoryUnitTests(TestCase):
         # reale del 2026-08-03, non un caso ipotetico).
         self.assertEqual(row.termine_pagamento_id, 3)
         self.assertEqual(row.modalita_pagamento_id, 5)
+        self.assertIsNone(row.causale_onere_id)
+
+    # Scopo: la causale della riga ONERE attraversa il binding. Prova di
+    #        mutazione: togliere `causale_onere_id` da `_PUSHABLE_SHARED_COLS`
+    #        la lascia None in silenzio, e la madre rifiuta la riga ONERE
+    #        (brief-db-addebito-trasporto-ordine §9.3).
+    @patch("apps.vendite.db.commesse_repository.connection.cursor")
+    def test_fetch_pushable_rows_maps_causale_onere(self, mock_cursor_factory):
+        riga_onere = _ORDINI_ROW[:24] + ("ONERE",) + _ORDINI_ROW[25:-1] + (6,)
+        mock_cursor_factory.return_value = _mock_cursor(
+            fetchall=[riga_onere], description=_ORDINI_COLS,
+        )
+        row = CommesseRepository().fetch_pushable_rows("ORDINE_VENDITA")[0]
+        self.assertEqual(row.tipo_movimento, "ONERE")
+        self.assertEqual(row.causale_onere_id, 6)
 
     # Scopo: Verifica validate_sorgente_map senza warning quando DB e map allineati.
     @patch("apps.vendite.db.commesse_repository.connection.cursor")
@@ -816,6 +836,21 @@ class CommesseRepositoryUnitTests(TestCase):
         self.assertEqual(row["classe_utenza_id_snapshot"], 4)
         # La chiave che il batch passa a `p_listino_riga_id` (2026-10-09).
         self.assertEqual(row["listino_riga_id"], 301)
+        # Riga non ONERE: la causale viaggia come null esplicito.
+        self.assertIsNone(row["causale_onere_id"])
+
+    # Scopo: la causale dell'onere arriva al wrapper batch, che dal 20261103-49
+    #        la passa a `p_causale_onere_id`. E' il percorso del push.
+    def test_inp_to_jsonb_row_porta_la_causale_onere(self):
+        inp = CommessaAttivitaInput(
+            commessa_id=1, segment_key="seg", quantita=Decimal("1"),
+            competenza_mese=date(2026, 6, 1), articolo_id=None,
+            prezzo_snapshot=Decimal("30"), tipo_movimento="ONERE",
+            causale_onere_id=6,
+        )
+        row = CommesseRepository._inp_to_jsonb_row(inp)
+        self.assertEqual(row["tipo_movimento"], "ONERE")
+        self.assertEqual(row["causale_onere_id"], 6)
 
 
 class DiagnosticaGruppiTernePronteTests(TestCase):

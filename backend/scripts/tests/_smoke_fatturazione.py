@@ -28,6 +28,9 @@
 #       (`dbops.fn_pgtap_crea_fattura`, `fn_pgtap_crea_contratto`, …), che dal
 #       2026-10-21 accettano `dev.smoke` sull'emittente di prova (R-2): qui non
 #       se ne scrive una seconda versione.
+#       ⭐ Terza estrazione (regola del 2, ok Tid, 2026-11-03): la DATA ISOLATA
+#       dei documenti di prova (`data_documento_isolata`), copiata in
+#       `smoke-push-termine-documento-commessa` e `smoke-push-onere-ordine`.
 #       Uso: `from scripts.tests._smoke_fatturazione import costruisci_base_fatturazione`,
 #       dopo `apri_contesto_smoke(cur)`. Il trattino basso lo tiene fuori dalla
 #       scoperta di `smoke-baseline.sh`.
@@ -37,12 +40,26 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
 
+from apps.core.services.fuso_aziendale import oggi_aziendale
 from scripts.tests._smoke_commessa import crea_riga_commessa
 from scripts.tests._smoke_contesto import seleziona_emittente_di_prova
+
+
+# Scopo: la data dei documenti di prova, ISOLATA: ~14 mesi nel futuro
+#        (`oggi_aziendale()` + 425 giorni), a meta' mese. La competenza che ne
+#        nasce (`.replace(day=1)`) non incrocia attivita' vive dell'ambiente:
+#        la selezione di un lotto, gia' filtrata per BA + emittente + tipo
+#        documento, non le rastrella e non ne e' inquinata.
+#        Il 15 lascia spazio a chi ha bisogno del mese prima o dopo.
+_GIORNI_ISOLAMENTO = 425
+
+
+def data_documento_isolata() -> date:
+    return (oggi_aziendale() + timedelta(days=_GIORNI_ISOLAMENTO)).replace(day=15)
 
 
 # Scopo: costruisce un articolo di prova (non gestito a magazzino) col builder

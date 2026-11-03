@@ -1712,6 +1712,17 @@ a {
   flex: none;
 }
 
+/* La frase introduttiva di un dialog di processo, sopra la tabella delle
+ * righe (evasione dell'ordine, reso dalla bolla, riconsegna del reso): piccola
+ * e sottotono, senza margine — lo spazio lo da' il contenitore del dialog.
+ * Regola del 2 (2026-11-03, ok Tid): era uno `style` inline copiato quattro
+ * volte in tre dialog. */
+.app-dialog-intro {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--app-text-muted);
+}
+
 /* ===== Modalita' sola lettura (pattern protect) =====
  * Overlay CSS ispirato ai formati protect AS/400.
  * Blocca ogni interazione, permette copia testo, feedback visivo.

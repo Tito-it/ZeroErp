@@ -18,6 +18,7 @@ Indice test eseguiti:
 6) CommesseSourceHandlersTests.test_process_rows_default_priorita_operativa_normale
 7) CommesseSourceHandlersTests.test_process_rows_default_prezzo_da_riallineare_false
 8) CommesseSourceHandlersTests.test_process_rows_default_stato_approvazione_bozza
+8b) CommesseSourceHandlersTests.test_process_rows_onere_porta_la_causale
 9) CommesseSourceHandlersTests.test_process_rows_isolamento_errori_per_riga
 10) CommesseSourceHandlersTests.test_handler_contratti_esiste
 10b) CommesseSourceHandlersTests.test_contratto_apre_la_commessa_senza_periodo
@@ -381,6 +382,22 @@ class CommesseSourceHandlersTests(TestCase):
         inp = repo.batch_upsert_attivita.call_args[0][0][0]
         self.assertEqual(inp.stato_approvazione, "BOZZA")
         self.assertEqual(inp.stato_emissione, "NON_EMESSA")
+
+    # Scopo: la riga ONERE di un ordine porta la sua causale fino all'input del
+    #        batch (brief-db-addebito-trasporto-ordine §9.3): la madre vuole
+    #        ONERE <=> causale, e senza la riga e' rifiutata.
+    def test_process_rows_onere_porta_la_causale(self):
+        repo = _mock_repo()
+        repo.fetch_pushable_rows.return_value = [
+            _make_row(tipo_movimento="ONERE", causale_onere_id=6),
+        ]
+        handler = HandlerOrdini(repo)
+
+        handler.run()
+
+        inp = repo.batch_upsert_attivita.call_args[0][0][0]
+        self.assertEqual(inp.tipo_movimento, "ONERE")
+        self.assertEqual(inp.causale_onere_id, 6)
 
     # Scopo: errore su riga 1 non blocca riga 2 — isolamento per riga.
     def test_process_rows_isolamento_errori_per_riga(self):

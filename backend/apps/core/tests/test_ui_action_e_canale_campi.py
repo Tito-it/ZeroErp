@@ -147,24 +147,11 @@ _FALLBACK_KWARGS = ("fallback_code",)
 #    si e' ritirata da sola quando la bozza email ha preso quel codice senza
 #    campo — il rimedio e' la combo dell'emittente in alto, non un input
 #    (brief-db-codici-non-trovato-email-e-permessi §9.2).
-# ⚠️ Dal 2026-10-10 una riga di verso 1 che NON e' una promessa vuota: e' un
-#    sito che la vista non sa leggere (codice passato da TG_ARGV a un BB
-#    trigger). E' un'esenzione della MISURA, non della regola.
-_ESENZIONI: dict[tuple[str, int], str] = {
-    ("E_DOC_EMITTENTE_BA_INCOERENTE", 1): (
-        "Promessa MANTENUTA, misura cieca. Lo solleva il BB "
-        "`script.trgfn_doc_guard_emittente_ba`, che riceve il codice da TG_ARGV "
-        "(montato su sei tabelle) e mette `'campo'` nel contesto quando il "
-        "codice non e' TECNICO: la vista legge il codice dal corpo della "
-        "funzione e non dagli argomenti del trigger, quindi non vede nessun "
-        "sito. Provato con una chiamata vera il 2026-10-10 (UPDATE annullato su "
-        "ordine, preventivo e contratto): `diagnostica_db` da' "
-        "fields=('emittente_fiscale_id',). Non si toglie l'override (il campo e' "
-        "un input del form dei sei documenti); si sana nella vista, richiesta "
-        "al team DB nella voce D24 di migliorie-generali-da-test-valutazione "
-        "— e la riga si ritira da sola quando la vista vedra' il sito."
-    ),
-}
+# ⭐ Di nuovo vuoto dal 2026-11-03: la riga di verso 1 di
+#    `E_DOC_EMITTENTE_BA_INCOERENTE` (codice passato da TG_ARGV a un BB trigger,
+#    sito che la vista non sapeva leggere) si e' ritirata quando la vista ha
+#    imparato a leggere gli argomenti del trigger (D24, 20261103-01/-02).
+_ESENZIONI: dict[tuple[str, int], str] = {}
 
 
 @dataclass(frozen=True)

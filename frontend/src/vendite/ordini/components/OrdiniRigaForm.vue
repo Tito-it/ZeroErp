@@ -96,6 +96,15 @@ const {
   form,
 })
 
+// Un onere non si spedisce e non porta date di consegna (K-3 di
+// brief-db-addebito-trasporto-ordine; il guard e' `E_RIGA_ONERE_DATA_CONSEGNA`).
+// Lo dice il DB, mai ricostruito qui: in modifica la vista della riga
+// (`e_onere`, la natura fissata sulla riga), in creazione l'articolo scelto
+// nel picker (`e_onere` di `vw_articoli_dettaglio`, 20261103-53).
+const eOnere = computed(() => (isEdit.value
+  ? props.riga?.e_onere === true
+  : articoloObj.value?.e_onere === true))
+
 // Il legame con la riga (fotografia, riga riletta dal server) e' del cuore
 // condiviso: qui solo come si popola il form.
 seguiRiga((riga) => {
@@ -144,6 +153,12 @@ function onArticoloSelect(item) {
   form.value.uom_operativa_id = null
   form.value.prezzo_unitario = null
   articoloObj.value = item
+  // Un onere non porta date di consegna: quelle gia' scritte su un articolo
+  // scelto prima si tolgono, o partirebbero nascoste al salvataggio.
+  if (item.e_onere === true) {
+    form.value.data_consegna_richiesta_cliente = null
+    form.value.data_consegna_confermata = null
+  }
   // Create: autopick base; in edit l'articolo e' disabled e questo non scatta.
   caricaUomConPickBase(item.id)
 }
@@ -314,7 +329,7 @@ defineExpose({ modificato, chiudiConConferma })
          vuole e quando ci si impegna a darla. La differenza fra le due E' la
          promessa; il ritardo lo calcola la vista situazione merce contro la
          promessa (o, senza promessa, contro la richiesta). -->
-    <div class="form-grid-2col">
+    <div v-if="!eOnere" class="form-grid-2col">
       <div class="form-field">
         <label>{{ t('vendite.ordini.riga_data_consegna_richiesta_cliente') }}</label>
         <DatePicker v-model="form.data_consegna_richiesta_cliente"

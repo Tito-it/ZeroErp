@@ -2033,6 +2033,7 @@
     "field_requires_serial": "Requires serial",
     "field_requires_lotto": "Requires lot",
     "hint_requires_lotto": "The item is tracked by batches: every movement names a lot",
+    "hint_onere_struttura": "This is a charge, not goods: no stock, kit, batches or serial numbers",
     "field_desc_fattura": "Invoice description",
     "field_fattore": "Factor",
     "field_vendita": "Sale",
@@ -3062,13 +3063,17 @@
         "magazzino_arrivo_mancante": "The transfer delivery note has no arrival warehouse.",
         "prelievi_incompleti": "One or more lines have picks that do not cover their quantity: complete the picks before issuing.",
         "merce_non_prelevabile": "A pick is not accepted by the warehouse (lot, serial or location not valid for the item): open it from the line picks.",
-        "merce_non_disponibile": "The goods to ship are not available in stock in sufficient quantity."
+        "merce_non_disponibile": "The goods to ship are not available in stock in sufficient quantity.",
+        "solo_oneri": "The delivery note has only charges and no goods: it cannot be issued. Add the goods, or remove the charges and bill them on the job order.",
+        "onere_non_fatturabile": "A line is a charge that would never be invoiced: the delivery note's reason is not invoiceable, or the order is invoiced on confirmation and then the charge belongs on the order.",
+        "trasporto_non_dovuto": "The delivery note bills the transport to the customer, but carriage is forward or charged to a third party: the customer does not owe it to us. Remove the transport line, or change the transport charge."
       },
       "correggi_qta_evasa_reason": {
         "ddt_non_in_bozza": "The shipped quantity can only be corrected while the delivery note is a draft.",
         "riga_non_evasa": "The line does not come from an order or a return: change the quantity from the line.",
         "ddt_senza_origine": "The delivery note does not come from an order or a return: change the quantity from the line.",
-        "legami_multipli": "The line is linked to several source lines: the shipped quantity cannot be corrected on its own."
+        "legami_multipli": "The line is linked to several source lines: the shipped quantity cannot be corrected on its own.",
+        "riga_onere": "The line is a charge: the shipped quantity correction applies to goods only."
       },
       "correggi_qta_evasa": "Correct shipped quantity",
       "correggi_qta_evasa_ok": "Shipped quantity corrected",
@@ -3875,7 +3880,8 @@
       "azione_reason": {
         "ddt_collegati": "The order already has linked DDTs: the goods are out, and to bring them back you register a return.",
         "gia_in_commessa": "The order has already been sent to invoicing: cancel the job order activities first.",
-        "iva_mancante": "One or more rows have a price but no VAT rate. The rate is not chosen on the document: set it on the item, and the row picks it up. Otherwise remove the price, if the goods are not valued."
+        "iva_mancante": "One or more rows have a price but no VAT rate. The rate is not chosen on the document: set it on the item, and the row picks it up. Otherwise remove the price, if the goods are not valued.",
+        "solo_oneri": "The order has only charges and no goods: it cannot be confirmed. Add the goods the charge refers to, or bill it on the job order."
       },
       "stato_info": {
         "evaso": "The order is fulfilled: its status is recalculated from the DDTs, it is not set by hand.",
@@ -3905,7 +3911,8 @@
       "data_consegna_confermata_reason": {
         "in_bozza": "In draft the date is changed by editing the line.",
         "stato_non_ammette": "In this status the delivery date can no longer be changed.",
-        "riga_spedita": "The goods on this line have already left with a delivery note: the confirmed delivery date stays the one they left with."
+        "riga_spedita": "The goods on this line have already left with a delivery note: the confirmed delivery date stays the one they left with.",
+        "riga_onere": "The line is a charge: a charge is not shipped and has no delivery dates."
       },
       "azione_data_consegna_confermata": "Change the confirmed delivery date",
       "data_consegna_confermata_titolo": "Confirmed delivery date",
@@ -3914,6 +3921,8 @@
       "data_consegna_confermata_salvata": "Confirmed delivery date updated.",
       "evasione_titolo": "Generate DDT",
       "evasione_intro": "Select the lines to fulfil and generate the delivery note. The DDT is created as a draft.",
+      "evasione_oneri_nota": "One charge of the order is still to be passed on: it is not shipped, it goes whole into the next delivery note on its own. | {n} charges of the order are still to be passed on: they are not shipped, they go whole into the next delivery note on their own.",
+      "evasione_oneri_in_bolla_nota": "One charge of the order has already left with a delivery note. | {n} charges of the order have already left with a delivery note.",
       "evasione_col_qta_ordinata": "Ordered qty",
       "evasione_col_qta_evasa": "Fulfilled qty",
       "evasione_col_qta_residua": "Remaining",
