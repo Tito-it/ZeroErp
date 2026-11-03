@@ -5,6 +5,7 @@ import { useAuthStore } from '../../stores/auth'
 import { resolveCanaleLogin } from '../constants'
 import { extractApiError } from '../utils/apiError'
 import { richiediResetPassword } from '../api/password'
+import LinkInformazioni from '../components/LinkInformazioni.vue'
 import InputText from 'primevue/inputtext'
 import Button from 'primevue/button'
 
@@ -105,6 +106,7 @@ async function handleRequest() {
         </div>
       </template>
     </div>
+    <LinkInformazioni />
   </div>
 </template>
 

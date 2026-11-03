@@ -522,6 +522,15 @@ export const MANAGE_ICONS = {
   SICUREZZA_ACCESSO: 'pi pi-key',
   // Il cambio della PROPRIA password (scheda utente della topbar).
   CAMBIO_PASSWORD: 'pi pi-user-edit',
+  // Il dialog «Informazioni» (licenza e sorgente, AGPL §13): link delle pagine
+  // di accesso e voce del kebab utente. ⚠️ Ripete `STATUS_ICONS.INFO` di
+  // proposito: e' lo stesso «c'e' qualcosa da sapere».
+  INFORMAZIONI: 'pi pi-info-circle',
+  // Dentro il dialog «Informazioni»: il codice sorgente e il testo della
+  // licenza. ⛔ Non `pi-code` (`MODALITA_TECNICA`) ne' `pi-github`: dove sta
+  // il sorgente lo decide chi distribuisce.
+  CODICE_SORGENTE: 'pi pi-box',
+  TESTO_LICENZA: 'pi pi-file',
   BILLING_ACCOUNT: 'pi pi-credit-card',
   UTILITY: 'pi pi-bolt',
   LIST: 'pi pi-list',
