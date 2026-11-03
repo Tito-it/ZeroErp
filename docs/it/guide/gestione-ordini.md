@@ -1,6 +1,6 @@
 # Guida — Gestione Ordini di vendita
 
-> **Ultimo aggiornamento**: 25 ottobre 2026
+> **Ultimo aggiornamento**: 3 novembre 2026
 >
 > **Destinatari**: analisti funzionali, operatori commerciali, sviluppatori
 > backend/frontend, DBA.
@@ -153,7 +153,7 @@ di **mutua esclusività** offerta → (contratto XOR ordine): la prima conversio
 La conversione la fa il database in un passo solo
 ([vendite.fn_genera_ordine_da_offerta](/dbzero/vendite/funzioni/fn_genera_ordine_da_offerta)),
 e prima di scrivere controlla che ogni riga dell'offerta possa stare in un ordine: un
-ordine contiene **solo merce**, quindi un'offerta di servizi non si converte
+ordine contiene **solo merce** (più gli oneri che l'operatore aggiunge sull'ordine, §3.6), quindi un'offerta di servizi non si converte
 (`E_DOC_RIGA_NON_AMMESSA`, che nomina l'articolo; il pulsante è spento con lo stesso motivo).
 
 ### 2.3 Creazione manuale
@@ -220,9 +220,10 @@ Ogni riga è una voce da consegnare/fatturare:
 Vincoli per l'operatore: **quantità > 0** e **prezzo ≥ 0** (un omaggio è quantità
 positiva con prezzo zero).
 
-**Quali articoli ammette** (dal 2026-10-13): solo **merce**, e mai un articolo **«solo
-componente»**, che si vende soltanto dentro il kit che lo contiene. Un servizio una tantum va
-in commessa, un servizio ricorrente in contratto (tramite un'offerta). La merce è giudicata
+**Quali articoli ammette**: la **merce** e gli **articoli-onere** (trasporto, urgenza, spese…:
+gli addebiti che accompagnano la merce, §3.6), mai un articolo **«solo componente»**, che si vende
+soltanto dentro il kit che lo contiene. Un altro servizio non entra: uno una tantum va in commessa,
+uno ricorrente in contratto (tramite un'offerta). La merce è giudicata
 dalla **natura con cui la riga è stata venduta**: una riga nata da un preventivo porta la natura di lì, anche
 se nel frattempo l'articolo è cambiato in anagrafica. Il controllo è uno solo per tutti i
 documenti ([`script.fn_check_articolo_riga`](/dbzero/script/manual/fn_check_articolo_riga)), e
@@ -347,6 +348,32 @@ il gesto per intero, e nessuna riga cambia.
 > Il 15 il cliente chiede di spostare al 22, e quattro righe sono già partite
 > con un DDT: si ripete col 22, *tutte*. Otto righe passano al 22, e le quattro
 > spedite restano al 20.
+
+### 3.6 Gli oneri: trasporto, urgenza, spese
+
+Un **onere** è un addebito che accompagna la merce: il trasporto, una maggiorazione per urgenza, le
+spese amministrative. In anagrafica è un articolo come gli altri, con una **causale onere** (Trasporto,
+Trasferta, Urgenza…) che lo dice onere; la causale nuova si aggiunge al catalogo, senza toccare il
+database. Sull'ordine lo aggiunge **l'operatore**, come una riga qualsiasi: ha prezzo e IVA, entra nei
+totali e nella stampa, dove compare **dopo** gli articoli.
+
+Un onere però **non si spedisce**, e l'ordine lo tratta di conseguenza:
+
+| | La merce | L'onere |
+| --- | --- | --- |
+| evasione e residuo da spedire | sì | no: non tiene aperto l'ordine, non lo porta a «evaso» |
+| nella bolla | la quantità che si sceglie | passa **intero**, nella **prima** bolla, anche se non lo si sceglie; non si ricopia nelle bolle successive; se la bolla si annulla torna sull'ordine |
+| date di consegna | sì (§3.5) | no: la riga di un onere non le porta |
+| un ordine fatto **solo** di oneri | — | non si conferma: un addebito senza merce si fa in commessa |
+
+**Dove va messo dipende da come si fattura l'ordine.** Se l'ordine fattura **alla conferma**, l'onere
+sta sull'ordine e va in commessa con lui (§10). Se fattura **alla consegna**, si può mettere sull'ordine
+(passa nella bolla, che lo porta in commessa) o direttamente sulla bolla. Un addebito che non riguarda
+nessun documento si fa dalla commessa, con la porta degli oneri
+([Gestione Commesse](/guide/gestione-commesse)).
+
+Un onere su un preventivo o su un'offerta **non** passa all'ordine: lì va in commessa da sé, e
+sull'ordine lo aggiunge l'operatore.
 
 ---
 
@@ -617,7 +644,8 @@ Quando l'ordine è `CONFERMATO` (e `fatturazione_trigger = CONFERMATO`), l'azion
 fatturazione.
 
 Sono eleggibili le righe attive, con quantità positiva, non ancora inviate a una
-commessa. Se non c'è alcuna riga eleggibile, l'azione non è disponibile e
+commessa. Gli **oneri** dell'ordine (§3.6) ci vanno insieme alla merce, come oneri con la loro causale
+e col riferimento all'ordine: fatturando l'ordine, si fattura anche il suo trasporto. Se non c'è alcuna riga eleggibile, l'azione non è disponibile e
 l'interfaccia ne spiega il motivo.
 
 **L'invio a commessa è unico per riga, e non cambia lo stato dell'ordine.** Una riga
@@ -717,6 +745,9 @@ Codici sollevati dal dominio ordini (registrati in `config.messaggi_errore` /
 | `E_ORD_ORIGINE_NON_CONVERTIBILE` | Conversione da un'offerta non in stato convertibile (non ACCETTATA) |
 | `E_ORDINE_TRANSIZIONE_NON_AMMESSA` | Cambio di stato non previsto/attivo nella matrice transizioni (guard DB) |
 | `E_ORDINE_CONFERMA_SENZA_RIGHE` | Conferma di un ordine senza righe (guard DB, gemello di `E_ORD_NESSUNA_RIGA`) |
+| `E_ORDINE_CONFERMA_SOLO_ONERI` | Conferma di un ordine che ha solo oneri e nessuna merce (§3.6) |
+| `E_RIGA_ONERE_DATA_CONSEGNA` | Una data di consegna sulla riga di un onere (§3.6) |
+| `E_RIGA_NATURA_NON_AMMESSA` | Un servizio che non è un onere su una riga d'ordine (§3.2) |
 | `E_VENDITA_PREVENTIVO_PUSH_STATO_NON_AMMESSO` | Smistamento da un preventivo non accettato |
 | `E_VENDITA_PREVENTIVO_NESSUNA_RIGA_ORDINE` | Smistamento senza righe merce residue (tutte già allocate o nessuna di natura merce) |
 | `E_DOCUMENTI_*` | Stampa: template/versione non risolti, input invalido o render fallito |

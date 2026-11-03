@@ -1,0 +1,182 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'ARTICOLO-ONERE NON E' UN BENE — catalogo.trgfn_articoli_guard_onere_natura
+#   Brief: brief-db-addebito-trasporto-ordine §8.1 (decisione 10 di Tid,
+#   2026-11-03).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   Con gli oneri sulle righe di ordine e bolla (20261103-17), chi movimenta
+#   magazzino, prelievi, scarico e distinta legge i flag dell'articolo
+#   (gestito_a_magazzino, is_composito, requires_lotto, requires_serial). Se
+#   l'articolo-onere non li ha MAI, quei lettori sono a posto per
+#   costruzione (fn_ddt_merce_da_movimentare, fn_check_ddt_merce,
+#   fn_posta_ddt, fn_cambia_stato_ddt, trgfn_ddt_righe_prelievi_guard,
+#   fn_*_riga_componenti_init): la regola sta sull'articolo, non in ognuno.
+#
+# ── ⭐ COSA CAMBIA ───────────────────────────────────────────────────
+#   · regola 1 (invariata nel verdetto): la natura dell'onere non e' merce.
+#     «E' merce» e' il BB script.fn_natura_e_merce (20261103-16): ritirata la
+#     copia in linea (destinazione_tipo = 'ORDINE_VENDITA'). Natura assente:
+#     il BB da' NULL, parla la FK, come prima. Il contesto dell'errore perde
+#     la chiave destinazione_tipo (era sempre ORDINE_VENDITA: il predicato e'
+#     del BB); restano campo, articolo, causale, natura;
+#   · regola 2 (nuova): un articolo-onere non e' gestito a magazzino, non e'
+#     composito, non e' a lotti ne' a matricola -> E_ARTICOLO_ONERE_STRUTTURA,
+#     campo = la prima colonna in quest'ordine, valori: codice dell'articolo,
+#     nome leggibile della caratteristica (le stesse etichette di
+#     catalogo.trgfn_articoli_guard_struttura_se_usato). Nessuna porta
+#     amministratore: la correzione di struttura (fn_articolo_correggi_
+#     struttura) non puo' fare di un onere un bene;
+#   · la regola 1 parla prima della 2: un articolo merce che riceve una
+#     causale si sente dire della natura (il pgTAP 14 di
+#     test-distinta-un-livello-e-onere-natura lo pinna);
+#   · l'UPDATE che non cambia nessuna delle sei colonne non si rigiudica.
+#   Il montaggio si allarga alle quattro colonne nuove in 20261103-20
+#   (linee-guida-trigger, «una colonna nuova entra anche nell'elenco OF»).
+#
+# ── ⚠️ COSA NON CAMBIA ──────────────────────────────────────────────
+#   Funzione trigger senza argomenti, plpgsql, SECURITY INVOKER: CREATE OR
+#   REPLACE. Un articolo senza causale passa senza letture. I quattro flag
+#   nessun trigger BEFORE di catalogo.articoli li scrive (i guard
+#   flags_struttura_bom_attiva, struttura_se_usato e listino_se_composito
+#   li leggono soltanto): UPDATE OF resta la forma giusta. Il seed degli
+#   oneri (articoli_onere.csv, 20260721-09) non scrive i quattro flag: nascono
+#   al DEFAULT false e passano.
+#   Corpo dal vivo (doc auto-gen, = 20261019-98, confrontato il 2026-11-03),
+#   cambiato solo nei punti sopra.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20261103-18-update-trgfn-articoli-guard-onere-natura-struttura-mctit.yaml
+
+  - changeSet:
+      id: 20261103-18-update-trgfn-articoli-guard-onere-natura-struttura
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        catalogo.trgfn_articoli_guard_onere_natura: «e' merce» dal BB script.fn_natura_e_merce (ritirata la
+        copia in linea); regola nuova: un articolo-onere non e' gestito a magazzino, composito, a lotti o a
+        matricola (E_ARTICOLO_ONERE_STRUTTURA). Decisione 10, brief-db-addebito-trasporto-ordine §8.1.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_natura_e_merce';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION catalogo.trgfn_articoli_guard_onere_natura()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_natura        config.nature_vendita.descrizione%TYPE;
+                  -- Il nome di una colonna di catalogo.articoli: nessuna colonna
+                  -- ne e' il riflesso (come in trgfn_articoli_guard_struttura_se_usato).
+                  v_campo         text;
+                  v_etichetta     text;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Un articolo-onere (causale_onere_id valorizzato) e' un
+                  --   addebito, non un bene:
+                  --   1. la sua natura non e' merce (script.fn_natura_e_merce);
+                  --   2. non e' gestito a magazzino, non e' composito, non e' a
+                  --      lotti ne' a matricola.
+                  --   BEFORE INSERT OR UPDATE OF natura_vendita_id,
+                  --   causale_onere_id, gestito_a_magazzino, is_composito,
+                  --   requires_lotto, requires_serial su catalogo.articoli. Un
+                  --   UPDATE che non cambia nessuna delle sei colonne non si
+                  --   rigiudica.
+                  -- rev 2026-10-19 (20261019-98, brief-db-grammatica-unica-
+                  --   documenti lotto 2b): la destinazione e' il codice della
+                  --   sorgente, ORDINE_VENDITA (era ORDINE).
+                  -- rev 2026-11-03 (20261103-18, brief-db-addebito-trasporto-
+                  --   ordine §8.1, decisione 10): «e' merce» dal BB; regola 2.
+                  -- =========================================================
+                  IF NEW.causale_onere_id IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+                  IF TG_OP = 'UPDATE'
+                     AND NEW.natura_vendita_id   IS NOT DISTINCT FROM OLD.natura_vendita_id
+                     AND NEW.causale_onere_id    IS NOT DISTINCT FROM OLD.causale_onere_id
+                     AND NEW.gestito_a_magazzino IS NOT DISTINCT FROM OLD.gestito_a_magazzino
+                     AND NEW.is_composito        IS NOT DISTINCT FROM OLD.is_composito
+                     AND NEW.requires_lotto      IS NOT DISTINCT FROM OLD.requires_lotto
+                     AND NEW.requires_serial     IS NOT DISTINCT FROM OLD.requires_serial THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- 1. La natura. Natura assente: il BB da' NULL, parla la FK.
+                  IF script.fn_natura_e_merce(NEW.natura_vendita_id) IS TRUE THEN
+                      SELECT COALESCE(nv.descrizione, nv.codice)
+                        INTO v_natura
+                        FROM config.nature_vendita nv
+                       WHERE nv.id = NEW.natura_vendita_id;
+
+                      PERFORM script.fn_log_and_raise_error(
+                          'catalogo', TG_NAME::text, 'E_ARTICOLO_ONERE_NATURA_MERCE',
+                          jsonb_build_object(
+                              'campo',             'natura_vendita_id',
+                              'articolo_id',       NEW.id,
+                              'causale_onere_id',  NEW.causale_onere_id,
+                              'natura_vendita_id', NEW.natura_vendita_id),
+                          NEW.tx_id,
+                          NEW.codice,
+                          v_natura);
+                  END IF;
+
+                  -- 2. La struttura: la prima caratteristica da bene, in
+                  --    quest'ordine (magazzino, distinta, lotto, matricola).
+                  v_campo := CASE
+                      WHEN NEW.gestito_a_magazzino IS TRUE THEN 'gestito_a_magazzino'
+                      WHEN NEW.is_composito        IS TRUE THEN 'is_composito'
+                      WHEN NEW.requires_lotto      IS TRUE THEN 'requires_lotto'
+                      WHEN NEW.requires_serial     IS TRUE THEN 'requires_serial'
+                  END;
+
+                  IF v_campo IS NOT NULL THEN
+                      v_etichetta := CASE v_campo
+                          WHEN 'gestito_a_magazzino' THEN 'gestito a magazzino'
+                          WHEN 'is_composito'        THEN 'composito'
+                          WHEN 'requires_lotto'      THEN 'gestito a lotti'
+                          WHEN 'requires_serial'     THEN 'gestito a matricola'
+                      END;
+                      PERFORM script.fn_log_and_raise_error(
+                          'catalogo', TG_NAME::text, 'E_ARTICOLO_ONERE_STRUTTURA',
+                          jsonb_build_object(
+                              'campo',            v_campo,
+                              'articolo_id',      NEW.id,
+                              'causale_onere_id', NEW.causale_onere_id),
+                          NEW.tx_id,
+                          NEW.codice,
+                          v_etichetta);
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION catalogo.trgfn_articoli_guard_onere_natura() IS
+                'Guard BEFORE INSERT OR UPDATE OF natura_vendita_id, causale_onere_id, gestito_a_magazzino, is_composito, requires_lotto, requires_serial su catalogo.articoli: un articolo-onere (causale_onere_id valorizzato) e'' un addebito, non un bene. 1. La sua natura non e'' merce (script.fn_natura_e_merce: destinazione ORDINE_VENDITA) -> E_ARTICOLO_ONERE_NATURA_MERCE, campo natura_vendita_id. Senza, un onere creato senza dire la natura prendeva il DEFAULT (MERCE): un addebito trattato come bene da evadere in ordine e in bolla, e come cessione di beni. 2. Non e'' gestito a magazzino, non e'' composito, non e'' a lotti ne'' a matricola -> E_ARTICOLO_ONERE_STRUTTURA, campo = la prima colonna in quest''ordine, valori codice dell''articolo e nome leggibile della caratteristica; nessuna porta amministratore. La 1 parla prima della 2. La regola legge la destinazione dal vocabolario (config.nature_vendita) attraverso il BB: segue la natura se cambia destinazione. Un UPDATE che non cambia nessuna delle sei colonne non rigiudica. Brief: brief-db-articoli-ammessi-per-documento (§8.6 A-9). ⭐ rev 2026-10-19 (20261019-98, brief-db-grammatica-unica-documenti lotto 2b): la destinazione della merce e'' ORDINE_VENDITA, il codice della sorgente (era ORDINE). ⭐ rev 2026-11-03 (20261103-18, brief-db-addebito-trasporto-ordine §8.1, decisione 10 di Tid): con gli oneri sulle righe di ordine e bolla, la regola 2 fa si'' che magazzino, prelievi, scarico e distinta restino a posto per costruzione; «e'' merce» dal BB script.fn_natura_e_merce (ritirata la copia in linea); il contesto dell''errore 1 non porta piu'' destinazione_tipo. Montaggio allargato alle quattro colonne in 20261103-20.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo precedente (solo la regola della natura, condizione in linea
+              -- sulla destinazione) e' nella doc auto-gen alla revisione prima di
+              -- questa (20261019-98). Non si riscrive un corpo stantio.
+              SELECT 1;

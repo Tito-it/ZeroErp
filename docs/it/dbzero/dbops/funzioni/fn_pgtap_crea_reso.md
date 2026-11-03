@@ -37,6 +37,11 @@ AS $function$
 --   stato da dbops.fn_pgtap_porta_a_stato, che sul reso passa dal verbo e
 --   concede l'azione che la matrice chiede per il passaggio (giro 5 di
 --   brief-modello-documento-vendita): il builder non nomina piu' l'azione.
+-- rev 2026-11-03 (20261103-35, brief-db-addebito-trasporto-ordine §8.1):
+--   senza p_ddt_riga_id la riga e' la prima di MERCE della bolla, non
+--   la prima: un onere (trasporto, spese) non si rende, e con l'onere
+--   al numero 1 il builder sbaglierebbe bersaglio. Una riga chiesta
+--   esplicitamente si prende com'e' (il test del rifiuto la chiede).
 -- ⚠️ Esce con i vincoli IMMEDIATE, come ogni helper.
 DECLARE
     v_stato_id    config.stati_doc_reso.id%TYPE;
@@ -141,18 +146,19 @@ BEGIN
     END IF;
 
     -- 2. La riga della bolla: quella chiesta, che deve essere
-    --    della bolla, o la prima.
+    --    della bolla, o la prima di MERCE (rev 2026-11-03).
     SELECT dr.id, COALESCE(dr.qta_operativa, dr.quantita) INTO v_ddt_riga, v_qta_riga
       FROM vendite.ddt_righe dr
      WHERE dr.ddt_id = v_ddt
        AND dr.attivo IS TRUE
        AND (p_ddt_riga_id IS NULL OR dr.id = p_ddt_riga_id)
+       AND (p_ddt_riga_id IS NOT NULL OR script.fn_natura_e_merce(dr.natura_vendita_id))
      ORDER BY dr.riga_nr, dr.id
      LIMIT 1;
     IF v_ddt_riga IS NULL THEN
         RAISE EXCEPTION
             'fn_pgtap_crea_reso: nessuna riga attiva % nella bolla %',
-            coalesce('id = ' || p_ddt_riga_id::text, ''), v_ddt;
+            coalesce('id = ' || p_ddt_riga_id::text, 'di merce'), v_ddt;
     END IF;
 
     -- La riga d'ordine: quella chiesta, o la prima del legame.
@@ -201,7 +207,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_reso(p_etichetta text, p_ddt_id bigint, p_quantita numeric, p_tipo_reso_codice character varying, p_stato_codice_interno character varying, p_ddt_riga_id bigint, p_ordine_riga_id bigint, p_reso_id bigint, p_data date)
-IS 'Fixture pgTAP: un RESO su una bolla, nello stato chiesto (quinto parametro, default CONFERMATO), per la strada vera del dominio. ⭐ Esiste per la TRAPPOLA D''ORDINE che ogni file ricopiava: testata legata alla bolla, riga legata alla riga della bolla e alla riga d''ordine che essa evade, azione conferma_reso concessa, verbo di conferma. La bolla: p_ddt_id, quella del reso p_reso_id (a cui si aggiunge una riga, finche'' e'' in bozza), o una bolla consegnata costruita da dbops.fn_pgtap_crea_ddt_da_ordine. La testata porta solo sorgente DDT_VENDITA, uid della bolla e data (p_data; NULL = il default della colonna): cliente, emittente, stato iniziale, numero e magazzino li mettono i trigger del dominio. Del reso il database non ha una madre di creazione (testata e righe le scrive il backend), quindi il builder fa gli INSERT. La riga: p_ddt_riga_id (deve essere della bolla) o la prima riga attiva; p_ordine_riga_id o la prima riga d''ordine del legame (ORDER BY id; NULL se la riga della bolla non nasce da un ordine); quantita'' operativa p_quantita (default: la meta'' della riga della bolla, arrotondata in su); tipo per codice (p_tipo_reso_codice, default RESO_A_CREDITO); articolo, descrizione, unita'' e fattore dalla riga della bolla. La coerenza (quantita'', origine, bolla consegnata, cliente) la giudicano i guard veri. Lo stato: uno stato non iniziale si raggiunge con dbops.fn_pgtap_porta_a_stato, che sul reso passa dal verbo (vendite.fn_conferma_reso) e concede all''operatore in sessione l''azione che la matrice chiede per il passaggio; uno stato abortito si rifiuta prima di costruire (l''annullo e'' del verbo vendite.fn_annulla_reso, caso del test). Restituisce reso, la riga scritta, bolla, riga della bolla, riga d''ordine, quantita'' base, tipo e stato. Uno stato, un tipo, una bolla, una riga o un reso inesistenti sollevano. ⚠️ Esce con i vincoli IMMEDIATE, come ogni helper. Brief: brief-db-pgtap-reso-costruito, 2026-10-25. Rev 20261025-36 (§7.7): lo stato da dbops.fn_pgtap_porta_a_stato, l''azione dalla matrice.';
+IS 'Fixture pgTAP: un RESO su una bolla, nello stato chiesto (quinto parametro, default CONFERMATO), per la strada vera del dominio. ⭐ Esiste per la TRAPPOLA D''ORDINE che ogni file ricopiava: testata legata alla bolla, riga legata alla riga della bolla e alla riga d''ordine che essa evade, azione conferma_reso concessa, verbo di conferma. La bolla: p_ddt_id, quella del reso p_reso_id (a cui si aggiunge una riga, finche'' e'' in bozza), o una bolla consegnata costruita da dbops.fn_pgtap_crea_ddt_da_ordine. La testata porta solo sorgente DDT_VENDITA, uid della bolla e data (p_data; NULL = il default della colonna): cliente, emittente, stato iniziale, numero e magazzino li mettono i trigger del dominio. Del reso il database non ha una madre di creazione (testata e righe le scrive il backend), quindi il builder fa gli INSERT. La riga: p_ddt_riga_id (deve essere della bolla) o la prima riga attiva; p_ordine_riga_id o la prima riga d''ordine del legame (ORDER BY id; NULL se la riga della bolla non nasce da un ordine); quantita'' operativa p_quantita (default: la meta'' della riga della bolla, arrotondata in su); tipo per codice (p_tipo_reso_codice, default RESO_A_CREDITO); articolo, descrizione, unita'' e fattore dalla riga della bolla. La coerenza (quantita'', origine, bolla consegnata, cliente) la giudicano i guard veri. Lo stato: uno stato non iniziale si raggiunge con dbops.fn_pgtap_porta_a_stato, che sul reso passa dal verbo (vendite.fn_conferma_reso) e concede all''operatore in sessione l''azione che la matrice chiede per il passaggio; uno stato abortito si rifiuta prima di costruire (l''annullo e'' del verbo vendite.fn_annulla_reso, caso del test). Restituisce reso, la riga scritta, bolla, riga della bolla, riga d''ordine, quantita'' base, tipo e stato. Uno stato, un tipo, una bolla, una riga o un reso inesistenti sollevano. ⚠️ Esce con i vincoli IMMEDIATE, come ogni helper. Brief: brief-db-pgtap-reso-costruito, 2026-10-25. Rev 20261025-36 (§7.7): lo stato da dbops.fn_pgtap_porta_a_stato, l''azione dalla matrice. Rev 2026-11-03 (20261103-35, brief-db-addebito-trasporto-ordine §8.1): senza p_ddt_riga_id la riga resa e'' la prima riga attiva di MERCE della bolla (script.fn_natura_e_merce sulla natura congelata), non la prima: un onere non si rende. Una riga chiesta con p_ddt_riga_id si prende com''e'', anche un onere (il test del rifiuto E_RESO_RIGA_ONERE).';
 ```
 
 </div>

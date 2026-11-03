@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `script.fn_check_ddt_emittibile`
 
+> **Ultimo aggiornamento**: 3 novembre 2026
+
 > 👀 **Vedi anche**
 >
 **Consumatori (guard, sollevano):**
@@ -147,6 +149,26 @@ possono più divergere: al prossimo vincolo aggiunto, si aggiunge QUI e basta.
 > Il guard che solleva i due codici nuovi è
 > [`trgfn_ddt_guard_transizione_approvazione`](/dbzero/vendite/funzioni/trgfn_ddt_guard_transizione_approvazione),
 > aggiornato nello stesso giro (changeSet `20260924-31` e `-32`).
+
+### Gli oneri della bolla (rev 2026-11-03)
+
+Dal `20261103-41` (brief-db-addebito-trasporto-ordine §8.3, K-2/K-7/K-8) due motivi in più; riga-onere
+= `script.fn_natura_e_merce(natura_vendita_id)` falso sulla natura congelata.
+
+| Punto | Codice | reason / reason_key | dettaglio |
+| --- | --- | --- | --- |
+| 1-bis | `E_DDT_EMISSIONE_SOLO_ONERI` — righe attive, nessuna di merce | `DOCUMENTO_SOLO_ONERI` / `vendite.ddt.azione_reason.solo_oneri` | — |
+| 3-ter | `E_DDT_ONERE_NON_FATTURABILE` — la prima riga-onere che non verrebbe mai fatturata | `ONERE_NON_FATTURABILE` / `vendite.ddt.azione_reason.onere_non_fatturabile` | `{riga_id, riga_nr}` |
+| 3-quater | `E_DDT_TRASPORTO_NON_DOVUTO` — un onere di causale `TRASPORTO` su una bolla in porto `ASSEGNATO` o con addebito a `TERZI` (`20261103-47`, T-3 bis): il cliente non ci deve il trasporto. `FRANCO` o modalità assente: nessun motivo | `TRASPORTO_NON_DOVUTO` / `vendite.ddt.azione_reason.trasporto_non_dovuto` | `{riga_id, riga_nr, modalita, modalita_descrizione}` |
+
+Il 3-ter scatta in due casi: (a) qualunque onere, anche copiato dall'ordine, su una bolla con causale
+**non fatturabile** (la colonna `fatturabile` del punto 3); (b) un onere **senza legame** su una bolla il
+cui ordine sorgente di testata fattura **alla conferma** (il trigger di testata dal building block
+`vendite.fn_ddt_trigger_ordine_testata`, `20261103-45`, lo stesso della diagnosi del push). La copia dall'ordine ha il legame ed è lecita
+(la fattura l'ordine); un onere a mano su una bolla senza ordine, o di un ordine alla consegna, è
+ammesso se la causale è fatturabile (K-9). All'emissione e non all'inserimento: nella copia la riga
+nasce prima del suo legame. Li solleva `vendite.trgfn_ddt_guard_causale_emissione`; la capability legge
+il primo motivo.
 
 ### Regole
 

@@ -1,0 +1,102 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# «E' MERCE» DAL BUILDING BLOCK — vendite.vw_preventivi_righe_smistabili_ordine
+#   Brief: brief-db-addebito-trasporto-ordine §8.1 (regola del 2: il BB
+#   script.fn_natura_e_merce, 20261103-16, ritira le copie in linea).
+#
+# ── ⭐ COSA CAMBIA ───────────────────────────────────────────────────
+#   Il filtro «la riga va all'ordine» era il JOIN con config.nature_vendita
+#   e destinazione_tipo = 'ORDINE_VENDITA' scritti qui. Diventa
+#   script.fn_natura_e_merce(pr.natura_vendita_id) IS TRUE; il JOIN esce (non
+#   lo usava nessun'altra colonna).
+#
+# ── ⚠️ COSA NON CAMBIA ──────────────────────────────────────────────
+#   Il risultato: stesse righe, stesse colonne nello stesso ordine. La natura
+#   NULL del preventivo pregresso resta esclusa: il JOIN interno la scartava,
+#   il BB da' NULL e IS TRUE la scarta. Attive, non ancora allocate a una riga
+#   d'ordine come prima. security_invoker=on ripetuto (CREATE OR REPLACE VIEW
+#   lo azzera). Nessun GRANT: CREATE OR REPLACE li mantiene. Gli altri lettori
+#   (vw_preventivi_righe_smistabili_commessa, le viste di smistamento) usano
+#   la destinazione come DIMENSIONE (merce / servizi / contratto): non sono
+#   copie e restano.
+#   Testo dal vivo (doc auto-gen, = 20261019-92, confrontato il 2026-11-03).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261103-19-update-vw-preventivi-righe-smistabili-ordine-natura-e-merce-mctit.yaml
+
+  - changeSet:
+      id: 20261103-19-update-vw-preventivi-righe-smistabili-ordine-natura-e-merce
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.vw_preventivi_righe_smistabili_ordine: il filtro merce e' script.fn_natura_e_merce (IS TRUE) al
+        posto del JOIN con config.nature_vendita e della destinazione in linea. Stesse righe (natura NULL
+        esclusa come prima). brief-db-addebito-trasporto-ordine §8.1.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_natura_e_merce';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_preventivi_righe_smistabili_ordine WITH (security_invoker=on) AS
+               SELECT pr.preventivo_id,
+                  pr.id,
+                  pr.natura_vendita_id,
+                  pr.articolo_id,
+                  pr.descrizione,
+                  pr.prezzo_unitario,
+                  pr.sconto_percentuale,
+                  pr.iva_id,
+                  pr.qta_operativa,
+                  pr.uom_operativa_id,
+                  pr.factor_to_base,
+                  pr.ordine,
+                  pr.data_consegna_richiesta_cliente
+                 FROM vendite.preventivi_righe pr
+                WHERE COALESCE(pr.attivo, true) IS TRUE
+                  AND script.fn_natura_e_merce(pr.natura_vendita_id) IS TRUE
+                  AND NOT (EXISTS ( SELECT 1
+                         FROM vendite.ordini_righe orr
+                        WHERE orr.preventivo_riga_id = pr.id));
+
+              COMMENT ON VIEW vendite.vw_preventivi_righe_smistabili_ordine IS
+                  'Sorgente unica (DB-first) del predicato di smistamento: righe-merce di un preventivo ancora da '
+                  'portare in un ordine (natura merce secondo script.fn_natura_e_merce, attive, non ancora allocate a una '
+                  'ordini_righe.preventivo_riga_id; la natura NULL del pregresso resta fuori). Grana = preventivi_righe; '
+                  'i consumatori filtrano per preventivo_id ed eventualmente per id (smistamento parziale). Consumata da '
+                  'fn_preventivo_ha_residuo_ordine e fn_push_preventivo_a_ordine; predisposta per il dialog BE di '
+                  'selezione righe. ⭐ rev 2026-09-13 (P-6): + data_consegna_richiesta_cliente in coda — e'' la '
+                  'proiezione da cui fn_push_preventivo_a_ordine copia la riga, e senza questa colonna la data del '
+                  'cliente si perdeva nel punto in cui il documento cambia natura. In ultima posizione perche'' '
+                  'CREATE OR REPLACE VIEW puo'' solo appendere. security_invoker=on. Brief: '
+                  'brief-db-modifiche-certe-ciclo-vendita-e-articolo, sezione 5.2. ⭐ rev 2026-10-19 (20261019-92, '
+                  'brief-db-grammatica-unica-documenti lotto 2b, G-3 di Tid): ricreata dopo l''allargamento della '
+                  'colonna; il codice di origine o di destinazione e'' quello di config.sorgenti (OFFERTA -> '
+                  'OFFERTA_COMMERCIALE, ORDINE -> ORDINE_VENDITA). ⭐ rev 2026-11-03 (20261103-19, '
+                  'brief-db-addebito-trasporto-ordine §8.1, regola del 2): il filtro merce e'' il BB '
+                  'script.fn_natura_e_merce al posto del JOIN con config.nature_vendita e della destinazione in linea; '
+                  'stesse righe.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il testo precedente (JOIN con config.nature_vendita e destinazione in
+              -- linea) e' nella doc auto-gen alla revisione prima di questa
+              -- (20261019-92). Non si riscrive un testo stantio.
+              SELECT 1;

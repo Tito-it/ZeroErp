@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Vista `vendite.vw_ordini_righe_dettaglio`
 
+> **Ultimo aggiornamento**: 3 novembre 2026
+
 > 👀 **Vedi anche**
 >
 > • [vendite.ordini_righe](/dbzero/vendite/tabelle/ordini_righe) · [vendite.ordini_righe_fulfillment](/dbzero/vendite/tabelle/ordini_righe_fulfillment) — le sorgenti
@@ -12,7 +14,7 @@
 
 ### 🎯 Scopo Principale
 
-(vista nata il 2026-09-28, `20260928-18`)
+(vista nata il 2026-09-28, `20260928-18`; ultima revisione 2026-11-03, `20261103-25`)
 
 **Le righe di un ordine**, con articolo, unità di misura, IVA, importo, evaso e
 residuo: la sorgente della lista configurabile `vendite.ordine_righe` e del
@@ -40,11 +42,15 @@ vista, e il repository la legge.
 | `qta_evasa_operativa` | somma dei fulfillment (UoM base) ÷ `factor_to_base`, 6 decimali |
 | `qta_residua_operativa` | ordinato − evaso, **mai negativo**, in UoM operativa |
 | `data_consegna_richiesta_cliente` / `data_consegna_confermata` | la richiesta è del cliente, la confermata è la nostra promessa (si decide alla conferma: può essere vuota in bozza) |
+| `e_onere` | la riga è un **onere** (addebito, non merce): `NOT script.fn_natura_e_merce` sulla natura congelata della riga. Lo legge il BE per la stampa (oneri **dopo** gli articoli) e la maschera; la regola non si ricostruisce fuori dal DB (dal 2026-11-03) |
+| `causale_onere_id` | la causale dell'onere, letta dall'articolo; `NULL` sulla merce (dal 2026-11-03) |
 | `is_composito_caso_a` | la riga ha componenti attivi: il FE mostra la freccia di espansione |
 | `data_consegna_confermata_blocco` | perché la data confermata della riga **non** si cambia ora: `STATO_NON_AMMETTE` (lo stato dell'ordine) o `RIGA_SPEDITA` (la riga è già partita con un DDT, anche in parte). `NULL` = si cambia. Dalla stessa check del guard, `script.fn_check_ordine_riga_data_consegna_confermata` (dal 2026-10-11, `20261012-07`) |
 
 ⚠️ Un `factor_to_base` a zero dà evaso e residuo **NULL**, non una divisione per
-zero.
+zero. Sulla **riga-onere** evaso e residuo sono **NULL**: l'onere non si evade
+(brief-db-addebito-trasporto-ordine §8.1). `e_onere` e `causale_onere_id` sono in
+coda: `CREATE OR REPLACE VIEW` non sposta le colonne che ci sono.
 
 ---
 

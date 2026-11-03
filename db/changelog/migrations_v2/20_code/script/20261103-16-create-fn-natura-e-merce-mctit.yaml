@@ -1,0 +1,88 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# «LA NATURA E' MERCE» — script.fn_natura_e_merce, building block
+#   Brief: brief-db-addebito-trasporto-ordine §8.1 (giro 1, decisioni di Tid
+#   del 2026-11-03: gli oneri diventano righe di ordine e bolla).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   Fino a oggi ordine e bolla ammettevano solo merce (D-1/D-2, 2026-10-13), e
+#   ogni lettore delle loro righe lo dava per garantito. Con gli oneri sulle
+#   righe, chi conta quantita' (residuo, evasione, partita merce, reso) deve
+#   chiedere «questa riga e' merce?». La domanda si fa sulla natura CONGELATA
+#   della riga (A-4): e' cio' che il documento ha venduto, non l'anagrafica
+#   di oggi, e non serve il join con catalogo.articoli.
+#
+# ── ⭐ REGOLA DEL 2 ──────────────────────────────────────────────────
+#   La stessa condizione (destinazione_tipo = 'ORDINE_VENDITA') e' scritta in
+#   linea in script.fn_check_articolo_riga_su_contesto, in
+#   catalogo.trgfn_articoli_guard_onere_natura e in
+#   vendite.vw_preventivi_righe_smistabili_ordine: le tre copie passano a
+#   questo BB nello stesso giro (20261103-17, -18, -19). Le viste di
+#   smistamento del preventivo che usano la destinazione come DIMENSIONE
+#   (merce / servizi / contratto) non sono copie: instradano, non chiedono.
+#
+# ── ⚠️ CONTRATTO ────────────────────────────────────────────────────
+#   · vero se la natura va all'ordine (MERCE), falso se no;
+#   · NULL se la natura e' NULL o non esiste: decide il chiamante (le righe di
+#     ordine e bolla hanno natura NOT NULL; il preventivo pregresso no);
+#   · su ordine e bolla «non merce» = onere, perche' l'ammissione (-17) lascia
+#     entrare solo merce e articoli-onere. Se un giorno entrasse un altro
+#     servizio, chi filtra con questo BB va rivisto insieme all'ammissione.
+#   BEGIN ATOMIC (linee-guida-sql §5c): legge config.nature_vendita, e la
+#   dipendenza resta in pg_depend.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261103-16-create-fn-natura-e-merce-mctit.yaml
+
+  - changeSet:
+      id: 20261103-16-create-fn-natura-e-merce
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_natura_e_merce: building block «la natura e' merce» (destinazione ORDINE_VENDITA), sulla
+        natura congelata della riga. Lo usano i lettori di ordine e bolla che con gli oneri sulle righe
+        devono distinguere la merce; ritira tre copie in linea (-17, -18, -19). brief-db-addebito-trasporto-ordine §8.1.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION script.fn_natura_e_merce(
+                  p_natura_vendita_id config.nature_vendita.id%TYPE)
+              RETURNS boolean
+              LANGUAGE sql
+              STABLE
+              PARALLEL SAFE
+              SECURITY INVOKER
+              BEGIN ATOMIC
+                SELECT nv.destinazione_tipo = 'ORDINE_VENDITA'
+                  FROM config.nature_vendita nv
+                 WHERE nv.id = p_natura_vendita_id;
+              END;
+        # ⛔ Il COMMENT e il GRANT stanno in un change loro: pgjdbc esegue un
+        #    BEGIN ATOMIC solo se e' da solo nel suo sql: (linee-guida-sql §5c).
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION script.fn_natura_e_merce(config.nature_vendita.id%TYPE) IS
+                'Building block: la natura di vendita e'' MERCE, cioe'' va all''ordine (config.nature_vendita.destinazione_tipo = ''ORDINE_VENDITA''). Vero/falso; NULL se la natura e'' NULL o non esiste (decide il chiamante). Si chiede sulla natura CONGELATA della riga (A-4), non sull''articolo. Su ordine e bolla «non merce» = onere: l''ammissione (script.fn_check_articolo_riga_su_contesto) lascia entrare solo merce e articoli-onere; se ne entrasse un altro servizio, chi filtra con questo BB va rivisto. Sede unica del predicato (regola del 2): lo usano l''ammissione, catalogo.trgfn_articoli_guard_onere_natura, vendite.vw_preventivi_righe_smistabili_ordine e i lettori di quantita'' di ordine e bolla. BEGIN ATOMIC (linee-guida-sql §5c). brief-db-addebito-trasporto-ordine §8.1.';
+
+              GRANT EXECUTE ON FUNCTION script.fn_natura_e_merce(config.nature_vendita.id%TYPE) TO zeroerp_app;
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION script.fn_natura_e_merce(config.nature_vendita.id%TYPE);

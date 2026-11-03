@@ -20,6 +20,8 @@ AS $function$
 DECLARE
   v_ordine_id  vendite.ordini_righe.ordine_id%TYPE;
   v_riga_nr    vendite.ordini_righe.riga_nr%TYPE;
+  v_natura_id  vendite.ordini_righe.natura_vendita_id%TYPE;
+  v_articolo   catalogo.articoli.codice%TYPE;
   -- I motivi di stato: un array jsonb composto da un'altra check,
   -- nessuna colonna di cui sia il riflesso.
   v_motivi     jsonb;
@@ -50,13 +52,39 @@ BEGIN
   END IF;
 
   -- La riga, sotto la RLS di chi chiede.
-  SELECT r.ordine_id, r.riga_nr
-    INTO v_ordine_id, v_riga_nr
+  SELECT r.ordine_id, r.riga_nr, r.natura_vendita_id
+    INTO v_ordine_id, v_riga_nr, v_natura_id
     FROM vendite.ordini_righe r
    WHERE r.id = p_ordine_riga_id;
 
   IF NOT FOUND THEN
     RETURN NULL;
+  END IF;
+
+  -- 0. La riga e' un onere (rev 2026-11-03, 20261103-46, K-3 e P-2):
+  --    sull'onere la data di consegna non si scrive in nessuno stato,
+  --    quindi il motivo viene prima dello stato. Stesso codice e
+  --    stessi valori del guard
+  --    vendite.trgfn_ordini_righe_guard_onere_senza_data_consegna:
+  --    la maschera dice cio' che il DB rifiuta.
+  IF script.fn_natura_e_merce(v_natura_id) IS FALSE THEN
+    SELECT t.etichetta
+      INTO v_etichetta
+      FROM script.fn_get_stato_testata_documento('ORDINE_VENDITA', v_ordine_id) AS t;
+    SELECT a.codice
+      INTO v_articolo
+      FROM vendite.ordini_righe r
+      JOIN catalogo.articoli a ON a.id = r.articolo_id
+     WHERE r.id = p_ordine_riga_id;
+    RETURN jsonb_build_array(jsonb_build_object(
+      'codice',     'E_RIGA_ONERE_DATA_CONSEGNA',
+      'reason',     'RIGA_ONERE',
+      'reason_key', 'vendite.ordini.data_consegna_confermata_reason.riga_onere',
+      'dettaglio',  jsonb_build_object('ordine_riga_id', p_ordine_riga_id,
+                                       'campo', 'data_consegna_confermata'),
+      'valori',     jsonb_build_array(COALESCE(v_etichetta, 'Ordine #' || v_ordine_id::text),
+                                      v_riga_nr::text,
+                                      COALESCE(v_articolo, '?'))));
   END IF;
 
   -- 1. Lo stato dell'ordine: i motivi della check di documento, cosi'
@@ -89,7 +117,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_check_ordine_riga_data_consegna_confermata(p_ordine_riga_id bigint)
-IS 'Check di riga (2026-10-11, brief-db-date-consegna-righe-in-blocco D-7, P-1, linee-guida-sql §12.5): la data di consegna confermata di questa riga d''ordine si cambia ora? Funzione pura. NULL: riga, o il suo ordine, assente o non visibile (RLS). []: ammessa. Altrimenti i motivi, in quest''ordine (l''ordine e'' il contratto: il guard solleva il primo): 1) lo stato dell''ordine, cioe'' i motivi di script.fn_check_ordine_data_consegna_confermata cosi'' come sono (STATO_NON_AMMETTE, E_RIGA_DOC_NON_BOZZA: gli stati ammessi stanno nel montaggio del lock di vendite.ordini_righe; in DRAFT nessun motivo); 2) RIGA_SPEDITA (E_ORDINE_RIGA_DATA_CONSEGNA_SPEDITA, CONFLITTO_STATO): la riga e'' gia'' partita con un DDT uscito dalla bozza, anche per una parte (vendite.fn_ordine_riga_spedita) — la data di consegna si scrive prima di spedire. reason_key vendite.ordini.data_consegna_confermata_reason.riga_spedita; valori etichetta dell''ordine e numero di riga. Consumatori: il guard vendite.trgfn_ordini_righe_guard_data_consegna_spedita, la colonna data_consegna_confermata_blocco di vendite.vw_ordini_righe_dettaglio, la selezione dell''utility del backend che aggiorna le date di consegna in blocco (salta le righe con un motivo). ⭐ rev 2026-10-19 (20261019-58, brief-db-grammatica-unica-documenti lotto 2a, G-1 di Tid): la grammatica delle testate passa ai codici delle sorgenti (DDT -> DDT_VENDITA, ORDINE -> ORDINE_VENDITA, OFFERTA -> OFFERTA_COMMERCIALE, RESO -> RESO_VENDITA, EMAIL_BOZZA -> EMAIL; PREVENTIVO, CONTRATTO, COMMESSA, FATTURA invariati); dove sopra si legge un codice corto come selettore, oggi vale il codice della sorgente.';
+IS 'Check di riga (2026-10-11, brief-db-date-consegna-righe-in-blocco D-7, P-1, linee-guida-sql §12.5): la data di consegna confermata di questa riga d''ordine si cambia ora? Funzione pura. NULL: riga, o il suo ordine, assente o non visibile (RLS). []: ammessa. Altrimenti i motivi, in quest''ordine (l''ordine e'' il contratto: il guard solleva il primo): 0) RIGA_ONERE (E_RIGA_ONERE_DATA_CONSEGNA, DATO_ERRATO; rev 2026-11-03, 20261103-46, brief-db-addebito-trasporto-ordine K-3 e §9.5 P-2): la riga e'' un onere (NOT script.fn_natura_e_merce sulla natura congelata) e sull''onere la data non si scrive in nessuno stato — primo per questo; stesso codice e stessi valori del guard vendite.trgfn_ordini_righe_guard_onere_senza_data_consegna (etichetta dell''ordine, numero di riga, codice articolo), reason_key vendite.ordini.data_consegna_confermata_reason.riga_onere; 1) lo stato dell''ordine, cioe'' i motivi di script.fn_check_ordine_data_consegna_confermata cosi'' come sono (STATO_NON_AMMETTE, E_RIGA_DOC_NON_BOZZA: gli stati ammessi stanno nel montaggio del lock di vendite.ordini_righe; in DRAFT nessun motivo); 2) RIGA_SPEDITA (E_ORDINE_RIGA_DATA_CONSEGNA_SPEDITA, CONFLITTO_STATO): la riga e'' gia'' partita con un DDT uscito dalla bozza, anche per una parte (vendite.fn_ordine_riga_spedita) — la data di consegna si scrive prima di spedire. reason_key vendite.ordini.data_consegna_confermata_reason.riga_spedita; valori etichetta dell''ordine e numero di riga. Consumatori: il guard vendite.trgfn_ordini_righe_guard_data_consegna_spedita, la colonna data_consegna_confermata_blocco di vendite.vw_ordini_righe_dettaglio, la selezione dell''utility del backend che aggiorna le date di consegna in blocco (salta le righe con un motivo). ⭐ rev 2026-10-19 (20261019-58, brief-db-grammatica-unica-documenti lotto 2a, G-1 di Tid): la grammatica delle testate passa ai codici delle sorgenti; dove sopra si legge un codice corto come selettore, oggi vale il codice della sorgente.';
 ```
 
 </div>

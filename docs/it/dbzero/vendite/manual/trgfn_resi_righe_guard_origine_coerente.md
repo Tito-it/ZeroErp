@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Guard `vendite.trgfn_resi_righe_guard_origine_coerente`
 
+> **Ultimo aggiornamento**: 3 novembre 2026
+
 > 👀 **Vedi anche**
 >
 Approfondimento tabelle:
@@ -87,6 +89,23 @@ nulla: basta non compilarlo.
 campo, non un conflitto fra stati. Il contesto dell'errore porta la riga di
 spedizione, il riferimento proposto, quante origini valide esistevano e **quale
 delle tre situazioni** si è verificata.
+
+---
+
+### Un onere non si rende
+
+(rev 3-11-2026, `20261103-31`, brief `brief-db-addebito-trasporto-ordine` §8.1)
+
+Dal 2026-11-03 la bolla puo' portare **oneri** (trasporto, spese). Prima di
+guardare l'origine, il guard chiede se la riga di spedizione e' **merce**
+([`script.fn_natura_e_merce`](/dbzero/script/funzioni/fn_natura_e_merce) sulla
+natura congelata della riga): se e' un onere rifiuta con `E_RESO_RIGA_ONERE`
+(classe `DATO_ERRATO`; nella frase numero di riga, bolla e codice
+dell'articolo; bersaglio il reso, poi la bolla). Con questo rifiuto accredito,
+riconsegna e coda degli accrediti sono a posto per costruzione: nessun reso
+nasce su un onere.
+
+Verifica: `db/pgtap/vendite/test-bolla-onere-partita-reso-v1.sql`.
 
 ---
 

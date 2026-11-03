@@ -1,0 +1,83 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# «COME FATTURA L'ORDINE DA CUI NASCE LA BOLLA» — vendite.fn_ddt_trigger_ordine_testata
+#   Brief: brief-db-addebito-trasporto-ordine §9.5, P-1 (Tid, 2026-11-03).
+#
+# ── ⭐ PERCHE' (regola del 2) ────────────────────────────────────────
+#   Con gli oneri sulle righe (giro 1), una riga-onere scritta a mano su una
+#   bolla non ha legame con l'ordine: il trigger di fatturazione si legge
+#   dall'ordine della TESTATA (sorgente ORDINE_VENDITA + uid). La stessa
+#   lettura e' scritta in linea in due posti, applicati il 2026-11-03:
+#     · vendite.fn_ddt_push_diagnosi (20261103-39), LATERAL «t»;
+#     · script.fn_check_ddt_emittibile (20261103-41), SELECT INTO.
+#   Questo BB e' la sede unica; le due copie passano qui in -44 e -45.
+#   Le altre letture dell'ordine di testata (archi H di
+#   vendite.fn_documento_lineage_archi, cliente copiato da
+#   vendite.trgfn_ddt_normalize) dicono altro: non sono copie.
+#
+# ── ⚠️ CONTRATTO ────────────────────────────────────────────────────
+#   · il fatturazione_trigger dell'ordine se la sorgente di testata e' un
+#     ORDINE_VENDITA visibile a chi chiede (INVOKER: RLS di chi legge, come le
+#     due copie che sostituisce);
+#   · NULL se la bolla non viene da un ordine, se la sorgente e' NULL o se
+#     l'ordine non si vede.
+#   BEGIN ATOMIC (linee-guida-sql §5c): le dipendenze stanno in pg_depend.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261103-43-create-fn-ddt-trigger-ordine-testata-mctit.yaml
+
+  - changeSet:
+      id: 20261103-43-create-fn-ddt-trigger-ordine-testata
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_ddt_trigger_ordine_testata: building block «il trigger di fatturazione dell'ordine sorgente di
+        testata della bolla». Sede unica della lettura scritta in linea nella diagnosi del push (-39) e nella
+        check di emissione (-41), che passano qui in -44 e -45. brief-db-addebito-trasporto-ordine §9.5 P-1.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION vendite.fn_ddt_trigger_ordine_testata(
+                  p_sorgente_tipo_id vendite.ddt.sorgente_tipo_id%TYPE,
+                  p_sorgente_uid     vendite.ddt.sorgente_uid%TYPE)
+              RETURNS vendite.ordini.fatturazione_trigger%TYPE
+              LANGUAGE sql
+              STABLE
+              PARALLEL SAFE
+              SECURITY INVOKER
+              BEGIN ATOMIC
+                SELECT o.fatturazione_trigger
+                  FROM config.sorgenti so
+                  JOIN vendite.ordini o ON o.uid = p_sorgente_uid
+                 WHERE so.id = p_sorgente_tipo_id
+                   AND so.codice_interno = 'ORDINE_VENDITA';
+              END;
+        # ⛔ Il COMMENT e il GRANT stanno in un change loro: pgjdbc esegue un
+        #    BEGIN ATOMIC solo se e' da solo nel suo sql: (linee-guida-sql §5c).
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.fn_ddt_trigger_ordine_testata(vendite.ddt.sorgente_tipo_id%TYPE, vendite.ddt.sorgente_uid%TYPE) IS
+                'Building block: il fatturazione_trigger dell''ordine sorgente di TESTATA di una bolla (config.sorgenti ORDINE_VENDITA + vendite.ordini.uid = sorgente_uid). NULL se la bolla non viene da un ordine, se la sorgente manca o se l''ordine non e'' visibile (SECURITY INVOKER: la RLS di chi chiede). Serve alla riga-onere SENZA legame di fulfillment, scritta a mano sulla bolla: il suo trigger non si legge dal legame. Sede unica (regola del 2) della lettura che stava in linea in vendite.fn_ddt_push_diagnosi (20261103-39) e in script.fn_check_ddt_emittibile (20261103-41), sostituite da 20261103-44 e -45. BEGIN ATOMIC (linee-guida-sql §5c). brief-db-addebito-trasporto-ordine §9.5 P-1.';
+
+              GRANT EXECUTE ON FUNCTION vendite.fn_ddt_trigger_ordine_testata(vendite.ddt.sorgente_tipo_id%TYPE, vendite.ddt.sorgente_uid%TYPE) TO zeroerp_app;
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION vendite.fn_ddt_trigger_ordine_testata(vendite.ddt.sorgente_tipo_id%TYPE, vendite.ddt.sorgente_uid%TYPE);

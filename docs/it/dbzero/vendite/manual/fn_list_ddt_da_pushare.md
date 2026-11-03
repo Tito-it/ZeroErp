@@ -1,5 +1,7 @@
 ## Documentazione Concettuale – Funzione `vendite.fn_list_ddt_da_pushare(...)`
 
+> **Ultimo aggiornamento**: 3 novembre 2026
+
 > **Vedi anche**
 >
 [vendite.ddt](/dbzero/vendite/tabelle/ddt)
@@ -211,5 +213,19 @@ grande, e in modo `auto` la plancache la ripianificava a ogni chiamata.
 ⚠️ È una proprietà **invisibile nel corpo**: un `CREATE OR REPLACE` che non la
 ripete la perde, senza errore e con gli stessi risultati. Presidio:
 `db/pgtap/script/test-plan-cache-mode-piano-generico-v1.sql`.
+
+### La riga-onere va in commessa come ONERE (rev 2026-11-03)
+
+Dal `20261103-40` (brief-db-addebito-trasporto-ordine §8.1, K-1) la riga-onere della bolla
+(`script.fn_natura_e_merce` falso sulla natura congelata) esce con `tipo_movimento = 'ONERE'` e con la
+causale dell'articolo nella colonna **nuova** `causale_onere_id`, in coda (NULL sulla merce); la
+sorgente è la bolla. Chi è eleggibile e la dose li dice ancora la diagnosi, che ha il ramo dell'onere
+(niente partita merce, dose = quantità della riga): qui la natura è solo proiezione. RETURNS TABLE
+cambiato: DROP + CREATE, `plan_cache_mode` ridichiarato.
+
+⚠️ Il backend deve passare `causale_onere_id` alla madre (`p_causale_onere_id`), o la riga ONERE si
+rifiuta (`E_PARAMETRO_INVALIDO`).
+
+---
 
 {% include-markdown "signature-core.md" %}

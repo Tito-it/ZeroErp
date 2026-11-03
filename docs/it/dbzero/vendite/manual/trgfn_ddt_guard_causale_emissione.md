@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.trgfn_ddt_guard_causale_emissione()`
 
+> **Ultimo aggiornamento**: 3 novembre 2026
+
 > 👀 **Vedi anche**
 >
 > Tabelle:
@@ -122,6 +124,21 @@ quando esce.
 
 ---
 
+### Gli oneri della bolla (rev 2026-11-03)
+
+Dal `20261103-42` (brief-db-addebito-trasporto-ordine §8.3) il guard solleva anche i due motivi sugli
+oneri di [`script.fn_check_ddt_emittibile`](/dbzero/script/funzioni/fn_check_ddt_emittibile):
+
+| Codice | Quando | Nella frase |
+| --- | --- | --- |
+| `E_DDT_EMISSIONE_SOLO_ONERI` | righe attive, nessuna di merce (K-2) | il documento |
+| `E_DDT_ONERE_NON_FATTURABILE` | un onere che non verrebbe mai fatturato: causale non fatturabile (anche se copiato), o onere senza legame su una bolla di un ordine che fattura alla conferma | documento e numero di riga |
+
+Qui e non nel guard di transizione: è il gate del valore della riga, e il suo LOOP per codice cresce
+così. Presidio: `db/pgtap/vendite/test-ddt-onere-emissione-v1.sql`.
+
+---
+
 ### Esempio d'uso
 
 ```sql
@@ -168,3 +185,11 @@ UPDATE vendite.ddt
 ---
 
 {% include-markdown "signature-core.md" %}
+
+### Il trasporto non dovuto (rev 2026-11-03)
+
+Dal `20261103-48` solleva anche `E_DDT_TRASPORTO_NON_DOVUTO`, il motivo 3-quater di
+`script.fn_check_ddt_emittibile` (`-47`): un onere di causale `TRASPORTO` su una bolla in porto
+assegnato o con addebito a terzi. Il ramo serve perché il `LOOP` non ha `ELSE`: senza, il motivo
+spegnerebbe il pulsante ma l'emissione passerebbe. Nella frase: il documento, il numero di riga e la
+modalità di addebito leggibile.

@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_pgtap_crea_reso`
 
+> **Ultimo aggiornamento**: 3 novembre 2026
+
 > 👀 **Vedi anche**
 >
 > • [vendite.fn_conferma_reso](/dbzero/vendite/funzioni/fn_conferma_reso) — il verbo che conferma il reso
@@ -60,6 +62,18 @@ soddisfaceva ogni file da sé. Ora la strada ha una sede.
 * **Lo stato** (default `CONFERMATO`) lo raggiunge `dbops.fn_pgtap_porta_a_stato`, che sul
   reso passa dal verbo `vendite.fn_conferma_reso` e concede all'operatore in sessione l'azione
   che la matrice chiede per il passaggio: il builder non nomina nessuna azione.
+
+---
+### La riga resa: la prima di merce
+
+(rev 3-11-2026, `20261103-35`)
+
+Senza `p_ddt_riga_id` il builder rende la **prima riga attiva di merce** della
+bolla, non la prima riga: con gli oneri sulle righe (brief
+`brief-db-addebito-trasporto-ordine`) un trasporto al numero 1 sarebbe il
+bersaglio sbagliato, e il guard lo rifiuterebbe (`E_RESO_RIGA_ONERE`). Una riga
+chiesta con `p_ddt_riga_id` si prende com'e', onere compreso: e' cosi' che il
+test del rifiuto la chiede.
 
 ---
 ### 🚫 Cosa NON fa

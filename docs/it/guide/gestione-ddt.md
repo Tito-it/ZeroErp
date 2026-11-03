@@ -1,6 +1,6 @@
 # Guida — Gestione DDT di vendita
 
-> **Ultimo aggiornamento**: 25 ottobre 2026
+> **Ultimo aggiornamento**: 3 novembre 2026
 >
 > **Destinatari**: analisti funzionali, operatori commerciali/logistici,
 > sviluppatori backend/frontend, DBA.
@@ -165,9 +165,10 @@ Ogni riga è una voce di merce consegnata:
 * **prezzo** (`prezzo_unitario`) e **IVA** (`iva_id`) — **opzionali**: un DDT può
   essere di **solo trasporto** (righe senza prezzo).
 
-**Quali articoli ammette** (dal 2026-10-13): solo **merce**, e mai un articolo **«solo
-componente»**, che si vende soltanto dentro il kit che lo contiene. Un servizio una tantum va
-in commessa, un servizio ricorrente in contratto (tramite un'offerta). La merce è giudicata
+**Quali articoli ammette**: la **merce** e gli **articoli-onere** (trasporto, urgenza, spese…,
+§3.6), mai un articolo **«solo componente»**, che si vende soltanto dentro il kit che lo contiene.
+Un altro servizio non entra: uno una tantum va in commessa, uno ricorrente in contratto (tramite
+un'offerta). La merce è giudicata
 dalla **natura con cui la riga è stata venduta**: una riga nata da un ordine porta la natura di lì, anche
 se nel frattempo l'articolo è cambiato in anagrafica. Il controllo è uno solo per tutti i
 documenti ([`script.fn_check_articolo_riga`](/dbzero/script/manual/fn_check_articolo_riga)), e
@@ -208,6 +209,32 @@ modificata. Vedi §10.
 
 Il DDT supporta le **note partizionate** (di testata o di riga), con lo stesso
 comportamento di preventivi, ordini, offerte e contratti.
+
+### 3.6 Gli oneri sulla bolla
+
+Un **onere** (trasporto, urgenza, spese) è un addebito che accompagna la merce: un articolo con una
+**causale onere**. Sulla bolla arriva in due modi: **copiato dall'ordine** (passa intero nella prima
+bolla, anche se non lo si sceglie, e non si ripete nelle successive) o **scritto a mano**. Ha prezzo e
+IVA, entra nei totali e nella stampa, dove compare **dopo** gli articoli. Ma non è merce:
+
+* **non muove il magazzino** (un articolo-onere non può essere gestito a magazzino, né essere un kit,
+  né avere lotti o matricole);
+* **non si rende**: un reso sulla riga di un onere è rifiutato, e la bolla va a «reso» quando è resa
+  tutta la **merce**;
+* la quantità di un onere copiato **non si corregge** dalla bolla: si corregge sull'ordine;
+* una bolla fatta **solo** di oneri **non si emette**: un addebito senza merce si fa in commessa.
+
+**Un onere che non verrebbe mai fatturato ferma l'emissione** (in bozza il pulsante «Emetti» è spento
+e dice il motivo):
+
+| Caso | Perché | Cosa fare |
+| --- | --- | --- |
+| onere, anche copiato, su una bolla con causale **che non vende** (conto visione, campionatura…) | la bolla non va in commessa | togliere l'onere e addebitarlo in commessa |
+| onere **scritto a mano** su una bolla di un ordine che fattura **alla conferma** | a fatturare è l'ordine, e la bolla non porta in commessa le sue righe | metterlo sull'ordine |
+| onere di **trasporto**, scritto o copiato, su una bolla in porto **assegnato** o con addebito **a terzi** | il trasporto lo paga il destinatario al vettore, o un terzo: il cliente non ce lo deve | togliere la riga del trasporto, o correggere la modalità di addebito (porto franco) se il trasporto lo paghiamo noi |
+
+Un onere copiato da un ordine che fattura alla conferma invece è lecito: lo fattura l'ordine. Un onere
+a mano su una bolla senza ordine, o di un ordine che fattura alla consegna, va in commessa con la bolla.
 
 ---
 
@@ -514,7 +541,8 @@ il billing account: regge anche i DDT verso terzi e i casi con prospect senza BA
 Quando il DDT è emesso e ha righe eleggibili, l'azione **push a commessa** invia
 le righe alle **attività fatturabili** su una commessa (sorgente `DDT_VENDITA`),
 che a sua volta alimenta la pipeline di fatturazione. Le righe eleggibili sono
-quelle attive, con quantità positiva, non ancora inviate a una commessa. Chi lo
+quelle attive, con quantità positiva, non ancora inviate a una commessa. Gli **oneri** della bolla
+(§3.6) ci vanno come oneri, con la loro causale e col riferimento alla bolla. Chi lo
 decide è **una** funzione, [`fn_ddt_push_diagnosi`](/dbzero/vendite/funzioni/fn_ddt_push_diagnosi):
 per ogni riga dice il motivo per cui *non* è inviabile (nessun motivo =
 eleggibile). Il lister del push (`fn_list_ddt_da_pushare`) ne deriva, e il
@@ -636,6 +664,11 @@ Codici sollevati dal dominio DDT (registrati in `error_policies`):
 | `E_QTA_SUPERA_RESIDUO`               | La quantità evasa corretta supera il residuo dell'ordine                                                      |
 | `E_DOC_ANNULLO_CON_LEGAMI`           | Annullo di una bolla con legami (ordini, resi, righe di commessa): apre la finestra di conferma (§4.3)        |
 | `E_INDIRIZZO_DOC_OBBLIGATORIO`       | Emissione senza l'indirizzo di consegna obbligatorio (guard DB)                                              |
+| `E_DDT_EMISSIONE_SOLO_ONERI`         | Emissione di una bolla che ha solo oneri e nessuna merce (§3.6)                                              |
+| `E_DDT_ONERE_NON_FATTURABILE`        | Emissione con un onere che non verrebbe mai fatturato (§3.6)                                                 |
+| `E_DDT_RIGA_ONERE_NON_CORREGGIBILE`  | «Correggi quantità evasa» sulla riga di un onere (§3.6)                                                      |
+| `E_RESO_RIGA_ONERE`                  | Reso sulla riga di un onere (§3.6)                                                                           |
+| `E_DDT_TRASPORTO_NON_DOVUTO`         | Emissione con un onere di trasporto su una bolla in porto assegnato o con addebito a terzi (§3.6)            |
 | `E_DOCUMENTI_*`                      | Stampa: template/versione non risolti, input invalido o render fallito                                       |
 
 ---

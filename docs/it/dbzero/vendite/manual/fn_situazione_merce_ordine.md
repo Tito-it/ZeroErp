@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_situazione_merce_ordine(p_ddt_ids, p_ordine_ids)`
 
+> **Ultimo aggiornamento**: 3 novembre 2026
+
 > 👀 **Vedi anche**
 >
 > [vendite.vw_situazione_merce_ordine](/dbzero/vendite/views/vw_situazione_merce_ordine) — la stessa cosa, senza filtro
@@ -10,7 +12,7 @@
 
 ---
 ### 🎯 Scopo Principale
-(latest review 2026-09-21)
+(latest review 2026-11-03)
 
 `vendite.fn_situazione_merce_ordine` è **la situazione della merce per riga
 d'ordine** — lo stesso aggregato parlante di
@@ -25,6 +27,12 @@ righe che non servivano. Dal giro 1 la partita ha una funzione con un seme
 ([`fn_partite_merce`](fn_partite_merce.md)); questa è la stessa mossa un livello
 sopra.
 
+⭐ **Solo merce** (rev 2026-11-03, `20261103-24`, brief-db-addebito-trasporto-ordine
+§8.1): le righe-onere dell'ordine non hanno una situazione merce — non si
+spediscono, non entrano in partita. Ogni seme le esclude
+(`script.fn_natura_e_merce` sulla natura congelata della riga), anche quando una
+bolla le ha toccate col legame dell'onere copiato.
+
 ---
 
 ### I semi
@@ -34,9 +42,9 @@ Gli stessi due, **nello stesso ordine**, di `fn_partite_merce`:
 | Parametro | Cosa semina |
 |---|---|
 | `p_ddt_ids` | i DDT: le righe d'ordine che quelle spedizioni hanno **toccato** (un fulfillment di una loro riga) |
-| `p_ordine_ids` | gli ordini: tutte le loro righe attive |
+| `p_ordine_ids` | gli ordini: tutte le loro righe attive di merce |
 
-* **Entrambi `NULL` = tutte le righe attive.** È il modo in cui la vista chiama
+* **Entrambi `NULL` = tutte le righe attive di merce.** È il modo in cui la vista chiama
   la funzione.
 * **Un array vuoto semina zero righe.** Vuoto non è «tutte».
 * Con entrambi valorizzati l'uscita è l'**unione** dei due insiemi.

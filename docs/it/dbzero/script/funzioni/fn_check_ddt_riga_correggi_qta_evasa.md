@@ -21,6 +21,7 @@ DECLARE
   v_riga_nr    vendite.ddt_righe.riga_nr%TYPE;
   v_ddt_id     vendite.ddt_righe.ddt_id%TYPE;
   v_sorgente   config.sorgenti.codice_interno%TYPE;
+  v_natura     vendite.ddt_righe.natura_vendita_id%TYPE;
   -- Stato ed etichetta dal lettore del lock
   -- (script.fn_get_stato_testata_documento, RETURNS TABLE di text):
   -- composti, nessuna colonna di cui siano il riflesso.
@@ -38,6 +39,8 @@ BEGIN
   --   la riga non si vede (RLS di chi chiede).
   --   Consumatori: il verbo (solleva il primo motivo) e
   --   vendite.vw_ddt_righe_dettaglio (correggi_qta_evasa_blocco).
+  -- rev 2026-11-03 (20261103-33, brief-db-addebito-trasporto-ordine
+  --   §8.1-§8.2, K-6): motivo 2 nuovo, RIGA_ONERE.
   -- =========================================================
   IF p_ddt_riga_id IS NULL OR p_ddt_riga_id <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
@@ -49,8 +52,8 @@ BEGIN
   END IF;
 
   -- La riga e la sorgente del suo DDT, sotto la RLS di chi chiede.
-  SELECT dr.riga_nr, dr.ddt_id, s.codice_interno
-    INTO v_riga_nr, v_ddt_id, v_sorgente
+  SELECT dr.riga_nr, dr.ddt_id, s.codice_interno, dr.natura_vendita_id
+    INTO v_riga_nr, v_ddt_id, v_sorgente, v_natura
     FROM vendite.ddt_righe dr
     JOIN vendite.ddt d ON d.id = dr.ddt_id
     LEFT JOIN config.sorgenti s ON s.id = d.sorgente_tipo_id
@@ -74,7 +77,21 @@ BEGIN
       'valori',     jsonb_build_array(v_etichetta, v_stato, 'modificare')));
   END IF;
 
-  -- 2. La riga a mano: il predicato e' vendite.fn_ddt_riga_evasa
+  -- 2. La riga-onere (rev 2026-11-03, K-6): la quantita' di un onere non
+  --    si corregge da qui. Copiato dall'ordine passa intero (il legame ha
+  --    la quantita' intera dell'onere); scritto a mano non e' evaso. Il
+  --    predicato e' il building block script.fn_natura_e_merce sulla natura
+  --    congelata: su bolla «non merce» = onere (lo garantisce l'ammissione).
+  IF script.fn_natura_e_merce(v_natura) IS FALSE THEN
+    RETURN jsonb_build_array(jsonb_build_object(
+      'codice',     'E_DDT_RIGA_ONERE_NON_CORREGGIBILE',
+      'reason',     'RIGA_ONERE',
+      'reason_key', 'vendite.ddt.correggi_qta_evasa_reason.riga_onere',
+      'dettaglio',  jsonb_build_object('ddt_riga_id', p_ddt_riga_id),
+      'valori',     jsonb_build_array(v_riga_nr::text, v_etichetta)));
+  END IF;
+
+  -- 3. La riga a mano: il predicato e' vendite.fn_ddt_riga_evasa
   --    (sede unica di «riga evasa»).
   IF NOT vendite.fn_ddt_riga_evasa(p_ddt_riga_id) THEN
     RETURN jsonb_build_array(jsonb_build_object(
@@ -85,7 +102,7 @@ BEGIN
       'valori',     jsonb_build_array(v_riga_nr::text, v_etichetta)));
   END IF;
 
-  -- 3. La bolla non dichiara un'origine (D-2, D-7): un legame scritto
+  -- 4. La bolla non dichiara un'origine (D-2, D-7): un legame scritto
   --    a mano su una bolla standalone.
   IF v_sorgente IS NULL OR v_sorgente NOT IN ('ORDINE_VENDITA', 'RESO_VENDITA') THEN
     RETURN jsonb_build_array(jsonb_build_object(
@@ -96,7 +113,7 @@ BEGIN
       'valori',     jsonb_build_array(v_riga_nr::text, v_etichetta)));
   END IF;
 
-  -- 4. Una quantita' sola non sa dividersi fra piu' legami dello
+  -- 5. Una quantita' sola non sa dividersi fra piu' legami dello
   --    stesso tipo.
   SELECT (SELECT count(*) FROM vendite.ordini_righe_fulfillment f
            WHERE f.ddt_riga_id = p_ddt_riga_id),
@@ -117,7 +134,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_check_ddt_riga_correggi_qta_evasa(p_ddt_riga_id bigint)
-IS 'Check dell''azione di riga «correggi la quantita'' evasa» (2026-10-11, brief-db-ddt-righe-evase-dall-ordine D-2, D-7, linee-guida-sql §12.5): funzione pura. NULL: riga assente o non visibile (RLS). []: ammessa. Altrimenti il primo motivo, in quest''ordine (l''ordine e'' il contratto: il verbo solleva il primo): DDT_NON_IN_BOZZA (E_RIGA_DOC_NON_BOZZA, valori etichetta, stato, verbo — la frase del lock delle righe); RIGA_NON_EVASA (E_DDT_RIGA_NON_EVASA: riga a mano, vendite.fn_ddt_riga_evasa falso); DDT_SENZA_ORIGINE (E_DDT_RIGA_NON_EVASA: la bolla non ha come sorgente un ordine o un reso, cioe'' il legame e'' stato scritto a mano su una bolla standalone); LEGAMI_MULTIPLI (E_DDT_RIGA_EVASA_LEGAMI_MULTIPLI, TECNICO: piu'' di un fulfillment o piu'' di un ponte di ri-consegna sulla stessa riga, forma che nessuna madre produce). Dal D-7 la ri-consegna di un reso si corregge come la riga da ordine. reason_key vendite.ddt.correggi_qta_evasa_reason.*; valori numero di riga ed etichetta del DDT. Consumatori: il verbo vendite.fn_ddt_riga_correggi_qta_evasa e la colonna correggi_qta_evasa_blocco di vendite.vw_ddt_righe_dettaglio. ⭐ rev 2026-10-19 (20261019-56, brief-db-grammatica-unica-documenti lotto 2a, G-1 di Tid): la grammatica delle testate passa ai codici delle sorgenti (DDT -> DDT_VENDITA, ORDINE -> ORDINE_VENDITA, OFFERTA -> OFFERTA_COMMERCIALE, RESO -> RESO_VENDITA, EMAIL_BOZZA -> EMAIL; PREVENTIVO, CONTRATTO, COMMESSA, FATTURA invariati); dove sopra si legge un codice corto come selettore, oggi vale il codice della sorgente.';
+IS 'Check dell''azione di riga «correggi la quantita'' evasa» (2026-10-11, brief-db-ddt-righe-evase-dall-ordine D-2, D-7, linee-guida-sql §12.5): funzione pura. NULL: riga assente o non visibile (RLS). []: ammessa. Altrimenti il primo motivo, in quest''ordine (l''ordine e'' il contratto: il verbo solleva il primo): DDT_NON_IN_BOZZA (E_RIGA_DOC_NON_BOZZA, valori etichetta, stato, verbo — la frase del lock delle righe); RIGA_NON_EVASA (E_DDT_RIGA_NON_EVASA: riga a mano, vendite.fn_ddt_riga_evasa falso); DDT_SENZA_ORIGINE (E_DDT_RIGA_NON_EVASA: la bolla non ha come sorgente un ordine o un reso, cioe'' il legame e'' stato scritto a mano su una bolla standalone); LEGAMI_MULTIPLI (E_DDT_RIGA_EVASA_LEGAMI_MULTIPLI, TECNICO: piu'' di un fulfillment o piu'' di un ponte di ri-consegna sulla stessa riga, forma che nessuna madre produce). Dal D-7 la ri-consegna di un reso si corregge come la riga da ordine. reason_key vendite.ddt.correggi_qta_evasa_reason.*; valori numero di riga ed etichetta del DDT. Consumatori: il verbo vendite.fn_ddt_riga_correggi_qta_evasa e la colonna correggi_qta_evasa_blocco di vendite.vw_ddt_righe_dettaglio. ⭐ rev 2026-10-19 (20261019-56, brief-db-grammatica-unica-documenti lotto 2a, G-1 di Tid): la grammatica delle testate passa ai codici delle sorgenti (DDT -> DDT_VENDITA, ORDINE -> ORDINE_VENDITA, OFFERTA -> OFFERTA_COMMERCIALE, RESO -> RESO_VENDITA, EMAIL_BOZZA -> EMAIL; PREVENTIVO, CONTRATTO, COMMESSA, FATTURA invariati); dove sopra si legge un codice corto come selettore, oggi vale il codice della sorgente. Rev 2026-11-03 (20261103-33, brief-db-addebito-trasporto-ordine §8.1-§8.2, K-6 di Tid): motivo nuovo RIGA_ONERE (E_DDT_RIGA_ONERE_NON_CORREGGIBILE, CONFLITTO_STATO; reason_key vendite.ddt.correggi_qta_evasa_reason.riga_onere; valori numero di riga ed etichetta del DDT), SECONDO nell''ordine: dopo DDT_NON_IN_BOZZA, prima di RIGA_NON_EVASA. Una riga-onere (script.fn_natura_e_merce falso sulla natura congelata) non corregge la quantita'' evasa: copiata dall''ordine passa intera, scritta a mano non e'' evasa. Ordine dei motivi oggi: DDT_NON_IN_BOZZA, RIGA_ONERE, RIGA_NON_EVASA, DDT_SENZA_ORIGINE, LEGAMI_MULTIPLI. Firma ancorata (vendite.ddt_righe.id%TYPE), SECURITY INVOKER scritto.';
 ```
 
 </div>

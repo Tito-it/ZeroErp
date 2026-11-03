@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `script.fn_check_ordine_confermabile()`
 
+> **Ultimo aggiornamento**: 3 novembre 2026
+
 > 👀 **Vedi anche**
 >
 Approfondimento tabelle:
@@ -17,10 +19,22 @@ Approfondimento funzioni:
 
 ### 🎯 Scopo Principale
 
-(rev 2026-08-29 — funzione nata il 2026-08-29)
+(rev 2026-11-03 — il motivo dei soli oneri · funzione nata il 2026-08-29)
 
-Elenca i motivi che impediscono di **confermare** un ordine di vendita. Oggi ne ha uno:
-una riga attiva che porta un **prezzo** ma non l'**aliquota**.
+Elenca i motivi che impediscono di **confermare** un ordine di vendita. Oggi ne ha due,
+in quest'ordine:
+
+1. **soli oneri** (dal 2026-11-03, `20261103-26`, K-2 del brief-db-addebito-trasporto-ordine):
+   l'ordine ha righe attive ma **nessuna merce** (`script.fn_natura_e_merce` sulla natura
+   congelata). Non si evaderebbe mai: un addebito senza merce si scrive in commessa.
+   Codice `E_ORDINE_CONFERMA_SOLO_ONERI`, reason `ORDINE_SOLO_ONERI`, reason_key
+   `vendite.ordini.azione_reason.solo_oneri`, valori: il numero dell'ordine. ⚠️ Scatta solo
+   con righe attive presenti: l'ordine **vuoto** resta della precondizione della matrice
+   (`meta.requires_righe`, `E_ORDINE_CONFERMA_SENZA_RIGHE`), che resta fuori da qui;
+2. una riga attiva che porta un **prezzo** ma non l'**aliquota**.
+
+Guard di transizione e capability leggono questa funzione: il motivo nuovo è arrivato a
+entrambi senza toccarli.
 
 ---
 
