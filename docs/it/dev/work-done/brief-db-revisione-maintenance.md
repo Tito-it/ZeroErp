@@ -2,7 +2,7 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-03
 
-**Brief chiuso**: tutti i giri applicati e verdi (Tid, 2026-11-03). Spostato in `work-done/` il 2026-11-03.
+**Brief chiuso**: tutti i giri applicati e verdi (Tid, 2026-11-03). Spostato in `work-done/` il 2026-11-03. Resta una richiesta al team BE (§6).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -18,7 +18,7 @@
 | 10 | ✅ sessione DB | Giro 5: R4, R5; preCondition del `-66` corretta | §12 | 9 |
 | 11 | ✅ Tid | Apply di `-70`, `-71`, i pgTAP di §12.2 verdi | §12 | 10 |
 | 12 | ✅ sessione DB / Tid | Brief in `work-done/`; commit del lavoro del 2026-11-03 (Tid) | §7 | 11 |
-| 13 | team BE/FE | Niente: nessuna ricaduta (§6) | — | — |
+| 13 | **team BE** ⏭️ | Rigenerare `error_policies_generated.py` (§6): senza, `test_error_policies_divergenza_db` è rosso in CI | §6 | 11 |
 
 **Decisioni aperte di Tid:** nessuna. **Da committare:** tutto il lavoro del 2026-11-03 (lo fa Tid).
 
@@ -239,8 +239,32 @@ Tid ha accolto le raccomandazioni della sessione DB. Il dettaglio sta nella sezi
 
 ## 6. Ricadute su BE e FE
 
-Nessuna: tutti i punti stanno nel database. Se D5 cambia il contenuto di `message` nel giornale, il
-pannello che legge `vw_job_run_da_guardare` lo mostra senza modifiche.
+Il comportamento sta tutto nel database, ma **una ricaduta sul BE c'è** (corretto il 2026-11-03:
+prima qui si leggeva «nessuna»).
+
+**Richiesta al team BE — rigenerare `backend/apps/core/services/error_policies_generated.py`.**
+Il catalogo `config/codici_errore.csv` è cambiato in due righe: il codice nuovo
+`E_JOB_ESITO_CON_SCARTI` (D5, classe `TECNICO`) e la nota di `E_STATISTICHE_MANCANTI` (giro 1). Il
+file generato non lo sa, e `apps/core/tests/test_error_policies_divergenza_db.py` (opt-in
+`ZEROERP_TEST_DB_E2E=1`, acceso in CI) confronta il testo intero: in CI è **rosso** finché non si
+rigenera. Dopo l'apply del catalogo, dalla radice del repository:
+
+```text
+source /home/tid/software/ZeroErp/backend/.venv/bin/activate
+python backend/manage.py genera_error_policies
+```
+
+Nessun punto di chiamata BE usa il codice nuovo: lo scrive solo `maintenance.fn_run_and_log`.
+
+Senza modifiche al BE, solo da sapere:
+
+* `maintenance.job_run_log.agent_host`: sulle corse fallite ora è l'indirizzo del client, come su
+  quelle riuscite (M17). Il backend la legge e la mostra.
+* `maintenance.vw_job_run_da_guardare`: stesse colonne, un fallimento si conta una volta (D10).
+* Le corse riuscite con scarti (chiusura scadenze, storicizzazione) sono rosse con
+  `E_JOB_ESITO_CON_SCARTI`, il riepilogo in `meta.esito` (D5, D11): il pannello le mostra così.
+* `dbops.fn_apply_chiusura_scadenze`, chiamata da `chiusura_scadenze_handler.py`: ora scrive la sua
+  riga di audit (R5). Un audit che fallisse resta inghiottito: il JSONB dei conteggi arriva comunque.
 
 ## 7. Alla chiusura
 
