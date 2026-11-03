@@ -380,7 +380,7 @@ validità già finita; è il comportamento voluto. Dopo la prova a video di Tid 
 Test: `apps.core.tests` + `apps.vendite.tests` con `ZEROERP_TEST_DB_E2E=1`. Resta un rosso **non di questo
 brief**: `core/tests/db/test_parameter_overrides_db.test_valore_fuori_forma_non_si_salva` (il campo `value` non
 arriva), già in carico al team DB nel §7.7.1 di
-[brief-db-liste-datatable-grezze-secondo-giro](../work-in-progress/brief-db-liste-datatable-grezze-secondo-giro.md).
+[brief-db-liste-datatable-grezze-secondo-giro](../work-done/brief-db-liste-datatable-grezze-secondo-giro.md).
 
 Per la prova a video (R-3): il ripiego nuovo è Python, il BE di sviluppo va ricaricato (`kill -HUP` sul master di
 gunicorn) e il FE ricompilato.

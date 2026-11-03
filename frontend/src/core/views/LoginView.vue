@@ -9,6 +9,7 @@ import { useNotify } from '../composables/useNotify'
 import { extractApiErrorCode } from '../utils/apiError'
 import { provaSecondoFattore } from '../utils/provaSecondoFattore'
 import CodiceSecondoFattoreInput from '../components/CodiceSecondoFattoreInput.vue'
+import LinkInformazioni from '../components/LinkInformazioni.vue'
 // ChannelSelector importato ma non montato: l'UI attuale e' per soli
 // operatori interni (canale ADMIN forzato). Importazione conservata per
 // riuso futuro (pagine dedicate portale/shop).
@@ -284,6 +285,7 @@ function tornaAllaPassword(azzeraMessaggio = true) {
         </router-link>
       </form>
     </div>
+    <LinkInformazioni />
   </div>
 </template>
 

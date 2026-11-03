@@ -1,9 +1,11 @@
 # Brief DB — Liste ancora su `DataTable` grezza, secondo giro
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-01 (§7.8.5 fatto)
+## ✅ Chiuso il 2026-11-03 (archiviato su indicazione di Tid)
 
-**Riparte: Tid**, col commit del giro BE (§7.9) e l'ok all'archiviazione. Lato DB e lato BE il
-lavoro è chiuso: D-6 fatta e provata (§7.9).
+**Nessuno riparte da qui.** Lato DB i tre giri (§7.1-§7.8) sono committati su `dev/db-tid` e
+applicati; lato BE/FE tutto è su `dev/backend-tid`, compreso il giro del §7.9 (D-6, la soglia della
+ricerca universale dal catalogo), entrato con `62dafb6c86` del 2026-11-01. Nessuna decisione aperta.
+Ciò che resta fuori (§6) è già debito dichiarato nel codice o eccezione con motivo scritto.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -25,9 +27,9 @@ lavoro è chiuso: D-6 fatta e provata (§7.9).
 | 9-quinquies | team DB | ✅ D-6: `fn_search_soggetti_universale` senza la soglia scritta nel corpo (§7.7.2), scritto il 2026-11-01 (§7.8) | `20_code/script/`, `db/pgtap/script/` | — |
 | 9-quinquies-bis | Tid | ✅ Apply di `20261101-01…03` su dbdev e corsa dei tre pgTAP verde, 2026-11-01 (§7.8.4) | dbdev | — |
 | 9-sexies | BE | ✅ §7.8.5, D-6: la view della ricerca usa `soglia_ricerca('anagrafiche.ricerca_soggetti')` al posto di `RICERCA_MIN_CARATTERI`; `test_valore_fuori_forma_non_si_salva` verde da solo (§7.7.1). Fatto il 2026-11-01 (§7.9) | `dev/backend-tid` | 9-quinquies-bis |
-| 9-septies | Tid | commit del giro BE del §7.9 | `dev/backend-tid` | 9-sexies |
+| 9-septies | Tid | ✅ Commit del giro BE del §7.9: `62dafb6c86`, 2026-11-01 | `dev/backend-tid` | — |
 | 11 | BE/FE | ✅ Revisione critica del lavoro non committato, 2026-10-31 (§4.7) | `dev/backend-tid` | — |
-| 12 | BE/FE | Archiviare il brief in `work-done/`, con l'ok di Tid | — | 9-septies |
+| 12 | BE/FE | ✅ Brief archiviato in `work-done/` con l'ok di Tid, 2026-11-03 | — | — |
 
 **Decisioni aperte di Tid:** nessuna. D-6 decisa il 2026-11-01 (§7.7.2); D-3, D-4 e D-5 decise il 2026-10-31 (§4.5.1, §4.6.1); D-1, D-2, B1-bis, B8 e l'ordinamento per utility della 113 (§4.5) decisi il 2026-10-31.
 **Committato:** il terzo giro DB (§7.8) è committato su `dev/db-tid` (2026-11-01). Il lato DB, primo e secondo giro (§7.1-§7.6, con guida e pagine manual), è su `dev/db-tid` e mergiato in `dev/backend-tid` (#1988); il lato BE del §7.7 è committato su `dev/backend-tid`; il lato BE/FE (righe 6-8 e 11) è su `Tito-dev` (`82ea9e3a1`, PR #1987). Il rotto temporaneo

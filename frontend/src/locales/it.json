@@ -6484,5 +6484,12 @@
     "stato_override": "Override",
     "stato_ereditato": "Ereditato",
     "reset_tooltip": "Togli l'override: la voce torna a seguire il valore ereditato"
+  },
+  "informazioni": {
+    "titolo": "Informazioni",
+    "licenza": "Software libero, distribuito con licenza GNU Affero General Public License, versione 3 o successiva ({spdx}).",
+    "diritti": "Puoi usarlo, studiarlo, modificarlo e ridistribuirlo alle stesse condizioni. Chi lo offre in rete, anche modificato, deve rendere disponibile il codice sorgente a chi lo usa.",
+    "codice_sorgente": "Codice sorgente",
+    "testo_licenza": "Testo della licenza"
   }
 }

@@ -6,6 +6,7 @@ import { useAuthStore } from '../../stores/auth'
 import { usePasswordValidation } from '../composables/usePasswordValidation'
 import { seSessioneChiusaDalFreno } from '../uscitaSessione'
 import { extractApiError } from '../utils/apiError'
+import LinkInformazioni from '../components/LinkInformazioni.vue'
 import Password from 'primevue/password'
 import Button from 'primevue/button'
 
@@ -135,6 +136,7 @@ async function handleChangePassword() {
         </a>
       </form>
     </div>
+    <LinkInformazioni />
   </div>
 </template>
 

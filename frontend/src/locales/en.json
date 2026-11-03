@@ -6484,5 +6484,12 @@
     "stato_override": "Override",
     "stato_ereditato": "Inherited",
     "reset_tooltip": "Remove the override: the entry goes back to the inherited value"
+  },
+  "informazioni": {
+    "titolo": "About",
+    "licenza": "Free software, distributed under the GNU Affero General Public License, version 3 or later ({spdx}).",
+    "diritti": "You may use, study, modify and redistribute it under the same terms. Anyone offering it over a network, even modified, must make the source code available to its users.",
+    "codice_sorgente": "Source code",
+    "testo_licenza": "License text"
   }
 }
