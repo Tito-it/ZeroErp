@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Righe dell'ordine con articolo, UoM, IVA, evaso e residuo: la SORGENTE delle righe per la lista configurabile vendite.ordine_righe e per il repository (brief-db-liste-righe-documento, D-8.6, 2026-09-28; prima esistevano solo come due query Python con proiezioni diverse). Tutte le righe, anche le non attive: il filtro lo mette chi legge. Nessun ORDER BY. importo_riga = round(…, 2) per mostrare, imponibile_riga_full pieno per chi aggrega, entrambi da script.fn_imponibile_riga. qta_evasa_operativa / qta_residua_operativa: somma dei fulfillment (UoM base) divisa per factor_to_base, residuo mai negativo, 6 decimali, NULL se il fattore e' zero. security_invoker: ordini_righe e i fulfillment sono in RLS. rev 2026-11-03 (20261103-25, brief-db-addebito-trasporto-ordine §7.3, §8.1): + e_onere e causale_onere_id in coda; sulla riga-onere qta_evasa_operativa e qta_residua_operativa sono NULL (l'onere non si evade).
+> Righe dell'ordine con articolo, UoM, IVA, evaso e residuo: la SORGENTE delle righe per la lista configurabile vendite.ordine_righe e per il repository (brief-db-liste-righe-documento, D-8.6, 2026-09-28; prima esistevano solo come due query Python con proiezioni diverse). Tutte le righe, anche le non attive: il filtro lo mette chi legge. Nessun ORDER BY. importo_riga = round(…, 2) per mostrare, imponibile_riga_full pieno per chi aggrega, entrambi da script.fn_imponibile_riga. qta_evasa_operativa / qta_residua_operativa: somma dei fulfillment (UoM base) divisa per factor_to_base, residuo mai negativo, 6 decimali, NULL se il fattore e' zero. security_invoker: ordini_righe e i fulfillment sono in RLS. rev 2026-11-03 (20261103-25, brief-db-addebito-trasporto-ordine §7.3, §8.1): + e_onere e causale_onere_id in coda; sulla riga-onere qta_evasa_operativa e qta_residua_operativa sono NULL (l'onere non si evade). Rev 2026-11-03 (20261103-51, brief-db-addebito-trasporto-ordine §9.8): in coda sezione_documento smallint (1 articoli, 2 oneri, da e_onere): l'ordine del documento e' sezione_documento, riga_nr, cosi' lista e stampa mettono gli oneri dopo gli articoli e la regola sta nel DB. Gemella di vw_fattura_righe_lista.
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
@@ -53,7 +53,12 @@ SELECT r.id,
           WHERE ((rc.riga_ordine_id = r.id) AND (rc.attivo IS TRUE)))) AS is_composito_caso_a,
     ((script.fn_check_ordine_riga_data_consegna_confermata(r.id) -> 0) ->> 'reason'::text) AS data_consegna_confermata_blocco,
     k.e_onere,
-    a.causale_onere_id
+    a.causale_onere_id,
+    (
+        CASE
+            WHEN k.e_onere THEN 2
+            ELSE 1
+        END)::smallint AS sezione_documento
    FROM (((((vendite.ordini_righe r
      LEFT JOIN catalogo.articoli a ON ((a.id = r.articolo_id)))
      LEFT JOIN catalogo.unita_misura um ON ((um.id = r.uom_operativa_id)))

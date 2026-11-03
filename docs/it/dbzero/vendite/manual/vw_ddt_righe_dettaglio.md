@@ -69,3 +69,9 @@ come ogni riga evasa; la correzione della quantita' evasa si spegne col motivo
 ---
 
 {% include-markdown "signature-core.md" %}
+
+### Sezione del documento (rev 2026-11-03)
+
+Dal `20261103-52`, in coda `sezione_documento` (1 articoli, 2 oneri, da `e_onere`). L'ordine del
+documento è `sezione_documento, riga_nr`: gli oneri dopo gli articoli, a video e in stampa, come
+sulla fattura (`vw_fattura_righe_lista`).

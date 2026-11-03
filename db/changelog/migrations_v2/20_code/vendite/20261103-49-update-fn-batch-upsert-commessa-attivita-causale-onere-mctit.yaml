@@ -1,0 +1,175 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL WRAPPER BATCH DEL PUSH PORTA LA CAUSALE DELL'ONERE — vendite.fn_batch_upsert_commessa_attivita
+#   Brief: brief-db-addebito-trasporto-ordine §9.8 (richiesta del team BE,
+#   2026-11-03, punto 1).
+#
+# ── 🔴 IL DIFETTO ────────────────────────────────────────────────────
+#   Il push in commessa non chiama la madre una riga alla volta: passa dal
+#   wrapper batch (BE: batch_upsert_attivita). Il wrapper legge dal JSON tutte
+#   le chiavi della madre tranne causale_onere_id: col giro 1 i lister di
+#   ordini e bolle mandano tipo_movimento = 'ONERE', e la madre vuole
+#   ONERE <=> causale. Ogni riga-onere del push sarebbe stata rifiutata anche
+#   col BE allineato. Il §9.3 lo dava per «se il batch compone la chiamata»:
+#   la compone il DB, qui.
+#
+# ── ⭐ COSA CAMBIA ───────────────────────────────────────────────────
+#   p_causale_onere_id => (v_row ->> 'causale_onere_id')::bigint, chiave
+#   facoltativa: assente o null = NULL, come prima per le righe di merce.
+#
+# ── ⚠️ COSA NON CAMBIA ──────────────────────────────────────────────
+#   Il resto del corpo e la firma. Corpo dal 20261013-17, confrontato uguale
+#   al vivo (dbdev, 2026-11-03); dichiarazione invariata (firma jsonb e
+#   RETURNS TABLE di contatori: nessuna colonna di cui siano il riflesso).
+#   Il BE aggiunge la chiave in _inp_to_jsonb_row (brief §9.8).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261103-49-update-fn-batch-upsert-commessa-attivita-causale-onere-mctit.yaml
+
+  - changeSet:
+      id: 20261103-49-update-fn-batch-upsert-commessa-attivita-causale-onere
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_batch_upsert_commessa_attivita: passa alla madre la chiave causale_onere_id del payload
+        (facoltativa). Senza, ogni riga ONERE del push di ordini e bolle era rifiutata (ONERE <=> causale).
+        brief-db-addebito-trasporto-ordine §9.8, richiesta BE punto 1.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_batch_upsert_commessa_attivita(p_rows jsonb)
+               RETURNS TABLE(total_rows integer, inserted integer, updated integer, errors jsonb)
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_total    integer := 0;
+                v_inserted integer := 0;
+                v_updated  integer := 0;
+                v_errors   jsonb   := '[]'::jsonb;
+                v_len      integer;
+                v_row      jsonb;
+                v_result   record;
+                i          integer;
+              BEGIN
+                -- =========================================================
+                -- Batch wrapper su fn_upsert_commessa_attivita.
+                -- 1 round-trip Python->DB; errori raccolti collect-all.
+                -- Payload atteso per ogni elemento: oggetto con le chiavi
+                -- equivalenti ai parametri p_* del single-upsert. Le 8
+                -- chiavi snapshot pricing v5 (sotto) sono parte della
+                -- firma OBBLIGATORIA (il caller deve includerle, anche
+                -- come NULL JSON, per garantire che la riga snapshot sia
+                -- coerente).
+                -- rev 2026-10-09 (brief-db-riga-listino-propagata-dalla-commessa,
+                -- R-1): la chiave listino_riga_id arriva alla madre. FACOLTATIVA,
+                -- come listino_versione_id: assente o null = nessuna riga di
+                -- listino (prezzo manuale, onere, rettifica, stadio BUNDLE).
+                -- =========================================================
+
+                IF p_rows IS NULL OR jsonb_typeof(p_rows) <> 'array' THEN
+                  RETURN QUERY SELECT 0, 0, 0, '[]'::jsonb;
+                  RETURN;
+                END IF;
+
+                v_len := jsonb_array_length(p_rows);
+                IF v_len = 0 THEN
+                  RETURN QUERY SELECT 0, 0, 0, '[]'::jsonb;
+                  RETURN;
+                END IF;
+
+                FOR i IN 0 .. v_len - 1 LOOP
+                  v_row   := p_rows -> i;
+                  v_total := v_total + 1;
+
+                  BEGIN
+                    SELECT r.attivita_id, r.is_new
+                    INTO v_result
+                    FROM vendite.fn_upsert_commessa_attivita(
+                      p_commessa_id                   => (v_row ->> 'commessa_id')::bigint,
+                      p_segment_key                   => (v_row ->> 'segment_key')::varchar,
+                      p_articolo_id                   => (v_row ->> 'articolo_id')::uuid,
+                      p_istanza_utility_id            => (v_row ->> 'istanza_utility_id')::bigint,
+                      p_data_attivita                 => (v_row ->> 'data_attivita')::date,
+                      p_uom_id                        => (v_row ->> 'uom_id')::bigint,
+                      p_quantita                      => (v_row ->> 'quantita')::numeric,
+                      p_competenza_mese               => (v_row ->> 'competenza_mese')::date,
+                      p_competenza_dal                => (v_row ->> 'competenza_dal')::date,
+                      p_competenza_al                 => (v_row ->> 'competenza_al')::date,
+                      p_prezzo_snapshot               => (v_row ->> 'prezzo_snapshot')::numeric,
+                      -- Snapshot pricing v5 (chiavi obbligatorie nel payload;
+                      -- passare null esplicito quando la dimensione non si applica).
+                      p_prezzo_base_snapshot          => (v_row ->> 'prezzo_base_snapshot')::numeric,
+                      p_origine_prezzo                => (v_row ->> 'origine_prezzo')::varchar,
+                      p_tipo_variazione_applicata     => (v_row ->> 'tipo_variazione_applicata')::varchar,
+                      p_valore_variazione_applicata   => (v_row ->> 'valore_variazione_applicata')::numeric,
+                      p_promo_id                      => (v_row ->> 'promo_id')::bigint,
+                      p_contratto_id                  => (v_row ->> 'contratto_id')::bigint,
+                      p_categoria_cliente_id_snapshot => (v_row ->> 'categoria_cliente_id_snapshot')::smallint,
+                      p_classe_utenza_id_snapshot     => (v_row ->> 'classe_utenza_id_snapshot')::integer,
+                      -- Resto firma (opzionale lato single-upsert grazie ai DEFAULT).
+                      p_qta_operativa                 => (v_row ->> 'qta_operativa')::numeric,
+                      p_uom_operativa_id              => (v_row ->> 'uom_operativa_id')::bigint,
+                      p_factor_to_base                => (v_row ->> 'factor_to_base')::numeric,
+                      p_posticipa_al                  => (v_row ->> 'posticipa_al')::date,
+                      p_tipo_doc_fiscale_id           => (v_row ->> 'tipo_doc_fiscale_id')::bigint,
+                      p_valuta_id                     => (v_row ->> 'valuta_id')::integer,
+                      p_area_geografica_id            => (v_row ->> 'area_geografica_id')::bigint,
+                      p_listino_versione_id           => (v_row ->> 'listino_versione_id')::bigint,
+                      p_listino_riga_id               => (v_row ->> 'listino_riga_id')::bigint,
+                      p_prezzo_bloccato               => (v_row ->> 'prezzo_bloccato')::boolean,
+                      p_pricing_mode                  => (v_row ->> 'pricing_mode')::varchar,
+                      p_prezzo_da_riallineare         => (v_row ->> 'prezzo_da_riallineare')::boolean,
+                      p_stato_approvazione            => (v_row ->> 'stato_approvazione')::varchar,
+                      p_stato_emissione               => (v_row ->> 'stato_emissione')::varchar,
+                      p_sorgente_tipo_id              => (v_row ->> 'sorgente_tipo_id')::bigint,
+                      p_sorgente_uid                  => (v_row ->> 'sorgente_uid')::text,
+                      p_tipo_movimento                => (v_row ->> 'tipo_movimento')::varchar,
+                      -- rev 2026-11-03 (20261103-49): la causale dell'onere (giro 1: gli
+                      --   oneri di ordine e bolla arrivano dal push come ONERE).
+                      p_causale_onere_id              => (v_row ->> 'causale_onere_id')::bigint,
+                      p_meta                          => CASE WHEN v_row ? 'meta' THEN (v_row -> 'meta') ELSE '{}'::jsonb END
+                    ) r;
+
+                    IF v_result.is_new THEN
+                      v_inserted := v_inserted + 1;
+                    ELSE
+                      v_updated := v_updated + 1;
+                    END IF;
+
+                  EXCEPTION WHEN others THEN
+                    v_errors := v_errors || jsonb_build_array(
+                      jsonb_build_object(
+                        'index',       i,
+                        'segment_key', v_row ->> 'segment_key',
+                        'error',       SQLERRM
+                      )
+                    );
+                  END;
+                END LOOP;
+
+                RETURN QUERY SELECT v_total, v_inserted, v_updated, v_errors;
+              END
+              $function$
+              ;
+
+              COMMENT ON FUNCTION vendite.fn_batch_upsert_commessa_attivita(jsonb)
+              IS 'Batch wrapper su fn_upsert_commessa_attivita: array jsonb in input, contatori inserted/updated + errors collect-all. Pricing v5: il payload deve includere le 8 chiavi snapshot (prezzo_base_snapshot, origine_prezzo, tipo_variazione_applicata, valore_variazione_applicata, promo_id, contratto_id, categoria_cliente_id_snapshot, classe_utenza_id_snapshot). rev 2026-10-09 (brief-db-riga-listino-propagata-dalla-commessa R-1): chiave facoltativa listino_riga_id, la riga di listino che ha dato il prezzo; e'' il legame che rende la riga di listino «propagata» per vendite.trgfn_listini_righe_guard_stato. rev 2026-10-13 (20261013-17): tipo_consumo RITIRATO in tutta la catena del push (madre, batch, cinque lister, builder pgTAP). Non aveva un lettore, e il vocabolario della madre (ACCONTO/CONGUAGLIO/STORNO) non lo produceva nessuna sorgente con un significato: preventivi, ordini e DDT scrivevano la costante CONGUAGLIO, contratti (l''erogazione della riga) e consumi (CONSUMO) un valore che la madre rifiutava, quindi il loro push falliva sempre (E_PARAMETRO_INVALIDO). L''erogazione resta dove gia'' stava, in meta.tipo_erogazione. Decisione A di Tid, 2026-10-13. La chiave tipo_consumo del payload non si legge piu'': se arriva, si ignora. rev 2026-11-03 (20261103-49, brief-db-addebito-trasporto-ordine §9.8): chiave facoltativa causale_onere_id, passata a p_causale_onere_id della madre. Gli oneri di ordine e bolla arrivano dal push come tipo_movimento ONERE, e la madre vuole ONERE <=> causale: senza la chiave ogni riga-onere del push era rifiutata.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo precedente (senza causale_onere_id) e' nel 20261013-17 e nella doc
+              -- auto-gen alla revisione prima di questa. Non si riscrive un corpo stantio.
+              SELECT 1;
