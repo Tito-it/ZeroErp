@@ -16,7 +16,7 @@ CREATE OR REPLACE FUNCTION script.fn_get_sorgente_emittente_sr_id(p_sorgente_tip
  RETURNS bigint
  LANGUAGE plpgsql
  STABLE SECURITY DEFINER
- SET search_path TO 'pg_catalog', 'public'
+ SET search_path TO 'pg_catalog', 'public', 'pg_temp'
 AS $function$
 DECLARE
     v_target    regclass;

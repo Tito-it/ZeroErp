@@ -16,7 +16,7 @@ CREATE OR REPLACE FUNCTION vendite.fn_provision_registri(p_emittente_soggetto_ru
  RETURNS integer
  LANGUAGE plpgsql
  SECURITY DEFINER
- SET search_path TO 'pg_catalog', 'public'
+ SET search_path TO 'pg_catalog', 'public', 'pg_temp'
 AS $function$
 DECLARE
     -- un conteggio: niente colonna da ancorare

@@ -4,7 +4,6 @@ db/pgtap/anagrafiche/test-catasto-unita-immobiliare.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-fn-sync-auth-user-is-active-or.sql	ASSERZIONE
 db/pgtap/anagrafiche/test-identita-digitali-guard-coerenza.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-identita-digitali-unique-multi-veste.sql	ASSERZIONE
-db/pgtap/anagrafiche/test-indirizzi-fallback.sql	ASSERZIONE
 db/pgtap/anagrafiche/test-sync-auth-user-is-active-multi-role.sql	ASSERZIONE
 db/pgtap/config/test-soglia-congelamento-sede-unica.sql	ASSERZIONE
 db/pgtap/script/test-capability-annulla-aspetto-e-stato-leggibile-v1.sql	ASSERZIONE

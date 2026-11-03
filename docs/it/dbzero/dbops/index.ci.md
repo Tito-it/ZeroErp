@@ -169,7 +169,8 @@ search:
 - [vw_audit_log_scrittori_fuori_perimetro](manual/vw_audit_log_scrittori_fuori_perimetro.md) — (latest review 12-09-2026)
 - [vw_catalogo_oggetti](manual/vw_catalogo_oggetti.md) — * Offrire una vista unificata degli oggetti PostgreSQL definiti nei due schemi principali di amministrazione. * Agevolare operazioni di discovery e auditing, bypassando query dirette sulle catalog tables.
 - [vw_coda_lavori_da_guardare](manual/vw_coda_lavori_da_guardare.md) — (latest review 05-09-2026)
-- [vw_codici_errore_da_dichiarare](manual/vw_codici_errore_da_dichiarare.md) — (rev 2026-10-27)
+- [vw_codici_errore_argomenti_trigger](manual/vw_codici_errore_argomenti_trigger.md) — (latest review 03-11-2026)
+- [vw_codici_errore_da_dichiarare](manual/vw_codici_errore_da_dichiarare.md) — (rev 2026-11-03)
 - [vw_codici_errore_forme_condizione](manual/vw_codici_errore_forme_condizione.md) — (rev 2026-09-07)
 - [vw_credenziali_da_sanare](manual/vw_credenziali_da_sanare.md)
 - [vw_diag_v_clienti_links](manual/vw_diag_v_clienti_links.md) — (latest review 25-12-25) La vista **`dbops.vw_diag_v_clienti_links`** è una **vista diagnostica** che espone in modo “leggibile” i **legami strutturali** tra:
@@ -199,7 +200,7 @@ search:
 - [vw_processi_programmazione](manual/vw_processi_programmazione.md) — (latest review 07-09-2026)
 - [vw_processi_programmazione_da_guardare](manual/vw_processi_programmazione_da_guardare.md) — (latest review 07-09-2026)
 - [vw_processi_roster](manual/vw_processi_roster.md) — (latest review 05-09-2026)
-- [vw_punti_canale_campo](manual/vw_punti_canale_campo.md) — (latest review 22-09-2026)
+- [vw_punti_canale_campo](manual/vw_punti_canale_campo.md) — (latest review 03-11-2026)
 - [vw_radici_di_prova_in_produzione](manual/vw_radici_di_prova_in_produzione.md)
 - [vw_riferimenti_morti_da_sanare](manual/vw_riferimenti_morti_da_sanare.md) — (rev 2026-08-21)
 - [vw_riferimenti_morti_rientrati](manual/vw_riferimenti_morti_rientrati.md) — (rev 2026-08-21)

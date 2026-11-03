@@ -15,7 +15,7 @@ CREATE OR REPLACE FUNCTION dbops.fn_get_pgagent_job_stato(p_jobname text)
  RETURNS TABLE(abilitato boolean, ultima_esecuzione timestamp with time zone, prossima_esecuzione timestamp with time zone)
  LANGUAGE plpgsql
  STABLE SECURITY DEFINER
- SET search_path TO 'public', 'pg_temp'
+ SET search_path TO 'pg_catalog', 'public', 'pg_temp'
 AS $function$
 BEGIN
     -- =========================================================

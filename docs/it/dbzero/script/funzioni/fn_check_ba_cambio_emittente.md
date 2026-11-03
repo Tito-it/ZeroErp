@@ -16,7 +16,7 @@ CREATE OR REPLACE FUNCTION script.fn_check_ba_cambio_emittente(p_billing_account
  RETURNS jsonb
  LANGUAGE plpgsql
  STABLE SECURITY DEFINER
- SET search_path TO 'pg_catalog', 'public'
+ SET search_path TO 'pg_catalog', 'public', 'pg_temp'
 AS $function$
 DECLARE
     v_motivi    jsonb := '[]'::jsonb;

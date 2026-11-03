@@ -13,7 +13,7 @@ Approfondimento funzioni:
 ---
 ### 🎯 Scopo Principale
 
-(rev 2026-10-27)
+(rev 2026-11-03)
 
 > ⛔ **Il numero di questa vista NON è il debito.** È la **misura**: conta ogni codice `E_*` che un corpo PL/pgSQL vivo può nominare, e cresce a ogni regola nuova e legittima. Il debito è il suo registro, [`dbops.codici_errore_senza_policy`](/dbzero/dbops/tabelle/codici_errore_senza_policy), **a zero dal 2026-08-07** e tenuto lì dal cancello `test_error_codes_db_policy_guardrail`. Il catalogo dei presidi la classifica `CANCELLO`, non registro. Contarla come registro di debito è un errore già fatto tre volte (08-09, 20-09, 23-10).
 
@@ -37,7 +37,13 @@ Per ogni codice trovato espone:
 ### ⭐ È volutamente **larga**, e la ragione è una scelta fra due errori
 
 La vista raccoglie **ogni letterale** `'E_...'` in un corpo `plpgsql`, non solo quelli dentro
-una chiamata a `fn_log_and_raise_error`.
+una chiamata a `fn_log_and_raise_error` — e, dal 2026-11-03, **ogni codice che un trigger passa
+alla sua funzione come argomento**, letto da
+[`vw_codici_errore_argomenti_trigger`](/dbzero/dbops/manual/vw_codici_errore_argomenti_trigger).
+Le funzioni generiche montate su molte tabelle (il lucchetto di colonna, il blocco dei documenti
+fuori bozza) ricevono il codice dal trigger e nel loro testo non lo nominano: prima di quel giorno
+trenta codici erano invisibili qui, e un codice nuovo montato così senza la sua regola di risposta
+non avrebbe fatto scattare il cancello. Questi codici contano sempre come `da_trigger`.
 
 Restringere sarebbe stato più preciso e avrebbe perso i codici che arrivano **da
 espressione** — per esempio `v_motivi -> 0 ->> 'codice'`, il pattern dei guard che delegano il

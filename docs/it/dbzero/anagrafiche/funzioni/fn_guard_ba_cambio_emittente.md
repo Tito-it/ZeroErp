@@ -16,7 +16,7 @@ CREATE OR REPLACE FUNCTION anagrafiche.fn_guard_ba_cambio_emittente(p_billing_ac
  RETURNS void
  LANGUAGE plpgsql
  SECURITY DEFINER
- SET search_path TO 'pg_catalog', 'public'
+ SET search_path TO 'pg_catalog', 'public', 'pg_temp'
 AS $function$
 DECLARE
     -- ⛔ NUDI, e non per fretta: `v_motivi` e' il valore di ritorno di una
