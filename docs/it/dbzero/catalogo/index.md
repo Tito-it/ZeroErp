@@ -41,6 +41,6 @@ search:
 ## 🔍 Views
 - [vw_articoli_componenti_dettaglio](views/vw_articoli_componenti_dettaglio.md) — (latest review 14-01-26) La vista **`catalogo.vw_articoli_componenti_dettaglio`** espone i legami prodotto–componente e arricchisce la riga con codice/descrizione di prodotto e componente.
 - [vw_articoli_componenti_note](views/vw_articoli_componenti_note.md) — (latest review 14-01-26) La vista **`catalogo.vw_articoli_componenti_note`** fornisce una lettura delle note legate ai componenti articolo, includendo i riferimenti a prodotto, componente, stile e lingua.
-- [vw_articoli_dettaglio](views/vw_articoli_dettaglio.md) — (latest review 14-01-26) La vista **`catalogo.vw_articoli_dettaglio`** espone i dati dell’articolo con le anagrafiche di supporto (unita misura, tipologie, gruppi, spese, iva e natura di vendita), evitando join ripetitivi in applicazione.
+- [vw_articoli_dettaglio](views/vw_articoli_dettaglio.md) — La vista **`catalogo.vw_articoli_dettaglio`** espone i dati dell’articolo con le anagrafiche di supporto (unita misura, tipologie, gruppi, spese, iva e natura di vendita), evitando join ripetitivi in applicazione.
 - [vw_articoli_note](views/vw_articoli_note.md) — (latest review 14-01-26) La vista **`catalogo.vw_articoli_note`** fornisce una lettura immediata delle note legate agli articoli, arricchite con stile e lingua.
 - [vw_articoli_uom_operativa_dettaglio](views/vw_articoli_uom_operativa_dettaglio.md) — (latest review 28-04-2026)

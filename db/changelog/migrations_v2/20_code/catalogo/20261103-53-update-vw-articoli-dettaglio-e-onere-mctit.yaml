@@ -1,0 +1,152 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'ARTICOLO DICE SE E' UN ONERE — catalogo.vw_articoli_dettaglio
+#   Brief: brief-db-addebito-trasporto-ordine §9.9 (richiesta del team FE,
+#   2026-11-03).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   Il picker articoli delle righe di documento e il form articolo leggono
+#   questa vista. Sulla riga d'ordine NUOVA il form non sa che l'articolo
+#   scelto e' un onere: mostra le date di consegna, e se l'operatore le
+#   compila il DB risponde E_RIGA_ONERE_DATA_CONSEGNA (20261103-27). Sulla
+#   riga gia' salvata il dato c'e' (vw_ordini_righe_dettaglio.e_onere, -25).
+#   Sblocca anche il gemello FE del guard trgfn_articoli_guard_onere_natura
+#   (-18): flag magazzino, composito, lotto, matricola spenti sull'onere.
+#
+# ── ⭐ COSA CAMBIA ───────────────────────────────────────────────────
+#   · + e_onere (boolean, in coda) = causale_onere_id IS NOT NULL: e' la
+#     definizione di articolo-onere (catalogo.articoli.causale_onere_id). Sulla
+#     RIGA il discrimine resta la natura congelata (script.fn_natura_e_merce):
+#     qui si parla dell'articolo, li' della riga;
+#   · + causale_onere_id (in coda): il valore, per chi etichetta o raggruppa.
+#   Stesso nome e stesso ordine delle viste di riga (e_onere, causale_onere_id).
+#   Colonne nuove IN CODA: CREATE OR REPLACE VIEW non sposta le altre.
+#
+# ── ⚠️ COSA NON CAMBIA ──────────────────────────────────────────────
+#   Tutte le altre colonne, i join. Nessuna security_invoker, com'era
+#   (catalogo.articoli non ha RLS). I GRANT si conservano su CREATE OR
+#   REPLACE; il COMMENT si riscrive solo per la nota di revisione in coda.
+#   Corpo dal vivo di dbdev (= 20261025-60, confrontato il 2026-11-03).
+#
+# ── ⚠️ RICADUTA SUL BE ──────────────────────────────────────────────
+#   catalogo_repository proietta le colonne PER NOME (_LOOKUP_ARTICOLI_COLONNE
+#   per i picker, ARTICOLI_DETAIL_COLUMNS per lista e drawer): finche' il BE
+#   non le nomina, al FE non arrivano. Richiesta nel brief, §9.9.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20261103-53-update-vw-articoli-dettaglio-e-onere-mctit.yaml
+
+  - changeSet:
+      id: 20261103-53-update-vw-articoli-dettaglio-e-onere
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        catalogo.vw_articoli_dettaglio: + e_onere (causale_onere_id IS NOT NULL) e causale_onere_id, in coda.
+        Il picker e il form articolo sanno se l'articolo e' un onere. brief-db-addebito-trasporto-ordine §9.9.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW catalogo.vw_articoli_dettaglio AS
+               SELECT a.id,
+                  a.codice,
+                  a.descrizione,
+                  a.descrizione_breve,
+                  a.uom_id,
+                  a.tipo_voce_id,
+                  a.gruppo_voce_id,
+                  a.spesa_id,
+                  a.iva_id,
+                  a.conto_contabile_vendita_id,
+                  a.conto_contabile_acquisto_id,
+                  a.is_composito,
+                  a.is_solo_componente,
+                  a.requires_serial,
+                  a.listino_tipologia_id,
+                  a.meta,
+                  a.user_insert,
+                  a.user_update,
+                  a.data_insert,
+                  a.data_update,
+                  a.tx_id,
+                  a.storicizza,
+                  a.attivo,
+                  a.note_target_tipo,
+                  a.note_id,
+                  u.id AS uom_ref_id,
+                  u.codice AS uom_codice,
+                  u.descrizione AS uom_descrizione,
+                  t.id AS tipologia_ref_id,
+                  t.codice AS tipologia_codice,
+                  t.descrizione AS tipologia_descrizione,
+                  g.id AS gruppo_ref_id,
+                  g.codice AS gruppo_codice,
+                  g.descrizione AS gruppo_descrizione,
+                  s.id AS spesa_ref_id,
+                  s.codice AS spesa_codice,
+                  s.descrizione AS spesa_descrizione,
+                  i.id AS iva_ref_id,
+                  i.codice AS iva_codice,
+                  i.descrizione AS iva_descrizione,
+                  i.aliquota_iva AS iva_aliquota_iva,
+                  lt.codice AS tipologia_listino_codice,
+                  lt.descrizione AS tipologia_listino_descrizione,
+                  a.is_composito AND NOT a.is_solo_componente AS puo_gestire_bom,
+                      CASE
+                          WHEN a.is_composito AND NOT a.is_solo_componente THEN NULL::text
+                          WHEN a.is_solo_componente THEN 'ARTICOLO_SOLO_COMPONENTE'::text
+                          ELSE 'ARTICOLO_NON_COMPOSITO'::text
+                      END AS motivo_non_gestibile_bom,
+                  a.is_composito AND (EXISTS ( SELECT 1
+                         FROM catalogo.articoli_componenti ac
+                        WHERE ac.prodotto_id = a.id AND ac.validita @> (( SELECT script.fn_data_operativa() AS fn_data_operativa)) AND ac.attivo = true)) AS has_componenti_alla_data,
+                  a.natura_vendita_id,
+                  nv.codice_interno AS natura_vendita_codice_interno,
+                  nv.descrizione AS natura_vendita_descrizione,
+                  nv.destinazione_tipo AS natura_vendita_destinazione_tipo,
+                  a.modo_approvvigionamento_id,
+                  ma.codice_interno AS modo_approvvigionamento_codice_interno,
+                  ma.descrizione AS modo_approvvigionamento_descrizione,
+                  a.gestito_a_magazzino,
+                  a.lead_time_giorni,
+                  a.requires_lotto,
+                  a.causale_onere_id IS NOT NULL AS e_onere,
+                  a.causale_onere_id
+                 FROM catalogo.articoli a
+                   LEFT JOIN catalogo.unita_misura u ON u.id = a.uom_id
+                   LEFT JOIN vendite.articoli_tipologie t ON t.id = a.tipo_voce_id
+                   LEFT JOIN vendite.articoli_gruppi g ON g.id = a.gruppo_voce_id
+                   LEFT JOIN vendite.articoli_spesa s ON s.id = a.spesa_id
+                   LEFT JOIN config.iva i ON i.id = a.iva_id
+                   LEFT JOIN config.listini_tipologie lt ON lt.id = a.listino_tipologia_id
+                   LEFT JOIN config.nature_vendita nv ON nv.id = a.natura_vendita_id
+                   LEFT JOIN config.modi_approvvigionamento ma ON ma.id = a.modo_approvvigionamento_id;
+
+              COMMENT ON VIEW catalogo.vw_articoli_dettaglio IS
+                  'Vista della lista (ui.lista_definizione 26) e del drawer articolo: catalogo.articoli + decodifiche (uom, tipologia, gruppo, spesa, iva, tipologia listino, natura di vendita) + capability BoM. Nessuna security_invoker, e non deve prenderla per imitazione: catalogo.articoli non ha RLS e la vista non attraversa tabelle protette (presidio sul merito: db/pgtap/rls/test-rls-viste-security-invoker.sql). ⭐ rev 2026-09-18 (P-1, brief-db-magazzino-lotto-2-motore sezione 4.9): + requires_lotto in coda — la primitiva di magazzino pretende il lotto quando e'' vero (passo 6), e l''operatore deve poterlo vedere e impostare; SENZA lock BoM (Lotto 1 sezione 4.3: il lotto non entra nella distinta), quindi ne'' fra i non_editable_fields del BE ne'' disabilitato nel drawer. rev 2026-09-13 (P-6, brief-db-modifiche-certe-ciclo-vendita-e-articolo sezione 5.2): + modo_approvvigionamento_id, modo_approvvigionamento_codice_interno, modo_approvvigionamento_descrizione, gestito_a_magazzino, lead_time_giorni, in coda (CREATE OR REPLACE VIEW puo'' solo appendere). La decodifica e'' sulla forma di natura_vendita_*: codice_interno per la logica, descrizione a video; NON `_codice`, che mentirebbe sulla sorgente (linee-guida-sql 6c). ⚠️ catalogo_repository proietta ARTICOLI_DETAIL_COLUMNS per nome: una colonna nuova non esce finche'' il BE non la nomina. Rev 2026-10-25 (20261025-57/-60, brief-db-grammatica-unica-documenti lotto 3, G-7): tolta e rimessa identica perche'' la colonna che legge cambia tipo; note_target_tipo vale ARTICOLO (era ARTICOLI) e diventa varchar(50), dalla colonna di catalogo.articoli. rev 2026-11-03 (20261103-53, brief-db-addebito-trasporto-ordine §9.9, richiesta del FE): + e_onere e causale_onere_id in coda: il picker articoli e il form articolo sanno se l''articolo scelto e'' un onere (date di consegna nascoste sulla riga nuova; flag magazzino, composito, lotto, matricola spenti, gemello del guard trgfn_articoli_guard_onere_natura). Anche queste colonne non escono finche'' il BE non le nomina.';
+
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.e_onere IS
+                  'La definizione di articolo-onere: causale_onere_id IS NOT NULL (un articolo-onere non e'' merce, non e'' a magazzino, composito, a lotti o a matricola: trgfn_articoli_guard_onere_natura). La leggono il picker delle righe (date di consegna nascoste sulla riga nuova: E_RIGA_ONERE_DATA_CONSEGNA) e il form articolo. Sulla RIGA di documento il discrimine e'' e_onere della vista di riga, sulla natura congelata. brief-db-addebito-trasporto-ordine §9.9.';
+
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.causale_onere_id IS
+                  'La causale dell''onere (config.causali_onere); NULL sulla merce. Il discrimine resta e_onere: questa colonna porta il valore per chi etichetta o raggruppa. brief-db-addebito-trasporto-ordine §9.9.';
+
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Togliere colonne da una vista e' un DROP + CREATE, e il DROP
+              --   perderebbe i grant. Il corpo precedente e' in 20261025-60.
+              SELECT 1;
