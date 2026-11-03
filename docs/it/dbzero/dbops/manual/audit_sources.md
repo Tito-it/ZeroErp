@@ -1,93 +1,102 @@
-# audit_sources
+## 📘 Documentazione Concettuale – Tabella `dbops.audit_sources`
 
-### Scopo
-
-Lookup table delle "tabelle audit-abili" esposte al drawer admin
-([AuditLogView](/dev/work-done/analisi-refactor.frontend-amm-software)).
-Single source of truth della lista "quali storico.* sono navigabili
-da UI" + metadata per l'i18n (`label_key`) e il raggruppamento UI
-(`area_funzionale`).
-
-Sostituisce la lista hardcoded oggi in
-`apps.amm_software.db.amm_software_repository._AUDIT_TABLES`
-e le costanti FE `buildAuditTabellaOptions`.
-
-> **Vedi anche**
+> **Ultimo aggiornamento**: 4 novembre 2026
 >
-> - [Guida Audit e Tracciabilità](/guide/audit-e-tracciabilita) — strato 1 (audit DB)
-> - [vw_audit_sources](/dbzero/script/manual/vw_audit_sources) — vista pubblica (3 colonne contratto)
-> - [fn_audit_summary](/dbzero/script/manual/fn_audit_summary) — dispatch dinamico via `storico_table` + `storico_pk_col`
+> 👀 **Vedi anche**
+>
+> Approfondimento viste:
+>
+> * [script.vw_audit_sources](/dbzero/script/views/vw_audit_sources) — la vista che il backend legge: solo le righe attive
+>
+> Approfondimento funzioni:
+>
+> * [script.fn_audit_summary](/dbzero/script/funzioni/fn_audit_summary) — il riepilogo di uno snapshot, che usa `storico_table` e `storico_pk_col`
+>
+> Guide:
+>
+> * [Audit e tracciabilità](/guide/audit-e-tracciabilita) — lo storico dei dati e come si consulta
 
-## Schema
+---
 
-`dbops` (lookup tecnico, non dominio).
+### 🎯 Scopo Principale
 
-## Modello
+Il catalogo delle **tabelle di storico consultabili dall'amministrazione**: una riga per ogni
+`storico.*` che il pannello dell'audit mostra, con l'etichetta da tradurre e l'area in cui
+raggrupparla.
 
-| Colonna | Tipo | Ruolo |
-|---|---|---|
-| `id` | `smallserial` PK | Lookup tecnico |
-| `code` | `text` UNIQUE | Codice stabile usato dal BE/FE (es. `'user_override_aree'`). Coincide tipicamente col nome tabella sorgente. |
-| `storico_table` | `text` | Nome qualificato `schema.tabella` della storico target (es. `'storico.user_override_aree'`). **Colonna tecnica, non esposta dalla vista pubblica**. |
-| `storico_pk_col` | `text` | Nome della colonna che identifica la riga originale nello storico (es. `'user_override_aree_id'`). Usata da `fn_audit_summary` per il `PARTITION BY` del LAG diff. **Tecnica**. |
-| `label_key` | `text` | Chiave i18n usata dal FE (es. `'amm.audit_tabella_override_aree'`). Il DB non traduce. |
-| `area_funzionale` | `text` | Vocabolario controllato (no `CHECK`, validato in pgTAP): `PERMESSI \| AUTH \| ANAGRAFICHE \| EMITTENTI \| FATTURAZIONE`. |
-| `attivo` | `boolean` | Soft-disable per fasi di transizione. La vista filtra `attivo=true`. |
-| audit standard | — | `data_insert/update`, `user_insert/update`, `tx_id`, `storicizza` |
+È la sola fonte di quell'elenco: il backend non ha una lista sua, e una tabella entra nel
+pannello aggiungendo una riga qui, senza toccare schema né codice.
 
-## Vincoli
+---
 
-- `pk_audit_sources` su `id`
-- `uq_audit_sources_code` UNIQUE su `code`
+### Che cosa dice una riga
 
-## Trigger applicati dal framework automazioni
+* `code` è l'**identità logica** della sorgente: il backend ci ordina, ci filtra e la riceve
+  dall'interfaccia. Di solito coincide con il nome della tabella di origine, ma non è il nome
+  fisico.
+* `storico_table` è il **nome fisico**, qualificato con lo schema, della tabella di storico. ⚠️ Chi
+  costruisce una lettura dinamica legge questa colonna, mai `code`: i due si separano alla prima
+  tabella rinominata, e senza avviso.
+* `storico_pk_col` è la colonna dello storico che identifica la riga di origine: serve a
+  `script.fn_audit_summary` per mettere in fila gli snapshot della stessa riga e confrontare
+  ciascuno con il precedente.
+* `label_key` è una chiave di traduzione: il database non traduce, la traduce l'interfaccia.
+* `area_funzionale` raggruppa le sorgenti nel pannello.
+* `attivo` spegne una sorgente senza cancellarla: la vista e il riepilogo leggono solo le righe
+  attive.
 
-- `trgfn_audit_data_user_generic` (audit standard `data_*`/`user_*`)
-- `trgfn_tx_id_managed` (tx_id)
-- `trgfn_storico_generic` (storicizzazione su UPDATE/DELETE)
+---
 
-I trigger non sono scritti manualmente in migration: vengono creati
-automaticamente da `dbops.fn_run_automations` post-deploy (vedi
-[guida automazioni](/guide/audit-e-tracciabilita)).
+### Il vocabolario di `area_funzionale` sta nel test, non in un vincolo
 
-## Aggiungere una nuova storico al drawer admin
+I valori ammessi sono `PERMESSI`, `AUTH`, `ANAGRAFICHE`, `EMITTENTI` e `FATTURAZIONE`. Non c'è un
+vincolo CHECK: il vocabolario lo tiene il pgTAP del seed, che fallisce se una riga attiva ne usa
+un altro. Un valore nuovo entra quindi aggiornando insieme il seed e il test.
 
-Tre passi, tutti dati-non-codice:
+---
 
-1. La tabella sorgente deve essere già storicizzata (colonne
-   `storicizza, tx_id` + `storico.<tabella>` provvisionata via
-   `dbops.fn_run_automations(... STORICO ...)`).
-2. Append una riga in
-   `db/changelog/migrations_v2/80_data/sql/dbops/audit_sources.csv`
-   con `code, storico_table, storico_pk_col, label_key, area_funzionale`.
-3. `liquibase update` — il loader `runOnChange:false` esistente upserta
-   la riga via `loadUpdateData` su PK `id`.
+### Si alimenta dal seed
 
-Nessuna modifica di schema, nessun nuovo file YAML, nessun cambio BE.
-La vista `vw_audit_sources` riflette automaticamente il nuovo lookup;
-`fn_audit_summary` lo prende in carico via il dispatch dinamico.
+Le righe stanno nel CSV `80_data/sql/dbops/audit_sources.csv`, caricato con un upsert sulla
+chiave `id` che si rilancia quando il CSV cambia. Per rendere consultabile una tabella nuova:
 
-## Vocabolario `area_funzionale`
+1. la tabella di origine deve essere già storicizzata, con la sua tabella `storico.*`;
+2. si aggiunge la riga nel CSV, con codice, tabella di storico, colonna della riga di origine,
+   chiave di traduzione e area.
 
-Convenzione documentata, validata in
-`db/pgtap/dbops/test-audit-sources-seed.sql`. Cinque valori stabili:
+La vista e il riepilogo la vedono al rilascio successivo, senza altre modifiche.
 
-| Valore | Tabelle attese |
-|---|---|
-| `PERMESSI` | `user_override_*`, `profili_accesso_aree/_azioni/_bindings` |
-| `AUTH` | `risorse_umane_auth_user` (legacy), `identita_digitali` |
-| `ANAGRAFICHE` | (futuro) `soggetti`, `clienti`, `fornitori` |
-| `EMITTENTI` | `user_emittenti_fiscali`, `emittenti_fiscali` |
-| `FATTURAZIONE` | (futuro) `fatture`, `lotti` |
+---
 
-Aggiungere un sesto valore senza prima aggiornare il vocabolario
-documentato + il test fa fallire il pgTAP — by design.
+### ⚠️ Le colonne di audit standard ci sono, le automazioni no
 
-## Riferimenti
+La tabella ha le colonne di audit (`data_*`, `user_*`), `tx_id` e `storicizza`, ma **non** sta
+nello scope delle automazioni: nessun trigger di audit, di transaction id o di storico la tocca.
+`data_update` e `user_update` sono quelli che scrive il seed, `tx_id` resta vuoto e `storicizza`
+non produce uno storico.
 
-- DDL: `db/changelog/migrations_v2/00_schema/dbops/20260429-05-create-audit-sources-mctit.yaml`
-- Seed: `db/changelog/migrations_v2/80_data/sql/dbops/audit_sources.csv` (9 righe attive: 5 user_override/emittenti/RUA + identita + 3 profili_accesso_*)
-- Cleanup legacy: `db/changelog/migrations_v2/80_data/changelog/20260505-01-delete-audit-sources-profili-reparto-mctit.yaml`
-- Loader: `db/changelog/migrations_v2/80_data/changelog/20260429-08-upsert-audit-sources-mctit.yaml`
-- Test pgTAP: `db/pgtap/dbops/test-audit-sources-seed.sql`
-- Brief Fase 5: `docs/it/dev/work-done/analisi-refactor.frontend-amm-software.md`
+---
+
+### Test
+
+* `db/pgtap/dbops/test-audit-sources-seed.sql` — le sorgenti attive attese ci sono, nessuna usa
+  un'area fuori vocabolario, ogni `storico_table` e ogni `storico_pk_col` esistono davvero, le
+  sorgenti ritirate non ricompaiono, e la vista espone esattamente codice, chiave di traduzione,
+  area e tabella di storico.
+* `db/pgtap/script/test-fn-audit-summary.sql` — il riepilogo che passa da questo catalogo.
+
+---
+
+### Note di migrazione
+
+* 2026-04-29 — nasce al posto della lista scritta nel backend e delle costanti del frontend.
+* 2026-05-04 — escono le sorgenti del vecchio modello `profili_reparto_*`, entrano le tre
+  `profili_accesso_*`.
+* 2026-09-02 — `storico_table` entra nella vista pubblica: prima il backend ricostruiva il nome
+  fisico da `code`.
+* 2026-09-12 — la sorgente `risorse_umane_auth_user` è cancellata, insieme alla tabella ponte
+  legacy e al suo storico; l'audit delle identità passa da `identita_digitali`.
+
+---
+
+{% include-markdown "signature-core.md" %}

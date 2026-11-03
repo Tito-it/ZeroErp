@@ -1,6 +1,6 @@
 # Guida — Gestione DDT di vendita
 
-> **Ultimo aggiornamento**: 3 novembre 2026
+> **Ultimo aggiornamento**: 4 novembre 2026
 >
 > **Destinatari**: analisti funzionali, operatori commerciali/logistici,
 > sviluppatori backend/frontend, DBA.
@@ -23,7 +23,7 @@
 > * [vendite.trgfn_ddt_gen_numero_emesso](/dbzero/vendite/funzioni/trgfn_ddt_gen_numero_emesso) / [vendite.trgfn_v_ddt_protect_num](/dbzero/vendite/funzioni/trgfn_v_ddt_protect_num) — numero assegnato a EMESSO e poi immutabile
 > * [vendite.trgfn_ddt_guard_indirizzi_obbligatori](/dbzero/vendite/funzioni/trgfn_ddt_guard_indirizzi_obbligatori) — indirizzo di consegna obbligatorio all'emissione
 > * [vendite.trgfn_ddt_normalize](/dbzero/vendite/funzioni/trgfn_ddt_normalize) — eredità dal contesto (BA/utility/valuta/emittente)
-> * [script.trgfn_default_emittente_fiscale](/dbzero/script/funzioni/trgfn_default_emittente_fiscale) / [script.trgfn_doc_guard_emittente_ba](/dbzero/script/manual/trgfn_doc_guard_emittente_ba) — emittente fiscale di default (il building block unico, montato sui DDT con «lascia NULL» e «salta con sorgente») e coerenza col cliente
+> * [script.trgfn_default_emittente_fiscale](/dbzero/script/funzioni/trgfn_default_emittente_fiscale) / [script.trgfn_doc_guard_emittente_ba](/dbzero/script/funzioni/trgfn_doc_guard_emittente_ba) — emittente fiscale di default (il building block unico, montato sui DDT con «lascia NULL» e «salta con sorgente») e coerenza col cliente
 > * [vendite.fn_ddt_riga_componenti_init](/dbzero/vendite/funzioni/fn_ddt_riga_componenti_init) / [vendite.fn_ddt_riga_componenti_preview](/dbzero/vendite/funzioni/fn_ddt_riga_componenti_preview) — componenti BoM
 >
 > **Vedi anche** — API e service backend:
@@ -171,7 +171,7 @@ Un altro servizio non entra: uno una tantum va in commessa, uno ricorrente in co
 un'offerta). La merce è giudicata
 dalla **natura con cui la riga è stata venduta**: una riga nata da un ordine porta la natura di lì, anche
 se nel frattempo l'articolo è cambiato in anagrafica. Il controllo è uno solo per tutti i
-documenti ([`script.fn_check_articolo_riga`](/dbzero/script/manual/fn_check_articolo_riga)), e
+documenti ([`script.fn_check_articolo_riga`](/dbzero/script/funzioni/fn_check_articolo_riga)), e
 il messaggio dice perché e dove va invece l'articolo. Un **kit senza componenti** (dal 2026-10-14) non si mette in nessuna riga: va prima completata la sua distinta.
 
 **Nella ricerca dell'articolo** trovi prima quelli che la riga può usare. Gli altri compaiono dopo, in grigio, col motivo sotto, e non si possono scegliere: chi cerca un codice preciso e non lo trova fra i primi vede perché. La ricerca e il rifiuto al salvataggio usano la stessa regola, quindi un articolo proposto non viene rifiutato dopo.

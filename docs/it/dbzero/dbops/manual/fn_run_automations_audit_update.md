@@ -1,101 +1,94 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_run_automations_audit_update`
 
-> **Ultimo aggiornamento**: 3 novembre 2026
+> **Ultimo aggiornamento**: 4 novembre 2026
 >
 > 👀 **Vedi anche**
 >
-Guide:
+> Approfondimento tabelle:
 >
-[Automazione DB](/guide/automazione-db)
+> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl) — le regole `AUDIT_UPDATE`: ambito, colonne, modello del nome, strategia
+> * [dbops.automation_scope](/dbzero/dbops/tabelle/automation_scope) — le tabelle che il framework guarda
+> * [dbops.automation_overrides_cols](/dbzero/dbops/tabelle/automation_overrides_cols) — i nomi di colonna sostituiti per tabella
 >
-Approfondimento tabelle:
+> Approfondimento funzioni:
 >
-[dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)   
+> * [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations) — l'orchestratore che la chiama come modulo `AUDIT_UPDATE`
+> * [maintenance.proc_automations_audit_update_job](/dbzero/maintenance/funzioni/proc_automations_audit_update_job) — il job che la lancia da sola
+> * [script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic) — il trigger che monta
+> * [dbops.fn_get_override_col](/dbzero/dbops/funzioni/fn_get_override_col) — il nome di colonna sostituito, se c'è
+> * [dbops.fn_name_from_template](/dbzero/dbops/funzioni/fn_name_from_template) — il nome del trigger dal modello
+> * [script.fn_sqlstate_di_ambiente](/dbzero/script/funzioni/fn_sqlstate_di_ambiente) — distingue un guasto dell'ambiente da un difetto
 >
-Approfondimento funzioni:
+> Guide:
 >
-[dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations)   
-> [dbops.fn_resolve_scope](/dbzero/dbops/funzioni/fn_resolve_scope)  
-> [dbops.fn_get_override_col](/dbzero/dbops/funzioni/fn_get_override_col)   
-> [script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic)  
+> * [Automazione DB](/guide/automazione-db) — il framework delle automazioni
 
 ---
+
 ### 🎯 Scopo Principale
-La funzione **`dbops.fn_run_automations_audit_update(p_exec_mode, p_schemas, p_dry_run)`** applica in modo automatico (o simula) la **regola di aggiornamento audit** sulle tabelle nell'ambito, creando – dove mancante secondo le policy – un **trigger BEFORE INSERT OR UPDATE** che aggiorna `data_update` e `user_update` tramite la funzione `script.trgfn_audit_data_user_generic()`.
+
+Il modulo `AUDIT_UPDATE` del framework delle automazioni: **monta il trigger
+`script.trgfn_audit_data_user_generic`** (`BEFORE INSERT OR UPDATE`) sulle tabelle in ambito che
+hanno le colonne di audit e non lo hanno ancora. Il trigger scrive a ogni scrittura chi ha toccato
+la riga e quando. In simulazione non crea niente e scrive nel registro delle esecuzioni che cosa
+creerebbe.
+
+Aggiunge e non toglie.
 
 ---
 
-### Parametri di input
+### Quali tabelle, con quale regola
 
-| Parametro     | Tipo    | Obbligatorio | Descrizione                                                                    |
-| ------------- | ------- | :----------: | ------------------------------------------------------------------------------ |
-| `p_exec_mode` | text    |      ✔️       | Modalità di esecuzione (es. `AUTO`, `FORCE`, `CHECK`).                         |
-| `p_schemas`   | text[]  |      ❌       | Ambito di schemi. Se `NULL`, determinato da `fn_resolve_scope`.                |
-| `p_dry_run`   | boolean |      ✔️       | Se `true`, non crea i trigger ma registra un evento **DRYRUN** in `audit_log`. |
+Le tabelle sono quelle ordinarie degli schemi in ambito che lo scope delle automazioni include. Per
+ciascuna valgono le regole `AUDIT_UPDATE` abilitate che ne combaciano schema e tabella, in ordine
+di priorità, e la cui modalità è `AUTO` o quella con cui la funzione è stata lanciata.
 
----
+Il trigger si monta solo se la tabella ha **entrambe** le colonne di audit: quella del momento e
+quella dell'utente. I loro nomi vengono dai parametri della regola (`data_update` e `user_update`
+se la regola non li dice), sostituiti dal nome della tabella quando
+`dbops.automation_overrides_cols` ne dichiara uno per i ruoli `AUDIT_TS` e `AUDIT_USER`.
 
-### Valore di ritorno
-
-`void` – non ritorna valori; crea i trigger richiesti o produce log di simulazione.
-
----
-
-### Flusso logico
-
-1. **Ambito**: calcola gli schemi effettivi con `fn_resolve_scope` (se `p_schemas` è `NULL`).
-2. **Scansione tabelle**: cicla tutte le tabelle nell'ambito (escluse quelle fuori `fn_table_in_scope`).
-3. **Selezione regole**: per ciascuna tabella, filtra le regole abilitate in `automation_rules_tbl` con `rule_type='AUDIT_UPDATE'`, priorità e `exec_mode` coerenti.
-4. **Risoluzione colonne**:
-
-   * `col_ts`  = `fn_get_override_col(...,'AUDIT_TS',   COALESCE(params->>'audit_ts','data_update'))`
-   * `col_user`= `fn_get_override_col(...,'AUDIT_USER', COALESCE(params->>'audit_user','user_update'))`
-   * Verifica presenza colonne con `fn_col_exists`.
-5. **Esistenza trigger**: valuta l’esistenza per **nome** e/o **funzione** secondo `existence_strategy` (`BY_NAME`, `BY_FUNCTION`, `BOTH`).
-6. **Azione**:
-
-   * **`p_dry_run = true`** → scrive evento `DRYRUN` via `fn_audit_log_once` (dettagliando tabella, nome trigger, azione prevista).
-   * **`p_dry_run = false`** → esegue `CREATE TRIGGER ... EXECUTE FUNCTION script.trgfn_audit_data_user_generic()`.
-7. **Error handling**: in caso di errore, invoca `script.fn_log_and_raise_error` con contesto `E_AUDIT_UPDATE`.
+⚠️ Il nome sostituito serve **solo** a decidere se montare il trigger: il trigger generico scrive
+sempre `data_update`, `user_update` e, all'inserimento, `user_insert`. Su una tabella con colonne
+di audit dai nomi diversi, il trigger montato fallirebbe alla prima scrittura.
 
 ---
 
-### Casi d’uso tipici
+### Il nome del trigger e la sua esistenza
 
-* **Allineamento post-deploy**: assicurarsi che tutte le tabelle operative abbiano il trigger di aggiornamento audit.
-* **Refactoring**: dopo rinomini colonne audit (`AUDIT_TS`, `AUDIT_USER`) tramite override, ricreare i trigger coerenti.
-* **Simulazione sicura**: validare in `dry_run` le azioni che verrebbero eseguite in produzione.
-
----
-
-### Permessi e sicurezza
-
-* Necessari privilegi DDL per creare trigger sulle tabelle target.
-* In `dry_run` non sono richiesti privilegi di modifica dello schema.
+Il nome viene dal modello della regola (in mancanza, `trg_{table}_audit_data_user_upd`). La
+strategia della regola dice quando il trigger «c'è già»: `BY_NAME` (il default) per nome,
+`BY_FUNCTION` se un trigger esegue già la funzione di audit, `BOTH` se basta uno dei due.
 
 ---
 
-### Esempi di utilizzo
+### La simulazione
 
-* **Simulazione**: `SELECT dbops.fn_run_automations_audit_update('AUTO', ARRAY['anagrafiche'], true);`
-* **Applicazione reale**: `SELECT dbops.fn_run_automations_audit_update('FORCE', NULL, false);`
-
----
-
-### Considerazioni
-
-* Il nome del trigger è derivato da `name_template` (es. `trg_{table}_audit_data_user_upd`), risolto con `fn_name_from_template`.
-* Gli override consentono di supportare schemi legacy dove le colonne non si chiamano `data_update`/`user_update`.
-* Integrare con policy di **retention** su `audit_log` per non accumulare eccessivi log di `DRYRUN`.
+Con la simulazione accesa la funzione non esegue DDL: per ogni trigger mancante scrive una riga
+`DRYRUN` in `dbops.audit_log`, con tipo di regola `AUDIT_UPDATE`, la tabella e il nome che avrebbe
+creato.
 
 ---
 
-### Benefici
+### Codici errore
 
-* **Coerenza**: applica in modo uniforme la politica di aggiornamento audit.
-* **Automazione**: evita definizioni manuali e riduce errori umani.
-* **Flessibilità**: supporta override di naming e modalità di esecuzione differenziate.
+* `E_AUDIT_UPDATE` — la creazione di un trigger fallisce. Un guasto dell'**ambiente**
+  (connessione, risorse, arresto, sistema, privilegio, lock) si registra con questo codice e il suo
+  contesto, e poi si rilancia **com'è**, con il suo SQLSTATE. Ogni altro errore è un difetto di
+  struttura, e si solleva con questo codice.
+
+Il primo errore ferma l'intera corsa.
 
 ---
 
-> **In sintesi**: `fn_run_automations_audit_update` è il modulo che garantisce l’aggiornamento affidabile dei metadati di audit (`data_update`, `user_update`) su tutte le tabelle nell'ambito, con possibilità di simulazione e gestione degli override.
+### Note di migrazione
+
+* 2026-02-27 — il trigger montato scatta all'inserimento e all'aggiornamento, non più solo
+  all'aggiornamento.
+* 2026-10-16 — un guasto dell'ambiente si rilancia col suo SQLSTATE; prima diventava un errore di
+  dominio del modulo, e il presidio dei job lo mandava allo sviluppo
+  (`brief-db-presidio-job-run-a-chi-tocca`).
+
+---
+
+{% include-markdown "signature-core.md" %}

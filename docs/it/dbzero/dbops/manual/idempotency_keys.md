@@ -1,91 +1,107 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.idempotency_keys`
 
+> **Ultimo aggiornamento**: 4 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-> [Le operazioni che non si ripetono](/guide/operazioni-che-non-si-ripetono) — la guida: il meccanismo intero, dal gesto alla scadenza
-> [dbops.fn_idempotency_prenota](/dbzero/dbops/funzioni/fn_idempotency_prenota) — la prenotazione di una key
-> [dbops.request_log](/dbzero/dbops/manual/request_log) — correlazione via `idempotency_key`
-> [dbops.error_log](/dbzero/dbops/tabelle/error_log)
-
-La tabella **`dbops.idempotency_keys`** ricorda le **Idempotency-Key** che il client manda
-con un'operazione che non si deve eseguire due volte (una fatturazione, una numerazione,
-la registrazione di una distinta). Se la stessa richiesta arriva di nuovo, per esempio
-perché l'operatore ha cliccato due volte o la rete ha ripetuto l'invio, il server non la
-riesegue: rimanda la risposta della prima.
-
----
-
-### 🎯 Scopo
-
-* Evitare che un reinvio esegua di nuovo un'operazione irreversibile.
-* Rimandare **la stessa risposta** a chi ripete la stessa richiesta.
-* Rispondere «ancora in corso» a chi la ripete mentre la prima sta lavorando.
+> Approfondimento tabelle:
+>
+> * [dbops.request_log](/dbzero/dbops/tabelle/request_log) — il registro delle richieste, legato dalla stessa key
+> * [dbops.coda_lavori](/dbzero/dbops/tabelle/coda_lavori) — l'altra idempotenza, sui lavori vivi della coda
+> * [config.parameters](/dbzero/config/tabelle/parameters) — dove sta la soglia di ripresa
+>
+> Approfondimento funzioni:
+>
+> * [dbops.fn_idempotency_prenota](/dbzero/dbops/funzioni/fn_idempotency_prenota) — prenota una key e dice al backend che cosa fare
+> * [dbops.fn_idempotency_soglia_secondi](/dbzero/dbops/funzioni/fn_idempotency_soglia_secondi) — la soglia oltre cui una key in corso è abbandonata
+> * [dbops.trgfn_cleanup_at_alla_nascita](/dbzero/dbops/funzioni/trgfn_cleanup_at_alla_nascita) — scrive la scadenza alla nascita della riga
+>
+> Guide:
+>
+> * [Le operazioni che non si ripetono](/guide/operazioni-che-non-si-ripetono) — il meccanismo intero, dal gesto alla scadenza
+> * [Audit e tracciabilità](/guide/audit-e-tracciabilita) — la retention dei registri
 
 ---
 
-### Significato dei campi
+### 🎯 Scopo Principale
 
-* **`idempotency_key`**: la chiave mandata dal client (chiave primaria).
-* **`status`**: `in_progress` (prenotata, l'operazione sta lavorando), `completed`
-  (fatta), `failed` (fallita: si può riprovare con la stessa key).
-* **`response_payload`**: la risposta da rimandare. C'è **se e solo se** la key è
-  `completed`.
-* **`auth_user_id`**, **`endpoint`**: chi ha prenotato la key e su quale richiesta
-  (metodo e percorso). La risposta si rimanda solo allo stesso utente sullo stesso
-  endpoint. `endpoint` è obbligatorio: ogni key è legata alla richiesta che l'ha
-  prenotata. `auth_user_id` è vuoto per una richiesta anonima.
-* **`prenotata_at`**: quando la key è stata prenotata o ripresa. Da qui si misura se
-  una key `in_progress` è stata abbandonata.
-* **`tx_id`**: la transazione DB dell'operazione completata.
-* **`cleanup_at`**: quando la riga si può cancellare (un giorno dopo la nascita).
+Ricorda le Idempotency-Key che il client manda con un'operazione che non si deve eseguire due
+volte (una fatturazione, una numerazione, la registrazione di una distinta). Se la stessa richiesta
+arriva di nuovo — un doppio clic, un invio ripetuto dalla rete — il server non la riesegue: rimanda
+la risposta della prima, o dice che è ancora in corso.
 
 ---
 
-### Come funziona
+### Le colonne che contano
 
-1. Il backend chiama **[`dbops.fn_idempotency_prenota`](/dbzero/dbops/funzioni/fn_idempotency_prenota)**
-   con la key, l'utente, l'endpoint e una dichiarazione obbligatoria: **la ripresa è
-   ammessa?** (vedi il punto 2). La funzione risponde:
-    * **ESEGUI** — la key è nuova, oppure era fallita, oppure era «in corso» da più di
-      `SYSTEM_IDEMPOTENZA_IN_CORSO_SECONDI` (120 secondi, sopra il timeout del server
-      web) **e la ripresa è ammessa**: chi lavorava è morto senza finire, e si riprende;
-    * **REPLAY** — l'operazione è già stata fatta: il backend rimanda la risposta salvata;
-    * **IN_CORSO** — la sta eseguendo un'altra richiesta, oppure è «in corso» oltre la
-      soglia ma la ripresa **non** è ammessa: il backend risponde 409
-      `E_IDEMPOTENCY_IN_PROGRESS` («L'operazione è ancora in corso»).
-2. A operazione finita il backend scrive `completed` con la risposta. Qui le operazioni
-   sono di due tipi, e il backend dice quale a ogni richiesta:
-    * **in un passo solo**: `completed` si scrive **nella stessa transazione
-      dell'operazione**, quindi o sono avvenute tutte e due, o nessuna. Una key rimasta
-      «in corso» vuol dire che l'operazione non ha salvato niente: riprenderla è sicuro,
-      e la ripresa è **ammessa**;
-    * **a passi** (per esempio la pipeline di un lotto, che salva ogni passo per conto
-      suo): una key rimasta «in corso» può coprire un lavoro già salvato in parte.
-      Riprenderla lo rifarebbe, quindi la ripresa **non è ammessa**: la key resta «in
-      corso» finché scade, o finché il frontend ne genera una nuova per il gesto dopo.
-3. Se l'operazione fallisce, il backend scrive `failed`. Una key `failed` si riprende
-   sempre, anche quando la ripresa non è ammessa: l'esito l'ha scritto il backend, quindi
-   si sa che cosa è successo.
-
-Una key usata da un **altro utente** o su un **altro endpoint** non rimanda niente: la
-funzione risponde `E_IDEMPOTENCY_KEY_RIUSATA` (400), perché la risposta salvata è
-dell'operazione di qualcun altro.
+* `idempotency_key`: la chiave mandata dal client, chiave primaria.
+* `status`: `in_progress` (prenotata, l'operazione sta lavorando), `completed` (fatta), `failed`
+  (fallita: si può riprovare con la stessa key).
+* `response_payload`: la risposta da rimandare, presente **se e solo se** la key è `completed`.
+* `auth_user_id`, `endpoint`: chi ha prenotato la key e su quale richiesta (metodo e percorso). La
+  risposta si rimanda solo allo stesso utente sullo stesso endpoint; `auth_user_id` vuoto vuol dire
+  una richiesta anonima, che non è un jolly.
+* `prenotata_at`: quando la key è stata prenotata o ripresa; da qui si misura se una key in corso è
+  stata abbandonata. Non `data_update`, che il trigger di audit riscrive a ogni aggiornamento.
+* `tx_id`: la transazione dell'operazione completata.
+* `cleanup_at`: quando la riga si può cancellare.
 
 ---
 
-### Regole
+### Chi decide e chi scrive
 
-* `status` ammette solo `in_progress`, `completed`, `failed`.
-* Una key `completed` ha sempre `tx_id` e risposta; una key non `completed` non ha risposta.
-* `endpoint` c'è sempre e non è vuoto.
+La decisione sta nel database: il backend chiama `dbops.fn_idempotency_prenota`, in autocommit e
+fuori dalla transazione dell'operazione, perché la prenotazione deve essere visibile subito alle
+altre richieste. La funzione risponde `ESEGUI`, `REPLAY` o `IN_CORSO`, oppure rifiuta una key
+prenotata da un altro utente o su un altro endpoint.
+
+L'esito lo scrive il backend: `completed` con la risposta, o `failed`. Se l'operazione è in un
+passo solo, `completed` si scrive nella stessa transazione dell'operazione, e una key rimasta in
+corso vuol dire che non si è salvato niente. Le regole di ripresa sono nella scheda di
+`fn_idempotency_prenota`.
 
 ---
 
-### 🧹 Scadenza
+### I vincoli
 
-Una key serve solo finché il client può rimandare la **stessa** richiesta: il frontend la
-tiene per un gesto, al massimo dieci minuti. Per questo la riga vive **un giorno**: la
-scadenza la scrive il trigger alla nascita, dalla regola id=24, e il job settimanale
-cancella le righe scadute. Il dettaglio sta nella guida
-[Audit e tracciabilità](/guide/audit-e-tracciabilita), sezione «Manutenzione e
-retention».
+* `chk_idempotency_keys_status`: solo i tre esiti.
+* `chk_idempotency_keys_txid_completed`, `chk_idempotency_keys_risposta_solo_completed`: una key
+  `completed` ha la sua transazione e la sua risposta; una non `completed` non ha risposta. Per
+  questo la funzione di prenotazione decide il `REPLAY` guardando la risposta, senza nominare gli
+  esiti.
+* `chk_idempotency_keys_endpoint_non_vuoto` e il `NOT NULL`: ogni key è legata alla richiesta che
+  l'ha prenotata.
+
+---
+
+### 🧹 Una key vive un giorno
+
+Una key serve finché il client può rimandare la **stessa** richiesta: il frontend la tiene per un
+gesto, al massimo dieci minuti. La scadenza la scrive il trigger alla nascita
+(`trg_idempotency_keys_m50_cleanup_at_ins`), un giorno dopo la nascita, dalla regola di cleanup
+della tabella; la pulizia settimanale cancella le righe scadute. Se una key sparisce mentre qualcuno
+la sta riprendendo, per la funzione di prenotazione è di nuovo una key nuova.
+
+---
+
+### Test
+
+* `db/pgtap/dbops/test-idempotency-prenota-v1.sql` — le colonne e i vincoli (una key `completed`
+  senza risposta, senza endpoint o con endpoint vuoto è respinta), la regola di scadenza di un
+  giorno e il trigger alla nascita, e il comportamento della prenotazione.
+* `db/pgtap/dbops/test-registri-dbops-scadenza-v1.sql` — la scadenza dei registri di `dbops`.
+* `db/pgtap/dbops/test-stati-check-scrittori-v1.sql` — ogni esito del vincolo ha uno scrittore
+  dichiarato.
+
+---
+
+### Note di migrazione
+
+* 2026-10-23 — nascono `auth_user_id`, `endpoint`, `prenotata_at` e il vincolo «risposta solo da
+  `completed`»; la decisione passa dal backend a `dbops.fn_idempotency_prenota`
+  (`brief-be-verifica-documentazione-api`).
+* 2026-10-24 — `endpoint` diventa obbligatorio.
+
+---
+
+{% include-markdown "signature-core.md" %}

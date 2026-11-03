@@ -1,60 +1,66 @@
-## 📚 Documentazione Concettuale – Tabella `dbops.transaction_ids`  
+## 📘 Documentazione Concettuale – Tabella `dbops.transaction_ids`
 
-> 👀 **Vedi anche**  
+> **Ultimo aggiornamento**: 4 novembre 2026
 >
-Approfondimento Tabelle:   
+> 👀 **Vedi anche**
 >
-[config.parameter_overrides](/dbzero/config/tabelle/parameter_overrides)      
+> Approfondimento funzioni:
 >
-Approfondimento funzioni :    
+> * [dbops.fn_generate_tx_id](/dbzero/dbops/funzioni/fn_generate_tx_id) — la sola funzione che ci scrive
+> * [dbops.fn_get_or_create_session_tx_id](/dbzero/dbops/funzioni/fn_get_or_create_session_tx_id) — chiede un id nuovo, fuori transazione
+> * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed) — il trigger che verifica qui l'id della sessione
+> * [script.trgfn_prevent_modification_generic](/dbzero/script/funzioni/trgfn_prevent_modification_generic) — il blocco di modifiche e cancellazioni
 >
-[script.fn_get_parameter_full](/dbzero/script/funzioni/fn_get_parameter_full)    
-> [script.trgfn_prevent_modification_generic](/dbzero/script/funzioni/trgfn_prevent_modification_generic)    
+> Guide:
+>
+> * [Transaction ID](/guide/tx_id_implementation_guide) — come nasce e come si propaga il `tx_id`
+
+---
+
 ### 🎯 Scopo Principale
-(latest review 10-01-26)
-La tabella **`dbops.transaction_ids`** funge da **registro centrale** di tutti gli identificativi di transazione (UUID) utilizzati in Zero ERP: ogni volta che viene avviata un’operazione di modifica dati (inserimento, aggiornamento o cancellazione) che coinvolge più tabelle, si genera un nuovo **`tx_id`** in questa tabella e lo si propaga a tutte le righe interessate, garantendo la **tracciabilità** e il **raggruppamento** coerente delle modifiche.
+
+Il **registro dei transaction id**: ogni `tx_id` che il sistema pubblica nella sessione nasce qui,
+con la funzione che l'ha chiesto e un contesto. Le righe toccate nella stessa transazione portano
+quell'id nella colonna `tx_id`, e si ritrovano insieme.
+
+Un id assente da questo registro non è un id della transazione: è la regola su cui il trigger del
+`tx_id` verifica la sessione.
 
 ---
 
-### Vincoli
+### ⭐ Si scrive fuori dalla transazione, da una sola porta
 
-* **PRIMARY KEY**: `transaction_ids_pkey` sulla colonna `id` (UUID).
+Le righe le scrive solo `dbops.fn_generate_tx_id`, chiamata da
+`dbops.fn_get_or_create_session_tx_id` su una **connessione separata**: la registrazione
+sopravvive all'annullamento della transazione che l'ha chiesta. Così un id usato da una
+transazione annullata resta registrato, e non lo riceve nessun'altra.
 
----
-### 🚨 Protezione Dati di Audit
+La chiave è un UUID v7: cresce nel tempo.
 
-* **Trigger**: `trg_prevent_mod_parameters_audit` (BEFORE UPDATE OR DELETE) su `config.parameters_audit`.
-  Esegue la funzione `script.trgfn_prevent_modification_generic()`, che impedisce qualsiasi modifica o cancellazione dei record di audit, assicurando l’inalterabilità della cronologia.
-
-
----
-
-### Meccanismo di Utilizzo
-
-1. **Generazione del `tx_id`**
-
-   ```sql
-   INSERT INTO dbops.transaction_ids DEFAULT VALUES
-   RETURNING id;
-   ```
-2. **Propagazione**
-   Il valore restituito (`tx_id`) viene passato alle colonne omonime (`tx_id`) nelle altre tabelle coinvolte, assicurando che tutte le operazioni riferiscano la stessa transazione.
-3. **Auditing**
-
-   * `user_insert` e `data_insert` registrano chi e quando ha creato il `tx_id`.
-   * `user_update` e `data_update` vengono aggiornati ad ogni modifica grazie al trigger di audit.
-   * `generating_function` può contenere il nome della funzione o procedura DB che ha generato il `tx_id`.
-   * `session_info` può immagazzinare JSONB con ulteriori informazioni di contesto (es. utente applicativo, IP, dettagli di sessione).
+* `generating_function` è la funzione che ha chiesto l'id;
+* `session_info` è il contesto della richiesta, un oggetto JSON (vuoto se non c'è niente da dire).
 
 ---
 
-### Vantaggi Operativi
+### ⛔ Il registro non si modifica e non si cancella
 
-* **Coerenza transazionale**: un singolo `tx_id` per raggruppare operazioni correlate su più tabelle.
-* **Inalterabilità**: la cronologia rimane immutata grazie al trigger di prevenzione.
-* **Tracciabilità**: facilità di debug e audit, risalendo a tutte le modifiche di una stessa transazione.
-* **Flessibilità**: il campo `session_info` consente di allegare dati custom alla transazione.
+Un trigger `BEFORE UPDATE OR DELETE` con `script.trgfn_prevent_modification_generic` rifiuta ogni
+modifica e ogni cancellazione: un id registrato resta com'è. Per lo stesso motivo `user_update` e
+`data_update` restano vuote: la tabella non è nel perimetro delle automazioni di audit, e nessuno
+le scrive.
+
+⚠️ Non ha una scadenza: le righe crescono di una per transazione che scrive su una tabella
+tracciata, dove il canale di log è attivo.
 
 ---
 
-> **“Centralizzare gli UUID di transazione in `dbops.transaction_ids` semplifica la gestione e l’analisi delle operazioni distribuite, garantendo un’unica chiave di correlazione per l’intera applicazione.”**
+### Test
+
+* `db/pgtap/dbops/test-tx-id-coerenza-non-registrato.sql` — con il canale attivo l'id restituito è
+  registrato qui; senza canale non si pubblica un id che qui non c'è.
+* `db/pgtap/dbops/test-user-update-not-null-v1.sql` — la tabella è nel registro del debito delle
+  colonne `user_update` che ammettono il vuoto, come registro tecnico che nessuno aggiorna.
+
+---
+
+{% include-markdown "signature-core.md" %}

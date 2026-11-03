@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/fn_fix_triggers_events_noorder.md" %}
 # ⚙️ Funzione `fn_fix_triggers_events_noorder`
 
 ```sql

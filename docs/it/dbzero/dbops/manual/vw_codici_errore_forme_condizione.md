@@ -1,136 +1,154 @@
 ## 📘 Documentazione Concettuale – Vista `dbops.vw_codici_errore_forme_condizione`
 
+> **Ultimo aggiornamento**: 4 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento tabelle:
-> • [config.codici_errore](/dbzero/config/tabelle/codici_errore)
-> • [config.classi_errore](/dbzero/config/tabelle/classi_errore)
+> Approfondimento tabelle:
 >
-Approfondimento viste:
-> • [dbops.vw_codici_errore_da_dichiarare](/dbzero/dbops/views/vw_codici_errore_da_dichiarare)
+> * [config.codici_errore](/dbzero/config/tabelle/codici_errore) — la classe dichiarata di ogni codice, da incrociare con la forma
+> * [config.classi_errore](/dbzero/config/tabelle/classi_errore) — le classi
+>
+> Approfondimento viste:
+>
+> * [dbops.vw_codici_errore_da_dichiarare](/dbzero/dbops/views/vw_codici_errore_da_dichiarare) — la misura dei codici nominati, che condivide i punti ciechi
+>
+> Approfondimento funzioni:
+>
+> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) — la chiamata che segna un punto che solleva
 
 ---
+
 ### 🎯 Scopo Principale
 
-(rev 2026-09-07)
+La misura degli accumulatori: per ogni codice errore, sotto quali forme di condizione viene
+sollevato, letta dal testo delle funzioni PL/pgSQL. Un codice che serve a situazioni troppo diverse
+smette di dire qualcosa, e chi lo riceve non sa che fare.
 
-Misura gli **accumulatori**: i codici errore usati in punti che fanno cose diverse fra loro.
-Un codice che serve a troppe situazioni smette di dire qualcosa, e chi lo riceve non sa che
-fare.
+⭐ **L'asse è la forma della condizione al punto che solleva**, cioè che cosa verifica l'`IF` sopra
+la chiamata, non il dominio della funzione. Misurando per dominio l'asse segnalava `E_VALIDAZIONE`,
+che è proprio il caso su cui la risposta è «va bene così»: un codice di validazione compare ovunque
+per definizione, ed è la forma del controllo a dire se sta accumulando significati diversi.
 
-⭐ **L'asse di misura è la FORMA DELLA CONDIZIONE al punto che solleva** — cioè che cosa
-verifica l'`IF` sopra la chiamata — **non il dominio della funzione**. La scelta viene da un
-tentativo fallito: misurando per dominio, l'asse segnalava `E_VALIDAZIONE`, che è precisamente
-il caso su cui la risposta è *no, va bene così*. Un codice di validazione compare ovunque
-**per definizione**; è la forma del controllo a dire se sta accumulando significati diversi.
-
-La vista **non filtra di proposito**: chi filtra decide cosa non vedere.
+La vista **non filtra di proposito**: chi filtra decide che cosa non vedere.
 
 ---
 
 ### Come funziona: isole fra due guardie
 
-Il corpo di ogni funzione `plpgsql` viene spezzato riga per riga, e ogni riga marcata come:
+Il corpo di ogni funzione si spezza riga per riga, e ogni riga si marca:
 
-* **guardia** — inizia con `IF`, `ELSIF`, `ELSE`, `EXCEPTION WHEN`, `WHEN OTHERS`,
-  `WHEN SQLSTATE`;
+* **guardia** — comincia con `IF`, `ELSIF`, `ELSE`, `EXCEPTION WHEN`, `WHEN OTHERS`, `WHEN SQLSTATE`;
 * **chiamata** — nomina `fn_log_and_raise_error`;
-* **codice** — contiene un letterale `'E_...'` (fuori dai commenti).
+* **motivo** — dichiara un motivo con la sua chiave `codice` e un letterale `E_*`;
+* **codice** — porta un letterale `E_*` (la prima occorrenza della riga), se la riga non comincia
+  con un commento.
 
-Le guardie delimitano le **isole**: ogni codice viene attribuito alla guardia che lo precede,
-e una finestra mobile di 6 righe collega la guardia alla chiamata. Da lì si ricava la
-*famiglia* della condizione.
+Le guardie delimitano le **isole**: ogni codice appartiene alla guardia che apre la sua isola. Una
+riga con un codice è un **punto** se c'è una chiamata entro le sei righe precedenti, oppure se è la
+riga che dichiara un motivo, e se sta entro venticinque righe dalla sua guardia. Dalla guardia si
+ricava la famiglia.
+
+⭐ **Il codice nominato in un motivo.** Quando la madre chiama una funzione di controllo, il letterale
+sta dentro la funzione di controllo, dove nessuna chiamata all'helper gli sta vicino. Per questo la
+riga che dichiara un motivo è un punto da sé, e la guardia si prende dall'`IF` che la precede
+**dentro** la funzione di controllo, dove sta la condizione vera. ⛔ Non si risale dalla chiamata
+alla funzione di controllo: sopra il punto che solleva, nella madre, la guardia è sempre «ci sono
+motivi», identica ovunque e muta sul perché, e attribuirle i codici li archivierebbe tutti come
+illeggibili. Il marcatore è per forma, non per nome di funzione: un perimetro scritto a elenco
+invecchia da solo.
 
 ---
 
-### Le cinque famiglie, e il loro ordine
+### Le famiglie, e il loro ordine
 
-L'ordine del `CASE` è portante, non estetico: una guardia che somiglia a due famiglie finisce
-nella **prima** che la riconosce.
+L'ordine è portante: una guardia che somiglia a due famiglie finisce nella **prima** che la
+riconosce.
 
 | # | Famiglia | Che cosa verifica la guardia |
-|---|----------|------------------------------|
-| 1 | `ECCEZIONE` | è un gestore d'eccezione (`EXCEPTION WHEN`, `WHEN OTHERS`, `WHEN SQLSTATE`) |
-| 2 | `NOT_FOUND` | una riga che doveva esserci non c'è (`IF NOT FOUND`) |
-| 3 | `PARAMETRO` | un parametro è nullo o non positivo (`p_x IS NULL`, `<= 0`) |
-| 4 | `ENUM` | il valore è fuori da un insieme ammesso (`NOT IN (…)`) |
-| 5 | `VALORE_ATTESO` | il valore letto **non è quello ammesso** (`x <> 'LETTERALE'`) |
+| --- | --- | --- |
+| 1 | `ECCEZIONE` | è un gestore d'eccezione |
+| 2 | `NOT_FOUND` | una riga che doveva esserci non c'è |
+| 3 | `PARAMETRO` | un parametro della funzione è nullo o non positivo |
+| 4 | `ENUM` | il valore è fuori da un insieme ammesso (`NOT IN`) |
+| 5 | `VALORE_ATTESO` | il valore letto non è quello ammesso (confronto con un letterale) |
 | — | `IGNOTO` | nessuna regola sa leggere quella guardia |
 
-⭐ **`VALORE_ATTESO` è entrata il 2026-09-07**, ed è la forma di **ogni guardia di stato o di
-perimetro** del progetto: *«questo documento non è in bozza»*, *«questa non è una email di
-sistema»*. Non era un caso di nicchia — era una famiglia intera che l'asse non nominava, e
-che finiva tutta in `IGNOTO`.
+⭐ **`VALORE_ATTESO` è la forma di ogni guardia di stato o di perimetro** del progetto: «questo
+documento non è in bozza», «questa non è una email di sistema». Era una famiglia intera che l'asse
+non nominava e finiva tutta in `IGNOTO`. ⛔ È una famiglia nuova e non un `ENUM` allargato perché le
+letture di questa vista sono datate e si confrontano nel tempo: cambiare che cosa significa `ENUM`
+renderebbe incomparabili, in silenzio, le letture vecchie con le nuove. L'ordine la mette dopo `ENUM`
+e `PARAMETRO`: un `NOT IN` resta `ENUM`, una guardia su un parametro nullo resta `PARAMETRO` anche se
+confronta un letterale.
 
-⛔ **Perché una famiglia nuova e non un `ENUM` allargato** (un `<> 'X'` è, in fondo, un
-insieme di uno): le letture di questa vista sono **datate e si confrontano nel tempo**.
-Cambiare che cosa significa `ENUM` renderebbe la lettura del 2026-08-08 incomparabile con la
-prossima, e **in silenzio**. Il nome nuovo dice esattamente che cosa si è reso visibile, e
-quando.
+⛔ **`PARAMETRO` non si legge su un campo di un record.** Una guardia che controlla un campo del
+documento passato come parametro non dice «chi ha chiamato è rotto», dice «manca un dato che una
+persona corregge»: è la differenza fra un guasto tecnico e un dato errato, cioè proprio l'asse per
+cui la vista esiste. Il nome di parametro seguito da un punto non conta; se sulla riga c'è anche un
+parametro vero, resta `PARAMETRO`. Chi non si legge più cade in `IGNOTO`, che è la risposta onesta.
 
-⚠️ **Il segnale che l'ha resa necessaria.** `E_VALIDAZIONE` leggeva
-`famiglie = {IGNOTO, PARAMETRO}` con `n_famiglie_note = 1`: quindi **non compariva** fra i
-candidati della query (1), che filtra `> 1`. La sua seconda forma era la terza guardia di
-`config.fn_chiudi_email_sistema` — *«qualcuno sta usando la porta di sistema per l'email di
-un'azienda»*, il punto più pericoloso di quella funzione e l'unico momento in cui lo si nota.
-⇒ **Il rubinetto era cieco su qualunque codice la cui SECONDA forma fosse una che il
-classificatore non sapeva leggere.** Segnalato dal backend: `brief-db-sveglia-dei-processi`
-§3.2, risposta §8.4.
-
-⚠️ **Imprecisione dichiarata**: la forma prende anche del normale control-flow che capita
-entro venticinque righe da un `RAISE` — `IF TG_OP = 'DELETE'`, `IF v_id_type = 'uuid'`. Sta
-dentro la natura di questa vista (*una misura, non un cancello*), ma va saputo leggendo la
-query (1).
-
-Verifica: `db/pgtap/dbops/test-vw-codici-errore-valore-atteso.sql` — quattro forme
-**costruite**, quattro risposte attese, compreso il verso che pretende che una guardia
-illeggibile resti `IGNOTO`.
+⚠️ **Imprecisione dichiarata**: la forma prende anche del normale controllo di flusso che capita
+entro venticinque righe da un punto (un ramo sul tipo di operazione, un ramo sul tipo di
+identificativo). Sta dentro la natura di una misura, ma va saputo leggendo i candidati.
 
 ---
 
-### ⚠️ Le tre query canoniche vanno usate **insieme**
+### ⚠️ Tre letture, da usare insieme
 
-Il `COMMENT` della vista le riporta per esteso. La ragione per cui sono tre:
+Il `COMMENT` della vista le scrive per esteso. La ragione per cui sono tre:
 
-**(1) Candidati** — `WHERE n_famiglie_note > 1 ORDER BY n_punti DESC`: i codici usati sotto
-guardie di forma diversa.
+1. **Candidati** — i codici con più di una famiglia nota, ordinati per numero di punti.
+2. **Copertura** — quanti codici sono classificati e quanti restano solo `IGNOTO`. Senza la seconda,
+   la prima si legge come una verità: l'assenza di un codice dai candidati può voler dire «non si sa».
+3. **La classe è ancora vera?** — incrocia le due letture indipendenti dello stesso codice, la
+   guardia (che cosa fa il punto) e la classe a catalogo (che cosa dice). Le righe `IGNOTO` lì non
+   sono una famiglia: sono la misura che dichiara di non saper leggere. E «fuori dalla famiglia
+   dominante» non vuol dire sbagliato: è una lista da guardare, non di difetti.
 
-**(2) Copertura** — quanti codici sono classificati e quanti restano `solo_ignoto`. ⚠️ Senza
-la (2), **la (1) si legge come una verità**: se metà dei punti non è classificabile, l'assenza
-di un codice dalla lista dei candidati non significa che sia pulito — significa che non si sa.
-
-**(3) La classe è ancora vera?** — incrocia le due letture indipendenti dello stesso codice:
-la **guardia** (che cosa *fa* il punto) e la **classe** (che cosa *dice* il catalogo). È la
-query che ha trovato `E_ERRORE_PARAMETRI`: 4 punti su 13 dicevano il falso.
-
----
-
-### ⚠️ È una misura, non un cancello
-
-Non c'è soglia, non c'è verdetto. Serve a **guardare**, e le sue risposte vanno interpretate:
-un codice con più famiglie può essere un accumulatore da spezzare, oppure un codice
-legittimamente trasversale.
-
-**Le letture, datate** — vanno confrontate fra loro, ed è il motivo per cui portano la data:
-
-| quando | codici | classificati | invisibili | candidati (1) |
-|---|---:|---:|---:|---:|
-| 2026-08-08 | 344 | 75 | 269 | — |
-| 2026-09-06, prima di `VALORE_ATTESO` | 453 | 96 | 357 | 6 |
-| 2026-09-07, subito dopo | 453 | **148** | **305** | **10** |
-
-⚠️ Fra le prime due righe il buco **cresceva**: la copertura non sale da sola.
-
-Condivide i punti ciechi della gemella `vw_codici_errore_da_dichiarare`: legge **letterali**
-in corpi `plpgsql`, quindi non vede i codici costruiti per concatenazione né i
-`RAISE EXCEPTION` diretti.
+Il numero delle righe di questa vista, da solo, non ha significato.
 
 ---
 
-### Scope
+### ⚠️ È una misura: il cancello sta altrove
 
-`WITH (security_invoker = true)`. Legge i cataloghi di sistema. Da ri-specificare a ogni
-`CREATE OR REPLACE VIEW`.
+Non c'è soglia e non c'è verdetto: un codice con più famiglie può essere un accumulatore da spezzare
+oppure un codice legittimamente trasversale. Il cancello che la usa giudica il **cambiamento**, non lo
+stato: lo scatto della CI (`scripts/codici-errore-baseline.sh`) confronta le famiglie note di ogni
+codice con una baseline committata, ed è rosso quando un codice acquista una famiglia che non aveva o
+nasce con più di una. `IGNOTO` non entra nel confronto.
+
+Condivide i punti ciechi di
+[vw_codici_errore_da_dichiarare](/dbzero/dbops/views/vw_codici_errore_da_dichiarare): legge
+letterali in corpi PL/pgSQL, e non vede i codici costruiti per concatenazione né i `RAISE EXCEPTION`
+diretti. Esclude solo le righe che cominciano con un commento.
+
+La vista è `security_invoker` e legge i cataloghi di sistema.
+
+---
+
+### Test
+
+* `db/pgtap/dbops/test-vw-codici-errore-valore-atteso.sql` — quattro forme costruite e la loro
+  famiglia, compresa una guardia illeggibile che resta `IGNOTO`; l'ordine fra `ENUM`, `PARAMETRO` e
+  `VALORE_ATTESO`; il caso segnalato dal backend ha un codice suo.
+* `db/pgtap/dbops/test-vw-codici-errore-motivo-nominato.sql` — un codice nominato solo come motivo
+  compare e prende la guardia dentro la funzione di controllo; il marcatore non è troppo largo ed è
+  per forma; un parametro nullo resta `PARAMETRO`, un campo di un record no.
+
+---
+
+### Note di migrazione
+
+* 2026-08-08 — nasce a window function (la prima versione a sottoquery correlate impiegava oltre
+  due minuti). Lettura del giorno: 344 codici, 75 classificati.
+* 2026-09-07 — nasce `VALORE_ATTESO`, segnalato dal backend (`brief-db-sveglia-dei-processi` §3.2):
+  `E_VALIDAZIONE` non compariva fra i candidati perché la sua seconda forma, la guardia più
+  pericolosa di `config.fn_chiudi_email_sistema`, era illeggibile. Sugli stessi 453 codici i
+  classificati passano da 96 a 148 e i candidati da 6 a 10.
+* 2026-09-08 — il codice nominato in un motivo diventa un punto: 35 codici-motivo su 50 erano
+  invisibili.
+* 2026-09-09 — `PARAMETRO` non si legge più su un campo di un record.
 
 ---
 

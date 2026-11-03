@@ -1,94 +1,97 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.automation_scope`
 
+> **Ultimo aggiornamento**: 4 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento tabelle:  
+> Approfondimento tabelle:
 >
-[dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)      
-> [dbops.automation_overrides_cols](/dbzero/dbops/tabelle/automation_overrides_cols)      
-> Approfondimento funzioni:  
-> [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations)      
-> [dbops.fn_run_automations_attivo](/dbzero/dbops/funzioni/fn_run_automations_attivo)      
+> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl) — le regole che girano dentro l'ambito deciso qui
 >
-Orchestratori: 
-> 
-[dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations), 
-> [dbops.fn_run_automations_tx_id](/dbzero/dbops/funzioni/fn_run_automations_tx_id),   
-> [dbops.run_automations_audit_update](/dbzero/dbops/funzioni/fn_run_automations_audit_update),   
-> [dbops.run_automations_storico](/dbzero/dbops/funzioni/fn_run_automations_storico),   
->  [dbops.fn_run_automations_attivo](/dbzero/dbops/funzioni/fn_run_automations_attivo)
+> Approfondimento viste:
+>
+> * [dbops.vw_fk_senza_indice](/dbzero/dbops/views/vw_fk_senza_indice) — legge l'elenco direttamente, per decidere quali FK guardare
+>
+> Approfondimento funzioni:
+>
+> * [dbops.fn_resolve_scope](/dbzero/dbops/funzioni/fn_resolve_scope) — ricava dalla tabella l'elenco degli schemi
+> * [dbops.fn_table_in_scope](/dbzero/dbops/funzioni/fn_table_in_scope) — ricava dalla tabella il filtro per tabella dentro uno schema
+> * [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations) — l'orchestratore, che ha una sua copia della lettura degli schemi
+>
+> Guide:
+>
+> * [Automazione DB](/guide/automazione-db) — il framework che questa tabella delimita
+
+---
+
 ### 🎯 Scopo Principale
-(latest review 10-01-26)
-Definire **l’elenco degli schemi** su cui gli orchestratori di automazione devono operare. Funziona come una **allow‑list**: se presente e popolata, limita l’esecuzione alle sole voci elencate.
 
-> Se `automation_scope` è **vuota** o **assente**, gli orchestratori applicano la logica di fallback: tutti gli schemi **user** (non `pg_%`, non `information_schema`) **escludendo** `storico`.
+L'elenco degli schemi, e dentro uno schema delle tabelle, su cui girano le automazioni del
+database: è una allow-list, e uno schema che non compare qui è fuori dal perimetro di ogni
+automazione che non riceve un ambito esplicito.
 
----
-
-### Precedenza dell'*ambito*
-
-1. **Parametro** `p_schemas` passato alla funzione → *ha priorità massima* (ignora la tabella).
-2. **Tabella** `dbops.automation_scope` (se esiste e contiene righe).
-3. **Fallback**: introspezione catalogo → tutti gli schemi user escluso `storico`.
-
-> Questa scelta evita sorprese in ambienti dove vuoi forzare un sottoinsieme stabile di schemi.
+Una riga è una coppia schema e filtro di tabella. Il filtro `*all` vuol dire «tutto lo
+schema»; un altro valore è un pattern `LIKE` sul nome della tabella. La chiave è la coppia,
+quindi uno schema può comparire più volte con filtri diversi.
 
 ---
 
-### Casi d’uso
+### Da dove viene l'ambito di una corsa
 
-* **Ambienti multi‑schema**: limita l’automazione a 3‑4 schemi principali.
-* **Testing controllato**: in test popola con uno schema “lab” e verifica i risultati.
-* **Rollout progressivo**: abilita via via nuovi schemi aggiungendo righe.
+L'ambito di una corsa si decide in tre gradini, e il primo che risponde vince:
 
----
+1. l'elenco di schemi passato esplicitamente alla funzione;
+2. gli schemi di questa tabella, se la tabella esiste e ha righe;
+3. altrimenti tutti gli schemi utente, tolti quelli di sistema e `storico`.
 
-### Esempi
-
-**Impostare l'ambito a 4 schemi core**
-
-```sql
-INSERT INTO dbops.automation_scope(schema_name, note)
-VALUES ('anagrafiche','core anagrafiche'),
-       ('vendite','modulo vendite'),
-       ('catalogo','catalogo prodotti'),
-       ('config','configurazioni di sistema');
-```
-
-**Usare un ambito “temporaneo” senza toccare la tabella**
-
-```sql
-SELECT dbops.fn_run_automations('CI', ARRAY['lab'], true, ARRAY['TX_ID']);
-```
+Il gradino 3 è una rete per un database in cui la tabella è vuota: con il seed caricato non
+si raggiunge. ⚠️ Il fallback esclude `storico`, l'elenco del seed invece lo contiene:
+lo schema `storico` è nell'ambito, e sono i runner della storicizzazione a escluderlo per
+conto proprio.
 
 ---
 
-### Troubleshooting
+### ⚠️ Due livelli, e il secondo vale solo dentro il primo
 
-* Nessun effetto? Controlla se `automation_scope` è popolata e i nomi schema sono corretti (minuscoli se non quotati).
-* Ricorda che `p_schemas` **sovrascrive** l'ambito tabellare.
-* Se l'ambito è vuoto, la funzione può ricadere sul fallback (tutti gli schemi user, escluso `storico`).
+* **Schema**: `fn_resolve_scope` restituisce gli schemi elencati, e i runner girano solo su
+  quelli.
+* **Tabella**: `fn_table_in_scope` decide quali tabelle di uno schema entrano. Uno schema
+  con una riga `*all` entra per intero; uno schema con soli pattern entra solo per le
+  tabelle che li soddisfano (è il caso di `dbops`, che espone alle automazioni pochi
+  registri e non i suoi strumenti).
 
----
-
-
-### Vincoli (logici)
-
-* Unicità consigliata: `PRIMARY KEY (schema_name)`.
-* Se esiste `enabled`, gli orchestratori possono considerare **solo** le righe `enabled=true`.
-
-### Interazione con gli orchestratori
-
-* In assenza del parametro `p_schemas`, gli orchestratori leggono `SELECT array_agg(DISTINCT schema_name) FROM dbops.automation_scope` (eventualmente filtrando `enabled=true`).
-* Se la tabella non esiste o non ha righe, si usa il fallback su catalogo (`pg_namespace`).
+Il filtro per tabella risponde «sì» anche per uno schema che non ha nessuna riga: per lui la
+decisione l'ha già presa il livello schema. Chi lo chiama da solo, senza passare per
+l'elenco degli schemi, vede quindi tutto.
 
 ---
 
-### Best practice
+### ⛔ Uno schema fuori dall'elenco non ha automazioni
 
-* Mantieni la lista **minima** necessaria all’ambiente.
-* Evita di inserire `storico` nell'ambito a meno di motivazioni specifiche.
-* Versiona le modifiche all'ambito con changeSet dedicati per tracciabilità.
+Fuori dall'elenco una tabella non riceve nessuno dei trigger generati: storico, `tx_id`,
+audit, lock, blocco del `DELETE`, regola del periodo. Lo schema `ui` è fuori, e dove una
+sua tabella ha bisogno di un comportamento che altrove dà l'automazione, il
+trigger si scrive a mano. Uno schema nuovo che deve avere le automazioni entra con una
+riga nel seed.
+
+---
+
+### Come si aggiorna
+
+La sede è il CSV di seed `80_data/sql/dbops/automation_scope.csv`: si edita quello, non si
+scrive a mano sul database. Un elenco esplicito passato a una singola chiamata non tocca la
+tabella e vale solo per quella corsa.
+
+---
+
+### Test
+
+* `db/pgtap/dbops/test-cleanup-framework.sql` — restringe l'ambito di `dbops` a tre tabelle
+  di prova e verifica che la pulizia giri solo su quelle.
+* `db/pgtap/documenti/test-documenti-schema-base.sql` — lo schema `documenti` è registrato
+  per intero.
+* `db/pgtap/maintenance/test-cleanup-job-ambito-registro-v1.sql` — ogni regola di pulizia
+  attiva punta a uno schema che l'ambito comprende.
 
 ---
 

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/vw_resi_confermati_senza_carico.md" %}
 # 🔍 View `vw_resi_confermati_senza_carico`
 
 > 📝 **Descrizione**

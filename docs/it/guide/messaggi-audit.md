@@ -1,6 +1,6 @@
 # Guida — Sistema di Audit Logging
 
-> **Ultimo aggiornamento**: 3 novembre 2026
+> **Ultimo aggiornamento**: 4 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali
 >
@@ -9,7 +9,7 @@
 > * [dbops.audit_log](/dbzero/dbops/tabelle/audit_log) — il registro delle attività
 > * [dbops.error_log](/dbzero/dbops/tabelle/error_log) — il registro degli errori: sistema separato e complementare
 > * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl) — le regole di automazione che producono record di audit
-> * [dbops.vw_audit_log_scrittori_fuori_perimetro](/dbzero/dbops/manual/vw_audit_log_scrittori_fuori_perimetro) — chi scrive nel registro senza averne titolo; **deve restare vuota**
+> * [dbops.vw_audit_log_scrittori_fuori_perimetro](/dbzero/dbops/views/vw_audit_log_scrittori_fuori_perimetro) — chi scrive nel registro senza averne titolo; **deve restare vuota**
 >
 > **Vedi anche** — funzioni e trigger DB:
 >
@@ -69,7 +69,7 @@ dbops.audit_log (registro attivita)
 
 * **Sessione** = un record che nasce con `fn_audit_begin` (status=START) e viene aggiornato con `fn_audit_end` (status=OK/ERROR/...)
 * **Evento** = un record completo creato con `fn_audit_log_once`, senza bisogno di chiusura
-* **Fuori transazione** = se `myapp.log_with_dblink` e attivo, la scrittura avviene su connessione separata (sopravvive al rollback)
+* **Fuori transazione** = con `myapp.log_with_dblink='on'` la scrittura passerebbe dalla connessione separata `logconn`; col provisioning di oggi quel ramo fallisce (vedi *Logging fuori transazione*), e l'audit si scrive nella transazione del chiamante
 
 ---
 
@@ -249,7 +249,7 @@ regola di visibilità per riga sul log: è impedire **alla fonte** che una funzi
 `vendite`, `anagrafiche`, `pagamenti` ci scriva.
 
 Il cancello è
-[dbops.vw_audit_log_scrittori_fuori_perimetro](/dbzero/dbops/manual/vw_audit_log_scrittori_fuori_perimetro):
+[dbops.vw_audit_log_scrittori_fuori_perimetro](/dbzero/dbops/views/vw_audit_log_scrittori_fuori_perimetro):
 elenca le funzioni che scrivono nel registro — con DML diretto o passando da
 `fn_audit_log_once` / `fn_audit_begin` / `fn_audit_end` — e stanno fuori dagli schemi
 ammessi, dichiarati nella vista stessa. **Deve restare vuota**; la presidia
@@ -277,15 +277,9 @@ Si riconoscono così, e restano così: chi le scrisse non si può ricostruire.
 
 ## Logging fuori transazione
 
-Tutte e tre le funzioni di audit supportano la scrittura **fuori transazione** via dblink. Questo e utile quando si vuole conservare il log anche se la transazione principale fallisce e va in rollback.
+Le tre funzioni di audit hanno un ramo di scrittura **fuori transazione**: se il GUC `myapp.log_with_dblink` vale `on` e la connessione di log `logconn` si apre (o, per `fn_audit_end`, è aperta), la riga passa da quella connessione invece che dalla transazione del chiamante. ⚠️ Qui un GUC assente vale «spento», mentre per `script.fn_ensure_logconn` vale «acceso»: senza il GUC, l'audit si scrive nella transazione di chi chiama e ne segue il destino.
 
-Il meccanismo si attiva con il GUC `myapp.log_with_dblink='on'`. Quando e attivo, la funzione:
-
-1. Tenta di usare la connessione `logconn` (dblink)
-2. Se la connessione non e disponibile, tenta di stabilirla tramite `script.fn_ensure_logconn()`
-3. Se anche questo fallisce, ricade sulla scrittura locale (in-transazione)
-
-Il fallback e silenzioso: l'operazione non viene mai bloccata per un problema di logging.
+⛔ Col provisioning di oggi il ramo fuori transazione **non scrive**: la connessione di log entra con il ruolo del canale, che può solo aggiungere a `dbops.error_log` (e al giornale dei job), non scrivere né aggiornare `dbops.audit_log`. Con `myapp.log_with_dblink='on'` la chiamata di audit fallisce, e con lei la transazione del chiamante: non c'è un ripiego sulla scrittura locale. Il ramo ha anche difetti suoi (`fn_audit_end` vi scrive tutti i campi così come arrivano, anche vuoti; senza moduli `fn_audit_begin` e `fn_audit_log_once` costruiscono un array non valido). Il dettaglio è nelle schede [dbops.fn_audit_begin](/dbzero/dbops/funzioni/fn_audit_begin), [dbops.fn_audit_end](/dbzero/dbops/funzioni/fn_audit_end) e [dbops.fn_audit_log_once](/dbzero/dbops/funzioni/fn_audit_log_once).
 
 Per i dettagli sulla configurazione di dblink, vedi la [Guida Messaggi di Errore](/guide/Messaggi-di-Errore-e-Generazione-Log#setup-operativo-devops).
 
@@ -330,7 +324,7 @@ In un processo complesso (es. automazione batch), l'audit log traccia l'avanzame
 * Usare `fn_audit_log_once` per operazioni atomiche o dry-run — evita la complessita della sessione. ⭐ **È l'unica porta dell'applicazione**
 * Popolare sempre `params` con dati strutturati (JSONB) che identifichino l'operazione — tabella, trigger, schemi coinvolti
 * Non usare l'audit log per tracciare errori di dominio — usare `dbops.error_log` e i log di dominio specifici (vedi guida errori)
-* Per processi critici, attivare il logging via dblink (`myapp.log_with_dblink='on'`) per garantire la persistenza
+* Non attivare `myapp.log_with_dblink='on'` per l'audit: oggi fa fallire la scrittura (vedi *Logging fuori transazione*)
 * Sfruttare `cleanup_at` per la retention automatica dei record non piu necessari
 * Interrogare regolarmente `audit_log` con `status='ERROR'` per identificare problemi ricorrenti
 

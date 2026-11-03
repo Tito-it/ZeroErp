@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/vw_eventi_non_dichiarati.md" %}
 # 🔍 View `vw_eventi_non_dichiarati`
 
 > 📝 **Descrizione**

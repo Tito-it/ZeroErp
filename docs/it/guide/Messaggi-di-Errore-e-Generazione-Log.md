@@ -1,6 +1,6 @@
 # Guida — Gestione dei Messaggi di Errore e Generazione Log
 
-> **Ultimo aggiornamento**: 19 settembre 2026
+> **Ultimo aggiornamento**: 4 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend e devops
 >
@@ -83,7 +83,7 @@ config.messaggi_errore (frasi: 1 riga per codice+lingua)
 
 * **Identità** = *cosa è* quel codice (la classe), da cui il backend deriva la risposta HTTP
 * **Catalogo** = i template dei messaggi, mantenuti in tabella e mai hard-coded nel codice
-* **Registro** = il log tecnico immutabile, scritto fuori transazione per sopravvivere ai rollback
+* **Registro** = il log tecnico append-only (scade a 90 giorni), scritto fuori transazione per sopravvivere ai rollback
 * **Routing** = i log di dominio specifici per processo, che si affiancano al registro tecnico
 
 ---
@@ -172,9 +172,11 @@ Da un punto di vista tecnico:
 
 ### 2. Il registro errori: `dbops.error_log`
 
-Il registro e l'archivio immutabile di tutte le occorrenze di errore nel sistema. Ogni volta che una funzione rileva un errore e chiama `fn_log_and_raise_error` o `fn_log_error_only`, viene creato un record con il timestamp, l'area funzionale, la funzione di origine, il codice errore e un contesto JSONB con i dati rilevanti per il debug.
+Il registro raccoglie le occorrenze di errore nel sistema. Per l'applicazione è append-only (`zeroerp_app` legge e aggiunge, non modifica né cancella), ma non è un archivio permanente: una riga scade **90 giorni** dopo `occurred_at`, e le righe scadute si cancellano con la pulizia delle automazioni (`cleanup_at`). Ogni volta che una funzione rileva un errore e chiama `fn_log_and_raise_error` o `fn_log_error_only`, viene creato un record con il timestamp, l'area funzionale, la funzione di origine, il codice errore e un contesto JSONB con i dati rilevanti per il debug.
 
-La caratteristica critica del registro e la **persistenza fuori transazione**: la scrittura avviene tramite dblink su una connessione separata, quindi il record sopravvive anche se la transazione principale viene annullata. Questo garantisce che nessun errore venga perso silenziosamente.
+La caratteristica critica del registro e la **persistenza fuori transazione**: la scrittura avviene tramite dblink su una connessione separata, quindi il record sopravvive anche se la transazione principale viene annullata.
+
+⚠️ Senza canale di log configurato, o con `dblink` che non risponde, la funzione emette solo un WARNING nel log del server e **la riga non nasce**: il registro non ha un ripiego in transazione. Il dettaglio è in [dbops.error_log](/dbzero/dbops/tabelle/error_log).
 
 Da un punto di vista tecnico:
 

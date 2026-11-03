@@ -1,62 +1,97 @@
-## 📘 Documentazione Funzione – `dbops.fn_storico_backfill_scope` / `fn_storico_backfill_scope_tutte`
+## 📘 Documentazione Concettuale – Funzione `dbops.fn_storico_backfill_scope`
 
+> **Ultimo aggiornamento**: 4 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Approfondimento funzioni:**
+> Approfondimento tabelle:
 >
-• [dbops.fn_storico_risolvi_scope](/dbzero/dbops/manual/fn_storico_risolvi_scope) — chi risolve l'emittente
-• [dbops.fn_storico_arma_scope](/dbzero/dbops/manual/fn_storico_arma_scope) — chi mette le colonne
+> * [dbops.storico_scope_policy](/dbzero/dbops/tabelle/storico_scope_policy) — la mappa con cui si risolve l'emittente delle versioni
 >
-
-### 🎯 Scopo Principale
-(latest review 11-09-2026)
-
-Le versioni di storico scritte **prima** dell'11-09-2026 non hanno né
-`origine_schema` né `scope_emittente_fiscale_id`. Questa funzione li attribuisce
-alle righe che ne sono prive, madre per madre:
-
-* `origine_schema` = lo schema della madre;
-* `scope_emittente_fiscale_id` = l'emittente risolto **dallo snapshot** della
-  versione, seguendo la mappa — è l'unica riga che il passato ci ha lasciato.
-
-Quando nessuna riga resta senza origine, porta `origine_schema` a `NOT NULL`.
-`fn_storico_backfill_scope_tutte()` la applica a ogni madre con il trigger.
-
-Brief: `brief-db-rls-storico-scope-congelato`, §4b e §5.
+> Approfondimento funzioni:
+>
+> * [dbops.fn_storico_risolvi_scope](/dbzero/dbops/funzioni/fn_storico_risolvi_scope) — chi risolve l'emittente, qui dallo snapshot
+> * [dbops.fn_storico_arma_scope](/dbzero/dbops/funzioni/fn_storico_arma_scope) — chi mette le colonne che questa funzione riempie
+> * [dbops.fn_storico_backfill_scope_tutte](/dbzero/dbops/funzioni/fn_storico_backfill_scope_tutte) — la applica a ogni madre
+>
+> Guide:
+>
+> * [Storicizzazione delle tabelle](/guide/storicizzazione-tabelle) — la sezione «Di chi è una versione»
 
 ---
 
-### ⭐ Le tabelle condivise: di chi è questa versione?
+### 🎯 Scopo Principale
 
-`storico.ddt` contiene versioni di `acquisti.ddt` e di `vendite.ddt`, senza nulla
-che dica quale. Lo snapshot però è la riga intera: le sue **chiavi** sono le
-colonne della madre al momento della scrittura, e le due madri hanno colonne che
-l'altra non ha. Una versione si attribuisce alla madre di cui porta almeno una
-**chiave esclusiva**. Le versioni che non ne portano nessuna restano senza
-origine, e il controllo automatico le conta.
+Attribuisce origine e scope alle versioni già scritte della shadow di una madre: alle versioni
+senza `origine_schema` assegna lo schema della madre e l'emittente risolto dallo snapshot della
+versione. Quando nessuna versione resta senza origine, porta `origine_schema` a `NOT NULL`.
+
+È una migrazione del pregresso, non una rete: le versioni nuove le scrive il trigger già complete.
+Si può rieseguire senza danno, perché tocca solo le versioni ancora senza origine.
+
+---
+
+### ⭐ Le shadow condivise: di chi è questa versione?
+
+Due madri omonime scrivono nella stessa shadow, e una versione legacy non dice da quale delle due
+viene. Lo snapshot però è la riga intera, e le sue chiavi sono le colonne della madre al momento
+della scrittura: una versione si attribuisce alla madre di cui porta almeno una **colonna
+esclusiva**, una colonna che l'altra madre non ha.
+
+* le versioni che non portano nessuna colonna esclusiva restano senza origine, e la colonna resta
+  nullable. Il conteggio delle versioni senza origine sta nel risultato e nell'audit; nessun pgTAP
+  lo presidia;
+* due madri con le **stesse** colonne non hanno colonne esclusive: la funzione non attribuisce
+  niente e lo dice con un `WARN` (`NON_ATTRIBUIBILE`).
+
+Una shadow è condivisa quando un'altra madre con lo stesso nome, in un altro schema, porta il
+trigger di storico.
 
 ---
 
 ### ⚠️ Il limite dichiarato
 
-Per i modi `PADRE` il resolver risale al padre **com'è oggi** — o, se il padre
-non è più vivo, alla sua ultima versione nello storico. Il passato viene letto
-in parte con il presente: è il limite del backfill, non della regola. Da qui in
-avanti le versioni le congela il trigger nel momento in cui sono certe. Dove né
-il padre né il suo archivio rispondono, la versione resta senza scope e, sulla
-tabella armata, non si vede.
-
-Letto sul database di sviluppo dopo l'apply dell'11-09-2026 (fatto datato):
-**65.751 versioni attribuite, zero senza origine** — tutte le 116 tabelle di
-storico con madre sono passate a `origine_schema NOT NULL`, anche le sei
-condivise. Nel dry-run precedente, `fatture_scadenze` aveva 56 versioni su 60
-con l'emittente ritrovato, 46 di queste solo grazie all'archivio della fattura.
+Lo scope si risolve dallo snapshot, ma per i modi `PADRE` il resolver risale al padre **com'è
+oggi** — o, se il padre non è più vivo, alla sua ultima versione nello storico. Il passato si legge
+in parte con il presente: è il limite del backfill, non della regola. Dove né il padre né il suo
+archivio rispondono, la versione resta senza scope e, sulla shadow armata, non si vede.
 
 ---
 
-### Chi la lancia
+### Gli esiti
 
-Il changeSet `90_end/20260911-31`, una volta; e `scripts/sql/provision_storico_scope.sql`
-da superuser per le tabelle che il migratore non possiede. Idempotente: tocca
-solo le righe ancora senza origine. Dove la tabella non ha le colonne (il
-provisioning non è passato) registra `WARN` e prosegue.
+| Esito | Quando |
+| --- | --- |
+| `NO_SHADOW` | la madre o la sua shadow non esistono |
+| `SENZA_COLONNE` | la shadow non ha ancora le colonne dello scope: prima serve `fn_storico_arma_scope` (`WARN` nell'audit) |
+| `NON_ATTRIBUIBILE` | shadow condivisa fra madri con le stesse colonne (`WARN`) |
+| `AGGIORNATA` | ha attribuito almeno una versione |
+| `NIENTE_DA_FARE` | non c'era niente da attribuire |
+
+Il risultato riporta anche quante versioni ha aggiornato, quante restano senza origine e se ha
+messo il `NOT NULL`. L'audit si scrive solo se la funzione ha fatto qualcosa.
+
+⚠️ Il `NOT NULL` lo mette solo se l'utente corrente è **esattamente** il proprietario della shadow
+(confronto sul nome del ruolo): altrimenti le versioni si attribuiscono lo stesso e la colonna resta
+nullable.
+
+---
+
+### Test
+
+Nessun pgTAP chiama la funzione. `db/pgtap/storico/test-storico-scope-congelato-v1.sql` prova la
+forma che il backfill completa, sulle versioni scritte dal trigger: ogni versione porta lo schema
+della propria madre.
+
+---
+
+### Note di migrazione
+
+* 2026-09-11 — nasce con lo scope congelato (`brief-db-rls-storico-scope-congelato`, §4b e §5), per
+  attribuire le versioni scritte prima di quel giorno. Letto sul database di sviluppo dopo l'apply
+  di quel giorno (fatto datato): tutte le versioni attribuite, e tutte le shadow con madre passate a
+  `origine_schema NOT NULL`, comprese le condivise.
+
+---
+
+{% include-markdown "signature-core.md" %}

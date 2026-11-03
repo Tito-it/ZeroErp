@@ -1,134 +1,132 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.coda_lavori_tipi`
 
+> **Ultimo aggiornamento**: 4 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Approfondimento tabelle:**
+> Approfondimento tabelle:
 >
-• [dbops.coda_lavori](/dbzero/dbops/manual/coda_lavori)  
-> • [dbops.pipeline_task_registry_impl](/dbzero/dbops/manual/pipeline_task_registry_impl)  
+> * [dbops.coda_lavori](/dbzero/dbops/tabelle/coda_lavori) — la coda: il suo `job_type` punta qui
+> * [dbops.processi](/dbzero/dbops/tabelle/processi) — il processo di ogni tipo, da cui si legge la classe
+> * [dbops.pipeline_task_registry_impl](/dbzero/dbops/tabelle/pipeline_task_registry_impl) — lo stesso schema di registro per i task di pipeline
 >
-**Approfondimento funzioni:**
+> Approfondimento viste:
 >
-• [dbops.fn_accoda_lavoro](/dbzero/dbops/manual/fn_accoda_lavoro)  
+> * [dbops.vw_coda_lavori_da_guardare](/dbzero/dbops/views/vw_coda_lavori_da_guardare) — dove finisce un lavoro di un tipo senza handler
 >
+> Approfondimento funzioni:
+>
+> * [dbops.fn_accoda_lavoro](/dbzero/dbops/funzioni/fn_accoda_lavoro) — valida il tipo e ne legge i default
+>
+> Guide:
+>
+> * [Gestione delle code di lavoro](/guide/gestione-code-di-lavoro) — il ciclo intero, dall'accodamento al drenatore
+> * [Processi automatici: classe e identità](/guide/processi-automatici-classe-e-identita) — classe e canale dei processi
+
+---
 
 ### 🎯 Scopo Principale
-(latest review 14-09-2026)
 
-`dbops.coda_lavori_tipi` è il **registry dei tipi di job** della coda lavori
-generica ([dbops.coda_lavori](/dbzero/dbops/manual/coda_lavori)). Una riga per
-`job_type`: il DB **valida** il tipo all'enqueue e porta i **default per-tipo**
-(`run_as`, `max_tentativi`), mentre il **binding** `handler_code → callable`
-resta in Python (dict `handler_registry`, registrato al boot — **no dynamic
-import**). È il mirror leggero di
-[dbops.pipeline_task_registry_impl](/dbzero/dbops/manual/pipeline_task_registry_impl),
-applicato alla coda generica.
+Il registro dei tipi di lavoro della coda generica: una riga per `job_type`. Il database valida il
+tipo all'accodamento e porta i default del tipo (`run_as`, `max_tentativi`); il legame fra
+`handler_code` e la funzione Python che esegue resta nel backend, registrato all'avvio, senza
+import dinamici.
 
 ---
 
-### Campi chiave
+### Le colonne che contano
 
-* `codice`: identificativo stabile del tipo = `coda_lavori.job_type` (UNIQUE).
-  È la **chiave naturale** referenziata in hard FK da `coda_lavori`; non
-  rinominare (contratto cross-ambiente).
-* `handler_code`: chiave logica di dispatch verso il `handler_registry` Python.
-  Il DB non conosce il callable, solo la stringa.
-* `run_as_default`: default per `coda_lavori.run_as` se non passato all'enqueue
-  (`SISTEMA` | `OPERATORE`).
-* `max_tentativi_default`: default per `coda_lavori.max_tentativi`.
-* `attivo`: se `false`, `fn_accoda_lavoro` **rifiuta** l'enqueue del tipo
-  (`E_JOB_TYPE_NON_ATTIVO`).
-* `processo_codice`: **di quale processo** è questo tipo di job (hard FK verso
-  [dbops.processi](/dbzero/dbops/manual/processi)). Vedi sotto — è il campo da
-  cui dipende il guard di classe.
-* `meta`: estensioni JSONB per-tipo.
+* `codice`: il `job_type`, chiave naturale a cui la coda punta. Non si rinomina: è un contratto fra
+  ambienti.
+* `handler_code`: la chiave con cui il drenatore trova l'handler. Il database conosce la stringa, non
+  la funzione.
+* `run_as_default`, `max_tentativi_default`: i default che `fn_accoda_lavoro` usa quando il
+  chiamante non li dice. Sono suggerimenti: il chiamante li può sovrascrivere.
+* `attivo`: un tipo spento non si accoda (`E_JOB_TYPE_NON_ATTIVO`).
+* `processo_codice`: il processo a cui il tipo appartiene, obbligatorio (vedi sotto).
+* `meta`: estensioni per tipo.
 
 ---
 
-### ⭐ Rev 2026-09-04 — ogni tipo dichiara di quale PROCESSO è
+### ⭐ Ogni tipo dichiara il suo processo
 
-`processo_codice` è **obbligatorio**, e serve a una cosa sola: far sapere alla
-coda se il lavoro che sta accodando **appartiene a un'azienda** o no.
+`processo_codice` serve a una cosa: far sapere alla coda se il lavoro appartiene a un'azienda.
+Poiché `run_as_default` si sovrascrive, un tipo di dominio accodato come `SISTEMA` girerebbe senza
+perimetro; `fn_accoda_lavoro` lo rifiuta leggendo la classe del processo.
 
-⛔ **Il buco che chiude.** `run_as_default` è un *suggerimento*: chi accoda può
-sovrascriverlo passando `p_run_as`. Un tipo di dominio accodato come `SISTEMA`
-passava tutti i controlli e girava **senza perimetro** — cioè senza sapere per
-conto di quale azienda stesse lavorando.
-
-⭐ **La classe NON è duplicata qui.** Sarebbe stata una seconda scrittura dello
-stesso fatto, e due scritture prima o poi dissentono: si mette il puntatore al
-processo, e la classe si **legge** da `dbops.processi`. Fonte unica.
-
-⚠️ Il `CHECK` di tabella non prende quel caso, e non è un difetto suo: controlla
-la coerenza fra `run_as` e `scope`, non la **natura** del lavoro. Sono due
-domande diverse, e servono due presidi.
-
-⇒ Registrare un tipo nuovo vuol dire adesso: **prima** il processo in
-`dbops.processi`, poi il tipo che lo cita.
+La classe **non** è copiata qui: due scritture dello stesso fatto prima o poi dissentono. Si tiene
+il puntatore al processo e la classe si legge da `dbops.processi`. Registrare un tipo nuovo vuol
+dire quindi registrare prima il processo, poi il tipo.
 
 ---
 
-### Ruolo operativo
+### ⛔ Un tipo nasce spento, e si accende a handler in servizio
 
-1. Si registra un nuovo tipo di job con una riga di **seed** (CSV in
-   `80_data/sql/dbops/coda_lavori_tipi.csv`, upsert su `codice`).
-2. Il **binding** dell'handler avviene lato BE (`register_handler` al boot);
-   il DB porta solo i default e la validazione.
-3. `fn_accoda_lavoro` legge la riga del tipo per validare (`attivo`) e risolvere
-   i default (`run_as`, `max_tentativi`).
+Il drenatore **prende** ogni lavoro `PENDING` del suo turno: un tipo acceso senza handler non
+resta in attesa, fallisce a ogni presa (`E_CODA_HANDLER_NON_REGISTRATO`, sollevato dal backend),
+finisce in `ERRORE` a tentativi esauriti e compare in `dbops.vw_coda_lavori_da_guardare`. Per questo l'ordine è fisso: il tipo entra nel seed spento,
+il backend registra l'handler e va in servizio, poi il seed lo accende.
 
-> **Un nuovo tipo di job = un seed qui + un handler BE. Zero DDL.** Il dispatch
-> è worker-based (non in-transazione), quindi un tipo senza handler non abortisce
-> nessuna transazione di dominio.
->
-> ⛔ **Ma NON può nascere `attivo=true`, e questa riga lo diceva fino al
-> 2026-09-14.** Diceva: *«in assenza dell'handler i job restano semplicemente
-> `PENDING` finché il worker non atterra»*. Era vero prima del drenatore, e non
-> lo è più: `draina_coda_lavori` **claima** il lavoro, `get_handler` solleva
-> `E_CODA_HANDLER_NON_REGISTRATO` e il lavoro va in `ERRORE` (al primo colpo,
-> se `max_tentativi = 1`) — visibile in `vw_coda_lavori_da_guardare`, non in
-> attesa. ⇒ **Regola del binding**: il tipo nasce **`attivo = false`** e il DB
-> lo accende quando il backend dichiara l'handler in servizio. L'ordine lo
-> fissano due guardrail del backend, non una convenzione:
-> `test_nessun_handler_orfano` (handler registrato prima del seed → rosso) e
-> `test_ogni_tipo_attivo_ha_un_handler` (tipo acceso prima dell'handler →
-> rosso). Precedenti: `NOTIFICA_DIGEST_MUTO` (nato spento l'11-09, acceso la
-> sera stessa), `ESEGUI_PROCESSO` (nato spento il 14-09, acceso il 15-09 a
-> handler dichiarato in servizio — `brief-db-avvio-manuale-di-un-processo` §11).
-> ⚠️ L'accensione è **una cella del CSV**, non un changeSet: il mirror è
-> `runOnChange` e rilegge il file al migrate. Va applicata **dopo** il deploy
-> del backend che registra l'handler, mai prima — l'ordine è
-> DB (spento) → BE → DB (acceso), e il secondo guardrail è ciò che lo pinna.
+L'accensione è una cella del CSV (`80_data/sql/dbops/coda_lavori_tipi.csv`, che il migrate ricarica
+quando cambia), non un changeSet. Due guardrail del backend tengono l'ordine: un handler registrato senza
+tipo a catalogo è rosso, un tipo acceso senza handler è rosso.
+
+---
+
+### ⭐ Il canale del processo e il `run_as` del tipo si accordano
+
+* sotto un processo di canale `CODA` il tipo è `OPERATORE`: lo accoda una persona, e l'identità è
+  la sua;
+* sotto un processo `PGAGENT` il tipo è `SISTEMA`: una macchina non ha un nome da prestare, e un
+  lavoro che vuole un'identità sta sotto un processo `CODA_AUTOMATICA`;
+* nessun tipo sta sotto un processo `COMMAND`: quello lo esegue systemd, non il drenatore.
+
+Non c'è un guard a database per questo: lo presidia un pgTAP sul seed.
 
 ---
 
 ### I tipi a catalogo
 
-| codice | handler_code | run_as_default | processo (canale) | che cosa fa |
-| --- | --- | --- | --- | --- |
-| `FATTURAZIONE_GIRO` | `fatturazione_giro_default` | `OPERATORE` | `FATTURAZIONE_GIRO` (`CODA`) | Giro fatturazione on-demand (C-3). |
-| `FATTURAZIONE_NUMERA` | `fatturazione_numera_default` | `OPERATORE` | `FATTURAZIONE_NUMERA` (`CODA`) | Numerazione di perimetro (C-4). |
-| `CHIUSURA_SCADENZE` | `chiusura_scadenze_default` | `OPERATORE` | `chiusura_scadenze_daily` (`CODA_AUTOMATICA`) | Chiusura per scadenza degli stati gestionali, un emittente alla volta: lo accoda pgAgent con l'identità tecnica dell'emittente. |
-| `NOTIFICA_DIGEST_MUTO` | `notifica_digest_muto_default` | `SISTEMA` | `guardiano_digest` (`PGAGENT`) | Avvisa una persona che il digest dei presidi ha smesso di girare (uno al giorno). |
-| `ESEGUI_PROCESSO` | `esegui_processo_default` | `OPERATORE` | `avvio_manuale` (`CODA`) | «Esegui ora» su una sveglia di deploy: il drenatore lancia il comando del timer come sottoprocesso, con l'identità di chi ha premuto. `max_tentativi 1`: un processo caduto a metà non è idempotente. Nato spento il 14-09, acceso il 15-09 a handler in servizio (brief `brief-db-avvio-manuale-di-un-processo`). |
+| Tipo | Processo (canale, classe) | `run_as` | Che cosa fa |
+| --- | --- | --- | --- |
+| `FATTURAZIONE_GIRO` | `FATTURAZIONE_GIRO` (`CODA`, `DOMINIO`) | `OPERATORE` | Il giro di fatturazione su richiesta |
+| `FATTURAZIONE_NUMERA` | `FATTURAZIONE_NUMERA` (`CODA`, `DOMINIO`) | `OPERATORE` | La numerazione dei lotti emessi di un mese |
+| `CHIUSURA_SCADENZE` | `chiusura_scadenze_daily` (`CODA_AUTOMATICA`, `DOMINIO`) | `OPERATORE` | La chiusura per scadenza di un'azienda, accodata dalla sveglia pgAgent con l'identità tecnica dell'azienda |
+| `NOTIFICA_DIGEST_MUTO` | `guardiano_digest` (`PGAGENT`, `MANUTENZIONE`) | `SISTEMA` | Avvisa una persona che il digest dei presidi ha smesso di girare, uno al giorno |
+| `ESEGUI_PROCESSO` | `avvio_manuale` (`CODA`, `MANUTENZIONE`) | `OPERATORE` | «Esegui ora» su una sveglia di deploy, con l'identità di chi preme; un tentativo solo, perché un processo caduto a metà non è idempotente |
 
-⭐ I due giri di fatturazione appartengono a un processo di classe `DOMINIO`:
-la coda li accetta **solo** come `OPERATORE`, con lo scope di chi li richiede
-(guard di classe, sopra).
+---
 
-⭐ **Il canale del processo e il `run_as` del tipo si accordano, e non è un
-caso** (dal 2026-09-14, `db/pgtap/dbops/test-coda-tipi-canale-e-run-as.sql`):
-`CODA ⇒ OPERATORE` (lo accoda una persona, l'identità è la sua — è la
-definizione del canale); `PGAGENT ⇒ SISTEMA` (una macchina non ha un nome da
-prestare: se il lavoro vuole un'identità, il canale è `CODA_AUTOMATICA`);
-nessun tipo sotto un `COMMAND` (lo esegue systemd, non il drenatore). Non c'è
-un guard a DB per questo — la posta è l'audit, non il perimetro — e il seed lo
-presidia quel pgTAP.
+### Codici errore
 
-Brief: `brief-db-coda-lavori-generica` §2 e §4;
-`brief-db-processi-automatici-identita-e-perimetro` §5;
-`brief-db-quattro-processi-senza-presidio` §10.2;
-`brief-db-avvio-manuale-di-un-processo` §8.
+La tabella non solleva errori propri. Quelli che nascono dalle sue righe li solleva
+`dbops.fn_accoda_lavoro`: `E_JOB_TYPE_NON_TROVATO`, `E_JOB_TYPE_NON_ATTIVO`,
+`E_JOB_DOMINIO_SENZA_OPERATORE`.
+
+---
+
+### Test
+
+* `db/pgtap/dbops/test-coda-lavori.sql` — la struttura del registro e il tipo
+  `FATTURAZIONE_GIRO` a catalogo e acceso.
+* `db/pgtap/dbops/test-coda-accoda-classe.sql` — `processo_codice` e la sua chiave esterna; i tipi
+  del seed dichiarano tutti il processo.
+* `db/pgtap/dbops/test-coda-tipi-canale-e-run-as.sql` — il canale del processo e il `run_as` del
+  tipo si accordano; il tipo `ESEGUI_PROCESSO` e il suo processo.
+
+---
+
+### Note di migrazione
+
+* 2026-07-20 — nasce con la coda generica (`brief-db-coda-lavori-generica`).
+* 2026-09-04 — nasce `processo_codice`, obbligatorio dalla stessa data
+  (`brief-db-processi-automatici-identita-e-perimetro`).
+* 2026-09-11 — `NOTIFICA_DIGEST_MUTO` nasce spento e si accende la sera stessa, a handler in
+  servizio.
+* 2026-09-14 — la regola del binding (tipo spento fino all'handler) sostituisce la frase «senza
+  handler i lavori restano in attesa», vera prima del drenatore; il pgTAP su canale e `run_as`.
+* 2026-09-15 — `ESEGUI_PROCESSO` si accende, nato spento il giorno prima
+  (`brief-db-avvio-manuale-di-un-processo`).
 
 ---
 

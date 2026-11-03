@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/fn_cleanup_triggers_suffix_2.md" %}
 # ⚙️ Funzione `fn_cleanup_triggers_suffix_2`
 
 ```sql

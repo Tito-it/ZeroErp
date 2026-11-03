@@ -1,6 +1,6 @@
 # Guida — Gestione Ordini di vendita
 
-> **Ultimo aggiornamento**: 3 novembre 2026
+> **Ultimo aggiornamento**: 4 novembre 2026
 >
 > **Destinatari**: analisti funzionali, operatori commerciali, sviluppatori
 > backend/frontend, DBA.
@@ -24,7 +24,7 @@
 > * [vendite.fn_list_ordini_da_pushare](/dbzero/vendite/funzioni/fn_list_ordini_da_pushare) — righe eleggibili al push a commessa
 > * [vendite.fn_ricalcola_totali_ordine](/dbzero/vendite/funzioni/fn_ricalcola_totali_ordine) — totali di testata e riepilogo IVA per aliquota
 > * [vendite.trgfn_ordini_gen_numero](/dbzero/vendite/funzioni/trgfn_ordini_gen_numero) — numero ordine auto-generato e immutabile
-> * [script.trgfn_default_emittente_fiscale](/dbzero/script/funzioni/trgfn_default_emittente_fiscale) / [script.trgfn_doc_guard_emittente_ba](/dbzero/script/manual/trgfn_doc_guard_emittente_ba) — emittente fiscale di default (il building block unico, dal 2026-09-15) e coerenza con il cliente
+> * [script.trgfn_default_emittente_fiscale](/dbzero/script/funzioni/trgfn_default_emittente_fiscale) / [script.trgfn_doc_guard_emittente_ba](/dbzero/script/funzioni/trgfn_doc_guard_emittente_ba) — emittente fiscale di default (il building block unico, dal 2026-09-15) e coerenza con il cliente
 >
 > **Vedi anche** — API e service backend:
 >
@@ -226,7 +226,7 @@ soltanto dentro il kit che lo contiene. Un altro servizio non entra: uno una tan
 uno ricorrente in contratto (tramite un'offerta). La merce è giudicata
 dalla **natura con cui la riga è stata venduta**: una riga nata da un preventivo porta la natura di lì, anche
 se nel frattempo l'articolo è cambiato in anagrafica. Il controllo è uno solo per tutti i
-documenti ([`script.fn_check_articolo_riga`](/dbzero/script/manual/fn_check_articolo_riga)), e
+documenti ([`script.fn_check_articolo_riga`](/dbzero/script/funzioni/fn_check_articolo_riga)), e
 il messaggio dice perché e dove va invece l'articolo. Un **kit senza componenti** (dal 2026-10-14) non si mette in nessuna riga: va prima completata la sua distinta.
 
 **Nella ricerca dell'articolo** trovi prima quelli che la riga può usare. Gli altri compaiono dopo, in grigio, col motivo sotto, e non si possono scegliere: chi cerca un codice preciso e non lo trova fra i primi vede perché. La ricerca e il rifiuto al salvataggio usano la stessa regola, quindi un articolo proposto non viene rifiutato dopo.

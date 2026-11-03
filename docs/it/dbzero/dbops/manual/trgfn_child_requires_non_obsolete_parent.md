@@ -1,112 +1,106 @@
-## 📘 Documentazione Concettuale – Funzione `dbops.trgfn_child_requires_non_obsolete_parent`
+## 📘 Documentazione Concettuale – Trigger function `dbops.trgfn_child_requires_non_obsolete_parent`
 
----
-
+> **Ultimo aggiornamento**: 4 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento funzioni:
+> Approfondimento tabelle:
 >
-[`dbops.trgfn_child_requires_active_parent`](/dbzero/dbops/funzioni/trgfn_child_requires_active_parent)
-> [`dbops.fn_get_lookup_codici`](/dbzero/dbops/funzioni/fn_get_lookup_codici)
-> [`dbops.trgfn_prevent_deactivate_if_children`](/dbzero/dbops/funzioni/trgfn_prevent_deactivate_if_children)
+> * [pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche) — figlia cablata, verso `pratiche.tipi_prestazione`
+> * [pratiche.flussi](/dbzero/pratiche/tabelle/flussi) — figlia cablata, verso `pratiche.template_flussi`
+>
+> Approfondimento funzioni:
+>
+> * [dbops.trgfn_child_requires_active_parent](/dbzero/dbops/funzioni/trgfn_child_requires_active_parent) — la gemella sull'asse `attivo`
+> * [dbops.fn_get_lookup_codici](/dbzero/dbops/funzioni/fn_get_lookup_codici) — la selezione che nasconde le voci obsolete
+> * [script.fn_data_operativa](/dbzero/script/funzioni/fn_data_operativa) — l'«oggi» con cui si giudica l'obsolescenza
+>
+> Guide:
+>
+> * [Uso di obsoleto](/guide/uso-di-obsoleto) — l'asse `obsoleto_dal`, separato da `attivo`
 
 ---
 
 ### 🎯 Scopo Principale
-*(rev 2026-06-30 — brief-db-obsoleto-dal-filtro-lookup-e-guard, Obiettivo 2)*
 
-La funzione **`dbops.trgfn_child_requires_non_obsolete_parent`** è una **trigger function**
-che impedisce di **creare nuove istanze** (o di **ri-collegarle**) verso una voce di catalogo
-**obsoleta**, cioè con `obsoleto_dal <= CURRENT_DATE`.
+Impedisce di **creare** un'istanza, o di **ricollegarla**, verso una voce di catalogo **obsoleta**,
+cioè con `obsoleto_dal` raggiunto alla data operativa. Le istanze che puntano già a quella voce
+restano, e i loro avanzamenti di stato non si bloccano.
 
-È la **gemella di `trgfn_child_requires_active_parent`** ma opera su un **asse diverso**:
-non `attivo` (*"riferimento valido"*) bensì `obsoleto_dal` (*"selezionabile per il nuovo"*).
-Serve proprio perché, per design, **una voce obsoleta resta `attivo = true`**: il guard
-REQUIRE-ATTIVO non la intercetta, quindi senza questa funzione si potrebbe forzare via API la
-creazione di una nuova istanza su un catalogo ormai ritirato.
-
-È la **difesa in profondità** del pattern *"la UI nasconde, il DB rifiuta"*: la selezione la
-nasconde (`fn_get_lookup_codici` con `p_includi_obsoleti = false`), questo guard la vieta.
+È la difesa in profondità di «la selezione nasconde, il database rifiuta»: la selezione nasconde
+le voci obsolete (`dbops.fn_get_lookup_codici` senza obsoleti), questo trigger vieta di usarle
+comunque.
 
 ---
 
-### Dettagli
+### ⭐ Un asse diverso da `attivo`
 
-* **Firma**
+Una voce obsoleta resta `attivo = true`: è ancora un riferimento valido per le istanze che la
+usano, ma non si sceglie più per il nuovo. Il require della regola ATTIVO non la ferma, ed è per
+questo che serve un trigger suo.
 
-  ```sql
-  CREATE OR REPLACE FUNCTION dbops.trgfn_child_requires_non_obsolete_parent()
-  RETURNS trigger
-  LANGUAGE plpgsql
-  ```
-
-* **Parametri (TG_ARGV)**
-
-  1. `parent_schema` – schema della tabella catalogo (padre)
-  2. `parent_table` – tabella catalogo (padre)
-  3. `parent_obsoleto_col` – nome colonna `obsoleto_dal` del padre
-  4. `fk_col` – colonna FK del figlio verso il padre
-  5. *(opzionale)* `parent_ref_col` – colonna del padre referenziata dalla FK (default `id`;
-     può essere una `UNIQUE` diversa dalla PK)
-
-* **Logica interna**
-
-  * Valida per `INSERT` e `UPDATE`.
-  * Legge il valore della FK da `NEW` via `to_jsonb` (nessun `EXECUTE` per riga).
-  * Se la FK è `NULL` → controllo **bypassato** (FK opzionale).
-  * Su `UPDATE`, se la FK **non cambia** (`NEW` = `OLD`) → controllo **bypassato**: gli
-    avanzamenti di lifecycle delle istanze storiche (cambio stato, ecc.) non ri-puntano il
-    catalogo e **non vengono mai bloccati**.
-  * Legge `obsoleto_dal` del padre (cast del parametro al tipo della colonna referenziata).
-  * Blocca se `obsoleto_dal IS NOT NULL AND obsoleto_dal <= CURRENT_DATE`.
-  * `obsoleto_dal NULL` o `> CURRENT_DATE` (ritiro programmato) → **consentito**.
-
-* **Ritorno**: `trigger` → `NEW` (se i controlli sono superati).
-
-* **Errore**: `E_CATALOGO_OBSOLETO_NUOVA_ISTANZA` (id 500), template a un solo `%s`.
+| | Asse `attivo` | Asse `obsoleto_dal` |
+| --- | --- | --- |
+| Domanda | il riferimento è valido? | si può scegliere per il nuovo? |
+| Padre che blocca | spento | `obsoleto_dal` raggiunto |
+| Montaggio | generato dal framework | cablato a mano, una relazione alla volta |
+| Su un aggiornamento | dipende dalla colonna attivo del figlio | solo se la FK cambia |
 
 ---
 
-### Utilizzo tipico
+### Quando il controllo si fa e quando no
 
-Cablaggio **a mano** con un `CREATE TRIGGER` per relazione (Tier 2: cervello unico, fili
-sottili). Timing **AFTER** in parallelo ai gemelli `*_require_attivo_*`, con `UPDATE OF <fk>`
-per non scattare sugli update che non toccano la FK del catalogo:
+* Una FK vuota passa: è facoltativa.
+* Su un aggiornamento, se la FK non cambia il controllo non si fa: un cambio di stato di
+  un'istanza storica non ripunta il catalogo e non si blocca mai.
+* Una voce con `obsoleto_dal` vuoto, o con una data futura (ritiro programmato), si può usare.
+* La data si confronta con la **data operativa** (`script.fn_data_operativa`), non con la data
+  del server.
 
-```sql
-CREATE TRIGGER trg_pratiche_a10_tipi_prestazione_require_non_obsoleto_ins_upd
-AFTER INSERT OR UPDATE OF tipo_prestazione_id
-ON pratiche.pratiche
-FOR EACH ROW
-EXECUTE FUNCTION dbops.trgfn_child_requires_non_obsolete_parent(
-  'pratiche', 'tipi_prestazione', 'obsoleto_dal', 'tipo_prestazione_id', 'id'
-);
-```
-
-**Relazioni cablate** (al 2026-06-30):
-
-| Figlio (istanza) | FK | Padre (catalogo) |
-|---|---|---|
-| `pratiche.pratiche` | `tipo_prestazione_id` | `pratiche.tipi_prestazione` |
-| `pratiche.flussi` | `template_flusso_id` | `pratiche.template_flussi` |
-
-Aggiungere un nuovo catalogo (es. `config.iva`) = **un altro `CREATE TRIGGER`**, zero logica
-nuova. La generalizzazione in un framework config-driven (stile regola ATTIVO) è rinviata
-finché i punti-guardia non diventano molti.
+⚠️ Un padre che non si trova passa senza errore: il ramo «catalogo non trovato» non scatta mai,
+perché il controllo dopo l'interrogazione dinamica guarda un indicatore che quell'interrogazione
+non aggiorna. Con la FK vera il caso non si presenta.
 
 ---
 
-### Differenze rispetto a `trgfn_child_requires_active_parent`
+### Il cablaggio
 
-| | `..._active_parent` (ATTIVO) | `..._non_obsolete_parent` (OBSOLETO) |
-|---|---|---|
-| Asse | `attivo` (riferimento valido) | `obsoleto_dal` (selezionabile per il nuovo) |
-| Padre bloccante | `attivo = false` | `obsoleto_dal <= CURRENT_DATE` |
-| Generazione | automatica (`fn_run_automations_attivo`) | **cablaggio manuale** per relazione |
-| Skip su UPDATE | (controllo legato a `attivo` del figlio) | se la **FK non cambia** |
+Un trigger per relazione, `AFTER INSERT OR UPDATE OF` la colonna FK, con gli argomenti: schema e
+tabella del catalogo, nome della colonna `obsoleto_dal`, colonna FK del figlio, colonna
+referenziata (`id` se manca). Oggi sono cablate `pratiche.pratiche` verso
+`pratiche.tipi_prestazione` e `pratiche.flussi` verso `pratiche.template_flussi`. Un catalogo
+nuovo è un altro trigger, nessuna logica nuova.
 
 ---
 
-> **In sintesi**: `trgfn_child_requires_non_obsolete_parent` garantisce che **nuove** istanze
-> non possano nascere (o essere ri-collegate) su un catalogo **ritirato**, lasciando intatte le
-> istanze esistenti e i loro avanzamenti di stato.
+### Codici errore
+
+Tutti i rifiuti escono con `E_CATALOGO_OBSOLETO_NUOVA_ISTANZA`:
+
+* la voce di catalogo è obsoleta — il caso per cui il codice esiste;
+* il trigger è montato con meno di quattro argomenti, o la colonna referenziata, la tabella o la
+  colonna `obsoleto_dal` non esistono.
+
+⚠️ I casi di configurazione usano lo stesso codice di dominio, di classe conflitto di stato: chi
+li riceve legge «catalogo obsoleto» per un trigger montato male.
+
+---
+
+### Test
+
+* `db/pgtap/pratiche/test-guard-non-obsolete-parent-v1.sql` — su pratiche e flussi: voce
+  selezionabile o con ritiro programmato passa, voce obsoleta si rifiuta; un aggiornamento che non
+  tocca la FK passa anche quando la voce è diventata obsoleta; il ricollegamento a una voce
+  obsoleta si rifiuta; la voce obsoleta resta attiva.
+
+---
+
+### Note di migrazione
+
+* 2026-06-30 — nasce con il cablaggio su pratiche e flussi
+  (`brief-db-obsoleto-dal-filtro-lookup-e-guard`).
+* 2026-10-09 — «oggi» diventa la data operativa, nel fuso aziendale; prima era la data del server.
+
+---
+
+{% include-markdown "signature-core.md" %}

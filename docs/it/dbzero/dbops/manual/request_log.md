@@ -1,116 +1,99 @@
-## Documentazione Concettuale -- Tabella `dbops.request_log`
+## 📘 Documentazione Concettuale – Tabella `dbops.request_log`
 
-> **Vedi anche**
+> **Ultimo aggiornamento**: 4 novembre 2026
 >
-**Piano di riferimento:**
+> 👀 **Vedi anche**
 >
-[Audit Sessioni, Request Logging e Sicurezza Token](/dev/work-done/Audit-logging-sessionii-request-token)
+> Approfondimento tabelle:
 >
-**Tabelle correlate:**
+> * [dbops.sessioni_utente](/dbzero/dbops/tabelle/sessioni_utente) — la sessione dell'utente, legata dal `request_id`
+> * [dbops.idempotency_keys](/dbzero/dbops/tabelle/idempotency_keys) — la chiave di idempotenza della stessa richiesta
+> * [dbops.error_log](/dbzero/dbops/tabelle/error_log) — gli errori registrati, che scadono insieme alle chiamate
+> * [dbops.ai_query_log](/dbzero/dbops/tabelle/ai_query_log) — le interazioni con l'assistente, legate dal `request_id`
 >
-[dbops.sessioni_utente](/dbzero/dbops/manual/sessioni_utente) -- correlazione via `request_id`
-> [dbops.idempotency_keys](/dbzero/dbops/manual/idempotency_keys) -- correlazione via `idempotency_key`
-> [dbops.audit_log](/dbzero/dbops/manual/audit_log) -- pattern retention `cleanup_at`
+> Approfondimento funzioni:
 >
+> * [dbops.trgfn_cleanup_at_alla_nascita](/dbzero/dbops/funzioni/trgfn_cleanup_at_alla_nascita) — scrive la scadenza all'inserimento
+>
+> Guide:
+>
+> * [Audit e tracciabilità](/guide/audit-e-tracciabilita) — i registri del sistema e come scadono
+> * [Messaggi di errore e generazione log](/guide/Messaggi-di-Errore-e-Generazione-Log) — quale registro risponde a quale domanda
+
+---
+
 ### 🎯 Scopo Principale
-(latest review 05-03-2026)
 
-`dbops.request_log` registra **ogni request API** (`/api/*`) in transito nel sistema:
-utente, endpoint, metodo HTTP, status code, durata e metadati di correlazione.
-
-Risponde alle domande:
-
-* Quale utente ha chiamato quale endpoint, quando e con quale esito?
-* Quanto tempo ha impiegato una specifica request?
-* Ci sono pattern di errore ricorrenti su determinati path?
-* Una request con idempotency key e` stata ripetuta?
+Il registro delle **chiamate HTTP alle API**: per ogni richiesta `/api/*` dice chi ha chiamato
+quale percorso, con quale metodo, con quale esito e in quanto tempo. Risponde alla domanda «chi ha
+chiamato cosa, via HTTP, e com'è andata?».
 
 ---
 
-### Campi chiave
+### Lo scrive il backend, a risposta pronta
 
-| Colonna | Ruolo |
-|---------|-------|
-| `auth_user_id` | Riferimento utente Django (NULL se request anonima). |
-| `username` | Username JWT denormalizzato per query rapide senza join. |
-| `request_id` | UUID dalla `RequestContextMiddleware` -- chiave di correlazione universale. |
-| `method` | Metodo HTTP. Validato da CHECK: `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`, `HEAD`. |
-| `path` | Path della request (es. `/api/v1/pratiche/`). |
-| `query_string` | Parametri query (senza dati sensibili). |
-| `status_code` | HTTP status code. **Nullable**: una transazione interrotta (crash, timeout) non ha response. |
-| `duration_ms` | Durata in millisecondi. **Nullable**: stesso motivo di `status_code`. |
-| `error_code` | Codice errore applicativo (es. `E_PRATICA_NOT_FOUND`), se presente nella response. |
-| `idempotency_key` | Chiave idempotenza per correlazione con `dbops.idempotency_keys`. |
-| `tx_id` | Transaction ID (pattern standard dbops, trigger `trgfn_tx_id_managed`). |
-| `cleanup_at` | Timestamp retention per pulizia schedulata (es. 90 giorni). |
+La riga la scrive un middleware del backend, con un INSERT diretto, **dopo** che la risposta è
+pronta: una per richiesta. Non si aggiorna: la tabella non ha le colonne di aggiornamento, e non ha
+uno storico.
 
----
+* I percorsi tecnici (salute, documentazione, schema, file statici) non si registrano: l'elenco sta
+  in un building block del backend, non è configurabile.
+* La registrazione si spegne da un'impostazione del backend; di default è accesa.
+* Una scrittura che fallisce finisce nel log del backend e non ferma la risposta.
+* ⛔ Il corpo della richiesta e della risposta non si registra, né per volume né per riservatezza.
 
-### Caratteristiche tecniche
-
-* **Insert-only**: la tabella non prevede UPDATE. Non ha colonne `data_update` / `user_update`.
-* **No storicizzazione**: essendo gia` un log, non necessita di snapshot temporali.
-* **Volume alto**: una riga per ogni request `/api/*`. Valutare partizionamento per mese se il volume lo richiede.
-* **Retention**: 90 giorni (regola CLEANUP_AT id=14). La scadenza la scrive all'INSERT il trigger `trg_request_log_m50_cleanup_at_ins` e il job settimanale cancella le righe scadute; la tabella è nello scope delle automazioni dal 2026-10-23 (prima la regola non agiva). Dettaglio nella guida [Audit e tracciabilità](/guide/audit-e-tracciabilita).
-* **Grant**: automatici via CI grant dinamico su schema `dbops`.
-* **Sicurezza**: il middleware NON logga body request/response (dati sensibili + volume). Solo header-level.
+⚠️ Poiché la riga nasce a risposta pronta, una richiesta che non arriva alla risposta (un processo
+che muore, un timeout del gateway) **non lascia nessuna riga**. `status_code` e `duration_ms`
+ammettono il vuoto, ma chi scrive oggi li valorizza sempre.
 
 ---
 
-### Indici
+### Che cosa dice una riga
 
-| Nome | Colonne | Scopo |
-|------|---------|-------|
-| `ix_request_log_auth_user_id` | `auth_user_id` | Ricerca log per utente. |
-| `ix_request_log_data_insert` | `data_insert DESC` | Ordinamento cronologico, query recenti. |
-| `ix_request_log_path` | `path` | Ricerca/aggregazione per endpoint. |
-| `ix_request_log_request_id` | `request_id` | Correlazione con `sessioni_utente` e tracing. |
-| `ix_request_log_cleanup_at` | `cleanup_at` | Supporto job pulizia retention. |
+* `auth_user_id` e `username` sono l'utente riconosciuto, vuoti per una richiesta anonima;
+  `username` è ricopiato per leggere senza join.
+* `emittente_attivo_id` è l'emittente con cui l'utente lavorava: lo stesso che le policy RLS
+  hanno usato in quella richiesta, preso dalla sessione e non dal token.
+* `request_id` è l'identificativo che il middleware del contesto assegna alla richiesta: il filo
+  verso `dbops.sessioni_utente`, `dbops.ai_query_log` e il log del backend.
+* `method` sta nel vocabolario chiuso dal vincolo `chk_request_log_method` (`GET`, `POST`, `PUT`,
+  `PATCH`, `DELETE`, `OPTIONS`, `HEAD`).
+* `path` e `query_string` sono il percorso e i parametri della richiesta, troncati dal backend.
+* `error_code` è il codice di errore dell'applicazione, preso dal corpo di una risposta di errore
+  quando c'è.
+* `idempotency_key` lega la richiesta alla sua chiave in `dbops.idempotency_keys`.
+* `ip_address` e `user_agent` sono l'origine della richiesta.
 
----
-
-### Ruolo operativo
-
-1. Il middleware `RequestLogMiddleware` inserisce un record per ogni request `/api/*`.
-2. I percorsi tecnici (health, docs, schema, static, media) non si registrano: elenco nel BB backend `apps/core/services/percorsi_tecnici.py`, non configurabile.
-3. Il logging e` disattivabile via `DJANGO_REQUEST_LOG_ENABLED` (default: attivo).
-4. Il job di pulizia schedulato elimina i record oltre la retention configurata.
-5. L'API di consultazione (fase 2, solo ADMIN) espone i dati con filtri user/data/path/status.
-
----
-
-### Segnali diagnostici
-
-Un record con `status_code IS NULL AND duration_ms IS NULL` indica una **request
-che non ha mai completato** (crash processo, OOM, timeout gateway). Questi record
-sono spesso i piu` interessanti da investigare:
-
-```sql
-SELECT request_id, auth_user_id, method, path, data_insert
-  FROM dbops.request_log
- WHERE status_code IS NULL
- ORDER BY data_insert DESC;
-```
+⛔ Non c'è `tx_id`: la riga si scrive quando la transazione di lavoro è già chiusa, e un id coniato
+a quel punto legherebbe la riga solo a se stessa. Per legare una chiamata ai suoi errori si usa il
+`request_id` e l'orario.
 
 ---
 
-### Correlazione con sessioni_utente
+### Scade dopo 90 giorni
 
-Il campo `request_id` condiviso consente di correlare ogni request alla sessione
-JWT che l'ha generata:
-
-```sql
-SELECT r.method, r.path, r.status_code, r.duration_ms, s.evento
-  FROM dbops.request_log r
-  LEFT JOIN dbops.sessioni_utente s USING (request_id)
- WHERE r.auth_user_id = :user_id
-   AND r.data_insert >= :da_data;
-```
+Una riga resta **90 giorni**. La scadenza la scrive all'inserimento il trigger
+`dbops.trgfn_cleanup_at_alla_nascita`, secondo la regola di scadenza della tabella, e il job di
+pulizia cancella le righe scadute. `dbops.error_log` ha lo stesso termine: la chiamata e l'errore
+che ne è uscito scadono insieme.
 
 ---
 
-> **In sintesi**: `request_log` fornisce visibilita` completa su chi chiama cosa nel sistema,
-> colmando una lacuna critica per audit, diagnostica e monitoraggio delle API.
+### Test
+
+* `db/pgtap/dbops/test-registri-dbops-scadenza-v1.sql` — il registro è nello scope delle
+  automazioni, con la sua regola e il trigger di scadenza alla nascita.
+
+---
+
+### Note di migrazione
+
+* 2026-03-05 — nasce con il piano di audit delle sessioni e delle richieste
+  (`Audit-logging-sessionii-request-token`).
+* 2026-08-04 — entra `emittente_attivo_id`.
+* 2026-08-24 — esce `tx_id`, che nessuno valorizzava e non si poteva valorizzare da chi scrive la
+  riga.
+* 2026-10-23 — entra nello scope delle automazioni: da quel giorno la regola di scadenza agisce.
 
 ---
 

@@ -1,6 +1,6 @@
 **Best Practice e Convenzioni**
 
-> **Ultimo aggiornamento**: 31 ottobre 2026
+> **Ultimo aggiornamento**: 4 novembre 2026
 >
 > 👀 **Vedi anche:**   
 > Per come applicare queste best practice nelle migrazioni, consulta il documento  
@@ -1255,7 +1255,7 @@ Warning e non eccezione: la procedura gira a ogni `migrate` e nel job settimanal
 
 Per garantire **coerenza transazionale** fra tutte le tabelle che registrano modifiche, ogni entità deve avere la colonna `tx_id UUID` che accetta anche valori nulli:
 
-* **Trigger (opzione DB)**: applicare `trg_assign_tx_id` (su ogni tabella) che utilizza la function `dbops.trgfn_tx_id_managed()` per generare o recuperare il `tx_id` di sessione.
+* **Trigger (opzione DB)**: il trigger `trg_{table}_gen_tx_id_ins_upd` (nome di default del modulo `TX_ID`, montato da [dbops.fn_run_automations_tx_id](/dbzero/dbops/funzioni/fn_run_automations_tx_id) su ogni tabella con la colonna `tx_id`) esegue la function `dbops.trgfn_tx_id_managed()` per generare o recuperare il `tx_id` di sessione.
 * **Function (opzione backend)**: invocare `dbops.fn_get_or_create_session_tx_id()` prima delle operazioni e passare il `tx_id` in tutti gli `INSERT/UPDATE`.
 
 Per maggiori dettagli e implementazione, consulta la guida **(è fondamentale la consultazione)**:

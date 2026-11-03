@@ -23,7 +23,7 @@
 • [`vendite.trgfn_contratti_gen_codice`](/dbzero/vendite/funzioni/trgfn_contratti_gen_codice)
 >
 ### 🎯 Scopo Principale
-> **Ultimo aggiornamento**: 31 ottobre 2026
+> **Ultimo aggiornamento**: 4 novembre 2026
 
 `vendite.contratti` rappresenta la **testata del contratto commerciale**: l’accordo che lega un **billing account** a una **istanza/utility** e ne definisce **ambito**, **periodo di validita** e **stato**. E` la base di aggregazione delle righe (`vendite.contratti_righe`) e il punto di riferimento per la generazione di **attivita fatturabili**.
 
@@ -327,8 +327,8 @@ esisteva un'azione per cessare, e che si scriveva `valido_al` a mano).
   solo `valido_al` e il contratto resta ATTIVO; passata → rifiutata
   (`E_CONTRATTO_VALIDO_AL_RETROATTIVO`). Chiede l'azione `emetti_contratto`.
 * **Alla scadenza**: [`vendite.fn_cessa_contratti_scaduti`](/dbzero/vendite/manual/fn_cessa_contratti_scaduti),
-  chiamata dalla chiusura per scadenza (`dbops.fn_apply_chiusura_scadenze`, job
-  `chiusura_scadenze_daily`), cessa uno per uno, dalla scrittura comune del modello del
+  chiamata dalla chiusura per scadenza (`dbops.fn_apply_chiusura_scadenze`, eseguita dal lavoro
+  di coda `CHIUSURA_SCADENZE` di ogni azienda, che il job `chiusura_scadenze_daily` sveglia), cessa uno per uno, dalla scrittura comune del modello del
   documento, i contratti ATTIVO con `valido_al` prima di oggi.
 * Finché il contratto è ATTIVO `valido_al` si può ancora spostare (o togliere): se un canone
   anticipato è già stato addebitato oltre la data nuova, il push storna o riaddebita la

@@ -1,191 +1,140 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.error_log`
 
+> **Ultimo aggiornamento**: 4 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento tabelle:    
+> Approfondimento tabelle:
 >
-[config.messaggi_errore](/dbzero/config/tabelle/messaggi_errore)    
-> [dbops.audit_log](/dbzero/dbops/tabelle/audit_log)    
+> * [config.messaggi_errore](/dbzero/config/tabelle/messaggi_errore) — il catalogo dei messaggi a cui ogni riga punta
+> * [dbops.audit_log](/dbzero/dbops/tabelle/audit_log) — il registro delle esecuzioni, che si legge insieme a questo
+> * [dbops.request_log](/dbzero/dbops/tabelle/request_log) — la chiamata HTTP da cui l'errore può essere uscito
 >
-Approfondimento funzioni:    
-> 
-[dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)    
-> [script.trgfn_prevent_modification_generic](/dbzero/script/funzioni/trgfn_prevent_modification_generic)    
-
-La tabella **`dbops.error_log`** serve a **centralizzare la registrazione degli errori** che si verificano nelle diverse aree dell’applicazione (database, backend, frontend, job, ecc.), fornendo un quadro completo del contesto, della fonte e della transazione coinvolta.
+> Approfondimento funzioni:
+>
+> * [script.fn_log_error_only](/dbzero/script/funzioni/fn_log_error_only) — la sola porta di scrittura, su una connessione separata
+> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) — registra e poi solleva
+> * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed) — il trigger sul `tx_id`
+> * [dbops.fn_apply_cleanup_at](/dbzero/dbops/funzioni/fn_apply_cleanup_at) — il job che calcola la scadenza
+>
+> Guide:
+>
+> * [Messaggi di errore e generazione log](/guide/Messaggi-di-Errore-e-Generazione-Log) — i codici, il catalogo e il canale di log
+> * [Audit Logging](/guide/messaggi-audit) — chi può scrivere nei registri
 
 ---
+
 ### 🎯 Scopo Principale
-* Raccogliere in un unico punto gli errori generati da funzioni, trigger o applicazioni, permettendo analisi e allineamento con il catalogo di messaggi di errore.
-* Consentire il **collegamento transazionale** tramite `tx_id`, per ricostruire l’intero flusso di operazioni (ad esempio un job batch) incrociando tabelle come `dbops.audit_log`.
+
+Il **registro tecnico di ogni errore** registrato dal sistema: quale funzione, di quale area,
+con quale codice del catalogo, in quale transazione e con quale contesto. Lo scrivono le funzioni
+del database e il backend, attraverso la stessa porta.
+
+È il posto dove resta traccia di un errore anche quando la transazione che l'ha prodotto viene
+annullata.
 
 ---
 
-### 🔒 Privilegi — registro APPEND-ONLY per l'applicazione (dal 2026-09-11)
+### ⭐ Si scrive fuori dalla transazione
 
-`zeroerp_app` — il ruolo con cui l'applicazione si collega, cioè il soggetto che
-questo registro racconta — può **leggere** e **aggiungere** (`SELECT`, `INSERT`).
-Non `UPDATE`, non `DELETE`, non `TRUNCATE`: *un registro modificabile da chi è
-auditato non è un registro*. Nessuna funzione e nessun codice del backend
-aggiorna o cancella righe di `error_log`; la retention su `cleanup_at` è
-mestiere del proprietario.
+Ogni riga nasce da `script.fn_log_error_only` (direttamente, o da `script.fn_log_and_raise_error`
+che la chiama e poi solleva). La funzione scrive su una **connessione separata** via `dblink`, con
+il ruolo del canale di log: la riga sopravvive all'annullamento della transazione che ha sbagliato.
+Il backend registra i propri errori di servizio con la stessa funzione.
 
-⚠️ La postura **non** è un `REVOKE` scritto una volta: i privilegi dell'app
-vengono riconcessi in blocco a ogni passata `ci_apply`, e la postura più
-stretta è **dichiarata dentro quel loop** (`90_end/ci_apply/20260205-41`).
-Presidio: `db/pgtap/dbops/test-registri-append-only-postura-v1.sql`.
-Regola: [linee-guida-sql](/linee-guida-sql) §11.8; motivazione: guida
-[Audit Logging](/guide/messaggi-audit), sezione *Chi può scrivere*.
+⚠️ Senza canale di log configurato, o con `dblink` che non risponde, la funzione emette un avviso
+nel log del server e **la riga non nasce**: il registro non ha un ripiego in transazione.
 
 ---
 
-### Significato dei Campi Chiave
+### Che cosa dice una riga
 
-* **`id`**: identificativo univoco del record di errore.
-* **`occurred_at`**: timestamp con timezone dell’evento di errore.
-* **`area`**: ambito di origine (es. `database`, `backend`, `frontend`, `job`).
-* **`function_name`**: nome della funzione o metodo che ha generato l’errore (trigger, procedure, job, endpoint).
-* **`messaggio_errore_id`**: FK verso `config.messaggi_errore(id)`, collega il record al testo di errore e alle eventuali traduzioni.
-* **`context`**: campo JSONB in cui si registrano parametri di input, valori di variabili, utente esecutore o altri metadati rilevanti.
-* **`tx_id`**: UUID di transazione corrente, utile per tracciare errori in contesti transazionali e correlare con altri log.
-* **`cleanup_at`**: timestamp opzionale di pulizia programmata (non indica scadenza funzionale).
-
----
-
-### Vincoli e Relazioni
-
-* **PK**: vincolo `error_log_pkey` su `id`.
-* **FK**: `messaggio_errore_id` → `config.messaggi_errore(id)` (senza azioni di update o delete).
-* **Generazione automatica**:
-
-  * `occurred_at` default `now()`
-  * `tx_id` 
-  * `context` default a JSONB vuoto `{}`
+* `area` è l'ambito di origine (`database`, `backend`, uno schema di dominio…), `function_name` la
+  funzione o il metodo che ha registrato l'errore.
+* `messaggio_errore_id` punta al catalogo `config.messaggi_errore`: da lì vengono il codice, la
+  frase, la causa e la soluzione. La riga non ricopia il testo.
+* `context` porta i dati utili a capire il caso: parametri, valori, identificativi coinvolti.
+* `tx_id` è la transazione dell'errore, ed è **obbligatorio**. La porta di scrittura lo prende dal
+  chiamante o, se manca, dalla sessione; senza canale per il transaction id è la sentinella nulla.
+  È il filo per passare dal giornale di dominio, o da `dbops.audit_log`, agli errori della stessa
+  transazione.
 
 ---
 
-### 🚨 Trigger
+### ⛔ Append-only per l'applicazione
 
-* **`trg_assign_tx_id_error_log`** (BEFORE INSERT OR UPDATE): assegna automaticamente il valore di `tx_id` tramite la trigger function `dbops.trgfn_tx_id_managed()`, garantendo che ogni record di errore sia correlato all’identificativo di transazione.
-* **Protezione modifiche**: dal 2026-09-11 la protezione è nei **privilegi**: `zeroerp_app` ha `SELECT, INSERT` e basta — vedi *Privilegi* qui sotto. Un trigger `script.trgfn_prevent_modification_generic()` resterebbe l'attrezzo per bloccare anche il proprietario, se un giorno servisse; oggi non è montato.
+`zeroerp_app` può leggere e aggiungere, non modificare, cancellare o svuotare: un registro
+modificabile da chi è registrato non è un registro. Nessuna funzione e nessun codice del backend
+aggiorna o cancella righe di `error_log`; la cancellazione delle righe scadute è mestiere del
+proprietario. Il ruolo del canale di log ha il solo diritto di aggiungere.
 
----
-
-### Esempi di Utilizzo
-
-1. **Recuperare tutti gli errori di una specifica transazione**:
-
-   ```sql
-   SELECT *
-     FROM dbops.error_log
-    WHERE tx_id = '123e4567-e89b-12d3-a456-426614174000';
-   ```
-
-2. **Unire gli errori con il catalogo dei messaggi**:
-
-   ```sql
-   SELECT e.id, e.occurred_at, m.codice, m.messaggio, e.context
-     FROM dbops.error_log e
-     JOIN config.messaggi_errore m ON e.messaggio_errore_id = m.id;
-   ```
-
-3. **Cronologia completa di una transazione**:
-
-   ```sql
-   WITH errs AS (
-     SELECT * FROM dbops.error_log WHERE tx_id = :tx
-   ), audits AS (
-     SELECT * FROM dbops.audit_log WHERE tx_id = :tx
-   )
-   SELECT * FROM errs
-   UNION ALL
-   SELECT * FROM audits
-   ORDER BY occurred_at;
-   ```
+⚠️ La postura non è una revoca scritta una volta: si dichiara nel ciclo dei grant della
+convergenza del rilascio e nel provisioning, che a ogni passata riconcedono i privilegi. Regola:
+[Linee guida SQL — sezione 11](/linee-guida-sql#11-ciclo-di-vita-di-un-changeset-i-divieti),
+punto 11.8.
 
 ---
 
-### 🔎 Gli indici della consultazione (dal 19-09-2026)
+### 🔎 Ogni filtro della consultazione ha il suo indice
 
-La consultazione dei tecnici — «quale funzione ha sollevato quale codice,
-quando, in quale transazione» (pezzo E del piano BE/FE dell'osservabilità) —
-dichiara una whitelist di filtri, e **ogni filtro dichiarato ha un indice da cui
-partire** (P-3 del brief `brief-db-osservabilita-lotto-fermo-r6-indici`,
-changeSet `20260919-06`):
+La consultazione degli errori tecnici dell'amministrazione filtra per finestra di date, area,
+funzione (esatta o a prefisso), codice e `tx_id`, e ogni filtro ha un indice da cui partire: uno
+sul tempo (la finestra, sempre presente, e la prima pagina in ordine di tempo), uno su area e
+tempo, uno su funzione e tempo, uno su `tx_id`. Il codice non sta qui: si risolve prima nel
+catalogo, e si entra dall'indice sulla chiave verso il messaggio.
 
-| Indice | Serve a |
-| --- | --- |
-| `ix_error_log_occurred_at` | la finestra `data_da`/`data_a`, il filtro sempre presente, e la prima pagina (`ORDER BY occurred_at DESC LIMIT n`) |
-| `ix_error_log_area_occurred_at` | `area` (esatto), ordinato nel tempo dentro l'area |
-| `ix_error_log_function_name_occurred_at` | `function_name`, esatto o a **prefisso** — con `text_pattern_ops` |
-| `ix_error_log_tx_id` | il **ponte** dal giornale (`script.vw_giornale_entita.tx_id`) agli appunti tecnici della stessa transazione |
+⛔ Due cose sul prefisso di `function_name`:
 
-`codice` sta sul catalogo, non qui: si risolve prima `codice → messaggio_errore_id`
-e si entra dall'indice che c'è già.
+1. la collation del database è italiana, e un indice ordinario non serve una ricerca a prefisso.
+   L'indice su funzione usa l'operatore per i pattern, che serve l'uguaglianza e il `LIKE` a
+   prefisso, **mai** `ILIKE`;
+2. `_` è un jolly di `LIKE`, e i nomi di funzione ne sono pieni: un prefisso non escapato ha come
+   parte fissa solo ciò che precede il primo `_`, il planner torna a scandire la tabella, e il
+   risultato combacia con nomi sbagliati. Il prefisso va escapato.
 
-⛔ **Due cose da sapere sul prefisso di `function_name`**, verificate con
-`EXPLAIN` il 19-09:
-
-1. la collation del database è `it_IT.UTF-8`: un btree ordinario **non serve**
-   `LIKE 'x%'`. L'indice ha `text_pattern_ops`, che serve `=` e `LIKE 'x%'` —
-   e **mai** `ILIKE`. Il backend filtri con `LIKE`: i nomi di funzione sono
-   minuscoli per convenzione;
-2. **`_` è un jolly di `LIKE`**, e i nomi di funzione ne sono pieni:
-   `LIKE 'fn_get_lotto%'` ha come prefisso fisso solo `fn`, e il planner torna
-   a scandire la tabella. Il prefisso va **escapato** (`fn\_get\_lotto%`) — che
-   è anche l'unica forma corretta: senza, `fn_get` combacerebbe con `fnXget`.
-
-⚠️ Il costo sta in scrittura, ed è dichiarato: la tabella si scrive a ogni
-errore, e quattro indici in più sono quattro scritture in più sul ramo che sta
-già fallendo. È il posto giusto per pagarli.
+⚠️ Gli indici costano in scrittura, sul ramo che sta già fallendo: è il posto giusto per pagarli,
+ed è dichiarato.
 
 ---
 
-### 🧹 Pulizia programmata (`cleanup_at`)
+### Il registro tecnico accanto ai log di dominio
 
-Il campo **`cleanup_at`** è usato esclusivamente per **gestire job di pulizia** dei log storici.  
-Non rappresenta una scadenza “funzionale” dell’errore, ma solo un **timestamp indicativo per il cleanup**.
-
----
-
-### Vantaggi Operativi
-
-* **Tracciabilità a 360°**: unisce errori e transazioni in un unico flusso temporale.
-* **Analisi rapida**: il campo `context` permette filtri e aggregazioni sui metadati.
-* **Integrità delle informazioni**: i trigger automatici garantiscono corretto popolamento di `tx_id` e audit inalterabile.
-* **Coerenza semantica**: l’uso di FK verso `config.messaggi_errore` assicura messaggi uniformi e localizzati.
+`error_log` conserva il dettaglio tecnico. I processi di dominio hanno i propri log, con la fase e
+l'esito che l'utente vede (per la fatturazione, il log del lotto e quello del documento): un errore
+di processo finisce in entrambi, e i due si legano col `tx_id`.
 
 ---
 
-### Pattern di integrazione con log di dominio
+### Scade dopo 90 giorni
 
-`dbops.error_log` è il **log tecnico centralizzato**.  
-Nei domini applicativi è consigliato affiancarlo con log funzionali dedicati.
-
-Esempio dominio vendite/fatturazione:
-
-* log tecnico: `dbops.error_log` (raise SQL / ErrorManager backend)
-* log di processo lotto: `vendite.fatturazione_lotti_log`
-* log documento: `vendite.fatture_log`
-
-Regola operativa:
-
-* errore di orchestrazione/processo -> log di dominio `LOTTO` + `error_log`
-* errore su singolo documento -> log di dominio `FATTURA` + `error_log`
-
-Questo approccio evita ambiguità: `error_log` conserva il dettaglio tecnico,
-mentre i log di dominio governano stato/esito funzionale visibile in dashboard.
+Una riga resta **90 giorni** dall'orario dell'errore (`occurred_at`), come le chiamate di
+`dbops.request_log`: chi indaga su una richiesta guarda la chiamata e l'errore che ne è uscito, e i
+due registri scadono insieme. La scadenza la calcola il job delle automazioni, sulle righe che non
+ce l'hanno ancora: ⛔ non c'è un trigger alla nascita, perché la riga la scrive il ruolo del canale
+di log, che non legge le regole delle automazioni, e il trigger farebbe fallire la registrazione
+degli errori. `cleanup_at` è una data di pulizia, non una scadenza funzionale dell'errore.
 
 ---
 
-> **“Un error log strutturato con identità transazionale e contesto dettagliato semplifica il debug e il monitoraggio degli incidenti applicativi.”**
+### Test
+
+* `db/pgtap/dbops/test-registri-append-only-postura-v1.sql` — l'applicazione legge e aggiunge, e
+  non modifica né cancella né svuota.
+* `db/pgtap/dbops/test-registri-dbops-scadenza-v1.sql` — il registro è nello scope delle
+  automazioni con la sua regola, e non ha il trigger alla nascita.
+* `db/pgtap/dbops/test-indici-letture-trasversali-v1.sql` — gli indici della consultazione, e
+  l'operatore per i pattern su `function_name`.
 
 ---
 
-### 🧹 Scadenza
+### Note di migrazione
 
-Una riga di errore resta **90 giorni** dall'orario dell'errore (`occurred_at`), come le
-chiamate di [`dbops.request_log`](/dbzero/dbops/manual/request_log): regola CLEANUP_AT id=25.
-La scadenza la calcola il job settimanale delle automazioni, non un trigger alla nascita:
-la tabella la scrive anche una sessione dblink che non legge le regole. Dettaglio nella
-guida [Audit e tracciabilità](/guide/audit-e-tracciabilita).
+* 2026-09-11 — il registro diventa append-only per l'applicazione: la protezione è nei privilegi,
+  e non c'è un trigger di blocco.
+* 2026-09-19 — entrano i quattro indici della consultazione tecnica.
+* 2026-10-23 — entra nello scope delle automazioni con la regola di scadenza a 90 giorni: prima
+  nessuna riga scadeva.
+
+---
+
+{% include-markdown "signature-core.md" %}

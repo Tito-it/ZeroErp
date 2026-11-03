@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/fn_get_pgagent_job_stato.md" %}
 # ⚙️ Funzione `fn_get_pgagent_job_stato`
 
 ```sql

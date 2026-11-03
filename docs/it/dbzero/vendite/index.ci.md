@@ -20,7 +20,7 @@ search:
 - [commesse_attivita_log](manual/commesse_attivita_log.md) — La tabella `vendite.commesse_attivita_log` registra eventi di dominio sulle righe `commesse_attivita`, come audit persistente indipendente dal layer applicativo.
 - [commesse_push_log](manual/commesse_push_log.md) — `vendite.commesse_push_log` tiene il registro dei **giri** dell'orchestratore che spinge le sorgenti verso commesse e attività: uno per corsa, non uno per riga.
 - [commesse_sorgenti](manual/commesse_sorgenti.md) — La tabella `vendite.commesse_sorgenti` traccia la sorgente ROOT della commessa e garantisce idempotenza sorgente a livello commessa.
-- [contratti](manual/contratti.md) — > **Ultimo aggiornamento**: 31 ottobre 2026
+- [contratti](manual/contratti.md) — > **Ultimo aggiornamento**: 4 novembre 2026
 - [contratti_indirizzi](manual/contratti_indirizzi.md) — Snapshot degli indirizzi collegati alla testata di un **contratto**, uno per tipo (univocità `contratto_id, tipo_indirizzo_id`). Struttura **identica** alle altre tabelle `*_indirizzi` documento (snapshot JSONB congelato + `origine_indirizzo_id` / `origine_soggetto_ruolo_id` soft FK `SET NULL`, `tx_id`).
 - [contratti_righe](manual/contratti_righe.md) — > **Ultimo aggiornamento**: 31 ottobre 2026
 - [contratti_righe_componenti](manual/contratti_righe_componenti.md) — `vendite.contratti_righe_componenti` modella il **prezzo negoziabile per singolo componente** di un articolo composito CASO A nell'ambito di un contratto. Stesso pattern delle altre 3 tabelle (preventivi, ordini, ddt).

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/fn_run_automations_date_validita.md" %}
 # ⚙️ Funzione `fn_run_automations_date_validita`
 
 ```sql

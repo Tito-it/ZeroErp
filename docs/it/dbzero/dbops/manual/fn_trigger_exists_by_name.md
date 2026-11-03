@@ -1,80 +1,76 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_trigger_exists_by_name`
 
+> **Ultimo aggiornamento**: 4 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Guide:
+> Approfondimento tabelle:
 >
-[Automazioni – Overview del Modulo](/guide/automazione-db/)
+> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl) — la regola che sceglie la strategia di esistenza (`existence_strategy`)
 >
-Approfondimento funzioni:
+> Approfondimento funzioni:
 >
-[dbops.fn_trigger_exists_by_function](/dbzero/dbops/funzioni/fn_trigger_exists_by_function)   
-> [dbops.fn_trigger_exists_block_by_args](/dbzero/dbops/funzioni/fn_trigger_exists_block_by_args)   
+> * [dbops.fn_trigger_exists_by_function](/dbzero/dbops/funzioni/fn_trigger_exists_by_function) — l'altra metà della strategia, per funzione
+> * [dbops.fn_name_from_template](/dbzero/dbops/funzioni/fn_name_from_template) — compone il nome che i runner cercano qui
+> * [dbops.fn_run_automations_tx_id](/dbzero/dbops/funzioni/fn_run_automations_tx_id) — uno dei runner che la usano
+> * [dbops.fn_run_automations_delete_block](/dbzero/dbops/funzioni/fn_run_automations_delete_block) — il runner che riconosce i trigger solo per nome
 >
+> Guide:
+>
+> * [Framework di automazione DB](/guide/automazione-db) — le strategie di esistenza delle regole
+
+---
+
 ### 🎯 Scopo Principale
-(latest review 10-01-26)
-La funzione **`dbops.fn_trigger_exists_by_name(p_rel, p_trigger_name)`** verifica l’esistenza di un **trigger non interno** su una tabella specifica **in base al nome** del trigger.
+
+Dice se su una tabella esiste un trigger utente con un nome **esatto**. È il controllo di
+esistenza «per nome» dei runner delle automazioni: prima di creare un trigger generato, il
+runner chiede se il nome del template c'è già.
+
+La usano i runner di audit, `tx_id`, storico, ATTIVO, regola del periodo e blocco delle
+cancellazioni. Con la strategia `BY_NAME` decide da sola; con `BOTH` basta che risponda vero lei
+o il controllo per funzione perché il runner non crei niente.
 
 ---
 
-## Parametri di input
+### Che cosa guarda e che cosa no
 
-| Parametro        | Tipo     | Obbligatorio | Descrizione                                        |
-| ---------------- | -------- | :----------: | -------------------------------------------------- |
-| `p_rel`          | regclass |      ✔️       | Tabella (relazione) su cui controllare il trigger. |
-| `p_trigger_name` | text     |      ✔️       | Nome del trigger da verificare.                    |
+* Solo i trigger **utente**: i trigger interni di PostgreSQL (quelli delle FK) non contano. Un
+  `CONSTRAINT TRIGGER` scritto con il suo nome è un trigger utente, e conta.
+* Il nome si confronta **così com'è**, senza normalizzare maiuscole né spazi.
+* Non guarda la funzione né gli argomenti, né se il trigger è abilitato: un trigger con il nome
+  giusto e un contenuto qualsiasi risponde vero.
 
----
-
-### Valore di ritorno
-
-`boolean` – `true` se esiste un trigger con quel nome su `p_rel` (ed è **non interno**), `false` altrimenti.
-
----
-
-### Flusso logico
-
-1. Interroga `pg_trigger` filtrando per `tgrelid = p_rel` e `tgname = p_trigger_name`.
-2. Esclude i trigger **interni** (`NOT t.tgisinternal`).
-3. Ritorna `EXISTS(...)` come booleano.
+⚠️ **Il nome cercato deve essere quello che PostgreSQL ha salvato.** Un nome oltre 63 caratteri
+PostgreSQL lo tronca quando crea il trigger. Se il chiamante cerca il nome intero, la risposta è
+sempre falsa, e il runner prova a ricreare un trigger che c'è già. I runner che compongono il
+nome con `dbops.fn_name_from_template` sono al riparo, perché lì il nome lungo si tronca e
+riceve un hash. Le regole sui nomi stanno nelle
+[linee guida dei trigger](/linee-guida-trigger#il-nome-del-trigger).
 
 ---
 
-### Casi d’uso tipici
+### Una funzione `sql` senza stato
 
-* **Idempotenza nelle automazioni**: verificare se un trigger con uno **specifico nome** è già presente prima di crearlo.
-* **Verifica naming policy**: audit della coerenza dei nomi dei trigger rispetto a `name_template`.
-* **Manutenzione**: controlli rapidi durante migrazioni o refactoring.
-
----
-
-### Permessi e sicurezza
-
-* Richiede permessi di lettura su `pg_trigger`.
-* È una funzione **STABLE** e non altera dati o schema.
+È una lettura del catalogo `pg_trigger`, senza effetti. Non è dichiarata `STABLE`, quindi per
+PostgreSQL è volatile: la risposta si ricalcola a ogni chiamata, ed è quello che serve a un
+runner che crea trigger mentre controlla.
 
 ---
 
-### Esempi di utilizzo
+### Test
 
-* `SELECT dbops.fn_trigger_exists_by_name('anagrafiche.clienti','trg_clienti_ins_upd_gen_tx_id');`
-* `SELECT dbops.fn_trigger_exists_by_name('catalogo.articoli','trg_articoli_a10_componenti_block_deact_upd');`
-
----
-
-### Considerazioni
-
-* Sensibile al **nome esatto** del trigger: se il naming non è standard, può fallire il match pur esistendo un trigger equivalente.
-* Da usare in combinazione con `fn_trigger_exists_by_function` per una verifica più robusta.
+Nessun pgTAP la chiama per nome. La presidiano in modo indiretto i test dei runner che passano
+dalla strategia `BOTH`, per esempio `db/pgtap/dbops/test-storico-nome-funzione-ritirato-v1.sql`
+(una madre con il trigger di storico non ne riceve un secondo).
 
 ---
 
-### Benefici
+### Note di migrazione
 
-* **Semplicità**: controllo diretto e veloce per nome.
-* **Integrazione**: si combina con altre utility di esistenza per strategie `BY_NAME|BY_FUNCTION|BOTH`.
-* **Affidabilità**: evita duplicazioni quando il naming è normato.
+* 2025-08-21 — nasce con la gemella `fn_trigger_exists_by_function`, nel primo albero dei
+  changeSet (`db/changelog/migrations/50_dbops`).
 
 ---
 
-> **In sintesi**: `fn_trigger_exists_by_name` è l’utility più immediata per verificare la presenza di un trigger identificato dal **nome**, ideale per automazioni basate su naming template standardizzati.
+{% include-markdown "signature-core.md" %}

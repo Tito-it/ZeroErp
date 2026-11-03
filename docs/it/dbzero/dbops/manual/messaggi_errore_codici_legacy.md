@@ -1,69 +1,75 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.messaggi_errore_codici_legacy`
 
+> **Ultimo aggiornamento**: 4 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento tabelle:
-> • [config.codici_errore](/dbzero/config/tabelle/codici_errore)
-> • [config.messaggi_errore](/dbzero/config/tabelle/messaggi_errore)
-> • [dbops.codici_errore_senza_policy](/dbzero/dbops/tabelle/codici_errore_senza_policy)
+> Approfondimento tabelle:
+>
+> * [config.codici_errore](/dbzero/config/tabelle/codici_errore) — il catalogo dei codici
+> * [config.messaggi_errore](/dbzero/config/tabelle/messaggi_errore) — le frasi dei codici
+> * [dbops.codici_errore_senza_policy](/dbzero/dbops/tabelle/codici_errore_senza_policy) — l'altro registro, da non confondere
 
 ---
+
 ### 🎯 Scopo Principale
 
-(rev 2026-08-21)
+Il registro del debito ereditato sulla convenzione dei nomi dei codici errore (`E_` o `W_`, poi
+maiuscole, cifre e trattini bassi): ci va un codice che arriva da fuori già fuori convenzione e che
+non conviene rinominare. È a zero righe, e resta.
 
-**Registro del debito ereditato sulla convenzione dei nomi** dei codici errore
-(`E_{MODULO}_{TIPO}`, famiglia `W_` per i warning — `docs/it/dev/api.md`).
-
-Ci va un codice che **arriva da fuori già fuori convenzione** e che non conviene rinominare.
-Il `CHECK chk_..._non_conforme` impedisce di registrarci un codice conforme: nel registro del
-debito non si mette ciò che debito non è.
+Il database impedisce di registrarci un codice conforme: nel registro del debito non si mette ciò
+che debito non è.
 
 ---
 
-### ⭐ È a **zero righe** dal 2026-08-07 — e non va droppata
+### ⭐ A zero righe, e non si toglie
 
-Le 57 voci del 2026-08-05 sono state tutte smaltite, l'ultima col rename
-`MESSAGGIO_NON_DEFINITO` → `E_MESSAGGIO_NON_DEFINITO`.
+Tolta la tabella il comportamento non cambierebbe, ma:
 
-⛔ **Non droppare** (decisione di Tid, 2026-08-08). A zero righe il `DROP` sarebbe neutro nel
-comportamento, ma:
+* bisognerebbe mettere mano al controllo del guardrail dei codici errore che legge questo registro
+  — l'unica cosa che tiene la convenzione — in un presidio verde, il momento peggiore per toccarlo;
+* sparirebbe il meccanismo già pronto per la prossima eredità di codici.
 
-* costringerebbe a mettere mano al controllo (B) di
-  `scripts/sql/guardrail_codice_errore_strutturato.sql` — l'unica cosa che tiene la
-  convenzione — **in un presidio che è verde**, che è il momento peggiore per toccarlo;
-* toglierebbe il meccanismo già pronto per la prossima eredità di codici.
-
-**Un registro vuoto non è un registro inutile: è un registro in pari.** È anche l'unico modo
-per distinguere «nessun debito» da «nessuno lo sta più misurando».
+Un registro vuoto non è un registro inutile: è un registro in pari, ed è l'unico modo per
+distinguere «nessun debito» da «nessuno lo sta più misurando».
 
 ---
 
 ### ⚠️ Non è una whitelist di eccezioni
 
-La distinzione decide come si risolvono i casi nuovi.
+Una famiglia nuova con una semantica sua si risolve **allargando la convenzione**, non registrandola
+qui: è stato così per i warning `W_`, che non sono codici sbagliati ma un'altra categoria.
 
-Una **famiglia nuova con una semantica sua** — com'è stato per i `W_` (changeSet
-`20260805-28`) — si risolve **allargando la convenzione**, non registrandola qui. I `W_` non
-sono codici sbagliati: sono warning, una categoria diversa, e la convenzione è stata estesa
-per accoglierli.
-
-Ecco perché **non c'è una colonna `motivo`**: un'eccezione avrebbe bisogno di essere
-giustificata, un debito no — deve solo essere smaltito. L'orologio è `data_registrazione`.
+Per questo non c'è una colonna `motivo`: un'eccezione andrebbe giustificata, un debito ereditato
+deve solo essere smaltito. L'orologio è `data_registrazione`.
 
 ---
 
 ### ⚠️ Da non confondere con l'altro registro
 
-`dbops.codici_errore_senza_policy` misura un debito **diverso**: codici privi di policy nel
-backend, quindi con lo stato HTTP appiattito su 400. Questo registro riguarda il **nome** del
-codice, quello il suo **trasporto**.
+[dbops.codici_errore_senza_policy](/dbzero/dbops/tabelle/codici_errore_senza_policy) misura un
+debito diverso: codici conformi senza regola di risposta nel backend. Questo riguarda il **nome**
+del codice, quello il suo **trasporto**; i due registri si escludono per vincolo.
 
 ---
 
-### Riferimenti
+### Chi lo legge
 
-`docs/it/dev/work-done/piano-db-classe-codici-errore.md` §5.5.
+Il guardrail della CI sui codici errore, `scripts/sql/guardrail_codice_errore_strutturato.sql`:
+ogni codice fuori convenzione deve stare qui, e una voce che nel frattempo è stata rinominata va
+tolta. Se il registro manca, il guardrail fallisce invece di saltare i controlli. Nessun pgTAP lo
+legge.
+
+---
+
+### Note di migrazione
+
+* 2026-08-05 — nasce con 57 voci (`piano-db-classe-codici-errore` §5.5); lo stesso giorno la
+  convenzione si allarga ai `W_`.
+* 2026-08-07 — arriva a zero, l'ultima voce col rinomino di `MESSAGGIO_NON_DEFINITO` in
+  `E_MESSAGGIO_NON_DEFINITO`.
+* 2026-08-08 — Tid decide di non toglierla.
 
 ---
 

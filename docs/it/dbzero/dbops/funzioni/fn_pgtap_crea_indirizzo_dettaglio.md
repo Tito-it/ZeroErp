@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/fn_pgtap_crea_indirizzo_dettaglio.md" %}
 # ⚙️ Funzione `fn_pgtap_crea_indirizzo_dettaglio`
 
 ```sql

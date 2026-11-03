@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/fn_pgtap_crea_preventivo_con_righe.md" %}
 # ⚙️ Funzione `fn_pgtap_crea_preventivo_con_righe`
 
 ```sql

@@ -1,6 +1,6 @@
 # Guida – Gestione delle code di lavoro
 
-> (latest review 06-09-2026)
+> **Ultimo aggiornamento**: 4 novembre 2026
 >
 > Destinatari: sviluppatori backend e database, analisti funzionali
 >
@@ -11,7 +11,7 @@
 > * [I lavori automatici: che natura hanno e per conto di chi girano](/guide/processi-automatici-classe-e-identita) — **da leggere prima**: dice quali lavori devono passare di qui e con quale identità
 > * [Processi pgAgent funzionali](/guide/processi-pgagent-funzionali) — l'elenco dei lavori a orario
 > * [Gestione mail](/guide/gestione-mail) — il secondo utilizzatore naturale (invio asincrono)
-> * [dbops.coda_lavori](/dbzero/dbops/manual/coda_lavori) e [dbops.fn_accoda_lavoro](/dbzero/dbops/manual/fn_accoda_lavoro) — il dettaglio tecnico
+> * [dbops.coda_lavori](/dbzero/dbops/tabelle/coda_lavori) e [dbops.fn_accoda_lavoro](/dbzero/dbops/funzioni/fn_accoda_lavoro) — il dettaglio tecnico
 
 ---
 
@@ -54,7 +54,7 @@ La soluzione è **spezzare in due momenti**:
   crearne una copia (**idempotenza**).
 
 Chi vuole il dettaglio tecnico (colonne, stati, indici) lo trova in
-[dbops.coda_lavori](/dbzero/dbops/manual/coda_lavori).
+[dbops.coda_lavori](/dbzero/dbops/tabelle/coda_lavori).
 
 ## Quando usarla — e quando no
 
@@ -193,9 +193,9 @@ L'operatore preme «Fattura competenza»:
 ---
 
 *Per il dettaglio tecnico degli oggetti database vedi
-[dbops.coda_lavori](/dbzero/dbops/manual/coda_lavori),
-[dbops.coda_lavori_tipi](/dbzero/dbops/manual/coda_lavori_tipi) e
-[dbops.fn_accoda_lavoro](/dbzero/dbops/manual/fn_accoda_lavoro).*
+[dbops.coda_lavori](/dbzero/dbops/tabelle/coda_lavori),
+[dbops.coda_lavori_tipi](/dbzero/dbops/tabelle/coda_lavori_tipi) e
+[dbops.fn_accoda_lavoro](/dbzero/dbops/funzioni/fn_accoda_lavoro).*
 
 ---
 {% include-markdown "signature-core.md" %}

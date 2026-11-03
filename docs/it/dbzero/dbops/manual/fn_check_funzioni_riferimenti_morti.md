@@ -1,182 +1,161 @@
-## 📘 Documentazione Concettuale – Funzione `dbops.fn_check_funzioni_riferimenti_morti()`
+## 📘 Documentazione Concettuale – Funzione `dbops.fn_check_funzioni_riferimenti_morti`
 
+> **Ultimo aggiornamento**: 4 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento tabelle:
-> • [dbops.riferimenti_morti_esenzioni](/dbzero/dbops/tabelle/riferimenti_morti_esenzioni)
+> Approfondimento tabelle:
 >
-Approfondimento viste:
-> • [dbops.vw_riferimenti_morti_da_sanare](/dbzero/dbops/views/vw_riferimenti_morti_da_sanare)
-> • [dbops.vw_riferimenti_morti_rientrati](/dbzero/dbops/views/vw_riferimenti_morti_rientrati)
+> * [dbops.riferimenti_morti_esenzioni](/dbzero/dbops/tabelle/riferimenti_morti_esenzioni) — il registro del debito che si confronta con questa misura
+>
+> Approfondimento viste:
+>
+> * [dbops.vw_riferimenti_morti_da_sanare](/dbzero/dbops/views/vw_riferimenti_morti_da_sanare) — i difetti non coperti dal registro
+> * [dbops.vw_riferimenti_morti_rientrati](/dbzero/dbops/views/vw_riferimenti_morti_rientrati) — le voci del registro di troppo
+>
+> Approfondimento funzioni:
+>
+> * [dbops.fn_conta_presidio](/dbzero/dbops/funzioni/fn_conta_presidio) — il conteggio del digest, che la fa girare come proprietario
+>
+> Guide:
+>
+> * [Presidi e registri del debito](/guide/presidi-e-registri-del-debito) — misura e registro
 
 ---
+
 ### 🎯 Scopo Principale
 
-(rev 2026-08-21)
+Compila con `plpgsql_check` ogni funzione PL/pgSQL del database che non appartiene a
+un'estensione, e classifica i difetti trovati: è la misura unica dei riferimenti morti, letta dal
+guardrail della CI, dal pgTAP, dallo strumento a mano e dalle due viste del presidio.
 
-Trova i **riferimenti morti** nelle funzioni PL/pgSQL: colonne rinominate o eliminate, tabelle
-che non esistono più, campi citati da un corpo che non compilerebbe mai.
-
-Il problema che risolve è specifico di PL/pgSQL: il corpo di una funzione **non viene
-validato alla creazione**. Una `CREATE OR REPLACE FUNCTION` che nomina una colonna inesistente
-riesce senza un fiato, e il difetto si manifesta solo quando quel ramo viene percorso — spesso
-il ramo d'errore, cioè esattamente quando servirebbe funzionare.
-
-Si appoggia a `plpgsql_check_function`, e ne interpreta l'output.
+Il problema è specifico di PL/pgSQL: il corpo di una funzione **non viene validato alla
+creazione**. Una funzione che nomina una colonna inesistente si crea senza un fiato, e il difetto
+si manifesta solo quando quel ramo viene percorso — spesso il ramo d'errore, cioè proprio quando
+servirebbe funzionare.
 
 ---
 
-### ⭐ Le trigger function si validano contro **ogni tabella** su cui sono agganciate
+### ⭐ Le trigger function si validano contro ogni tabella su cui sono agganciate
 
-È il punto meno ovvio. `NEW` e `OLD` non hanno un tipo finché non si sa su quale tabella il
-trigger è montato: la stessa trigger function agganciata a due tabelle va quindi controllata
-**due volte**, una per tabella.
-
-Da qui la classe **`ORFANA`**: una trigger function agganciata a **zero** tabelle non è
-validabile affatto. Non è un riferimento morto — è codice che nessuno può verificare, ed è
-segnalato come tale.
+`NEW` e `OLD` non hanno un tipo finché non si sa su quale tabella il trigger è montato: la stessa
+trigger function agganciata a due tabelle si controlla due volte, una per tabella. Da qui la classe
+`ORFANA`: una trigger function senza trigger non è validabile affatto, ed è già di per sé un
+residuo.
 
 ---
 
-### ⚠️ Le classi sono OTTO, e tre chiedono attenzione
+### Le otto classi
 
-> ⚠️ **Corretto il 2026-09-12**: questa sezione diceva «due su **cinque**» ed elencava cinque
-> classi. Ne mancavano **due** — `FP_VARIADIC` (dal 2026-08-05) e `NON_MISURATO` (dal
-> 2026-09-10) — e la seconda è proprio quella che decide se la misura vale qualcosa.
-> ⭐ **Ottava dal 2026-09-14**: `FP_DEFINER_PRIVILEGIO` (`20260914-02`).
+| Classe | Significato | Nella lista di lavoro |
+| --- | --- | --- |
+| `REALE` | riferimento morto vero, da sanare | sì |
+| `ORFANA` | trigger function senza trigger: non validabile | sì |
+| `NON_MISURATO` | ⛔ **non si è potuto controllare**: `plpgsql_check` ha sollevato invece di rispondere | sì |
+| `FP_RAMO_ALTRA_TABELLA` | l'errore compare solo su alcune delle tabelle del trigger: è il ramo dedicato a un'altra | no |
+| `FP_TRANSITION_TABLE` | la relazione mancante è una tabella di transizione del trigger, che esiste solo durante lo scatto | no |
+| `FP_SQL_DINAMICO` | errore di sintassi dentro un `EXECUTE`: SQL costruito a runtime, con segnaposto | no |
+| `FP_VARIADIC` | funzione non trovata, ma la chiamata è a un `VARIADIC "any"` con soli tipi testuali | no |
+| `FP_DEFINER_PRIVILEGIO` | permesso negato dentro una `SECURITY DEFINER` misurata da chi non ne è il proprietario né membro del suo ruolo | no |
 
-| Classe | Significato | Nelle viste a valle |
-|---|---|---|
-| `REALE` | riferimento morto vero, da sanare | ✅ sì |
-| `ORFANA` | trigger function non agganciata: non validabile | ✅ sì |
-| `NON_MISURATO` | ⛔ **non si è potuto controllare**: `plpgsql_check` ha sollevato invece di rispondere | ✅ sì |
-| `FP_TRANSITION_TABLE` | falso positivo — tabelle di transizione (`REFERENCING`) | no |
-| `FP_RAMO_ALTRA_TABELLA` | falso positivo — ramo che vale per un'altra tabella agganciata | no |
-| `FP_SQL_DINAMICO` | falso positivo — `EXECUTE` con SQL costruito | no |
-| `FP_VARIADIC` | falso positivo — chiamata `VARIADIC` | no |
-| `FP_DEFINER_PRIVILEGIO` | falso positivo — `42501` dentro una `SECURITY DEFINER` misurata da chi **non** ne è il proprietario (né membro): il corpo gira coi privilegi del proprietario, la domanda giusta la fanno gli altri occhi (`fn_conta_presidio` come proprietario, il guardrail in CI da superuser). Chi è proprietario e prende un `42501` resta `REALE` | no |
+⛔ **`NON_MISURATO` non è un difetto e non è un falso positivo: è l'assenza di una misura**, e chi
+la consuma la tratta come un rosso. È la differenza fra «non ho trovato difetti» e «non ho potuto
+guardare», la più pericolosa che un presidio possa confondere. Per questo la lista di lavoro la
+include: filtrarla la farebbe tornare vuota proprio quando nessuno ha guardato.
 
-⛔ **`NON_MISURATO` non è un difetto e non è un falso positivo: è l'assenza di una misura**, e
-va trattata **come un rosso**. È la differenza fra «non ho trovato difetti» e «non ho potuto
-guardare», che è la cosa più pericolosa che un presidio possa confondere — e che questa
-funzione ha confuso per davvero: fino al `20260910-36` quella forma cadeva nell'`ELSE` e
-usciva come `REALE`.
-⭐ Ed è **visibile nelle viste a valle di proposito**: filtrarla le farebbe tornare «vuote»,
-cioè direbbero «tutto a posto» proprio quando nessuno ha guardato.
+⭐ **I falsi positivi sono classificati, non nascosti.** Un filtro li farebbe sparire anche quando
+smettono di essere falsi; una classe li tiene visibili e dice perché si ignorano. La funzione
+restituisce tutto.
 
-⭐ **I falsi positivi sono classificati, non nascosti.** Un filtro li avrebbe fatti sparire
-anche quando smettono di essere falsi positivi; una classe li tiene visibili e dice *perché*
-si ignorano. Le due viste a valle filtrano su `REALE`/`ORFANA`, ma la funzione restituisce
-tutto.
+⚠️ `FP_VARIADIC` esiste per una sola forma, il `VARIADIC "any"`: è l'unica che ammette zero
+argomenti variadici. Fra le funzioni del progetto non ce n'è nessuna, e la classe resta vuota: è il
+risultato giusto. Due strette successive l'hanno portata qui perché una regola troppo larga aveva
+scusato due argomenti invertiti.
 
-Misura al 2026-08-21: 14 `FP_RAMO_ALTRA_TABELLA`, 5 `FP_TRANSITION_TABLE`, 1 `FP_SQL_DINAMICO`,
-**1 `ORFANA`**, zero `REALE`.
-Rimisurata il 2026-09-12: 16 · 5 · 1 · **1 `ORFANA`** (coperta dal registro), zero `REALE` —
-e da entrambi i percorsi di lettura, che prima non era vero (vedi il `search_path` qui sotto).
-
-⛔ **E il 2026-09-14 la misura si è rivelata dipendente dal RUOLO**, sulla stessa
-macchina: `dbops.fn_get_pgagent_job_stato` (`SECURITY DEFINER`, legge `pgagent.*`)
-usciva `REALE 42501` come `zeroerp_app` e non usciva affatto come `titodb` — e la
-riga 7 del registro risultava insieme necessaria (app) e di troppo (proprietario,
-cioè il digest). Da lì `FP_DEFINER_PRIVILEGIO`, e la riga «pgAgent» del registro
-che **segue la macchina** (`90_end/20260914-03`: c'è solo dove `pgagent.pga_job`
-manca, cioè in CI). Brief: [un destinatario per i presidi §14](/dev/work-done/brief-db-un-destinatario-per-i-presidi).
+⚠️ `FP_DEFINER_PRIVILEGIO`: il corpo di una `SECURITY DEFINER` gira con i privilegi del
+proprietario, quindi «il chiamante può risolvere il riferimento?» è la domanda sbagliata. Quella
+giusta la fanno gli altri occhi del presidio (il digest come proprietario, il guardrail della CI da
+superuser). Chi è proprietario e prende lo stesso un permesso negato resta `REALE`.
 
 ---
 
 ### Perimetro
 
-Solo funzioni `plpgsql`, esclusi `pg_catalog`, `information_schema`, gli schemi `pg_*` e
-**tutto ciò che appartiene a un'estensione** (PostGIS, topology, pgAgent): non è codice
-mantenuto qui, e segnalarlo sarebbe rumore permanente.
+Solo funzioni PL/pgSQL, esclusi `pg_catalog`, `information_schema`, gli schemi `pg_*` e tutto ciò
+che appartiene a un'estensione (PostGIS, topology, pgAgent): non è codice mantenuto qui.
 
 ---
 
-### ⛔ Il `search_path` è PINNATO, e non è una questione di stile
+### ⛔ Il `search_path` è pinnato, e non è una questione di stile
 
-(rev 2026-09-12)
+La funzione dichiara `pg_catalog, public, pg_temp`, e la chiamata a `plpgsql_check_function` è
+qualificata con `public`. Sono due strati della stessa cosa, e servono entrambi:
 
-La funzione dichiara il proprio `search_path`: **`pg_catalog, public, pg_temp`**. Senza quel
-pin il suo verdetto **cambia a seconda di chi la chiama**, e cambia in silenzio.
+| che cosa risolve | che cosa succede senza `public` |
+| --- | --- |
+| la chiamata a `plpgsql_check_function` (l'estensione sta in `public`) | non si risolve, il gestore d'eccezione lo scrive come misura fallita, e **ogni** funzione esce `NON_MISURATO` |
+| i riferimenti dentro le funzioni che si compilano | `unaccent`, `dblink`, il tipo `geometry` sono nominati senza schema, come è normale: funzioni sane escono `REALE` |
 
-Il `search_path` governa **due** cose, e la seconda è quella che sfugge:
+`public` non è arbitrario: è nel `search_path` reale dell'applicazione, e una misura di riferimenti
+morti è fedele solo se compila nel contesto in cui quelle funzioni girano davvero. Senza il pin la
+funzione eredita il path di chi la chiama — e il digest la chiama da una `SECURITY DEFINER` con un
+path stretto.
 
-| cosa risolve | che succede senza `public` |
-|---|---|
-| la chiamata a `plpgsql_check_function` (l'estensione sta in `public`) | non si risolve: `42883`, il gestore `EXCEPTION` scrive `error:CHECK-KO:` e **ogni** funzione esce `NON_MISURATO` |
-| i riferimenti **dentro le funzioni che si compilano** | `unaccent`, `dblink`, il tipo `geometry` sono nominati senza schema, come è normale: quattro funzioni **sane** escono `REALE` |
-
-⭐ **Perché proprio `public`**: è nel `search_path` reale dell'applicazione
-(`zeroerp_app`: `django, public, config, dbops, script, anagrafiche`). *Una misura di
-riferimenti morti è fedele solo se compila nel contesto in cui quelle funzioni girano
-davvero.*
-
-🔴 **Il caso che l'ha insegnato** (2026-09-12): la funzione girava senza pin dentro
-`dbops.fn_conta_presidio`, che è `SECURITY DEFINER` con `search_path = pg_catalog, pg_temp`,
-e ne ereditava il path. Il digest dei presidi riferiva **784** «riferimenti morti» mentre la
-stessa vista, letta diretta, rispondeva **0**. Storia:
-`brief-db-un-destinatario-per-i-presidi §13`.
-
-⚠️ **Chi rifà questa funzione tenga la clausola `SET`**: un `CREATE OR REPLACE` che la
-dimentica **non fallisce** — azzera il pin e riporta il presidio a mentire. È la stessa
-trappola di `security_invoker` che si azzera su `CREATE OR REPLACE VIEW`. L'unica cosa che lo
-prende è il **test 6** del pgTAP, che conta attraverso `fn_conta_presidio`.
+⚠️ Chi rifà questa funzione tenga la clausola `SET`: un `CREATE OR REPLACE` che la perde non
+fallisce, riporta il presidio a mentire. È la stessa trappola di `security_invoker` su
+`CREATE OR REPLACE VIEW`. La prende solo il test del pgTAP che conta attraverso il digest.
 
 ---
 
-### ⚠️ È costosa, e usa una temp table condivisa
+### ⚠️ È costosa, e usa una tabella temporanea
 
-Gira `plpgsql_check_function` su ogni funzione del database, moltiplicata per le tabelle
-agganciate: **non è una query da mettere in un percorso frequente**. Va bene in un guardrail o
-in un test, non in una vista consumata da un endpoint.
+Gira `plpgsql_check_function` su ogni funzione, moltiplicata per le tabelle agganciate: va bene in
+un guardrail, in un test o nel digest settimanale, mai in un percorso frequente.
 
-Internamente usa una temp table `tmp_raw` (`ON COMMIT DROP`, creata con `IF NOT EXISTS` e
-svuotata in testa). Chiamandola due volte nella stessa sessione compare la notifica «la
-relazione tmp_raw esiste già»: è innocua.
-
-⭐ **Comporre più chiamate nella stessa query è sicuro** — verificato il 2026-08-21: due
-`SELECT count(*) FROM dbops.fn_check_funzioni_riferimenti_morti()` nella stessa istruzione
-restituiscono entrambe 21 righe. PostgreSQL materializza la set-returning function prima di
-usarne il risultato, quindi le chiamate non si pestano sullo stato d'appoggio nonostante il
-`DELETE` in testa. Vale anche per le due viste che la richiamano.
-
-⚠️ Resta però vero il costo: comporle significa **eseguire il controllo due volte**.
-
-🔴 **Ma una chiamata da una `SECURITY DEFINER` e una dal ruolo corrente NON convivono**
-(trovato il 2026-09-12 scrivendo il test 6 del pgTAP). `tmp_raw` appartiene al ruolo che l'ha
-creata, e il `DELETE FROM tmp_raw` in testa alla funzione **non attraversa i ruoli**: chi
-chiama per secondo prende `42501 permesso negato`.
-
-⇒ Dentro un test che fa **entrambe** le letture — la scansione diretta e il conteggio via
-`dbops.fn_conta_presidio`, che gira come proprietario — ci vuole un
-`DROP TABLE IF EXISTS tmp_raw;` fra le due, come istruzione sua.
-⛔ **E non è un fastidio cosmetico**: in un pgTAP quel `42501` è un **ERRORE**, che ferma il
-file e lascia *tutti* i test senza girare — cioè un `Bad plan`, non un rosso che si legge.
+Usa una tabella temporanea d'appoggio, creata se manca, svuotata in testa e cancellata al commit.
+Due chiamate nella stessa istruzione non si pestano (il risultato si materializza prima di essere
+usato), ma il controllo gira due volte. ⚠️ Una chiamata da una `SECURITY DEFINER` e una dal ruolo
+corrente nella stessa sessione invece **non convivono**: la tabella appartiene al ruolo che l'ha
+creata, e chi chiama per secondo prende un permesso negato. Un test che fa entrambe le letture
+cancella la tabella fra le due.
 
 ---
 
 ### Consumatori
 
-`db/pgtap/dbops/test-riferimenti-morti-v1.sql` e
-`scripts/sql/guardrail_riferimenti_morti.sql`.
+* `scripts/sql/guardrail_riferimenti_morti.sql` — il cancello della CI, dopo il migrate di Django
+  (le funzioni devono essere già nel database). Si ferma per primo su `NON_MISURATO`.
+* `scripts/sql/check_funzioni_riferimenti_morti.sql` — lo strumento da lanciare a mano.
+* le due viste del presidio, e attraverso la lista di lavoro il digest settimanale, che la fa girare
+  come proprietario.
 
-⚠️ Il guardrail gira **dopo** `manage.py migrate`, non prima: le funzioni devono essere già
-nel database perché ci sia qualcosa da controllare.
+⚠️ Il verdetto dipende dal ruolo che misura: lo strumento a mano va lanciato con il ruolo che il
+difetto lo subisce, l'applicazione.
 
-🔵 **E dal 2026-09-10 c'è un terzo consumatore, che nessuno dei due elenchi nominava**: il
-**digest dei presidi**. Non la chiama direttamente — chiede
-`dbops.fn_conta_presidio('dbops.vw_riferimenti_morti_da_sanare')`, che passa dalle due viste —
-ma è il consumatore la cui lettura arriva **a una persona**, ogni settimana.
-⭐ Vale saperlo per due ragioni: è il percorso su cui il difetto del `search_path` si è
-manifestato (una lettura `SECURITY DEFINER`, non una diretta), e il costo della scansione
-diventa il costo di quel giro — è la ragione per cui quella riga di catalogo è
-`cadenza = SETTIMANALE` e non giornaliera.
+---
 
-⚠️ **Il guardrail e la lente danno un verdetto che dipende dal RUOLO** che li lancia, e va
-riprodotto col ruolo giusto: `dbops.fn_get_pgagent_job_stato` legge `pgagent.*`, che
-`zeroerp_app` non vede (`42501`) e che in CI non esiste (`42P01`), mentre dal proprietario
-compila senza difetti — quindi la sua voce di registro risulta «rientrata». Si lancia come
-`zeroerp_app`, che è il ruolo che il difetto lo subisce e quello che la CI simula.
+### Test
+
+* `db/pgtap/dbops/test-riferimenti-morti-v1.sql` — l'estensione c'è e ha potuto controllare ogni
+  funzione; nessun difetto fuori dal registro e nessuna voce rientrata; ogni voce ha un motivo;
+  nessun riferimento morto nei dati di configurazione; il conteggio del digest concorda con la
+  misura diretta; un permesso negato dentro una `SECURITY DEFINER` di un altro proprietario non è
+  mai `REALE`; l'esenzione legata a pgAgent c'è solo dove pgAgent manca.
+
+---
+
+### Note di migrazione
+
+* 2026-08-04 — nasce con `brief-db-bonifica-riferimenti-morti` §5: il 2026-03-31 due funzioni morte
+  erano state viste e lasciate lì, e cinque mesi dopo una ha fatto fallire un migrate.
+* 2026-08-05 — `FP_VARIADIC` ristretto al solo `VARIADIC "any"`, su segnalazione del backend.
+* 2026-09-10 — nasce `NON_MISURATO`: prima una misura fallita cadeva nell'ultimo ramo e usciva
+  `REALE` (su dbdev 779 righe su 780 funzioni, con due voci nel registro).
+* 2026-09-12 — `search_path` pinnato (`brief-db-un-destinatario-per-i-presidi` §13.2): il digest
+  riferiva 784 «riferimenti morti» mentre la lettura diretta ne dava zero.
+* 2026-09-14 — nasce `FP_DEFINER_PRIVILEGIO`: la stessa funzione usciva `REALE` letta
+  dall'applicazione e pulita letta dal proprietario, e una voce del registro risultava insieme
+  necessaria e di troppo.
 
 ---
 

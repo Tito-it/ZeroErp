@@ -1,6 +1,6 @@
 # Guida Tecnica – API Commesse (DB layer)
 
-> **Ultimo aggiornamento**: 3 novembre 2026
+> **Ultimo aggiornamento**: 4 novembre 2026
 >
 > Destinatari: sviluppatori backend e database di Zero ERP
 >
@@ -102,7 +102,7 @@ della push lo registra già in `commesse_push_log`. Il passaggio della push a pr
 
 Le **azioni di stato utente** (chiudi / riapri / annulla) sono **esposte**: le
 calcola
-[script.fn_available_actions_commessa](/dbzero/script/manual/fn_available_actions_commessa)
+[script.fn_available_actions_commessa](/dbzero/script/funzioni/fn_available_actions_commessa)
 — mirror del pattern di ordini, offerte, contratti e preventivi, **senza azioni
 applicative** (il push è *verso* la commessa, non un'azione della commessa) — e le
 serve l'endpoint [`GET/POST .../commesse/<id>/stato/`](/backend/vendite/manual/api_commessa_stato):
@@ -215,7 +215,7 @@ sorgente. Tre pezzi, tutti in `20_code`:
 | Oggetto                                                                                                     | Cosa fa                                          |
 | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
 | [`trgfn_commesse_default_emittente`](/dbzero/vendite/manual/trgfn_commesse_default_emittente)               | riempie la colonna quando arriva `NULL`          |
-| [`script.trgfn_doc_guard_emittente_ba`](/dbzero/script/manual/trgfn_doc_guard_emittente_ba)             | rifiuta un valore diverso da quello derivato     |
+| [`script.trgfn_doc_guard_emittente_ba`](/dbzero/script/funzioni/trgfn_doc_guard_emittente_ba)             | rifiuta un valore diverso da quello derivato     |
 | [`trgfn_commesse_sorgenti_guard_emittente`](/dbzero/vendite/manual/trgfn_commesse_sorgenti_guard_emittente) | vieta di collegare sorgenti di emittenti diversi |
 
 ⇒ **Chi crea una commessa non deve sapere niente di emittenti.** Se lo passa e

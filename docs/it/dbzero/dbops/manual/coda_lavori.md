@@ -1,162 +1,171 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.coda_lavori`
 
+> **Ultimo aggiornamento**: 4 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Approfondimento tabelle:**
+> Approfondimento tabelle:
 >
-• [dbops.coda_lavori_tipi](/dbzero/dbops/manual/coda_lavori_tipi)  
-> • [dbops.idempotency_keys](/dbzero/dbops/manual/idempotency_keys)  
-> • [vendite.fatture_stampa_coda](/dbzero/vendite/manual/fatture_stampa_coda)  
+> * [dbops.coda_lavori_tipi](/dbzero/dbops/tabelle/coda_lavori_tipi) — il registro dei tipi: il `job_type` di ogni riga
+> * [dbops.idempotency_keys](/dbzero/dbops/tabelle/idempotency_keys) — l'altra idempotenza, quella delle richieste HTTP
+> * [vendite.fatture_stampa_coda](/dbzero/vendite/tabelle/fatture_stampa_coda) — la coda gemella delle stampe, con la stessa archiviazione
+> * [maintenance.job_run_log](/dbzero/maintenance/tabelle/job_run_log) — il giornale delle corse, a cui una riga può legarsi
 >
-**Approfondimento funzioni:**
+> Approfondimento viste:
 >
-• [dbops.fn_accoda_lavoro](/dbzero/dbops/manual/fn_accoda_lavoro)  
+> * [dbops.vw_coda_lavori_da_guardare](/dbzero/dbops/views/vw_coda_lavori_da_guardare) — i lavori falliti, rimasti a metà o mai presi
 >
+> Approfondimento funzioni:
+>
+> * [dbops.fn_accoda_lavoro](/dbzero/dbops/funzioni/fn_accoda_lavoro) — l'unica porta d'ingresso
+> * [dbops.trgfn_coda_archiviazione](/dbzero/dbops/funzioni/trgfn_coda_archiviazione) — governa la bandiera `archiviato`
+>
+> Guide:
+>
+> * [Gestione delle code di lavoro](/guide/gestione-code-di-lavoro) — il ciclo intero, dall'accodamento al drenatore
+
+---
 
 ### 🎯 Scopo Principale
-(latest review 20-07-2026)
 
-`dbops.coda_lavori` è la **coda di lavori generica DB-native** dell'ERP: la
-variante su Postgres, transazionale e **senza broker**, del pattern "task queue"
-(SolidQueue / pg-boss / Oban). Una riga = **un job asincrono** (`job_type` +
-`payload`). L'**enqueue è atomico col dato di business** (stessa transazione, no
-dual-write) via [dbops.fn_accoda_lavoro](/dbzero/dbops/manual/fn_accoda_lavoro),
-callable anche da trigger. Un **worker unico** la drena e dispatcha per
-`job_type` verso l'handler Python.
+La coda di lavori generica dell'ERP, sul database e senza broker: una riga è un lavoro asincrono
+(un tipo e i suoi argomenti). Si accoda con `dbops.fn_accoda_lavoro`, anche nella stessa
+transazione del dato che chiede il lavoro; un drenatore del backend la svuota e passa ogni lavoro
+all'handler del suo tipo.
 
-È la **fondazione async** dell'ERP: ogni nuovo lavoro asincrono (fatturazione
-on-demand, PEC/SDI, report, export…) è **un handler + un enqueue**, non una
-nuova tabella + nuovo worker + nuova migration. Primo consumatore:
-`FATTURAZIONE_GIRO` (giro fatturazione on-demand, C-3).
+Un lavoro asincrono nuovo è un tipo a catalogo più un handler, non una tabella e un worker nuovi.
 
 ---
 
-### Campi chiave
+### Chi esegue: `run_as` e `scope`
 
-* `job_type`: tipo del job (hard FK a
-  [coda_lavori_tipi.codice](/dbzero/dbops/manual/coda_lavori_tipi)); chiave di
-  dispatch.
-* `payload`: argomenti del job (JSONB), es. `{competenza, fino_a_stato}`.
-* `run_as` / `scope`: **chi esegue**. `SISTEMA` → il worker apre
-  `system_process_context` (BYPASSRLS); `OPERATORE` → applica lo `scope`
-  **catturato all'enqueue** (es. `{emittente_ids, auth_user_id}`), senza bypass.
-  Il CHECK `chk_coda_lavori_run_as_scope` impone: OPERATORE ⇒ `scope` NOT NULL,
-  SISTEMA ⇒ `scope` NULL (un job OPERATORE senza scope girerebbe senza filtro RLS).
-* `origine`: chi ha **accodato** — `API` | `CRON` | `COMMAND` | `TRIGGER`
-  (enqueue DB-native da dominio). Set proprio della coda, **distinto** da
-  `maintenance.job_run_log.origine` (che descrive chi *esegue* il run).
-* `priorita`: minore = più urgente; il worker fa claim a **batch misto**
-  `ORDER BY priorita, id` (no starvation tra `job_type` diversi).
-* `stato`: `PENDING` → `IN_CORSO` → `FATTO` | `ERRORE` | `ANNULLATO`.
-* `tentativi` / `max_tentativi`: oltre soglia → `ERRORE` terminale.
-* `run_after`: eleggibile al claim solo se NULL o ≤ `now()`. Copre i **job
-  differiti** e il **backoff** sui retry (`run_after = now() + f(tentativi)`).
-* `claimed_at`: istante del claim, autoritativo per il **reaper** (nessun trigger
-  lo tocca; lo setta il claim BE).
-* `idempotency_key`: chiave di **business** per la dedup dei job **vivi** (vedi
-  sotto). `job_run_id`: link a `maintenance.job_run_log`. `result`: esito/summary.
+* `SISTEMA`: il drenatore apre il contesto di processo di sistema; lo scope è vuoto.
+* `OPERATORE`: il drenatore applica lo **scope catturato all'accodamento** (la terna dell'utente e
+  gli emittenti), senza bypass della row level security.
+
+Il vincolo `chk_coda_lavori_run_as_scope` tiene insieme le due cose: un operatore senza scope
+girerebbe senza filtro, un lavoro di sistema con uno scope direbbe un perimetro che nessuno
+applica. Che un lavoro di **dominio** sia sempre `OPERATORE` lo controlla `fn_accoda_lavoro`, perché
+il vincolo non conosce la natura del lavoro.
+
+Un lavoro `OPERATORE` che parte completa con lo scope con cui è nato: una revoca dei permessi vale
+per i lavori futuri, non interrompe quello in corso.
 
 ---
 
-### Ciclo di vita e transizioni (worker BE, SQL diretto)
+### Le colonne che si leggono male
 
-Il DB fornisce **solo l'enqueue**. Claim/marca/reaper li fa il worker in SQL
-diretto (come per `fatture_stampa_coda`):
-
-* **Claim**: `… WHERE stato='PENDING' AND (run_after IS NULL OR run_after ≤ now())
-  ORDER BY priorita, id FOR UPDATE SKIP LOCKED` → flip a `IN_CORSO`. Più worker
-  in parallelo non si pestano (indice `ix_coda_lavori_da_lavorare`).
-* **Esito**: `FATTO` (con `result`) oppure — su fallimento — `PENDING`
-  riprovabile (con backoff su `run_after`) fino a `max_tentativi`, poi `ERRORE`.
-* **Nessuna interruzione a metà**: se i permessi dell'operatore vengono revocati
-  mentre un job `OPERATORE` gira, il job **completa** con lo scope catturato; la
-  revoca vale per i job futuri.
-* **Cancel**: ammesso **solo** su `PENDING` → `ANNULLATO` (`WHERE stato='PENDING'`,
-  fallisce silente se già claimato: no race col worker).
-* **Reaper**: `IN_CORSO` con `claimed_at < now()-soglia` → `PENDING` (worker morto).
-* **Sblocco manuale (requeue)**: azione admin che rimette a `PENDING` un job
-  bloccato/`ERRORE`, **mantenendo** `tentativi` (storia) e alzando
-  `max_tentativi += N` per consentire i nuovi tentativi.
+* `origine`: chi ha **accodato** (`API`, `CRON`, `COMMAND`, `TRIGGER`). È un vocabolario della coda,
+  distinto da `maintenance.job_run_log.origine`, che dice chi esegue una corsa.
+* `priorita`: più bassa è più urgente; il drenatore prende a lotti misti per priorità e id, così un
+  tipo non affama gli altri.
+* `run_after`: un lavoro è eleggibile solo da quell'istante; serve ai lavori differiti e al
+  backoff fra un tentativo e l'altro.
+* `claimed_at`: l'istante della presa in carico, scritto dal drenatore; è il riferimento del
+  reaper.
+* `idempotency_key`: la chiave **di business** che impedisce due lavori vivi uguali (vedi sotto).
+* `job_run_id`: il legame con la corsa del giornale, quando c'è. `result`: il riepilogo che
+  l'handler restituisce. `ultimo_errore`: l'ultimo fallimento.
 
 ---
 
-### Idempotenza a due layer
+### Il ciclo di vita
 
-* **Questa coda** deduplica i job **vivi** (`PENDING`/`IN_CORSO`) per chiave di
-  **business** via l'unique parziale `uq_coda_lavori_vivo_idem`
-  `(job_type, idempotency_key)`. Non impedisce di ri-accodare a job
-  `FATTO`/`ERRORE`/`ANNULLATO` (ri-esecuzione intenzionale).
-* **Layer HTTP** ([dbops.idempotency_keys](/dbzero/dbops/manual/idempotency_keys)):
-  deduplica per **header** `Idempotency-Key` e replica la risposta memorizzata.
-  I due sono **complementari**: la `idempotency_key` della coda è la chiave di
-  business (es. `competenza+scope`), **non** l'header HTTP.
+```text
+PENDING ──presa──▶ IN_CORSO ──▶ FATTO
+   ▲                  │
+   └── riprova ───────┤ (con backoff, finché restano tentativi)
+                      └──▶ ERRORE (tentativi esauriti)
+PENDING ──annulla──▶ ANNULLATO
+```
+
+Le transizioni le scrive il drenatore del backend, non il database: il database dà l'accodamento,
+i vincoli e l'archiviazione.
+
+* **Presa in carico**: solo righe `PENDING` eleggibili, a lotti, con `SKIP LOCKED`; più drenatori
+  in parallelo non si pestano.
+* **Esito**: `FATTO` col risultato, oppure di nuovo `PENDING` con backoff fino a `max_tentativi`,
+  poi `ERRORE`.
+* **Annullamento**: solo da `PENDING`; un lavoro già preso non si annulla.
+* **Reaper**: un `IN_CORSO` preso da troppo tempo torna `PENDING` (il drenatore è morto a metà).
+* **Sblocco a mano**: un lavoro fermo torna `PENDING` conservando i tentativi fatti, con qualche
+  tentativo in più concesso.
 
 ---
 
-### Perché è distinta da `fatture_stampa_coda`
+### ⭐ Due idempotenze, per due domande diverse
 
-`vendite.fatture_stampa_coda` **resta specializzata** (non è assorbita qui): è un
-**outbox di documenti tipizzato** (FK sorgente reale, destino `documenti.*`) —
-asse diverso dalla coda-*job*. L'anti-duplicazione non è l'unione delle tabelle
-ma il **motore di drenaggio condiviso** (`QueueDrainEngine` lato BE): un solo
-loop reaper→claim→retry, backend tipizzati distinti. Vedi
-`brief-design-coda-lavori-generica` §5.
+* **Questa coda** non ammette due lavori **vivi** (`PENDING`, `IN_CORSO`) con lo stesso tipo e la
+  stessa chiave: lo garantisce l'indice unico parziale `uq_coda_lavori_vivo_idem`. A lavoro finito
+  la stessa chiave si riaccoda: rieseguire è un'intenzione.
+* **Le richieste HTTP** (`dbops.idempotency_keys`) non eseguono due volte lo stesso invio e
+  rimandano la risposta già data. La chiave della coda non è l'Idempotency-Key della richiesta.
 
 ---
 
-### Audit e coerenza transazionale
+### Perché la coda delle stampe resta a parte
 
-Tabella **multi-writer** (ogni dominio accoda, worker, cancel, requeue): monta
-**entrambi** i trigger `script.trgfn_audit_data_user_generic` (audit
-`data_update`/`user_update`) e `dbops.trgfn_tx_id_managed` (`tx_id`), come
-[dbops.idempotency_keys](/dbzero/dbops/manual/idempotency_keys).
-
-⚠️ **Fino al 2026-09-04 questa riga proseguiva con «*— non il no-trigger di
-`fatture_stampa_coda` (single-writer)*», ed era falsa su entrambi i pezzi.** La
-coda stampa quei due trigger **li ha** — li generano le automazioni a
-`ci_apply`, non un changeSet, quindi non si vedono negli YAML — e ha smesso di
-essere single-writer con il verbo «Archivia», che è la prima scrittura
-dell'operatore su quella tabella. Il residuo di quella premessa è ancora nel
-backend: `claim_stampe_pending` e `marca_stampa_fatto` scrivono a mano
-`data_update`/`user_update`, che il trigger `BEFORE` sovrascrive con l'utente
-JWT vero. Innocuo, ma è codice che crede a una descrizione scaduta.
-
-Brief: `brief-db-coda-lavori-generica` §1.
+`vendite.fatture_stampa_coda` non è assorbita qui: è un outbox di documenti, con una sorgente reale
+e un documento come destino, un asse diverso da quello dei lavori. Le due tabelle condividono il
+motore di drenaggio del backend e la regola di archiviazione, non la riga.
 
 ---
 
 ### Archiviare una riga senza toccarne lo stato
 
-Dal 2026-09-04 la coda porta tre colonne — `archiviato`, `archiviato_il`,
-`archiviato_da` — che tolgono una riga **dall'elenco**, non dal lavoro.
+`archiviato`, `archiviato_il` e `archiviato_da` tolgono una riga **dall'elenco**, non dal lavoro.
+Cancellare o annullare non andava bene: i conteggi che l'operatore legge sono raggruppati per stato
+senza filtro di visibilità, e una cancellazione li fa calare, un annullamento sposta la
+ripartizione.
 
-**Perché non basta cancellare o annullare.** I conteggi che l'operatore legge
-sono un `GROUP BY` sullo stato **senza filtro di visibilità**: una cancellazione
-li fa calare, un annullamento sposta la ripartizione. Serviva una bandiera che
-leggesse **solo la lista**.
+* ⛔ **Un solo lettore: la lista.** Né la presa in carico, né il reaper, né i conteggi la leggono:
+  un lettore in più farebbe dell'archiviazione un annullamento silenzioso.
+* **Si archivia solo una riga non viva.** Lo impongono il vincolo
+  `chk_coda_lavori_archiviato_non_vivo` (la sede dell'invariante) e la trigger function
+  `dbops.trgfn_coda_archiviazione` (la sede del messaggio). Una riga viva archiviata resterebbe nel
+  conteggio del badge e fuori dall'elenco, senza modo di arrivarci.
+* ⭐ **Una riga che torna viva riabbassa la bandiera da sola**: un lavoro archiviato e poi rimesso in
+  coda sarebbe altrimenti vivo e invisibile.
+* **Data e autore dell'archiviazione li scrive il database**, e restano fermi finché la riga resta
+  archiviata; `chk_coda_lavori_archiviato_coerente` impedisce una bandiera senza data o una data
+  senza bandiera.
+* La regola è identica su `vendite.fatture_stampa_coda`, con la stessa funzione: un pgTAP confronta
+  colonne, vincoli e trigger delle due code.
 
-* ⛔ **Un solo lettore: la lista.** Né il claim, né il drainer, né il reaper, né
-  i conteggi. Un lettore in più farebbe dell'archiviazione un annullamento
-  silenzioso, cioè qualcosa di peggio della cancellazione che evita.
-* **Solo una riga NON VIVA si archivia** (`PENDING`/`IN_CORSO` esclusi): lo
-  impongono il `CHECK chk_coda_lavori_archiviato_non_vivo` e il trigger
-  `trg_coda_lavori_a10_archiviazione_upd`
-  ([dbops.trgfn_coda_archiviazione](/dbzero/dbops/funzioni/trgfn_coda_archiviazione)).
-  Una riga viva archiviata resterebbe nel conteggio del badge e fuori
-  dall'elenco, senza nessun modo di arrivarci per rimetterla a posto.
-* ⭐ **Una riga che torna viva riabbassa la bandiera da sola.** È il caso del
-  requeue: senza il reset, un job archiviato e poi rimesso in coda sarebbe vivo
-  e invisibile.
-* **`archiviato_il` e `archiviato_da` sono derivate** dal trigger e immutabili
-  finché la riga resta archiviata: scritte dal chiamante potrebbero dire una
-  cosa che la bandiera smentisce.
-* La regola è **identica** su
-  [vendite.fatture_stampa_coda](/dbzero/vendite/manual/fatture_stampa_coda), con
-  la stessa funzione trigger: un presidio pgTAP confronta le due tabelle
-  (colonne, `CHECK`, trigger) perché la simmetria non resti una promessa.
+---
 
-Errore: `E_CODA_ARCHIVIAZIONE_NON_AMMESSA` (`CONFLITTO_STATO`, 409).
-Brief: `brief-db-archiviazione-righe-code`.
+### Più scrittori, quindi audit e tx_id
+
+Accodano i domini, scrive il drenatore, annulla e sblocca un amministratore, archivia l'operatore.
+Per questo la tabella ha i trigger di audit (`data_update`, `user_update`) e del `tx_id`, generati
+dalle automazioni.
+
+---
+
+### Codici errore
+
+* `E_CODA_ARCHIVIAZIONE_NON_AMMESSA` — si archivia una riga ancora viva (dalla trigger function
+  dell'archiviazione).
+
+---
+
+### Test
+
+* `db/pgtap/dbops/test-coda-lavori.sql` — la struttura di coda e registro, i vincoli di stato,
+  `run_as` e origine, l'indice unico dei vivi, l'accodamento e i suoi rifiuti.
+* `db/pgtap/dbops/test-coda-archiviazione.sql` — l'archiviazione: le due code simmetriche, una
+  riga viva rifiutata, i timbri derivati e immutabili, il reset al requeue, i vincoli all'inserimento.
+* `db/pgtap/dbops/test-vw-coda-lavori-da-guardare.sql` — il presidio sulla coda.
+* `db/pgtap/dbops/test-stati-check-scrittori-v1.sql` — ogni stato del vincolo ha uno scrittore
+  dichiarato.
+
+---
+
+### Note di migrazione
+
+* 2026-07-20 — nasce, con il registro dei tipi e la porta d'ingresso
+  (`brief-db-coda-lavori-generica`).
+* 2026-09-04 — nasce l'archiviazione, insieme sulle due code (`brief-db-archiviazione-righe-code`).
 
 ---
 

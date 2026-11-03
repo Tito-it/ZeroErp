@@ -1,85 +1,88 @@
-## 📘 Documentazione Concettuale – View `dbops.vw_run_senza_attore`
+## 📘 Documentazione Concettuale – Vista `dbops.vw_run_senza_attore`
 
-> **Ultimo aggiornamento**: 3 novembre 2026
+> **Ultimo aggiornamento**: 4 novembre 2026
 >
 > 👀 **Vedi anche**
 >
-Approfondimenti tabelle:
+> Approfondimento tabelle:
 >
-[maintenance.job_run_log](/dbzero/maintenance/manual/job_run_log)
+> * [maintenance.job_run_log](/dbzero/maintenance/tabelle/job_run_log) — il giornale delle corse che la vista legge
+> * [dbops.processi](/dbzero/dbops/tabelle/processi) — il registro dei processi, l'attore che una corsa deve dichiarare
+> * [dbops.presidi](/dbzero/dbops/tabelle/presidi) — il catalogo dei presidi, che la guarda ogni settimana
 >
-[dbops.processi](/dbzero/dbops/manual/processi)
+> Approfondimento funzioni:
+>
+> * [maintenance.fn_run_and_log](/dbzero/maintenance/funzioni/fn_run_and_log) — deriva il processo dal nome del job
+> * [script.fn_job_run_start](/dbzero/script/funzioni/fn_job_run_start) — apre la corsa dei comandi, col processo
+>
+> Guide:
+>
+> * [Presidi e registri del debito](/guide/presidi-e-registri-del-debito) — che cosa la fa arrivare a zero
 
 ---
+
 ### 🎯 Scopo Principale
 
-Elenca i lavori automatici che, nell'**ultima corsa**, non hanno detto **quale
-processo** fossero.
-
-Il giornale dei run registra da sempre *che* qualcosa è girato. Da questo
-cantiere registra anche *chi*: il codice del processo e, quando c'è, l'utente
-tecnico con cui ha girato. Questa vista conta chi non lo dice ancora.
-
-> ⚠️ **Deve restare vuota.**
+I job la cui **ultima corsa** non dice di quale processo è: una riga per job e origine, con
+l'istante dell'ultima corsa, quante corse senza attore ha in tutto e se il nome corrisponde a un
+processo registrato.
 
 ---
 
-### ⭐⭐ È scritta sull'ULTIMA corsa, e la prima versione era sbagliata
+### ⭐ Si guarda l'ultima corsa, non tutte
 
-Vale la pena raccontarlo, perché è un errore che si rifà facilmente.
+Le corse scritte prima che il giornale registrasse il processo hanno l'attore vuoto per sempre: sono
+il giornale di ieri, e non c'è niente da sanare. Una vista che le contasse non arriverebbe mai a
+zero, e un registro del debito che non cala è rumore. Sull'ultima corsa, invece, un job esce dalla
+vista appena si dichiara.
 
-La prima versione contava **tutte** le righe storiche senza attore. Sembrava
-più prudente, ed era inutile: quelle righe sono state scritte prima che la
-colonna esistesse, **hanno l'attore vuoto per sempre**, e non c'è niente che si
-possa fare per sanarle.
-
-⇒ Una vista che non può arrivare a zero è **rumore**: si impara a ignorarla, e
-allora smette di funzionare anche il giorno in cui avrebbe qualcosa da dire.
-
-⭐ Sull'ultima corsa, invece, un job **sparisce dalla vista appena si
-dichiara**. La regola generale, valida per qualunque presidio nuovo:
-
-> Prima di scrivere una vista di controllo: *«che cosa la fa arrivare a zero?»*
-> Se non c'è risposta, la vista è sbagliata.
+Il numero delle corse senza attore resta come **contesto** — quanto è vecchia l'omissione — non
+come criterio. `processo_registrato` falso vuol dire che il nome del job non corrisponde a nessuna
+riga di `dbops.processi`.
 
 ---
 
-### ⭐ I dodici job notturni si sono dichiarati SENZA toccare lo scheduler
+### Perché oggi contiene solo il passato
 
-La configurazione di pgAgent è una fase che in CI **non gira mai**: modificarla
-significa cambiare qualcosa che nessun test esercita, e scoprire un errore di
-notte.
+`maintenance.fn_run_and_log` deriva il processo dal nome del job, che è la stessa stringa del codice
+del processo: i job pgAgent si sono dichiarati senza toccare lo scheduler. Da quando c'è il vincolo
+`chk_job_run_log_processo_dichiarato`, nessuna corsa nuova può nascere senza processo: un nome che
+non corrisponde a un processo, o un comando che non lo passa, fa fallire la corsa prima che parta.
+Il vincolo è `NOT VALID` e non rivaluta il passato.
 
-⇒ Il codice del processo non viene passato come parametro: si **deriva dal nome
-del job**, perché il codice del processo e il nome del job sono la stessa
-stringa. Chi vuole essere esplicito passa comunque il parametro, che vince.
+Quindi in vista restano solo i job la cui ultima corsa è precedente al vincolo. Escono alla prima
+corsa nuova.
 
-⚠️ Un nome di job che non corrisponde a nessun processo non può più restare
-senza attore: il CHECK `chk_job_run_log_processo_dichiarato` su
-`maintenance.job_run_log` respinge la riga nuova, e la corsa fallisce prima di
-partire. Il vincolo è `NOT VALID` e non rivaluta il passato: la vista mostra
-quindi il solo residuo storico, le righe scritte prima che il vincolo
-esistesse.
+⚠️ Un job che non gira più — ritirato, rinominato, spento — non ha una corsa nuova: resta in vista
+per sempre, e la vista non arriva a zero.
 
 ---
 
-### Esempio d'uso
+### Legge con gli occhi del proprietario
 
-```sql
--- Chi non si è ancora dichiarato, all'ultima corsa
-SELECT * FROM dbops.vw_run_senza_attore;
-```
+È una vista definer, e l'applicazione ha il diritto di leggerla: il giornale non ha un perimetro
+d'azienda. Nel catalogo dei presidi è un registro di lavorazione con perimetro libero, guardato ogni
+settimana da chi sviluppa.
 
 ---
 
-### Note operative
+### Test
 
-* I **command** (i comandi lanciati a mano o da cron) non hanno un jobname da
-  cui derivare: devono passare il codice del processo esplicitamente. È lavoro
-  di backend, ed è la ragione principale per cui questa vista oggi non è
-  ancora vuota.
+* `db/pgtap/maintenance/test-job-run-attore.sql` — la vista guarda l'ultima corsa: un job che si è
+  dichiarato esce anche con corse vecchie senza attore; la derivazione del processo dal nome del job
+  e il rifiuto di un nome sconosciuto.
+* `db/pgtap/dbops/test-processi-jobname-wrapper.sql` — ogni nome di job passato da un wrapper esiste
+  in `dbops.processi`.
 
-Origine: `docs/it/dev/work-done/brief-db-processi-automatici-identita-e-perimetro.md` §3.
+---
+
+### Note di migrazione
+
+* 2026-09-04 — nasce con la colonna dell'attore sul giornale
+  (`brief-db-processi-automatici-identita-e-perimetro`); la prima versione contava tutte le corse
+  storiche ed è stata riscritta sull'ultima.
+* 2026-09-05 — il vincolo `chk_job_run_log_processo_dichiarato`: da qui le corse nuove hanno sempre
+  un processo.
 
 ---
 

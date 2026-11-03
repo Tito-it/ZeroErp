@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/fn_regexp_occorrenze.md" %}
 # ⚙️ Funzione `fn_regexp_occorrenze`
 
 ```sql

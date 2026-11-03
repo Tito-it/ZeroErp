@@ -1,76 +1,51 @@
-## Funzione `dbops.fn_set_gucs_conn`
+## 📘 Documentazione Concettuale – Funzione `dbops.fn_set_gucs_conn`
+
+> **Ultimo aggiornamento**: 4 novembre 2026
+>
+> 👀 **Vedi anche**
+>
+> Approfondimento funzioni:
+>
+> * [script.fn_get_parameter_di_sessione](/dbzero/script/funzioni/fn_get_parameter_di_sessione) — l'unico lettore di uno dei tre GUC, `app.session_key`
+> * [script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic) — il trigger di audit, che legge invece i GUC scritti dall'autenticazione
+>
+> Guide:
+>
+> * [Contratto GUC `app.*`](/guide/contratto-guc-app) — i GUC di contesto che il sistema legge davvero
+> * [Audit e tracciabilità](/guide/audit-e-tracciabilita) — i GUC che il backend imposta a ogni richiesta
+
+---
+
 ### 🎯 Scopo Principale
-(latest review 29-12-25)
-La funzione `dbops.fn_set_gucs_conn` serve a impostare in modo centralizzato le **GUC (Grand Unified Configuration)** custom di PostgreSQL per la **connessione corrente**.
-Queste variabili sono usate da trigger, funzioni e policy RLS per conoscere l’utente applicativo e il contesto di esecuzione (es. sessione Django, gruppi, tenant).
 
-> Tutti gli sviluppatori devono utilizzare questa funzione ogni volta che viene stabilita una connessione applicativa (es. tramite middleware Django), evitando di eseguire `SET` manuali.
+Imposta tre GUC custom **per la sessione** corrente: `app.user_id`, `app.session_key` e
+`app.group_ids` (gli id dei gruppi, separati da virgola).
 
----
-
-### Parametri
-
-| Parametro       | Tipo    | Descrizione                                                         |
-| --------------- | ------- | ------------------------------------------------------------------- |
-| `p_user_id`     | `int`   | ID dell’utente Django (se autenticato).                             |
-| `p_session_key` | `text`  | Chiave della sessione applicativa (es. cookie sessionid in Django). |
-| `p_group_ids`   | `int[]` | Array con gli ID dei gruppi a cui appartiene l’utente.              |
+⛔ Oggi **nessuno la chiama**: né il backend né una funzione del database. Il contesto della
+richiesta il backend lo imposta da sé, all'autenticazione, con altri nomi.
 
 ---
 
-### Output
+### I GUC che scrive non sono quelli che il sistema legge
 
-* **Nessun valore di ritorno**.
-* Imposta le GUC per la sessione DB corrente:
+Il contesto applicativo che le policy RLS, il trigger di audit e gli override dei parametri leggono
+oggi è scritto dall'autenticazione del backend a ogni richiesta, con i nomi `app.current_user_id`,
+`app.current_emittente_id`, `app.jwt_user` e gli altri `app.current_*`. I gruppi dell'utente li
+legge il database dalle tabelle di Django, non da un GUC.
 
-  * `app.user_id`
-  * `app.session_key`
-  * `app.group_ids`
+Dei tre GUC di questa funzione, `app.user_id` e `app.group_ids` non li legge nessuno.
+`app.session_key` lo legge `script.fn_get_parameter_di_sessione`, per il livello di override legato
+alla sessione: ma senza chiamate a questa funzione nessuno lo imposta, e quel livello resta spento.
 
----
-
-### Modalità d’Uso
-
-### In SQL (debug/test)
-
-```sql
-SELECT dbops.fn_set_gucs_conn(42, 'abc123', ARRAY[1,2,3]);
-
-SELECT current_setting('app.user_id', true);
--- 42
-```
-
-### In Django (middleware)
-
-```python
-from django.db import connection
-
-def set_gucs(get_response):
-    def middleware(request):
-        if request.user.is_authenticated:
-            with connection.cursor() as c:
-                c.execute("SELECT dbops.fn_set_gucs_conn(%s, %s, %s)", [
-                    request.user.id,
-                    request.session.session_key,
-                    list(request.user.groups.values_list("id", flat=True))
-                ])
-        return get_response(request)
-    return middleware
-```
+⚠️ Gli effetti valgono per la **sessione**, non per la transazione: su una connessione riusata da
+un pool restano fino al cambio successivo.
 
 ---
 
-### 📚 Collegamenti con altre componenti
+### Note di migrazione
 
-* **`script.fn_get_parameter_full`**: utilizza le GUC `app.user_id` e `app.group_ids` per determinare l’override dei parametri.
-* **Trigger di audit (`script.trgfn_audit_data_user_generic`)**: può leggere `app.user_id` per valorizzare i campi `user_update`.
-* **Row-Level Security (RLS)**: le policy possono basarsi su `current_setting('app.user_id', true)` per filtrare i dati per utente.
+* 2025-09-27 — nasce come porta unica dei GUC di connessione.
 
 ---
 
-### ⚠️ Note Importanti
-
-* La funzione va chiamata **a ogni nuova connessione DB**: se usi un connection pool (es. PgBouncer), assicurati che il middleware Django la riesegua al checkout della connessione.
-* Le GUC impostate sono **per-connessione**, non persistono dopo il `DISCONNECT`.
-* Non usare mai `SET app.*` manuali → centralizza sempre con questa funzione.
-* In ambienti multi-tenant potrai estendere la funzione con un parametro `p_tenant_id`.
+{% include-markdown "signature-core.md" %}

@@ -1,99 +1,109 @@
-## 📘 Documentazione Concettuale – View `dbops.vw_rls_perimetro_scoperto`
+## 📘 Documentazione Concettuale – Vista `dbops.vw_rls_perimetro_scoperto`
 
+> **Ultimo aggiornamento**: 4 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimenti tabelle:
+> Approfondimento tabelle:
 >
-[dbops.rls_perimetro_debito](/dbzero/dbops/manual/rls_perimetro_debito)
+> * [dbops.rls_perimetro_debito](/dbzero/dbops/tabelle/rls_perimetro_debito) — il registro del debito dichiarato, che decide lo stato di ogni riga
+> * [dbops.presidi](/dbzero/dbops/tabelle/presidi) — il catalogo che porta la vista nel digest
 >
-Approfondimenti viste:
+> Approfondimento viste:
 >
-[dbops.vw_processi_dominio_senza_difesa](/dbzero/dbops/manual/vw_processi_dominio_senza_difesa)
+> * [dbops.vw_storico_scope_da_dichiarare](/dbzero/dbops/views/vw_storico_scope_da_dichiarare) — lo stesso disegno per lo scope delle shadow di storico
+> * [dbops.vw_processi_dominio_senza_difesa](/dbzero/dbops/views/vw_processi_dominio_senza_difesa) — un altro presidio che ricava il perimetro dal catalogo
+>
+> Guide:
+>
+> * [Linee guida SQL — Row Level Security](/linee-guida-sql#10-row-level-security-rls) — il meccanismo di cui la vista controlla la copertura
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 09-09-2026)
 
-Risponde a una domanda sola:
+Le tabelle che dovrebbero filtrare i dati per azienda e non lo fanno: ogni riga è una tabella in quella
+condizione, con accanto che cosa le manca e se qualcuno se n'era già accorto.
 
-> **C'è nel database una tabella che dovrebbe mostrare a ciascuna azienda solo
-> i propri dati, e non lo fa?**
-
-Ogni riga è una tabella in quella condizione, con accanto **che cosa le manca** e
-**se qualcuno se n'era già accorto**.
+Il difetto non fa rumore. Una tabella che non filtra non dà errori e non rompe nessuna schermata:
+**mostra di più**. E una difesa parziale è peggio dell'assenza, perché sembra una difesa: righe
+protette una per una si possono leggere tutte dalla porta accanto.
 
 ---
 
-### ⭐ Perché serviva, e non bastava guardare
+### ⛔ Il perimetro non è un elenco
 
-Perché il difetto non fa rumore. Una tabella che non filtra non dà errori e non
-rompe nessuna schermata: **mostra di più**. Non c'è un log da leggere, non c'è
-una pagina bianca, non c'è un test che diventa rosso da solo.
+La vista non parte da una lista di tabelle da controllare: se la ricava dal catalogo. Due criteri,
+indipendenti:
 
-⚠️ E una difesa **parziale** è peggio dell'assenza, perché sembra una difesa. È
-successo davvero: le note dei documenti erano protette una per una, e si potevano
-leggere tutte passando dalla porta accanto — la tabella che le raccoglie tutte.
+| `criterio` | Quando una tabella vi entra |
+| --- | --- |
+| `FIGLIA_DI_TABELLA_PROTETTA` | ha una FK verso una tabella con la row level security accesa, e lei non ha sia la RLS accesa sia almeno una policy |
+| `POLICY_INERTE` | porta almeno una policy e ha la row level security spenta: la regola è scritta e non si applica |
 
----
+Ne discendono due cose:
 
-### ⛔ Il perimetro non è un elenco, ed è tutto il punto
+* una tabella **nuova**, appesa a un documento protetto, compare qui da sola;
+* il controllo **si estende**: chiusa una tabella, le sue figlie entrano nel perimetro al giro
+  successivo.
 
-La vista non parte da una lista di tabelle da controllare: **se la ricava dai
-legami dichiarati nel database**. Se una riga è agganciata a una riga protetta,
-anche lei dovrebbe esserlo.
-
-Ne discendono due cose che valgono più della vista stessa:
-
-* una tabella **nuova**, appesa a un documento, compare qui **da sola**, senza
-  che nessuno si ricordi di aggiungerla;
-* il controllo **si estende**: chiusa una tabella, le sue figlie entrano nel
-  perimetro al giro successivo.
-
-⚠️ Perché è scritto così: l'elenco scritto a mano era stato provato, e aveva già
-mentito due volte. *Un elenco ha per perimetro ciò che chi lo scriveva aveva in
-mente.*
+Una tabella può entrare per tutti e due i criteri: sono due righe, e due lavori distinti. Per una figlia
+la colonna `manca` dice che cosa le manca (la policy, l'accensione, o tutte e due) e `padri_in_rls`
+elenca i padri protetti.
 
 ---
 
-### Le tre risposte, e come si leggono
+### Le tre risposte
 
 | `stato` | Che cosa vuol dire | Che cosa fare |
 | --- | --- | --- |
-| `DEBITO_DICHIARATO` | qualcuno l'ha già guardata e ha scritto perché resta così | niente, per ora: è un lavoro con un nome |
+| `DEBITO_DICHIARATO` | la tabella è nel registro per quel criterio, con la ragione | niente, per ora: è un lavoro con un nome |
 | `NON_DICHIARATO` | nessuno l'ha guardata | **allarme**: è nata scoperta e non se n'è accorto nessuno |
-| `DEBITO_ESTINTO` | la tabella è a posto, ma l'elenco la nomina ancora | togliere la riga dall'elenco: finché resta, fa tacere il controllo su una tabella che potrebbe tornare aperta |
+| `DEBITO_ESTINTO` | il registro nomina una tabella che per quel criterio non è più scoperta, o non esiste più | togliere la riga dal registro: finché resta, fa tacere il controllo su una tabella che potrebbe tornare aperta |
 
-> ⛔ **La regola non è «la vista è vuota».** Oggi non lo è, e non lo sarà per un
-> po'. La regola è: **niente fuori da `DEBITO_DICHIARATO`**.
+⛔ **La regola non è «la vista è vuota»**: è «niente fuori da `DEBITO_DICHIARATO`». Il catalogo dei
+presidi la porta nel digest settimanale con natura `ZERO` e stato atteso `DEBITO_DICHIARATO`: sono le
+righe negli altri due stati a doverci essere zero.
 
----
-
-### ⚠️ Che cosa questa vista NON dice
-
-Che le regole di filtro siano scritte **bene**. Dice che esistono e che vengono
-applicate. Se poi lascino passare le righe giuste lo verificano le prove
-funzionali, una per famiglia di documenti.
+La corrispondenza con il registro è per criterio, schema e tabella: una riga del registro vale solo
+per il criterio che dichiara.
 
 ---
 
-### Esempio d'uso
+### ⚠️ Che cosa la vista non dice
 
-```sql
--- Le sole righe che chiedono una decisione oggi
-SELECT criterio, schema_tabella, nome_tabella, manca, stato
-FROM dbops.vw_rls_perimetro_scoperto
-WHERE stato <> 'DEBITO_DICHIARATO'
-ORDER BY schema_tabella, nome_tabella;
+* Che le policy siano scritte **bene**: dice che esistono e che si applicano. Se lascino passare le righe
+  giuste lo provano i pgTAP funzionali, uno per famiglia di documenti.
+* `FORCE ROW LEVEL SECURITY` non entra nel criterio: l'applicazione non possiede le tabelle, e per lei
+  conta solo che la RLS sia accesa.
+* Una tabella con la RLS accesa e nessuna policy (che nega tutto) entra solo se è figlia di una tabella
+  protetta.
 
--- Il debito per intero, e da quanto tempo e' li'
-SELECT schema_tabella, nome_tabella, data_registrazione, ragione
-FROM dbops.vw_rls_perimetro_scoperto
-WHERE stato = 'DEBITO_DICHIARATO'
-ORDER BY data_registrazione, schema_tabella, nome_tabella;
-```
+La vista non è `security_invoker`: legge il catalogo e il registro coi privilegi del proprietario, e
+la risposta non dipende da chi interroga.
 
-Presidio: `db/pgtap/rls/test-rls-perimetro-scoperto.sql`.
-Origine: `docs/it/dev/work-done/brief-db-perimetro-emittente-righe-documento.md` §8 e §10.
+---
+
+### Test
+
+* `db/pgtap/rls/test-rls-perimetro-scoperto.sql` — nessuna riga fuori da `DEBITO_DICHIARATO`; ogni
+  criterio ammesso dal registro è un ramo vivo della vista; su casi costruiti, una figlia nuova di una
+  tabella protetta esce `NON_DICHIARATO` e armata esce dal perimetro, una figlia di una tabella non
+  protetta non entra, una policy con la RLS spenta esce `POLICY_INERTE`, una riga di registro senza più
+  difetto esce `DEBITO_ESTINTO`.
+* `db/pgtap/dbops/test-catalogo-presidi-v1.sql` — ogni vista di presidio, questa compresa, è a
+  catalogo, e lo stato della colonna dichiarata esiste davvero sulla vista.
+* `db/pgtap/rls/test-rls-magazzino-perimetro-v1.sql` e
+  `db/pgtap/rls/test-rls-istanze-dati-precontrattuali-v1.sql` — le tabelle chiuse da quelle famiglie
+  escono dalla vista.
+
+---
+
+### Note di migrazione
+
+* 2026-09-09 — nasce con il registro del debito (`brief-db-perimetro-emittente-righe-documento`, §8 e
+  §10). Lo stesso giorno le partizioni delle note dei documenti avevano ciascuna la sua policy, ed erano
+  leggibili per intero dalla tabella padre.
 
 ---
 

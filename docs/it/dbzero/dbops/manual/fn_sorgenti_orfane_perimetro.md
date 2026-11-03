@@ -1,34 +1,68 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_sorgenti_orfane_perimetro`
 
+> **Ultimo aggiornamento**: 4 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-> • [dbops.fn_sorgenti_orfane](/dbzero/dbops/funzioni/fn_sorgenti_orfane), [dbops.vw_sorgenti_orfane](/dbzero/dbops/views/vw_sorgenti_orfane)
-> • [script.trgfn_guard_sorgente_polimorfa_tipizzata](/dbzero/script/funzioni/trgfn_guard_sorgente_polimorfa_tipizzata) — il contratto
+> Approfondimento tabelle:
 >
-Guide: brief `brief-db-magazzino-lotto-2-motore` (§4.7, §6-ter C16)
+> * [config.sorgenti](/dbzero/config/tabelle/sorgenti) — il catalogo verso cui puntano le chiavi esterne che il perimetro cerca
+>
+> Approfondimento viste:
+>
+> * [dbops.vw_sorgenti_orfane](/dbzero/dbops/views/vw_sorgenti_orfane) — il presidio degli orfani
+>
+> Approfondimento funzioni:
+>
+> * [dbops.fn_sorgenti_orfane](/dbzero/dbops/funzioni/fn_sorgenti_orfane) — la funzione che esamina queste tabelle
+> * [script.trgfn_guard_sorgente_polimorfa_tipizzata](/dbzero/script/funzioni/trgfn_guard_sorgente_polimorfa_tipizzata) — il guard che fa entrare una tabella nel perimetro
+>
+> Guide:
+>
+> * [Sorgente polimorfa](/guide/sorgente-polimorfa) — il modello del collegamento tipo + chiave
 
 ---
+
 ### 🎯 Scopo Principale
 
-(rev 2026-09-18 — Lotto 2 del magazzino)
-
-**Le tabelle che il presidio degli orfani esamina**, rese visibili: quelle con una chiave
-esterna verso `config.sorgenti` su una colonna sola, le due colonne di chiave
-(`sorgente_riga`, `sorgente_uid`) **e il guard tipizzato montato**. È il guard il contratto
-del «modello A» (tipo ⇒ esattamente una chiave verso il bersaglio dichiarato): le tabelle di
-vendite con la stessa chiave esterna e le stesse colonne hanno un'altra semantica (la riga è
-la riga del documento, l'uid è il documento) e senza questo filtro davano 112 falsi orfani
-(misurato il 18-09). Entreranno quando prenderanno il guard.
-
-⭐ Esiste perché un presidio che esamina zero tabelle è verde e muto: il pgTAP asserisce che
-le sei di magazzino ci sono. Derivato dal catalogo, non da un elenco — una tabella nuova con
-quella forma entra da sola.
+Le tabelle che il presidio degli orfani di sorgente esamina, rese visibili: quelle con una chiave
+esterna su una colonna sola verso `config.sorgenti`, le due colonne di chiave `sorgente_riga` e
+`sorgente_uid`, **e il guard tipizzato montato**.
 
 ---
 
-### Storia
+### ⭐ Il perimetro si ricava dal vincolo, non da un elenco
 
-* 2026-09-18 — nasce con il Lotto 2 (`20260918-25`).
+Una tabella nuova con quella forma entra da sola, senza che nessuno aggiorni una lista. E il
+perimetro è visibile per un motivo preciso: un presidio che esamina zero tabelle è verde e muto. Il
+test asserisce che le tabelle di magazzino ci sono.
+
+---
+
+### ⛔ È il guard a decidere, non le colonne
+
+Il guard tipizzato è il contratto del collegamento: «un tipo, esattamente una chiave, che punta al
+bersaglio dichiarato». Alcune tabelle di vendite hanno la stessa chiave esterna e le stesse colonne,
+ma un'altra semantica: la riga è la riga del documento e l'identificativo universale è il documento.
+Esaminate col criterio degli orfani darebbero falsi orfani: il criterio cercherebbe la riga del
+documento nel bersaglio del documento. Restano fuori finché non
+prendono il guard.
+
+⚠️ Il guard si riconosce dal nome della funzione del trigger, senza schema.
+
+---
+
+### Test
+
+* `db/pgtap/dbops/test-sorgenti-orfane-v1.sql`, test 1 e 2 — il perimetro contiene le tabelle di
+  magazzino, e solo tabelle con il guard tipizzato montato.
+
+---
+
+### Note di migrazione
+
+* 2026-09-18 — nasce con il secondo lotto del magazzino (`brief-db-magazzino-lotto-2-motore`). Senza
+  il filtro sul guard, le tabelle di vendite davano 112 falsi orfani sul database di sviluppo.
 
 ---
 

@@ -1,94 +1,93 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_run_automations_storico_provision`
 
+> **Ultimo aggiornamento**: 4 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Guide:
+> Approfondimento tabelle:
 >
-[Automazione DB](/guide/automazione-db)
+> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl) — la regola `STORICO_PROVISION` e il suo parametro dell'indice GIN
+> * [dbops.automation_overrides_cols](/dbzero/dbops/tabelle/automation_overrides_cols) — gli override `STORICIZZA_COL` e `STORICO_FK`
 >
-Approfondimento tabelle:
+> Approfondimento funzioni:
 >
-[dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)   
+> * [dbops.fn_ensure_storico_table](/dbzero/dbops/funzioni/fn_ensure_storico_table) — crea, arma e cede la shadow; qui c'è solo la scelta delle tabelle
+> * [dbops.fn_run_automations_storico](/dbzero/dbops/funzioni/fn_run_automations_storico) — monta poi il trigger sulle tabelle che hanno la shadow
+> * [dbops.fn_resolve_scope](/dbzero/dbops/funzioni/fn_resolve_scope) — l'ambito degli schemi
+> * [dbops.fn_table_in_scope](/dbzero/dbops/funzioni/fn_table_in_scope) — il filtro per tabella
+> * [dbops.fn_get_override_col](/dbzero/dbops/funzioni/fn_get_override_col) — i nomi delle due colonne
+> * [dbops.fn_col_exists](/dbzero/dbops/funzioni/fn_col_exists) — la presenza della colonna `storicizza`
+> * [maintenance.proc_automations_storico_provision_job](/dbzero/maintenance/funzioni/proc_automations_storico_provision_job) — il wrapper del job
 >
-Approfondimento funzioni:
+> Guide:
 >
-[dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations)   
-> [dbops.fn_resolve_scope](/dbzero/dbops/funzioni/fn_resolve_scope)    
-> [dbops.fn_get_override_col](/dbzero/dbops/funzioni/fn_get_override_col)   
-> [dbops.fn_ensure_storico_table](/dbzero/dbops/funzioni/fn_ensure_storico_table)   
-> [dbops.fn_run_automations_storico](/dbzero/dbops/funzioni/fn_run_automations_storico)   
+> * [Storicizzazione delle tabelle](/guide/storicizzazione-tabelle) — il provisioning delle tabelle di storico
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 26-12-25)
-La funzione **`dbops.fn_run_automations_storico_provision(p_exec_mode, p_schemas, p_dry_run)`** automatizza il **provisioning delle tabelle nello schema `storico`** per tutte le tabelle applicative che adottano la colonna di storicizzazione (es. `storicizza`). Per ogni tabella nell'ambito, verifica prerequisiti e demanda la creazione/adeguamento dell’omologa tabella storico a `fn_ensure_storico_table` (con eventuale indice GIN opzionale).
+
+Crea la shadow `storico.<tabella>` di ogni tabella dell'ambito che ha la colonna `storicizza`,
+delegando la creazione a `dbops.fn_ensure_storico_table`. È il primo dei due runner della
+storicizzazione: prima la shadow, poi il trigger.
+
+La funzione sceglie solo **dove**: la struttura della shadow, l'armatura dello scope, la cessione
+al proprietario e la gestione degli errori stanno tutte nella funzione che chiama.
 
 ---
 
-### Parametri di input
+### Su quali tabelle
 
-| Parametro     | Tipo    | Obbligatorio | Descrizione                                                                                                                |
-| ------------- | ------- | :----------: | -------------------------------------------------------------------------------------------------------------------------- |
-| `p_exec_mode` | text    |      ✔️       | Modalità di esecuzione (`AUTO`, `FORCE`, `CHECK`).                                                                         |
-| `p_schemas`   | text[]  |      ❌       | Lista schemi da considerare; se `NULL`, risolta da `fn_resolve_scope`.                                                     |
-| `p_dry_run`   | boolean |      ✔️       | Se `true`, esegue in modalità simulazione (la creazione effettiva è demandata all'helper che gestisce anche il `dry_run`). |
+Le tabelle ordinarie degli schemi dell'ambito, tolto `storico`, che passano il filtro per tabella.
+Per ciascuna valgono le regole `STORICO_PROVISION` attive del registro il cui bersaglio la comprende
+e il cui modo di esecuzione è `AUTO` o quello della corsa. Il confronto sul tipo di regola e sul modo
+di esecuzione è letterale, maiuscole comprese.
 
----
+Per ogni tabella e regola:
 
-### Valore di ritorno
+1. **la colonna `storicizza` deve esserci**: il nome si legge dall'override `STORICIZZA_COL`,
+   altrimenti è `storicizza`. Una tabella senza la colonna si salta in silenzio;
+2. **il nome della colonna di legame** è l'override `STORICO_FK`, altrimenti `<tabella>_id`: è lo
+   stesso calcolo dell'altro runner, che lo passerà al trigger;
+3. **l'indice GIN sullo snapshot** si crea se il parametro `create_gin_index` della regola è vero
+   (nel seed è falso).
 
-`void` – orchestration pura: cicla le tabelle nell'ambito e delega le operazioni all’helper `fn_ensure_storico_table`.
-
----
-
-### Flusso logico
-
-1. **Ambito**: determina gli schemi target tramite `fn_resolve_scope(p_schemas)`; esclude sempre lo schema `storico`.
-2. **Enumerazione tabelle**: scorre tutte le tabelle "user" nell'ambito filtrate da `fn_table_in_scope`.
-3. **Selezione regole**: per ciascuna tabella applica le regole abilitate in `automation_rules_tbl` con `rule_type='STORICO_PROVISION'`, in base a `exec_mode`, `target_schema` e `target_table` (supporto wildcard con `fn_schema_match`).
-4. **Parametri regola**: legge da `params` l’opzione `create_gin_index` (boolean) per abilitare la creazione dell’indice GIN sul JSON di storico (se previsto dall’helper).
-5. **Prerequisito flag**: risolve il nome della colonna storicizzazione con `fn_get_override_col(..., 'STORICIZZA_COL', 'storicizza')` e verifica esistenza con `fn_col_exists`.
-6. **FK verso storico**: risolve il nome della FK con `fn_get_override_col(..., 'STORICO_FK', '{table}_id')`.
-7. **Provisioning**: chiama `fn_ensure_storico_table(schema, table, fk_col, create_gin, p_dry_run)` che si occupa di creare/adeguare la tabella nello schema `storico` e gestire il `dry_run`/errori.
+⚠️ Conta la **presenza** della colonna, non il suo default né i valori: una tabella con
+`storicizza` riceve la shadow anche se le sue righe nascono non storicizzate.
 
 ---
 
-### Casi d’uso tipici
+### Che cosa non fa
 
-* **Bootstrap storicizzazione**: preparare automaticamente tutto il necessario nello schema `storico` per nuove tabelle applicative.
-* **Migrazione**: adeguare l’ecosistema storico dopo refactoring di colonne chiave o convenzioni (`STORICIZZA_COL`, `STORICO_FK`).
-* **Pre‑deploy analysis**: usare `p_dry_run` per verificare quali tabelle verrebbero create/aggiornate nello storico.
-
----
-
-### Permessi e sicurezza
-
-* Richiede privilegi DDL sullo schema `storico` e sui metadati delle tabelle applicative.
-* La gestione degli errori operativi è effettuata all’interno dell’helper (`fn_ensure_storico_table`); in modalità `dry_run` non vengono applicate modifiche.
+* Non aggiorna una shadow che esiste già: se `storico.<tabella>` c'è, la funzione che chiama esce
+  senza toccarla. L'armatura delle shadow esistenti la fa la convergenza dello scope.
+* Non monta il trigger: lo fa `fn_run_automations_storico`.
+* Non scrive niente di suo nell'audit: le righe di creazione, simulazione e cessione sono della
+  funzione chiamata, registrate sotto il nome di questo runner.
 
 ---
 
-### Esempi di utilizzo
+### Chi la chiama
 
-* **Simulazione**: `SELECT dbops.fn_run_automations_storico_provision('AUTO', ARRAY['anagrafiche','config'], true);`
-* **Esecuzione reale**: `SELECT dbops.fn_run_automations_storico_provision('FORCE', NULL, false);`
-
----
-
-### Considerazioni
-
-* La presenza del flag di storicizzazione sulla tabella applicativa è requisito minimo; in caso contrario la tabella viene **saltata**.
-* Gli override permettono di supportare naming legacy o specifico di dominio.
-* La scelta di creare indici GIN dovrebbe essere valutata in base al volume/forma dei dati storico.
+Il job pgAgent tramite il suo wrapper, la convergenza dei processi strutturali e la passata
+`ci_apply`, sempre prima del runner che monta il trigger. L'orchestratore `fn_run_automations` non
+la chiama.
 
 ---
 
-### Benefici
+### Codici errore
 
-* **Automazione ripetibile**: provisioning standard e idempotente dello schema `storico`.
-* **Coerenza**: riduce divergenze tra tabelle applicative e relative controparti storico.
-* **Controllo**: `dry_run` e regole parametrizzabili forniscono visibilità e sicurezza prima del deploy.
+Non ne solleva di suoi. Escono da qui i codici di `fn_ensure_storico_table`:
+`E_STORICO_PARENT_PK_NOT_FOUND` e `E_STORICO_PROVISION`. Il primo errore ferma la corsa: le tabelle
+successive restano senza shadow fino al giro dopo.
 
 ---
 
-> **In sintesi**: `fn_run_automations_storico_provision` prepara in modo sistematico l’infrastruttura di storicizzazione, assicurando che ogni tabella con `storicizza` abbia la propria omologa nello schema `storico`, con FK e (opzionalmente) indice GIN dove previsto.
+### Test
+
+Nessun pgTAP chiama il runner. La forma delle shadow che produce la provano i test di
+`fn_ensure_storico_table`.
+
+---
+
+{% include-markdown "signature-core.md" %}

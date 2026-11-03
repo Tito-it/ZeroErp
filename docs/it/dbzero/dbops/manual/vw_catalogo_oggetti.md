@@ -1,98 +1,42 @@
-## 📘 Documentazione Concettuale – View `dbops.vw_catalogo_oggetti`
+## 📘 Documentazione Concettuale – Vista `dbops.vw_catalogo_oggetti`
 
+> **Ultimo aggiornamento**: 4 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Sistema di catalogazione cataloghi di sistema (`pg_class`, `pg_namespace`)
-> Schema `dbops` e schema `script`
-
-La view **`dbops.vw_catalogo_oggetti`** fornisce un elenco centralizzato degli oggetti presenti negli schemi **`dbops`** e **`script`**, includendo tabelle, viste, indici, sequenze, materialized views e funzioni, con informazioni sul tipo, sul proprietario e sulla descrizione.
+> Approfondimento tabelle:
+>
+> * [dbops.presidi](/dbzero/dbops/tabelle/presidi) — il catalogo dei presidi, dove la vista è un inventario
+>
+> Approfondimento viste:
+>
+> * [dbops.vw_function_list](/dbzero/dbops/views/vw_function_list) — le funzioni degli stessi due schemi, che qui non compaiono
+> * [dbops.vw_trigger_functions](/dbzero/dbops/views/vw_trigger_functions) — i trigger di tutto il database
 
 ---
+
 ### 🎯 Scopo Principale
-* Offrire una vista unificata degli oggetti PostgreSQL definiti nei due schemi principali di amministrazione.
-* Agevolare operazioni di discovery e auditing, bypassando query dirette sulle catalog tables.
+
+L'inventario delle relazioni degli schemi `dbops` e `script`: tabelle, viste, viste materializzate,
+indici, sequenze, tabelle esterne e così via, con il tipo, il proprietario e il commento. È un
+attrezzo di consultazione: la sua non-vuotezza è la condizione normale, e nel catalogo dei presidi è
+iscritta come inventario che non entra in nessun digest.
 
 ---
 
-### Definizione (DDL)
+### Che cosa elenca, e che cosa no
 
-```sql
-CREATE OR REPLACE VIEW dbops.vw_catalogo_oggetti AS
-SELECT
-  n.nspname            AS schema,
-  c.relkind            AS tipo_oggetto,
-  c.relname            AS nome_oggetto,
-  CASE c.relkind
-    WHEN 'r' THEN 't'  -- table
-    WHEN 'v' THEN 'v'  -- view
-    WHEN 'm' THEN 'm'  -- materialized view
-    WHEN 'i' THEN 'i'  -- index
-    WHEN 'S' THEN 's'  -- sequence
-    WHEN 'f' THEN 'f'  -- function
-    ELSE c.relkind
-  END                   AS tipo_descrizione,
-  pg_roles.rolname      AS proprietario,
-  obj_description(c.oid, 'pg_class') AS descrizione
-FROM pg_class c
-JOIN pg_namespace n ON n.oid = c.relnamespace
-LEFT JOIN pg_roles ON pg_roles.oid = c.relowner
-WHERE n.nspname = ANY (ARRAY['dbops', 'script']);
-```
+Elenca ciò che PostgreSQL registra come **relazione** nei due schemi: ogni tabella, vista, indice,
+sequenza. **Le funzioni no**: non sono relazioni, e stanno in `dbops.vw_function_list`.
 
-**Owner**: `postgres`
+`tipo_oggetto` è la lettera con cui PostgreSQL classifica la relazione (tabella ordinaria, vista,
+vista materializzata, indice, sequenza, tabella esterna, tabella partizionata…). ⚠️
+`tipo_descrizione`, nonostante il nome, **non descrive**: ripete la stessa lettera, salvo la tabella
+ordinaria che diventa `t` e la sequenza che diventa `s` minuscola.
 
-**Commento**: "Vista degli oggetti presenti negli schemi dbops,script (tabelle, viste, sequenze, indici ecc.)"
+`descrizione` è il commento della relazione: vuoto vuol dire che l'oggetto non ha un commento, ed è
+il modo più rapido per trovare gli oggetti dei due schemi ancora senza descrizione.
 
 ---
 
-### Colonne e Significato
-
-| Colonna            | Descrizione                                                                  |
-| ------------------ | ---------------------------------------------------------------------------- |
-| `schema`           | Nome dello schema in cui risiede l’oggetto (`dbops` o `script`).             |
-| `tipo_oggetto`     | Codice interno (`relkind`) che indica il tipo: `r`, `v`, `m`, `i`, `S`, `f`. |
-| `nome_oggetto`     | Nome dell’oggetto nel catalogo (`relname`).                                  |
-| `tipo_descrizione` | Versione sintetica del tipo (stessa lettera) per filtro più leggibile.       |
-| `proprietario`     | Utente/role che possiede l’oggetto (`rolname`).                              |
-| `descrizione`      | Commento associato all’oggetto, se presente (da `obj_description`).          |
-
----
-
-### Esempi di Utilizzo
-
-1. **Elencare tutte le tabelle** dei due schemi:
-
-   ```sql
-   SELECT nome_oggetto, descrizione
-     FROM dbops.vw_catalogo_oggetti
-    WHERE tipo_oggetto = 'r';
-   ```
-
-2. **Filtrare le view** (oggetti di tipo `v`) e mostrarne il proprietario:
-
-   ```sql
-   SELECT schema, nome_oggetto, proprietario
-     FROM dbops.vw_catalogo_oggetti
-    WHERE tipo_oggetto = 'v'
-      AND schema = 'dbops';
-   ```
-
-3. **Trovare oggetti senza descrizione** (per manutenzione commenti):
-
-   ```sql
-   SELECT schema, nome_oggetto
-     FROM dbops.vw_catalogo_oggetti
-    WHERE descrizione IS NULL;
-   ```
-
----
-
-### Vantaggi Operativi
-
-* **Rapidità di analisi**: evita join viewsi su `pg_class`, `pg_namespace` e `pg_roles`.
-* **Auditing e documentazione**: consente di scoprire oggetti orfani o privi di commento.
-* **Scripting**: facilita la generazione di report ad-hoc sul catalogo di sistema.
-
----
-
-> **“Una view di catalogo centralizzato semplifica il discovery e il governo degli oggetti di database, favorendo manutenzione e compliance.”**
+{% include-markdown "signature-core.md" %}

@@ -1,54 +1,61 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_get_pipeline_task_implementation`
 
+> **Ultimo aggiornamento**: 4 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Approfondimento tabelle:**
+> Approfondimento tabelle:
 >
-• [dbops.domini_task](/dbzero/dbops/manual/domini_task)  
-> • [dbops.pipeline_task_registry](/dbzero/dbops/manual/pipeline_task_registry)  
-> • [dbops.pipeline_task_registry_impl](/dbzero/dbops/manual/pipeline_task_registry_impl)  
+> * [dbops.pipeline_task_registry](/dbzero/dbops/tabelle/pipeline_task_registry) — il task
+> * [dbops.pipeline_task_registry_impl](/dbzero/dbops/tabelle/pipeline_task_registry_impl) — le varianti fra cui sceglie
+> * [dbops.domini_task](/dbzero/dbops/tabelle/domini_task) — il dominio
 >
-**Approfondimento funzioni:**
+> Approfondimento funzioni:
 >
-• [dbops.fn_check_pipeline_task_registered](/dbzero/dbops/manual/fn_check_pipeline_task_registered)  
->
+> * [dbops.fn_check_pipeline_task_registered](/dbzero/dbops/funzioni/fn_check_pipeline_task_registered) — la verifica che fa per prima
+> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) — la primitiva con cui rifiuta
+
+---
+
 ### 🎯 Scopo Principale
-(latest review 08-02-2026)
-Risoluzione controllata dell'implementazione di un task:
-usa la variante richiesta se valida, altrimenti il **default**.
+
+Risolve l'implementazione di un task di pipeline: dato il dominio, il codice del task e, se c'è, la
+variante chiesta, restituisce il codice dell'handler da eseguire, la variante scelta e il task. È la
+funzione con cui il backend trova l'handler prima di eseguire ogni task di uno step.
 
 ---
 
-### Regole principali
+### Come sceglie
 
-* `p_dominio_id` obbligatorio e > 0.
-* `p_task_code` obbligatorio e non vuoto.
-* Se `p_implementation_key` e` NULL/vuoto → usa default.
-* Se `p_implementation_key` non valida → fallback su default.
-* Se nessun default attivo → errore.
+1. Prima verifica che il task sia registrato e attivo in un dominio attivo
+   (`dbops.fn_check_pipeline_task_registered`): se non lo è, si ferma con l'errore di quella.
+2. Se è stata chiesta una variante, prova quella, purché attiva.
+3. Altrimenti, **e anche quando la variante chiesta non esiste o è spenta**, usa la variante di
+   default attiva.
+4. Se non c'è un default attivo, rifiuta.
 
----
+⚠️ Il ripiego del punto 3 è silenzioso: chi chiede una variante che non c'è riceve il default,
+senza errore e senza traccia. Chi chiama sa quale variante è stata usata solo leggendo la colonna
+della variante nel risultato.
 
-### Output
-
-Ritorna:
-
-* `handler_code`
-* `implementation_key`
-* `task_registry_id`
+⚠️ Il punto 2 e il punto 3 non ricontrollano il dominio: lo ha già fatto la verifica del punto 1.
 
 ---
 
-### Esempio
+### Codici errore
 
-```sql
-SELECT *
-FROM dbops.fn_get_pipeline_task_implementation(
-  p_dominio_id => 1,
-  p_task_code => 'select_attivita',
-  p_implementation_key => NULL
-);
-```
+* `E_GENERICO` — dominio non indicato, codice del task vuoto, nessuna implementazione di default
+  attiva; e, attraverso la verifica del punto 1, task non registrato o spento.
+
+---
+
+### Test
+
+* `db/pgtap/dbops/test-pipeline-task-registry.sql`, test 5, 6 e 8 — la variante chiesta, il ripiego
+  sul default, l'errore senza default.
+* `db/pgtap/vendite/test-seed-pull-commessa-pipeline-v1.sql` e
+  `test-pipeline-consuma-plafond-seed-v1.sql` — un task del dominio `FATTURAZIONE` si risolve dal
+  suo seed come lo risolve il backend.
 
 ---
 

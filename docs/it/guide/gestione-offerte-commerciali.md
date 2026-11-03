@@ -1,6 +1,6 @@
 # Guida — Gestione Offerte commerciali
 
-> **Ultimo aggiornamento**: 31 ottobre 2026
+> **Ultimo aggiornamento**: 4 novembre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend/frontend, DBA.
 >
@@ -155,7 +155,7 @@ Constraint principali:
 * non si esclude il componente di un kit: si esclude il kit.
 
 Lo dice il database, in una regola sola per tutte le righe di documento
-([script.fn_check_articolo_riga](/dbzero/script/manual/fn_check_articolo_riga)).
+([script.fn_check_articolo_riga](/dbzero/script/funzioni/fn_check_articolo_riga)).
 
 **Nella ricerca dell'articolo** trovi prima quelli che la riga può usare. Gli altri compaiono dopo, in grigio, col motivo sotto, e non si possono scegliere: chi cerca un codice preciso e non lo trova fra i primi vede perché. La ricerca e il rifiuto al salvataggio usano la stessa regola, quindi un articolo proposto non viene rifiutato dopo.
 

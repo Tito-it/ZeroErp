@@ -1,98 +1,59 @@
-## 📘 Documentazione Concettuale – View `dbops.vw_trigger_functions`
+## 📘 Documentazione Concettuale – Vista `dbops.vw_trigger_functions`
 
+> **Ultimo aggiornamento**: 4 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Catalogo trigger PostgreSQL (`pg_trigger`, `pg_class`, `pg_proc`, `pg_namespace`)
+> Approfondimento tabelle:
 >
-Altre view di catalogazione:  
+> * [dbops.presidi](/dbzero/dbops/tabelle/presidi) — il catalogo dei presidi, dove la vista è dichiarata inventario
 >
-[dbops.vw_catalogo_oggetti](/dbzero/dbops/views/vw_catalogo_oggetti)  
-> [dbops.vw_function_list](/dbzero/dbops/views/vw_function_list)  
-
-La view **`dbops.vw_trigger_functions`** elenca tutti i trigger definiti negli schemi del database, indicando la tabella di appartenenza, il nome del trigger, la funzione associata e la definizione completa della funzione. Filtra i trigger interni di sistema lasciando solo quelli utente.
+> Approfondimento viste:
+>
+> * [dbops.vw_function_list](/dbzero/dbops/views/vw_function_list) — le funzioni di `dbops` e `script`
+> * [dbops.vw_catalogo_oggetti](/dbzero/dbops/views/vw_catalogo_oggetti) — le relazioni di `dbops` e `script`
+>
+> Approfondimento funzioni:
+>
+> * [dbops.fn_find_function_usage](/dbzero/dbops/funzioni/fn_find_function_usage) — i trigger che eseguono una funzione data
+>
+> Guide:
+>
+> * [Presidi e registri del debito](/guide/presidi-e-registri-del-debito) — la differenza fra un inventario e un presidio
 
 ---
+
 ### 🎯 Scopo Principale
-* Fornire una panoramica centralizzata dei trigger utente presenti in ogni tabella del database.
-* Rendere immediatamente accessibili:
 
-  * Schema e tabella di appartenenza
-  * Nome del trigger
-  * Funzione richiamata dal trigger
-  * Testo completo della definizione della funzione trigger (utile per review e debugging)
+L'inventario dei trigger del database: ogni trigger utente, in tutti gli schemi, con la tabella su
+cui sta, la funzione che esegue e la definizione completa di quella funzione. È un attrezzo per
+leggere, non un presidio.
 
 ---
 
-### Definizione (DDL)
+### ⛔ Un inventario non entra in un digest
 
-```sql
-CREATE OR REPLACE VIEW dbops.vw_trigger_functions AS
-SELECT
-  n.nspname                     AS schema,
-  cls.relname                   AS tabella,
-  trg.tgname                    AS nome_trigger,
-  p.proname                     AS nome_funzione,
-  pg_get_functiondef(p.oid)     AS definizione_funzione
-FROM pg_trigger trg
-JOIN pg_class cls ON trg.tgrelid = cls.oid
-JOIN pg_proc p   ON trg.tgfoid = p.oid
-JOIN pg_namespace n ON n.oid = cls.relnamespace
-WHERE NOT trg.tgisinternal
-ORDER BY n.nspname, cls.relname, trg.tgname;
-```
-
-**Owner**: `postgres`
-
-**Commento**: Vista dei trigger utente con dettagli sulla funzione invocata e definizione del codice della funzione.
+A database sano la vista ha una riga per trigger, cioè moltissime: la sua non-vuotezza è la
+condizione normale. Un elenco che si aprisse con migliaia di righe non sarebbe un allarme, e un
+avviso rumoroso viene ignorato al secondo invio: finirebbe come il presidio che voleva salvare. Per
+questo è dichiarata **inventario** nel catalogo dei presidi: se mancasse dal catalogo, non si
+saprebbe se è un inventario o una dimenticanza.
 
 ---
 
-### Colonne e Significato
+### ⚠️ Si filtra, non si scorre
 
-| Colonna                | Descrizione                                                                       |
-| ---------------------- | --------------------------------------------------------------------------------- |
-| `schema`               | Schema in cui risiede la tabella (owner del trigger)                              |
-| `tabella`              | Nome della tabella associata al trigger                                           |
-| `nome_trigger`         | Nome del trigger così come definito nel catalogo                                  |
-| `nome_funzione`        | Nome della funzione eseguita dal trigger                                          |
-| `definizione_funzione` | Testo completo della definizione PL/pgSQL della funzione (inclusi header e corpo) |
+La vista porta il **corpo intero** di ogni funzione-trigger, e la stessa funzione si ripete per ogni
+trigger che la usa. Un'interrogazione senza filtro è pesante: si filtra per schema e tabella, o per
+nome della funzione.
 
----
+La tabella si filtra col solo nome (la colonna `tabella`), e lo schema sta nella colonna `schema`.
 
-### Esempi di Utilizzo
-
-1. **Elencare tutti i trigger di una specifica tabella**:
-
-   ```sql
-   SELECT nome_trigger, nome_funzione
-     FROM dbops.vw_trigger_functions
-    WHERE tabella = 'config.iva';
-   ```
-
-2. **Visualizzare la definizione di un trigger particolare**:
-
-   ```sql
-   SELECT definizione_funzione
-     FROM dbops.vw_trigger_functions
-    WHERE nome_trigger = 'trg_upd_iva_audit_data_user';
-   ```
-
-3. **Contare i trigger per schema**:
-
-   ```sql
-   SELECT schema, COUNT(*) AS tot_trigger
-     FROM dbops.vw_trigger_functions
-    GROUP BY schema;
-   ```
+⚠️ La vista non porta gli **argomenti** del trigger. I trigger generati dalle automazioni usano spesso
+la stessa funzione con argomenti diversi, e il nome del trigger generato può essere troncato e
+completato da un'impronta: per distinguerli servono gli argomenti, che la definizione del trigger
+riporta e questa vista no.
 
 ---
 
-### Vantaggi Operativi
-
-* **Code review**: facilita l’ispezione del codice PL/pgSQL associato ai trigger.
-* **Manutenzione**: consente di individuare rapidamente trigger obsoleti o duplicati.
-* **Documentazione**: serve come riferimento unico per tutti i trigger definiti nel database.
-
----
-
-> **“Una view centralizzata dei trigger migliora la governabilità e semplifica il controllo della logica di business implementata a livello di database.”**
+{% include-markdown "signature-core.md" %}
