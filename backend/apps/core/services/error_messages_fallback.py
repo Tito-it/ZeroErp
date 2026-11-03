@@ -660,6 +660,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_JOB_ELEMENTI_NON_COMPLETATI": (
         "Il lavoro automatico e' finito, ma alcuni elementi non sono stati completati."
     ),
+    "E_JOB_ESITO_CON_SCARTI": "Il lavoro è finito, ma una parte non è riuscita.",
     "E_JOB_NON_ANNULLABILE": "Il lavoro non e` piu` in attesa: annullo non possibile.",
     "E_JOB_NON_RIACCODABILE": "Il lavoro non e` riaccodabile nello stato corrente.",
     "E_JOB_NON_TROVATO": "Lavoro non trovato.",
