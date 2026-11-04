@@ -13,7 +13,7 @@
 --   due aree e la prima azione dai cataloghi, due operatori umani dal builder
 --   (uno super admin: il suo binding passa dalla madre riscritta).
 --
--- Elenco test (plan 15):
+-- Elenco test (plan 17):
 --   forma
 --    1) fn_scrivi_profilo_accesso e' INVOKER
 --    2) fn_lega_profilo_identita e' INVOKER
@@ -33,6 +33,10 @@
 --   13) l'operatore super admin ha il binding SUPER_ADMIN (madre riscritta)
 --   14) nessuna delle due madri scrive piu' profili_accesso_bindings a mano
 --   15) ... e tutte e due chiamano il BB
+--   Il codice in minuscolo (20261104-35, richiesta BE brief-be-codice-maiuscolo §6)
+--   16) ⭐ due chiamate col codice in minuscolo danno lo STESSO profilo: prima
+--       la seconda urtava uq_profili_accesso_codice
+--   17) il codice si salva normalizzato
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -41,7 +45,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(15);
+SELECT plan(17);
 
 CREATE OR REPLACE FUNCTION pg_temp.codice_errore(p_sql text) RETURNS text
 LANGUAGE plpgsql AS $$
@@ -197,6 +201,25 @@ SELECT is(
     (SELECT count(*)::int FROM t_madri WHERE pg_temp.corpo(f) ~ 'config\.fn_lega_profilo_identita\('),
     2,
     '15. ... e tutte e due chiamano il BB');
+
+-- ============================================================
+-- Il codice in minuscolo (20261104-35)
+-- ============================================================
+-- ⛔ Il caso del profilo di reparto: la funzione cercava col codice grezzo,
+--   il trigger CODICE_MAIUSCOLO lo salva in maiuscolo, e la seconda chiamata
+--   non trovava la riga e la reinseriva. Ogni scrittura in un'istruzione sua.
+CREATE TEMP TABLE t_min1 AS
+SELECT config.fn_scrivi_profilo_accesso('AD_HOC', 'pgtap_profilo_minuscolo', 'Profilo pgTAP minuscolo', '[]'::jsonb) AS id;
+CREATE TEMP TABLE t_min2 AS
+SELECT config.fn_scrivi_profilo_accesso('AD_HOC', ' Pgtap_Profilo_Minuscolo ', 'Profilo pgTAP riscritto', '[]'::jsonb) AS id;
+
+SELECT is((SELECT id FROM t_min2), (SELECT id FROM t_min1),
+    '16. due chiamate col codice in minuscolo (e maiuscole diverse) danno lo stesso profilo');
+
+SELECT is(
+    (SELECT pa.codice::text || '|' || pa.descrizione FROM config.profili_accesso pa WHERE pa.id = (SELECT id FROM t_min1)),
+    'PGTAP_PROFILO_MINUSCOLO|Profilo pgTAP riscritto',
+    '17. il codice si salva normalizzato, e la seconda chiamata ha aggiornato la riga');
 
 SELECT * FROM finish();
 

@@ -32,6 +32,10 @@
 --     PERCORRIBILE, ed e' il tipo di frase che qualcuno segue fra sei mesi, di
 --     fretta, su un processo che non fattura.
 --
+-- ⭐ Il 4) riattiva con la sigla dell'emittente in MINUSCOLO (rev 2026-11-04,
+--   20261104-37): l'emittente si cerca normalizzato e lo username si compone
+--   col codice salvato, quindi l'utente da riattivare si ritrova.
+--
 -- ⭐ I test 3 e 4 vanno letti INSIEME: il rifiuto indica un verbo, e il verbo
 --   deve esistere. Un messaggio che manda da nessuna parte e' peggio di un
 --   errore tecnico, perche' fa perdere tempo a chi ci crede.
@@ -145,7 +149,7 @@ BEGIN
 
     v_dopo := script.fn_riattiva_utente_tecnico(
                   current_setting('pgtap.ut_processo'),
-                  current_setting('pgtap.ut_emittente'));
+                  lower(current_setting('pgtap.ut_emittente')));
     PERFORM set_config('pgtap.ut_dopo', v_dopo::text, true);
 END
 $riattiva$;

@@ -8,7 +8,7 @@
 -- dell'ambito si salva in upper(btrim(codice)), tranne le eccezioni di
 -- dbops.automazione_codice_eccezioni. Regola per esclusione.
 --
--- Elenco test (plan 24):
+-- Elenco test (plan 28):
 --  1-4)  gli oggetti: trigger function, perimetro, runner, registro
 --  5)    ⭐ PRESIDIO: su tutto il database il perimetro non ha azioni
 --  6)    ⭐ PRESIDIO: nessuna riga di una tabella dovuta ha un codice non
@@ -27,11 +27,16 @@
 --  17)   NULL resta NULL
 --  18)   ⭐ fase a15: un codice scritto da un generatore a10 si salva normalizzato
 --  19)   idempotente: un secondo giro non ricrea il trigger (stesso oid)
---  20)   un'eccezione nuova: TOGLIE
---  21)   ...il giro lo toglie, e la tabella in eccezione salva com'e'
---  22)   colonna tolta: TOGLIE, e il giro lo toglie
---  23)   senza regola accesa la tabella non si tocca
---  24)   ...e il perimetro la lascia in CREA (la convergenza del migrate si ferma)
+--  20)   ⭐ mappatura Unicode completa: ' straße ' si salva 'STRASSE'
+--  21)   ⛔ varchar(6): 'straße' in maiuscolo e' di 7, E_CODICE_TROPPO_LUNGO_IN_MAIUSCOLO
+--        (la frase, non il 22001 dell'assegnazione)
+--  22)   ...anche in UPDATE
+--  23)   varchar(6): 'straß' si allunga a 6 e ci sta ancora
+--  24)   un'eccezione nuova: TOGLIE
+--  25)   ...il giro lo toglie, e la tabella in eccezione salva com'e'
+--  26)   colonna tolta: TOGLIE, e il giro lo toglie
+--  27)   senza regola accesa la tabella non si tocca
+--  28)   ...e il perimetro la lascia in CREA (la convergenza del migrate si ferma)
 --
 -- Scopo:
 --  - il criterio sta in dbops.fn_codice_maiuscolo_perimetro, e i presidi lo
@@ -43,7 +48,12 @@
 --   avrebbe azioni volute.
 -- ⚠️ Il 6 su dbdev e' rosso finche' non gira la bonifica una tantum delle righe
 --   scritte prima del trigger (sql-una-tantum-codice-maiuscolo.sql): e' il suo
---   mestiere, dice quali tabelle.
+--   mestiere, dice quali tabelle. Dal 2026-11-04 (20261104-33) confronta con
+--   script.fn_codice_normalizzato, la forma che il trigger salva: una riga
+--   scritta con la mappatura semplice (STRAßE) e' da ri-normalizzare.
+-- ⭐ 20-23 (20261104-33, D-1 b di Tid): la mappatura completa allunga il testo,
+--   e su varchar(n) parla il trigger con la sua frase. Le colonne non si
+--   allungano.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -52,7 +62,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(24);
+SELECT plan(28);
 
 -- ============================================================
 -- Gli oggetti
@@ -89,7 +99,7 @@ BEGIN
           FROM dbops.fn_codice_maiuscolo_perimetro(NULL) AS d
          WHERE d.nel_perimetro AND NOT d.in_eccezione
     LOOP
-        EXECUTE format('SELECT count(*) FROM %I.%I WHERE codice IS DISTINCT FROM upper(btrim(codice))',
+        EXECUTE format('SELECT count(*) FROM %I.%I WHERE codice IS DISTINCT FROM script.fn_codice_normalizzato(codice)',
                        r.schema_name, r.table_name)
            INTO v_n;
         IF v_n > 0 THEN
@@ -103,7 +113,7 @@ SELECT is(
     (SELECT COALESCE(array_agg(tabella || ' (' || righe || ')' ORDER BY tabella), ARRAY[]::text[])
        FROM _codici_non_normalizzati),
     ARRAY[]::text[],
-    '6) nessuna riga di una tabella dovuta ha un codice non in maiuscolo (seed in CSV, dati scritti prima del trigger)'
+    '6) nessuna riga di una tabella dovuta ha un codice non normalizzato (seed in CSV, dati scritti prima del trigger)'
 );
 
 SELECT ok(
@@ -150,6 +160,7 @@ CREATE TABLE pgtap_codice_maiuscolo.t_a (
 CREATE TABLE pgtap_codice_maiuscolo.t_b (id integer PRIMARY KEY, codice text);
 CREATE TABLE pgtap_codice_maiuscolo.t_c (id integer PRIMARY KEY, codice integer);
 CREATE TABLE pgtap_codice_maiuscolo.t_g (id integer PRIMARY KEY, codice text);
+CREATE TABLE pgtap_codice_maiuscolo.t_l (id integer PRIMARY KEY, codice varchar(6));
 
 -- Il generatore a10, come i trgfn_*_gen_codice: valorizza il codice vuoto.
 CREATE FUNCTION pgtap_codice_maiuscolo.trgfn_t_g_gen_codice()
@@ -170,7 +181,7 @@ INSERT INTO pgtap_codice_maiuscolo.t_a VALUES (1, 'vecchio', 'x');
 SELECT is(
     (SELECT array_agg(d.table_name || ' ' || d.azione ORDER BY d.table_name)
        FROM dbops.fn_codice_maiuscolo_perimetro(ARRAY['pgtap_codice_maiuscolo']) AS d),
-    ARRAY['t_a CREA', 't_b CREA', 't_g CREA'],
+    ARRAY['t_a CREA', 't_b CREA', 't_g CREA', 't_l CREA'],
     '9) CREA sulle colonne codice stringa; la colonna intera (t_c) non e'' nel perimetro'
 );
 
@@ -203,7 +214,7 @@ SELECT is(
        JOIN pg_catalog.pg_class c ON c.oid = tg.tgrelid
       WHERE p.proname = 'trgfn_codice_maiuscolo'
         AND c.relnamespace = 'pgtap_codice_maiuscolo'::regnamespace),
-    ARRAY['t_a:23', 't_b:23', 't_g:23'],
+    ARRAY['t_a:23', 't_b:23', 't_g:23', 't_l:23'],
     '12) un trigger per tabella, BEFORE INSERT OR UPDATE FOR EACH ROW'
 );
 
@@ -250,6 +261,31 @@ SELECT is(
     '19) idempotente: il secondo giro non ricrea il trigger'
 );
 
+
+-- ============================================================
+-- ⭐ La mappatura Unicode completa, e la lunghezza (20261104-33)
+-- ============================================================
+INSERT INTO pgtap_codice_maiuscolo.t_a VALUES (5, ' straße ', 'x');
+SELECT is((SELECT codice::text FROM pgtap_codice_maiuscolo.t_a WHERE id = 5), 'STRASSE',
+    '20) mappatura Unicode completa: la ß diventa SS, come la mostra il browser');
+
+SELECT throws_like(
+    $$ INSERT INTO pgtap_codice_maiuscolo.t_l VALUES (1, 'straße') $$,
+    '%supera i 6 caratteri ammessi%',
+    '21) varchar(6): STRASSE e'' di 7 caratteri, parla il trigger (non il 22001)'
+);
+
+INSERT INTO pgtap_codice_maiuscolo.t_l VALUES (2, 'ab');
+SELECT throws_like(
+    $$ UPDATE pgtap_codice_maiuscolo.t_l SET codice = 'straße' WHERE id = 2 $$,
+    '%supera i 6 caratteri ammessi%',
+    '22) ...anche in UPDATE'
+);
+
+INSERT INTO pgtap_codice_maiuscolo.t_l VALUES (3, 'straß');
+SELECT is((SELECT codice::text FROM pgtap_codice_maiuscolo.t_l WHERE id = 3), 'STRASS',
+    '23) varchar(6): straß si allunga a 6 caratteri e ci sta ancora');
+
 -- ============================================================
 -- Il ritiro: eccezione nuova, colonna tolta
 -- ============================================================
@@ -260,13 +296,13 @@ SELECT is(
        FROM dbops.fn_codice_maiuscolo_perimetro(ARRAY['pgtap_codice_maiuscolo']) AS d
       WHERE d.table_name = 't_b'),
     'TOGLIE',
-    '20) un''eccezione nuova su una tabella col trigger: TOGLIE'
+    '24) un''eccezione nuova su una tabella col trigger: TOGLIE'
 );
 
 SELECT dbops.fn_run_automations_codice_maiuscolo('SCHEDULED', ARRAY['pgtap_codice_maiuscolo'], false);
 INSERT INTO pgtap_codice_maiuscolo.t_b VALUES (1, 'owned');
 SELECT is((SELECT codice FROM pgtap_codice_maiuscolo.t_b WHERE id = 1), 'owned',
-    '21) il giro toglie il trigger, e la tabella in eccezione salva il codice com''e''');
+    '25) il giro toglie il trigger, e la tabella in eccezione salva il codice com''e''');
 
 ALTER TABLE pgtap_codice_maiuscolo.t_g DROP COLUMN codice;
 SELECT dbops.fn_run_automations_codice_maiuscolo('SCHEDULED', ARRAY['pgtap_codice_maiuscolo'], false);
@@ -277,7 +313,7 @@ SELECT is(
       WHERE p.proname = 'trgfn_codice_maiuscolo'
         AND tg.tgrelid = 'pgtap_codice_maiuscolo.t_g'::regclass),
     0,
-    '22) colonna codice tolta: il giro toglie il trigger (lasciarlo farebbe fallire ogni scrittura)'
+    '26) colonna codice tolta: il giro toglie il trigger (lasciarlo farebbe fallire ogni scrittura)'
 );
 
 -- ============================================================
@@ -294,14 +330,14 @@ SELECT is(
       WHERE p.proname = 'trgfn_codice_maiuscolo'
         AND tg.tgrelid = 'pgtap_codice_maiuscolo.t_e'::regclass),
     0,
-    '23) senza regola CODICE_MAIUSCOLO accesa la tabella nuova non si tocca'
+    '27) senza regola CODICE_MAIUSCOLO accesa la tabella nuova non si tocca'
 );
 SELECT is(
     (SELECT d.azione
        FROM dbops.fn_codice_maiuscolo_perimetro(ARRAY['pgtap_codice_maiuscolo']) AS d
       WHERE d.table_name = 't_e'),
     'CREA',
-    '24) ...e resta CREA nel perimetro: la convergenza del migrate la nomina e si ferma'
+    '28) ...e resta CREA nel perimetro: la convergenza del migrate la nomina e si ferma'
 );
 
 SELECT * FROM finish();

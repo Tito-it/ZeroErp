@@ -462,7 +462,9 @@ PostgreSQL lo tronca: il trigger si riconosce dalla funzione, non dal nome.
 
 Un codice che l'operatore digita è un identificativo: `VITE-M8` e `vite-m8` sono lo stesso
 articolo, non due. Questa automazione monta su **ogni** tabella con la colonna `codice` un trigger
-che lo salva in maiuscolo e senza spazi ai bordi. Con il valore normalizzato, l'indice `UNIQUE` che
+che lo salva in maiuscolo e senza spazi ai bordi, nella forma di `script.fn_codice_normalizzato`: il
+maiuscolo completo dello standard Unicode, uguale su ogni server (`straße` diventa `STRASSE`, come
+lo mostra il browser). Con il valore normalizzato, l'indice `UNIQUE` che
 la colonna ha già diventa un'unicità senza distinzione di maiuscole, e ricerche e indici restano
 quelli di sempre.
 
@@ -475,6 +477,10 @@ quelli di sempre.
 * `codice_interno` non è nel perimetro: lo scrive la migrazione, non l'operatore;
 * il trigger scatta su `INSERT` e su ogni `UPDATE` (anche i generatori del codice lo scrivono), in
   fase `a15`, dopo di loro; un `UPDATE` che non cambia il codice non lo tocca;
+* in maiuscolo un codice può **allungarsi** (`ß` → `SS`): se su una colonna `varchar(n)` non ci sta
+  più, il trigger lo rifiuta con `E_CODICE_TROPPO_LUNGO_IN_MAIUSCOLO`, che dice come diventa e
+  quanti caratteri ammette il campo. Le colonne non si allungano: la lunghezza è un limite della
+  tabella;
 * converge nei due sensi: crea dove manca, toglie dove una tabella entra fra le eccezioni o perde la
   colonna. Gira a **ogni migrate** (una rete in `90_end`, che si ferma se resta un'azione) e nel
   giro notturno del lock;
@@ -485,8 +491,12 @@ quelli di sempre.
 
 * il valore salvato può non essere quello inviato: dopo una scrittura il codice si rilegge dal DB
   (`RETURNING codice` o il dettaglio), non si rimanda quello del payload;
-* una ricerca **esatta** per codice su un input dell'utente confronta con `upper(btrim(input))`; le
-  ricerche `ILIKE` non cambiano;
+* una ricerca **esatta** per codice su un input dell'utente confronta con
+  `script.fn_codice_normalizzato(input)`, la stessa forma che salva il trigger, senza ricopiarne la
+  formula; le ricerche `ILIKE` non cambiano;
+* in scrittura il codice si passa com'è: lo normalizza il trigger, che dice anche se in maiuscolo
+  non ci sta più nel campo (`E_CODICE_TROPPO_LUNGO_IN_MAIUSCOLO`, classe `DATO_ERRATO`, `campo` =
+  `codice`);
 * il duplicato è senza maiuscole: `vite-m8` accanto a `VITE-M8` è la stessa violazione di unicità
   del codice identico;
 * un test che crea un codice con un suffisso esadecimale (`uuid4().hex`, `md5`) e poi lo cerca per
@@ -499,6 +509,8 @@ quelli di sempre.
 **Componenti:**
 
 * Regola: `CODICE_MAIUSCOLO` in `dbops.automation_rules_tbl` (interruttore e template del nome)
+* Forma del codice: `script.fn_codice_normalizzato()` — la usano il trigger, le funzioni che cercano
+  per codice e il backend
 * Perimetro: `dbops.fn_codice_maiuscolo_perimetro()` — dovuto, vivo, azione
 * Runner: `dbops.fn_run_automations_codice_maiuscolo()`
 * Trigger function: `script.trgfn_codice_maiuscolo()`

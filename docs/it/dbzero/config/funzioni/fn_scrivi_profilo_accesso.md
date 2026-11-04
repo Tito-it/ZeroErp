@@ -62,10 +62,13 @@ BEGIN
     END IF;
 
     -- 1. Il profilo, per codice: un codice ha un tipo solo.
+    --    ⛔ Si CERCA col codice normalizzato, si SCRIVE quello
+    --    ricevuto: lo normalizza il trigger CODICE_MAIUSCOLO, che
+    --    dice anche se in maiuscolo supera la colonna (rev 2026-11-04).
     SELECT pa.id, pa.tipo
       INTO v_id, v_tipo
       FROM config.profili_accesso pa
-     WHERE pa.codice = p_codice;
+     WHERE pa.codice = script.fn_codice_normalizzato(p_codice);
 
     IF v_id IS NULL THEN
         INSERT INTO config.profili_accesso (tipo, codice, descrizione, attivo, richiede_secondo_fattore)
@@ -110,7 +113,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION config.fn_scrivi_profilo_accesso(p_tipo config.tipo_profilo_accesso, p_codice character varying, p_descrizione text, p_aree jsonb, p_azioni jsonb, p_campi jsonb)
-IS 'BB (2026-10-18): scrive un profilo di accesso per codice (uq_profili_accesso_codice): lo crea, o ne aggiorna descrizione e campi; poi ne SOSTITUISCE le aree (p_aree: elenco di {area_id, livello}) e le azioni (p_azioni: elenco di {azione_id, abilitata}) se indicate, NULL = invariate. p_campi: attivo, richiede_secondo_fattore; assenti = DEFAULT alla nascita (true, false), invariati dopo (la regola COALESCE del backend); chiave estranea: E_CAMPO_NON_AMMESSO. Un codice che esiste con un altro tipo, argomenti mancanti o elenchi malformati: E_SCRIPT_CHIAMATA_NON_VALIDA. FK, unicita'' dell''area e livello valido li dicono i vincoli. Non scrive binding (quello di un''identita'' e'' config.fn_lega_profilo_identita) ne'' controlla il permesso (backend). INVOKER. Ritorna l''id. Prende il posto dei passi del profilo di AmmSoftwareRepository.put_profilo_reparto (2b-2) ed e'' la sede dei profili AD_HOC del verbo dei dati di sviluppo (2b-3). Brief: brief-db-processi-accensione-per-ambiente (2b-1, lotto 8).';
+IS 'BB (2026-10-18): scrive un profilo di accesso per codice (uq_profili_accesso_codice): lo crea, o ne aggiorna descrizione e campi; poi ne SOSTITUISCE le aree (p_aree: elenco di {area_id, livello}) e le azioni (p_azioni: elenco di {azione_id, abilitata}) se indicate, NULL = invariate. p_campi: attivo, richiede_secondo_fattore; assenti = DEFAULT alla nascita (true, false), invariati dopo (la regola COALESCE del backend); chiave estranea: E_CAMPO_NON_AMMESSO. Un codice che esiste con un altro tipo, argomenti mancanti o elenchi malformati: E_SCRIPT_CHIAMATA_NON_VALIDA. FK, unicita'' dell''area e livello valido li dicono i vincoli. Non scrive binding (quello di un''identita'' e'' config.fn_lega_profilo_identita) ne'' controlla il permesso (backend). INVOKER. Ritorna l''id. Prende il posto dei passi del profilo di AmmSoftwareRepository.put_profilo_reparto (2b-2) ed e'' la sede dei profili AD_HOC del verbo dei dati di sviluppo (2b-3). Brief: brief-db-processi-accensione-per-ambiente (2b-1, lotto 8). Rev 2026-11-04 (20261104-35, richiesta BE brief-be-codice-maiuscolo §6): il profilo si CERCA con script.fn_codice_normalizzato(p_codice) e si SCRIVE col codice ricevuto, che il trigger CODICE_MAIUSCOLO normalizza; prima un codice con minuscole non si ritrovava e la seconda chiamata urtava uq_profili_accesso_codice.';
 ```
 
 </div>

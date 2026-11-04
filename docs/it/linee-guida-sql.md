@@ -1088,8 +1088,20 @@ Preferire:
 ⭐ Per i **codici dell'operatore** la colonna normalizzata c'è già: ogni colonna `codice` dell'ambito
 si salva in maiuscolo dall'automazione CODICE_MAIUSCOLO, tranne le eccezioni dichiarate
 ([Framework di automazione DB §4.8](/guide/automazione-db)). Un «trova per codice» confronta
-quindi l'input passato per `upper(btrim(…))`, non quello grezzo (§8.4-bis, «il lookup confronta i
-valori come sono salvati»).
+quindi l'input passato per `script.fn_codice_normalizzato(…)`, non quello grezzo (§8.4-bis, «il
+lookup confronta i valori come sono salvati»). ⛔ La formula non si ricopia: la sede è la funzione,
+e la presidia `script/test-fn-codice-normalizzato-v1`.
+
+⚠️ In maiuscolo un codice può allungarsi (`ß` → `SS`). Per questo:
+
+* chi **cerca** mette la funzione nel `WHERE`, senza passare da una variabile
+  `<colonna>%TYPE`: su `varchar(n)` l'assegnazione darebbe 22001 dove la risposta giusta è «non
+  trovato»;
+* chi **scrive** passa il codice com'è e lascia normalizzare il trigger, che rifiuta con
+  `E_CODICE_TROPPO_LUNGO_IN_MAIUSCOLO` invece del 22001 della colonna.
+
+Un indice su `upper(codice)` accanto a una colonna normalizzata è un doppione: l'ultimo,
+`catalogo.ix_uom_tipi_codice_upper`, è ritirato il 2026-11-04 (`20261104-44`).
 
 ---
 

@@ -1,0 +1,94 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_codice_normalizzato(text): LA FORMA DEL CODICE, IN UN POSTO SOLO
+#   Richiesta del BE (brief-be-codice-maiuscolo §6), decisioni Tid 2026-11-04.
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   La forma di un codice dell'operatore (automazione CODICE_MAIUSCOLO,
+#   20261104-01…-08) era scritta come formula dentro il trigger, e il BE la
+#   ricopiava nelle sue ricerche esatte. Una formula ricopiata prima o poi
+#   risponde in due modi (AGENTS.md, regola del 2): da qui la sede unica, che
+#   chiamano il trigger, il guard di forma dell'emittente, ogni funzione DB che
+#   cerca per codice e le query del BE.
+#
+# ── ⚠️ LA MAPPATURA UNICODE COMPLETA (pg_unicode_fast) ──────────────
+#   upper() con la collation del database (libc it_IT) e' la mappatura
+#   semplice: upper('straße') = 'STRAßE', mentre il browser mostra 'STRASSE'
+#   (provato su dbdev il 2026-11-04). Con la collation builtin
+#   pg_unicode_fast la mappatura e' completa — ß→SS, legature (ﬁ→FI) — ed e'
+#   la stessa su ogni macchina: non dipende dalla glibc del server.
+#   Con la mappatura semplice 'straße' e 'STRASSE' restano due codici, e
+#   «il codice non distingue le maiuscole» non sarebbe vero.
+#   ⚠️ Conseguenza: il testo puo' ALLUNGARSI. Chi scrive in una colonna
+#   varchar(n) lascia normalizzare al trigger (20261104-33), che rifiuta con
+#   E_CODICE_TROPPO_LUNGO_IN_MAIUSCOLO; chi CERCA la usa senza variabili
+#   ancorate alla colonna (un'assegnazione a varchar(n) darebbe 22001).
+#
+# ── IMMUTABLE ────────────────────────────────────────────────────────
+#   Come upper() stesso, che pg_proc dichiara IMMUTABLE qualunque sia la
+#   collation. Il risultato puo' cambiare solo fra due versioni maggiori di
+#   PostgreSQL che aggiornano le tabelle Unicode. Nessun indice e' costruito
+#   su questa funzione, e non deve esserlo: il valore lo salva gia'
+#   normalizzato il trigger, e l'UNIQUE sta sulla colonna. Cosi' un
+#   aggiornamento Unicode cambia al piu' le scritture nuove, mai un indice.
+#
+# ── FORMA ─────────────────────────────────────────────────────────────
+#   LANGUAGE sql col corpo a stringa (non BEGIN ATOMIC: non legge tabelle,
+#   linee-guida-sql §5c), STRICT (NULL resta NULL), PARALLEL SAFE: si
+#   incorpora nella query che la chiama. Parametro e risultato `text`, non
+#   %TYPE: e' un building block di tutte le colonne codice del perimetro
+#   (varchar(n) di lunghezze diverse, text), nessuna colonna e' la sua.
+#   EXECUTE a zeroerp_app dai privilegi di default dello schema script.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261104-32-create-fn-codice-normalizzato-mctit.yaml
+
+  - changeSet:
+      id: 20261104-32-create-fn-codice-normalizzato
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_codice_normalizzato(text): upper(btrim(p_codice) COLLATE pg_unicode_fast),
+        IMMUTABLE STRICT PARALLEL SAFE. Sede unica della forma del codice dell'operatore
+        (CODICE_MAIUSCOLO). Richiesta BE brief-be-codice-maiuscolo §6, Tid 2026-11-04.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_codice_normalizzato(
+                  p_codice text)   -- text: BB di tutte le colonne codice, nessuna e' la sua
+               RETURNS text
+               LANGUAGE sql
+               IMMUTABLE
+               STRICT
+               PARALLEL SAFE
+               SECURITY INVOKER
+              AS $function$
+                  -- La forma di un codice dell'operatore: senza spazi ai lati, in
+                  -- maiuscolo con la mappatura Unicode completa (ß -> SS).
+                  SELECT upper(btrim(p_codice) COLLATE pg_catalog.pg_unicode_fast);
+              $function$;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION script.fn_codice_normalizzato(text) IS
+                  'BB (2026-11-04): la forma di un codice dell''operatore, in un posto solo. upper(btrim(p_codice) COLLATE pg_unicode_fast): senza spazi ai lati, in maiuscolo con la mappatura Unicode COMPLETA della collation builtin (SS per la ß tedesca, FI per la legatura fi), uguale su ogni macchina; la collation del database (libc) darebbe la mappatura semplice e lascerebbe la ß minuscola. La chiamano il trigger dell''automazione CODICE_MAIUSCOLO (script.trgfn_codice_maiuscolo), il guard di forma di anagrafiche.emittenti_fiscali, le funzioni che cercano per codice una tabella del perimetro e le ricerche esatte del backend: nessuno ricopia la formula. ⚠️ Il risultato puo'' essere PIU'' LUNGO dell''input: chi scrive lascia normalizzare al trigger, che lo rifiuta con E_CODICE_TROPPO_LUNGO_IN_MAIUSCOLO se supera la colonna; chi cerca la usa nella WHERE, non in una variabile ancorata a una colonna varchar(n) (darebbe 22001 invece di «non trovato»). IMMUTABLE come upper(): cambia solo fra versioni maggiori di PostgreSQL con tabelle Unicode nuove, e per questo non si costruiscono indici su di lei (il valore e'' salvato gia'' normalizzato, l''UNIQUE sta sulla colonna). STRICT: NULL resta NULL. LANGUAGE sql, si incorpora. Richiesta BE brief-be-codice-maiuscolo §6.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_codice_normalizzato(text);

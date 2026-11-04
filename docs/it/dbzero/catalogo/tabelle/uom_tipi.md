@@ -29,7 +29,6 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_uom_tipi_codice_interno_upper | `CREATE INDEX ix_uom_tipi_codice_interno_upper ON catalogo.uom_tipi USING btree (upper((codice_interno)::text))` |
-| ix_uom_tipi_codice_upper | `CREATE INDEX ix_uom_tipi_codice_upper ON catalogo.uom_tipi USING btree (upper((codice)::text))` |
 | pk_uom_tipi | `CREATE UNIQUE INDEX pk_uom_tipi ON catalogo.uom_tipi USING btree (id)` |
 | uq_uom_tipi_codice | `CREATE UNIQUE INDEX uq_uom_tipi_codice ON catalogo.uom_tipi USING btree (codice)` |
 | uq_uom_tipi_codice_interno | `CREATE UNIQUE INDEX uq_uom_tipi_codice_interno ON catalogo.uom_tipi USING btree (codice_interno)` |
