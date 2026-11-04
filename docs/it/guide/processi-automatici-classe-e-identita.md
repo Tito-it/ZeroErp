@@ -351,6 +351,12 @@ programma. Una riga che non se l'aspettava nessuno è un allarme.
 caso. Per questo dichiararlo richiede scrivere il perché, e non è un gesto che
 si fa distrattamente.
 
+⛔ Non tutti i controlli ammettono un debito. Quello sul **passe-partout**
+([vw_processi_che_bypassano](/dbzero/dbops/views/vw_processi_che_bypassano)) deve
+restare vuoto, senza eccezioni: oggi nessun lavoro ne ha bisogno, e un'eccezione
+scritta per nome sopravvivrebbe al caso che la giustificava. Il perché è nella
+pagina della vista.
+
 ---
 
 ## 7. Aggiungere un lavoro nuovo

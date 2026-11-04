@@ -41,22 +41,42 @@ l'esenzione diventata inutile: è la ragione per cui il registro si può chiamar
 
 ### Come funziona
 
-Per ogni voce del registro verifica se la misura trova ancora un difetto `REALE` o `ORFANA` con lo
-stesso schema, la stessa funzione e un esito che corrisponde al pattern. Se non lo trova, la voce è
-rientrata. Espone anche il motivo e la data di registrazione, così chi la toglie vede perché era
-stata messa e da quanto.
+Per ogni voce del registro la vista pone due domande alla misura:
+
+1. trova ancora un difetto `REALE` o `ORFANA` con lo stesso schema, la stessa funzione e un esito
+   che corrisponde al pattern?
+2. la funzione della voce è uscita `NON_MISURATO`, cioè `plpgsql_check` non l'ha potuta controllare?
+
+La voce è rientrata solo se la risposta è **no a entrambe**. Espone anche il motivo e la data di
+registrazione, così chi la toglie vede perché era stata messa e da quanto.
+
+La misura si legge **una volta sola** per interrogazione: compila centinaia di funzioni, e le due
+domande la chiederebbero due volte.
+
+---
+
+### ⛔ Una funzione non misurata non è «rientrata»
+
+Se lo strumento non ha potuto misurare la funzione esentata (`NON_MISURATO`), di quella funzione non
+si sa niente: né che il difetto c'è ancora, né che è sparito. Dare la voce per rientrata vorrebbe
+dire svuotare il registro proprio quando lo strumento si rompe. Per questo la vista la tiene fuori,
+e resta in silenzio.
+
+⇒ Il rosso della misura mancata non sta qui: lo danno
+[vw_riferimenti_morti_da_sanare](/dbzero/dbops/views/vw_riferimenti_morti_da_sanare), che elenca le
+funzioni `NON_MISURATO`, e il guardrail della CI, che si ferma per primo su quella classe. Le due
+viste vanno lette insieme.
+
+⚠️ Una funzione che **non esiste più** non compare nella misura, né come difetto né come
+`NON_MISURATO`: la sua voce esce rientrata, ed è giusto, perché non copre più niente.
 
 ---
 
 ### ⚠️ Una riga qui non è sempre «difetto sanato»
 
-* La funzione può essere stata **rinominata o eliminata**, o il messaggio di `plpgsql_check` può
-  essere cambiato (un aggiornamento dell'estensione, un ritocco che sposta il testo): il pattern non
-  aggancia più. Prima di togliere una voce si controlla che il difetto sia davvero sparito.
-* ⛔ Se lo strumento **non ha potuto misurare** la funzione esentata (`NON_MISURATO`), la vista non
-  trova il difetto e dà la voce per rientrata. Il guardrail della CI si ferma prima, sulla misura
-  mancata, e non arriva a questa domanda; la vista no. Una riga qui insieme a righe `NON_MISURATO`
-  nella gemella non dice niente sul registro.
+La funzione può essere stata **rinominata o eliminata**, o il messaggio di `plpgsql_check` può
+essere cambiato (un aggiornamento dell'estensione, un ritocco che sposta il testo): il pattern non
+aggancia più. Prima di togliere una voce si controlla che il difetto sia davvero sparito.
 
 ---
 
@@ -71,8 +91,15 @@ gemella: fa girare `plpgsql_check` su tutto il database.
 
 ### Test
 
-* `db/pgtap/dbops/test-riferimenti-morti-v1.sql` — nessuna voce rientrata nel registro, dallo
-  stesso ruolo da cui si misura.
+* `db/pgtap/dbops/test-riferimenti-morti-v1.sql`:
+  * nessuna voce rientrata nel registro, dallo stesso ruolo da cui si misura;
+  * test 9-11 — la vista viva su una misura **costruita**: il testo della vista, con la chiamata
+    alla misura sostituita da una funzione temporanea con le stesse colonne (il 9 prova che la
+    sostituzione avviene). Il 10 prova che una voce su una funzione `NON_MISURATO` non è rientrata;
+    l'11 che una voce ancora coperta da un difetto non è rientrata, e una su una funzione che la
+    misura non vede più sì. La misura è costruita perché il caso vero non si riproduce in un test:
+    `plpgsql_check` riferisce qualunque funzione costruibile, e solleva solo per l'ambiente
+    (estensione irraggiungibile, lock).
 
 ---
 
@@ -83,6 +110,9 @@ gemella: fa girare `plpgsql_check` su tutto il database.
   gli oggetti ispezionati, la vista rispondeva in modo diverso dal proprietario.
 * 2026-09-14 — il primo digest settimanale dà rientrata la voce legata a pgAgent: era il ruolo che
   misurava, non la funzione. Da lì una classe nuova nella misura e una voce che segue la macchina.
+* 2026-11-04 — D7 di `brief-db-revisione-dbops`: una voce la cui funzione esce `NON_MISURATO` non è
+  più rientrata (prima il registro si svuotava proprio quando lo strumento si rompeva); la misura si
+  legge una volta sola.
 
 ---
 

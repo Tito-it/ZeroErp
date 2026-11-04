@@ -1,0 +1,99 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.vw_riferimenti_morti_rientrati: una voce e' «rientrata» solo se la sua
+# funzione e' stata misurata.
+#   Brief: brief-db-revisione-dbops, D7 (giro 1, blocco 1d).
+#
+# Base: 20_code/dbops/20260804-64 (l'unico changeSet della vista), verificato
+# uguale al vivo.
+#
+# ⚠️ IL DIFETTO. La vista elenca le voci del registro del debito che non
+#   corrispondono piu' a nessun difetto REALE/ORFANA: righe da TOGLIERE. Ma se
+#   plpgsql_check solleva invece di rispondere, la funzione esce NON_MISURATO,
+#   nessun difetto la copre, e la sua voce usciva «da togliere»: un registro che
+#   si svuota proprio quando lo strumento si rompe. Il guardrail CI conosce il
+#   caso e si ferma prima (scripts/sql/guardrail_riferimenti_morti.sql, A-bis);
+#   la vista e il digest dei presidi no.
+#
+# ⭐ LA CORREZIONE. Una voce la cui funzione e' NON_MISURATO non e' «rientrata»:
+#   di quella funzione non si sa niente, e la vista non lo dice. Il rosso della
+#   misura mancata lo da' gia' dbops.vw_riferimenti_morti_da_sanare, che elenca
+#   le righe NON_MISURATO, e il guardrail, che si ferma. Una funzione che non
+#   c'e' piu' non compare nella misura: la sua voce resta «rientrata», com'e'
+#   giusto.
+#   La misura si legge UNA volta (CTE MATERIALIZED): compila centinaia di
+#   funzioni, e i due anti-join la chiederebbero due volte.
+#   Colonne invariate: CREATE OR REPLACE. ⛔ security_invoker si ripete.
+#
+# Residuo, non corretto qui: gli anti-join sono scritti due volte, nelle viste e
+#   nel guardrail CI, che materializza la misura per non pagarla due volte. Il
+#   guardrail si ferma sui NON_MISURATO prima di (B), quindi le due letture
+#   oggi coincidono. Brief §12.10.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261104-54-update-vw-riferimenti-morti-rientrati-misura-mancata-mctit.yaml
+
+  - changeSet:
+      id: 20261104-54-update-vw-riferimenti-morti-rientrati-misura-mancata
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.vw_riferimenti_morti_rientrati: una voce del registro la cui funzione esce
+        NON_MISURATO non e' «rientrata» (D7). La misura si legge una volta.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_class c
+                JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+               WHERE n.nspname = 'dbops' AND c.relname = 'vw_riferimenti_morti_rientrati';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_riferimenti_morti_rientrati
+              WITH (security_invoker = true) AS
+              WITH misura AS MATERIALIZED (
+                  SELECT m.classe, m.schema_nome, m.funzione, m.esito
+                    FROM dbops.fn_check_funzioni_riferimenti_morti() m(classe, schema_nome, funzione, argomenti, esito)
+              )
+              SELECT e.id,
+                     e.schema_nome,
+                     e.funzione,
+                     e.esito_like,
+                     e.data_registrazione,
+                     e.motivo
+                FROM dbops.riferimenti_morti_esenzioni e
+               -- nessun difetto la copre piu' ...
+               WHERE NOT EXISTS (
+                       SELECT 1 FROM misura m
+                        WHERE m.classe IN ('REALE', 'ORFANA')
+                          AND m.schema_nome = e.schema_nome
+                          AND m.funzione    = e.funzione
+                          AND m.esito LIKE e.esito_like)
+               -- ... e la sua funzione e' stata misurata davvero
+                 AND NOT EXISTS (
+                       SELECT 1 FROM misura m
+                        WHERE m.classe = 'NON_MISURATO'
+                          AND m.schema_nome = e.schema_nome
+                          AND m.funzione    = e.funzione);
+
+              COMMENT ON VIEW dbops.vw_riferimenti_morti_rientrati IS
+                  'Voci del registro del debito (dbops.riferimenti_morti_esenzioni) che non corrispondono piu'' a nessun difetto REALE o ORFANA: righe da TOGLIERE dal registro. E'' cio'' che impedisce al registro di diventare un elenco di eccezioni permanenti. ⚠️ Una voce la cui funzione plpgsql_check non ha potuto misurare (NON_MISURATO) non e'' rientrata: di quella funzione non si sa niente. Il rosso della misura mancata sta in dbops.vw_riferimenti_morti_da_sanare e nel guardrail CI. Una funzione che non esiste piu'' non compare nella misura, e la sua voce e'' rientrata. La misura si legge una volta. Presidio a catalogo in dbops.presidi, soglia ZERO; lo prova db/pgtap/dbops/test-riferimenti-morti-v1.sql.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo dal corpo di 20260804-64.
+              SELECT 1;

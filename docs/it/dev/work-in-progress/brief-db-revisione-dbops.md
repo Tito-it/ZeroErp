@@ -2,9 +2,9 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-04
 
-**Riparte: sessione DB**, col blocco 1d (D43, D7) di §12.5. Il blocco 1c (`20261104-51`, `-52`, §12.9: il
-cleanup rende rossa la corsa con una tabella che si oppone, e il delete_block scrive l'audit anche nel giro
-vero) è applicato e verde (Tid, 2026-11-04); da committare. I blocchi 1a e 1b sono anche committati. Le decisioni di §4 restano aperte per i giri che le aspettano.
+**Giro 1 chiuso** (Tid, 2026-11-04): i blocchi 1a, 1b, 1c e 1d sono applicati e verdi; 1a-1c sono committati
+(l'ultimo, il 1c, in `dff3403997`). **Riparte: Tid**, con il commit del blocco 1d e le decisioni di §4, che
+aspettano i giri successivi (§8). Le decisioni di §4 restano aperte per i giri che le aspettano.
 Il team BE, a oggi, non ha niente da fare che aspetti un giro: §5.
 
 | # | Chi | Che cosa | Dove | Aspetta |
@@ -21,13 +21,14 @@ Il team BE, a oggi, non ha niente da fare che aspetti un giro: §5.
 | 7-quater | ✅ Tid | Apply del blocco 1b (`-46` … `-50`); pgTAP di §12.8.3 verdi (2026-11-04) | §12.8.3 | 7-ter |
 | 7-quinquies | ✅ sessione DB | Giro 1, blocco 1c (D40, D41): scritto e provato sullo scratch | §12.9 | 7-quater |
 | 7-sexies | ✅ Tid | Apply del blocco 1c (`-51`, `-52`); pgTAP di §12.9.3 verdi (2026-11-04) | §12.9.3 | 7-quinquies |
-| 8 | **sessione DB** ⏭️ | Giro 1, blocco 1d (D43, D7) | §12.5 | 7-sexies |
-| 9 | Tid | Le decisioni di §4, per i giri che le aspettano | §4, §8 | — |
+| 8 | ✅ sessione DB | Giro 1, blocco 1d (D43, D7): scritto e provato sullo scratch | §12.10 | 7-sexies |
+| 8-bis | ✅ Tid | Apply del blocco 1d; pgTAP di §12.10.3 verdi (2026-11-04). Il giro 1 è chiuso | §12.10.3 | 8 |
+| 9 | **Tid** ⏭️ | Le decisioni di §4, per i giri che le aspettano | §4, §8 | — |
 | 10 | team BE | Le ricadute di §5, quando il giro DB corrispondente è applicato; BE5 e BE7 (commenti stantii) quando capita | §5 | 8, 9 |
 | 11 | sessione DB | Pagine `manual/` riallineate a ogni difetto chiuso; brief in `work-done/` | §1 | 8, 9 |
 
-**Decisioni aperte di Tid:** quelle di §4. **Da committare:** questo brief e il blocco 1c (§12.9: `-51`, `-52`,
-i due pgTAP e la doc di §12.9.4).
+**Decisioni aperte di Tid:** quelle di §4. **Da committare:** questo brief e il blocco 1d (§12.10: `-53`, `-54`,
+`presidi.csv`, i pgTAP, lo script e la doc di §12.10.4).
 
 > **Chi scrive:** sessione DB (`dev/db-tid`), 2026-11-04. **A chi:** Tid e team DB; §5 al team BE.
 > **Origine:** verifica delle pagine `docs/it/dbzero/dbops/manual/` contro lo standard e contro il
@@ -78,8 +79,8 @@ sono difetti: il peso dice l'ordine dei giri, non se si fanno.
 
 | Classe | Difetti |
 | --- | --- |
-| **A** — D14, D15, D54, D56 ✅ scritti nel giro 1a (§12); D1 ✅ nel blocco 1b (§12.8); D40, D41 ✅ nel blocco 1c (§12.9) | D1 (contratto del 2026-07-22: un dblink fallito restituisce la sentinella), D3, D4, D6, D14, D15, D21, D25, D30 (cinque righe del seed senza prefisso), D35, D36, D37, D40, D41, D43, D44, D46, D47, D51, D53, D54, D56, D57, D58, D59, D63, D64, D66, D67, D68, D70 |
-| **B** — D26 ✅ nel blocco 1b (§12.8) | D2, D5, D7, D8, D9, D10, D11, D12, D13, D16, D17, D18, D19, D20, D22, D23, D24, D26, D27, D28, D29, D32, D33, D34, D38, D39, D45, D49, D52, D60, D69, D71, D73 |
+| **A** — D14, D15, D54, D56 ✅ scritti nel giro 1a (§12); D1 ✅ nel blocco 1b (§12.8); D40, D41 ✅ nel blocco 1c (§12.9); D43 ✅ nel blocco 1d (§12.10) | D1 (contratto del 2026-07-22: un dblink fallito restituisce la sentinella), D3, D4, D6, D14, D15, D21, D25, D30 (cinque righe del seed senza prefisso), D35, D36, D37, D40, D41, D43, D44, D46, D47, D51, D53, D54, D56, D57, D58, D59, D63, D64, D66, D67, D68, D70 |
+| **B** — D26 ✅ nel blocco 1b (§12.8); D7 ✅ nel blocco 1d (§12.10) | D2, D5, D7, D8, D9, D10, D11, D12, D13, D16, D17, D18, D19, D20, D22, D23, D24, D26, D27, D28, D29, D32, D33, D34, D38, D39, D45, D49, D52, D60, D69, D71, D73 |
 | **C** | D17-bis, D42, D48, D50, D55, D61, D62, D65, D72, D74 — ✅ scritti nel giro C1 (§10) tutti tranne D17-bis e D74; di D61 restano i quattro strumenti DBA (Q9) |
 
 ⚠️ D31 non c'è: il ramo del `tx_id` non registrato l'ha già giudicato il brief chiuso
@@ -722,7 +723,7 @@ pagine nuove per il building block.
 | --- | --- | --- |
 | 1b | D1 (un canale di log irraggiungibile blocca ogni scrittura tracciata), D26 (l'interruttore `myapp.log_with_dblink` letto in quattro modi) | ⭐ Decisione di Tid (2026-11-04): un default solo, **assente = acceso** (il canale c'è se c'è una stringa e l'interruttore non è `off`), come `fn_ensure_logconn`, il `makefile` e la CI. `fn_audit_log_once` resta fuori finché Q9 non decide il suo ramo dblink (D60). ✅ Scritto e provato: §12.8 |
 | 1c | D40 (`fn_run_automations_cleanup`: un rifiuto non ferma il giro e non si vede), D41 (`fn_run_automations_delete_block` senza audit nel giro vero) | ✅ Scritto e provato: §12.9 |
-| 1d | D43 (`vw_processi_che_bypassano` col ruolo ritirato), D7 (`vw_riferimenti_morti_rientrati` con la misura fallita) | da scrivere |
+| 1d | D43 (`vw_processi_che_bypassano` col ruolo ritirato), D7 (`vw_riferimenti_morti_rientrati` con la misura fallita) | ✅ Scritto e provato: §12.10 |
 
 ### 12.6 Dopo l'apply: un test lento, e la stima che lo spiegava
 
@@ -907,3 +908,80 @@ in `framework-automazione-db-migliorie` §2.4, come chiedeva la riga di D41.
 `dbops/manual/automation_delete_block.md`, `maintenance/manual/proc_automations_cleanup_job.md` (la
 sezione «una corsa verde può nascondere…» ora dice il contrario), `guide/automazione-db.md` (una
 frase); `framework-automazione-db-migliorie` §2.4.
+
+### 12.10 Blocco 1d — due presidi che dicevano il falso (D43 + D7)
+
+#### 12.10.1 Che cosa è stato scritto
+
+| Dove | Difetto | Che cosa |
+| --- | --- | --- |
+| `20_code/dbops/20261104-53` | D43 | `vw_processi_che_bypassano` senza il debito dichiarato per nome: il debito era uno, `zeroerp_batch_fatturazione`, ritirato il 2026-10-15. Con lui spariscono la colonna `stato`, che senza debito varrebbe sempre `NON_DICHIARATO`, e la `nota` fissa. Resta `ruolo`, e la vista deve restare **vuota**. DROP e CREATE (colonne tolte; nessun dipendente; SELECT all'app dai default privileges); `security_invoker` |
+| `80_data/sql/dbops/presidi.csv` | D43 | La riga del presidio perde `colonna_stato`/`stato_atteso` (si contano tutte le righe, soglia ZERO) e la nota si riscrive. I due mirror sono `runOnChange` |
+| `20_code/dbops/20261104-54` | D7 | `vw_riferimenti_morti_rientrati`: una voce la cui funzione esce `NON_MISURATO` non è «rientrata». Il rosso della misura mancata sta in `vw_riferimenti_morti_da_sanare` e nel guardrail CI. La misura si legge una volta (CTE `MATERIALIZED`). Colonne invariate |
+| `db/pgtap/dbops/test-processi-registro.sql` | D43 | Test 13: la vista è vuota, senza filtro di stato. Nuovo 13-bis (plan 16): la definizione non contiene letterali (un nome scritto lì diventa un'eccezione che sopravvive al ruolo) e il presidio non ha filtro di stato. È un presidio sul testo, dichiarato: un ruolo con BYPASSRLS non si crea in un test |
+| `db/pgtap/dbops/test-riferimenti-morti-v1.sql` | D7 | Test 9-11 (plan 12): la vista viva su una misura **costruita**. Il suo testo, con la chiamata alla misura sostituita da una funzione in `pg_temp`; la 9 prova che la sostituzione avviene |
+| `scripts/ritira_ruoli_dismessi.sh` | D43 | Leggeva `ruolo \|\| ' ' \|\| stato`: ora `ruolo` |
+
+⚠️ **Il presidio del D7 non è quello che il brief chiedeva**, cioè una funzione costruita perché
+`plpgsql_check` sollevi. Sullo scratch (2026-11-04) ho provato un errore di sintassi, un `1/0`, una
+IMMUTABLE che solleva al planning, un record non assegnato, una polimorfica, un event trigger, un trigger su
+vista, uno su partizionata e uno con transition table: `plpgsql_check` li **riferisce** tutti, nessuno lo fa
+sollevare. Solleva per l'ambiente (estensione irraggiungibile, lock), non per una funzione. Da qui la
+misura costruita.
+
+**Residuo**, annotato e non corretto: gli anti-join della misura sono scritti due volte, nelle viste e in
+`scripts/sql/guardrail_riferimenti_morti.sql`, che materializza la misura per non pagarla due volte. Il
+guardrail si ferma sui `NON_MISURATO` prima del suo ramo (B), quindi oggi le due letture coincidono. Un
+guardrail che legge le viste è la forma giusta; va con un giro sul guardrail, non qui.
+
+#### 12.10.2 Le prove (scratch `zeroerp_ruoli`, come owner, SQL estratto, `BEGIN … ROLLBACK`)
+
+Il mirror del CSV lo fa Liquibase: nella prova la riga del presidio si è simulata con un UPDATE nella
+stessa transazione.
+
+| pgTAP | Senza | Con |
+| --- | --- | --- |
+| `dbops/test-processi-registro` | rosso il 13-bis | 16/16 |
+| `dbops/test-riferimenti-morti-v1` | rosso il 10 (TAP n. 11: la voce `NON_MISURATO` esce rientrata) | 12/12 |
+| `dbops/test-catalogo-presidi-v1`, `dbops/test-conta-presidio-per-variante-v1`, `dbops/test-presidi-testi-v1`, `dbops/test-presidio-processi-testo-per-causa-v1`, `dbops/test-corpo-funzione-senza-commenti-v1` | verdi | verdi, uguali |
+
+Guardrail pre-commit verdi.
+
+⛔ **Dopo l'apply, un rosso come app (Tid, 2026-11-04).** `test-riferimenti-morti-v1` falliva il test 9 (TAP
+n. 10, «la sostituzione avviene»), poi la 10 cadeva su `permesso negato per la tabella tmp_raw`, ed era lento.
+La causa: `pg_get_viewdef` qualifica i nomi rispetto al search_path di chi chiama, e l'app ha `dbops` nel suo;
+il nome usciva senza schema, la sostituzione non avveniva, e i test 10-11 eseguivano la misura **vera** (una
+compilazione di centinaia di funzioni, che dopo il conteggio DEFINER del test 6 trova `tmp_raw` del
+proprietario). La mia prova era da owner col search_path di default. Correzione nel solo pgTAP: il testo si
+legge sotto `SET LOCAL search_path = pg_catalog`, e se la sostituzione non avviene la 10 e la 11 sono rosse
+con una riga sentinella, senza toccare la misura vera. Riprovato col search_path dell'app: con la vista
+viva 12/12; con la vista di prima (20260804-64, rimessa in transazione) rosso il test 10. Il tempo del file
+è quello del commit precedente (~3 s sullo scratch).
+
+#### 12.10.3 Per Tid — ✅ 1 e 2 fatti (Tid, 2026-11-04: migrazione applicata, test verdi)
+
+1. Apply su dbdev e sullo scratch di `20261104-53`, `-54` e del mirror di `presidi.csv`.
+2. pgTAP: `dbops/test-processi-registro`, `dbops/test-riferimenti-morti-v1`, `dbops/test-catalogo-presidi-v1`,
+   `dbops/test-conta-presidio-per-variante-v1`.
+3. Commit.
+
+Con il blocco 1d il giro 1 è chiuso.
+
+ℹ️ **La durata di `test-riferimenti-morti-v1`** (Tid, 2026-11-04: «un po' lento»). Fatto datato: ~3 s sullo
+scratch, uguale al commit precedente; quasi tutto sono due misure complete di `plpgsql_check` (~1,6 s
+ciascuna: 717 funzioni e 1.971 coppie trigger-tabella), la seconda voluta dal test 6, che misura il percorso
+del digest. Decisione di Tid: si lascia così. Le alternative scartate per ora: una misura per «forma» di
+tabella delle funzioni trigger (cambio della misura, con un brief suo) o il test 6 solo in CI. I giri successivi (§8) aspettano le decisioni di §4, salvo quelli che
+Tid vorrà far partire senza.
+
+#### 12.10.4 Doc
+
+* `dbops/manual/vw_processi_che_bypassano.md` riscritta dallo Scopo in giù (niente stati, perché deve
+  restare vuota, come si dichiarerebbe un debito nuovo, test, nota);
+* `dbops/manual/vw_riferimenti_morti_rientrati.md` (la regola `NON_MISURATO`, i test 9-11, nota);
+* `guide/processi-automatici-classe-e-identita.md` §6 (il controllo sul passe-partout non ammette debiti);
+* `vendite/manual/fatture_fondi_fattura_source.md`: diceva al presente che il giro notturno attraversa la RLS
+  con `BYPASSRLS` di `zeroerp_batch_fatturazione`, ritirato il 2026-10-15.
+* Controllate e lasciate: `riferimenti_morti_esenzioni`, `vw_riferimenti_morti_da_sanare`,
+  `fn_check_funzioni_riferimenti_morti`, `guide/presidi-e-registri-del-debito`,
+  `guide/architettura-permessi-e-autorizzazioni`, `postgresql/row-level-security` (dicevano già «vuota»).

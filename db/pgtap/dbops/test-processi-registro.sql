@@ -25,7 +25,9 @@
 -- 10) vw_processi_dominio_senza_emittente non ha righe NON_DICHIARATO
 -- 11) un DOMINIO senza bersagli finisce nella vista (caso COSTRUITO)
 -- 12) un percorso su colonna inesistente finisce nella vista (caso COSTRUITO)
--- 13) vw_processi_che_bypassano non ha righe NON_DICHIARATO
+-- 13) vw_processi_che_bypassano e' vuota (nessun ruolo applicativo con BYPASSRLS)
+-- 13-bis) ⛔ vw_processi_che_bypassano non fa eccezioni per NOME, e il presidio ne
+--     conta tutte le righe (20261104-53, brief-db-revisione-dbops D43)
 -- 14) ⭐ un bersaglio col percorso ma SENZA difesa finisce nel livello 2 (COSTRUITO,
 --     non appoggiato a un debito reale: quello prima o poi si paga)
 -- 15) ⛔ due righe di catalogo per lo STESSO lavoro: solo una puo' essere viva
@@ -46,7 +48,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(15);
+SELECT plan(16);
 
 -- ============================================================
 -- 1. La tabella c'e'
@@ -248,14 +250,28 @@ SELECT is(
 -- ============================================================
 -- 13. Nessun bypass non dichiarato
 -- ============================================================
--- ⚠️ La regola presidiata non e' «la vista e' vuota»: un bypass puo' essere un
---   debito registrato, con la fase in cui si chiude (lo e' stato
---   zeroerp_batch_fatturazione, ritirato il 2026-10-15). La regola e' che non ne
---   compaia uno NUOVO.
+-- ⭐ rev 20261104-53 (brief-db-revisione-dbops D43): la vista deve restare
+--   VUOTA. Fino a quel giorno ammetteva un debito dichiarato per nome
+--   (zeroerp_batch_fatturazione, ritirato il 2026-10-15) e questo test guardava
+--   solo le righe NON_DICHIARATO: un ruolo tornato con quel nome sarebbe passato.
+--   Senza debito non c'e' piu' niente da escludere.
 SELECT is_empty(
-    $$SELECT ruolo FROM dbops.vw_processi_che_bypassano
-       WHERE stato = 'NON_DICHIARATO'$$,
-    'nessun ruolo applicativo bypassa la RLS fuori dall''elenco dichiarato'
+    $$SELECT ruolo FROM dbops.vw_processi_che_bypassano$$,
+    'nessun ruolo applicativo bypassa la RLS'
+);
+
+-- 13-bis. La 13 non basta: su una macchina senza ruoli con BYPASSRLS e' verde anche
+--   con la vista di prima. Il difetto era la FORMA, e qui si guarda la forma:
+--   nessun letterale nella definizione (un nome di ruolo scritto li' diventa
+--   un'eccezione che sopravvive al ruolo), e nessun filtro di stato nel
+--   presidio (contava solo le righe non dichiarate).
+--   ⚠️ Presidio sul testo, dichiarato tale: un ruolo con BYPASSRLS non si crea
+--   in un test, ci vuole un superuser.
+SELECT ok(
+    pg_get_viewdef('dbops.vw_processi_che_bypassano'::regclass) !~ ''''
+    AND (SELECT p.colonna_stato IS NULL AND p.stato_atteso IS NULL
+           FROM dbops.presidi p WHERE p.vista = 'dbops.vw_processi_che_bypassano'),
+    'vw_processi_che_bypassano non nomina ruoli e il presidio ne conta tutte le righe'
 );
 
 -- ============================================================
