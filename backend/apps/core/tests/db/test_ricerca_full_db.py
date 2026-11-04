@@ -456,7 +456,7 @@ class RicercaFullDbTests(unittest.TestCase):
                 cur.execute(
                     "SELECT x.id, x.utility_id FROM config.utilities_tipi_ruolo x "
                     "  JOIN config.tipi_ruoli tr ON tr.id = x.tipo_ruolo_id "
-                    " WHERE COALESCE(tr.codice_interno, tr.codice) = 'EF' AND x.attivo "
+                    " WHERE tr.codice_interno = 'EF' AND x.attivo "
                     " ORDER BY x.id LIMIT 1"
                 )
                 riga_ef = cur.fetchone()
@@ -851,7 +851,7 @@ class RicercaFullDbTests(unittest.TestCase):
                     "UPDATE config.tipi_ruoli_nature_ammesse trna SET attivo = false "
                     "  FROM config.tipi_ruoli tr "
                     " WHERE tr.id = trna.tipo_ruolo_id "
-                    "   AND COALESCE(tr.codice_interno, tr.codice) = 'CL'"
+                    "   AND tr.codice_interno = 'CL'"
                 )
                 self.assertGreater(cur.rowcount, 0)
                 cur.execute("SELECT enum_range(NULL::config.natura_soggetto_enum)::text[]")

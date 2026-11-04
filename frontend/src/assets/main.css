@@ -2226,6 +2226,16 @@ a {
  * di PrimeFlex — che qui non esiste. Una regola sola; la taglia e il peso
  * restano al chiamante, che li dichiara nella sua classe. */
 .app-mono { font-family: monospace; }
+/* ⭐ `app-codice-input` (2026-11-04, brief-be-codice-maiuscolo §4): il campo
+ * `codice` mostra in maiuscolo cio' che l'operatore digita, perche' il DB lo
+ * salva cosi' (automazione CODICE_MAIUSCOLO, `upper(btrim())`). ⛔ E' SOLO
+ * VISIVO: il valore del form resta come digitato e la regola vive nel DB, non
+ * si ricopia in JavaScript. Il placeholder resta com'e' scritto: e' un
+ * suggerimento, non un codice. Va su ogni input `v-model="….codice"` di una
+ * tabella del perimetro; le eccezioni (le tabelle dove il DB conserva il
+ * codice com'e') stanno, col motivo, in `scripts/check-campo-codice.mjs`. */
+.app-codice-input { text-transform: uppercase; }
+.app-codice-input::placeholder { text-transform: none; }
 
 /* Un NUMERO che sotto zero e' un allarme (la disponibilita' di magazzino: una
  * promessa non piu' mantenibile, D-L2-d). Rosso di severita' e in grassetto,

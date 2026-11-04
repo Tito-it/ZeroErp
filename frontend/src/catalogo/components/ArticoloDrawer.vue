@@ -486,7 +486,7 @@ const drawerActions = computed(() => {
     <div class="form-grid-2col">
       <div class="form-field">
         <label>{{ t('catalogo.field_codice') }} *</label>
-        <InputText v-model="form.codice" :disabled="isFieldLocked('codice')"
+        <InputText v-model="form.codice" class="app-codice-input" :disabled="isFieldLocked('codice')"
           :invalid="campiErrati.includes('codice')"
         />
       </div>

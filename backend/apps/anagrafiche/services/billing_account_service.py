@@ -117,8 +117,9 @@ class BillingAccountService:
 
         # billing_account_id arriva sempre dall'URL converter <int:...>
         # nelle view: nessuna validazione manuale qui.
-        # Validazione ruolo: whitelist a 3 valori, normalizzata upper.
-        cleaned_ruolo = (ruolo_codice_soggetto or "").strip().upper()
+        # Validazione ruolo: whitelist a 3 valori. Il ruolo e' il `codice_interno`,
+        # chiave tecnica: si confronta ESATTA, niente maiuscolo (Tid, 2026-11-04, brief-be-codice-maiuscolo §7.2).
+        cleaned_ruolo = (ruolo_codice_soggetto or "").strip()
         ErrorManager.require(
             cleaned_ruolo in _ALLOWED_RUOLI_BA,
             code="E_ANAG_VALIDAZIONE",

@@ -50,7 +50,7 @@ const stradarioGenRef = ref(null)
 const tipiStatoArricchiti = computed(() =>
   props.tipiStato.map(t => ({
     ...t,
-    esistente: props.tipiEsistenti.includes(t.codice),
+    esistente: props.tipiEsistenti.includes(t.codice_interno),
   }))
 )
 
@@ -82,14 +82,14 @@ const viaNoResultsGenerale = computed(() =>
     <div v-if="tipiStatoArricchiti.length > 0" class="indirizzo-tipi-bar">
       <div
         v-for="tipo in tipiStatoArricchiti"
-        :key="tipo.codice"
+        :key="tipo.codice_interno"
         class="indirizzo-tipo-tab"
         :class="{
           'indirizzo-tipo-tab--attivo': tipo.attivo,
           'indirizzo-tipo-tab--compilato': tipo.compilato && !tipo.attivo,
           'indirizzo-tipo-tab--esistente': tipo.esistente,
         }"
-        @click="!tipo.esistente && $emit('switchTipo', tipo.codice)"
+        @click="!tipo.esistente && $emit('switchTipo', tipo.codice_interno)"
         :title="tipo.esistente ? t('anagrafiche.indirizzo_soggetto.tipo_gia_creato') : (tipo.obbligatorio ? t('anagrafiche.indirizzo_soggetto.obbligatorio') : '')"
       >
         <i v-if="tipo.compilato && !tipo.esistente" :class="STATUS_ICONS.SI" style="font-size: 0.7rem;" />

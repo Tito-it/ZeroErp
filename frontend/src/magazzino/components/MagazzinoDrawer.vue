@@ -235,6 +235,7 @@ function onUbicazioniChiuse() {
         <label>{{ t('magazzino.magazzini.field_codice') }} *</label>
         <InputText
           v-model="form.codice"
+          class="app-codice-input"
           :disabled="isEdit || isReadonly"
           :invalid="campiErrati.includes('codice')"
         />

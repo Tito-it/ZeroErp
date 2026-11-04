@@ -43,7 +43,7 @@ class CategorieClientiListiniRepositoryTests(TestCase):
         self.assertEqual(result, {"id": 7})
         sql, params = cursor.execute.call_args.args
         self.assertIn("JOIN config.tipi_ruoli tr ON tr.id = sr.tipo_ruolo_id", sql)
-        self.assertIn("COALESCE(tr.codice_interno, tr.codice) AS emittente_codice_ruolo", sql)
+        self.assertIn("tr.codice_interno AS emittente_codice_ruolo", sql)
         self.assertNotIn("sr.codice_ruolo", sql)
         self.assertEqual(params, [7])
 
@@ -68,6 +68,6 @@ class CategorieClientiListiniRepositoryTests(TestCase):
 
         self.assertIn("JOIN config.tipi_ruoli tr ON tr.id = sr.tipo_ruolo_id", count_sql)
         self.assertIn("JOIN config.tipi_ruoli tr ON tr.id = sr.tipo_ruolo_id", list_sql)
-        self.assertIn("COALESCE(tr.codice_interno, tr.codice) AS emittente_codice_ruolo", list_sql)
+        self.assertIn("tr.codice_interno AS emittente_codice_ruolo", list_sql)
         self.assertNotIn("sr.codice_ruolo", count_sql)
         self.assertNotIn("sr.codice_ruolo", list_sql)

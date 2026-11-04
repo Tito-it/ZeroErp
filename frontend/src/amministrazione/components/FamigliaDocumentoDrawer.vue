@@ -308,6 +308,7 @@ const titolo = computed(() => (isEdit.value
         <!-- Il codice che la lista mostra e cerca: mutabile e unico. -->
         <InputText
           v-model="form.codice"
+          class="app-codice-input"
           :maxlength="FIELD_LENGTH.FAMIGLIA_CODICE_OPERATORE_MAX"
           :disabled="isReadonly"
           :invalid="campiErrati.includes('codice')"

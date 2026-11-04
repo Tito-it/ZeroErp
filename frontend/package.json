@@ -25,6 +25,7 @@
     "guard:api-componenti": "node scripts/check-api-componenti.mjs",
     "guard:media-soglie": "node scripts/check-media-soglie.mjs",
     "guard:confini-domini": "node scripts/check-confini-domini.mjs",
+    "guard:campo-codice": "node scripts/check-campo-codice.mjs",
     "test": "vitest",
     "test:run": "vitest run",
     "verify": "run-s lint guards test:run build",

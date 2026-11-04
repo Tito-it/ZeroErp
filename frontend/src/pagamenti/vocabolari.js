@@ -76,8 +76,8 @@ export const TIPO_CANALE_CON_FILIALE = 'BANCA'
 //    `anagrafiche.psp`. Le altre due condizioni le verifica il database.
 export const TIPO_CANALE_PSP = 'PSP'
 
-// Il codice del tipo ruolo da cercare per il soggetto di un canale PSP.
-export const RUOLO_PSP = 'PSP'
+// ⛔ Il tipo RUOLO del soggetto PSP non sta qui: e' `TIPO_RUOLO.PSP` di
+//    `core/constants` (fino al 2026-11-04 c'era una copia, `RUOLO_PSP`).
 
 // ⭐ Le tre destinazioni di una sistemazione. Non sono tre modi di dire la
 //    stessa cosa: producono DUE specie diverse di oggetto — un fondo fattura

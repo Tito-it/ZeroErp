@@ -243,6 +243,7 @@ async function handleSave() {
           <label>{{ t('config.modelli_documenti.asset.field_codice') }} *</label>
           <InputText
             v-model="form.codice"
+            class="app-codice-input"
             :disabled="isEdit || isReadOnlyEffective"
             maxlength="120"
             fluid

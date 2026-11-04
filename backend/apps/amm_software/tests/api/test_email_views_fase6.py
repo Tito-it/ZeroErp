@@ -197,7 +197,7 @@ class TestEmailAccountPatchChiavi(TestCase):
 
         self.assertEqual(response.status_code, 200)
         kwargs = repo.update_account.call_args.kwargs
-        self.assertEqual(kwargs["codice"], "MAIN")
+        self.assertEqual(kwargs["codice"], "main")  # il maiuscolo e' del DB
         self.assertNotIn("smtp_password", kwargs)
 
     @patch(REPO_PATH)
@@ -273,7 +273,7 @@ class TestEmailCreateChiavi(TestCase):
         response = view.post(_admin_request("POST", body=self._ACCOUNT_DEL_DRAWER))
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(repo.create_account.call_args.kwargs["codice"], "MAIN")
+        self.assertEqual(repo.create_account.call_args.kwargs["codice"], "main")  # il maiuscolo e' del DB
 
     @patch(REPO_PATH)
     def test_create_account_chiave_estranea_rifiutata(self, mock_repo_cls: MagicMock) -> None:
@@ -303,7 +303,7 @@ class TestEmailCreateChiavi(TestCase):
         response = view.post(_admin_request("POST", body=body))
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(repo.create_template.call_args.kwargs["codice"], "T")
+        self.assertEqual(repo.create_template.call_args.kwargs["codice"], "t")  # il maiuscolo e' del DB
 
     @patch(REPO_PATH)
     def test_create_template_chiave_estranea_rifiutata(self, mock_repo_cls: MagicMock) -> None:

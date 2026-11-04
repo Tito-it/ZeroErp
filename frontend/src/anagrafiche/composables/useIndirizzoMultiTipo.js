@@ -15,11 +15,11 @@ export function useIndirizzoMultiTipo({ baseSnapshot, baseRestore, baseReset, fo
   // Stato tipi per barra tag UI
   const tipiStato = computed(() =>
     tipiMatrice.value.map(m => ({
-      codice: m.codice,
+      codice_interno: m.codice_interno,
       descrizione: m.descrizione,
       obbligatorio: m.obbligatorio,
-      compilato: !!indirizziSalvati.value[m.codice],
-      attivo: tipoAttivo.value === m.codice,
+      compilato: !!indirizziSalvati.value[m.codice_interno],
+      attivo: tipoAttivo.value === m.codice_interno,
     }))
   )
 
@@ -29,12 +29,12 @@ export function useIndirizzoMultiTipo({ baseSnapshot, baseRestore, baseReset, fo
     tipiMatrice.value = matrice
     indirizziSalvati.value = {}
     const disponibili = excludeCodici
-      ? matrice.filter(m => !excludeCodici.has(m.codice))
+      ? matrice.filter(m => !excludeCodici.has(m.codice_interno))
       : matrice
     const primo = disponibili.find(m => m.obbligatorio) || disponibili[0] || null
     if (primo) {
-      tipoAttivo.value = primo.codice
-      form.tipo_indirizzo_codice_interno = primo.codice
+      tipoAttivo.value = primo.codice_interno
+      form.tipo_indirizzo_codice_interno = primo.codice_interno
     } else {
       tipoAttivo.value = null
       form.tipo_indirizzo_codice_interno = null

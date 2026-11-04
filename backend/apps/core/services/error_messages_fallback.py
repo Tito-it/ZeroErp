@@ -191,6 +191,8 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_CODA_JOB_STANTIO": "Esecuzione interrotta (worker morto o kill): recuperata dal reaper.",
     "E_CODA_SCOPE_OPERATORE_INVALIDO": "Lavoro accodato con scope operatore incompleto.",
     "E_CODICE": "Codice di configurazione non trovato.",
+    "E_CODICE_MAIUSCOLO": "Automazione del codice in maiuscolo fallita su una tabella.",
+    "E_CODICE_TROPPO_LUNGO_IN_MAIUSCOLO": "Il codice, salvato in maiuscolo, supera la lunghezza ammessa.",
     "E_CODICE_NON_MODIFICABILE": "Il codice interno non e' modificabile.",
     "E_COD_INT_RUOLO": "Tipo ruolo non trovato per il codice indicato.",
     "E_COERENZA_ID": "Valore non coerente con il riferimento indicato.",

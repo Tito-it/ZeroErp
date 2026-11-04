@@ -144,7 +144,7 @@ async function handleSave() {
     <div class="step-form__grid">
       <div class="form-field">
         <label>{{ t('amministrazione.definizioni_workflow.ed_col_codice') }} *</label>
-        <InputText v-model="form.codice" :disabled="isEdit"
+        <InputText v-model="form.codice" class="app-codice-input" :disabled="isEdit"
           :invalid="campiErrati.includes('codice')"
         />
         <small v-if="isEdit" class="step-form__hint">{{ t('amministrazione.definizioni_workflow.ed_codice_immutabile') }}</small>

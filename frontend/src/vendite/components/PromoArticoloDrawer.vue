@@ -288,7 +288,7 @@ async function handleSave() {
     attivo: form.value.attivo
   }
   if (!isEdit.value) {
-    payload.codice = form.value.codice.trim().toUpperCase()
+    payload.codice = form.value.codice.trim()  // il maiuscolo lo mette il DB (CODICE_MAIUSCOLO)
     payload.articolo_id = form.value.articolo_obj.id
     payload.uom_id = form.value.uom_id
   }
@@ -354,6 +354,7 @@ async function handleSave() {
       <label>{{ t('vendite.promo_articoli.field_codice') }} <span v-if="!isEdit">*</span></label>
       <InputText
         v-model="form.codice"
+        class="app-codice-input"
         :disabled="isReadOnlyEffective || isLocked('codice')"
         :placeholder="t('vendite.promo_articoli.field_codice_placeholder')"
         maxlength="64"

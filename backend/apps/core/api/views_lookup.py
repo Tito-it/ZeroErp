@@ -167,7 +167,8 @@ class LookupUtilitiesPerEmittenteView(DomainAPIView):
     # Scopo: Restituisce le utility ammesse per il ruolo EF; se `ruolo` e'
     #        fornito, intersecate con quelle ammesse per il ruolo del soggetto.
     def get(self, request: Request) -> JsonResponse:
-        ruolo = (request.query_params.get("ruolo") or "").strip().upper() or None
+        # `ruolo` e' il `codice_interno` del tipo ruolo, chiave tecnica: si confronta ESATTA, niente maiuscolo (Tid, 2026-11-04, brief-be-codice-maiuscolo §7.2).
+        ruolo = (request.query_params.get("ruolo") or "").strip() or None
         results = LookupRepository().list_utilities_per_emittente(ruolo)
         return success_response({"results": results})
 
