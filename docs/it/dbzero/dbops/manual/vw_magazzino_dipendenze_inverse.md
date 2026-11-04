@@ -14,6 +14,7 @@
 > * [magazzino.fn_scrivi_movimento](/dbzero/magazzino/funzioni/fn_scrivi_movimento) — la porta del registro
 > * [vendite.fn_posta_ddt](/dbzero/vendite/funzioni/fn_posta_ddt) — il verso giusto: il posting della bolla sta nelle vendite
 > * [vendite.fn_posta_reso](/dbzero/vendite/funzioni/fn_posta_reso) — il verso giusto: il posting del reso sta nelle vendite
+> * [dbops.fn_corpo_funzione](/dbzero/dbops/funzioni/fn_corpo_funzione) — il corpo senza commenti che legge la lente `CORPO`
 >
 > Guide:
 >
@@ -48,10 +49,14 @@ dipendenze all'indietro» era **scritta** nella matrice delle dipendenze, ma nes
 | Lente | `come` | Che cosa vede |
 | --- | --- | --- |
 | **il catalogo del database** | `CATALOGO` | i legami che il database registra da solo: un collegamento fra tabelle, una vista costruita su un'altra tabella, un trigger che esegue una funzione altrui, una regola di visibilità, un valore predefinito, il tipo di un parametro, il corpo di una funzione scritta in SQL standard. È esatta: non legge testo |
-| **il testo delle funzioni** | `CORPO` | le funzioni scritte come programma, di cui il database non registra i legami: il loro testo, tolti i commenti di riga, cercato per «nome dello schema, punto, nome» |
+| **il testo delle funzioni** | `CORPO` | le funzioni scritte come programma, di cui il database non registra i legami: il loro corpo senza commenti (di riga e a blocco, con i letterali intatti), cercato per «nome dello schema, punto, nome» |
 
 Le regole, i trigger, le regole di visibilità e i valori predefiniti prendono lo schema della
 tabella che li porta: il catalogo da solo non lo dice.
+
+Il corpo della lente `CORPO` viene da [fn_corpo_funzione](/dbzero/dbops/funzioni/fn_corpo_funzione).
+Le funzioni SQL scritte con `BEGIN ATOMIC` restano fuori da questa lente di proposito: le vede già la
+lente `CATALOGO`, dalle dipendenze registrate.
 
 ---
 
@@ -60,11 +65,8 @@ tabella che li porta: il catalogo da solo non lo dice.
 | Conta | Non conta |
 | --- | --- |
 | una funzione del magazzino che legge una tabella delle vendite | una funzione delle **vendite** che usa il magazzino: è il verso giusto |
-| un collegamento da una tabella del magazzino verso un documento | un commento di riga che nomina le vendite |
+| un collegamento da una tabella del magazzino verso un documento | un commento, di riga o a blocco, che nomina le vendite |
 | una vista del magazzino costruita su una tabella degli acquisti | i trigger generati che impediscono di spegnere un magazzino ancora usato da una bolla: nascono dal legame **della bolla verso il magazzino**, il verso giusto, e la vista non legge gli argomenti dei trigger |
-
-⚠️ Solo i commenti di riga si tolgono dal testo: un commento a blocco che nominasse una tabella
-delle vendite accenderebbe la riga come se fosse codice.
 
 ⚠️ Il perimetro dei processi è scritto **dentro la vista**. ⛔ Non si allarga per far tornare vuota
 la vista: cresce solo quando nasce uno schema di processo nuovo, ed è un cambiamento di questa vista,
@@ -106,6 +108,9 @@ Legge solo il catalogo del database, con i permessi di chi la interroga: non toc
   dalla bolla e il carico dal reso senza un rosso: due funzioni del registro leggevano le tabelle
   delle vendite, e quel giorno sono passate nelle vendite. Al primo giro la vista ha trovato anche il
   seriale di un bene che sapeva sotto quale contratto di vendita stava, e il legame è stato tolto.
+* 2026-11-04 — la lente `CORPO` legge da `fn_corpo_funzione` (D14 di `brief-db-revisione-dbops`):
+  prima si toglievano i soli commenti di riga, e un commento a blocco che nominasse uno schema di
+  processo accendeva il cancello come se fosse codice.
 
 ---
 

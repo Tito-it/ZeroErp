@@ -158,7 +158,7 @@ Ogni azione del framework viene registrata in `dbops.audit_log` con:
 * `duration_ms` — tempo di esecuzione
 * `sqlstate` / `error_context` — in caso di errore
 
-Opzionalmente, il log può avvenire **fuori transazione** via dblink (`logconn`), utile quando si vuole conservare il log anche se la transazione fa rollback. Si attiva con il GUC `myapp.log_with_dblink='on'`.
+Opzionalmente, il log può avvenire **fuori transazione** via dblink (`logconn`), utile quando si vuole conservare il log anche se la transazione fa rollback. Si attiva con il GUC `myapp.log_with_dblink='on'`: per l'audit l'interruttore assente vale spento, al contrario degli altri registri fuori transazione. Il dettaglio, e perché oggi quel ramo non va acceso, è in [Messaggi di audit](/guide/messaggi-audit#logging-fuori-transazione).
 
 ---
 
@@ -686,7 +686,7 @@ Il nome della sequenza è **sempre derivato** come `<schema>.<tabella>_<colonna>
 
 Una chiamata a un runner (`SELECT dbops.fn_run_automations_<regola>(...)`) **è una transazione**, e in PostgreSQL il DDL è transazionale: se un errore risale fino alla chiamata, tutto ciò che quella chiamata aveva creato viene annullato. Non resta un sistema a metà — resta quello che le chiamate precedenti avevano già committato.
 
-⚠️ Il caso da conoscere è l'altro: **alcuni runner catturano l'errore per tabella** e proseguono. `storico` intercetta il trigger che esiste già, `cleanup` salta la tabella che si oppone e scrive una riga `ERROR` con `skip_reason = BLOCKED_BY_TABLE`; il giro arriva in fondo e **committa**. Il runner `tx_id`, invece, logga **e risolleva**: lì la chiamata muore, e con lei la transazione. Un errore del primo tipo non si vede dal risultato: si vede solo dall'audit log.
+⚠️ Il caso da conoscere è l'altro: **alcuni runner catturano l'errore per tabella** e proseguono. `storico` intercetta il trigger che esiste già, `cleanup` salta la tabella che si oppone e scrive una riga `ERROR` con `skip_reason = BLOCKED_BY_TABLE`; il giro arriva in fondo e **committa**. Il runner `tx_id`, invece, logga **e risolleva**: lì la chiamata muore, e con lei la transazione. Un errore del primo tipo si vede dall'audit log; per `cleanup` anche dal giornale dei job, perché il runner restituisce un riepilogo e una tabella che si è opposta rende rossa la corsa (vedi la scheda di [fn_run_automations_cleanup](/dbzero/dbops/funzioni/fn_run_automations_cleanup)).
 
 **Cosa fare:**
 

@@ -7,7 +7,7 @@
 --       in cui il letterale E_* sta dentro la fn_check_* e non accanto alla
 --       chiamata che solleva.
 --
--- Elenco test (plan 8) — numerati come li stampa il TAP:
+-- Elenco test (plan 10) — numerati come li stampa il TAP:
 --  1) un codice nominato SOLO come motivo compare nella vista
 --  2) ⭐ e prende la famiglia della guardia che sta DENTRO la check
 --  3) ⛔ il verso che tiene onesto il 2: una guardia illeggibile resta IGNOTO
@@ -19,6 +19,10 @@
 --  7) ⚠️ una guardia su un PARAMETRO nullo resta PARAMETRO
 --  8) ⛔ ma un CAMPO di un parametro record non lo e': e' dominio, non un
 --        chiamante rotto
+--  9) ⭐ DUE codici sulla stessa riga sono due punti: il secondo non si perde
+--        (rev 20261104-29, D56)
+-- 10) ⛔ un codice dentro un commento a BLOCCO non e' un punto: le righe si
+--        tagliano dal corpo senza commenti (rev 20261104-29, D14)
 --
 -- ────────────────────────────────────────────────────────────────
 -- ⭐ PERCHE' IL TEST 2 E' IL CUORE, e non il test 1.
@@ -38,6 +42,9 @@
 --   scrive il test. L'eccezione e' il 6, che e' un debito e va misurato dove
 --   vive.
 --
+-- ⚠️ LA VISTA SI LEGGE UNA VOLTA (rev 20261104-43): le asserzioni leggono una
+--   fotografia presa dopo i testimoni, non la vista dieci volte.
+--
 -- ⚠️ I TESTIMONI NON CHIAMANO fn_log_and_raise_error, ed e' il punto: una
 --   fn_check_* e' PURA, nomina i codici e non solleva. Se un giorno questi
 --   corpi acquistassero una chiamata, i test 1-3 passerebbero per la vecchia
@@ -45,6 +52,8 @@
 --
 -- Brief: brief-db-i-motivi-si-fermano-dentro-la-check.md (V-1)
 -- ChangeSet: 20260908-35-update-vw-codici-errore-forme-condizione-motivo-nominato
+--            20261104-29-update-vw-codici-errore-forme-condizione-tutti-i-codici (9, 10)
+--            20261104-43-update-vw-codici-errore-forme-condizione-sotto-jit
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -53,7 +62,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(8);
+SELECT plan(10);
 
 -- ============================================================
 -- Le funzioni-testimone
@@ -174,11 +183,59 @@ BEGIN
 END
 $f$;
 
+-- ⭐ 9. DUE codici sulla STESSA riga del motivo. Fino a 20261104-29 la vista
+--   prendeva il primo letterale della riga, e il secondo non diventava mai un
+--   punto: per il rubinetto B-7 non aveva la famiglia della sua guardia.
+CREATE FUNCTION pg_temp.pgtap_motivo_due_codici() RETURNS jsonb
+LANGUAGE plpgsql AS $f$
+DECLARE
+    v_motivi jsonb := '[]'::jsonb;
+    v_stato  text  := 'APERTO';
+BEGIN
+    IF v_stato = 'CHIUSO' THEN
+        v_motivi := v_motivi || jsonb_build_object(
+            'codice', 'E_PGTAP_RIGA_PRIMO', 'alternativa', 'E_PGTAP_RIGA_SECONDO',
+            'reason', 'DUE_CODICI');
+    END IF;
+    RETURN v_motivi;
+END
+$f$;
+
+-- ⛔ 10. Il motivo esiste solo dentro un commento a BLOCCO. La vista di prima
+--   scartava le sole righe che cominciano con `--`, e questa la contava.
+CREATE FUNCTION pg_temp.pgtap_motivo_in_commento() RETURNS jsonb
+LANGUAGE plpgsql AS $f$
+DECLARE
+    v_motivi jsonb := '[]'::jsonb;
+    v_stato  text  := 'APERTO';
+BEGIN
+    IF v_stato = 'CHIUSO' THEN
+        /* un giorno:
+        v_motivi := v_motivi || jsonb_build_object(
+            'codice', 'E_PGTAP_MOTIVO_IN_COMMENTO');
+        */
+        NULL;
+    END IF;
+    RETURN v_motivi;
+END
+$f$;
+
+-- ============================================================
+-- La fotografia della vista, UNA volta, dopo i testimoni
+-- ============================================================
+-- ⚠️ La vista legge tutti i corpi plpgsql riga per riga (~0,8 s per lettura,
+--   scratch, 2026-11-04) e le dieci asserzioni la leggevano dieci volte: il
+--   file era diventato lento. Da qui in giu' il database non cambia, quindi
+--   dieci letture e una fotografia danno lo stesso risultato. Il test 6, che
+--   misura il debito sul codice vivo, legge la stessa fotografia.
+CREATE TEMP TABLE _forme ON COMMIT DROP AS
+SELECT * FROM dbops.vw_codici_errore_forme_condizione;
+
 -- ============================================================
 -- 1) Il codice nominato solo come motivo COMPARE
 -- ============================================================
 SELECT ok(
-    EXISTS (SELECT 1 FROM dbops.vw_codici_errore_forme_condizione
+    EXISTS (SELECT 1 FROM _forme
              WHERE codice = 'E_PGTAP_MOTIVO_VALORE_ATTESO'),
     '1. un codice nominato SOLO dentro un motivo compare nella vista'
 );
@@ -191,7 +248,7 @@ SELECT ok(
 --   verrebbe scartato dallo snapshot del rubinetto e la copertura sembrerebbe
 --   cresciuta senza che nessun accumulatore diventasse visibile.
 SELECT is(
-    (SELECT famiglie FROM dbops.vw_codici_errore_forme_condizione
+    (SELECT famiglie FROM _forme
       WHERE codice = 'E_PGTAP_MOTIVO_VALORE_ATTESO'),
     ARRAY['VALORE_ATTESO'],
     '2. la famiglia viene dalla guardia DENTRO la check, non da «c''e'' un motivo?»'
@@ -203,7 +260,7 @@ SELECT is(
 -- Senza, il test 2 passerebbe anche su un classificatore che risponde SEMPRE
 -- VALORE_ATTESO, cioe' su un asse che ha smesso di distinguere.
 SELECT is(
-    (SELECT famiglie FROM dbops.vw_codici_errore_forme_condizione
+    (SELECT famiglie FROM _forme
       WHERE codice = 'E_PGTAP_MOTIVO_ILLEGGIBILE'),
     ARRAY['IGNOTO'],
     '3. una guardia che nessuna regola sa leggere resta IGNOTO anche su un motivo'
@@ -213,7 +270,7 @@ SELECT is(
 -- 4) ⚠️ Il marcatore non e' troppo LARGO
 -- ============================================================
 SELECT ok(
-    NOT EXISTS (SELECT 1 FROM dbops.vw_codici_errore_forme_condizione
+    NOT EXISTS (SELECT 1 FROM _forme
                  WHERE codice = 'E_PGTAP_MOTIVO_SOLO_MENZIONE'),
     '4. un E_* menzionato fuori dalla chiave ''codice'' non diventa un punto'
 );
@@ -222,7 +279,7 @@ SELECT ok(
 -- 5) ⚠️ Per FORMA, non per NOME di funzione
 -- ============================================================
 SELECT ok(
-    EXISTS (SELECT 1 FROM dbops.vw_codici_errore_forme_condizione
+    EXISTS (SELECT 1 FROM _forme
              WHERE codice = 'E_PGTAP_MOTIVO_FUORI_DAL_NOME'),
     '5. un motivo dichiarato fuori da una fn_check_* entra lo stesso'
 );
@@ -251,7 +308,7 @@ SELECT cmp_ok(
                 AND l.riga !~ '^\s*--'
                 AND l.riga ~ '''codice''\s*,\s*''E_[A-Z0-9_]+''') m
       WHERE m.cod NOT LIKE 'E_PGTAP_%'
-        AND NOT EXISTS (SELECT 1 FROM dbops.vw_codici_errore_forme_condizione v
+        AND NOT EXISTS (SELECT 1 FROM _forme v
                          WHERE v.codice = m.cod)),
     '<=', 4,
     '6. i codici-motivo che restano invisibili sono un debito dichiarato (soglia 4, puo'' solo calare)'
@@ -266,17 +323,34 @@ SELECT cmp_ok(
 --   ⛔ Chi un giorno «ripulisse» la regola togliendo il `(?!\s*\.)` vedrebbe
 --   rosso l'8 e non il 7, ed e' l'informazione giusta.
 SELECT is(
-    (SELECT famiglie FROM dbops.vw_codici_errore_forme_condizione
+    (SELECT famiglie FROM _forme
       WHERE codice = 'E_PGTAP_MOTIVO_PARAM_VERO'),
     ARRAY['PARAMETRO'],
     '7. una guardia su un PARAMETRO nullo resta PARAMETRO'
 );
 
 SELECT is(
-    (SELECT famiglie FROM dbops.vw_codici_errore_forme_condizione
+    (SELECT famiglie FROM _forme
       WHERE codice = 'E_PGTAP_MOTIVO_PARAM_CAMPO'),
     ARRAY['IGNOTO'],
     '8. un CAMPO di un parametro record non e'' PARAMETRO: e'' dominio, e cade in IGNOTO'
+);
+
+-- ============================================================
+-- 9-10) Tutti i codici di una riga, e niente dai commenti
+-- ============================================================
+SELECT is(
+    (SELECT string_agg(codice || ':' || array_to_string(famiglie, ','), ' ' ORDER BY codice)
+       FROM _forme
+      WHERE codice IN ('E_PGTAP_RIGA_PRIMO', 'E_PGTAP_RIGA_SECONDO')),
+    'E_PGTAP_RIGA_PRIMO:VALORE_ATTESO E_PGTAP_RIGA_SECONDO:VALORE_ATTESO',
+    '9. due codici sulla stessa riga sono due punti, con la stessa guardia: il secondo non si perde'
+);
+
+SELECT is_empty(
+    $$SELECT codice FROM _forme
+       WHERE codice = 'E_PGTAP_MOTIVO_IN_COMMENTO'$$,
+    '10. un codice dentro un commento a blocco non e'' un punto'
 );
 
 SELECT * FROM finish();

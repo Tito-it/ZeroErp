@@ -1,0 +1,257 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_get_or_create_session_tx_id: il canale dal building block.
+#   Brief: brief-db-revisione-dbops, D1 + D26 (giro 1, blocco 1b).
+#
+# Base: 20_code/dbops/20261018-52, verificato uguale al vivo.
+#
+# ── CHE COSA CAMBIA ─────────────────────────────────────────────────────
+#   1. ⛔ D26: la funzione AGGIRAVA l'interruttore. fn_ensure_logconn lo
+#      rispettava e non apriva logconn, ma il passo 2 rileggeva da se' la
+#      stringa e generava l'id con una connessione nuova: con
+#      myapp.log_with_dblink = 'off' e la stringa impostata (la migrazione in
+#      CI e col makefile) l'id si registrava lo stesso. Ora il canale lo dice
+#      script.fn_canale_log_stringa (20261104-46), PRIMA di aprire qualunque
+#      cosa: spento o non configurato e' il ripiego (a), sentinella e
+#      nessuna GUC pubblicata.
+#      ⚠️ Effetto voluto: con 'off' le scritture tracciate prendono la
+#      sentinella uuid_nil. trgfn_tx_id_managed la accetta, e nessuna FK
+#      punta a dbops.transaction_ids.
+#   2. D1: fn_ensure_logconn non solleva piu' (20261104-47), quindi la sua
+#      chiamata fuori dal blocco protetto non blocca piu' il chiamante. Il
+#      commento «non blocca mai il chiamante» ora e' vero.
+#   3. COMMENT riscritto per intero: era una revisione datata davanti al
+#      testo vecchio (§3.3 del brief).
+#   Tutto il resto, il passo 3 compreso, e' il corpo del -52.
+#
+# ⚠️ LA FORMA. Funzione di postgres: proprieta' in prestito via
+#   dbops.fn_sync_functions_owner, verificata, restituita (forma di 20261103-05).
+#   v_dblink_conn text: e' il tipo di current_setting, nessuna colonna lo porta.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261104-48-update-fn-get-or-create-session-tx-id-canale-mctit.yaml
+
+  - changeSet:
+      id: 20261104-48-update-fn-get-or-create-session-tx-id-canale
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_get_or_create_session_tx_id chiede il canale a script.fn_canale_log_stringa
+        prima di aprire qualunque cosa: con l'interruttore 'off' non registra piu' l'id
+        (D26). Funzione di postgres: proprieta' in prestito.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_canale_log_stringa';
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_get_or_create_session_tx_id'
+                 AND pg_catalog.pg_get_function_identity_arguments(p.oid) = '';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ==========================================================
+              -- 1) Presa in prestito della proprieta' (forma di 20261103-05).
+              -- ==========================================================
+              UPDATE dbops.sec_functions_owner
+                 SET required_owner = current_user
+               WHERE schema_name   = 'dbops'
+                 AND function_name = 'fn_get_or_create_session_tx_id';
+
+              SELECT dbops.fn_sync_functions_owner();
+
+              DO $guard$
+              DECLARE
+                v_owner text;
+              BEGIN
+                -- fn_sync_functions_owner non solleva mai: degrada a WARNING.
+                SELECT pg_get_userbyid(p.proowner)
+                  INTO v_owner
+                  FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'dbops'
+                   AND p.proname = 'fn_get_or_create_session_tx_id';
+
+                IF v_owner IS DISTINCT FROM current_user THEN
+                  RAISE EXCEPTION
+                    'fn_get_or_create_session_tx_id e'' di %, non di % : il prestito della proprieta'' via dbops.fn_sync_functions_owner() non e'' riuscito. Verificare che dbops.fn_sync_functions_owner sia SECURITY DEFINER e posseduta da postgres, e che esista la voce in dbops.sec_functions_owner.',
+                    coalesce(v_owner, '(funzione assente)'), current_user;
+                END IF;
+              END
+              $guard$;
+
+              -- ==========================================================
+              -- 2) La funzione.
+              -- ==========================================================
+              CREATE OR REPLACE FUNCTION dbops.fn_get_or_create_session_tx_id()
+               RETURNS dbops.transaction_ids.id%TYPE
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_tx_id        dbops.transaction_ids.id%TYPE;
+                  -- text: il tipo di current_setting, nessuna colonna lo porta
+                  v_dblink_conn  text;
+              BEGIN
+                  ----------------------------------------------------------------------
+                  -- 0) Se esiste gia' un tx_id in sessione, riusalo e basta
+                  ----------------------------------------------------------------------
+                  BEGIN
+                      v_tx_id := current_setting('dbops.tx_id', true)::uuid;
+                  EXCEPTION WHEN OTHERS THEN
+                      v_tx_id := NULL;
+                  END;
+
+                  IF v_tx_id IS NOT NULL THEN
+                      RETURN v_tx_id;
+                  END IF;
+
+                  ----------------------------------------------------------------------
+                  -- 1) Il canale e' acceso, e con quale stringa? Lo dice il building
+                  --    block, PRIMA di aprire qualunque cosa: l'interruttore spento
+                  --    vale anche per la connessione nuova del passo 3.
+                  ----------------------------------------------------------------------
+                  v_dblink_conn := script.fn_canale_log_stringa();
+
+                  IF v_dblink_conn IS NULL THEN
+                      -- Ripiego (a): canale spento o non configurato. Sentinella, e
+                      -- NIENTE set_config: pubblicare un id non registrato
+                      -- avvelenerebbe la sessione e farebbe fallire ogni scrittura
+                      -- tx_id-managed successiva.
+                      RAISE WARNING
+                          'dbops.fn_get_or_create_session_tx_id: canale di log spento (myapp.log_with_dblink = off) o non configurato (nessuna stringa di connessione); uso la sentinella uuid_nil e non pubblico la GUC di sessione.';
+
+                      RETURN script.uuid_nil();
+                  END IF;
+
+                  ----------------------------------------------------------------------
+                  -- 2) Assicura la connessione di log persistente. Non solleva mai:
+                  --    un canale irraggiungibile e' un WARNING, e il passo 3 ripiega.
+                  ----------------------------------------------------------------------
+                  PERFORM script.fn_ensure_logconn();
+
+                  ----------------------------------------------------------------------
+                  -- 3) Generazione tx_id tramite dblink verso il DB di log.
+                  --    E' l'unico percorso che REGISTRA in dbops.transaction_ids, e lo
+                  --    fa su una connessione separata: la registrazione sopravvive al
+                  --    rollback della transazione di business (autonomia).
+                  --    Sulla connessione PERSISTENTE 'logconn', quella che il passo 2
+                  --    apre o trova gia' aperta: una connessione nuova a ogni
+                  --    transazione costava ~12 ms, contro 1,3 ms su quella aperta
+                  --    (misura da superuser, dbdev, 2026-10-18).
+                  --    La stringa resta il ripiego: se 'logconn' non c'e' (il passo 2
+                  --    non l'ha potuta aprire) e se e' caduta (server riavviato): la
+                  --    si chiude e si riprova UNA volta da una connessione nuova.
+                  ----------------------------------------------------------------------
+                  BEGIN
+                      IF 'logconn' = ANY (coalesce(dblink_get_connections(), ARRAY[]::text[])) THEN
+                          BEGIN
+                              SELECT tx_id
+                              INTO v_tx_id
+                              FROM dblink(
+                                  'logconn',
+                                  $gen$
+                                      SELECT dbops.fn_generate_tx_id(
+                                          'dbops.fn_get_or_create_session_tx_id',
+                                          jsonb_build_object('source','fn_get_or_create')
+                                      )
+                                  $gen$
+                              ) AS t(tx_id uuid);
+                          EXCEPTION WHEN OTHERS THEN
+                              BEGIN
+                                  PERFORM dblink_disconnect('logconn');
+                              EXCEPTION WHEN OTHERS THEN
+                                  NULL;
+                              END;
+                              SELECT tx_id
+                              INTO v_tx_id
+                              FROM dblink(
+                                  v_dblink_conn,
+                                  $gen$
+                                      SELECT dbops.fn_generate_tx_id(
+                                          'dbops.fn_get_or_create_session_tx_id',
+                                          jsonb_build_object('source','fn_get_or_create')
+                                      )
+                                  $gen$
+                              ) AS t(tx_id uuid);
+                          END;
+                      ELSE
+                          SELECT tx_id
+                          INTO v_tx_id
+                          FROM dblink(
+                              v_dblink_conn,
+                              $gen$
+                                  SELECT dbops.fn_generate_tx_id(
+                                      'dbops.fn_get_or_create_session_tx_id',
+                                      jsonb_build_object('source','fn_get_or_create')
+                                  )
+                              $gen$
+                          ) AS t(tx_id uuid);
+                      END IF;
+
+                      -- Ripiego (b): dblink ha risposto ma con NULL -> niente id
+                      -- registrato, quindi sentinella e nessuna pubblicazione.
+                      IF v_tx_id IS NULL THEN
+                          RAISE WARNING
+                              'dbops.fn_get_or_create_session_tx_id: dblink ha restituito NULL; uso la sentinella uuid_nil e non pubblico la GUC di sessione.';
+                          RETURN script.uuid_nil();
+                      END IF;
+
+                      -- Solo qui l'id e' REGISTRATO: si puo' pubblicare.
+                      -- Scope LOCALE alla transazione (v1): un identificativo di
+                      -- transazione non deve sopravvivere alla transazione.
+                      PERFORM set_config('dbops.tx_id', v_tx_id::text, TRUE);
+
+                  EXCEPTION WHEN OTHERS THEN
+                      -- Ripiego (c): errore dblink -> sentinella, nessuna pubblicazione.
+                      RAISE WARNING
+                          'dbops.fn_get_or_create_session_tx_id: errore durante la chiamata dblink a dbops.fn_generate_tx_id: %; uso la sentinella uuid_nil e non pubblico la GUC di sessione.',
+                          SQLERRM;
+
+                      RETURN script.uuid_nil();
+                  END;
+
+                  ----------------------------------------------------------------------
+                  -- 4) Ritorna il tx_id (mai NULL)
+                  ----------------------------------------------------------------------
+                  RETURN v_tx_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_get_or_create_session_tx_id() IS
+                  'Restituisce il tx_id della transazione (GUC dbops.tx_id) o ne genera uno nuovo via dblink sul canale di log (dbops.fn_generate_tx_id), registrandolo in dbops.transaction_ids fuori dalla transazione di business: la registrazione sopravvive al rollback. Se il canale e'' acceso lo dice script.fn_canale_log_stringa, prima di aprire qualunque connessione. Genera sulla connessione persistente logconn (la apre script.fn_ensure_logconn); la stringa di connessione e'' il ripiego. Pubblica la GUC solo per un id registrato, con scope di transazione. Canale spento, non configurato o irraggiungibile: sentinella uuid_nil con un WARNING, nessuna GUC pubblicata, mai un errore. SECURITY DEFINER di postgres con search_path pg_catalog, public, pg_temp: public serve perche'' dblink vive li''; il pin sta nella definizione, un CREATE OR REPLACE che lo dimentica lo azzera.';
+
+              -- ==========================================================
+              -- 3) Restituzione della proprieta' a postgres.
+              -- ==========================================================
+              UPDATE dbops.sec_functions_owner
+                 SET required_owner = 'postgres'
+               WHERE schema_name   = 'dbops'
+                 AND function_name = 'fn_get_or_create_session_tx_id';
+
+              SELECT dbops.fn_sync_functions_owner();
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo dal corpo di 20261018-52.
+              SELECT 1;

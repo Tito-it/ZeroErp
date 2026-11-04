@@ -17,6 +17,7 @@
 > Approfondimento funzioni:
 >
 > * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) — la porta da cui passano i codici sollevati
+> * [dbops.fn_corpo_funzione](/dbzero/dbops/funzioni/fn_corpo_funzione) — il corpo senza commenti da cui la vista legge i codici
 >
 > Guide:
 >
@@ -67,8 +68,9 @@ come `da_trigger`.
 Fra i due errori possibili si sceglie quello che **si corregge guardando**: un falso positivo si vede
 e si scarta, un codice mancante non si vede affatto.
 
-Dal testo si tolgono i commenti di riga (dal `--` a fine riga), così un codice citato in una nota
-non conta.
+Il corpo si legge da [fn_corpo_funzione](/dbzero/dbops/funzioni/fn_corpo_funzione): senza i
+commenti, di riga e a blocco, e con i letterali intatti. Un codice citato in una nota non conta, e uno
+scritto sulla stessa riga dopo una stringa che contiene un doppio trattino non sparisce.
 
 ---
 
@@ -76,9 +78,7 @@ non conta.
 
 1. **I codici costruiti per concatenazione** o passati in una variabile: non sono letterali.
 2. **I `RAISE EXCEPTION` diretti** che non passano dall'helper: non hanno un codice da trovare.
-3. **I codici dentro un commento a blocco**: il testo toglie solo i commenti di riga, quindi un
-   codice citato in un commento a blocco conta come nominato.
-4. Funzioni che non sono PL/pgSQL.
+3. Funzioni che non sono PL/pgSQL: il perimetro resta quello.
 
 ---
 
@@ -107,6 +107,9 @@ non degradata.
   `migliorie-generali-da-test-valutazione`): prima trenta codici dei building block trigger erano
   invisibili qui, e un codice nuovo montato così senza la sua regola non avrebbe fatto scattare il
   cancello.
+* 2026-11-04 — il corpo si legge da `fn_corpo_funzione` (D14 di `brief-db-revisione-dbops`): prima si
+  toglievano i soli commenti di riga, quindi un codice in un commento a blocco contava come nominato,
+  e uno scritto sulla stessa riga dopo un letterale che conteneva un doppio trattino spariva.
 
 ---
 

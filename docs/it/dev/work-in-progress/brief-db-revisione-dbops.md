@@ -2,8 +2,10 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-04
 
-**Riparte: Tid**, con il commit del giro C1 (§10: undici changeSet `20261104-09` … `-19`, applicati e
-verdi il 2026-11-04) e le decisioni di §4 per i giri A e B.
+**Riparte: sessione DB**, col blocco 1d (D43, D7) di §12.5. Il blocco 1c (`20261104-51`, `-52`, §12.9: il
+cleanup rende rossa la corsa con una tabella che si oppone, e il delete_block scrive l'audit anche nel giro
+vero) è applicato e verde (Tid, 2026-11-04); da committare. I blocchi 1a e 1b sono anche committati. Le decisioni di §4 restano aperte per i giri che le aspettano.
+Il team BE, a oggi, non ha niente da fare che aspetti un giro: §5.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -11,13 +13,21 @@ verdi il 2026-11-04) e le decisioni di §4 per i giri A e B.
 | 2 | ✅ Tid | Si parte dalla classe C; ritiri solo se certi; D17-bis e D74 rimandati (2026-11-04) | §10 | 1 |
 | 3 | ✅ sessione DB | Giro C1 scritto e provato sullo scratch; doc riallineata | §10 | 2 |
 | 4 | ✅ Tid | Apply del giro C1 su dbdev e scratch (`-09` … `-19`); pgTAP di §10.2 verdi (2026-11-04) | §10.2 | 3 |
-| 5 | **Tid** ⏭️ | Commit del giro C1; le decisioni di §4 e l'ordine dei giri A e B di §8 | §4, §8 | — |
-| 6 | sessione DB | Giri successivi, nell'ordine deciso da Tid; il residuo C (§10.4) | §8, §10.4 | 5 |
-| 7 | team BE | Le ricadute di §5, quando il giro DB corrispondente è applicato | §5 | 6 |
-| 8 | sessione DB | Pagine `manual/` riallineate a ogni difetto chiuso; brief in `work-done/` | §1 | 6 |
+| 5 | ✅ Tid | Commit del giro C1; si parte dal giro 1, nei difetti senza decisioni (2026-11-04) | §8 | — |
+| 6 | ✅ sessione DB | Giro 1, blocco 1a (D14, D15, D54, D56): scritto e provato sullo scratch | §12 | 5 |
+| 7 | ✅ Tid | Apply del blocco 1a; pgTAP di §12.3 verdi (2026-11-04). Un test lento: §12.6 | §12.3 | 6 |
+| 7-bis | ✅ Tid | Apply di `20261104-43` e `20261104-45`; i pgTAP di §12.6 e §12.7 verdi (2026-11-04) | §12.6, §12.7 | 7 |
+| 7-ter | ✅ sessione DB | Giro 1, blocco 1b (D1 + D26): scritto e provato sullo scratch | §12.8 | 7-bis |
+| 7-quater | ✅ Tid | Apply del blocco 1b (`-46` … `-50`); pgTAP di §12.8.3 verdi (2026-11-04) | §12.8.3 | 7-ter |
+| 7-quinquies | ✅ sessione DB | Giro 1, blocco 1c (D40, D41): scritto e provato sullo scratch | §12.9 | 7-quater |
+| 7-sexies | ✅ Tid | Apply del blocco 1c (`-51`, `-52`); pgTAP di §12.9.3 verdi (2026-11-04) | §12.9.3 | 7-quinquies |
+| 8 | **sessione DB** ⏭️ | Giro 1, blocco 1d (D43, D7) | §12.5 | 7-sexies |
+| 9 | Tid | Le decisioni di §4, per i giri che le aspettano | §4, §8 | — |
+| 10 | team BE | Le ricadute di §5, quando il giro DB corrispondente è applicato; BE5 e BE7 (commenti stantii) quando capita | §5 | 8, 9 |
+| 11 | sessione DB | Pagine `manual/` riallineate a ogni difetto chiuso; brief in `work-done/` | §1 | 8, 9 |
 
-**Decisioni aperte di Tid:** quelle di §4. **Da committare:** questo brief e il giro C1 (§10.1), con la
-doc riallineata.
+**Decisioni aperte di Tid:** quelle di §4. **Da committare:** questo brief e il blocco 1c (§12.9: `-51`, `-52`,
+i due pgTAP e la doc di §12.9.4).
 
 > **Chi scrive:** sessione DB (`dev/db-tid`), 2026-11-04. **A chi:** Tid e team DB; §5 al team BE.
 > **Origine:** verifica delle pagine `docs/it/dbzero/dbops/manual/` contro lo standard e contro il
@@ -68,8 +78,8 @@ sono difetti: il peso dice l'ordine dei giri, non se si fanno.
 
 | Classe | Difetti |
 | --- | --- |
-| **A** | D1 (contratto del 2026-07-22: un dblink fallito restituisce la sentinella), D3, D4, D6, D14, D15, D21, D25, D30 (cinque righe del seed senza prefisso), D35, D36, D37, D40, D41, D43, D44, D46, D47, D51, D53, D54, D56, D57, D58, D59, D63, D64, D66, D67, D68, D70 |
-| **B** | D2, D5, D7, D8, D9, D10, D11, D12, D13, D16, D17, D18, D19, D20, D22, D23, D24, D26, D27, D28, D29, D32, D33, D34, D38, D39, D45, D49, D52, D60, D69, D71, D73 |
+| **A** — D14, D15, D54, D56 ✅ scritti nel giro 1a (§12); D1 ✅ nel blocco 1b (§12.8); D40, D41 ✅ nel blocco 1c (§12.9) | D1 (contratto del 2026-07-22: un dblink fallito restituisce la sentinella), D3, D4, D6, D14, D15, D21, D25, D30 (cinque righe del seed senza prefisso), D35, D36, D37, D40, D41, D43, D44, D46, D47, D51, D53, D54, D56, D57, D58, D59, D63, D64, D66, D67, D68, D70 |
+| **B** — D26 ✅ nel blocco 1b (§12.8) | D2, D5, D7, D8, D9, D10, D11, D12, D13, D16, D17, D18, D19, D20, D22, D23, D24, D26, D27, D28, D29, D32, D33, D34, D38, D39, D45, D49, D52, D60, D69, D71, D73 |
 | **C** | D17-bis, D42, D48, D50, D55, D61, D62, D65, D72, D74 — ✅ scritti nel giro C1 (§10) tutti tranne D17-bis e D74; di D61 restano i quattro strumenti DBA (Q9) |
 
 ⚠️ D31 non c'è: il ramo del `tx_id` non registrato l'ha già giudicato il brief chiuso
@@ -426,6 +436,7 @@ la R3 del brief maintenance (nomi di brief fuori dalle note dei CSV) lo decide T
 | Q12 | D68: chiave di default del segmento senza sorgente — `COMMESSA:<id>…` o `MAN:`? | `MAN:`, che è la forma di una riga senza documento |
 | Q13 | §3.3: la regola sui COMMENT, e se vale per loro la R3 del brief maintenance | Sì, con il presidio di testo |
 | Q14 | Altri dubbi dei lotti, da confermare o girare in difetto: `fn_get_pipeline_task_implementation` ripiega in silenzio sul default per una variante inesistente; una FK registrata a `false` sparisce da ogni presidio; `vw_coda_lavori_da_guardare` è definer su tabella senza RLS e catalogata `LIBERO`; `vw_codici_errore_forme_condizione` è catalogata `LAVORAZIONE` ma la usa lo scatto B-7 come cancello; `vw_processi_dominio_senza_difesa` riconosce il guard dal solo `proname`; `obsoleto_dal IS NULL` fa uscire dai presidi un processo a ritiro programmato che gira ancora (sette viste); un lotto congelato con `stato_lotto` IN_ESECUZIONE/ERRORE ed esiti in ERRORE non lo guarda né `vw_lotti_fermi_da_guardare` né `vw_lotti_chiusi_con_errori_da_guardare`; uno storno di un'uscita senza costo entra in `vw_magazzino_movimenti_senza_costo`; `sessioni_utente.evento = 'SCADENZA'` ammesso e mai scritto; `credenziali_di_prova` senza FK verso la credenziale (un'etichetta che sopravvive alla credenziale); il trigger DELETE_BLOCK è `AFTER DELETE` in fase `a10`; un `ADD CONSTRAINT` overlap su dati già sovrapposti (23P01) ferma il giro; il guard utility gira solo in `ci_apply`, senza processo | Da decidere uno per uno; la sessione DB li apre come difetti solo su conferma |
+| Q15 | Giro 1a: `vw_codici_errore_da_dichiarare` e `vw_punti_canale_campo` guardano il solo plpgsql. Una funzione `LANGUAGE sql` può chiamare `fn_log_and_raise_error` con un codice letterale: entrano nel perimetro? | Sì: il corpo ora lo legge il BB anche per le `BEGIN ATOMIC`, e il perimetro di un presidio sui codici è il modello (chi può sollevare), non il linguaggio. Un giro a sé, perché può far comparire righe nuove nei due presidi |
 
 ## 5. Ricadute su BE e FE
 
@@ -439,8 +450,17 @@ Si chiedono quando il giro DB corrispondente è applicato.
 | BE4 | La ricerca dei lookup passa alla funzione DB (o cade il tetto `LOOKUP_MAX_SOURCE_ROWS`); la paginazione resta com'è | `backend/apps/core/db/dbops_repository.py:55, 415-470` | D57 |
 | BE5 | Docstring stantie: «tre viste … SECURITY DEFINER» (`fn_conta_presidio` è INVOKER) e «registro non vuoto» (il corpo ammette vuoto) | `backend/apps/core/db/presidi_repository.py:16-22`, `backend/apps/core/tests/test_error_codes_db_policy_guardrail.py:66-67` | — |
 | BE6 | Codici nuovi di D44-D47, D12 → rigenerare `error_policies_generated.py` | — | §2.5 |
+| BE7 | Commento stantio: il test nomina il presidio `dbops.vw_run_senza_attore`, ritirato | `backend/apps/core/tests/services/test_job_run.py:136-138` | D42 |
 
 Nessuna ricaduta FE diretta: D25 si vede nel form quando BE2 è fatto.
+
+**Stato al 2026-11-04** (giro C1, blocco 1a, `-43` e `-45` applicati): **nessuna ricaduta chiede lavoro al
+BE.** BE1-BE4 e BE6 aspettano giri non ancora scritti. BE5 e BE7 sono commenti, si fanno quando capita.
+Censiti nel backend (`.py`) gli oggetti ritirati o cambiati da quei giri: nessun chiamante. Restano due mock
+in `test_tracciamento_repositories.py`, che usano `fn_run_automations` come nome qualunque in una riga di
+`audit_log` finta: non si rompono e non vanno toccati. Le tre viste del blocco 1a che il BE legge nei suoi
+test (`vw_punti_canale_campo`, `vw_stati_check_scrittori`, `vw_codici_errore_da_dichiarare`) non hanno
+perso né rinominato colonne: sono cambiate con `CREATE OR REPLACE VIEW`, che non lo permette.
 
 ## 6. Difetti fuori schema trovati leggendo i chiamanti
 
@@ -583,7 +603,7 @@ quelle degli oggetti cambiati (§7.1 resta per la revisione).
 | --- | --- | --- |
 | R1 | I dry run di `fn_run_automations_lock_columns`, `_audit_update`, `_date_validita` firmano ancora `dbops.fn_run_automations`, ritirata | Tre funzioni grandi: si chiude quando ciascuna si riapre (giro 6) |
 | R2 | Il `COALESCE` morto in `fn_lock_columns_divergenze` | Con D32 |
-| R3 | I nomi `fn_audit_begin`/`fn_audit_end` nella lista di `ci_apply/20260205-41` e nelle porte di `vw_audit_log_scrittori_fuori_perimetro` | Testo senza effetto; si toglie quando quei file si riaprono |
+| R3 | I nomi `fn_audit_begin`/`fn_audit_end` nella lista di `ci_apply/20260205-41`. ✅ Dalle porte di `vw_audit_log_scrittori_fuori_perimetro` li toglie il `20261104-21` (giro 1a) | Testo senza effetto; si toglie quando `ci_apply/20260205-41` si riapre |
 | R4 | D17-bis, D74 | Rimandati da Tid |
 | R5 | I quattro strumenti DBA (`fn_find_file_usage`, `fn_foreign_keys_info`, `fn_get_child_fk_col`, `fn_list_indices`) | Non ritirati: decisione Q9 aperta |
 | R6 | `dbops.audit_log.duration_ms` non la scrive più nessuno: la scriveva solo `fn_audit_end`, e `fn_audit_log_once` non ha un parametro per la durata (i runner la mettono in `result`). ✅ La metà su `START` è chiusa da `00_schema/dbops/20261104-19` (vedi §10.1) | **`duration_ms`** da decidere: colonna ritirata, o un parametro della durata in `fn_audit_log_once` |
@@ -607,3 +627,283 @@ allineato ai difetti che qui si segnalano sugli altri runner, e può servire da 
 
 ⚠️ `20261104-05` ha riscritto `proc_automations_lock_columns_job`: chi la riapre parte da quel corpo.
 
+## 12. Giro 1 — i giornali e i presidi che dicono il falso, 2026-11-04
+
+**Decisione di Tid (2026-11-04):** si parte dal giro 1, che non aspetta nessuna domanda di §4. Si fa per
+blocchi, ognuno scritto e provato prima del successivo: **1a** il building block del corpo (D14 + D15) con
+i suoi lettori e gli strumenti (D54, D56); **1b** il canale dblink (D1 + D26); **1c** i runner cleanup e
+delete_block (D40, D41); **1d** le viste puntuali (D43, D7).
+
+### 12.1 Blocco 1a — che cosa è stato scritto
+
+| ChangeSet | Difetto | Che cosa |
+| --- | --- | --- |
+| `20_code/dbops/20261104-20` | D14, D15 | Il building block: `dbops.fn_testo_senza_commenti(text)` (toglie `--` e `/* */`, lascia intatti `'…'`, `E'…'`, `"…"`) e `dbops.fn_corpo_funzione(pg_proc.oid%TYPE)` (il corpo da `prosrc`, o da `pg_get_function_sqlbody` per una `BEGIN ATOMIC`, con `search_path = pg_catalog` perché esca qualificato) |
+| `-21` | D14, D15, R3 | `vw_audit_log_scrittori_fuori_perimetro`: corpo dal BB; la porta è la sola `fn_audit_log_once` |
+| `-22` | D14 | `vw_bersagli_non_dichiarati` |
+| `-23` | D14 | `vw_codici_errore_da_dichiarare` |
+| `-24` | D14 | `vw_punti_primo_motivo`: il marcatore gira anche sul corpo senza commenti; il prefiltro su `prosrc` resta davanti |
+| `-25` | D14 | `vw_magazzino_dipendenze_inverse`, lente CORPO |
+| `-26` | D14 | `vw_funzioni_check_codici`: i tre corpi e `emette_valori` (che leggeva `prosrc` commenti compresi); prefiltro del JIT invariato |
+| `-27` | D14 | `vw_punti_canale_campo` |
+| `-28` | D14, D15 | `vw_stati_check_scrittori`: vede gli scrittori `BEGIN ATOMIC` |
+| `-29` | D56, D14 | `vw_codici_errore_forme_condizione`: ogni codice distinto di una riga è un punto; righe tagliate dal corpo senza commenti |
+| `-30` | D15, M33 | `fn_find_function_usage`: corpo dal BB; firma ancorata (`pg_proc.proname%TYPE`, `pg_namespace.nspname%TYPE`), quindi DROP + CREATE; COMMENT riscritto |
+| `-31` | D54, D15, §3.2 | `fn_search_column_usage`: i vincoli da `pg_get_constraintdef`; corpo dal BB; firma ancorata (`pg_attribute.attname%TYPE`), DROP + CREATE; COMMENT nuovo |
+
+**Le scelte che non si vedono dal titolo:**
+
+* **La regex del BB** è un'alternativa sola: il primo carattere decide se comincia un letterale (rimesso
+  con `\1`) o un commento (tolto). ⚠️ In PostgreSQL un'alternativa al primo livello è sempre greedy: un
+  `/\*.*?\*/` lì dentro si mangerebbe tutto fino all'ultimo `*/`. Il commento a blocco è scritto in
+  modo da non poter contenere `*/`. Limiti dichiarati nel COMMENT: niente dollar-quoting interno, niente
+  commenti annidati.
+* **La collation.** `prosrc` ha la collation del catalogo (`"C"`), il risultato del BB quella di default:
+  il primo apply sullo scratch è fallito su `vw_bersagli_non_dichiarati` (`CREATE OR REPLACE VIEW`
+  rifiuta il cambio di collation di una colonna). Nelle viste il corpo si legge
+  `dbops.fn_corpo_funzione(p.oid) COLLATE "C"`: colonne, `\w` e `~*` restano quelli di prima. La regola
+  è nel COMMENT del BB.
+* **I prefiltri su `prosrc` restano** dove c'erano (`vw_funzioni_check_codici`, `vw_bersagli_non_dichiarati`)
+  e uno si aggiunge (`vw_punti_primo_motivo`): sono sovrainsiemi economici, e tengono la stima sotto il
+  JIT (`test-vw-funzioni-check-codici-sotto-jit-v1` verde, invariato).
+* **Il perimetro delle viste non cambia.** Quelle limitate al plpgsql restano limitate; solo
+  `vw_audit_log_scrittori_fuori_perimetro` e `vw_stati_check_scrittori`, che già guardavano anche le
+  funzioni SQL, ora le vedono davvero. ⚠️ Se `vw_codici_errore_da_dichiarare` e
+  `vw_punti_canale_campo` debbano guardare anche le funzioni SQL (una `LANGUAGE sql` può chiamare
+  `fn_log_and_raise_error`) è una domanda nuova: **Q15** per Tid.
+* **`%TYPE`.** `fn_corpo_funzione` è ancorata a `pg_proc` (parametro e risultato); i due strumenti al
+  catalogo (`name`). Il cambio da `text` a `name` cambia l'identità: DROP + CREATE, possibile perché non
+  hanno chiamanti (censimento del giro C1). `fn_testo_senza_commenti` resta `text`/`text`, con la ragione
+  accanto.
+
+### 12.2 Le prove (scratch `zeroerp_ruoli`, come owner, SQL estratto, `BEGIN … ROLLBACK`)
+
+* **Base uguale al vivo**: lo YAML di partenza di ognuna delle nove viste, eseguito, lascia definizione,
+  COMMENT e opzioni identici al vivo. `vw_stati_check_scrittori` non è `security_invoker`, né nel vivo né
+  nella base: il `-28` lo lascia così.
+* **L'estratto dei dodici changeSet gira intero.** Firme: una per nome;
+  `fn_find_function_usage(name)` e `fn_search_column_usage(name)` restituiscono
+  `TABLE(object_type text, schema_name name, object_name text)`.
+* **Fatto datato, non motivo:** al 2026-11-04 le nove viste danno, sul codice vivo, le stesse righe di
+  prima, identiche nei due versi (775, 716, 734, 1836, 22, 107 righe; tre vuote). Quindi la baseline B-7
+  (`db/baseline-codici-errore-famiglie.tsv`) non si muove. La correzione si prova solo **costruendo i
+  casi**, e i casi sono nei pgTAP.
+* **pgTAP senza e con l'estratto:**
+  * nuovo `dbops/test-corpo-funzione-senza-commenti-v1.sql` (15): con, 15/15;
+  * `dbops/test-stati-check-scrittori-v1.sql` (15 → 17): senza, rossi il 14, il 16 e il 17, perché la
+    vista vecchia non vede lo scrittore `BEGIN ATOMIC` né il valore dopo il `'--'`; con, 17/17;
+  * `dbops/test-audit-log-perimetro-scrittori-v1.sql` (6 → 8): con, 8/8;
+  * `dbops/test-vw-codici-errore-motivo-nominato.sql` (8 → 10): senza, rossi il 9 e il 10; con, 10/10;
+  * invariati senza e con: `test-vw-codici-errore-valore-atteso`, `test-vw-funzioni-check-codici-sotto-jit-v1`,
+    `test-punti-canale-campo-v1`, `test-vw-bersagli-non-dichiarati`,
+    `config/test-costanti-catalogo-citate-dal-codice-v1`, `pagamenti/test-righe-contabili-eliminazione-v1`,
+    `magazzino/test-registro-non-nomina-i-consumatori-v1`, `script/test-rubinetto-primo-motivo-v1`,
+    `script/test-catalogo-messaggi-errore-completo`, `test-catalogo-presidi-v1`, `test-riferimenti-morti-v1`,
+    `test-registri-append-only-postura-v1` (da owner restano rossi i 16-19, uguali senza e con).
+* **Guardrail** dei changelog e dei pgTAP verdi; header di licenza a posto.
+
+### 12.3 Per Tid
+
+Apply su dbdev (`cd db && ../scripts/liquibase5.sh update`) e sullo scratch (`scripts/ci-local.sh --ci-apply`).
+Poi **come app** (sullo scratch la prova come app nella stessa transazione della DDL non si può fare):
+`dbops/test-corpo-funzione-senza-commenti-v1.sql`, `dbops/test-audit-log-perimetro-scrittori-v1.sql`,
+`dbops/test-vw-codici-errore-motivo-nominato.sql`, `dbops/test-vw-funzioni-check-codici-sotto-jit-v1.sql`;
+da owner `dbops/test-stati-check-scrittori-v1.sql`. Il controllo B-7 (`scripts/codici-errore-baseline.sh`)
+deve restare verde senza `--update`.
+
+### 12.4 Doc
+
+Pagine `manual/` dei dodici oggetti riallineate (il difetto descritto diventa il comportamento), due
+pagine nuove per il building block.
+
+### 12.5 Prossimi blocchi
+
+| Blocco | Difetti | Stato |
+| --- | --- | --- |
+| 1b | D1 (un canale di log irraggiungibile blocca ogni scrittura tracciata), D26 (l'interruttore `myapp.log_with_dblink` letto in quattro modi) | ⭐ Decisione di Tid (2026-11-04): un default solo, **assente = acceso** (il canale c'è se c'è una stringa e l'interruttore non è `off`), come `fn_ensure_logconn`, il `makefile` e la CI. `fn_audit_log_once` resta fuori finché Q9 non decide il suo ramo dblink (D60). ✅ Scritto e provato: §12.8 |
+| 1c | D40 (`fn_run_automations_cleanup`: un rifiuto non ferma il giro e non si vede), D41 (`fn_run_automations_delete_block` senza audit nel giro vero) | ✅ Scritto e provato: §12.9 |
+| 1d | D43 (`vw_processi_che_bypassano` col ruolo ritirato), D7 (`vw_riferimenti_morti_rientrati` con la misura fallita) | da scrivere |
+
+### 12.6 Dopo l'apply: un test lento, e la stima che lo spiegava
+
+**Il fatto (Tid, 2026-11-04):** applicato il blocco 1a e verdi i test, `dbops/test-vw-codici-errore-motivo-nominato`
+era lento. Misura sullo scratch:
+
+* una lettura di `vw_codici_errore_forme_condizione` era passata da ~730 ms a ~1.170 ms, e ~300 ms erano
+  **compilazione JIT**. La causa è la stima, non il lavoro: il `-29` portava i codici di una riga in un
+  array e lo espandeva con `unnest`, che dichiara 10 righe (vere: 0,15). Il costo stimato saliva da
+  ~297.000 a ~789.000, sopra `jit_optimize_above_cost` (500.000): oltre quella soglia PostgreSQL
+  inlinea e ottimizza a ogni lettura. È la trappola per cui esiste `dbops.fn_regexp_occorrenze`,
+  rimessa da me con un'altra funzione;
+* il test legge la vista dieci volte, e il gemello `test-vw-codici-errore-valore-atteso` sette.
+
+**La cura, in due pezzi:**
+
+| Dove | Che cosa | Effetto (scratch) |
+| --- | --- | --- |
+| `20_code/dbops/20261104-43` | le occorrenze si estraggono in `classificato` con `fn_regexp_occorrenze` (ROWS 1), solo sulle righe con un codice; `n_punti` conta le coppie distinte (riga, codice) | stima ~289.000, JIT 16 ms, una lettura ~760 ms; output identico al `-29` nei due versi |
+| i due pgTAP | la vista si fotografa una volta, in una tabella temporanea, dopo i testimoni; le asserzioni leggono la fotografia | `motivo-nominato` da 10,2 s a 1,2 s (10/10), `valore-atteso` da 7,3 s a 0,9 s (7/7) |
+
+⚠️ La lezione vale per ogni vista dei presidi: un'espansione dentro la vista si scrive con una funzione
+che dichiara la cardinalità vera, e la prova di un cambio guarda anche il piano (`EXPLAIN ANALYZE`, la
+riga `JIT`), non solo le righe. Il presidio sotto JIT esiste solo per `vw_funzioni_check_codici` e i suoi
+due lettori: per questa vista no, e la regressione l'ha vista Tid a occhio.
+
+### 12.7 Il secondo test lento: il building block su ogni funzione
+
+**Il fatto (Tid, 2026-11-04):** lento anche `dbops/test-audit-log-perimetro-scrittori-v1`. Qui il JIT non
+c'entra: il `-21` chiede a `fn_corpo_funzione` il corpo senza commenti di **ogni** funzione del database
+(sullo scratch 3.656), a ogni lettura, per poi tenere quelle che nominano il registro. Una lettura costava
+~465 ms, e il test legge la vista sei volte.
+
+| Dove | Che cosa | Effetto (scratch) |
+| --- | --- | --- |
+| `20_code/dbops/20261104-45` | in `sorgenti`, prima del building block, `prosqlbody IS NOT NULL OR prosrc ILIKE '%audit\_log%'` | una lettura ~105 ms; il test da 2,4 s a 0,65 s, 8/8 |
+
+⭐ Il prefiltro è un **sovrainsieme esatto**, non una stima: togliere i commenti può solo levare testo, e
+le due regex della vista contengono entrambe `audit_log`. Le `BEGIN ATOMIC` passano tutte, perché il loro
+`prosrc` è vuoto. Verificato sullo scratch senza il filtro di perimetro: 20 scrittori in tutto il
+database, nessuno perso. Il prefiltro su `prosrc` con `LIKE` è ammesso dal test 11 di
+`test-corpo-funzione-senza-commenti-v1`, perché non è una lettura del corpo.
+
+Fatto datato, stesso giorno: le altre viste del blocco 1a leggono fra 28 e 640 ms, e i loro test durano al
+più 1,7 s. `vw_punti_canale_campo` e `vw_stati_check_scrittori` cercano valori diversi per ogni riga e
+non hanno un prefiltro unico: restano come sono.
+
+⚠️ La lezione si aggiunge a quella di §12.6: una vista che cerca un nome fisso nei corpi filtra sul testo
+grezzo **prima** di chiedere il corpo senza commenti.
+
+### 12.8 Blocco 1b — il canale di log: una regola sola, e mai un errore (D1 + D26)
+
+⭐ **La regola** (decisione di Tid, 2026-11-04): il canale è acceso se c'è una stringa di connessione non
+vuota **e** `myapp.log_with_dblink` non vale `off` (maiuscole e spazi non contano). L'interruttore assente
+vale acceso. La stringa è `myapp.logconn` se valorizzata, altrimenti `myapp.dblink_log_connection`: è la
+precedenza già scritta in `guide/configurazione-e-gestione-parametri.md`, che prima rispettavano solo due
+lettori su quattro.
+
+Le letture erano **cinque**, non quattro. Rileggendo il corpo, `fn_ensure_logconn` confrontava con `'on'`:
+l'interruttore **assente** (NULL) valeva acceso, quello **vuoto** (`''`, cioè una GUC impostata e poi
+azzerata in sessione) valeva spento. Il building block li tratta allo stesso modo: acceso. La prima stesura
+del pgTAP costruiva l'assente con `''`, e con le funzioni vecchie il D1 non si vedeva.
+
+#### 12.8.1 Che cosa è stato scritto
+
+| ChangeSet | Difetto | Che cosa |
+| --- | --- | --- |
+| `20_code/script/20261104-46` | D26 | Nuovo `script.fn_canale_log_stringa()`: la stringa del canale se è acceso, NULL se è spento o non configurato. Restituisce la stringa e non un booleano perché chi chiede «è acceso?» la usa subito dopo: due letture separate tornerebbero a divergere. SQL, `STABLE`, INVOKER, del migratore |
+| `20_code/script/20261104-47` | D1, D26 | `fn_ensure_logconn`: il canale dal building block; **ogni** errore di connessione diventa un WARNING (prima solo `duplicate_object` e `53300`); COMMENT riscritto (nominava una GUC inesistente, `dblink.log_connection`); search_path nella forma di casa, stessa semantica |
+| `20_code/dbops/20261104-48` | D26, D1 | `fn_get_or_create_session_tx_id`: il canale si chiede **prima** di aprire qualunque cosa. Prima, con `off` e la stringa impostata, `fn_ensure_logconn` taceva ma il passo dopo generava l'id con una connessione nuova. COMMENT riscritto per intero (era una revisione datata davanti al testo vecchio, §3.3) |
+| `20_code/script/20261104-49` | D26 | `fn_log_error_only`: la stringa dal building block; con `off` un WARNING e nessuna scrittura (prima ignorava l'interruttore). Firma, DECLARE e COMMENT con `%TYPE` |
+| `20_code/maintenance/20261104-50` | D26 | `fn_job_run_log_failure`: come sopra; firma e COMMENT con `%TYPE` |
+
+Tutte e quattro le funzioni sono di postgres: la proprietà si prende in prestito, si verifica con
+`$guard$` e si restituisce, nella forma di `20261103-05`. Con `%TYPE` i tipi risolti sono quelli di oggi:
+le firme non cambiano, e il test 6 di `test-job-run-sqlstate-e-codice-v1` (firma testuale di
+`fn_job_run_log_failure`) resta verde. `fn_audit_log_once` resta fuori finché non si decide Q9: legge
+ancora «assente = spento», e il pgTAP la esclude per nome.
+
+⚠️ **Effetto voluto, da sapere.** Con l'interruttore a `off` (la migrazione col `makefile` e in CI) le
+scritture tracciate prendono la sentinella `uuid_nil` come `tx_id` invece di un id registrato, e i due
+verbali fuori transazione non scrivono. `trgfn_tx_id_managed` accetta la sentinella, e nessuna FK punta a
+`dbops.transaction_ids`. È ciò che `off` ha sempre promesso.
+
+#### 12.8.2 Le prove (scratch `zeroerp_ruoli`, come owner, SQL estratto, `BEGIN … ROLLBACK`)
+
+* **Definizioni prima e dopo, a confronto:** cambiano solo le righe previste; una firma per nome; le
+  quattro funzioni tornano di postgres con gli stessi permessi.
+* **pgTAP nuovo `db/pgtap/script/test-canale-log-v1.sql` (16 test).** Sullo scratch il canale non c'è:
+  per i test 13-15 la sessione di prova ha avuto una stringa verso lo scratch stesso (`PGOPTIONS`), così
+  non si saltano.
+
+  | Versione | Esito |
+  | --- | --- |
+  | `-46` … `-50` | 16/16 |
+  | solo `-46` (i lettori vecchi) | rossi 7 e 8 (`could not establish connection`: il D1), poi la transazione si interrompe |
+  | solo `-46`, senza la sezione D1 | rossi 13, 14 (`have: 1`), 15 (`have: 1`) e 16: il D26 |
+
+  Il giro rosso ha lasciato sullo scratch una riga in `dbops.error_log` e una in `maintenance.job_run_log`
+  (`pgtap.canale_log.spento`): è la prova che prima si scriveva con `off`.
+* **Undici pgTAP che toccano queste funzioni**, senza e con: invariati.
+  `test-registri-append-only-postura-v1` ha 4 rossi (16-19) **identici** nei due versi: vengono dal
+  runner owner, che ha UPDATE e DELETE sui registri; il test li vuole come app.
+* Guardrail pre-commit verdi.
+
+#### 12.8.3 Per Tid — ✅ 1 e 2 fatti (Tid, 2026-11-04: migrazione applicata, test verdi)
+
+1. Apply su dbdev e sullo scratch di `20261104-46` … `-50`.
+2. pgTAP:
+   * `script/test-canale-log-v1` (nuovo; su dbdev il canale c'è, quindi i test 13-15 girano: il gemello
+     del 13 registra un `tx_id` che sopravvive al ROLLBACK, come lo scenario D di
+     `test-tx-id-coerenza-non-registrato`);
+   * `dbops/test-tx-id-coerenza-non-registrato`, `dbops/test-registri-append-only-postura-v1`,
+     `dbops/test-security-definer-search-path-v1`, `maintenance/test-job-run-log-failure-out-of-tx`,
+     `maintenance/test-job-run-sqlstate-e-codice-v1`, `script/test-bersaglio-canale-strutturato`.
+3. Commit.
+
+#### 12.8.4 Doc
+
+* Nuova `script/manual/fn_canale_log_stringa.md`.
+* Pagine `manual/` delle quattro funzioni: `fn_ensure_logconn` riscritta per intero (nominava
+  `dblink.log_connection`, che non esiste); `fn_log_error_only` col flusso nel suo ordine vero;
+  `fn_get_or_create_session_tx_id` senza i due avvisi diventati falsi; `fn_job_run_log_failure`.
+  Ritoccate anche `fn_audit_log_once` (è l'unica fuori dalla regola) e `fn_log_and_raise_error` (diceva
+  che `fn_log_error_only` scrive solo su `logconn`).
+* Guide: `configurazione-e-gestione-parametri`, `messaggi-audit`, `tx_id_implementation_guide` (anche il
+  diagramma, che mostrava ancora l'`uuidv7` locale ritirato il 2026-07-22), `automazione-db`,
+  `Messaggi-di-Errore-e-Generazione-Log`; `postgresql/parametri-personalizzati-(GUC)` e `postgresql/dblink`.
+* I link a `/dbzero/script/funzioni/fn_canale_log_stringa` puntano alla pagina generata, che nasce con la
+  rigenerazione dopo l'apply. `script/index.md` riprende lo «Scopo» delle pagine `manual/` e si riallinea
+  da sola.
+
+### 12.9 Blocco 1c — il cleanup e il delete_block dicono che cosa è successo (D40 + D41)
+
+#### 12.9.1 Che cosa è stato scritto
+
+| ChangeSet | Difetto | Che cosa |
+| --- | --- | --- |
+| `20_code/dbops/20261104-51` | D40 | `fn_run_automations_cleanup` restituisce un riepilogo jsonb invece di `void`, nella forma di `maintenance.fn_apply_storicizza_defaults` (20261103-67): `_applicate`, `_saltate`, `_saltate_motivi`, `_falliti` (i `BLOCKED_BY_TABLE`), `_righe`, `_dettaglio` (i rifiuti, con tabella, regola, SQLSTATE e messaggio). Il job la chiama già con una SELECT: `fn_run_and_log` legge l'esito, e `_falliti > 0` rende la corsa rossa con `E_JOB_ESITO_CON_SCARTI`. Il wrapper non cambia; le righe di audit sono le stesse. `void` → `jsonb` vuole DROP e CREATE; firma e DECLARE con `%TYPE` |
+| `20_code/dbops/20261104-52` | D41 | `fn_run_automations_delete_block`: nel giro vero una riga `OK` (`CREATE_TRIGGER`) per ogni trigger montato; `WARN TABLE_NOT_FOUND` in tutti e due i giri (in simulazione era `DRYRUN`, come un'azione che sarebbe avvenuta); il nome del trigger tratta `''` come assente, come `fn_apply_delete_block_trigger`. Il gestore dei guasti d'ambiente è quello di 20261016-52, riga per riga. Firma con `%TYPE` |
+
+⚠️ **Il dettaglio porta solo i rifiuti, e i salti si contano.** La prima stesura elencava anche i salti
+dichiarati: la prova sul giro vero dello scratch (fatto datato, 2026-11-04) ne ha trovati 924, tutti
+`NO_CLEANUP_COLUMN`. Una regola `*ALL` ne fa uno per ogni tabella senza la colonna, per costruzione, e
+quell'elenco sarebbe finito a ogni corsa in `meta.esito`. Ora i salti stanno in `_saltate_motivi`
+(`{"NO_CLEANUP_COLUMN": 924}`), e il riepilogo di quel giro pesa 130 byte.
+
+La riga di `automation_delete_block` fuori ambito, ignorata senza traccia, non si corregge qui: è annotata
+in `framework-automazione-db-migliorie` §2.4, come chiedeva la riga di D41.
+
+#### 12.9.2 Le prove (scratch `zeroerp_ruoli`, come owner, SQL estratto, `BEGIN … ROLLBACK`)
+
+| Prova | Senza | Con |
+| --- | --- | --- |
+| `dbops/test-cleanup-framework` (plan da 16 a 19) | rossi 13, 15, 16 (un `void` non si fotografa: il test 13 ora cattura il riepilogo) | 19/19 |
+| `dbops/test-delete-block-audit-v1` (nuovo, 7 test) | rossi 2, 5, 6 | 7/7 |
+| `maintenance/test-cleanup-job-ambito-registro-v1`, `dbops/test-automazioni-guasto-ambiente-rilanciato-v1`, `maintenance/test-fn-run-and-log-lock-ed-esito-v1`, `maintenance/test-apply-storicizza-esito-v1`, `dbops/test-corpo-funzione-senza-commenti-v1`, `dbops/test-security-definer-search-path-v1` | verdi | verdi, uguali |
+
+* **Da capo a fondo:** una tabella con un guard sul DELETE e una regola `CLEANUP_PURGE`, poi
+  `CALL maintenance.proc_automations_cleanup_job()`: la corsa del giornale è `ok = false`,
+  `E_JOB_ESITO_CON_SCARTI`, «riuscita con scarti: 2 falliti».
+* **Il giro vero di oggi sullo scratch:** `_falliti = 0` (39 regole applicate, 924 salti): l'apply non
+  rende rossa nessuna corsa da subito.
+* Il DROP e CREATE non perde il permesso: EXECUTE all'app torna dai default privileges (test 19).
+* Guardrail pre-commit verdi.
+
+#### 12.9.3 Per Tid — ✅ 1 e 2 fatti (Tid, 2026-11-04: migrazione applicata, test verdi)
+
+1. Apply su dbdev e sullo scratch di `20261104-51` e `-52`.
+2. pgTAP (`test-cleanup-framework` e il nuovo `test-delete-block-audit-v1` dichiarano il runner owner):
+   `dbops/test-cleanup-framework`,
+   `dbops/test-delete-block-audit-v1`, `maintenance/test-cleanup-job-ambito-registro-v1`,
+   `dbops/test-automazioni-guasto-ambiente-rilanciato-v1`.
+3. ⚠️ Da sapere: da qui la prossima corsa di `automations_cleanup` con una tabella che rifiuta compare in
+   `vw_job_run_da_guardare`. È il comportamento voluto; nessun lavoro per il BE.
+4. Commit.
+
+#### 12.9.4 Doc
+
+`dbops/manual/fn_run_automations_cleanup.md` (nuova sezione sul riepilogo, test, nota),
+`dbops/manual/fn_run_automations_delete_block.md` (che cosa scrive in audit, test nuovo, nota),
+`dbops/manual/automation_delete_block.md`, `maintenance/manual/proc_automations_cleanup_job.md` (la
+sezione «una corsa verde può nascondere…» ora dice il contrario), `guide/automazione-db.md` (una
+frase); `framework-automazione-db-migliorie` §2.4.

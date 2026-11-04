@@ -57,14 +57,16 @@ nome). Non ne toglie mai uno:
 * cancellare la riga ha lo stesso effetto;
 * cambiare `trigger_name` dopo il primo montaggio ne monta un secondo, accanto al vecchio.
 
-Una tabella che non esiste più si salta: nel dry run il salto è dichiarato in audit
-(`TABLE_NOT_FOUND`), nella corsa vera passa in silenzio.
+Una tabella che non esiste più si salta, con un `WARN TABLE_NOT_FOUND` in audit nel dry run come
+nella corsa vera. Ogni trigger montato nella corsa vera lascia una riga `OK`.
 
 ---
 
 ### Note di migrazione
 
 * 2026-01-23 — nasce, con il seed delle otto tabelle dei ruoli dei soggetti.
+* 2026-11-04 — la corsa vera scrive l'audit: `OK` per ogni trigger montato, `WARN TABLE_NOT_FOUND`
+  per ogni tabella sparita (D41 di `brief-db-revisione-dbops`).
 
 ---
 

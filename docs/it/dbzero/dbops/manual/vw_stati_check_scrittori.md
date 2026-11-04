@@ -13,10 +13,14 @@
 >
 > * [dbops.vw_stati_check_da_sanare](/dbzero/dbops/views/vw_stati_check_da_sanare) — la lista di lavoro ricavata da qui
 >
+> Approfondimento funzioni:
+>
+> * [dbops.fn_corpo_funzione](/dbzero/dbops/funzioni/fn_corpo_funzione) — il corpo senza commenti degli scrittori, anche delle `BEGIN ATOMIC`
+>
 > Guide:
 >
 > * [Presidi e registri del debito — uno stato mai scritto](/guide/presidi-e-registri-del-debito#36-uno-stato-previsto-dal-modello-e-mai-scritto) — il presidio per intero
-> * [Linee guida SQL — funzioni `BEGIN ATOMIC`](/linee-guida-sql#5c-funzioni-sql-begin-atomic-perche-come-si-cambiano-come-si-cercano) — perché una ricerca sui sorgenti non le vede
+> * [Linee guida SQL — funzioni `BEGIN ATOMIC`](/linee-guida-sql#5c-funzioni-sql-begin-atomic-perche-come-si-cambiano-come-si-cercano) — perché il sorgente testuale non basta
 
 ---
 
@@ -55,8 +59,13 @@ configurazione non ancora esercitata, non un fallimento muto.
 | Scrittore | Come si vede |
 | --- | --- |
 | il **valore predefinito** della colonna | lo scrive ogni inserimento che non lo nomina, e rende raggiungibile **solo** quel valore |
-| una **funzione che scrive la tabella** | il valore compare nel suo corpo come letterale |
+| una **funzione che scrive la tabella**, PL/pgSQL o SQL | il valore compare nel suo corpo come letterale |
 | una funzione che **chiama** uno scrittore | il valore compare dentro la chiamata: è il caso delle funzioni che ricevono lo stato come parametro |
+
+Il corpo di ogni funzione si legge da [fn_corpo_funzione](/dbzero/dbops/funzioni/fn_corpo_funzione):
+senza commenti, con i letterali intatti, e anche per le funzioni SQL scritte con `BEGIN ATOMIC`, il
+cui sorgente testuale è vuoto. Uno scrittore così conta come gli altri, e un letterale che contiene un
+doppio trattino sulla riga dello scrittore non gli taglia il valore.
 
 `scrittori_nomi` dice quali funzioni portano il valore; `scrittori_tabella` elenca le funzioni che
 scrivono quella tabella, ed è il punto da cui partire per cercare dal lato del programma.
@@ -79,10 +88,7 @@ Il criterio è **testuale**, e i suoi limiti sono dichiarati nel test:
   dichiarato;
 * **il programma non si vede**: per quei valori il database legge una dichiarazione, che il backend
   verifica dal suo lato;
-* **un valore copiato da un'altra colonna non si vede**;
-* **le funzioni `LANGUAGE sql` scritte con `BEGIN ATOMIC` non si vedono**: la misura legge il
-  sorgente testuale delle funzioni, che per loro è vuoto. Un valore scritto da una di loro risulta
-  non scritto.
+* **un valore copiato da un'altra colonna non si vede**.
 
 Che il valore venga scritto **nel momento giusto** la vista non lo dice: dice che esiste chi lo
 scrive. Che la macchina degli stati sia corretta lo provano i test di dominio.
@@ -111,7 +117,9 @@ senza sapere come un valore risulta scritto non si capisce perché un altro no. 
 
 * `db/pgtap/dbops/test-stati-check-scrittori-v1.sql` — il perimetro non si restringe di nascosto; i
   casi costruiti uno per uno (valore nuovo non dichiarato, nominare non è scrivere, il default, il
-  secondo salto, il limite del terzo, il registro nei due versi).
+  secondo salto, il limite del terzo, il registro nei due versi); uno scrittore `BEGIN ATOMIC` rende
+  `SCRITTO` il suo valore (test 16); un letterale con un doppio trattino sulla riga dello scrittore
+  non gli taglia il valore (test 17).
 
 ---
 
@@ -124,6 +132,10 @@ senza sapere come un valore risulta scritto non si capisce perché un altro no. 
 * 2026-09-22 — stessa misura, estratta una volta invece che provata per coppia: risultato identico,
   costo dimezzato.
 * 2026-09-23 — le fixture pgTAP escono dal conto (`brief-db-fixture-che-costruiscono-giro-2`).
+* 2026-11-04 — il corpo si legge da `fn_corpo_funzione` (D14 e D15 di `brief-db-revisione-dbops`):
+  prima la vista guardava PL/pgSQL e SQL ma leggeva il sorgente testuale, vuoto per le
+  `BEGIN ATOMIC`. Un valore scritto solo da una di loro usciva `NON_DICHIARATO`, e una riga `ESENTE`
+  su quel valore non diventava mai `DEBITO_ESTINTO`.
 
 ---
 

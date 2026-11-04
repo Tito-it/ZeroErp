@@ -1,0 +1,97 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.vw_codici_errore_da_dichiarare: il corpo dal building block.
+#   Brief: brief-db-revisione-dbops, D14 (giro 1).
+#
+# Base: 20_code/dbops/20261103-03, verificato uguale al vivo. Cambia solo la
+# lettura del corpo nel ramo (1): dbops.fn_corpo_funzione (20261104-20) al
+# posto di prosrc senza i soli commenti di riga. Prima un codice scritto in un
+# commento a blocco contava come sollevato, e uno scritto sulla stessa riga
+# dopo un letterale '--' spariva.
+#   Il perimetro resta il plpgsql, com'era. Il COMMENT della vista resta: dice
+#   «commenti esclusi», ed e' ancora vero.
+#   ⛔ security_invoker si ripete: un CREATE OR REPLACE che non lo dice lo azzera.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261104-23-update-vw-codici-errore-da-dichiarare-corpo-dal-bb-mctit.yaml
+
+  - changeSet:
+      id: 20261104-23-update-vw-codici-errore-da-dichiarare-corpo-dal-bb
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.vw_codici_errore_da_dichiarare legge il corpo con dbops.fn_corpo_funzione
+        (commenti tolti rispettando i letterali).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_corpo_funzione';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_codici_errore_da_dichiarare
+              WITH (security_invoker = true) AS
+              WITH sorgenti AS (
+                  -- (1) i letterali del CORPO
+                  SELECT m[1]                                   AS codice,
+                         t.agganciata                           AS da_trigger,
+                         p.oid                                  AS funzione_oid,
+                         n.nspname || '.' || p.proname          AS funzione
+                    FROM pg_proc p
+                    JOIN pg_namespace n
+                      ON n.oid = p.pronamespace
+                    CROSS JOIN LATERAL (
+                           SELECT EXISTS (SELECT 1 FROM pg_trigger tg
+                                           WHERE tg.tgfoid = p.oid AND NOT tg.tgisinternal) AS agganciata
+                         ) t,
+                         -- ⚠️ Commenti tolti PRIMA di cercare: un codice nominato in
+                         -- un commento non e' un codice sollevato. Li toglie il
+                         -- building block, che lascia intatti i letterali.
+                         LATERAL regexp_matches(
+                           (dbops.fn_corpo_funzione(p.oid) COLLATE "C"),
+                           '''(E_[A-Z0-9_]+)''', 'g') AS m
+                   WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+                     AND p.prolang = (SELECT oid FROM pg_language WHERE lanname = 'plpgsql')
+                  UNION ALL
+                  -- (2) i codici che un trigger passa alla funzione negli
+                  -- ARGOMENTI. Agganciata per costruzione.
+                  SELECT a.codice,
+                         true,
+                         p.oid,
+                         n.nspname || '.' || p.proname
+                    FROM dbops.vw_codici_errore_argomenti_trigger a
+                    JOIN pg_proc p
+                      ON p.oid = a.funzione_oid
+                    JOIN pg_namespace n
+                      ON n.oid = p.pronamespace
+                   WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+                     AND p.prolang = (SELECT oid FROM pg_language WHERE lanname = 'plpgsql')
+              )
+              SELECT s.codice,
+                     bool_or(s.da_trigger)                  AS da_trigger,
+                     count(DISTINCT s.funzione_oid)         AS n_funzioni,
+                     string_agg(DISTINCT s.funzione, ', '
+                                ORDER BY s.funzione)        AS funzioni
+                FROM sorgenti s
+               GROUP BY s.codice;
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo dal corpo di 20261103-03.
+              SELECT 1;

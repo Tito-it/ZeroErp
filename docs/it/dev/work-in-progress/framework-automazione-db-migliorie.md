@@ -81,6 +81,10 @@ Attualmente e possibile inserire una regola con `target_schema='vendite'` anche 
 **Azione proposta:**
 
 - [ ] Aggiungere un trigger di validazione su `automation_rules_tbl` che emetta un WARNING (non un errore) se il `target_schema` non e presente nell'ambito
+- [ ] Lo stesso vale per `dbops.automation_delete_block` (aggiunta del 2026-11-04, `brief-db-revisione-dbops` D41):
+  una riga su una tabella fuori ambito viene ignorata da `fn_run_automations_delete_block` senza nessuna
+  traccia, mentre una tabella in ambito ma sparita lascia un `WARN TABLE_NOT_FOUND`. La validazione va
+  fatta qui, sull'ambito, e non nel runner.
 
 **Priorita:** bassa — utile per developer experience ma non critico.
 

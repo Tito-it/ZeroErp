@@ -1,0 +1,84 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.vw_audit_log_scrittori_fuori_perimetro: il corpo dal building block.
+#   Brief: brief-db-revisione-dbops, D14 + D15 (giro 1), R3 del giro C1.
+#
+# Base: 20_code/dbops/20260911-32 (l'unico changeSet della vista), verificato
+# uguale al vivo. Cambiano due cose:
+#   1. il corpo si legge con dbops.fn_corpo_funzione (20261104-20): prima era
+#      prosrc senza i soli commenti di riga, cieco sulle funzioni SQL BEGIN
+#      ATOMIC — una BEGIN ATOMIC fuori perimetro che scrivesse il registro
+#      passava il cancello;
+#   2. le porte del registro sono la sola fn_audit_log_once: fn_audit_begin e
+#      fn_audit_end sono ritirate (90_end/20261104-18), e i loro nomi qui erano
+#      testo senza effetto.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261104-21-update-vw-audit-log-scrittori-fuori-perimetro-corpo-dal-bb-mctit.yaml
+
+  - changeSet:
+      id: 20261104-21-update-vw-audit-log-scrittori-fuori-perimetro-corpo-dal-bb
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.vw_audit_log_scrittori_fuori_perimetro legge il corpo con dbops.fn_corpo_funzione
+        (vede anche le BEGIN ATOMIC, rispetta i letterali); la porta del registro e' la sola
+        fn_audit_log_once.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_corpo_funzione';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_audit_log_scrittori_fuori_perimetro
+              WITH (security_invoker = true) AS
+              WITH perimetro AS (
+                  -- ⭐ Il CONTRATTO: chi può scrivere nel registro tecnico.
+                  SELECT unnest(ARRAY['dbops', 'maintenance']::name[]) AS nspname
+              ),
+              sorgenti AS (
+                  SELECT p.oid, n.nspname, p.proname,
+                         -- il corpo senza commenti, anche di una BEGIN ATOMIC
+                         (dbops.fn_corpo_funzione(p.oid) COLLATE "C") AS corpo
+                    FROM pg_catalog.pg_proc p
+                    JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+                     AND p.prokind IN ('f', 'p')
+              )
+              SELECT s.nspname::text || '.' || s.proname::text AS funzione,
+                     s.nspname::text                            AS schema_funzione,
+                     CASE
+                         WHEN s.corpo ~* '(insert\s+into|update|delete\s+from)\s+dbops\.audit_log\M' THEN 'DML_DIRETTO'
+                         ELSE 'VIA_FN_AUDIT'
+                     END AS come_scrive
+                FROM sorgenti s
+               WHERE (   s.corpo ~* '(insert\s+into|update|delete\s+from)\s+dbops\.audit_log\M'
+                      OR s.corpo ~  '\mfn_audit_log_once\s*\(')
+                 AND NOT EXISTS (SELECT 1 FROM perimetro pe WHERE pe.nspname = s.nspname)
+                 AND NOT (s.nspname = 'dbops' AND s.proname = 'fn_audit_log_once')
+               ORDER BY 1;
+
+              COMMENT ON VIEW dbops.vw_audit_log_scrittori_fuori_perimetro IS
+                  'CANCELLO — deve restare VUOTA. Le funzioni che scrivono in dbops.audit_log (DML diretto, o via la porta dbops.fn_audit_log_once) e che stanno FUORI dal perimetro dichiarato nella vista stessa: dbops e maintenance. dbops.audit_log è un registro TECNICO — le automazioni e gli strumenti DBA, letto dall''amministrazione — e non deve poter contenere dati di dominio (decisione §8.3, brief brief-db-rls-storico-scope-congelato, 2026-09-11): il presidio giusto non è una policy di perimetro sul registro ma impedire alla fonte che una funzione di vendite, anagrafiche, pagamenti ci scriva. Una riga qui fa rosso db/pgtap/dbops/test-audit-log-perimetro-scrittori-v1.sql, che gira in CI. Allargare il perimetro è un changeSet su questa vista. Il corpo si legge con dbops.fn_corpo_funzione: senza commenti, con i letterali intatti, e anche per le funzioni SQL BEGIN ATOMIC. Le letture del registro non contano; la porta è esclusa per nome. security_invoker: legge solo il catalogo.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo dal corpo di 20260911-32.
+              SELECT 1;

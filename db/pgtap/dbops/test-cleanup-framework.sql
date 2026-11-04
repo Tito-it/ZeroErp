@@ -26,6 +26,18 @@
 -- 15) ⭐ ...e il giro E' PROSEGUITO: la regola successiva sulla stessa tabella
 --     ha lasciato la sua riga di audit
 -- 16) ...e il rifiuto ha lasciato una riga di audit ERROR con lo SQLSTATE
+-- 17) ⭐ il riepilogo restituito conta il rifiuto in _falliti, con la tabella
+--     nel _dettaglio (BLOCKED_BY_TABLE e SQLSTATE): e' cio' che rende rossa la
+--     corsa del job in fn_run_and_log (D40)
+-- 18) ...e conta in _applicate la regola che e' passata
+-- 19) l'app esegue ancora l'orchestratore: il DROP e CREATE del cambio di tipo
+--     non ha perso il permesso
+--
+-- ⭐ rev 20261104-51 (brief-db-revisione-dbops D40): l'orchestratore
+--   restituisce il riepilogo jsonb invece di void. Il test 13 fotografa quel
+--   riepilogo nella stessa chiamata, e le 17-18 lo leggono. Su un database
+--   senza il -51 la 13 e' rossa (un void non si fotografa), e con lei le 15-16:
+--   e' il segnale che il cambio non c'e', non una regressione del giro.
 --
 -- ⚠️ **Le 11 e la 12 erano cieche su questo database, e ora non lo sono piu'.**
 --   `dbops.automation_scope` elenca per lo schema `dbops` tre sole tabelle
@@ -53,7 +65,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(16);
+SELECT plan(19);
 
 CREATE TEMP TABLE tmp_cleanup_ctx AS
 SELECT to_char(clock_timestamp(), 'YYYYMMDDHH24MISSMS') AS tag;
@@ -330,7 +342,8 @@ CREATE TEMP TABLE tmp_audit_prima_ptr AS
 SELECT COALESCE(max(id), 0) AS ultimo_id FROM dbops.audit_log;
 
 SELECT lives_ok(
-  $$ SELECT dbops.fn_run_automations_cleanup('AUTO', ARRAY['dbops'], false) $$,
+  $$ CREATE TEMP TABLE tmp_cleanup_esito AS
+     SELECT dbops.fn_run_automations_cleanup('AUTO', ARRAY['dbops'], false) AS esito $$,
   'Orchestratore: una tabella che rifiuta non fa morire il giro'
 );
 
@@ -369,6 +382,23 @@ SELECT ok(
   'Orchestratore: il rifiuto lascia una riga ERROR con lo SQLSTATE, non un silenzio'
 );
 
+-- 17-18. Il riepilogo della stessa chiamata (D40).
+SELECT ok(
+  (SELECT jsonb_typeof(e.esito -> '_falliti') = 'number'
+          AND (e.esito ->> '_falliti')::int >= 1
+          AND EXISTS (SELECT 1 FROM jsonb_array_elements(e.esito -> '_dettaglio') d
+                       WHERE d ->> 'tabella' = 'dbops.tst_cleanup_veto'
+                         AND d ->> 'motivo'  = 'BLOCKED_BY_TABLE'
+                         AND d ->> 'sqlstate' IS NOT NULL)
+     FROM tmp_cleanup_esito e),
+  'Orchestratore: il riepilogo conta il rifiuto in _falliti, con la tabella nel _dettaglio (la corsa del job diventa rossa)'
+);
+
+SELECT ok(
+  (SELECT (e.esito ->> '_applicate')::int >= 1 FROM tmp_cleanup_esito e),
+  'Orchestratore: il riepilogo conta in _applicate la regola che e'' passata'
+);
+
 DROP TRIGGER IF EXISTS trg_tst_cleanup_veto_guard_dlt ON dbops.tst_cleanup_veto;
 DROP TABLE IF EXISTS dbops.tst_cleanup_veto;
 DROP FUNCTION IF EXISTS dbops.tst_trgfn_cleanup_veto_dlt();
@@ -386,6 +416,13 @@ WHERE id IN (SELECT id FROM tmp_cleanup_rule)
    OR note LIKE 'pgtap_cleanup_veto%';
 
 DROP TABLE IF EXISTS dbops.tst_cleanup_framework;
+
+-- 19. Il permesso dell'app sopravvive al DROP e CREATE del cambio di tipo.
+SELECT ok(
+  has_function_privilege('zeroerp_app',
+      'dbops.fn_run_automations_cleanup(text, text[], boolean)', 'EXECUTE'),
+  'L''app esegue ancora l''orchestratore dopo il cambio del tipo restituito'
+);
 
 SELECT * FROM finish();
 

@@ -64,7 +64,9 @@ fuori da `dbops` e `maintenance` che la chiama compare nel cancello
 Se il GUC `myapp.log_with_dblink` vale `on` e la connessione di log `logconn` si apre, la riga si
 scrive su quella connessione e sopravvive all'annullamento della transazione del chiamante. Con il
 GUC assente la scrittura è nella transazione di chi chiama. ⚠️ Qui un GUC assente vale «spento»,
-mentre per `script.fn_ensure_logconn` vale «acceso».
+mentre per tutti gli altri lettori del canale vale «acceso»: la loro regola comune sta in
+[script.fn_canale_log_stringa](/dbzero/script/funzioni/fn_canale_log_stringa), e questa funzione non
+la segue ancora.
 
 ⛔ Il ramo fuori transazione, oggi, non scrive: il ruolo del canale di log non ha il diritto di
 aggiungere a `dbops.audit_log`, e la chiamata fallisce insieme alla transazione del chiamante.

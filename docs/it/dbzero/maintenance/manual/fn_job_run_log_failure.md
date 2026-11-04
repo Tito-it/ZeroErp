@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `maintenance.fn_job_run_log_failure`
 
-> **Ultimo aggiornamento**: 3 novembre 2026
+> **Ultimo aggiornamento**: 4 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -17,6 +17,7 @@
 >
 > * [maintenance.fn_run_and_log](/dbzero/maintenance/funzioni/fn_run_and_log) — chi la chiama, prima di rilanciare l'errore
 > * [script.fn_log_error_only](/dbzero/script/funzioni/fn_log_error_only) — il canale fuori transazione che riusa
+> * [script.fn_canale_log_stringa](/dbzero/script/funzioni/fn_canale_log_stringa) — la regola unica: se il canale è acceso, e con quale stringa
 > * [script.fn_ensure_logconn](/dbzero/script/funzioni/fn_ensure_logconn) — la connessione nominata del canale
 > * [dbops.fn_sync_functions_owner](/dbzero/dbops/funzioni/fn_sync_functions_owner) — l'allineamento del proprietario
 
@@ -51,6 +52,11 @@ canale sopravvive agli annullamenti. Questa funzione usa lo stesso: prima la con
 nominata `logconn` (aperta da `script.fn_ensure_logconn`), poi, se non c'è, l'indirizzo
 diretto delle impostazioni del canale. Non se ne inventa un altro.
 
+Se il canale è acceso, e con quale indirizzo, lo dice
+[script.fn_canale_log_stringa](/dbzero/script/funzioni/fn_canale_log_stringa), **prima** di
+aprire qualunque connessione: con l'interruttore `myapp.log_with_dblink` a `off` (come nelle
+migrazioni e in CI) il verbale non si scrive, anche se l'indirizzo è impostato.
+
 La riga scritta porta lo stesso `run_uuid`, la stessa partenza, la stessa origine, lo stesso
 processo e lo stesso utente tecnico della corsa annullata, con `ok` falso, messaggio, codice,
 dettaglio e SQLSTATE dell'errore. Il `meta` dice di lei che è stata **scritta fuori
@@ -77,7 +83,7 @@ altro, né altrove.
 
 La chiama un gestore d'errore: qualcuno che sta **già** andando male. Ogni via d'uscita è un
 avviso nel log del server, mai un'eccezione — non si fa fallire due volte un lavoro già fallito.
-Senza canale configurato lo dice con un avviso, e il fallimento resta senza riga.
+Con il canale spento o non configurato lo dice con un avviso, e il fallimento resta senza riga.
 
 > ⛔ **Il rovescio**: quando il canale non funziona, **tace**. Un controllo che guardasse solo
 > «la chiamata non è esplosa» sarebbe verde anche mentre non scrive niente.
@@ -117,6 +123,11 @@ ogni cambio del canale, facendo fallire un lavoro e guardando
 `db/pgtap/maintenance/test-job-run-sqlstate-e-codice-v1.sql` — una sola firma, con lo SQLSTATE
 in coda, e la scrittura della colonna (presidio sul testo).
 
+`db/pgtap/script/test-canale-log-v1.sql` — test 12: con un canale irraggiungibile la funzione non
+solleva. Test 15: con `myapp.log_with_dblink = off` e un canale che funziona non scrive nel
+giornale (si salta dove il canale non c'è). Test 16: non legge da sé i parametri del canale
+(presidio sul testo).
+
 ---
 
 ### Note di migrazione
@@ -133,6 +144,10 @@ in coda, e la scrittura della colonna (presidio sul testo).
 * 2026-11-03 — `agent_host` scrive l'indirizzo del client della sessione del job invece del nome del
   cluster: la colonna ha un solo significato anche sulle righe dei fallimenti; le righe già
   scritte restano (`brief-db-revisione-maintenance` M17).
+* 2026-11-04 — il canale lo dice `script.fn_canale_log_stringa` (D26 di `brief-db-revisione-dbops`):
+  prima la funzione ignorava l'interruttore `myapp.log_with_dblink`, e con `off` il ripiego
+  sull'indirizzo diretto scriveva lo stesso. La firma prende i tipi dalle colonne del giornale
+  (`%TYPE`); la firma risolta non cambia.
 
 ---
 

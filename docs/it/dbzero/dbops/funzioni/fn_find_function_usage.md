@@ -2,7 +2,7 @@
 # ⚙️ Funzione `fn_find_function_usage`
 
 ```sql
-CREATE FUNCTION fn_find_function_usage(p_function_name text)
+CREATE FUNCTION fn_find_function_usage(p_function_name name)
 ```
 
 > 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
@@ -12,26 +12,27 @@ CREATE FUNCTION fn_find_function_usage(p_function_name text)
 <div data-search-exclude markdown>
 
 ```sql
-CREATE OR REPLACE FUNCTION dbops.fn_find_function_usage(p_function_name text)
- RETURNS TABLE(object_type text, schema_name text, object_name text)
+CREATE OR REPLACE FUNCTION dbops.fn_find_function_usage(p_function_name name)
+ RETURNS TABLE(object_type text, schema_name name, object_name text)
  LANGUAGE sql
  STABLE
 AS $function$
-  -- 1) Funzioni che richiamano p_function_name nel loro corpo
+  -- 1) Funzioni che nominano p_function_name nel corpo, senza i
+  --    commenti e anche se scritte BEGIN ATOMIC.
   SELECT
-    'function'::TEXT AS object_type,
+    'function'::text AS object_type,
     ns.nspname AS schema_name,
     p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')' AS object_name
   FROM pg_proc p
   JOIN pg_namespace ns ON ns.oid = p.pronamespace
-  WHERE p.prosrc LIKE '%' || p_function_name || '%'  -- presenza del nome nel sorgente PL/pgSQL
+  WHERE dbops.fn_corpo_funzione(p.oid) LIKE '%' || p_function_name || '%'
     AND p.proname <> p_function_name
 
   UNION ALL
 
   -- 2) Trigger che invocano p_function_name
   SELECT
-    'trigger'::TEXT AS object_type,
+    'trigger'::text AS object_type,
     ns.nspname AS schema_name,
     rel.relname AS object_name
   FROM pg_trigger tr
@@ -44,17 +45,16 @@ AS $function$
 
   -- 3) Event trigger che invocano p_function_name
   SELECT
-    'event_trigger'::TEXT AS object_type,
-    NULL::TEXT AS schema_name,
+    'event_trigger'::text AS object_type,
+    NULL::name AS schema_name,
     et.evtevent || ' on ' || tgt.proname AS object_name
   FROM pg_event_trigger et
   JOIN pg_proc tgt ON tgt.oid = et.evtfoid
   WHERE tgt.proname = p_function_name
-  $function$
+$function$
 
-COMMENT ON FUNCTION dbops.fn_find_function_usage(p_function_name text)
-IS 'trova tutte le foreign key che fanno riferimento
-      ad una tabella specificata in input.';
+COMMENT ON FUNCTION dbops.fn_find_function_usage(p_function_name name)
+IS 'Strumento DBA: dove si usa una funzione, dato il suo nome. Tre fonti: le funzioni che lo nominano nel corpo (letto da dbops.fn_corpo_funzione: senza commenti, con i letterali intatti, anche per le funzioni SQL BEGIN ATOMIC), i trigger e gli event trigger che la eseguono. Il corpo si confronta per SOTTOSTRINGA: cercando fn_x escono anche le funzioni che chiamano fn_x_bis; le omonime (stesso nome, altri argomenti) sono escluse dal primo ramo. Una funzione chiamata con SQL dinamico costruito per pezzi non si vede. Nessun chiamante applicativo.';
 ```
 
 </div>

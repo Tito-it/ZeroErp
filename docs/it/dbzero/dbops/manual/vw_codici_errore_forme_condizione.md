@@ -16,6 +16,8 @@
 > Approfondimento funzioni:
 >
 > * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) — la chiamata che segna un punto che solleva
+> * [dbops.fn_corpo_funzione](/dbzero/dbops/funzioni/fn_corpo_funzione) — il corpo senza commenti che la vista taglia a righe
+> * [dbops.fn_regexp_occorrenze](/dbzero/dbops/funzioni/fn_regexp_occorrenze) — l'estrazione dei codici di una riga
 
 ---
 
@@ -36,18 +38,27 @@ La vista **non filtra di proposito**: chi filtra decide che cosa non vedere.
 
 ### Come funziona: isole fra due guardie
 
-Il corpo di ogni funzione si spezza riga per riga, e ogni riga si marca:
+Il corpo di ogni funzione, letto senza commenti da
+[fn_corpo_funzione](/dbzero/dbops/funzioni/fn_corpo_funzione), si spezza riga per riga, e ogni riga
+si marca:
 
 * **guardia** — comincia con `IF`, `ELSIF`, `ELSE`, `EXCEPTION WHEN`, `WHEN OTHERS`, `WHEN SQLSTATE`;
 * **chiamata** — nomina `fn_log_and_raise_error`;
 * **motivo** — dichiara un motivo con la sua chiave `codice` e un letterale `E_*`;
-* **codice** — porta un letterale `E_*` (la prima occorrenza della riga), se la riga non comincia
-  con un commento.
+* **codici** — i letterali `E_*` distinti che la riga porta, tutti.
 
 Le guardie delimitano le **isole**: ogni codice appartiene alla guardia che apre la sua isola. Una
 riga con un codice è un **punto** se c'è una chiamata entro le sei righe precedenti, oppure se è la
 riga che dichiara un motivo, e se sta entro venticinque righe dalla sua guardia. Dalla guardia si
 ricava la famiglia.
+
+⭐ **Ogni codice distinto di una riga è un punto suo.** Isole, chiamata vicina e guardia si calcolano
+sulle righe; solo dopo la riga si espande nei suoi codici, che prendono tutti la stessa guardia. Una
+guardia o un motivo che nomina due codici dà due punti, e il secondo codice ha la sua famiglia come
+il primo.
+
+Le distanze si contano sul corpo senza commenti: un commento a blocco su più righe non le allunga, e
+una chiamata rimasta in un commento non accende la «chiamata vicina».
 
 ⭐ **Il codice nominato in un motivo.** Quando la madre chiama una funzione di controllo, il letterale
 sta dentro la funzione di controllo, dove nessuna chiamata all'helper gli sta vicino. Per questo la
@@ -121,7 +132,8 @@ nasce con più di una. `IGNOTO` non entra nel confronto.
 Condivide i punti ciechi di
 [vw_codici_errore_da_dichiarare](/dbzero/dbops/views/vw_codici_errore_da_dichiarare): legge
 letterali in corpi PL/pgSQL, e non vede i codici costruiti per concatenazione né i `RAISE EXCEPTION`
-diretti. Esclude solo le righe che cominciano con un commento.
+diretti. I commenti, di riga e a blocco, non entrano: un codice citato in un commento non è un
+punto.
 
 La vista è `security_invoker` e legge i cataloghi di sistema.
 
@@ -134,7 +146,9 @@ La vista è `security_invoker` e legge i cataloghi di sistema.
   `VALORE_ATTESO`; il caso segnalato dal backend ha un codice suo.
 * `db/pgtap/dbops/test-vw-codici-errore-motivo-nominato.sql` — un codice nominato solo come motivo
   compare e prende la guardia dentro la funzione di controllo; il marcatore non è troppo largo ed è
-  per forma; un parametro nullo resta `PARAMETRO`, un campo di un record no.
+  per forma; un parametro nullo resta `PARAMETRO`, un campo di un record no; due codici sulla stessa
+  riga sono due punti con la stessa guardia (test 9); un codice in un commento a blocco non è un
+  punto (test 10).
 
 ---
 
@@ -149,6 +163,18 @@ La vista è `security_invoker` e legge i cataloghi di sistema.
 * 2026-09-08 — il codice nominato in un motivo diventa un punto: 35 codici-motivo su 50 erano
   invisibili.
 * 2026-09-09 — `PARAMETRO` non si legge più su un campo di un record.
+* 2026-11-04 — ogni codice distinto di una riga è un punto (D56 di `brief-db-revisione-dbops`): prima
+  si prendeva solo il primo, e il secondo codice di una riga si perdeva.
+* 2026-11-04 — le righe si tagliano dal corpo senza commenti di `fn_corpo_funzione` (D14 di
+  `brief-db-revisione-dbops`): prima si scartavano solo le righe che cominciano con un commento di
+  riga, quindi un codice in un commento a blocco o in coda a una riga contava come punto. Le distanze
+  di sei e venticinque righe cambiano solo dove c'era un commento a blocco su più righe, che non le
+  allunga più; una riga di solo commento resta, vuota, e conta come prima. Fatto datato: quel giorno, sul
+  codice vivo, la misura non cambiava una riga, e la baseline del cancello non si è mossa.
+* 2026-11-04 — i codici di una riga si estraggono con `fn_regexp_occorrenze`, che dichiara una riga
+  per chiamata, e non più da un elenco espanso, che ne dichiarava dieci: la stima del piano era salita
+  oltre la soglia in cui il JIT ottimizza, e ogni lettura pagava circa 300 ms di compilazione. Output
+  invariato. I due test che la leggono la fotografano una volta sola.
 
 ---
 
