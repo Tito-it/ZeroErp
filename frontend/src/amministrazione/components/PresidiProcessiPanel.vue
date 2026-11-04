@@ -139,7 +139,11 @@ function cella(valore) {
 </script>
 
 <template>
-  <div class="app-presidi">
+  <!-- ⭐ Senza schede da guardare la striscia dei presidi a zero è TUTTO il
+       pannello (rilievo di Tid, 2026-11-04): il tetto della striscia esiste per
+       non rubare spazio alle schede, e senza schede lasciava tre righe di chip
+       su una pagina intera. Allora il tetto cade e scorre il pannello. -->
+  <div class="app-presidi" :class="{ 'app-presidi--solo-zero': !daGuardare.length }">
     <Message v-if="errore" severity="error" :closable="false">
       {{ t('amministrazione.processi.presidi_errore') }}
     </Message>
@@ -350,9 +354,20 @@ function cella(valore) {
 /* Aperta, la striscia ha un tetto suo: i presidi a zero li conta il catalogo,
    e non devono rubare lo spazio delle schede da guardare. */
 .app-presidi-zero { flex: 0 0 auto; }
-.app-presidi-zero-label { font-size: 0.85rem; opacity: 0.8; cursor: pointer; }
+/* ⚠️ L'intestazione è l'unico invito ad aprire: piccola e attenuata non
+   sembrava cliccabile (rilievo di Tid, 2026-11-04). Testo pieno, e il
+   triangolo nativo di `<details>` cresce col carattere. */
+.app-presidi-zero-label {
+  font-size: 1rem; font-weight: 600; cursor: pointer;
+  padding: 0.25rem 0; user-select: none;
+}
+.app-presidi-zero-label:hover { color: var(--p-primary-color); }
 .app-presidi-zero-chip {
   display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem;
   margin-top: 0.4rem; max-height: 8rem; overflow-y: auto;
 }
+/* Da sola, la striscia non ha nessuno a cui cedere spazio: niente tetto, e
+   scorre il pannello intero (che il contenitore della vista taglia). */
+.app-presidi--solo-zero { overflow-y: auto; }
+.app-presidi--solo-zero .app-presidi-zero-chip { max-height: none; overflow-y: visible; }
 </style>

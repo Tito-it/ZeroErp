@@ -152,7 +152,7 @@ async function handleSave() {
     <div class="form-grid">
       <div class="form-field">
         <label>{{ t('magazzino.lotti.field_codice') }} *</label>
-        <InputText v-model="form.codice" :disabled="isReadonly" :invalid="campiErrati.includes('codice')" />
+        <InputText v-model="form.codice" class="app-codice-input" :disabled="isReadonly" :invalid="campiErrati.includes('codice')" />
       </div>
 
       <div class="form-field">

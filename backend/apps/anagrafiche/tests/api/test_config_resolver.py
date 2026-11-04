@@ -14,7 +14,7 @@ Indice test eseguiti:
  2) test_config_resolver_cliente — ruolo con nature multiple PF/PG/ENC
  3) test_config_resolver_ruolo_senza_matrice — nature libere, lette dall'enum
  4) test_config_resolver_ruolo_non_trovato — codice inesistente → 404
- 5) test_config_resolver_case_insensitive — codice minuscolo accettato
+ 5) test_config_resolver_chiave_esatta — la chiave arriva al DB com'e', senza maiuscolo
  6) test_config_resolver_default_present — DEFAULT_TIPO_SOGGETTO_DETTAGLIO_<RUOLO> risolve a id
  7) test_config_resolver_default_codice_orfano — codice non tra dettagli → default_id None
  8) test_config_resolver_default_assente — fn_get_parameter_full ritorna None → default_id None
@@ -56,7 +56,7 @@ def _setup_conn(mock_conn, mock_cur):
 
 
 # Colonne tipo_ruolo
-_RUOLO_COLS = ["id", "codice", "descrizione"]
+_RUOLO_COLS = ["id", "codice_interno", "descrizione"]
 
 # Colonne nature ammesse
 _NATURE_COLS = ["tipo_soggetto_id", "tipo_soggetto_descrizione", "natura_soggetto"]
@@ -236,11 +236,16 @@ class TestConfigResolverNonTrovato(TestCase):
 
 @patch(_GET_PARAM_PATH, return_value=None)
 @patch("apps.anagrafiche.db.soggetti_repository.connection")
-class TestConfigResolverCaseInsensitive(TestCase):
-    """Config resolver accetta codice case-insensitive (la view fa .upper())."""
+class TestConfigResolverChiaveEsatta(TestCase):
+    """La chiave del tipo ruolo e' il `codice_interno`: si confronta esatta.
 
-    # Scopo: Verifica che il repository riceva il codice gia' uppercase dalla view.
-    def test_config_resolver_case_insensitive(self, mock_conn, _mock_get_param):
+    Fino al 2026-11-04 la view la metteva in maiuscolo (rotta «case
+    insensitive»), unica fra le tre rotte con la chiave nell'URL. Decisione di
+    Tid (brief-be-codice-maiuscolo §7.2): tutte esatte.
+    """
+
+    # Scopo: la view e il repository passano la chiave invariata: `cl` non e' `CL`.
+    def test_config_resolver_chiave_esatta(self, mock_conn, _mock_get_param):
         from apps.anagrafiche.db.soggetti_repository import SoggettiRepository
 
         mock_cur = _mock_cursor()
@@ -253,7 +258,6 @@ class TestConfigResolverCaseInsensitive(TestCase):
 
         mock_cur.execute.side_effect = side_effect_execute
 
-        # La view chiama .upper() prima del repository
         SoggettiRepository().get_config_resolver("ris_umana")
 
         # Verifica che il parametro passato al cursor sia esattamente quello ricevuto

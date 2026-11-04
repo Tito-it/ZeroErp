@@ -79,7 +79,7 @@ matrice `config.tipi_ruoli_nature_ammesse` ammette per quella natura (riga
 attiva e valida oggi), **più** i tipi ruolo che nella matrice non hanno
 nessuna riga — un ruolo senza restrizioni vale per ogni natura.
 
-Righe: `id`, `codice` (`codice_interno`, o `codice` se manca), `descrizione`;
+Righe: `id`, `codice_interno`, `descrizione` (fino al 2026-11-04 la chiave si chiamava `codice`);
 ordine per descrizione.
 
 ---

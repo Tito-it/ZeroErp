@@ -21,7 +21,7 @@ const { t } = useI18n()
 
 const props = defineProps({
   // Oggetto riga lookup completo {soggetto_id, soggetto_ruolo_id|null,
-  // ruolo_codice|null, ruolo_descrizione|null, ragione_sociale_completa,
+  // ruolo_codice_interno|null, ruolo_descrizione|null, ragione_sociale_completa,
   // id_fiscale, soggetto_codice, n_billing_account, billing_account_unico_id,
   // billing_account_unico_codice}
   modelValue: { type: Object, default: null },
@@ -97,8 +97,8 @@ function onClear() {
       <div class="app-lookup-option">
         <div class="app-lookup-option__primary">
           <span>{{ option.ragione_sociale_completa || '—' }}</span>
-          <span v-if="option.ruolo_codice" class="app-lookup-badge app-lookup-badge--utility">
-            {{ option.ruolo_descrizione || option.ruolo_codice }}
+          <span v-if="option.ruolo_codice_interno" class="app-lookup-badge app-lookup-badge--utility">
+            {{ option.ruolo_descrizione || option.ruolo_codice_interno }}
           </span>
           <span v-else class="app-lookup-badge app-lookup-badge--parent">
             {{ t('soggetto_ruolo_lookup.senza_ruolo') }}

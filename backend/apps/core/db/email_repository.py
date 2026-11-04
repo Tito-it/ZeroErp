@@ -319,7 +319,9 @@ class EmailRepository:
         if attivo_only:
             conditions.append("et.attivo IS TRUE")
         if codice:
-            conditions.append("et.codice = %s")
+            # Il codice a DB e' normalizzato (CODICE_MAIUSCOLO): il filtro
+            # dell'operatore si confronta con la stessa funzione del trigger.
+            conditions.append("et.codice = script.fn_codice_normalizzato(%s)")
             params.append(codice)
         add_ricerca_full_condition(
             conditions, params, search, _RICERCA_EMAIL_TEMPLATE, alias="et",

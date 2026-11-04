@@ -48,7 +48,7 @@ import {
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useLetturaTreStati } from '../../core/composables/useLetturaTreStati'
 import { useServerAutocomplete } from '../../core/composables/useServerAutocomplete'
-import { DRAWER_WIDTH } from '../../core/constants'
+import { DRAWER_WIDTH, TIPO_RUOLO } from '../../core/constants'
 import { lookupBankBranches } from '../../anagrafiche/api/anagrafiche'
 import {
   aggiornaEnteIncasso,
@@ -57,7 +57,7 @@ import {
   listContiIncasso,
 } from '../api/pagamenti'
 import { useEtichettePagamenti } from '../etichette'
-import { RUOLO_PSP, TIPO_CANALE_CON_FILIALE, TIPO_CANALE_PSP } from '../vocabolari'
+import { TIPO_CANALE_CON_FILIALE, TIPO_CANALE_PSP } from '../vocabolari'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -383,6 +383,7 @@ async function onSave() {
           <label>{{ t('pagamenti.canali.col_codice') }}</label>
           <InputText
             v-model="form.codice"
+            class="app-codice-input"
             :disabled="isReadonly"
             :invalid="campiErrati.includes('codice')"
           />
@@ -528,7 +529,7 @@ async function onSave() {
         <label>{{ t('pagamenti.canali.campo_psp') }}</label>
         <SoggettoRuoloLookup
           :model-value="soggettoPspObj"
-          :tipo-ruolo="RUOLO_PSP"
+          :tipo-ruolo="TIPO_RUOLO.PSP"
           :placeholder="t('pagamenti.canali.campo_psp_placeholder')"
           :disabled="isReadonly"
           @update:model-value="onPspSelect"

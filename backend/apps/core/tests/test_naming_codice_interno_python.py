@@ -85,8 +85,8 @@ _REGOLE = (
     ("C", re.compile(r"'([a-z_]*codice)'[ \t]*,[^,)]*\.codice_interno", re.I)),
 )
 
-# ⛔ REGISTRO DEL DEBITO — 15 occorrenze in 12 punti (era 16 in 13: uscita
-#    `vendite_repository -> natura_doc_codice`, chiusa il 2026-08-29).
+# ⛔ REGISTRO DEL DEBITO — 9 occorrenze in 7 punti, contate il 2026-11-04 (il
+#    15 in 12 scritto qui prima era rimasto indietro rispetto alle uscite).
 #    Chiave: (percorso relativo, nome dell'alias) -> QUANTE volte. DEVE CALARE.
 # ⚠️ Il CONTEGGIO, e non il solo insieme, ed e' una correzione fatta lo stesso
 #    giorno: con il solo insieme, sanare due occorrenze su tre nello stesso file
@@ -97,11 +97,13 @@ _REGOLE = (
 #    per il motivo sbagliato, e un presidio che boccia a caso viene spento.
 _DEBITO: dict[tuple[str, str], int] = {
     ("apps/anagrafiche/db/soggetti_repository.py", "codice"): 1,
-    # ⚠️ La lookup generica: `codice` e' il nome del campo nel CONTRATTO della
-    #    lookup, non una svista. Candidata a diventare un'esclusione DICHIARATA
-    #    invece che una voce di debito — da decidere, non da assumere.
-    ("apps/core/db/lookup_repository.py", "codice"): 1,
-    ("apps/core/db/lookup_repository.py", "fallback_codice"): 1,
+    # ⭐ `codice` e `fallback_codice` di `lookup_repository` (le due matrici
+    #    degli indirizzi) sono USCITE il 2026-11-04 insieme ai gemelli che il
+    #    `COALESCE(codice_interno, codice)` nascondeva a questo test
+    #    (brief-be-codice-maiuscolo §7.4, decisione di Tid): ora sono
+    #    `codice_interno` / `fallback_codice_interno`, e cosi' `ruolo_codice_interno`
+    #    in `soggetti_repository`. ⚠️ Non erano «il contratto della lookup
+    #    generica», come diceva la nota di qui: erano le matrici.
     ("apps/pagamenti/db/pagamenti_repository.py", "stato_codice"): 2,
     ("apps/pratiche/db/pratiche_repository.py", "tipo_allegato_codice"): 1,
     ("apps/pratiche/db/pratiche_repository.py", "tipo_nota_codice"): 1,

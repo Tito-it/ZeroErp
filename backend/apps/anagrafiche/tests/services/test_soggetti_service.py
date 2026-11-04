@@ -955,12 +955,12 @@ class TestSearchRuoliLookup(TestCase):
 
     @patch(SOGG_REPO)
     def test_search_ruoli_lookup_ok(self, mock_repo):
-        """Happy path: delega al repo con tipo_ruolo normalizzato upper."""
+        """Happy path: delega al repo; tipo_ruolo e' il codice_interno, passa com'e' (solo strip)."""
         repo = mock_repo.return_value
         repo.search_ruoli_lookup.return_value = (
             [{
                 "soggetto_id": FAKE_UUID, "soggetto_ruolo_id": 7,
-                "ruolo_codice": "CL", "ruolo_descrizione": "Cliente",
+                "ruolo_codice_interno": "CL", "ruolo_descrizione": "Cliente",
                 "ragione_sociale_completa": "Rossi Mario",
                 "id_fiscale": "RSSMRA80A01H501U", "soggetto_codice": "SOG-1",
                 "n_billing_account": 2,
@@ -969,10 +969,10 @@ class TestSearchRuoliLookup(TestCase):
         )
         from apps.anagrafiche.services.soggetti_service import SoggettiService
         result = SoggettiService().search_ruoli_lookup(
-            q="  rossi ", tipo_ruolo="cl", emittente_ids=[5],
+            q="  rossi ", tipo_ruolo=" CL ", emittente_ids=[5],
         )
         self.assertEqual(result["total_count"], 1)
-        self.assertEqual(result["results"][0]["ruolo_codice"], "CL")
+        self.assertEqual(result["results"][0]["ruolo_codice_interno"], "CL")
         self.assertEqual(result["limit"], 20)
         repo.search_ruoli_lookup.assert_called_once_with(
             q="rossi", tipo_ruolo="CL", emittente_ids=[5], limit=20,
@@ -1020,11 +1020,11 @@ class TestGetRuoliLookupById(TestCase):
         repo = mock_repo.return_value
         repo.get_ruolo_lookup_by_id.return_value = {
             "soggetto_id": FAKE_UUID, "soggetto_ruolo_id": 165,
-            "ruolo_codice": "CL", "n_billing_account": 1,
+            "ruolo_codice_interno": "CL", "n_billing_account": 1,
         }
         from apps.anagrafiche.services.soggetti_service import SoggettiService
         result = SoggettiService().get_ruoli_lookup_by_id(soggetto_ruolo_id=165, emittente_ids=[7])
-        self.assertEqual(result["ruolo_codice"], "CL")
+        self.assertEqual(result["ruolo_codice_interno"], "CL")
         # Lo scope arriva al repository: e' li' che decide (D10-bis).
         repo.get_ruolo_lookup_by_id.assert_called_once_with(
             soggetto_ruolo_id=165, soggetto_id=None, emittente_ids=[7],
@@ -1036,7 +1036,7 @@ class TestGetRuoliLookupById(TestCase):
         repo = mock_repo.return_value
         repo.get_ruolo_lookup_by_id.return_value = {
             "soggetto_id": FAKE_UUID, "soggetto_ruolo_id": None,
-            "ruolo_codice": None, "n_billing_account": 0,
+            "ruolo_codice_interno": None, "n_billing_account": 0,
         }
         from apps.anagrafiche.services.soggetti_service import SoggettiService
         result = SoggettiService().get_ruoli_lookup_by_id(soggetto_id=FAKE_UUID, emittente_ids=None)

@@ -418,9 +418,9 @@ class DatiFiscaliSocietariDbTests(unittest.TestCase):
 
         with connection.cursor() as cur:
             cur.execute(
-                "SELECT COALESCE(tr.codice_interno, tr.codice) FROM config.tipi_ruoli tr"
+                "SELECT tr.codice_interno FROM config.tipi_ruoli tr"
                 " WHERE NOT EXISTS (SELECT 1 FROM config.parameters p WHERE p.code ="
-                "   'DEFAULT_TIPO_SOGGETTO_DETTAGLIO_' || COALESCE(tr.codice_interno, tr.codice))"
+                "   'DEFAULT_TIPO_SOGGETTO_DETTAGLIO_' || tr.codice_interno)"
                 " ORDER BY tr.id LIMIT 1"
             )
             riga = cur.fetchone()

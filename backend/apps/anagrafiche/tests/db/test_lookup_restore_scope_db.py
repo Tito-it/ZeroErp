@@ -116,7 +116,7 @@ class LookupRestoreScopeDbTests(unittest.TestCase):
             cur.execute(
                 "SELECT count(*) FROM anagrafiche.soggetti_ruoli sr "
                 "  JOIN config.tipi_ruoli tr ON tr.id = sr.tipo_ruolo_id "
-                " WHERE sr.soggetto_id = %s::uuid AND COALESCE(tr.codice_interno, tr.codice) = 'CL'",
+                " WHERE sr.soggetto_id = %s::uuid AND tr.codice_interno = 'CL'",
                 [soggetto_id],
             )
             self.assertEqual(cur.fetchone()[0], 0, "premessa: il soggetto emittente non e' cliente")

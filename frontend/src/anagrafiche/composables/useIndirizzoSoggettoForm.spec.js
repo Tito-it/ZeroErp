@@ -33,8 +33,8 @@ vi.mock('../../core/apiCore', () => ({
 const { useIndirizzoSoggettoForm } = await import('./useIndirizzoSoggettoForm')
 
 const MATRICE = [
-  { codice: 'RES', descrizione: 'Residenza', obbligatorio: true },
-  { codice: 'FATT', descrizione: 'Fatturazione', obbligatorio: false },
+  { codice_interno: 'RES', descrizione: 'Residenza', obbligatorio: true },
+  { codice_interno: 'FATT', descrizione: 'Fatturazione', obbligatorio: false },
 ]
 
 describe('useIndirizzoSoggettoForm — chiave d\'ingresso del tipo', () => {

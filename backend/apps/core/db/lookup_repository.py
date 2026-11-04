@@ -66,7 +66,7 @@ class LookupRepository:
         self, natura_soggetto: str | None = None
     ) -> list[dict[str, Any]]:
         sql = """
-            SELECT tr.id, COALESCE(tr.codice_interno, tr.codice) AS codice, tr.descrizione
+            SELECT tr.id, tr.codice_interno, tr.descrizione
               FROM config.tipi_ruoli tr
              WHERE (%s::varchar IS NULL OR NOT EXISTS (
                        SELECT 1 FROM config.tipi_ruoli_nature_ammesse m
@@ -126,11 +126,11 @@ class LookupRepository:
     ) -> list[dict[str, Any]]:
         sql = """
             SELECT tsdti.tipo_indirizzo_id,
-                   ti.codice_interno AS codice,
+                   ti.codice_interno,
                    ti.descrizione,
                    tsdti.obbligatorio,
                    tsdti.fallback_tipo_indirizzo_id,
-                   ti_fb.codice_interno AS fallback_codice
+                   ti_fb.codice_interno AS fallback_codice_interno
               FROM config.tipi_soggetto_dettaglio_tipi_indirizzo tsdti
               JOIN config.tipi_indirizzi ti
                 ON ti.id = tsdti.tipo_indirizzo_id
@@ -210,7 +210,7 @@ class LookupRepository:
               LEFT JOIN {overrides_table} o
                      ON o.utility_id = u.id
                     AND o.{overrides_fk_column} = %s
-             WHERE COALESCE(tr.codice_interno, tr.codice) = %s
+             WHERE tr.codice_interno = %s
                AND utr.attivo = true
                AND (utr.validita IS NULL OR utr.validita @> (SELECT script.fn_data_operativa()))
              ORDER BY u.descrizione
@@ -267,7 +267,7 @@ class LookupRepository:
               FROM config.utilities u
               JOIN config.utilities_tipi_ruolo utr ON utr.utility_id = u.id
               JOIN config.tipi_ruoli tr            ON tr.id = utr.tipo_ruolo_id
-             WHERE COALESCE(tr.codice_interno, tr.codice) = %s
+             WHERE tr.codice_interno = %s
                AND utr.attivo = true
                AND (utr.validita IS NULL OR utr.validita @> (SELECT script.fn_data_operativa()))
              ORDER BY u.descrizione
@@ -310,7 +310,7 @@ class LookupRepository:
                AND (utr_ef.validita IS NULL OR utr_ef.validita @> (SELECT script.fn_data_operativa()))
               JOIN config.tipi_ruoli tr_ef
                 ON tr_ef.id = utr_ef.tipo_ruolo_id
-               AND COALESCE(tr_ef.codice_interno, tr_ef.codice) = 'EF'
+               AND tr_ef.codice_interno = 'EF'
         """
         params: list = []
 
@@ -324,7 +324,7 @@ class LookupRepository:
                AND (utr_sogg.validita IS NULL OR utr_sogg.validita @> (SELECT script.fn_data_operativa()))
               JOIN config.tipi_ruoli tr_sogg
                 ON tr_sogg.id = utr_sogg.tipo_ruolo_id
-               AND COALESCE(tr_sogg.codice_interno, tr_sogg.codice) = %s
+               AND tr_sogg.codice_interno = %s
             """
             params.append(ruolo_codice_soggetto)
 
@@ -339,11 +339,11 @@ class LookupRepository:
     ) -> list[dict[str, Any]]:
         sql = """
             SELECT trti.tipo_indirizzo_id,
-                   COALESCE(ti.codice_interno, ti.codice) AS codice,
+                   ti.codice_interno,
                    ti.descrizione,
                    trti.obbligatorio,
                    trti.fallback_tipo_indirizzo_id,
-                   COALESCE(ti_fb.codice_interno, ti_fb.codice) AS fallback_codice
+                   ti_fb.codice_interno AS fallback_codice_interno
               FROM config.tipi_ruolo_tipi_indirizzo trti
               JOIN config.tipi_ruoli tr
                 ON tr.id = trti.tipo_ruolo_id
@@ -351,7 +351,7 @@ class LookupRepository:
                 ON ti.id = trti.tipo_indirizzo_id
               LEFT JOIN config.tipi_indirizzi ti_fb
                 ON ti_fb.id = trti.fallback_tipo_indirizzo_id
-             WHERE COALESCE(tr.codice_interno, tr.codice) = %s
+             WHERE tr.codice_interno = %s
                AND trti.attivo = true
              ORDER BY trti.obbligatorio DESC, ti.descrizione
         """

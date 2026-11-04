@@ -2101,8 +2101,10 @@ def fn_create_uom_tipo(payload: dict[str, Any]) -> dict[str, Any]:
     )
     descrizione = _require_string(payload, "descrizione", function_name=function_name, message="Descrizione obbligatoria.")
 
+    # `codice` in maiuscolo lo mette il DB (CODICE_MAIUSCOLO); `codice_interno`
+    # e' fuori da quella regola e resta normalizzato qui.
     data: dict[str, Any] = {
-        "codice": codice.upper(),
+        "codice": codice,
         "codice_interno": codice_interno.upper(),
         "descrizione": descrizione,
     }
@@ -2229,7 +2231,8 @@ def fn_create_unita_misura(payload: dict[str, Any]) -> dict[str, Any]:
         log_to_db=True,
     )
 
-    data: dict[str, Any] = {"codice": codice.upper(), "descrizione": descrizione, "tipo_uom_id": tipo_uom_id}
+    # Il maiuscolo del codice lo mette il DB (CODICE_MAIUSCOLO): non si ricopia.
+    data: dict[str, Any] = {"codice": codice, "descrizione": descrizione, "tipo_uom_id": tipo_uom_id}
     if descrizione_fattura is not _MISSING:
         data["descrizione_fattura"] = descrizione_fattura
 

@@ -101,8 +101,8 @@ class TestListMatriceIndirizzi(TestCase):
     @patch("apps.core.db.lookup_repository.connection")
     def test_list_matrice_indirizzi(self, mock_conn):
         """Verifica SQL con parametro tipo_soggetto_dettaglio_id e mappatura."""
-        cols = ["tipo_indirizzo_id", "codice", "descrizione",
-                "obbligatorio", "fallback_tipo_indirizzo_id", "fallback_codice"]
+        cols = ["tipo_indirizzo_id", "codice_interno", "descrizione",
+                "obbligatorio", "fallback_tipo_indirizzo_id", "fallback_codice_interno"]
         rows = [
             (1, "RESID", "Residenza", True, None, None),
             (2, "DOMFISC", "Domicilio Fiscale", True, None, None),
@@ -122,13 +122,13 @@ class TestListMatriceIndirizzi(TestCase):
         self.assertEqual(params, [1])
         self.assertEqual(len(results), 3)
         self.assertTrue(results[0]["obbligatorio"])
-        self.assertEqual(results[2]["fallback_codice"], "DOMFISC")
+        self.assertEqual(results[2]["fallback_codice_interno"], "DOMFISC")
 
     @patch("apps.core.db.lookup_repository.connection")
     def test_list_matrice_indirizzi_empty(self, mock_conn):
         """Nessun indirizzo configurato per il tipo — lista vuota."""
-        cols = ["tipo_indirizzo_id", "codice", "descrizione",
-                "obbligatorio", "fallback_tipo_indirizzo_id", "fallback_codice"]
+        cols = ["tipo_indirizzo_id", "codice_interno", "descrizione",
+                "obbligatorio", "fallback_tipo_indirizzo_id", "fallback_codice_interno"]
         mock_cursor = _mock_cursor_with_description([], cols)
         _mock_connection(mock_conn, mock_cursor)
 

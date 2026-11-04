@@ -302,7 +302,7 @@ scope emittente dell'operatore.
       {
         "id": 1,
         "tipo_ruolo_id": 3,
-        "ruolo_codice": "CL",
+        "ruolo_codice_interno": "CL",
         "ruolo_descrizione": "Cliente"
       }
     ],
@@ -798,7 +798,7 @@ Restituisce i ruoli assegnati al soggetto (es. Cliente, Fornitore, Vettore).
       {
         "id": 1,
         "tipo_ruolo_id": 3,
-        "ruolo_codice": "CL",
+        "ruolo_codice_interno": "CL",
         "ruolo_descrizione": "Cliente"
       }
     ]
@@ -807,7 +807,7 @@ Restituisce i ruoli assegnati al soggetto (es. Cliente, Fornitore, Vettore).
 }
 ```
 
-`id` e' il `soggetto_ruolo_id`; `ruolo_codice` e' il codice interno del tipo ruolo
+`id` e' il `soggetto_ruolo_id`; `ruolo_codice_interno` e' il codice interno del tipo ruolo
 (o il codice, se manca). Ordinati per descrizione; il ruolo CL e' filtrato per
 scope emittente.
 
@@ -878,7 +878,7 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" \
 Ricerca cross-dominio per autocomplete: restituisce **una riga per
 `soggetto_ruolo`** ("Rossi Srl — Cliente", "Rossi Srl — Fornitore" come
 opzioni distinte) piu' **una riga "senza ruolo"** (`soggetto_ruolo_id` e
-`ruolo_codice` NULL) per i soggetti privi di qualunque ruolo — per esempio
+`ruolo_codice_interno` NULL) per i soggetti privi di qualunque ruolo — per esempio
 appena censiti. Non hanno istanze: l'istanza nasce col suo billing account, e il
 ruolo CLIENTE con la prima istanza (vedi
 [guide/generazione-cliente.md](../../../guide/generazione-cliente.md)).
@@ -910,7 +910,7 @@ una riga "senza ruolo" non ha niente da salvare.
       {
         "soggetto_id": "a1b2c3d4-...",
         "soggetto_ruolo_id": 165,
-        "ruolo_codice": "CL",
+        "ruolo_codice_interno": "CL",
         "ruolo_descrizione": "Cliente",
         "ragione_sociale_completa": "Azienda ConTutto",
         "id_fiscale": "01234567890",
@@ -922,7 +922,7 @@ una riga "senza ruolo" non ha niente da salvare.
       {
         "soggetto_id": "b2c3d4e5-...",
         "soggetto_ruolo_id": null,
-        "ruolo_codice": null,
+        "ruolo_codice_interno": null,
         "ruolo_descrizione": null,
         "ragione_sociale_completa": "Soggetto Senza Ruolo",
         "id_fiscale": "SGGSNZ80A01H501U",
@@ -1172,7 +1172,7 @@ Usato per adattare ricerca soggetti e form di creazione al ruolo target
 
 | Parametro | Tipo | Descrizione |
 | --- | --- | --- |
-| `tipo_ruolo_codice` | string | Codice del tipo ruolo (es. `CL`, `FO`, `EF`). Case insensitive. |
+| `tipo_ruolo_codice` | string | Codice interno del tipo ruolo (`codice_interno`, es. `CL`, `FO`, `EF`). Confronto **esatto**: `cl` non trova `CL` (404), come nelle rotte `lookup/tipi-ruolo/{codice}/…`. Fino al 2026-11-04 era case insensitive. |
 
 ### Risposta (200)
 
@@ -1215,7 +1215,7 @@ Usato per adattare ricerca soggetti e form di creazione al ruolo target
 
 | Codice | HTTP | Causa |
 | --- | --- | --- |
-| `E_ANAG_NOT_FOUND` | 404 | `tipo_ruolo_codice` non corrisponde a nessun `config.tipi_ruoli` (confronto sul codice interno, o sul codice se manca; non filtra su `attivo`) |
+| `E_ANAG_NOT_FOUND` | 404 | `tipo_ruolo_codice` non corrisponde a nessun `config.tipi_ruoli` (confronto esatto sul codice interno; non filtra su `attivo`) |
 
 ### Esempio config-resolver
 

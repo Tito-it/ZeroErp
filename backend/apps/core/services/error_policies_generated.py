@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1168, di cui 124 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1170, di cui 124 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -287,8 +287,12 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # Coda lavori generica (worker): codici sollevati durante il dispatch/ · esecuzione dei job. Non attraversano HTTP nel flusso normale (finiscono · in `ultimo_errore` del job), ma la regola è: registrati prima dell'uso.
     "E_CODA_SCOPE_OPERATORE_INVALIDO": "DATO_ERRATO",
     "E_CODICE": "DATO_ERRATO",
+    # dbops.fn_run_automations_codice_maiuscolo non e' riuscita a montare o togliere il trigger del codice in maiuscolo (script.trgfn_codice_maiuscolo) su una tabella dell'ambito. Nessun operatore lo provoca: e' un difetto di struttura o di permessi di chi migra. Automazione CODICE_MAIUSCOLO, decisione Tid 2026-11-04.
+    "E_CODICE_MAIUSCOLO": "TECNICO",
     # <- CODICE_NON_MODIFICABILE  (vivo)
     "E_CODICE_NON_MODIFICABILE": "CONFLITTO_STATO",
+    # script.trgfn_codice_maiuscolo (automazione CODICE_MAIUSCOLO): il codice, normalizzato con script.fn_codice_normalizzato, e' piu' lungo di quanto la colonna varchar(n) ammette. Succede perche' la mappatura Unicode completa puo' allungare il testo (la ß tedesca diventa SS, una legatura due lettere): un codice digitato di n caratteri diventa di n+1. Senza questo codice l'assegnazione morirebbe con un 22001 che parla di n caratteri a chi ne ha scritti n. DATO_ERRATO e non TECNICO: il codice lo scrive una persona, nel contesto c'e' la chiave campo = codice. Le colonne non si allungano (Tid, 2026-11-04): la lunghezza e' un limite del dominio della tabella. Richiesta BE brief-be-codice-maiuscolo, sezione 6, decisione D-1 b.
+    "E_CODICE_TROPPO_LUNGO_IN_MAIUSCOLO": "DATO_ERRATO",
     "E_COD_INT_RUOLO": "NON_TROVATO",
     "E_COERENZA_ID": "DATO_ERRATO",
     # Sette guard `*_protect_update` / `guard_immutabili` su · anagrafiche, config e pratiche: la colonna e' congelata. Stessa · famiglia (e stesso status) degli immutabili del lotto 1.

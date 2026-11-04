@@ -756,7 +756,8 @@ class DbopsRepository:
         where_sql = f"""WHERE (%s::text IS NULL OR e.area = %s)
                AND (%s::text IS NULL OR e.function_name LIKE %s)
                AND (%s::text IS NULL OR e.messaggio_errore_id IN (
-                        SELECT mm.id FROM config.messaggi_errore mm WHERE mm.codice = %s))
+                        SELECT mm.id FROM config.messaggi_errore mm
+                         WHERE mm.codice = script.fn_codice_normalizzato(%s)))
                AND (%s::uuid IS NULL OR e.tx_id = %s::uuid)
                AND {giorno_sql}"""  # noqa: S608 — frammento del BB predicato_giorno_operativo (colonna validata), valori come parametri
         where_params = [

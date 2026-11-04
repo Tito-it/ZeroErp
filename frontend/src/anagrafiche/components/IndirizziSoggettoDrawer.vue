@@ -146,12 +146,12 @@ const tipiEsistenti = computed(() =>
 
 // Matrice filtrata: solo tipi non ancora associati (per aggiungi)
 const matriceDisponibile = computed(() =>
-  matriceCompleta.value.filter(m => !tipiEsistenti.value.has(m.codice))
+  matriceCompleta.value.filter(m => !tipiEsistenti.value.has(m.codice_interno))
 )
 
 // Tipi obbligatori mancanti
 const tipiMancanti = computed(() =>
-  matriceCompleta.value.filter(m => m.obbligatorio && !tipiEsistenti.value.has(m.codice))
+  matriceCompleta.value.filter(m => m.obbligatorio && !tipiEsistenti.value.has(m.codice_interno))
 )
 
 // Carica dati quando drawer si apre
@@ -197,7 +197,7 @@ async function onStartReplace(ind) {
     indirizzo.reset()
     // La matrice per il replace ha solo il tipo da sostituire
     indirizzo.setMatrice([{
-      codice: ind.tipo_indirizzo_codice_interno,
+      codice_interno: ind.tipo_indirizzo_codice_interno,
       descrizione: ind.tipo_indirizzo_descrizione,
       obbligatorio: true,
     }])

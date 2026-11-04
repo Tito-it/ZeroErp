@@ -12,7 +12,7 @@ import { useInjectReadonly, READONLY_KEY } from '../../core/composables/useReado
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { displayDate, toDateString, parseIsoDate } from '../../core/utils/date'
 import { statoPraticaSeverity, prioritaPraticaSeverity } from '../../core/utils/severity'
-import { DRAWER_WIDTH, MANAGE_ICONS, STATO_PRATICA, STATI_PRATICA_TERMINALI, DATE_FORMAT } from '../../core/constants'
+import { DRAWER_WIDTH, MANAGE_ICONS, STATO_PRATICA, STATI_PRATICA_TERMINALI, DATE_FORMAT, TIPO_RUOLO } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import AppDrawer from '../../core/components/AppDrawer.vue'
 import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
@@ -101,13 +101,12 @@ const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(formSalva
 // Solo il ruolo CLIENTE ha forniture (il BA e' del ruolo CL); per gli altri
 // ruoli, e per la riga "senza ruolo", il campo non ha senso: la pratica
 // accetta un BA solo dal suo ruolo (E_PRATICHE_BA_NON_COERENTE).
-const TIPO_RUOLO_CLIENTE = 'CL'
 
 // Fornitura auto-derivata: cliente con UN solo BA -> niente picker, hint
 // informativo, payload automatico.
 const baDerivato = computed(() => {
   const c = contestoSelezionato.value
-  return (c?.ruolo_codice === TIPO_RUOLO_CLIENTE && c?.billing_account_unico_id) || null
+  return (c?.ruolo_codice_interno === TIPO_RUOLO.CLIENTE && c?.billing_account_unico_id) || null
 })
 
 // Picker fornitura visibile solo quando la scelta e' davvero dell'operatore:
@@ -116,7 +115,7 @@ const baDerivato = computed(() => {
 // - CL con piu' BA (piu' istanze, o un'istanza con piu' utility) -> visibile.
 const mostraCampoFornitura = computed(() => {
   const c = contestoSelezionato.value
-  if (c?.ruolo_codice !== TIPO_RUOLO_CLIENTE) return false
+  if (c?.ruolo_codice_interno !== TIPO_RUOLO.CLIENTE) return false
   if (baDerivato.value) return false
   return (c.n_billing_account ?? 0) > 0
 })

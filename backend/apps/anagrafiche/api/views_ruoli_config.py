@@ -90,7 +90,10 @@ class RuoliConfigResolverView(DomainAPIView):
     # Scopo: Restituisce la configurazione resolver per un tipo ruolo.
     def get(self, request: Request, tipo_ruolo_codice: str) -> JsonResponse:
         repo = SoggettiRepository()
-        result = repo.get_config_resolver(tipo_ruolo_codice.upper())
+        # La chiave e' il `codice_interno` (scritto dal programma, fuori
+        # dall'automazione CODICE_MAIUSCOLO): si confronta ESATTA, come le
+        # rotte `lookup/tipi-ruolo/{codice}/…` (Tid, 2026-11-04).
+        result = repo.get_config_resolver(tipo_ruolo_codice)
         if result is None:
             from apps.core.services.service_errors import ServiceError
 

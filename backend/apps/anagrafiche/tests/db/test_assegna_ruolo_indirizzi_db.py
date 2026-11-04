@@ -69,7 +69,7 @@ class AssegnaRuoloIndirizziDbTests(unittest.TestCase):
         self._commit_simulato()
         with connection.cursor() as cur:
             cur.execute(
-                "SELECT COALESCE(ti.codice_interno, ti.codice) "
+                "SELECT ti.codice_interno "
                 "  FROM anagrafiche.indirizzi i "
                 "  JOIN config.tipi_indirizzi ti ON ti.id = i.tipo_indirizzo_id "
                 " WHERE i.soggetto_ruolo_id = %s ORDER BY 1",
