@@ -1,104 +1,146 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_pgtap_crea_ddt_da_ordine`
 
+> **Ultimo aggiornamento**: 4 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-> • [vendite.fn_genera_ddt_da_ordine](/dbzero/vendite/funzioni/fn_genera_ddt_da_ordine) — la madre da cui nasce la bolla
+> Approfondimento tabelle:
 >
-> • [dbops.fn_pgtap_crea_ordine](/dbzero/dbops/funzioni/fn_pgtap_crea_ordine) — l'ordine da cui parte
+> * [vendite.ordini_righe_fulfillment](/dbzero/vendite/tabelle/ordini_righe_fulfillment) — il legame fra la riga d'ordine e la riga della bolla
 >
-> • [dbops.fn_pgtap_porta_a_stato](/dbzero/dbops/funzioni/fn_pgtap_porta_a_stato) — la strada per portarla avanti
+> Approfondimento funzioni:
 >
-> • [dbops.fn_pgtap_crea_ddt](/dbzero/dbops/funzioni/fn_pgtap_crea_ddt) — la bolla in bozza senza ordine, per il magazzino
+> * [vendite.fn_genera_ddt_da_ordine](/dbzero/vendite/funzioni/fn_genera_ddt_da_ordine) — la madre da cui nasce la bolla
+> * [dbops.fn_pgtap_crea_ordine_con_righe](/dbzero/dbops/funzioni/fn_pgtap_crea_ordine_con_righe) — l'ordine confermato da cui parte
+> * [dbops.fn_pgtap_porta_a_stato](/dbzero/dbops/funzioni/fn_pgtap_porta_a_stato) — la strada per portarla avanti
+> * [dbops.fn_pgtap_crea_ddt](/dbzero/dbops/funzioni/fn_pgtap_crea_ddt) — la bolla in bozza senza ordine, per il magazzino
+> * [dbops.fn_pgtap_crea_ddt_senza_ordine](/dbzero/dbops/funzioni/fn_pgtap_crea_ddt_senza_ordine) — il gemello, per la bolla senza ordine
+> * [vendite.fn_annulla_ddt](/dbzero/vendite/funzioni/fn_annulla_ddt) — il verbo dell'annullo, che resta del test
 >
-Guide: [pgTAP — come si scrive un test](/guide/pgtap-come-si-scrive-un-test) · brief `brief-db-pgtap-bolla-e-reso-costruiti` (giro 1)
+> Guide:
+>
+> * [pgTAP — come si scrive un test](/guide/pgtap-come-si-scrive-un-test) — le fixture e quando usarle
 
 ---
+
 ### 🎯 Scopo Principale
 
-(rev 2026-10-25)
-
-**Una bolla nata da un ordine confermato, già consegnata, in una chiamata sola.** È il
-punto di partenza di tutto ciò che viene dopo la consegna: il reso, l'accredito, la
-situazione della merce, la fatturazione delle bolle.
-
-```sql
-CREATE TEMP TABLE tmp_b AS
-SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('resi');
-
--- due spedizioni dalla stessa riga d'ordine, 4 e 6
-CREATE TEMP TABLE tmp_s1 AS
-SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('sped', p_quantita => 10, p_qta_da_evadere => 4);
-SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine(
-           'sped', p_ordine_id => (SELECT ordine_id FROM tmp_s1), p_qta_da_evadere => 6);
-
--- la bolla in bozza, per scriverle ciò che il test prova, poi consegnata
-CREATE TEMP TABLE tmp_d AS
-SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('riga a mano', 'DRAFT');
--- … la riga aggiunta a mano …
-SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', (SELECT ddt_id FROM tmp_d), 'CONSEGNATO');
-```
+Una bolla nata da un ordine confermato, nello stato chiesto (di norma **consegnata**), in
+una chiamata sola, per la strada vera del dominio. È il punto di partenza di tutto ciò che
+viene dopo la consegna: il reso, l'accredito, la situazione della merce, la fatturazione
+delle bolle.
 
 ---
-### 🧭 Perché esiste
 
-Per avere una bolla consegnata i test ripetevano a mano cinque passi in un ordine
-obbligato: l'ordine con la riga, la conferma, la bolla dall'ordine, l'indirizzo e la
-causale che la consegna pretende, i passaggi di stato uno per uno. Ognuno con i suoi
-controlli, e ogni file li riscriveva per conto suo: quando una regola cambiava, si
-correggevano tutte le copie. Ora la strada ha una sede.
+### ⭐ Perché esiste: la trappola d'ordine
 
----
-### 🔗 Cosa decide la funzione e cosa decide il dominio
-
-* **L'ordine** lo costruisce `dbops.fn_pgtap_crea_ordine_con_righe`, confermato: **una** riga
-  (`p_quantita`, default 10, a `p_prezzo`, default 25) dell'articolo `p_articolo_id` o di
-  uno costruito (merce non gestita), oppure le righe di `p_righe_ordine` (più righe, sconto,
-  date di consegna, nella grammatica di quel builder). Il **trigger di fatturazione** (`p_fatturazione_trigger`)
-  si scrive in bozza, perché fuori bozza è congelato; senza, resta quello del cliente. Poi la
-  conferma, per la matrice.
-* **Il cliente** è quello del terzo parametro (il billing account di un'altra fixture) o uno
-  nuovo, nella stessa azienda di chi agisce.
-* **La bolla** la fa la madre `vendite.fn_genera_ddt_da_ordine`, come in produzione: copia
-  le righe, scrive il legame con la riga d'ordine e proietta l'ordine a evaso o
-  parzialmente evaso. Si evade tutto il residuo, oppure `p_qta_da_evadere` (per l'unica riga
-  dell'ordine) o `p_righe` (la grammatica della madre), alla data `p_data`.
-* **La data dell'ordine** (`p_data_ordine`) la scrive `dbops.fn_pgtap_crea_ordine` alla
-  nascita; senza, è la data operativa. Chi dà alla bolla una data passata dà anche quella
-  dell'ordine, così la bolla non è più vecchia del suo ordine.
-* **Ciò che l'emissione pretende**: la causale per codice (`p_causale_codice`, default
-  `VENDITA`) e gli indirizzi obbligatori della bolla che l'ordine non le ha passato.
-* **Lo stato** (default `CONSEGNATO`) si raggiunge per la matrice dei passaggi, sotto i
-  controlli veri.
-* **Un ordine speciale** — più righe, un kit coi componenti, una data che il test misura —
-  lo costruisce il test, lo conferma, e passa `p_ordine_id`: la bolla nasce da lì. Cliente,
-  riga, data e trigger sono allora dell'ordine, e passarli è un errore.
-
-Restituisce la bolla, la sua **prima** riga con la quantità, l'ordine e la riga d'ordine
-evasa, l'articolo, il cliente, l'azienda, l'operatore e lo stato.
+Per avere una bolla consegnata servono cinque passi in un ordine obbligato: l'ordine con la
+riga, la conferma, la bolla dall'ordine, la causale e gli indirizzi che l'emissione
+pretende, i passaggi di stato uno per uno. Ogni test li riscriveva per conto suo, e quando
+una regola cambiava si correggevano tutte le copie. La strada ha una sede sola.
 
 ---
-### 🚫 Cosa NON fa
+
+### Che cosa decide la fixture e che cosa decide il dominio
+
+* **L'ordine** lo costruisce
+  [dbops.fn_pgtap_crea_ordine_con_righe](/dbzero/dbops/funzioni/fn_pgtap_crea_ordine_con_righe),
+  confermato: una riga di merce costruita (o dell'articolo del test), oppure le righe che il
+  test descrive con più righe, sconto e date di consegna, nella grammatica di quel builder.
+  Il momento di fatturazione, se il test lo sceglie, si scrive in bozza; senza, resta quello
+  ereditato dal cliente. La data dell'ordine si sceglie alla nascita: chi dà alla bolla una
+  data passata dà anche quella dell'ordine, perché una bolla più vecchia del suo ordine è
+  una fixture incoerente col modello.
+* **Il cliente** è quello del billing account passato dal test, verificato nell'azienda di
+  chi agisce, oppure uno nuovo.
+* **La bolla** la fa la madre
+  [vendite.fn_genera_ddt_da_ordine](/dbzero/vendite/funzioni/fn_genera_ddt_da_ordine), come
+  in produzione: copia le righe, scrive il legame con la riga d'ordine e proietta l'ordine a
+  evaso o parzialmente evaso. Si evade tutto il residuo, oppure una quantità per l'unica
+  riga attiva dell'ordine, oppure le righe nella grammatica della madre (le due scelte
+  insieme sono un errore). La data della bolla è quella chiesta, o la data operativa.
+* **Ciò che l'emissione pretende** e la cascata dall'ordine non porta: la causale per codice
+  (di norma `VENDITA`) e gli indirizzi obbligatori mancanti.
+* **Lo stato** si raggiunge per la matrice dei passaggi, sotto i controlli veri.
+* **Un ordine speciale** — più righe, un kit coi componenti, una data che il test misura — lo
+  costruisce e lo conferma il test, e lo passa: la bolla nasce da lì. Cliente, righe, data e
+  momento di fatturazione sono allora dell'ordine, e passarli è un errore.
+
+La fixture restituisce la bolla, la sua **prima** riga (per numero di riga) con la quantità
+base, l'ordine e la riga d'ordine che quella riga evade, l'articolo, il cliente, l'azienda,
+l'operatore e lo stato. Con più righe, il test le legge da sé.
+
+---
+
+### ⚠️ Con un onere nell'ordine, «la prima riga» può essere l'onere
+
+Le righe-onere (il trasporto, le spese) passano dall'ordine alla bolla **intere**, nella
+prima bolla, anche se il test non le ha chieste. La fixture non distingue la merce
+dall'onere:
+
+* la riga restituita è la prima per numero: se l'onere sta al numero 1, è l'onere;
+* la quantità da evadere sull'«unica riga» conta tutte le righe attive dell'ordine, oneri
+  compresi: un ordine con una riga di merce e un onere la rifiuta, e il test deve dare le
+  righe nella grammatica della madre.
+
+Il builder del reso, invece, sceglie già la prima riga di **merce**.
+
+---
+
+### ⛔ Che cosa non fa
 
 * **Non lavora sulla bolla in bozza al posto del test**: una riga aggiunta a mano, un legame
-  in più, un prezzo tolto sono il caso del test. Si chiede la bolla in `DRAFT`, si scrive, e
-  la si porta avanti con `dbops.fn_pgtap_porta_a_stato`.
-* **Non annulla.** Uno stato abortito (`ANNULLATO`) si rifiuta prima di costruire: la
-  bolla nata da un ordine ha i legami con le righe d'ordine, e il suo annullo li dichiara
-  il verbo `vendite.fn_annulla_ddt`. Si chiede la bolla `EMESSO` e si annulla dal test.
-* **Non sostituisce `dbops.fn_pgtap_crea_ddt`**, la bolla in bozza senza ordine per i test
-  del magazzino.
+  in più, un prezzo tolto sono il caso del test. Il test chiede la bolla in `DRAFT`, ci
+  scrive, e la porta avanti con
+  [dbops.fn_pgtap_porta_a_stato](/dbzero/dbops/funzioni/fn_pgtap_porta_a_stato).
+* **Non annulla.** Uno stato abortito si rifiuta prima di costruire: la bolla nata da un
+  ordine ha i legami con le righe d'ordine, e il suo annullo li dichiara il verbo
+  [vendite.fn_annulla_ddt](/dbzero/vendite/funzioni/fn_annulla_ddt). Si chiede la bolla
+  emessa e si annulla dal test.
+* **Non sostituisce** [dbops.fn_pgtap_crea_ddt](/dbzero/dbops/funzioni/fn_pgtap_crea_ddt), la
+  bolla in bozza senza ordine dei test di magazzino.
 
 ---
-### ⚠️ Il contratto sui vincoli differiti
 
-Esce con i vincoli **richiusi** (`IMMEDIATE`), come ogni helper di fixture. Senza un
-contesto aperto, il mondo lo apre sull'operatore che costruisce.
+### I parametri si giudicano prima di costruire
+
+Uno stato o una causale che non esistono, uno stato abortito, la quantità e le righe insieme,
+un ordine del test insieme a cliente, righe, data o momento di fatturazione: la fixture si
+ferma **prima** di costruire, così un errore del chiamante non lascia un mondo a metà. Un
+ordine che non esiste o non si vede si ferma subito dopo.
+
+Senza un contesto aperto, il mondo lo apre sull'operatore che costruisce. Esce con i vincoli
+**richiusi** (`IMMEDIATE`), come ogni helper di fixture.
 
 ---
-### 🧪 Il presidio
 
-`db/pgtap/dbops/test-fn-pgtap-crea-ddt-da-ordine-v1.sql` (15 casi): firma; bolla consegnata
-nata dall'ordine, col numero; legame fra le due righe; ordine evaso, causale e indirizzi;
-bolla in bozza; due spedizioni dalla stessa riga; trigger di fatturazione e cliente del
-test; causale scelta; la data dell'ordine; quattro errori del chiamante e uno stato
-abortito rifiutati.
+### Test
+
+* `db/pgtap/dbops/test-fn-pgtap-crea-ddt-da-ordine-v1.sql` — la bolla consegnata nata
+  dall'ordine, col numero e la sorgente; il legame fra le due righe; l'ordine evaso; causale
+  e indirizzi; la bozza; due spedizioni dalla stessa riga; momento di fatturazione e cliente
+  del test; la causale scelta; la data dell'ordine; l'ordine con più righe del test; gli
+  errori del chiamante e lo stato abortito rifiutati prima di costruire.
+
+---
+
+### Note di migrazione
+
+* 2026-10-25 — nasce per raccogliere la strada che i test ricopiavano
+  (`brief-db-pgtap-bolla-e-reso-costruiti`, giro 1). Lo stesso giorno: lo stato abortito si
+  rifiuta prima di costruire; la data dell'ordine si sceglie alla nascita; l'ordine passa al
+  builder dell'ordine con le righe, che ritira la copia della strada che stava qui
+  (`brief-db-pgtap-reso-costruito`, E-1).
+* 2026-10-27 — lo stato iniziale si legge dalla testata e non dal vocabolario
+  (`brief-modello-documento-vendita` §15.13).
+* 2026-11-03 — con gli oneri sulle righe d'ordine e di bolla, il censimento di
+  `brief-db-addebito-trasporto-ordine` (§8.1) segnala che la fixture prende «la prima riga»;
+  il giro ha corretto solo il builder del reso.
+
+---
+
+{% include-markdown "it/dbzero/dbops/_fixture-pgtap.md" %}
+
+---
+
+{% include-markdown "signature-core.md" %}

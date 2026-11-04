@@ -1,28 +1,82 @@
-# fn_ritira_attivo_eccezioni
+## 📘 Documentazione Concettuale – Funzione `dbops.fn_ritira_attivo_eccezioni`
 
-### Scopo
+> **Ultimo aggiornamento**: 4 novembre 2026
+>
+> 👀 **Vedi anche**
+>
+> Approfondimento tabelle:
+>
+> * [dbops.automazione_attivo_eccezioni](/dbzero/dbops/tabelle/automazione_attivo_eccezioni) — le FK dichiarate eccezione, che la funzione legge
+>
+> Approfondimento funzioni:
+>
+> * [dbops.fn_run_automations_attivo](/dbzero/dbops/funzioni/fn_run_automations_attivo) — il motore che la chiama in testa a ogni giro
+> * [dbops.fn_ritira_attivo_orfani](/dbzero/dbops/funzioni/fn_ritira_attivo_orfani) — il ritiro gemello, per i trigger che nominano oggetti spariti
+> * [dbops.fn_trigger_argomenti](/dbzero/dbops/funzioni/fn_trigger_argomenti) — legge gli argomenti dei trigger
+> * [dbops.trgfn_child_requires_active_parent](/dbzero/dbops/funzioni/trgfn_child_requires_active_parent) — il require sul figlio
+> * [dbops.trgfn_prevent_deactivate_if_children](/dbzero/dbops/funzioni/trgfn_prevent_deactivate_if_children) — il block sul padre
+>
+> Guide:
+>
+> * [Framework di automazione DB](/guide/automazione-db) — §4.2, le eccezioni della regola ATTIVO
+
+---
+
+### 🎯 Scopo Principale
 
 Toglie i trigger ATTIVO **già generati** per le FK dichiarate in
-[`dbops.automazione_attivo_eccezioni`](/dbzero/dbops/manual/automazione_attivo_eccezioni).
-Torna quanti ne ha tolti.
+`dbops.automazione_attivo_eccezioni`, e restituisce quanti ne ha tolti.
 
-## Come li riconosce
+Esiste perché una FK può diventare eccezione dopo che il motore l'ha già legata: dichiararla non
+basta, i trigger che ci sono vanno tolti. Chi genera i trigger li ritira.
 
-⛔ **Per funzione e argomenti, non per nome**: i nomi generati oltre i 63
-caratteri sono hashati. `tgargs` si legge con `encode(…, 'escape')`.
+---
 
-| Trigger | Funzione | Dove sta la FK negli argomenti |
+### ⛔ Li riconosce per funzione e argomenti, non per nome
+
+I nomi generati oltre i 63 caratteri sono troncati con un hash, quindi il nome non è una chiave.
+La funzione guarda i trigger non interni delle due funzioni del framework ATTIVO, ne legge gli
+argomenti con `dbops.fn_trigger_argomenti` e li confronta con la riga del registro:
+
+| Trigger | Funzione | Dove sta la FK della riga |
 | --- | --- | --- |
-| require, sul **figlio** | `dbops.trgfn_child_requires_active_parent` | il figlio è la tabella del trigger, la colonna FK è l'argomento 4 |
-| block, sul **padre** | `dbops.trgfn_prevent_deactivate_if_children` | argomenti 1, 2, 3 = schema, tabella e colonna FK della figlia |
+| require, sul **figlio** | `dbops.trgfn_child_requires_active_parent` | la tabella del trigger è la figlia, la colonna FK è il quarto argomento |
+| block, sul **padre** | `dbops.trgfn_prevent_deactivate_if_children` | primo, secondo e terzo argomento: schema, tabella e colonna FK della figlia |
 
-## Chi la chiama
+Una riga del registro che nomina una tabella che non esiste non trova trigger e non produce
+errori.
 
-- `dbops.fn_run_automations_attivo`, in testa a ogni giro (fuori dal dry run):
-  chi genera i trigger li ritira quando la coppia diventa un'eccezione;
-- `90_end/20260925-50`, una volta: su dbdev i trigger c'erano già e il job
-  delle automazioni gira solo la sera.
+---
 
-È un `DROP TRIGGER IF EXISTS`: idempotente, e su un database nuovo (prima del
-`ci_apply`) torna 0. `INVOKER`: la chiamano il migratore o il job, che
-possiedono le tabelle.
+### Chi la chiama
+
+* `dbops.fn_run_automations_attivo`, in testa a ogni giro e solo fuori dal dry run;
+* un changeSet di `90_end`, una volta, per i database su cui i trigger c'erano già quando il
+  registro è nato.
+
+È un `DROP TRIGGER IF EXISTS` per trigger trovato: rilanciarla è innocuo, e su un database appena
+costruito, prima della passata `ci_apply`, restituisce zero. Per ogni trigger tolto emette un
+avviso col nome e la tabella.
+
+È `SECURITY INVOKER`: la chiamano il migratore o il job delle automazioni, che sono proprietari
+delle tabelle.
+
+---
+
+### Test
+
+* `db/pgtap/dbops/test-automazione-attivo-eccezioni-v1.sql` — sulla FK dichiarata non resta né
+  il require né il block, e le altre FK della stessa figlia sono ancora legate.
+
+---
+
+### Note di migrazione
+
+* 2026-09-25 — nasce con il registro delle eccezioni (`brief-db-blocco-login-per-credenziale`
+  §12.3).
+* 2026-09-26 — gli argomenti si leggono da `dbops.fn_trigger_argomenti` invece che con una
+  decodifica locale di `tgargs`.
+
+---
+
+{% include-markdown "signature-core.md" %}

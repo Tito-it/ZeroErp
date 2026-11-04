@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/fn_processo_acceso_dichiarato.md" %}
 # ⚙️ Funzione `fn_processo_acceso_dichiarato`
 
 ```sql

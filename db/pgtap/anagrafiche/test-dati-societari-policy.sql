@@ -41,7 +41,8 @@ SELECT plan(13);
 --   senza argomenti tornerebbe sempre lo stesso valore, perche' fra una
 --   chiamata e l'altra non c'e' nessun insert che lo occupi.
 CREATE TEMP TABLE tmp_run_sfx AS
-SELECT substr(md5(clock_timestamp()::text), 1, 8) AS sfx,
+-- rev 2026-11-04: upper() sul suffisso: il codice si salva in maiuscolo (automazione CODICE_MAIUSCOLO), e la ricerca per valore deve ricomporlo uguale.
+SELECT upper(substr(md5(clock_timestamp()::text), 1, 8)) AS sfx,
        dbops.fn_pgtap_piva_libera(0) AS piva_sc_ok,
        dbops.fn_pgtap_piva_libera(1) AS piva_sc_err,
        dbops.fn_pgtap_piva_libera(2) AS piva_sp,

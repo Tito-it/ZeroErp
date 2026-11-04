@@ -1,123 +1,141 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.audit_log`
 
+> **Ultimo aggiornamento**: 4 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Guide:
->     
-[Audit Logging](/guide/messaggi-audit)
+> Approfondimento tabelle:
 >
-Approfondimento tabelle:   
-> 
-[dbops.error_log](/dbzero/dbops/tabelle/error_log)    
+> * [dbops.error_log](/dbzero/dbops/tabelle/error_log) — il registro degli errori, l'altro registro append-only di `dbops`
+> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl) — la regola di scadenza del registro
 >
-Approfondimento funzioni:    
+> Approfondimento viste:
 >
-[dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)    
-
-La tabella **`dbops.audit_log`** registra le esecuzioni di processi, funzioni e job, consentendo di tracciare chi ha eseguito cosa, quando e con quali parametri, nonché l’esito e la durata. Il campo **`tx_id`** non possiede più un valore di default: viene assegnato **automaticamente** dal **trigger**  utilizzando la trigger function `dbops.trgfn_tx_id_managed()`, garantendo coerenza con il modello di `error_log`.
+> * [dbops.vw_audit_log_scrittori_fuori_perimetro](/dbzero/dbops/views/vw_audit_log_scrittori_fuori_perimetro) — il cancello su chi può scriverci
+>
+> Approfondimento funzioni:
+>
+> * [dbops.fn_audit_log_once](/dbzero/dbops/funzioni/fn_audit_log_once) — la riga intera in una volta: la porta dell'applicazione
+> * [dbops.fn_audit_begin](/dbzero/dbops/funzioni/fn_audit_begin) — apre una riga `START`, riservata al proprietario
+> * [dbops.fn_audit_end](/dbzero/dbops/funzioni/fn_audit_end) — la chiude con l'esito e la durata
+> * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed) — il trigger che valorizza `tx_id`
+> * [dbops.fn_apply_cleanup_at](/dbzero/dbops/funzioni/fn_apply_cleanup_at) — il job che calcola la scadenza
+>
+> Guide:
+>
+> * [Audit Logging](/guide/messaggi-audit) — le funzioni di audit e chi può scrivere
+> * [Messaggi di errore e generazione log](/guide/Messaggi-di-Errore-e-Generazione-Log) — quale registro risponde a quale domanda
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 10-01-26)
-* Monitorare e storicizzare ogni chiamata a funzioni, job e API interne.
-* Fornire dettagli su utente, parametri e performance di esecuzione.
-* Collegare gli eventi di audit agli errori e ad altri log tramite `tx_id` gestito dal trigger.
+
+Il **registro tecnico delle esecuzioni**: le corse delle automazioni del framework, degli
+strumenti di amministrazione del database e delle loro simulazioni, con parametri, esito, durata
+e riepilogo. Risponde alla domanda «quale funzione o automazione è stata eseguita, con quali
+parametri, e com'è finita?».
+
+⛔ Non è un registro di dominio: le funzioni che ci scrivono stanno in `dbops` e `maintenance`, e
+un cancello lo tiene così (vedi sotto).
 
 ---
 
-### 🔒 Privilegi — registro APPEND-ONLY per l'applicazione (dal 2026-09-11)
+### Che cosa dice una riga
 
-| Ruolo | Privilegi | Perché |
+* `function_name` è la funzione o l'automazione che ha girato.
+* `status` è l'esito, in un vocabolario chiuso dal vincolo `chk_audit_status`: `START` (una corsa
+  aperta e non ancora chiusa), `OK`, `ERROR`, `WARN`, `DRYRUN` (una simulazione: che cosa la
+  funzione avrebbe fatto).
+* `executed_by` è il **ruolo di database** che ha scritto la riga, non l'operatore: chi ha chiesto
+  il lavoro, se c'è, sta nel contesto della sessione e nel `tx_id`. ⚠️ Le righe scritte prima che
+  il default diventasse il ruolo corrente portano la parola `CURRENT_USER`: si riconoscono e non si
+  ricostruiscono.
+* `params` porta l'ingresso o il contesto della corsa, `result` il suo riepilogo (trigger creati,
+  conteggi, metriche), `message` una frase sull'esito.
+* `exec_mode` è la modalità con cui il framework è stato lanciato (`AUTO`, `SCHEDULED`, `CI`…),
+  `parts` i moduli eseguiti, `rule_type` il tipo di regola quando la riga riguarda una regola sola,
+  `dry_run` dice se era una simulazione.
+* `sqlstate`, `error_context` e `rows_affected` raccontano un errore o un conteggio, quando ci
+  sono.
+* `duration_ms` la calcola `fn_audit_end` alla chiusura di una corsa aperta con `fn_audit_begin`;
+  chi scrive la riga intera la passa da sé, o la lascia vuota.
+
+---
+
+### `tx_id`: lo valorizza il trigger
+
+La colonna non ha default: quando una riga arriva senza `tx_id`, il trigger generato
+dall'automazione dei transaction id (`dbops.trgfn_tx_id_managed`) le assegna quello della
+transazione. Così una corsa si incrocia con gli errori registrati nella stessa transazione in
+`dbops.error_log`. La colonna ammette il vuoto: il registro non pretende la correlazione.
+
+---
+
+### ⛔ Append-only per l'applicazione
+
+| Ruolo | Che cosa può fare | Perché |
 | --- | --- | --- |
-| `zeroerp_app` | `SELECT`, `INSERT` | legge dall'amministrazione, aggiunge con `fn_audit_log_once`. **Non** `UPDATE`/`DELETE`/`TRUNCATE`: *un registro modificabile da chi è auditato non è un registro* |
-| proprietario (migratore, job) | tutto | scrive le automazioni; la modalità sessione `fn_audit_begin`/`fn_audit_end` — che chiude con un `UPDATE` — è **riservata** a lui |
-| `zeroerp_batch_*` | `SELECT` | perimetro nel provisioning |
+| `zeroerp_app` | leggere e aggiungere | Un registro modificabile da chi è registrato non è un registro: niente modifica, cancellazione, svuotamento |
+| proprietario (migratore, job) | tutto | Scrive le automazioni, chiude le corse aperte con `fn_audit_end`, che è un aggiornamento, e cancella le righe scadute |
+| ruoli batch | leggere | Il perimetro sta nel provisioning |
 
-⚠️ La postura **non** è un `REVOKE` scritto una volta: i privilegi dell'app
-vengono riconcessi in blocco a ogni passata `ci_apply`, e la postura più
-stretta è **dichiarata dentro quel loop** (`90_end/ci_apply/20260205-41`).
-Presidio: `db/pgtap/dbops/test-registri-append-only-postura-v1.sql`.
-Regola: [linee-guida-sql](/linee-guida-sql) §11.8; motivazione e dettaglio:
-guida [Audit Logging](/guide/messaggi-audit), sezione *Chi può scrivere*.
+L'applicazione scrive solo con `fn_audit_log_once`; la coppia `fn_audit_begin` / `fn_audit_end`
+le è negata, perché la chiusura è un aggiornamento della riga.
 
----
-
-### Significato dei Campi
-
-| Campo           | Tipo                | Descrizione                                                                              |
-| --------------- | ------------------- | ---------------------------------------------------------------------------------------- |
-| `id`            | `bigint`            | Chiave primaria, sequenza automatica.                                                    |
-| `function_name` | `text`              | Nome della funzione/method/app che è stata eseguita.                                     |
-| `executed_by`   | `text`              | **Ruolo di database** che ha scritto la riga (default `current_user`). L'operatore sta nelle GUC `app.*` e nel `tx_id`. |
-| `executed_at`   | `timestamp with tz` | Timestamp di inizio esecuzione (default `now()`).                                        |
-| `params`        | `jsonb`             | Parametri in ingresso o contesto di esecuzione (JSONB).                                  |
-| `status`        | `text`              | Esito dell’esecuzione (`SUCCESS`, `FAILED`, `WARNING`).                                  |
-| `message`       | `text`              | Messaggio descrittivo dell’esito.                                                        |
-| `duration_ms`   | `integer`           | Durata dell’esecuzione in millisecondi.                                                  |
-| `tx_id`         | `uuid`              | Identificativo di transazione: valorizzato **dal trigger**  con `trgfn_tx_id_managed()`. |
-| `cleanup_at`    | `timestamptz`        | Timestamp opzionale per la pulizia programmata dei log.                                  |
+⚠️ La postura non è una revoca scritta una volta: i privilegi dell'applicazione si riconcedono in
+blocco a ogni passata della convergenza del rilascio, e la postura più stretta è dichiarata dentro
+quel ciclo e nel provisioning. Regola:
+[Linee guida SQL — sezione 11](/linee-guida-sql#11-ciclo-di-vita-di-un-changeset-i-divieti),
+punto 11.8.
 
 ---
 
-### Vincoli e Comportamenti di Default
+### ⛔ Solo `dbops` e `maintenance` ci scrivono
 
-* **PK**: `pk_audit_log` su `id`.
-* **Default** (solo se non assegnati da applicazione o trigger):
-
-  * `executed_by` → `current_user`, il **ruolo di database** che scrive (non l'operatore). ⛔ Fino al 2026-09-11 il default era la *stringa* `'CURRENT_USER'`: le righe storiche portano la parola, riconoscibili e non ricostruite
-  * `executed_at` → `now()`
-  * **`tx_id`** non ha default DDL: il valore è sempre gestito dal trigger **`trg_audit_log_gen_tx_id_ins_upd`** (generato dall'automazione `tx_id`).
-
----
-
-### Esempi di Utilizzo
-
-1. **Inserimento manuale** (il trigger assegna `tx_id`):
-
-   ```sql
-   INSERT INTO dbops.audit_log(
-     function_name, params, status, duration_ms
-   ) VALUES (
-     'process_invoices', '{"count":200}'::jsonb, 'SUCCESS', 1200
-   );
-   ```
-
-2. **Recuperare audit di una transazione**:
-
-   ```sql
-   SELECT *
-     FROM dbops.audit_log
-    WHERE tx_id = '123e4567-e89b-12d3-a456-426614174000';
-   ```
-
-3. **Performance media per funzione**:
-
-   ```sql
-   SELECT function_name,
-          AVG(duration_ms) AS avg_ms,
-          COUNT(*)       AS executions
-     FROM dbops.audit_log
-    WHERE executed_at >= now() - INTERVAL '7 days'
-    GROUP BY function_name
-    ORDER BY avg_ms DESC;
-   ```
+Il registro non deve poter contenere dati di dominio. Invece di filtrarlo riga per riga, il
+rischio si toglie alla fonte: la vista
+[dbops.vw_audit_log_scrittori_fuori_perimetro](/dbzero/dbops/views/vw_audit_log_scrittori_fuori_perimetro)
+elenca le funzioni fuori da quei due schemi che ci scrivono, direttamente o con le funzioni di
+audit, e deve restare vuota.
 
 ---
 
-### Vantaggi Operativi
+### Scade dopo 90 giorni
 
-* **Coerenza transazionale**: `tx_id` è sempre allineato al registro centrale e a `error_log`.
-* **Centralizzazione**: nessuna logica di generazione/assegnazione duplicata in tabelle diverse.
-* **Tracciabilità integrata**: un unico flusso di audit ed errori tramite `tx_id`.
-* **Analisi semplificata**: i campi `params` e `duration_ms` permettono metriche e dashboard di performance.
-
----
-
-> **“Con la colonna `tx_id`, ogni record di audit è automaticamente correlato al contesto transazionale, semplificando debug, monitoraggio e analisi dei processi.”**
+Una riga resta **90 giorni** dall'esecuzione (`executed_at`), come gli errori di
+`dbops.error_log`: i due registri si leggono insieme e scadono insieme. La scadenza la calcola il
+job delle automazioni, non un trigger alla nascita, perché il registro può essere scritto anche da
+una sessione fuori transazione che non legge le regole; poi il job di pulizia cancella le righe
+scadute. `cleanup_at` è una data di pulizia, non una scadenza funzionale dell'evento.
 
 ---
 
-### 🧹 Pulizia programmata (`cleanup_at`)
+### Test
 
-Il campo **`cleanup_at`** è destinato a **job periodici di pulizia** dei log storici.  
-Non rappresenta una scadenza funzionale dell’evento di audit.
+* `db/pgtap/dbops/test-registri-append-only-postura-v1.sql` — l'applicazione legge e aggiunge, non
+  modifica né cancella né svuota; può eseguire `fn_audit_log_once` e non la coppia sessione; la
+  riga scritta porta il ruolo che l'ha scritta.
+* `db/pgtap/dbops/test-audit-log-perimetro-scrittori-v1.sql` — nessuna funzione fuori da `dbops` e
+  `maintenance` scrive nel registro.
+* `db/pgtap/dbops/test-registri-dbops-scadenza-v1.sql` — il registro è nello scope delle
+  automazioni, con la sua regola di scadenza e la sua colonna base, e senza trigger alla nascita.
+* `db/pgtap/dbops/test-cleanup-framework.sql` — un rifiuto durante la pulizia lascia una riga
+  `ERROR` con lo SQLSTATE.
+
+---
+
+### Note di migrazione
+
+* 2025-08-22 — entrano le colonne di dettaglio (`exec_mode`, `parts`, `rule_type`, `dry_run`,
+  `sqlstate`, `error_context`, `rows_affected`, `host`, `app_version`, `result`) e il vincolo sullo
+  stato.
+* 2026-01-11 — `tx_id` ammette il vuoto; lo valorizza il trigger.
+* 2026-02-06 — entra `cleanup_at`.
+* 2026-09-11 — il registro diventa append-only per l'applicazione, e il default di `executed_by`
+  diventa il ruolo corrente: prima era la stringa `CURRENT_USER`.
+* 2026-10-23 — entra nello scope delle automazioni con la regola di scadenza a 90 giorni: prima
+  nessuna riga scadeva.
+
+---
+
+{% include-markdown "signature-core.md" %}

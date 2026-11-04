@@ -52,7 +52,8 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SELECT plan(10);
 
 CREATE TEMP TABLE tmp_run_sfx AS
-SELECT substr(md5(clock_timestamp()::text), 1, 8) AS sfx,
+-- rev 2026-11-04: upper() sul suffisso: il codice si salva in maiuscolo (automazione CODICE_MAIUSCOLO), e la ricerca per valore deve ricomporlo uguale.
+SELECT upper(substr(md5(clock_timestamp()::text), 1, 8)) AS sfx,
        -- ⚠️ fn(0) e fn(1), non due fn(): nella stessa istruzione la versione
        --   senza argomenti tornerebbe due volte lo STESSO valore, perche' fra
        --   l'una e l'altra non c'e' nessun insert a occuparlo.

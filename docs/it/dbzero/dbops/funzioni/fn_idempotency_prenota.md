@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/fn_idempotency_prenota.md" %}
 # ⚙️ Funzione `fn_idempotency_prenota`
 
 ```sql

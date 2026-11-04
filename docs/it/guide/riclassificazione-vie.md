@@ -1,6 +1,6 @@
 # Guida Operativa – Riclassificazione Vie e Toponomastica
 
-> **Ultimo aggiornamento**: 3 novembre 2026
+> **Ultimo aggiornamento**: 4 novembre 2026
 >
 > **Destinatari**: amministratori database, operatori manutenzione dati
 >
@@ -52,7 +52,7 @@ Per tutte le casistiche si adotta la stessa logica in quattro passi:
 
 Il campo `stradario_id` su `anagrafiche.indirizzi_dettaglio` è protetto dal guard `trgfn_indirizzi_dettaglio_protect_update`: cambiarlo è bloccato, a meno che nella transazione sia acceso il flag di manutenzione `zeroerp.maintenance_indirizzi_dettaglio`.
 
-⚠️ Il passo 2 della policy — puntare un indirizzo a un'altra via — oggi non ha una procedura: nessuna delle due procedure di manutenzione cambia `stradario_id`. Le procedure qui sotto **rinormalizzano** i dati esistenti, non spostano gli indirizzi.
+⚠️ Il passo 2 della policy — puntare un indirizzo a un'altra via — ha una funzione, [`dbops.fn_admin_merge_stradario`](/dbzero/dbops/funzioni/fn_admin_merge_stradario): fonde due vie, registra la fusione in `storico.stradario_trasformazioni` e ripunta sulla destinazione gli indirizzi della via d'origine. Oggi però **fallisce appena la via d'origine ha un indirizzo**: non apre il flag di manutenzione, il guard respinge il cambio di `stradario_id` (`E_COLONNA_NON_MODIFICABILE`) e la fusione intera si annulla. Passa solo la fusione di una via senza indirizzi. Le due procedure di manutenzione qui sotto non cambiano `stradario_id`: **rinormalizzano** i dati esistenti, non spostano gli indirizzi.
 
 ---
 

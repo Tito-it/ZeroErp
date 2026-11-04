@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/trgfn_installazione_guard_immutabile.md" %}
 # ⚙️ Funzione `trgfn_installazione_guard_immutabile`
 
 ```sql

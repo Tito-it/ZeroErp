@@ -67,6 +67,10 @@
 | Tabelle con policy **e RLS spenta** (`POLICY_INERTE`) | **3**: `acquisti.ddt`, `acquisti.ordini`, `shop.ricevute` — tutte **a debito dichiarato** il 2026-09-09 (§1.4) |
 | Figlie di tabelle protette senza copertura | **7**, tutte `DEBITO_DICHIARATO`; **zero `NON_DICHIARATO`** |
 
+> **Nota 2026-11-04**: il ruolo `zeroerp_batch_fatturazione` della riga «Ruoli batch» è **ritirato
+> dal 2026-10-15** e non esiste più; il suo nome sopravvive solo nell'elenco delle porte dichiarate
+> di [dbops.vw_processi_che_bypassano](/dbzero/dbops/views/vw_processi_che_bypassano).
+
 ⭐ **Le branch portale/shop NON sono dry-run.** Sulle tabelle accese, le policy
 `*_ba_ownership` (CLIENTE_PORTALE), `*_cliente_ownership` (CLIENTE_PORTALE),
 `*_shop` (SHOP_CUSTOMER) sono policy permissive `FOR SELECT` che PostgreSQL

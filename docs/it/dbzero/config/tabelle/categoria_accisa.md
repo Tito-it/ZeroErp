@@ -28,5 +28,11 @@
 | pk_categoria_accisa | `CREATE UNIQUE INDEX pk_categoria_accisa ON config.categoria_accisa USING btree (id)` |
 | uq_categoria_accisa_codice_utility | `CREATE UNIQUE INDEX uq_categoria_accisa_codice_utility ON config.categoria_accisa USING btree (codice, utility_id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_categoria_accisa_a15_codice_maiuscolo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
+| trg_categoria_accisa_a15_codice_maiuscolo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
+
 ---
 {% include-markdown "signature-core.md" %}

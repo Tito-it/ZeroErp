@@ -1,208 +1,152 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_run_automations_attivo`
 
+> **Ultimo aggiornamento**: 4 novembre 2026
+>
+> 👀 **Vedi anche**
+>
+> Approfondimento tabelle:
+>
+> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl) — la regola `ATTIVO`: ambito, template dei nomi, strategia, parametri
+> * [dbops.automazione_attivo_eccezioni](/dbzero/dbops/tabelle/automazione_attivo_eccezioni) — le FK che il motore non lega
+> * [dbops.automation_overrides_cols](/dbzero/dbops/tabelle/automation_overrides_cols) — il nome della colonna attivo, quando non è `attivo`
+>
+> Approfondimento funzioni:
+>
+> * [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations) — l'orchestratore che la chiama
+> * [dbops.trgfn_prevent_deactivate_if_children](/dbzero/dbops/funzioni/trgfn_prevent_deactivate_if_children) — il block che monta sul padre
+> * [dbops.trgfn_child_requires_active_parent](/dbzero/dbops/funzioni/trgfn_child_requires_active_parent) — il require che monta sul figlio
+> * [dbops.fn_ritira_attivo_eccezioni](/dbzero/dbops/funzioni/fn_ritira_attivo_eccezioni) — toglie i trigger delle FK diventate eccezione
+> * [dbops.fn_ritira_attivo_orfani](/dbzero/dbops/funzioni/fn_ritira_attivo_orfani) — toglie i trigger che nominano oggetti spariti
+> * [dbops.fn_trigger_exists_require_by_args](/dbzero/dbops/funzioni/fn_trigger_exists_require_by_args) — il controllo di esistenza per argomenti del require
+> * [dbops.fn_trigger_exists_block_by_args](/dbzero/dbops/funzioni/fn_trigger_exists_block_by_args) — il controllo di esistenza per argomenti del block
+> * [dbops.fn_drop_triggers_by_function_args](/dbzero/dbops/funzioni/fn_drop_triggers_by_function_args) — la riconciliazione prima di creare
+> * [dbops.fn_name_from_template](/dbzero/dbops/funzioni/fn_name_from_template) — il nome del trigger dal template
+> * [maintenance.proc_automations_attivo_job](/dbzero/maintenance/funzioni/proc_automations_attivo_job) — il wrapper del job che la fa girare
+>
+> Guide:
+>
+> * [Framework di automazione DB](/guide/automazione-db) — §4.2, la regola ATTIVO
+> * [Linee guida trigger](/linee-guida-trigger#i-trigger-generati) — i trigger generati non si scrivono a mano
+
 ---
 
-### 👀 Vedi anche
->
->**Guide**
->
-[Automazione DB](/guide/automazione-db)
->
-**Approfondimento tabelle**
->
-[dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)  
->
-**Approfondimento funzioni e trigger**
-
-> [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations)   
-> [dbops.fn_get_override_col](/dbzero/dbops/funzioni/fn_get_override_col)   
-> [dbops.fn_get_child_fk_col](/dbzero/dbops/funzioni/fn_get_child_fk_col)   
-> [dbops.trgfn_prevent_deactivate_if_children](/dbzero/dbops/funzioni/trgfn_prevent_deactivate_if_children)   
-
----
 ### 🎯 Scopo Principale
-*(latest review 13‑11‑2026)*
-La funzione **`dbops.fn_run_automations_attivo(p_exec_mode, p_schemas, p_dry_run)`** applica in modo automatico e coerente le **regole di gestione del campo `attivo`** (soft‑delete / stato di validità) **sulle relazioni di chiave esterna**, creando e riconciliando **trigger di BLOCCO sul padre** e **trigger REQUIRE sul figlio**.
 
-L’automazione opera **a livello di relazione FK**, non sulla singola tabella isolata, ed è progettata secondo un principio **conservativo e sicuro**:
+Il motore della regola ATTIVO: per ogni FK eleggibile nell'ambito monta sul **padre** un trigger
+che impedisce di spegnerlo finché ha figli collegati (il *block*), e sul **figlio** un trigger che
+impedisce a un figlio attivo di puntare a un padre spento (il *require*). Nessuna cascata: i figli
+non si spengono da soli.
 
-> **Un record padre può essere disattivato (`attivo = false`) solo se NON esistono record figli attivi collegati tramite FK (o figli in generale se il figlio non ha `attivo`).**
-> Inoltre, un record figlio puo' essere inserito/aggiornato **solo se il padre e' attivo**.
-
-Non viene applicata alcuna cascata automatica.
-
----
-
-### Ambito di applicazione
-
-La funzione considera:
-
-* Vincoli **FK (`pg_constraint.contype = 'f'`)** monocolonna con FK col `_id`
-* Con **padre e figlio entrambi nell'ambito** degli schemi
-* `storico` escluso (a livello di **ambito**, `fn_resolve_scope`)
-* ⚠️ Il filtro `dbops.automation_fk_exclusions` **NON è più applicato** (disattivato in `20260113-01`, "non più utilizzato"; non ripristinato nel rewrite `20260408-06`). La tabella resta inerte. Vedi `brief-db-deprecabilita-catalogo-vs-istanze.md`.
-
-> ⚠️ Se una tabella non partecipa ad alcuna FK eleggibile come **padre**, **nessuna automazione viene applicata**.
+In testa a ogni giro, fuori dal dry run, toglie anche i trigger ATTIVO che non devono più esserci:
+quelli delle FK dichiarate eccezione e quelli che nominano una tabella o una colonna sparita.
 
 ---
 
-### Parametri di input
+### Quali FK si legano
 
-| Parametro     | Tipo      | Obbl. | Descrizione                                                                                                   |
-| ------------- | --------- | :---: | ------------------------------------------------------------------------------------------------------------- |
-| `p_exec_mode` | `text`    |   ✔️   | Modalità di esecuzione. La regola viene applicata se `rule.exec_mode = 'AUTO'` oppure uguale a `p_exec_mode`. |
-| `p_schemas`   | `text[]`  |   ❌   | Schemi target. Se `NULL`, risolti tramite `dbops.fn_resolve_scope`.                                           |
-| `p_dry_run`   | `boolean` |   ✔️   | Se `true`, non crea/droppa trigger ma registra solo audit di simulazione.                                     |
+Il motore lavora per **relazione FK**, non per tabella. Una FK entra quando:
 
----
+* è a **una sola colonna**: le funzioni trigger non gestiscono le FK composte;
+* padre e figlio sono **entrambi nell'ambito** (`dbops.fn_resolve_scope`, che esclude `storico`) e
+  la regola nomina lo schema o la tabella di uno dei due;
+* il **padre ha la colonna attivo** (col nome di `automation_overrides_cols`, se c'è): senza, la FK
+  si salta. Il caso «solo il figlio ha `attivo`» non è gestito, di proposito;
+* non è dichiarata in `dbops.automazione_attivo_eccezioni`;
+* la colonna FK finisce in `_id`: le FK su codici testuali non si legano.
 
-### Flusso logico
+Il tipo di azione della FK (`RESTRICT`, `NO ACTION`, `CASCADE`…) non conta: il motore non lo
+guarda.
 
-1. Risolve l'**ambito degli schemi** (`dbops.fn_resolve_scope`).
-2. Recupera le **regole ATTIVO abilitate** da `automation_rules_tbl`.
-3. Per ogni **FK compatibile**:
-
-   * verifica che la **tabella padre** abbia la colonna `attivo` (con override opzionale);
-   * determina la **colonna FK del figlio**;
-   * calcola la **PK monocolonna del padre** (fallback `id`);
-   * verifica l’esistenza del trigger di blocco secondo la strategia configurata.
-4. Se necessario, **crea o riconcilia** il trigger di blocco sul padre e il trigger require sul figlio.
+⭐ La colonna del padre passata ai trigger è quella **realmente referenziata** dalla FK, non la
+chiave primaria: una FK può puntare a una colonna `UNIQUE` diversa dall'`id`.
 
 ---
 
-### Condizione fondamentale
+### I due trigger
 
-> **La colonna `attivo` deve essere presente sul PADRE**.
+| | Block | Require |
+| --- | --- | --- |
+| Dove | padre | figlio |
+| Quando | prima di un `UPDATE` della colonna attivo del padre | constraint trigger differito al commit, dopo un `INSERT` o un `UPDATE` della colonna FK (e della colonna attivo del figlio, se c'è) |
+| Che cosa vieta | spegnere un padre con figli attivi, o con figli qualunque se la figlia non ha la colonna attivo | un figlio attivo sotto un padre spento |
+| Argomenti | figlia, colonna FK, colonna referenziata, colonna attivo del padre | padre, colonna attivo del padre, colonna FK, colonna referenziata |
 
-Se il padre non ha la colonna `attivo`, la relazione FK viene **ignorata**.
+I nomi vengono dal template della regola (chiavi `block` e `require`), risolto da
+`dbops.fn_name_from_template` con il nome del vincolo FK come base dell'hash: l'hash si aggiunge
+solo quando il nome supererebbe i 63 caratteri.
 
-Il caso **“solo il figlio ha `attivo`”** non è gestito ed è considerato **SKIP intenzionale**.
-
----
-
-### Regole applicate
-
-#### 🅱️ BLOCCO della disattivazione del padre
-
-* **Trigger**: `BEFORE UPDATE OF attivo`
-* **Tabella**: PADRE
-* **Funzione**: `dbops.trgfn_prevent_deactivate_if_children(child_schema, child_table, fk_col [, pk_col])`
-
-**Effetto**:
-
-* se `OLD.attivo = true` e `NEW.attivo = false`;
-* e **esistono record figli attivi collegati tramite FK** (o figli in generale se non c’è `attivo` sul figlio);
-
-➡️ l’operazione viene **bloccata con errore**.
-
-Nessuna modifica automatica viene applicata ai figli.
-
-#### 🅱️ REQUIRE sul figlio (padre attivo)
-
-* **Trigger**: `AFTER INSERT OR UPDATE OF <fk_col>[, attivo]` (constraint, DEFERRABLE)
-* **Tabella**: FIGLIO
-* **Funzione**: `dbops.trgfn_child_requires_active_parent(parent_schema, parent_table, attivo_parent_col, fk_col)`
-
-**Effetto**:
-
-* se il figlio ha `attivo`, il controllo si applica quando `attivo = true`;
-* il padre referenziato deve risultare **attivo**.
-
-➡️ l’operazione viene **bloccata con errore** se il padre non è attivo.
-
-#### ⛔ Le eccezioni dichiarate (dal 2026-09-25)
-
-Le FK scritte in [`dbops.automazione_attivo_eccezioni`](/dbzero/dbops/manual/automazione_attivo_eccezioni)
-(schema e tabella della figlia, colonna FK, **motivo** obbligatorio) non si
-legano: per loro non nasce né il block né il require (passo 2.0 del ciclo
-delle FK; in dry run una riga di audit `ATTIVO_SKIP_ECCEZIONE`). E fuori dal
-dry run, in testa a ogni giro, il motore chiama
-[`dbops.fn_ritira_attivo_eccezioni`](/dbzero/dbops/manual/fn_ritira_attivo_eccezioni),
-che toglie i trigger già generati per quelle coppie: chi genera ritira.
-L'eccezione è **per FK**, non per tabella.
-
-#### ⛔ Gli orfani (dal 2026-10-21)
-
-Nello stesso punto il motore chiama
-[`dbops.fn_ritira_attivo_orfani`](/dbzero/dbops/manual/fn_ritira_attivo_orfani),
-che toglie i trigger ATTIVO che nominano una tabella o una colonna che non
-esiste più. Il legame con la figlia è una stringa negli argomenti: un `DROP
-TABLE … CASCADE` della figlia lasciava il block sul padre, e ogni
-disattivazione del padre rispondeva `E_ATTIVO_BLOCK_FKCOL_NOT_FOUND`. Il
-presidio è `db/pgtap/dbops/test-trigger-attivo-orfani-v1.sql`.
+⚠️ Due FK dalla stessa figlia allo stesso padre danno lo **stesso nome**, se è corto: il template
+distingue padre e figlia, non la colonna. La seconda FK trova il nome già preso, risulta «già
+presente» e resta senza trigger.
 
 ---
 
-### Naming dei trigger
+### Quando un trigger si considera già presente
 
-I nomi dei trigger sono generati tramite template JSON (`automation_rules_tbl.name_template`), utilizzando le chiavi `block` e `require`:
+La regola dichiara una strategia (`existence_strategy`): `BY_NAME` guarda il nome del trigger,
+`BY_FUNCTION` guarda funzione e argomenti, `BOTH` si accontenta di uno dei due. Senza strategia
+vale `BY_NAME`; la regola del seed dichiara `BOTH`.
 
-```json
-{
-  "block": "trg_{parent}_a10_{child}_block_deact_upd",
-  "require": "trg_{child}_a10_{parent}_require_attivo_ins_upd"
-}
-```
+⚠️ Il controllo per argomenti oggi non riconosce mai un trigger (vedi
+`dbops.fn_trigger_exists_block_by_args`): con `BOTH` decide solo il nome, e con `BY_FUNCTION` ogni
+giro toglierebbe e ricreerebbe il trigger.
 
-Il nome finale è risolto tramite `dbops.fn_name_from_template`.
-
----
-
-### Riconciliazione automatica
-
-Se `params.reconcile_on_change = true` (default se assente, e **dichiarata
-esplicitamente dal 2026-09-01**):
-
-* eventuali trigger di blocco pre‑esistenti con stessi argomenti vengono **rimossi e ricreati**;
-* si evita la duplicazione di trigger in caso di rename o migrazioni progressive.
-
-> ⭐ **È l'unica chiave di `params` che questa funzione legge**, e fino al
-> 2026-09-01 era l'unica **non dichiarata**: la riga `ATTIVO` ne portava cinque
-> (`mode`, `cascade_children`, `include_no_action`, `require_active_parent`,
-> `block_if_child_no_attivo`) che **nessuno leggeva**, e taceva su questa.
-> ⇒ Ora `params` è `{"reconcile_on_change": true}`: dichiarato e letto
-> coincidono. ⚠️ *Una chiave dichiarata e mai letta è una leva finta — prima o
-> poi qualcuno la gira. Una letta e mai dichiarata non si scopre affatto.*
-
-La riconciliazione **non** introduce cascade né altri comportamenti.
+Se il trigger manca, prima di crearlo il motore **riconcilia**: toglie i trigger della stessa
+funzione con gli stessi argomenti, così un trigger rinominato non resta doppio. La riconciliazione
+la governa la chiave `reconcile_on_change` dei parametri della regola, vera se manca; è l'**unica**
+chiave dei parametri che il motore legge.
 
 ---
 
-### Modalità DRY‑RUN
+### Chi genera ritira
 
-Con `p_dry_run = true`:
-
-* Nessun DDL viene eseguito.
-* Vengono registrati eventi `DRYRUN` tramite `dbops.fn_audit_log_once` per:
-
-  * creazione pianificata del trigger;
-  * skip intenzionali (es. padre senza `attivo`);
-  * nessuna azione se il trigger esiste già.
-
-Questo garantisce **osservabilità completa** del comportamento dell’automazione.
+Fuori dal dry run, prima di guardare le FK, il motore chiama `dbops.fn_ritira_attivo_eccezioni` e
+`dbops.fn_ritira_attivo_orfani`. Il primo toglie i trigger delle FK diventate eccezione dopo
+essere state legate; il secondo quelli che nominano una tabella o una colonna che non esiste più,
+come il block rimasto su un padre dopo l'eliminazione della figlia. I due ritiri guardano tutto il
+database, non solo l'ambito del giro.
 
 ---
 
-**Nota**: **l’automazione ATTIVO viene applicata solo alle FK con colonna che termina in `_id`**; in caso contrario la regola viene saltata per evitare riferimenti a codici testuali o chiavi non id.
+### Il dry run
+
+Con `p_dry_run` vero il motore non tocca niente: niente ritiri, niente DDL. Scrive in audit, una
+riga per caso, che cosa farebbe: i trigger che creerebbe, quelli già presenti, e i salti col loro
+motivo (padre senza colonna attivo, FK eccezione, colonna FK senza `_id`).
 
 ---
 
-### Permessi e sicurezza
+### Codici errore
 
-* Richiede privilegi DDL sugli schemi target.
-* In modalità `dry_run` è sufficiente il permesso di scrittura sull’audit.
-* Gli operatori senza ownership **non possono aggirare** i trigger generati.
-
----
-
-### Benefici
-
-* **Sicurezza massima**: nessun soft‑delete distruttivo o implicito.
-* **Semplicità**: una sola regola chiara e prevedibile.
-* **Coerenza**: applicazione uniforme su tutte le FK rilevanti, indipendentemente dal tipo di `ON DELETE`.
-* **Manutenibilità**: assenza di configurazioni complesse o ambigue.
+Un errore nella creazione di un trigger esce come `E_ATTIVO_REQUIRE` o `E_ATTIVO_BLOCK`, con il
+contesto (padre, figlio, colonne, nome del trigger) nel registro errori. Un guasto dell'ambiente —
+connessione, risorse, arresto, sistema, privilegio, lock, secondo `script.fn_sqlstate_di_ambiente` —
+si scrive nel registro con lo stesso codice e poi si rilancia **con il suo SQLSTATE**, perché il
+presidio dei job lo attribuisca all'esercizio e non allo sviluppo.
 
 ---
 
-> **In sintesi**: `fn_run_automations_attivo` implementa una politica ATTIVO conservativa:
-> il padre si disattiva **solo quando è libero da dipendenze FK attive**, e il figlio può puntare al padre **solo se attivo**.
+### Test
+
+* `db/pgtap/dbops/test-trigger-attivo-orfani-v1.sql` — il motore chiama il ritiro degli orfani nel
+  ramo fuori dal dry run.
+* `db/pgtap/dbops/test-automazione-attivo-eccezioni-v1.sql` — la FK dichiarata eccezione non ha
+  trigger, e il motore continua a legare le altre FK della stessa figlia.
+
+---
+
+### Note di migrazione
+
+* 2026-01-13 — il filtro su `automation_fk_exclusions` non si applica più; quella tabella è stata
+  poi ritirata con le funzioni trigger legacy.
+* 2026-09-01 — i parametri della regola `ATTIVO` diventano solo `reconcile_on_change`: prima ne
+  dichiaravano cinque che nessuno leggeva, e tacevano l'unica letta.
+* 2026-09-25 — le eccezioni dichiarate e il loro ritiro (`brief-db-blocco-login-per-credenziale`
+  §12.3).
+* 2026-10-16 — un guasto dell'ambiente si rilancia col suo SQLSTATE invece di diventare `P0001`
+  (`brief-db-presidio-job-run-a-chi-tocca`).
+* 2026-10-21 — il ritiro degli orfani in testa al giro (`brief-be-utenti-di-sviluppo` §9.5).
+
+---
+
+{% include-markdown "signature-core.md" %}

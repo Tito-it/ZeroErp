@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/fn_grant_storico_shadows.md" %}
 # ⚙️ Funzione `fn_grant_storico_shadows`
 
 ```sql

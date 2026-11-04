@@ -68,19 +68,19 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_pratiche_a10_canali_pratiche_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'canali_pratiche', 'attivo', 'canale_origine_id', 'id')` |
 | trg_pratiche_a10_canali_pratiche_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'canali_pratiche', 'attivo', 'canale_origine_id', 'id')` |
+| trg_pratiche_a10_canali_pratiche_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'canali_pratiche', 'attivo', 'canale_origine_id', 'id')` |
 | trg_pratiche_a10_default_definizione_ins | BEFORE | INSERT | `EXECUTE FUNCTION pratiche.trgfn_pratiche_default_definizione()` |
 | trg_pratiche_a10_default_emittente_ins | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_default_emittente_fiscale('SOLLEVA')` |
 | trg_pratiche_a10_emittenti_fiscali_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'emittenti_fiscali', 'attivo', 'emittente_fiscale_id', 'id')` |
 | trg_pratiche_a10_emittenti_fiscali_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'emittenti_fiscali', 'attivo', 'emittente_fiscale_id', 'id')` |
-| trg_pratiche_a10_gen_codice_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pratiche.trgfn_pratiche_gen_codice()` |
 | trg_pratiche_a10_gen_codice_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION pratiche.trgfn_pratiche_gen_codice()` |
+| trg_pratiche_a10_gen_codice_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pratiche.trgfn_pratiche_gen_codice()` |
 | trg_pratiche_a10_guard_chiusura_flussi_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pratiche.trgfn_pratiche_guard_chiusura_flussi()` |
 | trg_pratiche_a10_guard_contesto_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION pratiche.trgfn_pratiche_guard_contesto()` |
 | trg_pratiche_a10_guard_contesto_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pratiche.trgfn_pratiche_guard_contesto()` |
-| trg_pratiche_a10_guard_emittente_scope_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_emittente_scope('fiscale', 'emittente_fiscale_id')` |
 | trg_pratiche_a10_guard_emittente_scope_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_guard_emittente_scope('fiscale', 'emittente_fiscale_id')` |
+| trg_pratiche_a10_guard_emittente_scope_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_emittente_scope('fiscale', 'emittente_fiscale_id')` |
 | trg_pratiche_a10_guard_pin_immutabile_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pratiche.trgfn_pratiche_guard_pin_immutabile()` |
 | trg_pratiche_a10_guard_transizione_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pratiche.trgfn_pratiche_guard_transizione()` |
 | trg_pratiche_a10_priorita_pratiche_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'priorita_pratiche', 'attivo', 'priorita_id', 'id')` |
@@ -89,16 +89,18 @@
 | trg_pratiche_a10_risorse_umane_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'risorse_umane', 'attivo', 'risorsa_umana_id', 'id')` |
 | trg_pratiche_a10_soggetti_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'soggetti', 'attivo', 'soggetto_id', 'id')` |
 | trg_pratiche_a10_soggetti_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'soggetti', 'attivo', 'soggetto_id', 'id')` |
-| trg_pratiche_a10_stati_pratiche_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_pratiche', 'attivo', 'stato_id', 'id')` |
 | trg_pratiche_a10_stati_pratiche_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_pratiche', 'attivo', 'stato_id', 'id')` |
-| trg_pratiche_a10_tipi_prestazione_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pratiche', 'tipi_prestazione', 'attivo', 'tipo_prestazione_id', 'id')` |
+| trg_pratiche_a10_stati_pratiche_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_pratiche', 'attivo', 'stato_id', 'id')` |
 | trg_pratiche_a10_tipi_prestazione_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pratiche', 'tipi_prestazione', 'attivo', 'tipo_prestazione_id', 'id')` |
+| trg_pratiche_a10_tipi_prestazione_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pratiche', 'tipi_prestazione', 'attivo', 'tipo_prestazione_id', 'id')` |
 | trg_pratiche_a10_tipi_prestazione_require_non_obsoleto_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_non_obsolete_parent('pratiche', 'tipi_prestazione', 'obsoleto_dal', 'tipo_prestazione_id', 'id')` |
 | trg_pratiche_a10_tipi_prestazione_require_non_obsoleto_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_non_obsolete_parent('pratiche', 'tipi_prestazione', 'obsoleto_dal', 'tipo_prestazione_id', 'id')` |
 | trg_pratiche_a10_unita_organizzative_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'unita_organizzative', 'attivo', 'unita_organizzativa_id', 'id')` |
 | trg_pratiche_a10_unita_organizzative_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'unita_organizzative', 'attivo', 'unita_organizzativa_id', 'id')` |
-| trg_pratiche_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_pratiche_a15_codice_maiuscolo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
+| trg_pratiche_a15_codice_maiuscolo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
 | trg_pratiche_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_pratiche_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_pratiche_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_pratiche_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_pratiche_m50_set_data_apertura_ins | BEFORE | INSERT | `EXECUTE FUNCTION pratiche.trgfn_pratiche_set_data_apertura()` |
@@ -107,8 +109,8 @@
 | trg_pratiche_z90_giornale_ins | AFTER | INSERT | `EXECUTE FUNCTION pratiche.trgfn_pratiche_giornale_ins()` |
 | trg_pratiche_z90_giornale_priorita_upd | AFTER | UPDATE | `EXECUTE FUNCTION pratiche.trgfn_pratiche_giornale_priorita()` |
 | trg_pratiche_z90_giornale_stato_upd | AFTER | UPDATE | `EXECUTE FUNCTION pratiche.trgfn_pratiche_giornale_stato()` |
-| trg_pratiche_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('pratiche_id')` |
 | trg_pratiche_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('pratiche_id')` |
+| trg_pratiche_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('pratiche_id')` |
 
 ---
 {% include-markdown "signature-core.md" %}

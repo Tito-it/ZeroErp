@@ -61,6 +61,8 @@
 | trg_unita_misura_a10_unita_misura_conversioni_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('catalogo', 'unita_misura_conversioni', 'uom_from_id', 'id', 'attivo')` |
 | trg_unita_misura_a10_uom_tipi_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'uom_tipi', 'attivo', 'tipo_uom_id', 'id')` |
 | trg_unita_misura_a10_uom_tipi_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'uom_tipi', 'attivo', 'tipo_uom_id', 'id')` |
+| trg_unita_misura_a15_codice_maiuscolo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
+| trg_unita_misura_a15_codice_maiuscolo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
 | trg_unita_misura_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_unita_misura_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 

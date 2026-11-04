@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/vw_ddt_emessi_senza_scarico.md" %}
 # 🔍 View `vw_ddt_emessi_senza_scarico`
 
 > 📝 **Descrizione**

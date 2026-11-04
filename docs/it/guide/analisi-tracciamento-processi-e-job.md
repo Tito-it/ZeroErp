@@ -1,6 +1,6 @@
 # Guida — Tracciamento processi e job
 
-> **Ultimo aggiornamento**: 19 settembre 2026
+> **Ultimo aggiornamento**: 4 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali
 >
@@ -40,7 +40,7 @@ Il sistema di tracciamento e organizzato su **tre livelli**, ciascuno con un ruo
 
 * **Audit log** (`dbops.audit_log`) — traccia le operazioni generiche: automazioni, deploy, processi batch. E il livello trasversale, usato da qualsiasi componente
 * **Job run log** (`maintenance.job_run_log`) — traccia le esecuzioni dei **job schedulati**: pgAgent (lato DB) *e* job headless cron/command (management command Django, es. `run_fatturazione_batch`). Un record per ogni esecuzione con `origine`, esito, durata, dettaglio errori e `meta`
-  * **Dice anche chi**: quale lavoro (nome a registro) e con quale identità. Un run che non lo dice finisce in [vw_run_senza_attore](/dbzero/dbops/manual/vw_run_senza_attore).
+  * **Dice anche chi**: quale lavoro (nome a registro) e con quale identità. Un run che non lo dice finisce in [vw_run_senza_attore](/dbzero/dbops/views/vw_run_senza_attore).
   * **Un fallimento deve lasciare traccia**: la riga «è andata male» scritta dentro la stessa transazione dell'errore verrebbe annullata insieme all'errore, quindi il verbale viaggia su una linea separata e sopravvive al rollback.
 * **Task registry e task runs** (`dbops` + `vendite`) — traccia l'esecuzione dei task all'interno delle pipeline applicative, con stato, tentativi e policy di resume
 
@@ -259,7 +259,7 @@ La funzione wrapper standard per i job pgAgent. Gestisce:
 * Advisory lock (evita esecuzioni parallele)
 * Logging automatico su `job_run_log` con esito e durata
 * Cattura errori con SQLSTATE e contesto
-* La dichiarazione del processo: il codice arriva da `p_processo_codice` o, se assente, si **deriva dal `jobname`** (per convenzione le due stringhe coincidono); un `jobname` che non corrisponde a nessun processo resta senza attore e finisce in [dbops.vw_run_senza_attore](/dbzero/dbops/manual/vw_run_senza_attore)
+* La dichiarazione del processo: il codice arriva da `p_processo_codice` o, se assente, si **deriva dal `jobname`** (per convenzione le due stringhe coincidono); un `jobname` che non corrisponde a nessun processo resta senza attore e finisce in [dbops.vw_run_senza_attore](/dbzero/dbops/views/vw_run_senza_attore)
 
 Ogni job schedulato ha una procedura dedicata (es. `proc_automations_storico_job`, `proc_automations_cleanup_job`) che internamente usa `fn_run_and_log` per la parte di logging.
 

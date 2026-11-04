@@ -49,10 +49,12 @@
 | trg_tipi_prestazione_a10_regole_generazione_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pratiche', 'regole_generazione', 'tipo_prestazione_dest_id', 'id', 'attivo')` |
 | trg_tipi_prestazione_a10_template_flussi_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pratiche', 'template_flussi', 'tipo_prestazione_id', 'id', 'attivo')` |
 | trg_tipi_prestazione_a10_workflow_definizioni_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pratiche', 'workflow_definizioni', 'tipo_prestazione_id', 'id', 'attivo')` |
+| trg_tipi_prestazione_a15_codice_maiuscolo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
+| trg_tipi_prestazione_a15_codice_maiuscolo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
 | trg_tipi_prestazione_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_tipi_prestazione_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_tipi_prestazione_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_tipi_prestazione_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_tipi_prestazione_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_tipi_prestazione_z90_bootstrap_definizione_ins | AFTER | INSERT | `EXECUTE FUNCTION pratiche.trgfn_tipi_prestazione_bootstrap_definizione()` |
 | trg_tipi_prestazione_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('tipi_prestazione_id')` |
 | trg_tipi_prestazione_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('tipi_prestazione_id')` |

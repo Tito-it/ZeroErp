@@ -35,6 +35,8 @@
 |------|--------|--------|--------|
 | trg_articoli_tipologie_a10_articoli_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('catalogo', 'articoli', 'tipo_voce_id', 'id', 'attivo')` |
 | trg_articoli_tipologie_a10_soggetti_titoli_iva_ambiti_bl_47bcdf | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('anagrafiche', 'soggetti_titoli_iva_ambiti', 'tipo_voce_id', 'id', 'attivo')` |
+| trg_articoli_tipologie_a15_codice_maiuscolo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
+| trg_articoli_tipologie_a15_codice_maiuscolo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
 | trg_articoli_tipologie_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_articoli_tipologie_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 

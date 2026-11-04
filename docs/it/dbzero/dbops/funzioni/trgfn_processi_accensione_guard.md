@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/trgfn_processi_accensione_guard.md" %}
 # ⚙️ Funzione `trgfn_processi_accensione_guard`
 
 ```sql

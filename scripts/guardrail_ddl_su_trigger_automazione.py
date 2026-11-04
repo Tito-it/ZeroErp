@@ -117,6 +117,9 @@ SUFFISSI_AUTOMAZIONE = (
     "_gen_tx_id_ins_upd",
     "_z90_storico_upd_dlt",
     "_block_deact_upd",
+    # Automazione CODICE_MAIUSCOLO (2026-11-04): nasce in 90_end (20261104-08),
+    # dopo ogni changeSet di 00_schema e 20_code, anche su un database da zero.
+    "_a15_codice_maiuscolo_ins_upd",
 )
 
 # ⭐ Le funzioni-trigger che il framework MONTA, lette dalle `fn_run_automations_*`
@@ -127,6 +130,7 @@ SUFFISSI_AUTOMAZIONE = (
 TRGFN_AUTOMAZIONE = (
     "audit_data_user_generic",
     "child_requires_active_parent",
+    "codice_maiuscolo",
     "lock_columns",
     "prevent_deactivate_if_children",
     "storico_generic",

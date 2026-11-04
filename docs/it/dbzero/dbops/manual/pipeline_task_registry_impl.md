@@ -1,35 +1,61 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.pipeline_task_registry_impl`
 
+> **Ultimo aggiornamento**: 4 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Approfondimento tabelle:**
+> Approfondimento tabelle:
 >
-• [dbops.pipeline_task_registry](/dbzero/dbops/manual/pipeline_task_registry)  
-> • [dbops.domini_task](/dbzero/dbops/manual/domini_task)  
+> * [dbops.pipeline_task_registry](/dbzero/dbops/tabelle/pipeline_task_registry) — il task di cui la riga è un'implementazione
+> * [dbops.domini_task](/dbzero/dbops/tabelle/domini_task) — il dominio del task
 >
+> Approfondimento funzioni:
+>
+> * [dbops.fn_get_pipeline_task_implementation](/dbzero/dbops/funzioni/fn_get_pipeline_task_implementation) — sceglie l'implementazione da usare
+
+---
+
 ### 🎯 Scopo Principale
-(latest review 08-02-2026)
-`dbops.pipeline_task_registry_impl` definisce le **implementazioni consentite**
-per ciascun task. Serve a gestire in modo controllato le varianti
-(`default`, `v2`, `gas_v1`, ecc.) senza dispatch dinamico libero.
+
+Le **implementazioni consentite** di ciascun task di pipeline: per ogni task una o più varianti,
+ognuna col codice dell'handler applicativo che la esegue. Le varianti si scelgono da un elenco
+chiuso, non con un dispatch libero.
 
 ---
 
-### Campi chiave
+### Variante, handler, default
 
-* `task_registry_id`: riferimento al task.
-* `implementation_key`: identificativo variante.
-* `handler_code`: identificatore logico dell'handler applicativo.
-* `is_default`: indica l'implementazione di default per il task.
-* `attivo`: implementazione attiva/inattiva.
+* `implementation_key` è il nome della variante, unico dentro il task (oggi ogni task ha la sola
+  variante `default`);
+* `handler_code` è l'identificativo con cui il backend trova il codice da eseguire: il database
+  non lo interpreta, il dispatch vero avviene in Python, su un registro statico di handler;
+* `is_default` marca la variante che si usa quando nessuno ne chiede un'altra. Il database ammette
+  **al più una** variante di default per task (indice unico parziale);
+* `attivo` spegne la variante.
+
+⚠️ Un task la cui variante di default è spenta non ha implementazione: la risoluzione fallisce
+anche se il task è attivo. È la forma del task `close_lotto`, spento insieme alla sua
+implementazione.
 
 ---
 
-### Ruolo operativo
+### Dove nascono le righe
 
-1. Per ogni task si registra almeno una implementazione `default`.
-2. Il motore applicativo risolve la variante richiesta o usa la default.
-3. Il dispatch reale avviene in Python tramite registry statico.
+Dal seed `pipeline_task_registry_impl.csv` in `80_data`, una riga per ogni task del registro.
+Un task registrato senza la sua implementazione muore al primo giro dello step che lo contiene.
+
+---
+
+### Test
+
+* `db/pgtap/dbops/test-pipeline-task-registry.sql` — la variante chiesta si risolve, una variante
+  inesistente ricade sul default, e senza default la risoluzione fallisce.
+
+---
+
+### Note di migrazione
+
+* 2026-02-08 — nasce con il registro multi-dominio dei task di pipeline.
 
 ---
 

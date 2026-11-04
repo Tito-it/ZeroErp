@@ -1,6 +1,6 @@
 # Guida — Gestione del Transaction ID (`tx_id`)
 
-> **Ultimo aggiornamento**: 19 settembre 2026
+> **Ultimo aggiornamento**: 4 novembre 2026
 >
 > **Destinatari**: sviluppatori database e backend
 >
@@ -137,7 +137,9 @@ Da un punto di vista tecnico:
 
 1. **Riuso GUC**: legge `current_setting('dbops.tx_id', true)`. Se esiste un UUID valido, lo restituisce immediatamente.
 
-2. **Connessione di log**: chiama `script.fn_ensure_logconn()`, l'helper canonico che rispetta l'interruttore `myapp.log_with_dblink` (default `on`), la connstring assente e il `too_many_connections`. Non blocca mai il chiamante.
+2. **Connessione di log**: chiama `script.fn_ensure_logconn()`, che apre o ritrova la connessione persistente `logconn`. Assorbe la connessione già aperta e il `too_many_connections`, **non** gli altri errori di connessione: se il canale è impostato ma la connessione non si apre (credenziali o servizio sbagliati, server irraggiungibile), l'errore esce dalla funzione e il trigger lo trasforma in `E_TXID_GENERATION`, che **blocca la scrittura**.
+
+    ⚠️ L'interruttore `myapp.log_with_dblink` lo rispetta solo `fn_ensure_logconn`, che con `off` non apre `logconn`. La generazione (passo 4) passa comunque dalla stringa di connessione del canale: con l'interruttore spento il `tx_id` nasce lo stesso fuori transazione, aprendo una connessione nuova a ogni transazione.
 
 3. **Verifica dblink**: legge `myapp.dblink_log_connection`. Se assente o vuota, WARNING e **ritorno della sentinella `script.uuid_nil()`, senza impostare la GUC**.
 
@@ -281,7 +283,7 @@ Il sistema tx_id si appoggia a una combinazione di parametri di sessione (GUC) e
 | ---------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | `tx_id_bypass_enabled` | BOOLEAN | Bypass globale della validazione tx_id. Se `true`, il trigger non genera ne verifica, usa il tx_id di sessione o `uuid_nil()` |
 
-Il bypass ha due livelli: il parametro globale in `config.parameters` e l'override di sessione via GUC `myapp.bypass_tx_id_check`. Basta che uno dei due sia `true` per attivare il bypass.
+Il bypass ha due livelli: il parametro globale in `config.parameters` e l'override di sessione via GUC `myapp.bypass_tx_id_check`, che si legge solo se il parametro non è attivo. Basta che uno dei due sia `true` per attivare il bypass, **purché il parametro esista**: se `tx_id_bypass_enabled` manca da `config.parameters`, il trigger registra `E_ERRORE_PARAMETRI_TABELLA` senza sollevare, il bypass resta indefinito, anche l'override di sessione viene ignorato, e il bypass non scatta. Il dettaglio è in [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed).
 
 ---
 

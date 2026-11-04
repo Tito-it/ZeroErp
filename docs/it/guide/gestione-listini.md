@@ -1,6 +1,6 @@
 # Guida — Gestione Listini e Pricing
 
-> **Ultimo aggiornamento**: 1 novembre 2026
+> **Ultimo aggiornamento**: 4 novembre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend/frontend, DBA
 >
@@ -109,7 +109,7 @@ e lo stato lo cambiano solo due operazioni del database.
   l'azione `attiva_listino`: la versione deve essere accesa, avere almeno un prezzo (una riga, o un
   composito col prezzo bundle) e dare la periodicità a ogni quota fissa a canone, riga o kit
   (`E_LISTINO_VERSIONE_QUOTA_FISSA_SENZA_PERIODICITA`, sul campo; i motivi li dice
-  [script.fn_check_versione_listino_attivabile](/dbzero/script/manual/fn_check_versione_listino_attivabile)).
+  [script.fn_check_versione_listino_attivabile](/dbzero/script/funzioni/fn_check_versione_listino_attivabile)).
   La bozza resta libera di essere incompleta. Le versioni attive precedenti che si sovrappongono si chiudono il giorno
   prima della decorrenza nuova, nella stessa operazione. Il dialogo di conferma mostra quali, dallo stesso
   lettore ([vendite.fn_versioni_listino_da_chiudere](/dbzero/vendite/funzioni/fn_versioni_listino_da_chiudere)).

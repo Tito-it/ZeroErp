@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/fn_processo_acceso_su_valori.md" %}
 # ⚙️ Funzione `fn_processo_acceso_su_valori`
 
 ```sql

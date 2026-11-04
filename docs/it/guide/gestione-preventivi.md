@@ -1,6 +1,6 @@
 # Guida — Gestione Preventivi vendita
 
-> **Ultimo aggiornamento**: 31 ottobre 2026
+> **Ultimo aggiornamento**: 4 novembre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend/frontend, DBA.
 >
@@ -186,12 +186,12 @@ catalogo, e l'operatore non può cambiarla sulla riga.
 > *destinazione*: `MERCE → ordine`, `SERVIZIO_UNA_TANTUM → commessa`,
 > `SERVIZIO_RICORRENTE → contratto`. Quando aggiungi una riga, il sistema copia e
 > **congela** la natura dall'articolo sulla riga
-> ([`script.trgfn_righe_natura_vendita`](/dbzero/script/manual/trgfn_righe_natura_vendita)).
+> ([`script.trgfn_righe_natura_vendita`](/dbzero/script/funzioni/trgfn_righe_natura_vendita)).
 > Se la destinazione è `CONTRATTO`, l'inserimento è bloccato subito con l'errore
 > `E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA`; lo stesso vale per un articolo «solo
 > componente», che si vende solo dentro il suo kit, e per un kit senza componenti
 > (dal 2026-10-14), che va prima completato. Le regole stanno in un controllo
-> unico ([`script.fn_check_articolo_riga`](/dbzero/script/manual/fn_check_articolo_riga)),
+> unico ([`script.fn_check_articolo_riga`](/dbzero/script/funzioni/fn_check_articolo_riga)),
 > sono *data-driven* (valgono per qualunque natura mappata a contratto) e scattano
 > all'inserimento, non alla conferma. Le destinazioni operative del preventivo
 > sono quindi solo **ordine** e **commessa**.

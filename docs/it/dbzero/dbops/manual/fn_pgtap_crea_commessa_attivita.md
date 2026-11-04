@@ -1,102 +1,123 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_pgtap_crea_commessa_attivita`
 
+> **Ultimo aggiornamento**: 4 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-> • [dbops.fn_pgtap_crea_commessa](/dbzero/dbops/funzioni/fn_pgtap_crea_commessa) — la commessa su cui scriverla
+> Approfondimento tabelle:
 >
-> • [vendite.fn_upsert_commessa_attivita](/dbzero/vendite/funzioni/fn_upsert_commessa_attivita) — la madre che la scrive
+> * [vendite.commesse_attivita](/dbzero/vendite/tabelle/commesse_attivita) — la riga che la fixture fa scrivere
 >
-> • [dbops.fn_pgtap_crea_articolo](/dbzero/dbops/funzioni/fn_pgtap_crea_articolo) — l'articolo, costruito
+> Approfondimento funzioni:
 >
-Guide: [pgTAP — come si scrive un test](/guide/pgtap-come-si-scrive-un-test) · brief `brief-db-fixture-rls-documenti-costruiti` (giro 3) · changeSet `20261015-23` (richiesta del team BE)
+> * [vendite.fn_upsert_commessa_attivita](/dbzero/vendite/funzioni/fn_upsert_commessa_attivita) — la madre che scrive l'attività
+> * [script.fn_segment_key](/dbzero/script/funzioni/fn_segment_key) — il solo costruttore della chiave del segmento
+> * [script.fn_segment_key_sorgente](/dbzero/script/funzioni/fn_segment_key_sorgente) — chi legge il documento dalla chiave
+> * [vendite.trgfn_attivita_guard_listino_riga](/dbzero/vendite/funzioni/trgfn_attivita_guard_listino_riga) — la coerenza fra articolo, riga e versione di listino
+> * [dbops.fn_pgtap_crea_commessa](/dbzero/dbops/funzioni/fn_pgtap_crea_commessa) — la commessa su cui scriverla
+> * [dbops.fn_pgtap_crea_articolo](/dbzero/dbops/funzioni/fn_pgtap_crea_articolo) — l'articolo, quando il test non lo dà
+> * [vendite.fn_emit_attivita_fatturabili_da_commessa](/dbzero/vendite/funzioni/fn_emit_attivita_fatturabili_da_commessa) — l'emissione, che resta al test
+>
+> Guide:
+>
+> * [pgTAP — come si scrive un test](/guide/pgtap-come-si-scrive-un-test) — dove si sceglie una fixture
 
 ---
+
 ### 🎯 Scopo Principale
 
-(rev 2026-10-07; rev 2026-10-15: articolo e listino dal chiamante; rev 2026-10-24: sorgente, stati, quantità e periodo)
+Fixture pgTAP: **un'attività su una commessa già costruita**, scritta dalla madre del dominio. Di
+default è approvata e non emessa, quantità 1, prezzo fisso 10, con la commessa come sorgente: la
+forma da cui l'emissione delle attività fatturabili la prende.
 
-**Un'attività approvata su una commessa già costruita**, scritta dalla **madre del
-dominio**: `APPROVATA` e `NON_EMESSA`, quantità 1, prezzo snapshot fisso (default 10), con
-la commessa come sorgente. È la forma da cui l'emissione delle attività fatturabili la
-prende.
-
-```sql
-CREATE TEMP TABLE tmp_a AS
-SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita((SELECT commessa_id FROM tmp_c));
--- un'altra, con un prezzo scelto:
-SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita((SELECT commessa_id FROM tmp_c), 25);
--- con un articolo costruito prima (coi suoi flag) e la provenienza del prezzo:
-SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita(
-    p_commessa_id         => (SELECT commessa_id FROM tmp_c),
-    p_articolo_id         => (SELECT articolo_id FROM tmp_art),
-    p_listino_versione_id => (SELECT listino_versione_id FROM tmp_l),
-    p_listino_riga_id     => (SELECT riga_id FROM tmp_r));
-```
+Un'attività di commessa si scriveva a mano in molti pgTAP, con articolo, unità di misura e istanza
+pescati dal database; altri chiamavano la madre ricopiando una ventina di argomenti. Ora ha una
+sede.
 
 ---
-### 🧭 Perché esiste
 
-Un'attività di commessa si scriveva a mano in molti pgTAP, con articolo, unità di misura e
-istanza pescati dal database; altri chiamavano la madre ricopiando una ventina di
-argomenti. Era la stessa regola scritta più volte (regola del 2): ora ha una sede.
+### ⭐ Il confine: la fixture decide il contesto, il chiamante l'oggetto
 
----
-### 🔗 Il confine: cosa decide il builder, cosa decide il chiamante
-
-Il builder decide il **contesto**; il chiamante sceglie l'**oggetto** e la **provenienza del
-prezzo**. Tutto il resto (tipo movimento, quantità negative, rettifiche, oneri, contratto,
-promo) passa dalla madre: un builder con tutti i parametri della madre sarebbe una seconda
-madre.
-
-| Chi | Cosa |
-| --- | --- |
-| builder | l'istanza di utility (quella del billing account della commessa), la **chiave del segmento** (dal costruttore del dominio) |
-| chiamante | il prezzo (default 10), l'**articolo** (`p_articolo_id`), la **versione** (`p_listino_versione_id`) e la **riga di listino** (`p_listino_riga_id`); dal 2026-10-24 la **sorgente** (codice, chiave del documento, riga; default la commessa stessa), la **quantità** (default 1), gli **stati** di approvazione ed emissione (default `APPROVATA`, `NON_EMESSA`) e il **periodo** (default quello della commessa, o il mese corrente) |
-
-* **L'articolo**: se il chiamante non lo passa, il builder lo costruisce
-  (`fn_pgtap_crea_articolo`, non gestito a magazzino; da zero il catalogo è vuoto). Se serve
-  un articolo con certi flag (la tipologia di un listino, una natura), il chiamante lo
-  costruisce **prima** e lo passa: dal guard A-10 un articolo già usato non cambia più i flag
-  strutturali, e quello costruito dal builder è già usato quando il test lo riceve.
-* **La riga di listino**: se c'è, l'unità di misura è la **sua**, e se mancano articolo e
-  versione si prendono da lei.
-* **La versione da sola**: la riga è «registrata sotto quella versione», senza riga di
-  listino.
-* ⛔ La **coerenza** fra articolo, riga e versione non la controlla il builder: la tiene la
-  tabella ([vendite.trgfn_attivita_guard_listino_riga](/dbzero/vendite/manual/trgfn_attivita_guard_listino_riga)),
-  per tutti, test compresi.
-* **La sorgente** (rev 2026-10-24): l'attività che la push di una riga di un documento avrebbe
-  scritto. La chiave del segmento la compone **il dominio**, con `script.fn_segment_key` (il
-  solo costruttore), dal codice della sorgente, dalla chiave del documento e dalla riga.
-  Ricopiarne il formato a mano è ciò che aveva rotto sedici pgTAP il 2026-10-20, quando la
-  grammatica dei documenti era cambiata. Una sorgente senza la chiave del documento viene
-  rifiutata.
-* **L'attività** la scrive `vendite.fn_upsert_commessa_attivita`.
+La fixture decide l'**istanza di utility** (quella del conto di fatturazione della commessa) e il
+**periodo** di default (quello della commessa, o il mese corrente). Il chiamante sceglie il
+**prezzo**, l'**articolo**, la **provenienza del prezzo** (versione e riga di listino), la
+**sorgente**, la **quantità**, gli **stati** di approvazione ed emissione e, se vuole, il periodo.
+Tutto il resto (tipo movimento, rettifiche, oneri, contratto, promo) resta alla madre: una
+fixture con tutti i parametri della madre sarebbe una seconda madre.
 
 ---
-### 🚫 Cosa NON scrive
 
-* **L'emissione e il legame con la fattura**: sono il caso del test. La catena
-  dell'applicazione è: legame della commessa alla sorgente, stato `PRONTA_FATTURAZIONE`,
-  `vendite.fn_emit_attivita_fatturabili_da_commessa`. Il legame fra attività fatturabile e
-  riga di fattura lo scrive il backend (pipeline di fatturazione), e un test lo fa con lo
-  stesso `UPDATE`.
-* **Promo, contratto, variazioni**: il prezzo è uno snapshot fisso passato dal chiamante.
+### L'articolo e il listino
+
+* **Senza articolo** la fixture ne costruisce uno, non gestito a magazzino: su un database
+  ricostruito il catalogo è vuoto. Un articolo con certi flag (la tipologia di un listino, una
+  natura) il chiamante lo costruisce **prima** e lo passa: un articolo usato non cambia più la
+  struttura, e quello costruito qui è già usato quando il test lo riceve.
+* **Con una riga di listino**, l'unità di misura è la sua, e articolo e versione, se mancano, si
+  prendono da lei.
+* **Con la sola versione** l'attività è registrata sotto quella versione, senza riga di listino.
+* ⚠️ Una riga di listino **invisibile** a chi agisce (di un'altra azienda) non ferma la fixture se
+  il chiamante dà anche articolo e versione: l'unità di misura viene dall'articolo e giudica il
+  guard, come nel percorso del backend.
+* ⛔ La **coerenza** fra articolo, riga e versione non la controlla la fixture: la tiene la
+  tabella, per tutti.
+
+Una commessa, un articolo o una riga di listino che non esistono fermano la fixture con un errore
+che li nomina, invece di far morire la madre su un valore vuoto.
 
 ---
-### ⚠️ Il contratto sui vincoli differiti
 
-Esce con i vincoli **richiusi** (`IMMEDIATE`). Una commessa, un articolo o una riga di
-listino che non esistono vengono rifiutati per nome.
+### La sorgente e la chiave del segmento
+
+* **Con una sorgente** (codice del documento, sua chiave, riga) l'attività è quella che la push di
+  una riga di quel documento avrebbe scritto. La chiave del segmento la compone **il dominio**, con
+  `script.fn_segment_key`: ricopiarne il formato a mano si rompe quando la grammatica dei documenti
+  cambia. Una sorgente che non esiste, o senza la chiave del documento, ferma la fixture.
+* ⚠️ **Senza sorgente** la sorgente è la commessa stessa, e la chiave del segmento è una sigla
+  casuale con prefisso `PGT-SEG-`, scritta dalla fixture e **fuori dalla grammatica** delle chiavi:
+  chi legge il documento dalla chiave (`script.fn_segment_key_sorgente`) vi legge la sigla intera,
+  non `COMMESSA` né `MAN`.
 
 ---
-### 🧪 Il presidio
 
-`db/pgtap/dbops/test-fn-pgtap-crea-commessa-attivita-v1.sql` (14 casi) pinna il
-**contratto**: l'attività è sulla commessa, approvata e non emessa, con l'istanza del
-billing account e la competenza della commessa, il prezzo è quello chiesto, **l'emissione
-la prende**, una commessa inesistente parla; e (dal 2026-10-15) l'articolo passato arriva
-coi suoi flag, la riga di listino dà la sua unità di misura, articolo e versione, la sola
-versione registra la riga senza riga di listino, un articolo o una riga di listino
-inesistenti parlano; e (dal 2026-10-24) con la sorgente la chiave è quella del costruttore
-del dominio, quantità, stati e periodo sono quelli dichiarati, una sorgente senza chiave parla.
+### Che cosa non fa
+
+* **non emette** e non lega l'attività a una fattura: lo stato di emissione lo dichiara il test,
+  il lavoro della pipeline resta fuori. La catena dell'applicazione è commessa pronta per la
+  fatturazione, poi `vendite.fn_emit_attivita_fatturabili_da_commessa`;
+* nessuna promo, contratto o variazione: il prezzo è uno snapshot fisso.
+
+Esce con i vincoli richiusi (`IMMEDIATE`).
+
+---
+
+### Test
+
+* `db/pgtap/dbops/test-fn-pgtap-crea-commessa-attivita-v1.sql` — l'attività è sulla commessa,
+  approvata e non emessa, con l'istanza del conto e la competenza della commessa; il prezzo è
+  quello chiesto; l'emissione la prende; una commessa inesistente parla; l'articolo passato arriva
+  coi suoi flag; la riga di listino dà la sua unità di misura, articolo e versione; la sola
+  versione registra l'attività senza riga; con la sorgente la chiave è quella del costruttore del
+  dominio, e quantità, stati e periodo sono quelli dichiarati; una sorgente senza chiave parla.
+
+---
+
+### Note di migrazione
+
+* 2026-10-07 — nasce con il terzo giro delle fixture che costruiscono documenti
+  (`brief-db-fixture-rls-documenti-costruiti`).
+* 2026-10-15 — articolo, versione e riga di listino li sceglie il chiamante (richiesta del team BE).
+* 2026-10-16 — una riga di listino invisibile non ferma più la fixture se il chiamante dà articolo e
+  versione: prima il guard non veniva mai raggiunto, e un test era verde da owner e rosso come
+  applicazione.
+* 2026-10-24 — sorgente, quantità, stati e periodo in coda; la chiave la compone il dominio invece
+  della chiave scritta a mano che dieci pgTAP ricopiavano (`brief-modello-documento-vendita`,
+  §4-octies).
+
+---
+
+{% include-markdown "it/dbzero/dbops/_fixture-pgtap.md" %}
+
+---
+
+{% include-markdown "signature-core.md" %}

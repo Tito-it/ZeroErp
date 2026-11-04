@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/fn_rename_triggers_by_order.md" %}
 # ⚙️ Funzione `fn_rename_triggers_by_order`
 
 ```sql

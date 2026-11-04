@@ -76,8 +76,9 @@ SELECT ok(
 -- ============================================================
 
 CREATE TEMP TABLE tmp_audit_test AS
+-- rev 2026-11-04: upper() sul suffisso: il codice si salva in maiuscolo (automazione CODICE_MAIUSCOLO), e la ricerca per valore deve ricomporlo uguale.
 SELECT
-  'PGTAP-AUDIT-' || substr(md5(clock_timestamp()::text), 1, 8) AS codice_test;
+  'PGTAP-AUDIT-' || upper(substr(md5(clock_timestamp()::text), 1, 8)) AS codice_test;
 
 -- ============================================================
 -- TEST 3-4: INSERT senza JWT → fallback CURRENT_USER

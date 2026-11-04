@@ -1,85 +1,54 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_trigger_exists_block_by_args`
 
+> **Ultimo aggiornamento**: 4 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Guide:
+> Approfondimento funzioni:
 >
-[Automazioni – Overview del Modulo](/guide/automazione-db/)
+> * [dbops.fn_run_automations_attivo](/dbzero/dbops/funzioni/fn_run_automations_attivo) — l'unico chiamante, per la strategia di esistenza della regola
+> * [dbops.trgfn_prevent_deactivate_if_children](/dbzero/dbops/funzioni/trgfn_prevent_deactivate_if_children) — la funzione del trigger che cerca
+> * [dbops.fn_trigger_exists_require_by_args](/dbzero/dbops/funzioni/fn_trigger_exists_require_by_args) — la gemella per il require sul figlio
+> * [dbops.fn_trigger_exists_by_name](/dbzero/dbops/funzioni/fn_trigger_exists_by_name) — il controllo per nome, l'altra metà della strategia
+> * [dbops.fn_trigger_argomenti](/dbzero/dbops/funzioni/fn_trigger_argomenti) — la lettura degli argomenti che altri lettori usano
 >
-Approfondimento funzioni e trigger:
+> Guide:
 >
-[dbops.trgfn_prevent_deactivate_if_children](/dbzero/dbops/funzioni/trgfn_prevent_deactivate_if_children)
-> [dbops.fn_trigger_exists_by_name](/dbzero/dbops/funzioni/fn_trigger_exists_by_name)
-> [dbops.fn_trigger_exists_by_function](/dbzero/dbops/funzioni/fn_trigger_exists_by_function)
+> * [Framework di automazione DB](/guide/automazione-db) — §4.2, la regola ATTIVO
 
 ---
+
 ### 🎯 Scopo Principale
-(last review 31-12-25)
-La funzione **`dbops.fn_trigger_exists_block_by_args(p_parent_rel, p_child_schema, p_child_table, p_fk_col)`** verifica l’esistenza di un **trigger di blocco** basato sulla funzione `trgfn_prevent_deactivate_if_children`, applicato ad una tabella padre per impedire la disattivazione se esistono righe figlio attive.
+
+Dice se sulla tabella padre c'è già un trigger *block* della regola ATTIVO
+(`dbops.trgfn_prevent_deactivate_if_children`) con **esattamente** gli argomenti attesi: schema e
+tabella della figlia, colonna FK, colonna referenziata, colonna attivo del padre.
+
+Serve a `dbops.fn_run_automations_attivo` quando la regola riconosce i trigger per funzione
+(`BY_FUNCTION`, o `BOTH` insieme al nome).
 
 ---
 
-### Parametri di input
+### ⚠️ Oggi non riconosce nessun trigger
 
-| Parametro        | Tipo     | Obbligatorio | Descrizione                                 |
-| ---------------- | -------- | :----------: | ------------------------------------------- |
-| `p_parent_rel`   | regclass |      ✔️       | Tabella padre su cui verificare il trigger. |
-| `p_child_schema` | text     |      ✔️       | Schema della tabella figlia.                |
-| `p_child_table`  | text     |      ✔️       | Nome della tabella figlia.                  |
-| `p_fk_col`       | text     |      ✔️       | Nome della colonna FK nella tabella figlia. |
+Il confronto si fa sul testo della definizione del trigger (`pg_get_triggerdef`), cercando la
+chiamata con gli argomenti separati da una **virgola senza spazio**. PostgreSQL scrive la
+definizione con gli argomenti separati da **virgola e spazio**: il testo cercato non compare mai,
+e la funzione restituisce sempre falso.
 
----
+Conseguenze sul motore: con la strategia `BOTH` (quella del seed) decide solo il nome; con
+`BY_FUNCTION` ogni giro toglierebbe e ricreerebbe il trigger.
 
-### Valore di ritorno
-
-`boolean` – `true` se esiste un trigger con firma coerente alla configurazione attesa, `false` altrimenti.
+Il confronto è anche `ILIKE`: il trattino basso dei nomi vale come carattere qualsiasi. Questo
+allargherebbe il riconoscimento, non lo restringe.
 
 ---
 
-### Flusso logico
+### Che cosa non fa
 
-1. Interroga `pg_trigger` filtrando solo i trigger **non interni** definiti sulla tabella padre (`p_parent_rel`).
-2. Joina con `pg_proc` per identificare i trigger basati sulla funzione `trgfn_prevent_deactivate_if_children`.
-3. Analizza la definizione del trigger (`pg_get_triggerdef`) cercando la stringa di chiamata con gli argomenti specificati (`p_child_schema`, `p_child_table`, `p_fk_col`).
-4. Restituisce `true` se almeno un match è trovato.
+Non guarda il nome né gli eventi del trigger, e non dice quanti trigger corrispondono: solo se ce
+n'è almeno uno. È `STABLE` e non tocca niente.
 
 ---
 
-### Casi d’uso tipici
-
-* **Automazioni ATTIVO**: verificare se il trigger di protezione (padre con figli attivi) è già presente prima di crearne uno nuovo.
-* **Idempotenza**: evitare duplicazioni di trigger quando si rilanciano le automazioni.
-* **Audit/validazione**: produrre report sulla coerenza dei trigger rispetto alle FK configurate.
-
----
-
-### Permessi e sicurezza
-
-* Necessita permessi di lettura su `pg_trigger`, `pg_proc` e sull’oggetto tabella padre.
-* È una funzione **STABLE**: non modifica dati o schema.
-
----
-
-### Esempi di utilizzo
-
-* `SELECT dbops.fn_trigger_exists_block_by_args('catalogo.articoli', 'vendite', 'righe_ordine', 'articolo_id');`
-* `SELECT dbops.fn_trigger_exists_block_by_args('anagrafiche.clienti', 'fatture', 'testate', 'cliente_id');`
-
----
-
-### Considerazioni
-
-* La funzione si basa su un confronto testuale (`ILIKE`) della definizione trigger: robusta, ma potenzialmente sensibile a variazioni non standard di formattazione.
-* È progettata come supporto alle automazioni: non deve essere usata per logica applicativa runtime.
-
----
-
-### Benefici
-
-* **Sicurezza**: assicura che i trigger di protezione non vengano duplicati.
-* **Manutenibilità**: facilita report e controlli di coerenza.
-* **Integrazione**: si integra nel framework di automazione ATTIVO.
-
----
-
-> **In sintesi**: `fn_trigger_exists_block_by_args` è un utility che consente di verificare l’esistenza di un trigger di blocco tra tabelle padre e figlio, supportando le automazioni che applicano policy di consistenza sul campo `attivo`.
+{% include-markdown "signature-core.md" %}

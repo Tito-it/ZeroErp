@@ -1,6 +1,6 @@
 # Tutorial — Portare una tabella nuova nel framework di automazione DB
 
-> **Ultimo aggiornamento**: 3 novembre 2026
+> **Ultimo aggiornamento**: 4 novembre 2026
 >
 > **Destinatari**: sviluppatori database che creano una tabella nuova e vogliono che il framework la governi
 >
@@ -119,7 +119,7 @@ storico: una riga in `storico_scope_policy.csv`, con `id` esplicito e uno dei mo
 solito `PADRE` sulla FK verso la testata.
 
 Il significato dei modi è nella scheda
-[dbops.storico_scope_policy](/dbzero/dbops/manual/storico_scope_policy). Se la riga manca, il
+[dbops.storico_scope_policy](/dbzero/dbops/tabelle/storico_scope_policy). Se la riga manca, il
 presidio `db/pgtap/dbops/test-storico-scope-policy-v1.sql` diventa rosso.
 
 ### 3.2 Facoltativi

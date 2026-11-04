@@ -1,13 +1,13 @@
 # Guida — Le operazioni che non si ripetono
 
-> **Ultimo aggiornamento**: 24 ottobre 2026
+> **Ultimo aggiornamento**: 4 novembre 2026
 >
 > **Destinatari**: analisti funzionali, chi assiste gli operatori, sviluppatori database,
 > backend e frontend che vogliono il quadro prima del dettaglio
 >
 > **Vedi anche** — schemi DB:
 >
-> * [dbops.idempotency_keys](/dbzero/dbops/manual/idempotency_keys) — il registro delle key: campi, regole, scadenza
+> * [dbops.idempotency_keys](/dbzero/dbops/tabelle/idempotency_keys) — il registro delle key: campi, regole, scadenza
 >
 > **Vedi anche** — funzioni e trigger DB:
 >

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/fn_idempotency_soglia_secondi.md" %}
 # ⚙️ Funzione `fn_idempotency_soglia_secondi`
 
 ```sql

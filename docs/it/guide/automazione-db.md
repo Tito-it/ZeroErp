@@ -1,18 +1,19 @@
 # Guida — Framework di Automazione DB
 
-> **Ultimo aggiornamento**: 3 novembre 2026
+> **Ultimo aggiornamento**: 4 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali; chi amministra un'installazione (§9)
 >
 > **Vedi anche** — schemi DB:
 >
-> * [dbops.processi](/dbzero/dbops/manual/processi) — il catalogo dei processi: i giri delle automazioni, il loro ordine in CI, la loro accensione
-> * [dbops.vw_processi_programmazione](/dbzero/dbops/manual/vw_processi_programmazione) — il panorama: per ogni processo, se gira come dovrebbe
-> * [maintenance.job_run_log](/dbzero/maintenance/manual/job_run_log) — il giornale delle corse
+> * [dbops.processi](/dbzero/dbops/tabelle/processi) — il catalogo dei processi: i giri delle automazioni, il loro ordine in CI, la loro accensione
+> * [dbops.vw_processi_programmazione](/dbzero/dbops/views/vw_processi_programmazione) — il panorama: per ogni processo, se gira come dovrebbe
+> * [maintenance.job_run_log](/dbzero/maintenance/tabelle/job_run_log) — il giornale delle corse
 > * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl) — le regole di automazione
 > * [dbops.automation_scope](/dbzero/dbops/tabelle/automation_scope) — l'ambito: gli schemi e le tabelle a cui applicarle
 > * [dbops.automation_overrides_cols](/dbzero/dbops/tabelle/automation_overrides_cols) — le colonne non standard
 > * [dbops.automation_lock_columns](/dbzero/dbops/tabelle/automation_lock_columns) — le colonne extra per LOCK_COLUMNS
+> * [dbops.automazione_codice_eccezioni](/dbzero/dbops/tabelle/automazione_codice_eccezioni) — le colonne `codice` escluse da CODICE_MAIUSCOLO
 > * [dbops.automation_cleanup_exclusions](/dbzero/dbops/tabelle/automation_cleanup_exclusions) — le esclusioni del cleanup
 > * [dbops.automation_delete_block](/dbzero/dbops/tabelle/automation_delete_block) — la configurazione di DELETE_BLOCK
 > * [dbops.automazione_overlap](/dbzero/dbops/tabelle/automazione_overlap) — la configurazione di OVERLAP
@@ -24,7 +25,6 @@
 >
 > **Vedi anche** — funzioni e trigger DB:
 >
-> * [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations) — l'orchestratore: legge regole e ambito, chiama i runner
 > * [dbops.fn_lock_columns_divergenze](/dbzero/dbops/funzioni/fn_lock_columns_divergenze) — i lock di colonna vivi confrontati con il registro
 > * [dbops.fn_apply_cleanup_at](/dbzero/dbops/funzioni/fn_apply_cleanup_at) — il motore della regola CLEANUP
 > * [dbops.fn_apply_automazione_overlap](/dbzero/dbops/funzioni/fn_apply_automazione_overlap) — crea i vincoli EXCLUDE di OVERLAP
@@ -32,7 +32,7 @@
 > * [dbops.fn_apply_automazione_guard_utility_tipo_ruolo](/dbzero/dbops/funzioni/fn_apply_automazione_guard_utility_tipo_ruolo) — monta la verifica utility/tipo ruolo
 > * [dbops.apply_fk_index_policy](/dbzero/dbops/funzioni/apply_fk_index_policy) — crea e rimuove gli indici sulle FK secondo la policy
 > * [script.fn_generate_codice](/dbzero/script/funzioni/fn_generate_codice) — genera codici e numeri da `config.sistema_codici`
-> * [maintenance.fn_sveglia_accesa](/dbzero/maintenance/manual/fn_sveglia_accesa) — il cancello che fa partire un giro notturno solo se il processo è acceso
+> * [maintenance.fn_sveglia_accesa](/dbzero/maintenance/funzioni/fn_sveglia_accesa) — il cancello che fa partire un giro notturno solo se il processo è acceso
 >
 > **Vedi anche** — API e service backend:
 >
@@ -58,7 +58,7 @@ Il **framework di automazione DB** risolve questo problema: invece di scrivere t
 **Cosa troverai in questa guida:**
 
 * Il concetto di base: come il framework trasforma regole dichiarative in trigger
-* L'architettura: ambito, rules, orchestratori e audit
+* L'architettura: ambito, rules, runner e audit
 * Le regole disponibili, divise in **core** (usate su ogni tabella) e **specializzate** (per casi specifici)
 * La configurazione pratica, e in coda gli esempi da copiare
 * La governance degli indici FK
@@ -124,19 +124,19 @@ Non tutte le tabelle seguono le convenzioni standard. Le tabelle di override per
 
 Tutti questi registri si cambiano dal loro CSV in `80_data/sql/dbops/`, mai con un `INSERT` o un `UPDATE` a parte ([linee-guida-sql §11.2](/linee-guida-sql)).
 
-### 1.4 Orchestratori (chi esegue)
+### 1.4 Runner (chi esegue)
 
-Gli **orchestratori** sono funzioni SQL che leggono rules e ambito, risolvono le tabelle target e creano i trigger. Ogni area ha il proprio orchestratore:
+I **runner** sono funzioni SQL che leggono rules e ambito, risolvono le tabelle target e creano i trigger. Ogni regola ha il proprio runner, e non c'è una funzione che li chiami tutti: il giro lo fanno le procedure dei processi, nell'ordine di `dbops.processi.ci_ordine` (§9).
 
-| Orchestratore                                                                               | Regola gestita                                     |
+| Runner                                                                                      | Regola gestita                                     |
 | ------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| [fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations)                             | Orchestratore principale (chiama i singoli runner) |
 | [fn_run_automations_tx_id](/dbzero/dbops/funzioni/fn_run_automations_tx_id)                 | TX_ID                                              |
 | [fn_run_automations_audit_update](/dbzero/dbops/funzioni/fn_run_automations_audit_update)   | AUDIT_UPDATE                                       |
 | [fn_run_automations_storico_provision](/dbzero/dbops/funzioni/fn_run_automations_storico_provision) | STORICO_PROVISION (crea le tabelle di storico) |
 | [fn_run_automations_storico](/dbzero/dbops/funzioni/fn_run_automations_storico)             | STORICO (monta il trigger dove la tabella di storico c'è) |
 | [fn_run_automations_lock_columns](/dbzero/dbops/funzioni/fn_run_automations_lock_columns)   | LOCK_COLUMNS (converge: crea, rigenera, toglie)    |
 | [fn_run_automations_date_validita](/dbzero/dbops/funzioni/fn_run_automations_date_validita) | DATE_VALIDITA                                      |
+| [fn_run_automations_codice_maiuscolo](/dbzero/dbops/funzioni/fn_run_automations_codice_maiuscolo) | CODICE_MAIUSCOLO (converge: crea, rigenera, toglie) |
 | [fn_run_automations_attivo](/dbzero/dbops/funzioni/fn_run_automations_attivo)               | ATTIVO                                             |
 | [fn_run_automations_delete_block](/dbzero/dbops/funzioni/fn_run_automations_delete_block)   | DELETE_BLOCK                                       |
 | [fn_run_automations_cleanup](/dbzero/dbops/funzioni/fn_run_automations_cleanup)             | CLEANUP                                            |
@@ -146,7 +146,7 @@ Tutti i runner accettano gli stessi tre parametri — modo di esecuzione, schemi
 * `true` — simula l'esecuzione e logga con stato `DRYRUN` (nessuna modifica)
 * `false` — esegue realmente e logga con stato `OK` o `ERROR`
 
-⚠️ L'orchestratore `fn_run_automations` chiama solo le parti `TX_ID`, `AUDIT_UPDATE`, `STORICO`, `LOCK_COLUMNS`, `ATTIVO`, `DATE_VALIDITA` e `CLEANUP`. **Non** conosce `STORICO_PROVISION` né `DELETE_BLOCK`: per quelle si chiama il loro runner. Nell'uso normale nessuno chiama i runner a mano: li chiamano le procedure dei giri (§9).
+Nell'uso normale nessuno chiama i runner a mano: li chiamano le procedure dei processi `maintenance.proc_automations_*_job()`, dalla convergenza di ogni migrate e dai job pgAgent (§9). Per una simulazione si chiama il runner della regola che interessa, con `p_dry_run` vero.
 
 ### 1.5 Audit (cosa è successo)
 
@@ -192,6 +192,7 @@ Sono regole per casi specifici. Non tutte le tabelle le richiedono.
 | **CLEANUP**                  | Calcola `cleanup_at` e purge dei record scaduti               | Tabelle con dati temporanei (log, sessioni)            |
 | **GUARD utility/tipo_ruolo** | Verifica coerenza tra utility e tipo ruolo del soggetto       | Tabelle con colonne `utility_id` + `soggetto_ruolo_id` |
 | **DATE_VALIDITA**            | Impedisce che `valido_al` preceda `valido_dal`, con un errore che l'operatore capisce | Ogni tabella con `valido_dal` + `valido_al`: basta la presenza delle due colonne |
+| **CODICE_MAIUSCOLO**         | Salva il `codice` in maiuscolo e senza spazi ai bordi: l'unicità non distingue le maiuscole | Ogni tabella con la colonna `codice`, tranne le eccezioni dichiarate |
 
 ---
 
@@ -253,7 +254,7 @@ Complementare a STORICO: crea automaticamente la tabella `storico.<tabella>` se 
 
 **Si applica** solo alle tabelle che hanno la colonna `storicizza` (override `STORICIZZA_COL`): senza, la tabella non riceve né la tabella di storico né, di conseguenza, il trigger.
 
-⛔ **Ogni tabella storicizzata dichiara il suo scope** in `dbops.storico_scope_policy` (CSV `80_data/sql/dbops/storico_scope_policy.csv`): da dove si prende l'azienda emittente da congelare (`EF`, `SR`, `PADRE`, `BA`, `COPPIA`) oppure `NESSUNO` con la ragione. La tabella di storico nasce già armata secondo quella riga; se la riga manca, il presidio `db/pgtap/dbops/test-storico-scope-policy-v1.sql` è rosso. I modi sono spiegati nella scheda [dbops.storico_scope_policy](/dbzero/dbops/manual/storico_scope_policy).
+⛔ **Ogni tabella storicizzata dichiara il suo scope** in `dbops.storico_scope_policy` (CSV `80_data/sql/dbops/storico_scope_policy.csv`): da dove si prende l'azienda emittente da congelare (`EF`, `SR`, `PADRE`, `BA`, `COPPIA`) oppure `NESSUNO` con la ragione. La tabella di storico nasce già armata secondo quella riga; se la riga manca, il presidio `db/pgtap/dbops/test-storico-scope-policy-v1.sql` è rosso. I modi sono spiegati nella scheda [dbops.storico_scope_policy](/dbzero/dbops/tabelle/storico_scope_policy).
 
 **Guard**: i runner STORICO e STORICO_PROVISION **non processano** tabelle nello schema `storico` (per evitare ricorsione).
 
@@ -285,29 +286,30 @@ Molte tabelle hanno una colonna `attivo` per il soft-delete (disattivare un reco
 
 **Regola applicata:**
 
-* La disattivazione (`attivo = false`) di un record **padre** è consentita **solo se non esistono record figli** collegati
-* Un figlio non si inserisce né si sposta su un padre con `attivo = false`
+* La disattivazione (`attivo = false`) di un record **padre** è consentita **solo se non ha figli attivi** collegati; se la figlia non ha la colonna `attivo`, conta qualunque figlio
+* Un figlio **attivo** non si inserisce né si sposta su un padre con `attivo = false`
 * **Nessuna cascata automatica** sui figli
 * La regola si applica solo se il padre possiede la colonna `attivo`
-* Le FK considerate sono `RESTRICT` e `NO ACTION` (anche `DEFERRABLE`)
-* Solo FK con colonna che termina in `_id` (esclude riferimenti a codici testuali)
+* Il tipo di azione della FK (`RESTRICT`, `NO ACTION`, `CASCADE`…) non conta: il motore non lo guarda
+* Solo FK a **una colonna**, con colonna che termina in `_id` (esclude le FK composte e i riferimenti a codici testuali)
 
 **Trigger generati:**
 
 | Dove   | Evento                         | Funzione                                         | Nome                                                   |
 | ------ | ------------------------------ | ------------------------------------------------ | ------------------------------------------------------ |
 | PADRE  | `BEFORE UPDATE OF attivo`      | `dbops.trgfn_prevent_deactivate_if_children(...)` | `trg_{parent}_a10_{child}_block_deact_upd_…`           |
-| FIGLIO | `BEFORE INSERT OR UPDATE`      | `dbops.trgfn_child_requires_active_parent(...)`  | `trg_{child}_a10_{parent}_require_attivo_ins_upd_…`    |
+| FIGLIO | constraint trigger `AFTER INSERT OR UPDATE OF <colonna FK>` (e della colonna `attivo` del figlio, se c'è), differito al commit | `dbops.trgfn_child_requires_active_parent(...)`  | `trg_{child}_a10_{parent}_require_attivo_ins_upd_…`    |
 
-Il suffisso finale è un hash corto della FK, aggiunto quando il nome supererebbe i 63 caratteri.
+Il suffisso finale è un hash corto della FK, aggiunto solo quando il nome supererebbe i 63 caratteri. ⚠️ Due FK dalla stessa figlia allo stesso padre danno quindi lo stesso nome, se è corto: la seconda risulta «già presente» e resta senza trigger (vedi [dbops.fn_run_automations_attivo](/dbzero/dbops/funzioni/fn_run_automations_attivo)).
 
-**Effetto:** se `OLD.attivo = true` e `NEW.attivo = false` e esistono figli FK → operazione **bloccata con errore**; un figlio che punta a un padre spento → **rifiutato**.
+**Effetto:** se `OLD.attivo = true` e `NEW.attivo = false` e il padre ha figli attivi → operazione **bloccata con errore**; un figlio attivo che punta a un padre spento → **rifiutato** al commit.
 
-**Le eccezioni: quando padre e figlio NON si legano sull'attivo.** Ci sono coppie in cui `attivo` sul padre e `attivo` sul figlio rispondono a due domande diverse, e legarle rende impossibile uno stato legittimo. Si dichiarano in [`dbops.automazione_attivo_eccezioni`](/dbzero/dbops/tabelle/automazione_attivo_eccezioni), una FK per riga col suo motivo (seed da `80_data`, CSV `dbops/automazione_attivo_eccezioni.csv`). Per quelle FK il motore non genera né il block né il require, e in testa a ogni giro chiama [`dbops.fn_ritira_attivo_eccezioni`](/dbzero/dbops/funzioni/fn_ritira_attivo_eccezioni), che toglie i trigger già generati riconoscendoli per **funzione e argomenti** (i nomi generati sono hashati). Il presidio è `db/pgtap/dbops/test-automazione-attivo-eccezioni-v1.sql`.
+**Le eccezioni: quando padre e figlio NON si legano sull'attivo.** Ci sono coppie in cui `attivo` sul padre e `attivo` sul figlio rispondono a due domande diverse, e legarle rende impossibile uno stato legittimo. Si dichiarano in [`dbops.automazione_attivo_eccezioni`](/dbzero/dbops/tabelle/automazione_attivo_eccezioni), una FK per riga col suo motivo (seed da `80_data`, CSV `dbops/automazione_attivo_eccezioni.csv`). Per quelle FK il motore non genera né il block né il require, e in testa a ogni giro chiama [`dbops.fn_ritira_attivo_eccezioni`](/dbzero/dbops/funzioni/fn_ritira_attivo_eccezioni), che toglie i trigger già generati riconoscendoli per **funzione e argomenti** (il nome può portare un hash, oltre i 63 caratteri). Il presidio è `db/pgtap/dbops/test-automazione-attivo-eccezioni-v1.sql`.
 
 | Figlia · FK | Perché |
 | --- | --- |
 | `config.profili_accesso_bindings.identita_digitale_id` | **porta e profili**: la veste attiva dice se la porta è aperta, il binding cosa si può fare una volta dentro. La veste OPERATORE nasce spenta (regola unica dell'invito) e deve poter avere i suoi profili prima di essere accesa; i lettori dei permessi chiedono già entrambe le cose |
+| `vendite.fatture_stampa_coda.tipo_documento_output_id` | la coda di stampa è un **outbox**: il worker aggiorna la riga a ogni passaggio, e il require scatterebbe su ogni aggiornamento; con un tipo di documento spento si fermerebbe il lotto intero, e il block impedirebbe di spegnere un tipo finché una riga storica lo nomina. Se un tipo può stampare lo decide la risoluzione del modello al drenaggio |
 
 **Gli orfani: quando la figlia non c'è più.** Il trigger nomina la figlia per testo, e PostgreSQL non lo collega alla tabella: eliminare la figlia toglie la FK ma lascia il block sul padre, che da quel momento rifiuta ogni disattivazione (`E_ATTIVO_BLOCK_FKCOL_NOT_FOUND`). Non serve ricordarsene quando si elimina una tabella: in testa a ogni giro il motore chiama anche [`dbops.fn_ritira_attivo_orfani`](/dbzero/dbops/funzioni/fn_ritira_attivo_orfani), che toglie i trigger ATTIVO che nominano una tabella o una colonna che non esiste più. Orfano vuol dire **nome morto**, non «FK assente»: i require scritti a mano su chiavi polimorfe non hanno FK e restano. L'elenco lo dà [`dbops.fn_trigger_attivo_orfani`](/dbzero/dbops/funzioni/fn_trigger_attivo_orfani); il presidio è `db/pgtap/dbops/test-trigger-attivo-orfani-v1.sql`.
 
@@ -318,7 +320,7 @@ Per tabelle **versionate** (con colonne `valido_dal`/`valido_al` o `valid_from`/
 **Componenti:**
 
 * **Config**: `dbops.automazione_overlap` — definisce chiavi logiche (`key_columns` + `key_expressions`), colonne periodo, flag `active` e (opzionale) `where_predicate` per vincoli parziali
-* **Seed**: `dbops.fn_seed_automazione_overlap()` — rileva tabelle eleggibili e imposta `active=true` solo se versionate
+* **Righe**: le scrive a mano chi migra, con changeSet di `80_data`, quando un vincolo nasce o cambia forma: è l'unica sorgente del registro, non c'è una rilevazione automatica dallo schema (vedi [dbops.automazione_overlap](/dbzero/dbops/tabelle/automazione_overlap))
 * **Apply**: `dbops.fn_apply_automazione_overlap()` — crea i vincoli EXCLUDE (totali o parziali)
 * **Runner schedulato**: `maintenance.proc_automations_overlap_job()` + job pgAgent `automations_overlap` (ogni giorno alle 21:00) — esegue l'apply periodicamente
 
@@ -409,12 +411,12 @@ gira. Una letta e non dichiarata è peggio — non si scopre affatto.
 
 ### 4.6 GUARD utility/tipo_ruolo
 
-Per tabelle che espongono sia una colonna utility (`utility_id`) sia una colonna ruolo (`soggetto_ruolo_id`). Il trigger verifica che il tipo di ruolo del soggetto sia coerente con la utility indicata, consultando la matrice `config.utilities_tipi_ruolo`.
+Per tabelle che espongono sia una colonna utility (`utility_id`) sia una colonna ruolo della forma `<prefisso>_soggetto_ruolo_id` (per esempio `emittente_soggetto_ruolo_id`). ⚠️ Una riga di catalogo con la colonna `soggetto_ruolo_id` senza prefisso viene scartata dall'apply in silenzio, anche se accesa. Il trigger verifica che il tipo di ruolo del soggetto sia coerente con la utility indicata, consultando la matrice `config.utilities_tipi_ruolo`.
 
 **Componenti:**
 
-* Config: `dbops.automazione_guard_utility_tipo_ruolo`
-* Seed: `dbops.fn_seed_automazione_guard_utility_tipo_ruolo()` — autodetect tabelle candidate
+* Config: [dbops.automazione_guard_utility_tipo_ruolo](/dbzero/dbops/tabelle/automazione_guard_utility_tipo_ruolo) — mirror del CSV `80_data/sql/dbops/automazione_guard_utility_tipo_ruolo.csv`: una tabella entra o esce dal CSV, opt-in esplicito
+* Diagnosi: `dbops.fn_seed_automazione_guard_utility_tipo_ruolo()` — nonostante il nome **non scrive** nel catalogo: elenca in un `NOTICE` le tabelle che qualificano e mancano dal CSV (la chiama `ci_apply`, prima dell'apply)
 * Apply: `dbops.fn_apply_automazione_guard_utility_tipo_ruolo()`
 * Trigger function: `script.trgfn_guard_utility_tipo_ruolo_by_cols()`
 
@@ -448,11 +450,59 @@ calcolo: parla lui. I `CHECK` sulle date restano come ultima difesa.
 **Componenti:**
 
 * Regola: `DATE_VALIDITA` in `dbops.automation_rules_tbl`
-* Runner: `dbops.fn_run_automations_date_validita()` (parte `DATE_VALIDITA` dell'orchestratore)
+* Runner: `dbops.fn_run_automations_date_validita()`
 * Trigger function: `script.trgfn_guard_date_validita()`
 
 ⚠️ Il nome del trigger, su una tabella dal nome lungo, supera i 63 caratteri e
 PostgreSQL lo tronca: il trigger si riconosce dalla funzione, non dal nome.
+
+---
+
+### 4.8 CODICE_MAIUSCOLO (il codice non distingue le maiuscole)
+
+Un codice che l'operatore digita è un identificativo: `VITE-M8` e `vite-m8` sono lo stesso
+articolo, non due. Questa automazione monta su **ogni** tabella con la colonna `codice` un trigger
+che lo salva in maiuscolo e senza spazi ai bordi. Con il valore normalizzato, l'indice `UNIQUE` che
+la colonna ha già diventa un'unicità senza distinzione di maiuscole, e ricerche e indici restano
+quelli di sempre.
+
+**Come funziona:**
+
+* la regola è **per esclusione**: vale per ogni colonna `codice` dell'ambito, e una tabella nuova
+  nasce presidiata. Le colonne che non sono un codice dell'operatore — una chiave tecnica letta per
+  nome, un codice esterno dove il maiuscolo conta — stanno in `dbops.automazione_codice_eccezioni`,
+  col motivo obbligatorio;
+* `codice_interno` non è nel perimetro: lo scrive la migrazione, non l'operatore;
+* il trigger scatta su `INSERT` e su ogni `UPDATE` (anche i generatori del codice lo scrivono), in
+  fase `a15`, dopo di loro; un `UPDATE` che non cambia il codice non lo tocca;
+* converge nei due sensi: crea dove manca, toglie dove una tabella entra fra le eccezioni o perde la
+  colonna. Gira a **ogni migrate** (una rete in `90_end`, che si ferma se resta un'azione) e nel
+  giro notturno del lock;
+* chi scrive un codice e poi lo ricerca per valore deve ricomporlo in maiuscolo, o rileggere quello
+  salvato.
+
+**Per il backend:**
+
+* il valore salvato può non essere quello inviato: dopo una scrittura il codice si rilegge dal DB
+  (`RETURNING codice` o il dettaglio), non si rimanda quello del payload;
+* una ricerca **esatta** per codice su un input dell'utente confronta con `upper(btrim(input))`; le
+  ricerche `ILIKE` non cambiano;
+* il duplicato è senza maiuscole: `vite-m8` accanto a `VITE-M8` è la stessa violazione di unicità
+  del codice identico;
+* un test che crea un codice con un suffisso esadecimale (`uuid4().hex`, `md5`) e poi lo cerca per
+  valore mette `.upper()` sul generatore;
+* `E_CODICE_MAIUSCOLO` (classe `TECNICO`) nasce solo dal motore, in un migrate o nel job notturno;
+* le tabelle in eccezione e gli schemi fuori ambito (`ui`, `dbops`) non cambiano; l'elenco delle
+  tabelle normalizzate lo dà `dbops.fn_codice_maiuscolo_perimetro(NULL)` (`nel_perimetro AND NOT
+  in_eccezione`).
+
+**Componenti:**
+
+* Regola: `CODICE_MAIUSCOLO` in `dbops.automation_rules_tbl` (interruttore e template del nome)
+* Perimetro: `dbops.fn_codice_maiuscolo_perimetro()` — dovuto, vivo, azione
+* Runner: `dbops.fn_run_automations_codice_maiuscolo()`
+* Trigger function: `script.trgfn_codice_maiuscolo()`
+* Eccezioni: `dbops.automazione_codice_eccezioni`
 
 ---
 
@@ -482,9 +532,9 @@ Override disponibili: `ATTIVO_COL`, `AUDIT_TS`, `AUDIT_USER`, `STORICO_FK`, `STO
 
 ### 5.4 Naming e limiti
 
-I template supportano i placeholder: `{schema}`, `{table}`, `{parent}`, `{child}`, `{fk}`, `{op}`.
+I template supportano i placeholder: `{schema}`, `{table}`, `{parent}`, `{child}`, `{fk}`, `{op}`, più `{fkhash6}` (sei caratteri ricavati dal nome della FK, sempre) e `{fkhash6_if_long}` (gli stessi, **solo se** senza di loro il nome supererebbe i 63 caratteri).
 
-PostgreSQL impone un limite di **63 caratteri** per i nomi degli oggetti. L'helper `fn_name_from_template` gestisce automaticamente abbreviazioni e hash quando il nome risultante è troppo lungo.
+PostgreSQL impone un limite di **63 caratteri** per i nomi degli oggetti. L'helper [dbops.fn_name_from_template](/dbzero/dbops/funzioni/fn_name_from_template) non abbrevia: un nome entro i 63 caratteri esce così com'è, senza hash. Solo se il nome supera ancora i 63 caratteri viene troncato e completato con un'impronta di sei caratteri: il risultato è stabile, ma non è il nome che si legge nel template, e un trigger così si cerca per funzione e argomenti.
 
 ---
 
@@ -622,7 +672,7 @@ Il nome della sequenza è **sempre derivato** come `<schema>.<tabella>_<colonna>
 
 ### Il runner va in errore a metà esecuzione
 
-Un `SELECT dbops.fn_run_automations(...)` **è una transazione**, e in PostgreSQL il DDL è transazionale: se un errore risale fino alla chiamata, tutto ciò che quella chiamata aveva creato viene annullato. Non resta un sistema a metà — resta quello che le chiamate precedenti avevano già committato.
+Una chiamata a un runner (`SELECT dbops.fn_run_automations_<regola>(...)`) **è una transazione**, e in PostgreSQL il DDL è transazionale: se un errore risale fino alla chiamata, tutto ciò che quella chiamata aveva creato viene annullato. Non resta un sistema a metà — resta quello che le chiamate precedenti avevano già committato.
 
 ⚠️ Il caso da conoscere è l'altro: **alcuni runner catturano l'errore per tabella** e proseguono. `storico` intercetta il trigger che esiste già, `cleanup` salta la tabella che si oppone e scrive una riga `ERROR` con `skip_reason = BLOCKED_BY_TABLE`; il giro arriva in fondo e **committa**. Il runner `tx_id`, invece, logga **e risolleva**: lì la chiamata muore, e con lei la transazione. Un errore del primo tipo non si vede dal risultato: si vede solo dall'audit log.
 
@@ -703,8 +753,8 @@ I runner STORICO e STORICO_PROVISION escludono automaticamente lo schema `storic
 I runner non si lanciano a mano: li chiamano le **procedure dei processi**
 `maintenance.proc_automations_*_job()` (una per regola, più `proc_apply_fk_index_policy_job`,
 `proc_apply_storicizza_defaults_job`, `proc_sync_storico_set_storicizza_job`). Ogni processo è una
-riga del catalogo [dbops.processi](/dbzero/dbops/manual/processi), e ogni procedura registra la sua
-corsa in [maintenance.job_run_log](/dbzero/maintenance/manual/job_run_log) attraverso
+riga del catalogo [dbops.processi](/dbzero/dbops/tabelle/processi), e ogni procedura registra la sua
+corsa in [maintenance.job_run_log](/dbzero/maintenance/tabelle/job_run_log) attraverso
 `maintenance.fn_run_and_log` (con un advisory lock che impedisce due corse insieme).
 
 Le stesse procedure vengono chiamate in tre momenti.
@@ -749,12 +799,12 @@ Dove pgAgent c'è, i job di `85_pgagent` rieseguono le stesse procedure:
 | Quando              | Job                                                                                                                   |
 | ------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | ogni giorno, 21:00  | `automations_audit_update`, `automations_storico_provision`, `automations_storico`, `automations_tx_id`, `automations_attivo`, `automations_overlap` |
-| ogni giorno, 21:10  | `automations_lock_columns` (con DATE_VALIDITA), `automations_delete_block`                                             |
+| ogni giorno, 21:10  | `automations_lock_columns` (con DATE_VALIDITA e CODICE_MAIUSCOLO), `automations_delete_block`                          |
 | sabato, 07:00       | `sync_storico_set_storicizza`                                                                                          |
 | sabato, 07:05       | `apply_storicizza_weekly`: dopo il sync, nello stesso ordine della convergenza                                         |
 | domenica, 23:00     | `automations_cleanup_weekly`, `automations_apply_fk_indexes_policy`                                                   |
 
-* Ogni passo è avvolto nel cancello [maintenance.fn_sveglia_accesa](/dbzero/maintenance/manual/fn_sveglia_accesa): un processo **spento** non si sveglia, e non lascia righe nel giornale. La convergenza del rilascio invece gira sempre: spegnere ferma la sveglia, non l'aggiornamento.
+* Ogni passo è avvolto nel cancello [maintenance.fn_sveglia_accesa](/dbzero/maintenance/funzioni/fn_sveglia_accesa): un processo **spento** non si sveglia, e non lascia righe nel giornale. La convergenza del rilascio invece gira sempre: spegnere ferma la sveglia, non l'aggiornamento.
 * ⚠️ I job delle 21:00 partono nello stesso minuto, **senza ordine fra loro**: una tabella nuova riceve la tabella di storico la prima notte e il trigger di storico la seconda (§8).
 * ⚠️ In CI su GitHub `85_pgagent` è `MARK_RAN`: i job non esistono, e il loro lavoro lo fa la convergenza del §9.1.
 
@@ -772,10 +822,10 @@ catalogo, comprese le automazioni (`automations_*`, `apply_fk_index_policy`,
 
 | Che cosa si vede o si fa                                   | Da dove viene                                                                                                         |
 | ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| lo **stato** di ogni processo: `OK`, `IN_ATTESA`, `IN_RITARDO`, `MUTO`, `MAI_PARTITO`, `JOB_SPENTO`, `JOB_ASSENTE`, `SPENTO`… | il panorama [dbops.vw_processi_programmazione](/dbzero/dbops/manual/vw_processi_programmazione) |
+| lo **stato** di ogni processo: `OK`, `IN_ATTESA`, `IN_RITARDO`, `MUTO`, `MAI_PARTITO`, `JOB_SPENTO`, `JOB_ASSENTE`, `SPENTO`… | il panorama [dbops.vw_processi_programmazione](/dbzero/dbops/views/vw_processi_programmazione) |
 | le ultime **corse** di un processo, con esito e messaggio  | `maintenance.job_run_log`                                                                                             |
 | i **presidi**: i controlli che devono restare vuoti, con il rimedio e a chi tocca | il catalogo `dbops.presidi`; API in [Amministrazione software §6.1](/backend/amm-software/manual/api_amm_software) |
-| **accendere, spegnere** o riportare al default un processo, con il motivo | `dbops.fn_imposta_accensione_processo`; regole in [dbops.processi_accensione](/dbzero/dbops/manual/processi_accensione); API §6.4 |
+| **accendere, spegnere** o riportare al default un processo, con il motivo | `dbops.fn_imposta_accensione_processo`; regole in [dbops.processi_accensione](/dbzero/dbops/tabelle/processi_accensione); API §6.4 |
 
 ⚠️ **«Esegui ora» non vale per le automazioni.** Il pulsante lancia una sveglia del backend
 (systemd), ed esiste solo sulle sveglie che lo dichiarano (`avvio_manuale` in
@@ -954,13 +1004,14 @@ SELECT * FROM dbops.vw_indici_ridondanti_prefisso;   -- ridondanti per prefisso
 ### Simulazione e verifica di un rilascio
 
 ```sql
--- Dry-run sugli schemi toccati: le parti dell'orchestratore…
-SELECT dbops.fn_run_automations(
-  'AUTO', ARRAY['anagrafiche','vendite'], true,
-  ARRAY['TX_ID','AUDIT_UPDATE','STORICO','LOCK_COLUMNS','ATTIVO','DATE_VALIDITA']
-);
--- …e le tabelle di storico, che l'orchestratore non prevede
+-- Dry-run sugli schemi toccati: un runner per regola, nell'ordine della convergenza
+SELECT dbops.fn_run_automations_audit_update('AUTO', ARRAY['anagrafiche','vendite'], true);
 SELECT dbops.fn_run_automations_storico_provision('AUTO', ARRAY['anagrafiche','vendite'], true);
+SELECT dbops.fn_run_automations_storico('AUTO', ARRAY['anagrafiche','vendite'], true);
+SELECT dbops.fn_run_automations_tx_id('AUTO', ARRAY['anagrafiche','vendite'], true);
+SELECT dbops.fn_run_automations_attivo('AUTO', ARRAY['anagrafiche','vendite'], true);
+SELECT dbops.fn_run_automations_lock_columns('AUTO', ARRAY['anagrafiche','vendite'], true);
+SELECT dbops.fn_run_automations_date_validita('AUTO', ARRAY['anagrafiche','vendite'], true);
 
 -- LOCK_COLUMNS: che cosa farebbe la convergenza, e le colonne che la fermerebbero
 SELECT schema_name, table_name, azione, colonne_perse

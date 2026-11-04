@@ -22,5 +22,11 @@
 |------|-------------|
 | pk_tipi_tariffe_ee | `CREATE UNIQUE INDEX pk_tipi_tariffe_ee ON config.tipi_tariffe_ee USING btree (id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_tipi_tariffe_ee_a15_codice_maiuscolo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
+| trg_tipi_tariffe_ee_a15_codice_maiuscolo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
+
 ---
 {% include-markdown "signature-core.md" %}

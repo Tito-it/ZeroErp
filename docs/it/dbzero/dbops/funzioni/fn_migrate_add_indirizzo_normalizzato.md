@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/fn_migrate_add_indirizzo_normalizzato.md" %}
 # ⚙️ Funzione `fn_migrate_add_indirizzo_normalizzato`
 
 ```sql

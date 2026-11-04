@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/fn_storico_backfill_scope_tutte.md" %}
 # ⚙️ Funzione `fn_storico_backfill_scope_tutte`
 
 ```sql

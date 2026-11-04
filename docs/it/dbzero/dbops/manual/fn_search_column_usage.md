@@ -1,103 +1,47 @@
-## 📘 Documentazione Concettuale – Function `dbops.fn_search_column_usage(p_column_name TEXT)`
+## 📘 Documentazione Concettuale – Funzione `dbops.fn_search_column_usage`
 
+> **Ultimo aggiornamento**: 4 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Catalogo delle view (`pg_catalog.pg_views`, `pg_catalog.pg_matviews`)
-> Catalogo delle funzioni e regole (`pg_catalog.pg_proc`, `pg_catalog.pg_rules`)
-> Constraint system (`pg_catalog.pg_constraint`)
-
-La funzione **`dbops.fn_search_column_usage`** consente di ricercare riferimenti a un determinato nome di colonna all’interno di viste, materialized view, regole, funzioni e vincoli, restituendo il tipo di oggetto, lo schema e il nome dell’oggetto che la contiene.
+> Approfondimento funzioni:
+>
+> * [dbops.fn_find_function_usage](/dbzero/dbops/funzioni/fn_find_function_usage) — la stessa ricerca, per il nome di una funzione
+> * [dbops.fn_find_file_usage](/dbzero/dbops/funzioni/fn_find_file_usage) — chi punta una tabella con una chiave esterna
+>
+> Guide:
+>
+> * [Linee guida SQL — funzioni `BEGIN ATOMIC`](/linee-guida-sql#5c-funzioni-sql-begin-atomic-perche-come-si-cambiano-come-si-cercano) — come si cerca davvero nei corpi
 
 ---
+
 ### 🎯 Scopo Principale
-* Individuare rapidamente tutte le occorrenze di un campo in definizioni SQL presenti nel database.
-* Facilitare attività di refactoring, pulizia del codice, e verifica di dipendenze tra oggetti del database.
+
+Dato un nome di colonna (o un frammento), elenca gli oggetti nella cui definizione compare: viste,
+viste materializzate, regole, funzioni e vincoli. È un attrezzo di consultazione da lanciare a mano
+prima di rinominare o togliere una colonna; nessun oggetto del database la chiama.
 
 ---
 
-### Parametri e Firma
+### ⚠️ Una ricerca testuale, e un ramo che non trova niente
 
-```sql
-fn_search_column_usage(
-  p_column_name TEXT
-) RETURNS TABLE(
-  object_type TEXT,
-  schema_name TEXT,
-  object_name TEXT
-)
-LANGUAGE sql
-STABLE
-ROWS 1000;
-```
+La ricerca è sul testo delle definizioni, senza distinguere maiuscole e minuscole, e il nome si cerca
+come frammento: un nome contenuto in un altro dà falsi positivi, e il trattino basso vale come
+carattere qualsiasi. La risposta dice dove il nome **compare**, non dove la colonna è usata, e non
+dice di quale tabella è la colonna.
 
-* **`p_column_name`**: nome della colonna (o frammento) da ricercare nelle definizioni.
-* **Return**: una tabella con i seguenti campi:
+Tre punti ciechi:
 
-  * `object_type`: tipo di oggetto (`view`, `materialized_view`, `rule`, `function`, `constraint`)
-  * `schema_name`: schema di appartenenza dell’oggetto
-  * `object_name`: nome dell’oggetto in cui viene utilizzata la colonna
+* **i vincoli non escono mai per il nome della colonna.** Il ramo dei vincoli cerca nella forma
+  interna dell'espressione, dove le colonne sono numeri di posizione e non nomi: trova un vincolo
+  solo se il frammento cercato coincide per caso con un pezzo di quella forma;
+* **le funzioni `LANGUAGE sql` scritte con `BEGIN ATOMIC` non si vedono**: il loro sorgente testuale
+  è vuoto;
+* **i trigger, gli indici e i valori predefiniti** non sono nel perimetro della ricerca.
+
+Una risposta vuota, quindi, non prova che la colonna non sia usata. Il censimento affidabile delle
+dipendenze di una colonna sta nelle dipendenze registrate dal database, non nei testi.
 
 ---
 
-### Logica e Flusso di Esecuzione
-
-1. **Viste Standard** (`pg_views`): cerca la stringa in `definition` per individuare colonne referenziate.
-2. **Materialized Views** (`pg_matviews`): analogamente alle view.
-3. **Regole** (`pg_rules`): verifica il testo delle regole.
-4. **Funzioni** (`pg_proc`): esamina il sorgente PL/pgSQL (`prosrc`).
-5. **Constraint di Check** (`pg_constraint`): controlla la condizione BOOLEAN (`conbin`).
-
-Tutti i risultati vengono uniti (`UNION ALL`) e restituiti come un unico set.
-
----
-
-### Esempi di Utilizzo
-
-1. **Ricerca generica**
-
-   ```sql
-   SELECT *
-     FROM dbops.fn_search_column_usage('customer_id');
-   ```
-
-   Restituisce tutte le view, funzioni, regole e vincoli che contengono la stringa `customer_id`.
-
-2. **Filtrare solo le funzioni**
-
-   ```sql
-   SELECT schema_name, object_name
-     FROM dbops.fn_search_column_usage('amount')
-    WHERE object_type = 'function';
-   ```
-
-3. **Verificare vincoli che utilizzano un campo**
-
-   ```sql
-   SELECT schema_name, object_name
-     FROM dbops.fn_search_column_usage('status')
-    WHERE object_type = 'constraint';
-   ```
-
-4. **Esempio in contesto di refactoring**
-
-   ```sql
-   -- Trovare tutte le dipendenze di 'data_insert'
-   WITH deps AS (
-     SELECT *
-       FROM dbops.fn_search_column_usage('data_insert')
-   )
-   SELECT * FROM deps;
-   -- Procedi ad aggiornare o eliminare i riferimenti identificati
-   ```
-
----
-
-### Vantaggi Operativi
-
-* **Refactoring sicuro**: individua tutte le dipendenze di un campo prima di rinominarlo o rimuoverlo.
-* **Documentazione**: mappa le dipendenze tra oggetti di database per audit e analisi.
-* **Efficienza**: evita di ispezionare manualmente definizioni distribuite in più cataloghi.
-
----
-
-> **“Con `fn_search_column_usage` è possibile gestire in modo centralizzato l’analisi degli utilizzi di un campo, semplificando manutenzione e refactoring a livello di schema.”**
+{% include-markdown "signature-core.md" %}

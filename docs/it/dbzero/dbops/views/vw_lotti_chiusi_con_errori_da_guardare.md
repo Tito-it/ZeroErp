@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/vw_lotti_chiusi_con_errori_da_guardare.md" %}
 # 🔍 View `vw_lotti_chiusi_con_errori_da_guardare`
 
 > 📝 **Descrizione**

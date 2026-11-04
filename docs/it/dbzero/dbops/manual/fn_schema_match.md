@@ -1,82 +1,48 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_schema_match`
 
+> **Ultimo aggiornamento**: 4 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Guida:
+> Approfondimento tabelle:
 >
-[Automazioni – Overview del Modulo](/guide/automazione-db)   
+> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl) — le regole il cui bersaglio di schema si confronta qui
 >
-Approfondimento funzioni:
+> Approfondimento funzioni:
 >
-[dbops.fn_schema_in_scope](/dbzero/dbops/funzioni/fn_schema_in_scope)   
-> [dbops.fn_resolve_scope](/dbzero/dbops/funzioni/fn_resolve_scope)   
+> * [dbops.fn_schema_in_scope](/dbzero/dbops/funzioni/fn_schema_in_scope) — la stessa regola, contro un elenco di schemi invece che uno solo
+> * [dbops.fn_resolve_scope](/dbzero/dbops/funzioni/fn_resolve_scope) — l'ambito degli schemi, dove `*all` ha un altro significato
+>
+> Guide:
+>
+> * [Automazione DB](/guide/automazione-db) — il framework delle regole
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 10-01-26)
-La funzione **`dbops.fn_schema_match(p_rule_target, p_schema)`** è un **helper booleano** che verifica se uno schema specifico (`p_schema`) corrisponde al target di una regola (`p_rule_target`). Gestisce anche la keyword speciale `*all` per indicare corrispondenza universale.
+
+Dice se uno schema è il bersaglio di una regola di automazione: vero se il bersaglio della
+regola è `*all` oppure se coincide con lo schema, senza distinguere maiuscole e minuscole.
+
+È il filtro di schema con cui quasi tutti i runner `fn_run_automations_*`, la pulizia e il
+censimento delle divergenze dei lock scelgono, per ogni tabella, le regole che la
+riguardano.
 
 ---
 
-### Parametri di input
+### Le tre risposte
 
-| Parametro       | Tipo | Obbligatorio | Descrizione                                        |
-| --------------- | ---- | :----------: | -------------------------------------------------- |
-| `p_rule_target` | text |      ✔️       | Schema target della regola (può includere `*all`). |
-| `p_schema`      | text |      ✔️       | Nome dello schema da verificare.                   |
+* bersaglio vuoto → **falso**: una regola senza bersaglio non colpisce niente;
+* bersaglio `*all` → **vero** per qualunque schema;
+* altrimenti → vero solo se i due nomi coincidono, a meno delle maiuscole.
 
----
+⚠️ Qui `*all` vuol dire «qualunque schema». Nell'ambito di una corsa (`fn_resolve_scope`) la
+stessa parola vuol dire «usa l'ambito di default»: sono due posti diversi, e la parola non
+ha lo stesso significato.
 
-### Valore di ritorno
-
-`boolean` – `true` se `p_schema` corrisponde al target o se `p_rule_target='*all'`; altrimenti `false`.
-
----
-
-### Flusso logico
-
-1. Se `p_rule_target` è `NULL` → ritorna `false` (gestione difensiva).
-2. Se `p_rule_target='*all'` (case insensitive) → ritorna `true`.
-3. Altrimenti confronta `p_rule_target` e `p_schema` in modalità case insensitive.
+La funzione è `IMMUTABLE`: non legge tabelle né cataloghi, e la risposta dipende solo dai due
+argomenti.
 
 ---
 
-### Casi d’uso tipici
-
-* **Applicazione regole automazioni**: decidere se applicare una regola ad un determinato schema.
-* **Wildcard globale**: usare `*all` per indicare che la regola è valida su qualsiasi schema.
-* **Verifica singola**: quando serve un match diretto su uno schema specifico.
-
----
-
-### Permessi e sicurezza
-
-* Funzione **IMMUTABLE**, non dipende da cataloghi esterni.
-* Sicura, priva di side‑effect.
-
----
-
-### Esempi di utilizzo
-
-* `SELECT dbops.fn_schema_match('anagrafiche', 'anagrafiche');` → `true`.
-* `SELECT dbops.fn_schema_match('config', 'anagrafiche');` → `false`.
-* `SELECT dbops.fn_schema_match('*all', 'vendite');` → `true`.
-
----
-
-### Considerazioni
-
-* È la versione più semplice e atomica rispetto a `fn_schema_in_scope` (che lavora su array).
-* Spesso usata nelle `WHERE` dei cicli di automazione per decidere se includere parent/child schema di una FK.
-
----
-
-### Benefici
-
-* **Semplicità**: logica minimale e leggibile.
-* **Affidabilità**: comportamento prevedibile con gestione difensiva di `NULL`.
-* **Flessibilità**: supporta wildcard `*all`.
-
----
-
-> **In sintesi**: `fn_schema_match` è un **helper elementare ma cruciale** per verificare in modo uniforme se uno schema soddisfa una regola di automazione, con supporto al caso speciale `*all`.
+{% include-markdown "signature-core.md" %}

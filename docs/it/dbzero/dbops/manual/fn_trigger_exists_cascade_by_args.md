@@ -1,85 +1,45 @@
-# 📘 Documentazione Concettuale – Funzione `dbops.fn_trigger_exists_cascade_by_args`
+## 📘 Documentazione Concettuale – Funzione `dbops.fn_trigger_exists_cascade_by_args`
 
+> **Ultimo aggiornamento**: 4 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Guide:
+> Approfondimento funzioni:
 >
-[Automazioni – Overview del Modulo](/guide/automazione-db)
+> * [dbops.fn_trigger_exists_block_by_args](/dbzero/dbops/funzioni/fn_trigger_exists_block_by_args) — la gemella viva, per il block della regola ATTIVO
+> * [dbops.fn_run_automations_attivo](/dbzero/dbops/funzioni/fn_run_automations_attivo) — il motore ATTIVO di oggi, che non la chiama
 >
-Approfondimeti funzioni e trigger:
+> Guide:
 >
-`dbops.trgfn_soft_delete_cascade` — **ritirata** (DROP `20260101-01-drop-attivo-legacy-objects`)
-> [dbops.fn_trigger_exists_block_by_args](/dbzero/dbops/funzioni/fn_trigger_exists_block_by_args)
-> [dbops.fn_trigger_exists_by_name](/dbzero/dbops/funzioni/fn_trigger_exists_by_name)
-> [dbops.fn_trigger_exists_by_function](/dbzero/dbops/funzioni/fn_trigger_exists_by_function)
+> * [Framework di automazione DB](/guide/automazione-db) — §4.2: la regola ATTIVO non ha cascata
 
 ---
+
 ### 🎯 Scopo Principale
-La funzione **`dbops.fn_trigger_exists_cascade_by_args(p_parent_rel, p_child_schema, p_child_table, p_fk_col)`** verifica l’esistenza di un **trigger di cascata** basato sulla funzione `trgfn_soft_delete_cascade`, definito sulla tabella padre e parametrizzato con *schema*, *tabella figlia* e *colonna FK* specifici.
+
+Residuo della vecchia regola ATTIVO con cascata: diceva se sulla tabella padre c'era un trigger di
+spegnimento a cascata (`dbops.trgfn_soft_delete_cascade`) con gli argomenti dati. ⛔ Oggi non ha
+chiamanti e cerca una funzione che non esiste più: è candidata al ritiro.
 
 ---
 
-### Parametri di input
+### Perché non serve più
 
-| Parametro        | Tipo     | Obbligatorio | Descrizione                                               |
-| ---------------- | -------- | :----------: | --------------------------------------------------------- |
-| `p_parent_rel`   | regclass |      ✔️       | Nome completo della tabella padre (es. `schema.tabella`). |
-| `p_child_schema` | text     |      ✔️       | Schema della tabella figlia.                              |
-| `p_child_table`  | text     |      ✔️       | Nome della tabella figlia.                                |
-| `p_fk_col`       | text     |      ✔️       | Nome della colonna FK nella tabella figlia.               |
+La regola ATTIVO di oggi non spegne i figli da sé: blocca il padre finché ha figli attivi, e
+nient'altro. `dbops.trgfn_soft_delete_cascade` è stata ritirata insieme alle funzioni trigger
+legacy, e il motore `dbops.fn_run_automations_attivo` non chiama più questo controllo.
 
----
-
-### Valore di ritorno
-
-`boolean` – `true` se esiste un trigger non interno sulla tabella padre che invoca `dbops.trgfn_soft_delete_cascade(p_child_schema, p_child_table, p_fk_col)`, `false` altrimenti.
+Su un database di oggi restituisce sempre falso: non può esserci un trigger di una funzione che
+non c'è. Anche se ci fosse, il confronto sul testo della definizione cerca gli argomenti separati
+da una virgola senza spazio, mentre PostgreSQL li scrive con virgola e spazio.
 
 ---
 
-### Flusso logico
+### Note di migrazione
 
-1. Interroga `pg_trigger` per i trigger definiti su `p_parent_rel`, escludendo quelli **interni** (`NOT t.tgisinternal`).
-2. Joina con `pg_proc` per selezionare quelli che chiamano la funzione `trgfn_soft_delete_cascade`.
-3. Verifica che la **definizione del trigger** (`pg_get_triggerdef(t.oid)`) contenga la chiamata con gli **argomenti attesi** (schema, tabella figlia, colonna FK) usando `ILIKE` + `format(...)`.
-4. Ritorna `EXISTS(...)` come booleano.
+* 2026-01-01 — `dbops.trgfn_soft_delete_cascade` viene ritirata con gli oggetti ATTIVO legacy;
+  questa funzione resta, senza più chiamanti.
 
 ---
 
-### Casi d’uso tipici
-
-* **Automazioni ATTIVO – CASCATA**: prima di creare il trigger di cascata, verificare se è già presente con esatti argomenti.
-* **Idempotenza**: prevenire duplicazioni quando si rilanciano automazioni su più schemi/tabelle.
-* **Audit di configurazione**: controllo di coerenza rispetto alle FK effettive.
-
----
-
-### Permessi e sicurezza
-
-* Richiede privilegi di lettura su cataloghi `pg_trigger`, `pg_proc`.
-* Funzione **STABLE**, senza effetti collaterali su dati o schema.
-
----
-
-### Esempi di utilizzo
-
-* `SELECT dbops.fn_trigger_exists_cascade_by_args('catalogo.articoli','vendite','righe_ordine','articolo_id');`
-* `SELECT dbops.fn_trigger_exists_cascade_by_args('anagrafiche.clienti','fatture','testate','cliente_id');`
-
----
-
-### Considerazioni
-
-* Il match avviene su **stringa** della definizione trigger: robusto ma sensibile a varianti non canoniche di formattazione.
-* Complementare a `fn_trigger_exists_by_name`/`by_function` per strategie `BY_NAME|BY_FUNCTION|BOTH`.
-
----
-
-### Benefici
-
-* **Sicurezza operativa**: evita la creazione multipla dello stesso trigger parametrico.
-* **Manutenibilità**: facilita verifiche e reportistica sulle policy di soft‑delete a cascata.
-* **Integrazione**: pensata per il modulo automazioni **ATTIVO**.
-
----
-
-> **In sintesi**: `fn_trigger_exists_cascade_by_args` è l’utility che consente di verificare, in modo preciso e parametrizzato, la presenza del trigger di **soft‑delete a cascata** tra padre e figlio.
+{% include-markdown "signature-core.md" %}

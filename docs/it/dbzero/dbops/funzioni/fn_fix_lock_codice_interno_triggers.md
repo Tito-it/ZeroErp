@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/fn_fix_lock_codice_interno_triggers.md" %}
 # ⚙️ Funzione `fn_fix_lock_codice_interno_triggers`
 
 ```sql

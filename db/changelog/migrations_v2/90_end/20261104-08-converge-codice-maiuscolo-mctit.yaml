@@ -1,0 +1,94 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Convergenza CODICE_MAIUSCOLO: a ogni migrate, ogni colonna codice
+#   dell'ambito (tranne le eccezioni) ha il trigger che la salva in maiuscolo,
+#   e nessuna eccezione lo ha piu'.
+#
+# ── ⭐ PERCHE' runAlways, e perche' in 90_end ────────────────────────
+#   Stessa forma di DATE_VALIDITA (20260923-47): la regola e' «la colonna c'e'
+#   ⇒ il trigger c'e'», e una rete che gira a ogni migrate la rende vera anche
+#   per le tabelle nate dopo questo changeSet, senza aspettare il job notturno.
+#   90_end e' incluso DOPO tutto l'autogen: quando gira qui le tabelle ci sono
+#   tutte, anche su un database da zero. Non dipende dagli oggetti di ci_apply:
+#   legge solo le colonne e il registro delle eccezioni.
+#   A regime non fa DDL: il perimetro non ha azioni.
+#
+# ── ⚠️ I SEED GIRANO PRIMA ────────────────────────────────────────────
+#   Su un database da zero 80_data viene prima di qui: i seed si scrivono
+#   SENZA il trigger. Per questo i CSV delle tabelle nel perimetro hanno i
+#   codici gia' in maiuscolo (tipi_doc_fiscale, tipi_utenze,
+#   centri_riscossione portati il 2026-11-04), e il pgTAP di presidio
+#   (db/pgtap/dbops/test-codice-maiuscolo-v1.sql) asserisce che nessuna riga
+#   del perimetro ha un codice non normalizzato.
+#
+# ── ⛔ IL CONTROLLO IN CODA ───────────────────────────────────────────
+#   Dopo il giro, il perimetro non deve avere azioni. Se ne resta una — la
+#   regola CODICE_MAIUSCOLO spenta o tolta dal CSV, una DDL fallita — il
+#   migrate si FERMA e dice quali.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261104-08-converge-codice-maiuscolo-mctit.yaml
+
+  - changeSet:
+      id: 20261104-08-converge-codice-maiuscolo
+      author: mctit
+      runAlways: true
+      # Una rete che converge: il corpo puo' cambiare senza che il checksum
+      # debba invalidare i database dove ha gia' girato.
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Converge l'automazione CODICE_MAIUSCOLO a ogni migrate: monta
+        script.trgfn_codice_maiuscolo dove e' dovuto e manca, lo toglie dove non e' piu'
+        dovuto, e si ferma se al termine il perimetro ha ancora un'azione.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_run_automations_codice_maiuscolo';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $convergenza$
+              DECLARE
+                  v_aperte text;
+              BEGIN
+                  PERFORM dbops.fn_run_automations_codice_maiuscolo('AUTO', NULL, false);
+
+                  SELECT string_agg(d.schema_name || '.' || d.table_name || ' (' || d.azione || ')',
+                                    ', ' ORDER BY d.schema_name, d.table_name)
+                    INTO v_aperte
+                    FROM dbops.fn_codice_maiuscolo_perimetro(NULL) AS d
+                   WHERE d.azione IS NOT NULL;
+
+                  IF v_aperte IS NOT NULL THEN
+                      RAISE EXCEPTION
+                        'CODICE_MAIUSCOLO: tabelle col trigger del codice ancora da allineare: %. '
+                        'Controllare la regola CODICE_MAIUSCOLO in dbops.automation_rules_tbl (abilitata, exec_mode AUTO).',
+                        v_aperte;
+                  END IF;
+              END
+              $convergenza$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- No-op dichiarato: la rete non ha uno stato «prima» da ripristinare.
+              -- Per togliere il trigger da una tabella si aggiunge un'eccezione in
+              -- dbops.automazione_codice_eccezioni; il giro dopo lo toglie.
+              SELECT 1;

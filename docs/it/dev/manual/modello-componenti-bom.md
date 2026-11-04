@@ -5,11 +5,7 @@
 > storico delle iterazioni e' in
 > [changelog-decisioni-componenti.md](changelog-decisioni-componenti.md).
 >
-> **Ultimo aggiornamento**: 2026-10-02 (ritirati `partecipa_qta` e
-> `determina_qta_padre` — §2; quantita', UoM e periodo del kit in fattura
-> dalla riga padre del documento — §7.1). Prima: 2026-10-01 (esposizione
-> in fattura a tre modi — vedi §7). Prima: 2026-05-13 (decisione "BoM contratto
-> immutabile per documento" — vedi §9.3).
+> **Ultimo aggiornamento**: 4 novembre 2026
 
 ---
 
@@ -129,7 +125,7 @@ Razionale:
 Vincolo di dominio: il padre composito e tutti i suoi figli BoM
 condividono la **stessa aliquota IVA**.
 
-Regola `E_BOM_IVA_DISCORDANTE` di [`script.fn_check_articolo_riga`](/dbzero/script/manual/fn_check_articolo_riga) (documento `ARTICOLO`), sollevata dal guard [`catalogo.trgfn_articoli_componenti_guard_componente`](/dbzero/catalogo/manual/trgfn_articoli_componenti_guard_componente) (dal 2026-10-13; prima `catalogo.trgfn_articoli_componenti_guard_iva`):
+Regola `E_BOM_IVA_DISCORDANTE` di [`script.fn_check_articolo_riga`](/dbzero/script/funzioni/fn_check_articolo_riga) (documento `ARTICOLO`), sollevata dal guard [`catalogo.trgfn_articoli_componenti_guard_componente`](/dbzero/catalogo/manual/trgfn_articoli_componenti_guard_componente) (dal 2026-10-13; prima `catalogo.trgfn_articoli_componenti_guard_iva`):
 
 - BEFORE INSERT OR UPDATE OF `attivo` su `catalogo.articoli_componenti`:
   per un legame attivo, NEW.componente deve avere `iva_id` uguale al
@@ -328,7 +324,7 @@ livello solo, poi, un ciclo (A in B, B in A) non si costruisce.
 
 Due guard, dai due lati:
 
-- sul legame: il motivo `E_BOM_COMPONENTE_COMPOSITO` di [`script.fn_check_articolo_riga`](/dbzero/script/manual/fn_check_articolo_riga), sollevato dal guard di tabella
+- sul legame: il motivo `E_BOM_COMPONENTE_COMPOSITO` di [`script.fn_check_articolo_riga`](/dbzero/script/funzioni/fn_check_articolo_riga), sollevato dal guard di tabella
   [`catalogo.trgfn_articoli_componenti_guard_componente`](/dbzero/catalogo/manual/trgfn_articoli_componenti_guard_componente) (dal 2026-10-13; prima `trgfn_articoli_componenti_guard_un_livello`);
 - sull'articolo: il check 3 di
   [`catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva`](/dbzero/catalogo/manual/trgfn_articoli_guard_flags_struttura_bom_attiva)

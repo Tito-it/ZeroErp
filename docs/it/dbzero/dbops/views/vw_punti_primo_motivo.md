@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/vw_punti_primo_motivo.md" %}
 # 🔍 View `vw_punti_primo_motivo`
 
 > 📝 **Descrizione**

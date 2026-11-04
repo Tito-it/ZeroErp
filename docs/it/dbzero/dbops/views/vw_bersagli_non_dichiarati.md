@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/vw_bersagli_non_dichiarati.md" %}
 # 🔍 View `vw_bersagli_non_dichiarati`
 
 > 📝 **Descrizione**

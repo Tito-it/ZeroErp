@@ -1,0 +1,58 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Automazione CODICE_MAIUSCOLO — mirror del registro
+#   dbops.automazione_codice_eccezioni (00_schema 20261104-01).
+#
+# Una tabella, UN CSV: ../sql/dbops/automazione_codice_eccezioni.csv. Chiave
+# del mirror = la chiave NATURALE (schema, tabella, colonna), non l'id: una
+# riga vale ovunque.
+# Le dieci righe le ha decise Tid il 2026-11-04, sul censimento delle colonne
+# codice con valori non in maiuscolo nei seed: sono chiavi tecniche lette dal
+# codice per nome, non codici dell'operatore. ⚠️ ui.* e dbops.processi oggi
+# sono FUORI dall'ambito delle automazioni (dbops.automation_scope, fatto del
+# 2026-11-04): le righe restano perche' la regola e' sulla colonna, e reggono
+# anche se l'ambito si allarga.
+# ⚠️ Ritirare una riga: loadUpdateData non cancella -> DELETE forward-only
+#   (linee-guida §11.2); il trigger lo monta il giro successivo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261104-07-load-automazione-codice-eccezioni-mctit.yaml
+
+  - changeSet:
+      id: 20261104-07-load-automazione-codice-eccezioni
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Mirror di dbops.automazione_codice_eccezioni dal suo CSV (chiave naturale): le colonne
+        codice che l'automazione CODICE_MAIUSCOLO non normalizza. Dieci righe, decisione Tid
+        2026-11-04.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: dbops
+            tableName: automazione_codice_eccezioni
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/dbops/automazione_codice_eccezioni.csv
+            tableName: automazione_codice_eccezioni
+            schemaName: dbops
+            separator: ","
+            encoding: UTF-8
+            nullValue: "NULL"
+            primaryKey: "schema_name,table_name,column_name"
+            columns:
+              - column: { name: schema_name, type: STRING }
+              - column: { name: table_name,  type: STRING }
+              - column: { name: column_name, type: STRING }
+              - column: { name: motivo,      type: STRING }

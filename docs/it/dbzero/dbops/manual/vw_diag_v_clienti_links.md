@@ -1,200 +1,88 @@
 ## 📘 Documentazione Concettuale – Vista `dbops.vw_diag_v_clienti_links`
 
+> **Ultimo aggiornamento**: 4 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Approfondimento tabelle:**
+> Approfondimento tabelle:
 >
-[anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)
-> [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)
-> [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
-> [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)
-> [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)
-> [config.utilities](/dbzero/config/tabelle/utilities)
-> [config.tipi_ruoli](/dbzero/config/tabelle/tipi_ruoli)
-> [config.iva](/dbzero/config/tabelle/iva)
+> * [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti) — il punto di partenza: una riga per cliente
+> * [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account) — il legame che i flag confrontano
+> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli) — il ruolo del cliente, da cui il soggetto e il tipo ruolo
+> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti) — nome e codice di chi è il cliente
+> * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities) — l'istanza a cui il cliente è legato
+> * [config.utilities](/dbzero/config/tabelle/utilities) — l'utility del cliente
+> * [config.tipi_ruoli](/dbzero/config/tabelle/tipi_ruoli) — il tipo del ruolo
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 25-12-25)
-La vista **`dbops.vw_diag_v_clienti_links`** è una **vista diagnostica** che espone in modo “leggibile” i **legami strutturali** tra:
 
-* **Cliente** (`anagrafiche.clienti`)
-* **Billing Account** (`anagrafiche.billing_account`)
-* **Soggetto/Ruolo** (`anagrafiche.soggetti_ruoli` → `anagrafiche.soggetti`)
-* **Istanza utility** (`anagrafiche.istanze_utilities`)
-* **Utility** (`config.utilities`)
-* **Tipo ruolo** (`config.tipi_ruoli`)
+La diagnostica dei legami di un cliente: in una riga il cliente, il suo billing account, il
+soggetto, l'istanza utility, l'utility e il tipo ruolo, con tre flag che dicono se il billing
+account è allineato al cliente.
 
-e fornisce, in coda, una serie di **flag di coerenza** per verificare che il `billing_account` associato al cliente (se presente) sia **allineato** con:
-
-* `istanza_utility_id`
-* `soggetto_ruolo_id`
-* `utility_id`
-
-> In pratica: *“vedo in una riga sola tutte le chiavi e posso capire subito se il legame Cliente → BillingAccount è coerente oppure no.”*
+È uno strumento da consultare su richiesta, non un allarme: a catalogo è un `INVENTARIO`, che
+nessun digest conta.
 
 ---
 
-### Ruolo nel Modello Dati
+### ⭐ I tre flag: dove il legame si rompe
 
-Nel modello Zero ERP, un **cliente** è legato a una specifica **istanza_utility** e a una specifica **utility**. Il **billing_account** (quando presente) deve tipicamente essere coerente con questi stessi riferimenti.
+Un cliente e il suo billing account portano entrambi l'istanza utility, il soggetto ruolo e
+l'utility. Devono essere gli stessi, e i tre flag lo dicono uno per uno:
 
-Questa vista supporta:
+| Flag | È vero quando |
+| --- | --- |
+| `ba_match_istanza` | il billing account punta alla stessa istanza utility del cliente |
+| `ba_match_soggetto_ruolo` | il billing account è dello stesso soggetto ruolo del cliente |
+| `ba_match_utility` | il billing account è della stessa utility del cliente |
 
-* debug di dati “sporchi” o incoerenti
-* validazione post-migrazione/import
-* individuazione rapida di clienti con billing account non allineato
-* analisi operativa (prima di procedure di consolidamento / fix automatici)
+Un flag falso dice **quale** dei tre legami si è rotto, che è la domanda di chi apre la vista:
+validare un import, preparare un riallineamento, capire perché un cliente fattura sull'account
+sbagliato.
 
----
-
-### Join e Origine Dati
-
-La vista parte sempre da:
-
-* `anagrafiche.clienti c`
-
-con join **LEFT** (tolleranti a NULL) verso:
-
-* `anagrafiche.billing_account ba` (solo se `c.billing_account_id` valorizzato)
-* `anagrafiche.soggetti_ruoli sr` (da `c.soggetto_ruolo_id`)
-* `anagrafiche.soggetti s` (da `sr.soggetto_id`)
-* `anagrafiche.istanze_utilities iu` (da `c.istanza_utility_id`)
-* `config.utilities u` (da `c.utility_id`)
-* `config.tipi_ruoli tr` (da `sr.tipo_ruolo_id`)
-
-✅ Scelta intenzionale: i LEFT JOIN permettono di evidenziare dati mancanti (es. cliente senza billing account, o riferimenti non risolti).
+Oggi tutte queste colonne sono obbligatorie, sia sul cliente sia sul billing account: un
+cliente senza billing account non esiste più. Le unioni con le tabelle collegate sono comunque
+tolleranti, così una riga collegata che chi interroga non può vedere lascia il cliente a video
+con il buco, e i flag vuoti, invece di farlo sparire. ⇒ Un flag vuoto non dice «incoerente»: dice
+«il billing account non si vede da qui».
 
 ---
 
-### 🧾 Struttura – Colonne principali
+### Che cosa riporta, oltre ai flag
 
-#### 1) Identificativi e legami del Cliente
-
-| Colonna                      | Origine                | Descrizione                            |
-| ---------------------------- | ---------------------- | -------------------------------------- |
-| `cliente_id`                 | `c.id`                 | ID cliente                             |
-| `cliente_soggetto_ruolo_id`  | `c.soggetto_ruolo_id`  | FK verso `soggetti_ruoli`              |
-| `cliente_istanza_utility_id` | `c.istanza_utility_id` | FK verso `istanze_utilities`           |
-| `cliente_utility_id`         | `c.utility_id`         | FK verso `utilities`                   |
-| `cliente_billing_account_id` | `c.billing_account_id` | FK verso `billing_account` (opzionale) |
-
-#### 2) Identificativi e legami del Billing Account (se presente)
-
-| Colonna                 | Origine                 | Descrizione                                 |
-| ----------------------- | ----------------------- | ------------------------------------------- |
-| `ba_id`                 | `ba.id`                 | ID billing account                          |
-| `ba_istanza_utility_id` | `ba.istanza_utility_id` | Istanza associata al billing account        |
-| `ba_soggetto_ruolo_id`  | `ba.soggetto_ruolo_id`  | Soggetto/ruolo associato al billing account |
-| `ba_utility_id`         | `ba.utility_id`         | Utility associata al billing account        |
-
-#### 3) Dati soggetto / contesto
-
-| Colonna           | Origine             | Descrizione          |
-| ----------------- | ------------------- | -------------------- |
-| `soggetto_id`     | `s.id`              | ID soggetto          |
-| `soggetto_codice` | `s.codice`          | Codice soggetto      |
-| `ragione_sociale` | `s.ragione_sociale` | Ragione sociale (PG) |
-| `cognome`         | `s.cognome`         | Cognome (PF)         |
-| `nome`            | `s.nome`            | Nome (PF)            |
-
-#### 4) Istanza e Utility
-
-| Colonna                  | Origine            | Descrizione            |
-| ------------------------ | ------------------ | ---------------------- |
-| `istanza_id`             | `iu.id`            | ID istanza utility     |
-| `istanza_fittizia`       | `iu.fittizia`      | Flag istanza fittizia  |
-| `utility_id`             | `u.id`             | ID utility             |
-| `utility_codice_interno` | `u.codice_interno` | Codice interno utility |
-| `utility_descrizione`    | `u.descrizione`    | Descrizione utility    |
-
-#### 5) Ruolo
-
-| Colonna                     | Origine          | Descrizione          |
-| --------------------------- | ---------------- | -------------------- |
-| `tipo_ruolo_id`             | `tr.id`          | ID tipo ruolo        |
-| `tipo_ruolo_codice_interno` | `tr.codice`      | Codice interno ruolo |
-| `tipo_ruolo_descrizione`    | `tr.descrizione` | Descrizione ruolo    |
-
-> ⛔ **rev 2026-08-29 — il blocco IVA è USCITO da questa vista.**
-> `anagrafiche.clienti.iva_id` non esiste più (changeSet `20260829-22`): l'aliquota
-> la decide la merce, e il regime del soggetto passa da un titolo documentato.
-> Non è stato sostituito, perché non rispondeva alla domanda di questa vista.
-> Cantiere: `brief-db-be-iva-risolutore-e-regime-cliente.md`, I0-B.
+* le chiavi del cliente e quelle del billing account, affiancate, per vedere a colpo d'occhio
+  quale differisce;
+* il soggetto: codice, ragione sociale, cognome e nome;
+* l'istanza utility, con il flag che dice se è fittizia;
+* l'utility e il tipo ruolo, con codice interno e descrizione.
 
 ---
 
-### Flag di coerenza Cliente ↔ Billing Account
+### Chi la può vedere
 
-Questi tre campi sono booleani e rappresentano un confronto diretto:
-
-| Flag                      | Logica                                         | Significato                                                           |
-| ------------------------- | ---------------------------------------------- | --------------------------------------------------------------------- |
-| `ba_match_istanza`        | `ba.istanza_utility_id = c.istanza_utility_id` | Il billing account punta alla stessa istanza del cliente              |
-| `ba_match_soggetto_ruolo` | `ba.soggetto_ruolo_id = c.soggetto_ruolo_id`   | Il billing account è associato allo stesso soggetto/ruolo del cliente |
-| `ba_match_utility`        | `ba.utility_id = c.utility_id`                 | Il billing account usa la stessa utility del cliente                  |
-
-⚠️ Nota su NULL: se `ba` è NULL (cliente senza billing account), i confronti producono `NULL` (non TRUE/FALSE). È un comportamento utile perché distingue:
-
-* **assenza di billing account** (flag NULL)
-* **presenza ma incoerenza** (flag FALSE)
+La vista è `security_invoker`: legge nel perimetro di chi la interroga. Per questo a catalogo ha
+perimetro `DEFINER`: le sue righe non si elencano da un percorso senza identità, che vedrebbe zero.
 
 ---
 
-### Esempi d’uso
+### Test
 
-#### 1) Clienti con billing account presente ma non coerente
-
-```sql
-SELECT *
-FROM dbops.vw_diag_v_clienti_links
-WHERE cliente_billing_account_id IS NOT NULL
-  AND (
-    ba_match_istanza IS DISTINCT FROM TRUE
-    OR ba_match_soggetto_ruolo IS DISTINCT FROM TRUE
-    OR ba_match_utility IS DISTINCT FROM TRUE
-  );
-```
-
-#### 2) Clienti senza billing account (da completare)
-
-```sql
-SELECT cliente_id, soggetto_id, ragione_sociale, cognome, nome,
-       cliente_istanza_utility_id, cliente_utility_id
-FROM dbops.vw_diag_v_clienti_links
-WHERE cliente_billing_account_id IS NULL;
-```
-
-#### 3) Vista “audit” su un singolo cliente
-
-```sql
-SELECT *
-FROM dbops.vw_diag_v_clienti_links
-WHERE cliente_id = :cliente_id;
-```
-
-#### 4) Conteggio anomalie per tipologia
-
-```sql
-SELECT
-  count(*) FILTER (WHERE cliente_billing_account_id IS NULL) AS senza_ba,
-  count(*) FILTER (WHERE cliente_billing_account_id IS NOT NULL AND ba_match_istanza IS DISTINCT FROM TRUE) AS mismatch_istanza,
-  count(*) FILTER (WHERE cliente_billing_account_id IS NOT NULL AND ba_match_soggetto_ruolo IS DISTINCT FROM TRUE) AS mismatch_soggetto_ruolo,
-  count(*) FILTER (WHERE cliente_billing_account_id IS NOT NULL AND ba_match_utility IS DISTINCT FROM TRUE) AS mismatch_utility
-FROM dbops.vw_diag_v_clienti_links;
-```
+* `db/pgtap/anagrafiche/create-cliente.sql`, test 8 — un cliente appena creato ha i tre flag veri.
+* `db/pgtap/rls/test-rls-viste-security-invoker.sql` — la vista resta `security_invoker`.
+* `db/pgtap/dbops/test-catalogo-presidi-v1.sql` — la riga a catalogo combacia con la vista.
 
 ---
 
-### Vantaggi Operativi
+### Note di migrazione
 
-* **Diagnostica immediata**: tutte le FK rilevanti in un’unica riga.
-* **Evidenza delle incoerenze**: i tre flag permettono una lettura “a semaforo”.
-* **Supporto a migrazioni/import**: utile come “post-check” dopo caricamenti massivi.
-* **Base per procedure di fix**: può alimentare job che riallineano `billing_account` o segnalano anomalie.
+* 2026-04-02 — prende il nome di oggi, col prefisso `vw_`.
+* 2026-08-29 — esce il blocco dell'IVA del cliente: la colonna dell'aliquota sul cliente è stata
+  rimossa, perché l'aliquota la decide la merce e il regime del soggetto passa da un titolo
+  documentato. Non è stato sostituito, perché non rispondeva alla domanda di questa vista
+  (`brief-db-be-iva-risolutore-e-regime-cliente`, I0-B).
 
 ---
-
-> **“`vw_diag_v_clienti_links` è una lente diagnostica: mostra in modo esplicito come sono collegati Cliente, Billing Account, Soggetto e Istanza e rende visibili a colpo d’occhio le incoerenze.”**
 
 {% include-markdown "signature-core.md" %}

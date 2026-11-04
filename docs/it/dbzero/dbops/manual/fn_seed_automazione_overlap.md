@@ -1,73 +1,88 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_seed_automazione_overlap`
 
+> **Ultimo aggiornamento**: 4 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Guide:    
-> [Automazione DB](/guide/automazione-db)    
+> Approfondimento tabelle:
 >
-Approfondimento tabelle:    
-> [dbops.automazione_overlap](/dbzero/dbops/tabelle/automazione_overlap)    
+> * [dbops.automazione_overlap](/dbzero/dbops/tabelle/automazione_overlap) — il registro che la funzione riscrive
 >
-Approfondimento funzioni:
-> [dbops.fn_apply_automazione_overlap](/dbzero/dbops/funzioni/fn_apply_automazione_overlap)    
+> Approfondimento funzioni:
+>
+> * [dbops.fn_apply_automazione_overlap](/dbzero/dbops/funzioni/fn_apply_automazione_overlap) — chi legge il registro e crea i vincoli
+> * [dbops.fn_resolve_scope](/dbzero/dbops/funzioni/fn_resolve_scope) — l'ambito degli schemi da guardare
+> * [dbops.fn_table_in_scope](/dbzero/dbops/funzioni/fn_table_in_scope) — le esclusioni per tabella dell'ambito
+>
+> Guide:
+>
+> * [Framework di automazione DB](/guide/automazione-db) — l'automazione OVERLAP fra le altre
+
 ---
+
 ### 🎯 Scopo Principale
-(latest review 19-01-26)
-La funzione **`dbops.fn_seed_automazione_overlap(p_schemas)`** popola (o aggiorna)
-`dbops.automazione_overlap` rilevando automaticamente le tabelle con periodo di validita
-(`valido_dal/valido_al` o `valid_from/valid_to`) e valutando se risultano versionate.
+
+Rileva dallo schema le tabelle con un periodo di validità e scrive per ognuna una riga in
+`dbops.automazione_overlap`, attiva se gli indizi strutturali dicono che la tabella è versionata.
+⚠️ Oggi non la chiama nessuno: il registro si scrive a mano, con changeSet di `80_data`, e
+questa funzione, lanciata, lo riscriverebbe.
 
 ---
 
-### Parametri di input
+### Quali tabelle guarda
 
-| Parametro   | Tipo   | Descrizione                           |
-| ----------- | ------ | ------------------------------------- |
-| `p_schemas` | text[] | Schemi target (NULL = ambito risolto). |
-
----
-
-### Logica operativa (sintesi)
-
-1. Risolve l'ambito tramite `dbops.fn_resolve_scope(p_schemas)`.
-2. Esclude lo schema `storico`.
-3. Per ogni tabella:
-   * verifica la presenza delle colonne periodo;
-   * rileva **EXCLUDE constraint** gia' presenti;
-   * rileva **indici GiST** con `daterange`;
-   * rileva **UNIQUE/PK** che includono il periodo.
-4. Imposta:
-   * `active=true` solo se la tabella e' considerata versionata;
-   * `key_columns` se rilevabili;
-   * `note` con il motivo dell'esito.
-5. Scrive in `dbops.automazione_overlap` con upsert.
+Le tabelle ordinarie degli schemi dell'ambito (`p_schemas`, o l'ambito risolto se è vuoto), lo
+schema `storico` escluso, che hanno la coppia `valido_dal` / `valido_al` oppure
+`valid_from` / `valid_to`. Una tabella con **solo** una colonna range nativa, senza la coppia di
+date, non viene vista. Se la tabella ha anche una colonna range `validita`, la riga la porta in
+`range_col`.
 
 ---
 
-### Esempi
+### Come decide che una tabella è versionata
 
-**Seed su ambito risolto:**
+Cerca gli indizi in quest'ordine, e si ferma al primo:
 
-```sql
-SELECT dbops.fn_seed_automazione_overlap();
-```
+1. **un vincolo `EXCLUDE`** già presente: la chiave si legge dalle colonne messe in uguaglianza,
+   e il nome del vincolo finisce nella riga;
+2. **un indice GiST** sull'intervallo delle date: la chiave si dovrebbe leggere dalle colonne
+   dell'indice. ⚠️ Oggi questo ramo non estrae mai la chiave (le espressioni regolari che lo
+   leggono non riconoscono la definizione dell'indice), e la riga resta spenta con la nota
+   `gist_index_keys_not_parsed`;
+3. **un vincolo `UNIQUE` o una chiave primaria** che contiene la data d'inizio: la chiave sono le
+   altre colonne del vincolo.
 
-**Seed su schemi specifici:**
-
-```sql
-SELECT dbops.fn_seed_automazione_overlap(ARRAY['vendite','catalogo']);
-```
+Se nessun indizio dà una chiave, per tre tabelle note (`vendite.contratti`,
+`catalogo.articoli_componenti`, `catalogo.unita_misura_conversioni`) la funzione assegna una
+chiave scritta nel suo corpo e accende la riga. Le altre restano spente, con la nota del motivo.
 
 ---
 
-### Note
+### ⛔ Riscrive le righe che esistono
 
-* Se la tabella ha colonne periodo ma non risulta versionata, `active` rimane `false`.
-* Se le chiavi non sono rilevabili, `key_columns` rimane NULL e va completato manualmente.
-* Le tabelle `storico` sono escluse dal seed.
+La scrittura è un upsert sulla tabella: se la riga c'è già, la funzione ne **sovrascrive** chiave,
+date, estremi, nome del vincolo, `active`, `exec_mode`, `note` e `range_col` con quello che ha
+rilevato. Restano solo `key_expressions` e `where_predicate`, che la funzione non conosce.
+
+Sul registro di oggi, curato a mano, vuol dire spegnere o allargare righe scritte apposta: una riga
+con chiavi su espressione, o con un vincolo parziale, perde il suo `constraint_name` e la sua
+chiave curata. Per questo la funzione non è fra i passi di nessun giro.
+
+---
+
+### Codici errore
+
+La funzione non solleva codici suoi.
+
+---
+
+### Note di migrazione
+
+* 2026-01-19 — nasce con il registro, come passo di popolamento.
+* 2026-04-12 — rileva la colonna range nativa `validita`.
+* 2026-06-02 — il registro passa a righe scritte da changeSet, con vincoli parziali ed espressioni
+  di chiave che la funzione non sa rilevare. Nessun changeSet, job o test la chiama.
 
 ---
 
 {% include-markdown "signature-core.md" %}
-
----

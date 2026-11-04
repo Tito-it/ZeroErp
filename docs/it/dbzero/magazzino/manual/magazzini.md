@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `magazzino.magazzini`
 
-> **Ultimo aggiornamento**: 1 novembre 2026
+> **Ultimo aggiornamento**: 4 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -27,8 +27,9 @@ indirizzo è legato ad `anagrafiche.indirizzi_dettaglio` e non passa da un ruolo
 è la differenza rispetto a clienti, fornitori e vettori. ⚠️ `indirizzo_dettaglio_id` è
 obbligatorio: serve un indirizzo prima del magazzino.
 
-Il codice viene normalizzato da `trgfn_magazzini_normalize` (maiuscolo, senza spazi ai
-bordi): `mag1`, `MAG1 ` e ` Mag1` sono lo stesso codice. È unico e, una volta scritto, non si
+Il codice si salva in maiuscolo e senza spazi ai bordi, come ogni codice dell'operatore
+(automazione CODICE_MAIUSCOLO, [script.trgfn_codice_maiuscolo](/dbzero/script/funzioni/trgfn_codice_maiuscolo)):
+`mag1`, `MAG1 ` e ` Mag1` sono lo stesso codice. È unico e, una volta scritto, non si
 cambia.
 
 ---

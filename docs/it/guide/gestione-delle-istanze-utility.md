@@ -1,6 +1,6 @@
 # Guida — Gestione delle Istanze Utility
 
-> **Ultimo aggiornamento**: 14 ottobre 2026
+> **Ultimo aggiornamento**: 4 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali
 >
@@ -463,7 +463,7 @@ sposta l'azienda predefinita del sistema.
 
 * [anagrafiche.fn_guard_istanza_ha_ba](/dbzero/anagrafiche/manual/fn_guard_istanza_ha_ba) — l'istanza ha il suo billing account
 * [anagrafiche.fn_guard_istanza_ba_emittente](/dbzero/anagrafiche/manual/fn_guard_istanza_ba_emittente) — un'istanza, un'azienda
-* [script.fn_check_utility_istanza_coerenza](/dbzero/script/manual/fn_check_utility_istanza_coerenza) — la coppia istanza/utility ha il suo billing account
+* [script.fn_check_utility_istanza_coerenza](/dbzero/script/funzioni/fn_check_utility_istanza_coerenza) — la coppia istanza/utility ha il suo billing account
 
 ---
 

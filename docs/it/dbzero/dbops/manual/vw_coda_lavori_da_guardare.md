@@ -1,78 +1,100 @@
-## 📘 Documentazione Concettuale – View `dbops.vw_coda_lavori_da_guardare`
+## 📘 Documentazione Concettuale – Vista `dbops.vw_coda_lavori_da_guardare`
 
+> **Ultimo aggiornamento**: 4 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimenti tabelle:
+> Approfondimento tabelle:
 >
-[dbops.coda_lavori](/dbzero/dbops/manual/coda_lavori)
+> * [dbops.coda_lavori](/dbzero/dbops/tabelle/coda_lavori) — la coda che la vista guarda
+> * [dbops.presidi](/dbzero/dbops/tabelle/presidi) — il catalogo dei presidi, che la conta ogni giorno
 >
-Approfondimenti funzioni:
+> Approfondimento viste:
 >
-[dbops.fn_accoda_lavoro](/dbzero/dbops/manual/fn_accoda_lavoro)
+> * [dbops.vw_fatture_stampa_coda_da_guardare](/dbzero/dbops/views/vw_fatture_stampa_coda_da_guardare) — la gemella sulla coda delle stampe
+>
+> Approfondimento funzioni:
+>
+> * [dbops.fn_accoda_lavoro](/dbzero/dbops/funzioni/fn_accoda_lavoro) — la porta da cui i lavori entrano
+>
+> Guide:
+>
+> * [Presidi e registri del debito](/guide/presidi-e-registri-del-debito) — che cosa vuol dire una vista che deve restare vuota
 
 ---
-### 🎯 Scopo Principale
-(latest review 05-09-2026)
 
-Elenca i lavori della coda che **chiedono un occhio**. Deve restare vuota.
+### 🎯 Scopo Principale
+
+I lavori della coda generica che chiedono un occhio: falliti, presi e mai chiusi, o mai presi.
+Deve restare vuota.
 
 ---
 
 ### ⭐ Tre motivi, perché sono tre guasti diversi
 
-| Motivo | Che cos'è successo | Che cosa si fa |
+| Motivo | Che cosa è successo | Che cosa si fa |
 | --- | --- | --- |
-| **fallito** | il lavoro ha esaurito i tentativi e si è arreso | si legge l'errore e si decide |
-| **preso e mai chiuso** | qualcuno l'ha preso in carico e non l'ha mai concluso: il worker è morto a metà | si rimette in coda |
-| **mai preso** | ⛔ nessuno l'ha nemmeno guardato: **il worker non sta girando** | si riaccende il worker |
+| **fallito** | `ERRORE`: il lavoro ha esaurito i tentativi | si legge `ultimo_errore` e si decide |
+| **preso e mai chiuso** | `IN_CORSO` preso da oltre un'ora: il drenatore è morto a metà | si rimette in coda |
+| **mai preso** | ⛔ `PENDING` eleggibile da oltre un'ora: il drenatore non sta girando | si riaccende il drenatore |
 
-> ⚠️ Il terzo è il più importante e il meno visibile. Un worker spento **non
-> produce errori: produce assenza.** Non c'è niente da leggere, e proprio per
-> questo non se ne accorge nessuno.
+⚠️ Il terzo è il più importante e il meno visibile: un drenatore spento non produce errori, produce
+**assenza**. Non c'è niente da leggere, ed è per questo che nessuno se ne accorge.
+
+L'età di un lavoro in attesa si conta dall'istante da cui è eleggibile (`run_after`, o la nascita):
+un lavoro differito non è in ritardo prima della sua ora. `da_quanto` si conta dalla presa in
+carico, se c'è, altrimenti dallo stesso istante di eleggibilità.
 
 ---
 
-### ⛔ Perché esiste PRIMA che i processi si spostassero sulla coda
+### ⛔ Prima il posto dove guardare, poi il lavoro
 
-L'argomento per togliere i processi applicativi da pgAgent è che **pgAgent non
-racconta i suoi fallimenti**: la traccia finisce in una tabella di sistema che
-nessuno guarda e che l'applicazione non vede.
-
-⭐ L'argomento non è teorico: un lavoro settimanale di manutenzione è morto ogni
-settimana per **sei mesi**, e lo si è scoperto per caso.
-
-⛔ Ma la coda, senza questa vista, non era meglio: al 5 settembre 2026 conteneva
-**quattro lavori falliti e nessuno che li nominasse**. Spostarci il lavoro prima
-avrebbe **trasferito il silenzio**, non tolto il silenzio.
-
-⇒ Prima si costruisce il posto dove guardare, poi ci si mette il lavoro.
+L'argomento per togliere i processi di dominio da pgAgent è che pgAgent non racconta i suoi
+fallimenti: la traccia finisce in una tabella di sistema che nessuno guarda. Ma la coda senza
+questa vista non era meglio: spostarci il lavoro avrebbe trasferito il silenzio invece di toglierlo.
+Per questo la vista è nata prima dello spostamento.
 
 ---
 
 ### ⚠️ Le soglie sono una scelta, non una misura
 
-Un'ora per «preso e mai chiuso», un'ora per «mai preso».
-
-Non vengono dai tempi osservati oggi: vengono dal fatto che **il worker gira di
-continuo**, quindi un'ora di attesa non è lentezza, è qualcosa che non va.
-
-⛔ Una soglia dedotta dal carico di oggi si taglierebbe addosso al carico di
-oggi, e domani direbbe la cosa sbagliata.
+Un'ora per «preso e mai chiuso» e un'ora per «mai preso». Vengono dal fatto che il drenatore gira
+di continuo, quindi un'ora di attesa non è lentezza, è un guasto. Una soglia dedotta dai tempi di
+oggi si taglierebbe addosso al carico di oggi.
 
 ---
 
 ### Che cosa resta fuori, e perché
 
-* **ANNULLATO** — qualcuno ha deciso che non si fa.
-* **archiviato** — qualcuno l'ha già guardato e messo via.
+* `ANNULLATO`: qualcuno ha deciso che non si fa.
+* le righe **archiviate**: qualcuno le ha già guardate e messe via.
 
-⭐ Un presidio che elenca anche ciò che è già stato visto smette di essere una
-lista di cose da fare, e diventa un elenco che nessuno apre. È anche il modo in
-cui questa vista **torna vuota**: si archivia ciò che si è risolto.
+Un presidio che elenca anche ciò che è stato visto smette di essere una lista di cose da fare.
+È anche il modo in cui la vista torna vuota: si archivia ciò che si è risolto.
 
 ---
 
-### Verifica
+### Legge con gli occhi del proprietario
 
-`db/pgtap/dbops/test-vw-coda-lavori-da-guardare.sql` — costruisce i sette casi
-(i tre che devono comparire e i quattro che non devono) e li interroga per nome.
+La vista non è `security_invoker`, e `dbops.coda_lavori` non ha row level security: chi la
+interroga vede i lavori di tutte le aziende, scope compreso. Nel catalogo dei presidi ha perimetro
+libero e la guarda un amministratore.
+
+---
+
+### Test
+
+* `db/pgtap/dbops/test-vw-coda-lavori-da-guardare.sql` — un lavoro in `ERRORE`, uno `IN_CORSO` da
+  oltre un'ora e uno `PENDING` da oltre un'ora compaiono col loro motivo; uno appena accodato, uno
+  appena preso, uno annullato e uno archiviato no.
+
+---
+
+### Note di migrazione
+
+* 2026-09-05 — nasce, prima della migrazione dei processi di dominio sulla coda
+  (`brief-db-processi-automatici-identita-e-perimetro`).
+
+---
+
+{% include-markdown "signature-core.md" %}

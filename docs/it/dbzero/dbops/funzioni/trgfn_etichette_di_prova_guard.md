@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/trgfn_etichette_di_prova_guard.md" %}
 # ⚙️ Funzione `trgfn_etichette_di_prova_guard`
 
 ```sql

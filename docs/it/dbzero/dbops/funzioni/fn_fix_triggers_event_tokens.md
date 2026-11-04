@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/fn_fix_triggers_event_tokens.md" %}
 # ⚙️ Funzione `fn_fix_triggers_event_tokens`
 
 ```sql
