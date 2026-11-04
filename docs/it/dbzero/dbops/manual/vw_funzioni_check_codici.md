@@ -12,6 +12,7 @@
 > Approfondimento funzioni:
 >
 > * [dbops.fn_regexp_occorrenze](/dbzero/dbops/funzioni/fn_regexp_occorrenze) — l'estrazione che dichiara la propria cardinalità
+> * [dbops.fn_corpo_funzione](/dbzero/dbops/funzioni/fn_corpo_funzione) — il corpo senza commenti da cui la vista legge le tre funzioni
 > * [script.fn_raise_primo_motivo_se_presente](/dbzero/script/funzioni/fn_raise_primo_motivo_se_presente) — il meccanismo condiviso che solleva il primo motivo
 
 ---
@@ -75,8 +76,10 @@ allora si eredita tutto — un collegamento in più, mai uno in meno.
 
 ### ⚠️ Che cosa non dice
 
-Legge il **testo** delle funzioni, tolti i commenti di riga e a blocco: riconosce la forma scritta,
-non il significato. Un controllo nominato in due rami di cui uno solo viene percorso compare
+Legge il **testo** delle funzioni dal corpo senza commenti di
+[fn_corpo_funzione](/dbzero/dbops/funzioni/fn_corpo_funzione), di riga e a blocco e con i letterali
+intatti: riconosce la forma scritta, non il significato. Lo stesso corpo vale per tutte le colonne,
+compresa `check_emette_valori`: una parola citata in un commento della check non la fa emittente. Un controllo nominato in due rami di cui uno solo viene percorso compare
 comunque: un collegamento in più costa una riga da guardare, uno in meno un caso non visto. Le
 finestre dei motivi si tagliano sulle occorrenze della chiave `codice` e non sul punto e virgola,
 perché un controllo scritto con una sola istruzione può costruire più motivi.
@@ -90,7 +93,8 @@ più di un secondo di preparazione per un decimo di secondo di lavoro, pagato da
 due presidi che la interrogano.
 
 * **Legge solo i testi che contengono `fn_check_`**: un testo senza quel nome non può collegare
-  niente, quindi le righe sono le stesse.
+  niente, quindi le righe sono le stesse. Il prefiltro gira sul sorgente testuale, prima di togliere
+  i commenti: è un sovrainsieme, perché togliere un commento accorcia il testo e non lo allunga.
 * **Dichiara la cardinalità delle estrazioni**: le occorrenze si estraggono con
   [dbops.fn_regexp_occorrenze](/dbzero/dbops/funzioni/fn_regexp_occorrenze), che dichiara una riga
   invece delle dieci della funzione di sistema; i motivi si tagliano con una forma che non dichiara
@@ -128,6 +132,9 @@ La vista è `security_invoker` e legge i cataloghi di sistema.
 * 2026-10-10 — legge solo i testi che contengono `fn_check_`.
 * 2026-10-12 — cardinalità dichiarata: il prefiltro da solo reggeva solo finché le statistiche
   sottostimavano i corpi con `fn_check_`.
+* 2026-11-04 — i tre corpi si leggono da `fn_corpo_funzione` (D14 di `brief-db-revisione-dbops`):
+  la copia di prima toglieva un commento anche dentro un letterale; e `check_emette_valori` leggeva il
+  sorgente commenti compresi, così un 'valori' in un commento della check la dava per emittente.
 
 ---
 

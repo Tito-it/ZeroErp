@@ -20,6 +20,7 @@
 > Letture datate. Al 2026-08-08: 344 codici, 75 classificati, 269 invisibili. Al 2026-09-06, prima di VALORE_ATTESO: 453 codici, 96 classificati, 357 invisibili — il buco cresceva. Subito dopo, sugli stessi 453: 148 classificati, 305 invisibili, e i candidati della (1) passano da 6 a 10. E' una MISURA, non un cancello: un codice legittimamente trasversale esiste. Implementazione a window function (20260808-01): 349 ms, contro i 145 secondi della prima versione a sottoquery correlate.
 > ⭐ FORMA «CODICE NOMINATO IN UN MOTIVO», dal 2026-09-08 — nel pattern linee-guida-sql §12.5 («la madre CHIAMA la check») il letterale E_* sta DENTRO la fn_check_*, dove nessuna chiamata a fn_log_and_raise_error gli sta vicino: 35 codici su 50 codici-motivo erano invisibili a questa vista, e quindi al rubinetto degli accumulatori B-7. Adesso e' un punto anche la riga che DICHIARA un motivo ('codice', 'E_...'), e la guardia si prende dall'IF che la precede DENTRO la check — dov'e' la condizione vera. ⛔ NON si risale dalla chiamata alla check, ed e' l'errore da non rifare: sopra il punto che SOLLEVA la guardia e' sempre «IF jsonb_array_length(v_motivi) &gt; 0», identica ovunque e muta sul perche'; attribuirle i codici li archivierebbe tutti sotto IGNOTO, che lo snapshot del rubinetto scarta (WHERE NOT solo_ignoto) — zero candidati nuovi e una copertura che SEMBRA cresciuta. ⚠️ Il marcatore e' per FORMA e non per nome di funzione: prende allo stesso modo le due righe di fn_available_actions_* che dichiarano un motivo, ed e' giusto cosi' — un perimetro scritto a elenco invecchia da solo. Lettura datata 2026-09-08: da 455 a 486 codici e da 150 a 155 classificati; 5 codici passano da invisibili a leggibili, 1 (E_DDT_CAUSALE_OBBLIGATORIA) acquista una famiglia nota.
 > ⭐ PARAMETRO NON SI LEGGE SU UN CAMPO DI UN RECORD, dal 2026-09-09 — «IF p_ddt.causale_trasporto_id IS NULL» non e' una guardia di parametro: p_ddt e' il documento, causale_trasporto_id un suo CAMPO, e la condizione e' «manca la causale», cioe' un dato che una persona correggge. La regola vecchia bastava un '\mp_\w+' qualunque sulla riga e la leggeva PARAMETRO. ⛔ Non e' un'imprecisione fra le altre: PARAMETRO significa «chi ha chiamato e' rotto» ed e' l'asse TECNICO/500, mentre quella e' DATO_ERRATO/400 — il classificatore confondeva le due cose proprio sull'asse per cui esiste. Adesso il p_ deve NON essere seguito da un punto; se sulla riga c'e' anche un parametro vero, resta PARAMETRO. Chi non si legge piu' cade in IGNOTO, che e' la risposta onesta. ⚠️ Misurato prima di farlo: UNA sola riga di guardia in tutto il database aveva questa forma (script.fn_check_ddt_emittibile), quindi il perimetro era noto e non e' un criterio cambiato al buio. Effetto: E_DDT_CAUSALE_OBBLIGATORIA torna a una famiglia sola e la baseline B-7 non si tocca. Presidiato dai test 7-8 di db/pgtap/dbops/test-vw-codici-errore-motivo-nominato.sql.
+> ⭐ TUTTI I CODICI DI UNA RIGA, E IL CORPO SENZA COMMENTI, dal 2026-11-04 — una riga che nomina due codici ('E_A' e 'E_B' nello stesso IF o nello stesso motivo) dava un punto al primo e perdeva il secondo: adesso ogni codice distinto della riga e' un punto, con la stessa guardia. E le righe si tagliano dal corpo letto da dbops.fn_corpo_funzione, senza commenti e con i letterali intatti: prima si scartavano solo le righe che COMINCIANO con --, quindi un codice in un commento a blocco o in coda a una riga contava come punto. ⚠️ Le distanze (6 righe per la chiamata vicina, 25 dalla guardia) cambiano solo dove c'era un commento a blocco su piu' righe, che non le allunga piu'; un commento di riga lascia il suo a capo, e la riga vuota conta come prima. Al 2026-11-04 la misura non cambiava una riga sul codice vivo: le letture datate restano confrontabili, e la baseline B-7 non si e' mossa.
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
@@ -38,7 +39,7 @@ WITH righe AS (
             l.n
            FROM ((pg_proc p
              JOIN pg_namespace n ON ((n.oid = p.pronamespace)))
-             CROSS JOIN LATERAL regexp_split_to_table(p.prosrc, '
+             CROSS JOIN LATERAL regexp_split_to_table((dbops.fn_corpo_funzione(p.oid) COLLATE "C"), '
 '::text) WITH ORDINALITY l(riga, n))
           WHERE ((p.prolang = ( SELECT pg_language.oid
                    FROM pg_language
@@ -51,11 +52,8 @@ WITH righe AS (
             r.n,
             (r.riga ~* 'fn_log_and_raise_error'::text) AS e_chiamata,
             (r.riga ~* '^\s*(IF|ELSIF|ELSE|EXCEPTION\s+WHEN|WHEN\s+OTHERS|WHEN\s+SQLSTATE)\M'::text) AS e_guardia,
-            ((r.riga !~ '^\s*--'::text) AND (r.riga ~ '''codice''\s*,\s*''E_[A-Z0-9_]+'''::text)) AS e_motivo,
-                CASE
-                    WHEN (r.riga !~ '^\s*--'::text) THEN (regexp_match(r.riga, '''(E_[A-Z0-9_]+)'''::text))[1]
-                    ELSE NULL::text
-                END AS codice
+            (r.riga ~ '''codice''\s*,\s*''E_[A-Z0-9_]+'''::text) AS e_motivo,
+            (r.riga ~ '''E_[A-Z0-9_]+'''::text) AS ha_codice
            FROM righe r
         ), isole AS (
          SELECT m.sch,
@@ -66,7 +64,7 @@ WITH righe AS (
             m.e_chiamata,
             m.e_guardia,
             m.e_motivo,
-            m.codice,
+            m.ha_codice,
             count(*) FILTER (WHERE m.e_guardia) OVER (PARTITION BY m.oid ORDER BY m.n) AS isola,
             bool_or(m.e_chiamata) OVER (PARTITION BY m.oid ORDER BY m.n ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) AS chiamata_vicina
            FROM marcata m
@@ -79,14 +77,16 @@ WITH righe AS (
             i.e_chiamata,
             i.e_guardia,
             i.e_motivo,
-            i.codice,
+            i.ha_codice,
             i.isola,
             i.chiamata_vicina,
             first_value(i.riga) OVER (PARTITION BY i.oid, i.isola ORDER BY i.n) AS guardia,
             first_value(i.n) OVER (PARTITION BY i.oid, i.isola ORDER BY i.n) AS n_guardia
            FROM isole i
         ), classificato AS (
-         SELECT p.codice,
+         SELECT o.m[1] AS codice,
+            p.oid,
+            p.n,
             ((p.sch || '.'::text) || p.fn) AS funzione,
                 CASE
                     WHEN (p.guardia ~* '(EXCEPTION\s+WHEN|WHEN\s+OTHERS|WHEN\s+SQLSTATE)'::text) THEN 'ECCEZIONE'::text
@@ -96,11 +96,12 @@ WITH righe AS (
                     WHEN (p.guardia ~* '(<>|!=|=)\s*''[A-Za-z0-9_]+'''::text) THEN 'VALORE_ATTESO'::text
                     ELSE 'IGNOTO'::text
                 END AS famiglia
-           FROM propagata p
-          WHERE ((p.codice IS NOT NULL) AND (p.chiamata_vicina OR p.e_motivo) AND (p.isola > 0) AND ((p.n - p.n_guardia) <= 25))
+           FROM (propagata p
+             CROSS JOIN LATERAL dbops.fn_regexp_occorrenze(p.riga, '''(E_[A-Z0-9_]+)'''::text) o(m))
+          WHERE (p.ha_codice AND (p.chiamata_vicina OR p.e_motivo) AND (p.isola > 0) AND ((p.n - p.n_guardia) <= 25))
         )
  SELECT codice,
-    (count(*))::integer AS n_punti,
+    (count(DISTINCT ROW(oid, n)))::integer AS n_punti,
     (count(DISTINCT funzione))::integer AS n_funzioni,
     array_agg(DISTINCT famiglia ORDER BY famiglia) AS famiglie,
     (count(DISTINCT famiglia))::integer AS n_famiglie,

@@ -1,0 +1,112 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_find_function_usage: il corpo dal building block, firma ancorata.
+#   Brief: brief-db-revisione-dbops, D15 (giro 1), M33.
+#
+# Base: migrations/50_dbops/20250618-01 (l'unico changeSet), uguale al vivo.
+#   1. Il ramo «funzioni che la chiamano» cercava il nome in prosrc: cieco
+#      sulle funzioni SQL BEGIN ATOMIC (prosrc vuoto), e un nome rimasto in un
+#      commento contava come chiamata. Ora cerca in dbops.fn_corpo_funzione
+#      (20261104-20). Ammette sempre la sottostringa: chi cerca fn_x trova
+#      anche fn_x_bis, com'era.
+#   2. La firma si ancora al catalogo: il parametro e' un nome di funzione
+#      (pg_proc.proname), schema_name e' pg_namespace.nspname. object_type e'
+#      un'etichetta calcolata, object_name un nome composto (nome e argomenti,
+#      nome di tabella, evento): text, senza colonna di cui siano il riflesso.
+#      ⚠️ text → name cambia l'identita' della funzione: si fa DROP e CREATE.
+#      Nessun chiamante (censimento del giro C1, 2026-11-04: repository e
+#      database di sviluppo). I GRANT li rifa' il loop di ci_apply.
+#   3. Il COMMENT era copiato da fn_find_file_usage («le foreign key che fanno
+#      riferimento a una tabella»): si riscrive (M33).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261104-30-update-fn-find-function-usage-corpo-dal-bb-mctit.yaml
+
+  - changeSet:
+      id: 20261104-30-update-fn-find-function-usage-corpo-dal-bb
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_find_function_usage cerca le chiamate nel corpo senza commenti
+        (dbops.fn_corpo_funzione: vede anche le BEGIN ATOMIC); firma ancorata al catalogo;
+        COMMENT riscritto.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_corpo_funzione';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_find_function_usage(text);
+
+              CREATE FUNCTION dbops.fn_find_function_usage(
+                  p_function_name pg_catalog.pg_proc.proname%TYPE
+              )
+              RETURNS TABLE(
+                  object_type text,                                -- etichetta calcolata
+                  schema_name pg_catalog.pg_namespace.nspname%TYPE,
+                  object_name text                                 -- nome composto: nessuna colonna
+              )
+              LANGUAGE sql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+                -- 1) Funzioni che nominano p_function_name nel corpo, senza i
+                --    commenti e anche se scritte BEGIN ATOMIC.
+                SELECT
+                  'function'::text AS object_type,
+                  ns.nspname AS schema_name,
+                  p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')' AS object_name
+                FROM pg_proc p
+                JOIN pg_namespace ns ON ns.oid = p.pronamespace
+                WHERE dbops.fn_corpo_funzione(p.oid) LIKE '%' || p_function_name || '%'
+                  AND p.proname <> p_function_name
+
+                UNION ALL
+
+                -- 2) Trigger che invocano p_function_name
+                SELECT
+                  'trigger'::text AS object_type,
+                  ns.nspname AS schema_name,
+                  rel.relname AS object_name
+                FROM pg_trigger tr
+                JOIN pg_proc tgt ON tgt.oid = tr.tgfoid
+                JOIN pg_class rel  ON rel.oid = tr.tgrelid
+                JOIN pg_namespace ns ON ns.oid = rel.relnamespace
+                WHERE tgt.proname = p_function_name
+
+                UNION ALL
+
+                -- 3) Event trigger che invocano p_function_name
+                SELECT
+                  'event_trigger'::text AS object_type,
+                  NULL::name AS schema_name,
+                  et.evtevent || ' on ' || tgt.proname AS object_name
+                FROM pg_event_trigger et
+                JOIN pg_proc tgt ON tgt.oid = et.evtfoid
+                WHERE tgt.proname = p_function_name
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_find_function_usage(pg_catalog.pg_proc.proname%TYPE) IS
+                  'Strumento DBA: dove si usa una funzione, dato il suo nome. Tre fonti: le funzioni che lo nominano nel corpo (letto da dbops.fn_corpo_funzione: senza commenti, con i letterali intatti, anche per le funzioni SQL BEGIN ATOMIC), i trigger e gli event trigger che la eseguono. Il corpo si confronta per SOTTOSTRINGA: cercando fn_x escono anche le funzioni che chiamano fn_x_bis; le omonime (stesso nome, altri argomenti) sono escluse dal primo ramo. Una funzione chiamata con SQL dinamico costruito per pezzi non si vede. Nessun chiamante applicativo.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo dal corpo di 20250618-01.
+              SELECT 1;

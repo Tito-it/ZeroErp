@@ -1,0 +1,250 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.vw_funzioni_check_codici: il corpo dal building block.
+#   Brief: brief-db-revisione-dbops, D14 (giro 1).
+#
+# Base: 20_code/dbops/20261012-26, verificato uguale al vivo. Cambiano le
+# letture del corpo, e niente altro:
+#   - le tre copie di «prosrc senza commenti di riga e di blocco» passano da
+#     dbops.fn_corpo_funzione (20261104-20). La copia di prima toglieva un
+#     `/* */` o un `--` anche dentro un letterale;
+#   - `emette_valori` leggeva prosrc COMMENTI COMPRESI: un 'valori' scritto in
+#     un commento della check la dava per emittente di valori. Ora legge lo
+#     stesso corpo senza commenti delle altre colonne.
+#   ⚠️ Il prefiltro `prosrc LIKE '%fn\_check\_%'` RESTA com'e': e' la proprieta'
+#     che tiene la vista sotto il JIT (test-vw-funzioni-check-codici-sotto-jit-v1),
+#     ed e' un sovrainsieme (un commento toglie testo, non lo aggiunge).
+#   Il COMMENT cambia nella sola frase «euristica su pg_proc.prosrc».
+#   ⛔ security_invoker si ripete: un CREATE OR REPLACE che non lo dice lo azzera.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261104-26-update-vw-funzioni-check-codici-corpo-dal-bb-mctit.yaml
+
+  - changeSet:
+      id: 20261104-26-update-vw-funzioni-check-codici-corpo-dal-bb
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.vw_funzioni_check_codici legge i corpi con dbops.fn_corpo_funzione (commenti tolti
+        rispettando i letterali), anche per emette_valori; prefiltro e cardinalita' invariati.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_corpo_funzione';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_funzioni_check_codici
+              WITH (security_invoker=true) AS
+              WITH RECURSIVE funzioni AS MATERIALIZED (
+                  -- Ogni funzione plpgsql viva, sorgente SENZA commenti di
+                  -- riga e di blocco: una check nominata nella prosa non e'
+                  -- un legame.
+                  SELECT p.oid,
+                         n.nspname::text AS sch,
+                         p.proname::text AS fn,
+                         n.nspname::text || '.' || p.proname::text AS funzione,
+                         (dbops.fn_corpo_funzione(p.oid) COLLATE "C") AS sorgente
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname <> ALL (ARRAY['pg_catalog'::name, 'information_schema'::name])
+                     AND p.prolang = (SELECT pg_language.oid FROM pg_language
+                                       WHERE pg_language.lanname = 'plpgsql')
+                     -- ⭐ rev 2026-10-10 (20261010-43): solo i corpi che
+                     --   contengono `fn_check_`. Un legame nasce da una
+                     --   chiamata `schema.fn_check_…(`, e il nome di una
+                     --   funzione e' un token: un commento lo SEPARA, non lo
+                     --   compone. Quindi un corpo senza la sottostringa non
+                     --   da' legami, e togliere i commenti toglie testo, non
+                     --   ne aggiunge. Risultato identico; la stima del
+                     --   pianificatore crolla e il JIT non scatta piu'.
+                     AND p.prosrc LIKE '%fn\_check\_%'
+              ), legami AS (
+                  SELECT DISTINCT f.oid, f.sch, f.fn, f.funzione,
+                         m.m[1] AS csch,
+                         m.m[2] AS cfn
+                    FROM funzioni f
+                    -- ⭐ rev 2026-10-12 (20261012-26): le occorrenze da
+                    --   dbops.fn_regexp_occorrenze, che dichiara la cardinalita'
+                    --   vera (ROWS 1): regexp_matches ne dichiara 10, e le due
+                    --   ricorsioni lo moltiplicano. Vale per tutte le estrazioni
+                    --   della vista.
+                    CROSS JOIN LATERAL dbops.fn_regexp_occorrenze(f.sorgente, '(\w+)\.(fn_check_\w+)\s*\(') m(m)
+              ), check_nomi (csch, cfn) AS (
+                  -- ⭐ CHIUSURA: le check nominate dalle funzioni, e quelle
+                  --   nominate nel corpo di un'altra check (a qualunque
+                  --   profondita'). UNION, non UNION ALL: un ciclo di deleghe
+                  --   non fa girare la ricorsione all'infinito.
+                  SELECT l.csch, l.cfn FROM legami l
+                  UNION
+                  SELECT d.m[1], d.m[2]
+                    FROM check_nomi cn
+                    JOIN pg_namespace ns ON ns.nspname = cn.csch
+                    JOIN pg_proc p ON p.proname = cn.cfn AND p.pronamespace = ns.oid
+                    CROSS JOIN LATERAL dbops.fn_regexp_occorrenze(
+                        (dbops.fn_corpo_funzione(p.oid) COLLATE "C"),
+                        '(\w+)\.(fn_check_\w+)\s*\(') d(m)
+              ), checks AS MATERIALIZED (
+                  SELECT DISTINCT c.oid AS check_oid,
+                         cn.csch,
+                         cn.cfn,
+                         ((dbops.fn_corpo_funzione(c.oid) COLLATE "C") ~ '''valori''') AS emette_valori,
+                         (dbops.fn_corpo_funzione(c.oid) COLLATE "C") AS csrc
+                    FROM check_nomi cn
+                    JOIN pg_namespace ns ON ns.nspname = cn.csch
+                    JOIN pg_proc c ON c.proname = cn.cfn AND c.pronamespace = ns.oid
+              ), deleghe_grezze AS MATERIALIZED (
+                  -- Le chiamate a una fn_check_* nella forma della delega (vedi
+                  -- `deleghe`), estratte UNA volta per check.
+                  SELECT c.check_oid, x.dsch, x.dfn, x.resto
+                    FROM checks c
+                    CROSS JOIN LATERAL (
+                        SELECT m.m[1] AS dsch, m.m[2] AS dfn, m.m[3] AS resto
+                          FROM dbops.fn_regexp_occorrenze(c.csrc,
+                                 '(?:\|\||:=)\s*(\w+)\.(fn_check_\w+)\s*\(([^;]*)') m(m)
+                        UNION ALL
+                        SELECT m.m[1], m.m[2], m.m[3]
+                          FROM dbops.fn_regexp_occorrenze(c.csrc,
+                                 'jsonb_agg\s*\([^;]*?jsonb_array_elements\s*\(\s*(\w+)\.(fn_check_\w+)\s*\(([^;]*)') m(m)
+                    ) x
+              ), deleghe AS (
+                  -- ⭐ DELEGA, non semplice chiamata. Una check DELEGA a
+                  --   un'altra quando ne RESTITUISCE i motivi:
+                  --     v_motivi := v_motivi || x.fn_check_…(…)   (li accoda)
+                  --     v_m := x.fn_check_…(…)                    (li prende per rilanciarli)
+                  --     jsonb_agg(…) … jsonb_array_elements(x.fn_check_…(…)) … WHERE …
+                  --                                               (li filtra)
+                  --   ⛔ Una check che la CONSUMA — count(*), EXISTS,
+                  --   jsonb_array_length, un IF — emette un motivo SUO (gia'
+                  --   in motivi_propri) e non eredita niente: e' il caso di
+                  --   fn_check_preventivo_annullabile, che CONTA i motivi di
+                  --   fn_check_sorgente_chiudibile.
+                  --   `resto` = l'istruzione dalla chiamata al primo `;`: il
+                  --   filtro si cerca li', non in tutto il corpo.
+                  --   ⭐ rev 2026-10-12 (20261012-26): l'estrazione sta in
+                  --   deleghe_grezze, MATERIALIZED, e il join con le check viene
+                  --   dopo. Col LATERAL dentro il join, una stima bassa di
+                  --   `checks` faceva rifare l'estrazione per ogni COPPIA di check
+                  --   (69 x 69): 180 ms su 320.
+                  SELECT DISTINCT g.check_oid, d.check_oid AS delegata_oid, g.resto
+                    FROM deleghe_grezze g
+                    JOIN checks d ON d.csch = g.dsch AND d.cfn = g.dfn
+                   WHERE d.check_oid <> g.check_oid
+              ), filtri AS (
+                  -- ⭐ I letterali con cui la delega confronta il codice, nella
+                  --   SUA istruzione: `->> 'codice' = 'E_X'` o `IN ('E_X', …)`.
+                  --   ⚠️ `<>` / NOT IN non sono riconosciuti: senza filtro si
+                  --   eredita tutto (un legame in piu', mai un ramo cieco).
+                  SELECT DISTINCT dl.check_oid, dl.delegata_oid, l.m[1] AS codice
+                    FROM deleghe dl
+                    CROSS JOIN LATERAL dbops.fn_regexp_occorrenze(
+                        dl.resto,
+                        '->>\s*''codice''\s*(?:=\s*''E_[A-Z0-9_]+''|IN\s*\([^)]*\))') f(m)
+                    CROSS JOIN LATERAL dbops.fn_regexp_occorrenze(f.m[1], '''(E_[A-Z0-9_]+)''') l(m)
+              ), motivi AS (
+                  -- Il sorgente si SPEZZA sulle occorrenze di `'codice',`: ogni
+                  -- pezzo e' un motivo, tagliato al primo `;` (la finestra).
+                  SELECT c.check_oid,
+                         (regexp_match(s.pz, '^''(E_[A-Z0-9_]+)'''))[1] AS codice,
+                         split_part(s.pz, ';', 1) AS finestra
+                    FROM checks c
+                    -- ⭐ rev 2026-10-12 (20261012-26): unnest di
+                    --   regexp_split_to_array, non regexp_split_to_table: stesse
+                    --   righe nello stesso ordine, ma la seconda dichiara 1.000
+                    --   righe per corpo e il pianificatore le moltiplicava nella
+                    --   ricorsione codici_rec.
+                    CROSS JOIN LATERAL unnest(regexp_split_to_array(c.csrc, '''codice''\s*,\s*'))
+                         WITH ORDINALITY s(pz, k)
+                   WHERE s.k > 1
+              ), motivi_propri AS (
+                  SELECT m.check_oid,
+                         m.codice,
+                         count(*)::integer AS n_motivi,
+                         CASE
+                             WHEN bool_and(m.finestra ~ '''campo''\s*,') THEN 'campo'
+                             WHEN bool_and(m.finestra ~ '''(campo|parametro)''\s*,') THEN 'parametro'
+                             ELSE NULL
+                         END AS motivo_chiave
+                    FROM motivi m
+                   WHERE m.codice IS NOT NULL
+                   GROUP BY m.check_oid, m.codice
+              ), codici_rec (check_oid, codice, n_motivi, motivo_chiave) AS (
+                  -- I motivi propri, poi quelli ereditati risalendo le deleghe.
+                  -- Il filtro vale per la check che delega: se ne ha uno,
+                  -- passano solo i codici che nomina.
+                  SELECT mp.check_oid, mp.codice, mp.n_motivi, mp.motivo_chiave
+                    FROM motivi_propri mp
+                  UNION
+                  SELECT dl.check_oid, cr.codice, cr.n_motivi, cr.motivo_chiave
+                    FROM deleghe dl
+                    JOIN codici_rec cr ON cr.check_oid = dl.delegata_oid
+                   WHERE NOT EXISTS (SELECT 1 FROM filtri f
+                                      WHERE f.check_oid = dl.check_oid
+                                        AND f.delegata_oid = dl.delegata_oid)
+                      OR EXISTS (SELECT 1 FROM filtri f
+                                  WHERE f.check_oid = dl.check_oid
+                                    AND f.delegata_oid = dl.delegata_oid
+                                    AND f.codice = cr.codice)
+              ), motivi_per_codice AS (
+                  -- Una riga per (check, codice) anche quando il codice arriva
+                  -- da piu' strade: n_motivi sommato, motivo_chiave pessimista.
+                  SELECT cr.check_oid,
+                         cr.codice,
+                         sum(cr.n_motivi)::integer AS n_motivi,
+                         CASE
+                             WHEN bool_and(cr.motivo_chiave IS NOT DISTINCT FROM 'campo') THEN 'campo'
+                             WHEN bool_and(cr.motivo_chiave IN ('campo', 'parametro')) THEN 'parametro'
+                             ELSE NULL
+                         END AS motivo_chiave
+                    FROM codici_rec cr
+                   GROUP BY cr.check_oid, cr.codice
+              ), valori_rec (check_oid) AS (
+                  -- Emette `valori` se lo fa lei o una check a cui delega.
+                  SELECT c.check_oid FROM checks c WHERE c.emette_valori
+                  UNION
+                  SELECT dl.check_oid
+                    FROM deleghe dl
+                    JOIN valori_rec v ON v.check_oid = dl.delegata_oid
+              )
+              SELECT l.sch,
+                     l.fn,
+                     l.funzione,
+                     l.csch AS check_schema,
+                     l.cfn  AS check_funzione,
+                     EXISTS (SELECT 1 FROM valori_rec v WHERE v.check_oid = c.check_oid)
+                            AS check_emette_valori,
+                     m.codice,
+                     m.n_motivi,
+                     m.motivo_chiave
+                FROM legami l
+                JOIN checks c ON c.csch = l.csch AND c.cfn = l.cfn
+                LEFT JOIN motivi_per_codice m ON m.check_oid = c.check_oid;
+
+              COMMENT ON VIEW dbops.vw_funzioni_check_codici IS
+              'SEDE UNICA della risalita «funzione plpgsql -> fn_check_* nominate nel corpo -> codici che quelle nominano come motivo». Una riga per (funzione, check, codice); codice NULL se la check non nomina motivi (il legame compare lo stesso). motivo_chiave = ''campo''/''parametro'' se il MOTIVO che nomina il codice porta la chiave del canale nel suo dettaglio (che fn_raise_primo_motivo_se_presente fonde nel context) — PESSIMISTA: solo se tutti i motivi di quel codice la portano; n_motivi = quante volte la check lo nomina.
+              ⭐ rev 2026-09-24 (20260924-08) — LA DELEGA: una check che RESTITUISCE i motivi di un''altra fn_check_* (v_motivi || x.fn_check_…, v_m := x.fn_check_…, jsonb_agg sugli elementi) ne EREDITA i codici, a qualunque profondita''; una che la CONSUMA (count, EXISTS, IF) no — emette un motivo suo. Se nell''istruzione della delega il codice e'' confrontato con dei letterali (`->> ''codice'' = ''E_X''` o `IN (…)`) eredita SOLO quelli: script.fn_check_prezzi_in_attesa eredita da fn_check_prezzi_autorizzati il solo E_DOC_PREZZO_PENDENTE. Anche check_emette_valori si propaga. Prima la risalita si fermava a un livello, e le due madri di revisione (20260924-34/-35) uscivano come ramo cieco nel presidio C2. ⚠️ `<>` / NOT IN non sono riconosciuti come filtro: si eredita tutto — un legame in piu'', mai un ramo cieco.
+              LETTORI: dbops.vw_punti_primo_motivo (il rubinetto: i soli punti che sollevano il primo motivo a mano) e dbops.vw_punti_canale_campo (il presidio C2: tutti i siti, bonificati compresi). Prima la risalita viveva dentro la sola vw_punti_primo_motivo, e la seconda l''avrebbe ricopiata.
+              ⚠️ Le fn_check_* si cercano nel sorgente SENZA commenti; una riga per (funzione, check, codice) — un codice che arriva da piu'' strade si aggrega. ⚠️ La finestra di un motivo NON e'' «fino al ;»: le check a CTE costruiscono piu'' motivi in uno statement, quindi il sorgente si spezza sulle occorrenze di ''codice'',. ⚠️ Euristica sul corpo senza commenti (dbops.fn_corpo_funzione, che lascia intatti i letterali): riconosce la forma scritta, non il significato. Brief: brief-be-presidio-ui-action-e-canale-campi §4.
+              ⭐ rev 2026-10-10 (20261010-43) — PREFILTRO `prosrc LIKE ''%fn\_check\_%''` sulla CTE funzioni: senza, la stima arrivava a ~304 milioni (funzioni di sistema a cardinalita'' fissa sopra 1.221 corpi, moltiplicata dalla ricorsione) e PostgreSQL compilava la vista col JIT — ~1,1 s di compilazione per ~110 ms di lavoro, pagati da ogni lettore. Risultato identico (un nome di funzione e'' un token: un commento non lo compone). ⛔ Il prefiltro e'' una proprieta'' invisibile nei risultati: un REPLACE che lo perde non rompe niente e torna lento. Lo presidia db/pgtap/dbops/test-vw-funzioni-check-codici-sotto-jit-v1.sql.
+              ⭐ rev 2026-10-12 (20261012-26) — LA CARDINALITA'' DICHIARATA: il prefiltro da solo teneva la stima sotto la soglia solo finche'' le statistiche di pg_proc stimavano pochi corpi con fn_check_ (32 stimati, 170 veri dopo un autoanalyze: vw_punti_canale_campo a ~192.000 su zeroerp_ci). Le estrazioni passano da dbops.fn_regexp_occorrenze (ROWS 1: regexp_matches ne dichiara 10, le occorrenze vere per corpo sono fra 0,03 e 0,94), il taglio dei motivi da unnest(regexp_split_to_array) (regexp_split_to_table ne dichiara 1.000) e l''estrazione delle deleghe sta in deleghe_grezze MATERIALIZED (prima si rifaceva per ogni coppia di check). Righe identiche (EXCEPT ALL a zero sulle tre viste); la stima resta sotto la soglia anche con un prefiltro stimato tre volte e mezzo piu'' largo del vero. Lo presidia lo stesso pgTAP, test 4 e 5.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo dal corpo di 20261012-26.
+              SELECT 1;

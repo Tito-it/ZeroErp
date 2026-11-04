@@ -12,6 +12,7 @@
 > Approfondimento funzioni:
 >
 > * [dbops.fn_audit_log_once](/dbzero/dbops/funzioni/fn_audit_log_once) — la porta di scrittura dell'applicazione
+> * [dbops.fn_corpo_funzione](/dbzero/dbops/funzioni/fn_corpo_funzione) — il corpo senza commenti, anche delle `BEGIN ATOMIC`, da cui la vista legge
 >
 > Guide:
 >
@@ -50,19 +51,20 @@ dominio ci scrive, e se una lo facesse questa vista la nomina.
 | Conta come «scrive» | Non conta |
 | --- | --- |
 | un inserimento, un aggiornamento o una cancellazione su `dbops.audit_log` nel corpo (`come_scrive` = `DML_DIRETTO`) | una lettura del registro |
-| una chiamata a `fn_audit_log_once` (`come_scrive` = `VIA_FN_AUDIT`) | i commenti di riga: il sorgente si legge senza, così un esempio commentato non fa scattare il cancello |
+| una chiamata a `fn_audit_log_once` (`come_scrive` = `VIA_FN_AUDIT`) | i commenti, di riga e a blocco: il corpo si legge senza, così un esempio commentato non fa scattare il cancello |
 | | la funzione di audit stessa, che è la porta e sta in `dbops` |
 
 Legge solo il catalogo delle funzioni, con `security_invoker`: non tocca dati.
 
-Fra le porte che la vista riconosce nel testo dei corpi restano anche `fn_audit_begin` e
-`fn_audit_end`, la modalità sessione ritirata: un nome senza funzione non trova nessun corpo, e il
-cancello non cambia.
+La porta che la vista riconosce è una sola, `fn_audit_log_once`, ed è esclusa per nome.
 
-⚠️ Legge il **sorgente** delle funzioni. Il corpo di una funzione SQL scritta nella forma
-`BEGIN ATOMIC` non sta nel sorgente ma in una forma già analizzata, e la vista non lo vede: una
-funzione così che scrive nel registro non comparirebbe. Non vede nemmeno una scrittura composta con
-SQL dinamico, dove il nome della tabella si costruisce a pezzi.
+Il corpo di ogni funzione si legge da [fn_corpo_funzione](/dbzero/dbops/funzioni/fn_corpo_funzione):
+senza commenti, con i letterali intatti, e anche per le funzioni SQL scritte nella forma
+`BEGIN ATOMIC`, il cui sorgente testuale è vuoto. Una funzione così che scrive nel registro da fuori
+perimetro compare come le altre.
+
+⚠️ Non vede una scrittura composta con SQL dinamico, dove il nome della tabella si costruisce a
+pezzi.
 
 ---
 
@@ -84,7 +86,8 @@ Due esiti possibili, e nessuno dei due è aggiungere lo schema all'elenco senza 
   perimetro gli scrittori ci sono, quindi la ricerca vede; il perimetro dichiarato è `dbops` e
   `maintenance`; una funzione temporanea costruita fuori perimetro che chiama la porta compare, ed è
   classificata come scrittura attraverso la porta; la vista è a catalogo in `dbops.presidi` come
-  cancello.
+  cancello; uno scrittore `BEGIN ATOMIC` fuori perimetro è visto come scrittura diretta (test 7); una
+  chiamata alla porta rimasta in un commento a blocco non conta (test 8).
 
 ---
 
@@ -92,8 +95,16 @@ Due esiti possibili, e nessuno dei due è aggiungere lo schema all'elenco senza 
 
 * 2026-09-11 — nasce con la decisione che il registro delle esecuzioni non contenga dati di dominio
   (`brief-db-rls-storico-scope-congelato`, §8.3 e §8.6).
-* 2026-11-04 — ritirate `fn_audit_begin` e `fn_audit_end`; la vista non si è riaperta e i loro
-  nomi restano fra le porte (`brief-db-revisione-dbops`).
+* 2026-11-04 — ritirate `fn_audit_begin` e `fn_audit_end` (`brief-db-revisione-dbops`).
+* 2026-11-04 — il corpo si legge da `fn_corpo_funzione` (D14 e D15 di `brief-db-revisione-dbops`):
+  prima era il sorgente testuale senza i soli commenti di riga, cieco sulle `BEGIN ATOMIC` (una di
+  loro fuori perimetro che scrivesse il registro passava il cancello), e una chiamata in un commento
+  a blocco contava. Escono dalla vista anche i nomi di `fn_audit_begin` e `fn_audit_end`: la porta
+  è la sola `fn_audit_log_once`.
+* 2026-11-04 — il corpo senza commenti si chiede solo per le funzioni che nominano `audit_log` nel
+  testo grezzo, più tutte le `BEGIN ATOMIC` (il loro testo grezzo è vuoto). È un sovrainsieme
+  esatto: togliere i commenti può solo levare testo. Prima il building block girava su ogni
+  funzione del database a ogni lettura. Output invariato.
 
 ---
 

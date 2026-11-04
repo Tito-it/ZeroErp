@@ -18,6 +18,7 @@
 >
 > * [script.fn_raise_primo_motivo_se_presente](/dbzero/script/funzioni/fn_raise_primo_motivo_se_presente) — l'helper che solleva il primo motivo, la forma giusta
 > * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) — il meccanismo che i punti chiamano a mano
+> * [dbops.fn_corpo_funzione](/dbzero/dbops/funzioni/fn_corpo_funzione) — il corpo senza commenti su cui gira il marcatore dei punti
 >
 > Guide:
 >
@@ -77,6 +78,12 @@ Riconosce la forma scritta, non il significato: un punto è una funzione PL/pgSQ
 contiene una chiamata al meccanismo centrale che legge il codice da un motivo. Le funzioni scritte
 in SQL non sono lette.
 
+Il marcatore gira sul corpo senza commenti di
+[fn_corpo_funzione](/dbzero/dbops/funzioni/fn_corpo_funzione): una chiamata rimasta in un commento
+non fa di una funzione un punto. Davanti resta la stessa forma cercata sul sorgente testuale, come
+prefiltro: costa poco, è un sovrainsieme (un commento può solo aggiungere testo) e tiene bassa la
+stima del costo della vista.
+
 ⛔ Non serve a classificare la forma della guardia (`dbops.vw_codici_errore_forme_condizione`):
 sopra questi punti la guardia è sempre «se ci sono motivi», che non dice niente. Lì si classifica
 dove il codice è nominato.
@@ -112,6 +119,9 @@ allarme da sola: il cancello è il pgTAP del rubinetto, che ne legge il perimetr
 * 2026-09-21 — la risalita dal punto alla check e ai codici passa a `dbops.vw_funzioni_check_codici`,
   sede unica condivisa con il presidio del canale del campo
   (`brief-be-presidio-ui-action-e-canale-campi` §4): qui resta il solo marcatore dei punti.
+* 2026-11-04 — il marcatore gira anche sul corpo senza commenti di `fn_corpo_funzione` (D14 di
+  `brief-db-revisione-dbops`): prima leggeva il sorgente commenti compresi, e una chiamata rimasta in
+  un commento faceva di una funzione un punto del rubinetto.
 
 ---
 

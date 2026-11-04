@@ -18,6 +18,7 @@
 >
 > * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) — porta il bersaglio di un errore nel suo canale
 > * [script.fn_data_operativa](/dbzero/script/funzioni/fn_data_operativa) — il giorno da cui una voce ritirata conta come ritirata
+> * [dbops.fn_corpo_funzione](/dbzero/dbops/funzioni/fn_corpo_funzione) — il corpo senza commenti da cui la vista legge i tipi
 
 ---
 
@@ -55,13 +56,15 @@ giusta è il testo delle funzioni. Una vista sui dati sarebbe cieca su un ambien
 da una misura cieca non si può far dipendere una build.
 
 Entrano solo le funzioni PL/pgSQL che nominano un bersaglio, e un tipo conta quando è scritto come
-valore della chiave `tipo` (maiuscole, cifre e trattini bassi). Dal testo si tolgono i commenti di
-riga, così un tipo citato in una nota non conta.
+valore della chiave `tipo` (maiuscole, cifre e trattini bassi). Il corpo si legge da
+[fn_corpo_funzione](/dbzero/dbops/funzioni/fn_corpo_funzione): senza i commenti, di riga e a blocco,
+e con i letterali intatti, così un tipo citato in una nota non conta e uno scritto dopo una stringa
+che contiene un doppio trattino non sparisce. Davanti resta un prefiltro economico sul sorgente
+testuale, che per il PL/pgSQL non è mai vuoto.
 
-⚠️ **Che cosa non vede**: i tipi costruiti per concatenazione o passati in una variabile, e — perché
-toglie solo i commenti di riga — prende per scritto anche un tipo citato in un commento a blocco. È
-lo stesso limite della gemella e la stessa scelta: fra i due errori si preferisce quello che si
-corregge guardando i falsi positivi.
+⚠️ **Che cosa non vede**: i tipi costruiti per concatenazione o passati in una variabile. È lo stesso
+limite della gemella e la stessa scelta: fra i due errori si preferisce quello che si corregge
+guardando i falsi positivi.
 
 ---
 
@@ -92,6 +95,9 @@ già bloccato.
   `fn_log_and_raise_error`, dopo la decisione di Tid del 2026-08-22 di far crescere il catalogo una
   voce per volta.
 * 2026-10-09 — il giorno da cui una voce conta come ritirata diventa il giorno operativo dell'azienda.
+* 2026-11-04 — il corpo si legge da `fn_corpo_funzione` (D14 di `brief-db-revisione-dbops`): prima si
+  toglievano i soli commenti di riga, quindi un tipo citato in un commento a blocco contava come
+  scritto, e uno scritto dopo un letterale che conteneva un doppio trattino spariva.
 
 ---
 

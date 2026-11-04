@@ -22,7 +22,7 @@ WITH (security_invoker=true) AS
 WITH funzioni AS MATERIALIZED (
          SELECT p.oid,
             (((n.nspname)::text || '.'::text) || (p.proname)::text) AS funzione,
-            regexp_replace(regexp_replace(p.prosrc, '/\*.*?\*/'::text, ''::text, 'g'::text), '--[^\n]*'::text, ''::text, 'g'::text) AS sorgente
+            (dbops.fn_corpo_funzione(p.oid) COLLATE "C") AS sorgente
            FROM (pg_proc p
              JOIN pg_namespace n ON ((n.oid = p.pronamespace)))
           WHERE ((n.nspname <> ALL (ARRAY['pg_catalog'::name, 'information_schema'::name])) AND (p.prolang = ( SELECT pg_language.oid

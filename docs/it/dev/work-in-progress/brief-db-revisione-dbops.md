@@ -2,8 +2,10 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-04
 
-**Riparte: Tid**, con il commit del giro C1 (§10: undici changeSet `20261104-09` … `-19`, applicati e
-verdi il 2026-11-04) e le decisioni di §4 per i giri A e B.
+**Riparte: sessione DB**, col blocco 1b (D1 + D26, §12.5), con la regola del canale decisa da Tid
+(assente = acceso). Il blocco 1a (`-20` … `-31`) e le due correzioni di lentezza (`-43`, `-45`) sono
+applicati e verdi (Tid, 2026-11-04). Le decisioni di §4 restano aperte per i giri che le aspettano.
+Il team BE, a oggi, non ha niente da fare che aspetti un giro: §5.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -11,13 +13,17 @@ verdi il 2026-11-04) e le decisioni di §4 per i giri A e B.
 | 2 | ✅ Tid | Si parte dalla classe C; ritiri solo se certi; D17-bis e D74 rimandati (2026-11-04) | §10 | 1 |
 | 3 | ✅ sessione DB | Giro C1 scritto e provato sullo scratch; doc riallineata | §10 | 2 |
 | 4 | ✅ Tid | Apply del giro C1 su dbdev e scratch (`-09` … `-19`); pgTAP di §10.2 verdi (2026-11-04) | §10.2 | 3 |
-| 5 | **Tid** ⏭️ | Commit del giro C1; le decisioni di §4 e l'ordine dei giri A e B di §8 | §4, §8 | — |
-| 6 | sessione DB | Giri successivi, nell'ordine deciso da Tid; il residuo C (§10.4) | §8, §10.4 | 5 |
-| 7 | team BE | Le ricadute di §5, quando il giro DB corrispondente è applicato | §5 | 6 |
-| 8 | sessione DB | Pagine `manual/` riallineate a ogni difetto chiuso; brief in `work-done/` | §1 | 6 |
+| 5 | ✅ Tid | Commit del giro C1; si parte dal giro 1, nei difetti senza decisioni (2026-11-04) | §8 | — |
+| 6 | ✅ sessione DB | Giro 1, blocco 1a (D14, D15, D54, D56): scritto e provato sullo scratch | §12 | 5 |
+| 7 | ✅ Tid | Apply del blocco 1a; pgTAP di §12.3 verdi (2026-11-04). Un test lento: §12.6 | §12.3 | 6 |
+| 7-bis | ✅ Tid | Apply di `20261104-43` e `20261104-45`; i pgTAP di §12.6 e §12.7 verdi (2026-11-04) | §12.6, §12.7 | 7 |
+| 8 | **sessione DB** ⏭️ | Giro 1, blocchi 1b (D1 + D26), 1c (D40, D41), 1d (D43, D7) | §12.5 | 5 |
+| 9 | Tid | Le decisioni di §4, per i giri che le aspettano | §4, §8 | — |
+| 10 | team BE | Le ricadute di §5, quando il giro DB corrispondente è applicato; BE5 e BE7 (commenti stantii) quando capita | §5 | 8, 9 |
+| 11 | sessione DB | Pagine `manual/` riallineate a ogni difetto chiuso; brief in `work-done/` | §1 | 8, 9 |
 
-**Decisioni aperte di Tid:** quelle di §4. **Da committare:** questo brief e il giro C1 (§10.1), con la
-doc riallineata.
+**Decisioni aperte di Tid:** quelle di §4. **Da committare:** questo brief, il blocco 1a (§12.1), `-43` e
+`-45` (§12.6, §12.7), con i pgTAP e la doc riallineata.
 
 > **Chi scrive:** sessione DB (`dev/db-tid`), 2026-11-04. **A chi:** Tid e team DB; §5 al team BE.
 > **Origine:** verifica delle pagine `docs/it/dbzero/dbops/manual/` contro lo standard e contro il
@@ -68,7 +74,7 @@ sono difetti: il peso dice l'ordine dei giri, non se si fanno.
 
 | Classe | Difetti |
 | --- | --- |
-| **A** | D1 (contratto del 2026-07-22: un dblink fallito restituisce la sentinella), D3, D4, D6, D14, D15, D21, D25, D30 (cinque righe del seed senza prefisso), D35, D36, D37, D40, D41, D43, D44, D46, D47, D51, D53, D54, D56, D57, D58, D59, D63, D64, D66, D67, D68, D70 |
+| **A** — D14, D15, D54, D56 ✅ scritti nel giro 1a (§12) | D1 (contratto del 2026-07-22: un dblink fallito restituisce la sentinella), D3, D4, D6, D14, D15, D21, D25, D30 (cinque righe del seed senza prefisso), D35, D36, D37, D40, D41, D43, D44, D46, D47, D51, D53, D54, D56, D57, D58, D59, D63, D64, D66, D67, D68, D70 |
 | **B** | D2, D5, D7, D8, D9, D10, D11, D12, D13, D16, D17, D18, D19, D20, D22, D23, D24, D26, D27, D28, D29, D32, D33, D34, D38, D39, D45, D49, D52, D60, D69, D71, D73 |
 | **C** | D17-bis, D42, D48, D50, D55, D61, D62, D65, D72, D74 — ✅ scritti nel giro C1 (§10) tutti tranne D17-bis e D74; di D61 restano i quattro strumenti DBA (Q9) |
 
@@ -426,6 +432,7 @@ la R3 del brief maintenance (nomi di brief fuori dalle note dei CSV) lo decide T
 | Q12 | D68: chiave di default del segmento senza sorgente — `COMMESSA:<id>…` o `MAN:`? | `MAN:`, che è la forma di una riga senza documento |
 | Q13 | §3.3: la regola sui COMMENT, e se vale per loro la R3 del brief maintenance | Sì, con il presidio di testo |
 | Q14 | Altri dubbi dei lotti, da confermare o girare in difetto: `fn_get_pipeline_task_implementation` ripiega in silenzio sul default per una variante inesistente; una FK registrata a `false` sparisce da ogni presidio; `vw_coda_lavori_da_guardare` è definer su tabella senza RLS e catalogata `LIBERO`; `vw_codici_errore_forme_condizione` è catalogata `LAVORAZIONE` ma la usa lo scatto B-7 come cancello; `vw_processi_dominio_senza_difesa` riconosce il guard dal solo `proname`; `obsoleto_dal IS NULL` fa uscire dai presidi un processo a ritiro programmato che gira ancora (sette viste); un lotto congelato con `stato_lotto` IN_ESECUZIONE/ERRORE ed esiti in ERRORE non lo guarda né `vw_lotti_fermi_da_guardare` né `vw_lotti_chiusi_con_errori_da_guardare`; uno storno di un'uscita senza costo entra in `vw_magazzino_movimenti_senza_costo`; `sessioni_utente.evento = 'SCADENZA'` ammesso e mai scritto; `credenziali_di_prova` senza FK verso la credenziale (un'etichetta che sopravvive alla credenziale); il trigger DELETE_BLOCK è `AFTER DELETE` in fase `a10`; un `ADD CONSTRAINT` overlap su dati già sovrapposti (23P01) ferma il giro; il guard utility gira solo in `ci_apply`, senza processo | Da decidere uno per uno; la sessione DB li apre come difetti solo su conferma |
+| Q15 | Giro 1a: `vw_codici_errore_da_dichiarare` e `vw_punti_canale_campo` guardano il solo plpgsql. Una funzione `LANGUAGE sql` può chiamare `fn_log_and_raise_error` con un codice letterale: entrano nel perimetro? | Sì: il corpo ora lo legge il BB anche per le `BEGIN ATOMIC`, e il perimetro di un presidio sui codici è il modello (chi può sollevare), non il linguaggio. Un giro a sé, perché può far comparire righe nuove nei due presidi |
 
 ## 5. Ricadute su BE e FE
 
@@ -439,8 +446,17 @@ Si chiedono quando il giro DB corrispondente è applicato.
 | BE4 | La ricerca dei lookup passa alla funzione DB (o cade il tetto `LOOKUP_MAX_SOURCE_ROWS`); la paginazione resta com'è | `backend/apps/core/db/dbops_repository.py:55, 415-470` | D57 |
 | BE5 | Docstring stantie: «tre viste … SECURITY DEFINER» (`fn_conta_presidio` è INVOKER) e «registro non vuoto» (il corpo ammette vuoto) | `backend/apps/core/db/presidi_repository.py:16-22`, `backend/apps/core/tests/test_error_codes_db_policy_guardrail.py:66-67` | — |
 | BE6 | Codici nuovi di D44-D47, D12 → rigenerare `error_policies_generated.py` | — | §2.5 |
+| BE7 | Commento stantio: il test nomina il presidio `dbops.vw_run_senza_attore`, ritirato | `backend/apps/core/tests/services/test_job_run.py:136-138` | D42 |
 
 Nessuna ricaduta FE diretta: D25 si vede nel form quando BE2 è fatto.
+
+**Stato al 2026-11-04** (giro C1, blocco 1a, `-43` e `-45` applicati): **nessuna ricaduta chiede lavoro al
+BE.** BE1-BE4 e BE6 aspettano giri non ancora scritti. BE5 e BE7 sono commenti, si fanno quando capita.
+Censiti nel backend (`.py`) gli oggetti ritirati o cambiati da quei giri: nessun chiamante. Restano due mock
+in `test_tracciamento_repositories.py`, che usano `fn_run_automations` come nome qualunque in una riga di
+`audit_log` finta: non si rompono e non vanno toccati. Le tre viste del blocco 1a che il BE legge nei suoi
+test (`vw_punti_canale_campo`, `vw_stati_check_scrittori`, `vw_codici_errore_da_dichiarare`) non hanno
+perso né rinominato colonne: sono cambiate con `CREATE OR REPLACE VIEW`, che non lo permette.
 
 ## 6. Difetti fuori schema trovati leggendo i chiamanti
 
@@ -583,7 +599,7 @@ quelle degli oggetti cambiati (§7.1 resta per la revisione).
 | --- | --- | --- |
 | R1 | I dry run di `fn_run_automations_lock_columns`, `_audit_update`, `_date_validita` firmano ancora `dbops.fn_run_automations`, ritirata | Tre funzioni grandi: si chiude quando ciascuna si riapre (giro 6) |
 | R2 | Il `COALESCE` morto in `fn_lock_columns_divergenze` | Con D32 |
-| R3 | I nomi `fn_audit_begin`/`fn_audit_end` nella lista di `ci_apply/20260205-41` e nelle porte di `vw_audit_log_scrittori_fuori_perimetro` | Testo senza effetto; si toglie quando quei file si riaprono |
+| R3 | I nomi `fn_audit_begin`/`fn_audit_end` nella lista di `ci_apply/20260205-41`. ✅ Dalle porte di `vw_audit_log_scrittori_fuori_perimetro` li toglie il `20261104-21` (giro 1a) | Testo senza effetto; si toglie quando `ci_apply/20260205-41` si riapre |
 | R4 | D17-bis, D74 | Rimandati da Tid |
 | R5 | I quattro strumenti DBA (`fn_find_file_usage`, `fn_foreign_keys_info`, `fn_get_child_fk_col`, `fn_list_indices`) | Non ritirati: decisione Q9 aperta |
 | R6 | `dbops.audit_log.duration_ms` non la scrive più nessuno: la scriveva solo `fn_audit_end`, e `fn_audit_log_once` non ha un parametro per la durata (i runner la mettono in `result`). ✅ La metà su `START` è chiusa da `00_schema/dbops/20261104-19` (vedi §10.1) | **`duration_ms`** da decidere: colonna ritirata, o un parametro della durata in `fn_audit_log_once` |
@@ -607,3 +623,148 @@ allineato ai difetti che qui si segnalano sugli altri runner, e può servire da 
 
 ⚠️ `20261104-05` ha riscritto `proc_automations_lock_columns_job`: chi la riapre parte da quel corpo.
 
+## 12. Giro 1 — i giornali e i presidi che dicono il falso, 2026-11-04
+
+**Decisione di Tid (2026-11-04):** si parte dal giro 1, che non aspetta nessuna domanda di §4. Si fa per
+blocchi, ognuno scritto e provato prima del successivo: **1a** il building block del corpo (D14 + D15) con
+i suoi lettori e gli strumenti (D54, D56); **1b** il canale dblink (D1 + D26); **1c** i runner cleanup e
+delete_block (D40, D41); **1d** le viste puntuali (D43, D7).
+
+### 12.1 Blocco 1a — che cosa è stato scritto
+
+| ChangeSet | Difetto | Che cosa |
+| --- | --- | --- |
+| `20_code/dbops/20261104-20` | D14, D15 | Il building block: `dbops.fn_testo_senza_commenti(text)` (toglie `--` e `/* */`, lascia intatti `'…'`, `E'…'`, `"…"`) e `dbops.fn_corpo_funzione(pg_proc.oid%TYPE)` (il corpo da `prosrc`, o da `pg_get_function_sqlbody` per una `BEGIN ATOMIC`, con `search_path = pg_catalog` perché esca qualificato) |
+| `-21` | D14, D15, R3 | `vw_audit_log_scrittori_fuori_perimetro`: corpo dal BB; la porta è la sola `fn_audit_log_once` |
+| `-22` | D14 | `vw_bersagli_non_dichiarati` |
+| `-23` | D14 | `vw_codici_errore_da_dichiarare` |
+| `-24` | D14 | `vw_punti_primo_motivo`: il marcatore gira anche sul corpo senza commenti; il prefiltro su `prosrc` resta davanti |
+| `-25` | D14 | `vw_magazzino_dipendenze_inverse`, lente CORPO |
+| `-26` | D14 | `vw_funzioni_check_codici`: i tre corpi e `emette_valori` (che leggeva `prosrc` commenti compresi); prefiltro del JIT invariato |
+| `-27` | D14 | `vw_punti_canale_campo` |
+| `-28` | D14, D15 | `vw_stati_check_scrittori`: vede gli scrittori `BEGIN ATOMIC` |
+| `-29` | D56, D14 | `vw_codici_errore_forme_condizione`: ogni codice distinto di una riga è un punto; righe tagliate dal corpo senza commenti |
+| `-30` | D15, M33 | `fn_find_function_usage`: corpo dal BB; firma ancorata (`pg_proc.proname%TYPE`, `pg_namespace.nspname%TYPE`), quindi DROP + CREATE; COMMENT riscritto |
+| `-31` | D54, D15, §3.2 | `fn_search_column_usage`: i vincoli da `pg_get_constraintdef`; corpo dal BB; firma ancorata (`pg_attribute.attname%TYPE`), DROP + CREATE; COMMENT nuovo |
+
+**Le scelte che non si vedono dal titolo:**
+
+* **La regex del BB** è un'alternativa sola: il primo carattere decide se comincia un letterale (rimesso
+  con `\1`) o un commento (tolto). ⚠️ In PostgreSQL un'alternativa al primo livello è sempre greedy: un
+  `/\*.*?\*/` lì dentro si mangerebbe tutto fino all'ultimo `*/`. Il commento a blocco è scritto in
+  modo da non poter contenere `*/`. Limiti dichiarati nel COMMENT: niente dollar-quoting interno, niente
+  commenti annidati.
+* **La collation.** `prosrc` ha la collation del catalogo (`"C"`), il risultato del BB quella di default:
+  il primo apply sullo scratch è fallito su `vw_bersagli_non_dichiarati` (`CREATE OR REPLACE VIEW`
+  rifiuta il cambio di collation di una colonna). Nelle viste il corpo si legge
+  `dbops.fn_corpo_funzione(p.oid) COLLATE "C"`: colonne, `\w` e `~*` restano quelli di prima. La regola
+  è nel COMMENT del BB.
+* **I prefiltri su `prosrc` restano** dove c'erano (`vw_funzioni_check_codici`, `vw_bersagli_non_dichiarati`)
+  e uno si aggiunge (`vw_punti_primo_motivo`): sono sovrainsiemi economici, e tengono la stima sotto il
+  JIT (`test-vw-funzioni-check-codici-sotto-jit-v1` verde, invariato).
+* **Il perimetro delle viste non cambia.** Quelle limitate al plpgsql restano limitate; solo
+  `vw_audit_log_scrittori_fuori_perimetro` e `vw_stati_check_scrittori`, che già guardavano anche le
+  funzioni SQL, ora le vedono davvero. ⚠️ Se `vw_codici_errore_da_dichiarare` e
+  `vw_punti_canale_campo` debbano guardare anche le funzioni SQL (una `LANGUAGE sql` può chiamare
+  `fn_log_and_raise_error`) è una domanda nuova: **Q15** per Tid.
+* **`%TYPE`.** `fn_corpo_funzione` è ancorata a `pg_proc` (parametro e risultato); i due strumenti al
+  catalogo (`name`). Il cambio da `text` a `name` cambia l'identità: DROP + CREATE, possibile perché non
+  hanno chiamanti (censimento del giro C1). `fn_testo_senza_commenti` resta `text`/`text`, con la ragione
+  accanto.
+
+### 12.2 Le prove (scratch `zeroerp_ruoli`, come owner, SQL estratto, `BEGIN … ROLLBACK`)
+
+* **Base uguale al vivo**: lo YAML di partenza di ognuna delle nove viste, eseguito, lascia definizione,
+  COMMENT e opzioni identici al vivo. `vw_stati_check_scrittori` non è `security_invoker`, né nel vivo né
+  nella base: il `-28` lo lascia così.
+* **L'estratto dei dodici changeSet gira intero.** Firme: una per nome;
+  `fn_find_function_usage(name)` e `fn_search_column_usage(name)` restituiscono
+  `TABLE(object_type text, schema_name name, object_name text)`.
+* **Fatto datato, non motivo:** al 2026-11-04 le nove viste danno, sul codice vivo, le stesse righe di
+  prima, identiche nei due versi (775, 716, 734, 1836, 22, 107 righe; tre vuote). Quindi la baseline B-7
+  (`db/baseline-codici-errore-famiglie.tsv`) non si muove. La correzione si prova solo **costruendo i
+  casi**, e i casi sono nei pgTAP.
+* **pgTAP senza e con l'estratto:**
+  * nuovo `dbops/test-corpo-funzione-senza-commenti-v1.sql` (15): con, 15/15;
+  * `dbops/test-stati-check-scrittori-v1.sql` (15 → 17): senza, rossi il 14, il 16 e il 17, perché la
+    vista vecchia non vede lo scrittore `BEGIN ATOMIC` né il valore dopo il `'--'`; con, 17/17;
+  * `dbops/test-audit-log-perimetro-scrittori-v1.sql` (6 → 8): con, 8/8;
+  * `dbops/test-vw-codici-errore-motivo-nominato.sql` (8 → 10): senza, rossi il 9 e il 10; con, 10/10;
+  * invariati senza e con: `test-vw-codici-errore-valore-atteso`, `test-vw-funzioni-check-codici-sotto-jit-v1`,
+    `test-punti-canale-campo-v1`, `test-vw-bersagli-non-dichiarati`,
+    `config/test-costanti-catalogo-citate-dal-codice-v1`, `pagamenti/test-righe-contabili-eliminazione-v1`,
+    `magazzino/test-registro-non-nomina-i-consumatori-v1`, `script/test-rubinetto-primo-motivo-v1`,
+    `script/test-catalogo-messaggi-errore-completo`, `test-catalogo-presidi-v1`, `test-riferimenti-morti-v1`,
+    `test-registri-append-only-postura-v1` (da owner restano rossi i 16-19, uguali senza e con).
+* **Guardrail** dei changelog e dei pgTAP verdi; header di licenza a posto.
+
+### 12.3 Per Tid
+
+Apply su dbdev (`cd db && ../scripts/liquibase5.sh update`) e sullo scratch (`scripts/ci-local.sh --ci-apply`).
+Poi **come app** (sullo scratch la prova come app nella stessa transazione della DDL non si può fare):
+`dbops/test-corpo-funzione-senza-commenti-v1.sql`, `dbops/test-audit-log-perimetro-scrittori-v1.sql`,
+`dbops/test-vw-codici-errore-motivo-nominato.sql`, `dbops/test-vw-funzioni-check-codici-sotto-jit-v1.sql`;
+da owner `dbops/test-stati-check-scrittori-v1.sql`. Il controllo B-7 (`scripts/codici-errore-baseline.sh`)
+deve restare verde senza `--update`.
+
+### 12.4 Doc
+
+Pagine `manual/` dei dodici oggetti riallineate (il difetto descritto diventa il comportamento), due
+pagine nuove per il building block.
+
+### 12.5 Prossimi blocchi
+
+| Blocco | Difetti | Stato |
+| --- | --- | --- |
+| 1b | D1 (un canale di log irraggiungibile blocca ogni scrittura tracciata), D26 (l'interruttore `myapp.log_with_dblink` letto in quattro modi) | ⭐ Decisione di Tid (2026-11-04): un default solo, **assente = acceso** (il canale c'è se c'è una stringa e l'interruttore non è `off`), come `fn_ensure_logconn`, il `makefile` e la CI. `fn_audit_log_once` resta fuori finché Q9 non decide il suo ramo dblink (D60). In scrittura |
+| 1c | D40 (`fn_run_automations_cleanup`: un rifiuto non ferma il giro e non si vede), D41 (`fn_run_automations_delete_block` senza audit nel giro vero) | da scrivere |
+| 1d | D43 (`vw_processi_che_bypassano` col ruolo ritirato), D7 (`vw_riferimenti_morti_rientrati` con la misura fallita) | da scrivere |
+
+### 12.6 Dopo l'apply: un test lento, e la stima che lo spiegava
+
+**Il fatto (Tid, 2026-11-04):** applicato il blocco 1a e verdi i test, `dbops/test-vw-codici-errore-motivo-nominato`
+era lento. Misura sullo scratch:
+
+* una lettura di `vw_codici_errore_forme_condizione` era passata da ~730 ms a ~1.170 ms, e ~300 ms erano
+  **compilazione JIT**. La causa è la stima, non il lavoro: il `-29` portava i codici di una riga in un
+  array e lo espandeva con `unnest`, che dichiara 10 righe (vere: 0,15). Il costo stimato saliva da
+  ~297.000 a ~789.000, sopra `jit_optimize_above_cost` (500.000): oltre quella soglia PostgreSQL
+  inlinea e ottimizza a ogni lettura. È la trappola per cui esiste `dbops.fn_regexp_occorrenze`,
+  rimessa da me con un'altra funzione;
+* il test legge la vista dieci volte, e il gemello `test-vw-codici-errore-valore-atteso` sette.
+
+**La cura, in due pezzi:**
+
+| Dove | Che cosa | Effetto (scratch) |
+| --- | --- | --- |
+| `20_code/dbops/20261104-43` | le occorrenze si estraggono in `classificato` con `fn_regexp_occorrenze` (ROWS 1), solo sulle righe con un codice; `n_punti` conta le coppie distinte (riga, codice) | stima ~289.000, JIT 16 ms, una lettura ~760 ms; output identico al `-29` nei due versi |
+| i due pgTAP | la vista si fotografa una volta, in una tabella temporanea, dopo i testimoni; le asserzioni leggono la fotografia | `motivo-nominato` da 10,2 s a 1,2 s (10/10), `valore-atteso` da 7,3 s a 0,9 s (7/7) |
+
+⚠️ La lezione vale per ogni vista dei presidi: un'espansione dentro la vista si scrive con una funzione
+che dichiara la cardinalità vera, e la prova di un cambio guarda anche il piano (`EXPLAIN ANALYZE`, la
+riga `JIT`), non solo le righe. Il presidio sotto JIT esiste solo per `vw_funzioni_check_codici` e i suoi
+due lettori: per questa vista no, e la regressione l'ha vista Tid a occhio.
+
+### 12.7 Il secondo test lento: il building block su ogni funzione
+
+**Il fatto (Tid, 2026-11-04):** lento anche `dbops/test-audit-log-perimetro-scrittori-v1`. Qui il JIT non
+c'entra: il `-21` chiede a `fn_corpo_funzione` il corpo senza commenti di **ogni** funzione del database
+(sullo scratch 3.656), a ogni lettura, per poi tenere quelle che nominano il registro. Una lettura costava
+~465 ms, e il test legge la vista sei volte.
+
+| Dove | Che cosa | Effetto (scratch) |
+| --- | --- | --- |
+| `20_code/dbops/20261104-45` | in `sorgenti`, prima del building block, `prosqlbody IS NOT NULL OR prosrc ILIKE '%audit\_log%'` | una lettura ~105 ms; il test da 2,4 s a 0,65 s, 8/8 |
+
+⭐ Il prefiltro è un **sovrainsieme esatto**, non una stima: togliere i commenti può solo levare testo, e
+le due regex della vista contengono entrambe `audit_log`. Le `BEGIN ATOMIC` passano tutte, perché il loro
+`prosrc` è vuoto. Verificato sullo scratch senza il filtro di perimetro: 20 scrittori in tutto il
+database, nessuno perso. Il prefiltro su `prosrc` con `LIKE` è ammesso dal test 11 di
+`test-corpo-funzione-senza-commenti-v1`, perché non è una lettura del corpo.
+
+Fatto datato, stesso giorno: le altre viste del blocco 1a leggono fra 28 e 640 ms, e i loro test durano al
+più 1,7 s. `vw_punti_canale_campo` e `vw_stati_check_scrittori` cercano valori diversi per ogni riga e
+non hanno un prefiltro unico: restano come sono.
+
+⚠️ La lezione si aggiunge a quella di §12.6: una vista che cerca un nome fisso nei corpi filtra sul testo
+grezzo **prima** di chiedere il corpo senza commenti.

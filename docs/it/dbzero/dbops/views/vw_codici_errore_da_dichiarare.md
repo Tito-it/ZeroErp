@@ -24,7 +24,7 @@ WITH sorgenti AS (
              CROSS JOIN LATERAL ( SELECT (EXISTS ( SELECT 1
                            FROM pg_trigger tg
                           WHERE ((tg.tgfoid = p.oid) AND (NOT tg.tgisinternal)))) AS agganciata) t),
-            LATERAL regexp_matches(regexp_replace(p.prosrc, '--[^\n]*'::text, ''::text, 'g'::text), '''(E_[A-Z0-9_]+)'''::text, 'g'::text) m(m)
+            LATERAL regexp_matches((dbops.fn_corpo_funzione(p.oid) COLLATE "C"), '''(E_[A-Z0-9_]+)'''::text, 'g'::text) m(m)
           WHERE ((n.nspname <> ALL (ARRAY['pg_catalog'::name, 'information_schema'::name])) AND (p.prolang = ( SELECT pg_language.oid
                    FROM pg_language
                   WHERE (pg_language.lanname = 'plpgsql'::name))))

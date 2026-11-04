@@ -20,6 +20,7 @@
 >
 > * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) — il meccanismo che legge il nome del campo
 > * [script.fn_raise_primo_motivo_se_presente](/dbzero/script/funzioni/fn_raise_primo_motivo_se_presente) — l'helper che solleva il primo motivo di una check
+> * [dbops.fn_corpo_funzione](/dbzero/dbops/funzioni/fn_corpo_funzione) — il corpo senza commenti da cui la vista legge le funzioni
 
 ---
 
@@ -110,7 +111,8 @@ Che il nome scritto sia **quello giusto**. Dice che un nome c'è, nel posto gius
 dell'input che l'operatore ha davanti, e non un identificativo interno, è un giudizio che si prende
 codice per codice.
 
-E legge il **testo** delle funzioni PL/pgSQL, senza commenti: una chiamata è il testo fino al primo
+E legge il **testo** delle funzioni PL/pgSQL, dal corpo senza commenti di
+[fn_corpo_funzione](/dbzero/dbops/funzioni/fn_corpo_funzione), che rispetta i letterali: una chiamata è il testo fino al primo
 punto e virgola, quindi un punto e virgola dentro una stringa la tronca; una chiave scritta dentro un
 blocco JSON letterale non la vede; i rifiuti sollevati senza passare dal meccanismo centrale non
 passano di qui; le funzioni scritte in SQL non sono lette. I due helper del meccanismo sono esclusi.
@@ -156,6 +158,8 @@ eccezione per un codice che ora rispetta la regola è rossa. Per questo a catalo
 * 2026-11-03 — entrano i codici passati dal trigger come argomento. Prima per la vista quel sito non
   esisteva, e il backend aveva un'eccezione scritta apposta (voce D24 di
   `migliorie-generali-da-test-valutazione`).
+* 2026-11-04 — il corpo si legge da `fn_corpo_funzione` (D14 di `brief-db-revisione-dbops`): la copia
+  di prima toglieva un commento, di riga o a blocco, anche dentro un letterale.
 
 ---
 

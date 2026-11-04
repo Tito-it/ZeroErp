@@ -1,0 +1,229 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.vw_stati_check_scrittori: il corpo dal building block.
+#   Brief: brief-db-revisione-dbops, D14 + D15 (giro 1).
+#
+# Base: 20_code/dbops/20260923-51, verificato uguale al vivo. La vista guarda
+# le funzioni plpgsql E sql, ma leggeva prosrc: per una funzione SQL BEGIN
+# ATOMIC prosrc e' vuoto, e uno scrittore cosi' non contava. Un valore del
+# CHECK scritto solo da una BEGIN ATOMIC usciva NON_DICHIARATO, e una riga
+# ESENTE su quel valore non diventava mai DEBITO_ESTINTO.
+#   ⇒ La CTE `funzioni` legge dbops.fn_corpo_funzione (20261104-20): il corpo
+#     senza commenti, con i letterali intatti, deparsato coi nomi qualificati
+#     per le BEGIN ATOMIC. Il resto della vista e' invariato.
+#   Opzioni e GRANT come nella base: la vista non e' security_invoker (non lo
+#   era nel 20260923-51 ne' lo e' nel vivo), e il GRANT SELECT all'app si ripete.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261104-28-update-vw-stati-check-scrittori-corpo-dal-bb-mctit.yaml
+
+  - changeSet:
+      id: 20261104-28-update-vw-stati-check-scrittori-corpo-dal-bb
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.vw_stati_check_scrittori legge il corpo con dbops.fn_corpo_funzione: vede gli
+        scrittori SQL BEGIN ATOMIC e rispetta i letterali.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_corpo_funzione';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ Nessun WITH (security_invoker): la vista non lo ha, e un refactor
+              --    non cambia la postura di lettura — cambierebbe CHI vede che cosa.
+              CREATE OR REPLACE VIEW dbops.vw_stati_check_scrittori AS
+              WITH colonne AS (
+                  -- Le colonne di STATO con un CHECK a lista di valori. Il perimetro si
+                  -- legge dal vincolo, non da un elenco scritto a mano.
+                  SELECT n.nspname::text AS schema_tabella,
+                         c.relname::text AS nome_tabella,
+                         a.attname::text AS colonna,
+                         k.oid           AS con_oid,
+                         k.conname::text AS vincolo,
+                         substring(pg_get_expr(d.adbin, d.adrelid), '^''([^'']*)''') AS valore_default
+                    FROM pg_constraint k
+                    JOIN pg_class c ON c.oid = k.conrelid
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                    JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = k.conkey[1]
+                    LEFT JOIN pg_attrdef d ON d.adrelid = c.oid AND d.adnum = a.attnum
+                   WHERE k.contype = 'c'
+                     AND array_length(k.conkey, 1) = 1
+                     AND c.relkind = ANY (ARRAY['r'::"char", 'p'::"char"])
+                     AND n.nspname <> ALL (ARRAY['pg_catalog'::name, 'information_schema'::name])
+                     AND pg_get_constraintdef(k.oid) ~ '= ANY \(\(?ARRAY\['
+                     AND (a.attname ~ '^stato(_|$)' OR a.attname = 'status'
+                          OR a.attname = 'esito' OR a.attname = 'severity')
+              ), valori AS (
+                  SELECT co.schema_tabella, co.nome_tabella, co.colonna, co.con_oid, co.vincolo,
+                         co.valore_default,
+                         m.m[1] AS valore,
+                         '''' || m.m[1] || '''' AS letterale
+                    FROM colonne co,
+                         LATERAL regexp_matches(pg_get_constraintdef(co.con_oid), '''([^'']*)''::', 'g') m(m)
+              ), funzioni AS MATERIALIZED (
+                  -- Il corpo SENZA commenti, anche di una funzione SQL BEGIN ATOMIC
+                  -- (prosrc li' e' vuoto): un commento che nomina una tabella o un
+                  -- valore non e' codice, e contarlo sarebbe il difetto che questa vista
+                  -- cerca di misurare.
+                  SELECT p.oid,
+                         p.proname::text AS proname,
+                         pn.nspname::text || '.' || p.proname::text AS funzione,
+                         (dbops.fn_corpo_funzione(p.oid) COLLATE "C") AS sorgente
+                    FROM pg_proc p
+                    JOIN pg_namespace pn ON pn.oid = p.pronamespace
+                    JOIN pg_language l ON l.oid = p.prolang
+                   WHERE pn.nspname <> ALL (ARRAY['pg_catalog'::name, 'information_schema'::name])
+                     AND l.lanname = ANY (ARRAY['plpgsql'::name, 'sql'::name])
+                     -- ⛔ Le FIXTURE pgTAP non sono scrittori del sistema (rev 20260923-51).
+                     --   Il presidio chiede se il SISTEMA raggiunge uno stato; un helper di
+                     --   fixture che lo scrive (dbops.fn_pgtap_crea_listino scrive 'ATTIVA')
+                     --   lo farebbe risultare SCRITTO, e una fixture che scrivesse 'ERRORE'
+                     --   nasconderebbe proprio il caso che il presidio esiste per trovare.
+                     --   Il criterio e' la convenzione con cui nascono tutti gli helper di
+                     --   fixture: prefisso fn_pgtap_ negli schemi dbops e script. Fuori
+                     --   anche come CHIAMANTI (ramo indiretti): stessa ragione.
+                     AND NOT (pn.nspname = ANY (ARRAY['dbops'::name, 'script'::name])
+                              AND p.proname::text LIKE 'fn\_pgtap\_%')
+              ), scritture AS MATERIALIZED (
+                  -- ⭐ SI ESTRAE UNA VOLTA, POI SI CONFRONTA PER UGUAGLIANZA. Prima si
+                  --   provava ogni coppia (tabella, funzione) con una regex: 29 x 2250.
+                  --   L'identificatore estratto e' MASSIMALE, quindi inventari_righe non
+                  --   si confonde con inventari — e' il lavoro che faceva il \M.
+                  SELECT f.oid, f.proname, f.funzione, f.sorgente,
+                         lower(m.m[3]) AS tabella_scritta
+                    FROM funzioni f,
+                         LATERAL regexp_matches(
+                             f.sorgente,
+                             '(?i)(update|insert\s+into|merge\s+into)\s+(only\s+)?([a-z_][a-z0-9_$]*\.[a-z_][a-z0-9_$]*)',
+                             'g') m(m)
+              ), scrittori AS MATERIALIZED (
+                  SELECT DISTINCT t.schema_tabella, t.nome_tabella,
+                         s.oid, s.proname, s.funzione, s.sorgente
+                    FROM (SELECT DISTINCT schema_tabella, nome_tabella FROM colonne) t
+                    JOIN scritture s ON s.tabella_scritta = t.schema_tabella || '.' || t.nome_tabella
+              ), letterali AS (
+                  -- Un solo passaggio sui sorgenti, con l'alternativa di tutti i valori.
+                  -- ⚠️ Escapati: un valore di stato con un metacarattere oggi non c'e',
+                  --    ma «oggi non c'e'» non e' una ragione per non escaparlo.
+                  SELECT '''(' || string_agg(DISTINCT regexp_replace(v.valore, '([.^$|()\[\]{}*+?\\-])', '\\\&', 'g'), '|') || ')''' AS rx
+                    FROM valori v
+              ), funzioni_citanti AS MATERIALIZED (
+                  SELECT f.* FROM funzioni f, letterali l WHERE f.sorgente ~ l.rx
+              ), diretti AS (
+                  -- Scrive la tabella E nomina il letterale.
+                  SELECT v.con_oid, v.valore, s.funzione
+                    FROM valori v
+                    JOIN scrittori s ON s.schema_tabella = v.schema_tabella
+                                    AND s.nome_tabella = v.nome_tabella
+                                    AND strpos(s.sorgente, v.letterale) > 0
+              ), indiretti AS (
+                  -- Il secondo salto: chi passa il letterale a uno scrittore posizionale.
+                  SELECT DISTINCT v.con_oid, v.valore, c.funzione
+                    FROM valori v
+                    JOIN scrittori s ON s.schema_tabella = v.schema_tabella
+                                    AND s.nome_tabella = v.nome_tabella
+                    JOIN funzioni_citanti c ON c.oid <> s.oid
+                                           AND strpos(c.sorgente, v.letterale) > 0
+                                           AND strpos(c.sorgente, s.proname) > 0
+                                           AND c.sorgente ~ ('\m' || s.proname || '\s*\([^;]*' || v.letterale)
+              ), misura AS (
+                  SELECT v.schema_tabella, v.nome_tabella, v.colonna, v.vincolo, v.valore,
+                         v.valore_default = v.valore AS ha_default,
+                         (SELECT count(*)::integer FROM diretti x
+                           WHERE x.con_oid = v.con_oid AND x.valore = v.valore) AS scrittori_fn,
+                         (SELECT count(*)::integer FROM indiretti x
+                           WHERE x.con_oid = v.con_oid AND x.valore = v.valore) AS scrittori_indiretti,
+                         (SELECT string_agg(DISTINCT x.funzione, ', ' ORDER BY x.funzione)
+                            FROM (SELECT diretti.funzione FROM diretti
+                                   WHERE diretti.con_oid = v.con_oid AND diretti.valore = v.valore
+                                  UNION ALL
+                                  SELECT indiretti.funzione FROM indiretti
+                                   WHERE indiretti.con_oid = v.con_oid AND indiretti.valore = v.valore) x) AS scrittori_nomi,
+                         (SELECT string_agg(DISTINCT s.funzione, ', ' ORDER BY s.funzione)
+                            FROM scrittori s
+                           WHERE s.schema_tabella = v.schema_tabella
+                             AND s.nome_tabella = v.nome_tabella) AS scrittori_tabella
+                    FROM valori v
+              )
+              SELECT m.schema_tabella, m.nome_tabella, m.colonna, m.vincolo, m.valore,
+                     m.ha_default, m.scrittori_fn, m.scrittori_indiretti, m.scrittori_nomi,
+                     m.scrittori_tabella,
+                     CASE
+                         WHEN m.scrittori_fn > 0 OR m.scrittori_indiretti > 0
+                             THEN CASE WHEN d.id IS NULL THEN 'SCRITTO' ELSE 'DEBITO_ESTINTO' END
+                         WHEN m.ha_default
+                             THEN CASE WHEN d.id IS NULL THEN 'SCRITTO_DA_DEFAULT' ELSE 'DEBITO_ESTINTO' END
+                         WHEN d.id IS NULL THEN 'NON_DICHIARATO'
+                         WHEN d.canale = 'APPLICAZIONE' THEN 'DICHIARATO_APPLICAZIONE'
+                         ELSE 'ESENTE'
+                     END AS esito,
+                     d.canale, d.ragione, d.data_registrazione
+                FROM misura m
+                LEFT JOIN dbops.stati_check_dichiarazioni d
+                       ON d.schema_tabella = m.schema_tabella
+                      AND d.nome_tabella = m.nome_tabella
+                      AND d.colonna = m.colonna
+                      AND d.valore = m.valore
+              UNION ALL
+              -- Le dichiarazioni rimaste senza il loro valore (uscito dal CHECK).
+              SELECT d.schema_tabella, d.nome_tabella, d.colonna,
+                     NULL::text AS vincolo, d.valore,
+                     NULL::boolean AS ha_default,
+                     NULL::integer AS scrittori_fn,
+                     NULL::integer AS scrittori_indiretti,
+                     NULL::text AS scrittori_nomi,
+                     NULL::text AS scrittori_tabella,
+                     'DEBITO_ESTINTO' AS esito,
+                     d.canale, d.ragione, d.data_registrazione
+                FROM dbops.stati_check_dichiarazioni d
+               WHERE NOT EXISTS (SELECT 1 FROM valori v
+                                  WHERE v.schema_tabella = d.schema_tabella
+                                    AND v.nome_tabella = d.nome_tabella
+                                    AND v.colonna = d.colonna
+                                    AND v.valore = d.valore);
+
+              COMMENT ON VIEW dbops.vw_stati_check_scrittori IS
+                  'PRESIDIO C1 — uno stato previsto dal modello (nel CHECK a lista di una colonna '
+                  'di stato) e mai scritto. Una riga per (colonna, valore) con il suo esito: '
+                  'SCRITTO (una funzione scrive la tabella e nomina il letterale, oppure lo passa '
+                  'a uno scrittore posizionale: il secondo salto), SCRITTO_DA_DEFAULT, '
+                  'DICHIARATO_APPLICAZIONE / ESENTE (sta in dbops.stati_check_dichiarazioni), '
+                  'NON_DICHIARATO (il debito da sanare) e DEBITO_ESTINTO nei due versi. '
+                  '⚠️ Il criterio e'' TESTUALE e ha due limiti, dichiarati nel suo pgTAP: '
+                  'nominare non e'' scrivere (test 6) e a tre salti il letterale non si segue '
+                  'piu'' (test 9). ⭐ Rev 2026-09-22: stessa misura, estratta UNA volta invece '
+                  'che provata per coppia — i nomi scritti da ogni funzione e i letterali citati '
+                  'si ricavano con un passaggio solo, poi si confrontano per uguaglianza. Output '
+                  'identico riga per riga (EXCEPT nei due versi su dbdev), costo per chiamata da '
+                  '~535 ms a ~230 ms. '
+                  '⛔ Rev 2026-09-23: le funzioni di fixture pgTAP (prefisso fn_pgtap_ in dbops '
+                  'e script) NON contano, ne'' come scrittori ne'' come chiamanti: il presidio '
+                  'misura il sistema, non le fixture che lo collaudano. '
+                  'Brief: brief-db-presidio-stati-mai-scritti §3-bis; '
+                  'brief-db-fixture-che-costruiscono-giro-2 §11.';
+
+              GRANT SELECT ON dbops.vw_stati_check_scrittori TO zeroerp_app;
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo dal corpo di 20260923-51.
+              SELECT 1;

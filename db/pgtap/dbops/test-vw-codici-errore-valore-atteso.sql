@@ -37,6 +37,9 @@
 --   girerebbe identico solo per coincidenza. Qui le funzioni-testimone le
 --   scrive il test.
 --
+-- ⚠️ LA VISTA SI LEGGE UNA VOLTA (rev 20261104-43): le asserzioni leggono una
+--   fotografia presa dopo i testimoni, non la vista a ogni asserzione.
+--
 -- ⚠️ I TEST 5 E 6 SONO L'ECCEZIONE, E VA SAPUTO: leggono il codice VIVO, perche'
 --   la domanda del backend era su una funzione precisa. La vista aggrega per
 --   CODICE e non espone la funzione, quindi «nella terza guardia di
@@ -134,10 +137,20 @@ END
 $f$;
 
 -- ============================================================
+-- La fotografia della vista, UNA volta, dopo i testimoni
+-- ============================================================
+-- ⚠️ La vista legge tutti i corpi plpgsql riga per riga (~0,8 s per lettura,
+--   scratch, 2026-11-04) e le sette asserzioni la leggevano sette volte. Da qui
+--   in giu' il database non cambia: una fotografia da' lo stesso risultato. I
+--   test 5-7, che leggono il codice vivo, leggono la stessa fotografia.
+CREATE TEMP TABLE _forme ON COMMIT DROP AS
+SELECT * FROM dbops.vw_codici_errore_forme_condizione;
+
+-- ============================================================
 -- 1..4. Le quattro forme, lette dalla vista
 -- ============================================================
 SELECT is(
-    (SELECT famiglie FROM dbops.vw_codici_errore_forme_condizione
+    (SELECT famiglie FROM _forme
       WHERE codice = 'E_PGTAP_FORMA_VALORE_ATTESO'),
     ARRAY['VALORE_ATTESO'],
     '1. «il valore letto non e'' quello ammesso» e'' VALORE_ATTESO, non IGNOTO'
@@ -146,21 +159,21 @@ SELECT is(
 -- ⛔ Senza questo, il test 1 passerebbe anche su un classificatore che dice
 --   sempre VALORE_ATTESO — cioe' su un asse che ha smesso di distinguere.
 SELECT is(
-    (SELECT famiglie FROM dbops.vw_codici_errore_forme_condizione
+    (SELECT famiglie FROM _forme
       WHERE codice = 'E_PGTAP_FORMA_ILLEGGIBILE'),
     ARRAY['IGNOTO'],
     '2. una guardia che nessuna regola sa leggere resta IGNOTO: la misura dichiara di non sapere'
 );
 
 SELECT is(
-    (SELECT famiglie FROM dbops.vw_codici_errore_forme_condizione
+    (SELECT famiglie FROM _forme
       WHERE codice = 'E_PGTAP_FORMA_ENUM'),
     ARRAY['ENUM'],
     '3. un NOT IN resta ENUM: il ramo nuovo viene DOPO, e non riscrive letture vecchie'
 );
 
 SELECT is(
-    (SELECT famiglie FROM dbops.vw_codici_errore_forme_condizione
+    (SELECT famiglie FROM _forme
       WHERE codice = 'E_PGTAP_FORMA_PARAMETRO'),
     ARRAY['PARAMETRO'],
     '4. una guardia su parametro nullo resta PARAMETRO anche se confronta un letterale'
@@ -183,7 +196,7 @@ SELECT is(
 -- ⚠️ Questo test legge il codice VIVO: se quella guardia cambia forma diventa
 --   rosso, ed e' corretto — e' il soggetto.
 SELECT is(
-    (SELECT famiglie FROM dbops.vw_codici_errore_forme_condizione
+    (SELECT famiglie FROM _forme
       WHERE codice = 'E_EMAIL_LOG_NON_DI_SISTEMA'),
     ARRAY['VALORE_ATTESO'],
     '5. la guardia segnalata dal backend e'' leggibile, e ha un codice SUO'
@@ -198,7 +211,7 @@ SELECT is(
 --   che sulla stessa forma pretende VALORE_ATTESO: i due vanno letti insieme.
 SELECT ok(
     (SELECT NOT ('VALORE_ATTESO' = ANY(famiglie))
-       FROM dbops.vw_codici_errore_forme_condizione
+       FROM _forme
       WHERE codice = 'E_VALIDAZIONE'),
     '6. e E_VALIDAZIONE, che e'' DATO_ERRATO, non copre piu'' quella forma'
 );
@@ -211,7 +224,7 @@ SELECT ok(
 --   servirebbe a niente. ⚠️ Si esclude il seminato di questo file, altrimenti il
 --   test si risponderebbe da solo.
 SELECT isnt_empty(
-    $$SELECT codice FROM dbops.vw_codici_errore_forme_condizione
+    $$SELECT codice FROM _forme
        WHERE 'VALORE_ATTESO' = ANY(famiglie)
          AND codice NOT LIKE 'E_PGTAP_FORMA_%'$$,
     '7. nel codice vero qualcuno porta davvero VALORE_ATTESO: il ramo non e'' scritto a vuoto'
