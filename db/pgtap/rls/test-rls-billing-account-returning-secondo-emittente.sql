@@ -110,7 +110,10 @@ BEGIN
 
     -- Codice libero: `codice` e' UNIQUE su billing_account e su
     -- istanze_utilities, senza filtro su nessuno stato.
-    v_codice := 'PGTAPD13' || substring(md5(clock_timestamp()::text) from 1 for 8);
+    -- rev 2026-11-04: upper() sul suffisso: il codice si salva in maiuscolo
+    -- (automazione CODICE_MAIUSCOLO), e il test 2 ritrova la riga per valore
+    -- (f.codice = b.codice): la fixture deve ricomporlo uguale.
+    v_codice := 'PGTAPD13' || upper(substring(md5(clock_timestamp()::text) from 1 for 8));
 
     v_soggetto_id := dbops.fn_pgtap_crea_soggetto_pg('Cliente D13 ' || v_codice);
     v_sr_id       := dbops.fn_pgtap_crea_soggetto_ruolo(v_soggetto_id, 'CL'::character varying);

@@ -12,7 +12,6 @@
 > Approfondimento funzioni:
 >
 > * [script.trgfn_guard_date_validita](/dbzero/script/funzioni/trgfn_guard_date_validita) — il guard che monta: `valido_al` non precede `valido_dal`
-> * [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations) — l'orchestratore, di cui è la parte `DATE_VALIDITA`
 > * [maintenance.proc_automations_lock_columns_job](/dbzero/maintenance/funzioni/proc_automations_lock_columns_job) — il giro a orario che la chiama
 > * [dbops.fn_trigger_exists_by_name](/dbzero/dbops/funzioni/fn_trigger_exists_by_name) — il riconoscimento per nome
 > * [dbops.fn_trigger_exists_by_function](/dbzero/dbops/funzioni/fn_trigger_exists_by_function) — il riconoscimento per funzione
@@ -31,8 +30,7 @@ Monta il guard della regola del periodo, `script.trgfn_guard_date_validita`, su 
 dell'ambito che ha le colonne `valido_dal` e `valido_al`: un trigger `BEFORE INSERT OR UPDATE OF`
 delle due date, che rifiuta una fine che precede l'inizio con un errore che l'operatore capisce.
 
-La chiamano la convergenza di ogni migrate, l'orchestratore `dbops.fn_run_automations` (parte
-`DATE_VALIDITA`) e il giro a orario `automations_lock_columns`.
+La chiamano la convergenza di ogni migrate e il giro a orario `automations_lock_columns`.
 
 ---
 
@@ -61,7 +59,9 @@ La strategia d'esistenza della regola dice come: per nome, per funzione, o con e
 caratteri si riconosce comunque dalla funzione. A regime il giro non fa DDL.
 
 Con `p_dry_run` vero non crea niente e scrive in `dbops.audit_log` una riga per ogni tabella su cui
-monterebbe il guard. Il montaggio vero non lascia una riga d'audit.
+monterebbe il guard. Il montaggio vero non lascia una riga d'audit. ⚠️ La riga della simulazione è
+firmata `dbops.fn_run_automations`, non col nome di questa funzione: un nome che non esiste più,
+perché l'orchestratore è stato ritirato. È un difetto aperto.
 
 ---
 
@@ -104,6 +104,8 @@ tabella, e poi esce. Due casi:
   tabella, o non parlava (`brief-db-guard-date-validita`).
 * 2026-10-16 — un guasto dell'ambiente esce con il suo SQLSTATE; prima diventava un errore di
   dominio, e il presidio dei job lo mandava allo sviluppo (`brief-db-presidio-job-run-a-chi-tocca`).
+* 2026-11-04 — ritirato l'orchestratore `dbops.fn_run_automations`, di cui era la parte
+  `DATE_VALIDITA`; la firma della simulazione ne porta ancora il nome (`brief-db-revisione-dbops`).
 
 ---
 

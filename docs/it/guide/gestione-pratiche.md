@@ -1,6 +1,6 @@
 # Guida — Gestione Pratiche e Workflow
 
-> **Ultimo aggiornamento**: 19 settembre 2026
+> **Ultimo aggiornamento**: 4 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali
 >
@@ -726,7 +726,7 @@ dispatch_handler(flusso_id)
 
 ### Trigger business-specific (non standard)
 
-I trigger standard (audit, lock codice_interno, attivo protection, tx_id, storicizzazione) sono gestiti automaticamente da [`dbops.fn_run_automations()`](/dbzero/dbops/funzioni/fn_run_automations). Qui sono elencati **solo** i trigger del dominio pratiche, con la relativa trigger function.
+I trigger standard (audit, lock codice_interno, attivo protection, tx_id, storicizzazione) sono gestiti automaticamente dai runner del [framework di automazione](/guide/automazione-db) (`dbops.fn_run_automations_<tipo>`), che la convergenza di ogni migrate e i job pgAgent chiamano nell'ordine di [dbops.processi](/dbzero/dbops/tabelle/processi). Qui sono elencati **solo** i trigger del dominio pratiche, con la relativa trigger function.
 
 #### Su `pratiche.pratiche`
 

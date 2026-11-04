@@ -53,7 +53,7 @@ La validazione avviene nel **service Django** (non nel DB) perche' richiede look
 ### Convenzioni
 
 * Struttura config-like nel schema `pratiche`: `codice` UNIQUE, `codice_interno` UNIQUE + locked, `attivo`, `meta`, audit.
-* Trigger standard applicati automaticamente da `dbops.fn_run_automations()`.
+* Trigger standard applicati automaticamente dai runner del framework di automazione (`dbops.fn_run_automations_<tipo>`).
 
 ---
 

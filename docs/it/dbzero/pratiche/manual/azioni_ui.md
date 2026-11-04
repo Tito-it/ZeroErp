@@ -62,7 +62,7 @@ Le voci `APRI_OFFERTA` / `APRI_CONTRATTO` (famiglia documenti confermata) entrer
 ### Convenzioni
 
 * Registry puro: no `storicizza`, no `tx_id` (non serve tracciamento transazionale) — identico a `handler_flussi`.
-* Trigger standard applicati automaticamente da `dbops.fn_run_automations()`.
+* Trigger standard applicati automaticamente dai runner del framework di automazione (`dbops.fn_run_automations_<tipo>`).
 
 ---
 

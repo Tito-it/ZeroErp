@@ -115,8 +115,8 @@ pratiche aperte).
 
 ### Convenzioni
 
-* Trigger standard (audit, tx_id, lock) applicati automaticamente da
-  `dbops.fn_run_automations()`.
+* Trigger standard (audit, tx_id, lock) applicati automaticamente dai runner
+  del framework di automazione (`dbops.fn_run_automations_<tipo>`).
 * Brief: `brief-db-step-dominio-e-definizioni-versionate.md` (Parte 2) — design:
   `brief-design-workflow-definizioni-versionate.md` (modello C, decisione 2026-07-02).
 * Test: `db/pgtap/pratiche/test-workflow-definizioni-fase0.sql`.

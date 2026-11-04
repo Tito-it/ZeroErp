@@ -57,8 +57,8 @@ La chiave è (`target_schema`, `target_table`, `column_name`).
   un codice **vivo** di `config.codici_errore`: una riga qui è un punto di chiamata differito, che
   non solleva niente finché il giro non monta il trigger e da allora lo solleva per sempre. Lo
   presidia il controllo (H) di `scripts/sql/guardrail_codice_errore_strutturato.sql`, in CI.
-  ⚠️ Il default della colonna è `CODICE_NON_MODIFICABILE`, codice ritirato: una riga che non
-  dichiara il codice lo riceve, e la ferma solo il guardrail. Il codice si scrive sempre.
+  ⭐ La colonna è obbligatoria e **non ha default**: ogni riga dichiara il suo codice, e una riga
+  che lo dimentica fallisce subito, all'inserimento.
 * `exec_mode` — in quale giro il lock **nasce**: `AUTO` in ogni giro, `CI` solo nella convergenza
   del rilascio, `SCHEDULED` solo nel giro notturno. Una colonna già bloccata da un altro giro
   resta bloccata: altrimenti un giro toglierebbe ogni volta ciò che l'altro ha messo.
@@ -116,6 +116,9 @@ processo `automations_lock_columns`. Non serve un changeSet che tolga e rimonti 
   registro non nomina (`brief-db-lock-di-colonna-fuori-registro`). Prima un lock nato una volta
   non si riallineava più, e la funzione ritirata `fn_run_automations_drop_lock_trg` cancellava ogni
   sera anche i lock scritti a mano.
+* 2026-11-04 — `error_code` perde il default `CODICE_NON_MODIFICABILE`, un codice ritirato il
+  2026-08-05: una riga che non dichiarava il codice lo riceveva, e la fermava solo il guardrail a
+  valle. Nessuna riga si appoggiava al default (`brief-db-revisione-dbops`).
 
 ---
 

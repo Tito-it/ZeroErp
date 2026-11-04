@@ -78,7 +78,7 @@ BEGIN
     IF p_articolo_id IS NULL THEN
         SELECT nv.id INTO v_natura_id
           FROM config.nature_vendita nv
-         WHERE nv.destinazione_tipo = 'ORDINE_VENDITA' AND nv.attivo IS TRUE
+         WHERE script.fn_natura_e_merce(nv.id) AND nv.attivo IS TRUE
          ORDER BY nv.id
          LIMIT 1;
     END IF;
@@ -110,7 +110,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_preventivo_con_righe(p_etichetta text, p_stato_codice_interno character varying, p_preventivo_id bigint, p_prezzo numeric, p_articolo_id uuid)
-IS 'Fixture pgTAP: un PREVENTIVO con una riga valida per l''emissione (articolo di merce costruito o p_articolo_id, prima aliquota positiva del catalogo, quantita 1, prezzo 10 o p_prezzo), nello stato chiesto (secondo parametro, default EMESSO), per la strada vera: la riga in bozza, poi lo stato per la matrice con dbops.fn_pgtap_porta_a_stato (il verbo, sotto la porta). ⭐ Esiste per la REGOLA DEL DOMINIO che i test ricopiavano: l''emissione chiede almeno una riga attiva (vendite.trgfn_preventivi_guard_transizione), e prima della porta i test emettevano preventivi senza righe. La testata e'' nuova (dbops.fn_pgtap_crea_preventivo, che resta senza righe) o quella del test (p_preventivo_id: in bozza, altrimenti solleva). Restituisce testata, la riga scritta, articolo, BA, emittente, utente di contesto e stato. ⚠️ Senza contesto aperto lo apre sull''operatore che costruisce; esce con i vincoli IMMEDIATE. Gemello di dbops.fn_pgtap_crea_ordine_con_righe. Brief: brief-modello-documento-vendita §8. Rev 2026-10-27 (20261027-31, brief-modello-documento-vendita §15.13): lo stato iniziale dalla testata (vendite.preventivi) con script.fn_doc_stato_iniziale_id, non dal vocabolario.';
+IS 'Fixture pgTAP: un preventivo con una riga valida per l''emissione (articolo di merce costruito, con la natura scelta da script.fn_natura_e_merce, o p_articolo_id; prima aliquota positiva del catalogo, quantita'' 1, prezzo 10 o p_prezzo), nello stato chiesto (default EMESSO), per la strada vera: la riga in bozza, poi lo stato con dbops.fn_pgtap_porta_a_stato, il verbo sotto la porta. Esiste per la regola del dominio che i test ricopiavano: l''emissione chiede almeno una riga attiva. La testata e'' nuova (dbops.fn_pgtap_crea_preventivo, che resta senza righe, nello stato iniziale della testata) o quella del test (p_preventivo_id: in bozza, altrimenti solleva). Restituisce testata, riga, articolo, billing account, emittente, utente di contesto e stato. Senza contesto aperto lo apre sull''operatore che costruisce; esce con i vincoli IMMEDIATE. Gemello di dbops.fn_pgtap_crea_ordine_con_righe.';
 ```
 
 </div>

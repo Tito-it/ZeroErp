@@ -37,7 +37,9 @@ confronto per conto suo.
 ### Atteso e vivo
 
 * **Atteso**: `codice_interno`, se la tabella ce l'ha, con `E_CODICE_NON_MODIFICABILE`; poi le
-  righe attive di `dbops.automation_lock_columns` su colonne che esistono, con il loro codice. Una
+  righe attive di `dbops.automation_lock_columns` su colonne che esistono, con il loro codice. ⚠️ Il
+  codice della riga passa da un ripiego su `E_CODICE_NON_MODIFICABILE` se fosse vuoto: non scatta
+  mai, perché la colonna del registro è obbligatoria e senza default, ogni riga dichiara il suo. Una
   riga di un altro `exec_mode` è attesa solo se la colonna è **già** bloccata: il modo dice
   quando un lock nasce, non quando esiste. Il nome atteso viene dal `name_template` della prima
   regola `LOCK_COLUMNS` attiva che copre la tabella (in ordine di priorità), e in mancanza dal
@@ -87,6 +89,9 @@ convergenza la toglie.
 * 2026-09-26 — nasce come criterio unico della convergenza dei lock di colonna
   (`brief-db-lock-di-colonna-fuori-registro`). Lo usa anche il changeSet di `90_end` che, il
   giorno della convergenza, ne ha preteso zero.
+* 2026-11-04 — `dbops.automation_lock_columns.error_code` perde il default: il ripiego sul codice
+  vuoto resta nel corpo ma non scatta più, e si toglie quando la funzione si riapre
+  (`brief-db-revisione-dbops`).
 
 ---
 

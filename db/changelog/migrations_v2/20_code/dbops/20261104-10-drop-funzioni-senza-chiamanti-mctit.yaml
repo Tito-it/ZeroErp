@@ -1,0 +1,94 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Ritiro di undici funzioni di dbops senza chiamanti.
+#   Brief: brief-db-revisione-dbops, D61 (classe C). Decisione di Tid,
+#   2026-11-04: si ritira solo cio' che e' certo non sia usato.
+#
+# ── Il censimento (2026-11-04) ─────────────────────────────────────────────
+#   Per ogni funzione, nessun chiamante in:
+#     - repository: db/changelog (tutti gli alberi), db/pgtap, backend, frontend,
+#       scripts, .github — fuori dai changeSet che la creano o la ricreano;
+#     - database di sviluppo: corpi di tutte le funzioni (prosrc, e il testo
+#       intero per le BEGIN ATOMIC), definizioni delle viste, step pgAgent,
+#       trigger montati.
+#   Tutte di zeroerp_owner, SECURITY INVOKER: le toglie chi migra.
+#   Unica eccezione apparente: dbops.fn_run_automations compare nei runner
+#   fn_run_automations_lock_columns / _tx_id / _audit_update / _date_validita
+#   solo come etichetta testuale (p_function_name dell'audit dei dry run), non
+#   come chiamata; il test backend test_tracciamento_repositories la usa come
+#   stringa di una riga d'audit finta.
+#
+# ── Che cosa si toglie, e perche' ──────────────────────────────────────────
+#   Utility una tantum del primo albero (migrations/50_dbops/2025092x), gia'
+#   eseguite e da non rilanciare: rinominano anche i CONSTRAINT TRIGGER (nome
+#   morto in pg_constraint), producono nomi fuori dalla regola di oggi,
+#   montano lucchetti fuori dal registro automation_lock_columns.
+#     fn_rename_triggers_by_order, fn_fix_triggers_events_noorder,
+#     fn_fix_triggers_event_tokens, fn_cleanup_triggers_suffix_2,
+#     fn_fix_lock_codice_interno_triggers
+#   ⚠️ fn_fix_triggers_event_tokens non la crea nessun changeSet (git log -S
+#     vuoto): esiste solo sui database di chi l'ha creata a mano. IF EXISTS la
+#     toglie dove c'e' e non fa niente altrove.
+#   Le altre:
+#     fn_trigger_exists_cascade_by_args — cerca trgfn_soft_delete_cascade,
+#       ritirata il 2026-01-01;
+#     fn_normalize_indirizzo — civico sempre vuoto, l'id della via nella
+#       colonna dell'indirizzo; la sede vera e' anagrafiche.fn_build_indirizzo_normalizzato;
+#     fn_migrate_add_indirizzo_normalizzato — seconda copia, divergente, della
+#       formula di anagrafiche.fn_build_indirizzo_normalizzato;
+#     fn_set_gucs_conn — scrive GUC che nessuno legge (app.user_id,
+#       app.group_ids) o che nessuno usa (app.session_key, decisione Q10 aperta);
+#     fn_seed_automazione_overlap — seconda sorgente del registro
+#       automazione_overlap (lo scrivono i changeSet di 80_data); lanciata,
+#       riscriveva le righe curate;
+#     fn_run_automations — orchestratore senza chiamanti, con ordine e parti
+#       diversi dal giro vero (dbops.processi.ci_ordine).
+#
+# ── Ordine su un database da zero ──────────────────────────────────────────
+#   Il primo albero (changelog-master.yaml) gira prima di migrations_v2, e
+#   nessun changeSet di 70_dati_sistema, 80_data, 85_pgagent o 90_end nomina
+#   queste funzioni: il DROP in 20_code non lascia nessuno a pretenderle.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261104-10-drop-funzioni-senza-chiamanti-mctit.yaml
+
+  - changeSet:
+      id: 20261104-10-drop-funzioni-senza-chiamanti
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Ritiro di undici funzioni di dbops senza chiamanti: cinque utility una tantum dei
+        trigger, fn_trigger_exists_cascade_by_args, fn_normalize_indirizzo,
+        fn_migrate_add_indirizzo_normalizzato, fn_set_gucs_conn, fn_seed_automazione_overlap,
+        fn_run_automations.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_rename_triggers_by_order(text, boolean, text);
+              DROP FUNCTION IF EXISTS dbops.fn_fix_triggers_events_noorder(boolean, text);
+              DROP FUNCTION IF EXISTS dbops.fn_fix_triggers_event_tokens(text, boolean, text);
+              DROP FUNCTION IF EXISTS dbops.fn_cleanup_triggers_suffix_2(boolean, text);
+              DROP FUNCTION IF EXISTS dbops.fn_fix_lock_codice_interno_triggers(text, boolean, boolean, boolean, text);
+              DROP FUNCTION IF EXISTS dbops.fn_trigger_exists_cascade_by_args(regclass, text, text, text);
+              DROP FUNCTION IF EXISTS dbops.fn_normalize_indirizzo(integer, text);
+              DROP FUNCTION IF EXISTS dbops.fn_migrate_add_indirizzo_normalizzato();
+              DROP FUNCTION IF EXISTS dbops.fn_set_gucs_conn(integer, text, integer[]);
+              DROP FUNCTION IF EXISTS dbops.fn_seed_automazione_overlap(text[]);
+              DROP FUNCTION IF EXISTS dbops.fn_run_automations(text, text[], boolean, text[]);
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo che le ricrea dal corpo di prima.
+              SELECT 1;

@@ -18,7 +18,6 @@
 > Approfondimento funzioni:
 >
 > * [dbops.fn_apply_automazione_overlap](/dbzero/dbops/funzioni/fn_apply_automazione_overlap) — il lavoro vero: i vincoli `EXCLUDE` che mancano
-> * [dbops.fn_seed_automazione_overlap](/dbzero/dbops/funzioni/fn_seed_automazione_overlap) — la rilevazione automatica delle tabelle versionate: esiste, ma non la chiama nessuno; le righe del registro le scrivono i changeSet di `80_data`
 > * [maintenance.fn_run_and_log](/dbzero/maintenance/funzioni/fn_run_and_log) — il giornale da cui passa la chiamata, col lock e il verbale del fallimento
 > * [maintenance.fn_sveglia_accesa](/dbzero/maintenance/funzioni/fn_sveglia_accesa) — il cancello dello step pgAgent
 >

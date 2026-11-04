@@ -1,8 +1,8 @@
 # Brief DB — Dove si addebita il trasporto di un ordine fatturato alla conferma
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-03
+## ⏭️ Chi riparte — aggiornato al 2026-11-04
 
-**Riparte: Tid**, col commit di BE e FE (`dev/backend-tid`) e l'archiviazione del brief: BE e FE del §9.3, §9.4, §9.8 e §9.9 sono fatti (2026-11-03), compresi 8-ter e P-6 sopra il `-53` del DB, la rilettura critica (8-quater) e le due note di «Genera DDT» sopra il `-65` (8-sexies). Lato DB tutto applicato, verde e committato (`20261103-16…-53`, 2026-11-03). Lato DB i giri 1 e 2 sono chiusi e applicati (`20261103-16…-48` e i seed del trasporto, 2026-11-03); corsa pgTAP di Tid verde come applicazione e lavoro committato (2026-11-03); l'archiviazione dopo BE e FE. Tid ha scelto la forma (2026-11-03): **oneri come righe del documento**, a cura dell'operatore come gli articoli.
+**Riparte: Tid**, col via allo sviluppo del giro 8-septies (§9.10: la causale dell'onere nella vista e nel form articolo, 2026-11-04). Prima, col commit di BE e FE (`dev/backend-tid`) e l'archiviazione del brief: BE e FE del §9.3, §9.4, §9.8 e §9.9 sono fatti (2026-11-03), compresi 8-ter e P-6 sopra il `-53` del DB, la rilettura critica (8-quater) e le due note di «Genera DDT» sopra il `-65` (8-sexies). Lato DB tutto applicato, verde e committato (`20261103-16…-53`, 2026-11-03). Lato DB i giri 1 e 2 sono chiusi e applicati (`20261103-16…-48` e i seed del trasporto, 2026-11-03); corsa pgTAP di Tid verde come applicazione e lavoro committato (2026-11-03); l'archiviazione dopo BE e FE. Tid ha scelto la forma (2026-11-03): **oneri come righe del documento**, a cura dell'operatore come gli articoli.
 Tid ha deciso T-4 (2026-11-03): **prima** si lega l'onere al documento, **poi** il trasporto.
 
 | # | Chi | Che cosa | Dove | Aspetta |
@@ -29,9 +29,13 @@ Tid ha deciso T-4 (2026-11-03): **prima** si lega l'onere al documento, **poi** 
 | 11 | ✅ DB | T-3 bis: `-47`, `-48`, pgTAP, guide; applicati (12:33) | §10.2 | — |
 | 12 | ✅ Tid / DB | corsa pgTAP del giro 2 verde (Tid); commit dei giri 1 e 2 (2026-11-03) | §10.4 | — |
 | 12-bis | ✅ DB / Tid | richiesta BE §9.8: `-49`…`-52`, applicati, pgTAP verdi, committati (2026-11-03) | §9.8 | — |
-| 13 | Tid | commit di BE e FE, poi archiviazione del brief | — | — |
+| 13 | Tid | commit di BE e FE del §9.9 | — | — |
+| 14 | ✅ Tid | 8-septies: la causale nella vista; A-10 resta («bloccata se usato») (2026-11-04) | §9.10 | — |
+| 15 | DB | `causale_onere_codice_interno` e `causale_onere_descrizione` in coda a `vw_articoli_dettaglio` | §9.10 | via allo sviluppo di Tid |
+| 16 | BE / FE | le due colonne nominate; causale nel form articolo (libera in inserimento, spenta se bloccata), picker delle sole causali libere | §9.10 | 15 |
+| 17 | Tid | archiviazione del brief | — | 16 |
 
-Decisioni aperte di Tid: nessuna. Lavoro da committare: BE e FE del §9.9, da 8-ter a 8-sexies (`dev/backend-tid`, 2026-11-03).
+Decisioni aperte di Tid: nessuna. Lavoro da committare: BE e FE del §9.9, da 8-ter a 8-sexies (`dev/backend-tid`, 2026-11-03), se non già in PR #28.
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-13. **A chi:** Tid, poi il team DB.
 > **Origine:** decisione A-9 di Tid (2026-10-12) in
@@ -674,3 +678,43 @@ passare, NULL sulla merce), con la regola della copia nella bolla (fast-forward 
 | FE «Genera DDT» | gli oneri restano fuori dalla tabella e si contano in due: da passare (`evasione_oneri_nota`, ora «nella prossima bolla»: dopo il ritiro di una riga di bolla l'onere torna da passare, e la bolla dopo non è la prima) e già partiti (`evasione_oneri_in_bolla_nota`, nuova). «Già partito» si legge dalla colonna, mai ricostruito dai legami. `OrdineEvasioneDialog.spec.js` +2 test (6): l'onere partito, un onere partito e uno da passare |
 
 Prove: spec del dialog 6/6, eslint pulito, `check_i18n_keys` pulito.
+
+### 9.10 Giro 8-septies — la causale dell'onere a video (Tid, 2026-11-04)
+
+**Origine.** Tid, 2026-11-04: nella gestione articoli serve vedere la causale dell'articolo-onere,
+modificabile in inserimento e bloccata in modifica.
+
+**Decisioni di Tid (2026-11-04).**
+
+1. La decodifica in coda a `catalogo.vw_articoli_dettaglio`, sulla forma di `natura_vendita_*`:
+   `causale_onere_codice_interno` (per la logica) e `causale_onere_descrizione` (a video). ⛔ Non
+   `causale_onere_codice`: sopra un `codice_interno` mente sulla sorgente (linee-guida-sql §6c,
+   guardrail CI `check_naming_stato_codice.sql`).
+2. Il blocco in modifica **resta A-10** (`brief-db-articoli-ammessi-per-documento`, 2026-10-13): la
+   causale si blocca quando l'articolo è **usato**, come natura, composito, magazzino, lotto e
+   matricola, che dicono con lei che cos'è l'articolo. Prima del primo uso cambiarla non rompe
+   niente. A DB c'è già tutto: `trgfn_articoli_guard_struttura_se_usato`, il gemello per il form in
+   `dbops.lock_columns_conditional` (`20261013-51`), la porta `fn_articolo_correggi_struttura`
+   (SUPER_ADMIN).
+
+**DB (dopo il via).** Un changeSet `20_code`: `CREATE OR REPLACE VIEW` con `LEFT JOIN
+config.causali_onere` e le due colonne in coda (la vista può solo appendere); DDL dalla doc
+auto-generata (rev `-53`). pgTAP: le due colonne decodificano un articolo-onere costruito nel test, e
+sono `NULL` sulla merce.
+
+**Richiesta al BE.**
+
+* le due colonne in `ARTICOLI_DETAIL_COLUMNS` (lista e drawer) e, se il picker le mostra, in
+  `_LOOKUP_ARTICOLI_COLONNE`: la vista le espone, ma finché il BE non le nomina non escono.
+
+**Richiesta al FE.**
+
+* nel drawer articolo la causale si **vede** (`causale_onere_descrizione`), si sceglie in inserimento e
+  si spegne quando `lock_columns_conditional` la dichiara bloccata (articolo usato), come gli altri
+  campi di struttura;
+* in inserimento il picker offre **solo le causali attive non ancora legate** a un articolo: il legame
+  è 1:1 (`uq_articoli_causale_onere`). ⚠️ Fatto di struttura (2026-11-04): la violazione di
+  quell'indice **non ha un codice registrato** e arriverebbe come 23505 grezzo; se il picker non basta
+  a escluderla, il DB la traduce in un codice nel giro (da decidere nello sviluppo).
+* scegliendo una causale valgono le regole già a video da P-6 (flag di struttura spenti) e il guard
+  `trgfn_articoli_guard_onere_natura` (natura non merce).

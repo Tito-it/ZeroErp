@@ -32,8 +32,7 @@
 Il runner del cleanup: per ogni tabella dell'ambito applica le regole `CLEANUP_AT` (scrive la
 scadenza `cleanup_at` delle righe) e `CLEANUP_PURGE` (cancella a lotti le righe scadute) che la
 coprono, e lascia una riga di esito in `dbops.audit_log` per ogni tabella e regola. Lo lancia il
-processo `automations_cleanup`, la domenica su pgAgent e nella convergenza in CI; la chiama anche
-l'orchestratore `dbops.fn_run_automations` quando gli si chiede la parte `CLEANUP`.
+processo `automations_cleanup`, la domenica su pgAgent e nella convergenza in CI.
 
 ---
 

@@ -26,7 +26,6 @@ dbops.vw_eventi_non_dichiarati,it,NULL,L'applicazione ha registrato eventi con u
 dbops.vw_fk_con_indice_missing_policy,it,NULL,Manutenzione del database: alcuni collegamenti fra tabelle vanno portati sotto la gestione automatica degli indici.,Nessuna urgenza: lo sviluppo lancia la procedura che li registra.
 dbops.vw_indici_ridondanti_prefisso,it,NULL,"Manutenzione del database: ci sono indici inutili, perché già coperti da altri.",Nessuna urgenza: lo sviluppo li rimuove con una modifica al database.
 dbops.vw_duplicate_indexes,it,NULL,Manutenzione del database: ci sono indici duplicati.,Nessuna urgenza: lo sviluppo li rimuove con una modifica al database.
-dbops.vw_run_senza_attore,it,NULL,Alcune attività programmate non registrano chi le ha eseguite.,"Nessuna urgenza: molte si sistemano da sole alla prossima corsa notturna, quelle che restano le sistema lo sviluppo."
 dbops.vw_fk_senza_indice,it,NULL,Manutenzione del database: alcuni collegamenti fra tabelle non hanno un indice. Li sistema l'automazione al prossimo aggiornamento del database.,"Nessuna azione. Se restano dopo un aggiornamento, avvisa lo sviluppo."
 dbops.vw_codici_errore_forme_condizione,it,NULL,Strumento di analisi per lo sviluppo: il numero non indica un problema.,Nessuna azione.
 dbops.vw_codici_errore_da_dichiarare,it,NULL,"Misura per lo sviluppo, verificata ai controlli di rilascio: il numero cresce con ogni codice d'errore nuovo e non indica un problema.",Nessuna azione.

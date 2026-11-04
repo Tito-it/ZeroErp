@@ -15,9 +15,7 @@
 >
 > Approfondimento funzioni:
 >
-> * [dbops.fn_audit_log_once](/dbzero/dbops/funzioni/fn_audit_log_once) — la riga intera in una volta: la porta dell'applicazione
-> * [dbops.fn_audit_begin](/dbzero/dbops/funzioni/fn_audit_begin) — apre una riga `START`, riservata al proprietario
-> * [dbops.fn_audit_end](/dbzero/dbops/funzioni/fn_audit_end) — la chiude con l'esito e la durata
+> * [dbops.fn_audit_log_once](/dbzero/dbops/funzioni/fn_audit_log_once) — la riga intera in una volta: l'unica porta di scrittura delle funzioni di audit
 > * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed) — il trigger che valorizza `tx_id`
 > * [dbops.fn_apply_cleanup_at](/dbzero/dbops/funzioni/fn_apply_cleanup_at) — il job che calcola la scadenza
 >
@@ -43,9 +41,9 @@ un cancello lo tiene così (vedi sotto).
 ### Che cosa dice una riga
 
 * `function_name` è la funzione o l'automazione che ha girato.
-* `status` è l'esito, in un vocabolario chiuso dal vincolo `chk_audit_status`: `START` (una corsa
-  aperta e non ancora chiusa), `OK`, `ERROR`, `WARN`, `DRYRUN` (una simulazione: che cosa la
-  funzione avrebbe fatto).
+* `status` è l'esito, in un vocabolario chiuso dal vincolo `chk_audit_status`: `OK`, `ERROR`,
+  `WARN`, `DRYRUN` (una simulazione: che cosa la funzione avrebbe fatto). Sono tutti esiti finali:
+  la riga si scrive intera, quando la corsa è finita.
 * `executed_by` è il **ruolo di database** che ha scritto la riga, non l'operatore: chi ha chiesto
   il lavoro, se c'è, sta nel contesto della sessione e nel `tx_id`. ⚠️ Le righe scritte prima che
   il default diventasse il ruolo corrente portano la parola `CURRENT_USER`: si riconoscono e non si
@@ -57,8 +55,8 @@ un cancello lo tiene così (vedi sotto).
   `dry_run` dice se era una simulazione.
 * `sqlstate`, `error_context` e `rows_affected` raccontano un errore o un conteggio, quando ci
   sono.
-* `duration_ms` la calcola `fn_audit_end` alla chiusura di una corsa aperta con `fn_audit_begin`;
-  chi scrive la riga intera la passa da sé, o la lascia vuota.
+* `duration_ms` la passa da sé chi scrive la riga, o la lascia vuota: nessuna funzione la calcola.
+  ⚠️ Le durate calcolate vengono dalla modalità sessione ritirata (vedi Note di migrazione).
 
 ---
 
@@ -76,11 +74,11 @@ transazione. Così una corsa si incrocia con gli errori registrati nella stessa 
 | Ruolo | Che cosa può fare | Perché |
 | --- | --- | --- |
 | `zeroerp_app` | leggere e aggiungere | Un registro modificabile da chi è registrato non è un registro: niente modifica, cancellazione, svuotamento |
-| proprietario (migratore, job) | tutto | Scrive le automazioni, chiude le corse aperte con `fn_audit_end`, che è un aggiornamento, e cancella le righe scadute |
+| proprietario (migratore, job) | tutto | Scrive le automazioni e cancella le righe scadute |
 | ruoli batch | leggere | Il perimetro sta nel provisioning |
 
-L'applicazione scrive solo con `fn_audit_log_once`; la coppia `fn_audit_begin` / `fn_audit_end`
-le è negata, perché la chiusura è un aggiornamento della riga.
+L'applicazione scrive solo con `fn_audit_log_once`, che aggiunge la riga intera in una volta: non
+esiste una porta che riscriva una riga già scritta.
 
 ⚠️ La postura non è una revoca scritta una volta: i privilegi dell'applicazione si riconcedono in
 blocco a ogni passata della convergenza del rilascio, e la postura più stretta è dichiarata dentro
@@ -113,8 +111,8 @@ scadute. `cleanup_at` è una data di pulizia, non una scadenza funzionale dell'e
 ### Test
 
 * `db/pgtap/dbops/test-registri-append-only-postura-v1.sql` — l'applicazione legge e aggiunge, non
-  modifica né cancella né svuota; può eseguire `fn_audit_log_once` e non la coppia sessione; la
-  riga scritta porta il ruolo che l'ha scritta.
+  modifica né cancella né svuota; può eseguire `fn_audit_log_once`; le due funzioni della modalità
+  sessione non esistono più; la riga scritta porta il ruolo che l'ha scritta.
 * `db/pgtap/dbops/test-audit-log-perimetro-scrittori-v1.sql` — nessuna funzione fuori da `dbops` e
   `maintenance` scrive nel registro.
 * `db/pgtap/dbops/test-registri-dbops-scadenza-v1.sql` — il registro è nello scope delle
@@ -135,6 +133,10 @@ scadute. `cleanup_at` è una data di pulizia, non una scadenza funzionale dell'e
   diventa il ruolo corrente: prima era la stringa `CURRENT_USER`.
 * 2026-10-23 — entra nello scope delle automazioni con la regola di scadenza a 90 giorni: prima
   nessuna riga scadeva.
+* 2026-11-04 — ritirata la modalità sessione dell'audit, `fn_audit_begin` / `fn_audit_end`: apriva
+  una riga `START` e la chiudeva con un aggiornamento, calcolando `duration_ms`. Non la chiamava
+  nessuno (`brief-db-revisione-dbops`). Con lei esce `START` dagli esiti ammessi: era lo stato di
+  una corsa aperta.
 
 ---
 

@@ -40,7 +40,7 @@ Il sistema di tracciamento e organizzato su **tre livelli**, ciascuno con un ruo
 
 * **Audit log** (`dbops.audit_log`) — traccia le operazioni generiche: automazioni, deploy, processi batch. E il livello trasversale, usato da qualsiasi componente
 * **Job run log** (`maintenance.job_run_log`) — traccia le esecuzioni dei **job schedulati**: pgAgent (lato DB) *e* job headless cron/command (management command Django, es. `run_fatturazione_batch`). Un record per ogni esecuzione con `origine`, esito, durata, dettaglio errori e `meta`
-  * **Dice anche chi**: quale lavoro (nome a registro) e con quale identità. Un run che non lo dice finisce in [vw_run_senza_attore](/dbzero/dbops/views/vw_run_senza_attore).
+  * **Dice anche chi**: quale lavoro (nome a registro) e con quale identità. Un run che non dice di quale processo è non si scrive: il CHECK `chk_job_run_log_processo_dichiarato` lo respinge, e il lavoro non parte.
   * **Un fallimento deve lasciare traccia**: la riga «è andata male» scritta dentro la stessa transazione dell'errore verrebbe annullata insieme all'errore, quindi il verbale viaggia su una linea separata e sopravvive al rollback.
 * **Task registry e task runs** (`dbops` + `vendite`) — traccia l'esecuzione dei task all'interno delle pipeline applicative, con stato, tentativi e policy di resume
 
@@ -259,7 +259,7 @@ La funzione wrapper standard per i job pgAgent. Gestisce:
 * Advisory lock (evita esecuzioni parallele)
 * Logging automatico su `job_run_log` con esito e durata
 * Cattura errori con SQLSTATE e contesto
-* La dichiarazione del processo: il codice arriva da `p_processo_codice` o, se assente, si **deriva dal `jobname`** (per convenzione le due stringhe coincidono); un `jobname` che non corrisponde a nessun processo resta senza attore e finisce in [dbops.vw_run_senza_attore](/dbzero/dbops/views/vw_run_senza_attore)
+* La dichiarazione del processo: il codice arriva da `p_processo_codice` o, se assente, si **deriva dal `jobname`** (per convenzione le due stringhe coincidono); un `jobname` che non corrisponde a nessun processo non diventa una corsa senza attore: il CHECK `chk_job_run_log_processo_dichiarato` respinge la riga, e la corsa non parte
 
 Ogni job schedulato ha una procedura dedicata (es. `proc_automations_storico_job`, `proc_automations_cleanup_job`) che internamente usa `fn_run_and_log` per la parte di logging.
 
@@ -317,12 +317,12 @@ Per concretizzare come i tre livelli interagiscono, questo e il flusso di una pi
          │     advisory lock + INSERT job_run_log (started_at)
          │
          ├── Esecuzione operazione
-         │     (es. dbops.fn_run_automations per STORICO)
+         │     (es. dbops.fn_run_automations_storico per STORICO)
          │
          ├── UPDATE job_run_log → ok=true/false, ended_at
          │
          └── Audit log (opzionale)
-               dbops.fn_audit_begin / fn_audit_end
+               dbops.fn_audit_log_once, una riga per evento
                (se il processo usa il framework di automazione)
 ```
 
@@ -370,7 +370,7 @@ Un errore durante una pipeline produce record in **tre** sistemi:
 * **Usare `tentativo` per i retry** invece di sovrascrivere il record precedente — lo storico completo aiuta la diagnosi
 * **Separare policy da esecuzione**: la tabella `task_policy` definisce il comportamento (annullabile, resume_mode), la tabella `task_runs` registra cosa e successo
 * **Per i job pgAgent, usare sempre `fn_run_and_log`** come wrapper — garantisce logging uniforme e advisory lock
-* **Non duplicare il tracciamento**: se un processo usa `task_runs`, non serve anche un `fn_audit_begin`/`fn_audit_end` sullo stesso perimetro
+* **Non duplicare il tracciamento**: se un processo usa `task_runs`, non serve anche una riga di `dbops.audit_log` sullo stesso perimetro
 
 ---
 
@@ -505,10 +505,15 @@ WHERE processo_codice IS NOT NULL
 ORDER BY processo_codice, started_at DESC;
 ```
 
-**I lavori che non si sono dichiarati** — deve restare vuota:
+**Le corse senza attore** — sono solo quelle scritte prima del CHECK
+`chk_job_run_log_processo_dichiarato` (2026-09-05): una corsa nuova senza processo non si scrive:
 
 ```sql
-SELECT * FROM dbops.vw_run_senza_attore;
+SELECT jobname, origine, max(started_at) AS ultima
+FROM maintenance.job_run_log
+WHERE processo_codice IS NULL
+GROUP BY jobname, origine
+ORDER BY ultima DESC;
 ```
 
 ---

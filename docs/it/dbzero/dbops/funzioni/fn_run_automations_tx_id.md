@@ -125,9 +125,10 @@ BEGIN
           IF p_dry_run THEN
 
             PERFORM dbops.fn_audit_log_once(
-                  p_function_name => 'dbops.fn_run_automations',
+                  p_function_name => 'dbops.fn_run_automations_tx_id',
                   p_status        => 'DRYRUN',
-                  p_rule_type     => 'E_TX_ID',
+                  -- il tipo di regola, non il codice d'errore (era 'E_TX_ID')
+                  p_rule_type     => 'TX_ID',
                   p_exec_mode     => p_exec_mode,
                   p_parts         => ARRAY['TX_ID'],
                   p_dry_run       => true,
@@ -178,7 +179,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_run_automations_tx_id(p_exec_mode text, p_schemas text[], p_dry_run boolean)
-IS 'Crea i trigger TX_ID dove esiste tx_id UUID. ⭐ Rev 2026-10-16: nel gestore WHEN others, un guasto dell''AMBIENTE (script.fn_sqlstate_di_ambiente: 08, 53, 57, 58, 42501, 55P03) si rilancia COM''E'', col suo SQLSTATE, dopo averlo scritto nel registro errori con lo stesso codice e contesto (fn_log_error_only). Prima diventava P0001 col codice dell''involucro, e il presidio dei job (maintenance.vw_job_run_da_guardare) lo mandava allo sviluppo. I difetti di struttura escono come prima. Brief: brief-db-presidio-job-run-a-chi-tocca D8, D11.';
+IS 'Automazione TX_ID: monta il trigger dbops.trgfn_tx_id_managed (BEFORE INSERT OR UPDATE) sulle tabelle dell''ambito che hanno la colonna tx_id di tipo uuid, secondo le regole TX_ID di dbops.automation_rules_tbl (nome dal template, strategia d''esistenza della regola). In simulazione scrive in dbops.audit_log una riga DRYRUN per trigger, firmata con il proprio nome e con rule_type TX_ID. Un guasto dell''ambiente (script.fn_sqlstate_di_ambiente) si scrive nel registro errori e si rilancia con il suo SQLSTATE; gli altri errori della DDL escono con E_TX_ID.';
 ```
 
 </div>

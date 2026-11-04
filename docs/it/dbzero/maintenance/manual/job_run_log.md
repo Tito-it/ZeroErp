@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `maintenance.job_run_log`
 
-> **Ultimo aggiornamento**: 3 novembre 2026
+> **Ultimo aggiornamento**: 4 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -14,7 +14,6 @@
 > * [maintenance.vw_job_run_da_guardare](/dbzero/maintenance/views/vw_job_run_da_guardare) — i lavori la cui ultima corsa vera chiede un occhio
 > * [maintenance.vw_job_run_da_superuser](/dbzero/maintenance/views/vw_job_run_da_superuser) — i processi la cui ultima corsa l'ha fatta un superuser
 > * [dbops.vw_processi_programmazione](/dbzero/dbops/views/vw_processi_programmazione) — il panorama: ultimo esito e sveglia viva
-> * [dbops.vw_run_senza_attore](/dbzero/dbops/views/vw_run_senza_attore) — i lavori la cui ultima corsa non dice di quale processo è
 >
 > Approfondimento funzioni:
 >
@@ -88,8 +87,8 @@ esistesse non hanno attore e non lo avranno mai. Riempirle per far passare un vi
 dire inventare un attore per corse che non l'avevano. Un `NOT NULL` non si può mettere per la
 stessa ragione.
 
-⇒ `dbops.vw_run_senza_attore` non guarda più chi non si è ancora dichiarato — una corsa senza
-attore non può più nascere — ma il residuo storico: i lavori la cui **ultima** corsa è di prima.
+⇒ La regola è il CHECK, e non ha bisogno di un presidio che la misuri: una corsa senza attore non
+può più nascere, e quelle di prima restano senza attore per sempre.
 
 `auth_user_id` è l'**utente tecnico** con cui gira il processo, quando ne ha uno. ⚠️ Non è
 l'operatore che ha chiesto un singolo lavoro di una coda: quello sta nello scope del lavoro in
@@ -230,6 +229,10 @@ schema per concedere una lettura.
 * 2026-11-03 — `meta.esito` e la riuscita con scarti (`E_JOB_ESITO_CON_SCARTI`). Prima
   `fn_run_and_log` scartava il risultato del lavoro, e una corsa con elementi falliti risultava
   verde (`brief-db-revisione-maintenance` D5).
+* 2026-11-04 — ritirato il presidio `dbops.vw_run_senza_attore`, che mostrava i lavori la cui
+  ultima corsa non aveva processo. Dopo il CHECK del 2026-09-05 il debito che misurava non poteva
+  più nascere, e in vista restavano solo lavori con l'ultima corsa anteriore al vincolo: non
+  poteva né accendersi né svuotarsi (`brief-db-revisione-dbops`).
 
 ---
 

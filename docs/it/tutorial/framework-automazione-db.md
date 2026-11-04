@@ -144,15 +144,17 @@ spiegato in [Storicizzazione delle tabelle](/guide/storicizzazione-tabelle#la-co
 ## Passo 4 — (Facoltativo) Guardare che cosa farebbe
 
 Il dry-run non crea nulla e scrive in `dbops.audit_log` le righe con `status = 'DRYRUN'`. Si può
-lanciare sullo schema della tabella, anche con tutte le regole insieme:
+lanciare sullo schema della tabella, un runner per regola:
 
 ```sql
--- Tutte le regole tabellari, in simulazione, sul solo schema catalogo
-SELECT dbops.fn_run_automations('AUTO', ARRAY['catalogo'], true,
-       ARRAY['TX_ID','AUDIT_UPDATE','STORICO','LOCK_COLUMNS','ATTIVO','DATE_VALIDITA']);
-
--- La gemella in storico: l'orchestratore non la prevede, si chiede al suo runner
-SELECT dbops.fn_run_automations_storico_provision('AUTO', ARRAY['catalogo'], true);
+-- Le regole tabellari, in simulazione, sul solo schema catalogo
+SELECT dbops.fn_run_automations_audit_update('AUTO', ARRAY['catalogo'], true);
+SELECT dbops.fn_run_automations_storico_provision('AUTO', ARRAY['catalogo'], true);  -- la gemella in storico
+SELECT dbops.fn_run_automations_storico('AUTO', ARRAY['catalogo'], true);
+SELECT dbops.fn_run_automations_tx_id('AUTO', ARRAY['catalogo'], true);
+SELECT dbops.fn_run_automations_attivo('AUTO', ARRAY['catalogo'], true);
+SELECT dbops.fn_run_automations_lock_columns('AUTO', ARRAY['catalogo'], true);
+SELECT dbops.fn_run_automations_date_validita('AUTO', ARRAY['catalogo'], true);
 
 -- Cosa ha registrato
 SELECT executed_at, rule_type, status,
@@ -163,9 +165,10 @@ SELECT executed_at, rule_type, status,
  LIMIT 50;
 ```
 
-⚠️ `fn_run_automations` **non** conosce la parte `STORICO_PROVISION`: passargliela non fa niente.
-Inoltre, finché la gemella non esiste, il dry-run di STORICO non mostra il trigger: arriva al giro
-successivo alla creazione della gemella.
+⚠️ Non esiste una funzione che lanci tutte le regole insieme: il giro vero lo fanno le procedure
+dei processi, nell'ordine di `dbops.processi.ci_ordine` (Passo 5). Finché la gemella non esiste,
+il dry-run di STORICO non mostra il trigger: la simulazione di STORICO_PROVISION non la crea, e il
+trigger arriva al giro successivo alla creazione della gemella.
 
 Per il lucchetto, la vista giusta è la convergenza, che dice anche le colonne che la fermerebbero:
 
@@ -295,7 +298,7 @@ rifiuto della modifica di `codice_interno`. Come si scrive e dove va:
 1. Colonne    → tx_id, data_update/user_update, storicizza, attivo, codice_interno, valido_dal/al
 2. Ambito     → schema di dominio: già dentro; schema nuovo: riga in automation_scope.csv
 3. Registri   → storico_scope_policy.csv (obbligatorio se storicizzata), gli altri se servono
-4. Dry-run    → facoltativo: fn_run_automations(..., true) + storico_provision a parte
+4. Dry-run    → facoltativo: fn_run_automations_<regola>(..., true), un runner per regola
 5. Convergenza→ CI: ci_apply in ordine · dev: l'update, che la comprende (con l'ok di Tid) · notte: pgAgent
 6. Verifica   → pg_trigger, storico.<tabella>, job_run_log, audit_log; il comportamento in pgTAP;
                 su un'installazione: Strumenti → Diagnostica → Processi automatici

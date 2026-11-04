@@ -1,0 +1,77 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.audit_log.status: START esce da chk_audit_status.
+#   Brief: brief-db-revisione-dbops, D61 (classe C), seguito del ritiro della
+#   modalita' sessione (90_end/20261104-18).
+#
+# START era lo stato di una corsa APERTA: lo scriveva dbops.fn_audit_begin e lo
+# chiudeva fn_audit_end con un UPDATE. Ritirate le due funzioni, l'audit si
+# scrive solo con dbops.fn_audit_log_once, che registra l'evento intero in una
+# volta: una riga «aperta» non e' piu' uno stato che il sistema sa raggiungere.
+#   ⇒ Il CHECK torna a dire il modello: OK, ERROR, DRYRUN, WARN.
+# Senza questo changeSet il presidio C1 (dbops.vw_stati_check_da_sanare,
+# db/pgtap/dbops/test-stati-check-scrittori-v1.sql test 2) e' rosso:
+# dbops.audit_log.status = START, NON_DICHIARATO. Dichiararlo ESENTE sarebbe
+# tenere nel modello uno stato che il modello non ha piu'.
+#
+# Censimento di chi scrive o legge START (2026-11-04): nessuna funzione (anche
+# i corpi BEGIN ATOMIC, via pg_get_functiondef), nessuna vista, nessun file di
+# backend/, scripts/ o db/pgtap/. I commenti dei changeSet storici che citano
+# l'elenco dei cinque valori restano: sono fotografie del loro giorno.
+#
+# ⚠️ Una riga START gia' scritta farebbe fallire l'ADD CONSTRAINT (23514):
+#   e' voluto. Sarebbe una corsa mai chiusa, e il registro e' append-only:
+#   non si riscrive per far passare un vincolo, si decide caso per caso.
+#
+# Ordine da zero: il vincolo nasce nell'albero v1 (migrations/00_bootstrap/
+# 20250822-01); nessun changeSet successivo chiama fn_audit_begin, quindi qui
+# in 00_schema non c'e' niente che scriva START prima del ritiro in 90_end.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20261104-19-alter-audit-log-status-senza-start-mctit.yaml
+
+  - changeSet:
+      id: 20261104-19-alter-audit-log-status-senza-start
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        chk_audit_status senza START: la modalita' sessione dell'audit (fn_audit_begin/fn_audit_end)
+        e' ritirata, una corsa aperta non e' piu' uno stato raggiungibile. Restano OK, ERROR,
+        DRYRUN, WARN.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_constraint
+               WHERE conname = 'chk_audit_status'
+                 AND conrelid = 'dbops.audit_log'::regclass
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.audit_log
+                  DROP CONSTRAINT chk_audit_status;
+
+              ALTER TABLE dbops.audit_log
+                  ADD CONSTRAINT chk_audit_status
+                  CHECK (status IN ('OK', 'ERROR', 'DRYRUN', 'WARN'));
+
+              COMMENT ON CONSTRAINT chk_audit_status ON dbops.audit_log IS
+                'Esiti ammessi di una riga di audit: OK, ERROR, DRYRUN, WARN. La riga si scrive intera con dbops.fn_audit_log_once; lo stato START di una corsa aperta e'' uscito con la modalita'' sessione.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo che rimette START insieme a chi lo scrive.
+              SELECT 1;

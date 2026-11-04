@@ -166,7 +166,7 @@ e [Estensione pgAgent](/postgresql/pgAgent). I ruoli del database e le loro rego
 * **pgAgent interno**: `pgagent.pga_joblog` (esito esecuzione job) e `pgagent.pga_jobsteplog` (esito singolo step).
 * **Log applicativo**: se la funzione chiamata esegue `script.fn_log_and_raise_error` o `script.fn_log_error_only` in caso di problemi, il log finisce in `dbops.error_log` via dblink.
 * **Giornale delle esecuzioni**: [maintenance.job_run_log](/dbzero/maintenance/tabelle/job_run_log) — è il tracciamento che conta. Ogni corsa lascia una riga con **chi era** (quale lavoro, per conto di chi, con quale utente si è collegato), non solo com'è andata:
-  * una corsa che non dice per conto di chi gira finisce in [vw_run_senza_attore](/dbzero/dbops/views/vw_run_senza_attore);
+  * una corsa che non dice di quale processo è non si scrive: il giornale la rifiuta (`chk_job_run_log_processo_dichiarato`), e il lavoro non gira;
   * una corsa **fallita** resta nel giornale: il verbale viaggia su una connessione separata e non viene annullato insieme all'errore. Senza, un lavoro rotto potrebbe restarlo per mesi senza che nessuno lo sappia.
 
   Il racconto per esteso: [I lavori automatici — capitolo 6](/guide/processi-automatici-classe-e-identita).

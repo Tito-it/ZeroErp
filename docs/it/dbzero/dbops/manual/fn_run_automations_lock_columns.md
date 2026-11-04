@@ -14,7 +14,6 @@
 >
 > * [dbops.fn_lock_columns_divergenze](/dbzero/dbops/funzioni/fn_lock_columns_divergenze) — il confronto fra atteso e vivo, che qui si esegue
 > * [script.trgfn_lock_columns](/dbzero/script/funzioni/trgfn_lock_columns) — la funzione dei trigger che monta
-> * [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations) — l'orchestratore, che la chiama per la parte `LOCK_COLUMNS`
 > * [maintenance.proc_automations_lock_columns_job](/dbzero/maintenance/funzioni/proc_automations_lock_columns_job) — il wrapper del processo serale
 >
 > Guide:
@@ -69,7 +68,9 @@ fermarsi.
 Con `p_dry_run` vero la funzione non fa DDL e non si ferma sulle colonne perse: scrive in
 `dbops.audit_log`, per ogni tabella che diverge, l'azione che farebbe, le colonne attese, i
 trigger vivi e le colonne perse. ⚠️ Quelle righe di audit portano come funzione
-`dbops.fn_run_automations`, non il nome di questa.
+`dbops.fn_run_automations`, non il nome di questa: un nome che non esiste più, perché
+l'orchestratore è stato ritirato. È un difetto aperto: chi filtra l'audit per funzione non trova
+le simulazioni di questo runner sotto il suo nome.
 
 ---
 
@@ -90,7 +91,6 @@ job lo mandi a chi gestisce l'ambiente e non allo sviluppo.
   `maintenance.proc_automations_lock_columns_job`, in modo `SCHEDULED`: dopo la famiglia delle
   automazioni delle 21:00, perché una tabella nuova abbia già i suoi trigger. Lo stesso wrapper
   esegue subito dopo `dbops.fn_run_automations_date_validita`;
-* `dbops.fn_run_automations`, quando fra le parti c'è `LOCK_COLUMNS`;
 * alcuni changeSet `90_end` che, dopo aver aggiunto righe al registro, convergono subito.
 
 ---
@@ -123,6 +123,8 @@ job lo mandi a chi gestisce l'ambiente e non allo sviluppo.
   più: codici ritirati negli argomenti, colonne aggiunte al registro che non arrivavano mai.
 * 2026-10-16 — un guasto dell'ambiente si rilancia col suo SQLSTATE invece di diventare un errore
   di dominio (`brief-db-presidio-job-run-a-chi-tocca`).
+* 2026-11-04 — ritirato l'orchestratore `dbops.fn_run_automations`, che la chiamava per la parte
+  `LOCK_COLUMNS`; la firma del dry run ne porta ancora il nome (`brief-db-revisione-dbops`).
 
 ---
 

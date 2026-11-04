@@ -27,20 +27,23 @@ attrezzo di consultazione; nel catalogo dei presidi è un inventario che non ent
 
 ---
 
-### ⚠️ Due colonne da leggere con cautela
+### Le colonne vengono dal catalogo
 
-**`num_args` non conta gli argomenti, conta le virgole.** È il numero di pezzi in cui si spezza
-l'elenco degli argomenti separandolo sulle virgole. Sbaglia per eccesso quando un valore predefinito
-o un tipo contengono una virgola (un numerico con precisione e scala, un array letterale), e per una
-funzione senza argomenti è vuoto invece che zero.
+**`num_args`** è il numero di argomenti dichiarati della funzione, come lo tiene il catalogo: zero
+per una funzione senza argomenti. Conta anche gli argomenti con un valore predefinito.
 
-**`comment` può non essere il commento della funzione.** La vista cerca il commento solo per
-identificativo, senza dire che deve essere il commento di una funzione: il catalogo dei commenti
-copre tutti gli oggetti, e un oggetto d'altro tipo con lo stesso identificativo può prestargli il
-suo, o raddoppiare la riga.
+**`comment`** è il commento della funzione: lo si legge come commento di una funzione, e un oggetto
+d'altro tipo non può prestarle il suo né raddoppiare la riga. È vuoto se la funzione non ne ha.
 
-Per sapere se una funzione ha un commento, o quanti argomenti prende davvero, la fonte affidabile è
-la scheda auto-generata della funzione.
+---
+
+### Note di migrazione
+
+* 2026-11-04 — `num_args` e `comment` si leggono dal catalogo. Prima `num_args` contava le
+  virgole dell'elenco degli argomenti, e sbagliava con un numerico con precisione e scala o un
+  valore predefinito con una virgola, e a zero argomenti era vuoto; `comment` si agganciava al
+  catalogo dei commenti per il solo identificativo, e poteva prendere il commento di un altro
+  oggetto o raddoppiare la riga (`brief-db-revisione-dbops`).
 
 ---
 
