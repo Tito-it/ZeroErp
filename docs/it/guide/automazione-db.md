@@ -481,6 +481,21 @@ quelli di sempre.
 * chi scrive un codice e poi lo ricerca per valore deve ricomporlo in maiuscolo, o rileggere quello
   salvato.
 
+**Per il backend:**
+
+* il valore salvato può non essere quello inviato: dopo una scrittura il codice si rilegge dal DB
+  (`RETURNING codice` o il dettaglio), non si rimanda quello del payload;
+* una ricerca **esatta** per codice su un input dell'utente confronta con `upper(btrim(input))`; le
+  ricerche `ILIKE` non cambiano;
+* il duplicato è senza maiuscole: `vite-m8` accanto a `VITE-M8` è la stessa violazione di unicità
+  del codice identico;
+* un test che crea un codice con un suffisso esadecimale (`uuid4().hex`, `md5`) e poi lo cerca per
+  valore mette `.upper()` sul generatore;
+* `E_CODICE_MAIUSCOLO` (classe `TECNICO`) nasce solo dal motore, in un migrate o nel job notturno;
+* le tabelle in eccezione e gli schemi fuori ambito (`ui`, `dbops`) non cambiano; l'elenco delle
+  tabelle normalizzate lo dà `dbops.fn_codice_maiuscolo_perimetro(NULL)` (`nel_perimetro AND NOT
+  in_eccezione`).
+
 **Componenti:**
 
 * Regola: `CODICE_MAIUSCOLO` in `dbops.automation_rules_tbl` (interruttore e template del nome)
