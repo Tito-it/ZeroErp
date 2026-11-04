@@ -1,6 +1,6 @@
 # Linee guida Trigger (PostgreSQL + Liquibase)
 
-> **Ultimo aggiornamento**: 24 ottobre 2026
+> **Ultimo aggiornamento**: 4 novembre 2026
 >
 > **Destinatari**: chi scrive o modifica un trigger o una funzione trigger
 >
@@ -18,7 +18,7 @@ chiamano, in che ordine scattano, su quali eventi, e i casi in cui un trigger sc
 carta lascia passare quello che doveva fermare.
 
 Prima di scrivere un trigger, una domanda: **lo genera già il framework?** Audit, `tx_id`, storico,
-ATTIVO, lucchetti di colonna, regola del periodo li monta il giro delle automazioni, dalla
+ATTIVO, lucchetti di colonna, regola del periodo, codice in maiuscolo li monta il giro delle automazioni, dalla
 struttura della tabella. Quelli non si scrivono a mano (vedi [I trigger generati](#i-trigger-generati)).
 
 ---
@@ -192,7 +192,8 @@ building block» dopo le sue scritture; il trigger va bene sui **cambi** (`AFTER
 
 ## I trigger generati
 
-I trigger di audit, `tx_id`, storico, ATTIVO, lucchetti di colonna e regola del periodo li monta il
+I trigger di audit, `tx_id`, storico, ATTIVO, lucchetti di colonna, regola del periodo e codice in
+maiuscolo li monta il
 [framework di automazione](/guide/automazione-db), leggendo la struttura delle tabelle. I loro nomi
 seguono i template del framework, non la regola delle fasi qui sopra
 (`trg_<tabella>_audit_data_user_upd`, `trg_<tabella>_gen_tx_id_ins_upd`,
@@ -222,7 +223,7 @@ seguono i template del framework, non la regola delle fasi qui sopra
 
 ## Checklist rapida (da usare nei PR)
 
-* [ ] Il framework non lo genera già (audit, `tx_id`, storico, ATTIVO, lucchetti, periodo).
+* [ ] Il framework non lo genera già (audit, `tx_id`, storico, ATTIVO, lucchetti, periodo, codice in maiuscolo).
 * [ ] Nome `trg_<schema_opzionale>_<tabella>_<fase>_<descrizione>_<eventi>`, sotto i 63 caratteri; la funzione `trgfn_…` senza fase né eventi.
 * [ ] Fase scelta per zona: `a05` immutabilità, `a10` guard, `a20` derivazioni, `z…` effetti finali. Fra due rifiuti possibili, parla prima l'immutabilità.
 * [ ] `UPDATE OF colonna` solo se nessun altro trigger `BEFORE` scrive quella colonna; per reagire a un cambio di valore, `WHEN (OLD.x IS DISTINCT FROM NEW.x)`.

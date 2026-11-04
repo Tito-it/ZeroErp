@@ -13,6 +13,7 @@
 > * [dbops.automation_scope](/dbzero/dbops/tabelle/automation_scope) — l'ambito: gli schemi e le tabelle a cui applicarle
 > * [dbops.automation_overrides_cols](/dbzero/dbops/tabelle/automation_overrides_cols) — le colonne non standard
 > * [dbops.automation_lock_columns](/dbzero/dbops/tabelle/automation_lock_columns) — le colonne extra per LOCK_COLUMNS
+> * [dbops.automazione_codice_eccezioni](/dbzero/dbops/tabelle/automazione_codice_eccezioni) — le colonne `codice` escluse da CODICE_MAIUSCOLO
 > * [dbops.automation_cleanup_exclusions](/dbzero/dbops/tabelle/automation_cleanup_exclusions) — le esclusioni del cleanup
 > * [dbops.automation_delete_block](/dbzero/dbops/tabelle/automation_delete_block) — la configurazione di DELETE_BLOCK
 > * [dbops.automazione_overlap](/dbzero/dbops/tabelle/automazione_overlap) — la configurazione di OVERLAP
@@ -24,7 +25,6 @@
 >
 > **Vedi anche** — funzioni e trigger DB:
 >
-> * [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations) — l'orchestratore: legge regole e ambito, chiama i runner
 > * [dbops.fn_lock_columns_divergenze](/dbzero/dbops/funzioni/fn_lock_columns_divergenze) — i lock di colonna vivi confrontati con il registro
 > * [dbops.fn_apply_cleanup_at](/dbzero/dbops/funzioni/fn_apply_cleanup_at) — il motore della regola CLEANUP
 > * [dbops.fn_apply_automazione_overlap](/dbzero/dbops/funzioni/fn_apply_automazione_overlap) — crea i vincoli EXCLUDE di OVERLAP
@@ -58,7 +58,7 @@ Il **framework di automazione DB** risolve questo problema: invece di scrivere t
 **Cosa troverai in questa guida:**
 
 * Il concetto di base: come il framework trasforma regole dichiarative in trigger
-* L'architettura: ambito, rules, orchestratori e audit
+* L'architettura: ambito, rules, runner e audit
 * Le regole disponibili, divise in **core** (usate su ogni tabella) e **specializzate** (per casi specifici)
 * La configurazione pratica, e in coda gli esempi da copiare
 * La governance degli indici FK
@@ -124,19 +124,19 @@ Non tutte le tabelle seguono le convenzioni standard. Le tabelle di override per
 
 Tutti questi registri si cambiano dal loro CSV in `80_data/sql/dbops/`, mai con un `INSERT` o un `UPDATE` a parte ([linee-guida-sql §11.2](/linee-guida-sql)).
 
-### 1.4 Orchestratori (chi esegue)
+### 1.4 Runner (chi esegue)
 
-Gli **orchestratori** sono funzioni SQL che leggono rules e ambito, risolvono le tabelle target e creano i trigger. Ogni area ha il proprio orchestratore:
+I **runner** sono funzioni SQL che leggono rules e ambito, risolvono le tabelle target e creano i trigger. Ogni regola ha il proprio runner, e non c'è una funzione che li chiami tutti: il giro lo fanno le procedure dei processi, nell'ordine di `dbops.processi.ci_ordine` (§9).
 
-| Orchestratore                                                                               | Regola gestita                                     |
+| Runner                                                                                      | Regola gestita                                     |
 | ------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| [fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations)                             | Orchestratore principale (chiama i singoli runner) |
 | [fn_run_automations_tx_id](/dbzero/dbops/funzioni/fn_run_automations_tx_id)                 | TX_ID                                              |
 | [fn_run_automations_audit_update](/dbzero/dbops/funzioni/fn_run_automations_audit_update)   | AUDIT_UPDATE                                       |
 | [fn_run_automations_storico_provision](/dbzero/dbops/funzioni/fn_run_automations_storico_provision) | STORICO_PROVISION (crea le tabelle di storico) |
 | [fn_run_automations_storico](/dbzero/dbops/funzioni/fn_run_automations_storico)             | STORICO (monta il trigger dove la tabella di storico c'è) |
 | [fn_run_automations_lock_columns](/dbzero/dbops/funzioni/fn_run_automations_lock_columns)   | LOCK_COLUMNS (converge: crea, rigenera, toglie)    |
 | [fn_run_automations_date_validita](/dbzero/dbops/funzioni/fn_run_automations_date_validita) | DATE_VALIDITA                                      |
+| [fn_run_automations_codice_maiuscolo](/dbzero/dbops/funzioni/fn_run_automations_codice_maiuscolo) | CODICE_MAIUSCOLO (converge: crea, rigenera, toglie) |
 | [fn_run_automations_attivo](/dbzero/dbops/funzioni/fn_run_automations_attivo)               | ATTIVO                                             |
 | [fn_run_automations_delete_block](/dbzero/dbops/funzioni/fn_run_automations_delete_block)   | DELETE_BLOCK                                       |
 | [fn_run_automations_cleanup](/dbzero/dbops/funzioni/fn_run_automations_cleanup)             | CLEANUP                                            |
@@ -146,7 +146,7 @@ Tutti i runner accettano gli stessi tre parametri — modo di esecuzione, schemi
 * `true` — simula l'esecuzione e logga con stato `DRYRUN` (nessuna modifica)
 * `false` — esegue realmente e logga con stato `OK` o `ERROR`
 
-⚠️ L'orchestratore `fn_run_automations` chiama solo le parti `TX_ID`, `AUDIT_UPDATE`, `STORICO`, `LOCK_COLUMNS`, `ATTIVO`, `DATE_VALIDITA` e `CLEANUP`. **Non** conosce `STORICO_PROVISION` né `DELETE_BLOCK`: per quelle si chiama il loro runner. Nell'uso normale nessuno chiama i runner a mano: li chiamano le procedure dei giri (§9).
+Nell'uso normale nessuno chiama i runner a mano: li chiamano le procedure dei processi `maintenance.proc_automations_*_job()`, dalla convergenza di ogni migrate e dai job pgAgent (§9). Per una simulazione si chiama il runner della regola che interessa, con `p_dry_run` vero.
 
 ### 1.5 Audit (cosa è successo)
 
@@ -192,6 +192,7 @@ Sono regole per casi specifici. Non tutte le tabelle le richiedono.
 | **CLEANUP**                  | Calcola `cleanup_at` e purge dei record scaduti               | Tabelle con dati temporanei (log, sessioni)            |
 | **GUARD utility/tipo_ruolo** | Verifica coerenza tra utility e tipo ruolo del soggetto       | Tabelle con colonne `utility_id` + `soggetto_ruolo_id` |
 | **DATE_VALIDITA**            | Impedisce che `valido_al` preceda `valido_dal`, con un errore che l'operatore capisce | Ogni tabella con `valido_dal` + `valido_al`: basta la presenza delle due colonne |
+| **CODICE_MAIUSCOLO**         | Salva il `codice` in maiuscolo e senza spazi ai bordi: l'unicità non distingue le maiuscole | Ogni tabella con la colonna `codice`, tranne le eccezioni dichiarate |
 
 ---
 
@@ -319,7 +320,7 @@ Per tabelle **versionate** (con colonne `valido_dal`/`valido_al` o `valid_from`/
 **Componenti:**
 
 * **Config**: `dbops.automazione_overlap` — definisce chiavi logiche (`key_columns` + `key_expressions`), colonne periodo, flag `active` e (opzionale) `where_predicate` per vincoli parziali
-* **Righe**: le scrive a mano chi migra, con changeSet di `80_data`, quando un vincolo nasce o cambia forma. La funzione di rilevazione `dbops.fn_seed_automazione_overlap()` esiste ma non la chiama nessuno, e non va lanciata su un registro curato a mano (vedi [dbops.automazione_overlap](/dbzero/dbops/tabelle/automazione_overlap))
+* **Righe**: le scrive a mano chi migra, con changeSet di `80_data`, quando un vincolo nasce o cambia forma: è l'unica sorgente del registro, non c'è una rilevazione automatica dallo schema (vedi [dbops.automazione_overlap](/dbzero/dbops/tabelle/automazione_overlap))
 * **Apply**: `dbops.fn_apply_automazione_overlap()` — crea i vincoli EXCLUDE (totali o parziali)
 * **Runner schedulato**: `maintenance.proc_automations_overlap_job()` + job pgAgent `automations_overlap` (ogni giorno alle 21:00) — esegue l'apply periodicamente
 
@@ -449,11 +450,44 @@ calcolo: parla lui. I `CHECK` sulle date restano come ultima difesa.
 **Componenti:**
 
 * Regola: `DATE_VALIDITA` in `dbops.automation_rules_tbl`
-* Runner: `dbops.fn_run_automations_date_validita()` (parte `DATE_VALIDITA` dell'orchestratore)
+* Runner: `dbops.fn_run_automations_date_validita()`
 * Trigger function: `script.trgfn_guard_date_validita()`
 
 ⚠️ Il nome del trigger, su una tabella dal nome lungo, supera i 63 caratteri e
 PostgreSQL lo tronca: il trigger si riconosce dalla funzione, non dal nome.
+
+---
+
+### 4.8 CODICE_MAIUSCOLO (il codice non distingue le maiuscole)
+
+Un codice che l'operatore digita è un identificativo: `VITE-M8` e `vite-m8` sono lo stesso
+articolo, non due. Questa automazione monta su **ogni** tabella con la colonna `codice` un trigger
+che lo salva in maiuscolo e senza spazi ai bordi. Con il valore normalizzato, l'indice `UNIQUE` che
+la colonna ha già diventa un'unicità senza distinzione di maiuscole, e ricerche e indici restano
+quelli di sempre.
+
+**Come funziona:**
+
+* la regola è **per esclusione**: vale per ogni colonna `codice` dell'ambito, e una tabella nuova
+  nasce presidiata. Le colonne che non sono un codice dell'operatore — una chiave tecnica letta per
+  nome, un codice esterno dove il maiuscolo conta — stanno in `dbops.automazione_codice_eccezioni`,
+  col motivo obbligatorio;
+* `codice_interno` non è nel perimetro: lo scrive la migrazione, non l'operatore;
+* il trigger scatta su `INSERT` e su ogni `UPDATE` (anche i generatori del codice lo scrivono), in
+  fase `a15`, dopo di loro; un `UPDATE` che non cambia il codice non lo tocca;
+* converge nei due sensi: crea dove manca, toglie dove una tabella entra fra le eccezioni o perde la
+  colonna. Gira a **ogni migrate** (una rete in `90_end`, che si ferma se resta un'azione) e nel
+  giro notturno del lock;
+* chi scrive un codice e poi lo ricerca per valore deve ricomporlo in maiuscolo, o rileggere quello
+  salvato.
+
+**Componenti:**
+
+* Regola: `CODICE_MAIUSCOLO` in `dbops.automation_rules_tbl` (interruttore e template del nome)
+* Perimetro: `dbops.fn_codice_maiuscolo_perimetro()` — dovuto, vivo, azione
+* Runner: `dbops.fn_run_automations_codice_maiuscolo()`
+* Trigger function: `script.trgfn_codice_maiuscolo()`
+* Eccezioni: `dbops.automazione_codice_eccezioni`
 
 ---
 
@@ -623,7 +657,7 @@ Il nome della sequenza è **sempre derivato** come `<schema>.<tabella>_<colonna>
 
 ### Il runner va in errore a metà esecuzione
 
-Un `SELECT dbops.fn_run_automations(...)` **è una transazione**, e in PostgreSQL il DDL è transazionale: se un errore risale fino alla chiamata, tutto ciò che quella chiamata aveva creato viene annullato. Non resta un sistema a metà — resta quello che le chiamate precedenti avevano già committato.
+Una chiamata a un runner (`SELECT dbops.fn_run_automations_<regola>(...)`) **è una transazione**, e in PostgreSQL il DDL è transazionale: se un errore risale fino alla chiamata, tutto ciò che quella chiamata aveva creato viene annullato. Non resta un sistema a metà — resta quello che le chiamate precedenti avevano già committato.
 
 ⚠️ Il caso da conoscere è l'altro: **alcuni runner catturano l'errore per tabella** e proseguono. `storico` intercetta il trigger che esiste già, `cleanup` salta la tabella che si oppone e scrive una riga `ERROR` con `skip_reason = BLOCKED_BY_TABLE`; il giro arriva in fondo e **committa**. Il runner `tx_id`, invece, logga **e risolleva**: lì la chiamata muore, e con lei la transazione. Un errore del primo tipo non si vede dal risultato: si vede solo dall'audit log.
 
@@ -750,7 +784,7 @@ Dove pgAgent c'è, i job di `85_pgagent` rieseguono le stesse procedure:
 | Quando              | Job                                                                                                                   |
 | ------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | ogni giorno, 21:00  | `automations_audit_update`, `automations_storico_provision`, `automations_storico`, `automations_tx_id`, `automations_attivo`, `automations_overlap` |
-| ogni giorno, 21:10  | `automations_lock_columns` (con DATE_VALIDITA), `automations_delete_block`                                             |
+| ogni giorno, 21:10  | `automations_lock_columns` (con DATE_VALIDITA e CODICE_MAIUSCOLO), `automations_delete_block`                          |
 | sabato, 07:00       | `sync_storico_set_storicizza`                                                                                          |
 | sabato, 07:05       | `apply_storicizza_weekly`: dopo il sync, nello stesso ordine della convergenza                                         |
 | domenica, 23:00     | `automations_cleanup_weekly`, `automations_apply_fk_indexes_policy`                                                   |
@@ -955,13 +989,14 @@ SELECT * FROM dbops.vw_indici_ridondanti_prefisso;   -- ridondanti per prefisso
 ### Simulazione e verifica di un rilascio
 
 ```sql
--- Dry-run sugli schemi toccati: le parti dell'orchestratore…
-SELECT dbops.fn_run_automations(
-  'AUTO', ARRAY['anagrafiche','vendite'], true,
-  ARRAY['TX_ID','AUDIT_UPDATE','STORICO','LOCK_COLUMNS','ATTIVO','DATE_VALIDITA']
-);
--- …e le tabelle di storico, che l'orchestratore non prevede
+-- Dry-run sugli schemi toccati: un runner per regola, nell'ordine della convergenza
+SELECT dbops.fn_run_automations_audit_update('AUTO', ARRAY['anagrafiche','vendite'], true);
 SELECT dbops.fn_run_automations_storico_provision('AUTO', ARRAY['anagrafiche','vendite'], true);
+SELECT dbops.fn_run_automations_storico('AUTO', ARRAY['anagrafiche','vendite'], true);
+SELECT dbops.fn_run_automations_tx_id('AUTO', ARRAY['anagrafiche','vendite'], true);
+SELECT dbops.fn_run_automations_attivo('AUTO', ARRAY['anagrafiche','vendite'], true);
+SELECT dbops.fn_run_automations_lock_columns('AUTO', ARRAY['anagrafiche','vendite'], true);
+SELECT dbops.fn_run_automations_date_validita('AUTO', ARRAY['anagrafiche','vendite'], true);
 
 -- LOCK_COLUMNS: che cosa farebbe la convergenza, e le colonne che la fermerebbero
 SELECT schema_name, table_name, azione, colonne_perse

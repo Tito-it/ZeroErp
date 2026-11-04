@@ -1,0 +1,157 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Automazione CODICE_MAIUSCOLO — dbops.fn_codice_maiuscolo_perimetro: per ogni
+#   tabella che ha (o dovrebbe avere) il trigger, lo stato atteso contro quello
+#   vivo, e l'azione che li allinea.
+#
+# ── ⭐ UN PERIMETRO, QUATTRO LETTORI ──────────────────────────────────
+#   «Quali colonne codice si salvano in maiuscolo» la leggono il runner
+#   (20261104-04), la convergenza di ogni migrate (90_end 20261104-08), il
+#   pgTAP di presidio e lo script una tantum che bonifica le righe gia'
+#   scritte. Una regola scritta quattro volte risponde prima o poi in quattro
+#   modi (regola del 2): qui si scrive una volta.
+#
+# ── LA REGOLA ─────────────────────────────────────────────────────────
+#   Nel perimetro: ogni tabella (relkind r) dell'ambito delle automazioni
+#   (dbops.fn_resolve_scope + dbops.fn_table_in_scope), schema storico escluso
+#   (le tabelle ombra ricordano, non si normalizzano), che ha una colonna
+#   `codice` di tipo stringa, non generata. Il trigger e' DOVUTO se la tabella
+#   e' nel perimetro e non e' in dbops.automazione_codice_eccezioni.
+#   Azione: CREA (dovuto, nessun trigger vivo), RIGENERA (dovuto, piu' di uno),
+#   TOGLIE (non dovuto, trigger vivo: un'eccezione nuova, una colonna tolta,
+#   una tabella uscita dall'ambito), NULL se e' gia' tutto a posto.
+#   ⭐ Converge nei due sensi: un registro che monta e non smonta dice una cosa
+#   e il database un'altra (brief-db-revisione-dbops D31/D32).
+#   ⚠️ Il trigger vivo si riconosce dalla FUNZIONE, mai dal nome: un nome
+#   lungo PostgreSQL lo tronca, e la strategia d'esistenza ricopiata nei runner
+#   e' un difetto aperto (brief-db-revisione-dbops D17).
+#   ⚠️ I trigger vivi si cercano solo negli schemi dell'ambito della corsa: con
+#   un elenco di schemi esplicito, un trigger di un altro schema non diventa un
+#   TOGLIE.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261104-03-create-fn-codice-maiuscolo-perimetro-mctit.yaml
+
+  - changeSet:
+      id: 20261104-03-create-fn-codice-maiuscolo-perimetro
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_codice_maiuscolo_perimetro(schemas): per ogni tabella dell'ambito con una
+        colonna codice (o con il trigger vivo), se il trigger CODICE_MAIUSCOLO e' dovuto, i
+        trigger vivi e l'azione che li allinea (CREA, RIGENERA, TOGLIE, NULL).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_codice_maiuscolo_perimetro(
+                  -- array: %TYPE non compone con [] (elementi: dbops.automation_scope.schema_name)
+                  p_schemas text[] DEFAULT NULL
+              )
+               RETURNS TABLE (
+                  schema_name   dbops.automazione_codice_eccezioni.schema_name%TYPE,
+                  table_name    dbops.automazione_codice_eccezioni.table_name%TYPE,
+                  -- l'oid della tabella: nessuna colonna ne e' il riflesso
+                  rel           regclass,
+                  -- due esiti calcolati qui, nessuna colonna ne e' il riflesso
+                  nel_perimetro boolean,
+                  in_eccezione  boolean,
+                  -- array: %TYPE non compone con [] (elementi: pg_catalog.pg_trigger.tgname)
+                  trigger_vivi  text[],
+                  -- vocabolario di questa funzione (CREA, RIGENERA, TOGLIE): nessuna colonna
+                  azione        text
+              )
+               LANGUAGE sql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+                  -- Scopo: lo stato atteso del trigger CODICE_MAIUSCOLO contro
+                  --   quello vivo, tabella per tabella, e l'azione che li allinea.
+                  WITH ambito AS (
+                      SELECT DISTINCT btrim(s) AS nspname
+                        FROM unnest(dbops.fn_resolve_scope(p_schemas)) AS u(s)
+                       WHERE btrim(s) <> 'storico'
+                  ),
+                  candidate AS (
+                      SELECT c.oid AS relid
+                        FROM pg_catalog.pg_class c
+                        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                        JOIN ambito am ON am.nspname = n.nspname
+                        JOIN pg_catalog.pg_attribute a
+                          ON a.attrelid = c.oid
+                         AND a.attname = 'codice'
+                         AND a.attnum > 0
+                         AND NOT a.attisdropped
+                         AND a.attgenerated = ''
+                        JOIN pg_catalog.pg_type t ON t.oid = a.atttypid
+                       WHERE c.relkind = 'r'
+                         AND t.typcategory = 'S'
+                         AND dbops.fn_table_in_scope(n.nspname, c.relname)
+                  ),
+                  vivi AS (
+                      SELECT tg.tgrelid AS relid,
+                             array_agg(tg.tgname::text ORDER BY tg.tgname) AS nomi
+                        FROM pg_catalog.pg_trigger tg
+                        JOIN pg_catalog.pg_proc p ON p.oid = tg.tgfoid
+                        JOIN pg_catalog.pg_namespace pn ON pn.oid = p.pronamespace
+                        JOIN pg_catalog.pg_class c ON c.oid = tg.tgrelid
+                        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                        JOIN ambito am ON am.nspname = n.nspname
+                       WHERE NOT tg.tgisinternal
+                         AND pn.nspname = 'script'
+                         AND p.proname = 'trgfn_codice_maiuscolo'
+                       GROUP BY tg.tgrelid
+                  ),
+                  stato AS (
+                      SELECT n.nspname::text AS schema_name,
+                             c.relname::text AS table_name,
+                             c.oid::regclass AS rel,
+                             (ca.relid IS NOT NULL) AS nel_perimetro,
+                             (e.id IS NOT NULL) AS in_eccezione,
+                             COALESCE(v.nomi, ARRAY[]::text[]) AS trigger_vivi
+                        FROM (SELECT relid FROM candidate UNION SELECT relid FROM vivi) AS u
+                        JOIN pg_catalog.pg_class c ON c.oid = u.relid
+                        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                        LEFT JOIN candidate ca ON ca.relid = u.relid
+                        LEFT JOIN vivi v ON v.relid = u.relid
+                        LEFT JOIN dbops.automazione_codice_eccezioni e
+                          ON e.schema_name = n.nspname
+                         AND e.table_name = c.relname
+                         AND e.column_name = 'codice'
+                  )
+                  SELECT s.schema_name,
+                         s.table_name,
+                         s.rel,
+                         s.nel_perimetro,
+                         s.in_eccezione,
+                         s.trigger_vivi,
+                         CASE
+                             WHEN s.nel_perimetro AND NOT s.in_eccezione
+                                  AND cardinality(s.trigger_vivi) = 0 THEN 'CREA'
+                             WHEN s.nel_perimetro AND NOT s.in_eccezione
+                                  AND cardinality(s.trigger_vivi) > 1 THEN 'RIGENERA'
+                             WHEN NOT (s.nel_perimetro AND NOT s.in_eccezione)
+                                  AND cardinality(s.trigger_vivi) > 0 THEN 'TOGLIE'
+                         END AS azione
+                    FROM stato s
+                   ORDER BY s.schema_name, s.table_name;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_codice_maiuscolo_perimetro(text[]) IS
+                  'Automazione CODICE_MAIUSCOLO (decisione Tid 2026-11-04): per ogni tabella dell''ambito che ha una colonna codice, o che ha gia'' il trigger, dice se script.trgfn_codice_maiuscolo e'' DOVUTO, quali trigger su quella funzione sono vivi e l''azione che li allinea: CREA (dovuto, nessuno vivo), RIGENERA (dovuto, piu'' di uno), TOGLIE (non dovuto, vivo), NULL (a posto). Perimetro: relkind r, schemi di dbops.fn_resolve_scope(p_schemas) meno storico, dbops.fn_table_in_scope, colonna codice di tipo stringa non generata. Dovuto = nel perimetro e non in dbops.automazione_codice_eccezioni (regola per esclusione). Il trigger vivo si riconosce dalla funzione, mai dal nome; i vivi si cercano solo negli schemi della corsa. E'' la sede unica della regola: la leggono dbops.fn_run_automations_codice_maiuscolo, la convergenza di ogni migrate (90_end), il pgTAP di presidio e la bonifica una tantum delle righe gia'' scritte.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_codice_maiuscolo_perimetro(text[]);

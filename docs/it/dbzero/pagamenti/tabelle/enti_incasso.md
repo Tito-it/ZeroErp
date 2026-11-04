@@ -56,10 +56,12 @@
 | trg_enti_incasso_a10_guard_conto_incasso_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION pagamenti.trgfn_enti_incasso_guard_conto_incasso()` |
 | trg_enti_incasso_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'E_CODICE_NON_MODIFICABILE')` |
 | trg_enti_incasso_a10_vendite_contabili_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pagamenti', 'vendite_contabili', 'ente_incasso_id', 'id', 'attivo')` |
+| trg_enti_incasso_a15_codice_maiuscolo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
+| trg_enti_incasso_a15_codice_maiuscolo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
 | trg_enti_incasso_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_enti_incasso_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_enti_incasso_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_enti_incasso_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_enti_incasso_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_enti_incasso_guard_psp_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pagamenti.trgfn_enti_incasso_guard_psp()` |
 | trg_enti_incasso_guard_psp_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION pagamenti.trgfn_enti_incasso_guard_psp()` |
 

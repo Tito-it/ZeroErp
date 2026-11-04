@@ -1,6 +1,6 @@
 id,codice,codice_interno,descrizione,is_compensazione,is_fondo_fattura,attivo,meta,data_insert,user_insert,data_update,user_update
-37,Fondi Fattura,FONDI_FATTURA,Utilizzo interno per fondi fattura,false,true,true,{},2026-02-17 18:40:57.047776+01,postgres,2026-02-17 18:41:37.95693+01,postgres
-38,Compensazione,COMPENSAZIONI,Uso interno compensazioni,true,false,true,{},2026-02-17 18:42:45.303921+01,postgres,2026-02-17 18:42:45.303921+01,postgres
+37,FONDI FATTURA,FONDI_FATTURA,Utilizzo interno per fondi fattura,false,true,true,{},2026-02-17 18:40:57.047776+01,postgres,2026-02-17 18:41:37.95693+01,postgres
+38,COMPENSAZIONE,COMPENSAZIONI,Uso interno compensazioni,true,false,true,{},2026-02-17 18:42:45.303921+01,postgres,2026-02-17 18:42:45.303921+01,postgres
 39,BANCA,BANCA,Incassi su conto corrente bancario,false,false,true,{},2026-08-21 00:00:00+02,mctit,2026-08-21 00:00:00+02,mctit
 40,POSTE,POSTE,Incassi su conto corrente postale,false,false,true,{},2026-08-21 00:00:00+02,mctit,2026-08-21 00:00:00+02,mctit
 41,CASSA,CASSA,Incassi in contanti alla cassa,false,false,true,{},2026-08-21 00:00:00+02,mctit,2026-08-21 00:00:00+02,mctit

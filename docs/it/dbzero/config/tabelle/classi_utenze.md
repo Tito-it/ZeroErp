@@ -41,5 +41,11 @@
 | pk_classi_utenze | `CREATE UNIQUE INDEX pk_classi_utenze ON config.classi_utenze USING btree (id)` |
 | uq_classi_utenze_codice | `CREATE UNIQUE INDEX uq_classi_utenze_codice ON config.classi_utenze USING btree (codice)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_classi_utenze_a15_codice_maiuscolo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
+| trg_classi_utenze_a15_codice_maiuscolo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
+
 ---
 {% include-markdown "signature-core.md" %}

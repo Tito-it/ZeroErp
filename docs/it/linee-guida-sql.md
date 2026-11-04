@@ -1085,6 +1085,12 @@ Preferire:
 * colonne normalizzate
 * predicati compatibili con la forma dell’indice
 
+⭐ Per i **codici dell'operatore** la colonna normalizzata c'è già: ogni colonna `codice` dell'ambito
+si salva in maiuscolo dall'automazione CODICE_MAIUSCOLO, tranne le eccezioni dichiarate
+([Framework di automazione DB §4.8](/guide/automazione-db)). Un «trova per codice» confronta
+quindi l'input passato per `upper(btrim(…))`, non quello grezzo (§8.4-bis, «il lookup confronta i
+valori come sono salvati»).
+
 ---
 
 ### 8.5-bis ⛔ Sotto una policy RLS entra nell'indice solo una clausola leakproof

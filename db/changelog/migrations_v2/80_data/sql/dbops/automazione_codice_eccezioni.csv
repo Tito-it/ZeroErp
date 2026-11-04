@@ -1,0 +1,11 @@
+schema_name,table_name,column_name,motivo
+ui,lista_colonna,codice,"Il codice e' il NOME della colonna sorgente della lista (ragione_sociale, ba_codice): lo leggono per nome la vista della lista, il BE e il FE, e in maiuscolo non troverebbe piu' la colonna. Chiave tecnica scritta dalla migrazione, non un codice dell'operatore. Decisione Tid 2026-11-04."
+ui,lista_definizione,codice,"Chiave tecnica della lista (anagrafiche.clienti, vendite.contratti), letta per nome da viste, BE e FE. Scritta dalla migrazione, non dall'operatore. Decisione Tid 2026-11-04."
+ui,lista_preset,codice,"Chiave tecnica del preset di lista (clienti_default), letta per nome da BE e FE. Scritta dalla migrazione, non dall'operatore. Decisione Tid 2026-11-04."
+ui,widget,codice,"Chiave tecnica del widget (home.benvenuto), letta per nome dal FE. Scritta dalla migrazione, non dall'operatore. Decisione Tid 2026-11-04."
+ui,dashboard_definizione,codice,"Chiave tecnica della dashboard (home), letta per nome dal FE. Scritta dalla migrazione, non dall'operatore. Decisione Tid 2026-11-04."
+ui,dashboard_preset,codice,"Chiave tecnica del preset di dashboard (home_default), letta per nome dal FE. Scritta dalla migrazione, non dall'operatore. Decisione Tid 2026-11-04."
+dbops,processi,codice,"Il codice del processo e' il nome del job (automations_attivo) e del giornale delle corse (maintenance.job_run_log): lo leggono per nome le procedure e i presidi. Scritto dalla migrazione, non dall'operatore. Decisione Tid 2026-11-04."
+config,aree_funzionali,codice,"Il codice dell'area e' il nome di uno schema (anagrafiche, vendite), letto come tale da permessi e configurazione. Scritto dalla migrazione, non dall'operatore. Decisione Tid 2026-11-04."
+config,assets_ownership,codice,"Codici tecnici della proprieta' di un asset (owned, consignment, customer), scritti dalla migrazione. Prudenza dichiarata: si tolgono dalle eccezioni quando si verifica che nessun lettore li confronta per nome. Decisione Tid 2026-11-04."
+config,note_stili,codice,"Il codice dello stile (default) esce come stile della nota (script.fn_get_note, s.codice AS stile) e lo legge per nome chi rende la nota. Scritto dalla migrazione, non dall'operatore. Decisione Tid 2026-11-04."

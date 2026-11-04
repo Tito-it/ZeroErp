@@ -1,0 +1,64 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Ritiro di magazzino.trgfn_magazzini_normalize e del suo trigger: era una copia
+#   della regola che ora monta l'automazione CODICE_MAIUSCOLO.
+#
+# ── ⭐ REGOLA DEL 2: LA COPIA SI RITIRA NELLO STESSO GIRO ──────────────
+#   Il corpo faceva una cosa sola: NEW.codice := upper(btrim(NEW.codice)).
+#   Da 20261104-02/-04 lo fa script.trgfn_codice_maiuscolo su ogni colonna
+#   codice dell'ambito, magazzino.magazzini compresa (non e' fra le
+#   eccezioni). Due trigger che normalizzano la stessa colonna sono due
+#   versioni della stessa regola.
+#   ⚠️ Fra il ritiro (20_code) e il montaggio del trigger nuovo (90_end, stesso
+#   migrate) una scrittura di magazzini non normalizzerebbe: nello stesso
+#   migrate la scrivono solo i seed di 80_data, e il seed dei magazzini ha i
+#   codici gia' in maiuscolo.
+#   L'altro trigger che normalizza il codice,
+#   anagrafiche.trgfn_emittenti_fiscali_guard_codice_forma (a05), RESTA: non e'
+#   una copia, normalizza per poter VALIDARE la forma, e parla prima di a15.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/magazzino/20261104-06-drop-trgfn-magazzini-normalize-mctit.yaml
+
+  - changeSet:
+      id: 20261104-06-drop-trgfn-magazzini-normalize
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Ritira trg_magazzini_normalize_ins_upd e magazzino.trgfn_magazzini_normalize: il codice
+        in maiuscolo lo salva l'automazione CODICE_MAIUSCOLO (regola del 2).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_magazzini_normalize_ins_upd ON magazzino.magazzini;
+              DROP FUNCTION IF EXISTS magazzino.trgfn_magazzini_normalize();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.trgfn_magazzini_normalize()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                IF NEW.codice IS NOT NULL THEN
+                  NEW.codice := upper(btrim(NEW.codice));
+                END IF;
+                RETURN NEW;
+              END$function$;
+              COMMENT ON FUNCTION magazzino.trgfn_magazzini_normalize() IS 'Normalizza i dati magazzino.';
+              CREATE TRIGGER trg_magazzini_normalize_ins_upd
+                BEFORE INSERT OR UPDATE ON magazzino.magazzini
+                FOR EACH ROW EXECUTE FUNCTION magazzino.trgfn_magazzini_normalize();
