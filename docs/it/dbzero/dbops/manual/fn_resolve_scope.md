@@ -12,7 +12,6 @@
 >
 > * [dbops.fn_table_in_scope](/dbzero/dbops/funzioni/fn_table_in_scope) — il secondo livello, il filtro per tabella dentro gli schemi restituiti qui
 > * [dbops.fn_schema_match](/dbzero/dbops/funzioni/fn_schema_match) — il confronto fra il bersaglio di una regola e uno schema
-> * [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations) — l'orchestratore, che risolve gli schemi con una sua copia della stessa logica
 >
 > Guide:
 >

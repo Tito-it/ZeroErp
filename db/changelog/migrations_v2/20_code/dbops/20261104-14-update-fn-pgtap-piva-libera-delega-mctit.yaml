@@ -1,0 +1,68 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_pgtap_piva_libera(): delega alla sorella con salto zero.
+#   Brief: brief-db-revisione-dbops, D62 (classe C).
+#
+# Le due firme ripetevano lo stesso ciclo (base, cifra di controllo,
+# validatore, controllo sulle tre colonne fiscali di anagrafiche.soggetti):
+# la firma senza argomenti e' la firma con p_skip = 0, e due copie dello
+# stesso calcolo prima o poi rispondono in due modi (regola del 2).
+#   ⇒ Il corpo senza argomenti diventa la sola delega. La firma resta
+#     separata e senza DEFAULT, come dice il COMMENT della sorella: un default
+#     renderebbe ambigue le chiamate a zero argomenti gia' scritte.
+#   Cambia solo il testo dell'eccezione quando non trova una partita IVA
+#   libera («fn_pgtap_piva_libera(0): …»): nessun test lo confronta.
+#   COMMENT corretto: «due chiamate nella stessa transazione danno valori
+#   diversi» vale solo se fra le due c'e' l'INSERT del soggetto.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261104-14-update-fn-pgtap-piva-libera-delega-mctit.yaml
+
+  - changeSet:
+      id: 20261104-14-update-fn-pgtap-piva-libera-delega
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_pgtap_piva_libera(): il corpo delega a dbops.fn_pgtap_piva_libera(0), invece
+        di ricopiarne il ciclo.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc p
+               WHERE p.oid = to_regprocedure('dbops.fn_pgtap_piva_libera(integer)')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_piva_libera()
+               RETURNS text
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: dare a una fixture pgTAP una partita IVA VALIDA e non
+              --   ancora usata. E' la sorella con salto zero: il calcolo sta
+              --   in un posto solo, dbops.fn_pgtap_piva_libera(integer).
+              BEGIN
+                  RETURN dbops.fn_pgtap_piva_libera(0);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_piva_libera()
+              IS 'Fixture pgTAP: una partita IVA valida (cifra di controllo verificata da script.fn_valida_partita_iva) e non ancora presente in anagrafiche.soggetti, ne'' come partita IVA ne'' come codice fiscale o identificativo fiscale univoco. Delega a dbops.fn_pgtap_piva_libera(0). Due chiamate danno valori diversi solo se fra l''una e l''altra la prima e'' stata inserita: dentro una sola istruzione tornano lo stesso valore, e per due valori distinti si usa la sorella con p_skip (0, 1, …).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo (corpo di prima dal doc auto-generato).
+              SELECT 1;

@@ -159,6 +159,9 @@ gruppi.
 * **Il ritiro per cancellazione.** `attivo = false` spegne una riga, ma la `nota` resta
   obbligatoria e non vuota anche lì; per ritirare una vista dal catalogo si usa `obsoleto_dal`.
   Una riga spenta o ritirata non si conta: il contatore la rifiuta come una vista sconosciuta.
+  ⚠️ L'eccezione è la vista che sparisce dal database: ogni riga, anche ritirata, deve puntare a
+  una vista viva, quindi quando la vista si toglie la sua riga si cancella, prima i testi e poi
+  il presidio, nello stesso giro.
 
 ---
 
@@ -203,6 +206,9 @@ altre. Una riga tolta dal file non sparisce dal database: serve una modifica a p
 * 2026-10-06 — nasce `chi_agisce` (`brief-db-presidi-cosa-significa-cosa-fare`).
 * 2026-10-09 — nasce `colonna_variante` (`brief-db-presidio-processi-testo-per-causa`); il
   conteggio per causa arriva il 2026-10-10.
+* 2026-11-04 — esce dal catalogo `dbops.vw_run_senza_attore`, tolta dal database: la riga è
+  cancellata, non ritirata con `obsoleto_dal`, perché la vista non c'è più
+  (`brief-db-revisione-dbops`).
 
 ---
 

@@ -11,7 +11,7 @@
 | target_schema | text | NO |  |
 | target_table | text | NO |  |
 | column_name | text | NO |  |
-| error_code | text | NO | 'CODICE_NON_MODIFICABILE'::text |
+| error_code | text | NO |  |
 | exec_mode | text | NO | 'AUTO'::text |
 | enabled | boolean | NO | true |
 | note | text | YES |  |

@@ -124,7 +124,7 @@ non sull'id del template del preset.
 ### Convenzioni
 
 * Audit insert-only (`data_insert`, `user_insert`), come la sorella `template_flussi_prerequisiti`.
-* Trigger standard applicati automaticamente da `dbops.fn_run_automations()`.
+* Trigger standard applicati automaticamente dai runner del framework di automazione (`dbops.fn_run_automations_<tipo>`).
 
 ---
 

@@ -70,8 +70,7 @@ Per ogni tabella e regola:
 ### Chi la chiama
 
 Il job pgAgent tramite il suo wrapper, la convergenza dei processi strutturali e la passata
-`ci_apply`, sempre prima del runner che monta il trigger. L'orchestratore `fn_run_automations` non
-la chiama.
+`ci_apply`, sempre prima del runner che monta il trigger.
 
 ---
 

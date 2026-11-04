@@ -12,7 +12,6 @@
 > Approfondimento funzioni:
 >
 > * [maintenance.proc_automations_overlap_job](/dbzero/maintenance/funzioni/proc_automations_overlap_job) — il giro che la chiama, a orario e nella convergenza del rilascio
-> * [dbops.fn_seed_automazione_overlap](/dbzero/dbops/funzioni/fn_seed_automazione_overlap) — la rilevazione automatica del registro, oggi senza chiamanti
 > * [dbops.fn_audit_log_once](/dbzero/dbops/funzioni/fn_audit_log_once) — la scrittura dell'audit
 >
 > Guide:

@@ -12,8 +12,7 @@
 >
 > Approfondimento funzioni:
 >
-> * [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations) — l'orchestratore che la chiama come modulo `AUDIT_UPDATE`
-> * [maintenance.proc_automations_audit_update_job](/dbzero/maintenance/funzioni/proc_automations_audit_update_job) — il job che la lancia da sola
+> * [maintenance.proc_automations_audit_update_job](/dbzero/maintenance/funzioni/proc_automations_audit_update_job) — il processo che la lancia, dalla convergenza del rilascio e dal suo job pgAgent
 > * [script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic) — il trigger che monta
 > * [dbops.fn_get_override_col](/dbzero/dbops/funzioni/fn_get_override_col) — il nome di colonna sostituito, se c'è
 > * [dbops.fn_name_from_template](/dbzero/dbops/funzioni/fn_name_from_template) — il nome del trigger dal modello
@@ -66,7 +65,8 @@ strategia della regola dice quando il trigger «c'è già»: `BY_NAME` (il defau
 
 Con la simulazione accesa la funzione non esegue DDL: per ogni trigger mancante scrive una riga
 `DRYRUN` in `dbops.audit_log`, con tipo di regola `AUDIT_UPDATE`, la tabella e il nome che avrebbe
-creato.
+creato. ⚠️ La riga è firmata `dbops.fn_run_automations`, non col nome di questa funzione: un nome
+che non esiste più, perché l'orchestratore è stato ritirato. È un difetto aperto.
 
 ---
 
@@ -88,6 +88,8 @@ Il primo errore ferma l'intera corsa.
 * 2026-10-16 — un guasto dell'ambiente si rilancia col suo SQLSTATE; prima diventava un errore di
   dominio del modulo, e il presidio dei job lo mandava allo sviluppo
   (`brief-db-presidio-job-run-a-chi-tocca`).
+* 2026-11-04 — ritirato l'orchestratore `dbops.fn_run_automations`, che la chiamava come modulo
+  `AUDIT_UPDATE`; la firma della simulazione ne porta ancora il nome (`brief-db-revisione-dbops`).
 
 ---
 

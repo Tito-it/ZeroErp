@@ -52,7 +52,7 @@ BEGIN
 
     SELECT * INTO v_emittente
       FROM anagrafiche.emittenti_fiscali
-     WHERE codice = p_emittente_codice;
+     WHERE codice = script.fn_codice_normalizzato(p_emittente_codice);
 
     IF NOT FOUND OR NOT v_emittente.attivo THEN
         PERFORM script.fn_log_and_raise_error(
@@ -63,7 +63,9 @@ BEGIN
     END IF;
 
     -- Guard 2: c'e' qualcosa da riattivare?
-    v_username := p_processo_codice || '@' || p_emittente_codice;
+    -- Col codice SALVATO dell'emittente, come lo compone la fabbrica
+    -- (rev 2026-11-04).
+    v_username := p_processo_codice || '@' || v_emittente.codice;
 
     SELECT au.id INTO v_auth_user_id
       FROM django.auth_user au
@@ -126,7 +128,7 @@ END
 $function$
 
 COMMENT ON FUNCTION script.fn_riattiva_utente_tecnico(p_processo_codice text, p_emittente_codice character varying)
-IS 'Riaccende un utente tecnico che ESISTE ed e'' spento, per la coppia (processo, emittente): il legame in dbops.processi_identita, l''identita'' in anagrafiche.identita_digitali e l''utente in django.auth_user. Ritorna l''auth_user_id. ⭐ Esiste perche'' lo username degli utenti tecnici e'' deterministico (processo@emittente) e il suo UNIQUE non ha condizioni: disattivare il legame non libera lo username, quindi la fabbrica non puo'' rifare l''utente — e senza questo verbo la strada di sostituzione documentata resta chiusa. ⛔ NON ricostruisce niente: non crea soggetti, non tocca il perimetro, non assegna profili. Se manca un pezzo la coppia non e'' «da riattivare», e'' rotta. ⛔ E il perimetro NON si sposta: config.user_emittenti_fiscali e'' 1-a-1 con emittente immutabile, quindi se l''utente aveva un''altra azienda la funzione si ferma invece di riaccenderlo — riaccenderlo lo farebbe lavorare per l''azienda sbagliata. Compagna di script.fn_crea_utente_tecnico: quella CREA cio'' che non c''e'', questa RIACCENDE cio'' che c''e''. Brief: brief-db-processi-automatici-residui-be, DB-6.';
+IS 'Riaccende un utente tecnico che ESISTE ed e'' spento, per la coppia (processo, emittente): il legame in dbops.processi_identita, l''identita'' in anagrafiche.identita_digitali e l''utente in django.auth_user. Ritorna l''auth_user_id. ⭐ Esiste perche'' lo username degli utenti tecnici e'' deterministico (processo@emittente) e il suo UNIQUE non ha condizioni: disattivare il legame non libera lo username, quindi la fabbrica non puo'' rifare l''utente — e senza questo verbo la strada di sostituzione documentata resta chiusa. ⛔ NON ricostruisce niente: non crea soggetti, non tocca il perimetro, non assegna profili. Se manca un pezzo la coppia non e'' «da riattivare», e'' rotta. ⛔ E il perimetro NON si sposta: config.user_emittenti_fiscali e'' 1-a-1 con emittente immutabile, quindi se l''utente aveva un''altra azienda la funzione si ferma invece di riaccenderlo — riaccenderlo lo farebbe lavorare per l''azienda sbagliata. Compagna di script.fn_crea_utente_tecnico: quella CREA cio'' che non c''e'', questa RIACCENDE cio'' che c''e''. Brief: brief-db-processi-automatici-residui-be, DB-6. Rev 2026-11-04 (20261104-37, D-2 di Tid): l''emittente si cerca con script.fn_codice_normalizzato, e lo username da riattivare si compone col codice SALVATO dell''emittente (v_emittente.codice), come in script.fn_crea_utente_tecnico.';
 ```
 
 </div>

@@ -12,7 +12,6 @@
 > Approfondimento funzioni:
 >
 > * [dbops.fn_audit_log_once](/dbzero/dbops/funzioni/fn_audit_log_once) — la porta di scrittura dell'applicazione
-> * [dbops.fn_audit_begin](/dbzero/dbops/funzioni/fn_audit_begin) — la modalità sessione, con `fn_audit_end`
 >
 > Guide:
 >
@@ -51,10 +50,14 @@ dominio ci scrive, e se una lo facesse questa vista la nomina.
 | Conta come «scrive» | Non conta |
 | --- | --- |
 | un inserimento, un aggiornamento o una cancellazione su `dbops.audit_log` nel corpo (`come_scrive` = `DML_DIRETTO`) | una lettura del registro |
-| una chiamata a `fn_audit_log_once`, `fn_audit_begin` o `fn_audit_end` (`come_scrive` = `VIA_FN_AUDIT`) | i commenti di riga: il sorgente si legge senza, così un esempio commentato non fa scattare il cancello |
-| | le tre funzioni di audit stesse, che sono la porta e stanno in `dbops` |
+| una chiamata a `fn_audit_log_once` (`come_scrive` = `VIA_FN_AUDIT`) | i commenti di riga: il sorgente si legge senza, così un esempio commentato non fa scattare il cancello |
+| | la funzione di audit stessa, che è la porta e sta in `dbops` |
 
 Legge solo il catalogo delle funzioni, con `security_invoker`: non tocca dati.
+
+Fra le porte che la vista riconosce nel testo dei corpi restano anche `fn_audit_begin` e
+`fn_audit_end`, la modalità sessione ritirata: un nome senza funzione non trova nessun corpo, e il
+cancello non cambia.
 
 ⚠️ Legge il **sorgente** delle funzioni. Il corpo di una funzione SQL scritta nella forma
 `BEGIN ATOMIC` non sta nel sorgente ma in una forma già analizzata, e la vista non lo vede: una
@@ -89,6 +92,8 @@ Due esiti possibili, e nessuno dei due è aggiungere lo schema all'elenco senza 
 
 * 2026-09-11 — nasce con la decisione che il registro delle esecuzioni non contenga dati di dominio
   (`brief-db-rls-storico-scope-congelato`, §8.3 e §8.6).
+* 2026-11-04 — ritirate `fn_audit_begin` e `fn_audit_end`; la vista non si è riaperta e i loro
+  nomi restano fra le porte (`brief-db-revisione-dbops`).
 
 ---
 

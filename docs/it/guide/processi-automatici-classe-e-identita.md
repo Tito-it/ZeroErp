@@ -1,6 +1,6 @@
 # Guida — I lavori automatici: che natura hanno e per conto di chi girano
 
-> **Ultimo aggiornamento**: 3 novembre 2026
+> **Ultimo aggiornamento**: 4 novembre 2026
 >
 > Destinatari: chiunque debba capire, aggiungere o controllare un lavoro che il
 > sistema fa da solo — sviluppatori, analisti, e chi guarda se stanotte è andato
@@ -331,7 +331,6 @@ Non si va a memoria: ci sono viste che rispondono a una domanda ciascuna, e che
 | [vw_emittenti_non_serviti](/dbzero/dbops/views/vw_emittenti_non_serviti) | c'è un'azienda che nessuno sta servendo? |
 | [vw_processi_dominio_su_pgagent](/dbzero/dbops/views/vw_processi_dominio_su_pgagent) | qualcuno sta ancora eseguendo dentro l'orologio? |
 | [vw_processi_che_bypassano](/dbzero/dbops/views/vw_processi_che_bypassano) | è rimasto in giro un passe-partout? |
-| [vw_run_senza_attore](/dbzero/dbops/views/vw_run_senza_attore) | c'è una corsa che non dice chi l'ha fatta? |
 | [vw_coda_lavori_da_guardare](/dbzero/dbops/views/vw_coda_lavori_da_guardare) | c'è un lavoro in coda che si è fermato e nessuno se n'è accorto? |
 | [vw_fatture_stampa_coda_da_guardare](/dbzero/dbops/views/vw_fatture_stampa_coda_da_guardare) | c'è una stampa in coda che si è fermata? (la gemella, per la coda stampa) |
 | [vw_email_da_guardare](/dbzero/dbops/views/vw_email_da_guardare) | c'è un'email che la coda deve a qualcuno da più di un'ora e nessuno ha preso in mano? |
@@ -369,8 +368,9 @@ In ordine, e nessuno dei passi è facoltativo:
 4. **Se deve girare a orario e ha natura di dominio**, l'orologio lo **accoda**,
    non lo esegue: vedi [fn_accoda_lavoro](/dbzero/dbops/funzioni/fn_accoda_lavoro)
    e la [guida delle code](/guide/gestione-code-di-lavoro).
-5. **Fai in modo che firmi le proprie corse**, così non finisce in
-   [vw_run_senza_attore](/dbzero/dbops/views/vw_run_senza_attore).
+5. **Fai in modo che firmi le proprie corse**: il giornale
+   [maintenance.job_run_log](/dbzero/maintenance/tabelle/job_run_log) rifiuta una corsa che
+   non dice di quale processo è (`chk_job_run_log_processo_dichiarato`), e il lavoro non gira.
 
 ⚠️ Un lavoro registrato come DOMINIO **non può essere accodato senza operatore**:
 il sistema lo rifiuta. Non è una formalità — è la regola che impedisce a un

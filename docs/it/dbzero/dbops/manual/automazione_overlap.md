@@ -7,7 +7,6 @@
 > Approfondimento funzioni:
 >
 > * [dbops.fn_apply_automazione_overlap](/dbzero/dbops/funzioni/fn_apply_automazione_overlap) — legge il registro e crea i vincoli che mancano
-> * [dbops.fn_seed_automazione_overlap](/dbzero/dbops/funzioni/fn_seed_automazione_overlap) — la rilevazione automatica dallo schema, oggi senza chiamanti
 > * [maintenance.proc_automations_overlap_job](/dbzero/maintenance/funzioni/proc_automations_overlap_job) — il giro che esegue l'apply, a orario e nella convergenza del rilascio
 >
 > Guide:
@@ -62,9 +61,8 @@ di DDL. Li scrive solo chi migra, con un changeSet di `80_data`; mai un input ap
 ### Chi scrive il registro
 
 Le righe si registrano a mano, con changeSet di `80_data`, quando un vincolo di non
-sovrapposizione nasce o cambia forma. La funzione di rilevazione automatica
-[fn_seed_automazione_overlap](/dbzero/dbops/funzioni/fn_seed_automazione_overlap) esiste, ma oggi
-non la chiama nessuno: la sua scheda dice perché non va lanciata su un registro curato a mano.
+sovrapposizione nasce o cambia forma. È l'unica sorgente del registro: non c'è una rilevazione
+automatica che le deduca dallo schema.
 
 ⚠️ Cambiare `where_predicate` o la chiave di una riga **non** cambia un vincolo già creato:
 l'apply salta la tabella se ci trova già un vincolo sul periodo. Il vincolo vecchio si toglie
@@ -90,6 +88,9 @@ nello stesso changeSet che cambia la riga, e il giro successivo lo ricrea nella 
 * 2026-06-02 — arrivano `where_predicate` (vincoli parziali) e `key_expressions`, e i vincoli
   parziali già esistenti vengono registrati (`refactor-overlap-v2`). Dallo stesso giorno l'apply
   ha un giro a orario: prima il registro non lo eseguiva nessuno.
+* 2026-11-04 — ritirata `fn_seed_automazione_overlap`, la rilevazione automatica nata col
+  registro. Non la chiamava nessuno, ed era una seconda sorgente: lanciata, riscriveva le righe
+  curate dai changeSet (`brief-db-revisione-dbops`).
 
 ---
 

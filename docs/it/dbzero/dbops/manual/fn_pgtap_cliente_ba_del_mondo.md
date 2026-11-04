@@ -11,7 +11,8 @@
 >
 > Approfondimento funzioni:
 >
-> * [dbops.fn_pgtap_cliente_del_builder](/dbzero/dbops/funzioni/fn_pgtap_cliente_del_builder) — l'unico chiamante: il cliente dei builder di documento
+> * [dbops.fn_pgtap_cliente_del_builder](/dbzero/dbops/funzioni/fn_pgtap_cliente_del_builder) — il cliente dei builder di documento, che la chiama
+> * [dbops.fn_pgtap_crea_mondo_cliente](/dbzero/dbops/funzioni/fn_pgtap_crea_mondo_cliente) — il mondo minimo, che la chiama per verificare il cliente che ha appena costruito
 > * [dbops.fn_pgtap_azienda_di_chi_agisce](/dbzero/dbops/funzioni/fn_pgtap_azienda_di_chi_agisce) — l'azienda contro cui il legame si confronta
 >
 > Guide:
@@ -26,10 +27,11 @@ La verifica che il cliente passato a un builder di documento — un billing acco
 da un'altra fixture — sia dell'azienda di chi agisce, e le sue chiavi: BA, istanza,
 soggetto ruolo del cliente e utility.
 
-È un building block: oggi la chiama solo
+È un building block con due chiamanti:
 [fn_pgtap_cliente_del_builder](/dbzero/dbops/funzioni/fn_pgtap_cliente_del_builder), e
 attraverso quella i builder di commessa, contratto, fattura, ordine, lotto e bolla senza
-ordine.
+ordine; e [fn_pgtap_crea_mondo_cliente](/dbzero/dbops/funzioni/fn_pgtap_crea_mondo_cliente),
+che verifica il legame del cliente appena costruito.
 
 ---
 
@@ -73,6 +75,8 @@ di un'altra azienda:
   builder della fattura e del contratto, e il terzo, quello dell'ordine, l'ha fatto estrarre.
 * 2026-10-24 — i builder non la chiamano più direttamente: passano da
   `dbops.fn_pgtap_cliente_del_builder` (`brief-modello-documento-vendita`, §4-octies).
+* 2026-11-04 — la chiama anche `dbops.fn_pgtap_crea_mondo_cliente`, che ne teneva una copia
+  sfuggita all'estrazione (`brief-db-revisione-dbops`).
 
 ---
 

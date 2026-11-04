@@ -26,6 +26,9 @@ Restituisce una **partita IVA valida e non ancora usata** in `anagrafiche.sogget
 per una fixture. Ha due firme: senza argomenti dà la prima libera, con un numero salta le
 prime libere.
 
+⭐ Il calcolo sta in una firma sola: quella senza argomenti è la firma con salto zero, e le
+delega tutto. Due copie dello stesso ciclo, prima o poi, risponderebbero in due modi.
+
 ---
 
 ### ⭐ Valida e libera, come il codice fiscale
@@ -44,7 +47,8 @@ IVA e lo dice, invece di restituirne una che il dominio rifiuta.
 
 ### ⚠️ Due partite IVA nella stessa istruzione: si salta
 
-Un identificativo diventa occupato solo quando il soggetto che lo usa è scritto. Dentro una
+Un identificativo diventa occupato solo quando il soggetto che lo usa è scritto. Due chiamate
+danno valori diversi solo se fra l'una e l'altra c'è la scrittura del soggetto: dentro una
 sola istruzione non c'è nessuna scrittura in mezzo, quindi due chiamate senza argomenti
 rispondono la **stessa** partita IVA, e la fixture si schianta sull'unicità dando la colpa al
 test.
@@ -74,6 +78,7 @@ dati societari, che chiedono più partite IVA nella stessa istruzione.
 ### Note di migrazione
 
 * 2026-08-18 — nasce con la bonifica della baseline pgTAP di vendite (`brief-db-bonifica-baseline-pgtap-vendite`); la firma con il salto arriva subito dopo, quando una fixture ha chiesto due partite IVA nella stessa istruzione.
+* 2026-11-04 — la firma senza argomenti delega alla firma con salto zero, invece di ricopiarne il ciclo; il messaggio quando non trova una partita IVA libera ora nomina la firma con il salto (`brief-db-revisione-dbops`).
 
 ---
 

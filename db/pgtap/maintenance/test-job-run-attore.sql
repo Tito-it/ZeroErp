@@ -12,7 +12,7 @@
 --       script.fn_job_run_start, maintenance.fn_run_and_log
 -- Brief: brief-db-processi-automatici-identita-e-perimetro §3
 --
--- Elenco test (plan 12):
+-- Elenco test (plan 11):
 --  1) job_run_log ha la colonna processo_codice
 --  2) job_run_log ha la colonna auth_user_id
 --  3) la FK respinge un codice di processo non registrato
@@ -24,9 +24,12 @@
 --     (chk_job_run_log_processo_dichiarato lo respinge con 23514)
 --  9) nessun overload residuo di fn_job_run_start
 -- 10) nessun overload residuo di fn_run_and_log
--- 11) vw_run_senza_attore guarda l'ULTIMA corsa: un job che si e' dichiarato
---     dopo non compare
--- 12) fn_job_run_start non e' aperta a PUBLIC dopo il DROP+CREATE
+-- 11) fn_job_run_start non e' aperta a PUBLIC dopo il DROP+CREATE
+--
+-- ⚠️ Il test che interrogava dbops.vw_run_senza_attore e' uscito con la vista
+--   (20_code/dbops/20261104-11, brief-db-revisione-dbops D42): dopo il CHECK
+--   chk_job_run_log_processo_dichiarato la corsa senza processo non nasce piu'
+--   (test 8), e il presidio non poteva ne' accendersi ne' svuotarsi.
 --
 -- Scopo:
 --  - fissare che l'attore arriva sul giornale per ENTRAMBI i canali;
@@ -35,7 +38,7 @@
 --    quindi il job si ferma invece di lasciare una riga muta;
 --  - fissare che dopo il DROP non e' rimasta la firma vecchia: e' il difetto
 --    che si vedrebbe solo come «l'attore non arriva mai», mesi dopo;
---  - fissare la POSTURA DEI PRIVILEGI dopo un DROP+CREATE (test 12), che e'
+--  - fissare la POSTURA DEI PRIVILEGI dopo un DROP+CREATE (test 11), che e'
 --    la regressione realmente accaduta il 2026-09-04.
 -- ------------------------------------------------------------
 
@@ -45,7 +48,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(12);
+SELECT plan(11);
 
 -- ============================================================
 -- 1..2. Le colonne
@@ -193,34 +196,7 @@ SELECT is(
 );
 
 -- ============================================================
--- 11. ⭐ Che cosa E' DIVENTATO il presidio, dopo DB-5
--- ============================================================
--- ⛔ 2026-09-05 — QUESTO TEST NON POTEVA PIU' ESSERE VERDE, e la ragione vale
---   piu' del test. Chiedeva che la vista contasse un run rimasto senza attore.
---   Dopo `chk_job_run_log_processo_dichiarato` **un run senza attore non puo'
---   piu' nascere**: l'INSERT viene rifiutato (test 8).
---
--- ⇒ La vista ha cambiato natura, e va detto perche' nessuno la legga piu' come
---   prima. Non e' piu' «chi non si e' ancora dichiarato», che era una domanda
---   sul presente: e' **il residuo storico che non si dichiarera' mai**, scritto
---   prima che la colonna esistesse. ⭐ Una volta che quei job saranno girati di
---   nuovo, si svuota — e resta vuota per costruzione, non per disciplina.
---
--- ⚠️ Quindi il test giusto non e' «la vista vede una riga nuova» — non ce ne
---   saranno piu' — ma «la vista guarda l'ULTIMA corsa». E' la proprieta' che le
---   permette di arrivare a zero: contando tutte le righe storiche non sarebbe
---   mai stata vuota, e un presidio che non puo' arrivare a zero e' rumore.
-SELECT is_empty(
-    $$SELECT v.jobname
-        FROM dbops.vw_run_senza_attore v
-        JOIN maintenance.job_run_log l ON l.jobname = v.jobname
-       WHERE l.processo_codice IS NOT NULL
-         AND l.started_at > v.ultimo_run$$,
-    'vw_run_senza_attore guarda l''ULTIMA corsa: un job che si e'' dichiarato dopo non compare'
-);
-
--- ============================================================
--- 12. La postura dei privilegi sopravvive al DROP+CREATE
+-- 11. La postura dei privilegi sopravvive al DROP+CREATE
 -- ============================================================
 -- ⛔ E' la regressione realmente accaduta scrivendo questa fase, il 2026-09-04.
 --   `DROP FUNCTION` cancella anche l'ACL: la CREATE successiva riparte dal

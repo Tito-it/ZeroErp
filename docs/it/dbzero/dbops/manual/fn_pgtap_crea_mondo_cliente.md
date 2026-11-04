@@ -14,6 +14,7 @@
 > * [dbops.fn_pgtap_azienda_di_chi_agisce](/dbzero/dbops/funzioni/fn_pgtap_azienda_di_chi_agisce) — l'azienda, quando il contesto è già aperto
 > * [dbops.fn_pgtap_crea_cliente_ba](/dbzero/dbops/funzioni/fn_pgtap_crea_cliente_ba) — il cliente fatturabile
 > * [script.fn_pgtap_set_contesto_operatore](/dbzero/script/funzioni/fn_pgtap_set_contesto_operatore) — il contesto che il mondo apre
+> * [dbops.fn_pgtap_cliente_ba_del_mondo](/dbzero/dbops/funzioni/fn_pgtap_cliente_ba_del_mondo) — la verifica del legame del cliente all'azienda, la stessa dei builder di documento
 > * [dbops.fn_pgtap_cliente_del_builder](/dbzero/dbops/funzioni/fn_pgtap_cliente_del_builder) — i builder di documento, che partono dal mondo
 >
 > Guide:
@@ -79,6 +80,9 @@ legame lo scrive il trigger guardando chi agisce — e il mondo tornato non sare
   rifiutato da [fn_pgtap_azienda_di_chi_agisce](/dbzero/dbops/funzioni/fn_pgtap_azienda_di_chi_agisce);
 * il **legame** del cliente si verifica: se il trigger l'ha legato a un'altra azienda, il
   mondo solleva subito invece di lasciar morire il test venti righe più in là su una policy.
+  La verifica è quella dei builder di documento,
+  [fn_pgtap_cliente_ba_del_mondo](/dbzero/dbops/funzioni/fn_pgtap_cliente_ba_del_mondo), in un
+  posto solo: il rifiuto nomina questa fixture come chiamante.
 
 ---
 
@@ -114,9 +118,9 @@ esiste più. Non dà fastidio perché il runner lancia un processo per file.
 
 ### Codici errore
 
-Nessun codice registrato: la sigla chiesta a contesto aperto e il legame verso un'altra
-azienda sono eccezioni senza codice, sollevate dal mondo; gli altri rifiuti sono quelli delle
-fixture che compone.
+Nessun codice registrato: la sigla chiesta a contesto aperto è un'eccezione senza codice,
+sollevata dal mondo; il legame verso un'altra azienda lo rifiuta, senza codice,
+`fn_pgtap_cliente_ba_del_mondo`; gli altri rifiuti sono quelli delle fixture che compone.
 
 ---
 
@@ -142,6 +146,9 @@ fixture che compone.
   assegnata.
 * 2026-10-24 — il ramo con il contesto passa da `dbops.fn_pgtap_azienda_di_chi_agisce`,
   estratta da qui (`brief-modello-documento-vendita`, §4-octies).
+* 2026-11-04 — la verifica del legame passa da `dbops.fn_pgtap_cliente_ba_del_mondo`: era una
+  copia della stessa lettura, rimasta qui quando il building block fu estratto dai builder di
+  documento (`brief-db-revisione-dbops`).
 
 ---
 

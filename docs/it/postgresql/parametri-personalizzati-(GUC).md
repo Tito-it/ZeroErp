@@ -1,6 +1,6 @@
 # Parametri personalizzati (GUC) in PostgreSQL
 
-> **Ultimo aggiornamento**: 26 ottobre 2026
+> **Ultimo aggiornamento**: 4 novembre 2026
 >
 > **Destinatari**: chi scrive funzioni, trigger o verbi del database, e chi configura un'installazione
 >
@@ -132,7 +132,7 @@ tecnica, in coda.
 | `myapp.user_language`         | codice lingua (`it`)      | `ALTER ROLE … IN DATABASE … SET`                               | i messaggi d'errore (`script.fn_get_messaggio`, `fn_log_and_raise_error`) |
 | `myapp.dblink_log_connection` | stringa di connessione    | `scripts/sql/provision_dblink_log_channel.sql`, per ruolo      | il canale dei registri fuori transazione (`script.fn_log_error_only`, `maintenance.fn_job_run_log_failure`, `script.fn_ensure_logconn`) |
 | `myapp.logconn`               | stringa di connessione    | facoltativo, nella sessione                                    | gli stessi lettori: se c'è, **vince** su `myapp.dblink_log_connection` |
-| `myapp.log_with_dblink`       | `on` / `off`              | opzioni della connessione (`off` nelle migrazioni)             | l'audit delle automazioni (`dbops.fn_audit_begin`, `fn_audit_end`, `fn_audit_log_once`) |
+| `myapp.log_with_dblink`       | `on` / `off`              | opzioni della connessione (`off` nelle migrazioni)             | l'audit delle automazioni (`dbops.fn_audit_log_once`) |
 | `myapp.bypass_tx_id_check`    | `on` / `off`              | per ruolo o sessione                                           | il trigger del `tx_id` (`dbops.trgfn_tx_id_managed`), secondo livello del bypass |
 | `myapp.env`                   | `ci`                      | opzioni della connessione della passata `ci_apply` in CI        | la `preCondition` del changeSet `90_end/ci_apply/20250627-31`       |
 
@@ -158,8 +158,9 @@ successiva. Significato, provenienza e regole in [Contratto GUC `app.*`](/guide/
 | `app.registrazione_tardiva_riga_id`  | `pagamenti.fn_posta_riga_tardiva`             | quella sola riga, sul guard della distinta finale                           |
 
 ⚠️ **Residuo**: `app.session_key` lo legge `script.fn_get_parameter_di_sessione` (livello «sessione»
-degli override dei parametri), ma l'unica funzione che lo scriveva, `dbops.fn_set_gucs_conn`, insieme
-ad `app.user_id` e `app.group_ids`, non ha più chiamanti. Oggi quel livello resta sempre saltato.
+degli override dei parametri), ma nessuna funzione lo scrive più: l'unica che lo faceva, insieme ad
+`app.user_id` e `app.group_ids`, è stata ritirata il 4 novembre 2026 perché non aveva chiamanti. Oggi
+quel livello resta sempre saltato.
 
 ### `zeroerp.*` — porte, override, manutenzione, provisioning
 

@@ -2,17 +2,17 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-04
 
-**Riparte: Tid**, con l'apply del giro C1 (§10: dieci changeSet `20261104-09` … `-18`, provati sullo
-scratch) e i pgTAP di §10.2 come app. Poi le decisioni di §4 per i giri A e B.
+**Riparte: Tid**, con il commit del giro C1 (§10: undici changeSet `20261104-09` … `-19`, applicati e
+verdi il 2026-11-04) e le decisioni di §4 per i giri A e B.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
 | 1 | ✅ sessione DB | Revisione delle 239 pagine `dbops/manual/` allo standard (201 riscritte, 38 nuove); doc fuori schema corretta | §7 | — |
 | 2 | ✅ Tid | Si parte dalla classe C; ritiri solo se certi; D17-bis e D74 rimandati (2026-11-04) | §10 | 1 |
 | 3 | ✅ sessione DB | Giro C1 scritto e provato sullo scratch; doc riallineata | §10 | 2 |
-| 4 | **Tid** ⏭️ | Apply del giro C1 su dbdev e scratch; pgTAP di §10.2 come app | §10.2 | 3 |
-| 5 | Tid | Le decisioni di §4 e l'ordine dei giri A e B di §8 | §4, §8 | — |
-| 6 | sessione DB | Giri successivi, nell'ordine deciso da Tid; il residuo C (§10.4) | §8, §10.4 | 4, 5 |
+| 4 | ✅ Tid | Apply del giro C1 su dbdev e scratch (`-09` … `-19`); pgTAP di §10.2 verdi (2026-11-04) | §10.2 | 3 |
+| 5 | **Tid** ⏭️ | Commit del giro C1; le decisioni di §4 e l'ordine dei giri A e B di §8 | §4, §8 | — |
+| 6 | sessione DB | Giri successivi, nell'ordine deciso da Tid; il residuo C (§10.4) | §8, §10.4 | 5 |
 | 7 | team BE | Le ricadute di §5, quando il giro DB corrispondente è applicato | §5 | 6 |
 | 8 | sessione DB | Pagine `manual/` riallineate a ogni difetto chiuso; brief in `work-done/` | §1 | 6 |
 
@@ -533,6 +533,7 @@ D17-bis e D74 si rimandano.
 | `20_code/dbops/20261104-16` | D72 | `fn_pgtap_crea_preventivo_con_righe` sceglie la natura con `script.fn_natura_e_merce`; COMMENT riscritto |
 | `80_data/changelog/20261104-17` | D42 | DELETE delle righe di `vw_run_senza_attore` da `dbops.presidi_testi` e `dbops.presidi`, già tolte dai due CSV (i mirror non cancellano) |
 | `90_end/20261104-18` | D61 | DROP di `fn_audit_begin`, `fn_audit_end`: in `90_end` perché il REVOKE di `20260911-09` le pretende con una preCondition HALT |
+| `00_schema/dbops/20261104-19` | D61 | `chk_audit_status` senza `START`: lo scriveva solo `fn_audit_begin`, e una corsa «aperta» non è più uno stato del modello. Senza, il presidio C1 è rosso (`dbops/test-stati-check-scrittori-v1` test 2, `audit_log.status = START` NON_DICHIARATO: visto da Tid dopo l'apply). Nessun lettore del valore; zero righe `START` su dbdev; una riga `START` farebbe fallire l'`ADD CONSTRAINT`, e va bene così |
 
 pgTAP riallineati: `dbops/test-registri-append-only-postura-v1.sql` (plan 22: i test 14-15 provano che le
 due porte non esistono più, i 22-23 escono) e `maintenance/test-job-run-attore.sql` (plan 11: esce il test
@@ -562,9 +563,14 @@ l'elenco delle porte di `vw_audit_log_scrittori_fuori_perimetro`, un filtro di
 * Lo scratch dopo le prove è intatto (impronta delle funzioni di `dbops`, righe di `dbops.presidi`, vista,
   default della colonna).
 
-**Per Tid:** apply su dbdev (`cd db && ../scripts/liquibase5.sh update`) e sullo scratch
-(`scripts/ci-local.sh --ci-apply`), poi come app `dbops/test-registri-append-only-postura-v1.sql`,
-`maintenance/test-job-run-attore.sql`, `dbops/test-catalogo-presidi-v1.sql`, `dbops/test-presidi-testi-v1.sql`.
+* `20261104-19`, provato dopo l'apply del C1 sullo scratch: `dbops/test-stati-check-scrittori-v1` passa da
+  14/15 a 15/15; `test-chiusura-scadenze-audit-v1`, `test-storico-salto-trigger-presente-v1` e la postura
+  invariati senza e con.
+
+**✅ Applicato da Tid il 2026-11-04** su dbdev e sullo scratch, `20261104-09` … `-19`. Verdi come app
+`dbops/test-registri-append-only-postura-v1.sql`, `maintenance/test-job-run-attore.sql`,
+`dbops/test-catalogo-presidi-v1.sql`, `dbops/test-presidi-testi-v1.sql`; verde da owner
+`dbops/test-stati-check-scrittori-v1.sql` (era rosso al test 2 dopo il `-18`, chiuso dal `-19`).
 
 ### 10.3 Doc
 
@@ -580,7 +586,7 @@ quelle degli oggetti cambiati (§7.1 resta per la revisione).
 | R3 | I nomi `fn_audit_begin`/`fn_audit_end` nella lista di `ci_apply/20260205-41` e nelle porte di `vw_audit_log_scrittori_fuori_perimetro` | Testo senza effetto; si toglie quando quei file si riaprono |
 | R4 | D17-bis, D74 | Rimandati da Tid |
 | R5 | I quattro strumenti DBA (`fn_find_file_usage`, `fn_foreign_keys_info`, `fn_get_child_fk_col`, `fn_list_indices`) | Non ritirati: decisione Q9 aperta |
-| R6 | `dbops.audit_log.duration_ms` non la scrive più nessuno: la scriveva solo `fn_audit_end`, e `fn_audit_log_once` non ha un parametro per la durata (i runner la mettono in `result`). Lo stato `START` resta nel vocabolario senza chi lo chiude | Da decidere: colonna e stato ritirati, o un parametro della durata in `fn_audit_log_once` |
+| R6 | `dbops.audit_log.duration_ms` non la scrive più nessuno: la scriveva solo `fn_audit_end`, e `fn_audit_log_once` non ha un parametro per la durata (i runner la mettono in `result`). ✅ La metà su `START` è chiusa da `00_schema/dbops/20261104-19` (vedi §10.1) | **`duration_ms`** da decidere: colonna ritirata, o un parametro della durata in `fn_audit_log_once` |
 | R7 | `docs/it/postgresql/dblink.md` dice ancora che `fn_audit_log_once` scrive fuori transazione con `myapp.log_with_dblink = on`: oggi quel ramo non scrive (D60) | Con D60 |
 | R8 | ✅ `dbops/manual/fn_run_automations_codice_maiuscolo.md` (cantiere parallelo) diceva «non è una parte di `dbops.fn_run_automations`, che non ha chiamanti» | Corretto dal suo cantiere il 2026-11-04, con il commento di testata di `20_code/dbops/20261104-04` |
 

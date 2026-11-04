@@ -93,7 +93,7 @@ La tabella `pratiche.template_flussi` definisce i **template degli step di workf
 
 ### Convenzioni
 
-* Trigger standard applicati automaticamente da `dbops.fn_run_automations()`.
+* Trigger standard applicati automaticamente dai runner del framework di automazione (`dbops.fn_run_automations_<tipo>`).
 * `storicizza = true` per tracciamento modifiche alla configurazione.
 
 ---

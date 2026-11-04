@@ -11,8 +11,7 @@
 >
 > Approfondimento funzioni:
 >
-> * [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations) — l'orchestratore che la chiama come modulo `TX_ID`
-> * [maintenance.proc_automations_tx_id_job](/dbzero/maintenance/funzioni/proc_automations_tx_id_job) — il job che la lancia da sola
+> * [maintenance.proc_automations_tx_id_job](/dbzero/maintenance/funzioni/proc_automations_tx_id_job) — il processo che la lancia, dalla convergenza del rilascio e dal suo job pgAgent
 > * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed) — il trigger che monta
 > * [dbops.fn_name_from_template](/dbzero/dbops/funzioni/fn_name_from_template) — il nome del trigger dal modello
 > * [dbops.fn_trigger_exists_by_name](/dbzero/dbops/funzioni/fn_trigger_exists_by_name) — l'esistenza per nome
@@ -66,8 +65,9 @@ un'altra epoca.
 ### La simulazione
 
 Con la simulazione accesa la funzione non esegue DDL: per ogni trigger mancante scrive una riga
-`DRYRUN` in `dbops.audit_log` con la tabella e il nome che avrebbe creato. ⚠️ Il tipo di regola di
-quella riga è scritto come `E_TX_ID`, il codice d'errore del modulo, invece di `TX_ID`.
+`DRYRUN` in `dbops.audit_log` con la tabella e il nome che avrebbe creato. La riga porta il tipo di
+regola `TX_ID` ed è firmata col nome di questa funzione, come le simulazioni degli altri moduli si
+firmano col tipo della loro regola.
 
 ---
 
@@ -87,6 +87,10 @@ Il primo errore ferma l'intera corsa: le tabelle successive non si guardano.
 * 2026-10-16 — un guasto dell'ambiente si rilancia col suo SQLSTATE; prima diventava un errore di
   dominio del modulo, e il presidio dei job lo mandava allo sviluppo
   (`brief-db-presidio-job-run-a-chi-tocca`).
+* 2026-11-04 — la riga `DRYRUN` porta il tipo di regola `TX_ID` e il nome di questa funzione; prima
+  portava il codice d'errore `E_TX_ID` e il nome dell'orchestratore `dbops.fn_run_automations`,
+  ritirato lo stesso giorno: chi filtrava l'audit per `TX_ID` non trovava le simulazioni
+  (`brief-db-revisione-dbops`).
 
 ---
 

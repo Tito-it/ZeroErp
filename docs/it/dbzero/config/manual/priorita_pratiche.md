@@ -40,7 +40,7 @@ La tabella `config.priorita_pratiche` definisce i **livelli di priorita'** asseg
 ### Convenzioni
 
 * Pattern config standard + colonna `sequenza`.
-* Trigger standard applicati automaticamente da `dbops.fn_run_automations()`.
+* Trigger standard applicati automaticamente dai runner del framework di automazione (`dbops.fn_run_automations_<tipo>`).
 
 ---
 

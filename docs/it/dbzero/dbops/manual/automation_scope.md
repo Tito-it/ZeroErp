@@ -16,7 +16,6 @@
 >
 > * [dbops.fn_resolve_scope](/dbzero/dbops/funzioni/fn_resolve_scope) — ricava dalla tabella l'elenco degli schemi
 > * [dbops.fn_table_in_scope](/dbzero/dbops/funzioni/fn_table_in_scope) — ricava dalla tabella il filtro per tabella dentro uno schema
-> * [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations) — l'orchestratore, che ha una sua copia della lettura degli schemi
 >
 > Guide:
 >

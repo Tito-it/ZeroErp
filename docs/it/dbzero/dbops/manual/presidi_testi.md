@@ -121,6 +121,8 @@ tolga.
   in pochi minuti.
 * 2026-10-09 — nasce `variante` (`brief-db-presidio-processi-testo-per-causa`): quel giorno il
   pannello diceva «Esegui ora» a un servizio sempre acceso che aveva perso la connessione.
+* 2026-11-04 — esce il testo di `dbops.vw_run_senza_attore`, cancellato prima della riga del
+  presidio quando la vista è stata tolta dal database (`brief-db-revisione-dbops`).
 
 ---
 

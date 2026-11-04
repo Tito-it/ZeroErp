@@ -1,0 +1,53 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# RITIRO di catalogo.ix_uom_tipi_codice_upper
+#   Decisione Tid 2026-11-04 (D-3), sulla richiesta del BE
+#   brief-be-codice-maiuscolo §6.
+#
+#   L'indice (20260428-11) serviva le ricerche case-insensitive sul codice
+#   della tipologia UoM: upper(codice) con la collation del database. Dal
+#   2026-11-04 catalogo.uom_tipi e' nel perimetro di CODICE_MAIUSCOLO: il
+#   codice si SALVA normalizzato, e una ricerca esatta confronta la colonna
+#   con script.fn_codice_normalizzato(input), che usa l'indice UNIQUE
+#   uq_uom_tipi_codice. Un indice su upper() accanto a una colonna
+#   normalizzata e' la forma che linee-guida-sql §8.5 sconsiglia, e la sua
+#   upper() (mappatura semplice della libc) non e' nemmeno la forma salvata.
+#
+#   ⚠️ Resta ix_uom_tipi_codice_interno_upper: codice_interno e' fuori dal
+#   perimetro, quella colonna non e' normalizzata.
+#   Nessun changeSet di 80_data o 90_end nomina l'indice (grep del
+#   2026-11-04): il DROP sta in 00_schema. IF EXISTS: su un DB da zero nasce
+#   col 20260428-11 e qui si toglie; su dev lo stesso.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/catalogo/20261104-44-drop-index-uom-tipi-codice-upper-mctit.yaml
+
+  - changeSet:
+      id: 20261104-44-drop-index-uom-tipi-codice-upper
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        DROP INDEX catalogo.ix_uom_tipi_codice_upper: il codice di uom_tipi si salva gia'
+        normalizzato (CODICE_MAIUSCOLO), l'indice su upper() non serve piu'. Tid 2026-11-04 (D-3).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP INDEX IF EXISTS catalogo.ix_uom_tipi_codice_upper;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE INDEX IF NOT EXISTS ix_uom_tipi_codice_upper
+                ON catalogo.uom_tipi (upper(codice));

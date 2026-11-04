@@ -35,7 +35,7 @@ La tabella `config.tipi_nota` definisce la **tipologia** delle note associabili 
 ### Convenzioni
 
 * Pattern config standard: `codice`, `codice_interno` locked, `attivo`, `meta`, audit.
-* Trigger standard applicati automaticamente da `dbops.fn_run_automations()`.
+* Trigger standard applicati automaticamente dai runner del framework di automazione (`dbops.fn_run_automations_<tipo>`).
 
 ---
 

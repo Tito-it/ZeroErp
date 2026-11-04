@@ -36,8 +36,7 @@ della shadow che lega una versione alla madre. Aggiunge e non toglie.
 
 È uno dei runner del framework delle automazioni. Lo chiamano il job pgAgent (tramite il suo
 wrapper), la convergenza dei processi strutturali e la passata `ci_apply`, tutti e tre dopo il
-runner che crea le shadow; e l'orchestratore `fn_run_automations`, che invece il provisioning delle
-shadow non lo chiama.
+runner che crea le shadow.
 
 ---
 

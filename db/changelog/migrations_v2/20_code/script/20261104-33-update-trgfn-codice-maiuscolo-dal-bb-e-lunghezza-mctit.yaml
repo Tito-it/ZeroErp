@@ -1,0 +1,149 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.trgfn_codice_maiuscolo: LA FORMA DAL BB, E LA FRASE SE IL CODICE
+#   IN MAIUSCOLO NON CI STA PIU'
+#   Richiesta del BE (brief-be-codice-maiuscolo §6), decisioni Tid 2026-11-04
+#   (D-1 b).
+#
+# ── ⭐ CHE COSA CAMBIA ───────────────────────────────────────────────
+#   1. La formula esce dal corpo: il codice si normalizza con
+#      script.fn_codice_normalizzato (20261104-32), la sede unica. Con lei
+#      arriva la mappatura Unicode completa: 'straße' si salva 'STRASSE'.
+#   2. ⛔ La mappatura completa puo' ALLUNGARE il codice (ß→SS). Su una
+#      colonna varchar(n) un codice digitato di n caratteri diventerebbe di
+#      n+1, e l'assegnazione a NEW.codice morirebbe con 22001 («valore troppo
+#      lungo per character varying(n)», provato su dbdev il 2026-11-04): una
+#      frase che parla di n caratteri a chi ne ha scritti n. Il trigger lo
+#      dice prima, con E_CODICE_TROPPO_LUNGO_IN_MAIUSCOLO (DATO_ERRATO,
+#      campo `codice`): il codice scritto, come diventa, quanti caratteri
+#      ammette la colonna.
+#      ⭐ Decisione Tid (2026-11-04): le colonne NON si allungano. La
+#      lunghezza e' un limite del dominio della tabella; se una tabella ha
+#      davvero bisogno di piu' spazio, si decide su quella.
+#
+# ── ⚠️ IL COSTO ─────────────────────────────────────────────────────
+#   La lunghezza della colonna si legge da pg_attribute SOLO quando la
+#   normalizzazione ha allungato il testo: NEW.codice e' gia' entrato nella
+#   colonna (l'INSERT e i trigger precedenti lo hanno convertito al tipo),
+#   quindi un risultato non piu' lungo ci sta di sicuro. Nel caso normale
+#   nessuna lettura in piu'.
+#   La lunghezza si legge sulla tabella del trigger (TG_RELID): su una
+#   partizione e' la partizione, con la stessa colonna.
+#
+# ── TIPI ──────────────────────────────────────────────────────────────
+#   v_codice e' `text`, non %TYPE: il trigger e' montato su ogni tabella del
+#   perimetro (varchar di lunghezze diverse, text), e il valore normalizzato
+#   deve poter superare la colonna per essere giudicato. v_max e'
+#   pg_catalog.pg_attribute.atttypmod%TYPE.
+#
+#   Corpo dal vivo (20261104-02, prosrc su dbdev il 2026-11-04). Firma, fase
+#   a15 e montaggio invariati: lo monta l'automazione, nessun DDL sui trigger
+#   (linee-guida-sql §11.5).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261104-33-update-trgfn-codice-maiuscolo-dal-bb-e-lunghezza-mctit.yaml
+
+  - changeSet:
+      id: 20261104-33-update-trgfn-codice-maiuscolo-dal-bb-e-lunghezza
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.trgfn_codice_maiuscolo: il codice si normalizza con script.fn_codice_normalizzato
+        (mappatura Unicode completa); se in maiuscolo supera la colonna varchar(n) solleva
+        E_CODICE_TROPPO_LUNGO_IN_MAIUSCOLO invece del 22001. Tid 2026-11-04 (D-1 b).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_codice_normalizzato';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_codice_maiuscolo()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  -- text: il trigger serve colonne codice di tipi diversi, e il
+                  -- valore normalizzato deve poter superare la colonna.
+                  v_codice text;
+                  v_max    pg_catalog.pg_attribute.atttypmod%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Il codice di una riga si salva nella forma di
+                  --   script.fn_codice_normalizzato: un codice dell'operatore
+                  --   non distingue le maiuscole, e l'indice UNIQUE della
+                  --   colonna lo rende vero.
+                  --   BEFORE INSERT OR UPDATE (senza OF: anche i generatori
+                  --   a10 scrivono il codice). Un UPDATE che non cambia il
+                  --   codice non lo tocca: riscrivere la riga non e' cambiare
+                  --   il codice, e il lucchetto di colonna non deve scattare.
+                  --   Montato dall'automazione CODICE_MAIUSCOLO, fase a15.
+                  -- =========================================================
+                  IF TG_OP = 'UPDATE'
+                     AND NEW.codice IS NOT DISTINCT FROM OLD.codice THEN
+                      RETURN NEW;
+                  END IF;
+
+                  IF NEW.codice IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  v_codice := script.fn_codice_normalizzato(NEW.codice);
+
+                  -- ⛔ La mappatura completa puo' allungare il codice (ß -> SS).
+                  --   NEW.codice ci sta gia' nella colonna: si guarda la
+                  --   lunghezza ammessa solo se il risultato e' piu' lungo.
+                  --   varchar(n): atttypmod = n + 4; text e varchar: -1.
+                  IF char_length(v_codice) > char_length(NEW.codice) THEN
+                      SELECT CASE WHEN a.atttypmod > 4 THEN a.atttypmod - 4 END
+                        INTO v_max
+                        FROM pg_catalog.pg_attribute a
+                       WHERE a.attrelid = TG_RELID
+                         AND a.attname  = 'codice'
+                         AND NOT a.attisdropped;
+
+                      IF char_length(v_codice) > v_max THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'script.trgfn_codice_maiuscolo',
+                              'E_CODICE_TROPPO_LUNGO_IN_MAIUSCOLO',
+                              jsonb_build_object(
+                                  'campo',              'codice',
+                                  'tabella',            TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                                  'codice',             NEW.codice,
+                                  'codice_normalizzato', v_codice,
+                                  'lunghezza_massima',  v_max),
+                              NULL::uuid,
+                              NEW.codice::text, v_codice, v_max::text);
+                      END IF;
+                  END IF;
+
+                  NEW.codice := v_codice;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION script.trgfn_codice_maiuscolo() IS
+                  'Trigger function dell''automazione CODICE_MAIUSCOLO (decisione Tid 2026-11-04): salva NEW.codice nella forma di script.fn_codice_normalizzato — senza spazi ai lati, in maiuscolo con la mappatura Unicode completa (straße -> STRASSE). Un codice dell''operatore e'' un identificativo e non distingue le maiuscole: col valore normalizzato, l''indice UNIQUE della colonna e'' un''unicita'' senza distinzione di maiuscole e nessun lettore ripete la formula (linee-guida-sql §8.5). BEFORE INSERT OR UPDATE senza OF, perche'' anche i generatori a10_gen_codice scrivono il codice; fase a15, dopo di loro: anche un codice generato si salva normalizzato. Un UPDATE che non cambia il codice non lo tocca: riscrivere la riga non e'' cambiare il codice, e il lucchetto di colonna (script.trgfn_lock_columns) non deve scattare. NULL resta NULL. ⛔ Se la mappatura allunga il codice oltre una colonna varchar(n) solleva E_CODICE_TROPPO_LUNGO_IN_MAIUSCOLO (DATO_ERRATO, campo codice) invece del 22001 dell''assegnazione: la lunghezza si legge da pg_attribute solo quando il testo si e'' allungato. Le colonne non si allungano (Tid, 2026-11-04). Non si monta a mano: lo monta dbops.fn_run_automations_codice_maiuscolo su ogni tabella dell''ambito con la colonna codice, tranne le eccezioni di dbops.automazione_codice_eccezioni. Rev 2026-11-04 (20261104-33, richiesta BE brief-be-codice-maiuscolo §6): la forma dal BB, e la frase sulla lunghezza.';

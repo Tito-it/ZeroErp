@@ -36,7 +36,7 @@ BEGIN
         RAISE EXCEPTION 'fn_pgtap_crea_ddt: nessun emittente per l''operatore in sessione — chiamare prima fn_pgtap_set_contesto_operatore';
     END IF;
     SELECT s.id INTO v_draft FROM config.stati_doc_ddt s WHERE s.codice_interno = 'DRAFT' AND s.attivo;
-    SELECT c.id INTO v_causale FROM config.causali_trasporto c WHERE c.codice = p_causale_codice AND c.attivo;
+    SELECT c.id INTO v_causale FROM config.causali_trasporto c WHERE c.codice = script.fn_codice_normalizzato(p_causale_codice) AND c.attivo;
     IF v_draft IS NULL OR v_causale IS NULL THEN
         RAISE EXCEPTION 'fn_pgtap_crea_ddt: stato DRAFT o causale di trasporto % assenti — sono seed di 80_data', p_causale_codice;
     END IF;
@@ -66,7 +66,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_ddt(p_billing_account_id bigint, p_destinatario_sr_id bigint, p_causale_codice character varying, p_magazzino_id bigint, p_magazzino_arrivo_id bigint, p_data date)
-IS 'Fixture pgTAP: una bolla in DRAFT dell''emittente dell''operatore in sessione (script.fn_pgtap_emittente_operatore), per il cliente passato dal test (dal suo fn_pgtap_crea_mondo_cliente: costruito, non pescato), con la causale di trasporto per CODICE, i magazzini scelti (NULL = il default del predefinito, D-L3-h) e gli indirizzi obbligatori dell''ambito DDT. Le righe restano al test. Esce con i vincoli IMMEDIATE. Solo per i pgTAP (brief-db-magazzino-lotto-3-scarico-da-ddt, sezione 5). Rev 2026-10-20 (20261020-62, brief-db-grammatica-unica-documenti 2d, G-6): l''ambito degli indirizzi DDT diventa DDT_VENDITA, il codice della sorgente. Sesto parametro (rev 2026-10-25, 20261025-33, brief-db-pgtap-reso-costruito E-5): la data della bolla, alla nascita (NULL = data operativa); DROP + CREATE.';
+IS 'Fixture pgTAP: una bolla in DRAFT dell''emittente dell''operatore in sessione (script.fn_pgtap_emittente_operatore), per il cliente passato dal test (dal suo fn_pgtap_crea_mondo_cliente: costruito, non pescato), con la causale di trasporto per CODICE, i magazzini scelti (NULL = il default del predefinito, D-L3-h) e gli indirizzi obbligatori dell''ambito DDT. Le righe restano al test. Esce con i vincoli IMMEDIATE. Solo per i pgTAP (brief-db-magazzino-lotto-3-scarico-da-ddt, sezione 5). Rev 2026-10-20 (20261020-62, brief-db-grammatica-unica-documenti 2d, G-6): l''ambito degli indirizzi DDT diventa DDT_VENDITA, il codice della sorgente. Sesto parametro (rev 2026-10-25, 20261025-33, brief-db-pgtap-reso-costruito E-5): la data della bolla, alla nascita (NULL = data operativa); DROP + CREATE. Rev 2026-11-04 (20261104-40, D-2 di Tid): la causale si cerca con script.fn_codice_normalizzato(p_causale_codice) (CODICE_MAIUSCOLO).';
 ```
 
 </div>

@@ -55,7 +55,7 @@ La tabella `pratiche.flussi` contiene le **istanze operative dei flussi** di una
 
 * PK BIGINT IDENTITY (tabella operativa ad alto volume).
 * `storicizza = true` per tracciamento modifiche.
-* Trigger standard applicati automaticamente da `dbops.fn_run_automations()`.
+* Trigger standard applicati automaticamente dai runner del framework di automazione (`dbops.fn_run_automations_<tipo>`).
 * Trigger business-specific (guard prerequisiti, giornale, generazione) in DB-5.
 
 ---

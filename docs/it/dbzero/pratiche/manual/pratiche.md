@@ -81,7 +81,7 @@ La tabella `pratiche.pratiche` e' l'**entita' principale** del modulo gestione p
 
 * PK BIGINT IDENTITY (tabella operativa ad alto volume).
 * `storicizza = true` per tracciamento modifiche.
-* Trigger standard (audit, tx_id, storico) applicati automaticamente da `dbops.fn_run_automations()`.
+* Trigger standard (audit, tx_id, storico) applicati automaticamente dai runner del framework di automazione (`dbops.fn_run_automations_<tipo>`).
 * Trigger business-specific (giornale, generazione codice) in DB-5.
 
 ---

@@ -52,7 +52,7 @@ I parametri operativi per l'handler sono configurati nel campo `handler_params` 
 ### Convenzioni
 
 * Registry puro: no `storicizza`, no `tx_id` (non serve tracciamento transazionale).
-* Trigger standard applicati automaticamente da `dbops.fn_run_automations()`.
+* Trigger standard applicati automaticamente dai runner del framework di automazione (`dbops.fn_run_automations_<tipo>`).
 
 ---
 

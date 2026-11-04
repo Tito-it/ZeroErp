@@ -1,6 +1,6 @@
 # Estensione PostgreSQL: `dblink`
 
-> **Ultimo aggiornamento**: 25 ottobre 2026
+> **Ultimo aggiornamento**: 4 novembre 2026
 >
 > **Destinatari**: chi installa un server, chi scrive una funzione che deve lasciare una traccia anche se la transazione fallisce
 >
@@ -25,7 +25,7 @@ all'errore che racconta.
 | `script.fn_log_error_only` | la riga di `dbops.error_log` di un errore (la chiama anche `fn_log_and_raise_error` prima del `RAISE`) |
 | `maintenance.fn_job_run_log_failure` | il verbale di un job **fallito** in `maintenance.job_run_log` |
 | `dbops.fn_get_or_create_session_tx_id` | il `tx_id` di sessione |
-| `dbops.fn_audit_begin`, `fn_audit_end`, `fn_audit_log_once` | l'audit delle automazioni, **solo** con `myapp.log_with_dblink = on`; altrimenti in transazione |
+| `dbops.fn_audit_log_once` | l'audit delle automazioni, **solo** con `myapp.log_with_dblink = on`; altrimenti in transazione |
 
 La connessione si chiama `logconn` e la apre `script.fn_ensure_logconn`: una per sessione, riusata
 finché la sessione vive. Le funzioni che scrivono sul canale **non sollevano** se il canale non c'è:
