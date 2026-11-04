@@ -90,9 +90,9 @@ pillow==13.0.0
     # via
     #   -r ../requirements.in
     #   weasyprint
-psycopg==3.3.7
+psycopg==3.3.8
     # via -r ../requirements.in
-psycopg-binary==3.3.7
+psycopg-binary==3.3.8
     # via -r ../requirements.in
 pycparser==3.12
     # via cffi

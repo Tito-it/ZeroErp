@@ -45,7 +45,7 @@ types-pyyaml==6.0.12.20261103
     # via
     #   django-stubs
     #   djangorestframework-stubs
-types-webencodings==0.6.0.20260907
+types-webencodings==0.6.0.20261104
     # via types-html5lib
 typing-extensions==4.16.0
     # via
