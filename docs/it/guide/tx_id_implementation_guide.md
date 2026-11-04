@@ -71,7 +71,8 @@ maintenance
 GUC
 ├── dbops.tx_id                   -- tx_id corrente (transaction-scoped)
 ├── myapp.bypass_tx_id_check      -- override bypass per sessione
-└── myapp.dblink_log_connection   -- stringa di connessione dblink
+├── myapp.logconn / myapp.dblink_log_connection  -- stringa di connessione dblink
+└── myapp.log_with_dblink         -- interruttore del canale (off = spento)
 ```
 
 ---
@@ -137,11 +138,11 @@ Da un punto di vista tecnico:
 
 1. **Riuso GUC**: legge `current_setting('dbops.tx_id', true)`. Se esiste un UUID valido, lo restituisce immediatamente.
 
-2. **Connessione di log**: chiama `script.fn_ensure_logconn()`, che apre o ritrova la connessione persistente `logconn`. Assorbe la connessione già aperta e il `too_many_connections`, **non** gli altri errori di connessione: se il canale è impostato ma la connessione non si apre (credenziali o servizio sbagliati, server irraggiungibile), l'errore esce dalla funzione e il trigger lo trasforma in `E_TXID_GENERATION`, che **blocca la scrittura**.
+2. **Il canale è acceso?** Prima di aprire qualunque connessione chiede a `script.fn_canale_log_stringa()` se il canale di log è acceso, e con quale stringa. Spento (`myapp.log_with_dblink = off`) o non configurato (nessuna stringa): WARNING e **ritorno della sentinella `script.uuid_nil()`, senza impostare la GUC**. La regola del canale è descritta nella scheda [script.fn_canale_log_stringa](/dbzero/script/funzioni/fn_canale_log_stringa).
 
-    ⚠️ L'interruttore `myapp.log_with_dblink` lo rispetta solo `fn_ensure_logconn`, che con `off` non apre `logconn`. La generazione (passo 4) passa comunque dalla stringa di connessione del canale: con l'interruttore spento il `tx_id` nasce lo stesso fuori transazione, aprendo una connessione nuova a ogni transazione.
+    ⚠️ Le migrazioni, il makefile e la CI spengono il canale con `off`: in quelle sessioni le scritture tracciate portano la sentinella come `tx_id`. È voluto.
 
-3. **Verifica dblink**: legge `myapp.dblink_log_connection`. Se assente o vuota, WARNING e **ritorno della sentinella `script.uuid_nil()`, senza impostare la GUC**.
+3. **Connessione di log**: chiama `script.fn_ensure_logconn()`, che apre o ritrova la connessione persistente `logconn`. Non solleva mai: se la connessione non si apre (credenziali o servizio sbagliati, server irraggiungibile) emette un WARNING, e la generazione ripiega sulla stringa di connessione o, se anche quella fallisce, sulla sentinella. Un canale irraggiungibile **non blocca la scrittura**.
 
 4. **Generazione via dblink**: chiama `dbops.fn_generate_tx_id` tramite dblink sulla connessione di log. È **l'unico percorso che registra** in `transaction_ids`, e lo fa su una connessione separata: la registrazione sopravvive al rollback della transazione principale.
 
@@ -166,9 +167,10 @@ Da un punto di vista tecnico:
 ```text
 GUC dbops.tx_id gia impostato?
   SI → riusa
-  NO → dblink disponibile?
+  NO → canale acceso (stringa presente, interruttore non 'off')?
          SI → fn_generate_tx_id via dblink → registrato in transaction_ids
                                            → GUC impostata (scope transazione)
+              (canale irraggiungibile o errore → sentinella uuid_nil, WARNING, GUC NON impostata)
          NO → sentinella uuid_nil (WARNING)
                                            → GUC NON impostata
 ```
@@ -275,7 +277,8 @@ Il sistema tx_id si appoggia a una combinazione di parametri di sessione (GUC) e
 | ----------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `dbops.tx_id`                 | UUID    | Transaction ID corrente. Impostato da `fn_get_or_create_session_tx_id` con **scope locale alla transazione** (`set_config(..., TRUE)`), letto da `trgfn_tx_id_managed`. **Contiene solo id registrati** in `dbops.transaction_ids`: nei ripieghi non viene impostata affatto |
 | `myapp.bypass_tx_id_check`    | BOOLEAN | Override di sessione per disabilitare la validazione tx_id (utile in test/migrazioni)                                                                                                                                                                                        |
-| `myapp.dblink_log_connection` | TEXT    | Stringa di connessione dblink per la generazione remota del tx_id                                                                                                                                                                                                            |
+| `myapp.dblink_log_connection` | TEXT    | Stringa di connessione dblink per la generazione remota del tx_id; se `myapp.logconn` è valorizzato, vince quello                                                                                                                                                           |
+| `myapp.log_with_dblink`       | TEXT    | Interruttore del canale: con `off` (maiuscole e spazi non contano) il tx_id è la sentinella; assente vale acceso. Regola in [script.fn_canale_log_stringa](/dbzero/script/funzioni/fn_canale_log_stringa)                                                                   |
 
 ### Parametri applicativi (in `config.parameters`)
 
@@ -402,7 +405,7 @@ Se il backend non imposta il tx_id, il trigger lo genera automaticamente alla pr
 
 4. **Generazione via dblink**: quando disponibile, il tx_id e generato tramite dblink verso il DB di log. Questo garantisce la persistenza del record anche in caso di rollback della transazione principale.
 
-5. **Ripiego con sentinella**: se dblink non e disponibile o fallisce, il sistema emette un WARNING e usa `script.uuid_nil()` **senza impostare la GUC**. Non viene mai pubblicato un id assente da `transaction_ids`: le scritture di quella transazione portano `uuid_nil`, valore riconoscibile a colpo d'occhio come "nessuna transazione tracciabile". La correlazione per-transazione si perde, ma è una proprietà non ottenibile senza il canale — che serve appunto ad avere una connessione separata, non a raggiungere un DB remoto (`log_db` è `current_database()`).
+5. **Ripiego con sentinella**: se il canale è spento, non configurato o irraggiungibile, o dblink fallisce, il sistema emette un WARNING e usa `script.uuid_nil()` **senza impostare la GUC**. Non viene mai pubblicato un id assente da `transaction_ids`: le scritture di quella transazione portano `uuid_nil`, valore riconoscibile a colpo d'occhio come "nessuna transazione tracciabile". La correlazione per-transazione si perde, ma è una proprietà non ottenibile senza il canale — che serve appunto ad avere una connessione separata, non a raggiungere un DB remoto (`log_db` è `current_database()`).
 
 6. **Bypass configurabile**: il bypass disabilita generazione e validazione. Attivabile globalmente (`config.parameters.tx_id_bypass_enabled`) o per sessione (`myapp.bypass_tx_id_check`). In bypass, il tx_id e `uuid_nil()` se non gia impostato.
 
@@ -442,11 +445,11 @@ flowchart TD
     I -->|Si| J[Riusa tx_id]
     I -->|No| K[WARNING + uuid_nil]
     H -->|No| L[fn_get_or_create_session_tx_id]
-    L --> M{dblink disponibile?}
+    L --> M{canale acceso?}
     M -->|Si| N[fn_generate_tx_id via dblink]
-    M -->|No| O[uuidv7 locale + WARNING]
-    N --> P[Imposta GUC + restituisce]
-    O --> P
+    M -->|No| O[WARNING + uuid_nil, GUC non impostata]
+    N -->|registrato| P[Imposta GUC + restituisce]
+    N -->|errore| O
 ```
 
 ### Architettura del sistema tx_id

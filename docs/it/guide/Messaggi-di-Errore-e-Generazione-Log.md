@@ -217,7 +217,7 @@ Da un punto di vista tecnico:
 
 Scrive un record nel registro `dbops.error_log` senza sollevare eccezione. E la funzione su cui si basa l'intero meccanismo di logging persistente: usa dblink per scrivere su una connessione separata, garantendo che il log sopravviva al rollback.
 
-Questa e la funzione piu critica dal punto di vista operativo. Per funzionare correttamente **deve essere `SECURITY DEFINER`** con **owner superuser** (`postgres`). La connessione dblink viene risolta dalla GUC `myapp.dblink_log_connection` (o `myapp.logconn`). Se la configurazione manca o e errata, la funzione emette un WARNING senza propagare errori al chiamante — il logging fallisce silenziosamente ma l'operazione principale non viene compromessa.
+Questa e la funzione piu critica dal punto di vista operativo. Per funzionare correttamente **deve essere `SECURITY DEFINER`** con **owner superuser** (`postgres`). Se il canale di log è acceso, e con quale stringa di connessione, lo decide una regola sola, descritta in [script.fn_canale_log_stringa](/dbzero/script/funzioni/fn_canale_log_stringa): con `myapp.log_with_dblink = off` il canale è spento e il log non si scrive. Se la configurazione manca o e errata, la funzione emette un WARNING senza propagare errori al chiamante — il logging fallisce silenziosamente ma l'operazione principale non viene compromessa.
 
 Da un punto di vista tecnico:
 
@@ -723,7 +723,7 @@ ritrova nel registro ([esempio](#area-tecnica-esempi)).
 **Errori tipici:**
 
 * **`2F003` (password/GSSAPI richiesti)** — la funzione non e `SECURITY DEFINER` o non e owner superuser; oppure `pg_service.conf` / `.pgpass` non sono visibili al processo postgres
-* **Log non presente ma nessun errore** — verificare `myapp.dblink_log_connection`, `pg_service.conf` / `.pgpass`, e permessi del ruolo `zeroerp_log`
+* **Log non presente ma nessun errore** — verificare che `myapp.log_with_dblink` non valga `off`, poi `myapp.dblink_log_connection` (o `myapp.logconn`), `pg_service.conf` / `.pgpass`, e permessi del ruolo `zeroerp_log`
 
 ---
 

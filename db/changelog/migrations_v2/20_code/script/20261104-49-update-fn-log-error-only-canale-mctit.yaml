@@ -1,0 +1,296 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_log_error_only: il canale dal building block.
+#   Brief: brief-db-revisione-dbops, D26 (giro 1, blocco 1b).
+#
+# Base: il corpo vivo (20260807-19, poi il solo search_path di 20261103-05),
+#   verificato uguale.
+#
+# ── CHE COSA CAMBIA ─────────────────────────────────────────────────────
+#   1. ⛔ D26: la funzione IGNORAVA l'interruttore myapp.log_with_dblink: con
+#      'off' e la stringa impostata scriveva lo stesso fuori transazione. Ora
+#      la stringa la da' script.fn_canale_log_stringa (20261104-46): canale
+#      spento o non configurato e' un WARNING e nessuna scrittura, come gia'
+#      faceva senza stringa. La precedenza di myapp.logconn su
+#      myapp.dblink_log_connection, che qui era scritta a mano, sta nel
+#      building block.
+#   2. Firma, DECLARE e COMMENT con %TYPE dove una colonna porta il valore:
+#      i tipi risolti sono quelli di oggi (text, jsonb, uuid, bigint), la
+#      firma non cambia e il CREATE OR REPLACE sostituisce.
+#      Tipi espliciti, con la ragione: p_valori text[] (%TYPE non fa array),
+#      v_sql text (SQL dinamico), v_dsn text (il tipo di current_setting),
+#      i due boolean (flag locali).
+#   L'ordine dei tentativi (stringa, poi logconn) resta com'era.
+#
+# ⚠️ LA FORMA. Funzione di postgres: proprieta' in prestito via
+#   dbops.fn_sync_functions_owner, verificata, restituita (forma di 20261103-05).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261104-49-update-fn-log-error-only-canale-mctit.yaml
+
+  - changeSet:
+      id: 20261104-49-update-fn-log-error-only-canale
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_log_error_only legge il canale da script.fn_canale_log_stringa: con
+        l'interruttore 'off' non scrive piu' fuori transazione (D26). Funzione di
+        postgres: proprieta' in prestito.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_canale_log_stringa';
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_log_error_only'
+                 AND p.prosecdef;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ==========================================================
+              -- 1) Presa in prestito della proprieta' (forma di 20261103-05).
+              -- ==========================================================
+              UPDATE dbops.sec_functions_owner
+                 SET required_owner = current_user
+               WHERE schema_name   = 'script'
+                 AND function_name = 'fn_log_error_only';
+
+              SELECT dbops.fn_sync_functions_owner();
+
+              DO $guard$
+              DECLARE
+                v_owner text;
+              BEGIN
+                -- fn_sync_functions_owner non solleva mai: degrada a WARNING.
+                SELECT pg_get_userbyid(p.proowner)
+                  INTO v_owner
+                  FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'script'
+                   AND p.proname = 'fn_log_error_only';
+
+                IF v_owner IS DISTINCT FROM current_user THEN
+                  RAISE EXCEPTION
+                    'fn_log_error_only e'' di %, non di % : il prestito della proprieta'' via dbops.fn_sync_functions_owner() non e'' riuscito. Verificare che dbops.fn_sync_functions_owner sia SECURITY DEFINER e posseduta da postgres, e che esista la voce in dbops.sec_functions_owner.',
+                    coalesce(v_owner, '(funzione assente)'), current_user;
+                END IF;
+              END
+              $guard$;
+
+              -- ==========================================================
+              -- 2) La funzione.
+              -- ==========================================================
+              CREATE OR REPLACE FUNCTION script.fn_log_error_only(
+                  p_area          dbops.error_log.area%TYPE,
+                  p_function_name dbops.error_log.function_name%TYPE,
+                  p_error_code    config.messaggi_errore.codice%TYPE,
+                  p_context       dbops.error_log.context%TYPE,
+                  p_tx_id         dbops.error_log.tx_id%TYPE,
+                  VARIADIC p_valori text[])
+               RETURNS void
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                v_id     dbops.error_log.messaggio_errore_id%TYPE;
+                v_msg    config.messaggi_errore.messaggio%TYPE;
+                v_detail config.messaggi_errore.causa%TYPE;
+                v_hint   config.messaggi_errore.soluzione%TYPE;
+                v_lang   config.messaggi_errore.lingua%TYPE := coalesce(current_setting('myapp.user_language', true), 'it');
+                v_ctx    dbops.error_log.context%TYPE := coalesce(p_context, '{}'::jsonb);
+                -- text: SQL dinamico
+                v_sql text;
+                -- text: il tipo di current_setting, nessuna colonna lo porta
+                v_dsn text;
+                v_has_dblink boolean := false;
+                v_has_logconn boolean := false;
+                -- text[]: %TYPE non fa array
+                v_vals text[] := coalesce(p_valori, ARRAY[]::text[]);
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Registrare errori in modo persistente anche quando la
+                --   transazione chiamante viene rollbackata.
+                --
+                -- Regole:
+                --   - usa solo connessione separata via dblink (out-of-tx)
+                --   - se il canale e' acceso, e con quale stringa, lo dice
+                --     script.fn_canale_log_stringa: spento o non configurato
+                --     = WARNING e nessuna scrittura
+                --   - non solleva eccezioni verso il chiamante
+                --   - in caso di failure del canale di log emette WARNING
+                --   - cascata lingua: preferisce v_lang, ripiega su 'it'
+                --     (2026-08-03: prima era un lookup secco su v_lang e
+                --     una sessione non italiana non loggava affatto)
+                --   - se il codice non e' a catalogo, il codice originale
+                --     viene conservato in context->>'codice_errore_originale'
+                -- =========================================================
+
+                IF p_tx_id IS NULL THEN
+                  p_tx_id := dbops.fn_get_or_create_session_tx_id();
+                END IF;
+
+                -- Riga nella lingua di sessione se esiste, altrimenti la
+                -- riga italiana: ORDER BY booleano, TRUE prima in DESC.
+                SELECT id, messaggio, causa, soluzione
+                  INTO v_id, v_msg, v_detail, v_hint
+                FROM config.messaggi_errore
+                WHERE codice = p_error_code
+                  AND lingua IN (v_lang, 'it')
+                ORDER BY (lingua = v_lang) DESC
+                LIMIT 1;
+
+                IF NOT FOUND THEN
+                  -- Il codice originale sopravvive al ripiego: error_log
+                  -- conserva solo la FK messaggio_errore_id, quindi senza
+                  -- questa riga la registrazione resta ma il nome
+                  -- dell'errore si perde per sempre (brief §9.9).
+                  v_ctx := v_ctx || jsonb_build_object(
+                             'codice_errore_originale', p_error_code);
+
+                  -- Fallback: recupera ANCHE id da E_MESSAGGIO_NON_DEFINITO
+                  -- (stessa cascata: la riga esiste solo in 'it').
+                  SELECT id, messaggio || ' ' || p_error_code, causa, soluzione
+                    INTO v_id, v_msg, v_detail, v_hint
+                  FROM config.messaggi_errore
+                  WHERE codice = 'E_MESSAGGIO_NON_DEFINITO'
+                    AND lingua IN (v_lang, 'it')
+                  ORDER BY (lingua = v_lang) DESC
+                  LIMIT 1;
+
+                  IF v_msg IS NULL THEN
+                    v_msg := '[MESSAGGIO NON DEFINITO: ' || p_error_code || ']';
+                    v_detail := 'Catalogo mancante=' || quote_literal(p_error_code);
+                    v_hint := 'Aggiungere record in config.messaggi_errore';
+                    v_id := NULL;
+                  END IF;
+                END IF;
+
+                BEGIN
+                  IF cardinality(v_vals) > 0 THEN
+                    v_msg := format(v_msg, VARIADIC v_vals);
+                  END IF;
+                EXCEPTION WHEN OTHERS THEN
+                  NULL;
+                END;
+
+                -- Se non abbiamo un messaggio_errore_id valido, non possiamo
+                -- inserire in error_log (colonna NOT NULL). Warn e return.
+                IF v_id IS NULL THEN
+                  RAISE WARNING 'script.fn_log_error_only: messaggio_errore_id non trovato per code=%, log non persistito.',
+                    p_error_code;
+                  RETURN;
+                END IF;
+
+                v_sql := format(
+                  'INSERT INTO dbops.error_log(occurred_at, area, function_name, messaggio_errore_id, context, tx_id)
+                   VALUES (now(), %L, %L, %s, %L::jsonb, %L::uuid)',
+                  p_area,
+                  p_function_name,
+                  v_id::text,
+                  v_ctx::text,
+                  p_tx_id::text
+                );
+
+                SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'dblink')
+                  INTO v_has_dblink;
+
+                IF NOT v_has_dblink THEN
+                  RAISE WARNING 'script.fn_log_error_only: estensione dblink non disponibile, log non persistito (code=%).',
+                    p_error_code;
+                  RETURN;
+                END IF;
+
+                -- Il canale: acceso, e con quale stringa, lo dice il building
+                -- block (interruttore e precedenza fra le due GUC stanno li').
+                v_dsn := script.fn_canale_log_stringa();
+
+                IF v_dsn IS NULL THEN
+                  RAISE WARNING 'script.fn_log_error_only: canale di log spento (myapp.log_with_dblink = off) o non configurato, log non persistito (code=%).',
+                    p_error_code;
+                  RETURN;
+                END IF;
+
+                BEGIN
+                  PERFORM dblink_exec(v_dsn, v_sql, true);
+                  RETURN;
+                EXCEPTION WHEN OTHERS THEN
+                  RAISE WARNING 'script.fn_log_error_only: dblink_exec DSN fallita (code=%): %',
+                    p_error_code, SQLERRM;
+                END;
+
+                BEGIN
+                  PERFORM script.fn_ensure_logconn();
+                EXCEPTION WHEN OTHERS THEN
+                  NULL;
+                END;
+
+                BEGIN
+                  WITH conns AS (
+                    SELECT unnest(dblink_get_connections()) AS name
+                  )
+                  SELECT EXISTS (SELECT 1 FROM conns WHERE name = 'logconn')
+                    INTO v_has_logconn;
+                EXCEPTION WHEN OTHERS THEN
+                  v_has_logconn := false;
+                END;
+
+                IF v_has_logconn THEN
+                  BEGIN
+                    PERFORM dblink_exec('logconn', v_sql, true);
+                    RETURN;
+                  EXCEPTION WHEN OTHERS THEN
+                    RAISE WARNING 'script.fn_log_error_only: dblink_exec logconn fallita (code=%): %',
+                      p_error_code, SQLERRM;
+                  END;
+                END IF;
+
+                RAISE WARNING 'script.fn_log_error_only: nessuna connessione dblink valida, log non persistito (code=%).',
+                  p_error_code;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_log_error_only(
+                  dbops.error_log.area%TYPE,
+                  dbops.error_log.function_name%TYPE,
+                  config.messaggi_errore.codice%TYPE,
+                  dbops.error_log.context%TYPE,
+                  dbops.error_log.tx_id%TYPE,
+                  text[]) IS
+                  'Registra un errore in dbops.error_log su una connessione dblink separata (fuori transazione), cosi'' che sopravviva al rollback del chiamante; non solleva mai. Se il canale di log e'' acceso, e con quale stringa, lo dice script.fn_canale_log_stringa: spento o non configurato, un WARNING e nessuna scrittura. Cascata lingua con ripiego su ''it'' (come fn_get_messaggio e fn_log_and_raise_error); se il codice non e'' a catalogo, il codice originale resta in context->>''codice_errore_originale''. SECURITY DEFINER di postgres, perche'' dblink rifiuta a un non-superuser una connessione senza password.';
+
+              -- ==========================================================
+              -- 3) Restituzione della proprieta' a postgres.
+              -- ==========================================================
+              UPDATE dbops.sec_functions_owner
+                 SET required_owner = 'postgres'
+               WHERE schema_name   = 'script'
+                 AND function_name = 'fn_log_error_only';
+
+              SELECT dbops.fn_sync_functions_owner();
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo dal corpo di 20260807-19
+              -- (con il search_path di 20261103-05).
+              SELECT 1;

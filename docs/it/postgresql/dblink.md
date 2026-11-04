@@ -9,6 +9,7 @@
 > * [Parametri personalizzati (GUC)](/postgresql/parametri-personalizzati-(GUC)) — `myapp.dblink_log_connection`, `myapp.logconn`, `myapp.log_with_dblink`: chi li imposta e chi li legge
 > * [Installazione](/installazione) — passo 9, il canale dei registri
 > * [Provisioning ruoli DB](/dev/backend/provisioning-db-roles) — il ruolo `zeroerp_log`
+> * [script.fn_canale_log_stringa](/dbzero/script/funzioni/fn_canale_log_stringa) — la regola unica: se il canale è acceso, e con quale stringa
 > * [script.fn_ensure_logconn](/dbzero/script/funzioni/fn_ensure_logconn) · [script.fn_log_error_only](/dbzero/script/funzioni/fn_log_error_only) · [dbops.fn_get_or_create_session_tx_id](/dbzero/dbops/funzioni/fn_get_or_create_session_tx_id) · [maintenance.fn_job_run_log_failure](/dbzero/maintenance/funzioni/fn_job_run_log_failure)
 
 `dblink` apre, da dentro una funzione, una **seconda connessione** al database. In Zero ERP serve a una
@@ -28,8 +29,9 @@ all'errore che racconta.
 | `dbops.fn_audit_log_once` | l'audit delle automazioni, **solo** con `myapp.log_with_dblink = on`; altrimenti in transazione |
 
 La connessione si chiama `logconn` e la apre `script.fn_ensure_logconn`: una per sessione, riusata
-finché la sessione vive. Le funzioni che scrivono sul canale **non sollevano** se il canale non c'è:
-emettono un `WARNING` (o ripiegano sulla scrittura in transazione) e il chiamante prosegue.
+finché la sessione vive. Le prime tre funzioni **non sollevano** se il canale è spento o non
+risponde: emettono un `WARNING` (il `tx_id` prende la sentinella) e il chiamante prosegue. L'audit,
+con il canale che non si apre, ripiega sulla scrittura in transazione.
 
 ---
 
@@ -80,10 +82,19 @@ poi si annulla, e si controlla che la riga sia in `dbops.error_log`.
 
 ## Spegnerlo
 
-* `myapp.log_with_dblink = off` nella sessione spegne il canale: le migrazioni e le connessioni di CI
-  lo passano così.
-* Un `myapp.dblink_log_connection` vuoto fa lo stesso: in CI e sullo scratch è vuoto per costruzione, e
-  `fn_get_or_create_session_tx_id` prende il ramo della sentinella.
+Il canale è acceso quando c'è una stringa di connessione e l'interruttore non dice `off`. La regola è
+una sola, in [script.fn_canale_log_stringa](/dbzero/script/funzioni/fn_canale_log_stringa), e la
+seguono `fn_ensure_logconn` e le prime tre funzioni della tabella in *Chi lo usa*.
+
+* `myapp.log_with_dblink = off` nella sessione spegne il canale (maiuscole e spazi non contano): le
+  migrazioni, il makefile e le connessioni di CI lo passano così. ⚠️ Togliere il parametro non basta:
+  assente vale acceso.
+* Una stringa di connessione vuota fa lo stesso: in CI e sullo scratch è vuota per costruzione.
+
+Con il canale spento `fn_get_or_create_session_tx_id` restituisce la sentinella, e le scritture sulle
+tabelle tracciate la prendono come `tx_id`; `fn_log_error_only` e `fn_job_run_log_failure` non scrivono
+e lo dicono con un `WARNING`. ⚠️ L'audit (`fn_audit_log_once`) non segue ancora la regola comune: per
+lui l'interruttore assente vale spento, e solo `on` accende il ramo fuori transazione.
 
 Il dettaglio dei tre parametri sta nella pagina [Parametri personalizzati (GUC)](/postgresql/parametri-personalizzati-(GUC)).
 

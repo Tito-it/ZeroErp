@@ -13,6 +13,7 @@
 >
 > * [dbops.fn_generate_tx_id](/dbzero/dbops/funzioni/fn_generate_tx_id) — genera e registra l'id, sulla connessione di log
 > * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed) — il trigger che la chiama e verifica l'id pubblicato
+> * [script.fn_canale_log_stringa](/dbzero/script/funzioni/fn_canale_log_stringa) — la regola unica: se il canale è acceso, e con quale stringa
 > * [script.fn_ensure_logconn](/dbzero/script/funzioni/fn_ensure_logconn) — apre o ritrova la connessione di log
 > * [script.uuid_nil](/dbzero/script/funzioni/uuid_nil) — la sentinella dei ripieghi
 > * [script.fn_log_error_only](/dbzero/script/funzioni/fn_log_error_only) — un altro chiamante: dà un `tx_id` a ogni errore registrato
@@ -28,8 +29,8 @@
 
 Restituisce il **transaction id della transazione corrente**: quello già pubblicato nel GUC
 `dbops.tx_id`, se c'è, altrimenti uno nuovo generato e registrato in `dbops.transaction_ids` su
-una connessione separata, che poi pubblica. Senza canale di log restituisce la sentinella nulla e
-non pubblica niente.
+una connessione separata, che poi pubblica. Con il canale di log spento, non configurato o
+irraggiungibile restituisce la sentinella nulla e non pubblica niente.
 
 Così tutte le scritture della stessa transazione portano lo stesso `tx_id`.
 
@@ -53,7 +54,7 @@ seconda connessione, non un'altra macchina: il canale punta allo stesso database
 
 Il GUC si pubblica con ambito **locale**: vale fino alla fine della transazione, e la transazione
 successiva ne riceve uno suo. Un identificativo di transazione non sopravvive alla transazione.
-Dove il canale è attivo, il registro cresce quindi di una riga per transazione che scrive su una
+Dove il canale è acceso, il registro cresce quindi di una riga per transazione che scrive su una
 tabella tracciata.
 
 ---
@@ -61,31 +62,31 @@ tabella tracciata.
 ### Come nasce un id nuovo
 
 1. **Il GUC.** Se `dbops.tx_id` contiene un UUID, la funzione lo restituisce e non fa altro.
-2. **La connessione di log.** `script.fn_ensure_logconn` apre o ritrova `logconn`. Assorbe la
-   connessione già aperta e il troppo-connessioni, non gli altri errori di connessione.
-3. **Il canale.** Se `myapp.dblink_log_connection` non è impostato, ripiego: avviso e sentinella.
+2. **Il canale.** Se è acceso, e con quale stringa, lo dice
+   [script.fn_canale_log_stringa](/dbzero/script/funzioni/fn_canale_log_stringa), **prima** di
+   aprire qualunque connessione. Spento (`myapp.log_with_dblink = off`) o non configurato (nessuna
+   stringa): ripiego, avviso e sentinella.
+3. **La connessione di log.** `script.fn_ensure_logconn` apre o ritrova `logconn`. Non solleva mai:
+   un canale irraggiungibile è un avviso, e il passo successivo ripiega sulla stringa.
 4. **La generazione.** `dbops.fn_generate_tx_id` gira sulla connessione persistente `logconn`. Se
    `logconn` non c'è, o cade durante la chiamata, la funzione la chiude e riprova **una** volta con
    una connessione nuova, aperta dalla stringa del canale.
 5. **La pubblicazione.** Solo un id restituito dal registro si pubblica. Un `NULL` dal canale, o un
    errore, sono ripieghi: avviso nel log del server e sentinella, senza pubblicare.
 
-Un problema del canale durante la generazione diventa un avviso, e la scrittura del chiamante
-prosegue con la sentinella. ⚠️ Non così all'apertura di `logconn` (passo 2), che sta fuori dalla
-protezione: se il canale è impostato ma la connessione non si apre (credenziali o servizio
-sbagliati, server irraggiungibile), l'errore esce dalla funzione, e il trigger del `tx_id` lo
-trasforma in `E_TXID_GENERATION`, che blocca la scrittura.
+La funzione **non blocca mai il chiamante**: un problema del canale, all'apertura di `logconn` come
+durante la generazione, diventa un avviso, e la scrittura del chiamante prosegue con la sentinella.
 
-⚠️ L'interruttore `myapp.log_with_dblink` lo rispetta solo `script.fn_ensure_logconn`, che con
-`off` non apre `logconn`. Se il canale è impostato, la generazione passa comunque dalla stringa di
-connessione: con l'interruttore spento il `tx_id` nasce lo stesso fuori transazione, aprendo una
-connessione a ogni transazione.
+⚠️ **Con l'interruttore a `off` il `tx_id` è la sentinella.** Le migrazioni, il makefile e la CI
+spengono il canale così: in quelle sessioni le scritture sulle tabelle tracciate portano
+`script.uuid_nil()`. È voluto — spento vuol dire spento anche per il `tx_id` — e innocuo: il
+trigger del `tx_id` accetta la sentinella, e nessuna chiave esterna punta a `dbops.transaction_ids`.
 
 ---
 
 ### Senza canale, nessuna correlazione
 
-Senza canale tutte le righe portano la sentinella nulla, e le transazioni non si distinguono dal
+Senza canale (spento, non configurato o irraggiungibile) tutte le righe portano la sentinella nulla, e le transazioni non si distinguono dal
 `tx_id`. È il prezzo del disegno, ed è voluto: l'alternativa sarebbe un id non registrato, o
 registrato nella transazione di lavoro.
 
@@ -109,6 +110,11 @@ ripristina il registro e si riallinea di nuovo.
 * `db/pgtap/dbops/test-tx-id-coerenza-non-registrato.sql` — senza canale la funzione restituisce
   la sentinella e non pubblica il GUC, e una scrittura su una tabella tracciata riesce con la
   sentinella; con il canale attivo (prova condizionale) l'id restituito è registrato.
+* `db/pgtap/script/test-canale-log-v1.sql` — test 8-10: con un canale irraggiungibile la funzione
+  non solleva, restituisce la sentinella e non pubblica il GUC, e una scrittura su una tabella
+  tracciata riesce. Test 13: con `myapp.log_with_dblink = off` e un canale che funziona il `tx_id` è
+  la sentinella (si salta dove il canale non c'è). Test 16: non legge da sé i parametri del canale
+  (presidio sul testo).
 * `db/pgtap/dbops/test-security-definer-search-path-v1.sql` — il percorso di ricerca è esattamente
   `pg_catalog`, `public`, `pg_temp`.
 
@@ -125,6 +131,10 @@ ripristina il registro e si riallinea di nuovo.
 * 2026-10-18 — la generazione passa dalla connessione persistente `logconn` invece di aprirne una a
   ogni transazione; la stringa di connessione resta il ripiego
   (`brief-db-plancache-funzioni-con-query-incorporate`).
+* 2026-11-04 — il canale lo dice `script.fn_canale_log_stringa`, prima di aprire qualunque
+  connessione (D26 di `brief-db-revisione-dbops`): prima la funzione aggirava l'interruttore, e con
+  `off` e la stringa impostata generava e registrava l'id lo stesso. Con `fn_ensure_logconn` che non
+  solleva più (D1), un canale irraggiungibile non blocca più le scritture tracciate.
 
 ---
 

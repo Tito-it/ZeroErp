@@ -25,6 +25,7 @@ search:
 - [fn_available_actions_rettifica](manual/fn_available_actions_rettifica.md) — (scritta il 22-09-2026)
 - [fn_azzera_tentativi_credenziale](manual/fn_azzera_tentativi_credenziale.md) — (scritta il 25-09-2026)
 - [fn_blocca_credenziale](manual/fn_blocca_credenziale.md) — (scritta il 25-09-2026)
+- [fn_canale_log_stringa](manual/fn_canale_log_stringa.md) — Dice se il **canale di log fuori transazione** (la connessione `dblink` dei registri) è acceso, e con quale stringa di connessione: restituisce la stringa se il canale è acceso, `NULL` se è spento o non configurato. È la regola unica per chi deve scrivere sul canale.
 - [fn_capability_promo_articolo](manual/fn_capability_promo_articolo.md)
 - [fn_categoria_accesso](manual/fn_categoria_accesso.md)
 - [fn_change_user_emittenti_scope](manual/fn_change_user_emittenti_scope.md)
@@ -112,7 +113,7 @@ search:
 - [fn_doc_stato_modello](manual/fn_doc_stato_modello.md)
 - [fn_doc_testata_in_stato](manual/fn_doc_testata_in_stato.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 2)
 - [fn_elimina_credenziale](manual/fn_elimina_credenziale.md) — (scritta il 06-10-2026)
-- [fn_ensure_logconn](manual/fn_ensure_logconn.md) — * **Stabilire una connessione persistente** a un database remoto o a se stesso attraverso l’estensione `dblink`, evitando overhead di creazione/removal di connessioni multiple. * **Supporto al logging remoto**: utilizzata da funzioni come `script.fn_log_error_only` per eseguire INSERT in un contesto transazionale separato.
+- [fn_ensure_logconn](manual/fn_ensure_logconn.md) — Apre la connessione `dblink` persistente di nome **`logconn`** verso il canale di log, se il canale è acceso e la connessione non è già aperta. Su quella connessione i registri fuori transazione scrivono righe che sopravvivono all'annullamento della transazione di chi le scrive.
 - [fn_esigibilita_iva](manual/fn_esigibilita_iva.md)
 - [fn_esigibilita_iva_documento](manual/fn_esigibilita_iva_documento.md)
 - [fn_generate_codice](manual/fn_generate_codice.md) — (latest review 04-02-26) * **Generazione di codici configurabili**   Costruisce un codice concatenando un **prefisso**, un **separatore** e una **parte numerica** formattata, letti da **`config.sistema_codici`** in base al `codice_interno` passato in input.

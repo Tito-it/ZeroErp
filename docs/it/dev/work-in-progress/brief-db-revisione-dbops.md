@@ -2,9 +2,10 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-04
 
-**Riparte: sessione DB**, col blocco 1b (D1 + D26, §12.5), con la regola del canale decisa da Tid
-(assente = acceso). Il blocco 1a (`-20` … `-31`) e le due correzioni di lentezza (`-43`, `-45`) sono
-applicati e verdi (Tid, 2026-11-04). Le decisioni di §4 restano aperte per i giri che le aspettano.
+**Riparte: sessione DB**, coi blocchi 1c (D40, D41) e 1d (D43, D7) di §12.5. Il blocco 1b (`20261104-46`
+… `-50`, §12.8: il canale di log con una regola sola, e mai un errore) è applicato e verde (Tid,
+2026-11-04); il blocco 1a e le due correzioni di lentezza sono anche committati. Le decisioni di §4
+restano aperte per i giri che le aspettano.
 Il team BE, a oggi, non ha niente da fare che aspetti un giro: §5.
 
 | # | Chi | Che cosa | Dove | Aspetta |
@@ -17,13 +18,15 @@ Il team BE, a oggi, non ha niente da fare che aspetti un giro: §5.
 | 6 | ✅ sessione DB | Giro 1, blocco 1a (D14, D15, D54, D56): scritto e provato sullo scratch | §12 | 5 |
 | 7 | ✅ Tid | Apply del blocco 1a; pgTAP di §12.3 verdi (2026-11-04). Un test lento: §12.6 | §12.3 | 6 |
 | 7-bis | ✅ Tid | Apply di `20261104-43` e `20261104-45`; i pgTAP di §12.6 e §12.7 verdi (2026-11-04) | §12.6, §12.7 | 7 |
-| 8 | **sessione DB** ⏭️ | Giro 1, blocchi 1b (D1 + D26), 1c (D40, D41), 1d (D43, D7) | §12.5 | 5 |
+| 7-ter | ✅ sessione DB | Giro 1, blocco 1b (D1 + D26): scritto e provato sullo scratch | §12.8 | 7-bis |
+| 7-quater | ✅ Tid | Apply del blocco 1b (`-46` … `-50`); pgTAP di §12.8.3 verdi (2026-11-04) | §12.8.3 | 7-ter |
+| 8 | **sessione DB** ⏭️ | Giro 1, blocchi 1c (D40, D41), 1d (D43, D7) | §12.5 | 7-quater |
 | 9 | Tid | Le decisioni di §4, per i giri che le aspettano | §4, §8 | — |
 | 10 | team BE | Le ricadute di §5, quando il giro DB corrispondente è applicato; BE5 e BE7 (commenti stantii) quando capita | §5 | 8, 9 |
 | 11 | sessione DB | Pagine `manual/` riallineate a ogni difetto chiuso; brief in `work-done/` | §1 | 8, 9 |
 
-**Decisioni aperte di Tid:** quelle di §4. **Da committare:** questo brief, il blocco 1a (§12.1), `-43` e
-`-45` (§12.6, §12.7), con i pgTAP e la doc riallineata.
+**Decisioni aperte di Tid:** quelle di §4. **Da committare:** questo brief e il blocco 1b (§12.8: `-46` …
+`-50`, il pgTAP `script/test-canale-log-v1` e la doc di §12.8.4).
 
 > **Chi scrive:** sessione DB (`dev/db-tid`), 2026-11-04. **A chi:** Tid e team DB; §5 al team BE.
 > **Origine:** verifica delle pagine `docs/it/dbzero/dbops/manual/` contro lo standard e contro il
@@ -74,8 +77,8 @@ sono difetti: il peso dice l'ordine dei giri, non se si fanno.
 
 | Classe | Difetti |
 | --- | --- |
-| **A** — D14, D15, D54, D56 ✅ scritti nel giro 1a (§12) | D1 (contratto del 2026-07-22: un dblink fallito restituisce la sentinella), D3, D4, D6, D14, D15, D21, D25, D30 (cinque righe del seed senza prefisso), D35, D36, D37, D40, D41, D43, D44, D46, D47, D51, D53, D54, D56, D57, D58, D59, D63, D64, D66, D67, D68, D70 |
-| **B** | D2, D5, D7, D8, D9, D10, D11, D12, D13, D16, D17, D18, D19, D20, D22, D23, D24, D26, D27, D28, D29, D32, D33, D34, D38, D39, D45, D49, D52, D60, D69, D71, D73 |
+| **A** — D14, D15, D54, D56 ✅ scritti nel giro 1a (§12); D1 ✅ nel blocco 1b (§12.8) | D1 (contratto del 2026-07-22: un dblink fallito restituisce la sentinella), D3, D4, D6, D14, D15, D21, D25, D30 (cinque righe del seed senza prefisso), D35, D36, D37, D40, D41, D43, D44, D46, D47, D51, D53, D54, D56, D57, D58, D59, D63, D64, D66, D67, D68, D70 |
+| **B** — D26 ✅ nel blocco 1b (§12.8) | D2, D5, D7, D8, D9, D10, D11, D12, D13, D16, D17, D18, D19, D20, D22, D23, D24, D26, D27, D28, D29, D32, D33, D34, D38, D39, D45, D49, D52, D60, D69, D71, D73 |
 | **C** | D17-bis, D42, D48, D50, D55, D61, D62, D65, D72, D74 — ✅ scritti nel giro C1 (§10) tutti tranne D17-bis e D74; di D61 restano i quattro strumenti DBA (Q9) |
 
 ⚠️ D31 non c'è: il ramo del `tx_id` non registrato l'ha già giudicato il brief chiuso
@@ -716,7 +719,7 @@ pagine nuove per il building block.
 
 | Blocco | Difetti | Stato |
 | --- | --- | --- |
-| 1b | D1 (un canale di log irraggiungibile blocca ogni scrittura tracciata), D26 (l'interruttore `myapp.log_with_dblink` letto in quattro modi) | ⭐ Decisione di Tid (2026-11-04): un default solo, **assente = acceso** (il canale c'è se c'è una stringa e l'interruttore non è `off`), come `fn_ensure_logconn`, il `makefile` e la CI. `fn_audit_log_once` resta fuori finché Q9 non decide il suo ramo dblink (D60). In scrittura |
+| 1b | D1 (un canale di log irraggiungibile blocca ogni scrittura tracciata), D26 (l'interruttore `myapp.log_with_dblink` letto in quattro modi) | ⭐ Decisione di Tid (2026-11-04): un default solo, **assente = acceso** (il canale c'è se c'è una stringa e l'interruttore non è `off`), come `fn_ensure_logconn`, il `makefile` e la CI. `fn_audit_log_once` resta fuori finché Q9 non decide il suo ramo dblink (D60). ✅ Scritto e provato: §12.8 |
 | 1c | D40 (`fn_run_automations_cleanup`: un rifiuto non ferma il giro e non si vede), D41 (`fn_run_automations_delete_block` senza audit nel giro vero) | da scrivere |
 | 1d | D43 (`vw_processi_che_bypassano` col ruolo ritirato), D7 (`vw_riferimenti_morti_rientrati` con la misura fallita) | da scrivere |
 
@@ -768,3 +771,85 @@ non hanno un prefiltro unico: restano come sono.
 
 ⚠️ La lezione si aggiunge a quella di §12.6: una vista che cerca un nome fisso nei corpi filtra sul testo
 grezzo **prima** di chiedere il corpo senza commenti.
+
+### 12.8 Blocco 1b — il canale di log: una regola sola, e mai un errore (D1 + D26)
+
+⭐ **La regola** (decisione di Tid, 2026-11-04): il canale è acceso se c'è una stringa di connessione non
+vuota **e** `myapp.log_with_dblink` non vale `off` (maiuscole e spazi non contano). L'interruttore assente
+vale acceso. La stringa è `myapp.logconn` se valorizzata, altrimenti `myapp.dblink_log_connection`: è la
+precedenza già scritta in `guide/configurazione-e-gestione-parametri.md`, che prima rispettavano solo due
+lettori su quattro.
+
+Le letture erano **cinque**, non quattro. Rileggendo il corpo, `fn_ensure_logconn` confrontava con `'on'`:
+l'interruttore **assente** (NULL) valeva acceso, quello **vuoto** (`''`, cioè una GUC impostata e poi
+azzerata in sessione) valeva spento. Il building block li tratta allo stesso modo: acceso. La prima stesura
+del pgTAP costruiva l'assente con `''`, e con le funzioni vecchie il D1 non si vedeva.
+
+#### 12.8.1 Che cosa è stato scritto
+
+| ChangeSet | Difetto | Che cosa |
+| --- | --- | --- |
+| `20_code/script/20261104-46` | D26 | Nuovo `script.fn_canale_log_stringa()`: la stringa del canale se è acceso, NULL se è spento o non configurato. Restituisce la stringa e non un booleano perché chi chiede «è acceso?» la usa subito dopo: due letture separate tornerebbero a divergere. SQL, `STABLE`, INVOKER, del migratore |
+| `20_code/script/20261104-47` | D1, D26 | `fn_ensure_logconn`: il canale dal building block; **ogni** errore di connessione diventa un WARNING (prima solo `duplicate_object` e `53300`); COMMENT riscritto (nominava una GUC inesistente, `dblink.log_connection`); search_path nella forma di casa, stessa semantica |
+| `20_code/dbops/20261104-48` | D26, D1 | `fn_get_or_create_session_tx_id`: il canale si chiede **prima** di aprire qualunque cosa. Prima, con `off` e la stringa impostata, `fn_ensure_logconn` taceva ma il passo dopo generava l'id con una connessione nuova. COMMENT riscritto per intero (era una revisione datata davanti al testo vecchio, §3.3) |
+| `20_code/script/20261104-49` | D26 | `fn_log_error_only`: la stringa dal building block; con `off` un WARNING e nessuna scrittura (prima ignorava l'interruttore). Firma, DECLARE e COMMENT con `%TYPE` |
+| `20_code/maintenance/20261104-50` | D26 | `fn_job_run_log_failure`: come sopra; firma e COMMENT con `%TYPE` |
+
+Tutte e quattro le funzioni sono di postgres: la proprietà si prende in prestito, si verifica con
+`$guard$` e si restituisce, nella forma di `20261103-05`. Con `%TYPE` i tipi risolti sono quelli di oggi:
+le firme non cambiano, e il test 6 di `test-job-run-sqlstate-e-codice-v1` (firma testuale di
+`fn_job_run_log_failure`) resta verde. `fn_audit_log_once` resta fuori finché non si decide Q9: legge
+ancora «assente = spento», e il pgTAP la esclude per nome.
+
+⚠️ **Effetto voluto, da sapere.** Con l'interruttore a `off` (la migrazione col `makefile` e in CI) le
+scritture tracciate prendono la sentinella `uuid_nil` come `tx_id` invece di un id registrato, e i due
+verbali fuori transazione non scrivono. `trgfn_tx_id_managed` accetta la sentinella, e nessuna FK punta a
+`dbops.transaction_ids`. È ciò che `off` ha sempre promesso.
+
+#### 12.8.2 Le prove (scratch `zeroerp_ruoli`, come owner, SQL estratto, `BEGIN … ROLLBACK`)
+
+* **Definizioni prima e dopo, a confronto:** cambiano solo le righe previste; una firma per nome; le
+  quattro funzioni tornano di postgres con gli stessi permessi.
+* **pgTAP nuovo `db/pgtap/script/test-canale-log-v1.sql` (16 test).** Sullo scratch il canale non c'è:
+  per i test 13-15 la sessione di prova ha avuto una stringa verso lo scratch stesso (`PGOPTIONS`), così
+  non si saltano.
+
+  | Versione | Esito |
+  | --- | --- |
+  | `-46` … `-50` | 16/16 |
+  | solo `-46` (i lettori vecchi) | rossi 7 e 8 (`could not establish connection`: il D1), poi la transazione si interrompe |
+  | solo `-46`, senza la sezione D1 | rossi 13, 14 (`have: 1`), 15 (`have: 1`) e 16: il D26 |
+
+  Il giro rosso ha lasciato sullo scratch una riga in `dbops.error_log` e una in `maintenance.job_run_log`
+  (`pgtap.canale_log.spento`): è la prova che prima si scriveva con `off`.
+* **Undici pgTAP che toccano queste funzioni**, senza e con: invariati.
+  `test-registri-append-only-postura-v1` ha 4 rossi (16-19) **identici** nei due versi: vengono dal
+  runner owner, che ha UPDATE e DELETE sui registri; il test li vuole come app.
+* Guardrail pre-commit verdi.
+
+#### 12.8.3 Per Tid — ✅ 1 e 2 fatti (Tid, 2026-11-04: migrazione applicata, test verdi)
+
+1. Apply su dbdev e sullo scratch di `20261104-46` … `-50`.
+2. pgTAP:
+   * `script/test-canale-log-v1` (nuovo; su dbdev il canale c'è, quindi i test 13-15 girano: il gemello
+     del 13 registra un `tx_id` che sopravvive al ROLLBACK, come lo scenario D di
+     `test-tx-id-coerenza-non-registrato`);
+   * `dbops/test-tx-id-coerenza-non-registrato`, `dbops/test-registri-append-only-postura-v1`,
+     `dbops/test-security-definer-search-path-v1`, `maintenance/test-job-run-log-failure-out-of-tx`,
+     `maintenance/test-job-run-sqlstate-e-codice-v1`, `script/test-bersaglio-canale-strutturato`.
+3. Commit.
+
+#### 12.8.4 Doc
+
+* Nuova `script/manual/fn_canale_log_stringa.md`.
+* Pagine `manual/` delle quattro funzioni: `fn_ensure_logconn` riscritta per intero (nominava
+  `dblink.log_connection`, che non esiste); `fn_log_error_only` col flusso nel suo ordine vero;
+  `fn_get_or_create_session_tx_id` senza i due avvisi diventati falsi; `fn_job_run_log_failure`.
+  Ritoccate anche `fn_audit_log_once` (è l'unica fuori dalla regola) e `fn_log_and_raise_error` (diceva
+  che `fn_log_error_only` scrive solo su `logconn`).
+* Guide: `configurazione-e-gestione-parametri`, `messaggi-audit`, `tx_id_implementation_guide` (anche il
+  diagramma, che mostrava ancora l'`uuidv7` locale ritirato il 2026-07-22), `automazione-db`,
+  `Messaggi-di-Errore-e-Generazione-Log`; `postgresql/parametri-personalizzati-(GUC)` e `postgresql/dblink`.
+* I link a `/dbzero/script/funzioni/fn_canale_log_stringa` puntano alla pagina generata, che nasce con la
+  rigenerazione dopo l'apply. `script/index.md` riprende lo «Scopo» delle pagine `manual/` e si riallinea
+  da sola.

@@ -158,7 +158,7 @@ Ogni azione del framework viene registrata in `dbops.audit_log` con:
 * `duration_ms` — tempo di esecuzione
 * `sqlstate` / `error_context` — in caso di errore
 
-Opzionalmente, il log può avvenire **fuori transazione** via dblink (`logconn`), utile quando si vuole conservare il log anche se la transazione fa rollback. Si attiva con il GUC `myapp.log_with_dblink='on'`.
+Opzionalmente, il log può avvenire **fuori transazione** via dblink (`logconn`), utile quando si vuole conservare il log anche se la transazione fa rollback. Si attiva con il GUC `myapp.log_with_dblink='on'`: per l'audit l'interruttore assente vale spento, al contrario degli altri registri fuori transazione. Il dettaglio, e perché oggi quel ramo non va acceso, è in [Messaggi di audit](/guide/messaggi-audit#logging-fuori-transazione).
 
 ---
 

@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Function `script.fn_log_and_raise_error`
 
+> **Ultimo aggiornamento**: 4 novembre 2026
+
 > 👀 **Vedi anche**
 >
 Approfondimento tabelle:    
@@ -45,7 +47,7 @@ $$;
 (last review 24-04-2026)
 
 * **Entrypoint unificato** per error handling: evita duplicazioni di log e raise in trigger, procedure e funzioni.
-* **Logging delegato a `fn_log_error_only`** (post 23-04-2026): la fn non scrive direttamente via `dblink_exec`, ma invoca `script.fn_log_error_only(...)` che a sua volta usa `dblink` su connessione permanente (`fn_ensure_logconn`) per isolare il log dall'eventuale rollback della sessione principale.
+* **Logging delegato a `fn_log_error_only`** (post 23-04-2026): la fn non scrive direttamente via `dblink_exec`, ma invoca `script.fn_log_error_only(...)` che a sua volta scrive via `dblink` su una connessione separata (prima con la stringa di connessione del canale, poi con la connessione permanente `logconn`) per isolare il log dall'eventuale rollback della sessione principale.
 * **Escalation immediata**: rialza l'eccezione con `DETAIL` e `HINT` recuperati dalla tabella dei messaggi con fallback lingua.
 
 ---
@@ -73,7 +75,7 @@ $$;
 1. **Delega del logging a `fn_log_error_only`**
 
    Il logging via dblink e' delegato a `script.fn_log_error_only`,
-   che internamente invoca `fn_ensure_logconn` + `dblink_exec`.
+   che internamente usa `dblink_exec` (prima sulla stringa del canale, poi su `logconn`).
 
    ```plpgsql
    PERFORM script.fn_log_error_only(

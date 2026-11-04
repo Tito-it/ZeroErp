@@ -49,6 +49,11 @@ la lingua dei messaggi (`myapp.user_language`), la connessione del canale dei re
 (`myapp.dblink_log_connection`, impostata da `scripts/sql/provision_dblink_log_channel.sql`),
 l'ambiente della passata di Liquibase (`myapp.env = 'ci'`, nelle opzioni della connessione di CI).
 
+Il canale dei registri è acceso quando c'è una stringa di connessione (`myapp.logconn`, se
+valorizzato, altrimenti `myapp.dblink_log_connection`) e l'interruttore `myapp.log_with_dblink` non
+vale `off`. La regola è una sola, per tutti i registri fuori transazione tranne l'audit: è descritta in
+[script.fn_canale_log_stringa](/dbzero/script/funzioni/fn_canale_log_stringa).
+
 ⚠️ Il canale dei registri si legge dalla **sessione**: sotto pgAgent la sessione è `zeroerp_job`, e il
 parametro va impostato anche per lui (o per tutto il database), altrimenti il verbale di un
 fallimento non si scrive e resta solo un `WARNING`.
@@ -130,9 +135,9 @@ tecnica, in coda.
 | GUC                           | Valori                    | Dove si imposta                                                | Chi lo legge                                                        |
 | ----------------------------- | ------------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------- |
 | `myapp.user_language`         | codice lingua (`it`)      | `ALTER ROLE … IN DATABASE … SET`                               | i messaggi d'errore (`script.fn_get_messaggio`, `fn_log_and_raise_error`) |
-| `myapp.dblink_log_connection` | stringa di connessione    | `scripts/sql/provision_dblink_log_channel.sql`, per ruolo      | il canale dei registri fuori transazione (`script.fn_log_error_only`, `maintenance.fn_job_run_log_failure`, `script.fn_ensure_logconn`) |
+| `myapp.dblink_log_connection` | stringa di connessione    | `scripts/sql/provision_dblink_log_channel.sql`, per ruolo      | il canale dei registri fuori transazione, attraverso `script.fn_canale_log_stringa` (lo usano `script.fn_ensure_logconn`, `script.fn_log_error_only`, `dbops.fn_get_or_create_session_tx_id`, `maintenance.fn_job_run_log_failure`) |
 | `myapp.logconn`               | stringa di connessione    | facoltativo, nella sessione                                    | gli stessi lettori: se c'è, **vince** su `myapp.dblink_log_connection` |
-| `myapp.log_with_dblink`       | `on` / `off`              | opzioni della connessione (`off` nelle migrazioni)             | l'audit delle automazioni (`dbops.fn_audit_log_once`) |
+| `myapp.log_with_dblink`       | `on` / `off`              | opzioni della connessione (`off` nelle migrazioni)             | l'interruttore del canale, per gli stessi lettori: solo `off` spegne, assente vale acceso. L'audit delle automazioni (`dbops.fn_audit_log_once`) lo legge a modo suo: assente vale spento, solo `on` accende |
 | `myapp.bypass_tx_id_check`    | `on` / `off`              | per ruolo o sessione                                           | il trigger del `tx_id` (`dbops.trgfn_tx_id_managed`), secondo livello del bypass |
 | `myapp.env`                   | `ci`                      | opzioni della connessione della passata `ci_apply` in CI        | la `preCondition` del changeSet `90_end/ci_apply/20250627-31`       |
 

@@ -1,0 +1,83 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_canale_log_stringa: il building block «il canale di log e' acceso,
+# e con quale stringa».
+#   Brief: brief-db-revisione-dbops, D26 (giro 1, blocco 1b).
+#
+# ⛔ IL DIFETTO CHE CHIUDE. L'interruttore myapp.log_with_dblink si leggeva in
+#   quattro modi: assente = acceso in fn_ensure_logconn, assente = spento in
+#   fn_audit_log_once, aggirato da fn_get_or_create_session_tx_id (bastava la
+#   stringa), ignorato da fn_log_error_only e fn_job_run_log_failure. E la
+#   stringa in due: solo myapp.dblink_log_connection in due funzioni,
+#   myapp.logconn che vince nelle altre due.
+#
+# ⭐ LA REGOLA, UNA (decisione di Tid, 2026-11-04): il canale e' ACCESO se c'e'
+#   una stringa di connessione non vuota E l'interruttore non dice 'off'.
+#   L'interruttore assente vale acceso: e' come lo leggono gia' il makefile e
+#   la CI, che lo mettono a 'off' quando lo vogliono spento. 'off' si legge
+#   senza badare a maiuscole e spazi.
+#   La stringa e' myapp.logconn se valorizzata, altrimenti
+#   myapp.dblink_log_connection: la precedenza scritta in
+#   guide/configurazione-e-gestione-parametri.md, oggi rispettata solo da due
+#   dei quattro lettori.
+#
+#   Restituisce la stringa, non un booleano: chi chiede «e' acceso?» la usa
+#   subito dopo per connettersi, e due letture separate tornerebbero a
+#   divergere. NULL = spento o non configurato.
+#   ⛔ fn_audit_log_once NON passa di qui finche' Q9 non decide il suo ramo
+#   dblink (D60).
+#   RETURNS text: e' il tipo di current_setting, nessuna colonna lo porta.
+#   SET search_path = pg_catalog: la chiamano DEFINER di postgres.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261104-46-create-fn-canale-log-stringa-mctit.yaml
+
+  - changeSet:
+      id: 20261104-46-create-fn-canale-log-stringa
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_canale_log_stringa(): la stringa di connessione del canale di log se il
+        canale e' acceso, NULL se e' spento o non configurato. Una regola sola per i
+        lettori del canale (D26).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_canale_log_stringa()
+              RETURNS text
+              LANGUAGE sql
+              STABLE
+              PARALLEL SAFE
+              SECURITY INVOKER
+              SET search_path = pg_catalog
+              AS $f$
+                  SELECT CASE
+                           -- l'interruttore: solo 'off' spegne, assente vale acceso
+                           WHEN lower(btrim(coalesce(current_setting('myapp.log_with_dblink', true), ''))) = 'off'
+                             THEN NULL
+                           -- la stringa: myapp.logconn vince su myapp.dblink_log_connection
+                           WHEN btrim(coalesce(current_setting('myapp.logconn', true), '')) <> ''
+                             THEN current_setting('myapp.logconn', true)
+                           WHEN btrim(coalesce(current_setting('myapp.dblink_log_connection', true), '')) <> ''
+                             THEN current_setting('myapp.dblink_log_connection', true)
+                         END;
+              $f$;
+
+              COMMENT ON FUNCTION script.fn_canale_log_stringa() IS
+                  'La stringa di connessione del canale di log fuori transazione (dblink), se il canale e'' ACCESO; NULL se e'' spento o non configurato. La regola e'' una: acceso se c''e'' una stringa non vuota e myapp.log_with_dblink non vale ''off'' (maiuscole e spazi non contano); l''interruttore assente vale acceso. La stringa e'' myapp.logconn se valorizzata, altrimenti myapp.dblink_log_connection. Restituisce la stringa e non un booleano perche'' chi chiede se il canale e'' acceso la usa subito per connettersi: due letture separate tornerebbero a divergere. La leggono script.fn_ensure_logconn, dbops.fn_get_or_create_session_tx_id, script.fn_log_error_only e maintenance.fn_job_run_log_failure; dbops.fn_audit_log_once no, finche'' non si decide il suo ramo dblink. Non apre connessioni.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_canale_log_stringa();
