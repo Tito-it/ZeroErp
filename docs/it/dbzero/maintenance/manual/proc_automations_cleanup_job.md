@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Procedura `maintenance.proc_automations_cleanup_job`
 
-> **Ultimo aggiornamento**: 3 novembre 2026
+> **Ultimo aggiornamento**: 4 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -71,13 +71,15 @@ quella generica su tutte, che su quella tabella non trova più niente da fare.
 
 ---
 
-### ⚠️ Una corsa verde può nascondere una tabella che si è opposta
+### ⭐ Una tabella che si è opposta rende rossa la corsa
 
 Ogni regola gira in una sottotransazione. Se una tabella rifiuta la pulizia — un trigger che la
 vuole immutabile, il guard sulla cancellazione di un log — il runner la salta, scrive in
 `dbops.audit_log` una riga `ERROR` col motivo `BLOCKED_BY_TABLE` e lo SQLSTATE, e prosegue con le
-altre. La corsa finisce riuscita, e il giornale non lo dice: il rifiuto si vede solo nel registro
-delle azioni. Un annullamento invece resta un annullamento: si rilancia, e la corsa è rossa.
+altre. A fine giro restituisce il suo riepilogo, e il giornale lo legge: con almeno una tabella
+che si è opposta la corsa è **rossa**, «riuscita con scarti» (`E_JOB_ESITO_CON_SCARTI`), e le
+tabelle pulite restano pulite. Quali tabelle, e perché, sta nell'esito della corsa e nel registro
+delle azioni. Un annullamento invece resta un annullamento: si rilancia, e la corsa fallisce.
 
 ---
 
@@ -188,6 +190,9 @@ tabella non è un errore della corsa (sopra); un annullamento sì, e arriva col 
   e le regole su `vendite` e `config` e la cancellazione generica non le eseguiva nessuno: le
   righe scadute di quelle tabelle non venivano mai cancellate (`brief-db-revisione-maintenance`
   D4).
+* 2026-11-04 — una tabella che si oppone rende rossa la corsa: il runner restituisce il suo
+  riepilogo, e il giornale lo legge (D40 di `brief-db-revisione-dbops`). Prima la corsa era verde e
+  il rifiuto stava solo nel registro delle azioni. Il wrapper non cambia.
 
 ---
 

@@ -2,10 +2,9 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-04
 
-**Riparte: sessione DB**, coi blocchi 1c (D40, D41) e 1d (D43, D7) di §12.5. Il blocco 1b (`20261104-46`
-… `-50`, §12.8: il canale di log con una regola sola, e mai un errore) è applicato e verde (Tid,
-2026-11-04); il blocco 1a e le due correzioni di lentezza sono anche committati. Le decisioni di §4
-restano aperte per i giri che le aspettano.
+**Riparte: sessione DB**, col blocco 1d (D43, D7) di §12.5. Il blocco 1c (`20261104-51`, `-52`, §12.9: il
+cleanup rende rossa la corsa con una tabella che si oppone, e il delete_block scrive l'audit anche nel giro
+vero) è applicato e verde (Tid, 2026-11-04); da committare. I blocchi 1a e 1b sono anche committati. Le decisioni di §4 restano aperte per i giri che le aspettano.
 Il team BE, a oggi, non ha niente da fare che aspetti un giro: §5.
 
 | # | Chi | Che cosa | Dove | Aspetta |
@@ -20,13 +19,15 @@ Il team BE, a oggi, non ha niente da fare che aspetti un giro: §5.
 | 7-bis | ✅ Tid | Apply di `20261104-43` e `20261104-45`; i pgTAP di §12.6 e §12.7 verdi (2026-11-04) | §12.6, §12.7 | 7 |
 | 7-ter | ✅ sessione DB | Giro 1, blocco 1b (D1 + D26): scritto e provato sullo scratch | §12.8 | 7-bis |
 | 7-quater | ✅ Tid | Apply del blocco 1b (`-46` … `-50`); pgTAP di §12.8.3 verdi (2026-11-04) | §12.8.3 | 7-ter |
-| 8 | **sessione DB** ⏭️ | Giro 1, blocchi 1c (D40, D41), 1d (D43, D7) | §12.5 | 7-quater |
+| 7-quinquies | ✅ sessione DB | Giro 1, blocco 1c (D40, D41): scritto e provato sullo scratch | §12.9 | 7-quater |
+| 7-sexies | ✅ Tid | Apply del blocco 1c (`-51`, `-52`); pgTAP di §12.9.3 verdi (2026-11-04) | §12.9.3 | 7-quinquies |
+| 8 | **sessione DB** ⏭️ | Giro 1, blocco 1d (D43, D7) | §12.5 | 7-sexies |
 | 9 | Tid | Le decisioni di §4, per i giri che le aspettano | §4, §8 | — |
 | 10 | team BE | Le ricadute di §5, quando il giro DB corrispondente è applicato; BE5 e BE7 (commenti stantii) quando capita | §5 | 8, 9 |
 | 11 | sessione DB | Pagine `manual/` riallineate a ogni difetto chiuso; brief in `work-done/` | §1 | 8, 9 |
 
-**Decisioni aperte di Tid:** quelle di §4. **Da committare:** questo brief e il blocco 1b (§12.8: `-46` …
-`-50`, il pgTAP `script/test-canale-log-v1` e la doc di §12.8.4).
+**Decisioni aperte di Tid:** quelle di §4. **Da committare:** questo brief e il blocco 1c (§12.9: `-51`, `-52`,
+i due pgTAP e la doc di §12.9.4).
 
 > **Chi scrive:** sessione DB (`dev/db-tid`), 2026-11-04. **A chi:** Tid e team DB; §5 al team BE.
 > **Origine:** verifica delle pagine `docs/it/dbzero/dbops/manual/` contro lo standard e contro il
@@ -77,7 +78,7 @@ sono difetti: il peso dice l'ordine dei giri, non se si fanno.
 
 | Classe | Difetti |
 | --- | --- |
-| **A** — D14, D15, D54, D56 ✅ scritti nel giro 1a (§12); D1 ✅ nel blocco 1b (§12.8) | D1 (contratto del 2026-07-22: un dblink fallito restituisce la sentinella), D3, D4, D6, D14, D15, D21, D25, D30 (cinque righe del seed senza prefisso), D35, D36, D37, D40, D41, D43, D44, D46, D47, D51, D53, D54, D56, D57, D58, D59, D63, D64, D66, D67, D68, D70 |
+| **A** — D14, D15, D54, D56 ✅ scritti nel giro 1a (§12); D1 ✅ nel blocco 1b (§12.8); D40, D41 ✅ nel blocco 1c (§12.9) | D1 (contratto del 2026-07-22: un dblink fallito restituisce la sentinella), D3, D4, D6, D14, D15, D21, D25, D30 (cinque righe del seed senza prefisso), D35, D36, D37, D40, D41, D43, D44, D46, D47, D51, D53, D54, D56, D57, D58, D59, D63, D64, D66, D67, D68, D70 |
 | **B** — D26 ✅ nel blocco 1b (§12.8) | D2, D5, D7, D8, D9, D10, D11, D12, D13, D16, D17, D18, D19, D20, D22, D23, D24, D26, D27, D28, D29, D32, D33, D34, D38, D39, D45, D49, D52, D60, D69, D71, D73 |
 | **C** | D17-bis, D42, D48, D50, D55, D61, D62, D65, D72, D74 — ✅ scritti nel giro C1 (§10) tutti tranne D17-bis e D74; di D61 restano i quattro strumenti DBA (Q9) |
 
@@ -720,7 +721,7 @@ pagine nuove per il building block.
 | Blocco | Difetti | Stato |
 | --- | --- | --- |
 | 1b | D1 (un canale di log irraggiungibile blocca ogni scrittura tracciata), D26 (l'interruttore `myapp.log_with_dblink` letto in quattro modi) | ⭐ Decisione di Tid (2026-11-04): un default solo, **assente = acceso** (il canale c'è se c'è una stringa e l'interruttore non è `off`), come `fn_ensure_logconn`, il `makefile` e la CI. `fn_audit_log_once` resta fuori finché Q9 non decide il suo ramo dblink (D60). ✅ Scritto e provato: §12.8 |
-| 1c | D40 (`fn_run_automations_cleanup`: un rifiuto non ferma il giro e non si vede), D41 (`fn_run_automations_delete_block` senza audit nel giro vero) | da scrivere |
+| 1c | D40 (`fn_run_automations_cleanup`: un rifiuto non ferma il giro e non si vede), D41 (`fn_run_automations_delete_block` senza audit nel giro vero) | ✅ Scritto e provato: §12.9 |
 | 1d | D43 (`vw_processi_che_bypassano` col ruolo ritirato), D7 (`vw_riferimenti_morti_rientrati` con la misura fallita) | da scrivere |
 
 ### 12.6 Dopo l'apply: un test lento, e la stima che lo spiegava
@@ -853,3 +854,56 @@ verbali fuori transazione non scrivono. `trgfn_tx_id_managed` accetta la sentine
 * I link a `/dbzero/script/funzioni/fn_canale_log_stringa` puntano alla pagina generata, che nasce con la
   rigenerazione dopo l'apply. `script/index.md` riprende lo «Scopo» delle pagine `manual/` e si riallinea
   da sola.
+
+### 12.9 Blocco 1c — il cleanup e il delete_block dicono che cosa è successo (D40 + D41)
+
+#### 12.9.1 Che cosa è stato scritto
+
+| ChangeSet | Difetto | Che cosa |
+| --- | --- | --- |
+| `20_code/dbops/20261104-51` | D40 | `fn_run_automations_cleanup` restituisce un riepilogo jsonb invece di `void`, nella forma di `maintenance.fn_apply_storicizza_defaults` (20261103-67): `_applicate`, `_saltate`, `_saltate_motivi`, `_falliti` (i `BLOCKED_BY_TABLE`), `_righe`, `_dettaglio` (i rifiuti, con tabella, regola, SQLSTATE e messaggio). Il job la chiama già con una SELECT: `fn_run_and_log` legge l'esito, e `_falliti > 0` rende la corsa rossa con `E_JOB_ESITO_CON_SCARTI`. Il wrapper non cambia; le righe di audit sono le stesse. `void` → `jsonb` vuole DROP e CREATE; firma e DECLARE con `%TYPE` |
+| `20_code/dbops/20261104-52` | D41 | `fn_run_automations_delete_block`: nel giro vero una riga `OK` (`CREATE_TRIGGER`) per ogni trigger montato; `WARN TABLE_NOT_FOUND` in tutti e due i giri (in simulazione era `DRYRUN`, come un'azione che sarebbe avvenuta); il nome del trigger tratta `''` come assente, come `fn_apply_delete_block_trigger`. Il gestore dei guasti d'ambiente è quello di 20261016-52, riga per riga. Firma con `%TYPE` |
+
+⚠️ **Il dettaglio porta solo i rifiuti, e i salti si contano.** La prima stesura elencava anche i salti
+dichiarati: la prova sul giro vero dello scratch (fatto datato, 2026-11-04) ne ha trovati 924, tutti
+`NO_CLEANUP_COLUMN`. Una regola `*ALL` ne fa uno per ogni tabella senza la colonna, per costruzione, e
+quell'elenco sarebbe finito a ogni corsa in `meta.esito`. Ora i salti stanno in `_saltate_motivi`
+(`{"NO_CLEANUP_COLUMN": 924}`), e il riepilogo di quel giro pesa 130 byte.
+
+La riga di `automation_delete_block` fuori ambito, ignorata senza traccia, non si corregge qui: è annotata
+in `framework-automazione-db-migliorie` §2.4, come chiedeva la riga di D41.
+
+#### 12.9.2 Le prove (scratch `zeroerp_ruoli`, come owner, SQL estratto, `BEGIN … ROLLBACK`)
+
+| Prova | Senza | Con |
+| --- | --- | --- |
+| `dbops/test-cleanup-framework` (plan da 16 a 19) | rossi 13, 15, 16 (un `void` non si fotografa: il test 13 ora cattura il riepilogo) | 19/19 |
+| `dbops/test-delete-block-audit-v1` (nuovo, 7 test) | rossi 2, 5, 6 | 7/7 |
+| `maintenance/test-cleanup-job-ambito-registro-v1`, `dbops/test-automazioni-guasto-ambiente-rilanciato-v1`, `maintenance/test-fn-run-and-log-lock-ed-esito-v1`, `maintenance/test-apply-storicizza-esito-v1`, `dbops/test-corpo-funzione-senza-commenti-v1`, `dbops/test-security-definer-search-path-v1` | verdi | verdi, uguali |
+
+* **Da capo a fondo:** una tabella con un guard sul DELETE e una regola `CLEANUP_PURGE`, poi
+  `CALL maintenance.proc_automations_cleanup_job()`: la corsa del giornale è `ok = false`,
+  `E_JOB_ESITO_CON_SCARTI`, «riuscita con scarti: 2 falliti».
+* **Il giro vero di oggi sullo scratch:** `_falliti = 0` (39 regole applicate, 924 salti): l'apply non
+  rende rossa nessuna corsa da subito.
+* Il DROP e CREATE non perde il permesso: EXECUTE all'app torna dai default privileges (test 19).
+* Guardrail pre-commit verdi.
+
+#### 12.9.3 Per Tid — ✅ 1 e 2 fatti (Tid, 2026-11-04: migrazione applicata, test verdi)
+
+1. Apply su dbdev e sullo scratch di `20261104-51` e `-52`.
+2. pgTAP (`test-cleanup-framework` e il nuovo `test-delete-block-audit-v1` dichiarano il runner owner):
+   `dbops/test-cleanup-framework`,
+   `dbops/test-delete-block-audit-v1`, `maintenance/test-cleanup-job-ambito-registro-v1`,
+   `dbops/test-automazioni-guasto-ambiente-rilanciato-v1`.
+3. ⚠️ Da sapere: da qui la prossima corsa di `automations_cleanup` con una tabella che rifiuta compare in
+   `vw_job_run_da_guardare`. È il comportamento voluto; nessun lavoro per il BE.
+4. Commit.
+
+#### 12.9.4 Doc
+
+`dbops/manual/fn_run_automations_cleanup.md` (nuova sezione sul riepilogo, test, nota),
+`dbops/manual/fn_run_automations_delete_block.md` (che cosa scrive in audit, test nuovo, nota),
+`dbops/manual/automation_delete_block.md`, `maintenance/manual/proc_automations_cleanup_job.md` (la
+sezione «una corsa verde può nascondere…» ora dice il contrario), `guide/automazione-db.md` (una
+frase); `framework-automazione-db-migliorie` §2.4.

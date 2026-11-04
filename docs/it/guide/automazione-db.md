@@ -686,7 +686,7 @@ Il nome della sequenza è **sempre derivato** come `<schema>.<tabella>_<colonna>
 
 Una chiamata a un runner (`SELECT dbops.fn_run_automations_<regola>(...)`) **è una transazione**, e in PostgreSQL il DDL è transazionale: se un errore risale fino alla chiamata, tutto ciò che quella chiamata aveva creato viene annullato. Non resta un sistema a metà — resta quello che le chiamate precedenti avevano già committato.
 
-⚠️ Il caso da conoscere è l'altro: **alcuni runner catturano l'errore per tabella** e proseguono. `storico` intercetta il trigger che esiste già, `cleanup` salta la tabella che si oppone e scrive una riga `ERROR` con `skip_reason = BLOCKED_BY_TABLE`; il giro arriva in fondo e **committa**. Il runner `tx_id`, invece, logga **e risolleva**: lì la chiamata muore, e con lei la transazione. Un errore del primo tipo non si vede dal risultato: si vede solo dall'audit log.
+⚠️ Il caso da conoscere è l'altro: **alcuni runner catturano l'errore per tabella** e proseguono. `storico` intercetta il trigger che esiste già, `cleanup` salta la tabella che si oppone e scrive una riga `ERROR` con `skip_reason = BLOCKED_BY_TABLE`; il giro arriva in fondo e **committa**. Il runner `tx_id`, invece, logga **e risolleva**: lì la chiamata muore, e con lei la transazione. Un errore del primo tipo si vede dall'audit log; per `cleanup` anche dal giornale dei job, perché il runner restituisce un riepilogo e una tabella che si è opposta rende rossa la corsa (vedi la scheda di [fn_run_automations_cleanup](/dbzero/dbops/funzioni/fn_run_automations_cleanup)).
 
 **Cosa fare:**
 

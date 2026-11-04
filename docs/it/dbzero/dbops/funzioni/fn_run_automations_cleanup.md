@@ -13,28 +13,43 @@ CREATE FUNCTION fn_run_automations_cleanup(p_exec_mode text, p_schemas text[], p
 
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_run_automations_cleanup(p_exec_mode text, p_schemas text[], p_dry_run boolean)
- RETURNS void
+ RETURNS jsonb
  LANGUAGE plpgsql
 AS $function$
 DECLARE
+  -- text[]: %TYPE non fa array
   v_schemas text[];
   rtab record;
   rrule record;
+  -- flag locale
   v_is_excluded boolean;
+  -- text, integer, boolean: valori letti dai params jsonb della
+  -- regola, nessuna colonna li porta
   v_cleanup_col text;
   v_base_col text;
   v_ttl_days integer;
   v_apply_on_update boolean;
   v_batch_limit integer;
-  v_rows integer;
-  v_params jsonb;
-  v_rule_type text;
+  v_rows dbops.audit_log.rows_affected%TYPE;
+  v_params dbops.automation_rules_tbl.params%TYPE;
+  v_rule_type dbops.automation_rules_tbl.rule_type%TYPE;
   -- ⭐ Le tre variabili del rifiuto: una tabella che si oppone non ferma il
   --   giro, ma non sparisce nemmeno — il suo SQLSTATE e il suo messaggio
-  --   finiscono nell'audit.
-  v_sqlstate text;
-  v_errmsg text;
-  v_errctx text;
+  --   finiscono nell'audit, e la tabella nel riepilogo.
+  v_sqlstate dbops.audit_log.sqlstate%TYPE;
+  v_errmsg dbops.audit_log.message%TYPE;
+  v_errctx dbops.audit_log.error_context%TYPE;
+  -- ⭐ Il riepilogo che il job legge (contatori locali).
+  v_applicate integer := 0;
+  v_saltate   integer := 0;
+  v_falliti   integer := 0;
+  v_righe     bigint  := 0;
+  -- i salti dichiarati si CONTANO per motivo: una regola *ALL ne fa
+  -- uno per ogni tabella senza la colonna, e il dettaglio di ognuno
+  -- finirebbe a ogni corsa nel giornale del job
+  v_saltate_motivi jsonb := '{}'::jsonb;
+  -- i rifiuti, uno per uno: sono cio' che va guardato
+  v_dettaglio jsonb   := '[]'::jsonb;
 BEGIN
 
 /*
@@ -52,6 +67,7 @@ BEGIN
   3) salta tabelle in dbops.automation_cleanup_exclusions (enabled=true)
   4) applica regole compatibili con exec_mode e target schema/table
   5) logga sempre su dbops.audit_log tramite fn_audit_log_once
+  6) restituisce il riepilogo: _falliti > 0 rende rossa la corsa del job
 */
 
   v_schemas := dbops.fn_resolve_scope(p_schemas);
@@ -87,6 +103,9 @@ BEGIN
                           ),
         p_message       => 'Tabella esclusa da automation_cleanup_exclusions'
       );
+      v_saltate := v_saltate + 1;
+      v_saltate_motivi := jsonb_set(v_saltate_motivi, '{EXCLUDED}',
+          to_jsonb(COALESCE((v_saltate_motivi ->> 'EXCLUDED')::integer, 0) + 1));
       CONTINUE;
     END IF;
 
@@ -119,6 +138,9 @@ BEGIN
                             ),
           p_message       => 'Colonna cleanup non presente'
         );
+        v_saltate := v_saltate + 1;
+        v_saltate_motivi := jsonb_set(v_saltate_motivi, '{NO_CLEANUP_COLUMN}',
+            to_jsonb(COALESCE((v_saltate_motivi ->> 'NO_CLEANUP_COLUMN')::integer, 0) + 1));
         CONTINUE;
       END IF;
 
@@ -154,6 +176,9 @@ BEGIN
                               ),
             p_message       => 'Parametro ttl_days mancante'
           );
+          v_saltate := v_saltate + 1;
+          v_saltate_motivi := jsonb_set(v_saltate_motivi, '{MISSING_TTL_DAYS}',
+              to_jsonb(COALESCE((v_saltate_motivi ->> 'MISSING_TTL_DAYS')::integer, 0) + 1));
           CONTINUE;
         END IF;
 
@@ -173,6 +198,9 @@ BEGIN
                               ),
             p_message       => 'Colonna base_ts non presente'
           );
+          v_saltate := v_saltate + 1;
+          v_saltate_motivi := jsonb_set(v_saltate_motivi, '{MISSING_BASE_TS_COLUMN}',
+              to_jsonb(COALESCE((v_saltate_motivi ->> 'MISSING_BASE_TS_COLUMN')::integer, 0) + 1));
           CONTINUE;
         END IF;
 
@@ -204,6 +232,8 @@ BEGIN
                               ),
             p_message       => 'cleanup_at calcolato'
           );
+          v_applicate := v_applicate + 1;
+          v_righe := v_righe + COALESCE(v_rows, 0);
         EXCEPTION
           -- ⛔ Un annullamento resta un annullamento: se qualcuno ferma il job,
           --    il job si ferma. Non e' una tabella che rifiuta.
@@ -216,7 +246,8 @@ BEGIN
           --    ⚠️ Lo status e' ERROR e non WARN di proposito: i WARN di questa
           --    funzione sono salti DICHIARATI (esclusa, senza colonna, senza
           --    ttl). Questo non e' dichiarato — e' una tabella che si e'
-          --    opposta, e va distinta a colpo d'occhio.
+          --    opposta, e va distinta a colpo d'occhio. Per questo conta in
+          --    _falliti, e la corsa del job diventa rossa.
           WHEN OTHERS THEN
             GET STACKED DIAGNOSTICS
               v_sqlstate = RETURNED_SQLSTATE,
@@ -238,6 +269,13 @@ BEGIN
                                 ),
               p_message       => v_errmsg
             );
+            v_falliti := v_falliti + 1;
+            v_dettaglio := v_dettaglio || jsonb_build_object(
+                'tabella',   rtab.schema_name||'.'||rtab.table_name,
+                'regola',    v_rule_type,
+                'motivo',    'BLOCKED_BY_TABLE',
+                'sqlstate',  v_sqlstate,
+                'messaggio', v_errmsg);
         END;
 
       ELSIF v_rule_type = 'CLEANUP_PURGE' THEN
@@ -267,19 +305,14 @@ BEGIN
                               ),
             p_message       => 'cleanup eseguito'
           );
+          v_applicate := v_applicate + 1;
+          v_righe := v_righe + COALESCE(v_rows, 0);
         EXCEPTION
-          -- ⛔ Un annullamento resta un annullamento: se qualcuno ferma il job,
-          --    il job si ferma. Non e' una tabella che rifiuta.
+          -- ⛔ Un annullamento resta un annullamento (vedi sopra).
           WHEN query_canceled THEN
             RAISE;
-          -- ⭐ Tutto il resto: la tabella viene SALTATA, non subita. Prima di
-          --    questa rete un solo veto (un trigger append-only, un guard sul
-          --    DELETE dei log) faceva morire l'INTERO giro: le tabelle che
-          --    venivano dopo non venivano piu' pulite, e nessuno lo sapeva.
-          --    ⚠️ Lo status e' ERROR e non WARN di proposito: i WARN di questa
-          --    funzione sono salti DICHIARATI (esclusa, senza colonna, senza
-          --    ttl). Questo non e' dichiarato — e' una tabella che si e'
-          --    opposta, e va distinta a colpo d'occhio.
+          -- ⭐ Il rifiuto: tabella saltata, riga ERROR, conta in _falliti
+          --    (vedi sopra).
           WHEN OTHERS THEN
             GET STACKED DIAGNOSTICS
               v_sqlstate = RETURNED_SQLSTATE,
@@ -301,15 +334,30 @@ BEGIN
                                 ),
               p_message       => v_errmsg
             );
+            v_falliti := v_falliti + 1;
+            v_dettaglio := v_dettaglio || jsonb_build_object(
+                'tabella',   rtab.schema_name||'.'||rtab.table_name,
+                'regola',    v_rule_type,
+                'motivo',    'BLOCKED_BY_TABLE',
+                'sqlstate',  v_sqlstate,
+                'messaggio', v_errmsg);
         END;
       END IF;
     END LOOP;
   END LOOP;
+
+  RETURN jsonb_build_object(
+      '_applicate', v_applicate,
+      '_saltate',   v_saltate,
+      '_saltate_motivi', v_saltate_motivi,
+      '_falliti',   v_falliti,
+      '_righe',     v_righe,
+      '_dettaglio', v_dettaglio);
 END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_run_automations_cleanup(p_exec_mode text, p_schemas text[], p_dry_run boolean)
-IS 'Orchestratore cleanup_at con regole in dbops.automation_rules_tbl. Regole supportate: CLEANUP_AT (calcola cleanup_at con TTL fisso) e CLEANUP_PURGE (elimina i record scaduti, a batch). Parametri: p_exec_mode (AUTO/CI/SCHEDULED), p_schemas (scope schemi, NULL -> resolve da automation_scope), p_dry_run. ⭐ rev 2026-08-23: una tabella che RIFIUTA di essere pulita non fa piu'' morire il giro. Prima non c''era nessun EXCEPTION nel doppio ciclo, quindi un solo veto — un trigger append-only, il guard sul DELETE dei log — fermava l''intera passata e le tabelle successive non venivano piu'' pulite, senza che nessuno lo sapesse. Adesso la tabella viene saltata e il rifiuto lascia una riga ERROR in dbops.audit_log con SQLSTATE e contesto (skip_reason = BLOCKED_BY_TABLE): e'' il quarto membro della famiglia di salti che la funzione aveva gia'' (EXCLUDED, NO_CLEANUP_COLUMN, MISSING_TTL_DAYS, MISSING_BASE_TS_COLUMN). ⚠️ status ERROR e non WARN di proposito: i WARN sono salti DICHIARATI, questo e'' una tabella che si e'' opposta. ⛔ query_canceled si ri-solleva: un annullamento resta un annullamento. ⚠️ Ogni regola gira ora in una sottotransazione, che e'' cio'' che un blocco EXCEPTION implica.';
+IS 'Orchestratore del framework di cleanup, con le regole di dbops.automation_rules_tbl: CLEANUP_AT calcola cleanup_at con un TTL fisso, CLEANUP_PURGE elimina a batch le righe scadute. Parametri: p_exec_mode (AUTO/CI/SCHEDULED), p_schemas (gli schemi; NULL = dbops.automation_scope), p_dry_run. Ogni regola gira in una sottotransazione: una tabella che RIFIUTA (un guard sul DELETE, un trigger append-only) viene saltata e non ferma il giro, e lascia in dbops.audit_log una riga ERROR con SQLSTATE e contesto (skip_reason = BLOCKED_BY_TABLE); status ERROR e non WARN, perche'' i WARN sono i salti dichiarati (EXCLUDED, NO_CLEANUP_COLUMN, MISSING_TTL_DAYS, MISSING_BASE_TS_COLUMN). query_canceled si ri-solleva: un annullamento resta un annullamento. Restituisce il riepilogo jsonb: _applicate, _saltate (i salti dichiarati), _falliti (le tabelle che hanno rifiutato), _saltate_motivi (i salti contati per motivo), _righe, _dettaglio (i rifiuti uno per uno, con tabella, regola, SQLSTATE e messaggio; i salti non ci vanno, si contano). Il job automations_cleanup la chiama con una SELECT dentro maintenance.fn_run_and_log: _falliti > 0 rende la corsa rossa (E_JOB_ESITO_CON_SCARTI) senza annullare le tabelle pulite.';
 ```
 
 </div>

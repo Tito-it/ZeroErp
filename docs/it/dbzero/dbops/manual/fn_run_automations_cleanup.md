@@ -19,6 +19,7 @@
 > * [dbops.fn_resolve_scope](/dbzero/dbops/funzioni/fn_resolve_scope) — gli schemi del giro
 > * [dbops.fn_table_in_scope](/dbzero/dbops/funzioni/fn_table_in_scope) — le tabelle del giro
 > * [maintenance.proc_automations_cleanup_job](/dbzero/maintenance/funzioni/proc_automations_cleanup_job) — il wrapper che la lancia
+> * [maintenance.fn_run_and_log](/dbzero/maintenance/funzioni/fn_run_and_log) — chi legge il riepilogo e decide il colore della corsa
 >
 > Guide:
 >
@@ -104,8 +105,29 @@ una tabella che si è opposta, e va distinta a colpo d'occhio.
 
 ⛔ Un annullamento resta un annullamento: se qualcuno ferma il giro, il giro si ferma.
 
-Il runner non restituisce niente: l'esito per tabella sta solo nell'audit, e la corsa del job
-risulta verde anche quando una tabella è stata bloccata.
+---
+
+### ⭐ Il riepilogo: una tabella bloccata rende rossa la corsa
+
+Il runner restituisce un riepilogo del giro:
+
+| Chiave | Che cosa conta |
+| --- | --- |
+| `_applicate` | le regole applicate (`OK`, o `DRYRUN` in simulazione) |
+| `_saltate` | i salti dichiarati, i `WARN` della tabella sopra |
+| `_saltate_motivi` | gli stessi salti, contati per motivo |
+| `_falliti` | le tabelle che si sono opposte (`BLOCKED_BY_TABLE`) |
+| `_righe` | le righe toccate dalle regole applicate |
+| `_dettaglio` | i rifiuti, uno per uno: tabella, regola, SQLSTATE e messaggio |
+
+Il job lo lancia dentro [fn_run_and_log](/dbzero/maintenance/funzioni/fn_run_and_log), che legge
+il riepilogo: con `_falliti` maggiore di zero la corsa è **rossa** (`E_JOB_ESITO_CON_SCARTI`,
+«riuscita con scarti») e compare fra le corse da guardare, ma le tabelle pulite restano pulite.
+
+⚠️ I salti dichiarati si contano e non si elencano. Una regola che copre ogni tabella ne produce
+uno per ogni tabella senza la colonna di scadenza, e il loro elenco finirebbe a ogni corsa nel
+giornale del job. Il dettaglio è riservato a ciò che va guardato; il motivo di un salto si legge
+nell'audit.
 
 ---
 
@@ -121,7 +143,9 @@ l'annullamento e gli errori di conversione dei parametri di una regola.
 * `db/pgtap/dbops/test-cleanup-framework.sql` — un'esclusione attiva impedisce la cancellazione e
   una disattivata la lascia fare (test 11-12); una tabella che rifiuta non ferma il giro, resta
   com'era, la regola successiva sulla stessa tabella gira, e il rifiuto lascia una riga `ERROR` con
-  lo SQLSTATE (test 13-16).
+  lo SQLSTATE (test 13-16); il riepilogo della stessa chiamata conta il rifiuto in `_falliti`, con
+  la tabella nel dettaglio, e la regola passata in `_applicate` (test 17-18); l'app esegue ancora
+  il runner (test 19).
 * `db/pgtap/maintenance/test-cleanup-job-ambito-registro-v1.sql` — il wrapper passa l'ambito del
   registro, ogni regola `CLEANUP_*` attiva punta a uno schema dell'ambito, e il runner gira in
   simulazione con quell'ambito.
@@ -140,6 +164,10 @@ l'annullamento e gli errori di conversione dei parametri di una regola.
   calcolate su orari diversi.
 * 2026-11-03 — il wrapper non fissa più lo schema `dbops`: l'ambito si legge dal registro
   (`brief-db-revisione-maintenance` D4).
+* 2026-11-04 — il runner restituisce il riepilogo invece di niente, e una tabella bloccata rende
+  rossa la corsa del job (D40 di `brief-db-revisione-dbops`). Prima il rifiuto stava solo
+  nell'audit e la corsa era verde. Il cambio del tipo restituito ha richiesto di ricreare la
+  funzione; le righe di audit sono le stesse di prima.
 
 ---
 

@@ -17,13 +17,15 @@ CREATE OR REPLACE FUNCTION dbops.fn_run_automations_delete_block(p_exec_mode tex
  LANGUAGE plpgsql
 AS $function$
 DECLARE
-  -- ⭐ Rev 2026-10-16: il contesto dell'errore, costruito una volta e usato
-  --   dalle due chiamate del gestore (registro e involucro).
+  -- Il contesto dell'errore, costruito una volta e usato dalle due
+  -- chiamate del gestore (registro e involucro).
   v_ctx_errore dbops.error_log.context%TYPE;
+  -- text[]: %TYPE non fa array
   v_schemas text[];
   rconf record;
+  -- regclass: tipo del valore, nessuna colonna lo porta
   rel regclass;
-  v_trigger_name text;
+  v_trigger_name dbops.automation_delete_block.trigger_name%TYPE;
 BEGIN
   v_schemas := dbops.fn_resolve_scope(p_schemas);
 
@@ -37,27 +39,28 @@ BEGIN
   LOOP
     rel := to_regclass(format('%I.%I', rconf.schema_name, rconf.table_name));
     IF rel IS NULL THEN
-      IF p_dry_run THEN
-        PERFORM dbops.fn_audit_log_once(
-          p_function_name => 'dbops.fn_run_automations_delete_block',
-          p_status        => 'DRYRUN',
-          p_rule_type     => 'DELETE_BLOCK',
-          p_exec_mode     => p_exec_mode,
-          p_parts         => ARRAY['DELETE_BLOCK'],
-          p_dry_run       => true,
-          p_params        => jsonb_build_object(
-                              'action','SKIP',
-                              'reason','TABLE_NOT_FOUND',
-                              'table', rconf.schema_name||'.'||rconf.table_name
-                            ),
-          p_message       => 'Skip: table not found'
-        );
-      END IF;
+      -- ⭐ Un salto, in tutti e due i giri: la configurazione punta a
+      --   una tabella che non c'e'. dry_run dice quale giro.
+      PERFORM dbops.fn_audit_log_once(
+        p_function_name => 'dbops.fn_run_automations_delete_block',
+        p_status        => 'WARN',
+        p_rule_type     => 'DELETE_BLOCK',
+        p_exec_mode     => p_exec_mode,
+        p_parts         => ARRAY['DELETE_BLOCK'],
+        p_dry_run       => p_dry_run,
+        p_params        => jsonb_build_object(
+                            'action','SKIP',
+                            'reason','TABLE_NOT_FOUND',
+                            'table', rconf.schema_name||'.'||rconf.table_name
+                          ),
+        p_message       => 'Skip: table not found'
+      );
       CONTINUE;
     END IF;
 
+    -- Lo stesso nome che calcola fn_apply_delete_block_trigger.
     v_trigger_name := COALESCE(
-      rconf.trigger_name,
+      NULLIF(rconf.trigger_name, ''),
       format('trg_%s_a10_delete_block_dlt', rconf.table_name)
     );
 
@@ -90,11 +93,12 @@ BEGIN
           rconf.trigger_name
         );
       EXCEPTION WHEN others THEN
-        -- ⭐ Rev 2026-10-16 (brief-db-presidio-job-run-a-chi-tocca D8, D10, D11):
-        --   un guasto dell'AMBIENTE (script.fn_sqlstate_di_ambiente: connessione,
-        --   risorse, arresto, sistema, privilegio, lock) si rilancia COM'E', col suo
-        --   SQLSTATE: l'involucro lo faceva diventare P0001, e il presidio dei job lo
-        --   mandava allo sviluppo. Prima si scrive nel registro errori, col contesto.
+        -- ⭐ Un guasto dell'AMBIENTE (script.fn_sqlstate_di_ambiente:
+        --   connessione, risorse, arresto, sistema, privilegio, lock) si
+        --   rilancia COM'E', col suo SQLSTATE: l'involucro lo faceva
+        --   diventare P0001, e il presidio dei job lo mandava allo
+        --   sviluppo. Prima si scrive nel registro errori, col contesto.
+        --   Brief: brief-db-presidio-job-run-a-chi-tocca D8, D10, D11.
         v_ctx_errore := jsonb_build_object(
             'where','DELETE_BLOCK',
             'table', rconf.schema_name||'.'||rconf.table_name,
@@ -110,13 +114,31 @@ BEGIN
             'dbops', 'run_automations', 'E_DELETE_BLOCK',
             v_ctx_errore, NULL::uuid, SQLERRM);
       END;
+
+      -- ⭐ Il giro vero lascia traccia: qui il trigger c'e' (se la
+      --   creazione fosse fallita, il blocco avrebbe sollevato).
+      PERFORM dbops.fn_audit_log_once(
+        p_function_name => 'dbops.fn_run_automations_delete_block',
+        p_status        => 'OK',
+        p_rule_type     => 'DELETE_BLOCK',
+        p_exec_mode     => p_exec_mode,
+        p_parts         => ARRAY['DELETE_BLOCK'],
+        p_dry_run       => false,
+        p_params        => jsonb_build_object(
+                            'table', rconf.schema_name||'.'||rconf.table_name,
+                            'trigger', v_trigger_name,
+                            'guc_key', rconf.guc_key,
+                            'action','CREATE_TRIGGER'
+                          ),
+        p_message       => 'Trigger created'
+      );
     END IF;
   END LOOP;
 END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_run_automations_delete_block(p_exec_mode text, p_schemas text[], p_dry_run boolean)
-IS 'Applica i trigger DELETE_BLOCK configurati in dbops.automation_delete_block. ⭐ Rev 2026-10-16: nel gestore WHEN others, un guasto dell''AMBIENTE (script.fn_sqlstate_di_ambiente: 08, 53, 57, 58, 42501, 55P03) si rilancia COM''E'', col suo SQLSTATE, dopo averlo scritto nel registro errori con lo stesso codice e contesto (fn_log_error_only). Prima diventava P0001 col codice dell''involucro, e il presidio dei job (maintenance.vw_job_run_da_guardare) lo mandava allo sviluppo. I difetti di struttura escono come prima. Brief: brief-db-presidio-job-run-a-chi-tocca D8, D11.';
+IS 'Applica i trigger DELETE_BLOCK configurati in dbops.automation_delete_block, sulle tabelle in ambito. Ogni azione lascia una riga in dbops.audit_log: OK quando il giro vero crea il trigger, DRYRUN quando il dry run lo creerebbe, WARN TABLE_NOT_FOUND in tutti e due i giri quando la tabella configurata non esiste. Un trigger gia'' presente non e'' un''azione e non si registra. Il nome del trigger si calcola come in dbops.fn_apply_delete_block_trigger. Nel gestore WHEN others un guasto dell''AMBIENTE (script.fn_sqlstate_di_ambiente: 08, 53, 57, 58, 42501, 55P03) si rilancia com''e'', col suo SQLSTATE, dopo averlo scritto nel registro errori (fn_log_error_only); gli altri errori escono da fn_log_and_raise_error con E_DELETE_BLOCK.';
 ```
 
 </div>
