@@ -1,0 +1,110 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# anagrafiche.fn_create_indirizzo: l'ON CONFLICT sulla via nomina la chiave delle
+# vie vive.
+#   Brief: brief-db-revisione-dbops, Q16 (giro 2, blocco 2b).
+#
+# Base: 20_code/anagrafiche/20260708-02, verificato uguale al vivo (doc auto-generata).
+#
+# ⚠️ PERCHE'. 00_schema/config/20261107-09 trasforma la chiave unica di
+#   config.stradario (comune, via generale, CAP) in un indice parziale sulle vie
+#   vive. Un ON CONFLICT che nomina solo le colonne non trova piu' un indice
+#   che le copra tutte, e l'istruzione fallisce: si fermerebbe la creazione di
+#   ogni indirizzo con una via nuova. Con il predicato, l'upsert trova la via
+#   viva; se nel comune c'e' solo la via soppressa, nasce quella viva.
+#   Solo questa riga cambia; COMMENT al presente (§5d).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261107-10-update-fn-create-indirizzo-chiave-vie-vive-mctit.yaml
+
+  - changeSet:
+      id: 20261107-10-update-fn-create-indirizzo-chiave-vie-vive
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.fn_create_indirizzo: l'ON CONFLICT sulla via nomina il predicato della
+        chiave delle vie vive (Q16).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'anagrafiche' AND p.proname = 'fn_create_indirizzo';
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_attribute
+               WHERE attrelid = 'config.stradario'::regclass
+                 AND attname = 'obsoleto_dal' AND NOT attisdropped;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_create_indirizzo(p_stradario_id integer DEFAULT NULL::integer, p_toponomastica_id integer DEFAULT NULL::integer, p_descrizione_via character varying DEFAULT NULL::character varying, p_comune_id integer DEFAULT NULL::integer, p_codice_postale_id integer DEFAULT NULL::integer, p_civico integer DEFAULT NULL::integer, p_estensione_civico character varying DEFAULT NULL::character varying, p_palazzina character varying DEFAULT NULL::character varying, p_scala character varying DEFAULT NULL::character varying, p_piano character varying DEFAULT NULL::character varying, p_interno character varying DEFAULT NULL::character varying)
+               RETURNS bigint
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_stradario_gen_id config.stradario_generale.id%TYPE;
+                  v_stradario_id     config.stradario.id%TYPE := p_stradario_id;
+                  v_descrizione_via  config.stradario_generale.descrizione%TYPE;
+                  v_indirizzo_id     bigint;
+              BEGIN
+                  -- ----------------------------------------------------
+                  -- 1) Ramo "via nuova": upsert stradario_generale + stradario
+                  --    (idempotenti), solo se non e' stato passato uno
+                  --    stradario_id gia' risolto.
+                  -- ----------------------------------------------------
+                  IF v_stradario_id IS NULL THEN
+                      v_descrizione_via := btrim(p_descrizione_via);
+
+                      INSERT INTO config.stradario_generale (
+                          toponomastica_id, descrizione, descrizione_breve)
+                      VALUES (p_toponomastica_id, v_descrizione_via, v_descrizione_via)
+                      ON CONFLICT (toponomastica_id, descrizione) DO UPDATE
+                         SET descrizione = EXCLUDED.descrizione
+                      RETURNING id INTO v_stradario_gen_id;
+
+                      INSERT INTO config.stradario (
+                          stradario_generale_id, comune_id, codice_postale_id)
+                      VALUES (v_stradario_gen_id, p_comune_id, p_codice_postale_id)
+                      -- La chiave delle vie VIVE: l'indice e' parziale, e l'ON CONFLICT
+                      -- nomina il predicato (senza, non lo troverebbe).
+                      ON CONFLICT (comune_id, stradario_generale_id, codice_postale_id)
+                         WHERE obsoleto_dal IS NULL
+                      DO UPDATE
+                         SET comune_id = EXCLUDED.comune_id
+                      RETURNING id INTO v_stradario_id;
+                  END IF;
+
+                  -- ----------------------------------------------------
+                  -- 2) Dettaglio civico (figlia DB idempotente).
+                  -- ----------------------------------------------------
+                  v_indirizzo_id := anagrafiche.fn_get_or_create_indirizzo_dettaglio(
+                      v_stradario_id, p_civico, p_estensione_civico,
+                      p_palazzina, p_scala, p_piano, p_interno);
+
+                  RETURN v_indirizzo_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_create_indirizzo(integer, integer, character varying, integer, integer, integer, character varying, character varying, character varying, character varying, character varying) IS
+                  'Funzione madre atomica dell''indirizzo: risolve o crea la via (la via generale e la via del comune, idempotenti) e l''indirizzo di dettaglio, in una sola istruzione. Una via nuova si cerca fra le vie vive: una via soppressa (config.stradario.obsoleto_dal) non si riusa, e se c''e'' solo lei nasce la via viva. Un indirizzo su una via soppressa passata per id lo rifiuta il guard del ritiro su anagrafiche.indirizzi_dettaglio. SECURITY INVOKER. Le validazioni della via nuova restano controlli preventivi del service.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo dal corpo di 20260708-02.
+              SELECT 1;

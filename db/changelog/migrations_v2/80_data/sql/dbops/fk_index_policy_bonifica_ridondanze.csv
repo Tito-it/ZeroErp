@@ -12,7 +12,7 @@ anagrafiche,pdp,fk_pdp_indirizzi_dettaglio,false,CREATE INDEX IF NOT EXISTS ix_a
 anagrafiche,soggetti,fk_stati_config,false,CREATE INDEX IF NOT EXISTS ix_anagrafiche_soggetti_stato_id ON anagrafiche.soggetti(stato_id);,true,titodb,2026-01-16 11:59:34+01
 anagrafiche,soggetti_conti_bancari,fk_soggetti_conti_bancari_soggetti,false,CREATE INDEX IF NOT EXISTS ix_anagrafiche_soggetti_conti_bancari_soggetto_id ON anagrafiche.soggetti_conti_bancari(soggetto_id);,true,titodb,2026-01-16 11:59:34+01
 anagrafiche,soggetti_ruoli,fk_soggetti_anagrafiche,false,CREATE INDEX IF NOT EXISTS ix_anagrafiche_soggetti_ruoli_soggetto_id ON anagrafiche.soggetti_ruoli(soggetto_id);,true,titodb,2026-01-16 11:59:34+01
-config,stradario,fk_stradario_comune_id,false,CREATE INDEX IF NOT EXISTS ix_config_stradario_comune_id ON config.stradario(comune_id);,true,titodb,2026-01-16 11:59:34+01
+config,stradario,fk_stradario_comune_id,true,CREATE INDEX IF NOT EXISTS ix_config_stradario_comune_id ON config.stradario(comune_id);,true,titodb,2026-01-16 11:59:34+01
 config,stradario_generale,fk_stradario_generale_toponomastica_id,false,CREATE INDEX IF NOT EXISTS ix_config_stradario_generale_toponomastica_id ON config.stradario_generale(toponomastica_id);,true,titodb,2026-01-16 11:59:34+01
 config,tipi_ruolo_tipi_indirizzo,fk_tipi_ruolo_tipi_indirizzo_tipo_ruolo,false,CREATE INDEX IF NOT EXISTS ix_config_tipi_ruolo_tipi_indirizzo_tipo_ruolo_id ON config.tipi_ruolo_tipi_indirizzo(tipo_ruolo_id);,true,titodb,2026-01-16 11:59:34+01
 magazzino,ubicazioni,fk_mag_ubicazioni_magazzino,false,CREATE INDEX IF NOT EXISTS ix_magazzino_ubicazioni_magazzino_id ON magazzino.ubicazioni(magazzino_id);,true,titodb,2026-01-16 11:59:34+01

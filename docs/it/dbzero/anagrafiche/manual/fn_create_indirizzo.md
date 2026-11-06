@@ -22,7 +22,9 @@ per la creazione di un indirizzo di dettaglio. Nel ramo *"via nuova"* fonde in
 un'**unica statement**:
 
 1. **upsert** `config.stradario_generale` (tipo strada + descrizione);
-2. **upsert** `config.stradario` (strada + comune + CAP);
+2. **upsert** `config.stradario` (strada + comune + CAP), sulla chiave delle vie **vive**: una via
+   soppressa non si riusa, e se nel comune c'è solo lei nasce la via viva. Un indirizzo su una via
+   soppressa passata per id lo rifiuta il guard del ritiro (`E_CATALOGO_OBSOLETO_NUOVA_ISTANZA`);
 3. risoluzione del dettaglio civico via
    [`fn_get_or_create_indirizzo_dettaglio`](/dbzero/anagrafiche/funzioni/fn_get_or_create_indirizzo_dettaglio).
 

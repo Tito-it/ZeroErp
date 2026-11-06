@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_audit_log_once`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 7 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -15,7 +15,6 @@
 > Approfondimento funzioni:
 >
 > * [dbops.fn_run_automations_tx_id](/dbzero/dbops/funzioni/fn_run_automations_tx_id) — un runner del framework che la usa per le simulazioni
-> * [script.fn_ensure_logconn](/dbzero/script/funzioni/fn_ensure_logconn) — apre la connessione di log, nel ramo fuori transazione
 >
 > Guide:
 >
@@ -30,16 +29,15 @@ dettagli, eventuale errore, riepilogo — e ne restituisce l'id. Non apre una co
 la forma per gli eventi puntuali, come la simulazione di un'automazione o un salto motivato.
 
 È l'**unica** funzione di audit: non esiste più una modalità che apra una corsa e la chiuda dopo.
-Chi vuole la durata la misura da sé e la passa nella riga.
+Chi vuole la durata la misura da sé e la passa nella riga, con `p_duration_ms`: la durata ha una
+sede sola, la colonna `duration_ms`.
 
 ---
 
 ### Che cosa scrive
 
 Tutto ciò che il chiamante passa, così com'è. Lo stato è obbligatorio e deve stare nel vocabolario
-del registro (`START`, `OK`, `ERROR`, `WARN`, `DRYRUN`): un valore diverso fa fallire la scrittura.
-`START` resta nel vocabolario per le righe della modalità sessione ritirata: una riga scritta qui
-con quello stato non verrà chiusa da nessuno.
+del registro (`OK`, `ERROR`, `WARN`, `DRYRUN`): un valore diverso fa fallire la scrittura.
 L'ora, il ruolo che scrive e il `tx_id` li mettono i default della tabella e il suo trigger; la
 durata la passa il chiamante, se la conosce.
 
@@ -59,19 +57,13 @@ fuori da `dbops` e `maintenance` che la chiama compare nel cancello
 
 ---
 
-### ⚠️ Il ramo fuori transazione
+### ⭐ La riga vive e muore con la transazione di chi chiama
 
-Se il GUC `myapp.log_with_dblink` vale `on` e la connessione di log `logconn` si apre, la riga si
-scrive su quella connessione e sopravvive all'annullamento della transazione del chiamante. Con il
-GUC assente la scrittura è nella transazione di chi chiama. ⚠️ Qui un GUC assente vale «spento»,
-mentre per tutti gli altri lettori del canale vale «acceso»: la loro regola comune sta in
-[script.fn_canale_log_stringa](/dbzero/script/funzioni/fn_canale_log_stringa), e questa funzione non
-la segue ancora.
-
-⛔ Il ramo fuori transazione, oggi, non scrive: il ruolo del canale di log non ha il diritto di
-aggiungere a `dbops.audit_log`, e la chiamata fallisce insieme alla transazione del chiamante.
-Inoltre il ramo non scrive i vuoti come l'altro: senza parametri scrive il JSON `null` invece di
-un vuoto, e senza moduli costruisce un array non valido.
+La riga si scrive sempre nella transazione del chiamante, qualunque cosa dica il canale di log
+(`myapp.log_with_dblink`): se la transazione si annulla, si annulla anche la riga. Un esito che
+deve sopravvivere a un errore non sta in questo registro: lo scrive `dbops.error_log`, che ha il
+suo canale fuori transazione. Per questo una funzione che fallisce non scrive qui una riga
+`ERROR`: la riga sparirebbe con l'errore.
 
 ---
 
@@ -82,8 +74,10 @@ un vuoto, e senza moduli costruisce un array non valido.
   spento per la durata del test); le due funzioni della modalità sessione non esistono più.
 * `db/pgtap/dbops/test-audit-log-perimetro-scrittori-v1.sql` — una funzione costruita fuori
   perimetro che la chiama compare nel cancello, come scrittura attraverso la porta.
+* `db/pgtap/dbops/test-fusioni-comune-stradario-v1.sql`, test 1-2 — la durata nella sua colonna;
+  con il canale di log acceso la riga nasce comunque nella transazione del chiamante.
 * `db/pgtap/dbops/test-registri-dbops-scadenza-v1.sql` — il registro in cui scrive non ha il
-  trigger di scadenza alla nascita, perché la scrittura può arrivare dal canale fuori transazione.
+  trigger di scadenza alla nascita.
 
 ---
 
@@ -95,6 +89,9 @@ un vuoto, e senza moduli costruisce un array non valido.
   una riga `START`, la seconda la chiudeva con un aggiornamento calcolando la durata. Erano
   riservate al proprietario del registro e non le chiamava nessuno; il loro ramo fuori transazione
   non poteva scrivere, come quello di questa funzione (`brief-db-revisione-dbops`).
+* 2026-11-07 — esce il ramo fuori transazione, che non poteva scrivere e faceva fallire la
+  transazione del chiamante; nasce `p_duration_ms`, in coda e facoltativo (`brief-db-revisione-dbops`,
+  giro 2).
 
 ---
 

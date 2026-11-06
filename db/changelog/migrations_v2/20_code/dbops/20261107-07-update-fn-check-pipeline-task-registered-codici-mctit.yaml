@@ -1,0 +1,115 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_check_pipeline_task_registered: i tre rifiuti col codice giusto.
+#   Brief: brief-db-revisione-dbops, D44 (giro 2).
+#
+# Base: 20_code/dbops/20260208-09 (l'unico changeSet della funzione),
+# verificato uguale al vivo (doc auto-generata).
+#
+# ⚠️ IL DIFETTO. Tutti e tre i rifiuti uscivano con E_GENERICO, con i nomi dei
+#   parametri nel VARIADIC (la frase che legge l'operatore): «task non
+#   registrato» arrivava al backend come un 500 senza nome.
+#
+# ⭐ LA CORREZIONE.
+#   - Task non registrato o non attivo, o dominio non attivo:
+#     E_PIPELINE_TASK_HANDLER_NOT_FOUND (gia' registrato, TECNICO). E' un
+#     difetto di configurazione, non un dato sbagliato di chi chiama: lo stesso
+#     codice che il backend solleva quando la risoluzione non trova niente.
+#     Messaggio senza segnaposto: dominio e task viaggiano nel contesto.
+#   - Dominio o task mancanti: E_DBOPS_CHIAMATA_NON_VALIDA (nuovo, TECNICO),
+#     «Chiamata non valida a %s: %s.» come le chiamate non valide degli altri
+#     schemi. Li produce solo un chiamante rotto.
+#   Firma e risultato invariati; parametri ancorati con %TYPE alle colonne del
+#   registro (tipi risolti uguali a prima).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261107-07-update-fn-check-pipeline-task-registered-codici-mctit.yaml
+
+  - changeSet:
+      id: 20261107-07-update-fn-check-pipeline-task-registered-codici
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_check_pipeline_task_registered: E_PIPELINE_TASK_HANDLER_NOT_FOUND per il
+        task non registrato, E_DBOPS_CHIAMATA_NON_VALIDA per i parametri mancanti, al posto
+        di E_GENERICO (D44).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_check_pipeline_task_registered';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_check_pipeline_task_registered(
+                  p_dominio_id dbops.pipeline_task_registry.dominio_id%TYPE,
+                  p_task_code  dbops.pipeline_task_registry.task_code%TYPE
+              )
+              RETURNS boolean
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: verificare che il task sia registrato e attivo, nel suo
+              --   dominio attivo. Risponde TRUE o solleva.
+              DECLARE
+                  v_chi dbops.error_log.function_name%TYPE := 'dbops.fn_check_pipeline_task_registered';
+              BEGIN
+                  IF p_dominio_id IS NULL OR p_dominio_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', v_chi, 'E_DBOPS_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('campo', 'p_dominio_id', 'dominio_id', p_dominio_id),
+                          NULL::uuid,
+                          v_chi, 'manca il dominio del task');
+                  END IF;
+
+                  IF p_task_code IS NULL OR btrim(p_task_code) = '' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', v_chi, 'E_DBOPS_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('campo', 'p_task_code'),
+                          NULL::uuid,
+                          v_chi, 'manca il codice del task');
+                  END IF;
+
+                  IF NOT EXISTS (
+                      SELECT 1
+                        FROM dbops.pipeline_task_registry r
+                        JOIN dbops.domini_task d ON d.id = r.dominio_id
+                       WHERE r.dominio_id = p_dominio_id
+                         AND r.task_code  = p_task_code
+                         AND r.attivo IS TRUE
+                         AND d.attivo IS TRUE)
+                  THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', v_chi, 'E_PIPELINE_TASK_HANDLER_NOT_FOUND',
+                          jsonb_build_object('detail', 'task non registrato o non attivo',
+                                             'dominio_id', p_dominio_id,
+                                             'task_code', p_task_code),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  RETURN TRUE;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_check_pipeline_task_registered(bigint, text) IS
+                  'Verifica che il task p_task_code sia registrato e attivo in dbops.pipeline_task_registry, nel dominio p_dominio_id attivo. Risponde TRUE; altrimenti solleva E_PIPELINE_TASK_HANDLER_NOT_FOUND, con dominio e task nel contesto: un task non registrato e'' un difetto di configurazione. Dominio o codice mancanti escono con E_DBOPS_CHIAMATA_NON_VALIDA.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo dal corpo di 20260208-09.
+              SELECT 1;

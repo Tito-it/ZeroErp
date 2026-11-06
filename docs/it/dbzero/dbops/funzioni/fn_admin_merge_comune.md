@@ -16,78 +16,71 @@ CREATE OR REPLACE FUNCTION dbops.fn_admin_merge_comune(p_id_orig integer, p_id_t
  RETURNS void
  LANGUAGE plpgsql
 AS $function$
--- Scopo: fondere due comuni (config.comuni): registra la trasformazione in
---   storico.comune_trasformazioni e ripunta chi riferiva l'origine sulla
---   destinazione. Strumento DBA.
---
--- rev 2026-09-12 (brief-db-rls-storico-scope-congelato §4d, decisione a): il
---   registro dbops.audit_log si scrive dalla PORTA fn_audit_log_once, una volta
---   a fine lavoro, come le altre funzioni di dbops. Prima: INSERT diretto con
---   status 'STARTED' — che chk_audit_status NON ammette, quindi la funzione
---   falliva alla prima riga — e UPDATE di chiusura, che l'applicazione non puo'
---   piu' fare (REVOKE del 2026-09-11) e che nel ramo ERROR veniva comunque
---   annullato dal RAISE. Il ramo ERROR resta per la scrittura fuori transazione
---   (dblink), dove ha senso; in transazione si annulla col resto, com'era.
+-- Scopo: fondere due comuni (config.comuni): registra la trasformazione
+--   in storico.comune_trasformazioni e ripunta sulla destinazione
+--   tutto cio' che riferiva l'origine. Strumento DBA.
 DECLARE
-  v_start_ts  timestamptz := clock_timestamp();
-  v_ripuntati integer := 0;
-  v_params    jsonb := jsonb_build_object(
-      'p_id_orig',    p_id_orig,
-      'p_id_target',  p_id_target,
-      'p_event_type', p_event_type,
-      'p_event_date', p_event_date,
-      'p_note',       p_note);
+    v_chi       dbops.error_log.function_name%TYPE := 'dbops.fn_admin_merge_comune';
+    v_inizio    timestamptz := clock_timestamp();   -- solo per misurare la durata
+    v_ripuntati dbops.audit_log.result%TYPE;
+    v_params    dbops.audit_log.params%TYPE := jsonb_build_object(
+        'p_id_orig',    p_id_orig,
+        'p_id_target',  p_id_target,
+        'p_event_type', p_event_type,
+        'p_event_date', p_event_date,
+        'p_note',       p_note);
 BEGIN
-  -- Validazioni. ⚠️ Messaggi in chiaro, senza codice registrato: e' uno
-  -- strumento DBA che oggi nessuno chiama dall'applicazione. Quando lo fara',
-  -- i tre motivi vanno a catalogo (debito registrato nel brief).
-  IF p_id_orig = p_id_target THEN
-    RAISE EXCEPTION 'Origine e destinazione devono differire';
-  END IF;
-  PERFORM 1 FROM config.comuni WHERE id = p_id_orig;
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'Comune % non trovato', p_id_orig;
-  END IF;
-  PERFORM 1 FROM config.comuni WHERE id = p_id_target;
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'Comune % non trovato', p_id_target;
-  END IF;
+    IF p_id_orig IS NULL OR p_id_target IS NULL THEN
+        PERFORM script.fn_log_and_raise_error(
+            'database', v_chi, 'E_DBOPS_CHIAMATA_NON_VALIDA',
+            jsonb_build_object('campo', CASE WHEN p_id_orig IS NULL THEN 'p_id_orig' ELSE 'p_id_target' END),
+            NULL::uuid,
+            v_chi, 'origine e destinazione sono obbligatorie');
+    END IF;
+    IF p_id_orig = p_id_target THEN
+        PERFORM script.fn_log_and_raise_error(
+            'database', v_chi, 'E_MERGE_ORIGINE_UGUALE_DESTINAZIONE',
+            jsonb_build_object('campo', 'p_id_target', 'id', p_id_orig),
+            NULL::uuid,
+            p_id_orig::text);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM config.comuni c WHERE c.id = p_id_orig) THEN
+        PERFORM script.fn_log_and_raise_error(
+            'database', v_chi, 'E_COMUNE_NON_TROVATO',
+            jsonb_build_object('campo', 'p_id_orig', 'id', p_id_orig),
+            NULL::uuid,
+            p_id_orig::text);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM config.comuni c WHERE c.id = p_id_target) THEN
+        PERFORM script.fn_log_and_raise_error(
+            'database', v_chi, 'E_COMUNE_NON_TROVATO',
+            jsonb_build_object('campo', 'p_id_target', 'id', p_id_target),
+            NULL::uuid,
+            p_id_target::text);
+    END IF;
 
-  -- La trasformazione, nel suo registro (non e' una shadow: e' il registro
-  -- delle fusioni, letto da script.fn_get_vie_discendenti).
-  INSERT INTO storico.comune_trasformazioni(id_comune_orig, id_comune_nuovo, tipo_evento, data_evento, note)
-  VALUES (p_id_orig, p_id_target, p_event_type, p_event_date, p_note);
+    -- La trasformazione, nel suo registro (non e' una shadow: e' il
+    -- registro delle fusioni).
+    INSERT INTO storico.comune_trasformazioni(id_comune_orig, id_comune_nuovo, tipo_evento, data_evento, note)
+    VALUES (p_id_orig, p_id_target, p_event_type, p_event_date, p_note);
 
-  -- Propagazione: chi riferiva l'origine ora riferisce la destinazione.
-  UPDATE config.stradario
-     SET comune_id = p_id_target
-   WHERE comune_id = p_id_orig;
-  GET DIAGNOSTICS v_ripuntati = ROW_COUNT;
+    v_ripuntati := dbops.fn_fusione_ripunta_figlie(
+        'config.comuni'::regclass, p_id_orig, p_id_target, v_chi);
 
-  -- Audit dalla porta, una volta, con esito e conteggi.
-  PERFORM dbops.fn_audit_log_once(
-    p_function_name => 'fn_admin_merge_comune',
-    p_status        => 'OK',
-    p_params        => v_params,
-    p_rows_affected => v_ripuntati,
-    p_result        => jsonb_build_object('stradario_ripuntati', v_ripuntati,
-                                          'duration_ms', floor(extract(epoch from clock_timestamp() - v_start_ts) * 1000)),
-    p_message       => format('Comune %s fuso in %s', p_id_orig, p_id_target));
-EXCEPTION WHEN OTHERS THEN
-  -- In transazione questa riga si annulla col RAISE, com'era gia'; con il
-  -- canale dblink acceso sopravvive, ed e' l'unico caso in cui serve.
-  PERFORM dbops.fn_audit_log_once(
-    p_function_name => 'fn_admin_merge_comune',
-    p_status        => 'ERROR',
-    p_params        => v_params,
-    p_message       => SQLERRM,
-    p_sqlstate      => SQLSTATE);
-  RAISE;
+    PERFORM dbops.fn_audit_log_once(
+        p_function_name => v_chi,
+        p_status        => 'OK',
+        p_params        => v_params,
+        p_rows_affected => (SELECT COALESCE(sum(v::int), 0)::int
+                              FROM jsonb_each_text(v_ripuntati) AS e(k, v)),
+        p_result        => jsonb_build_object('ripuntati', v_ripuntati),
+        p_message       => format('Comune %s fuso in %s', p_id_orig, p_id_target),
+        p_duration_ms   => floor(extract(epoch FROM clock_timestamp() - v_inizio) * 1000)::int);
 END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_admin_merge_comune(p_id_orig integer, p_id_target integer, p_event_type character, p_event_date date, p_note text)
-IS 'Strumento DBA: fonde due comuni di config.comuni — registra la trasformazione in storico.comune_trasformazioni (il registro delle fusioni, non una shadow) e ripunta sulla destinazione chi riferiva l''origine. Rev 2026-09-12: l''audit si scrive dalla porta dbops.fn_audit_log_once, una volta a fine lavoro (prima: INSERT con status STARTED, non ammesso dal CHECK, e UPDATE di chiusura che l''app non puo'' piu'' fare). Le validazioni sollevano ancora messaggi in chiaro senza codice registrato: debito dichiarato, da saldare quando la funzione sara'' chiamata dall''applicazione. Brief: brief-db-rls-storico-scope-congelato §4d.';
+IS 'Strumento DBA: fonde il comune p_id_orig in p_id_target (config.comuni). Registra la trasformazione in storico.comune_trasformazioni (il registro delle fusioni, non una shadow) e ripunta sulla destinazione tutte le tabelle che riferivano l''origine, lette dal catalogo (dbops.fn_fusione_ripunta_figlie): stradario, codici postali, indirizzi, soggetti, aree di fatturazione e ogni FK che verra''. Se due righe diventerebbero uguali si ferma prima di scrivere, con E_MERGE_RIGHE_DOPPIE e l''elenco dei doppi: per lo stradario, la stessa via viva presente nei due comuni, che si risolve fondendo prima le due vie (una via soppressa e'' fuori dalla chiave unica delle vie e si sposta con le altre). Rifiuta con E_MERGE_ORIGINE_UGUALE_DESTINAZIONE, E_COMUNE_NON_TROVATO ed E_DBOPS_CHIAMATA_NON_VALIDA. Scrive una riga di dbops.audit_log con le righe ripuntate per tabella e la durata.';
 ```
 
 </div>

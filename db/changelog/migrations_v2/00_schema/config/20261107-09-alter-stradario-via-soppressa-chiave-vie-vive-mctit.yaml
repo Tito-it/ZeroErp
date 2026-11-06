@@ -1,0 +1,107 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# config.stradario: una via fusa resta, marcata come soppressa, e la chiave
+# unica vale solo per le vie vive.
+#   Brief: brief-db-revisione-dbops, Q16 (giro 2, blocco 2b).
+#
+# ⚠️ IL PROBLEMA. Dopo la fusione di due vie (dbops.fn_admin_merge_stradario)
+#   la via d'origine resta in config.stradario, senza piu' nessuno che la
+#   riferisca: e' la radice della catena delle trasformazioni, e lo storico
+#   degli indirizzi la nomina ancora. Ma restava anche nella chiave unica
+#   (comune, via generale, codice postale): fondendo poi due comuni che hanno
+#   la stessa via, la via rimasta collideva con quella della destinazione, e
+#   la fusione dei comuni si fermava. E niente impediva di creare un indirizzo
+#   nuovo su una via fusa.
+#
+# ⭐ LA DECISIONE (Tid, Q16 b): la via fusa resta ed e' marcata come soppressa.
+#   - obsoleto_dal date NULL, come per il ritiro di una voce di catalogo
+#     (non attivo = false: attivo vuol dire «riferimento valido», e romperebbe
+#     chi la nomina nello storico). La scrive solo la fusione delle vie, con
+#     la data dell'evento e mai oltre la data operativa: una soppressione e' un
+#     fatto avvenuto, non un ritiro programmato. ⇒ Per lo stradario «soppressa»
+#     e' «obsoleto_dal valorizzata», ed e' la stessa condizione dell'indice;
+#   - la chiave unica diventa un indice unico PARZIALE sulle vie vive (WHERE
+#     obsoleto_dal IS NULL): una via soppressa non collide piu', e la fusione
+#     dei comuni la sposta con le altre. Un vincolo UNIQUE non puo' essere
+#     parziale: si toglie il vincolo e nasce l'indice, con lo stesso nome.
+#
+# ⚠️ L'INDICE DELLA FK comune_id. 20_code/dbops/20260727-37 aveva tolto
+#   ix_config_stradario_comune_id perche' lo copriva il vincolo unico (stesso
+#   prefisso). Un indice parziale non copre tutte le righe, e
+#   dbops.vw_fk_senza_indice non lo conta: l'indice della FK torna, col nome
+#   che gli da' dbops.fk_index_policy. Prima del DROP, perche' la FK non resti
+#   scoperta neanche per un'istruzione. IF NOT EXISTS: su dbdev e da zero
+#   l'indice e' assente (lo toglie il -37, che gira prima).
+#
+# ℹ️ Chi risolve una via dalla terna, o fa ON CONFLICT su questa chiave, si
+#   riallinea nei changeSet 20261107-10 … -13 (l'ON CONFLICT di
+#   anagrafiche.fn_create_indirizzo deve nominare il predicato). La shadow
+#   storico.stradario salva la riga in snapshot jsonb: la colonna entra da sola.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261107-09-alter-stradario-via-soppressa-chiave-vie-vive-mctit.yaml
+
+  - changeSet:
+      id: 20261107-09-alter-stradario-via-soppressa-chiave-vie-vive
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config.stradario: nuova colonna obsoleto_dal (la via fusa, soppressa); la chiave unica
+        (comune, via generale, CAP) diventa un indice parziale sulle vie vive; torna l'indice della
+        FK comune_id (Q16).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_attribute
+               WHERE attrelid = 'config.stradario'::regclass
+                 AND attname = 'obsoleto_dal' AND NOT attisdropped;
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_constraint
+               WHERE conrelid = 'config.stradario'::regclass
+                 AND conname = 'uq_stradario_comune_stradario_gen_cp' AND contype = 'u';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.stradario
+                  ADD COLUMN obsoleto_dal date;
+
+              COMMENT ON COLUMN config.stradario.obsoleto_dal IS
+                  'Il giorno in cui la via e'' stata soppressa, fusa in un''altra da dbops.fn_admin_merge_stradario (che la scrive, ed e'' la sola). NULL: la via e'' viva. Una via soppressa resta, perche'' e'' la radice della catena delle trasformazioni e lo storico degli indirizzi la nomina; ma non si sceglie piu'' per il nuovo (le ricerche la escludono, un indirizzo non vi nasce ne'' vi si sposta), non si fonde piu'', ed e'' fuori dalla chiave unica delle vie. La data non e'' mai oltre la data operativa: una soppressione e'' un fatto avvenuto, e per lo stradario «soppressa» vuol dire «obsoleto_dal valorizzata».';
+
+              CREATE INDEX IF NOT EXISTS ix_config_stradario_comune_id
+                  ON config.stradario (comune_id);
+
+              ALTER TABLE config.stradario
+                  DROP CONSTRAINT uq_stradario_comune_stradario_gen_cp;
+
+              CREATE UNIQUE INDEX uq_stradario_comune_stradario_gen_cp
+                  ON config.stradario (comune_id, stradario_generale_id, codice_postale_id)
+                  WHERE obsoleto_dal IS NULL;
+
+              COMMENT ON INDEX config.uq_stradario_comune_stradario_gen_cp IS
+                  'La chiave delle vie vive: in un comune la stessa via generale con lo stesso codice postale c''e'' una volta sola. Le vie soppresse (obsoleto_dal valorizzata) ne sono fuori, cosi'' una via fusa non collide con quella viva che ne ha preso il posto. Chi fa ON CONFLICT su questa chiave nomina anche il predicato.';
+
+              COMMENT ON INDEX config.ix_config_stradario_comune_id IS
+                  'L''indice della chiave esterna comune_id: la chiave unica delle vie e'' parziale e non copre le vie soppresse.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo: tornare al vincolo totale
+              -- richiede prima di togliere le vie soppresse doppie.
+              SELECT 1;

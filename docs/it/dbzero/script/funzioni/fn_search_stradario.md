@@ -109,6 +109,7 @@ BEGIN
     LEFT JOIN config.province p       ON p.id  = c.provincia_id
     JOIN config.codici_postali cp     ON cp.id = s.codice_postale_id
     WHERE t.attivo = TRUE
+      AND s.obsoleto_dal IS NULL          -- una via soppressa non si sceglie
       AND (p_comune_id IS NULL OR s.comune_id = p_comune_id)
       AND (v_search IS NULL
            OR sg.indirizzo_normalizzato ILIKE '%' || v_search || '%')
@@ -119,7 +120,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_search_stradario(p_comune_id integer, p_search text, p_limit integer)
-IS 'Ricerca vie (stradario) per autocomplete. provincia_sigla e cap sono text esplicito: con %TYPE la firma si congelava al CREATE e la ALTER TYPE del 2026-04-02 la lasciava indietro (brief-db-bonifica-riferimenti-morti F2).';
+IS 'Ricerca delle vie (config.stradario) per l''autocompletamento: per comune, per testo, o per entrambi. Restituisce solo le vie vive di una toponomastica attiva: una via soppressa (obsoleto_dal valorizzata, fusa in un''altra) non si sceglie per il nuovo. provincia_sigla e cap sono text esplicito, perche'' una firma a %TYPE si congelerebbe al tipo del giorno della CREATE.';
 ```
 
 </div>

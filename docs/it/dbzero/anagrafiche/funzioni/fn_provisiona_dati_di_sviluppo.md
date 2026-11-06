@@ -126,7 +126,8 @@ BEGIN
     -- Un indirizzo di prova: il primo stradario, civico 1
     -- (fn_create_indirizzo e' idempotente).
     v_det := anagrafiche.fn_create_indirizzo(
-                 p_stradario_id := (SELECT min(s.id) FROM config.stradario s),
+                 p_stradario_id := (SELECT min(s.id) FROM config.stradario s
+                                     WHERE s.obsoleto_dal IS NULL),   -- una via viva
                  p_civico       := 1);
 
     -- Le GUC vuote: i BA li lega il BB all'emittente chiesto.

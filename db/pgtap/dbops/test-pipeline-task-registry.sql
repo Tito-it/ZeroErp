@@ -9,9 +9,15 @@
 -- 3) Setup dominio/task/impl di test
 -- 4) fn_check_pipeline_task_registered ritorna true
 -- 5) fn_get_pipeline_task_implementation risolve implementazione richiesta
--- 6) fn_get_pipeline_task_implementation fallback su default
--- 7) fn_check_pipeline_task_registered errore su task assente
--- 8) fn_get_pipeline_task_implementation errore se manca default
+-- 6) una variante chiesta e assente: nessuna riga, NON il default (Q14 ①)
+-- 7) fn_check_pipeline_task_registered su task assente: E_PIPELINE_TASK_HANDLER_NOT_FOUND
+-- 8) fn_get_pipeline_task_implementation senza variante e senza default: E_PIPELINE_TASK_HANDLER_NOT_FOUND
+-- 9) senza variante: il default
+-- 10) dominio mancante: E_DBOPS_CHIAMATA_NON_VALIDA (prima: E_GENERICO)
+--
+-- ChangeSet: 20_code/dbops/20261107-07, 20261107-08
+-- Brief: brief-db-revisione-dbops, D44 e Q14 ① (giro 2). I codici si pinnano dal
+--   canale CONSTRAINT_NAME: un P0001 qualunque passava anche con E_GENERICO.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -31,7 +37,20 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(8);
+SELECT plan(10);
+
+-- Il CODICE dell'errore viaggia nel canale CONSTRAINT_NAME dell'eccezione
+-- P0001 (fn_log_and_raise_error): si pinna il codice, non la frase.
+CREATE OR REPLACE FUNCTION pg_temp.codice_errore(p_sql text) RETURNS text
+LANGUAGE plpgsql AS $$
+DECLARE v_c text;
+BEGIN
+    EXECUTE p_sql;
+    RETURN NULL;
+EXCEPTION WHEN SQLSTATE 'P0001' THEN
+    GET STACKED DIAGNOSTICS v_c = CONSTRAINT_NAME;
+    RETURN v_c;
+END $$;
 
 CREATE TEMP TABLE tmp_registry_ctx AS
 SELECT 'pgtap_ptr_' || to_char(clock_timestamp(), 'YYMMDDHH24MISS') AS test_scope;
@@ -149,41 +168,50 @@ SELECT is(
 
 SELECT is(
   (
-    SELECT handler_code
+    SELECT count(*)::int
     FROM dbops.fn_get_pipeline_task_implementation(
       (SELECT dominio_id FROM tmp_registry_ids),
       'select_attivita',
       'non_esiste'
     )
   ),
+  0,
+  'una variante chiesta e assente: nessuna riga, non il default (chi chiama decide)'
+);
+
+SELECT is(
+  pg_temp.codice_errore(format(
+    $$SELECT dbops.fn_check_pipeline_task_registered(%s, 'task_inesistente')$$,
+    (SELECT dominio_id FROM tmp_registry_ids))),
+  'E_PIPELINE_TASK_HANDLER_NOT_FOUND',
+  'fn_check_pipeline_task_registered su task assente: E_PIPELINE_TASK_HANDLER_NOT_FOUND'
+);
+
+SELECT is(
+  pg_temp.codice_errore(format(
+    $$SELECT * FROM dbops.fn_get_pipeline_task_implementation(%s, 'task_no_default', NULL)$$,
+    (SELECT dominio_id FROM tmp_registry_ids))),
+  'E_PIPELINE_TASK_HANDLER_NOT_FOUND',
+  'senza variante e senza default: E_PIPELINE_TASK_HANDLER_NOT_FOUND'
+);
+
+SELECT is(
+  (
+    SELECT handler_code
+    FROM dbops.fn_get_pipeline_task_implementation(
+      (SELECT dominio_id FROM tmp_registry_ids),
+      'select_attivita',
+      NULL
+    )
+  ),
   'select_attivita_default',
-  'fn_get_pipeline_task_implementation fallback su default'
+  'senza variante: l''implementazione di default'
 );
 
-SELECT throws_ok(
-  $$
-  SELECT dbops.fn_check_pipeline_task_registered(
-    (SELECT dominio_id FROM tmp_registry_ids),
-    'task_inesistente'
-  );
-  $$,
-  'P0001',
-  NULL,
-  'fn_check_pipeline_task_registered errore su task assente'
-);
-
-SELECT throws_ok(
-  $$
-  SELECT *
-  FROM dbops.fn_get_pipeline_task_implementation(
-    (SELECT dominio_id FROM tmp_registry_ids),
-    'task_no_default',
-    NULL
-  );
-  $$,
-  'P0001',
-  NULL,
-  'fn_get_pipeline_task_implementation errore se manca default'
+SELECT is(
+  pg_temp.codice_errore($$SELECT * FROM dbops.fn_get_pipeline_task_implementation(NULL, 'select_attivita', NULL)$$),
+  'E_DBOPS_CHIAMATA_NON_VALIDA',
+  'dominio mancante: E_DBOPS_CHIAMATA_NON_VALIDA'
 );
 
 DELETE FROM dbops.pipeline_task_registry_impl

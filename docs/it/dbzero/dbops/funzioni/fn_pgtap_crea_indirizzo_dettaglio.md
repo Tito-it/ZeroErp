@@ -29,6 +29,7 @@ BEGIN
     -- Il primo stradario di seed: uno vale l'altro, serve solo come ancora.
     SELECT s.id INTO v_stradario_id
       FROM config.stradario s
+     WHERE s.obsoleto_dal IS NULL          -- una via viva: sulla soppressa l'indirizzo non nasce
      ORDER BY s.id
      LIMIT 1;
     IF v_stradario_id IS NULL THEN
@@ -51,7 +52,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_indirizzo_dettaglio(p_etichetta text)
-IS 'Helper di fixture pgTAP: fabbrica un anagrafiche.indirizzi_dettaglio (civico 99999 sul primo stradario di seed, interno = etichetta) e ne ritorna l''id; etichette diverse danno indirizzi diversi, la stessa etichetta lo stesso id (ON CONFLICT sulle colonne di uq_indirizzi_dettaglio_norm_v2, rev 2026-10-25). Esiste perche'' indirizzi_dettaglio e'' DATO DI MACCHINA: su un database ricostruito da zero non ce n''e'' nessuno, e una fixture che ne cerca uno «attivo» muore in ERRORE_FIXTURE senza eseguire un''asserzione — misurato il 2026-09-15 su quattro pgTAP di magazzino (magazzini.indirizzo_dettaglio_id e'' NOT NULL). ⚠️ Non e'' un indirizzo vero: un test che verifichi la normalizzazione o la geolocalizzazione si costruisce il suo.';
+IS 'Fixture pgTAP: fabbrica un indirizzo (anagrafiche.indirizzi_dettaglio) e ne restituisce l''id: civico 99999 sulla prima via viva di seed, interno uguale all''etichetta. Etichette diverse danno indirizzi diversi, la stessa etichetta lo stesso id (ON CONFLICT sulle colonne della chiave dell''indirizzo). Esiste perche'' gli indirizzi sono dati di macchina: su un database ricostruito da zero non ce n''e'' nessuno, mentre le vie sono seed. ⚠️ Non e'' un indirizzo vero: un test sulla normalizzazione o sulla geolocalizzazione si costruisce il suo.';
 ```
 
 </div>
