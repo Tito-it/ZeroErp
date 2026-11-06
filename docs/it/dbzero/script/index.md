@@ -314,6 +314,7 @@ search:
 - [fn_sorgente_documento_da_chiave](funzioni/fn_sorgente_documento_da_chiave.md)
 - [fn_sorgente_guard_argomenti](funzioni/fn_sorgente_guard_argomenti.md)
 - [fn_sorgente_guard_montaggi](funzioni/fn_sorgente_guard_montaggi.md)
+- [fn_sorgente_provenienza](funzioni/fn_sorgente_provenienza.md)
 - [fn_sqlstate_di_ambiente](funzioni/fn_sqlstate_di_ambiente.md) — (latest review 16-10-2026)
 - [fn_stato_abortito_id](funzioni/fn_stato_abortito_id.md)
 - [fn_stato_accettazione_id](funzioni/fn_stato_accettazione_id.md)

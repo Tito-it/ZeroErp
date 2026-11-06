@@ -44,6 +44,7 @@
 | CHECK | chk_preventivi_righe_qta_operativa_finito |  |
 | CHECK | chk_preventivi_righe_quantita_finito |  |
 | CHECK | chk_preventivi_righe_sconto_percentuale_finito |  |
+| CHECK | chk_preventivi_righe_sorgente_forma |  |
 | CHECK | chk_prevrighe_qta_operativa_nonzero |  |
 | CHECK | chk_prevrighe_sconto |  |
 | FOREIGN KEY | fk_preventivi_righe_sorgente_tipo | sorgente_tipo_id |
@@ -58,6 +59,8 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_preventivi_righe_sorgente_riga | `CREATE INDEX ix_preventivi_righe_sorgente_riga ON vendite.preventivi_righe USING btree (sorgente_tipo_id, sorgente_riga) WHERE (sorgente_riga IS NOT NULL)` |
+| ix_preventivi_righe_sorgente_uid | `CREATE INDEX ix_preventivi_righe_sorgente_uid ON vendite.preventivi_righe USING btree (sorgente_tipo_id, sorgente_uid) WHERE (sorgente_uid IS NOT NULL)` |
 | ix_vendite_preventivi_righe_articolo_id | `CREATE INDEX ix_vendite_preventivi_righe_articolo_id ON vendite.preventivi_righe USING btree (articolo_id)` |
 | ix_vendite_preventivi_righe_preventivo_id | `CREATE INDEX ix_vendite_preventivi_righe_preventivo_id ON vendite.preventivi_righe USING btree (preventivo_id)` |
 | ix_vendite_preventivi_righe_stato_approvazione | `CREATE INDEX ix_vendite_preventivi_righe_stato_approvazione ON vendite.preventivi_righe USING btree (stato_approvazione_prezzo) WHERE (stato_approvazione_prezzo IS NOT NULL)` |
@@ -69,18 +72,18 @@
 | trg_preventivi_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('PREVENTIVO', 'preventivo_id')` |
 | trg_preventivi_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('PREVENTIVO', 'preventivo_id')` |
 | trg_preventivi_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('PREVENTIVO', 'preventivo_id')` |
-| trg_preventivi_righe_a10_articoli_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli', 'attivo', 'articolo_id', 'id')` |
 | trg_preventivi_righe_a10_articoli_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli', 'attivo', 'articolo_id', 'id')` |
+| trg_preventivi_righe_a10_articoli_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli', 'attivo', 'articolo_id', 'id')` |
 | trg_preventivi_righe_a10_guard_data_consegna_vs_doc_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_doc_righe_guard_data_consegna('PREVENTIVO', 'preventivo_id')` |
 | trg_preventivi_righe_a10_guard_data_consegna_vs_doc_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_doc_righe_guard_data_consegna('PREVENTIVO', 'preventivo_id')` |
 | trg_preventivi_righe_a10_guard_pending_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_guard_pending('preventivo_id')` |
-| trg_preventivi_righe_a10_guard_sorgente_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_guard_sorgente_polimorfa_tipizzata()` |
-| trg_preventivi_righe_a10_guard_sorgente_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_sorgente_polimorfa_tipizzata()` |
+| trg_preventivi_righe_a10_guard_sorgente_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_guard_sorgente('RIGA', 'BLOCCA')` |
+| trg_preventivi_righe_a10_guard_sorgente_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_sorgente('RIGA', 'BLOCCA')` |
 | trg_preventivi_righe_a10_iva_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'iva', 'attivo', 'iva_id', 'id')` |
 | trg_preventivi_righe_a10_iva_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'iva', 'attivo', 'iva_id', 'id')` |
 | trg_preventivi_righe_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('natura_vendita_id', 'E_RIGA_NATURA_VENDITA_IMMUTABILE')` |
-| trg_preventivi_righe_a10_natura_vendita_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_natura_vendita('ARTICOLO')` |
 | trg_preventivi_righe_a10_natura_vendita_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_natura_vendita('ARTICOLO')` |
+| trg_preventivi_righe_a10_natura_vendita_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_natura_vendita('ARTICOLO')` |
 | trg_preventivi_righe_a10_nature_vendita_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'nature_vendita', 'attivo', 'natura_vendita_id', 'id')` |
 | trg_preventivi_righe_a10_nature_vendita_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'nature_vendita', 'attivo', 'natura_vendita_id', 'id')` |
 | trg_preventivi_righe_a10_note_preventivo_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'note_preventivo', 'target_riga_id', 'id', 'attivo')` |

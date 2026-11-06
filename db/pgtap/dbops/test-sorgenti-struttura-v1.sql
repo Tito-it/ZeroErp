@@ -13,6 +13,8 @@
 --   monta il guard sulle sue tabelle e le TOGLIE da qui nello stesso giro; il lotto Z
 --   lo trova vuoto. Una tabella nuova con la provenienza e senza il guard fa rosso:
 --   non entra nel debito, entra col guard. ⛔ L'elenco non si allunga.
+--   rev 2026-11-06: il lotto R (20261106-57) toglie le quattro righe di vendita
+--   (preventivi, ordini, bolle, contratti); fatture_righe passa al lotto C.
 --
 -- Elenco test (plan 5):
 --   1) l'unica esenzione dal guard e' il log dei reconcile, col suo motivo (D-9)
@@ -58,14 +60,15 @@ SELECT results_eq(
         ('pratiche.pratiche_sorgenti'),
         -- lotto C (le sorgente_* di attivita_fatturabili si ritirano), C, C
         ('vendite.attivita_fatturabili'), ('vendite.commesse_attivita'), ('vendite.commesse_sorgenti'),
-        -- lotto T (testate), R (righe)
-        ('vendite.contratti'), ('vendite.contratti_righe'), ('vendite.ddt'), ('vendite.ddt_righe'),
+        -- lotto T (testate)
+        ('vendite.contratti'), ('vendite.ddt'),
         -- lotto T (il registro dei canali si ritira)
         ('vendite.documenti_fatturazione_canali'),
-        -- lotto T, R, D
+        -- lotto T; C (fatture_righe: la sua sorgente_uid e' ancora l'impronta, G5, con
+        -- attivita_fatturabili); D
         ('vendite.fatture'), ('vendite.fatture_righe'), ('vendite.fatture_stampa_coda'),
-        -- lotto T, R, R, T
-        ('vendite.ordini'), ('vendite.ordini_righe'), ('vendite.preventivi_righe'), ('vendite.resi')$$,
+        -- lotto T, T
+        ('vendite.ordini'), ('vendite.resi')$$,
     '2) le tabelle ancora senza il guard unico sono esattamente il debito dichiarato (si toglie, non si aggiunge)');
 
 SELECT is_empty(

@@ -69,7 +69,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_resi_guard_ddt_consegnato()
-IS '⭐ rev 2026-11-06 (20261106-36, brief-db-sorgente-documento-e-riga §7.2 lotto 0 giro 0.3): lo stato e la causale della bolla del reso si leggono dalla bolla cercata nelle due grammatiche, (d.id = NEW.sorgente_id OR d.uid = NEW.sorgente_uid); il dettaglio dei due errori porta anche sorgente_id. Dal lotto T il reso porta l''id della bolla. Guard: reso ammesso solo se il DDT sorgente (DDT_VENDITA, per sorgente_uid) e in stato CONSEGNATO (E_RESO_DDT_NON_CONSEGNATO). brief §3. rev 2026-07-13. rev 2026-09-28 (brief-db-magazzino-lotto-3-scarico-da-ddt, D-L3-c): una bolla di TRASFERIMENTO fra depositi (causale di magazzino TRASF_OUT) non genera un reso — E_RESO_DA_DDT_TRASFERIMENTO, prima del controllo di stato: la merce e'' rimasta nostra, un reso la farebbe rientrare due volte.';
+IS 'Guard del reso: la bolla sorgente (DDT_VENDITA, cercata con la regola (doc.id = sorgente_id OR doc.uid = sorgente_uid)) deve essere CONSEGNATA (E_RESO_DDT_NON_CONSEGNATO). Prima, una bolla di trasferimento fra depositi (causale di magazzino TRASF_OUT) non genera un reso (E_RESO_DA_DDT_TRASFERIMENTO): la merce e'' rimasta nostra, e un reso la farebbe rientrare due volte. Il dettaglio dei due errori porta tipo e chiavi della sorgente.';
 ```
 
 </div>

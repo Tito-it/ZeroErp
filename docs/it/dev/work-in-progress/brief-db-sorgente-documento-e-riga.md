@@ -2,8 +2,8 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-06
 
-**Riparte: Tid**, con il via al lotto R (righe di vendita, §7.2). Il **lotto 0 è chiuso**: i tre giri sono applicati,
-con i pgTAP verdi (il giro 0.3 il 2026-11-06), e gli orfani di dbdev sono puliti.
+**Riparte: Tid**, con la corsa dei pgTAP del giro R.2 come applicazione, il commit dei giri R.1 e R.2 e il via al
+lotto T (§7.2 «Lotto T»). Il giro R.2 è applicato (2026-11-06): con lui il **lotto R è chiuso**. Il lotto 0 è chiuso.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -25,19 +25,25 @@ con i pgTAP verdi (il giro 0.3 il 2026-11-06), e gli orfani di dbdev sono puliti
 | 7-sexies | ✅ Tid | `sql-una-tantum-sorgenti-orfane-canali.sql` eseguito su dbdev: presidio degli orfani vuoto (2026-11-06) | §7.2 «Il giro 0.2» | — |
 | 7-septies | ✅ DB | giro 0.3: i lettori della sorgente di testata nelle due grammatiche, i lettori polimorfi sul BB che risolve; provato in transazione (2026-11-06) | §7.2 «Il giro 0.3» | — |
 | 7-octies | ✅ Tid | apply del giro 0.3 (`20261106-22` … `-45`), pgTAP verdi; verde anche il presidio della revisione del preventivo, con le quattro esclusioni `sorgente_*` rinviate al lotto R (2026-11-06) | §7.2 | — |
-| 7-nonies | Tid | via al lotto R | §7.2 «Lotto R» | — |
-| 8 | DB | lotti R, T, C, D, P, M, Z, ognuno col suo via; il §8 si riempie strada facendo | §7.2, §8 | 7-nonies |
+| 7-nonies | ✅ Tid | via al lotto R (2026-11-06) | §7.2 «Lotto R» | — |
+| 7-decies | ✅ DB | giro R.1: provenienza scritta dai sei verbi delle righe di vendita, guard unico montato, residui «import» tolti, righe derivate esistenti convertite; provato in transazione (2026-11-06) | §7.2 «Lotto R, i giri» | — |
+| 7-undecies | ✅ Tid | apply del giro R.1 (`20261106-46` … `-58`), pgTAP verdi (2026-11-06) | §7.2 | — |
+| 7-duodecies | ✅ DB | giro R.2: ritiro dei sei tipi `*_RIGA` di vendita; i COMMENT del giro 0.3 al presente (proposta DB accettata da Tid, 2026-11-06); provato in transazione | §7.2 «Il giro R.2» | — |
+| 7-terdecies | Tid | apply del giro R.2 (`20261106-59`, `-60`, `sorgenti.csv`, `tipi_entita.csv`): ✅ applicato (2026-11-06); corsa dei pgTAP come applicazione da fare | §7.2 | — |
+| 7-quaterdecies | Tid | via al lotto T | §7.2 «Lotto T» | 7-terdecies |
+| 8 | DB | lotti R, T, C, D, P, M, Z, ognuno col suo via; il §8 si riempie strada facendo. ⛔ Il lotto M porta anche D58, D29 e ⑧ di `brief-db-revisione-dbops`: prima del via si riverifica la loro analisi (promemoria in §7.2 «Lotto M») | §7.2, §8 | 7-quaterdecies |
 | 9 | BE/FE | il §8 intero, una volta sola | §8 | 8 |
 | 10 | DB | la documentazione del §7.3 (lotto DOC), poi archiviazione | §7.3 | 9 |
 
-**Decisioni aperte di Tid:** nessuna. **Lavoro da committare: il giro 0.3** (24 changeSet `20261106-22` … `-45`, applicati;
-il pgTAP nuovo e quello aggiornato; le esclusioni dichiarate in
-`vendite/test-fn-crea-revisione-preventivo-riga-completa-v1`; questo brief). I giri 0.1 e 0.2 del lotto 0 (changeSet `20261106-04` … `-21`, i CSV,
-i pgTAP, l'SQL una tantum degli orfani, la doc auto-generata) sono committati su `dev/db-tid` il 2026-11-06. ⚠️ I test Django sono rossi finché il BE non rigenera il file delle policy d'errore (§8.1
+**Decisioni aperte di Tid:** nessuna (i COMMENT del giro 0.3: proposta DB accettata, 2026-11-06).
+**Lavoro da committare: i giri R.1 e R.2** (changeSet `20261106-46` … `-60`; `sorgenti.csv` e `tipi_entita.csv`; i
+pgTAP nuovi `vendite/test-sorgente-righe-vendita-v1` e `vendite/test-sorgente-commenti-al-presente-v1`; sei pgTAP
+allineati; questo brief e quello degli articoli obsoleti). Il lotto 0 intero (giri 0.1, 0.2, 0.3) è committato su
+`dev/db-tid` il 2026-11-06. ⚠️ I test Django sono rossi finché il BE non rigenera il file delle policy d'errore (§8.1
 BE-0.1-a, §8.2 BE-0.2-a): accettato dal piano, va detto nella PR.
 
-**Fermo collegato:** il lotto B di `brief-db-articoli-obsoleto-dal` (verbi che scrivono la sorgente,
-`20261105-15…-19`) **non si applica** finché questo modello non è deciso: i verbi si riscrivono una volta sola. Il
+**Fermo collegato, sciolto dal giro R.1:** il lotto B di `brief-db-articoli-obsoleto-dal` (verbi che scrivono la
+sorgente, `20261105-15…-19`, mai entrati nell'albero) è riscritto qui sul modello, `20261106-51` … `-56`. Il
 §9 di quel brief (indici «idempotenza import», commenti, import esterno su tabella di collegamento) confluisce qui.
 Il lotto A dello stesso brief è applicato e resta: legge solo «la sorgente c'è o no».
 
@@ -706,8 +712,9 @@ dalla rev N. Il debito è scritto nel lotto R.
 
 #### Lotto R — righe di vendita (primo: sblocca il lotto B di `brief-db-articoli-obsoleto-dal`)
 
-* **Le tabelle:** `preventivi_righe`, `ordini_righe`, `ddt_righe`, `contratti_righe` (colonne del lotto A, ancora
-  vuote: nessuna conversione) e `fatture_righe` (`DROP DEFAULT 0`, l'indice unico `(tipo, uid)` ritirato).
+* **Le tabelle:** `preventivi_righe`, `ordini_righe`, `ddt_righe`, `contratti_righe` (colonne del lotto A, vuote)
+  e `fatture_righe` (`DROP DEFAULT 0`, l'indice unico `(tipo, uid)` ritirato). Le righe già nate da un documento,
+  dove l'origine si ricava in modo esatto dai legami salvati, prendono la provenienza (giro R.1, sotto).
 * **I verbi del lotto B** si scrivono direttamente sul modello, con il BB che scrive:
   * offerta: riga da eccezione → l'eccezione, riga del solo listino → NULL (D-5);
   * riconsegna: la provenienza è il reso (D-4).
@@ -723,6 +730,167 @@ dalla rev N. Il debito è scritto nel lotto R.
   di `ddt_righe` che li dava per «lo stesso fatto» si corregge.
 * **Alla fine:** ritiro dei sei tipi `*_RIGA` di vendita (nessuna funzione, né BE né FE li nomina), delle loro voci di
   `tipi_entita` come sorgente, e delle chiavi di traduzione.
+
+##### Lotto R, i giri (team DB, 2026-11-06)
+
+| Giro | Che cosa | Stato |
+| --- | --- | --- |
+| **R.1** | i residui «import» tolti, le righe derivate esistenti convertite, il CHECK di forma, gli indici «chi deriva da X», i sei verbi che scrivono la provenienza, il guard unico al posto del tipizzato, l'esenzione del registro dei riferimenti morti tolta | ✅ applicato da Tid, pgTAP verdi (2026-11-06) |
+| **R.2** | ritiro dei sei tipi `*_RIGA` di vendita (`config.tipi_entita.is_sorgente = false`, poi `config.sorgenti`); i COMMENT del giro 0.3 riscritti al presente | ✅ applicato da Tid (2026-11-06); pgTAP come applicazione da fare |
+
+R.2 viene dopo perché il ritiro di un tipo va per ultimo (regole di ogni lotto), e perché il guard tipizzato, che
+ancora li accetta, resta montato sul magazzino fino al lotto M.
+
+**Il giro R.1, le scelte** (team DB, 2026-11-06; nessuna è un cambio di modello):
+
+* **Il BB che scrive, citato per codice:** `script.fn_sorgente_provenienza(codice_interno, chiave)` → (tipo,
+  `sorgente_id`, `sorgente_uid`). Delega a `script.fn_sorgente_chiave` e solleva `E_SORG_CONF` su un codice che non è
+  un tipo. Sei verbi avrebbero ripetuto la lettura del tipo per codice e il controllo (regola del 2). Ogni verbo lo
+  chiama **una volta per documento**, prima del ciclo; `sorgente_riga` la mette lui, riga per riga, nello STESSO
+  INSERT.
+* **Che cosa scrivono i sei verbi** (S-1, D-4, D-5):
+
+  | Verbo | Tabella | Tipo | `sorgente_riga` |
+  | --- | --- | --- | --- |
+  | `vendite.fn_crea_revisione_preventivo` | `preventivi_righe` | PREVENTIVO (la rev N) | la riga copiata |
+  | `vendite.fn_push_preventivo_a_ordine` | `ordini_righe` | PREVENTIVO | la riga (= `preventivo_riga_id`, che resta accanto, D-3) |
+  | `vendite.fn_genera_ordine_da_offerta` | `ordini_righe` | OFFERTA_COMMERCIALE | l'eccezione; NULL per la riga del solo listino |
+  | `vendite.fn_push_offerta_a_contratto` | `contratti_righe` | OFFERTA_COMMERCIALE | l'eccezione copiata |
+  | `vendite.fn_genera_ddt_da_ordine` | `ddt_righe` | ORDINE_VENDITA | la riga d'ordine |
+  | `vendite.fn_genera_ddt_riconsegna` | `ddt_righe` | RESO_VENDITA | la riga del reso |
+
+  La revisione **non ricopia** la provenienza della rev N: quella dice da dove veniva la rev N.
+* **`vendite.fn_offerta_righe_espanse` prende `eccezione_id`** in coda al RETURNS TABLE (S-1: «restituisce la riga
+  d'origine»). DROP + CREATE; i due chiamanti plpgsql (`script.fn_check_righe_offerta_in_ordine`,
+  `vendite.fn_genera_ordine_da_offerta`) leggono le colonne con un elenco di alias posizionale e lo allineano.
+* **Il guard unico** sostituisce il tipizzato sulle quattro tabelle, con lo stesso nome (l'ordine fra i BEFORE ROW
+  non cambia), su INSERT e UPDATE OF le quattro colonne. Livello minimo: RIGA su preventivi, bolle e contratti;
+  DOCUMENTO sugli ordini, perché la riga del solo listino cita l'offerta intera. Azione alla cancellazione
+  dell'origine: **BLOCCA** su tutte, come una FK: una riga d'origine o un documento citati non si cancellano
+  (`E_SORG_ORIGINE_REFERENZIATA`).
+* **CHECK di forma** `chk_<tabella>_sorgente_forma` sulle quattro: tutto NULL, o il tipo con una sola chiave. Non su
+  `fatture_righe`: la sua `sorgente_uid` è ancora l'impronta (G5), e passa al lotto C con `attivita_fatturabili`
+  (il presidio di struttura la segna così).
+* **I residui «import» se ne vanno:** `DEFAULT 0` di `sorgente_riga` su `ordini_righe` e `fatture_righe`; gli indici
+  unici `uq_ordini_righe_v_sorgente_fk` e `uq_fatture_righe_v_sorgente_fk`. Il primo avrebbe vietato due righe
+  dallo stesso preventivo o dalla stessa offerta.
+* **Otto indici non unici «chi deriva da X»**, parziali, (tipo, chiave) e (tipo, riga): li usa il lato «in uscita»
+  a ogni cancellazione dell'origine.
+* **Le righe esistenti nate da un documento prendono la provenienza**, dove l'origine si ricava in modo esatto da un
+  legame salvato: ordini dal preventivo (`preventivo_riga_id`), bolle dall'ordine (`ordini_righe_fulfillment`),
+  riconsegne dal reso (`resi_righe_riconsegne`, che vince sul fulfillment, D-4); solo con un'origine sola. È la
+  migrazione del modello, nel changeSet della forma (regole di ogni lotto, punto 2), coi trigger della tabella spenti
+  e riaccesi come erano. Gli 0 di `ordini_righe.sorgente_riga` (riga che non esiste) diventano NULL. Da zero le
+  tabelle sono vuote.
+* **I COMMENT riscritti seguono `linee-guida-sql` §5d** (al presente, senza brief, rev, changeSet, misure): quelli
+  delle otto funzioni toccate e delle sedici colonne sono riscritti interi, non con un prefisso.
+
+**Che cosa resta, dichiarato:**
+
+* **Revisioni del preventivo e contratti dall'offerta già esistenti** restano senza provenienza: nessun legame
+  salvato dice da quale riga vengono (un abbinamento per articolo non sarebbe esatto). Le righe nuove la portano.
+* **La testata della riconsegna** dichiara ancora l'ordine (order-backed) o il reso: D-4 la porta al reso nel lotto T,
+  con le testate.
+* **`fatture_righe`**: guard e CHECK al lotto C (G5).
+* ✅ **Deciso (Tid, 2026-11-06, «accetto la tua proposta»): la proposta DB sotto, nel giro R.2.**
+* ⚠️ **Debito mio: i COMMENT del giro 0.3.** I 22 COMMENT di funzione e i 2 di indice scritti da
+  `20261106-22` … `-45` cominciano con «⭐ rev 2026-11-06 (20261106-NN, brief-…)», contro `linee-guida-sql` §5d
+  (vale da subito per ogni COMMENT nuovo o riscritto). Sono applicati e committati: serve un changeSet di soli
+  `COMMENT ON`. **Proposta DB:** in R.2, i 24 COMMENT riscritti interi al presente (sono una famiglia sola: i
+  lettori della sorgente), più un pgTAP che controlla il testo di `obj_description` di quegli oggetti. Alternativa
+  più leggera: togliere solo il prefisso, lasciando il testo di prima, anch'esso fuori regola, al lavoro che li
+  riapre (molti li riapre il lotto T).
+
+**I changeSet del giro R.1:**
+
+| changeSet | Che cosa |
+| --- | --- |
+| `00_schema/vendite/20261106-46` | DROP DEFAULT 0 e indici unici «import»; conversione delle righe derivate esistenti; CHECK di forma; COMMENT delle colonne |
+| `00_schema/vendite/-47` | gli otto indici «chi deriva da X» |
+| `20_code/script/-48` | `script.fn_sorgente_provenienza` |
+| `20_code/vendite/-49` | `vendite.fn_offerta_righe_espanse` + `eccezione_id` (DROP + CREATE, GRANT) |
+| `20_code/script/-50` | `script.fn_check_righe_offerta_in_ordine`: l'alias nuovo |
+| `20_code/vendite/-51` … `-56` | i sei verbi (tabella sopra) |
+| `20_code/vendite/-57` | il guard unico sulle quattro righe, al posto del tipizzato |
+| `80_data/changelog/-58` | via la voce `script.trgfn_guard_sorgente` da `dbops.riferimenti_morti_esenzioni` |
+
+pgTAP: nuovo `vendite/test-sorgente-righe-vendita-v1` (22 casi); allineati
+`vendite/test-fn-crea-revisione-preventivo-riga-completa-v1` (le quattro esclusioni tolte),
+`dbops/test-sorgenti-struttura-v1` (il debito cala di quattro tabelle), `vendite/test-fattura-origini-v1` e
+`vendite/test-documento-lineage-seminata-v1` (la provenienza scritta a mano passa da PREVENTIVO_RIGA modello A a
+PREVENTIVO + uid + riga). Nessun codice nuovo, nessun CSV.
+
+**La prova del giro R.1** (2026-11-06, come `zeroerp_owner`, sempre in transazione annullata):
+
+* **i corpi di partenza sono quelli vivi:** per le otto funzioni riscritte il CREATE dell'ultimo YAML, rieseguito,
+  dà lo stesso `pg_get_functiondef` del vivo, su scratch e su dbdev;
+* **l'estratto** dei 13 changeSet gira intero su scratch e dbdev; `plpgsql_check` sulle nove funzioni: solo avvisi
+  noti (variabili inutilizzate preesistenti, STABLE che chiama `fn_log_and_raise_error`);
+* **la conversione su dbdev** (fatto datato): 317 righe d'ordine prendono PREVENTIVO, 216 righe di bolla
+  ORDINE_VENDITA e 80 RESO_VENDITA; ogni riga citata è del documento citato (zero eccezioni), nessuno 0 resta,
+  `dbops.vw_sorgenti_orfane` vuota, l'esenzione è uscita, i quattro montaggi hanno argomenti validi;
+* **il ramo nuovo si costruisce:** `vendite/test-sorgente-righe-vendita-v1` chiama i sei verbi sulla strada
+  dell'applicazione e prova guard, forma e lato in uscita: 22/22 su scratch e su dbdev. Senza l'estratto è rosso
+  dal test 1, compreso il 6 (la revisione su un articolo ritirato, il buco del lotto B);
+* **regressione prima/dopo su 566 pgTAP** (chi nomina un verbo, un builder di documento, le righe di vendita, una
+  cancellazione su vendite, i presidi trasversali; sullo scratch): 7224 → 7245 ok. I 69 rossi, in 40 file, sono
+  **identici** riga per riga nelle due corse: test di scope o di permesso, rossi da owner per costruzione. Le sole
+  differenze sono le attese: il test nuovo, il test 2 di `dbops/test-sorgenti-struttura-v1` (il debito cala) e il
+  test 1 di `vendite/test-fn-crea-revisione-preventivo-riga-completa-v1` (le colonne ora nominate). Verdi nelle due
+  corse `vendite/test-fattura-origini-v1` (10) e `vendite/test-documento-lineage-seminata-v1` (22);
+* guardrail statici (`scripts/guardrail_*.py`): verdi.
+
+Non coperto, e resta di Tid: l'apply, la corsa dei pgTAP come applicazione (la RLS), la baseline. **Fatto da Tid il
+2026-11-06:** apply dei 13 changeSet, pgTAP verdi.
+
+**Il giro R.2, le scelte** (team DB, 2026-11-06):
+
+* **I sei tipi `*_RIGA` di vendita escono da `config.sorgenti`** (S-2): PREVENTIVO_RIGA, CONTRATTO_RIGA,
+  ORDINE_VENDITA_RIGA, DDT_VENDITA_RIGA, FATTURA_RIGA, RESO_VENDITA_RIGA. Censimento (dbdev, 2026-11-06, fatto
+  datato): nessuna riga li porta in nessuna delle colonne con FK verso `config.sorgenti`; nessuna funzione, vista,
+  BE o FE li usa come sorgente; un pgTAP li asseriva (`magazzino/test-causali-e-sorgenti-seed-v1`).
+* **L'entità resta.** In `config.tipi_entita` le sei righe restano, con `is_sorgente = false`: `ORDINE_VENDITA_RIGA`
+  è il bersaglio di `vendite.trgfn_ordini_righe_guard_onere_senza_data_consegna`, e le entità servono a note,
+  giornale ed errori. Le chiavi di traduzione `config.tipi_entita.<x>_riga` quindi **restano**: sono l'etichetta
+  dell'entità. Il piano diceva «e delle chiavi di traduzione»: era sbagliato, perché le chiavi sono dell'entità, non
+  della sorgente.
+* **La forma del ritiro, in tre posti nell'ordine in cui girano:** `tipi_entita.csv` (`is_sorgente = f`, il mirror
+  `20260822-55`: `sorgente_codice_interno`, generata, torna NULL e la FK verso `config.sorgenti` non la tiene più);
+  `sorgenti.csv` senza le sei righe (il mirror `20251002-21`: da zero non nascono); `80_data/changelog/20261106-60`,
+  che le cancella dove esistono e in 80_data gira dopo i due mirror. Una tabella, un CSV: nessun seed laterale.
+* **I COMMENT del giro 0.3** (decisione di Tid): `20261106-59` riscrive interi al presente i 21 COMMENT di funzione
+  e i 2 di indice del giro 0.3, con le firme ancorate dei loro changeSet. Il presidio
+  `vendite/test-sorgente-commenti-al-presente-v1` li controlla, insieme ai COMMENT del lotto R: un elenco chiuso di
+  oggetti per nome, e una regex sul testo (rev + anno, «brief-», id di changeSet, la stella, le sigle di decisione).
+  «lotto» non è vietato: i lotti di fatturazione sono dominio.
+
+**I changeSet del giro R.2:** `20_code/vendite/20261106-59` (i COMMENT), `80_data/changelog/20261106-60` (il DELETE),
+`80_data/sql/config/sorgenti.csv` e `tipi_entita.csv`. pgTAP: nuovo `vendite/test-sorgente-commenti-al-presente-v1`
+(5); `vendite/test-sorgente-righe-vendita-v1` + 2 casi (23, 24: non più sorgenti, ancora entità); allineati
+`magazzino/test-causali-e-sorgenti-seed-v1` (restano le quattro sorgenti di magazzino) e
+`config/test-sorgenti-scope-pulizia-v1` (test 6: nessuna sorgente ROW_VALIDATOR).
+
+**La prova del giro R.2** (2026-11-06, come `zeroerp_owner`, in transazione annullata, su scratch e dbdev):
+
+* l'estratto (`-59`, `-60`, con il caricamento di `tipi_entita.csv` simulato dall'UPDATE che il mirror farebbe) gira
+  intero; la convergenza del lato «in uscita» dopo il DELETE non monta e non smonta niente;
+* `vendite/test-sorgente-righe-vendita-v1` 24/24, `vendite/test-sorgente-commenti-al-presente-v1` 5/5,
+  `magazzino/test-causali-e-sorgenti-seed-v1` 11/11, su scratch e su dbdev. Senza l'estratto: il presidio dei
+  COMMENT è rosso ai test 2 e 5 (le 21 funzioni e i 2 indici del giro 0.3), i casi 23 e 24 rossi;
+* **regressione prima/dopo su 359 pgTAP** (chi legge `config.sorgenti`, `config.tipi_entita`, i COMMENT, la
+  sorgente, i legami e la lineage; sullo scratch): 4680 → 4683 ok, 54 rossi in 32 file **identici** riga per riga
+  nelle due corse (scope e permessi, rossi da owner per costruzione). Differenze: le due attese (i due pgTAP del
+  giro) e **una trovata dalla regressione**: `config/test-sorgenti-scope-pulizia-v1` test 6 asseriva le sei
+  sorgenti ROW_VALIDATOR per nome, in una stringa sola, e il censimento (grep dei codici fra apici) non l'aveva
+  vista. Capovolto al modello: nessuna sorgente ROW_VALIDATOR. 9/9 su scratch e dbdev;
+* guardrail statici: verdi (il preambolo del presidio nuovo ha il contesto applicativo).
+
+⚠️ **Non provato qui: i due mirror veri.** Il caricamento di `tipi_entita.csv` e `sorgenti.csv` lo fa Liquibase,
+e un seed simulato non prova il loader. Lo prova l'apply. ✅ **Provato dall'apply di Tid (dbdev, 2026-11-06):** i due
+mirror (`20251002-21`, `20260822-55`) sono RERAN, `20261106-59` e `-60` EXECUTED; i sei tipi non sono più in
+`config.sorgenti` e restano in `config.tipi_entita` con `is_sorgente` false (verifica DB dello stesso giorno).
+
+Non coperto, e resta di Tid: l'apply, la corsa dei pgTAP come applicazione (la RLS), la baseline.
 
 #### Lotto T — testate di vendita
 
@@ -786,6 +954,34 @@ dalla rev N. Il debito è scritto nel lotto R.
 * ⚠️ **Prima i verbi, poi il ritiro dei tipi.** `fn_cambia_stato_ddt` e `fn_annulla_reso` cercano
   `DDT_VENDITA_PRELIEVO` / `RESO_VENDITA_RIENTRO` senza filtro su `attivo`: se il tipo non c'è, saltano lo storno senza
   errore. I cinque tipi si ritirano solo dopo.
+* **Le tre viste `dbops` di magazzino portano anche tre difetti di
+  [brief-db-revisione-dbops](brief-db-revisione-dbops.md)** (§8.1 di quel brief), che confluiscono qui per
+  decisione di Tid (2026-11-06): le viste si riscrivono una volta sola.
+  * **D58** — `vw_ddt_emessi_senza_scarico`, `vw_resi_confermati_senza_carico`: la domanda va alla grana del
+    **prelievo** e del **rientro**, non del documento. Il contratto del posting è un movimento per prelievo e un
+    carico per rientro: con un `NOT EXISTS` sul documento intero, uno scarico parziale non fa scattare niente;
+  * **D29** (+ M22) — `vw_resi_confermati_senza_carico`: lo stato «merce rientrata» si legge da un BB gemello di
+    `script.vw_stati_doc_ddt_merce_partita` (`script.vw_stati_doc_reso_merce_rientrata`), non dal letterale
+    `'CONFERMATO'`; le note di `presidi.csv` e i COMMENT di `vendite.fn_ddt_muove_merce` / `fn_reso_muove_merce`
+    nominano come porta `script.trgfn_doc_stato_solo_dal_verbo`, non le regole ritirate dei guard di transizione;
+  * **Q14 ⑧** (+ M23) — `vw_magazzino_movimenti_senza_costo`: gli storni escono (`storno_di_movimento_id IS NULL`).
+    Lo storno di un'uscita senza costo è un'entrata senza costo, conseguenza di una causa (il carico senza valore)
+    che la vista mostra già. Nella nota del presidio, l'elenco degli scrittori è completo (`fn_posta_trasferimento`,
+    `fn_storna_movimenti_sorgente`, `vendite.fn_posta_ddt`, `vendite.fn_posta_reso`) e compare il carico da reso
+    senza costo.
+  * Il dettaglio (fatto, correzione, presidio, documentazione da riscrivere) sta in `brief-db-revisione-dbops`:
+    D58 §2.7, D29 §2.2, ⑧ §4 Q14, M22 e M23 §3.1.
+* ⛔ **Promemoria prima del via al lotto M: si riverifica l'analisi delle tre viste.** Non si sviluppa sulla sola
+  base di questo elenco:
+  1. il censimento di §«Censimento — magazzino e acquisti» (§2.4, «Che cosa si riscrive insieme all'indice»)
+     propone per le prime due `m.sorgente_tipo_id = DDT_VENDITA AND m.sorgente_id = d.id`, cioè la domanda sul
+     documento intero che D58 dice sbagliata. Va riscritta alla grana di riga e dettaglio, prima di scrivere il
+     changeSet;
+  2. si rileggono le tre viste e i loro scrittori sulla scheda auto-generata del giorno: D58, D29 e ⑧ sono stati
+     scritti il 2026-11-04/06, e il lotto R e il lotto T possono averli cambiati;
+  3. si conferma con Tid il pgTAP per ciascuno: bolla con due prelievi e uno solo scaricato (la vista la
+     segnala); reso confermato riconosciuto dal BB; uscita senza costo stornata (lo storno non compare, il carico
+     che l'ha causata sì).
 * **Acquisti:**
   * `ordini` e `ddt`: l'import esce, come in T;
   * `ordini_righe`: `DROP DEFAULT 0`;
@@ -938,6 +1134,14 @@ Si allineano nel lotto DOC con un rimando a questo brief, oppure si chiudono se 
 | — | i lettori della sorgente di testata leggono anche `sorgente_id`; firme con `sorgente_id` in coda per `vendite.fn_ddt_trigger_ordine_testata` e `vendite.fn_ddt_vincoli_cliente` | nessuna delle funzioni toccate cambia firma o colonne per il BE (grep su `backend/apps`, 2026-11-06: il BE chiama per nome solo `fn_documento_legami`, firma invariata) | nessuna |
 | — | `script.fn_get_sorgente_emittente_sr_id(tipo, sorgente_id, sorgente_uid)`, firma nuova; la testuale resta | il BE non la chiama (solo un commento nel file generato delle policy) | nessuna |
 | — | il dettaglio JSON di alcuni errori dei guard di bolla e reso porta in più `sorgente_id` | `E_DOC_SORGENTE_NON_TROVATA`, `E_DOC_CLIENTE_DIVERSO_DA_SORGENTE`, `E_RESO_DA_DDT_TRASFERIMENTO`, `E_RESO_DDT_NON_CONSEGNATO` | nessuna: chiave in più, nessuna tolta |
+
+### 8.4 Dal lotto R, giro R.1 (2026-11-06)
+
+| # | Che cosa cambia | Percorso | Che cosa fa il BE/FE |
+| --- | --- | --- | --- |
+| BE-R.1-a | le cancellazioni di un'origine citata da una riga di vendita ora si fermano con `E_SORG_ORIGINE_REFERENZIATA` (codice di BE-0.2-a, nessun codice nuovo): la riga o la testata di un reso da cui è nata una riconsegna, l'eccezione di un'offerta da cui sono nate righe d'ordine o di contratto, la riga di un preventivo citata da una riga d'ordine o da una revisione | `DELETE` del BE sulle bozze e sulle loro righe | nessuna, se BE-0.2-a è fatto: è un 409 con la frase pronta |
+| — | `ordini_righe.sorgente_riga` senza DEFAULT 0 (NULL sulla riga scelta a mano) | colonna | nessuna: grep su `backend/apps` (2026-11-06): il BE non scrive né legge la sorgente delle righe d'ordine |
+| — | `vendite.fn_offerta_righe_espanse` ha una colonna in più in coda (`eccezione_id`) | funzione | nessuna: il BE non la chiama (grep, 2026-11-06) |
 
 ---
 

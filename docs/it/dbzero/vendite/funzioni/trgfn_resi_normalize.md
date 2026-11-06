@@ -83,7 +83,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_resi_normalize()
-IS '⭐ rev 2026-11-06 (20261106-33, brief-db-sorgente-documento-e-riga §7.2 lotto 0 giro 0.3): la bolla sorgente da cui il reso eredita cliente, destinatario, utility, valuta ed emittente si cerca nelle due grammatiche, (d.id = NEW.sorgente_id OR d.uid = NEW.sorgente_uid): dal lotto T il reso porta l''id della bolla. Normalize reso: anno/data; eredita billing/destinatario/utility/valuta/emittente dal DDT sorgente (DDT_VENDITA, per codice_interno, JOIN vendite.ddt su uid) su INSERT; fallback emittente da billing_account. Mirror trgfn_ddt_normalize (fonte = DDT). rev 2026-07-13.';
+IS 'Normalize del reso, BEFORE INSERT OR UPDATE: anno e data; su INSERT eredita billing account, destinatario, utility, valuta ed emittente dalla bolla sorgente (DDT_VENDITA), cercata con la regola (doc.id = sorgente_id OR doc.uid = sorgente_uid); senza bolla l''emittente viene dal billing account. Gemello di vendite.trgfn_ddt_normalize.';
 ```
 
 </div>

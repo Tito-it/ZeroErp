@@ -98,17 +98,11 @@ INSERT INTO _escluse VALUES
     ('data_insert',       'audit: default now(), trigger'),
     ('data_update',       'audit: default now(), trigger'),
     ('tx_id',             'framework tx_id: trgfn_tx_id_managed'),
-    ('natura_vendita_id', 'la deriva e la CONGELA dall''articolo trgfn_preventivi_righe_set_natura_vendita (BEFORE INSERT): nominarla scriverebbe un valore sovrascritto'),
-    -- ⚠️ rev 2026-11-06: la provenienza della riga (20261105-02, 20261106-05).
-    --   NON si ricopia 1:1: la rev N+1 non viene dalla sorgente della rev N,
-    --   viene dalla rev N. La SCRIVE il lotto R di
-    --   brief-db-sorgente-documento-e-riga (PREVENTIVO + id della revisione di
-    --   partenza + id della riga copiata, col BB che scrive). Quando il lotto R
-    --   le nomina, il test 2 fa rosso e queste quattro righe si tolgono.
-    ('sorgente_tipo_id',  'provenienza: la scrive il lotto R (revisione di partenza), non si copia dalla rev N'),
-    ('sorgente_id',       'provenienza: la scrive il lotto R (revisione di partenza), non si copia dalla rev N'),
-    ('sorgente_uid',      'provenienza: la scrive il lotto R (revisione di partenza), non si copia dalla rev N'),
-    ('sorgente_riga',     'provenienza: la scrive il lotto R (riga copiata), non si copia dalla rev N');
+    ('natura_vendita_id', 'la deriva e la CONGELA dall''articolo trgfn_preventivi_righe_set_natura_vendita (BEFORE INSERT): nominarla scriverebbe un valore sovrascritto');
+-- rev 2026-11-06 (lotto R di brief-db-sorgente-documento-e-riga, 20261106-53):
+--   le quattro sorgente_* NON sono piu' escluse: la copia le NOMINA. Non le
+--   ricopia dalla rev N (direbbero da dove veniva lei): ci scrive la rev N e la
+--   riga copiata. Il valore lo prova vendite/test-sorgente-righe-vendita-v1 (5, 6).
 
 -- Le colonne NOMINATE nell'INSERT della copia righe, lette dal corpo VIVO:
 -- il blocco «INSERT INTO vendite.preventivi_righe ( ... )» della funzione.

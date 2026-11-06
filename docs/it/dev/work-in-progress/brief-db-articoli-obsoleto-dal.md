@@ -15,13 +15,19 @@
 | 6 | ✅ DB + Tid | lotti C e D senza sorgente (`20261106-01…-03`, pgTAP, guida, manuali): applicati, pgTAP verdi (2026-11-06) | §7.2-bis | — |
 | 7 | Tid | **confermare O-9 affinata**: l'`ONERE` con sorgente (dal push di ordine e bolla) passa | §7.2-bis | — |
 | 8 | DB | **D-C**: riscrivere i `COMMENT` di questo cantiere secondo `linee-guida-sql` §5d | sotto | — |
-| 9 | ⛔ fermo | lotto B (verbi), righe d'acquisto e di fattura (lotto C), presidio per verbo (lotto D) | §7.2, §7.3 | `brief-db-sorgente-documento-e-riga` |
+| 9 | DB + Tid | lotto B (verbi): ✍️ riscritto sul modello nel giro R.1 di `brief-db-sorgente-documento-e-riga` (`20261106-51` … `-56`), provato in transazione, da applicare (2026-11-06). Righe d'acquisto e di fattura (lotto C), presidio per verbo (lotto D): ancora fermi | §7.2, §7.3 | `brief-db-sorgente-documento-e-riga` |
 | 10 | BE / FE | `obsoleto_dal` ed `e_obsoleto` nel form e nella lista, `righe_saltate` del «Clona», policy, chiave i18n | §8 | — |
 
 ⛔ **Lotto B fermo (Tid, 2026-11-06):** non si applica finché non è deciso il modello della sorgente in
 `brief-db-sorgente-documento-e-riga` (tipo + chiave del documento + `sorgente_riga` = la riga). I verbi
 `20261105-15…-18` e il backfill `-19` sono **fuori dall'albero** e si riscrivono lì sopra, una volta sola (§7.2). Il
 §9 qui sotto (e la sua M-1) confluisce in quel brief. Il lotto A resta: il guard legge solo «la sorgente c'è o no».
+
+✅ **Lotto B riscritto (2026-11-06):** i sei verbi che generano righe di vendita (revisione, push preventivo→ordine,
+ordine e contratto dall'offerta, bolla dall'ordine, riconsegna) scrivono la provenienza nel modello, col BB che
+scrive, nel giro R.1 di `brief-db-sorgente-documento-e-riga` (`20261106-51` … `-56`). Il caso del buco qui sotto (la
+revisione su un articolo ritirato) è il test 6 di `vendite/test-sorgente-righe-vendita-v1`. Il buco si chiude
+all'apply.
 
 ⚠️ **Buco noto fino al lotto B:** il guard di riga del lotto A è applicato, ma oggi push, revisione e bolle non
 scrivono la sorgente. Una riga **derivata** da un articolo ritirato viene quindi trattata come scelta nuova e
