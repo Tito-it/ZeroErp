@@ -307,8 +307,12 @@ search:
 - [fn_segment_key_sorgente](funzioni/fn_segment_key_sorgente.md)
 - [fn_snapshot_indirizzo](funzioni/fn_snapshot_indirizzo.md)
 - [fn_snapshot_indirizzo_soggetto](funzioni/fn_snapshot_indirizzo_soggetto.md) — (latest review 02-08-2026)
+- [fn_sorgente_chiave](funzioni/fn_sorgente_chiave.md)
 - [fn_sorgente_chiave_id](funzioni/fn_sorgente_chiave_id.md) — (scritta il 05-10-2026)
 - [fn_sorgente_chiave_uuid](funzioni/fn_sorgente_chiave_uuid.md) — (scritta il 05-10-2026)
+- [fn_sorgente_documento](funzioni/fn_sorgente_documento.md)
+- [fn_sorgente_documento_da_chiave](funzioni/fn_sorgente_documento_da_chiave.md)
+- [fn_sorgente_guard_argomenti](funzioni/fn_sorgente_guard_argomenti.md)
 - [fn_sqlstate_di_ambiente](funzioni/fn_sqlstate_di_ambiente.md) — (latest review 16-10-2026)
 - [fn_stato_abortito_id](funzioni/fn_stato_abortito_id.md)
 - [fn_stato_accettazione_id](funzioni/fn_stato_accettazione_id.md)
@@ -360,6 +364,7 @@ search:
 - [trgfn_doc_testata_guard_data_consegna_righe](funzioni/trgfn_doc_testata_guard_data_consegna_righe.md) — (nato il 2026-10-13, dal collaudo)
 - [trgfn_guard_date_validita](funzioni/trgfn_guard_date_validita.md)
 - [trgfn_guard_emittente_scope](funzioni/trgfn_guard_emittente_scope.md) — (rev 2026-09-04 — chiuso il ramo «nessun utente in sessione → passa»: il criterio è `row_security_active()`. Prima: rev 2026-08-22, la **risoluzione** esce dal guard e passa a una `SECURITY DEFINER`, chiudendo un fail-open, e arrivano le modalità `ente_incasso` e `contabile`; rev 2026-06-01, modalità `fiscale` PK e delega alla canonica `fn_check_user_emittente_scope`) La trigger function **`script.trgfn_guard_emittente_scope`** implementa il defense-in-depth: blocca INSERT/UPDATE se l'utente corrente non ha visibilità sull'emittente fiscale della riga.
+- [trgfn_guard_sorgente](funzioni/trgfn_guard_sorgente.md)
 - [trgfn_guard_sorgente_polimorfa_testuale](funzioni/trgfn_guard_sorgente_polimorfa_testuale.md) — Valida la sorgente polimorfa delle **tabelle di collegamento a chiave unica TESTUALE** (modello B): la colonna `sorgente_uid` è **TEXT** e contiene la chiave nel **formato dettato da `config.sorgenti.key_selector`**:
 - [trgfn_guard_sorgente_polimorfa_tipizzata](funzioni/trgfn_guard_sorgente_polimorfa_tipizzata.md) — Valida la **coerenza dei riferimenti di sorgente** per le tabelle che adottano il **modello A — colonne tipizzate alternative**:
 - [trgfn_guard_utility_tipo_ruolo_by_cols](funzioni/trgfn_guard_utility_tipo_ruolo_by_cols.md) — La funzione **`script.trgfn_guard_utility_tipo_ruolo_by_cols()`** e` una trigger function generica che applica il controllo utility/ruolo su tabelle con colonne configurabili.

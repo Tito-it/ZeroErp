@@ -30,6 +30,8 @@
 | asset_id | bigint | YES |  |
 | ubicazione_id | bigint | YES |  |
 | storno_di_movimento_id | bigint | YES |  |
+| sorgente_id | bigint | YES |  |
+| sorgente_dettaglio | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

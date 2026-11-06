@@ -46,6 +46,7 @@
 | codice_commessa | character varying(100) | YES |  |
 | generazione_canone | character varying(32) | NO | 'INIZIO_PERIODO'::character varying |
 | mese_partenza_canone | smallint | NO | 1 |
+| sorgente_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

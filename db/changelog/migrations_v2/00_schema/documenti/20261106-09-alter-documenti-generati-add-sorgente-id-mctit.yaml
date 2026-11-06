@@ -1,0 +1,54 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA CHIAVE ID DEL DOCUMENTO DI ORIGINE: sorgente_id SUI DOCUMENTI GENERATI
+#   Brief: brief-db-sorgente-documento-e-riga §4, §7.2 lotto 0. Stessa forma di
+#   20261106-05 (vendite).
+#
+#   Oggi documenti_generati scrive la chiave come TESTO in sorgente_uid, con due
+#   chiavi per la fattura (V-6). Il lotto D rinumera i progressivi doppi, converte e
+#   monta il guard; qui nasce solo la colonna, vuota.
+#   ⚠️ trgfn_documenti_generati_protect_snapshot congela sorgente_tipo_id,
+#   sorgente_uid, sorgente_riga: la colonna nuova entra nel suo elenco nel lotto D,
+#   quando si comincia a scriverla.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/documenti/20261106-09-alter-documenti-generati-add-sorgente-id-mctit.yaml
+
+  - changeSet:
+      id: 20261106-09-alter-documenti-generati-add-sorgente-id
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        sorgente_id (bigint, vuota) su documenti.documenti_generati: la colonna del modello della
+        provenienza. brief-db-sorgente-documento-e-riga §7.2 lotto 0.
+      preConditions:
+        - onFail: HALT
+        - not:
+            - columnExists:
+                schemaName: documenti
+                tableName: documenti_generati
+                columnName: sorgente_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE documenti.documenti_generati ADD COLUMN sorgente_id bigint NULL;
+
+              COMMENT ON COLUMN documenti.documenti_generati.sorgente_id IS
+                  'La chiave del documento stampato quando il suo tipo (sorgente_tipo_id, config.sorgenti) ha key_selector ''id'': l''id del documento. In alternativa a sorgente_uid, mai tutte e due. La chiave giusta la restituisce script.fn_sorgente_chiave; la verifica il guard script.trgfn_guard_sorgente. Resta NULL finche'' la tabella scrive la chiave come testo in sorgente_uid.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE documenti.documenti_generati DROP COLUMN IF EXISTS sorgente_id;

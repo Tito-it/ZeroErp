@@ -164,6 +164,7 @@ search:
 - [fn_sigla_provincia_ammessa](funzioni/fn_sigla_provincia_ammessa.md)
 - [fn_slega_profilo_identita](funzioni/fn_slega_profilo_identita.md)
 - [fn_slega_profilo_reparto](funzioni/fn_slega_profilo_reparto.md)
+- [fn_sorgente_livelli](funzioni/fn_sorgente_livelli.md)
 - [fn_sorgente_tabella](funzioni/fn_sorgente_tabella.md)
 - [trgfn_comuni_protect_update](funzioni/trgfn_comuni_protect_update.md) — (latest review 29-12-25) Impedire la modifica dei campi chiave di `config.comuni` quando il comune e' gia' utilizzato nello stradario.
 - [trgfn_credenziali_guard_ultimo_super_admin](funzioni/trgfn_credenziali_guard_ultimo_super_admin.md) — (scritta il 25-09-2026)

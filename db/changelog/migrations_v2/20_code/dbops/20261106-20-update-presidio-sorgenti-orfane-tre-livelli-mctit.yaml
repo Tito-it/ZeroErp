@@ -1,0 +1,368 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL PRESIDIO DEGLI ORFANI DI SORGENTE, A TRE LIVELLI E SU TUTTO IL PERIMETRO
+#   dbops.fn_sorgenti_orfane_perimetro, dbops.fn_sorgenti_orfane, dbops.vw_sorgenti_orfane
+#   Brief: brief-db-sorgente-documento-e-riga §3.3, §6.1 S-6, §7.2 lotto 0 («Presidi»), giro 0.2.
+#
+# ── ⭐ CHE COSA NON VEDEVA ───────────────────────────────────────────
+#   Il perimetro di oggi pretende sorgente_riga + sorgente_uid E il guard _tipizzata:
+#   dieci tabelle. Fuori le testate di vendita, pratiche_sorgenti, commesse_sorgenti,
+#   commesse_attivita, documenti_generati, documenti_fatturazione_canali (dove dbdev
+#   ha 387 orfani che il presidio non segnalava, §3.2). E legge sorgente_riga come
+#   chiave del documento: col modello la riga e' la riga.
+#
+# ── ⭐ IL PERIMETRO NUOVO (una funzione, due presidi) ─────────────────
+#   Ogni tabella con sorgente_tipo_id e almeno una fra sorgente_id e sorgente_uid
+#   (fuori lo storico). Per ognuna la GRAMMATICA, dal guard che monta:
+#   · UNICO      script.trgfn_guard_sorgente: tipo + sorgente_id | sorgente_uid +
+#                riga + dettaglio (il modello);
+#   · MODELLO_A  script.trgfn_guard_sorgente_polimorfa_tipizzata: la chiave in
+#                sorgente_riga per 'id', in sorgente_uid per 'uid';
+#   · TESTUALE   nessuno dei due: la chiave e' in sorgente_uid, come id o come uid,
+#                in testo o uuid (le altre grammatiche del §3.1). La legge il ponte
+#                del BB che risolve, con la stessa regola canonica.
+#   Piu' due esenzioni DICHIARATE, con il motivo in colonna:
+#   · orfani_esclusi_perche: vendite.attivita_fatturabili e vendite.fatture_righe
+#     (sorgente_uid non e' la chiave del documento, G5: si convertono nei lotti C e
+#     R) e pratiche.reconcile_errori (un log: rimanda per costruzione anche a
+#     documenti spariti, D-9);
+#   · guard_esente_perche: pratiche.reconcile_errori (un guard d'esistenza farebbe
+#     tacere il log, D-9). La legge il presidio di struttura
+#     (dbops/test-sorgenti-struttura-v1).
+#   ⚠️ Delle tabelle temporanee (i pgTAP) entrano solo quelle della sessione,
+#   leggibili da chi chiede.
+#
+# ── ⭐ GLI ORFANI ───────────────────────────────────────────────────
+#   livello DOCUMENTO: il documento non esiste piu'; RIGA (solo UNICO): la riga non
+#   c'e' o non e' di quel documento; DETTAGLIO (solo UNICO): il dettaglio non c'e' o
+#   non e' di quella riga. target_table = la tabella dove manca il record.
+#   ⚠️ Allargare il perimetro ACCENDE il presidio su dbdev: gli orfani che c'erano
+#   (S-6, dati di test) ora si vedono. Si puliscono a mano (D-12), non qui.
+#
+# ── FORMA ───────────────────────────────────────────────────────────
+#   RETURNS TABLE cambia in entrambe: DROP della vista e delle due funzioni, CREATE di
+#   nuovo, GRANT e COMMENT. Nessun altro oggetto dipende (pg_depend, 2026-11-06).
+#   fn_sorgenti_orfane resta DEFINER del proprietario con lo stesso search_path (lo
+#   pinna magazzino/test-porta-ledger-v1); la vista resta senza security_invoker,
+#   come prima (legge la DEFINER). Il ciclo legge scalari, non record, dentro i FOR
+#   ... IN EXECUTE (la forma che plpgsql_check sa leggere, 20260918-27).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261106-20-update-presidio-sorgenti-orfane-tre-livelli-mctit.yaml
+
+  - changeSet:
+      id: 20261106-20-update-presidio-sorgenti-orfane-tre-livelli
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Presidio degli orfani di sorgente: il perimetro e' ogni tabella con la provenienza, con la sua
+        grammatica (UNICO, MODELLO_A, TESTUALE) e le esenzioni dichiarate; gli orfani a tre livelli
+        (documento, riga, dettaglio). brief-db-sorgente-documento-e-riga §7.2 lotto 0, giro 0.2.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_sorgente_guard_montaggi';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP VIEW dbops.vw_sorgenti_orfane;
+              DROP FUNCTION dbops.fn_sorgenti_orfane();
+              DROP FUNCTION dbops.fn_sorgenti_orfane_perimetro();
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION dbops.fn_sorgenti_orfane_perimetro()
+              RETURNS TABLE(
+                  tabella                regclass,
+                  schema_tabella         pg_catalog.pg_namespace.nspname%TYPE,
+                  nome_tabella           pg_catalog.pg_class.relname%TYPE,
+                  grammatica             text,
+                  ha_sorgente_id         boolean,
+                  ha_sorgente_uid        boolean,
+                  ha_sorgente_riga       boolean,
+                  ha_sorgente_dettaglio  boolean,
+                  orfani_esclusi_perche  text,
+                  guard_esente_perche    text)
+              LANGUAGE sql
+              STABLE
+              SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              BEGIN ATOMIC
+                  WITH col AS (
+                      SELECT a.attrelid,
+                             bool_or(a.attname = 'sorgente_tipo_id')   AS ha_tipo,
+                             bool_or(a.attname = 'sorgente_id')        AS ha_id,
+                             bool_or(a.attname = 'sorgente_uid')       AS ha_uid,
+                             bool_or(a.attname = 'sorgente_riga')      AS ha_riga,
+                             bool_or(a.attname = 'sorgente_dettaglio') AS ha_dett
+                        FROM pg_catalog.pg_attribute a
+                       WHERE a.attnum > 0 AND NOT a.attisdropped
+                         AND a.attname IN ('sorgente_tipo_id', 'sorgente_id', 'sorgente_uid',
+                                           'sorgente_riga', 'sorgente_dettaglio')
+                       GROUP BY a.attrelid
+                  ),
+                  esenzioni(tabella, orfani_perche, guard_perche) AS (
+                      VALUES
+                        (pg_catalog.to_regclass('vendite.attivita_fatturabili'),
+                         'sorgente_uid porta un''impronta d''idempotenza, non la chiave del documento; '
+                         || 'la provenienza e'' commessa_attivita_id (FK). Le sue sorgente_* si ritirano nel lotto C',
+                         NULL::text),
+                        (pg_catalog.to_regclass('vendite.fatture_righe'),
+                         'la provenienza e'' la riga di commessa in sorgente_riga; sorgente_uid non e'' la '
+                         || 'chiave del documento. Passa al modello nel lotto R',
+                         NULL::text),
+                        (pg_catalog.to_regclass('pratiche.reconcile_errori'),
+                         'e'' un log: rimanda per costruzione anche a documenti che non ci sono piu''',
+                         'e'' un log scritto dentro un EXCEPTION: un guard d''esistenza lo farebbe tacere')
+                  )
+                  SELECT c.oid::regclass,
+                         n.nspname,
+                         c.relname,
+                         CASE
+                             WHEN EXISTS (SELECT 1 FROM script.fn_sorgente_guard_montaggi() m
+                                           WHERE m.tabella = c.oid::regclass) THEN 'UNICO'
+                             WHEN EXISTS (SELECT 1 FROM pg_catalog.pg_trigger tg
+                                           WHERE tg.tgrelid = c.oid AND NOT tg.tgisinternal
+                                             AND tg.tgfoid = 'script.trgfn_guard_sorgente_polimorfa_tipizzata()'::regprocedure)
+                                 THEN 'MODELLO_A'
+                             ELSE 'TESTUALE'
+                         END,
+                         col.ha_id,
+                         col.ha_uid,
+                         col.ha_riga,
+                         col.ha_dett,
+                         e.orfani_perche,
+                         e.guard_perche
+                    FROM col
+                    JOIN pg_catalog.pg_class c     ON c.oid = col.attrelid
+                    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                    LEFT JOIN esenzioni e          ON e.tabella = c.oid::regclass
+                   WHERE c.relkind IN ('r', 'p')
+                     AND n.nspname <> 'storico'
+                     AND col.ha_tipo
+                     AND (col.ha_id OR col.ha_uid)
+                     AND (c.relpersistence <> 't'
+                          OR (n.oid = pg_catalog.pg_my_temp_schema()
+                              AND pg_catalog.has_table_privilege(c.oid, 'SELECT')))
+                   ORDER BY n.nspname, c.relname;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION dbops.fn_sorgenti_orfane_perimetro() IS
+                'Il perimetro della provenienza polimorfa: ogni tabella (fuori lo storico) con sorgente_tipo_id e almeno una fra sorgente_id e sorgente_uid, con le colonne che ha e la sua GRAMMATICA, dal guard che monta: UNICO (script.trgfn_guard_sorgente: tipo + sorgente_id | sorgente_uid + riga + dettaglio), MODELLO_A (script.trgfn_guard_sorgente_polimorfa_tipizzata: la chiave in sorgente_riga per id, in sorgente_uid per uid), TESTUALE (nessun guard: la chiave in sorgente_uid, come id o uid, in testo o uuid). Due esenzioni dichiarate con il motivo: orfani_esclusi_perche (le tabelle dove sorgente_uid non e'' la chiave del documento, e il log dei reconcile) e guard_esente_perche (il log dei reconcile). Delle tabelle temporanee, solo quelle della sessione leggibili da chi chiede. Derivato dal catalogo di PostgreSQL, non da un elenco: una tabella nuova con la provenienza entra da sola. Lo leggono dbops.fn_sorgenti_orfane e il presidio di struttura (dbops/test-sorgenti-struttura-v1).';
+
+              CREATE FUNCTION dbops.fn_sorgenti_orfane()
+              RETURNS TABLE(
+                  tabella                 regclass,
+                  riga_id                 bigint,
+                  grammatica              text,
+                  livello                 text,
+                  sorgente_tipo_id        bigint,
+                  sorgente_codice_interno character varying,
+                  sorgente_id             bigint,
+                  sorgente_uid            text,
+                  sorgente_riga           bigint,
+                  sorgente_dettaglio      bigint,
+                  target_table            regclass)
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_relid      oid;
+                  v_schema     pg_catalog.pg_namespace.nspname%TYPE;
+                  v_tabella    pg_catalog.pg_class.relname%TYPE;
+                  v_grammatica text;
+                  v_ha_id      boolean;
+                  v_ha_uid     boolean;
+                  v_ha_riga    boolean;
+                  v_ha_dett    boolean;
+
+                  v_tipo       config.sorgenti.id%TYPE;
+                  v_codice     config.sorgenti.codice_interno%TYPE;
+                  v_selector   config.sorgenti.key_selector%TYPE;
+                  v_d_relid    oid;
+                  v_d_schema   pg_catalog.pg_namespace.nspname%TYPE;
+                  v_d_tabella  pg_catalog.pg_class.relname%TYPE;
+                  v_d_ha_uid   boolean;
+                  v_r_relid    oid;
+                  v_r_schema   pg_catalog.pg_namespace.nspname%TYPE;
+                  v_r_tabella  pg_catalog.pg_class.relname%TYPE;
+                  v_r_fk       config.sorgenti.righe_fk_column%TYPE;
+                  v_t_relid    oid;
+                  v_t_schema   pg_catalog.pg_namespace.nspname%TYPE;
+                  v_t_tabella  pg_catalog.pg_class.relname%TYPE;
+                  v_t_fk       config.sorgenti.dettaglio_fk_column%TYPE;
+
+                  -- La testa comune della riga restituita, e le espressioni delle
+                  -- colonne che la tabella puo' non avere.
+                  v_testa      text;
+                  v_e_id       text;
+                  v_e_uid      text;
+                  v_e_riga     text;
+                  v_e_dett     text;
+                  v_chiave_x   text;
+                  v_chiave_d   text;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo: le righe la cui provenienza punta a un documento, una
+                  --   riga o un dettaglio che non c'e' piu'. Per tabella del
+                  --   perimetro e per tipo presente, un anti-join dinamico nella
+                  --   grammatica della tabella.
+                  -- =========================================================
+                  FOR v_relid, v_schema, v_tabella, v_grammatica, v_ha_id, v_ha_uid, v_ha_riga, v_ha_dett IN
+                      SELECT p.tabella::oid, p.schema_tabella, p.nome_tabella, p.grammatica,
+                             p.ha_sorgente_id, p.ha_sorgente_uid, p.ha_sorgente_riga, p.ha_sorgente_dettaglio
+                        FROM dbops.fn_sorgenti_orfane_perimetro() p
+                       WHERE p.orfani_esclusi_perche IS NULL
+                  LOOP
+                      v_e_id   := CASE WHEN v_ha_id   THEN 'x.sorgente_id::bigint'      ELSE 'NULL::bigint' END;
+                      v_e_uid  := CASE WHEN v_ha_uid  THEN 'x.sorgente_uid::text'       ELSE 'NULL::text'   END;
+                      v_e_riga := CASE WHEN v_ha_riga THEN 'x.sorgente_riga::bigint'    ELSE 'NULL::bigint' END;
+                      v_e_dett := CASE WHEN v_ha_dett THEN 'x.sorgente_dettaglio::bigint' ELSE 'NULL::bigint' END;
+
+                      FOR v_tipo IN
+                          EXECUTE format('SELECT DISTINCT x.sorgente_tipo_id::bigint FROM %I.%I x '
+                                         'WHERE x.sorgente_tipo_id IS NOT NULL', v_schema, v_tabella)
+                      LOOP
+                          SELECT l.codice_interno, l.key_selector,
+                                 l.documento_relid, l.documento_schema, l.documento_tabella, l.documento_ha_uid,
+                                 l.righe_relid, l.righe_schema, l.righe_tabella, l.righe_fk_column,
+                                 l.dettaglio_relid, l.dettaglio_schema, l.dettaglio_tabella, l.dettaglio_fk_column
+                            INTO v_codice, v_selector,
+                                 v_d_relid, v_d_schema, v_d_tabella, v_d_ha_uid,
+                                 v_r_relid, v_r_schema, v_r_tabella, v_r_fk,
+                                 v_t_relid, v_t_schema, v_t_tabella, v_t_fk
+                            FROM config.fn_sorgente_livelli(v_tipo) l;
+
+                          CONTINUE WHEN v_d_tabella IS NULL;
+
+                          v_testa := format(
+                              'SELECT %s::oid::regclass, x.id::bigint, %L::text, %%L::text, '
+                              'x.sorgente_tipo_id::bigint, %L::varchar, %s, %s, %s, %s, %%s::oid::regclass '
+                              'FROM %I.%I x ',
+                              v_relid, v_grammatica, v_codice, v_e_id, v_e_uid, v_e_riga, v_e_dett,
+                              v_schema, v_tabella);
+
+                          IF v_grammatica = 'UNICO' THEN
+                              -- La chiave del documento secondo il key_selector.
+                              IF v_selector = 'uid' THEN
+                                  CONTINUE WHEN NOT v_ha_uid;
+                                  v_chiave_x := 'x.sorgente_uid';
+                                  v_chiave_d := 'd.uid';
+                              ELSE
+                                  CONTINUE WHEN NOT v_ha_id;
+                                  v_chiave_x := 'x.sorgente_id';
+                                  v_chiave_d := 'd.id';
+                              END IF;
+
+                              -- documento
+                              RETURN QUERY EXECUTE format(v_testa, 'DOCUMENTO', v_d_relid)
+                                  || format('WHERE x.sorgente_tipo_id = $1 AND %s IS NOT NULL '
+                                            'AND NOT EXISTS (SELECT 1 FROM %I.%I d WHERE %s = %s)',
+                                            v_chiave_x, v_d_schema, v_d_tabella, v_chiave_d, v_chiave_x)
+                                  USING v_tipo;
+
+                              -- riga
+                              IF v_ha_riga AND v_r_tabella IS NOT NULL THEN
+                                  RETURN QUERY EXECUTE format(v_testa, 'RIGA', v_r_relid)
+                                      || format('JOIN %I.%I d ON %s = %s '
+                                                'WHERE x.sorgente_tipo_id = $1 AND x.sorgente_riga IS NOT NULL '
+                                                'AND NOT EXISTS (SELECT 1 FROM %I.%I r '
+                                                'WHERE r.id = x.sorgente_riga AND r.%I = d.id)',
+                                                v_d_schema, v_d_tabella, v_chiave_d, v_chiave_x,
+                                                v_r_schema, v_r_tabella, v_r_fk)
+                                      USING v_tipo;
+                              END IF;
+
+                              -- dettaglio
+                              IF v_ha_dett AND v_t_tabella IS NOT NULL THEN
+                                  RETURN QUERY EXECUTE format(v_testa, 'DETTAGLIO', v_t_relid)
+                                      || format('JOIN %I.%I r ON r.id = x.sorgente_riga '
+                                                'WHERE x.sorgente_tipo_id = $1 AND x.sorgente_dettaglio IS NOT NULL '
+                                                'AND NOT EXISTS (SELECT 1 FROM %I.%I t '
+                                                'WHERE t.id = x.sorgente_dettaglio AND t.%I = x.sorgente_riga)',
+                                                v_r_schema, v_r_tabella, v_t_schema, v_t_tabella, v_t_fk)
+                                      USING v_tipo;
+                              END IF;
+
+                          ELSIF v_grammatica = 'MODELLO_A' THEN
+                              -- La chiave dell'oggetto del tipo: sorgente_riga per 'id', sorgente_uid per 'uid'.
+                              IF v_selector = 'uid' THEN
+                                  CONTINUE WHEN NOT v_ha_uid;
+                                  v_chiave_x := 'x.sorgente_uid';
+                                  v_chiave_d := 'd.uid';
+                              ELSE
+                                  CONTINUE WHEN NOT v_ha_riga;
+                                  v_chiave_x := 'x.sorgente_riga';
+                                  v_chiave_d := 'd.id';
+                              END IF;
+
+                              RETURN QUERY EXECUTE format(v_testa, 'DOCUMENTO', v_d_relid)
+                                  || format('WHERE x.sorgente_tipo_id = $1 AND %s IS NOT NULL '
+                                            'AND NOT EXISTS (SELECT 1 FROM %I.%I d WHERE %s = %s)',
+                                            v_chiave_x, v_d_schema, v_d_tabella, v_chiave_d, v_chiave_x)
+                                  USING v_tipo;
+
+                          ELSE
+                              -- TESTUALE: la chiave in sorgente_uid, come id o come uid, nella
+                              -- forma canonica dei BB della chiave (la regola del ponte).
+                              CONTINUE WHEN NOT v_ha_uid;
+                              RETURN QUERY EXECUTE format(v_testa, 'DOCUMENTO', v_d_relid)
+                                  || format('WHERE x.sorgente_tipo_id = $1 AND x.sorgente_uid IS NOT NULL '
+                                            'AND NOT EXISTS (SELECT 1 FROM %I.%I d '
+                                            'WHERE d.id = script.fn_sorgente_chiave_id(x.sorgente_uid::text)%s)',
+                                            v_d_schema, v_d_tabella,
+                                            CASE WHEN v_d_ha_uid
+                                                 THEN ' OR d.uid = script.fn_sorgente_chiave_uuid(x.sorgente_uid::text)'
+                                                 ELSE '' END)
+                                  USING v_tipo;
+                          END IF;
+                      END LOOP;
+                  END LOOP;
+                  RETURN;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_sorgenti_orfane() IS
+                'Le righe la cui provenienza punta a un record che non esiste piu'': un documento (livello DOCUMENTO), una riga che non c''e'' o non e'' di quel documento (RIGA), un dettaglio che non c''e'' o non e'' di quella riga (DETTAGLIO). Una riga per orfano, con la tabella, l''id, la grammatica, il tipo, le colonne della provenienza e target_table, la tabella dove manca il record. Perimetro: dbops.fn_sorgenti_orfane_perimetro, tranne le tabelle con orfani_esclusi_perche. Per tabella e per tipo un anti-join dinamico nella grammatica della tabella: UNICO a tre livelli; MODELLO_A con la chiave in sorgente_riga o sorgente_uid; TESTUALE con la chiave in sorgente_uid, riconosciuta in forma canonica (script.fn_sorgente_chiave_id / _uuid). Il guard impedisce di scrivere un orfano; qui si trovano quelli nati dopo, cancellando l''origine senza il lato «in uscita». SECURITY DEFINER del proprietario (attraversa la RLS), STABLE. Letta da dbops.vw_sorgenti_orfane, che deve restare vuota.';
+
+              GRANT EXECUTE ON FUNCTION dbops.fn_sorgenti_orfane_perimetro() TO zeroerp_app;
+              GRANT EXECUTE ON FUNCTION dbops.fn_sorgenti_orfane() TO zeroerp_app;
+
+              CREATE VIEW dbops.vw_sorgenti_orfane AS
+              SELECT o.tabella, o.riga_id, o.grammatica, o.livello, o.sorgente_tipo_id,
+                     o.sorgente_codice_interno, o.sorgente_id, o.sorgente_uid, o.sorgente_riga,
+                     o.sorgente_dettaglio, o.target_table
+                FROM dbops.fn_sorgenti_orfane() o;
+
+              COMMENT ON VIEW dbops.vw_sorgenti_orfane IS
+                'Presidio degli ORFANI di sorgente: SELECT * FROM dbops.fn_sorgenti_orfane(). DEVE RESTARE VUOTA. Una riga = un record con una provenienza che punta a un documento, una riga o un dettaglio sparito (livello), in una tabella del perimetro della provenienza. Natura ZERO, perimetro DEFINER (la funzione attraversa la RLS), cadenza SETTIMANALE. Il rimedio non e'' cancellare la riga: e'' capire chi ha cancellato l''origine.';
+
+              GRANT SELECT ON dbops.vw_sorgenti_orfane TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il presidio precedente e' quello di 20260918-27: un rollback lo riprende da li'.
+              SELECT 1;

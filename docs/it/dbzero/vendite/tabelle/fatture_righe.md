@@ -45,6 +45,7 @@
 | competenza_al | date | NO |  |
 | kit_qta | numeric(18,6) | YES |  |
 | kit_uom_id | bigint | YES |  |
+| sorgente_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

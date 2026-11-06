@@ -45,6 +45,7 @@
 | user_update | text | NO | CURRENT_USER |
 | hash_contenuto | character varying(64) | YES |  |
 | sorgente_uid | uuid | YES |  |
+| sorgente_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

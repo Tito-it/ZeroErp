@@ -31,6 +31,8 @@
 | nota | text | YES |  |
 | lotto_id | bigint | YES |  |
 | asset_id | bigint | YES |  |
+| sorgente_id | bigint | YES |  |
+| sorgente_dettaglio | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

@@ -44,6 +44,7 @@
 | fatturazione_immediata | boolean | NO | false |
 | registro_id | bigint | YES |  |
 | is_abortito_snapshot | boolean | NO | false |
+| sorgente_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

@@ -27,14 +27,24 @@
 | etichetta | character varying(60) | NO |  |
 | apribile | boolean | NO |  |
 | citato_in_fattura | boolean | NO | false |
+| righe_table | regclass | YES |  |
+| righe_fk_column | character varying(63) | YES |  |
+| dettaglio_table | regclass | YES |  |
+| dettaglio_fk_column | character varying(63) | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_sorgenti_codice_interno_non_vuoto |  |
+| CHECK | chk_sorgenti_dettaglio_coppia |  |
+| CHECK | chk_sorgenti_dettaglio_fk_column_identificatore |  |
+| CHECK | chk_sorgenti_dettaglio_sotto_righe |  |
 | CHECK | chk_sorgenti_etichetta_non_vuota |  |
 | CHECK | chk_sorgenti_key_selector_values |  |
 | CHECK | chk_sorgenti_label_selector_identificatore |  |
+| CHECK | chk_sorgenti_righe_coppia |  |
+| CHECK | chk_sorgenti_righe_fk_column_identificatore |  |
+| CHECK | chk_sorgenti_righe_sotto_documento |  |
 | CHECK | chk_sorgenti_scope |  |
 | FOREIGN KEY | fk_sorgenti_tipo_doc_fiscale | tipo_doc_fiscale_id |
 | PRIMARY KEY | sorgenti_pkey | id |

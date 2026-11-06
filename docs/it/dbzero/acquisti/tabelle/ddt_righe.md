@@ -28,6 +28,7 @@
 | sorgente_tipo_id | bigint | YES |  |
 | sorgente_uid | uuid | YES |  |
 | sorgente_riga | bigint | YES |  |
+| sorgente_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

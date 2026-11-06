@@ -1,0 +1,111 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA PROVENIENZA A TRE LIVELLI NEL MAGAZZINO: sorgente_id E sorgente_dettaglio
+#   Brief: brief-db-sorgente-documento-e-riga §4, §6.1 S-3 (terzo livello), §7.2 lotto 0.
+#
+# ── ⭐ IL TERZO LIVELLO (S-3) ────────────────────────────────────────
+#   Il movimento di magazzino nasce dal prelievo di una riga di bolla (o dal
+#   rientro di una riga di reso): la riga di una riga. Col modello il tipo resta
+#   il DOCUMENTO (DDT_VENDITA), sorgente_id la bolla, sorgente_riga la riga della
+#   bolla, sorgente_dettaglio il prelievo. config.sorgenti dichiara la tabella del
+#   dettaglio (dettaglio_table, 20261106-04). Solo movimenti e movimenti_attesi
+#   riferiscono un dettaglio; le testate (inventari, rettifiche, trasferimenti) e
+#   gli eventi degli asset prendono solo sorgente_id.
+#
+# ── ⚠️ ADDITIVO ──────────────────────────────────────────────────────
+#   Colonne nullable, vuote. Le riempie il lotto M, che riscrive insieme
+#   uq_mag_movimenti_identita perche' resti equivalente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/magazzino/20261106-07-alter-magazzino-add-sorgente-id-e-dettaglio-mctit.yaml
+
+  - changeSet:
+      id: 20261106-07-alter-magazzino-add-sorgente-id-e-dettaglio
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        sorgente_id (bigint, vuota) su sei tabelle di magazzino e sorgente_dettaglio su movimenti e
+        movimenti_attesi: il modello della provenienza a tre livelli. brief-db-sorgente-documento-e-riga
+        §7.2 lotto 0 (S-3).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*) FROM information_schema.columns
+               WHERE table_schema = 'magazzino'
+                 AND ((column_name = 'sorgente_id'
+                       AND table_name IN ('movimenti', 'movimenti_attesi', 'inventari',
+                                          'rettifiche', 'trasferimenti', 'eventi_assets'))
+                   OR (column_name = 'sorgente_dettaglio'
+                       AND table_name IN ('movimenti', 'movimenti_attesi')));
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE magazzino.movimenti
+                  ADD COLUMN sorgente_id        bigint NULL,
+                  ADD COLUMN sorgente_dettaglio bigint NULL;
+              ALTER TABLE magazzino.movimenti_attesi
+                  ADD COLUMN sorgente_id        bigint NULL,
+                  ADD COLUMN sorgente_dettaglio bigint NULL;
+              ALTER TABLE magazzino.inventari     ADD COLUMN sorgente_id bigint NULL;
+              ALTER TABLE magazzino.rettifiche    ADD COLUMN sorgente_id bigint NULL;
+              ALTER TABLE magazzino.trasferimenti ADD COLUMN sorgente_id bigint NULL;
+              ALTER TABLE magazzino.eventi_assets ADD COLUMN sorgente_id bigint NULL;
+
+              DO $c$
+              DECLARE
+                  v_tabella text;
+              BEGIN
+                  FOREACH v_tabella IN ARRAY ARRAY[
+                      'movimenti', 'movimenti_attesi', 'inventari', 'rettifiche',
+                      'trasferimenti', 'eventi_assets']
+                  LOOP
+                      EXECUTE format(
+                          'COMMENT ON COLUMN magazzino.%I.sorgente_id IS %L', v_tabella,
+                          'La chiave del documento di origine quando il suo tipo (sorgente_tipo_id, '
+                          || 'config.sorgenti) ha key_selector ''id'': l''id del documento. In alternativa a '
+                          || 'sorgente_uid, mai tutte e due. Se la provenienza e'' una riga di quel documento, '
+                          || 'la riga sta in sorgente_riga. La chiave giusta la restituisce '
+                          || 'script.fn_sorgente_chiave; la verifica il guard script.trgfn_guard_sorgente. '
+                          || 'Resta NULL finche'' la tabella scrive la provenienza nella grammatica precedente.');
+                  END LOOP;
+
+                  FOREACH v_tabella IN ARRAY ARRAY['movimenti', 'movimenti_attesi']
+                  LOOP
+                      EXECUTE format(
+                          'COMMENT ON COLUMN magazzino.%I.sorgente_dettaglio IS %L', v_tabella,
+                          'Il dettaglio della riga di origine, il terzo livello della provenienza: il '
+                          || 'prelievo di una riga di bolla, il rientro di una riga di reso. L''id nella '
+                          || 'tabella del dettaglio che config.sorgenti dichiara per il tipo '
+                          || '(dettaglio_table); appartiene alla riga di sorgente_riga, e lo verifica il '
+                          || 'guard script.trgfn_guard_sorgente. NULL = la provenienza si ferma alla riga o '
+                          || 'al documento. Resta NULL finche'' la tabella scrive la provenienza nella '
+                          || 'grammatica precedente.');
+                  END LOOP;
+              END
+              $c$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE magazzino.eventi_assets    DROP COLUMN IF EXISTS sorgente_id;
+              ALTER TABLE magazzino.trasferimenti    DROP COLUMN IF EXISTS sorgente_id;
+              ALTER TABLE magazzino.rettifiche       DROP COLUMN IF EXISTS sorgente_id;
+              ALTER TABLE magazzino.inventari        DROP COLUMN IF EXISTS sorgente_id;
+              ALTER TABLE magazzino.movimenti_attesi DROP COLUMN IF EXISTS sorgente_dettaglio,
+                                                     DROP COLUMN IF EXISTS sorgente_id;
+              ALTER TABLE magazzino.movimenti        DROP COLUMN IF EXISTS sorgente_dettaglio,
+                                                     DROP COLUMN IF EXISTS sorgente_id;

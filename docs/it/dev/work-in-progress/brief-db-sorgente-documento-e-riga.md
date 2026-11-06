@@ -2,7 +2,8 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-06
 
-**Riparte: team DB**, col censimento di dettaglio e il piano a lotti (§7). Lo sviluppo parte solo col via di Tid.
+**Riparte: team DB**, col giro 0.3 del lotto 0 (§7.2, «Lotto 0, i giri»). I giri 0.1 e 0.2 sono applicati, pgTAP
+verdi; gli orfani di dbdev sono puliti.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -10,11 +11,26 @@
 | 2 | ✅ DB | storia, censimento delle forme, dei dati e dei lettori (dbdev, 2026-11-06) | §2, §3 | — |
 | 3 | ✅ Tid | S-1 … S-7, tutte decise (2026-11-06) | §6.1 | — |
 | 3-bis | ✅ Tid | analisi critica: S-8, S-9 decise; S-10 da analizzare; S-7 precisata (2026-11-06) | §6.2, §7.1 | — |
-| 4 | DB (in corso) | censimento di dettaglio, tabella per tabella, sul perimetro del §3.1; analisi S-10 e S-7; piano a lotti | §7, Appendice | — |
-| 5 | Tid | S-10, eventuali eccezioni a S-8 che il censimento segnala, via allo sviluppo del lotto 0 | §6.2, §7 | 4 |
+| 4 | ✅ DB | censimento di dettaglio (quattro schede); difetti vivi; decisioni da prendere (2026-11-06) | §3.6, §6.3, Appendice | — |
+| 5 | ✅ Tid | D-1 … D-6, D-8, D-11 come proposti; D-12: SQL manuali su dbdev (2026-11-06) | §6.3 | — |
+| 5-bis | ✅ Tid | D-9 come proposta (2026-11-06) | §6.3 | — |
+| 5-ter | ✅ DB | D-10: verifica di chi impedisce oggi la doppia fatturazione fra documenti collegati (2026-11-06) | §6.4 | — |
+| 5-quater | ✅ Tid | D-10 approvata: il registro dei canali si ritira; D-7 decade (2026-11-06) | §6.4 | — |
+| 6 | ✅ DB | piano a lotti definitivo (2026-11-06) | §7.2 | — |
+| 7 | ✅ Tid | via allo sviluppo del lotto 0 (2026-11-06) | §7.2 | — |
+| 7-bis | ✅ DB | giro 0.1 del lotto 0: catalogo dei livelli, colonne, BB che risolve e che scrive, guard unico; provato in transazione (2026-11-06) | §7.2 «Lotto 0, i giri» | — |
+| 7-ter | ✅ Tid | apply del giro 0.1 (`20261106-04` … `-16`, CSV), pgTAP verdi (2026-11-06) | §7.2 | — |
+| 7-quater | ✅ DB | giro 0.2: lato «in uscita», presidio degli orfani a tre livelli, presidio di struttura; provato in transazione (2026-11-06) | §7.2 «Lotto 0, i giri» | — |
+| 7-quinquies | ✅ Tid | apply del giro 0.2 (`20261106-17` … `-21`, CSV dei codici), pgTAP verdi (2026-11-06) | §7.2 | — |
+| 7-sexies | ✅ Tid | `sql-una-tantum-sorgenti-orfane-canali.sql` eseguito su dbdev: presidio degli orfani vuoto (2026-11-06) | §7.2 «Il giro 0.2» | — |
+| 8 | DB | lotto 0 giro 0.3, poi R, T, C, D, P, M, Z, ognuno col suo via; il §8 si riempie strada facendo | §7.2, §8 | — |
+| 9 | BE/FE | il §8 intero, una volta sola | §8 | 8 |
+| 10 | DB | la documentazione del §7.3 (lotto DOC), poi archiviazione | §7.3 | 9 |
 
-**Decisioni aperte di Tid:** S-10 (§6.2), e le eventuali eccezioni a S-8 che il censimento segnalerà. Lavoro
-da committare: nessuno di questo brief (solo il documento).
+**Decisioni aperte di Tid:** nessuna. Lavoro da committare: nessuno. I giri 0.1 e 0.2 del lotto 0 (changeSet
+`20261106-04` … `-21`, i CSV, i pgTAP, l'SQL una tantum degli orfani, la doc auto-generata) sono committati su
+`dev/db-tid` il 2026-11-06. ⚠️ I test Django sono rossi finché il BE non rigenera il file delle policy d'errore (§8.1
+BE-0.1-a, §8.2 BE-0.2-a): accettato dal piano, va detto nella PR.
 
 **Fermo collegato:** il lotto B di `brief-db-articoli-obsoleto-dal` (verbi che scrivono la sorgente,
 `20261105-15…-19`) **non si applica** finché questo modello non è deciso: i verbi si riscrivono una volta sola. Il
@@ -78,7 +94,7 @@ sta leggendo; se sbaglia, la query torna **zero righe in silenzio**.
 | G3 | modello B: `sorgente_uid text` canonico + `sorgente_riga` = riga | `pratiche.pratiche_sorgenti`, `vendite.commesse_sorgenti` | `id::text` del documento; la riga a parte |
 | G4 | `sorgente_uid text` = sempre l'uid | `vendite.commesse_attivita`, `vendite.documenti_fatturazione_canali` | l'**uid** come testo, contro il `key_selector` |
 | G5 | tipo COMMESSA + `sorgente_riga` = riga della commessa | `vendite.attivita_fatturabili`, `vendite.fatture_righe` | `sorgente_riga` = `commesse_attivita.id` (64/64, 8/8); `sorgente_uid` = un hash, non la commessa |
-| G6 | mista nella stessa tabella | `documenti.documenti_generati` | l'uid per CONTRATTO, DDT, ORDINE; l'id per FATTURA |
+| G6 | mista nella stessa tabella | `documenti.documenti_generati` | l'uid per CONTRATTO, DDT, ORDINE; per FATTURA **tutte e due**: l'uid dalla UI (`sorgente_documenti_views.py`), l'id dal drainer della coda di stampa (corretto dal censimento, Appendice) |
 | G7 | `sorgente_id bigint` + `sorgente_uid text` | `vendite.fatture_stampa_coda` | l'id, scritto due volte |
 
 Più `pratiche.reconcile_errori` (testo, senza FK) e `documenti.template_documenti` (solo il tipo, non è una
@@ -113,14 +129,16 @@ con l'import, non prima.
 | --- | --- | --- |
 | `vendite.ordini.documento_origine_tipo` (codice di `config.sorgenti`) + `documento_origine_id bigint` | la provenienza da preventivo o offerta, **per id** anche per il preventivo, che nel catalogo ha chiave `uid` | `uq_ordini_v_documento_origine_offerta` (un ordine vivo per offerta) |
 | `vendite.contratti.offerta_id` (FK) | l'offerta del contratto | `uq_contratti_offerta_id` (un contratto vivo per offerta) |
-| `vendite.ordini_righe_fulfillment` | riga di bolla ↔ riga d'ordine | la quantità evasa; il commento di `ddt_righe.sorgente_tipo_id` dice che il verbo scrive **prima** la sorgente e **poi** il legame: lo stesso fatto due volte |
+| `vendite.ordini_righe_fulfillment` | riga di bolla ↔ riga d'ordine | la quantità evasa. ⚠️ Corretto dal censimento (2026-11-06): **non** è lo stesso fatto della sorgente. È un legame N:M che porta una quantità e la guardia contro l'over-fulfillment (`E_DDT_RIGA_EVASA_LEGAMI_MULTIPLI`), si ritira, ha FK `RESTRICT` sui due lati: **non può confluire** (eccezione a S-8) |
 
-Sono il caso di S-8 (§6.2).
+Sono il caso di S-8 (§6.2). Il censimento ne ha trovate altre due: `vendite.ordini_righe.preventivo_riga_id` (FK
+fisica, legame di **consumo** che `fn_documento_ritira_legami` azzera all'annullo: non può confluire) e
+`acquisti.ddt.ordine_id` (FK parallela: può confluire, perdendo la FK).
 
 **Esempio** (numeri di fantasia, comportamento del codice). Ordine `id 163`, `uid 0192ab…`, riga `5001`; ne nasce la
 bolla 77 con il prelievo 12. Oggi «viene dall'ordine 163» si legge così: `commesse_sorgenti.sorgente_uid = '163'`;
 `commesse_attivita.sorgente_uid = '0192ab…'`; `ddt.sorgente_uid = 0192ab…` (uuid); `ddt_righe`: tipo
-ORDINE_VENDITA_RIGA, `sorgente_riga = 5001`, più la riga di fulfillment; `magazzino.movimenti`: tipo
+ORDINE_VENDITA_RIGA, `sorgente_riga = 5001` (previsto dal lotto B); `magazzino.movimenti`: tipo
 DDT_VENDITA_PRELIEVO, `sorgente_riga = 12`. Sei `WHERE` diversi; uno sbagliato torna zero righe. Col §4: ovunque
 tipo ORDINE_VENDITA, `sorgente_id = 163`, `sorgente_riga` = 5001 o NULL.
 
@@ -154,6 +172,11 @@ tipo ORDINE_VENDITA, `sorgente_id = 163`, `sorgente_riga` = 5001 o NULL.
 | BE: file Python (test compresi) | 79 |
 | FE: file | 10 |
 | pgTAP: file | 165 |
+
+⚠️ **Ricontati dal censimento** (2026-11-06, `zeroerp_ruoli`): il metodo sul corpo delle funzioni non vede quelle
+scritte con `BEGIN ATOMIC`. Il perimetro è **98 funzioni + 26 viste**: di queste, 4 nominano le colonne solo nei
+commenti e 13 solo `sorgente_tipo_id`. Chi scrive la sorgente sono 29, non 19. I BB della chiave li usano 7 oggetti.
+La lista nominativa, per schema e per lotto, è nell'Appendice (scheda pratiche-documenti-BB, §D).
 
 **I BB del meccanismo** (da tenere allineati):
 
@@ -216,9 +239,29 @@ Il modello del §4 **non** unifica la chiave: `key_selector` resta, preventivo e
 * nella guida `sorgente-polimorfa.md` il §4a («colonne che sembrano polimorfe ma non lo sono»:
   `commesse_attivita` «sempre l'uid», `ddt`/`resi` «colonna tipizzata diretta», `attivita_fatturabili` «hash») e le
   motivazioni del §4 che si appoggiano a quelle eccezioni;
-* il manuale di `config.sorgenti` §Convenzione chiave sorgente, per le stesse parti.
+* il manuale di `config.sorgenti` §Convenzione chiave sorgente, per le stesse parti;
+* con S-2, la **G-2** del 2026-10-18 (`brief-db-grammatica-unica-documenti`: «righe e varianti: dentro» il
+  catalogo delle sorgenti).
 
-Guida, manuali e memoria del team si riscrivono **nello stesso lotto** che porta la tabella al modello, non dopo.
+**Non si converte**, e va scritto nella guida: la `segment_key` (`fn_segment_key`) e la chiave del gruppo
+fatturabile (`fn_build_gruppo_fatturabile_key`) contengono l'uid anche per i tipi a chiave `id`. Non sono una
+provenienza: sono chiavi d'idempotenza, salvate in lotti, esiti e log. Restano costruite con l'uid, che il BB di
+risoluzione fornisce (§6.3, D-6).
+
+### 3.6 Difetti vivi trovati dal censimento (2026-11-06)
+
+Non aspettano il modello: sono sbagliati oggi. Per ognuno, se i dati di dbdev vanno corretti a mano, lo decide Tid.
+
+| # | Difetto | Dove | Effetto |
+| --- | --- | --- | --- |
+| V-1 | `fn_push_offerta_a_contratto`, con una pratica, scrive in `pratiche_sorgenti` il tipo CONTRATTO (chiave `id`) con l'**uuid** del contratto | il guard `_testuale` lo rifiuta (`E_SORG_FORMATO`) | il percorso BE «offerta → contratto con pratica» si ferma. Nessun pgTAP lo prova |
+| V-2 | `vw_preventivi_smistamento_righe` cerca l'attività fatturabile con `af.sorgente_uid = p.uid AND af.sorgente_riga = pr.id`: grammatica sbagliata | la vista | non trova mai niente: gli stati FATTURATA ed EMESSA_AF del dialogo di smistamento non compaiono mai |
+| V-3 | l'impronta di `attivita_fatturabili.sorgente_uid` non è stata ricalcolata quando la `segment_key` è stata riscritta (2026-10-20) | dbdev, 62 righe su 64 (fatto datato) | ipotesi da provare con un pgTAP: un'attività liberata non si ritrova, l'INSERT sbatte su `uq_attivita_fatturabili_commessa_attivita` e la commessa si ferma a ogni giro |
+| V-4 | la cancellazione di reso e contratto non ha regola DB; «si cancella solo la bozza vuota» per ordini, DDT e resi sta solo nel BE | testate di vendita | un reso confermato cancellato lascia **movimenti di magazzino orfani** |
+| V-5 | i canali di fatturazione si aprono all'INSERT della bozza e non si tolgono al DELETE | `trgfn_documenti_sync_canali` | spiega gli orfani PREVENTIVO, ORDINE e DDT del §3.2; i 14 CONTRATTO restano senza spiegazione (nel repo nessun DELETE di contratti) |
+| V-6 | la stessa fattura in `documenti_generati` con due chiavi | UI e drainer | la lista UI non vede i PDF del drainer; due serie di `progressivo_sorgente` |
+
+Guida, manuali e memoria del team si riscrivono **nel lotto DOC**, alla fine, dal censimento del §7.3 (Tid, 2026-11-06): una volta sola, sullo stato finale.
 
 ## 4. Il modello (Tid, 2026-11-06)
 
@@ -289,9 +332,70 @@ Guida, manuali e memoria del team si riscrivono **nello stesso lotto** che porta
 | S-7 | (precisata) l'**impronta** di `attivita_fatturabili.sorgente_uid` | ✅ **Tid:** se esiste, c'è un motivo. Si **verifica** con certezza piena che nessuno la usi (DB, BE, FE, pgTAP, e il motivo per cui è nata) **prima** di pulirla. Fatto noto: la formula è `md5(segment_key)` in `fn_emit_attivita_fatturabili_da_commessa`, che la usa per ritrovare la riga già emessa; la tabella ha anche `uq_attivita_fatturabili_commessa_attivita` |
 | — | il **lotto A** di `brief-db-articoli-obsoleto-dal` (`20261105-02`, `-03`, `-14`, non ancora committati) | ✅ **Tid:** nessuna riscrittura. Si fanno YAML nuovi |
 
+S-7 e S-10 sono analizzate nel censimento: le proposte sono D-1 e D-2 del §6.3.
+
+### 6.3 Le decisioni che il censimento chiede (2026-11-06)
+
+✅ **Tid, 2026-11-06:** D-1 … D-6, D-8 e D-11 come proposti. D-12: i dati di dbdev si correggono con **SQL manuali**, non con migration; il codice nel lotto che tocca l'oggetto. D-9 come proposta (Tid, 2026-11-06). D-10: il registro dei canali si ritira (Tid, 2026-11-06, dopo il §6.4); D-7 decade con lui.
+
+| # | Domanda | Che cosa dice il censimento | Proposta DB |
+| --- | --- | --- | --- |
+| D-1 | **S-7, l'impronta** | Un solo lettore: `fn_emit_attivita_fatturabili_da_commessa`, che la usa per ritrovare l'attività già emessa (ripresa dopo una liberazione). Gli altri la caricano e la ignorano. È nata il 2026-02-24 (`20260224-13`), quando l'unicità stava su (tipo, uid); lo stesso giorno `20260224-42` l'ha spostata su `commessa_attivita_id`. Vedi V-3 | la ricerca si fa per `commessa_attivita_id` (FK NOT NULL, unica 1:1); l'impronta si ritira, non si sposta. Prima un pgTAP che costruisce il caso V-3 |
+| D-2 | **S-10, i tipi che non sono documenti** | `EVENTO_ASSET` non lo scrive nessuno (l'operazione non esiste ancora). `ATTIVITA` come sorgente non ha scrittori: vive come genitore della FK di `tipi_entita`, per le note | il tipo è **l'oggetto di provenienza**. Il catalogo dichiara i suoi livelli (tabella delle righe e del dettaglio, ognuna con la sua FK; NULL se non ci sono), e il guard della tabella che scrive fissa il **livello minimo** (il registro di magazzino vuole sempre l'ultimo). `ATTIVITA` esce dalle sorgenti e resta in `tipi_entita`. Le alternative, con i pro e i contro, sono nella scheda magazzino §7 |
+| D-3 | **Eccezioni a S-8** | Non possono confluire: `ordini_righe_fulfillment` (di vendita e d'acquisto: quantità, N:M, si ritira) e `ordini_righe.preventivo_riga_id` (consumo, si azzera all'annullo). Ridondanti: `attivita_fatturabili.sorgente_*` (copia di `commessa_id` e `commessa_attivita_id`, FK NOT NULL), `sorgente_origine_tipo_id` (un tipo senza chiave, ricavabile), `fatture_stampa_coda.sorgente_uid` (doppione di `sorgente_id`, che è già una FK vera). Può confluire perdendo la FK: `acquisti.ddt.ordine_id` | le due eccezioni restano, con la sorgente scritta accanto; i ridondanti si ritirano; `acquisti.ddt.ordine_id` confluisce, e la protezione della FK la dà il lato «in uscita» (S-9) |
+| D-4 | **La bolla di riconsegna** | la testata dichiara l'ordine, le righe previste dal lotto B dichiarerebbero la riga del reso | la provenienza è il **reso**; il legame con l'ordine resta nel fulfillment |
+| D-5 | **S-1 per l'offerta** | `fn_offerta_righe_espanse` non restituisce un id di riga. Le righe da eccezione ce l'hanno (`offerte_commerciali_eccezioni.id`), quelle del solo listino no. OFFERTA e COMMESSA non hanno una tabella delle righe «normale» | riga da eccezione → `sorgente_riga` = l'eccezione; riga del solo listino → NULL (la provenienza è l'offerta intera). Il catalogo dichiara come tabella delle righe le eccezioni per OFFERTA e `commesse_attivita` per COMMESSA |
+| D-6 | **S-5 e le chiavi salvate** | la chiave del gruppo fatturabile e la `segment_key` contengono l'uid e sono salvate (lotti, esiti, log) | non si convertono: restano costruite con l'uid, fornito dal BB di risoluzione (§3.5) |
+| D-7 | **I canali del preventivo** | portare la provenienza dell'ordine in `sorgente_*` accende in `trgfn_documenti_sync_canali` il ramo che segna CONSUMATO il canale del preventivo, oggi morto | da decidere: è il comportamento voluto? |
+| D-8 | **L'unicità sull'offerta** | su `sorgente_tipo_id` il predicato parziale di `uq_ordini_v_documento_origine_offerta` e `uq_contratti_offerta_id` chiede l'id letterale del tipo (14, esplicito nel seed) | indice parziale sull'id del tipo, presidiato da un pgTAP sul seed |
+| D-9 | **Eccezioni a S-6** | `pratiche.reconcile_errori` è un log scritto dentro un `EXCEPTION`; `template_documenti` e le altre colonne di solo tipo non sono una provenienza | fuori dal guard d'esistenza; il presidio di struttura si aggancia a `sorgente_id`/`sorgente_uid`, non a `sorgente_tipo_id` |
+| D-10 | **Il registro dei canali** | `documenti_fatturazione_canali` non ha lettori fuori dalla funzione che lo scrive | da decidere se tenerlo. Se resta, la cancellazione della bozza si porta via il canale dentro il DB (S-9) |
+| D-11 | **La provenienza di testata della fattura** | la fattura aggrega: oggi nessuno scrive `fatture.sorgente_*` | colonne presenti, NULL salvo casi futuri |
+| D-12 | **I difetti vivi V-1 … V-6** (§3.6) | | si correggono nel lotto che tocca il loro oggetto; i dati di dbdev a mano, se Tid preferisce |
+
+### 6.4 D-10 approfondito: chi impedisce oggi la doppia fatturazione (2026-11-06)
+
+**Il registro dei canali.** È nato dal progetto di febbraio (`work-done/gestione-commesse-v2.md` §24). Lo scopo
+scritto era «prevenire la doppia fatturabilità cross-canale»: un documento si fattura per una strada sola. È stata
+costruita solo la metà che **registra**, cioè `trgfn_documenti_sync_canali` su preventivi, ordini, DDT e contratti,
+più `fn_set_documento_canale_stato`. La metà che **blocca** non è mai stata costruita. [F] su `zeroerp_ruoli`, con
+`pg_get_functiondef` (quindi anche le funzioni `BEGIN ATOMIC`), `pg_views`, `pg_policies`, `pg_trigger` e
+`pg_constraint`, più grep su BE, FE e script. Della tabella si trovano solo:
+
+* la funzione che la scrive, chiamata solo dal trigger;
+* i quattro trigger;
+* tre pgTAP (`test-documenti-fatturazione-canali-v1`, `test-documenti-canali-sync-v1`, `test-stati-check-scrittori-v1`);
+* una riga di `storico_scope_policy.csv`.
+
+Nessuna vista, funzione, policy, FK o codice BE/FE la legge.
+
+**La regola che voleva dare esiste già, nel posto dove si decide che cosa va in commessa.** La tengono i
+predicati di eleggibilità del push:
+
+| Strada doppia temuta | Chi la impedisce oggi | Come |
+| --- | --- | --- |
+| preventivo **e** ordine nato da lui | la smistatura per riga, secondo la natura | `vw_preventivi_righe_smistabili_ordine` prende solo la merce (`fn_natura_e_merce IS TRUE`) non ancora passata a un ordine (`NOT EXISTS ordini_righe.preventivo_riga_id`). `vw_preventivi_righe_smistabili_commessa` prende solo natura NULL o con destinazione COMMESSA. I due insiemi non si toccano: MERCE → ordine, SERVIZIO_UNA_TANTUM → commessa, SERVIZIO_RICORRENTE → contratto |
+| ordine **e** la sua bolla | la corsia di fatturazione, `ordini.fatturazione_trigger` | `fn_list_ordini_da_pushare` prende solo `CONFERMATO`; `fn_ddt_push_diagnosi` scarta la riga di bolla con ordine `CONFERMATO` (rank 6). Una sola delle due |
+| lo stesso documento due volte | lo stato del segmento e la commessa viva | `script.fn_get_stato_push_segment = 'LIBERA'` in ogni lister; un documento in una sola commessa aperta (`fn_link_commessa_sorgente`) |
+
+Il caso «offerta → contratto» non è una strada doppia: l'offerta non va in commessa, ci va il contratto.
+
+**Il limite è lo stesso per le due soluzioni.** Queste regole stanno nei predicati di chi elenca, non nella madre
+`fn_upsert_commessa_attivita`: un chiamante che saltasse il lister le aggirerebbe. Il registro non cambierebbe
+niente, perché nessuno lo legge. Se la madre debba ricontrollare l'esclusività è un altro tema, fuori da D-10.
+
+**Proposta DB: (a), il registro si ritira.**
+
+* Si tolgono la tabella, i quattro trigger, `trgfn_documenti_sync_canali`, `fn_set_documento_canale_stato`, i due
+  pgTAP dedicati, il passaggio in `test-stati-check-scrittori-v1`, la riga di `storico_scope_policy.csv`, le pagine
+  `manual/` (oggetto ritirato = si cancella) e la sezione 24 come riferimento vivo.
+* Gli orfani di V-5 e la sua grammatica G4 spariscono con lui. D-7 decade.
+* Se un giorno servisse una policy di esclusività **configurabile** (lo stato `BLOCCATO` del progetto di febbraio,
+  mai scritto), nascerà dove si decide l'eleggibilità, non come registro parallelo.
+
 ## 7. Dopo le decisioni
 
-### 7.1 Il censimento (in corso, 2026-11-06)
+### 7.1 Il censimento (✅ fatto, 2026-11-06: Appendice)
 
 Per **ogni** tabella del §3.1 e §3.1-bis, più le colonne parallele G8, una scheda in Appendice:
 
@@ -305,23 +409,2580 @@ Per **ogni** tabella del §3.1 e §3.1-bis, più le colonne parallele G8, una sc
 Più tre schede trasversali: i BB del §3.3 (che cosa cambia in ciascuno), i consumatori dei codici `*_RIGA` (S-2),
 e l'analisi di S-10 e dell'impronta di S-7.
 
-### 7.2 Il piano a lotti (bozza, da fissare dopo il censimento)
+### 7.2 Il piano a lotti (definitivo, 2026-11-06)
 
-* **Lotto 0, trasversale e additivo.** Non rompe niente; i lotti dopo ne hanno bisogno:
-  * il catalogo: in `config.sorgenti` la tabella delle righe e quella del dettaglio, ognuna con la sua **colonna
-    FK** verso il livello sopra, dichiarata (non ricavata da `pg_constraint`) e presidiata;
-  * i BB: uno che **scrive** (riceve tipo e una chiave qualsiasi, salva quella giusta: chi passa l'uid oggi
-    continua a farlo) e uno che **risolve** (da tipo + chiave: id, uid, numero; i lettori non scrivono più un
-    `CASE` per tipo);
-  * il guard unico: una sola chiave, documento esistente, riga del documento, dettaglio della riga; CHECK di
-    forma per tabella;
-  * il lato «in uscita» (S-9) e il presidio degli orfani riscritto sul modello;
-  * un **presidio di struttura** in CI: una tabella con colonne `sorgente_*` senza il guard unico è rossa. È ciò che
-    impedisce alla prossima tabella di nascere con una grammatica sua.
-* **Poi, per famiglia**, nell'ordine: colonne → conversione dei dati → guard → lettori → pgTAP → ritiro dei tipi.
-  Il guard di oggi rifiuta i tipi spenti (`attivo = true`): spegnere un tipo `*_RIGA` prima di aver convertito le
-  righe rompe ogni UPDATE su quelle righe. Per `config.tipi_entita` prima `is_sorgente = false`, poi il ritiro del
-  tipo: l'entità «riga di preventivo» resta (giornale, note, errori).
-* Il primo lotto di famiglia sono le **righe di vendita**, che sbloccano il lotto B degli articoli obsoleti.
-* Solo YAML nuovi: i changeSet del lotto A non si riscrivono.
-* Ricadute BE/FE: le richieste si scrivono qui, percorso intero, quando il censimento le fa emergere.
+Tutte le decisioni del §6 sono prese. Il piano ha otto lotti: uno trasversale, sei di famiglia e uno di chiusura.
+
+#### Le regole che valgono per ogni lotto
+
+* **Solo YAML nuovi.** I changeSet del lotto A (`20261105-*`) non si riscrivono. DDL e corpi si prendono dalla doc
+  auto-generata.
+* **L'ordine dentro il lotto è sempre lo stesso:**
+  1. colonne nuove;
+  2. conversione dei dati, nello stesso changeSet della colonna: è la migrazione del modello, non una correzione;
+  3. guard unico montato;
+  4. scrittori e lettori riscritti sui BB;
+  5. pgTAP che **costruiscono** i casi (documento intero, riga, dettaglio, chiave sbagliata, riga di un altro
+     documento, bersaglio cancellato);
+  6. ritiro dei tipi e delle colonne vecchie.
+* **Il ritiro di un tipo viene per ultimo.** Il guard di oggi rifiuta i tipi spenti (`attivo = true`), quindi un
+  tipo spento prima della conversione rompe ogni UPDATE sulle sue righe. In `config.tipi_entita` prima
+  `is_sorgente = false`, poi il ritiro dalle sorgenti: l'entità (giornale, note, errori) resta.
+* **I dati sbagliati di dbdev si correggono con SQL manuali** (D-12), prima di montare il guard: orfani (S-6), V-6.
+  Da zero (CI) non ci sono.
+* ⛔ **Prima tutto il DB, poi il BE una volta sola** (Tid, 2026-11-06: «evitiamo i palleggi DB → BE → DB → BE»).
+  I lotti 0 … Z si fanno tutti, uno dopo l'altro, senza fermarsi ad aspettare il BE. Fra un lotto e l'altro il BE
+  si può rompere: è accettato (il progetto non è in produzione). I test Django della CI saranno rossi fino al lotto
+  BE, e va dichiarato a ogni PR.
+* **La richiesta BE/FE si accumula** nel §8 durante i lotti DB, con il percorso intero (firma, colonna, valore,
+  codice d'errore) di ogni cambio, e si consegna **una volta**, completa, dopo il lotto Z.
+* **Nei lotti DB** si scrivono solo i commenti di colonna e di funzione, che fanno parte del changeSet. Guide,
+  manuali e doc di sviluppo si aggiornano tutti nel **lotto DOC**, dal censimento del §7.3.
+
+#### Lotto 0 — il meccanismo (trasversale, additivo: non rompe niente)
+
+* **Catalogo.** In `config.sorgenti`: per ogni tipo i suoi livelli, cioè la tabella delle righe e quella del
+  dettaglio, ognuna con la sua colonna FK verso il livello sopra. Sono dichiarate (non ricavate da `pg_constraint`)
+  e un pgTAP verifica che la FK esista. NULL = il livello non c'è (D-2). OFFERTA → le eccezioni; COMMESSA →
+  `commesse_attivita` (D-5). La mappa completa è nella scheda pratiche-documenti-BB §C.2.
+* **BB che scrive.** Riceve il tipo e una chiave qualsiasi (id o uid) e restituisce la coppia giusta. Nasce da
+  `vendite.fn_link_commessa_sorgente`, che ha già quella forma, ed estratto in `script`.
+* **BB che risolve.** Da tipo + chiave restituisce id, uid e numero del documento. Nasce da
+  `vendite.fn_get_sorgente_documento_ref` e `config.fn_sorgente_tabella`. Le copie si ritirano nello stesso giro
+  (regola del 2).
+  * ⭐ **Ponte di transizione, dichiarato.** Finché una famiglia non è convertita, il BB che risolve sa leggere
+    anche la sua grammatica vecchia, e la sa leggere **lui solo**. I lettori trasversali (lineage, legami, ritiro dei
+    legami, push, diagnosi DDT, resi) si riscrivono **una volta** in questo lotto, sul BB, e non si ritoccano a ogni
+    lotto. Ogni lotto di famiglia toglie dal ponte il suo ramo; il lotto di chiusura verifica che il ponte sia vuoto.
+* **Guard unico.** Controlla: una sola chiave, quella che dice il catalogo; il documento esiste; la riga appartiene
+  al documento; il dettaglio appartiene alla riga. Prende per argomento il **livello minimo** della tabella (il
+  registro di magazzino vuole sempre il dettaglio). Il CHECK di forma (tutto NULL o tipo + una chiave) va per
+  tabella.
+* **Lato «in uscita» (S-9).** Un BB montato sui bersagli, derivato dal catalogo, applica la regola padre-figli
+  della tabella padre: o blocca la cancellazione, o fa le azioni conseguenti sui figli polimorfi.
+* **Presidi.**
+  * Orfani: `dbops.fn_sorgenti_orfane` riscritta a tre livelli. Il perimetro è ogni tabella con
+    `sorgente_id`/`sorgente_uid`, non solo quelle col guard.
+  * Struttura, in CI: una tabella con `sorgente_id`/`sorgente_uid` senza il guard unico è rossa. Non si aggancia a
+    `sorgente_tipo_id` (D-9). Unica esenzione dichiarata: `pratiche.reconcile_errori`.
+* **Le colonne nuove dove mancano**, nullable, vuote: `sorgente_id` dappertutto; `sorgente_riga` su
+  `commesse_attivita`; `sorgente_dettaglio` su `magazzino.movimenti` e `movimenti_attesi`. Sono additive: i lotti
+  dopo le riempiono.
+
+##### Lotto 0, i giri (team DB, 2026-11-06)
+
+Il lotto 0 è grande: si fa in **tre giri**, ognuno additivo e provato da solo. Il primo non tocca niente di vivo
+tranne due funzioni che ritirano la loro copia (regola del 2).
+
+| Giro | Che cosa | Stato |
+| --- | --- | --- |
+| **0.1** | catalogo dei livelli, colonne nuove, BB che risolve (con il ponte), BB che scrive, guard unico, codici | ✅ applicato da Tid, pgTAP verdi (2026-11-06) |
+| **0.2** | lato «in uscita» (S-9) montato sui bersagli; presidio degli orfani a tre livelli; presidio di struttura in CI | ✅ applicato da Tid, pgTAP verdi (2026-11-06) |
+| 0.3 | i lettori trasversali sul BB che risolve (lineage, legami, ritiro dei legami, push, diagnosi DDT, resi) e `script.fn_get_sorgente_emittente_sr_id` | da fare (prossimo) |
+
+**Il giro 0.1, le scelte** (nomi e grammatica li ha scelti il team DB; nessuna è un cambio di modello):
+
+* **Catalogo.** `config.sorgenti` prende `righe_table`, `righe_fk_column`, `dettaglio_table`, `dettaglio_fk_column`
+  (`regclass` + `varchar(63)` con CHECK d'identificatore, come `label_selector`), con i CHECK di coppia e di
+  gerarchia. I valori nel CSV, mirror `20251002-21` esteso in place. La mappa è quella della scheda §C.2, più
+  `DISTINTA_INCASSO` → `pagamenti.vendite_contabili_righe.contabile_id`. ⚠️ Fuori dalla mappa, dichiarato:
+  `ATTIVITA_CONSUMI`, `EMAIL` (documenti senza righe), i `*_RIGA`, `DDT_VENDITA_PRELIEVO`, `RESO_VENDITA_RIENTRO`,
+  `EVENTO_ASSET`, `ATTIVITA`.
+* **`config.fn_sorgente_livelli(tipo)`**: schema, nome e oid di documento, righe e dettaglio da `pg_class`, più
+  «il documento ha l'uid?» e «la colonna dell'etichetta esiste?». `config.fn_sorgente_tabella` ci si appoggia (regola
+  del 2, firma invariata).
+* **BB che risolve**: `script.fn_sorgente_documento(tipo, sorgente_id, sorgente_uid)` → `(documento_id,
+  documento_uid, documento_numero)`. Una riga sempre, mai un errore, INVOKER. Legge la chiave che riceve
+  (la coerenza chiave/tipo è del guard). **Ponte**: `script.fn_sorgente_documento_da_chiave(tipo, chiave text)`,
+  per le grammatiche che scrivono la chiave come testo o l'uid per un tipo `id`. `vendite.fn_get_sorgente_documento_ref`
+  diventa un passaggio sul ponte (firma e `ROWS 1` invariati).
+* **BB che scrive**: `script.fn_sorgente_chiave(tipo, chiave text)` → `(sorgente_id, sorgente_uid)`, la coppia
+  giusta per il `key_selector`; traduce una chiave dell'altra specie, solleva con i codici della normalizzazione di
+  `fn_link_commessa_sorgente`, che ora lo chiama. La riga e il dettaglio non passano di qui: li verifica il guard.
+* **Guard unico**: `script.trgfn_guard_sorgente(livello_minimo, azione_cancellazione)`. Prima la **forma**, dal
+  catalogo (tipo attivo, una sola chiave, livelli previsti, livello minimo limitato a quelli del tipo), poi
+  l'**esistenza** (documento col BB che risolve, riga del documento, dettaglio della riga). Le colonne da
+  `to_jsonb(NEW)`: una tabella senza `sorgente_dettaglio` monta lo stesso guard. Gli argomenti li legge
+  `script.fn_sorgente_guard_argomenti`, la stessa funzione che userà il giro 0.2 su `pg_trigger.tgargs`.
+  Livelli: `DOCUMENTO` (default) | `RIGA` | `DETTAGLIO`; azione: `BLOCCA` (default) | `CANCELLA`.
+* **Codici nuovi**, tutti `TECNICO` (la provenienza la scrive il codice, non un form):
+  `E_SORG_CHIAVE_NON_CONFORME`, `E_SORG_RIGA_NON_DEL_DOCUMENTO`, `E_SORG_DETTAGLIO_NON_DELLA_RIGA`,
+  `E_SORG_LIVELLO_NON_PREVISTO`, `E_SORG_LIVELLO_MANCANTE`. Riusati: `E_SORG_CONF`, `E_SORG_FORMATO`,
+  `E_SORG_KEY_MISSING`, `E_SORG_NORM_NON_RISOLTA`, `E_SORG_NOT_FOUND`.
+* **Colonne non aggiunte**, dichiarato: `documenti_fatturazione_canali` (si ritira nel lotto T),
+  `attivita_fatturabili` (le sue `sorgente_*` si ritirano nel lotto C), `fatture_stampa_coda` (ha già
+  `sorgente_id`).
+
+**Differenze di comportamento del giro 0.1** (dichiarate; la prova sotto dice chi le vede):
+
+* `fn_get_sorgente_documento_ref`: un id per un tipo a chiave `uid` (il preventivo) ora si risolve; un id per un
+  tipo a chiave `id` si risolve solo se il documento esiste ed è visibile.
+* `fn_link_commessa_sorgente`: un id per un tipo `uid` si traduce nel suo uid (prima `E_SORG_FORMATO`); un uuid con
+  le maiuscole per un tipo `id` è `E_SORG_FORMATO` (prima si traduceva); un id inesistente solleva
+  `E_SORG_NOT_FOUND` già nella porta, non dal guard all'INSERT.
+
+**I changeSet del giro 0.1:** `20261106-04` (catalogo), `-05` … `-09` (colonne: vendite, acquisti, magazzino,
+pratiche, documenti), `-10` (`fn_sorgente_livelli`), `-11` (BB che risolve e ponte), `-12` (BB che scrive), `-13`
+(`fn_get_sorgente_documento_ref`), `-14` (`fn_link_commessa_sorgente`), `-15` (guard unico), `-16` (80_data:
+l'esenzione del guard nel registro dei riferimenti morti); `sorgenti.csv` e il loader `20251002-21`;
+`codici_errore.csv`, `messaggi_errore.csv`. pgTAP nuovi: `config/test-sorgenti-livelli-v1`,
+`script/test-sorgente-documento-e-chiave-v1`, `script/test-guard-sorgente-v1`.
+
+⚠️ **Il guard nasce senza tabelle**, e `dbops/test-riferimenti-morti-v1` (test 3) segnala una funzione trigger che
+nessuno monta. Per la durata del lotto 0 è un debito dichiarato: `20261106-16` lo scrive in
+`dbops.riferimenti_morti_esenzioni`, come fece `20260804-65` per la sorella `_tipizzata`. **Il lotto R, che lo monta
+per primo, toglie la voce nello stesso giro** (precedente `20260915-18`): altrimenti il test 4 dello stesso presidio
+è rosso.
+
+**La prova del giro 0.1** (2026-11-06, scratch `zeroerp_ruoli`, come `zeroerp_owner`, tutto in una transazione
+annullata; lo scratch è stato verificato pulito dopo, md5 dei corpi toccati invariati):
+
+* l'SQL **estratto** dai sedici changeSet, più l'upsert del CSV delle sorgenti rifatto su **tutte** le 29 righe
+  (nessuna irriscrivibile) e i cinque codici dai due CSV: gira intero;
+* i tre pgTAP nuovi in coda: 12/12, 27/27, 24/24. Mutazione: una `righe_fk_column` sbagliata nel catalogo fa
+  rossi il 3 e il 5 di `test-sorgenti-livelli-v1`;
+* **prima/dopo** su 48 pgTAP che chiamano direttamente `fn_link_commessa_sorgente`, `fn_get_sorgente_documento_ref`,
+  `fn_sorgente_tabella` o leggono il catalogo delle sorgenti: 618 ok e 5 rossi **identici** nelle due corse. I 5
+  sono test di scope, rossi da owner per costruzione (la RLS non c'è): `script/test-fn-available-actions-ddt-reason-catch-all-v1`
+  16, `pagamenti/test-distinta-numerazione-registro-v1` 18-19, `vendite/test-fn-af-merce-per-riga-chiusura-v1` 13,
+  `vendite/test-vw-situazione-merce-ordine-v1` 11;
+* i presidi su tutte le funzioni e tutti i codici, prima/dopo: `dbops/test-riferimenti-morti-v1` 12/12 (con
+  `-16`), `script/test-catalogo-messaggi-errore-completo`, `config/test-codici-errore-identita`, `-obsoleto-dal`,
+  `dbops/test-vw-codici-errore-valore-atteso`, `-motivo-nominato`: tutti verdi;
+* guardrail statici (`scripts/guardrail_*.py`, licenze, segreti): verdi. Il rosso di `check_i18n_keys`
+  (`vendite.righe.articolo_reason.obsoleto`) è preesistente, del lotto A di `brief-db-articoli-obsoleto-dal`.
+
+Non coperto dalla prova, e resta di Tid: l'apply, la corsa dei pgTAP **come applicazione** (la RLS), la baseline.
+
+**Il giro 0.2, le scelte** (team DB, 2026-11-06):
+
+* **Chi monta il guard**: `script.fn_sorgente_guard_montaggi()`, da `pg_trigger` con la grammatica degli argomenti
+  del guard (`fn_sorgente_guard_argomenti` su `dbops.fn_trigger_argomenti`). Delle tabelle temporanee tiene solo quelle
+  della sessione, leggibili da chi chiede. La leggono i tre pezzi sotto.
+* **Lato «in uscita» (S-9)**: `script.trgfn_sorgente_in_uscita()`, `AFTER DELETE FOR EACH STATEMENT` con la tabella di
+  transizione `vecchie`, montato su **ogni** tabella che il catalogo dichiara come documento, righe o dettaglio. Per
+  ogni figlio (una tabella che monta il guard unico) guarda la colonna del livello: `sorgente_id`/`sorgente_uid` secondo
+  il `key_selector`, `sorgente_riga`, `sorgente_dettaglio`. **L'azione la dichiara il figlio**, nel secondo argomento
+  del suo guard, come un `ON DELETE`: `BLOCCA` → `E_SORG_ORIGINE_REFERENZIATA` (`CONFLITTO_STATO`, il conteggio nella
+  frase); `CANCELLA` → i figli se ne vanno con l'origine. Prima si contano i figli che bloccano, poi si cancella: se
+  uno blocca, non si cancella niente. **SECURITY DEFINER**, come una FK: vede anche i figli che la RLS nasconde a chi
+  cancella. Nel lotto 0 nessun figlio vero: gira e non trova niente.
+* **Il montaggio deriva dal catalogo**: `dbops.fn_sorgente_converge_uscita()` monta il trigger dove il catalogo lo
+  chiede e lo toglie dove non lo chiede più; la lancia `90_end/20261106-21` (`runAlways`), dopo i seed. Una riga nuova
+  di `config.sorgenti` converge alla migrazione successiva, senza changeSet suo. Nome
+  `trg_[<schema>_]<tabella>_a10_sorgente_in_uscita_dlt`.
+* **Presidio degli orfani** (`dbops.fn_sorgenti_orfane_perimetro`, `fn_sorgenti_orfane`, `vw_sorgenti_orfane`,
+  ricreate: cambiano le colonne). Il perimetro è **ogni** tabella con `sorgente_tipo_id` e `sorgente_id` o
+  `sorgente_uid` (fuori lo storico), con la sua **grammatica**, dal guard che monta: `UNICO` (a tre livelli),
+  `MODELLO_A` (il guard tipizzato), `TESTUALE` (nessun guard: chiave in `sorgente_uid`, letta con la regola del ponte).
+  Esenzioni dichiarate in colonna, col motivo: dagli orfani `attivita_fatturabili` e `fatture_righe` (G5:
+  `sorgente_uid` non è la chiave del documento) e `reconcile_errori` (log); dal guard solo `reconcile_errori` (D-9).
+  La vista ha in più `grammatica`, `livello`, `sorgente_id`, `sorgente_dettaglio`.
+* **Presidio di struttura**: `dbops/test-sorgenti-struttura-v1`. Le tabelle del perimetro senza il guard unico sono
+  un **elenco chiuso** (27 oggi, per lotto): ogni lotto di famiglia ne toglie le sue nello stesso giro, una tabella
+  nuova con la provenienza e senza guard fa rosso, il lotto Z lo trova vuoto.
+
+⚠️ **Il perimetro più largo accende il presidio su dbdev.** Misurato dopo l'apply (dbdev, 2026-11-06, come
+`zeroerp_owner`: fatto datato): `dbops.vw_sorgenti_orfane` ha **387 righe, tutte in
+`vendite.documenti_fatturazione_canali`** (TESTUALE, livello DOCUMENTO): PREVENTIVO 352, DDT_VENDITA 16, CONTRATTO 14,
+ORDINE_VENDITA 5. Sono i 387 del §3.2, canali di documenti cancellati (V-5). Nessun'altra tabella del perimetro ha
+orfani. Da zero non ce ne sono.
+
+**La correzione dei dati** (S-6, D-12: SQL a mano, non migration):
+[`sql-una-tantum-sorgenti-orfane-canali.sql`](sql-una-tantum-sorgenti-orfane-canali.sql). In una transazione cancella
+le **sole** righe che il presidio indica (per id, dalla vista), poi verifica che il presidio sia vuoto e altrimenti
+annulla tutto. Si può: nessuna FK punta al registro, nessuno lo legge (§6.4), sul `DELETE` gira solo lo storico
+(la cancellazione resta tracciata). Provato su dbdev con `ROLLBACK` al posto del `COMMIT`: 387 cancellati, presidio
+vuoto. ✅ **Eseguito da Tid su dbdev il 2026-11-06**: `dbops.vw_sorgenti_orfane` è vuota. Il test 11 di `dbops/test-sorgenti-orfane-v1` non conta più «esattamente
+uno» (era una misura della popolazione di dbdev): confronta il contatore con la vista.
+
+**I changeSet del giro 0.2:** `20261106-17` (`fn_sorgente_guard_montaggi`), `-18` (`trgfn_sorgente_in_uscita`),
+`-19` (`dbops.fn_sorgente_converge_uscita`), `-20` (presidio degli orfani), `-21` (90_end, la convergenza);
+`codici_errore.csv` e `messaggi_errore.csv` (`E_SORG_ORIGINE_REFERENZIATA`). pgTAP: nuovi
+`script/test-sorgente-in-uscita-v1`, `dbops/test-sorgenti-struttura-v1`; riscritto `dbops/test-sorgenti-orfane-v1`.
+
+**La prova del giro 0.2** (2026-11-06, scratch `zeroerp_ruoli` col giro 0.1 applicato, come `zeroerp_owner`, in
+transazione annullata): l'estratto gira, la convergenza monta il trigger su tutte le tabelle del catalogo;
+`test-sorgente-in-uscita-v1` 14/14, `test-sorgenti-orfane-v1` 12/12, `test-sorgenti-struttura-v1` 5/5, e i tre pgTAP
+del giro 0.1 ancora verdi sopra l'estratto. **Prima/dopo** su 45 pgTAP (quelli che cancellano da una tabella del catalogo, dove ora gira il lato «in uscita», più
+i presidi trasversali: riferimenti morti, `search_path` delle DEFINER, il pin di `test-porta-ledger-v1`, catalogo dei
+messaggi, codici, `security_invoker` delle viste): 693 ok e 8 rossi **identici** nelle due corse. Gli 8 sono test di
+permesso come applicazione, rossi da owner per costruzione (`magazzino/test-porta-ledger-v1` 4-7,
+`magazzino/test-documenti-interni-guard-v1` 7, 8, 11, `vendite/test-ddt-righe-evase-dall-ordine-v1` 43).
+
+Non coperto, e resta di Tid: l'apply, la corsa come applicazione, la baseline.
+
+#### Lotto R — righe di vendita (primo: sblocca il lotto B di `brief-db-articoli-obsoleto-dal`)
+
+* **Le tabelle:** `preventivi_righe`, `ordini_righe`, `ddt_righe`, `contratti_righe` (colonne del lotto A, ancora
+  vuote: nessuna conversione) e `fatture_righe` (`DROP DEFAULT 0`, l'indice unico `(tipo, uid)` ritirato).
+* **I verbi del lotto B** si scrivono direttamente sul modello, con il BB che scrive:
+  * offerta: riga da eccezione → l'eccezione, riga del solo listino → NULL (D-5);
+  * riconsegna: la provenienza è il reso (D-4).
+* **Il primo montaggio del guard unico** toglie la sua voce da `dbops.riferimenti_morti_esenzioni` (messa da
+  `20261106-16`), nello stesso giro.
+* **Restano accanto alla sorgente** (D-3): `ordini_righe.preventivo_riga_id` e `ordini_righe_fulfillment`. Il commento
+  di `ddt_righe` che li dava per «lo stesso fatto» si corregge.
+* **Alla fine:** ritiro dei sei tipi `*_RIGA` di vendita (nessuna funzione, né BE né FE li nomina), delle loro voci di
+  `tipi_entita` come sorgente, e delle chiavi di traduzione.
+
+#### Lotto T — testate di vendita
+
+* **L'import esterno esce** da `ordini.sorgente_*` e `fatture.sorgente_*`. Oggi nessuno lo scrive: gli indici
+  «idempotenza import» si ritirano. La tabella di collegamento dell'import (§4) nasce con il primo import vero, non ora.
+* **Le colonne parallele confluiscono** (S-8): `ordini.documento_origine_*` (per il preventivo la chiave passa da id a
+  uid) e `contratti.offerta_id`. Le regole «un'offerta, un ordine/contratto vivo» passano sull'indice parziale per id
+  del tipo, presidiato da un pgTAP sul seed (D-8).
+* **Si convertono** `ddt` e `resi`: da uid dell'ordine o della bolla a `sorgente_id` (S-5).
+* **Fattura:** colonne presenti, NULL (D-11).
+* **Il registro dei canali si ritira** (D-10, §6.4): la tabella, i quattro trigger, le due funzioni, i pgTAP, la riga
+  di `storico_scope_policy.csv` e le pagine `manual/`. Con lui se ne vanno V-5 e G4. D-7 decade.
+* **Lato «in uscita»** su resi e contratti (V-4). La regola «si cancella solo la bozza vuota» passa dal BE al DB per
+  ordini, DDT e resi; il BE resta come controllo preventivo.
+* **Voci per il §8 (BE):** `ordini_service` / `ordini_repository` (`documento_origine` → sorgente), `resi_repository` /
+  `resi_service`, `offerte_service` (il campo `OffertaPushResult.sorgente_uid` che contiene il contratto). Il FE legge
+  solo gli alias delle viste: se le viste li tengono, il FE non cambia.
+
+#### Lotto C — commesse e fatturazione
+
+* `commesse_sorgenti`: da testo alle colonne tipizzate (S-4).
+* `commesse_attivita`: conversione all'id per i tipi a chiave `id` (S-5) e `sorgente_riga` riempita. La
+  `segment_key` e la chiave del gruppo fatturabile **non** si convertono (D-6).
+* `attivita_fatturabili`, nell'ordine:
+  1. il pgTAP che costruisce V-3;
+  2. la ricerca per `commessa_attivita_id`;
+  3. il ritiro dell'impronta (D-1);
+  4. il ritiro di `sorgente_*` e `sorgente_origine_tipo_id`, ridondanti (D-3), e del `DEFAULT 0`.
+* **V-2:** `vw_preventivi_smistamento_righe` sul BB che risolve.
+* **`ATTIVITA` esce dalle sorgenti** e resta in `tipi_entita` (D-2).
+* **Voci per il §8 (BE):** `pipeline_repository` (parametro `sorgente_uid: int`), `commesse_repository` e
+  `commesse_service`, il dataclass `AttivitaDaFatturare`.
+
+#### Lotto D — documenti generati e coda di stampa
+
+* `documenti_generati`:
+  1. un SQL manuale su dbdev rinumera i progressivi doppi della stessa fattura (V-6);
+  2. la conversione;
+  3. il guard.
+* `fatture_stampa_coda`: `sorgente_uid` si ritira (doppione di `sorgente_id`, che è una FK vera).
+* **Voci per il §8 (BE):** il drainer della coda passa `sorgente_id`; `sorgente_documenti_views`; i `*_document_context_builder`.
+
+#### Lotto P — pratiche
+
+* `pratiche_sorgenti`: da testo alle colonne tipizzate (S-4). Si riscrive l'`ON CONFLICT` vivo di
+  `pratiche_repository.upsert_pratica_sorgente`.
+* **V-1:** `fn_push_offerta_a_contratto` scrive la pratica col BB che scrive. Il pgTAP prova il percorso con una
+  pratica.
+* `reconcile_errori`: prende la forma delle colonne, senza guard d'esistenza (D-9).
+* **Le due fragilità del censimento:** il letterale `'2'` del trigger di reconcile passa al codice;
+  `vw_preventivi_pratiche.sorgente_id` (l'id del legame) si rinomina, perché collide con la colonna nuova.
+
+#### Lotto M — magazzino e acquisti
+
+* **Magazzino:**
+  * i movimenti passano al tipo del documento + riga + dettaglio (S-3);
+  * `uq_mag_movimenti_identita` riscritto **equivalente**, caso per caso (scheda magazzino §2);
+  * i sei verbi, `fn_scrivi_movimento`, `fn_storna_movimenti_sorgente`, `fn_check_disponibilita_uscita` (attesa a
+    livello riga contro movimento a livello dettaglio: confronto per prefisso), le due viste `dbops`;
+  * i quattro indici unici residui delle testate si ritirano.
+* ⚠️ **Prima i verbi, poi il ritiro dei tipi.** `fn_cambia_stato_ddt` e `fn_annulla_reso` cercano
+  `DDT_VENDITA_PRELIEVO` / `RESO_VENDITA_RIENTRO` senza filtro su `attivo`: se il tipo non c'è, saltano lo storno senza
+  errore. I cinque tipi si ritirano solo dopo.
+* **Acquisti:**
+  * `ordini` e `ddt`: l'import esce, come in T;
+  * `ordini_righe`: `DROP DEFAULT 0`;
+  * `ddt_righe`: il guard unico;
+  * `acquisti.ddt.ordine_id` confluisce, e la protezione della FK la dà il lato «in uscita» (D-3);
+  * il fulfillment d'acquisto resta.
+* **Voci per il §8 (BE/FE):** cambia l'API `GET /magazzino/movimenti` (valori di `sorgente_tipo`, `sorgente_id`,
+  `sorgente_dettaglio`); in BE `magazzino_repository`, `types.py`, `famiglie.py`, `config/sorgenti.py`; il seed UI
+  `lista_colonna.csv`; in FE `vocabolari.js`, `etichette.js`, i locales e quattro componenti. Elenco chiuso nella
+  scheda magazzino §8.
+
+#### Lotto Z — chiusura del DB
+
+* Il ponte del BB che risolve è vuoto: un pgTAP lo verifica.
+* Si ritirano i guard `_tipizzata` e `_testuale`, `script.fn_sorgente_chiave_id/_uuid`, la colonna
+  `config.sorgenti.categoria` e lo scope `ROW_VALIDATOR`.
+* Il §8 (richiesta BE/FE) è completo e chiuso.
+
+#### Lotto BE/FE — una volta sola
+
+* Il team BE/FE riceve il §8 intero e porta backend, frontend, test Django e smoke allo stato del DB.
+* Se emerge un difetto DB, si raccoglie in un elenco e si chiude in **un** giro DB alla fine, non uno per volta.
+
+#### Lotto DOC — la documentazione, per ultima
+
+* Si aggiorna tutto il censimento del §7.3: guide, manuali DB e BE, doc di sviluppo, memoria, documenti aperti.
+* K-1 resta, e la guida lo dice.
+* Il brief va in `work-done/`.
+
+#### L'ordine, e perché
+
+0 → R → T → C → D → P → M → Z → BE/FE → DOC.
+
+* Il lotto 0 viene prima di tutto, perché ogni altro lotto lo usa.
+* R viene subito dopo, perché sblocca il lotto B degli articoli obsoleti e non ha dati da convertire.
+* T viene prima di C, D, P e M perché le testate di vendita sono i **bersagli** di tutti gli altri: il lato «in
+  uscita» e la conversione di bolle e resi servono a commesse, pratiche e magazzino.
+* M viene per ultimo fra le famiglie: è quello con più BE/FE, e il suo indice di idempotenza è il cambio più
+  delicato.
+
+### 7.3 La documentazione da aggiornare alla fine (censimento, 2026-11-06)
+
+**Il metodo.** Ho cercato in `docs/`, `.codex/`, `README` e `CLAUDE.md` i nomi del meccanismo: le colonne
+`sorgente_*`, `key_selector`, `config.sorgenti`, i tipi `*_RIGA` e i livelli sotto la riga, «polimorf», «modello
+A/B», il registro dei canali, `documento_origine_*` e i BB. Restano **fuori**:
+
+* la doc auto-generata (`<schema>/tabelle|funzioni|views`, gli `index.md` / `index.ci.md` di schema): si rigenera, non
+  si scrive a mano;
+* i documenti in `work-done/`: sono storia, non si riscrivono.
+
+Risultato: **234 file**. Si aggiornano tutti nel **lotto DOC** (§7.2), dopo il BE, così descrivono lo stato finale
+una volta sola.
+
+#### A. Le sedi del concetto: si riscrivono
+
+| Documento | Che cosa cambia |
+| --- | --- |
+| `docs/it/guide/sorgente-polimorfa.md` | è la guida del meccanismo. Si riscrive sul modello: §2 (due modelli → uno), §2a (le quattro domande e i BB nuovi), §4 (K-1 resta, cadono le motivazioni del §3.5), §4a (le colonne «che sembrano polimorfe» non esistono più), §5, §6 (il grafo legge dal BB che risolve), area tecnica |
+| `80_data/sql/dbops/presidi.csv`, riga `dbops.vw_sorgenti_orfane` | la nota descrive il perimetro vecchio (FK + due colonne + guard tipizzato): riscriverla sul perimetro della provenienza (giro 0.2). ⚠️ Il mirror rilegge tutto il CSV: provare l'upsert intero |
+| `docs/it/dbzero/config/manual/sorgenti.md` | §Convenzione chiave sorgente; i livelli (righe, dettaglio, colonne FK); `categoria` e `ROW_VALIDATOR` ritirati; la colonna `area` descritta e assente (E-11) |
+| `docs/it/dbzero/config/manual/tipi_entita.md` e il commento di tabella | `is_sorgente` dopo il ritiro dei tipi di riga |
+| `docs/it/linee-guida-sql.md` | la regola, scritta una volta: una tabella nuova che dice «nasce da» usa le colonne del modello, il BB che scrive e il guard unico; il presidio in CI la fa valere. Da rivedere anche i passaggi su `key_selector` (riga 250), `config.sorgenti` (384, 1881) e il cast di `sorgente_uid` sotto policy (2882) |
+| `docs/it/dbzero/acquisti/_dominio-acquisti.md` | cita il caso «`sorgente_uid` significava due cose» (riga 25): ora è chiuso |
+| la memoria del team | `fb_chiave_id_uid_non_si_unifica` (già annotata), `reference_sorgente_polimorfa_key_selector`, `ref_righe_fattura_senza_sorgente`, e chi cita i modelli A/B |
+
+#### B. Le guide di dominio: si aggiornano i passaggi
+
+| Guida | Dove |
+| --- | --- |
+| `guide/fatturazione.md` | lo schema delle tabelle (righe 121-129), l'idempotenza delle AF «sulla chiave sorgente» (317, 1317): ora è `commessa_attivita_id` (D-1) |
+| `guide/gestione-commesse.md` | idempotenza (526), `fn_link_commessa_sorgente` (546, 616), la riga di commessa che eredita `sorgente_uid` (782) |
+| `guide/gestione-ordini.md` | l'origine documentale `documento_origine_*` (186-187) → `sorgente_*` (S-8) |
+| `guide/gestione-ddt.md` | «da dove arriva» (133, 153): `sorgente_id` dell'ordine |
+| `guide/gestione-offerte-commerciali.md` | il vincolo `uq_ordini_v_documento_origine_offerta` (505), che cambia chiave (D-8) |
+| `guide/gestione-pratiche.md`, `gestione-pratiche-configurazione.md` | il legame pratica → documento (56, 633; 196-197) |
+| `guide/uso-di-obsoleto.md` | la «riga derivata» riconosciuta dalla sorgente (194, 262, 326) |
+| `guide/pgtap-come-si-scrive-un-test.md` | i builder con la sorgente (121) |
+| `guide/documenti-e-stampe.md`, `modello-documento-di-vendita.md` | da verificare: citano `sorgente_tipo_id` come tipo di template e `citato_in_fattura`, che non cambiano |
+
+#### C. I documenti di sviluppo e di contesto
+
+| Documento | Che cosa |
+| --- | --- |
+| `.codex/PROJECT_CONTEXT.md` | una riga sul cantiere finché è aperto; alla chiusura, la regola nuova |
+| `docs/it/mappa-concentrica.md` (+ `dev/mappa-concentrica-changelog.md`) | «un nome per ogni tipo di documento» (492), lineage (519), acquisti (418) |
+| `dev/backend/catalogo-building-block-backend.md` | `SORGENTE_<codice>` e `SorgentiRepository` (935-936), i BB che il BE usa per leggere una sorgente |
+| `dev/frontend/catalogo-building-block-frontend.md` | `SORGENTE_CODES` (1197), lineage (1121) |
+| `dev/api.md` | il lookup `tipi-entita` con `key_selector` (94): da verificare |
+| `dev/ricette-dove-intervenire.md` | il rimando a `config.sorgenti` (120) |
+| `readme.md`, `index.md` | solo il link alla guida: da verificare |
+
+#### D. Le pagine `manual/` degli oggetti DB e BE (175 file)
+
+Raggruppate per lotto: il lotto dice quale oggetto è cambiato, la pagina si aggiorna nel lotto DOC.
+
+* **Lotto 0 (meccanismo, catalogo)** (18): `config/sorgenti`, `dbops/fn_sorgenti_orfane_perimetro`, `dbops/fn_sorgenti_orfane`, `dbops/vw_sorgenti_orfane`, `pratiche/fn_stato_sorgente`, `script/fn_get_sorgente_emittente_sr_id`, `script/fn_sorgente_chiave_id`, `script/fn_sorgente_chiave_uuid`, `script/trgfn_guard_sorgente_polimorfa_testuale`, `script/trgfn_guard_sorgente_polimorfa_tipizzata`, `script/vw_stato_sorgente`, `vendite/fn_get_sorgente_documento_ref`, `vendite/vw_stato_sorgente_contratto`, `vendite/vw_stato_sorgente_ddt`, `vendite/vw_stato_sorgente_offerta`, `vendite/vw_stato_sorgente_ordine`, `vendite/vw_stato_sorgente_preventivo`, `vendite/vw_stato_sorgente_reso`.
+* **Lotto R** (11): `dbops/vw_ddt_emessi_senza_scarico`, `vendite/fatture_righe`, `vendite/fn_documento_legami`, `vendite/fn_documento_lineage_archi`, `vendite/fn_genera_ddt_da_ordine`, `vendite/fn_genera_ddt_riconsegna`, `vendite/fn_list_ddt_da_pushare`, `vendite/fn_list_ordini_da_pushare`, `vendite/fn_list_preventivi_da_pushare`, `vendite/fn_push_offerta_a_contratto`, `vendite/ordini_righe`.
+* **Lotto T** (21): `dbops/vw_resi_confermati_senza_carico`, `script/fn_check_ordine_annullabile`, `script/trgfn_default_emittente_fiscale`, `storico/documenti_fatturazione_canali`, `vendite/contratti`, `vendite/ddt`, `vendite/documenti_fatturazione_canali`, `vendite/fatture`, `vendite/fn_accoda_stampe_lotto`, `vendite/fn_list_commessa_attivita`, `vendite/fn_resolve_termini_pagamento`, `vendite/fn_select_attivita_fatturabili`, `vendite/ordini`, `vendite/resi`, `vendite/trgfn_ddt_normalize`, `vendite/trgfn_resi_guard_ddt_consegnato`, `vendite/trgfn_resi_normalize`, `vendite/vw_dash_competenza_attivita`, `vendite/vw_ddt_lista`, `vendite/vw_lotti_gruppi_serviti`, `vendite/vw_resi_lista`.
+* **Lotto C** (22): `script/fn_check_sorgente_chiudibile`, `vendite/attivita_fatturabili`, `vendite/commesse_attivita`, `vendite/commesse_sorgenti`, `vendite/fn_aggiungi_onere_commessa`, `vendite/fn_annulla_commessa_attivita`, `vendite/fn_batch_upsert_commessa_attivita`, `vendite/fn_build_gruppo_fatturabile_key`, `vendite/fn_commessa_viva_di_sorgente`, `vendite/fn_emit_attivita_fatturabili_da_commessa`, `vendite/fn_fattura_origini`, `vendite/fn_link_commessa_sorgente`, `vendite/fn_list_consumi_da_pushare`, `vendite/fn_list_contratti_da_pushare`, `vendite/fn_ritira_commessa_attivita_da_sorgente`, `vendite/fn_split_gruppo_fatturabile_key`, `vendite/fn_upsert_commessa_attivita`, `vendite/trgfn_attivita_fatturabili_normalize`, `vendite/trgfn_commesse_attivita_proietta_stato_preventivo`, `vendite/trgfn_doc_guard_chiusura_sorgente`, `vendite/trgfn_guard_fatturazione_immediata_immutabile`, `vendite/vw_dash_competenza_gruppi`.
+* **Lotto D** (6): `documenti/documenti_generati`, `documenti/template_documenti`, `documenti/trgfn_documenti_generati_protect_snapshot`, `vendite/fatture_stampa_coda`, `vendite/fn_set_documento_canale_stato`, `vendite/trgfn_documenti_sync_canali`.
+* **Lotto P** (8): `pratiche/fn_pratica_del_documento`, `pratiche/fn_reconcile_sorgente`, `pratiche/pratiche_sorgenti`, `pratiche/reconcile_errori`, `pratiche/trgfn_documento_reconcile_proiezione`, `script/vw_pratica_doc_sorgente`, `vendite/fn_genera_pratica_da_preventivo`, `vendite/vw_preventivi_pratiche`.
+* **Lotto M** (8): `magazzino/eventi_assets`, `magazzino/fn_posta_inventario`, `magazzino/fn_posta_rettifica`, `magazzino/inventari`, `magazzino/movimenti_attesi`, `magazzino/movimenti`, `magazzino/rettifiche`, `magazzino/trasferimenti`.
+* **fixture pgTAP (seguono la tabella)** (1): `dbops/fn_pgtap_crea_commessa`.
+* **solo commento: da verificare** (5): `documenti/fn_risolvi_template_applicabile`, `documenti/trgfn_documenti_generati_check_coerenza`, `pratiche/fn_copia_definizione`, `script/fn_check_preventivo_annullabile`, `vendite/fn_get_tipo_doc_fiscale_id`.
+* **menzione di passaggio: da verificare (spesso codici di `tipi_entita` per le note, che restano)** (46): `anagrafiche/vw_clienti_codice_ba`, `catalogo/trgfn_articoli_guard_flags_struttura_bom_attiva`, `config/stati_assets`, `config/stati_doc_contratti`, `config/stati_doc_offerte`, `config/stati_doc_ordini`, `config/stati_doc_preventivi`, `config/trgfn_sorgenti_normalize`, `dbops/automation_lock_columns`, `dbops/fn_pgtap_crea_sorgente`, `dbops/fn_ritira_attivo_orfani`, `dbops/fn_trigger_attivo_orfani`, `dbops/trgfn_child_requires_active_parent`, `dbops/vw_storico_scope_da_dichiarare`, `magazzino/causali`, `magazzino/fn_get_magazzino_note`, `magazzino/inventari_righe`, `magazzino/rettifiche_righe`, `magazzino/trasferimenti_righe`, `pagamenti/sistemazioni`, `pratiche/template_flussi_avanzamento_proiezione`, `pratiche/template_flussi`, `pratiche/trgfn_flussi_guard_chiusura_prematura`, `script/fn_available_actions_offerta`, `script/fn_resolve_controparte_sr_id`, `script/fn_scope_ef_whitelist_via_evento_asset`, `script/fn_scope_ef_whitelist_via_inventario`, `script/fn_scope_ef_whitelist_via_rettifica`, `script/fn_scope_ef_whitelist_via_trasferimento`, `script/fn_scope_note_magazzino_ef_perimetro`, `script/trgfn_componenti_guard_coerenza_bom`, `script/trgfn_note_validate_generic`, `script/vw_giornale_entita`, `vendite/fn_diagnostica_gruppi_fatturabili`, `vendite/fn_documento_lineage`, `vendite/fn_partite_merce`, `vendite/offerte_commerciali`, `vendite/resi_righe_rientri`, `vendite/trgfn_commesse_attivita_guard_tipo_doc_emittibile`, `vendite/trgfn_doc_snapshot_da_stato`, `vendite/trgfn_ordini_guard_transizione`, `vendite/vw_contratti_lista`, `vendite/vw_dash_fatturazione_offerte`, `vendite/vw_documento_lineage_archi`, `vendite/vw_documento_lineage_nodi`, `vendite/vw_ordini_lista`.
+* **manuali del backend (`docs/it/backend/*/manual`): lotto BE/FE** (29): `backend:catalogo/api_catalogo`, `backend:core/api_tipi_entita_lookup`, `backend:documenti/api_documenti_helpers`, `backend:documenti/api_documenti_templates`, `backend:magazzino/api_magazzino`, `backend:pratiche/api_coda_lavoro`, `backend:pratiche/api_percorso`, `backend:pratiche/api_pratica_detail`, `backend:vendite/api_commessa_attivita`, `backend:vendite/api_commessa_oneri`, `backend:vendite/api_commessa_stato`, `backend:vendite/api_contratti`, `backend:vendite/api_dashboard_aperto`, `backend:vendite/api_dashboard_backlog`, `backend:vendite/api_dashboard_competenza`, `backend:vendite/api_ddt`, `backend:vendite/api_famiglie_documento`, `backend:vendite/api_fatture_list`, `backend:vendite/api_iva_resolve`, `backend:vendite/api_lineage_passaggi`, `backend:vendite/api_offerte`, `backend:vendite/api_ordini`, `backend:vendite/api_preventivi_collega_pratica`, `backend:vendite/api_preventivi`, `backend:vendite/api_run_commesse_push`, `backend:vendite/api_situazione_merce`, `backend:vendite/modello-contratti`, `backend:vendite/offerte_service`, `backend:vendite/push_preventivo_handler`.
+
+#### E. I documenti aperti in `work-in-progress/` che toccano il tema
+
+Si allineano nel lotto DOC con un rimando a questo brief, oppure si chiudono se il loro oggetto è superato:
+
+| Documento | Che cosa |
+| --- | --- |
+| `brief-db-articoli-obsoleto-dal.md` | il suo lotto B si scrive nel lotto R; il §137 («modello A») è superato. **Si allinea subito**, nel lotto R, perché è vivo |
+| `analisi-db-magazzino-aggancio-documento-e-produzione.md` | D-1…D-3 sul modello A: superate da S-3 |
+| `analisi-db-magazzino-carico-e-scarico.md` | `uq_mag_movimenti_identita` (603): riscritto nel lotto M |
+| `brief-design-proiezione-stato-dominio.md`, `brief-design-guida-rollout-multidominio.md` | `config.sorgenti` come registro dei tipi, il reconcile con `key_selector` letterale (E-9) |
+| `valutazione-modello-di-dominio-db.md`, `analisi-pratiche-domini-anello3.md` | i puntatori polimorfi dichiarati |
+| `sviluppo-listini-da-flussi.md` | l'«opzione B polimorfica» con due colonne id/uuid: va scritta sul modello di questo brief |
+| `sviluppo-preventivi-acquisti.md`, `integrazione-con-sistemi-esterni.md` | i documenti d'acquisto futuri e l'import esterno (§4: tabella di collegamento propria) |
+| altri con una menzione (`analisi-db-commessa-e-produzione-predisposizione`, `brief-db-addebito-trasporto-ordine`, `brief-db-revisione-dbops`, `analisi-simmetria-ordini-acquisto`, `piano-migrazione-primevue-5`, `fatturazione-modello-utilities-gas-ee-idrico`, `analisi-pratiche-valutazione-stato`, due SQL una tantum, `allegati/codici-errore-classe-note.csv`) | da verificare |
+
+
+## 8. Richiesta al team BE/FE (unica, si consegna dopo il lotto Z)
+
+> Si riempie durante i lotti DB: ogni lotto aggiunge qui i suoi cambi, con il percorso intero. Finché il lotto Z non
+> è chiuso, **non è da implementare**. Il punto di partenza è l'elenco chiuso dei file per famiglia nelle schede
+> dell'Appendice.
+
+### 8.1 Dal lotto 0, giro 0.1 (2026-11-06)
+
+| # | Che cosa cambia | Percorso | Che cosa fa il BE/FE |
+| --- | --- | --- | --- |
+| BE-0.1-a | cinque codici nuovi, classe `TECNICO`: `E_SORG_CHIAVE_NON_CONFORME`, `E_SORG_RIGA_NON_DEL_DOCUMENTO`, `E_SORG_DETTAGLIO_NON_DELLA_RIGA`, `E_SORG_LIVELLO_NON_PREVISTO`, `E_SORG_LIVELLO_MANCANTE` | `config.codici_errore` → `config.vw_codici_errore_identita` → il file generato delle policy (`error_policies_generated.py`) | rigenerare il file col comando che lo produce: il controllo di divergenza (`test_error_policies_divergenza_db`) è rosso finché non lo si fa. Nessun `ui_action`: sono 500 |
+| BE-0.1-b | `vendite.fn_get_sorgente_documento_ref`: un id per un tipo a chiave `uid` ora si risolve; un id per un tipo a chiave `id` torna solo se il documento esiste ed è visibile | firma, colonne e `ROWS 1` invariati | nessuna azione attesa; lo leggono `vendite_repository` e `types.py` per il numero del documento d'origine. Da verificare negli smoke delle liste che lo usano |
+| BE-0.1-c | `config.fn_sorgente_tabella` sul BB dei livelli | firma e risultato invariati | nessuna (`famiglie_repository`) |
+| — | le colonne nuove (`sorgente_id`, `sorgente_riga` su `commesse_attivita`, `sorgente_dettaglio`) | vuote | nessuna finché un lotto di famiglia non le scrive |
+
+### 8.2 Dal lotto 0, giro 0.2 (2026-11-06)
+
+| # | Che cosa cambia | Percorso | Che cosa fa il BE/FE |
+| --- | --- | --- | --- |
+| BE-0.2-a | codice nuovo `E_SORG_ORIGINE_REFERENZIATA`, classe `CONFLITTO_STATO` (409): la cancellazione di un documento, una riga o un dettaglio da cui altri record dichiarano di nascere | `config.codici_errore` → file generato delle policy | rigenerare il file (come BE-0.1-a). Lo solleva il DB su un `DELETE`: le cancellazioni del BE (bozze di preventivo, ordine, bolla, righe) lo ricevono come 409 con la frase pronta. Nessun campo da accendere |
+| BE-0.2-b | `dbops.vw_sorgenti_orfane` ha colonne nuove (`grammatica`, `livello`, `sorgente_id`, `sorgente_dettaglio`) | vista del presidio | nessuna attesa: la legge il digest dei presidi, non il BE. Da verificare con un grep sui lettori |
+
+---
+
+## Appendice — Il censimento di dettaglio (2026-11-06)
+
+> Sola lettura: struttura da `zeroerp_ruoli` (costruito da zero, senza dati) e dal catalogo, corpi dalla doc
+> auto-generata, significato dai manuali, grep su BE, FE e pgTAP. I numeri di dati sono quelli di dbdev del §3, fatti
+> datati. [F] = fatto verificato col riferimento; il resto è dichiarato ipotesi o proposta. Quattro schede, una per
+> famiglia. Le decisioni che ne escono sono raccolte al §6.3.
+
+### Censimento — documenti di vendita (testate, righe, colonne parallele G8)
+
+> **Per:** `brief-db-sorgente-documento-e-riga` §7.1, Appendice. **Chi:** team DB, 2026-11-06, sola lettura.
+> **Fonti:** struttura dal DB scratch (`zeroerp_ruoli`, come `zeroerp_owner`: **vuoto di dati**, quindi qui non ci sono
+> conteggi nuovi; i numeri citati sono quelli del brief, dbdev 2026-11-06, fatti datati). Corpi delle funzioni da
+> `pg_get_functiondef` (identici alla doc auto-generata `docs/it/dbzero/vendite/funzioni/*.md`, citata per riga).
+> Significato dai manuali `docs/it/dbzero/vendite/manual/`. BE `backend/apps`, FE `frontend/src`, pgTAP `db/pgtap`.
+> **Legenda:** **[F]** fatto verificato (con file:riga o query); **[I]** ipotesi/deduzione da verificare.
+>
+> **Stato dei changeSet citati:** `20261105-01…-14` e `20261106-01…-03` risultano **EXECUTED** nel
+> `databasechangelog` dello scratch [F]. I `20261105-15…-19` (lotto B) **non esistono nell'albero** [F]
+> (`find db/changelog/migrations_v2 -name '2026110[56]*'`): sono parcheggiati fuori repo (brief obsoleto-dal §7.2). Quindi
+> **oggi nessun verbo DB scrive la sorgente su una riga di vendita** [F] (vedi §0.2).
+
+---
+
+#### 0. Quadro d'insieme
+
+##### 0.1 Colonne di oggi [F] (`information_schema.columns` + `col_description`)
+
+| Tabella | `sorgente_tipo_id` | `sorgente_uid` | `sorgente_riga` | `sorgente_id` | Parallele | Grammatica |
+| --- | --- | --- | --- | --- | --- | --- |
+| `vendite.ordini` | bigint NULL | uuid NULL | — | — | `documento_origine_tipo varchar` (FK `config.sorgenti.codice_interno`) + `documento_origine_id bigint` | G1 «import» + G8 |
+| `vendite.ddt` | bigint NULL | uuid NULL | — | — | — | G1 «padre per uid» |
+| `vendite.resi` | bigint **NOT NULL** | uuid **NOT NULL** | — | — | — | G1 «padre per uid» |
+| `vendite.contratti` | bigint NULL | uuid NULL | — | — | `offerta_id bigint` FK `offerte_commerciali(id)` | G1 + G8 (doppia scrittura) |
+| `vendite.fatture` | bigint NULL | uuid NULL | — | — | — | G1 «import» |
+| `vendite.preventivi_righe` | bigint NULL | uuid NULL | bigint NULL | — | — | G2 (lotto A) |
+| `vendite.ordini_righe` | bigint NULL | uuid NULL | bigint NULL **DEFAULT 0** | — | `preventivo_riga_id` FK `preventivi_righe(id)` | G2 + G8 non censita |
+| `vendite.ddt_righe` | bigint NULL | uuid NULL | bigint NULL | — | `ordini_righe_fulfillment` (tabella) | G2 + G8 |
+| `vendite.contratti_righe` | bigint NULL | uuid NULL | bigint NULL | — | — | G2 (lotto A) |
+| `vendite.fatture_righe` | bigint NULL | uuid NULL | bigint NULL **DEFAULT 0** | — | `riga_rettificata_id`, `riga_capofila_id` (FK fisiche) | G5 (residuo «import») |
+
+Nessuna tabella del perimetro ha `sorgente_id` [F]. Nessun CHECK sulle colonne `sorgente_*` in tutto il perimetro
+(né di forma né di esclusività) [F] (`pg_constraint`, solo FK). L'unico CHECK di provenienza è
+`chk_ordini_documento_origine_copres` (tipo e id co-presenti) [F].
+
+##### 0.2 Chi scrive oggi (tutto il perimetro) [F]
+
+Ricerca di `INSERT … (… sorgente_*/documento_origine_*/offerta_id …)` e `UPDATE … SET` su tutti i corpi (`pg_proc`,
+`BEGIN ATOMIC` compresi) e sul BE:
+
+| Scrittore | Tabella | Valore scritto |
+| --- | --- | --- |
+| `vendite.fn_genera_ddt_da_ordine` (doc `fn_genera_ddt_da_ordine.md:108`) | `ddt` | `ORDINE_VENDITA` + **`ordini.uid`** |
+| `vendite.fn_genera_ddt_riconsegna` (`fn_genera_ddt_riconsegna.md:141`, `:150`) | `ddt` | con ordine: `ORDINE_VENDITA` + `ordini.uid`; senza: `RESO_VENDITA` + **`resi.uid`** |
+| `vendite.fn_push_offerta_a_contratto` (`fn_push_offerta_a_contratto.md:241`) | `contratti` | `OFFERTA_COMMERCIALE` + `offerte_commerciali.uid` **e** `offerta_id` = id |
+| `vendite.fn_push_preventivo_a_ordine` (`fn_push_preventivo_a_ordine.md:164`) | `ordini` | `documento_origine_tipo='PREVENTIVO'` + `documento_origine_id` = **`preventivi.id`** |
+| `vendite.fn_genera_ordine_da_offerta` (`fn_genera_ordine_da_offerta.md:166`) | `ordini` | `'OFFERTA_COMMERCIALE'` + `offerte_commerciali.id` |
+| `vendite.fn_push_preventivo_a_ordine` (`:209`) | `ordini_righe` | `preventivo_riga_id` (non la sorgente) |
+| `vendite.fn_genera_ddt_da_ordine` (`:237`), `fn_genera_ddt_riconsegna` | `ordini_righe_fulfillment` | `(ordine_riga_id, ddt_riga_id, qta_evasa)` |
+| BE `vendite/db/resi_repository.py:646-647` ← `services/resi_service.py:534-535` | `resi` | `DDT_VENDITA` + `str(ddt["uid"])` |
+| BE `vendite/db/pipeline_repository.py:3503` | `fatture_righe` | **`NULL, NULL, NULL` esplicito** (la riga aggrega n attività) |
+| BE `vendite/db/pipeline_repository.py:2014` | `fatture_righe` | la «parte» IVA **copia** `sorgente_*` dalla capofila |
+| `dbops.fn_pgtap_crea_reso` (builder pgTAP) | `resi` | `DDT_VENDITA` + ddt uid |
+
+**Nessuno scrive** `ordini.sorgente_*`, `fatture.sorgente_*`, la sorgente di `preventivi_righe`, `ordini_righe`,
+`ddt_righe`, `contratti_righe` [F] (`vendite.fn_get_or_create_fattura_header` è l'unico INSERT di `fatture` e non
+le nomina, `fn_get_or_create_fattura_header.md:206`). Gli INSERT di `ordini_righe` (`fn_push_preventivo_a_ordine`,
+`fn_genera_ordine_da_offerta`, `dbops.fn_pgtap_crea_ordine_con_righe`, BE) non nominano `sorgente_riga`: prendono il
+**DEFAULT 0** con `sorgente_tipo_id NULL` [F]. Il brief (§3.2) cita 8 righe `COMMESSA` su `fatture_righe` «solo dal
+builder `dbops.fn_pgtap_fattura_attivita`»: il corpo attuale del builder **non scrive** `sorgente_*` [F]; le 8 righe
+di dbdev sono residui di una versione precedente o di un altro scrittore [I].
+
+##### 0.3 Guard montati [F] (`pg_trigger`)
+
+| Tabella | `trgfn_guard_sorgente_polimorfa_tipizzata` | `trgfn_child_requires_active_parent` (config.sorgenti.attivo) | Altri sulla sorgente |
+| --- | --- | --- | --- |
+| `ordini` | **no** | sì | lock fuori bozza su `sorgente_tipo_id, sorgente_uid, documento_origine_tipo, documento_origine_id` (`E_DOC_SORGENTE_FUORI_BOZZA`); `trg_ordini_z90_sync_canali_ins_upd` (UPDATE OF sorgente_*) |
+| `ddt` | **no** | sì | lock fuori bozza su `sorgente_*`; `trg_ddt_z10_guard_cliente_sorgente_ins_upd`; `trg_ddt_z90_sync_canali_ins_upd` (UPDATE OF sorgente_*); `trgfn_ddt_normalize` |
+| `resi` | **no** | sì | lock fuori bozza su `sorgente_*`; `trgfn_resi_normalize`, `_guard_cliente_ddt`, `_guard_ddt_consegnato`, `_default_magazzino` |
+| `contratti` | **no** | sì | lock fuori bozza su `offerta_id, sorgente_tipo_id, sorgente_uid` |
+| `fatture` | **no** | sì | — |
+| `preventivi_righe`, `ordini_righe`, `ddt_righe`, `contratti_righe` | **sì** (`…_a10_guard_sorgente_ins_upd`, da `20261105-14`) | sì | `trgfn_righe_guard_articolo_ammesso` legge `sorgente_tipo_id` (tgargs) come esenzione |
+| `fatture_righe` | **no** | sì | — |
+
+Quindi la **testata non ha nessun controllo d'esistenza** della sorgente; lo fanno solo i trigger di dominio di
+`ddt`/`resi` che la rileggono (normalize e guard cliente), per i tipi che conoscono [F].
+
+##### 0.4 Il presidio degli orfani vede solo le righe [F]
+
+`dbops.fn_sorgenti_orfane_perimetro` (`fn_sorgenti_orfane_perimetro.md:48`) prende le tabelle con FK a
+`config.sorgenti` **e** colonne `sorgente_riga` + `sorgente_uid` **e** il guard `_tipizzata` montato. Risultato sullo
+scratch: dal perimetro vendite entrano solo `preventivi_righe`, `contratti_righe`, `ordini_righe`, `ddt_righe`.
+**Fuori**: tutte e cinque le testate e `fatture_righe` (ha le tre colonne ma non il guard). Precisazione al §3.3 del
+brief: non basta «entrambe le colonne», serve anche il guard.
+
+---
+
+#### 1. Testate
+
+##### 1.1 `vendite.ordini`
+
+**1. Colonne e significato.** `sorgente_tipo_id` «FK → config.sorgenti.id (tipo sorgente import)», `sorgente_uid`
+«Origine import (uid)» [F commento]. Manuale `ordini.md:29, :146, :192, :198, :250-255`: idempotenza d'import da CRM,
+«distinta da `documento_origine_*`». Provenienza vera in `documento_origine_tipo` + `documento_origine_id` (G8).
+⚠️ Due **documentazioni stantie** [F]: il commento di `documento_origine_id` dice «NESSUNA UNIQUE (più ordini da una
+stessa origine)», ma esiste `uq_ordini_v_documento_origine_offerta`; il manuale `ordini.md:241` dice «varchar + CHECK
+vocabolario chiuso PREVENTIVO / OFFERTA», ma dal `20261019-87` è una FK a `config.sorgenti(codice_interno)`.
+
+**2. Scrittori.** `sorgente_*`: **nessuno** [F]. `documento_origine_*`: `fn_push_preventivo_a_ordine` (`PREVENTIVO` +
+**id** del preventivo, che in `config.sorgenti` ha chiave **uid**) e `fn_genera_ordine_da_offerta`
+(`OFFERTA_COMMERCIALE` + **id** dell'offerta, chiave **uid** a catalogo) [F]. Il BE non scrive: rilegge
+(`ordini_service.py:542`, `:575` restituisce `"documento_origine": {"tipo", "id"}` al FE).
+
+**3. Lettori.**
+
+* `sorgente_*` — **`vendite.trgfn_documenti_sync_canali`** ramo ordini (`trgfn_documenti_sync_canali.md:121`): se
+  `sorgente_tipo_id` è `PREVENTIVO`, segna il canale del preventivo **CONSUMATO** con `NEW.sorgente_uid::text`. Cioè:
+  il codice legge `ordini.sorgente_*` come **provenienza**, non come import. Il ramo è **morto** perché il push scrive
+  `documento_origine_*` [F: nessuno scrive `ordini.sorgente_*`; nessun verbo di push chiama
+  `fn_set_documento_canale_stato`]. ⚠️ Portare la provenienza in `sorgente_*` lo **accende**: il canale PREVENTIVO
+  passerà a CONSUMATO alla generazione dell'ordine. È un cambio di comportamento da decidere [I: probabilmente quello
+  voluto in origine]. Le legge anche il lock fuori bozza (tgargs); `vw_ordini_lista` non le espone [F].
+* `documento_origine_*` — `vw_ordini_lista` (`:86`, join per **id** su preventivi e offerte, `documento_origine_codice`
+  per tipo con `CASE`), `vendite.fn_documento_lineage_archi` (`:103`, per id), `vendite.fn_documento_legami`
+  (`:103`), `vendite.fn_offerta_documenti_vivi` (`:27`), `script.fn_check_preventivo_annullabile` (`:88`),
+  `vw_dash_fatturazione_offerte`, BE `ordini_repository.py:432-433` (`get_ordine_by_documento_origine(tipo, id)`),
+  `ordini_repository.py:286` (etichetta per la stampa), `ordine_document_context_builder.py:213-215`; FE
+  `OrdiniSearchTable.vue:10` (colonna `documento_origine_codice` via catalogo `ui.lista_colonna` riga 125).
+* pgTAP che costruiscono/asseriscono `documento_origine_*`: `vendite/test-fn-push-preventivo-a-ordine-v1.sql`,
+  `test-annullo-documento-con-legami-v1.sql`, `test-fattura-origini-v1.sql`, `test-ordini-modello-ext.sql`,
+  `test-testata-dopo-emissione-v1.sql`, `test-grammatica-origine-destinazione-sorgenti-v1.sql`,
+  `test-documento-lineage-seminata-v1.sql`, `offerte_commerciali/test_fn_push_offerta_a_contratto.sql`,
+  `offerte_commerciali/test-righe-ammesse-ai-passi-e-annullo-v1.sql`, `script/test-fn-available-actions-offerta-v1.sql`
+  (10 file). BE test: `test_origine_ordine_sorgente_db.py`, `test_genera_ordine_da_offerta_db.py`,
+  `test_ordine_document_context_builder.py`.
+
+**4. Vincoli e indici.**
+
+| Indice / vincolo | Classificazione | Motivo |
+| --- | --- | --- |
+| `uq_ordini_v_sorgente_fk (sorgente_tipo_id, sorgente_uid) WHERE tipo NOT NULL` | **idempotenza import** | commento «Idempotenza import»; nessuno scrive le colonne; con §4 si ritira |
+| `uq_ordini_v_documento_origine_offerta (documento_origine_tipo, documento_origine_id) WHERE tipo='OFFERTA_COMMERCIALE' AND NOT is_abortito_snapshot` | **regola di dominio** | «un'offerta genera al più un ordine vivo» (D-3/D-6 annullo); lettore `fn_offerta_documenti_vivi`; nome mappato nel BE `ordini_service.py:88` |
+| `ix_ordini_documento_origine` (non unico) | ricerca | lineage seminata ramo A |
+| `chk_ordini_documento_origine_copres` | forma | co-presenza; da sostituire col CHECK di forma del modello |
+| `fk_ordini_documento_origine_tipo_sorgenti` (codice, `ON DELETE RESTRICT`) | FK | sparisce con la confluenza |
+
+⚠️ **Trasferire `uq_…_offerta` sulla chiave nuova** [I tecnico]: il predicato oggi nomina il **codice**
+(`'OFFERTA_COMMERCIALE'`); su `sorgente_tipo_id` servirebbe l'**id** letterale (14, esplicito nel seed
+`config/sorgenti.csv:10`) in un indice parziale, oppure una via diversa (indice parziale per id con presidio, o
+guard). Da decidere nel lotto.
+
+**5. Guard.** Nessun guard di esistenza né su `sorgente_*` né su `documento_origine_*` [F]: il test BE
+`test_origine_ordine_sorgente_db.py` lo dice esplicitamente («l'id dell'offerta è polimorfo (nessuna FK), quindi non
+serve un'offerta vera»). Un `documento_origine_id` inesistente passa.
+
+**6. S-9 (bersaglio `ORDINE_VENDITA`, e `ORDINE_VENDITA_RIGA` per le righe).** DELETE ammesso solo in DRAFT
+(`trg_ordini_a10_guard_delete_solo_bozza_dlt`, `trgfn_doc_guard_delete_solo_bozza.md:44`) [F]; «zero righe» lo
+controlla **solo il BE** (`ordini_service.elimina_ordine`, abbandono bozza) [F]. Figli fisici: righe, indirizzi, note
+`ON DELETE CASCADE`; `shop.ricevute` NO ACTION. Figli **polimorfi** che possono già esistere su un ordine in bozza:
+
+* `vendite.documenti_fatturazione_canali` — il canale ORDINE lo apre `trg_ordini_z90_sync_canali_ins_upd` **all'INSERT**
+  [F]; nessun trigger lo toglie al DELETE [F] → la bozza abbandonata lascia un orfano. È il meccanismo coerente con i
+  5 orfani ORDINE del brief §3.2 [I forte];
+* `pratiche.pratiche_sorgenti` — `fn_push_preventivo_a_ordine` aggancia l'ordine nuovo alla pratica (INSERT in
+  `pratiche_sorgenti`) [F]; il DELETE non lo stacca [F] → orfano possibile [I];
+* `documenti.documenti_generati` (stampa), `vendite.commesse_sorgenti`/`commesse_attivita` (dopo il push) — non in
+  bozza, di norma [I].
+
+Nessun trigger AFTER DELETE su nessuna testata del perimetro [F]: oggi **ai figli polimorfi non succede niente**.
+L'unico «lato in uscita» esistente è `vendite.trgfn_doc_guard_chiusura_sorgente` (su `ordini`, `ddt`, `contratti`),
+che però guarda l'**annullo**, non la cancellazione, e solo i figli in `commesse_attivita` (via
+`script.fn_check_sorgente_chiudibile`).
+
+**7. S-8.**
+
+* `documento_origine_*` → **può confluire** in `sorgente_*`: è provenienza e resta sull'ordine annullato (commento
+  della colonna). Conversione: PREVENTIVO e OFFERTA hanno chiave `uid` → `sorgente_uid` = uid del documento (oggi c'è
+  l'id: S-5 al contrario, va convertito *verso* l'uid). `sorgente_riga` NULL (documento intero). Ricadute: la
+  regola `uq_…_offerta` (§4 sopra), l'FK per codice, il BE che cerca per `(tipo, id)` e il contratto di risposta
+  `documento_origine {tipo, id}`.
+* `sorgente_*` «import» → si svuota (nessun dato da nessuno scrittore) e cambia significato; indice da ritirare.
+
+**8. Lotto e note.** Famiglia «testate di vendita», **dopo** il lotto righe. Aggiungere `sorgente_id bigint` (e
+`sorgente_riga` se la testata deve poter dire la riga — non serve: le testate nascono da un documento intero [I]).
+Allungare i tgargs del lock fuori bozza con le colonne nuove (`sorgente_id`; vedi memoria «UPDATE OF»), e
+`trg_ordini_z90_sync_canali_ins_upd` `UPDATE OF`.
+
+##### 1.2 `vendite.ddt`
+
+**1. Colonne.** Commenti «tipo sorgente import» / «Origine import (uid)» [F] — **sbagliati**: il manuale `ddt.md:18,
+:62, :73, :82` dice documento padre (`ORDINE_VENDITA` + `ordini.uid`), lookup DDT-per-ordine. G1 «padre per uid» con
+un tipo a chiave `id`.
+
+**2. Scrittori.** `fn_genera_ddt_da_ordine` (ORDINE_VENDITA + ordini.uid), `fn_genera_ddt_riconsegna` (ORDINE_VENDITA +
+ordini.uid, oppure **RESO_VENDITA + resi.uid**) [F]. Il BE non la scrive (`CREATE_KEYS_DDT` in `ddt_service.py:148` non
+la contiene) [F]. ⚠️ **Incoerenza testata/righe nella riconsegna** [F+I]: con ordine, la testata dice ORDINE_VENDITA
+mentre le righe — col lotto B parcheggiato — direbbero `RESO_VENDITA_RIGA`. Testata e righe punterebbero a due
+documenti diversi. Va deciso qual è la provenienza della bolla di riconsegna (il reso, e l'ordine resta nel
+fulfillment? [I proposta]).
+
+**3. Lettori** (tutti per **uid**, `o.uid = d.sorgente_uid`, filtrati sul codice `ORDINE_VENDITA` o `RESO_VENDITA`) [F]:
+`vendite.trgfn_ddt_normalize` (`:70`, eredita BA/utility dall'ordine), `vendite.fn_ddt_vincoli_cliente` (`:61`, `:67`)
+→ `trgfn_ddt_guard_cliente_sorgente` (confronta anche NEW/OLD di `sorgente_uid`), `vendite.fn_ddt_trigger_ordine_testata`
+(`:21`, `BEGIN ATOMIC`, parametro `uuid`) ← `script.fn_check_ddt_emittibile` (`:247`), `script.fn_check_ordine_annullabile`
+(`:72`), `script.fn_available_actions_ddt` (`non_editable_fields`), `script.fn_check_ddt_riga_correggi_qta_evasa`,
+`vendite.fn_ddt_push_diagnosi`, `vendite.fn_list_ddt_da_pushare` (`:106`, `:164` espone `ordine_sorgente_uid` nel
+payload del push), `vendite.fn_documento_lineage_archi` (`:217`), `vendite.vw_ddt_lista` (`:94`, espone
+`sorgente_uid`, `ordine_origine_id`, `ordine_origine_numero`), `vendite.trgfn_documenti_sync_canali` (`:165`, consuma il
+canale ORDINE con `NEW.sorgente_uid::text`, cioè l'uid). BE: `ddt_repository.py:72` (filtro su
+`ordine_origine_numero`). FE: `DdtSearchTable.vue:9` (colonna `ordine_origine_numero`). pgTAP che costruiscono o
+asseriscono `ddt.sorgente_uid`: `test-fn-genera-ddt-da-ordine-v1`, `test-fn-ddt-trigger-ordine-testata-v1`,
+`test-documento-lineage-v1`, `test-documento-lineage-seminata-v1`, `test-documenti-canali-sync-v1`,
+`test-ddt-da-ordine-emittente-prima-dei-lettori-v1`, `test-esecutivi-ba-coppia-v1`, `test-testata-dopo-emissione-rdb-v1`,
+`test-fatturazione-immediata-simmetria-sorgenti-v1`, `script/test-capability-motivi-e-nessuna-azione-v1`,
+`script/test-trgfn-default-emittente-fiscale-v1`, `dbops/test-fn-pgtap-crea-ddt-da-ordine-v1`,
+`dbops/test-fn-pgtap-crea-ddt-senza-ordine-v1`, `magazzino/test-ddt-trasferimento-v1` (14 file, insieme ai resi sotto).
+
+**4. Vincoli.** `ix_ddt_v_sorgente (tipo, uid) WHERE tipo NOT NULL`, **non unico** dal `20260709-01` → ricerca, non una
+regola [F]. Nessun CHECK.
+
+**5. Guard.** Nessun guard polimorfo; l'esistenza la verificano di fatto `trgfn_ddt_guard_cliente_sorgente`
+(`E_DOC_SORGENTE_NON_TROVATA`, solo per ORDINE_VENDITA e RESO_VENDITA) [F].
+
+**6. S-9 (bersaglio `DDT_VENDITA`, `DDT_VENDITA_RIGA`, `DDT_VENDITA_PRELIEVO`).** DELETE solo DRAFT (trigger DB) e
+«zero righe» solo nel BE (`ddt_service.elimina_ddt`) [F]. `ordini_righe_fulfillment.ddt_riga_id` e `resi_righe.*`
+sono `ON DELETE RESTRICT`/NO ACTION, `trgfn_dlt_block_ordrig_ddtrig` blocca la riga con legami [F]. Figli polimorfi:
+canale DDT aperto all'INSERT da `sync_canali` e mai tolto → orfano alla cancellazione della bozza (16 orfani DDT nel
+brief) [F meccanismo, I attribuzione]; `vendite.resi` (DDT_VENDITA per uid) nasce solo su DDT CONSEGNATO
+(`trgfn_resi_guard_ddt_consegnato`), quindi non su una bozza [F]; `magazzino.movimenti` solo dopo l'emissione [I].
+
+**7. S-8.** Nessuna colonna parallela di testata; il legame testata↔testata coi figli è anche ricostruibile dal
+fulfillment (manuale `ddt.md:18`).
+
+**8. Lotto.** Testate di vendita. Conversione S-5: `sorgente_id` = `ordini.id` (o `resi.id`), `sorgente_uid` a NULL.
+Riscrivere tutti i lettori sopra (sono **13 funzioni/viste** che fanno `uid = sorgente_uid`), il payload del push
+(`ordine_sorgente_uid`), `sync_canali` (canali G4, uid: S-5 dice di convertire anche quelli), tgargs del lock e
+`UPDATE OF` del trigger canali.
+
+##### 1.3 `vendite.resi`
+
+**1. Colonne.** `sorgente_tipo_id` NOT NULL «FK → config.sorgenti.id (DDT_VENDITA)», `sorgente_uid` NOT NULL «UID del
+DDT di provenienza (vendite.ddt.uid)» [F]. Manuale `resi.md:27-28`: «l'unica sorgente è DDT_VENDITA, risolta per uid».
+G1 «padre per uid», con DDT a chiave `id`. È l'**unica** tabella del perimetro con la sorgente obbligatoria [F].
+
+**2. Scrittori.** BE `resi_service.py:534-535` → `resi_repository.create_reso` (`:646-647`), con l'uid del DDT;
+`dbops.fn_pgtap_crea_reso` [F]. Nessun verbo DB.
+
+**3. Lettori** (tutti per uid): `trgfn_resi_normalize` (`:67`), `trgfn_resi_guard_ddt_consegnato` (`:41`),
+`trgfn_resi_guard_cliente_ddt` (`:50`), `trgfn_resi_default_magazzino` (`:30`), `fn_conferma_reso` (`:107`, `FOR
+UPDATE` sul DDT), `fn_annulla_reso` (`:76`), `fn_posta_reso`, `fn_genera_ddt_riconsegna` (`LEFT JOIN vendite.ddt d ON
+d.uid = r.sorgente_uid`, col commento «nulla impone che il tipo sia DDT_VENDITA»), `fn_ddt_vincoli_cliente`,
+`fn_documento_lineage_archi` (`:229`), `script.fn_available_actions_reso`, `vw_resi_lista` (`:65`, `ddt_origine_id`,
+`ddt_origine_numero`). BE `resi_repository.py:333` (`get_stato_e_ddt_origine`, `d.uid = r.sorgente_uid`). FE
+`ResoDrawer.vue:353` (`ddt_origine_id`), `ResoForm.vue:92` (`ddt_origine_numero`). pgTAP:
+`test-resi-motore-v1`, `test-resi-righe-guard-origine-coerente-v1`, `magazzino/test-reso-carico-v1`,
+`dbops/test-fn-pgtap-crea-reso-v1`, più quelli della lineage.
+
+**4. Vincoli.** `ix_resi_sorgente (tipo, uid)` non unico, senza predicato [F]; `NOT NULL` su entrambe. Nessuna
+unicità: più resi per lo stesso DDT ammessi (corretto, regola di dominio assente).
+
+**5. Guard.** Nessun guard polimorfo; i trigger di dominio non verificano che il **tipo** sia DDT_VENDITA quando
+leggono (filtrano solo l'uid in alcuni punti) [F per `fn_genera_ddt_riconsegna`].
+
+**6. S-9 (bersaglio `RESO_VENDITA`, `RESO_VENDITA_RIGA`, `RESO_VENDITA_RIENTRO`).** ⚠️ **Nessun guard DB di
+cancellazione sulla testata** [F]: «DRAFT e 0 righe» è solo nel BE (`resi_service.elimina_reso`, `resi_repository.py:678`).
+Il DELETE di un reso **senza righe** passa da DB in qualunque stato (le righe hanno il lock fuori bozza, che scatta
+solo se ci sono righe da cancellare in cascata) [I dedotto dai trigger]. Contro S-9 («dentro le regole DB»). Figli
+polimorfi: la bolla di riconsegna (`RESO_VENDITA` + uid) e i movimenti di rientro nascono solo dopo la conferma [I].
+
+**7. S-8.** Nessuna parallela di testata (sulle righe: `resi_righe.ddt_riga_id`, `ordine_riga_id` FK fisiche, fuori dal
+mio perimetro).
+
+**8. Lotto.** Testate. Conversione: `sorgente_id` = `ddt.id`; il NOT NULL va spostato su un CHECK «esattamente una
+chiave» (le due colonne diventano alternative). BE: `create_reso` passa l'uid → col BB «scrive» del lotto 0 può
+continuare a passarlo; `get_stato_e_ddt_origine` va riscritto. Aggiungere un guard DB di cancellazione (S-9).
+
+##### 1.4 `vendite.contratti`
+
+**1. Colonne.** `sorgente_tipo_id` «tipo del documento sorgente del push (es. OFFERTA_COMMERCIALE). NULL per contratti
+creati direttamente», `sorgente_uid` «UUID uid del documento sorgente del push (es. offerta.uid)», `offerta_id` «FK a
+offerte_commerciali … UNIQUE garantisce idempotenza pattern A» [F commenti]. **Già provenienza**, corretta col
+catalogo (OFFERTA ha chiave uid): è l'unica testata G1 che è già sul modello, a parte la mancanza di `sorgente_id`.
+
+**2. Scrittori.** Solo `fn_push_offerta_a_contratto` (`:241`): scrive **due volte** lo stesso fatto [F].
+
+**3. Lettori.** `sorgente_*`: nessun lettore DB trovato oltre al lock fuori bozza [F]. `offerta_id`:
+`fn_offerta_documenti_vivi` (`:21`), `fn_documento_legami` (`:213`), `fn_documento_lineage_archi` (`:128`),
+`vw_dash_fatturazione_offerte` (`:52`), BE `offerte_repository.py:228` (`c.offerta_id = o.id AND NOT
+c.is_abortito_snapshot`). Il BE restituisce `OffertaPushResult.sorgente_uid` = **uid del contratto**
+(`offerte_service.py:974`), non della sorgente: nome fuorviante nel contratto API (FE `offerteApi.js:119`,
+`stores/offerte.js:175`) [F]. pgTAP su `offerta_id` dei contratti: 25 file (elenco in coda, §5).
+
+**4. Vincoli.** `uq_contratti_offerta_id (offerta_id) WHERE offerta_id NOT NULL AND NOT is_abortito_snapshot` =
+**regola di dominio** («un'offerta genera al più UN contratto vivo», D-3/D-6) [F]. `fk_contratti_offerta` NO ACTION.
+Nessun indice su `sorgente_*`.
+
+**5. Guard.** Nessuno sulla sorgente.
+
+**6. S-9 (bersaglio `CONTRATTO`, `CONTRATTO_RIGA`).** ⚠️ **Nessun guard DB di cancellazione sulla testata**, nessun
+metodo BE di cancellazione [F]; `zeroerp_app` ha il privilegio DELETE [F]. Le righe hanno il lock fuori bozza in
+cascata; `contratti_utilities` RESTRICT; `attivita_fatturabili`, `commesse_attivita`, `fatture_atti` NO ACTION. Figli
+polimorfi: canale DIRETTO aperto all'INSERT (`sync_canali` ramo contratti) e mai tolto (14 orfani CONTRATTO nel
+brief) [F meccanismo]. Ma senza un percorso BE di DELETE da dove vengono? [I: pgTAP/fixture o cancellazioni dirette
+su dbdev].
+
+**7. S-8 — `offerta_id`.** Può confluire [I]: è provenienza (il contratto annullato la conserva). Ma porta **una cosa
+che il guard polimorfo non dà**: la FK fisica impedisce di cancellare un'offerta che ha un contratto. Col modello
+quella protezione deve venire dal lato «in uscita» del lotto 0 (S-9), altrimenti si perde. La regola
+`uq_contratti_offerta_id` si trasferisce su `(sorgente_tipo_id, sorgente_uid) WHERE sorgente_tipo_id IS NOT NULL AND NOT
+is_abortito_snapshot` (oggi la sola sorgente del contratto è l'offerta; se domani ce ne fossero altre, ricade il
+problema del predicato per id del §1.1).
+
+**8. Lotto.** Testate. Aggiungere `sorgente_id`; ritirare `offerta_id` (con FK, indice, tgargs del lock) dopo aver
+riscritto i 4 lettori DB e quello BE.
+
+##### 1.5 `vendite.fatture`
+
+**1. Colonne.** «FK → config.sorgenti (ex source_tipo testuale)», «Origine import (uid)» [F]. Manuale `fatture.md:34,
+:115-118, :142-146, :155`: idempotenza d'import da sistemi esterni.
+
+**2. Scrittori.** **Nessuno** [F].
+
+**3. Lettori.** Solo `vw_fatture_lista` (`:76`, espone `sorgente_tipo_id`, `sorgente_codice_interno`, `sorgente_uid`)
+[F]. Nessun BE/FE specifico trovato.
+
+**4. Vincoli.** `uq_fatture_v_sorgente_fk (tipo, uid) WHERE tipo NOT NULL` = **idempotenza import** [F commento].
+
+**5. Guard.** Nessuno.
+
+**6. S-9 (bersaglio `FATTURA`, `FATTURA_RIGA`).** DELETE ammesso solo se `numero IS NULL`
+(`trg_fatture_a05_guard_numero_fiscale_upd_dlt … WHEN (old.numero IS NOT NULL)`, `trgfn_fatture_guard_numero_fiscale.md:32`)
+[F]; molti figli fisici NO ACTION (pagamenti, SDI, fondi, lotti) che di fatto proteggono. Figli polimorfi:
+`fatture_stampa_coda` (FK fisica CASCADE + sorgente G7), `documenti_generati` (FATTURA per id) [F dal brief e da
+`pg_constraint`].
+
+**7. S-8.** Nessuna parallela. **Che cosa sarebbe la provenienza di una fattura?** [I] La fattura aggrega n attività
+di n commesse: una provenienza unica di testata in generale **non esiste** (la tracciabilità passa da
+`attivita_fatturabili.fattura_riga_id`, commento in `pipeline_repository.py:3500-3502`). La nota di credito ha già
+`fatture_rettifiche` (FK fisiche). Proposta: colonne del modello presenti per uniformità, di norma NULL; da decidere se
+servono.
+
+**8. Lotto.** Testate; banale (nessun dato, nessun lettore oltre la vista). Si ritira l'indice import.
+
+---
+
+#### 2. Righe
+
+##### 2.1 `vendite.preventivi_righe`
+
+**1.** Colonne del lotto A (`20261105-02`), modello A: «la chiave sta in `sorgente_riga` (key_selector id) o
+`sorgente_uid` (uid)». Tipo previsto: `PREVENTIVO_RIGA` (la revisione) [F commento].
+**2. Scrittori.** Nessuno oggi [F]. Previsto dal lotto B `-16` (`fn_crea_revisione_preventivo`, PREVENTIVO_RIGA).
+Col modello: `PREVENTIVO` + `sorgente_uid` = uid della **revisione di partenza** + `sorgente_riga` = id della riga
+copiata [I proposta].
+**3. Lettori.** Guard tipizzato, guard articolo (esenzione: «sorgente_tipo_id IS NOT NULL»),
+`dbops.trgfn_child_requires_non_obsolete_parent` (esenzione lotto A), presidio orfani [F].
+**4. Vincoli.** FK `fk_preventivi_righe_sorgente_tipo`; nessun indice, nessun CHECK [F].
+**5. Guard.** `trg_preventivi_righe_a10_guard_sorgente_ins_upd` (tipizzata) + `child_requires_active_parent` [F].
+**6. S-9 (bersaglio `PREVENTIVO_RIGA`).** DELETE della riga: lock fuori bozza; `ordini_righe.preventivo_riga_id` FK NO
+ACTION blocca la riga consumata da un ordine [F]. La testata `preventivi`: CASCADE sulle righe; canale PREVENTIVO
+aperto all'INSERT e mai tolto → coerente coi 352 orfani PREVENTIVO del brief [F meccanismo].
+**8. Lotto.** Primo lotto di famiglia (righe di vendita).
+
+##### 2.2 `vendite.ordini_righe`
+
+**1.** Colonne del 2025 (non del lotto A, che qui ha solo montato il guard): `sorgente_tipo_id` «tipo di sorgente»,
+`sorgente_uid` «Origine import (uid)», `sorgente_riga` **DEFAULT 0** «Progressivo/ID riga nella sorgente (0 se non
+applicabile)» [F]. Manuale `ordini_righe.md:16, :41, :132`: «idempotenza della sorgente / import».
+**2. Scrittori.** Nessuno scrive il tipo [F]; tutti gli INSERT lasciano `sorgente_riga = 0` col tipo NULL (§0.2).
+Previsti: lotto B `-15` (`PREVENTIVO_RIGA` accanto a `preventivo_riga_id`) e i verbi dell'offerta («testata +
+progressivo», fermati). Col modello: da preventivo `PREVENTIVO` + uid preventivo + `sorgente_riga` = id della riga;
+da offerta `OFFERTA_COMMERCIALE` + uid offerta + `sorgente_riga` = **vedi §4 (S-1)**.
+**3. Lettori.** Guard tipizzato, guard articolo, presidio orfani; BE nessuno [F]. pgTAP che la scrivono a mano:
+`test-fattura-origini-v1.sql:91` (con commento che cita `chk_ordini_righe_preventivo_ha_sorgente`, **vincolo che non
+esiste** perché sta nel `-19` parcheggiato), `test-documento-lineage-seminata-v1.sql` [F].
+**4. Vincoli.**
+
+| Indice / default | Classificazione | Motivo |
+| --- | --- | --- |
+| `uq_ordini_righe_v_sorgente_fk (tipo, uid) WHERE tipo NOT NULL` | **idempotenza import → residuo** | blocca due righe dalla stessa offerta e il secondo ordine dopo l'annullo (brief §3.4); per i tipi a chiave `id` non morde (uid NULL, NULL distinti) |
+| `DEFAULT 0` su `sorgente_riga` | **residuo** | lo 0 è una riga che non esiste; con un tipo a chiave `uid` (offerta) la riga avrebbe `sorgente_uid` **e** `sorgente_riga = 0` se il verbo non nomina la colonna: due chiavi, e il guard non controlla l'esclusività |
+
+**5. Guard.** Tipizzata (da `20261105-14`), `child_requires_active_parent`, `trgfn_dlt_block_ordrig_ddtrig` [F].
+**6. S-9 (bersaglio `ORDINE_VENDITA_RIGA`).** DELETE bloccato se ha fulfillment (`E_DELETE_BLOCKED_FUL`) o
+`resi_righe` (`E_DELETE_RIGA_DOC_REFERENZIATA`), più lock fuori bozza [F, `trgfn_dlt_block_ordrig_ddtrig.md:94`]. **Non**
+guarda le `ddt_righe` che la nominano come sorgente (oggi nessuna; col lotto righe sì) → col modello il controllo
+diventa del lato «in uscita» [I].
+**7. S-8 — `preventivo_riga_id`** (FK fisica, **non censita dal brief nel G8**): ⛔ **non può confluire** [F]. Non è
+una provenienza ma un **legame di consumo**: `vendite.fn_documento_ritira_legami` lo azzera all'annullo dell'ordine
+per «rilasciare» la riga del preventivo (`fn_documento_ritira_legami.md:165`), mentre la provenienza deve restare
+sull'ordine annullato. Lo leggono `fn_documento_legami`, `fn_documento_lineage_legami`, `fn_doc_porta_ritiro_ammette`,
+`fn_push_preventivo_a_ordine` (idempotenza: la riga già consumata non si ripusha [I]) e 11 pgTAP. La sorgente si
+scrive **accanto** (era il disegno del `-15`). Eccezione da far decidere a Tid.
+**8. Lotto.** Righe di vendita: togliere il DEFAULT 0, convertire gli 0 esistenti in NULL (tutti col tipo NULL [I da
+verificare su dbdev]), ritirare l'indice unico, CHECK di forma.
+
+##### 2.3 `vendite.ddt_righe`
+
+**1.** Lotto A; commento: «ORDINE_VENDITA_RIGA dalla bolla da ordine, RESO_VENDITA_RIGA dalla riconsegna … nello
+STESSO INSERT, prima del legame in `ordini_righe_fulfillment`» [F].
+**2. Scrittori.** Nessuno oggi: `fn_genera_ddt_da_ordine.md:192` non la nomina [F]. Previsti `-17`/`-18`. Col modello:
+`ORDINE_VENDITA` + `sorgente_id` = ordine + `sorgente_riga` = riga d'ordine; riconsegna `RESO_VENDITA` + reso + riga
+di reso (vedi l'incoerenza con la testata in §1.2).
+**3. Lettori.** Guard tipizzato, guard articolo, presidio orfani; pgTAP `magazzino/test-ddt-scarico-v1.sql` [F].
+**4. Vincoli.** Solo FK; nessun indice [F].
+**5. Guard.** Tipizzata, `child_requires_active_parent`, `trgfn_dlt_block_ordrig_ddtrig` [F].
+**6. S-9 (bersaglio `DDT_VENDITA_RIGA`).** DELETE bloccato con fulfillment, `resi_righe`, `resi_righe_riconsegne`
+(FK NO ACTION) e lock fuori bozza; `ddt_righe_prelievi` CASCADE [F].
+**7. S-8 — `ordini_righe_fulfillment`**: vedi §3.2. ⛔ non può confluire.
+**8. Lotto.** Righe di vendita.
+
+##### 2.4 `vendite.contratti_righe`
+
+**1.** Lotto A; tipo previsto `OFFERTA_COMMERCIALE` («dal contratto nato dall'offerta») [F].
+**2. Scrittori.** Nessuno oggi [F]. `fn_push_offerta_a_contratto` copia **1:1** le righe da
+`vendite.offerte_commerciali_eccezioni` (`fn_push_offerta_a_contratto.md:295`, loop `ORDER BY id`) [F]: col modello
+`OFFERTA_COMMERCIALE` + uid offerta + `sorgente_riga` = **`offerte_commerciali_eccezioni.id`**. Qui S-1 funziona.
+**3–5.** Come le altre righe del lotto A; in più `trgfn_righe_guard_esclusione_immutabile`, lock su `tipo_eccezione` [F].
+**6. S-9 (bersaglio `CONTRATTO_RIGA`).** Lock fuori bozza; componenti CASCADE; figli polimorfi (commesse_attivita?) [I].
+**8. Lotto.** Righe di vendita; `config.sorgenti` per OFFERTA_COMMERCIALE prende `target_righe_table =
+offerte_commerciali_eccezioni` (FK `offerta_id`).
+
+##### 2.5 `vendite.fatture_righe`
+
+**1.** «FK → config.sorgenti (ex source_tipo testuale)», `sorgente_uid` «Origine import (uid)», `sorgente_riga`
+DEFAULT 0 «Progressivo/ID riga nella sorgente» [F]. Manuale `fatture_righe.md:78` «sulle righe prodotte
+dall'aggregazione sono NULL», `:121` «unique parziale (idempotenza)». G5 nel brief (tipo COMMESSA + riga di commessa).
+**2. Scrittori.** BE `pipeline_repository.py:3503`: `NULL, NULL, NULL` espliciti (quindi niente 0) [F];
+`pipeline_repository.py:2014`: la parte IVA copia le tre colonne dalla capofila [F]. Nessuno scrive COMMESSA oggi [F].
+**3. Lettori.** BE `pipeline_repository.py:1959` (`list_righe_per_plafond`, le passa al plafond) [F]. Nessuna funzione
+DB legge `fatture_righe.sorgente_*` (le funzioni di fatturazione leggono `commesse_attivita`) [F].
+**4. Vincoli.** `uq_fatture_righe_v_sorgente_fk (tipo, uid) WHERE tipo NOT NULL` = **residuo**: ⚠️ con una sorgente
+valorizzata, la copia della capofila sulla parte (`:2014`) **violerebbe** l'indice (stessa coppia due volte) [I
+dedotto]. `DEFAULT 0` residuo.
+**5. Guard.** Solo `child_requires_active_parent` e il congelamento [F]: nessun guard polimorfo, fuori dal presidio
+orfani.
+**6. S-9 (bersaglio `FATTURA_RIGA`).** Congelamento (`trgfn_fattura_satellite_guard_congelamento`); figli fisici
+`attivita_fatturabili`, `commesse_attivita`, `resi_righe_accrediti`, titoli IVA NO ACTION [F].
+**7. S-8.** `riga_rettificata_id` / `riga_capofila_id` sono FK fisiche monomorfe con regole proprie (gemella della
+rettifica, spezzatura IVA): **restano fuori** [I proposta]. La provenienza COMMESSA vale per la riga di una sola
+attività; per la riga aggregata resta NULL (decisione già scritta nel manuale).
+**8. Lotto.** Insieme a `attivita_fatturabili` (S-7, perimetro altrui) o alle righe di vendita; il codice
+`FATTURA_RIGA` è usato anche come **tipo entità** in errori/riepiloghi (`trgfn_fatture_guard_stato`,
+`trgfn_fatture_righe_guard_riga_capofila`, `fn_ricalcola_riepilogo_iva_fattura`, `fn_check_fattura_emettibile`) [F]:
+non va confuso col tipo sorgente nel ritiro S-2.
+
+---
+
+#### 3. Colonne parallele G8 (S-8)
+
+##### 3.1 `ordini.documento_origine_*` e `contratti.offerta_id`
+
+Vedi §1.1.7 e §1.4.7: **possono confluire**, con due attenzioni [I]: (a) la regola d'unicità sull'offerta va
+riscritta su `sorgente_tipo_id` (predicato per id, non per codice); (b) `offerta_id` ha una FK fisica che oggi
+impedisce di cancellare l'offerta: va sostituita dal lato «in uscita» (S-9), non persa. Per l'ordine la chiave
+cambia **di tipo** (oggi id, a catalogo uid).
+
+##### 3.2 `vendite.ordini_righe_fulfillment`
+
+⛔ **Non può confluire** [F]. Motivi concreti:
+
+1. **porta una quantità** (`qta_evasa`, CHECK `> 0` e finito), con la guardia di over-fulfillment
+   `trgfn_ordini_ful_guard_consistenza` (lock sulla riga d'ordine, residuo reso-aware);
+2. **è N:M**: `uq_ordini_r_ful_v_pair (ordine_riga_id, ddt_riga_id)` ammette più righe d'ordine per una riga di DDT, e
+   il codice lo sa (`E_DDT_RIGA_EVASA_LEGAMI_MULTIPLI`, `fn_check_ddt_riga_correggi_qta_evasa.md:125`); una sola
+   `sorgente_riga` non lo può dire;
+3. **si ritira** (`vendite.fn_ddt_riga_ritira_legami` lo cancella; `trgfn_ddt_riga_legame_guard` ne governa UPDATE e
+   DELETE), mentre la provenienza resta;
+4. FK fisiche `ON DELETE RESTRICT` su entrambi i lati, che proteggono riga d'ordine e riga di bolla.
+
+Lettori (27 oggetti DB) [F]: `fn_partite_merce`, `fn_situazione_merce_ordine`, `fn_resi_da_accreditare`,
+`fn_ordine_ha_residuo_evasione`, `fn_ordine_proietta_stato_evasione`, `fn_ordine_riga_spedita`, `fn_ddt_riga_evasa`,
+`fn_ddt_riga_correggi_qta_evasa`, `fn_ddt_push_diagnosi`, `fn_ddt_vincoli_cliente`, `fn_doc_porta_ritiro_ammette`,
+`fn_documento_legami`, `fn_documento_lineage_legami`, `trgfn_resi_righe_guard_origine_coerente`,
+`script.fn_check_ddt_emittibile`, `script.fn_check_ddt_riga_correggi_qta_evasa`, le viste `vw_dash_fatturazione_ddt`,
+`vw_dash_fatturazione_ordini`, `vw_ordini_righe_dettaglio`; BE `resi_repository.py:1089, :1096`,
+`_coda_documento_filtro.py:72`; 19 pgTAP. Proposta [I]: la sorgente della riga di bolla dice **da dove è nata**
+(la riga d'ordine da cui il verbo l'ha generata), il fulfillment dice **quanto evade e di chi**. Sono due fatti, non
+lo stesso fatto due volte come dice il commento di `ddt_righe.sorgente_tipo_id`: il commento va riscritto. Eccezione
+da far decidere a Tid.
+
+##### 3.3 Parallele che il brief non elenca [F]
+
+| Colonna | Che cosa | Verdetto proposto |
+| --- | --- | --- |
+| `ordini_righe.preventivo_riga_id` (FK) | consumo della riga di preventivo, azzerato all'annullo | ⛔ fuori (§2.2.7) |
+| `fatture_righe.riga_rettificata_id`, `riga_capofila_id` (FK) | rettifica, spezzatura IVA | fuori: monomorfe, regole proprie |
+| `contratti.parent_contratto_id` (FK SET NULL) | successione di contratti | fuori [I]: non è «nasce da un documento» nel senso della sorgente, ma va detto |
+| `resi_righe.ddt_riga_id`, `ordine_riga_id` (FK) | origine della riga di reso | fuori perimetro mio; da censire con i resi_righe |
+
+---
+
+#### 4. `fn_offerta_righe_espanse` e i verbi dell'offerta (S-1)
+
+[F] `vendite.fn_offerta_righe_espanse(p_offerta_id)` restituisce `articolo_id, …, tipo_eccezione, origine,
+componenti` (`fn_offerta_righe_espanse.md:16`): **nessun id di riga**. Le righe vengono da due fonti:
+
+* PARTE 1 — `vendite.fn_espandi_listino_versione` (che a sua volta non restituisce l'id della riga di listino) con
+  l'overlay `LEFT JOIN offerte_commerciali_eccezioni` (OVERRIDE/ADESIONE; ESCLUSIONE tolte);
+* PARTE 2 — `offerte_commerciali_eccezioni` di tipo AGGIUNTA.
+
+Conseguenza per S-1 («`sorgente_riga` = l'id della riga quando esiste») [I]: per le righe che vengono da
+un'eccezione, la riga d'origine **esiste** ed è `offerte_commerciali_eccezioni.id`; per quelle del solo listino
+**non esiste una riga dell'offerta** (la riga è della versione di listino, un altro documento). Quindi:
+`sorgente_riga` = id dell'eccezione se c'è, **NULL** altrimenti (provenienza = l'offerta intera). La funzione deve
+esporre l'`id` dell'eccezione (colonna in coda, `DROP` + `CREATE` per RETURNS TABLE); `fn_espandi_listino_versione`
+non va toccata. Lettori della funzione: `fn_genera_ordine_da_offerta`, `script.fn_check_righe_offerta_in_ordine` [F].
+Il catalogo per OFFERTA_COMMERCIALE prende `target_righe_table = vendite.offerte_commerciali_eccezioni`, colonna FK
+`offerta_id`. Per il guard «la riga appartiene al documento» è sufficiente.
+
+Verbi che generano un documento da un altro [F]: `fn_push_preventivo_a_ordine`, `fn_genera_ordine_da_offerta`,
+`fn_push_offerta_a_contratto`, `fn_genera_ddt_da_ordine`, `fn_genera_ddt_riconsegna`, `fn_crea_revisione_preventivo`
+(righe), `fn_crea_revisione_offerta` (testata offerta, fuori dalle colonne sorgente). Più il BE `crea_reso`.
+
+---
+
+#### 5. Conteggi pgTAP [F]
+
+970 file pgTAP in totale. Sulle colonne del perimetro: `documento_origine_*` 10 file; `ddt`/`resi.sorgente_uid` 18;
+`sorgente_*` delle righe 4 (`test-fn-accredita-riga-reso-v1`, `test-fattura-origini-v1`,
+`test-documento-lineage-seminata-v1`, `magazzino/test-ddt-scarico-v1`); nomi degli indici d'idempotenza/origine 3
+(`script/test-fn-available-actions-offerta-v1`, `test-annullo-documento-con-legami-v1`,
+`test-grammatica-origine-destinazione-sorgenti-v1`); fulfillment 19; `preventivo_riga_id` 11; `offerta_id` dei
+contratti 25.
+
+---
+
+#### 6. Riepilogo
+
+##### 6.1 Ricadute BE/FE (file)
+
+* `backend/apps/vendite/db/resi_repository.py` (`create_reso` :635-650; `get_stato_e_ddt_origine` :333) e
+  `services/resi_service.py:515-535` — scrittura e lettura del DDT d'origine per uid.
+* `backend/apps/vendite/db/ordini_repository.py:286, :432-433` — origine per `(codice, id)`.
+* `backend/apps/vendite/services/ordini_service.py:88` (mappa del nome `uq_ordini_v_documento_origine_offerta`),
+  `:542`, `:575` (risposta `documento_origine {tipo, id}`).
+* `backend/apps/vendite/services/ordine_document_context_builder.py:213-215` (origine in stampa).
+* `backend/apps/vendite/db/offerte_repository.py:228` (`c.offerta_id`), `services/offerte_service.py:974` e
+  `types.py:1095` (`OffertaPushResult.sorgente_uid` = uid del **contratto**: nome da correggere).
+* `backend/apps/vendite/db/ddt_repository.py:72` (filtro `ordine_origine_numero`, stabile se la vista tiene l'alias).
+* `backend/apps/vendite/db/pipeline_repository.py:1959, :2002-2014, :3485-3503` (righe di fattura).
+* `backend/apps/vendite/services/resi_service.py:92` (mappa `fk_resi_sorgente_tipo`).
+* Capability: `script.fn_available_actions_ddt` / `_reso` espongono `non_editable_fields` con `sorgente_uid` → il FE
+  li legge come campi bloccati (da allungare con `sorgente_id`).
+* FE: `vendite/resi/components/ResoDrawer.vue:353`, `ResoForm.vue:92`, `vendite/ordini/components/OrdiniSearchTable.vue`,
+  `vendite/ddt/components/DdtSearchTable.vue`, `vendite/offerte/api/offerteApi.js:96,:119`,
+  `vendite/offerte/stores/offerte.js:164,:175`. Tutti leggono **alias derivati** delle viste
+  (`ddt_origine_*`, `ordine_origine_*`, `documento_origine_codice`): se le viste tengono gli alias, il FE non cambia.
+* Test BE: `test_origine_ordine_sorgente_db.py`, `test_genera_ordine_da_offerta_db.py`, `test_resi_create_db.py`,
+  `test_resi_service.py`, `test_ddt_service.py`, `test_offerte_service.py`, `test_ordine_document_context_builder.py`,
+  `api/test_ddt_api.py`, `api/test_ordini_api.py`, `api/test_contratti_api.py`.
+
+##### 6.2 Dubbi aperti (per Tid)
+
+1. **Riconsegna**: la bolla di riconsegna con ordine dichiara oggi l'ORDINE in testata; le sue righe (piano lotto B)
+   il RESO. Qual è la provenienza? (proposta: il reso; l'ordine resta nel fulfillment).
+2. **S-1 per l'offerta**: le righe del solo listino non hanno una riga dell'offerta → `sorgente_riga` NULL. Va bene, o
+   si vuole la riga della versione di listino (che è un altro documento, e romperebbe «il tipo è il documento»)?
+3. **S-8, eccezioni da confermare**: `ordini_righe_fulfillment` (quantità, N:M, si ritira) e
+   `ordini_righe.preventivo_riga_id` (consumo, si azzera all'annullo) **restano**; la sorgente si scrive accanto.
+4. **`trgfn_documenti_sync_canali`**: portare la provenienza dell'ordine in `sorgente_*` accende il ramo morto che
+   consuma il canale PREVENTIVO. È voluto?
+5. **Unicità sull'offerta** (`uq_ordini_v_documento_origine_offerta`, `uq_contratti_offerta_id`): su
+   `sorgente_tipo_id` il predicato parziale chiede l'id letterale del tipo. Indice parziale per id (seed a id esplicito)
+   o guard?
+6. **S-9, cancellazioni fuori dal DB**: «DRAFT e zero righe» per ordini, DDT e resi è solo nel BE; resi e contratti
+   non hanno nessun guard DB di DELETE sulla testata. Il meccanismo degli orfani di `documenti_fatturazione_canali`
+   (canale aperto all'INSERT, mai chiuso al DELETE della bozza) spiega i numeri del brief per ORDINE, DDT, PREVENTIVO;
+   per CONTRATTO non c'è un percorso BE di cancellazione: da dove vengono i 14?
+7. **`fatture`**: serve davvero una provenienza di testata per un documento che aggrega? (proposta: colonne presenti,
+   NULL salvo casi futuri).
+8. **Le 8 righe COMMESSA di `fatture_righe` su dbdev**: il builder citato dal brief non le scrive più; chi le ha
+   scritte?
+9. **Documentazione stantia da riscrivere nello stesso lotto**: commento di `ordini.documento_origine_id` («NESSUNA
+   UNIQUE»), manuale `ordini.md:241` (CHECK chiuso), commenti «import» di `ddt.sorgente_*`, manuali `ordini.md`,
+   `fatture.md`, `ordini_righe.md`, `fatture_righe.md` (idempotenza import), commento di `ddt_righe.sorgente_tipo_id`
+   («lo stesso fatto due volte»), il commento del pgTAP `test-fattura-origini-v1.sql:88` che cita un CHECK che non
+   esiste.
+
+### Censimento: commesse, pipeline di fatturazione, canali
+
+> **Per:** `brief-db-sorgente-documento-e-riga` §7.1 (Appendice). **Chi:** team DB, 2026-11-06. Sola lettura.
+> **Fonti:** doc auto-generata `docs/it/dbzero/vendite/{tabelle,funzioni,views}/`, i manuali, il catalogo di
+> `zeroerp_ruoli` (scratch, vuoto di dati: **struttura**, non dbdev), grep su `backend/`, `frontend/src`,
+> `db/pgtap`, `backend/scripts/tests`, `scripts/`. La storia dai brief `work-done` e dal `git log`.
+> **Legenda:** ✅ FATTO (file:riga o catalogo) · 🔶 IPOTESI (ragionata sul codice, da confermare) · 📅 dato
+> datato (dbdev, non è un motivo).
+
+---
+
+#### 0. In breve
+
+| # | Scoperta | Grado |
+| --- | --- | --- |
+| 1 | **L'impronta** `attivita_fatturabili.sorgente_uid` ha **un solo lettore vero**: `fn_emit_attivita_fatturabili_da_commessa`, per ritrovare la riga AF che ha già emesso lei (il ramo UPDATE, cioè la ripresa dei residui dopo `fn_libera_attivita_fatturabili`). Altri tre la leggono senza usarla (§S-7.1) | ✅ |
+| 2 | **L'impronta è già rotta su dbdev dal 2026-10-20.** Lo SQL una tantum del 2e ha riscritto le `segment_key` (350) e la loro copia nel `meta` delle AF (62), ma **non** `sorgente_uid = md5(segment_key)`. Le 62 AF di prima non si ritrovano più per impronta: è il «2 su 64» del §6.1 | ✅ codice + 📅 numeri |
+| 3 | Su quelle 62, se la riga viene liberata e il giro la riprende, `fn_emit` non la trova, va nel ramo INSERT e urta `uq_attivita_fatturabili_commessa_attivita` (23505, errore non registrato). La commessa fallisce a ogni giro | 🔶 da provare |
+| 4 | La stessa ricerca si fa **per `commessa_attivita_id`** (FK NOT NULL, UNIQUE, 1:1): non dipende dal formato della chiave e chiude anche il caveat C1 (collisione fra commesse). L'impronta si può togliere senza colonna nuova. La decisione è di Tid | ✅ struttura |
+| 5 | `vw_preventivi_smistamento_righe` cerca l'AF con `af.sorgente_uid = p.uid AND af.sorgente_riga = pr.id`: grammatica sbagliata, **non scatta mai**. Gli stati `FATTURATA` ed `EMESSA_AF` del dialogo di smistamento (FE) sono morti, e nessun pgTAP li prova | ✅ |
+| 6 | **`documenti_fatturazione_canali` non ha lettori**: niente BE, FE o vista. La legge solo la funzione che la scrive. I 387 orfani nascono dalla cancellazione delle bozze («abbandono bozza», BE), che non tocca il canale aperto dal trigger all'INSERT | ✅ percorso, 📅 numeri |
+| 7 | `commesse_attivita` **non ha `sorgente_riga`**: la riga sta solo dentro `segment_key` (`:R:<id>`), e la leggono `fn_segment_key_riga` e `segment_base`. Col §4 serve una colonna nuova | ✅ |
+| 8 | ⚠️ **Ricaduta nascosta di S-5:** `fn_build_gruppo_fatturabile_key` costruisce `<CODICE>:<commesse_attivita.sorgente_uid>`, e quella chiave è **salvata** in `fatturazione_lotti_gruppi`, `_esiti`, `_log`. Se `commesse_attivita` passa all'id, le chiavi salvate non corrispondono più. Lo stesso vale per `segment_key`, che porta l'uid | ✅ |
+| 9 | Su `attivita_fatturabili` (G5) le colonne `sorgente_*` del §4 sarebbero **copie** di `commessa_id` e `commessa_attivita_id` (FK NOT NULL). È un caso da segnalare per S-8 | ✅ struttura |
+
+---
+
+#### 1. Scheda `vendite.commesse_sorgenti` (G3)
+
+**1. Colonne** (catalogo ✅)
+
+| Colonna | Tipo | NULL | Default | Commento | Significato (manuale `commesse_sorgenti.md:33-42`) |
+| --- | --- | --- | --- | --- | --- |
+| `sorgente_tipo_id` | bigint | NOT NULL | — | — | il tipo del documento |
+| `sorgente_uid` | text | NOT NULL | — | — | chiave **canonica** secondo `key_selector`: uid testuale per preventivo e offerta, `id::text` per ordine, contratto, DDT, consumi |
+| `sorgente_riga` | bigint | sì | — | — | «grana di riga del link, non validata». 🔶 nessuno la scrive: `fn_upsert_commessa_attivita` chiama il link senza `p_sorgente_riga`, quindi è sempre NULL |
+
+Grammatica: **G3** (testo canonico, la riga a parte).
+
+**2. Scrittori**
+
+* ✅ DB: `vendite.fn_link_commessa_sorgente` è l'unica porta. Normalizza: per un tipo a chiave `id` traduce l'uuid
+  in `id::text` (`EXECUTE format('SELECT id::text FROM %s WHERE uid = $1')`). La chiama
+  `vendite.fn_upsert_commessa_attivita` (corpo ~riga 260, solo per lo scope `PUSH_COMMESSA`), con lo **stesso**
+  `p_sorgente_uid` che scrive grezzo in `commesse_attivita`. Fixture: `dbops.fn_pgtap_crea_commessa`.
+* ✅ BE: nessuna scrittura diretta. Il commento `commesse_source_handlers.py:471` lo conferma: il link lo scrive la
+  madre DB.
+
+**3. Lettori** (✅ catalogo)
+
+* `vendite.fn_commessa_viva_di_sorgente`: `cs.sorgente_uid = p_sorgente_chiave` (canonica).
+* `vendite.fn_emit_attivita_fatturabili_da_commessa`: cerca la ROOT, senza leggere la chiave.
+* `vendite.fn_documento_lineage_archi`: un **CASE per tipo** in due punti, `(cs.sorgente_uid)::uuid` per il preventivo
+  e `::bigint` per ordine, contratto e DDT, più i join `p.uid = cs.sorgente_uid::uuid`, `o.id = …::bigint`,
+  `c.id::text = cs.sorgente_uid`, `d.id::text = …`. È un secondo CASE oltre a quello di `_legami` (§BB).
+* `script.fn_check_sorgente_chiudibile`, `script.fn_check_ordine_annullabile`,
+  `vendite.trgfn_guard_fatturazione_immediata_immutabile`.
+* BE (3 file): `commesse_repository.py:842-856` (passa per `fn_commessa_viva_di_sorgente`); pratiche e preventivi
+  leggono `pratiche_sorgenti`, non questa tabella.
+* pgTAP: 22 file.
+
+**4. Vincoli e indici**
+
+| Oggetto | Definizione | Classe | Motivo |
+| --- | --- | --- | --- |
+| `uq_commesse_sorgenti_src_uid_commessa` | UNIQUE (tipo, uid, commessa) | **regola di dominio** | un documento compare una volta per commessa (manuale :21). Col §4 si sposta su (tipo, `sorgente_id`/`sorgente_uid`, commessa) con `NULLS NOT DISTINCT` |
+| `uq_commesse_sorgenti_commessa_root` | UNIQUE (commessa) WHERE ROOT | dominio, non sulla sorgente | resta com'è |
+| `chk_commesse_sorgenti_ruolo` | ROOT \| COLLEGATO | — | resta |
+
+**5. Guard:** `trg_commesse_sorgenti_a10_guard_sorgente_ins_upd` → `script.trgfn_guard_sorgente_polimorfa_testuale`
+(formato ed esistenza); `trgfn_commesse_sorgenti_guard_emittente` (omogeneità dell'emittente);
+`trgfn_child_requires_active_parent` sul tipo; storico.
+
+**6. Cancellazione del bersaglio (S-9):** nessuna FK. Preventivo: `elimina_preventivo`
+(`preventivi_service.py:558-592`) vuole BOZZA, zero righe, zero pratiche. Non controlla le commesse, ma una bozza
+senza righe non ha push (🔶). Ordine e DDT: `delete_ordine`/`delete_ddt` (BE, abbandono bozza) vogliono DRAFT.
+🔶 Da verificare che un ordine in DRAFT non possa avere un link di commessa. Nessun trigger DELETE pulisce il link.
+
+**7. Lotto e note:** lotto «commesse» (S-4). Va a `sorgente_id` per ordine, contratto, DDT e consumi e a
+`sorgente_uid uuid` per preventivo e offerta. Riscrivere l'ON CONFLICT e la normalizzazione di
+`fn_link_commessa_sorgente`, `fn_commessa_viva_di_sorgente` (parametro `text`) e i due CASE della lineage.
+
+---
+
+#### 2. Scheda `vendite.commesse_attivita` (G4)
+
+**1. Colonne** (✅)
+
+| Colonna | Tipo | NULL | Commento | Significato (manuale `commesse_attivita.md:45-80`) |
+| --- | --- | --- | --- | --- |
+| `sorgente_tipo_id` | bigint | sì | — | tipo del documento d'origine; NULL solo per ONERE manuale e RETTIFICA |
+| `sorgente_uid` | text | sì | — | **l'uid del documento, sempre**, anche per i tipi a chiave `id` |
+| *(manca)* `sorgente_riga` | — | — | — | ✅ non c'è. La riga sta in `segment_key` (`<CODICE>:<uid>:R:<riga>[:M:<mese>][#CMP:…\|#RET:…]`) |
+| `segment_key` varchar(128) / `segment_base` (generata) | — | NOT NULL | — | chiave d'idempotenza del push; contiene **l'uid** del documento e la riga |
+
+Grammatica: **G4** (l'uid come testo); la riga in **V8** (dentro la chiave).
+
+**2. Scrittori**
+
+* ✅ DB: `vendite.fn_upsert_commessa_attivita` (`ON CONFLICT (commessa_id, segment_key)`, scrive
+  `NULLIF(btrim(p_sorgente_uid),'')` grezzo). Il valore arriva dalle `fn_list_*_da_pushare`, che proiettano
+  `<testata>.uid::text` (per esempio `fn_list_preventivi_da_pushare`: `p.uid::text AS sorgente_uid`). La chiamano
+  `fn_batch_upsert_commessa_attivita`, `fn_aggiungi_onere_commessa` (sourceless), `fn_accredita_riga_reso`
+  (`p_sorgente_uid => NULL`, RETTIFICA) e `dbops.fn_pgtap_crea_commessa_attivita`.
+* ✅ BE: `commesse_repository.py:1006-1081` (`p_sorgente_uid => inp.sorgente_uid`) e `:1198` (batch). Il valore
+  arriva da `commesse_source_handlers.py:770` (`row.sorgente_uid` della fn_list).
+  ⚠️ **Nome ingannevole:** nel BE `fetch_pushable_rows(…, sorgente_uid: int)` (`commesse_repository.py:498`) e
+  `pr_run_commesse_push_one(sorgente_uid: int)` (`commesse_service.py:337`) portano **l'id** del documento come
+  filtro, con lo stesso nome della colonna. Chiamanti: `preventivi_service.py:1999`, `ordini_service.py:1073`,
+  `ddt_service.py:1091`.
+
+**3. Lettori** (✅, 25 funzioni e 7 viste nel catalogo, tutte con la grammatica uid)
+
+* `vendite.fn_build_gruppo_fatturabile_key(tipo, uid, commessa)` → `CODICE:<uid>` o `MAN:<commessa>`. La chiamano
+  `vw_commesse_attivita_emittibilita`, `vw_dash_competenza_attivita`, `vw_lotti_gruppi_serviti`,
+  `script.vw_lotto_documento_righe`, `fn_list_commessa_attivita`, `fn_select_attivita_fatturabili` (filtro
+  `p_gruppi`), `fn_esito_gruppi_giro`, `script.fn_gruppi_di_commessa_nel_lotto`. ⚠️ **La chiave è salvata**:
+  `fatturazione_lotti_gruppi.gruppo_key`, `fatturazione_lotti_esiti.gruppo_key`, `fatturazione_lotti_log.gruppo_key`
+  (text). Convertire la colonna (S-5) cambia le chiavi nuove, e quelle salvate non corrispondono più (vedi §R-1).
+* `vendite.fn_get_sorgente_documento_ref(tipo, text)`: prova prima l'uuid (`WHERE t.uid = $1`), poi l'id se
+  `key_selector='id'`. Quindi legge **entrambe** le grammatiche.
+* `vendite.fn_documento_lineage_legami`: il CASE per tipo (`fn_documento_lineage_legami.md:42`).
+* `vendite.fn_documento_legami`, `fn_documento_ritira_legami` (`SELECT d.uid::text` / `c.uid::text`, poi
+  `fn_check_sorgente_chiudibile`), `fn_ritira_commessa_attivita_da_sorgente` (`ca.sorgente_uid = v_uid`),
+  `fn_fattura_origini` (dinamico: `x.uid::text = $1`), `fn_resolve_termini_pagamento` (`v_src_uid::uuid`, solo
+  ORDINE_VENDITA e PREVENTIVO), `fn_annulla_commessa_attivita`, `trgfn_commesse_attivita_proietta_stato_preventivo`,
+  `fn_contratti_addebiti_maturati`, `script.fn_check_ordine_annullabile`.
+* Da `segment_key`: `script.fn_segment_key_sorgente/_riga` in `fn_af_merce_per_riga`;
+  `script.fn_get_stato_push_segment(fn_segment_key(…uid…))` in `vw_preventivi_smistamento_righe` e
+  `vw_preventivi_righe_smistabili_commessa`.
+* BE: 19 file. Il principale è `commesse_repository.py:137, 284-402, 1677` (`sorgente_uid` della lista).
+* FE: nessun riferimento diretto (✅ grep `frontend/src`).
+* pgTAP: 84 file.
+* ⚠️ Doc stantia: il manuale (`commesse_attivita.md:66-67`) cita `vw_dash_fatturazione_contratti … AND
+  ca.sorgente_uid = c.uid::text`, ma la vista oggi non legge `commesse_attivita` (✅ viewdef).
+
+**4. Vincoli e indici**
+
+| Oggetto | Classe | Motivo |
+| --- | --- | --- |
+| `chk_commesse_attivita_sorgente_pair` (tipo e uid insieme NULL o insieme pieni) | forma | col §4 diventa «tipo ⇒ esattamente una chiave» |
+| `chk_commesse_attivita_senza_sorgente_onere_rettifica` | **dominio** | NORMALE ⇒ sorgente; resta |
+| `uq_commesse_attivita_commessa_segment` (commessa, segment_key) | **idempotenza del push** | non è sulla sorgente, ma la chiave contiene l'uid |
+| `ix_commesse_attivita_sorgente_competenza` (sorgente_uid, competenza_mese) | non unico | senza il tipo; da rifare sulla chiave nuova |
+| storia: `uq_commesse_attivita_src_uid_partial` | residuo, ritirato | `test-drop-uq-commesse-attivita-src-uid-partial-v1` |
+
+**5. Guard:** ✅ **nessun guard polimorfo**. C'è solo `trgfn_child_requires_active_parent` sul tipo. Il manuale
+(:83-86) lo dice: la tabella è «fuori dal perimetro».
+
+**6. S-9:** nessuna FK verso il documento. Il ritiro (`fn_ritira_commessa_attivita_da_sorgente`) scatta
+**all'annullo** del documento (`fn_documento_ritira_legami`), non alla cancellazione. Alla cancellazione di una bozza
+non c'è niente da ritirare, se la bozza non ha push (🔶 come §1.6).
+
+**7. Lotto e note:** S-5 si applica: ordine, contratto, DDT e consumi passano da uid a `sorgente_id`. Serve la colonna
+`sorgente_riga` (l'id della riga del documento, da `fn_segment_key_riga`; per il contratto la riga, mentre il mese
+resta nella chiave; per i consumi NULL). ONERE e RETTIFICA restano sourceless. La conversione tocca la chiave dei
+gruppi (§R-1). 🔶 Se si vuole tenere `segment_key` immutata, il push dovrà continuare a costruirla con l'uid anche
+dopo S-5.
+
+---
+
+#### 3. Scheda `vendite.attivita_fatturabili` (G5)
+
+**1. Colonne** (✅ catalogo; commenti di colonna **stantii**)
+
+| Colonna | Tipo | NULL | Default | Commento | Che cosa c'è davvero |
+| --- | --- | --- | --- | --- | --- |
+| `sorgente_tipo_id` | bigint | sì | — | «FK → config.sorgenti (ex sorgente_tipo testuale)» | sempre **COMMESSA** (scritto da `fn_emit`) |
+| `sorgente_uid` | **uuid** | sì | — | «**Origine import (uid)**» (falso) | **l'impronta**: `md5(segment_key)` formattato come uuid (`fn_emit…md5:215`) |
+| `sorgente_riga` | bigint | sì | **0** | «ID riga nella sorgente (0 se non applicabile)» | `commesse_attivita.id` (`fn_emit`: `sorgente_riga = v_row.id`). Il normalize mette 0 se è NULL e il tipo c'è |
+| `sorgente_origine_tipo_id` | bigint | sì | — | «sorgente business originale … popolata da fn_emit» | copia di `commesse_attivita.sorgente_tipo_id`, **senza chiave** |
+| `commessa_id`, `commessa_attivita_id` | bigint | NOT NULL | — | FK | la vera provenienza (FK) |
+
+Grammatica: **G5**. Nel §4 diventerebbe tipo COMMESSA (`key_selector=id`, `target_table=vendite.commesse`),
+`sorgente_id = commessa_id`, `sorgente_riga = commessa_attivita_id`: **due copie delle FK NOT NULL** (vedi S-8, §R-3).
+
+**2. Scrittori**
+
+* ✅ DB: solo `vendite.fn_emit_attivita_fatturabili_da_commessa` (INSERT e UPDATE). `fn_libera_attivita_fatturabili`
+  e `fn_select_attivita_fatturabili` toccano lock e stato, non la sorgente.
+* ✅ Smoke e pgTAP (scrittori di prova, non lettori): `_smoke_fatturazione.py:266-284` (`str(uuid.uuid4())` e
+  `t["sorgente_tipo_id"]`); `smoke-push-termine-documento-commessa.py:405-425` (uuid4); `test-attivita-fatturabili.sql:669-760`
+  e `test-fatturazione-draft.sql:127` (INSERT diretti).
+
+**3. Lettori:** vedi **§S-7**, che li elenca uno per uno.
+`sorgente_origine_tipo_id` lo legge solo `trgfn_attivita_fatturabili_normalize` (risoluzione del `tipo_doc_fiscale_id`);
+`fn_resolve_termini_pagamento` lo nomina solo in un commento.
+`sorgente_tipo_id`: `fn_resolve_termini_pagamento` (`= 'COMMESSA'`), il normalize (fallback del tipo documento), i
+pgTAP (`test-commesse-core-functions-v1.sql:551`, `s.codice = 'COMMESSA'`).
+
+**4. Vincoli e indici**
+
+| Oggetto | Classe | Motivo |
+| --- | --- | --- |
+| `uq_attivita_fatturabili_commessa_attivita` UNIQUE (commessa_attivita_id) | **idempotenza del pull / regola 1:1** | una AF per riga di commessa; nata con `20260224-42` |
+| ~~`uq_attivita_fatturabili_v_sorgente_fk`~~ (tipo, uid) WHERE tipo NOT NULL | **residuo «idempotenza import», ritirato** | nato con `20251005-03`, tolto con `20260224-42`. ⚠️ il manuale lo dà ancora per vivo (`attivita_fatturabili.md:27,78-79,116,195`) |
+| `DEFAULT 0` su `sorgente_riga` + normalize «0 se NULL» | residuo | nel modello 0 è una riga che non esiste |
+| nessun indice su `sorgente_uid` | — | la ricerca per impronta di `fn_emit` fa una scansione (dentro la RLS) |
+
+**5. Guard:** ✅ nessun guard polimorfo (agganciato con `20251026-02`, **tolto apposta** con `20260225-45`:
+«ridondante con FK commessa_attivita_id nel flusso commessa-only»; D6 del 2026-07-18: «resta staccato»).
+Il controllo «tipo attivo» c'è solo su `sorgente_origine_tipo_id` (`trg_attivita_fatturabili_a10_sorgenti_require_attivo`),
+**non** su `sorgente_tipo_id`.
+
+**6. S-9:** il bersaglio è la commessa e la sua riga, con FK `NO ACTION`: una riga di commessa con AF non si
+cancella. Nessuna funzione DB cancella AF (✅ catalogo: nessun `DELETE FROM vendite.attivita_fatturabili`). Il
+guard `trgfn_attivita_fatturabili_guard_fatturato` presidia il DELETE.
+
+**7. Lotto e note:** S-7 (§S-7.5). `sorgente_riga DEFAULT 0` e il ramo del normalize vanno via insieme.
+`sorgente_origine_tipo_id` è «provenienza a metà»: col §4 la provenienza di business si legge da
+`commesse_attivita` tramite la FK, e la colonna serve solo al tipo documento (S-8, vedi §R-3).
+
+---
+
+#### 4. Scheda `vendite.documenti_fatturazione_canali` (G4, senza guard)
+
+**1. Colonne** (✅): `sorgente_tipo_id` bigint NOT NULL, `sorgente_uid` text NOT NULL (CHECK non vuoto),
+`target_sorgente_tipo_id` bigint NULL, `target_sorgente_uid` text NULL (CHECK della coppia), `canale_codice`,
+`stato_canale` (default APERTO). Nessun commento di colonna. Manuale `documenti_fatturazione_canali.md` (rev.
+24-02-2026): «registro tecnico unico dei canali fatturabili per documento sorgente». Storia: `gestione-commesse-v2.md`
+§24, dove `sorgente_uid text` fu scelto «per coerenza con commesse_*».
+Grammatica: **G4**, l'**uid** come testo, anche per il **target**. È una **seconda** coppia polimorfa sulla stessa
+riga (`target_sorgente_*`), da prevedere nel modello e nel presidio di CI (il nome comincia con `target_`).
+
+**2. Scrittori** (✅): solo `vendite.fn_set_documento_canale_stato` (`ON CONFLICT (sorgente_tipo_id, sorgente_uid,
+canale_codice)`, e all'apertura blocca gli altri canali APERTI). La chiama solo `vendite.trgfn_documenti_sync_canali`,
+montata su:
+
+| Tabella | Trigger | Che cosa scrive |
+| --- | --- | --- |
+| `vendite.preventivi` | AFTER INSERT OR UPDATE OF uid | canale PREVENTIVO APERTO, `NEW.uid::text` |
+| `vendite.ordini` | AFTER INSERT OR UPDATE OF sorgente_tipo_id, sorgente_uid | ORDINE_VENDITA APERTO (`NEW.uid`); se viene da un preventivo, il PREVENTIVO diventa CONSUMATO con target l'ordine |
+| `vendite.ddt` | idem | DDT_VENDITA APERTO; se viene da un ordine, ORDINE CONSUMATO con target il DDT |
+| `vendite.contratti` | AFTER INSERT | DIRETTO APERTO sul contratto |
+
+Nessuno scrittore BE (✅ grep).
+
+**3. Lettori** (✅): **nessuno** fuori dalla funzione che la scrive (l'UPDATE di auto-blocco). Nessuna vista, nessun
+file BE o FE. pgTAP: `test-documenti-fatturazione-canali-v1.sql`, `test-documenti-canali-sync-v1.sql`,
+`dbops/test-stati-check-scrittori-v1.sql:165` (censimento degli stati). 🔶 Il «prevenire doppia fatturabilità» del
+manuale oggi non lo fa nessuno: è un registro che si scrive e basta.
+
+**4. Vincoli e indici**
+
+| Oggetto | Classe | Motivo |
+| --- | --- | --- |
+| `uq_doc_fatt_canali_sorgente_canale` (tipo, uid, canale) | **idempotenza** | è il bersaglio dell'`ON CONFLICT` della porta |
+| `uq_doc_fatt_canali_un_aperto` (tipo, uid) WHERE APERTO | **regola di dominio** | un solo canale aperto per documento (citata nel §3.4 del brief) |
+| `chk_doc_fatt_canali_target_pair`, `_sorgente_uid_not_blank`, `_canale`, `_stato`, `_motivo_blocco` | forma | — |
+
+**5. Guard:** ✅ nessun guard polimorfo; c'è `child_requires_active_parent` su entrambi i tipi.
+
+**6. S-9 — da dove vengono i 387 orfani** (📅 PREVENTIVO 352, CONTRATTO 14, DDT 16, ORDINE 5):
+
+* ✅ **Il percorso:** ogni INSERT di preventivo, ordine e DDT apre il suo canale (trigger). Nessun trigger DELETE e
+  nessuna FK toglie il canale quando il documento sparisce.
+* ✅ **Chi cancella i documenti:**
+  * **preventivi**: `PreventiviRepository.delete_preventivo` (`preventivi_repository.py:659-665`), da
+    `elimina_preventivo` (`preventivi_service.py:545-592`), il pattern **«abbandono bozza»** del drawer FE.
+    All'apertura del drawer si crea subito la BOZZA (così il trigger apre il canale), poi la si cancella se
+    l'utente esce senza righe. Il canale resta. Spiega la grandezza del numero: una bozza a ogni apertura del
+    drawer abbandonata.
+  * il changeSet `80_data/20260501-15-cleanup-preventivi-malformati` (`DELETE FROM vendite.preventivi WHERE
+    billing_account_id IS NULL AND istanza_utility_id IS NULL`), anche lui senza toccare i canali;
+  * **ordini**: `delete_ordine` (`ordini_repository.py:491-497`, abbandono bozza; guard DB
+    `trgfn_doc_guard_delete_solo_bozza`);
+  * **DDT**: `delete_ddt` (`ddt_repository.py:473-476`, idem).
+* 🔶 **CONTRATTO 14: il codice non li spiega.** Nessun `DELETE FROM vendite.contratti` nel repo (BE, DB, pgTAP,
+  smoke, changelog, brief). Due ipotesi: cancellazioni a mano su dbdev, oppure pgTAP storici caduti a metà senza
+  transazione. Da guardare su dbdev con `user_insert`/`data_insert` e `meta->>'event'` dei canali orfani.
+* 🔶 Un'altra fonte possibile, oggi teorica: `UPDATE OF uid` su preventivi apre un canale col nuovo uid e lascia
+  quello vecchio.
+* Le `target_table` (S-9): preventivi, ordini e DDT **ammettono** la cancellazione (solo in bozza). I figli con FK
+  (righe, indirizzi, note) vanno in CASCADE. I figli polimorfi (canali, e da verificare `documenti_generati`)
+  restano orfani. Contratti: nessun percorso di cancellazione, ma nessun guard la vieta.
+* Il presidio `dbops.fn_sorgenti_orfane_perimetro` non li vedeva: pretende `sorgente_riga` e il guard tipizzato
+  (brief §3.3).
+
+**7. Lotto e note:** S-5 si applica a sorgente **e** target (ordine, DDT, contratto → id; preventivo resta uid).
+Le chiamate del trigger cambiano (`NEW.id` al posto di `NEW.uid::text` per i tipi a chiave `id`). Il «lato in
+uscita» del lotto 0 deve chiudere la cancellazione delle bozze. Siccome il registro non ha lettori, **Tid può
+decidere** se tenerlo: se il registro va tenuto, per dominio la cancellazione della bozza dovrebbe togliere il
+canale (S-9: «dentro le regole DB»).
+
+---
+
+#### 5. Scheda `vendite.fatture_stampa_coda` (G7)
+
+**1. Colonne** (✅): `sorgente_tipo_id` bigint NOT NULL («oggi sempre FATTURA»), `sorgente_id` bigint NOT NULL
+(«= vendite.fatture.id (FK). Chiave di delega RLS»), `sorgente_uid` text NOT NULL («convenzione key_selector
+FATTURA = id::text»). Grammatica **G7**: l'id scritto due volte. È la sola tabella del perimetro che ha già
+`sorgente_id bigint`.
+
+**2. Scrittori** (✅): `vendite.fn_accoda_stampe_lotto` (`f.id, f.id::text`, `fn_accoda_stampe_lotto.md:69`).
+
+**3. Lettori** (✅):
+
+* `dbops.vw_fatture_stampa_coda_da_guardare` proietta le tre colonne.
+* La RLS `rls_fatture_stampa_coda_ef_whitelist` e il guard `trgfn_guard_emittente_scope('fattura','sorgente_id')`
+  usano **`sorgente_id`**.
+* BE: `pipeline_repository.py:2700` (`RETURNING … c.sorgente_id, c.sorgente_uid`);
+  `stampa_coda_drainer_service.py:293` passa `sorgente_uid=str(item["sorgente_uid"])` a `genera_documento`. 🔶 Da
+  qui viene l'id della FATTURA in `documenti_generati.sorgente_uid` (la G6 «mista»).
+
+**4. Vincoli e indici:** `ex_fatture_stampa_coda_vivo` EXCLUDE (tipo, `sorgente_id`, tipo output) WHERE
+PENDING/IN_CORSO, **regola di dominio** (una stampa viva per fattura e tipo), già sulla chiave giusta.
+`ix_fatture_stampa_coda_sorgente_id`. FK `fk_fatture_stampa_coda_fattura (sorgente_id) → fatture ON DELETE CASCADE`.
+
+**5. Guard:** nessun guard polimorfo; l'FK fa da guard di esistenza (solo FATTURA).
+
+**6. S-9:** ✅ è l'unica del perimetro con una vera FK. `vendite.fn_cleanup_fatture_by_ids` cancella le fatture e la
+coda va in CASCADE. Niente orfani possibili.
+
+**7. Lotto e note:** col §4 `sorgente_uid` diventa NULL (FATTURA ha chiave `id`) e la colonna si ritira. Il BE deve
+passare `sorgente_id` al drainer, e la stessa correzione arriva a `documenti_generati` (G6). Domanda per S-8: la FK
+su `sorgente_id` resta? È una FK «monomorfa» su una colonna polimorfa, regge solo finché il tipo è uno.
+
+---
+
+#### 6. I BB del perimetro: che cosa cambia
+
+| BB | Oggi | Col §4 |
+| --- | --- | --- |
+| `vendite.fn_link_commessa_sorgente(commessa, tipo, text, riga)` | normalizza uid → `id::text`; advisory lock su `hashtext(tipo:uid)`; regola «una commessa viva» | riceve una chiave qualsiasi, la risolve col BB «che scrive» del lotto 0, scrive `sorgente_id` o `sorgente_uid`; il lock sulla chiave nuova |
+| `vendite.fn_upsert_commessa_attivita` | scrive l'uid grezzo, poi chiama il link con lo stesso uid | scrive la chiave giusta più `sorgente_riga` (dalla riga della fn_list) |
+| `vendite.fn_list_*_da_pushare` (5) | proiettano `<testata>.uid::text AS sorgente_uid`, `riga_id`, `fn_segment_key(CODICE, uid, riga[, mese])` | proiettano tipo, chiave e riga; `segment_key` (🔶) resta sull'uid per non cambiare le chiavi salvate |
+| `vendite.fn_commessa_viva_di_sorgente(tipo, text)` | uguaglianza sulla chiave canonica | firma con le due chiavi (o la chiave risolta) |
+| `vendite.fn_ritira_commessa_attivita_da_sorgente(tipo, text uid, …)` | `ca.sorgente_uid = v_uid` | sulla chiave nuova; i chiamanti (`fn_documento_ritira_legami`, `fn_documento_legami`) smettono di rileggere `d.uid::text` |
+| `vendite.fn_documento_lineage_legami` | CASE per arco B/E/F/U che rilegge l'uid da preventivi, ordini, contratti e DDT | il CASE sparisce: `ca.sorgente_id = <id>` o `ca.sorgente_uid = <uid>` dal risolutore |
+| `vendite.fn_documento_lineage_archi` | **altri** CASE per tipo su `commesse_sorgenti` (`::uuid` / `::bigint`) | idem (non era nel §3.4 del brief) |
+| `vendite.fn_get_sorgente_documento_ref(tipo, text)` | prova uuid poi id: legge le due grammatiche | diventa (o chiama) il BB «che risolve» del lotto 0 |
+| `vendite.fn_set_documento_canale_stato(tipo, text, canale, stato, target_tipo, target_text, …)` | testo, uid | due coppie tipizzate; ON CONFLICT e indice parziale sulla chiave nuova (`NULLS NOT DISTINCT`) |
+| `vendite.fn_build_gruppo_fatturabile_key(tipo, uid, commessa)` | `CODICE:<uid>` | ⚠️ §R-1 |
+| `script.fn_segment_key(sorgente, uid, riga, mese)` / `_sorgente` / `_riga` | costruttore unico; `_riga` legge `:R:(\d+)` | non è una colonna `sorgente_*`, ma porta la provenienza (V8). Dopo il lotto la riga si legge dalla colonna; `fn_segment_key_riga` resta per ONERE e RETTIFICA |
+
+---
+
+#### S-7 — L'impronta di `attivita_fatturabili.sorgente_uid`
+
+##### S-7.1 Ogni lettore, uno per uno
+
+Ricerca su: corpo di tutte le funzioni (`prosrc`, e `pg_get_functiondef` per le 86 `BEGIN ATOMIC`), tutte le viste
+(nessuna materializzata), le policy RLS, il BE (Python con SQL raw, test compresi), il FE, i pgTAP, gli smoke
+`backend/scripts/tests`, `scripts/`. Gli alias si sono letti nel contesto (`a.`, `af.`, `ca.`, `cs.`, `r.`, `c.`).
+
+| # | Dove | Che cosa fa con `attivita_fatturabili.sorgente_uid` | Esito |
+| --- | --- | --- | --- |
+| L1 | `vendite.fn_emit_attivita_fatturabili_da_commessa` (`fn_emit…md:215-226`) | calcola `md5(v_row.segment_key)` come uuid e cerca `a.sorgente_tipo_id = COMMESSA AND a.sorgente_uid = <impronta> FOR UPDATE`. Trovata: ramo UPDATE (o `E_RIGA_GIA_FATTURATA`). Non trovata: ramo INSERT. Conta anche `inserted`/`updated` del dry-run | **USO VERO, l'unico** |
+| L2 | `vendite.fn_resolve_termini_pagamento` (`.md:62`, `:114`, `:125`) | carica `a.sorgente_uid` in `v_sorgente_uid`, ma lo usa solo se il codice è ORDINE_VENDITA o PREVENTIVO. Per le AF (sempre COMMESSA) lo **sovrascrive** con l'uid di `commesse_attivita` oppure non lo usa | letto, **mai usato** |
+| L3 | `vendite.vw_preventivi_smistamento_righe` (`views/vw_preventivi_smistamento_righe.md:37,40`) | `af.sorgente_uid = p.uid AND af.sorgente_riga = pr.id` (senza il tipo) | letto con la **grammatica sbagliata**: l'impronta non è mai l'uid del preventivo, e `sorgente_riga` è l'id della riga di commessa. **Il ramo è morto** (§S-7.4) |
+| L4 | `vendite.fn_select_attivita_fatturabili` (`RETURNING a.*` / `SELECT a.*`, `.md:117,119`) | restituisce la riga intera | il chiamante BE (`pipeline_repository.py:1749`) **scarta** il risultato |
+| L5 | BE `PipelineRepository.list_attivita_da_fatturare` (`pipeline_repository.py:1825, 1861`) | `a.sorgente_uid` nel dataclass `AttivitaDaFatturare.sorgente_uid` (`:190`) | il consumatore unico `fatture_righe_service.py` **non lo legge** (✅ grep: nessuna occorrenza di `sorgente`; niente `asdict`/`getattr`). Le righe di fattura prendono la sorgente a NULL in SQL (`pipeline_repository.py:3500-3503`) |
+| L6 | BE test `test_fatture_righe_service.py:243` | costruisce il dataclass con `sorgente_uid=f"SRC-{id}"` | fixture, non lettore |
+| — | `dbops.fn_sorgenti_orfane_perimetro` | il perimetro pretende il guard tipizzato: AF ne è **fuori** | non legge |
+| — | `script.trgfn_storico_generic` | copia la riga nello storico | copia, non lettore |
+| — | smoke `_smoke_fatturazione.py:268-282`, `smoke-push-termine-documento-commessa.py:413-425` | **scrivono** `uuid.uuid4()` | scrittori di prova |
+| — | pgTAP (49 file con AF e `sorgente_uid`) | nessun `af.`/`a.sorgente_uid`, nessun `md5(…segment_key…)`; le occorrenze nude sono liste di INSERT (`test-attivita-fatturabili.sql:683,741`, `test-fatturazione-draft.sql:127`) o colonne di `commesse_attivita`/`commesse_sorgenti` | nessun lettore |
+| — | FE | nessuna occorrenza | — |
+| — | `sorgente_riga` di AF | lettori: solo L3 (`script.fn_check_disponibilita_uscita` è un falso positivo, `p_sorgente_riga`) | — |
+
+Le occorrenze vicine **di altre tabelle**, da non confondere: `fn_fattura_origini`, `fn_list_commessa_attivita`,
+`fn_esito_gruppi_giro`, `fn_select_attivita_fatturabili` (filtro `p_gruppi`), `fn_gruppi_di_commessa_nel_lotto`,
+`vw_dash_competenza_attivita`, `vw_lotti_gruppi_serviti`, `vw_lotto_documento_righe` leggono **`ca.sorgente_uid`**
+(`commesse_attivita`); `fn_annulla_reso` legge `resi.sorgente_uid`; `fn_accredita_riga_reso` passa
+`p_sorgente_uid => NULL` all'upsert della commessa.
+
+##### S-7.2 Perché è nata (storia)
+
+1. **2025-10-05** `20251005-03`: `sorgente_uid uuid`, commento «Origine import (uid)», più
+   `uq_attivita_fatturabili_v_sorgente_fk (sorgente_tipo_id, sorgente_uid) WHERE tipo NOT NULL`, «Idempotenza
+   import».
+2. **2026-02-24** `20260224-13` (commit `b44c924846`): nasce `fn_emit`, «idempotenza su sorgente COMMESSA +
+   segment_key», «sorgente AF sempre COMMESSA + hash(segment_key)». La colonna era `uuid` e c'era l'indice unico
+   su (tipo, uid): la chiave testuale `segment_key` doveva diventare un uuid deterministico. È il motivo della
+   nascita (🔶 ricostruito, coerente con `gestione-commesse-v2.md:759, 1850-1851`).
+3. **Lo stesso giorno** `20260224-42`: tolto quell'indice unico; nasce
+   `uq_attivita_fatturabili_commessa_attivita` («unicità tecnica riga AF emessa da commessa_attivita») e
+   `commessa_attivita_id` diventa NOT NULL. **Dal 2026-02-24 l'idempotenza vera è `commessa_attivita_id`**; la
+   ricerca per impronta è rimasta.
+4. **2026-02-25** `20260225-45`: tolto il guard polimorfo su AF, perché «la FK `commessa_attivita_id` copre già
+   la validazione». L'impronta non si risolve contro `config.sorgenti`, per costruzione
+   (`brief-db-guard-sorgente-polimorfa` §1e R2).
+5. **2026-07-18** `brief-db-guard-sorgente-polimorfa` §1d: «hash md5(segment_key), idempotenza pull, fuori da questo
+   brief»; D6: resta staccato.
+6. **Caveat C1** (`brief-db-fatturazione-due-lenti` §2.3): la ricerca **non filtra per commessa**. Una collisione
+   di `segment_key` fra commesse diverse riaggancerebbe l'AF di un'altra commessa. «Oggi nessun percorso di
+   produzione lo genera.»
+7. **2026-09-04** (`brief-residuo-fatturabili…` :370-385) e `brief-db-lavoro-che-non-torna-indietro` :970-974: la
+   ricerca per impronta è **la ragione per cui `fn_libera_attivita_fatturabili` libera invece di cancellare**. Il
+   giro dopo ritrova l'AF e la aggiorna. Si cita come il motivo per cui la ripresa regge anche su RETTIFICA e
+   ONERE, che non hanno sorgente.
+   🔶 Lo stesso vale con `commessa_attivita_id`, che ogni riga ha (NOT NULL).
+8. **2026-10-20** `brief-db-grammatica-unica-documenti` 2e: cambio di formato delle chiavi (`PREV:`→`PREVENTIVO:`
+   …) con lo SQL una tantum `work-in-progress/sql-una-tantum-2e-chiavi-e-registri.sql`. Il passo 1 riscrive
+   `commesse_attivita.segment_key` (350); il passo 2 riscrive `attivita_fatturabili.meta->>'segment_key'` (62),
+   con la frase «nessuno le usa per ritrovare una riga». **Nessun passo ricalcola `attivita_fatturabili.sorgente_uid`.**
+   Su dbdev è stato eseguito con COMMIT da Tid (§13 del brief).
+
+##### S-7.3 Il cambio di formato rompe la ricerca? Che cosa succede allora
+
+* ✅ **La ricerca manca le righe.** Per ogni AF emessa prima del 2026-10-20 la `segment_key` della sua riga di
+  commessa è cambiata, l'impronta salvata no, quindi `md5(segment_key nuova) ≠ sorgente_uid`. 📅 Il §6.1 del brief
+  misura «md5(segment_key) coincide su 2 righe di 64»; lo SQL una tantum ha riscritto 62 copie nel `meta`.
+  **62 + 2 = 64**: le 62 sono le AF di prima del cambio, le 2 sono nate dopo (o hanno una chiave `MAN`, che non è
+  cambiata). La formula **non** è un'altra: è la stessa su una chiave cambiata. Da confermare su dbdev:
+  `md5(ca.segment_key)` contro `af.sorgente_uid` e contro `md5(af.meta->>'segment_key')` con la mappa vecchia.
+* 🔶 **Quando morde.** Serve un'AF di prima del 2026-10-20 **non fatturata** la cui riga di commessa torni
+  `NON_EMESSA` con classe PRONTA. Lo fanno `fn_libera_attivita_fatturabili` (`.md:119`, tiene l'AF e rimette la
+  riga a NON_EMESSA) e chi la chiama: lo storno dal lotto, `fn_cleanup_fatture_by_ids`, gli annulli del reso e la
+  porta «Elimina dal lotto». Al giro dopo `fn_emit` non trova l'AF e fa INSERT con lo stesso
+  `commessa_attivita_id`, e `uq_attivita_fatturabili_commessa_attivita` rifiuta con **23505**. Non è un codice
+  registrato, quindi esce come errore generico. La commessa fallisce a ogni giro (residuo che non si riprende
+  più). Il dry-run conta `inserted` al posto di `updated`. Un'AF già fatturata non è toccata: la riga resta EMESSA
+  e non rientra.
+* ✅ **Da zero (CI, scratch)** il caso non esiste: le chiavi nascono già nella forma nuova. I pgTAP che provano la
+  ri-emissione (per esempio `test-commesse-core-functions-v1.sql` «Rerun emit…», la sentinella C1) restano verdi:
+  non cambiano mai la chiave fra due emissioni.
+* ⚠️ **Il rischio torna** a ogni cambio della `segment_key`. Il lotto commesse di questo brief potrebbe portarne uno
+  (S-5: la chiave contiene l'uid).
+
+##### S-7.4 Il ramo morto di `vw_preventivi_smistamento_righe`
+
+✅ Gli stati `FATTURATA` ed `EMESSA_AF` cercano un'AF con `sorgente_uid = preventivo.uid` e `sorgente_riga =
+riga del preventivo`. Nessuno scrittore produce un'AF così (l'unico, `fn_emit`, scrive COMMESSA, impronta e id della
+riga di commessa). Il ramo non scatta mai. La riga cade su `IN_COMMESSA`, se il segmento non è LIBERA. Consumatori
+vivi: `PreventiviSmistamentoDialog.vue:148`, `frontend/src/vendite/constants.js:175-181`, i servizi preventivi e
+ordini. pgTAP: `test-vw-preventivi-smistamento-v1.sql` non prova `FATTURATA` né `EMESSA_AF`. Storia del predicato:
+`525b8847f4` (2026-04-03), `e14ecde04a` (2026-06-12). È un errore di lettura da correggere nello stesso lotto, con
+la catena `commesse_attivita` → AF per `commessa_attivita_id`, e la riga del preventivo da `segment_base` o dalla
+nuova `sorgente_riga` di `commesse_attivita`.
+
+##### S-7.5 Conclusione
+
+**Usata solo da `fn_emit_attivita_fatturabili_da_commessa`, per ritrovare la riga AF già emessa dalla stessa riga di
+commessa** (la ripresa dei residui). Nessun altro la usa: due lettori la caricano senza servirsene (L2, L5), uno la
+legge con una grammatica sbagliata e non trova mai niente (L3), uno la restituisce a un chiamante che la scarta (L4).
+
+* **Certezza:** alta per DB (catalogo intero, anche `BEGIN ATOMIC`, viste, policy), BE, FE e pgTAP. Il lavoro
+  dell'impronta lo fa già `commessa_attivita_id` (FK NOT NULL + UNIQUE 1:1): `WHERE a.commessa_attivita_id =
+  v_row.id`. È anche più corretto: niente C1 e niente dipendenza dal formato della chiave, e ripara le 62 righe di
+  dbdev senza toccarle.
+* **Che cosa ne segue (proposta, la decisione è di Tid):** S-7 diceva «l'impronta va in una colonna sua». Il
+  censimento dice che **non serve una colonna**: basta cambiare la ricerca. L'impronta si ritira con la colonna
+  (o con il suo valore, se `sorgente_uid` resta per il modello).
+* **Resta da verificare:**
+  1. sul **catalogo di dbdev** (qui è lo scratch) la stessa ricerca, `prosrc ILIKE '%attivita_fatturabili%' AND ILIKE
+     '%sorgente_uid%'`, che deve dare le stesse 13 funzioni e 4 viste;
+  2. su dbdev, il conteggio delle AF non fatturate con impronta stantia (quelle esposte a §S-7.3);
+  3. che nessuno script fuori dal repo (job pgAgent, report a mano, `dbdev.session.sql`) legga la colonna. Nel repo
+     non ce n'è.
+
+---
+
+#### R. Ricadute e domande per Tid
+
+* **R-1 (S-5 su `commesse_attivita`): la chiave dei gruppi è salvata.** `fn_build_gruppo_fatturabile_key` usa
+  `ca.sorgente_uid`, e le chiavi vivono in `fatturazione_lotti_gruppi`, `_esiti` e `_log`, lette da
+  `vw_commesse_attivita_emittibilita` (trattenute: `t.gruppo_key = fn_build…(ca…)`), `fn_esito_gruppi_giro` e
+  `p_gruppi` dal BE. Convertire la colonna senza convertire le chiavi salvate stacca i trattenimenti dei lotti in
+  corso, in silenzio (zero righe). Due strade: la chiave del gruppo continua a costruirsi con l'uid (risolto dal
+  BB), oppure si convertono anche le chiavi salvate. Per `segment_key` c'è la stessa scelta (S-7.3).
+* **R-2 (S-9 canali):** il registro canali non ha lettori. Va deciso se tenerlo. Se resta, la cancellazione delle
+  bozze (BE «abbandono bozza») deve portarsi via il canale dentro il DB. Lo stesso controllo serve per
+  `documenti_generati` (fuori dal mio perimetro).
+* **R-3 (S-8): candidati a «non rientra» o «ridondante», col motivo.**
+  `attivita_fatturabili.sorgente_*` col §4 sarebbe la copia di `commessa_id` e `commessa_attivita_id` (FK NOT
+  NULL). `sorgente_origine_tipo_id` è il tipo di business senza chiave, che si ricava da `commesse_attivita` con la
+  FK. `fatture_stampa_coda.sorgente_id` è già una FK vera (CASCADE) verso la sola FATTURA.
+* **R-4 (BE, percorso intero da scrivere nel brief):** il parametro BE `sorgente_uid: int` (id del documento) in
+  `fetch_pushable_rows` e `pr_run_commesse_push_one` va rinominato quando cambia la colonna. Il drainer della coda
+  di stampa deve passare `sorgente_id`. Il dataclass `AttivitaDaFatturare` perde `sorgente_uid` e `sorgente_riga`,
+  che nessuno usa.
+* **R-5 (doc stantia, nello stesso lotto):** il manuale di `attivita_fatturabili` (:27, :78-79, :116, :195) dà per
+  vivo l'indice unico ritirato il 2026-02-24. Il manuale di `commesse_attivita` (:66-67) cita un join di
+  `vw_dash_fatturazione_contratti` che non c'è più. Il commento di colonna di `attivita_fatturabili.sorgente_uid`
+  («Origine import (uid)») è falso.
+
+### Censimento — magazzino e acquisti (brief-db-sorgente-documento-e-riga §7.1)
+
+> **Chi:** team DB, sessione di censimento in sola lettura, 2026-11-06.
+> **Fonti:** cataloghi di dbdev (`pg_constraint`, `pg_index`, `pg_trigger`, `pg_proc`, `pg_get_functiondef`,
+> `information_schema`, letti con `db/internal.ruoli.env`), manuali `docs/it/dbzero/<schema>/manual/`, BE
+> `backend/apps`, FE `frontend/src`, pgTAP `db/pgtap`. Nessun YAML usato per la struttura (solo
+> `public.databasechangelog` per lo stato di applicazione del lotto A).
+> **Legenda:** ✅ FATTO VERIFICATO (dove: file:riga, oppure oggetto DB) · 🔶 IPOTESI / PROPOSTA.
+> **Dati:** con il ruolo di `internal.ruoli.env` tutte le tabelle del perimetro risultano a 0 righe (fatto datato,
+> letto sotto la RLS di quel ruolo: non è un motivo e non è una misura del dominio).
+> **Modello di riferimento:** §4 + S-3: `sorgente_tipo_id` (documento) + `sorgente_id bigint` | `sorgente_uid uuid`
+> (secondo `key_selector`) + `sorgente_riga` (riga del documento, NULL = documento intero) + solo su
+> `magazzino.movimenti` / `movimenti_attesi` `sorgente_dettaglio` (la riga della riga).
+
+---
+
+#### 0. In una pagina
+
+1. ✅ **Il magazzino scrive oggi sempre la FOGLIA, mai il documento.** I sei scrittori del registro mettono in
+   `sorgente_riga` l'id del record più basso (prelievo, rientro, riga d'inventario/rettifica/trasferimento) con un tipo
+   `*_RIGA` / `*_PRELIEVO` / `*_RIENTRO`. Nessuno scrive `sorgente_uid` su magazzino. È G2 «puro»: chiave = foglia.
+2. ✅ **`uq_mag_movimenti_identita` è l'idempotenza della registrazione per foglia + causale + tranche**, con due
+   dipendenti: il controllo esplicito al passo 10 di `fn_scrivi_movimento` (`E_MAG_MOVIMENTO_GIA_REGISTRATO`) e il
+   confronto di specchio dello storno al passo 9. **Nessun `ON CONFLICT`** lo usa. Con S-3 resta equivalente **solo se il
+   guard garantisce la catena** dettaglio ∈ riga ∈ documento **e** se per ogni tipo il livello scritto è fisso (§2).
+3. ✅ **Nessuno scrive le testate di magazzino** (`inventari`, `rettifiche`, `trasferimenti`) né `eventi_assets` né
+   `movimenti_attesi` con sorgente: BE e DB solo le leggono. **Nessuno scrive `EVENTO_ASSET`** come sorgente di un
+   movimento (l'operazione «non esiste», manuale `eventi_assets`). Su acquisti **nessuno scrive niente**: nessuna
+   funzione DB, `backend/apps/acquisti` è vuota.
+4. ⛔ **Trappola di ritiro (S-2/S-3):** tre verbi leggono il tipo **senza** `attivo` e, se non lo trovano, **saltano in
+   silenzio lo storno** (`vendite.fn_cambia_stato_ddt`, `vendite.fn_annulla_reso`) o lo leggono per il costo
+   (`vendite.fn_posta_reso`). Ritirare/cancellare `DDT_VENDITA_PRELIEVO`/`RESO_VENDITA_RIENTRO` prima di aver
+   riscritto i verbi = annullo di bolla/reso che non storna il magazzino, senza errore. Spegnerli (`attivo=false`)
+   prima della conversione = ogni storno rifiutato dal guard (che vuole il tipo attivo).
+5. ⛔ **S-9, un buco vero:** `vendite.resi` **non ha un guard di DELETE** di testata (gli altri documenti sì:
+   `trgfn_doc_guard_delete_solo_bozza` su `ddt`, `documento_interno_guard_transizione` sulle testate di magazzino).
+   La regola «si cancella solo la bozza senza righe» vive **solo nel BE** (`resi_service.elimina_reso`,
+   `backend/apps/vendite/services/resi_service.py:582-598`). Un `DELETE` di un reso CONFERMATO (grant DELETE a
+   `zeroerp_app`) va in cascata su `resi_righe` → `resi_righe_rientri` (il lock di riga «padre assente = cascade»
+   passa) e lascia **movimenti `RESO_VENDITA_RIENTRO` orfani**.
+6. ✅ **Il BE traduce già a mano «documento → righe» per il registro:** `list_movimenti(documento_sorgente=…)`
+   (`backend/apps/magazzino/db/magazzino_repository.py:989-997`) cerca i movimenti di un inventario con un `EXISTS`
+   sulle righe. Col modello diventa `sorgente_tipo = INVENTARIO AND sorgente_id = :id`. Stessa traduzione in
+   `dbops.vw_ddt_emessi_senza_scarico` / `vw_resi_confermati_senza_carico` e nei verbi di storno (raccolgono
+   l'array dei prelievi della bolla).
+7. ✅ **Il catalogo ha già i tipi-documento giusti** per il magazzino e gli acquisti: `INVENTARIO` (25),
+   `RETTIFICA` (26), `TRASFERIMENTO` (27), `ORDINE_ACQUISTO` (23), `DDT_ACQUISTO` (24), tutti `key_selector='id'`,
+   scope `CATALOGO`, nati il 2026-10-19. Mancano solo i livelli `target_righe_table` / `target_dettaglio_table`.
+8. ✅ **Acquisti:** testate e `ordini_righe` sono G1 «import» (indici unici «Idempotenza import» con nome `_v_` copiato
+   da vendite); `acquisti.ddt_righe` ha il modello A del lotto A (applicato su dbdev: `20261105-03` EXECUTED) **senza
+   guard polimorfo e senza CHECK di esclusività**; esiste un `ORDINE_ACQUISTO` ma **non** un `ORDINE_ACQUISTO_RIGA`,
+   quindi il commento di colonna («la riga dell'ordine d'acquisto», chiave in `sorgente_riga`) oggi **non è
+   scrivibile**: lo diventa solo col modello §4.
+9. ✅ **S-8 in acquisti** (non censito nel §3.1-bis): `acquisti.ddt.ordine_id` (FK, parallela a `sorgente_*`) e
+   `acquisti.ordini_righe_fulfillment` (ponte con quantità). Il ponte d'acquisto è **`ON DELETE CASCADE`** sui due lati,
+   quello di vendita **`RESTRICT`**: il «va verificato» del manuale `ordini_righe_fulfillment` ha la risposta, ed è
+   «non vale la stessa policy».
+10. 🔶 **S-10:** l'ipotesi del brief regge sul modello (vedi §9), con una precisazione: il catalogo deve dire anche il
+    **livello obbligatorio per consumatore** (il registro vuole sempre la foglia), non solo «ha righe o no».
+
+---
+
+#### 1. Schede tabella
+
+Per ogni tabella: (1) colonne e grammatica · (2) scrittori · (3) lettori · (4) default/CHECK/unici · (5) guard ·
+(6) S-9 · (7) note e lotto.
+
+##### 1.1 `magazzino.movimenti` — il registro
+
+**(1) Colonne** ✅ (`information_schema`, commenti di colonna):
+
+| Colonna | Tipo | Null | Default | Commento (sintesi) |
+| --- | --- | --- | --- | --- |
+| `sorgente_tipo_id` | bigint | **NOT NULL** (D-6) | — | «Il TIPO di record che ha generato il movimento (DDT_VENDITA_RIGA, INVENTARIO_RIGA, RETTIFICA_RIGA, TRASFERIMENTO_RIGA, EVENTO_ASSET, …)» |
+| `sorgente_riga` | bigint | sì | — | «Chiave del record sorgente quando key_selector = id. Esattamente una fra sorgente_riga e sorgente_uid» |
+| `sorgente_uid` | uuid | sì | — | idem per `uid` |
+
+⚠️ Il commento di `sorgente_tipo_id` nomina `DDT_VENDITA_RIGA`, che **nessuno scrive** sul registro: lo scrittore vero
+è `DDT_VENDITA_PRELIEVO`. Commento stantio.
+
+Grammatica oggi: **G2, chiave = foglia** (il record più basso dell'operazione). Significato (manuale `movimenti.md`
+§«Le quattro regole», 1): «ogni movimento dice *quale operazione* lo ha generato».
+
+**(2) Scrittori** ✅ — tutti passano da `magazzino.fn_scrivi_movimento` (unica porta, `INSERT` al passo 13):
+
+| Verbo | Tipo scritto | `sorgente_riga` = | Causale | Posizione |
+| --- | --- | --- | --- | --- |
+| `vendite.fn_posta_ddt(…,'USCITA')` (da `fn_cambia_stato_ddt` all'emissione) | `DDT_VENDITA_PRELIEVO` (21) | `ddt_righe_prelievi.id` | `fn_ddt_causale_magazzino` (vendita, `TRASF_OUT`, …) | lotto/asset/ubicazione del prelievo; `transfer_uid = ddt.uid` se `TRASF_OUT` |
+| `vendite.fn_posta_ddt(…,'ARRIVO')` (consegna bolla di trasferimento) | `DDT_VENDITA_PRELIEVO` | `ddt_righe_prelievi.id` (lo **stesso** prelievo) | `TRASF_IN` | `ubicazione_arrivo_id`, magazzino d'arrivo |
+| `vendite.fn_posta_reso` | `RESO_VENDITA_RIENTRO` (22) | `resi_righe_rientri.id` | `CARICO_RESO_VEN` | lotto/asset dal prelievo d'origine, ubicazione del rientro |
+| `magazzino.fn_posta_inventario` | `INVENTARIO_RIGA` (17) | `inventari_righe.id` (dal piano) | dal piano (`causale_codice_interno`) | della riga |
+| `magazzino.fn_posta_rettifica` | `RETTIFICA_RIGA` (18) | `rettifiche_righe.id` | `RETT_POS`/`RETT_NEG` | della riga |
+| `magazzino.fn_posta_trasferimento` | `TRASFERIMENTO_RIGA` (19) | `trasferimenti_righe.id`, **due volte** | `TRASF_OUT` + `TRASF_IN` | `ubicazione_id_da` / `_a`, `transfer_uid = trasferimenti.uid` |
+| `magazzino.fn_storna_movimenti_sorgente` (da `fn_cambia_stato_ddt` all'annullo, `fn_annulla_reso`) | **copia** dell'originale | **copia** | `STORNO_POS`/`STORNO_NEG` | copia; `storno_di_movimento_id` |
+| — `EVENTO_ASSET` (20) | **nessuno** | — | (`ASSET_INSTALL`/`ASSET_RIENTRO` esistono in `causali`) | — |
+
+Nessuno scrive `sorgente_uid` sul registro. BE: nessuna scrittura diretta (le famiglie chiamano `fn_posta_*`).
+
+**(3) Lettori** ✅
+
+* DB:
+  * `fn_scrivi_movimento` passo 9 (storno: `sorgente_tipo_id`, `sorgente_riga`, `sorgente_uid` uguali all'originale) e
+    passo 10 (identità, `IS NOT DISTINCT FROM` sulla 7-upla);
+  * `fn_storna_movimenti_sorgente(p_tipo, p_righe bigint[])`: `WHERE sorgente_tipo_id = p AND sorgente_riga = ANY(p_righe)`;
+  * `vendite.fn_posta_reso`: rilegge il costo dell'uscita d'origine con `sorgente_tipo_id = DDT_VENDITA_PRELIEVO AND
+    sorgente_riga = prelievo_id AND qta < 0 AND storno_di_movimento_id IS NULL`;
+  * `script.fn_check_disponibilita_uscita`: riceve la sorgente di chi chiede (tipo, riga, uid) e la confronta con gli
+    attesi (vedi 1.2);
+  * viste `dbops.vw_ddt_emessi_senza_scarico` (`m.sorgente_riga = p.id` + `codice_interno = 'DDT_VENDITA_PRELIEVO'`),
+    `dbops.vw_resi_confermati_senza_carico` (idem con `RESO_VENDITA_RIENTRO`), `dbops.vw_magazzino_movimenti_senza_costo`
+    (proietta le tre colonne);
+  * `dbops.fn_sorgenti_orfane` / `_perimetro` (dinamico, legge `sorgente_riga` come chiave del `target_table`);
+  * `script.fn_resolve_emittente_fiscale_id('movimento', …)`: non legge la sorgente (dal magazzino).
+* BE:
+  * `MagazzinoRepository._MOVIMENTI_SELECT` (`backend/apps/magazzino/db/magazzino_repository.py:382-390`) proietta
+    `sorgente_tipo_id`, `sorgente_codice_interno`, `sorgente_riga`, `sorgente_uid`;
+  * `list_movimenti`: filtro `sorgente_codice_interno` (`:986-988`) e **traduzione a mano documento → righe**
+    `documento_sorgente` (`:989-997`, `EXISTS (… r.id = mv.sorgente_riga AND r.{fk_riga} = %s)`), alimentata da
+    `consultazione_service` (`backend/apps/magazzino/services/consultazione_service.py:153-157`) coi parametri
+    `inventario_id` / `rettifica_id`;
+  * API: parametro `sorgente_tipo` = `config.sorgenti.codice_interno` (`backend/apps/magazzino/api/views.py:845`,
+    descrizione OpenAPI `:863` «INVENTARIO_RIGA, RETTIFICA_RIGA, …»);
+  * tipi: `MovimentoRow` (`backend/apps/magazzino/types.py:212-215`).
+* UI a catalogo: `db/changelog/migrations_v2/80_data/sql/ui/lista_colonna.csv:865-866` (colonne
+  `sorgente_codice_interno` «INVENTARIO_RIGA, RETTIFICA_RIGA, …» e `sorgente_riga` «L'id della riga del documento
+  sorgente»).
+* FE: `frontend/src/magazzino/vocabolari.js:62-66` (`SORGENTE_MOVIMENTO = {INVENTARIO_RIGA, RETTIFICA_RIGA}`),
+  `:112`, `:131` (sorgente della famiglia), filtro e cella in `components/MovimentiSearchTable.vue:71,197-200`,
+  deep-link `inventario_id`/`rettifica_id` in `stores/movimenti.js:36-39`, `views/MovimentiView.vue`; etichette
+  `locales/it.json:5222-5223`, `locales/en.json:5222-5223` (chiavi `magazzino.movimenti.sorgente.INVENTARIO_RIGA` …).
+* pgTAP (12 file che leggono la sorgente del registro): `magazzino/test-movimenti-vincoli-v2.sql` (casi 11-15
+  sull'identità e lo storno), `test-fn-scrivi-movimento-controlli-v1.sql` (`E_MAG_MOVIMENTO_GIA_REGISTRATO`),
+  `test-fn-scrivi-movimento-disponibilita-v1.sql`, `-valore-v1`, `-seriali-v1`, `test-porta-ledger-v1.sql`,
+  `test-ddt-scarico-v1.sql`, `test-ddt-trasferimento-v1.sql`, `test-reso-carico-v1.sql`,
+  `test-reso-carico-kit-seriali-v1.sql`, `test-valore-giacenza-divergenza-owner-v1.sql`,
+  `test-blocco-manuale-e-porta-lotto3-v1.sql` (storno), `dbops/test-sorgenti-orfane-v1.sql`,
+  `rls/test-rls-magazzino-perimetro-v1.sql`, `vendite/test-ddt-da-ordine-emittente-prima-dei-lettori-v1.sql`.
+
+**(4) Default, CHECK, unici** ✅
+
+| Oggetto | Definizione | Classificazione |
+| --- | --- | --- |
+| `chk_mag_movimenti_sorgente_chiave` | `(sorgente_riga IS NOT NULL) <> (sorgente_uid IS NOT NULL)` | forma (modello A): si riscrive «una sola chiave di documento» |
+| NOT NULL su `sorgente_tipo_id` | D-6 | regola di dominio (resta) |
+| `uq_mag_movimenti_identita` | `(sorgente_tipo_id, sorgente_riga, sorgente_uid, causale_id, asset_id, lotto_id, ubicazione_id) NULLS NOT DISTINCT` | **regola di dominio** (idempotenza della registrazione), vedi §2 |
+| `uq_mag_movimenti_storno_di` | `(storno_di_movimento_id)` | regola di dominio, non tocca la sorgente |
+| nessun indice di ricerca sulla sorgente oltre l'unico | — | 🔶 i lettori «per documento» (§2.4) vorranno il prefisso `(sorgente_tipo_id, sorgente_id)`: l'unico nuovo lo dà se la colonna è seconda |
+
+**(5) Guard e trigger** ✅: `trg_movimenti_a10_guard_sorgente_ins_upd` (`script.trgfn_guard_sorgente_polimorfa_tipizzata`,
+`BEFORE INSERT OR UPDATE OF sorgente_tipo_id, sorgente_riga, sorgente_uid`); `trg_movimenti_a10_sorgenti_require_attivo_ins_upd`
+(constraint trigger deferred, `config.sorgenti.attivo`). Il guard tipizzato è INVOKER, verifica solo che la foglia esista
+nel `target_table` (`EXECUTE … WHERE id = $1`), rifiuta il tipo spento (`attivo = true` nella SELECT del catalogo).
+
+**(6) S-9** — vedi §6 (bersagli per tipo).
+
+**(7) Note** ✅: il registro non ha `attivo` né DELETE logico (manuale «Un ledger non si spegne: si storna»).
+`magazzino_id` **non** è nella chiave d'identità (le righe OUT/IN di un trasferimento si distinguono per causale).
+⛔ Vincolo d'anello: `dbops.vw_magazzino_dipendenze_inverse` (CANCELLO, rosso in CI via
+`db/pgtap/magazzino/test-registro-non-nomina-i-consumatori-v1.sql`) vieta che un oggetto di `magazzino` nomini
+`vendite`/`acquisti`/`pagamenti`: il nuovo guard, il nuovo storno e il lato «in uscita» del registro devono restare
+**guidati dal catalogo** (`config.sorgenti`), mai con un `JOIN vendite.…` scritto in `magazzino`.
+**Lotto:** famiglia «magazzino» (registro + attesi), dopo il lotto 0; insieme ai verbi di `vendite` che scrivono il
+registro (`fn_posta_ddt`, `fn_posta_reso`, `fn_cambia_stato_ddt`, `fn_annulla_reso`), perché tipo e storno cambiano
+nello stesso passo.
+
+##### 1.2 `magazzino.movimenti_attesi`
+
+**(1)** ✅ `sorgente_tipo_id` bigint null («Il documento che genera l'attesa, se c'è. NULL = attesa senza documento
+(blocco manuale)»); `sorgente_riga` bigint null, `sorgente_uid` uuid null, **senza commento**. Grammatica G2.
+Il commento dice già «il documento»: è il modello §4 nella parola, G2 nella forma.
+
+**(2) Scrittori** ✅: `magazzino.fn_apri_blocco` scrive **solo** blocchi manuali, **senza sorgente** (il corpo non nomina
+`sorgente_*`). Nessuno scrive un'attesa con sorgente (la «merce prelevata non ancora uscita» del manuale non ha ancora
+verbo).
+
+**(3) Lettori** ✅: `fn_libera_blocco` (`AND a.sorgente_tipo_id IS NULL`: libera solo i manuali);
+`script.fn_check_disponibilita_uscita` (righe 159-170 del corpo: esclude gli attesi «della stessa sorgente» con
+`a.sorgente_tipo_id = p_tipo AND a.sorgente_riga IS NOT DISTINCT FROM p_riga AND a.sorgente_uid IS NOT DISTINCT FROM
+p_uid`); `vw_disponibilita` (somma tutti gli attesi APERTA in uscita, non legge la sorgente); BE `_BLOCCHI_SELECT`
+(`magazzino_repository.py:348-362`), `BloccoRow` (`types.py:175-188`), FE `DisponibilitaBlocchiPopover.vue:103`;
+pgTAP `magazzino/test-movimenti-attesi-forma-v1.sql`.
+
+**(4)** ✅ `chk_mag_movimenti_attesi_sorgente_chiave` (tipo NULL ⇒ nessuna chiave; tipo ⇒ esattamente una),
+`chk_mag_movimenti_attesi_data_solo_senza_documento`, `chk_mag_movimenti_attesi_per_chi` (tipo o soggetto o nota).
+**Nessun indice unico sulla sorgente** (corretto: un documento può generare più attese). Classificazione: CHECK di forma
+→ riscritti sul modello; i due CHECK di dominio restano (leggono solo `sorgente_tipo_id IS NULL`).
+
+**(5)** ✅ guard tipizzato + `require_attivo`, come il registro.
+
+**(6)** nessun bersaglio scritto oggi.
+
+**(7)** 🔶 **Punto di modello per S-3:** il confronto «stessa sorgente» di `fn_check_disponibilita_uscita` oggi è
+un'uguaglianza sulla terna. Un'attesa nascerà al livello **riga** (la riga d'ordine o di bolla prenotata) e il
+movimento che la consuma al livello **dettaglio** (il prelievo): con l'uguaglianza a quattro colonne il movimento non
+riconoscerebbe più come «propria» l'attesa del suo documento e la conterebbe come altrui. La regola va scritta come
+**prefisso**: l'attesa è propria se tipo + documento coincidono e i livelli che l'attesa valorizza coincidono
+(`a.sorgente_riga IS NULL OR a.sorgente_riga = p_riga`, idem per il dettaglio). È una decisione di dominio («di chi è
+l'attesa»), non un dettaglio tecnico. Lotto: famiglia magazzino, con il registro.
+
+##### 1.3 `magazzino.inventari` · 1.4 `magazzino.rettifiche` · 1.5 `magazzino.trasferimenti` (le tre testate)
+
+Uguali nella forma; le differenze sono indicate.
+
+**(1)** ✅ `sorgente_tipo_id` bigint null (commento «FK → config.sorgenti(id)» su trasferimenti, assente su inventari e
+rettifiche); `sorgente_uid` uuid null (commento «Identificatore esterno documento» su trasferimenti, assente sugli
+altri); `sorgente_riga` bigint null («Chiave del record sorgente quando key_selector = id; con sorgente_uid esattamente
+una, e solo se sorgente_tipo_id»). Significato (manuali `inventari.md:53-59`, `rettifiche.md:38-…`,
+`trasferimenti.md:68-74`): «la sorgente è **facoltativa**: dice da quale documento l'operazione è nata, se ce n'è uno».
+Grammatica G2.
+
+**(2) Scrittori** ✅: **nessuno**. Il BE crea la testata con `magazzino_id`, `data`, `descrizione`, `meta`
+(`magazzino_repository.py:582-598`) e aggiorna solo `data`, `descrizione`, `meta` (`:396`); nessuna funzione DB valorizza
+la sorgente di una testata. I trasferimenti non hanno neppure una famiglia BE (`famiglie.py:115-118`, «una terza famiglia
+è una riga qui»).
+
+**(3) Lettori** ✅: BE `_documento_select` (`magazzino_repository.py:238`) e `DocumentoInternoRow`
+(`types.py:44-46`); `dbops.fn_sorgenti_orfane` (perimetro dinamico). Nessuna funzione o vista DB legge la sorgente di una
+testata.
+
+**(4)** ✅
+
+| Tabella | CHECK | Unico | Classificazione |
+| --- | --- | --- | --- |
+| `inventari` | `chk_mag_inventari_sorgente_chiave` | `uq_mag_invetario_sorgente_fk (sorgente_tipo_id, sorgente_uid) WHERE tipo IS NOT NULL AND uid IS NOT NULL` (refuso «invetario» dichiarato nel manuale `inventari.md:106`) | **residuo**: copre solo il ramo `uid`, nessun tipo ammesso dal dominio ha oggi chiave `uid` per una testata di magazzino; nessuna decisione lo nomina (analisi magazzino, «Realizzato» D-2) |
+| `rettifiche` | `chk_mag_rettifiche_sorgente_chiave` | `uq_mag_rettifiche_source_fk` (stesso predicato) | **residuo** |
+| `trasferimenti` | `chk_mag_trasferimenti_sorgente_chiave` | `uq_mag_trasf_sorgente_fk (tipo, uid) WHERE tipo IS NOT NULL` | **residuo**: col ramo `id` l'uid è NULL e i NULL sono distinti, quindi non controlla niente |
+
+Nessun pgTAP nomina i tre indici (grep su `db/pgtap`: 0 file). FK: `fk_mag_inventari_sorgenti_tipo` è
+`ON UPDATE RESTRICT`, le altre `ON UPDATE CASCADE` (difformità minore).
+
+**(5)** ✅ guard tipizzato + `require_attivo` + `trgfn_documento_interno_guard_transizione` (`BEFORE DELETE OR UPDATE OF
+stato`).
+
+**(6) S-9 come bersaglio** — vedi §6: la testata è anche il **documento** dei movimenti col modello nuovo.
+
+**(7)** 🔶 Lotto: famiglia magazzino. Gli unici si **ritirano** (nessuna regola di dominio «un inventario per
+documento»: se il dominio la volesse, va dichiarata, non ereditata). Il CHECK di forma si riscrive.
+
+##### 1.6 `magazzino.eventi_assets`
+
+**(1)** ✅ `sorgente_tipo_id` bigint null; `sorgente_uid` uuid null («Identificatore esterno documento»);
+`sorgente_riga` bigint null (commento lotto 1, D-1). Significato (manuale `eventi_assets.md`, §«La sorgente, come sul
+registro»): facoltativa, «da quale documento l'operazione è nata». **Doppio ruolo**: ha una sorgente **ed è** il
+`target_table` del tipo `EVENTO_ASSET` (sorgente del movimento).
+
+**(2) Scrittori** ✅: **nessuno** (nessuna funzione DB nomina la tabella tranne il risolutore dell'emittente; nessun file
+BE; solo fixture pgTAP).
+
+**(3) Lettori** ✅: `script.fn_resolve_emittente_fiscale_id('evento_asset', …)` (dall'asset, non dalla sorgente);
+`dbops.fn_sorgenti_orfane`; pgTAP `dbops/test-sorgenti-orfane-v1.sql`, `rls/test-rls-magazzino-perimetro-v1.sql`,
+`magazzino/test-causali-e-sorgenti-seed-v1.sql:108`.
+
+**(4)** ✅ `chk_mag_eventi_assets_sorgente_chiave` (unica tabella del §3.1 con il CHECK di esclusività, come dice il brief);
+`uq_mag_eventi_assets_sorgente_fk (tipo, uid) WHERE tipo IS NOT NULL` → **residuo** (stessa analisi dei trasferimenti).
+
+**(5)** ✅ guard tipizzato, `require_attivo` su sorgenti/asset/tipo evento, `block_deact` verso `note_evento_asset`.
+
+**(6)** vedi §6. **(7)** S-10, §9.
+
+##### 1.7 `acquisti.ordini` · 1.8 `acquisti.ddt` (testate)
+
+**(1)** ✅ `sorgente_tipo_id` bigint null («FK → config.sorgenti(id)»), `sorgente_uid` uuid null («Origine import
+(uid)»). **Niente `sorgente_riga`**. Grammatica **G1 «import»**.
+
+**(2) Scrittori** ✅: nessuno (nessuna funzione DB; `backend/apps/acquisti` contiene solo scheletri vuoti: `models.py`,
+`api/views.py`, nessun `db/`/`services/` popolato).
+
+**(3) Lettori** ✅: nessuno oltre il perimetro di `trgfn_child_requires_active_parent`. Non sono nel perimetro di
+`fn_sorgenti_orfane` (non hanno `sorgente_riga` né guard).
+
+**(4)** ✅ `uq_ordini_v_sorgente_fk` (su `acquisti.ordini`) e `uq_ddt_v_sorgente_fk` (su `acquisti.ddt`):
+`(sorgente_tipo_id, sorgente_uid) WHERE sorgente_tipo_id IS NOT NULL`, commento «Idempotenza import». →
+**idempotenza import**: escono con l'import (tabella di collegamento propria, §4), non prima. Il suffisso `_v_` è un
+residuo di copia da vendite. Nessun pgTAP li nomina.
+
+**(5)** ✅ solo `require_attivo` sul tipo. **Nessun guard polimorfo**.
+
+**(6) S-9** ✅: nessun guard di DELETE di testata (solo `trgfn_storico_generic`); `acquisti.ordini_righe` è
+`ON DELETE CASCADE` dall'ordine; `acquisti.ddt.ordine_id` è `NO ACTION` (un ordine con DDT non si cancella per FK).
+Come bersaglio: `ORDINE_ACQUISTO` e `DDT_ACQUISTO` oggi non sono scritti da nessuna tabella.
+
+**(7) S-8** ✅: `acquisti.ddt.ordine_id` («FK → acquisti.ordini(id) (opzionale)») è una **colonna parallela** non elencata
+nel §3.1-bis: dice la stessa provenienza di `sorgente_*` = ORDINE_ACQUISTO. 🔶 Può rientrare (tipo ORDINE_ACQUISTO +
+`sorgente_id`), ma oggi è una FK vera: rientrando si perde la FK e la si sostituisce con guard + lato «in uscita». Da
+segnalare a Tid come eccezione possibile (la FK dà integrità gratis; la sorgente dà la grammatica unica). Lotto: famiglia
+acquisti, dopo l'import.
+
+##### 1.9 `acquisti.ordini_righe`
+
+**(1)** ✅ `sorgente_tipo_id` («FK → config.sorgenti(id)»), `sorgente_uid uuid` («Origine import (uid)»),
+`sorgente_riga bigint DEFAULT 0` («ID/prog. riga nella sorgente (0 se non applicabile)»). Manuale `ordini_righe.md:19`:
+«**campi di idempotenza**: servono a rendere ripetibile l'inserimento — un import o un re-invio non devono duplicare
+le righe». Grammatica **G1 di riga (import)**, come da §3.1-bis.
+
+**(2)/(3)** ✅ nessuno scrittore né lettore.
+
+**(4)** ✅ `DEFAULT 0` → **residuo** (nel modello 0 è una riga inesistente; documento intero = NULL): `DROP DEFAULT` e,
+dove ci fossero dati, `0 → NULL`. `uq_ordini_righe_v_sorgente_fk (tipo, uid) WHERE tipo IS NOT NULL` → **idempotenza
+import**.
+
+**(5)** ✅ solo `require_attivo`. **(6)** bersaglio di `acquisti.ordini_righe_fulfillment` (CASCADE) e di
+`acquisti.note_ordini` (CASCADE). **(7)** Lotto: famiglia acquisti, con l'import.
+
+##### 1.10 `acquisti.ddt_righe`
+
+**(1)** ✅ (lotto A, `20261105-03` EXECUTED su dbdev il 2026-11-05 18:40): `sorgente_tipo_id` («da dove viene la riga, se
+l'ha generata un verbo (per esempio la riga dell'ordine d'acquisto). NULL = riga scelta dall'operatore. Si scrive nello
+STESSO INSERT, prima del legame in acquisti.ordini_righe_fulfillment; la chiave sta in sorgente_riga (key_selector id)
+o sorgente_uid (uid). Il guard dell'articolo ritirato legge questa colonna»), `sorgente_uid`, `sorgente_riga`
+(«l'id della riga di partenza»). Grammatica G2 dichiarata.
+
+⛔ **Non scrivibile come descritto:** in `config.sorgenti` c'è `ORDINE_ACQUISTO` (testata, `acquisti.ordini`) ma **non**
+`ORDINE_ACQUISTO_RIGA`. Con G2 «la riga dell'ordine d'acquisto» in `sorgente_riga` vorrebbe un tipo di riga che non
+esiste; con `ORDINE_ACQUISTO` il guard leggerebbe `sorgente_riga` come id dell'**ordine**. Il modello §4 lo risolve senza
+tipi nuovi: `ORDINE_ACQUISTO` + `sorgente_id = ordine` + `sorgente_riga = ordini_righe.id`.
+
+**(2)/(3)** ✅ nessuno scrittore. Lettori: nessuno in pratica; il guard dell'articolo ritirato
+(`trgfn_righe_guard_articolo_ammesso`) **non è montato** su `acquisti.ddt_righe` (nessun trigger relativo in
+`pg_trigger`).
+
+**(4)** ✅ nessun CHECK di esclusività, nessun indice sulla sorgente. **(5)** solo `require_attivo`; **nessun guard
+polimorfo** (la tabella non è nel perimetro di `fn_sorgenti_orfane_perimetro`, che invece contiene già le quattro righe
+di vendita del lotto A).
+
+**(6)** bersaglio di `ordini_righe_fulfillment` (CASCADE) e `note_ddt` (CASCADE); bersaglio futuro del carico
+(`CARICO_ACQ`, manuale `ddt_righe.md`: «oggi quel collegamento non esiste»).
+
+**(7) S-8** ✅ `acquisti.ordini_righe_fulfillment` (`ordine_riga_id`, `ddt_riga_id`, `qta_ricevuta`; **`ON DELETE CASCADE`**
+su entrambe le FK, contro `RESTRICT` di `vendite.ordini_righe_fulfillment`). 🔶 **Non può rientrare** in `sorgente_*`:
+porta una **quantità** (evasione parziale e multipla, N:M), non solo una provenienza. La sorgente della riga di DDT è la
+provenienza **principale**; il ponte resta il registro delle quantità. Eccezione da proporre a Tid con questo motivo.
+Lotto: famiglia acquisti (insieme al verbo di ricezione, che oggi non esiste: costruirlo direttamente sul modello).
+
+---
+
+#### 2. Scheda speciale — `uq_mag_movimenti_identita`
+
+##### 2.1 Che cosa garantisce oggi ✅
+
+* **Definizione:** `UNIQUE (sorgente_tipo_id, sorgente_riga, sorgente_uid, causale_id, asset_id, lotto_id, ubicazione_id)
+  NULLS NOT DISTINCT`; commento: «L'identità del movimento è l'OPERAZIONE-PER-TRANCHE … È GLOBALE, non per magazzino: la
+  sorgente è nella chiave» (D-4, D-L1-c).
+* **Che cosa vuol dire:** una stessa **foglia** (prelievo, rientro, riga) può produrre un solo movimento per **verbo**
+  (la causale) e per **tranche** (asset, lotto, ubicazione). È l'idempotenza della registrazione: ripostare una bolla,
+  un reso, un inventario non duplica il registro.
+* **Chi ne dipende:**
+  * `fn_scrivi_movimento` **passo 10**: SELECT esplicita sulla stessa 7-upla con `IS NOT DISTINCT FROM`, che solleva
+    `E_MAG_MOVIMENTO_GIA_REGISTRATO` («la madre dà la frase, il UNIQUE resta la rete»). Va riscritta **insieme**
+    all'indice, altrimenti frase e rete divergono;
+  * `fn_scrivi_movimento` **passo 9** (storno): pretende `sorgente_tipo_id`, `sorgente_riga`, `sorgente_uid` uguali
+    all'originale; lo storno non collide con l'originale **perché la causale cambia** (`STORNO_POS`/`_NEG`);
+  * **nessun `ON CONFLICT`** su questo indice (grep su `pg_proc` e BE: nessuno). Nessun verbo «riprova».
+  * pgTAP: `magazzino/test-movimenti-vincoli-v2.sql` casi 11-13 (collisione, tranche diversa, OUT/IN),
+    `test-fn-scrivi-movimento-controlli-v1.sql` (`E_MAG_MOVIMENTO_GIA_REGISTRATO`).
+* **Effetto collaterale voluto:** una foglia già movimentata e stornata **non si può ripostare** con la stessa causale
+  (l'originale c'è ancora): rifare = nuova foglia. Va preservato.
+
+##### 2.2 Perché col modello S-3 l'equivalenza non è automatica
+
+La chiave nuova è `(sorgente_tipo_id, sorgente_id, sorgente_uid, sorgente_riga, sorgente_dettaglio, causale_id,
+asset_id, lotto_id, ubicazione_id) NULLS NOT DISTINCT`. Oggi la foglia **da sola** identifica la registrazione, e tutto ciò
+che sta sopra (riga, documento) è funzione della foglia. Col modello nuovo la foglia è affiancata da due colonne in più
+scritte dal verbo: se queste potessero essere **sbagliate o diverse** per la stessa foglia, due registrazioni della stessa
+foglia non collidono più. L'equivalenza regge a due condizioni, **entrambe di modello**:
+
+1. 🔶 **Catena verificata** dal guard unico: `sorgente_dettaglio` appartiene a `sorgente_riga`, che appartiene a
+   `sorgente_id` (FK di livello dichiarate in `config.sorgenti`, lotto 0). Con la catena vera, `(tipo, doc, riga, dett)`
+   è in biiezione con `(tipo_foglia_di_oggi, foglia)`. Le FK di catena sono NOT NULL e immobili fuori bozza
+   (`ddt_righe_prelievi.ddt_riga_id NOT NULL`, `resi_righe_rientri.resi_riga_id NOT NULL`, `*_righe.<testata>_id NOT NULL`;
+   lock di bozza/stato su tutte le righe), quindi la biiezione non si rompe dopo la scrittura.
+2. 🔶 **Livello fisso per tipo sul registro:** oggi è il **tipo** a imporre il livello (PRELIEVO = sempre la foglia). Dopo,
+   `DDT_VENDITA` ammette tre livelli (documento, riga, dettaglio): se un verbo scrivesse lo stesso fatto a livello riga e
+   un altro a livello dettaglio non colliderebbero. Serve una regola: **sul registro, se il catalogo dichiara un
+   `target_dettaglio_table` per il tipo, `sorgente_dettaglio` è obbligatorio; se dichiara solo le righe,
+   `sorgente_riga` è obbligatorio** (la foglia più bassa che il tipo ha). È un parametro del guard sulla tabella
+   (TG_ARGV, «livello minimo = foglia»), non un CHECK fisso, perché `movimenti_attesi` vuole invece livelli liberi
+   (§1.2).
+
+Con 1 e 2 la vecchia chiave e la nuova separano esattamente le stesse coppie di righe.
+
+##### 2.3 I casi, uno per uno
+
+| Caso | Chiave di oggi (tipo, riga, uid · causale · tranche) | Chiave nuova (tipo, id, uid, riga, dettaglio · causale · tranche) | Note |
+| --- | --- | --- | --- |
+| **Prelievo** (uscita bolla) | `DDT_VENDITA_PRELIEVO`, prelievo, ∅ · causale bolla · lotto/asset/ubic. del prelievo | `DDT_VENDITA`, ddt.id, ∅, ddt_righe.id, prelievo.id · idem · idem | il prelievo di un **componente** di kit (`ddt_riga_componente_id`) resta un dettaglio della riga: il componente è ricavabile dal prelievo, non serve un quarto livello |
+| **Arrivo** (bolla di trasferimento) | `DDT_VENDITA_PRELIEVO`, **stesso** prelievo · `TRASF_IN` · ubic. d'arrivo | `DDT_VENDITA`, ddt, ∅, riga, prelievo · `TRASF_IN` · ubic. d'arrivo | non collide con l'uscita: causale diversa, come oggi |
+| **Storno** di prelievo | copia · `STORNO_POS` (o `_NEG` per l'arrivo) · copia | copia delle cinque colonne · idem | `fn_storna_movimenti_sorgente` copia già la riga intera: basta che copi anche `sorgente_id`/`dettaglio` |
+| **Rientro** (reso) | `RESO_VENDITA_RIENTRO`, rientro, ∅ · `CARICO_RESO_VEN` · lotto/asset del prelievo, ubic. del rientro | `RESO_VENDITA`, reso.id, ∅, resi_righe.id, rientro.id · idem · idem | il legame col prelievo d'origine resta nel dato del rientro (`ddt_riga_prelievo_id`), non nella sorgente |
+| **Inventario** | `INVENTARIO_RIGA`, inventari_righe.id, ∅ · dal piano · della riga | `INVENTARIO`, inventari.id, ∅, inventari_righe.id, ∅ · idem · idem | dettaglio NULL: `NULLS NOT DISTINCT` lo tratta come valore, collisione identica |
+| **Rettifica** | `RETTIFICA_RIGA`, riga, ∅ · `RETT_POS`/`_NEG` · della riga | `RETTIFICA`, rettifiche.id, ∅, riga, ∅ · idem · idem | — |
+| **Trasferimento** (documento interno) | `TRASFERIMENTO_RIGA`, riga, ∅ · `TRASF_OUT` e `TRASF_IN` · ubic. da / a | `TRASFERIMENTO`, trasferimenti.id, ∅, riga, ∅ · idem · idem | due righe per riga, causali diverse, come oggi |
+| **Evento asset** (nessuno scrittore) | `EVENTO_ASSET`, evento.id, ∅ · `ASSET_INSTALL`/`_RIENTRO` · asset | `EVENTO_ASSET`, evento.id, ∅, ∅, ∅ · idem · idem | oggetto senza righe (S-10): riga e dettaglio sempre NULL |
+| *Futuro:* carico da DDT d'acquisto | — | `DDT_ACQUISTO`, ddt.id, ∅, ddt_righe.id, (∅ o la tranche di ricezione se nascerà) | va deciso **prima** del verbo quale sia la foglia (riga o «ricevimento per lotto»): è la regola 2 |
+
+##### 2.4 Che cosa si riscrive insieme all'indice (perché resti equivalente)
+
+* `fn_scrivi_movimento`: firma (aggiunge `p_sorgente_id`, `p_sorgente_dettaglio`; parametri in coda), passo 1 (forma:
+  «una sola chiave di documento»), passo 9 (specchio: cinque colonne), passo 10 (identità: nove colonne), passo 11
+  (passa la sorgente intera a `fn_check_disponibilita_uscita`), passo 13 (INSERT).
+* `fn_storna_movimenti_sorgente(p_tipo, p_righe[])` 🔶 → per documento: `(p_tipo, p_sorgente_id | p_sorgente_uid,
+  p_righe bigint[] DEFAULT NULL = tutto il documento)`. I due chiamanti oggi **raccolgono** l'array dei prelievi/rientri
+  della bolla/del reso con un JOIN (`fn_cambia_stato_ddt`: `array_agg(p.id) … WHERE dr.ddt_id = p_ddt_id`;
+  `fn_annulla_reso`: idem sui rientri): col modello passano il documento e basta. Resta generico (nessun nome di
+  `vendite` in `magazzino`).
+* `vendite.fn_posta_reso`: il costo dell'uscita si rilegge per `(DDT_VENDITA, ddt, riga, prelievo, qta<0, non storno)`;
+  il rientro conosce già prelievo → riga → ddt via join.
+* `script.fn_check_disponibilita_uscita`: confronto «propria» per prefisso (§1.2).
+* `dbops.vw_ddt_emessi_senza_scarico`, `vw_resi_confermati_senza_carico`: `m.sorgente_tipo_id = DDT_VENDITA AND
+  m.sorgente_id = d.id` (spariscono i JOIN su righe e prelievi: è la traduzione che il brief toglie).
+* pgTAP che costruiscono la 7-upla a mano (§1.1 (3)).
+
+---
+
+#### 3. Scheda — i tipi di magazzino `*_RIGA`, `*_PRELIEVO`, `*_RIENTRO`, `EVENTO_ASSET` (S-2, S-3)
+
+##### 3.1 Il catalogo oggi ✅ (`config.sorgenti`)
+
+| id | codice_interno | categoria | target_table | key | scope | Diventa |
+| --- | --- | --- | --- | --- | --- | --- |
+| 17 | INVENTARIO_RIGA | RIGA | magazzino.inventari_righe | id | MAGAZZINO | `INVENTARIO` (25) + riga |
+| 18 | RETTIFICA_RIGA | RIGA | magazzino.rettifiche_righe | id | MAGAZZINO | `RETTIFICA` (26) + riga |
+| 19 | TRASFERIMENTO_RIGA | RIGA | magazzino.trasferimenti_righe | id | MAGAZZINO | `TRASFERIMENTO` (27) + riga |
+| 21 | DDT_VENDITA_PRELIEVO | RIGA | vendite.ddt_righe_prelievi | id | MAGAZZINO | `DDT_VENDITA` (8) + riga + dettaglio |
+| 22 | RESO_VENDITA_RIENTRO | RIGA | vendite.resi_righe_rientri | id | MAGAZZINO | `RESO_VENDITA` (15) + riga + dettaglio |
+| 20 | EVENTO_ASSET | RIGA | magazzino.eventi_assets | id | MAGAZZINO | resta (S-10): oggetto senza righe |
+| 23-27 | ORDINE_ACQUISTO, DDT_ACQUISTO, INVENTARIO, RETTIFICA, TRASFERIMENTO | DOCUMENTO | testate | id | CATALOGO | restano, prendono `target_righe_table` |
+
+Livelli da dichiarare nel lotto 0 (🔶, nomi indicativi): `DDT_VENDITA` → righe `vendite.ddt_righe(ddt_id)`, dettaglio
+`vendite.ddt_righe_prelievi(ddt_riga_id)`; `RESO_VENDITA` → `vendite.resi_righe(reso_id)`, `vendite.resi_righe_rientri(resi_riga_id)`;
+`INVENTARIO` → `magazzino.inventari_righe(inventario_id)`; `RETTIFICA` → `magazzino.rettifiche_righe(rettifica_id)`;
+`TRASFERIMENTO` → `magazzino.trasferimenti_righe(trasferimento_id)`; `ORDINE_ACQUISTO` → `acquisti.ordini_righe(ordine_id)`;
+`DDT_ACQUISTO` → `acquisti.ddt_righe(ddt_id)`; `EVENTO_ASSET` → nessuno.
+
+##### 3.2 Chi li nomina ✅
+
+| Dove | Codici | Uso |
+| --- | --- | --- |
+| `magazzino.fn_posta_inventario` / `_rettifica` / `_trasferimento` | INVENTARIO_RIGA / RETTIFICA_RIGA / TRASFERIMENTO_RIGA | lookup per `codice_interno AND attivo`, `E_CONFIG_MANCANTE` se manca |
+| `vendite.fn_posta_ddt` | DDT_VENDITA_PRELIEVO | idem, con `attivo` |
+| `vendite.fn_posta_reso` | RESO_VENDITA_RIENTRO (con `attivo`), DDT_VENDITA_PRELIEVO (**senza** `attivo`, per il costo) | — |
+| `vendite.fn_cambia_stato_ddt` | DDT_VENDITA_PRELIEVO **senza** `attivo`; `IF v_sorgente_id IS NOT NULL` → **storno saltato in silenzio** | ⛔ |
+| `vendite.fn_annulla_reso` | RESO_VENDITA_RIENTRO **senza** `attivo`; stesso salto silenzioso | ⛔ |
+| `dbops.vw_ddt_emessi_senza_scarico`, `vw_resi_confermati_senza_carico` | PRELIEVO, RIENTRO (letterale) | presidi |
+| `script.fn_scope_note_magazzino_ef_perimetro` | INVENTARIO_RIGA, RETTIFICA_RIGA, TRASFERIMENTO_RIGA, EVENTO_ASSET | ⚠️ sono codici di **`config.tipi_entita`** (partizioni `magazzino.note`, FK `fk_mag_note_target_tipo`), **non** di `config.sorgenti`: **restano** |
+| `config.tipi_entita` | le 11 righe `is_sorgente = true` (fra cui le 7 di magazzino) | FK `fk_tipi_entita_sorgenti` (`sorgente_codice_interno` generata → `config.sorgenti.codice_interno`): prima `is_sorgente = false`, poi il ritiro del tipo (brief §7.2); l'entità resta (note, giornale) |
+| `magazzino.note` | partizioni `note_inventario_riga`, `note_rettifica_riga`, `note_trasferimento_riga`, `note_evento_asset` | entità, restano |
+| BE `backend/apps/config/sorgenti.py:59-60` | `SORGENTE_INVENTARIO_RIGA`, `SORGENTE_RETTIFICA_RIGA` | presidiate da `backend/apps/config/tests/test_sorgenti_seed.py` (esistenza e attività nel seed): rosso se si ritirano senza aggiornarle. ⚠️ Mancano `SORGENTE_INVENTARIO` / `_RETTIFICA` / `_TRASFERIMENTO` |
+| BE `backend/apps/magazzino/db/famiglie.py:34,56,84,103` | `sorgente_codice_interno` della famiglia | diventa il tipo **documento**; il campo `fk_riga` resta ma non serve più al filtro |
+| BE `backend/apps/magazzino/api/views.py:845,863` | parametro `sorgente_tipo` (valori `*_RIGA`) | **contratto API**: i valori cambiano |
+| BE test | `magazzino/tests/services/test_magazzino_service.py:94`, `tests/api/test_magazzino_api.py:316`, `tests/db/test_documento_interno_db.py:194`, `backend/scripts/tests/smoke-magazzino-inventario-primo-carico.py:25,116-118` | asserzioni sul codice |
+| UI seed | `ui/lista_colonna.csv:865-866` | descrizioni colonna |
+| FE | `frontend/src/magazzino/vocabolari.js:62-66,112,131`; `locales/it.json:5222-5223`, `en.json:5222-5223` | filtro, etichette, deep-link |
+| pgTAP | INVENTARIO_RIGA 11 file, RETTIFICA_RIGA 2, TRASFERIMENTO_RIGA 3, EVENTO_ASSET 2, DDT_VENDITA_PRELIEVO 1 (`magazzino/test-ddt-scarico-v1.sql`), RESO_VENDITA_RIENTRO 2; più `magazzino/test-causali-e-sorgenti-seed-v1.sql:105-108,132` che **pretende** le quattro righe MAGAZZINO | — |
+
+Falsi positivi esclusi: `E_MAG_INVENTARIO_RIGA_POSIZIONE_DUPLICATA` (codice d'errore, `magazzino_service.py:100`,
+`error_messages_fallback.py:815`, `error_policies_generated.py:1111`) non è la sorgente.
+
+##### 3.3 Ordine di ritiro che non rompe (🔶, per il piano a lotti)
+
+1. lotto 0: livelli nel catalogo, guard unico, BB;
+2. riscrittura dei **sei** verbi + `fn_storna_movimenti_sorgente` + presidi `dbops` nello **stesso** changeSet di
+   famiglia (i verbi di storno leggono il tipo senza `attivo`: se il tipo sparisse prima, l'annullo non storna);
+3. conversione dei dati del registro (foglia → documento + riga + dettaglio: è derivabile per join, nessuna perdita);
+4. BE/FE (contratto `sorgente_tipo`, famiglie, costanti, etichette);
+5. `config.tipi_entita.is_sorgente = false`, poi ritiro (attivo=false o cancellazione) dei 5 tipi in `config.sorgenti` e
+   del seed pgTAP che li pretende. `EVENTO_ASSET` non si ritira.
+
+---
+
+#### 4. Scheda — i BB del perimetro (che cosa cambia)
+
+| BB | Oggi | Col modello |
+| --- | --- | --- |
+| `magazzino.fn_scrivi_movimento` | tipo + una chiave (riga \| uid) | tipo + chiave documento + riga + dettaglio; passi 1, 9, 10, 11, 13 (§2.4). Riceve **anche** l'uid del documento se il chiamante ce l'ha (il BB «che scrive» del lotto 0 decide la colonna) |
+| `magazzino.fn_storna_movimenti_sorgente` | `(tipo, righe[])` sulla foglia | `(tipo, documento, righe[] facoltativo)`; copia le cinque colonne |
+| `vendite.fn_posta_ddt` | PRELIEVO + prelievo.id | DDT_VENDITA + ddt.id + dr.id + p.id (ha già tutto nel cursore) |
+| `vendite.fn_posta_reso` | RIENTRO + rientro.id; lettura costo per PRELIEVO | RESO_VENDITA + reso + rr.id + x.id; costo per DDT_VENDITA + ddt + riga + prelievo |
+| `magazzino.fn_posta_inventario` / `_rettifica` / `_trasferimento` | `*_RIGA` + riga.id | `INVENTARIO`/… + testata.id + riga.id (la testata è già in mano: `p_<doc>_id`) |
+| `vendite.fn_cambia_stato_ddt`, `vendite.fn_annulla_reso` | raccolgono l'array delle foglie | passano il documento; ⛔ smettere di saltare lo storno quando il tipo non c'è (è un `E_CONFIG_MANCANTE`, non un «niente da fare») |
+| `script.fn_check_disponibilita_uscita` | uguaglianza sulla terna | prefisso sul documento (§1.2) |
+| `script.trgfn_guard_sorgente_polimorfa_tipizzata` | foglia esiste nel target | guard unico: documento esiste, riga ∈ documento, dettaglio ∈ riga, livello minimo per tabella (TG_ARGV), esclusività delle chiavi |
+| `dbops.fn_sorgenti_orfane(_perimetro)` | perimetro = tabelle con `sorgente_riga` + `sorgente_uid` + guard tipizzato; chiave = `sorgente_riga` | perimetro = tabelle col guard unico; anti-join a tre livelli (documento, riga, dettaglio). ⚠️ `acquisti.*` ne è fuori oggi |
+
+---
+
+#### 5. Scheda — S-8 nel perimetro
+
+| Colonna parallela | Che cosa dice | Può rientrare? | Motivo |
+| --- | --- | --- | --- |
+| `acquisti.ddt.ordine_id` (FK NO ACTION) | il DDT viene dall'ordine d'acquisto | 🔶 sì, nella forma; da decidere | la FK dà integrità e blocco della cancellazione dell'ordine; rientrando servono guard unico + lato «in uscita» (S-9) per avere lo stesso effetto |
+| `acquisti.ordini_righe_fulfillment` (CASCADE/CASCADE) | quanta riga d'ordine copre la riga di DDT | 🔶 **no** | porta `qta_ricevuta`, N:M, evasioni parziali: è un registro di quantità, non una provenienza. `ddt_righe.sorgente_*` dice la riga d'ordine principale (scritta «nello stesso INSERT, prima del legame»: stesso fatto due volte, ma il ponte dice di più) |
+| `vendite.resi_righe_rientri.ddt_riga_prelievo_id` (FK) | quale prelievo della bolla rientra | no (fuori dal mio perimetro, segnalato) | non è la provenienza del rientro (che è il reso): è il dato «che cosa torna», letto da `fn_posta_reso` per lotto/asset/costo |
+| `magazzino.movimenti.storno_di_movimento_id` | lo storno di quale movimento | no | non è una provenienza polimorfa: FK interna al registro, unica |
+| `magazzino.movimenti.transfer_uid` | coppia OUT/IN | no | legame interno (costo della gemella), non una sorgente |
+
+---
+
+#### 6. Scheda — S-9, la cancellazione dei bersagli (stato di oggi)
+
+✅ = verificato su `pg_trigger` / `pg_constraint` / `role_table_grants`; tutti i bersagli hanno `GRANT DELETE` a
+`zeroerp_owner` e `zeroerp_app`.
+
+| Tipo → bersaglio | Il DELETE è ammesso? | E i movimenti? |
+| --- | --- | --- |
+| `DDT_VENDITA_PRELIEVO` → `vendite.ddt_righe_prelievi` (FK CASCADE da `ddt_righe` e `ddt_righe_componenti`) | solo con la bolla in bozza: `trgfn_doc_righe_lock_fuori_bozza` (a05) sulla riga e sul prelievo; testata `trgfn_doc_guard_delete_solo_bozza`; riga `trgfn_dlt_block_ordrig_ddtrig` | i movimenti nascono all'**emissione** (fuori bozza) e l'annullo li storna: il prelievo movimentato non è cancellabile. ✅ coperto dalla regola di stato, **non** dal legame |
+| `RESO_VENDITA_RIENTRO` → `vendite.resi_righe_rientri` (FK CASCADE da `resi_righe`) | riga e rientro: lock di bozza. **Testata `vendite.resi`: nessun guard di DELETE** | ⛔ un `DELETE FROM vendite.resi` di un reso CONFERMATO passa in cascata (il lock di riga tratta «padre assente» come cascade già autorizzato: commento del BB, «la regola di stato sul padre l'ha già applicata il suo guard», che qui **non c'è**) → movimenti `CARICO_RESO_VEN` orfani. La regola sta solo nel BE (`resi_service.py:582-598`) |
+| `INVENTARIO_RIGA` / `RETTIFICA_RIGA` / `TRASFERIMENTO_RIGA` → `magazzino.*_righe` (FK CASCADE dalla testata) | righe: `trgfn_documento_interno_righe_guard_testata` (solo testata DRAFT); testata: `trgfn_documento_interno_guard_transizione` (DELETE solo DRAFT) | i movimenti nascono a POSTED (terminale): righe movimentate non cancellabili. ✅ coperto dalla regola di stato |
+| `EVENTO_ASSET` → `magazzino.eventi_assets` (FK **CASCADE** da `magazzino.assets`) | **nessun guard di DELETE**; cancellabile sempre | oggi nessun movimento la usa; quando ci sarà, cancellare l'evento (o l'asset, se non bloccato da `fk_mag_movimenti_asset` NO ACTION) lascia il movimento orfano. ⚠️ Da coprire **prima** di costruire l'operazione |
+| `INVENTARIO` / `RETTIFICA` / `TRASFERIMENTO` (testate come documento dei movimenti, col modello nuovo) | DELETE solo in DRAFT | ✅ coperto |
+| `ORDINE_ACQUISTO` / `DDT_ACQUISTO` | nessun guard di DELETE in acquisti; righe e fulfillment in CASCADE | oggi nessun figlio polimorfo; il carico da DDT d'acquisto, quando nascerà, avrà bisogno di una regola di stato **a DB** |
+
+🔶 Per il lato «in uscita» del lotto 0: la regola che oggi protegge il registro è **la regola di stato del documento**, non
+un legame. Il lato «in uscita» derivato dal catalogo può essere un trigger `BEFORE DELETE` montato sul `target_table` (e
+sui livelli righe/dettaglio) che rifiuta se esistono figli polimorfi; per il registro non c'è un'«azione conseguente»
+ammissibile (il ledger non si cancella), quindi l'azione è **RESTRICT**. Il primo buco che chiude è `vendite.resi`
+(che comunque merita il suo `trgfn_doc_guard_delete_solo_bozza`, come `ddt` e `ordini`).
+
+---
+
+#### 7. Scheda — S-10, `EVENTO_ASSET` e i tipi non documento
+
+##### 7.1 Fatti ✅
+
+* `EVENTO_ASSET` (id 20): `categoria = 'RIGA'`, `target_table = magazzino.eventi_assets`, `key_selector = 'id'`,
+  scope `MAGAZZINO`, `tipo_doc_fiscale_id` NULL.
+* **Nessuno lo scrive** come sorgente: nessuna funzione DB (le uniche che nominano `eventi_assets` sono il risolutore
+  dell'emittente), nessun file BE o FE; solo il seed pgTAP che ne pretende l'esistenza
+  (`magazzino/test-causali-e-sorgenti-seed-v1.sql:108`) e la fixture RLS delle note. Le causali `ASSET_INSTALL` (−1) e
+  `ASSET_RIENTRO` (+1) esistono in `magazzino.causali`.
+* Manuale `eventi_assets.md` §Scopo: «l'evento è la **sorgente** del movimento (`EVENTO_ASSET`): è così che i due lati si
+  legano. Scriverli insieme … è compito dell'operazione che li produce, **che ancora non esiste**».
+* L'evento ha a sua volta una sorgente facoltativa («da quale documento l'operazione è nata»): catena
+  movimento → evento → documento.
+* Anche `ATTIVITA` (id 1, `categoria RIGA`, `vendite.attivita_fatturabili`) non è scritto come sorgente da nessuna
+  funzione DB (solo `script.fn_scope_note_ef_perimetro` lo nomina come entità di nota e una fixture pgTAP).
+
+##### 7.2 Che cos'è l'evento rispetto a «il tipo è il documento»
+
+L'evento **non è un documento** (non ha numero, non ha righe, non ha stati di documento) ma è un **fatto registrato con
+identità propria**: «a questo asset, in questa data, è successo questo». È la stessa natura dell'operazione che D-6 chiede
+a monte di ogni movimento («ogni movimento ha un'operazione a monte; la correzione a mano è una rettifica»). Per il
+registro conta che la provenienza sia un **oggetto verificabile**, non che sia un documento commerciale.
+
+##### 7.3 L'ipotesi del brief
+
+> il tipo = l'oggetto di provenienza; il catalogo dice se ha righe (`target_righe_table`) o no; un oggetto senza righe ha
+> solo la chiave e `sorgente_riga` sempre NULL.
+
+🔶 **Regge sul modello**, con due precisazioni:
+
+1. **«Ha righe» non basta: serve anche «ha dettaglio»** (S-3) — la stessa colonna di catalogo per livello, NULL = livello
+   assente. Il guard deriva da lì la forma ammessa: senza `target_righe_table` ⇒ `sorgente_riga IS NULL` e
+   `sorgente_dettaglio IS NULL`.
+2. **La forma ammessa dipende anche dal consumatore**, non solo dall'oggetto: il registro vuole la foglia (§2.2 regola 2),
+   le attese e le provenienze di documento accettano livelli liberi. Il catalogo dice **che cosa esiste**; il montaggio del
+   guard sulla tabella dice **quale livello serve**.
+
+Conseguenze: `categoria` (`DOCUMENTO`/`RIGA`) diventa ridondante con `target_righe_table` per i tipi che restano (dopo
+S-2 non ci saranno più tipi `RIGA`). 🔶 O si ricava dai livelli, o si rinomina il vocabolario in qualcosa che dica la
+natura (`DOCUMENTO` / `EVENTO`): l'unico lettore BE è `vendite/db/famiglie_repository.py:339`
+(`CATEGORIA_SORGENTE_DOCUMENTO`). Nessuna funzione o vista DB legge `categoria`.
+
+##### 7.4 Alternative
+
+| # | Alternativa | Pro (sul modello) | Contro (sul modello) |
+| --- | --- | --- | --- |
+| A | **Ipotesi del brief**: l'evento è un oggetto di provenienza senza righe | una grammatica sola; il guard unico la copre senza casi speciali; regge anche l'ODL futuro (D-5, documento **con** righe di materiali) e qualunque «fatto» di magazzino senza documento commerciale; l'identità del registro resta equivalente (§2.3) | la parola «documento» del §4 va allargata a «oggetto di provenienza»; la catena movimento → evento → documento ha un salto in più per la lineage (ma è un salto **dichiarato**, non un CASE) |
+| B | La sorgente del movimento è il **documento** dell'evento (la bolla d'installazione), e l'evento si lega al movimento con una FK diretta (`eventi_assets.movimento_id` o viceversa), entrambi in `magazzino` | «il tipo è il documento» resta letterale; la lineage dal movimento arriva al documento senza salti; il legame evento↔movimento diventa una FK vera (integrità e S-9 gratis) | un evento **senza documento** (manutenzione interna, sostituzione in campo) lascerebbe il movimento senza sorgente: contro D-6, a meno di inventare un documento; due provenienze per lo stesso fatto (evento.sorgente e movimento.sorgente) da tenere allineate: è il doppione G8 che il brief toglie |
+| C | L'evento diventa un **documento interno** (testata + righe, come inventario/rettifica): un'«operazione su asset» con N eventi | uniforme alle tre famiglie esistenti; il tipo è davvero un documento con righe | struttura nuova senza un bisogno di dominio dichiarato (un evento è uno, non N); un livello in più per un fatto atomico |
+| D | Tipi non documento **fuori** da `config.sorgenti`, in un catalogo a parte | separa i concetti | due cataloghi = due grammatiche e due guard: è esattamente ciò che il brief toglie; rompe la FK `fk_mag_movimenti_sorgente_tipo` |
+
+🔶 **Raccomandazione:** A, con la precisazione dei livelli per consumatore. B solo se Tid decide che **ogni** evento ha
+sempre un documento a monte (allora il movimento punta al documento e l'evento al movimento con FK). La scelta va fatta
+**prima** di costruire l'operazione dell'evento (che oggi non c'è: nessuna conversione dati).
+
+---
+
+#### 8. Richieste BE/FE emerse (percorso intero, elenco chiuso del perimetro)
+
+1. **API `GET /magazzino/movimenti`**: `sorgente_tipo` cambia valori (`INVENTARIO_RIGA` → `INVENTARIO`, …);
+   `inventario_id` / `rettifica_id` diventano `sorgente_tipo + sorgente_id` (il repository perde l'`EXISTS` sulle righe,
+   `magazzino_repository.py:989-997`); `MovimentoRow`/`BloccoRow`/`DocumentoInternoRow` prendono `sorgente_id`,
+   `sorgente_dettaglio` (`types.py:44-46,183-184,212-215`); `famiglie.py` (campo `sorgente_codice_interno`),
+   `config/sorgenti.py` (costanti nuove, ritiro delle `*_RIGA`, `test_sorgenti_seed.py`), test BE elencati in §3.2.
+2. **UI seed** `lista_colonna.csv:865-866` (descrizioni; colonne nuove per documento e dettaglio).
+3. **FE** `magazzino/vocabolari.js` (`SORGENTE_MOVIMENTO`, `sorgente` delle famiglie), `etichette.js`
+   (`PREFISSO_SORGENTE_MOVIMENTO`), `locales/it.json`/`en.json` (chiavi), `MovimentiSearchTable.vue`,
+   `DisponibilitaBlocchiPopover.vue`, `stores/movimenti.js`, `views/MovimentiView.vue`.
+4. **Vendite (resi):** la regola «si cancella solo il reso in bozza» va portata a DB (S-9, §6); il BE resta come
+   pre-controllo.
+
+---
+
+#### 9. Lotti di destinazione (proposta per §7.2)
+
+| Lotto | Tabelle / oggetti del perimetro |
+| --- | --- |
+| 0 (trasversale) | livelli in `config.sorgenti` per DDT_VENDITA, RESO_VENDITA, INVENTARIO, RETTIFICA, TRASFERIMENTO, ORDINE_ACQUISTO, DDT_ACQUISTO; guard unico con «livello minimo» per tabella; lato «in uscita» (primo caso: `vendite.resi`); `fn_sorgenti_orfane` a tre livelli |
+| Magazzino | `movimenti`, `movimenti_attesi` (+ `sorgente_id`, `sorgente_dettaglio`), le tre testate, `eventi_assets`; `uq_mag_movimenti_identita` riscritto (§2); i 4 unici residui ritirati; `fn_scrivi_movimento`, `fn_storna_movimenti_sorgente`, i 6 verbi, `fn_check_disponibilita_uscita`, 2 viste `dbops`; poi ritiro dei 5 tipi |
+| Acquisti | `ordini`, `ddt` (+ `sorgente_id`, conversione import), `ordini_righe` (`DROP DEFAULT 0`), `ddt_righe` (guard unico); unici «import» ritirati con l'import; decisione S-8 su `ddt.ordine_id`; il fulfillment resta |
+
+### Censimento — pratiche, documenti, BB trasversali, catalogo e codici
+
+> **Per:** `brief-db-sorgente-documento-e-riga` §7.1 (schede di tabella, scheda BB, consumatori dei codici `*_RIGA`).
+> **Chi, quando:** team DB, sola lettura, 2026-11-06.
+> **Fonti:** cataloghi PostgreSQL di `zeroerp_ruoli` (struttura, vuoto di dati), corpi da `pg_get_functiondef` /
+> `pg_views` (sono gli stessi che finiscono nella doc auto-generata), manuali `docs/it/dbzero/*/manual/`, `grep`
+> su `backend/apps`, `frontend/src`, `db/pgtap`, `db/changelog/migrations_v2/80_data`.
+> **Convenzione:** **FATTO** = verificato, con la fonte (file:riga o oggetto DB). **IPOTESI** = da verificare.
+> I numeri sono fatti datati, non motivi (regola zero).
+
+---
+
+#### 0. Che cosa trova questo censimento (in breve)
+
+1. **Bug latente, FATTO dal codice.** `vendite.fn_push_offerta_a_contratto` (ramo `p_pratica_id IS NOT NULL`)
+   scrive in `pratiche.pratiche_sorgenti` il tipo `CONTRATTO` (`key_selector = 'id'`) con
+   `sorgente_uid = v_contratto_uid::text`, cioè l'**uuid** (`v_contratto_uid vendite.contratti.uid%TYPE`, valorizzato
+   da `RETURNING id, uid`). Il guard `_testuale` montato sulla tabella chiama `fn_sorgente_chiave_id(uuid)` → `NULL`
+   → **`E_SORG_FORMATO`**. Il BE espone il ramo: `ApiOffertaPushContratto` accetta `pratica_id`
+   (`backend/apps/vendite/api/views_offerte.py:503-516`), `offerte_service.push_a_contratto` lo passa
+   (`offerte_service.py:938-958`), `offerte_repository.py:1086`. **Nessun pgTAP lo esercita**: tutti e sei i test
+   del verbo passano `NULL` (es. `test_fn_push_offerta_a_contratto.sql:260`). Col modello il problema sparisce
+   (il BB di scrittura riceve l'uid e salva l'id), ma va scritto: oggi un push con pratica fallisce.
+2. **G6 è mista anche dentro FATTURA, FATTO dal codice.** In `documenti.documenti_generati` la fattura entra da **due**
+   strade con due chiavi: la UI (`build_documenti_sorgente_views`, `sorgente_documenti_views.py:178,239`, entità da
+   `get_fattura_for_documento_generation` che espone `f.uid::text AS uid`, `vendite_repository.py:4218`) scrive
+   l'**uid**; il drainer della coda (`stampa_coda_drainer_service.py:293`) scrive `item["sorgente_uid"]`, che
+   `vendite.fn_accoda_stampe_lotto` valorizza con `f.id::text`. Conseguenze: la lista UI (`sorgente_documenti_views.py:354`,
+   filtra sull'uid) **non vede** i PDF stampati dal drainer, e `uq_documenti_generati_sorgente_progressivo` +
+   `next_progressivo_sorgente` (MAX+1) tengono **due serie di progressivi** per la stessa fattura. Il brief (§3.1 G6)
+   dice «l'id per FATTURA»: va corretto in «l'id dal drainer, l'uid dalla UI».
+3. **I numeri del §3.3 si riproducono** con un metodo dichiarato (§D): 92 funzioni / 26 viste (`prosrc ~
+   'sorgente_(uid|riga|tipo_id)'`). **Il metodo è cieco a `BEGIN ATOMIC`** (`prosrc` vuoto): mancano **6 funzioni**
+   vere (`vendite.fn_documento_lineage_archi`, `fn_ddt_push_diagnosi`, `fn_ddt_trigger_ordine_testata`,
+   `pratiche.fn_pratica_del_documento`, `documenti.fn_template_motivo_non_coerente`, `fn_template_esito_risoluzione`).
+   Il perimetro giusto è **98 funzioni + 26 viste**; di queste **4 nominano le colonne solo nei commenti** e **13 solo
+   `sorgente_tipo_id`** (il tipo del modello di stampa, fuori dal meccanismo).
+4. **I codici `*_RIGA` di vendita non li scrive nessuno dei verbi oggi in DB**: nessuna funzione o vista li nomina
+   come letterale (l'unico, `ORDINE_VENDITA_RIGA` in `trgfn_ordini_righe_guard_onere_senza_data_consegna`, è
+   un'etichetta in un `jsonb` d'errore). Li scrivono i pgTAP del lotto A non committato e li leggono i guard per
+   `id`. BE e FE non li nominano mai come costanti. Il ritiro (S-2) costa poco **lato codice**; pesa sul seed
+   (`sorgenti.csv`, `tipi_entita.csv`), sulle `etichetta_key` FE (`locales/*.json:5974-5979`) e su due pgTAP di catalogo.
+5. **S-2 revoca anche G-2** del 2026-10-18 («righe e varianti: dentro», `brief-db-grammatica-unica-documenti` §5): il
+   §3.5 del brief non lo elenca.
+6. **Due eccezioni a S-6 da far decidere a Tid**: `pratiche.reconcile_errori` (un log «resiliente», scritto *dentro*
+   un `EXCEPTION WHEN OTHERS`: un guard d'esistenza lo farebbe tacere) e `documenti.template_documenti` (solo il tipo,
+   non è una provenienza). Il presidio di struttura del lotto 0 deve riconoscerle.
+7. **Il catalogo per le righe non basta per l'offerta**: `OFFERTA_COMMERCIALE` non ha una tabella delle righe; le
+   righe espanse vengono da listino **o** eccezione (`vendite.fn_offerta_righe_espanse` restituisce solo `origine
+   varchar`, **nessun id di riga**). Una colonna `target_righe_table` sola non la descrive (S-1 da ripassare).
+
+---
+
+#### A. Schede di tabella
+
+##### A.1 `pratiche.pratiche_sorgenti` (G3)
+
+| Voce | Oggi (FATTO) |
+| --- | --- |
+| Colonne | `sorgente_tipo_id bigint NOT NULL` (FK `fk_pratiche_sorgenti_tipo` → `config.sorgenti`, `ON UPDATE CASCADE`); `sorgente_uid text NOT NULL` — commento «Identificatore della sorgente (es. UUID preventivo). Text per flessibilita'»; `sorgente_riga bigint` NULL — «ID riga specifica della sorgente (opzionale)»; `ruolo_link varchar(30) DEFAULT 'ROOT'` (`ROOT`/`COLLEGATO`); `flusso_id` |
+| Significato scritto | manuale `config/manual/sorgenti.md` §Convenzione: uid per PREVENTIVO/OFFERTA, `id::text` per gli altri (forma canonica dal 2026-10-05) |
+| Guard | `trg_pratiche_sorgenti_a10_guard_sorgente_ins_upd` → `script.trgfn_guard_sorgente_polimorfa_testuale`, **`UPDATE OF sorgente_tipo_id, sorgente_uid`** (non `sorgente_riga`: la riga non è mai verificata); `..._sorgenti_require_attivo` (constraint trigger, tipo attivo); `..._guard_coerenza_flusso` |
+| Indici unici | `uq_pratiche_sorgenti_pratica_tipo_uid_ruolo (pratica_id, sorgente_tipo_id, sorgente_uid, ruolo_link)` → **regola di dominio** (un documento compare una volta per pratica e ruolo) **e** bersaglio di tre `ON CONFLICT`; `uq_pratiche_sorgenti_flusso_root (flusso_id) WHERE ROOT` → regola di dominio, non tocca la sorgente. Non unico: `ix_pratiche_sorgenti_tipo_uid` |
+| Scrittori DB | `vendite.fn_genera_pratica_da_preventivo` (PREVENTIVO, `v_uid::text`, ROOT); `vendite.fn_push_preventivo_a_ordine` (PREVENTIVO `v_preventivo_uid::text` ROOT; ORDINE_VENDITA `v_ordine_id::text` COLLEGATO + `flusso_id`; entrambi `ON CONFLICT ON CONSTRAINT uq_…_ruolo DO NOTHING`); `vendite.fn_push_offerta_a_contratto` (CONTRATTO **`v_contratto_uid::text`** COLLEGATO, `ON CONFLICT ON CONSTRAINT … DO NOTHING`: il bug del §0.1) |
+| Scrittori BE | `PraticheRepository.upsert_pratica_sorgente` (`backend/apps/pratiche/db/pratiche_repository.py:973-1006`): `INSERT … SELECT … FROM config.sorgenti WHERE codice_interno = %s ON CONFLICT (pratica_id, sorgente_tipo_id, sorgente_uid, ruolo_link) DO UPDATE SET flusso_id = COALESCE(…)`. Chiamanti: `preventivi_service.py:901` (PREVENTIVO, `prev["uid"]`, ROOT, `flusso_id`); `preventivi_service.py:2087` (COMMESSA, `str(commessa_id)`, COLLEGATO); `post_smistamento_handler.py:87` (ORDINE_VENDITA, `str(ordine_id)`, COLLEGATO). **Nessun chiamante passa `sorgente_riga`**: è sempre NULL |
+| Lettori DB | `script.vw_pratica_doc_sorgente` (due rami `fn_sorgente_chiave_uuid/_id(ps.sorgente_uid)`); `pratiche.fn_reconcile_sorgente` e `fn_pratica_del_documento` (`ps.sorgente_uid = p_sorgente_uid`, testo); `vendite.vw_preventivi_pratiche` (`ps.sorgente_uid = p.uid::text`); attraverso `fn_pratica_del_documento` le sette viste `vendite.vw_*_lista` e `fn_documento_lineage_sintesi` |
+| Lettori BE | `pratiche_repository.py:104` (`_doc_sorgente_lateral`, stessi due rami della vista), `:1015-1043` (`get_pratica_id_by_sorgente`, `_sorgente_link_exists`, testo); `preventivi_repository.py:132` (`p_link.uid::text = ps.sorgente_uid`), `:607`, `:635`, `:1407`; `ordini_repository.py:451` (`ps.sorgente_uid::bigint`); `ordini_service.py:352` |
+| FE | nessuno nomina la tabella |
+| pgTAP | 9 file (`script/test-guard-sorgente-polimorfa-testuale-v1`, `pratiche/test-proiezione-stato-sorgente`, `test-reconcile-tie-break-flusso-origine`, `test-pratiche-sorgenti-flusso`, `test-guida-avanza-esito-proiettato`, `vendite/test-fn-genera-pratica-da-preventivo-v1`, `test-vw-stato-sorgente-ddt-reso-v1`, `test-fn-push-preventivo-a-ordine-v1`, `rls/test-rls-pratiche-satelliti`) |
+| RLS | `rls_pratiche_sorgenti_ef_whitelist` legge `pratica_id`, non la sorgente: il cambio di colonne non la tocca |
+| Storico | `storico.pratiche_sorgenti` tiene uno `snapshot jsonb`: niente colonne da allineare, ma gli snapshot vecchi restano con la chiave testuale (da dire nel manuale, non da convertire) |
+| S-9 cancellazione | PREVENTIVO: `vendite.preventivi` ha `DELETE` concesso a `zeroerp_app` e **nessun trigger DELETE**; la regola «niente pratiche collegate» sta **nel BE** (`preventivi_service.elimina_preventivo`, `preventivi_service.py:561-592`), non nel DB: contro S-9. ORDINE_VENDITA: `trg_ordini_a10_guard_delete_solo_bozza_dlt` (`trgfn_doc_guard_delete_solo_bozza`) **non guarda `pratiche_sorgenti`**: un ordine in bozza collegato a una pratica si cancella e lascia il link orfano (FATTO dal codice; se il percorso UI lo consenta è IPOTESI). CONTRATTO e COMMESSA: `DELETE` concesso, nessun trigger DELETE |
+| Lotto | **P** (pratiche), dopo il lotto 0. Colonne `sorgente_id bigint` + `sorgente_uid uuid` (la `text` si converte), `sorgente_riga` resta (sempre NULL oggi). Unico nuovo: `(pratica_id, sorgente_tipo_id, sorgente_id, sorgente_uid, sorgente_riga, ruolo_link) NULLS NOT DISTINCT`, **regola di dominio**; i tre `ON CONFLICT ON CONSTRAINT` DB e quello per colonne del BE cambiano bersaglio nello stesso lotto. Richiesta BE: `upsert_pratica_sorgente` e i suoi tre chiamanti, i cinque lettori BE |
+| Non rientra (S-8) | niente |
+
+##### A.2 `pratiche.reconcile_errori`
+
+| Voce | Oggi (FATTO) |
+| --- | --- |
+| Colonne | `sorgente_tipo_id bigint` NULL — «Tipo sorgente … del documento che ha innescato il reconcile»; `sorgente_uid text` NULL — «UID del documento (chiave nativa castata a text)»; `pratica_id`, `flusso_id` **senza FK, di proposito** («log resiliente», commenti di colonna). Nessuna FK su `sorgente_tipo_id` |
+| Scrittori | solo DB: `pratiche.trgfn_documento_reconcile_proiezione` (nel suo `EXCEPTION WHEN OTHERS`) e `pratiche.fn_reconcile_sorgente` (skip `E_RECONCILE_AMBIGUO`), entrambi dentro un blocco che su errore fa `RAISE WARNING` |
+| Che valore scrive | l'unico trigger montato è `trg_preventivi_z90_reconcile_proiezione_upd` su `vendite.preventivi`, `tgargs ('2', 'uid')`: **l'id della sorgente scritto come letterale** (`'2'` = PREVENTIVO) e la colonna da leggere da `to_jsonb(NEW)`. Quindi oggi: tipo 2, uid del preventivo |
+| Lettori | nessuna funzione, vista, BE o FE legge le righe; il codice `E_RECONCILE_AMBIGUO` è citato in `error_policies_generated.py:1465`; pgTAP 3 file |
+| Indici | `ix_reconcile_errori_sorgente (sorgente_tipo_id, sorgente_uid)`, non unico. Nessun unico |
+| Guard | nessuno |
+| S-9 | è un log: la cancellazione del documento non deve toccarlo |
+| Lotto | **P**, con `pratiche_sorgenti`: due colonne tipizzate scritte dal BB di scrittura (o, se il trigger di reconcile resta generico, il trigger passa al BB il tipo e la chiave). Il `'2'` in `tgargs` va sostituito dal codice (`'PREVENTIVO'`), come fanno già i trigger `trgfn_doc_guard_chiusura_sorgente` |
+| Eccezione da far decidere (S-6) | **il guard d'esistenza non va montato qui**: il log serve proprio quando qualcosa è andato storto, e un guard che rifiuta lo farebbe cadere nel `RAISE WARNING`. Proposta: CHECK di forma (una sola chiave) sì, esistenza no; il presidio di struttura la deve elencare come eccezione dichiarata |
+
+##### A.3 `documenti.documenti_generati` (G6)
+
+| Voce | Oggi (FATTO) |
+| --- | --- |
+| Colonne | `sorgente_tipo_id bigint NOT NULL` (FK `documenti_generati_sorgente_tipo_id_fkey`, `ON DELETE RESTRICT`); `sorgente_uid text NOT NULL` (CHECK `chk_documenti_generati_sorgente_uid_non_vuoto`); `sorgente_riga bigint` NULL; `progressivo_sorgente integer NOT NULL` (CHECK `> 0`). **Nessun commento di colonna** |
+| Scrittori | solo BE: `DocumentGenerationService.genera_documento` (`backend/apps/documenti/services/document_generation_service.py:192-330`), che **riceve già** `sorgente_id` (int) e `sorgente_uid` (str). Chiamanti: la factory `build_documenti_sorgente_views` (`documenti/api/sorgente_documenti_views.py:173-178` genera, `:234-239` ristampa) per i sei domini — preventivo, offerta, ordine, ddt, contratto, fattura (`vendite/api/*_documenti_views.py`) — sempre con `sorgente_uid=str(entity["uid"])`; il drainer `stampa_coda_drainer_service.py:288-293` con la chiave della coda (id::text). `sorgente_riga` **mai passato** (default `None`): sempre NULL |
+| Valore per tipo | uid per PREVENTIVO, OFFERTA_COMMERCIALE, ORDINE_VENDITA, DDT_VENDITA, CONTRATTO; FATTURA **uid dalla UI, id dal drainer** (§0.2) |
+| Lettori | BE: `documenti_repository.next_progressivo_sorgente` (`:1261-1290`, MAX+1 per `(tipo, uid, riga)`), `list_documenti_per_sorgente` (`:1382-1420`), le SELECT di dettaglio (`:1437`, `:1496`, `:1546`); `ai_assistant/tools/documenti_tools.py:120-135` (solo PREVENTIVO, risolve l'uid). DB: nessuna funzione legge la chiave (`trgfn_documenti_generati_check_coerenza` legge solo il tipo, via `fn_template_motivo_non_coerente`; `trgfn_documenti_generati_protect_snapshot` congela `sorgente_tipo_id`, `sorgente_uid`, `sorgente_riga`). FE: `documenti/components/DocumentiGeneratiSorgenteList.vue` (lista per sorgente via API) |
+| Indici unici | `uq_documenti_generati_sorgente_progressivo (sorgente_tipo_id, sorgente_uid, sorgente_riga, progressivo_sorgente) NULLS NOT DISTINCT` → **regola di dominio** (numerazione delle versioni per documento); `uq_documenti_generati_uid` → identità |
+| Guard | nessun guard di sorgente; `trg_…_block_delete_dlt` (il documento generato non si cancella), `check_coerenza`, `protect_snapshot`, `guard_emittente_scope`, `guard_versione_contesto`, `require_attivo` sul tipo |
+| RLS | `rls_documenti_generati_ef_whitelist` su `emittente_fiscale_id`: non tocca la sorgente |
+| S-9 | i bersagli (preventivi, offerte, contratti: `DELETE` concesso e nessun trigger DELETE; ordini e ddt: solo bozza) si cancellano senza guardare `documenti_generati`. Per preventivo e offerta il documento si genera solo dopo l'emissione (`emetti_call` prima di `genera_documento`), quindi il caso reale è stretto; ma la regola sta nel percorso, non nel DB (IPOTESI: nessun DELETE di un documento emesso). Fattura: `trg_fatture_a05_guard_numero_fiscale_upd_dlt` |
+| Lotto | **D** (documenti), dopo il lotto 0. `sorgente_id`/`sorgente_uid uuid` secondo `key_selector`; conversione S-5 (uid → id per ORDINE, DDT, CONTRATTO e la parte UI di FATTURA); **attenzione all'unico**: convertendo la fattura, le due serie di progressivi collidono su `(tipo, id, NULL, n)` → la conversione deve **rinumerare** o il vincolo cade. Da decidere prima (dato di test, one-shot manuale come S-6?). Unico nuovo `(tipo, sorgente_id, sorgente_uid, sorgente_riga, progressivo) NULLS NOT DISTINCT`. `protect_snapshot` prende `sorgente_id`. Richiesta BE: `genera_documento` scrive la chiave giusta (ha già entrambe), `next_progressivo_sorgente`, `list_documenti_per_sorgente`, la factory delle view, il drainer, il tool AI |
+
+##### A.4 `documenti.template_documenti` (solo il tipo)
+
+| Voce | Oggi (FATTO) |
+| --- | --- |
+| Colonne | solo `sorgente_tipo_id bigint NOT NULL` (FK, `ON DELETE RESTRICT`): il **tipo di documento** per cui vale il modello. Nessuna chiave |
+| Indici unici | `uq_template_documenti_emittente_sorgente_codice`, `…_codice_interno`, `uq_template_documenti_default_attivo`, `uq_template_documenti_id_tipo_sorgente` → tutti **regola di dominio** sul catalogo dei modelli, non provenienze |
+| Lettori | `documenti.fn_risolvi_template_applicabile`, `fn_template_motivo_non_coerente`, `fn_template_esito_risoluzione`, `fn_personalizza_template_standard`, `trgfn_template_documenti_versioni_guard_derivata_da`, tre viste `vw_template_*`; BE 15 file non di test; FE 6 file; pgTAP 22 |
+| Valori oggi | i sei documenti (PREVENTIVO, OFFERTA_COMMERCIALE, ORDINE_VENDITA, DDT_VENDITA, CONTRATTO, FATTURA); **nessun `*_RIGA`** (FATTO su `zeroerp_ruoli`, seed) |
+| Lotto | **fuori dal meccanismo**: non cambia. Due cose sole: (a) il **presidio di struttura** del lotto 0 non deve contarla fra le tabelle «con `sorgente_*` senza guard» — la chiave del presidio è la presenza di `sorgente_id`/`sorgente_uid`, non di `sorgente_tipo_id`; (b) S-2 la tocca solo se un modello nascesse su un tipo `*_RIGA`: oggi no |
+| Stesso caso | `pratiche.template_flussi.attende_sorgente_tipo_id`, `vendite.attivita_fatturabili.sorgente_origine_tipo_id`, `vendite.documenti_fatturazione_canali.target_sorgente_tipo_id`: colonne di solo tipo, da escludere dal presidio con lo stesso criterio |
+
+---
+
+#### B. I BB del meccanismo
+
+Legenda colonna «Lotto 0»: **S** = diventa (o fonda) il BB unico di **scrittura**; **R** = di **risoluzione**; **G** = il
+**guard** unico; **O** = il presidio degli orfani / lato «in uscita»; **L** = lettore da riscrivere, non BB.
+
+| BB | Che cosa legge oggi come chiave (FATTO) | Chi lo usa (DB / BE / pgTAP) | Che cosa cambia col modello | Lotto 0 |
+| --- | --- | --- | --- | --- |
+| `script.trgfn_guard_sorgente_polimorfa_tipizzata` | `key_selector='id'` → **`NEW.sorgente_riga`** come id del **documento**; `'uid'` → `NEW.sorgente_uid` (uuid). `EXECUTE format('… FROM %s WHERE id = $1', v_tbl::text)`. Rifiuta i tipi spenti (`attivo = true` nel filtro → `E_SORG_CONF`). Non controlla l'esclusività, non conosce la riga | montato su 10 tabelle: 6 di magazzino + `preventivi_righe`, `ordini_righe`, `ddt_righe`, `contratti_righe` (`acquisti.ddt_righe` ha le colonne ma **non il guard** su questo DB). pgTAP 2 | legge `sorgente_id`/`sorgente_uid` secondo `key_selector`; verifica che `sorgente_riga` appartenga al documento (tabella righe + colonna FK dal catalogo) e `sorgente_dettaglio` alla riga; esclusività | **G** (si fonde con `_testuale` in uno solo) |
+| `script.trgfn_guard_sorgente_polimorfa_testuale` | `sorgente_uid text` → `fn_sorgente_chiave_id/_uuid` secondo `key_selector`; non legge `sorgente_riga` | montato su `pratiche_sorgenti`, `commesse_sorgenti`. pgTAP 1 | si ritira (S-4: anche le G3 passano alle colonne tipizzate) | **G** (ritirato nel guard unico) |
+| `script.fn_sorgente_chiave_id` / `_uuid` | forma canonica di una chiave testuale (`id::text`, `uuid::text`), `NULL` se non lo è | DB: i due guard, `pratiche.fn_stato_sorgente`, `script.fn_get_sorgente_emittente_sr_id`, `vendite.fn_documento_lineage_legami`, `fn_get_sorgente_documento_ref`, `fn_link_commessa_sorgente`, vista `script.vw_pratica_doc_sorgente` (**7**, non 8 come il §3.3); BE `pratiche_repository.py:104`. pgTAP 2 | servono ancora **solo dentro il BB di scrittura** (chi passa una chiave testuale qualsiasi) e nel resolver; spariscono da guard e lettori | **S/R** (interni) |
+| `vendite.fn_link_commessa_sorgente` | normalizza: per un tipo `id` traduce l'uuid del chiamante in `id::text` (`EXECUTE 'SELECT id::text FROM %s WHERE uid = $1'`), formato non conforme → `E_SORG_FORMATO`, uuid non risolvibile → `E_SORG_NORM_NON_RISOLTA` | 4 funzioni DB, 37 pgTAP | è **già** la forma del BB di scrittura («riceve una chiave qualsiasi, salva quella giusta»), ristretta a una tabella: va estratto e generalizzato, poi questa lo chiama | **S** (modello da estrarre) |
+| `vendite.fn_get_sorgente_documento_ref` | `(tipo, chiave text)` → `(documento_id, documento_numero)` via `target_table`, `key_selector`, `label_selector`, coi BB chiave | 7 funzioni + `vw_dash_competenza_gruppi`; BE 2; pgTAP 5 | è **già** il resolver: con le colonne tipizzate la firma prende `(tipo, sorgente_id, sorgente_uid)` (o resta testuale per i chiamanti di passaggio); i lettori col `CASE` per tipo (lineage) lo chiamano invece di tradurre | **R** (da promuovere a `script`) |
+| `config.fn_sorgente_tabella` | schema/nome/oid della `target_table` **da `pg_class`** (commento: «⛔ Mai `target_table::text`») | 5 funzioni (storia emittente BA, famiglie, `fn_fattura_origini`), pgTAP 4, BE 1 | il guard unico e il resolver la usano al posto di `v_tbl::text` (oggi i guard, gli orfani e `fn_link_commessa_sorgente` usano `%s` col testo del `regclass`: corretto finché testo e uso stanno nella stessa sessione, ma è la seconda via per lo stesso dato — regola del 2). Serve la gemella per tabella righe e dettaglio | **R** (base comune) |
+| `dbops.fn_sorgenti_orfane` + `fn_sorgenti_orfane_perimetro` + `vw_sorgenti_orfane` | per `key_selector='id'` cerca il documento con **`sorgente_riga`**; il perimetro esige `sorgente_riga` **e** `sorgente_uid` **e** il guard `_tipizzata` montato → copre solo le 10 tabelle del guard tipizzato (per questo i 387 orfani di `documenti_fatturazione_canali` non c'erano); `pratiche_sorgenti`, `commesse_sorgenti`, `documenti_generati` ne sono fuori | pgTAP 2 (+1 la vista) | il perimetro si ricava **dal guard unico** (ogni tabella che lo monta), la chiave da `sorgente_id`/`sorgente_uid`; aggiunge riga e dettaglio orfani | **O** |
+| `script.vw_stato_sorgente` + i sei `vendite.vw_stato_sorgente_*` | ogni ramo espone **già** `sorgente_chiave_uuid` (preventivo, offerta) e `sorgente_chiave_id` (ordine, contratto, ddt, reso), più `sorgente_uid text` (uid o `id::text`) | `pratiche.fn_stato_sorgente`, `fn_reconcile_sorgente` (via la prima), `script.vw_pratica_doc_sorgente`; BE `pratiche_repository.py:104`; FE 1; pgTAP 3 | è già nel modello: le due colonne native si rinominano `sorgente_id`/`sorgente_uid`, la `text` si ritira quando l'ultimo lettore (BE `_doc_sorgente_lateral`) è riscritto. Nessun ramo per FATTURA, COMMESSA: non serve oggi | **R** (proiezione di stato) |
+| `script.vw_pratica_doc_sorgente` | `pratiche_sorgenti.sorgente_uid` text → due rami coi BB chiave | `pratiche.fn_stato_sorgente`, `vendite.fn_get_sorgente_documento_ref` (citazioni), BE 1, pgTAP 4 | join diretto `(tipo, sorgente_id, sorgente_uid)`, i due rami spariscono | **L** (lotto P) |
+| `pratiche.fn_stato_sorgente(tipo, uid text)` | prova prima uuid, poi id, con i BB chiave; sentinella `UNKNOWN` | `fn_reconcile_sorgente`; BE 2; pgTAP 4 | firma tipizzata (o passa dal resolver); i due rami spariscono | **L** (lotto P) |
+| `pratiche.fn_reconcile_sorgente(tipo, uid text)` | `ps.sorgente_uid = p_sorgente_uid` (testo) | `trgfn_documento_reconcile_proiezione`; BE 4; FE 1; pgTAP 2 | come sopra; scrive `reconcile_errori` tipizzata | **L** (lotto P) |
+| `pratiche.trgfn_documento_reconcile_proiezione` | `tgargs ('2','uid')`: id della sorgente come **letterale** + nome della colonna chiave | montato solo su `vendite.preventivi`; pgTAP 0 diretti | il tipo per **codice**; la chiave la sceglie il catalogo (`key_selector`), non il `tgargs`: un trigger generico «documento cambia stato → reconcile» non deve sapere quale colonna leggere | **L** (lotto P); candidato a usare il resolver |
+| `script.fn_check_sorgente_chiudibile(tipo, uid text)` | `commesse_attivita.sorgente_uid = btrim(p)` (G4: **sempre l'uid**) | `fn_check_ordine_annullabile`, `fn_check_preventivo_annullabile` (`v_uid::text`), `fn_documento_ritira_legami`, `fn_ritira_commessa_attivita_da_sorgente`, `trgfn_doc_guard_chiusura_sorgente` (`to_jsonb(NEW)->>'uid'` su ordini, ddt, contratti); BE 1; pgTAP 3 | dopo S-5 su `commesse_attivita` **tutti i chiamanti** passano l'id per ORDINE/DDT/CONTRATTO: firma tipizzata e chiamanti nello stesso lotto della tabella | **L** (lotto C) |
+| `script.fn_get_sorgente_emittente_sr_id(tipo, uid text)` | `target_table` + `key_selector` + BB chiave; legge `emittente_soggetto_ruolo_id` / `emittente_fiscale_id` / `billing_account_id` dalla tabella | `vendite.fn_check_commessa_sorgente_emittente_omogeneo`, `fn_guard_commessa_sorgente_emittente`; BE 1; pgTAP 1 | diventa un **utente del resolver** (risolve il documento, poi legge l'emittente) | **R** (consumatore) |
+| `vendite.fn_commessa_viva_di_sorgente(tipo, chiave text)` | `cs.sorgente_uid = p_sorgente_chiave` (G3) | `fn_link_commessa_sorgente`, `trgfn_guard_fatturazione_immediata_immutabile`; BE (`CommesseRepository.get_commessa_viva_by_sorgente`, chiamato con l'**uid** del preventivo, `preventivi_service.py:2083`) | firma tipizzata | **L** (lotto C) |
+| `vendite.fn_ritira_commessa_attivita_da_sorgente` | `ca.sorgente_uid = v_uid` (G4) | `fn_documento_legami`, `fn_documento_ritira_legami` | firma tipizzata, chiamanti con l'id | **L** (lotto C) |
+| `magazzino.fn_storna_movimenti_sorgente(tipo, righe bigint[])` | `m.sorgente_riga = ANY(...)` (G2: la riga, o il prelievo, come chiave unica) | `vendite.fn_annulla_reso`, `fn_cambia_stato_ddt` | con S-3: documento + riga + dettaglio | **L** (lotto M) |
+| `script.fn_segment_key` / `fn_segment_key_sorgente` | costruttore della chiave d'idempotenza del push (`'<CODICE>:<uid>'`) | 11 funzioni + 4 viste | **non è una provenienza** (K-1 lo lascia): resta, ma la chiave d'idempotenza oggi usa l'uid anche per tipi `id` (`fn_list_consumi_da_pushare`: `ac.uid::text`, tipo ATTIVITA_CONSUMI `key_selector='id'`). Non va «convertita» con S-5: cambierebbe ogni chiave già emessa | fuori; da dichiarare nella guida |
+| `vw_sorgenti_consumatori` | **non esiste** (FATTO: nessun oggetto con quel nome) | — | è il presidio «chi legge le sorgenti» che il lotto 0 può far nascere insieme al presidio di struttura | da creare (proposta) |
+
+**Fixture pgTAP che scrivono il catalogo o le sorgenti** (seguono i lotti): `dbops.fn_pgtap_crea_sorgente` (legge
+`categoria`, `key_selector`: va aggiornata quando il catalogo prende le colonne delle righe),
+`fn_pgtap_crea_commessa`, `fn_pgtap_crea_commessa_attivita`, `fn_pgtap_crea_reso`, `fn_pgtap_fattura_attivita`.
+
+**Errori del meccanismo** (`E_SORG_*`): 5 pgTAP, 3 file BE (policy generate); il guard unico li eredita,
+`E_SORG_FORMATO` resta solo nel BB di scrittura (una chiave testuale malformata), si aggiungono quelli di riga e dettaglio
+(«riga non del documento»), da registrare in `codici_errore.csv`/`messaggi_errore.csv`.
+
+---
+
+#### C. Il catalogo e i codici
+
+##### C.1 `config.sorgenti` — chi legge le colonne (FATTO, `zeroerp_ruoli`)
+
+29 righe. Colonne di comportamento e loro lettori:
+
+| Colonna | Lettori DB | Lettori BE | Nota |
+| --- | --- | --- | --- |
+| `categoria` (`DOCUMENTO`/`RIGA`, **lock**: `trg_sorgenti_a10_lock_columns_upd`) | nessuna funzione la legge per decidere; solo le fixture `dbops.fn_pgtap_crea_sorgente`, `fn_pgtap_crea_commessa_attivita` | `vendite/db/famiglie_repository.py:339` (`CATEGORIA_SORGENTE_DOCUMENTO`, `apps/config/sorgenti.py:45`) | il ritiro dei `*_RIGA` lascia `RIGA` su `ATTIVITA`, `EVENTO_ASSET`, `DDT_VENDITA_PRELIEVO`, `RESO_VENDITA_RIENTRO`, `INVENTARIO_RIGA`… (S-3, S-10). Essendo bloccata, una correzione di categoria è un DELETE+INSERT del tipo |
+| `scope` (CHECK con 9 valori) | `vendite.fn_upsert_commessa_attivita` (`s.scope = 'PUSH_COMMESSA'`) | `vendite/db/commesse_repository.py:447-480` (allinea `_SORGENTE_FN_MAP` ai tipi `PUSH_COMMESSA`) | `ROW_VALIDATOR` è lo scope **solo** dei sei `*_RIGA` di vendita e **nessuno lo legge** (DB, BE; solo il commento `vendite/types.py:1476` e il pgTAP `config/test-sorgenti-scope-pulizia-v1`): col ritiro il valore esce dal CHECK |
+| `target_table` (`regclass`) | 9: i due guard, `dbops.fn_sorgenti_orfane`, `script.fn_get_sorgente_emittente_sr_id`, `vendite.fn_get_sorgente_documento_ref`, `fn_link_commessa_sorgente`, `config.fn_sorgente_tabella`, `script.trgfn_doc_stato_iniziale`, `trgfn_doc_stato_solo_dal_verbo` | via `fn_sorgente_tabella` (1 file) | resta la tabella del **documento** |
+| `key_selector` | 17 funzioni (elenco in §D: guard, orfani, resolver, `fn_check_ordine/preventivo_annullabile`, `fn_accoda_stampe_lotto`, `fn_fattura_origini`, `fn_genera_ddt_riconsegna`, `fn_push_preventivo_a_ordine`, `trgfn_guard_fatturazione_immediata_immutabile`, due fixture); nessuna vista | — | resta (K-1); diventa il selettore della **colonna** (`sorgente_id` o `sorgente_uid`), non più della forma del testo |
+| `tipo_doc_fiscale_id` | `vendite.fn_get_tipo_doc_fiscale_id` ← `trgfn_attivita_fatturabili_normalize` | — | i `*_RIGA` hanno lo stesso valore della testata (PREVENTIVO_RIGA 2 = PREVENTIVO 2; gli altri 1 = 1): ritirarli non cambia il risultato |
+| `label_selector`, `etichetta`, `apribile`, `citato_in_fattura` | resolver, stampa, `fn_fattura_origini` | sì | i `*_RIGA` hanno `label_selector` NULL, `citato_in_fattura = false`: non pesano |
+
+⚠️ **Il manuale cita la colonna `area`** (§«Area documentale», aggiunta 27-07-2026) **che su `zeroerp_ruoli` non
+esiste** (FATTO: `\d config.sorgenti`). O è stata ritirata senza aggiornare il manuale, o il DB di scratch è indietro:
+da verificare sul `databasechangelog` di dbdev. Fuori dal perimetro, ma il manuale si riscrive nello stesso lotto (§3.5).
+
+**Le FK verso il catalogo.** 34 vincoli referenziano `config.sorgenti` (29 su `id`, 5 su `codice_interno`:
+`config.tipi_entita`, `config.nature_vendita`, `config.tipi_indirizzi_allowed`, `vendite.famiglie_documento`,
+`vendite.ordini.documento_origine_tipo`). Per ognuna c'è un `trg_sorgenti_a10_<tabella>_block_deact_upd`
+(`dbops.trgfn_prevent_deactivate_if_children`): **un tipo `*_RIGA` non si spegne finché una riga lo usa** — conferma
+l'ordine del §7.2 (convertire, poi spegnere). I valori di `nature_vendita`, `tipi_indirizzi_allowed`,
+`famiglie_documento`, `template_documenti`, `template_flussi` sono tutti documenti: **nessun `*_RIGA`**.
+
+##### C.2 Che cosa serve aggiungere al catalogo (lotto 0)
+
+Mappa documento → righe → colonna FK, **ricavata oggi da `pg_constraint`** (FATTO) e da dichiarare come dato:
+
+| Documento | Tabella righe | Colonna FK verso il documento | Dettaglio (S-3) | Colonna FK verso la riga |
+| --- | --- | --- | --- | --- |
+| PREVENTIVO | `vendite.preventivi_righe` | `preventivo_id` | — | — |
+| CONTRATTO | `vendite.contratti_righe` | `contratto_id` | — | — |
+| ORDINE_VENDITA | `vendite.ordini_righe` | `ordine_id` | — | — |
+| DDT_VENDITA | `vendite.ddt_righe` | `ddt_id` | `vendite.ddt_righe_prelievi` | `ddt_riga_id` |
+| FATTURA | `vendite.fatture_righe` | `fattura_id` | — | — |
+| RESO_VENDITA | `vendite.resi_righe` | `reso_id` | `vendite.resi_righe_rientri` | `resi_riga_id` |
+| ORDINE_ACQUISTO | `acquisti.ordini_righe` | `ordine_id` | — | — |
+| DDT_ACQUISTO | `acquisti.ddt_righe` | `ddt_id` | — | — |
+| INVENTARIO / RETTIFICA / TRASFERIMENTO | `magazzino.*_righe` | `inventario_id` / `rettifica_id` / `trasferimento_id` | — | — |
+| COMMESSA | (G5) `vendite.commesse_attivita` | `commessa_id` | — | — |
+| OFFERTA_COMMERCIALE | **nessuna tabella righe**: le righe espanse vengono da listino **o** da `offerte_commerciali_eccezioni` (`offerta_id`) | — | — | — |
+
+Proposta di colonne: `righe_table regclass`, `righe_fk_column name`, `dettaglio_table regclass`,
+`dettaglio_fk_column name`, con un presidio (pgTAP o CHECK di convergenza in `90_end`) che verifichi in
+`pg_constraint` che la FK dichiarata esiste davvero — dichiarata, non ricavata, come chiede il §7.2.
+
+⚠️ **Per OFFERTA_COMMERCIALE e COMMESSA il modello va precisato** (da far decidere): la riga d'offerta è polimorfa
+(listino/eccezione) e `fn_offerta_righe_espanse` oggi **non restituisce un id di riga** (firma:
+`… origine character varying, componenti jsonb`), quindi S-1 («restituisce la riga d'origine») è ancora da costruire;
+la «riga» della COMMESSA è `commesse_attivita` (G5, S-7), che però è anche tabella con sorgente propria.
+
+##### C.3 `config.tipi_entita` (FATTO)
+
+* 39 righe; `is_sorgente = true` su 29, cioè **tutte** le sorgenti (non solo le 11 `*_RIGA`); colonna generata
+  `sorgente_codice_interno` + FK `fk_tipi_entita_sorgenti` → `config.sorgenti(codice_interno)`, **senza `ON DELETE`**:
+  una riga `*_RIGA` di `config.sorgenti` non si cancella finché la gemella in `tipi_entita` ha `is_sorgente = true`.
+  Conferma l'ordine del §7.2: prima `is_sorgente = false`, poi il ritiro.
+* `key_selector` di `tipi_entita` è `id` per tutti (anche PREVENTIVO e OFFERTA): è K-1 (aprire ≠ collegare).
+* **Lettori di `tipi_entita` nel DB** (7): `vendite.trgfn_event_log_deriva_scope` (accetta solo i tipi con
+  `modo_risoluzione_emittente` NOT NULL: COMMESSA, FATTURA, LOTTO → **nessun `*_RIGA` è giornalabile**, il giornale
+  non li usa); `script.fn_check_articolo_riga_su_contesto` (`%TYPE`); `dbops.vw_bersagli_non_dichiarati` (bersagli
+  d'errore nei corpi plpgsql); `dbops.vw_eventi_non_dichiarati`; citazioni in commento in `fn_log_and_raise_error`,
+  `fn_cancella_fondo_fattura`, `fn_push_preventivo_a_ordine`. **Nessuno legge `is_sorgente`.**
+* **Note.** Le partizioni delle note per `target_tipo`: vendite `ATTIVITA`, `CONTRATTO`, `DDT_VENDITA`, `FATTURA`,
+  `OFFERTA_COMMERCIALE`, `ORDINE_VENDITA`, `PREVENTIVO` (+ `anchor_tipo DOCUMENTO|RIGA` e `target_riga_id`: **le note
+  di vendita usano già «tipo del documento + riga»**, il modello di Tid); magazzino ha invece partizioni **per riga**
+  (`INVENTARIO_RIGA`, `RETTIFICA_RIGA`, `TRASFERIMENTO_RIGA`, `EVENTO_ASSET`) e la stessa coppia `anchor_tipo`/
+  `target_riga_id`: due grammatiche anche lì. Nessuna partizione per un `*_RIGA` di vendita. Scope:
+  `script.fn_scope_note_ef_perimetro` (vendite, incluso `ATTIVITA`) e `fn_scope_note_magazzino_ef_perimetro`
+  (`INVENTARIO_RIGA`, `RETTIFICA_RIGA`, `TRASFERIMENTO_RIGA`, `EVENTO_ASSET`). **Il §3.3 del brief attribuisce i
+  `*_RIGA` a `fn_scope_note_ef_perimetro`: non li nomina** (li nomina solo la variante di magazzino).
+* **Ritirando i `*_RIGA` di vendita da `config.sorgenti`**: in `tipi_entita` le sei righe restano (entità «riga di
+  …», `etichetta_key config.tipi_entita.<x>_riga`), con `is_sorgente = false`. Oggi nessun giornale, nota o bersaglio
+  d'errore le usa nel DB (FATTO sul codice; i dati non li misura questo DB vuoto).
+
+##### C.4 Consumatori dei codici (DB, BE, FE, pgTAP, seed)
+
+| Codice | DB (funzioni/viste/trigger/CHECK) | BE | FE | pgTAP | Seed CSV |
+| --- | --- | --- | --- | --- | --- |
+| `PREVENTIVO_RIGA` | nessuno; i guard lo risolvono per id via `target_table` | nessuno | `locales/it.json:5974`, `en.json:5974` (`config.tipi_entita.preventivo_riga`) | 4: `vendite/test-fattura-origini-v1:93`, `test-documento-lineage-seminata-v1:137` (**lotto A, modificati non committati**, scrivono la sorgente di `ordini_righe`), `config/test-sorgenti-scope-pulizia-v1:111`, `magazzino/test-causali-e-sorgenti-seed-v1:99` | `sorgenti.csv:12`, `tipi_entita.csv:19` |
+| `CONTRATTO_RIGA` | nessuno | nessuno | locales `:5975` | 2 (scope-pulizia, causali-seed) | `sorgenti.csv:13`, `tipi_entita.csv:20` |
+| `ORDINE_VENDITA_RIGA` | `vendite.trgfn_ordini_righe_guard_onere_senza_data_consegna` (solo etichetta `'tipo'` nel `jsonb` dell'errore `E_RIGA_ONERE_DATA_CONSEGNA`, non una sorgente) | `error_policies_generated.py:1588` (commento) | locales `:5976` | 2 | `sorgenti.csv:14`, `tipi_entita.csv:21`; `codici_errore.csv:1164` (testo) |
+| `DDT_VENDITA_RIGA` | nessuno | nessuno | locales `:5977` | 2 | `sorgenti.csv:15`, `tipi_entita.csv:22` |
+| `FATTURA_RIGA` | nessuno | nessuno | locales `:5978` | 2 | `sorgenti.csv:16`, `tipi_entita.csv:23` |
+| `RESO_VENDITA_RIGA` | nessuno | nessuno | locales `:5979` | 2 | `sorgenti.csv:17`, `tipi_entita.csv:24` |
+| `ATTIVITA` **come sorgente** (id 1, `RIGA`, `PIPELINE_MARKER`, `vendite.attivita_fatturabili`) | **nessuno lo scrive né lo legge come sorgente** (nessun letterale, nessun `codice_interno = 'ATTIVITA'`); è solo parent FK del tipo entità e ha `tipo_doc_fiscale_id = 1` | nessuno (`apps/config/sorgenti.py` non ha la costante); solo `config/tests/db/test_sorgenti_repository.py:71` come stringa d'esempio | nessuno | nessuno | `sorgenti.csv:3` |
+| `ATTIVITA` **come tipo entità** (note, scope) | partizione `vendite.note_attivita_fatturabili`, `script.fn_scope_note_ef_perimetro` | — | locales `tipi_entita.attivita` | `vendite/test-attivita-fatturabili.sql:411,440` (`n.target_tipo = 'ATTIVITA'`) | `tipi_entita.csv:16` |
+| `ATTIVITA_CONSUMI` | `vendite.fn_list_consumi_da_pushare` (risolve il tipo, scrive `sorgente_uid = ac.uid::text` e `fn_segment_key('ATTIVITA_CONSUMI', ac.uid::text)` con `key_selector = 'id'`: **G4**) | `apps/config/sorgenti.py:56` (`SORGENTE_ATTIVITA_CONSUMI`), `commesse_source_handlers.py:930`, `api/views.py:1766` (help text), `_annullo_con_legami.py:84`; test 4 file | `vendite/dashboardAree.spec.js:49`, `_shared/annullo/DocumentoAnnulloLegamiDialog.spec.js:200-225`; locales `attivita_consumi` | 11 file | `sorgenti.csv:8`, `tipi_entita.csv` |
+
+Lettura per S-2 e S-10 (IPOTESI da confermare coi dati di dbdev): il ritiro dei sei `*_RIGA` di vendita, lato codice,
+tocca **solo seed, locales e due pgTAP di catalogo**, più le righe scritte dal lotto A non committato. `ATTIVITA` come
+sorgente è oggi un tipo **senza scrittori**: per S-10 è il primo candidato a «non è un documento», e la sua voce in
+`config.sorgenti` esiste solo per far da genitore alla FK di `tipi_entita` (dove serve, per le note). `ATTIVITA_CONSUMI`
+è un documento (testata `vendite.attivita_consumi`) scritto con l'uid sotto `key_selector = 'id'`: rientra in S-5 sulle
+tabelle commesse, ma la sua `segment_key` no (vedi §B, `fn_segment_key`).
+
+---
+
+#### D. I numeri del §3.3 ricontati, e la lista per lotto
+
+##### D.1 Metodo e risultato (2026-11-06, `zeroerp_ruoli`)
+
+| Misura | Metodo | Brief | Oggi | Nota |
+| --- | --- | --- | --- | --- |
+| funzioni | `pg_proc.prosrc ~ 'sorgente_(uid\|riga\|tipo_id)'`, schemi applicativi | 92 | **92** (vendite 54, script 16, dbops 7, magazzino 6, documenti 5, pratiche 4) | riprodotto |
+| funzioni `BEGIN ATOMIC` | `pg_get_functiondef` sulle stesse colonne, per chi ha `prosrc` vuoto | — | **+6** (vendite 3, documenti 2, pratiche 1) | cieco del metodo del brief |
+| perimetro vero | unione | — | **98** | di cui 4 solo nei commenti, 13 solo `sorgente_tipo_id` |
+| viste | `pg_views.definition ~ …` | 26 | **26** (vendite 15, dbops 5, script 3, documenti 3) | riprodotto; 3 delle documenti solo il tipo |
+| scrivono la sorgente | `INSERT`/`UPDATE … SET` con una colonna `sorgente_*`, `NEW.sorgente_* :=`, o `p_sorgente_* =>` verso un verbo | 19 | **29** | il metodo largo conta anche i passaggi di parametro e 3 fixture pgTAP; `documenti_generati` non ha scrittori DB (solo BE) |
+| leggono `key_selector` | `pg_get_functiondef ~ 'key_selector'` | 16 | **17** funzioni, 0 viste | 16 col solo `prosrc`; la 17ª è `dbops.fn_pgtap_crea_sorgente` |
+| usano i BB chiave | chiamano `fn_sorgente_chiave_id/_uuid` | 8 | **6 funzioni + 1 vista** | |
+| BE file | `grep -rlE 'sorgente_(uid\|riga\|tipo_id)' backend --include=*.py` | 79 | **79** (71 in `apps`, 31 non di test) | |
+| FE file | stesso su `frontend/src` | 10 | **10** (8 file di codice + 2 locales, elenco sotto) | |
+| pgTAP file | stesso su `db/pgtap` | 165 | **166** | +1 da un test nuovo |
+
+FE (10): `config/stores/templateDocumenti.js`, `config/components/TemplateDocumentiSearchTable.vue`,
+`TemplateDocumentoDrawer.vue`, `TemplateRisoluzionePannello.vue` (solo il tipo del modello),
+`pratiche/components/FlussoDrawer.vue`, `vendite/components/CommessaGestioneDrawer.vue`,
+`vendite/offerte/stores/offerte.js`, `vendite/offerte/api/offerteApi.js`, `locales/it.json`, `locales/en.json`.
+
+**Funzioni solo nei commenti** (non cambiano): `dbops.fn_pgtap_fattura_attivita`, `pratiche.fn_copia_definizione`,
+`script.fn_check_preventivo_annullabile` (ma è **chiamante** di `fn_check_sorgente_chiudibile` con l'uid: lotto C),
+`script.fn_segment_key_sorgente`.
+**Solo `sorgente_tipo_id`** (fuori dal meccanismo, salvo nota): `dbops.trgfn_child_requires_non_obsolete_parent`,
+`documenti.fn_personalizza_template_standard`, `fn_risolvi_template_applicabile`, `fn_template_motivo_non_coerente`,
+`fn_template_esito_risoluzione`, `trgfn_documenti_generati_check_coerenza`,
+`trgfn_template_documenti_versioni_guard_derivata_da`, `magazzino.fn_libera_blocco`,
+`vendite.fn_get_tipo_doc_fiscale_id`, `script.fn_check_ddt_riga_correggi_qta_evasa`, le viste
+`documenti.vw_template_versioni_stampabili`, `vw_template_risoluzione_emittente`, `vw_template_personalizzati_scarto`.
+
+##### D.2 Lista nominativa per schema
+
+Colonne: le tabelle con `sorgente_*` **nominate qualificate** nel corpo (euristica: chi passa per `NEW`, parametri o
+SQL dinamico ha la tabella di montaggio); «Scrive» = `INSERT`/`UPDATE` su quelle tabelle; segni: `KS` legge
+`key_selector`, `CHIAVE` usa i BB chiave, `TT` legge `target_table`, `ATOMIC` corpo `BEGIN ATOMIC`, i codici nominati.
+**Lotto proposto**: `0` trasversale; `R` righe di vendita; `T` testate G1; `C` commesse/fatturazione (G3 commesse, G4,
+G5); `D` documenti (G6, G7, canali); `M` magazzino; `P` pratiche; combinazioni = la funzione tocca più famiglie e va
+riscritta nel **primo** lotto che le cambia una chiave, poi ritoccata. È una proposta da incrociare con gli altri
+censimenti di famiglia.
+
+###### Funzioni `dbops` (7)
+
+| Oggetto | Tabelle con `sorgente_*` che nomina | Scrive | Segni | Lotto |
+| --- | --- | --- | --- | --- |
+| `fn_pgtap_crea_commessa` | vendite.commesse_attivita, vendite.commesse_sorgenti | commesse_sorgenti | KS | segue la tabella (fixture pgTAP) |
+| `fn_pgtap_crea_commessa_attivita` | vendite.commesse_attivita | — | ATTIVITA | segue la tabella (fixture pgTAP) |
+| `fn_pgtap_crea_reso` | vendite.ddt, vendite.ddt_righe, vendite.resi | resi | — | segue la tabella (fixture pgTAP) |
+| `fn_pgtap_fattura_attivita` | vendite.attivita_fatturabili, vendite.commesse_attivita, vendite.fatture, vendite.fatture_righe | attivita_fatturabili, fatture_righe | — | — (solo commento) |
+| `fn_sorgenti_orfane` | — (NEW / parametri / SQL dinamico) | — | KS TT | 0 |
+| `fn_sorgenti_orfane_perimetro` | — (NEW / parametri / SQL dinamico) | — | KS | 0 |
+| `trgfn_child_requires_non_obsolete_parent` | montato su pratiche.flussi, pratiche.pratiche, vendite.commesse_attivita, vendite.listini_kit | — | — | — (solo il tipo) |
+
+###### Funzioni `documenti` (7)
+
+| Oggetto | Tabelle con `sorgente_*` che nomina | Scrive | Segni | Lotto |
+| --- | --- | --- | --- | --- |
+| `fn_personalizza_template_standard` | documenti.template_documenti | template_documenti | — | — (solo il tipo) |
+| `fn_risolvi_template_applicabile` | documenti.template_documenti | — | — | — (solo il tipo) |
+| `fn_template_esito_risoluzione` | — (NEW / parametri / SQL dinamico) | — | ATOMIC | — (solo il tipo) |
+| `fn_template_motivo_non_coerente` | documenti.template_documenti | — | ATOMIC | — (solo il tipo) |
+| `trgfn_documenti_generati_check_coerenza` | montato su documenti.documenti_generati | — | — | — (solo il tipo) |
+| `trgfn_documenti_generati_protect_snapshot` | montato su documenti.documenti_generati | — | — | D |
+| `trgfn_template_documenti_versioni_guard_derivata_da` | documenti.template_documenti; montato su documenti.template_documenti_versioni | — | — | — (solo il tipo) |
+
+###### Funzioni `magazzino` (6)
+
+| Oggetto | Tabelle con `sorgente_*` che nomina | Scrive | Segni | Lotto |
+| --- | --- | --- | --- | --- |
+| `fn_libera_blocco` | magazzino.movimenti_attesi | movimenti_attesi | — | — (solo il tipo) |
+| `fn_posta_inventario` | magazzino.inventari | inventari | INVENTARIO_RIGA | M |
+| `fn_posta_rettifica` | magazzino.rettifiche | rettifiche | RETTIFICA_RIGA | M |
+| `fn_posta_trasferimento` | magazzino.trasferimenti | trasferimenti | TRASFERIMENTO_RIGA | M |
+| `fn_scrivi_movimento` | magazzino.movimenti | movimenti | — | M |
+| `fn_storna_movimenti_sorgente` | magazzino.movimenti | — | — | M |
+
+###### Funzioni `pratiche` (5)
+
+| Oggetto | Tabelle con `sorgente_*` che nomina | Scrive | Segni | Lotto |
+| --- | --- | --- | --- | --- |
+| `fn_copia_definizione` | — (NEW / parametri / SQL dinamico) | — | — | — (solo commento) |
+| `fn_pratica_del_documento` | pratiche.pratiche_sorgenti | — | ATOMIC | P (pratiche) |
+| `fn_reconcile_sorgente` | pratiche.pratiche_sorgenti, pratiche.reconcile_errori | reconcile_errori | — | P (pratiche) |
+| `fn_stato_sorgente` | — (NEW / parametri / SQL dinamico) | — | CHIAVE | 0 |
+| `trgfn_documento_reconcile_proiezione` | pratiche.pratiche_sorgenti, pratiche.reconcile_errori; montato su vendite.preventivi (tgargs 2, uid) → pratiche_sorgenti, reconcile_errori | reconcile_errori | — | P (pratiche) |
+
+###### Funzioni `script` (16)
+
+| Oggetto | Tabelle con `sorgente_*` che nomina | Scrive | Segni | Lotto |
+| --- | --- | --- | --- | --- |
+| `fn_available_actions_ddt` | vendite.ddt, vendite.ddt_righe | — | — | R+T |
+| `fn_available_actions_reso` | vendite.resi | — | — | T |
+| `fn_check_ddt_emittibile` | vendite.ddt, vendite.ddt_righe, vendite.ordini, vendite.ordini_righe | — | — | R+T |
+| `fn_check_ddt_riga_correggi_qta_evasa` | vendite.ddt, vendite.ddt_righe | — | — | — (solo il tipo) |
+| `fn_check_disponibilita_uscita` | magazzino.movimenti, magazzino.movimenti_attesi | — | — | M |
+| `fn_check_ordine_annullabile` | vendite.commesse_attivita, vendite.commesse_sorgenti, vendite.ddt, vendite.ordini | — | KS | T+C |
+| `fn_check_preventivo_annullabile` | vendite.ordini | — | KS | — (solo commento) |
+| `fn_check_sorgente_chiudibile` | vendite.commesse_attivita, vendite.commesse_sorgenti | — | — | C |
+| `fn_get_sorgente_emittente_sr_id` | — (NEW / parametri / SQL dinamico) | — | KS CHIAVE TT | 0 |
+| `fn_gruppi_di_commessa_nel_lotto` | vendite.commesse_attivita | — | — | C |
+| `fn_segment_key_sorgente` | — (NEW / parametri / SQL dinamico) | — | — | — (solo commento) |
+| `fn_sorgente_chiave_id` | — (NEW / parametri / SQL dinamico) | — | KS CHIAVE | 0 |
+| `fn_sorgente_chiave_uuid` | — (NEW / parametri / SQL dinamico) | — | CHIAVE | 0 |
+| `trgfn_default_emittente_fiscale` | montato su 11 testate (emittente, non sorgente) | — | — | T (legge `sorgente_tipo_id`+`sorgente_uid` della riga per l'emittente) |
+| `trgfn_guard_sorgente_polimorfa_testuale` | montato su pratiche.pratiche_sorgenti, vendite.commesse_sorgenti | — | KS CHIAVE TT | 0 |
+| `trgfn_guard_sorgente_polimorfa_tipizzata` | montato su 6 magazzino + 4 righe vendita (preventivi/ordini/ddt/contratti_righe) | — | KS TT | 0 |
+
+###### Funzioni `vendite` (57)
+
+| Oggetto | Tabelle con `sorgente_*` che nomina | Scrive | Segni | Lotto |
+| --- | --- | --- | --- | --- |
+| `fn_accoda_stampe_lotto` | vendite.fatture, vendite.fatture_stampa_coda | fatture_stampa_coda | KS | T+D |
+| `fn_accredita_riga_reso` | vendite.attivita_fatturabili, vendite.commesse_attivita, vendite.ddt, vendite.ddt_righe, vendite.fatture, vendite.fatture_righe, vendite.ordini, vendite.ordini_righe | — | — | R+T+C |
+| `fn_aggiungi_onere_commessa` | vendite.commesse_attivita | — | — | C |
+| `fn_annulla_commessa_attivita` | vendite.commesse_attivita | commesse_attivita | — | C |
+| `fn_annulla_reso` | vendite.commesse_attivita, vendite.ddt, vendite.ddt_righe, vendite.ordini_righe, vendite.resi | — | RESO_VENDITA_RIENTRO | R+T+C |
+| `fn_batch_upsert_commessa_attivita` | — (NEW / parametri / SQL dinamico) | — | — | C |
+| `fn_build_gruppo_fatturabile_key` | vendite.commesse_attivita | — | — | C |
+| `fn_check_commessa_sorgente_emittente_omogeneo` | — (NEW / parametri / SQL dinamico) | — | — | C |
+| `fn_commessa_viva_di_sorgente` | vendite.commesse_sorgenti | — | — | C |
+| `fn_conferma_reso` | vendite.ddt, vendite.ddt_righe, vendite.ordini_righe, vendite.resi | — | — | R+T |
+| `fn_contratti_addebiti_maturati` | vendite.commesse_attivita, vendite.contratti, vendite.contratti_righe | — | — | R+T+C |
+| `fn_ddt_push_diagnosi` | vendite.ddt, vendite.ddt_righe, vendite.ordini, vendite.ordini_righe | — | ATOMIC | R+T |
+| `fn_ddt_trigger_ordine_testata` | vendite.ordini | — | ATOMIC | T |
+| `fn_ddt_vincoli_cliente` | vendite.ddt, vendite.ddt_righe, vendite.ordini, vendite.ordini_righe, vendite.resi | — | — | R+T |
+| `fn_documento_legami` | vendite.commesse_attivita, vendite.contratti, vendite.ddt, vendite.ddt_righe, vendite.ordini, vendite.ordini_righe, vendite.preventivi_righe | — | — | R+T+C |
+| `fn_documento_lineage_archi` | vendite.attivita_fatturabili, vendite.commesse_sorgenti, vendite.contratti, vendite.ddt, vendite.ddt_righe, vendite.fatture, vendite.fatture_righe, vendite.ordini, vendite.resi | — | ATOMIC | R+T+C |
+| `fn_documento_lineage_legami` | vendite.commesse_attivita, vendite.contratti, vendite.ddt, vendite.ddt_righe, vendite.ordini, vendite.ordini_righe, vendite.preventivi_righe | — | CHIAVE | R+T+C |
+| `fn_documento_ritira_legami` | vendite.commesse_attivita, vendite.contratti, vendite.ddt, vendite.ddt_righe, vendite.ordini_righe, vendite.preventivi_righe | ordini_righe | — | R+T+C |
+| `fn_emit_attivita_fatturabili_da_commessa` | vendite.attivita_fatturabili, vendite.commesse_attivita, vendite.commesse_sorgenti | attivita_fatturabili, commesse_attivita | — | C |
+| `fn_esito_gruppi_giro` | vendite.attivita_fatturabili, vendite.commesse_attivita, vendite.fatture_righe | — | — | C |
+| `fn_fattura_origini` | vendite.attivita_fatturabili, vendite.commesse_attivita, vendite.fatture_righe | — | KS | C |
+| `fn_genera_ddt_da_ordine` | vendite.ddt, vendite.ddt_righe, vendite.ordini, vendite.ordini_righe | ddt, ddt_righe | — | R+T |
+| `fn_genera_ddt_riconsegna` | vendite.ddt, vendite.ddt_righe, vendite.ordini, vendite.ordini_righe, vendite.resi | ddt, ddt_righe | KS | R+T |
+| `fn_genera_pratica_da_preventivo` | pratiche.pratiche_sorgenti | pratiche_sorgenti | — | P (pratiche) |
+| `fn_get_sorgente_documento_ref` | vendite.commesse_attivita | — | KS CHIAVE TT | 0 |
+| `fn_get_tipo_doc_fiscale_id` | — (NEW / parametri / SQL dinamico) | — | — | — (solo il tipo) |
+| `fn_guard_commessa_sorgente_emittente` | — (NEW / parametri / SQL dinamico) | — | — | C |
+| `fn_link_commessa_sorgente` | vendite.commesse_sorgenti | commesse_sorgenti | KS CHIAVE TT | C |
+| `fn_list_commessa_attivita` | vendite.attivita_fatturabili, vendite.commesse_attivita, vendite.fatture, vendite.fatture_righe | — | — | T+C |
+| `fn_list_consumi_da_pushare` | — (NEW / parametri / SQL dinamico) | — | ATTIVITA_CONSUMI | C |
+| `fn_list_contratti_da_pushare` | — (NEW / parametri / SQL dinamico) | — | — | C |
+| `fn_list_ddt_da_pushare` | vendite.ddt, vendite.ddt_righe, vendite.ordini, vendite.ordini_righe | — | — | R+T |
+| `fn_list_ordini_da_pushare` | vendite.ordini, vendite.ordini_righe | — | — | R+T |
+| `fn_list_preventivi_da_pushare` | vendite.preventivi_righe | — | — | R |
+| `fn_posta_ddt` | vendite.ddt, vendite.ddt_righe | — | DDT_VENDITA_PRELIEVO | R+T |
+| `fn_posta_reso` | magazzino.movimenti, vendite.ddt_righe, vendite.resi | — | DDT_VENDITA_PRELIEVO RESO_VENDITA_RIENTRO | R+T+M |
+| `fn_push_offerta_a_contratto` | pratiche.pratiche_sorgenti, vendite.contratti, vendite.contratti_righe | pratiche_sorgenti, contratti, contratti_righe | — | R+T+P |
+| `fn_push_preventivo_a_ordine` | pratiche.pratiche_sorgenti, vendite.ordini, vendite.ordini_righe | pratiche_sorgenti, ordini, ordini_righe | KS | R+T+P |
+| `fn_resolve_termini_pagamento` | vendite.attivita_fatturabili, vendite.commesse_attivita, vendite.ordini | — | — | T+C |
+| `fn_riferimento_gruppo_fatturabile` | — (NEW / parametri / SQL dinamico) | — | — | C |
+| `fn_ritira_commessa_attivita_da_sorgente` | vendite.commesse_attivita | commesse_attivita | — | C |
+| `fn_select_attivita_fatturabili` | vendite.attivita_fatturabili, vendite.commesse_attivita, vendite.fatture | attivita_fatturabili | — | T+C |
+| `fn_set_documento_canale_stato` | vendite.documenti_fatturazione_canali | documenti_fatturazione_canali | — | D |
+| `fn_split_gruppo_fatturabile_key` | — (NEW / parametri / SQL dinamico) | — | — | C |
+| `fn_upsert_commessa_attivita` | vendite.commesse_attivita | commesse_attivita | — | C |
+| `trgfn_attivita_fatturabili_normalize` | montato su vendite.attivita_fatturabili |  NEW | — | C |
+| `trgfn_commesse_attivita_proietta_stato_preventivo` | vendite.commesse_attivita; montato su vendite.commesse_attivita | — | — | C |
+| `trgfn_commesse_sorgenti_guard_emittente` | montato su vendite.commesse_sorgenti | — | — | C |
+| `trgfn_ddt_guard_cliente_sorgente` | montato su vendite.ddt | — | — | T |
+| `trgfn_ddt_normalize` | vendite.ordini; montato su vendite.ddt | — | — | T |
+| `trgfn_doc_guard_chiusura_sorgente` | montato su vendite.ordini, ddt, contratti → commesse_attivita | — | — | C |
+| `trgfn_documenti_sync_canali` | montato su preventivi, ordini, ddt, contratti → documenti_fatturazione_canali | — | — | D |
+| `trgfn_guard_fatturazione_immediata_immutabile` | vendite.commesse_sorgenti; montato su preventivi, ordini, ddt, contratti → commesse_sorgenti | — | KS | C |
+| `trgfn_resi_default_magazzino` | vendite.ddt; montato su vendite.resi | — | — | T |
+| `trgfn_resi_guard_cliente_ddt` | vendite.ddt; montato su vendite.resi | — | — | T |
+| `trgfn_resi_guard_ddt_consegnato` | vendite.ddt; montato su vendite.resi | — | — | T |
+| `trgfn_resi_normalize` | vendite.ddt; montato su vendite.resi | — | — | T |
+
+###### Viste `dbops` (5)
+
+| Oggetto | Tabelle con `sorgente_*` che nomina | Scrive | Segni | Lotto |
+| --- | --- | --- | --- | --- |
+| `vw_ddt_emessi_senza_scarico` | magazzino.movimenti, vendite.ddt, vendite.ddt_righe | — | DDT_VENDITA_PRELIEVO | R+T+M |
+| `vw_fatture_stampa_coda_da_guardare` | vendite.fatture_stampa_coda | — | — | D |
+| `vw_magazzino_movimenti_senza_costo` | magazzino.movimenti | — | — | M |
+| `vw_resi_confermati_senza_carico` | magazzino.movimenti, vendite.resi | — | RESO_VENDITA_RIENTRO | T+M |
+| `vw_sorgenti_orfane` | — (NEW / parametri / SQL dinamico) | — | TT | 0 |
+
+###### Viste `documenti` (3)
+
+| Oggetto | Tabelle con `sorgente_*` che nomina | Scrive | Segni | Lotto |
+| --- | --- | --- | --- | --- |
+| `vw_template_personalizzati_scarto` | documenti.template_documenti | — | — | — (solo il tipo) |
+| `vw_template_risoluzione_emittente` | documenti.template_documenti | — | — | — (solo il tipo) |
+| `vw_template_versioni_stampabili` | documenti.template_documenti | — | — | — (solo il tipo) |
+
+###### Viste `script` (3)
+
+| Oggetto | Tabelle con `sorgente_*` che nomina | Scrive | Segni | Lotto |
+| --- | --- | --- | --- | --- |
+| `vw_lotto_documento_righe` | vendite.attivita_fatturabili, vendite.commesse_attivita, vendite.fatture_righe | — | — | C |
+| `vw_pratica_doc_sorgente` | pratiche.pratiche_sorgenti | — | CHIAVE | P (pratiche) |
+| `vw_stato_sorgente` | — (NEW / parametri / SQL dinamico) | — | — | 0 |
+
+###### Viste `vendite` (15)
+
+| Oggetto | Tabelle con `sorgente_*` che nomina | Scrive | Segni | Lotto |
+| --- | --- | --- | --- | --- |
+| `vw_commesse_attivita_emittibilita` | vendite.commesse_attivita | — | — | C |
+| `vw_dash_competenza_attivita` | vendite.attivita_fatturabili, vendite.commesse_attivita, vendite.fatture, vendite.fatture_righe | — | — | T+C |
+| `vw_dash_competenza_gruppi` | — (NEW / parametri / SQL dinamico) | — | — | C |
+| `vw_ddt_lista` | vendite.ddt, vendite.ordini | — | — | T |
+| `vw_fatture_lista` | vendite.fatture | — | — | T |
+| `vw_lotti_gruppi_serviti` | vendite.attivita_fatturabili, vendite.commesse_attivita, vendite.fatture, vendite.fatture_righe | — | — | T+C |
+| `vw_preventivi_pratiche` | pratiche.pratiche_sorgenti | — | — | P (pratiche) |
+| `vw_preventivi_smistamento_righe` | vendite.attivita_fatturabili, vendite.ordini, vendite.ordini_righe, vendite.preventivi_righe | — | — | R+T+C |
+| `vw_resi_lista` | vendite.ddt, vendite.resi | — | — | T |
+| `vw_stato_sorgente_contratto` | vendite.contratti | — | — | 0 |
+| `vw_stato_sorgente_ddt` | vendite.ddt | — | — | 0 |
+| `vw_stato_sorgente_offerta` | — (NEW / parametri / SQL dinamico) | — | — | 0 |
+| `vw_stato_sorgente_ordine` | vendite.ordini | — | — | 0 |
+| `vw_stato_sorgente_preventivo` | — (NEW / parametri / SQL dinamico) | — | — | 0 |
+| `vw_stato_sorgente_reso` | vendite.resi | — | — | 0 |
+
+##### D.3 Riepilogo per lotto (proposta)
+
+Conteggio sulle 124 voci della lista (98 funzioni + 26 viste): `0` 17; `C` 27; `T` 12; `R+T` 10; `R+T+C` 8; `M` 7;
+`P` 6; `T+C` 6; `D` 4; `R+T+P` 2; `R+T+M` 2; `R` 1; `T+D` 1; `T+M` 1; fixture pgTAP 3; solo commento 4; solo il tipo 13.
+Le combinazioni (`R+T…`) sono i lettori trasversali — lineage (`fn_documento_lineage_*`, `fn_documento_legami`,
+`fn_documento_ritira_legami`), push e diagnosi DDT, resi: sono quelli che il resolver unico del lotto 0 deve
+semplificare **prima** dei lotti di famiglia, altrimenti si riscrivono una volta per lotto.
+
+---
+
+#### E. Segnalazioni per Tid e per il brief
+
+| # | Che cosa | Tipo | Dove va |
+| --- | --- | --- | --- |
+| E-1 | `fn_push_offerta_a_contratto` con pratica → `E_SORG_FORMATO` (§0.1) | FATTO dal codice; nessun pgTAP | richiesta di test nel lotto P; il verbo si riscrive col BB di scrittura |
+| E-2 | FATTURA in `documenti_generati` con due chiavi; due serie di progressivi; lista UI cieca ai PDF del drainer (§0.2, §A.3) | FATTO dal codice | §3.1 G6 da correggere; la conversione S-5 deve rinumerare o decidere prima |
+| E-3 | `reconcile_errori` senza guard d'esistenza (log resiliente) | eccezione a S-6 | Tid |
+| E-4 | `template_documenti` (e le altre colonne di solo tipo) fuori dal meccanismo; il presidio di struttura si aggancia a `sorgente_id`/`sorgente_uid`, non a `sorgente_tipo_id` | precisazione al lotto 0 | brief §7.2 |
+| E-5 | S-2 revoca anche **G-2** («righe e varianti: dentro») | dichiarazione mancante | brief §3.5 |
+| E-6 | OFFERTA (righe polimorfe, nessun id di riga da `fn_offerta_righe_espanse`) e COMMESSA (righe = `commesse_attivita`) non stanno in una `righe_table` sola | modello da precisare | Tid, S-1 / lotto 0 |
+| E-7 | metodo del §3.3 cieco a `BEGIN ATOMIC`: 98 funzioni, non 92; BB chiave usati da 7, non 8; `fn_scope_note_ef_perimetro` non nomina i `*_RIGA` | correzione numeri | brief §3.3 |
+| E-8 | cancellazioni senza regola DB: preventivo (regola nel BE), ordine in bozza collegato a pratica, contratto/offerta/reso/commessa con `DELETE` concesso e nessun trigger DELETE | S-9, FATTO | lato «in uscita» del lotto 0 |
+| E-9 | `trg_preventivi_z90_reconcile_proiezione_upd` passa l'**id** della sorgente come letterale (`'2'`) | fragilità, FATTO | lotto P (per codice) |
+| E-10 | `vendite.vw_preventivi_pratiche` espone `ps.id AS sorgente_id` (l'id del **link**): col modello il nome collide con la colonna nuova | trappola di nome | lotto P (rinominare la colonna della vista; un consumatore BE, `preventivi_repository.py:1407`) |
+| E-11 | il manuale di `config.sorgenti` descrive la colonna `area`, assente su `zeroerp_ruoli` | da verificare su dbdev | riscrittura del manuale (§3.5) |
+| E-12 | `fn_segment_key` usa l'uid per tipi `id` (ATTIVITA_CONSUMI e push): non è provenienza, non si converte con S-5 | da dichiarare | guida `sorgente-polimorfa.md` |

@@ -1,0 +1,107 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I LIVELLI DI UN TIPO DI DOCUMENTO: LE RIGHE E IL DETTAGLIO, DICHIARATI NEL CATALOGO
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto 0 (S-2, S-3, D-2, D-5 di Tid,
+#   2026-11-06).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   Col modello di Tid la provenienza di un record e' «il documento (tipo + chiave),
+#   la sua riga, il dettaglio della riga». Il tipo e' sempre il DOCUMENTO: i tipi
+#   *_RIGA si ritirano (S-2). Per verificare che una riga appartenga davvero al
+#   documento, il guard unico deve sapere DOVE stanno le righe di quel tipo e con
+#   quale colonna puntano al documento. Oggi config.sorgenti conosce solo la
+#   tabella del documento (la D4 del 2026-07-18 era rimasta aperta per questo).
+#
+# ── LE COLONNE ──────────────────────────────────────────────────────
+#   righe_table / righe_fk_column           la tabella delle righe e la sua FK
+#                                            verso il documento
+#   dettaglio_table / dettaglio_fk_column   la tabella del dettaglio (la riga di
+#                                            una riga: il prelievo, il rientro) e
+#                                            la sua FK verso la riga
+#   NULL = il livello non c'e' (D-2): l'oggetto ha solo la chiave.
+#   ⭐ DICHIARATE, non ricavate da pg_constraint (§7.2): un documento ha piu'
+#   tabelle figlie (le righe, i componenti, le note), e quale sia «la riga» e'
+#   una scelta del modello. Che la FK dichiarata esista davvero lo verifica il
+#   pgTAP config/test-sorgenti-livelli-v1.
+#
+# ── I VINCOLI ───────────────────────────────────────────────────────
+#   La tabella e la sua colonna vanno in coppia; il dettaglio sta sotto una riga;
+#   le righe stanno sotto un documento; il nome di colonna e' un identificatore,
+#   come label_selector. Tutti soddisfatti dai NULL di oggi: i valori arrivano dal
+#   CSV (80_data, mirror 20251002-21).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261106-04-alter-sorgenti-add-livelli-mctit.yaml
+
+  - changeSet:
+      id: 20261106-04-alter-sorgenti-add-livelli
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config.sorgenti: righe_table/righe_fk_column e dettaglio_table/dettaglio_fk_column, i livelli
+        sotto il documento, con i CHECK di forma. brief-db-sorgente-documento-e-riga §7.2 lotto 0.
+      preConditions:
+        - onFail: HALT
+        - tableExists: { schemaName: config, tableName: sorgenti }
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*) FROM information_schema.columns
+               WHERE table_schema = 'config' AND table_name = 'sorgenti'
+                 AND column_name IN ('righe_table', 'righe_fk_column',
+                                     'dettaglio_table', 'dettaglio_fk_column');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.sorgenti
+                  ADD COLUMN righe_table         regclass,
+                  ADD COLUMN righe_fk_column     character varying(63),
+                  ADD COLUMN dettaglio_table     regclass,
+                  ADD COLUMN dettaglio_fk_column character varying(63),
+                  ADD CONSTRAINT chk_sorgenti_righe_coppia
+                      CHECK ((righe_table IS NULL) = (righe_fk_column IS NULL)),
+                  ADD CONSTRAINT chk_sorgenti_dettaglio_coppia
+                      CHECK ((dettaglio_table IS NULL) = (dettaglio_fk_column IS NULL)),
+                  ADD CONSTRAINT chk_sorgenti_righe_sotto_documento
+                      CHECK (righe_table IS NULL OR target_table IS NOT NULL),
+                  ADD CONSTRAINT chk_sorgenti_dettaglio_sotto_righe
+                      CHECK (dettaglio_table IS NULL OR righe_table IS NOT NULL),
+                  ADD CONSTRAINT chk_sorgenti_righe_fk_column_identificatore
+                      CHECK (righe_fk_column IS NULL
+                             OR righe_fk_column::text ~ '^[a-z_][a-z0-9_]*$'),
+                  ADD CONSTRAINT chk_sorgenti_dettaglio_fk_column_identificatore
+                      CHECK (dettaglio_fk_column IS NULL
+                             OR dettaglio_fk_column::text ~ '^[a-z_][a-z0-9_]*$');
+
+              COMMENT ON COLUMN config.sorgenti.righe_table IS
+                  'La tabella delle righe del documento di questo tipo (vendite.ordini_righe per l''ordine, le eccezioni per l''offerta, commesse_attivita per la commessa). Con righe_fk_column dice al guard della provenienza dove cercare sorgente_riga e come verificare che appartenga al documento. NULL = il tipo non ha righe: la provenienza e'' il documento intero e sorgente_riga resta NULL. Si dichiara, non si ricava: che la FK esista lo verifica un pgTAP. Il valore sta nel CSV delle sorgenti.';
+
+              COMMENT ON COLUMN config.sorgenti.righe_fk_column IS
+                  'La colonna di righe_table che punta all''id del documento (ordine_id, ddt_id, offerta_id). Va in coppia con righe_table. Un identificatore, non un''espressione.';
+
+              COMMENT ON COLUMN config.sorgenti.dettaglio_table IS
+                  'La tabella del dettaglio di una riga, il terzo livello della provenienza: il prelievo di una riga di bolla, il rientro di una riga di reso. Con dettaglio_fk_column dice al guard dove cercare sorgente_dettaglio e come verificare che appartenga alla riga. NULL = il tipo non ha dettaglio. Richiede righe_table. Il valore sta nel CSV delle sorgenti.';
+
+              COMMENT ON COLUMN config.sorgenti.dettaglio_fk_column IS
+                  'La colonna di dettaglio_table che punta all''id della riga (ddt_riga_id, resi_riga_id). Va in coppia con dettaglio_table. Un identificatore, non un''espressione.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.sorgenti
+                  DROP COLUMN IF EXISTS dettaglio_fk_column,
+                  DROP COLUMN IF EXISTS dettaglio_table,
+                  DROP COLUMN IF EXISTS righe_fk_column,
+                  DROP COLUMN IF EXISTS righe_table;

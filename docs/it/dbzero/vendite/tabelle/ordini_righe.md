@@ -36,6 +36,7 @@
 | data_consegna_richiesta_cliente | date | YES |  |
 | data_consegna_confermata | date | YES |  |
 | natura_vendita_id | bigint | NO |  |
+| sorgente_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

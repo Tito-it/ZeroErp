@@ -47,6 +47,7 @@
 | registro_id | bigint | YES |  |
 | magazzino_id | bigint | YES |  |
 | magazzino_arrivo_id | bigint | YES |  |
+| sorgente_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

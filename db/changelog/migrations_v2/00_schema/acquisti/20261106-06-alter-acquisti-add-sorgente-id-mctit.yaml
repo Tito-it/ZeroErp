@@ -1,0 +1,70 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA CHIAVE ID DEL DOCUMENTO DI ORIGINE: sorgente_id SULLE TABELLE D'ACQUISTO
+#   Brief: brief-db-sorgente-documento-e-riga §4, §7.2 lotto 0. Stesso modello e
+#   stessa forma di 20261106-05 (vendite): colonna nullable, vuota, la riempie il
+#   lotto M (acquisti.ddt.ordine_id che confluisce, D-3; l'import che esce).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/acquisti/20261106-06-alter-acquisti-add-sorgente-id-mctit.yaml
+
+  - changeSet:
+      id: 20261106-06-alter-acquisti-add-sorgente-id
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        sorgente_id (bigint, vuota) su acquisti.ordini, ddt, ordini_righe, ddt_righe: la colonna del
+        modello della provenienza. brief-db-sorgente-documento-e-riga §7.2 lotto 0.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*) FROM information_schema.columns
+               WHERE table_schema = 'acquisti' AND column_name = 'sorgente_id'
+                 AND table_name IN ('ordini', 'ddt', 'ordini_righe', 'ddt_righe');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE acquisti.ordini       ADD COLUMN sorgente_id bigint NULL;
+              ALTER TABLE acquisti.ddt          ADD COLUMN sorgente_id bigint NULL;
+              ALTER TABLE acquisti.ordini_righe ADD COLUMN sorgente_id bigint NULL;
+              ALTER TABLE acquisti.ddt_righe    ADD COLUMN sorgente_id bigint NULL;
+
+              DO $c$
+              DECLARE
+                  v_tabella text;
+              BEGIN
+                  FOREACH v_tabella IN ARRAY ARRAY['ordini', 'ddt', 'ordini_righe', 'ddt_righe']
+                  LOOP
+                      EXECUTE format(
+                          'COMMENT ON COLUMN acquisti.%I.sorgente_id IS %L', v_tabella,
+                          'La chiave del documento di origine quando il suo tipo (sorgente_tipo_id, '
+                          || 'config.sorgenti) ha key_selector ''id'': l''id del documento. In alternativa a '
+                          || 'sorgente_uid, mai tutte e due. Se la provenienza e'' una riga di quel documento, '
+                          || 'la riga sta in sorgente_riga. La chiave giusta la restituisce '
+                          || 'script.fn_sorgente_chiave; la verifica il guard script.trgfn_guard_sorgente. '
+                          || 'Resta NULL finche'' la tabella scrive la provenienza nella grammatica precedente.');
+                  END LOOP;
+              END
+              $c$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE acquisti.ddt_righe    DROP COLUMN IF EXISTS sorgente_id;
+              ALTER TABLE acquisti.ordini_righe DROP COLUMN IF EXISTS sorgente_id;
+              ALTER TABLE acquisti.ddt          DROP COLUMN IF EXISTS sorgente_id;
+              ALTER TABLE acquisti.ordini       DROP COLUMN IF EXISTS sorgente_id;

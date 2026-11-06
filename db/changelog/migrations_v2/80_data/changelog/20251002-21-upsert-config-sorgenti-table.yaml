@@ -104,3 +104,17 @@ databaseChangeLog:
               #   vendita §15.10, Q-F6 = b). Loader esteso IN PLACE, come per
               #   `etichetta`. Nessun NULL: la colonna e' NOT NULL DEFAULT false.
               - column: { name: citato_in_fattura, type: BOOLEAN }
+
+              # righe_table / righe_fk_column / dettaglio_table / dettaglio_fk_column:
+              #   i livelli del documento sotto la testata (la tabella delle righe e
+              #   quella del dettaglio, ognuna con la colonna FK verso il livello
+              #   sopra), aggiunti 2026-11-06 (colonne da 20261106-04,
+              #   brief-db-sorgente-documento-e-riga §7.2 lotto 0). Li legge il
+              #   guard unico della provenienza per verificare che la riga sia del
+              #   documento. Loader esteso IN PLACE, come per `etichetta`.
+              #   NULL (token) = il livello non c'e'. Che la FK dichiarata esista
+              #   lo verifica config/test-sorgenti-livelli-v1.
+              - column: { name: righe_table, type: STRING }
+              - column: { name: righe_fk_column, type: STRING }
+              - column: { name: dettaglio_table, type: STRING }
+              - column: { name: dettaglio_fk_column, type: STRING }

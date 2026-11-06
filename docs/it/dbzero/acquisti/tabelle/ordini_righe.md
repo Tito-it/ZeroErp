@@ -32,6 +32,7 @@
 | sorgente_uid | uuid | YES |  |
 | data_consegna_richiesta | date | YES |  |
 | data_consegna_confermata_fornitore | date | YES |  |
+| sorgente_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
