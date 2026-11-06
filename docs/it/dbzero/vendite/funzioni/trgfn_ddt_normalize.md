@@ -44,7 +44,7 @@ BEGIN
   -- 2. eredita billing/utility/valuta/emittente da ordine sorgente
   IF TG_OP = 'INSERT'
      AND NEW.sorgente_tipo_id IS NOT NULL
-     AND NEW.sorgente_uid IS NOT NULL
+     AND (NEW.sorgente_id IS NOT NULL OR NEW.sorgente_uid IS NOT NULL)
      AND (NEW.billing_account_id IS NULL
           OR NEW.utility_id IS NULL
           OR NEW.valuta_id IS NULL
@@ -67,7 +67,7 @@ BEGIN
       FROM vendite.ordini o
       LEFT JOIN anagrafiche.billing_account ba
         ON ba.id = o.billing_account_id
-      WHERE o.uid = NEW.sorgente_uid
+      WHERE (o.id = NEW.sorgente_id OR o.uid = NEW.sorgente_uid)
       LIMIT 1;
     END IF;
   END IF;
@@ -123,7 +123,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_ddt_normalize()
-IS 'Normalize DDT: anno/data; eredita billing/utility/valuta/emittente da ordine sorgente (ORDINE_VENDITA, per codice_interno) su INSERT; fallback emittente da billing_account (fn_get_emittente_fiscale_pk). rev 2026-07-10 (§15 emittente). rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-4/D-5): punto 2-bis, utility e destinatario sono copie del billing account. rev 2026-10-10 (stesso brief, §10.2 domanda 2, regola del 2): il cosa del 2-bis lo dice il BB script.fn_cliente_dal_billing_account — copie scritte se mancano, E_DOC_CLIENTE_DIVERSO_DA_BA se dissentono (prima il 23503 di fk_ddt_ba_cliente, che resta la rete sotto); il quando resta qui — INSERT, e UPDATE in bozza di BA, destinatario o utility, con la copia non toccata che segue il BA nuovo. Un BA tolto toglie la utility e lascia il destinatario.';
+IS '⭐ rev 2026-11-06 (20261106-32, brief-db-sorgente-documento-e-riga §7.2 lotto 0 giro 0.3): l''ordine sorgente da cui la bolla eredita cliente, utility, valuta ed emittente si cerca nelle due grammatiche, (o.id = NEW.sorgente_id OR o.uid = NEW.sorgente_uid): dal lotto T la bolla porta l''id dell''ordine. Normalize DDT: anno/data; eredita billing/utility/valuta/emittente da ordine sorgente (ORDINE_VENDITA, per codice_interno) su INSERT; fallback emittente da billing_account (fn_get_emittente_fiscale_pk). rev 2026-07-10 (§15 emittente). rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-4/D-5): punto 2-bis, utility e destinatario sono copie del billing account. rev 2026-10-10 (stesso brief, §10.2 domanda 2, regola del 2): il cosa del 2-bis lo dice il BB script.fn_cliente_dal_billing_account — copie scritte se mancano, E_DOC_CLIENTE_DIVERSO_DA_BA se dissentono (prima il 23503 di fk_ddt_ba_cliente, che resta la rete sotto); il quando resta qui — INSERT, e UPDATE in bozza di BA, destinatario o utility, con la copia non toccata che segue il BA nuovo. Un BA tolto toglie la utility e lascia il destinatario.';
 ```
 
 </div>

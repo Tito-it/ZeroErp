@@ -1,0 +1,51 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# RITIRO DELLA FIRMA A TRE ARGOMENTI DI vendite.fn_ddt_vincoli_cliente
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto 0 giro 0.3 («i lettori trasversali sul BB che risolve»).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   La firma con sorgente_id in coda (20261106-28) la sostituisce; guard e capability
+#   sono passati (-29, -30).
+#
+# ── ⚠️ CHE COSA CAMBIA ──────────────────────────────────────────────
+#   Nessuno: col DEFAULT della firma nuova una chiamata a tre argomenti risolve sulla
+#   nuova.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261106-31-drop-fn-ddt-vincoli-cliente-tre-argomenti-mctit.yaml
+
+  - changeSet:
+      id: 20261106-31-drop-fn-ddt-vincoli-cliente-tre-argomenti
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_ddt_vincoli_cliente(ddt, tipo, uid) si ritira. brief-db-sorgente-documento-e-riga §7.2 giro 0.3.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite' AND p.proname = 'fn_ddt_vincoli_cliente' AND p.pronargs = 4;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION vendite.fn_ddt_vincoli_cliente(vendite.ddt.id%TYPE, vendite.ddt.sorgente_tipo_id%TYPE, vendite.ddt.sorgente_uid%TYPE);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- La firma a tre argomenti e' quella di 20261011-25: un rollback la riprende da li'.
+              SELECT 1;

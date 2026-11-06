@@ -5,11 +5,13 @@
 --   dell'ordine sorgente di TESTATA di una bolla, e il ritiro delle due copie
 --   in linea (regola del 2).
 -- ChangeSet: 20261103-43 (il BB), -44 (diagnosi del push), -45 (check di
---   emissione)
+--   emissione); 20261106-24 … -27 (la firma con sorgente_id)
 -- Brief: brief-db-addebito-trasporto-ordine §9.5, P-1
 -- ------------------------------------------------------------
 -- Indice test (plan 6):
---   1) il BB esiste, con la firma ancorata alle colonne della bolla
+--   1) il BB esiste, con la firma ancorata alle colonne della bolla (dal
+--      2026-11-06, 20261106-24: sorgente_id in coda, DEFAULT NULL; le due
+--      grammatiche sono provate in vendite/test-sorgente-testate-due-grammatiche-v1)
 --   2) bolla da un ordine che fattura alla conferma: CONFERMATO
 --   3) bolla da un ordine che fattura alla consegna: CONSEGNATO
 --   4) bolla senza ordine: NULL
@@ -54,8 +56,8 @@ LANGUAGE sql AS $$
     FROM vendite.ddt d WHERE d.id = p_ddt
 $$;
 
-SELECT has_function('vendite', 'fn_ddt_trigger_ordine_testata', ARRAY['bigint', 'uuid'],
-  '1) vendite.fn_ddt_trigger_ordine_testata(sorgente_tipo_id, sorgente_uid) esiste');
+SELECT has_function('vendite', 'fn_ddt_trigger_ordine_testata', ARRAY['bigint', 'uuid', 'bigint'],
+  '1) vendite.fn_ddt_trigger_ordine_testata(sorgente_tipo_id, sorgente_uid, sorgente_id) esiste');
 
 SELECT is(pg_temp.trg(pg_temp.bolla('pgTAP TOT conferma', 'CONFERMATO')), 'CONFERMATO',
   '2) bolla da un ordine che fattura alla conferma: CONFERMATO');

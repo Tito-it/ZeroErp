@@ -38,7 +38,7 @@ BEGIN
     SELECT sdd.codice_interno INTO v_stato
       FROM vendite.ddt d
       JOIN config.stati_doc_ddt sdd ON sdd.id = d.stato_doc_ddt_id
-     WHERE d.uid = NEW.sorgente_uid;
+     WHERE (d.id = NEW.sorgente_id OR d.uid = NEW.sorgente_uid);
 
     -- rev 2026-09-28 (brief-db-magazzino-lotto-3-scarico-da-ddt, D-L3-c): una
     --   bolla di TRASFERIMENTO fra depositi non genera un reso. La merce e'
@@ -49,18 +49,18 @@ BEGIN
     --   scritto a mano. Prima del controllo di stato: e' la risposta vera.
     SELECT d.* INTO v_ddt
       FROM vendite.ddt d
-     WHERE d.uid = NEW.sorgente_uid;
+     WHERE (d.id = NEW.sorgente_id OR d.uid = NEW.sorgente_uid);
     IF FOUND AND vendite.fn_ddt_causale_magazzino(v_ddt) = 'TRASF_OUT' THEN
         PERFORM script.fn_log_and_raise_error(
             'vendite','trgfn_resi_guard_ddt_consegnato','E_RESO_DA_DDT_TRASFERIMENTO',
-            jsonb_build_object('sorgente_uid', NEW.sorgente_uid, 'ddt_id', v_ddt.id),
+            jsonb_build_object('sorgente_uid', NEW.sorgente_uid, 'sorgente_id', NEW.sorgente_id, 'ddt_id', v_ddt.id),
             NULL::uuid, COALESCE(v_ddt.numero, v_ddt.id::text));
     END IF;
 
     IF v_stato IS DISTINCT FROM 'CONSEGNATO' THEN
         PERFORM script.fn_log_and_raise_error(
             'vendite','trgfn_resi_guard_ddt_consegnato','E_RESO_DDT_NON_CONSEGNATO',
-            jsonb_build_object('sorgente_uid', NEW.sorgente_uid, 'stato_ddt', v_stato),
+            jsonb_build_object('sorgente_uid', NEW.sorgente_uid, 'sorgente_id', NEW.sorgente_id, 'stato_ddt', v_stato),
             NULL::uuid, COALESCE(v_stato, 'NULL'));
     END IF;
 
@@ -69,7 +69,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_resi_guard_ddt_consegnato()
-IS 'Guard: reso ammesso solo se il DDT sorgente (DDT_VENDITA, per sorgente_uid) e in stato CONSEGNATO (E_RESO_DDT_NON_CONSEGNATO). brief §3. rev 2026-07-13. rev 2026-09-28 (brief-db-magazzino-lotto-3-scarico-da-ddt, D-L3-c): una bolla di TRASFERIMENTO fra depositi (causale di magazzino TRASF_OUT) non genera un reso — E_RESO_DA_DDT_TRASFERIMENTO, prima del controllo di stato: la merce e'' rimasta nostra, un reso la farebbe rientrare due volte.';
+IS '⭐ rev 2026-11-06 (20261106-36, brief-db-sorgente-documento-e-riga §7.2 lotto 0 giro 0.3): lo stato e la causale della bolla del reso si leggono dalla bolla cercata nelle due grammatiche, (d.id = NEW.sorgente_id OR d.uid = NEW.sorgente_uid); il dettaglio dei due errori porta anche sorgente_id. Dal lotto T il reso porta l''id della bolla. Guard: reso ammesso solo se il DDT sorgente (DDT_VENDITA, per sorgente_uid) e in stato CONSEGNATO (E_RESO_DDT_NON_CONSEGNATO). brief §3. rev 2026-07-13. rev 2026-09-28 (brief-db-magazzino-lotto-3-scarico-da-ddt, D-L3-c): una bolla di TRASFERIMENTO fra depositi (causale di magazzino TRASF_OUT) non genera un reso — E_RESO_DA_DDT_TRASFERIMENTO, prima del controllo di stato: la merce e'' rimasta nostra, un reso la farebbe rientrare due volte.';
 ```
 
 </div>

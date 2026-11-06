@@ -1,6 +1,6 @@
 **Best Practice e Convenzioni**
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 5 novembre 2026
 >
 > 👀 **Vedi anche:**   
 > Per come applicare queste best practice nelle migrazioni, consulta il documento  
@@ -384,6 +384,46 @@ vesti.
 (`sorgenti`, non `config.sorgenti`). Per ricopiarne il corpo in un changeSet si prende l'ultimo YAML
 che l'ha scritta e lo si **verifica uguale al vivo**, oppure si legge il vivo con
 `SET search_path = pg_catalog`, che qualifica tutto.
+
+### 5d. ⛔ Il `COMMENT` descrive l'oggetto, non la sua storia
+
+Vale per ogni `COMMENT ON` (tabella, colonna, vista, funzione, trigger, vincolo, tipo). Il COMMENT
+è il **primo paragrafo** della scheda auto-generata dell'oggetto: chi apre la pagina lo legge come
+la definizione di ciò che ha davanti. La storia ha già le sue sedi: la testata del changeSet, git e
+i documenti di lavoro.
+
+**Che cosa ci va.** Che cos'è l'oggetto e come si comporta, **al presente**: che cosa restituisce o
+custodisce, le regole che fa valere, i codici d'errore che solleva, i casi limite che chi lo usa
+deve conoscere, gli oggetti con cui lavora.
+
+**⛔ Che cosa non ci va.**
+
+* **Nessun brief, mai**: né il percorso né il nome (`brief-db-…`), né le sigle di cantiere o di
+  decisione (`D-13a di Tid`, `R-BE-13`, `§6.12`). Vale anche dove un catalogo CSV li ammette nelle
+  sue note: il COMMENT non è una nota di lavoro.
+* **Nessun marcatore di revisione**: `Rev 2026-10-21`, `⭐ rev …`, «nasce il…», «fino al … faceva…».
+* **Nessun riferimento a changeSet o commit**: id come `20261021-67`, hash.
+* **Nessuna misura usata come argomento**: «168 su 349», «12 righe OK», «su 102 dei 185 file».
+  Sono vere il giorno in cui si scrivono e false dopo.
+
+```sql
+-- ⛔ cronaca
+COMMENT ON FUNCTION script.fn_x() IS
+  'Rev 2026-10-21 (20261021-67): ora risolve dal risolutore. D-4 di Tid, brief-db-y §8.';
+
+-- ✅ descrizione
+COMMENT ON FUNCTION script.fn_x() IS
+  'L''emittente su cui l''operatore corrente può scrivere, con la regola di
+   script.fn_resolve_emittente_for_user. Senza contesto solleva.';
+```
+
+Il nome di un **oggetto** (`script.fn_resolve_emittente_for_user`, `dbops.presidi`, il pgTAP che lo
+prova) ci va: è un rimando a qualcosa che esiste, non alla sua storia. Gli apostrofi si raddoppiano
+(§11.3).
+
+**Quando si applica.** Ogni COMMENT nuovo o riscritto la rispetta da subito. I COMMENT esistenti
+che non la rispettano sono debito: si riscrivono **per famiglia**, quando un lavoro riapre quegli
+oggetti, e non con una riscrittura di massa.
 
 ---
 

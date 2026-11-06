@@ -40,7 +40,7 @@ BEGIN
   -- 2. eredita billing/destinatario/utility/valuta/emittente dal DDT sorgente
   IF TG_OP = 'INSERT'
      AND NEW.sorgente_tipo_id IS NOT NULL
-     AND NEW.sorgente_uid IS NOT NULL
+     AND (NEW.sorgente_id IS NOT NULL OR NEW.sorgente_uid IS NOT NULL)
      AND (NEW.billing_account_id IS NULL
           OR NEW.destinatario_soggetto_ruolo_id IS NULL
           OR NEW.utility_id IS NULL
@@ -64,7 +64,7 @@ BEGIN
         NEW.valuta_id,
         NEW.emittente_fiscale_id
       FROM vendite.ddt d
-      WHERE d.uid = NEW.sorgente_uid
+      WHERE (d.id = NEW.sorgente_id OR d.uid = NEW.sorgente_uid)
       LIMIT 1;
     END IF;
   END IF;
@@ -83,7 +83,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_resi_normalize()
-IS 'Normalize reso: anno/data; eredita billing/destinatario/utility/valuta/emittente dal DDT sorgente (DDT_VENDITA, per codice_interno, JOIN vendite.ddt su uid) su INSERT; fallback emittente da billing_account. Mirror trgfn_ddt_normalize (fonte = DDT). rev 2026-07-13.';
+IS '⭐ rev 2026-11-06 (20261106-33, brief-db-sorgente-documento-e-riga §7.2 lotto 0 giro 0.3): la bolla sorgente da cui il reso eredita cliente, destinatario, utility, valuta ed emittente si cerca nelle due grammatiche, (d.id = NEW.sorgente_id OR d.uid = NEW.sorgente_uid): dal lotto T il reso porta l''id della bolla. Normalize reso: anno/data; eredita billing/destinatario/utility/valuta/emittente dal DDT sorgente (DDT_VENDITA, per codice_interno, JOIN vendite.ddt su uid) su INSERT; fallback emittente da billing_account. Mirror trgfn_ddt_normalize (fonte = DDT). rev 2026-07-13.';
 ```
 
 </div>

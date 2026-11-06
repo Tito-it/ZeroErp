@@ -313,6 +313,7 @@ search:
 - [fn_sorgente_documento](funzioni/fn_sorgente_documento.md)
 - [fn_sorgente_documento_da_chiave](funzioni/fn_sorgente_documento_da_chiave.md)
 - [fn_sorgente_guard_argomenti](funzioni/fn_sorgente_guard_argomenti.md)
+- [fn_sorgente_guard_montaggi](funzioni/fn_sorgente_guard_montaggi.md)
 - [fn_sqlstate_di_ambiente](funzioni/fn_sqlstate_di_ambiente.md) — (latest review 16-10-2026)
 - [fn_stato_abortito_id](funzioni/fn_stato_abortito_id.md)
 - [fn_stato_accettazione_id](funzioni/fn_stato_accettazione_id.md)
@@ -386,6 +387,7 @@ search:
 - [trgfn_righe_guard_periodicita_canone](funzioni/trgfn_righe_guard_periodicita_canone.md) — (funzione nata il 2026-11-01, `20261101-05`; trigger `20261101-06`; CHECK `20261101-04` — brief `brief-db-contratto-righe-periodiche-in-commessa` §6.11, passo 4)
 - [trgfn_righe_guard_quantita_per_fonte](funzioni/trgfn_righe_guard_quantita_per_fonte.md)
 - [trgfn_righe_natura_vendita](funzioni/trgfn_righe_natura_vendita.md) — (latest review 2026-10-13, brief-db-articoli-ammessi-per-documento A-4; `20261013-14`)
+- [trgfn_sorgente_in_uscita](funzioni/trgfn_sorgente_in_uscita.md)
 - [trgfn_storico_generic](funzioni/trgfn_storico_generic.md) — (latest review 02-02-26) * **Unificazion- logica**: evitare duplicazioni del codice di storicizzazione in diverse funzioni trigger. * **Flessibilità**: applicabile a qualsiasi tabella storica semplicemente specificando il parametro `TG_ARGV[0]` con il nome della colonna di riferimento. * **Robustezza**: gestione completa degli errori con logging, senza interrompere il flusso DML principale.
 - [trgfn_sync_stato_iso2](funzioni/trgfn_sync_stato_iso2.md) — * **Sincronizzazione automatica** del campo `stato_iso2` all’interno delle tabelle che lo richiedono. * **Garantire coerenza** tra il campo `stato_id` e il relativo `codice_iso2`, estraendolo dinamicamente da `config.stati`.
 - [uuid_nil](funzioni/uuid_nil.md) — * Fornire un valore UUID costante, composto interamente da zeri. * Usato come **fallback** o **default** quando non è possibile generare o recuperare un UUID valido.

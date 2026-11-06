@@ -214,7 +214,7 @@ BEGIN ATOMIC
              'H'::text
             FROM (((vendite.ddt d
               JOIN config.sorgenti s_from ON (((s_from.id = d.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'ORDINE_VENDITA'::text))))
-              JOIN vendite.ordini o ON ((o.uid = d.sorgente_uid)))
+              JOIN vendite.ordini o ON (((o.id = d.sorgente_id) OR (o.uid = d.sorgente_uid))))
               JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'DDT_VENDITA'::text) AND (s_to.attivo IS TRUE))))
            WHERE ((fn_documento_lineage_archi.p_tipo_ids IS NULL) AND (fn_documento_lineage_archi.p_uids IS NULL))
          UNION ALL
@@ -226,7 +226,7 @@ BEGIN ATOMIC
              'R'::text
             FROM (((vendite.resi r
               JOIN config.sorgenti s_from ON (((s_from.id = r.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'DDT_VENDITA'::text))))
-              JOIN vendite.ddt d ON ((d.uid = r.sorgente_uid)))
+              JOIN vendite.ddt d ON (((d.id = r.sorgente_id) OR (d.uid = r.sorgente_uid))))
               JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'RESO_VENDITA'::text) AND (s_to.attivo IS TRUE))))
            WHERE ((fn_documento_lineage_archi.p_tipo_ids IS NULL) AND (fn_documento_lineage_archi.p_uids IS NULL))
          UNION ALL
@@ -540,11 +540,12 @@ BEGIN ATOMIC
              'H'::text
             FROM (((vendite.ddt d
               JOIN config.sorgenti s_from ON (((s_from.id = d.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'ORDINE_VENDITA'::text))))
-              JOIN vendite.ordini o ON ((o.uid = d.sorgente_uid)))
+              JOIN vendite.ordini o ON (((o.id = d.sorgente_id) OR (o.uid = d.sorgente_uid))))
               JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'DDT_VENDITA'::text) AND (s_to.attivo IS TRUE))))
            WHERE ((NOT ((fn_documento_lineage_archi.p_tipo_ids IS NULL) AND (fn_documento_lineage_archi.p_uids IS NULL))) AND (d.sorgente_tipo_id = ( SELECT k.t_ord
-                    FROM chiavi k)) AND (d.sorgente_uid = ANY (( SELECT k.ord_uids
-                    FROM chiavi k)::uuid[])))
+                    FROM chiavi k)) AND ((d.sorgente_id = ANY (( SELECT k.ord_ids
+                    FROM chiavi k)::bigint[])) OR (d.sorgente_uid = ANY (( SELECT k.ord_uids
+                    FROM chiavi k)::uuid[]))))
          UNION ALL
           SELECT s_from.id,
              (o.id)::text AS id,
@@ -554,7 +555,7 @@ BEGIN ATOMIC
              'H'::text
             FROM (((vendite.ddt d
               JOIN config.sorgenti s_from ON (((s_from.id = d.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'ORDINE_VENDITA'::text))))
-              JOIN vendite.ordini o ON ((o.uid = d.sorgente_uid)))
+              JOIN vendite.ordini o ON (((o.id = d.sorgente_id) OR (o.uid = d.sorgente_uid))))
               JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'DDT_VENDITA'::text) AND (s_to.attivo IS TRUE))))
            WHERE ((NOT ((fn_documento_lineage_archi.p_tipo_ids IS NULL) AND (fn_documento_lineage_archi.p_uids IS NULL))) AND (d.id = ANY (( SELECT k.ddt_ids
                     FROM chiavi k)::bigint[])) AND ((o.id = ANY (( SELECT k.ord_ids
@@ -568,11 +569,12 @@ BEGIN ATOMIC
              'R'::text
             FROM (((vendite.resi r
               JOIN config.sorgenti s_from ON (((s_from.id = r.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'DDT_VENDITA'::text))))
-              JOIN vendite.ddt d ON ((d.uid = r.sorgente_uid)))
+              JOIN vendite.ddt d ON (((d.id = r.sorgente_id) OR (d.uid = r.sorgente_uid))))
               JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'RESO_VENDITA'::text) AND (s_to.attivo IS TRUE))))
            WHERE ((NOT ((fn_documento_lineage_archi.p_tipo_ids IS NULL) AND (fn_documento_lineage_archi.p_uids IS NULL))) AND (r.sorgente_tipo_id = ( SELECT k.t_ddt
-                    FROM chiavi k)) AND (r.sorgente_uid = ANY (( SELECT k.ddt_uids
-                    FROM chiavi k)::uuid[])))
+                    FROM chiavi k)) AND ((r.sorgente_id = ANY (( SELECT k.ddt_ids
+                    FROM chiavi k)::bigint[])) OR (r.sorgente_uid = ANY (( SELECT k.ddt_uids
+                    FROM chiavi k)::uuid[]))))
          UNION ALL
           SELECT s_from.id,
              (d.id)::text AS id,
@@ -582,7 +584,7 @@ BEGIN ATOMIC
              'R'::text
             FROM (((vendite.resi r
               JOIN config.sorgenti s_from ON (((s_from.id = r.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'DDT_VENDITA'::text))))
-              JOIN vendite.ddt d ON ((d.uid = r.sorgente_uid)))
+              JOIN vendite.ddt d ON (((d.id = r.sorgente_id) OR (d.uid = r.sorgente_uid))))
               JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'RESO_VENDITA'::text) AND (s_to.attivo IS TRUE))))
            WHERE ((NOT ((fn_documento_lineage_archi.p_tipo_ids IS NULL) AND (fn_documento_lineage_archi.p_uids IS NULL))) AND (r.id = ANY (( SELECT k.res_ids
                     FROM chiavi k)::bigint[])) AND ((d.id = ANY (( SELECT k.ddt_ids
@@ -708,7 +710,7 @@ BEGIN ATOMIC
 END
 
 COMMENT ON FUNCTION vendite.fn_documento_lineage_archi(p_tipo_ids bigint[], p_uids text[])
-IS '⭐ rev 2026-10-31 (20261031-68): l''arco V ha il rango 60, l''ultimo (come R e N, che non sono origini e un rango ce l''hanno): nessun arco resta senza rango_origine. ⭐ rev 2026-10-31 (20261031-23, brief-modello-documento-vendita §17.7): l''arco V, la revisione dell''offerta (dalla madre alla figlia, revisione_padre_id), nei due modi: lo legge il pannello «Passaggi» e da li'' la finestra dell''annullo prende il nome della revisione che torna emessa. Non e'' un''origine: la sintesi e le origini della fattura lo scartano. ⭐ rev 2026-10-19 (20261019-89, brief-db-grammatica-unica-documenti lotto 2b): ricreata dopo l''allargamento di vendite.ordini.documento_origine_tipo; l''origine dell''offerta e'' OFFERTA_COMMERCIALE, il codice della sorgente (era OFFERTA). ⭐ rev 2026-10-11 (20261011-92): nei rami polimorfi B, E, F, U il join verso il documento e'' un confronto fra colonne dello stesso tipo (cs_semi porta la chiave gia'' convertita): un cast nel join non e'' leakproof, e sotto RLS faceva leggere l''intera tabella dell''altro capo per ogni sorgente. ⭐ rev 2026-10-11 (20261011-67): SET jit = off e SET plan_cache_mode = force_generic_plan sulla funzione. Con un seme non costante il piano tiene i rami dei due modi e il JIT ne compilava le espressioni a ogni chiamata; le clausole la rendono non incorporabile e la pianificano una volta per sessione: chi la chiama non deve dichiarare niente. Gli ARCHI della lineage dei documenti, GREZZI (chiavi, ruolo, lettera A…V, is_ramo_inverso, rango_origine), per CHIAVE DEL NODO. Seme come fn_documento_lineage_nodi: (tipo_id, uid::text) in due array paralleli; entrambi NULL = tutti gli archi (vw_documento_lineage_archi ne e'' la proiezione decorata). Col seme: gli archi USCENTI da un nodo del seme e quelli ENTRANTI il cui from non sta nel seme, cioe'' gli archi incidenti, ciascuno una volta, con gli stessi DISTINCT della vista. Il seme scende come array (`= ANY`) sulla prima tabella di ogni ramo: passato come JOIN, sotto RLS il planner partiva dal lato sbagliato. Chi la chiama in un ciclo plpgsql dichiara SET plan_cache_mode = force_generic_plan: il corpo e'' grande e la pianificazione costa. Il vocabolario delle 14 lettere e'' quello di vw_documento_lineage_archi: un arco nuovo si aggiunge QUI, nei due modi. BEGIN ATOMIC, INVOKER. Brief: brief-db-lineage-seminata-per-chiave §8.2.';
+IS '⭐ rev 2026-11-06 (20261106-45, brief-db-sorgente-documento-e-riga §7.2 lotto 0 giro 0.3): gli archi H (ordine -> bolla) e R (bolla -> reso) leggono la sorgente di testata nelle due grammatiche, con la regola d''incontro del modello (doc.id = sorgente_id OR doc.uid = sorgente_uid), nei rami «tutti» e in quelli seminati (seme entrante: sorgente_id = ANY(ids) OR sorgente_uid = ANY(uids)); indici gemelli ix_ddt_v_sorgente_id, ix_resi_sorgente_id (20261106-22). Dal lotto T bolle e resi portano l''id: gli archi non si ritoccano. Gli archi verso la commessa (commesse_sorgenti, G3 testuale) li cambia il lotto C. Stessi archi sui dati di oggi. ⭐ rev 2026-10-31 (20261031-68): l''arco V ha il rango 60, l''ultimo (come R e N, che non sono origini e un rango ce l''hanno): nessun arco resta senza rango_origine. ⭐ rev 2026-10-31 (20261031-23, brief-modello-documento-vendita §17.7): l''arco V, la revisione dell''offerta (dalla madre alla figlia, revisione_padre_id), nei due modi: lo legge il pannello «Passaggi» e da li'' la finestra dell''annullo prende il nome della revisione che torna emessa. Non e'' un''origine: la sintesi e le origini della fattura lo scartano. ⭐ rev 2026-10-19 (20261019-89, brief-db-grammatica-unica-documenti lotto 2b): ricreata dopo l''allargamento di vendite.ordini.documento_origine_tipo; l''origine dell''offerta e'' OFFERTA_COMMERCIALE, il codice della sorgente (era OFFERTA). ⭐ rev 2026-10-11 (20261011-92): nei rami polimorfi B, E, F, U il join verso il documento e'' un confronto fra colonne dello stesso tipo (cs_semi porta la chiave gia'' convertita): un cast nel join non e'' leakproof, e sotto RLS faceva leggere l''intera tabella dell''altro capo per ogni sorgente. ⭐ rev 2026-10-11 (20261011-67): SET jit = off e SET plan_cache_mode = force_generic_plan sulla funzione. Con un seme non costante il piano tiene i rami dei due modi e il JIT ne compilava le espressioni a ogni chiamata; le clausole la rendono non incorporabile e la pianificano una volta per sessione: chi la chiama non deve dichiarare niente. Gli ARCHI della lineage dei documenti, GREZZI (chiavi, ruolo, lettera A…V, is_ramo_inverso, rango_origine), per CHIAVE DEL NODO. Seme come fn_documento_lineage_nodi: (tipo_id, uid::text) in due array paralleli; entrambi NULL = tutti gli archi (vw_documento_lineage_archi ne e'' la proiezione decorata). Col seme: gli archi USCENTI da un nodo del seme e quelli ENTRANTI il cui from non sta nel seme, cioe'' gli archi incidenti, ciascuno una volta, con gli stessi DISTINCT della vista. Il seme scende come array (`= ANY`) sulla prima tabella di ogni ramo: passato come JOIN, sotto RLS il planner partiva dal lato sbagliato. Chi la chiama in un ciclo plpgsql dichiara SET plan_cache_mode = force_generic_plan: il corpo e'' grande e la pianificazione costa. Il vocabolario delle 14 lettere e'' quello di vw_documento_lineage_archi: un arco nuovo si aggiunge QUI, nei due modi. BEGIN ATOMIC, INVOKER. Brief: brief-db-lineage-seminata-per-chiave §8.2.';
 ```
 
 </div>

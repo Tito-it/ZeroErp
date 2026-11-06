@@ -1,0 +1,139 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite.fn_documento_lineage_legami: L'UID DEL DOCUMENTO DAL BB CHE RISOLVE
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto 0 giro 0.3 («i lettori trasversali sul BB che risolve»).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   Il BB che risolve (script.fn_sorgente_documento, 20261106-11) da' l'id, l'uid e il
+#   numero di un documento qualsiasi da tipo + chiave. Questi lettori, per sapere
+#   la chiave che porta una riga di commessa (commesse_attivita.sorgente_uid =
+#   <testata>.uid::text, G4), leggevano l'uid tabella per tabella, con un ramo per
+#   tipo di documento: ogni tipo nuovo andava aggiunto a mano. Ora lo chiedono al
+#   BB, per tutti i tipi in un posto solo (regola del 2). Il confronto con
+#   commesse_attivita.sorgente_uid resta: lo cambia il lotto C, che converte la
+#   colonna (S-5).
+#
+# ── ⚠️ CHE COSA CAMBIA ──────────────────────────────────────────────
+#   Il CASE per lettera (B, E, F, U) -> una chiamata al ponte del BB.
+#   Sui dati di oggi (solo sorgente_uid valorizzata) il risultato e' lo stesso.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261106-44-update-fn-documento-lineage-legami-chiave-dal-bb-mctit.yaml
+
+  - changeSet:
+      id: 20261106-44-update-fn-documento-lineage-legami-chiave-dal-bb
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_documento_lineage_legami: l'uid del documento dal BB che risolve. brief-db-sorgente-documento-e-riga §7.2 giro 0.3.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite' AND p.proname = 'fn_documento_lineage_legami';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_documento_lineage_legami(
+                  -- ⚠️ Tipi nudi DICHIARATI: la lettera nasce in
+                  --   fn_documento_lineage_archi; tipi e chiavi sono quelle POLIMORFE
+                  --   dei nodi (config.sorgenti.id, chiave resa a text). Array
+                  --   paralleli, un arco per posizione.
+                  p_archi         text[],
+                  p_from_tipo_ids bigint[],
+                  p_from_uids     text[],
+                  p_to_tipo_ids   bigint[],
+                  p_to_uids       text[])
+              RETURNS TABLE(arco text, from_tipo_id bigint, from_uid text,
+                            to_tipo_id bigint, to_uid text, is_legame_ritirato boolean)
+              LANGUAGE sql
+              STABLE SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              SET jit TO 'off'
+              AS $function$
+                  -- Scopo: per ogni arco chiesto, il suo legame e' ritirato con i due
+                  --   nodi vivi? true / false; NULL per una lettera non censita.
+                  --   Il censimento, arco per arco, e' nell'intestazione del changeSet
+                  --   20261013-69 e nel COMMENT.
+                  WITH a AS (
+                      SELECT DISTINCT x.arco, x.ft, x.fu, x.tt, x.tu
+                        FROM unnest(p_archi, p_from_tipo_ids, p_from_uids,
+                                    p_to_tipo_ids, p_to_uids) AS x(arco, ft, fu, tt, tu)
+                  )
+                  SELECT a.arco, a.ft, a.fu, a.tt, a.tu,
+                         CASE
+                           -- Documento -> commessa: nessuna riga NON annullata di quel
+                           -- documento nella commessa. La chiave delle righe e'
+                           -- <testata>.uid::text (quella di vendite.fn_documento_legami).
+                           -- ⭐ rev 2026-11-06 (20261106-44, giro 0.3): l'uid del documento
+                           --   dal BB che risolve (ponte: la chiave del nodo e' testo), per
+                           --   ogni tipo; niente piu' un ramo per tabella.
+                           WHEN a.arco IN ('B', 'E', 'F', 'U') THEN NOT EXISTS (
+                             SELECT 1
+                               FROM vendite.commesse_attivita ca
+                              WHERE ca.commessa_id      = script.fn_sorgente_chiave_id(a.tu)
+                                AND ca.sorgente_tipo_id = a.ft
+                                AND ca.stato_emissione <> 'ANNULLATA'
+                                AND ca.sorgente_uid = (
+                                      SELECT d.documento_uid::text
+                                        FROM script.fn_sorgente_documento_da_chiave(a.ft, a.fu) d))
+                           -- Preventivo -> ordine: nessuna riga ATTIVA dell'ordine viene
+                           -- da una riga del preventivo.
+                           WHEN a.arco = 'A' THEN NOT EXISTS (
+                             SELECT 1
+                               FROM vendite.ordini_righe orr
+                               JOIN vendite.preventivi_righe pr ON pr.id = orr.preventivo_riga_id
+                               JOIN vendite.preventivi p        ON p.id  = pr.preventivo_id
+                              WHERE orr.ordine_id = script.fn_sorgente_chiave_id(a.tu)
+                                AND p.uid         = script.fn_sorgente_chiave_uuid(a.fu)
+                                AND orr.attivo)
+                           -- Ordine -> bolla: nessuna riga ATTIVA della bolla evade una
+                           -- riga dell'ordine.
+                           WHEN a.arco = 'H' THEN NOT EXISTS (
+                             SELECT 1
+                               FROM vendite.ordini_righe_fulfillment f
+                               JOIN vendite.ordini_righe orr ON orr.id = f.ordine_riga_id
+                               JOIN vendite.ddt_righe dr     ON dr.id  = f.ddt_riga_id
+                              WHERE orr.ordine_id = script.fn_sorgente_chiave_id(a.fu)
+                                AND dr.ddt_id     = script.fn_sorgente_chiave_id(a.tu)
+                                AND dr.attivo)
+                           -- Bolla -> reso: nessuna riga ATTIVA del reso viene da una riga
+                           -- della bolla.
+                           WHEN a.arco = 'R' THEN NOT EXISTS (
+                             SELECT 1
+                               FROM vendite.resi_righe rr
+                               JOIN vendite.ddt_righe dr ON dr.id = rr.ddt_riga_id
+                              WHERE rr.reso_id = script.fn_sorgente_chiave_id(a.tu)
+                                AND dr.ddt_id  = script.fn_sorgente_chiave_id(a.fu)
+                                AND rr.attivo)
+                           -- Legame solo di testata (C, D; V, la revisione dell'offerta,
+                           -- dal 2026-10-31), o arco che nasce dalle righe di legame e
+                           -- sparisce con loro (G, N, S, T): nessun ritiro con i due nodi vivi.
+                           WHEN a.arco IN ('C', 'D', 'G', 'N', 'S', 'T', 'V') THEN false
+                         END
+                    FROM a;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_documento_lineage_legami(text[], bigint[], text[], bigint[], text[]) IS
+                '⭐ rev 2026-11-06 (20261106-44, brief-db-sorgente-documento-e-riga §7.2 lotto 0 giro 0.3): negli archi documento -> commessa (B, E, F, U) l''uid del documento d''origine lo da'' il BB che risolve, dal ponte script.fn_sorgente_documento_da_chiave (la chiave del nodo e'' testo), per tutti i tipi: il CASE con una lettura per tabella si ritira (regola del 2), e un tipo nuovo non va piu'' aggiunto a mano. Il confronto con commesse_attivita.sorgente_uid lo cambia il lotto C. ⭐ rev 2026-10-31 (20261031-24, brief-modello-documento-vendita §17.7): l''arco V (la revisione dell''offerta) e'' un legame di sola testata, come C e D: false. Decoratore SECURITY DEFINER degli ARCHI della lineage (2026-10-13, R-17/R-18 del BE, collaudo PRV0000144), gemello di vendite.fn_documento_lineage_nodi: i nodi danno lo stato, questo il LEGAME. Per ogni arco (array paralleli: lettera, tipo e chiave dei due estremi) dice se il legame e'' ritirato con i due nodi vivi: true / false; NULL per una lettera non censita («non so», non «vivo»). Censimento: B, E, F, U (documento -> commessa) ritirato se nella commessa non resta nessuna riga di quel documento con stato_emissione <> ANNULLATA — una riga EMESSA e'' viva; chiave delle righe <testata>.uid::text, quella di vendite.fn_documento_legami; commessa annullata -> true insieme a to_is_abortito. A (preventivo -> ordine) ritirato se nessuna riga ATTIVA dell''ordine viene da una riga del preventivo (bozza svuotata, o righe staccate all''annullo). H (ordine -> bolla) se nessuna riga ATTIVA della bolla evade una riga dell''ordine (ordini_righe_fulfillment): calcolato, ma oggi coincide con l''annullo della bolla, perche'' una riga evasa non si spegne ne'' si cancella. R (bolla -> reso) se nessuna riga ATTIVA del reso viene da una riga della bolla. C, D (offerta -> contratto/ordine): false, il legame e'' solo di testata. G, N, S, T: false per costruzione, l''arco nasce dalle righe di legame e sparisce con loro. ⛔ SECURITY DEFINER: righe di commessa, ordine, bolla e reso hanno la RLS, e righe vive fuori perimetro farebbero dire «ritirato» a torto; restituisce un booleano per un arco che chi legge ha gia''. Consumatore: vendite.fn_documento_lineage (colonna is_legame_ritirato).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo precedente e' quello di 20261031-24:
+              -- un rollback lo riprende da li'.
+              SELECT 1;

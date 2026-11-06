@@ -1,0 +1,169 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite.fn_ddt_vincoli_cliente NELLE DUE GRAMMATICHE (firma con sorgente_id in coda)
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto 0 giro 0.3 («i lettori trasversali sul BB che risolve»).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   La sorgente di una testata (bolla -> ordine, reso -> bolla) oggi porta l'uid
+#   del documento in sorgente_uid; il lotto T la converte all'id, in sorgente_id
+#   (S-5). Un lettore che confronta solo l'uid, dopo il lotto T, torna zero righe
+#   in silenzio. Qui legge con la regola d'incontro del modello:
+#     (doc.id = x.sorgente_id OR doc.uid = x.sorgente_uid)
+#   vera nelle due grammatiche e anche nel modello finale (una sola delle due
+#   chiavi e' valorizzata, il guard unico lo garantisce): il lettore non si
+#   ritocca nei lotti di famiglia. E' il join della chiave polimorfa, come il
+#   join di una FK: si scrive in linea, non dietro una funzione, perche' il
+#   planner deve poterla usare sugli indici (id, uid, (tipo, sorgente_*)).
+#
+# ── ⚠️ CHE COSA CAMBIA ──────────────────────────────────────────────
+#   Firma nuova: sorgente_id in coda, DEFAULT NULL. Nasce accanto alla vecchia; il
+#   guard (20261106-29) e la capability (-30) passano alla nuova, poi -31 ritira la
+#   vecchia. Corpo da 20261011-25 (uguale al vivo), cambiano la condizione «c'e'
+#   una sorgente» e le due letture di ordine e reso. Sui dati di oggi (solo sorgente_uid valorizzata) il risultato e' lo stesso.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261106-28-create-fn-ddt-vincoli-cliente-due-grammatiche-mctit.yaml
+
+  - changeSet:
+      id: 20261106-28-create-fn-ddt-vincoli-cliente-due-grammatiche
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_ddt_vincoli_cliente con sorgente_id in coda. brief-db-sorgente-documento-e-riga §7.2 giro 0.3.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM information_schema.columns
+               WHERE table_schema = 'vendite' AND table_name = 'ddt' AND column_name = 'sorgente_id';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION vendite.fn_ddt_vincoli_cliente(
+                  p_ddt_id           vendite.ddt.id%TYPE,
+                  p_sorgente_tipo_id vendite.ddt.sorgente_tipo_id%TYPE,
+                  p_sorgente_uid     vendite.ddt.sorgente_uid%TYPE,
+                  p_sorgente_id      vendite.ddt.sorgente_id%TYPE DEFAULT NULL
+              )
+              RETURNS TABLE (
+                  vincolo            text,
+                  sorgente           config.sorgenti.codice_interno%TYPE,
+                  billing_account_id vendite.ddt.billing_account_id%TYPE,
+                  etichetta          text
+              )
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              -- ⚠️ Tipi nudi DICHIARATI: vincolo e' un selettore (SORGENTE |
+              --   FULFILLMENT) senza colonna di vocabolario; etichetta e' una frase
+              --   composta per l'operatore.
+              DECLARE
+                  v_sorgente  config.sorgenti.codice_interno%TYPE;
+                  v_ba        vendite.ddt.billing_account_id%TYPE;
+                  v_etichetta text;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Da dove viene il cliente di una bolla, cioe' che cosa
+                  --   gli impedisce di cambiare (D-6 di brief-db-esecutivi-ba-
+                  --   coppia: «un esecutivo derivato ha il BA della sua
+                  --   sorgente»). Una riga per vincolo:
+                  --   - SORGENTE: la sorgente di testata e' un ordine o un reso
+                  --     (ORDINE_VENDITA, RESO_VENDITA). billing_account_id e'
+                  --     quello della sorgente (NULL compreso); etichetta NULL =
+                  --     dichiarata e non trovata (o invisibile sotto RLS);
+                  --   - FULFILLMENT: la bolla evade gia' righe d'ordine;
+                  --     etichetta = il primo ordine evaso.
+                  --   Nessuna riga: il cliente della bolla e' libero.
+                  -- E' il predicato condiviso (brief-db-testata-dopo-emissione
+                  --   §11, R-DB-1): lo usano il guard
+                  --   vendite.trgfn_ddt_guard_cliente_sorgente, che solleva, e
+                  --   la capability script.fn_available_actions_ddt, che spegne
+                  --   il campo. I due non possono rispondere in due modi.
+                  -- ⚠️ INVOKER come il guard: ordine, reso e fulfillment si
+                  --   leggono sotto la RLS di chi scrive.
+                  -- =========================================================
+
+                  -- 1. La sorgente di testata.
+                  -- ⭐ rev 2026-11-06 (20261106-28, giro 0.3): la chiave nelle due
+                  --   grammatiche, (doc.id = p_sorgente_id OR doc.uid = p_sorgente_uid):
+                  --   oggi l'uid, dal lotto T l'id.
+                  IF p_sorgente_tipo_id IS NOT NULL
+                     AND (p_sorgente_id IS NOT NULL OR p_sorgente_uid IS NOT NULL) THEN
+                      SELECT s.codice_interno INTO v_sorgente
+                        FROM config.sorgenti s
+                       WHERE s.id = p_sorgente_tipo_id;
+
+                      IF v_sorgente = 'ORDINE_VENDITA' THEN
+                          SELECT o.billing_account_id,
+                                 'ordine ' || COALESCE(o.numero, '#' || o.id::text)
+                            INTO v_ba, v_etichetta
+                            FROM vendite.ordini o
+                           WHERE (o.id = p_sorgente_id OR o.uid = p_sorgente_uid);
+                      ELSIF v_sorgente = 'RESO_VENDITA' THEN
+                          SELECT r.billing_account_id,
+                                 'reso ' || COALESCE(r.numero, '#' || r.id::text)
+                            INTO v_ba, v_etichetta
+                            FROM vendite.resi r
+                           WHERE (r.id = p_sorgente_id OR r.uid = p_sorgente_uid);
+                      END IF;
+
+                      IF v_sorgente IN ('ORDINE_VENDITA', 'RESO_VENDITA') THEN
+                          vincolo            := 'SORGENTE';
+                          sorgente           := v_sorgente;
+                          billing_account_id := v_ba;
+                          etichetta          := v_etichetta;
+                          RETURN NEXT;
+                      END IF;
+                  END IF;
+
+                  -- 2. Le righe d'ordine che la bolla evade gia': hanno il BA
+                  --    di prima.
+                  IF p_ddt_id IS NOT NULL THEN
+                      v_etichetta := NULL;
+                      SELECT 'ordine ' || COALESCE(o.numero, '#' || o.id::text)
+                        INTO v_etichetta
+                        FROM vendite.ddt_righe dr
+                        JOIN vendite.ordini_righe_fulfillment ful ON ful.ddt_riga_id = dr.id
+                        JOIN vendite.ordini_righe orr ON orr.id = ful.ordine_riga_id
+                        JOIN vendite.ordini o ON o.id = orr.ordine_id
+                       WHERE dr.ddt_id = p_ddt_id
+                       ORDER BY ful.id
+                       LIMIT 1;
+
+                      IF FOUND THEN
+                          vincolo            := 'FULFILLMENT';
+                          sorgente           := NULL;
+                          billing_account_id := NULL;
+                          etichetta          := v_etichetta;
+                          RETURN NEXT;
+                      END IF;
+                  END IF;
+
+                  RETURN;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_ddt_vincoli_cliente(vendite.ddt.id%TYPE, vendite.ddt.sorgente_tipo_id%TYPE, vendite.ddt.sorgente_uid%TYPE, vendite.ddt.sorgente_id%TYPE) IS
+                '⭐ rev 2026-11-06 (20261106-28, brief-db-sorgente-documento-e-riga §7.2 lotto 0 giro 0.3): la sorgente di testata si legge nelle due grammatiche: c''e'' se il tipo e una delle due chiavi sono valorizzati, e ordine o reso si cercano con (doc.id = p_sorgente_id OR doc.uid = p_sorgente_uid). Oggi la bolla porta l''uid; dal lotto T l''id (S-5). Parametro nuovo in coda, DEFAULT NULL. La firma a tre argomenti si ritira (20261106-31). Building block (2026-10-11, brief-db-testata-dopo-emissione §11, R-DB-1): da dove viene il cliente di una bolla, cioe'' che cosa gli impedisce di cambiare (D-6 di brief-db-esecutivi-ba-coppia). Una riga per vincolo: SORGENTE (sorgente di testata ORDINE_VENDITA o RESO_VENDITA; billing_account_id della sorgente, NULL compreso; etichetta NULL = dichiarata e non trovata o invisibile sotto RLS) e FULFILLMENT (la bolla evade gia'' righe d''ordine; etichetta = il primo ordine). Nessuna riga = cliente libero. Predicato condiviso: il guard vendite.trgfn_ddt_guard_cliente_sorgente solleva da qui, la capability script.fn_available_actions_ddt spegne billing_account_id da qui (prima lo spegneva sempre, anche sulla bolla senza sorgente che D-2 vuole poter ricevere il cliente in bozza). INVOKER e STABLE, come il guard: ordine, reso e fulfillment si leggono sotto la RLS di chi scrive.';
+
+              GRANT EXECUTE ON FUNCTION vendite.fn_ddt_vincoli_cliente(vendite.ddt.id%TYPE, vendite.ddt.sorgente_tipo_id%TYPE, vendite.ddt.sorgente_uid%TYPE, vendite.ddt.sorgente_id%TYPE) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_ddt_vincoli_cliente(vendite.ddt.id%TYPE, vendite.ddt.sorgente_tipo_id%TYPE, vendite.ddt.sorgente_uid%TYPE, vendite.ddt.sorgente_id%TYPE);

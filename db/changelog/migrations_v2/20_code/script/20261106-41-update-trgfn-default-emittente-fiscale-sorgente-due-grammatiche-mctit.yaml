@@ -1,0 +1,176 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.trgfn_default_emittente_fiscale: LA SORGENTE NELLE DUE GRAMMATICHE
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto 0 giro 0.3 («i lettori trasversali sul BB che risolve»).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   La sorgente di una testata (bolla -> ordine, reso -> bolla) oggi porta l'uid
+#   del documento in sorgente_uid; il lotto T la converte all'id, in sorgente_id
+#   (S-5). Un lettore che confronta solo l'uid, dopo il lotto T, torna zero righe
+#   in silenzio. Qui legge con la regola d'incontro del modello:
+#     (doc.id = x.sorgente_id OR doc.uid = x.sorgente_uid)
+#   vera nelle due grammatiche e anche nel modello finale (una sola delle due
+#   chiavi e' valorizzata, il guard unico lo garantisce): il lettore non si
+#   ritocca nei lotti di famiglia. E' il join della chiave polimorfa, come il
+#   join di una FK: si scrive in linea, non dietro una funzione, perche' il
+#   planner deve poterla usare sugli indici (id, uid, (tipo, sorgente_*)).
+#
+# ── ⚠️ CHE COSA CAMBIA ──────────────────────────────────────────────
+#   SALTA_CON_SORGENTE guarda anche sorgente_id. Sui dati di oggi (solo sorgente_uid valorizzata) il risultato e' lo stesso.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261106-41-update-trgfn-default-emittente-fiscale-sorgente-due-grammatiche-mctit.yaml
+
+  - changeSet:
+      id: 20261106-41-update-trgfn-default-emittente-fiscale-sorgente-due-grammatiche
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.trgfn_default_emittente_fiscale: la sorgente con sorgente_id. brief-db-sorgente-documento-e-riga §7.2 giro 0.3.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'trgfn_default_emittente_fiscale';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_default_emittente_fiscale()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              DECLARE
+                v_modo          text := TG_ARGV[0];   -- NULL se non passato (indice fuori da TG_NARGS)
+                v_opzione       text := TG_ARGV[1];
+                v_row           jsonb;
+                v_tx_id         uuid;
+                v_auth_user_id  anagrafiche.identita_digitali.auth_user_id%TYPE;
+                v_ef_id         anagrafiche.emittenti_fiscali.id%TYPE;
+              BEGIN
+                -- Scopo: riempire emittente_fiscale_id quando la riga arriva senza,
+                --   con l'emittente di lavoro di chi scrive (attivo di sessione se in
+                --   scope, altrimenti quello assegnato). Building block unico: sostituisce
+                --   le copie per documento di vendite. Brief: brief-db-emittente-di-default-un-bb-solo.
+                -- Regole:
+                --   0. argomenti di montaggio non ammessi -> E_TRIGGER_ARGOMENTI_INVALIDI
+                --      (difetto di chi installa: muore al primo INSERT, non tace);
+                --   1. valore esplicito -> non si sovrascrive mai una scelta dichiarata;
+                --   2. SALTA_CON_SORGENTE e riga con sorgente_tipo_id + una chiave
+                --      (sorgente_id o sorgente_uid, rev 2026-11-06 giro 0.3) ->
+                --      l'emittente e' del documento padre, lo mette il normalize a valle;
+                --   3. GUC app.current_user_id vuota -> LASCIA_NULL: RETURN NEW;
+                --      SOLLEVA: E_EMITTENTE_NON_RISOLTO;
+                --   4. resolver NULL (admin globale senza assegnazione) -> idem;
+                --   5. altrimenti NEW.emittente_fiscale_id := emittente di lavoro.
+
+                -- 0) Argomenti di montaggio.
+                IF TG_OP <> 'INSERT'
+                   OR TG_NARGS < 1 OR TG_NARGS > 2
+                   OR v_modo NOT IN ('SOLLEVA', 'LASCIA_NULL')
+                   OR (TG_NARGS = 2 AND v_opzione IS DISTINCT FROM 'SALTA_CON_SORGENTE') THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    TG_TABLE_SCHEMA::text,
+                    'script.trgfn_default_emittente_fiscale',
+                    'E_TRIGGER_ARGOMENTI_INVALIDI',
+                    jsonb_build_object(
+                      'detail',    'atteso BEFORE INSERT con TG_ARGV[0] in (SOLLEVA, LASCIA_NULL) e TG_ARGV[1] facoltativo = SALTA_CON_SORGENTE',
+                      'tabella',   TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                      'trigger',   TG_NAME,
+                      'tg_op',     TG_OP,
+                      'argomenti', to_jsonb(TG_ARGV)
+                    ),
+                    NULL::uuid,
+                    concat_ws(' ', TG_OP, coalesce(NULLIF(array_to_string(TG_ARGV, ', '), ''), '(nessun argomento)'))
+                  );
+                END IF;
+
+                -- 1) Valore esplicito: non si tocca.
+                IF NEW.emittente_fiscale_id IS NOT NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Le colonne facoltative (sorgente_*, tx_id) si leggono in sola lettura da
+                -- to_jsonb(NEW): esistono su alcune tabelle montate, non su tutte.
+                v_row   := to_jsonb(NEW);
+                v_tx_id := NULLIF(v_row ->> 'tx_id', '')::uuid;
+
+                -- 2) Riga nata da un documento sorgente: l'emittente e' quello del padre.
+                IF v_opzione = 'SALTA_CON_SORGENTE'
+                   AND (v_row ->> 'sorgente_tipo_id') IS NOT NULL
+                   AND ((v_row ->> 'sorgente_id') IS NOT NULL OR (v_row ->> 'sorgente_uid') IS NOT NULL) THEN
+                  RETURN NEW;
+                END IF;
+
+                -- 3) Chi scrive. GUC vuota = nessuno da cui dedurre.
+                v_auth_user_id := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                IF v_auth_user_id IS NULL THEN
+                  IF v_modo = 'LASCIA_NULL' THEN
+                    RETURN NEW;
+                  END IF;
+                  PERFORM script.fn_log_and_raise_error(
+                    TG_TABLE_SCHEMA::text,
+                    'script.trgfn_default_emittente_fiscale',
+                    'E_EMITTENTE_NON_RISOLTO',
+                    jsonb_build_object(
+                      'detail',  'GUC app.current_user_id vuota e riga senza emittente_fiscale_id: fuori da una sessione utente non c'' e'' nulla da cui dedurlo',
+                      'campo',   'emittente_fiscale_id',
+                      'tabella', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME
+                    ),
+                    v_tx_id,
+                    VARIADIC ARRAY[]::text[]
+                  );
+                END IF;
+
+                -- 4) Emittente di lavoro: attivo di sessione se in scope, altrimenti quello
+                --    assegnato in config.user_emittenti_fiscali; NULL per un admin globale
+                --    senza assegnazione (modalita' «tutti gli emittenti», di sola lettura).
+                v_ef_id := script.fn_resolve_emittente_for_user(v_auth_user_id);
+                IF v_ef_id IS NULL THEN
+                  IF v_modo = 'LASCIA_NULL' THEN
+                    RETURN NEW;
+                  END IF;
+                  PERFORM script.fn_log_and_raise_error(
+                    TG_TABLE_SCHEMA::text,
+                    'script.trgfn_default_emittente_fiscale',
+                    'E_EMITTENTE_NON_RISOLTO',
+                    jsonb_build_object(
+                      'detail',       'operatore senza emittente assegnato (admin globale in modalita'' tutti gli emittenti): la riga deve dichiararlo',
+                      'campo',        'emittente_fiscale_id',
+                      'tabella',      TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                      'auth_user_id', v_auth_user_id
+                    ),
+                    v_tx_id,
+                    VARIADIC ARRAY[]::text[]
+                  );
+                END IF;
+
+                -- 5) Il default.
+                NEW.emittente_fiscale_id := v_ef_id;
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.trgfn_default_emittente_fiscale() IS
+                '⭐ rev 2026-11-06 (20261106-41, brief-db-sorgente-documento-e-riga §7.2 lotto 0 giro 0.3): SALTA_CON_SORGENTE riconosce la riga nata da un documento con una delle due chiavi della sorgente, sorgente_id o sorgente_uid: dal lotto T le testate portano l''id del documento a chiave id. Una tabella senza sorgente_id la legge NULL dal JSON e conta sorgente_uid, come prima. BEFORE INSERT generico: riempie emittente_fiscale_id, se NULL, con l''emittente di lavoro di chi scrive (script.fn_resolve_emittente_for_user dalla GUC app.current_user_id). TG_ARGV[0] = SOLLEVA (niente da cui dedurre -> E_EMITTENTE_NON_RISOLTO, DATO_ERRATO, campo emittente_fiscale_id) oppure LASCIA_NULL (RETURN NEW: decide un normalize a valle o il NOT NULL). TG_ARGV[1] facoltativo = SALTA_CON_SORGENTE: se la riga porta sorgente_tipo_id e sorgente_uid non si tocca, l''emittente e'' quello del documento padre. Un valore esplicito non si sovrascrive mai. Argomenti non ammessi -> E_TRIGGER_ARGOMENTI_INVALIDI. Colonna fissa emittente_fiscale_id (l''ancora del perimetro). Sostituisce dal 2026-09-15 le quattro copie vendite.trgfn_ordini/preventivi/contratti/ddt_default_emittente. Brief: brief-db-emittente-di-default-un-bb-solo, sezione 4.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo precedente e' quello di 20260915-36:
+              -- un rollback lo riprende da li'.
+              SELECT 1;

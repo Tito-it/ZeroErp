@@ -32,7 +32,8 @@ BEGIN
   --   0. argomenti di montaggio non ammessi -> E_TRIGGER_ARGOMENTI_INVALIDI
   --      (difetto di chi installa: muore al primo INSERT, non tace);
   --   1. valore esplicito -> non si sovrascrive mai una scelta dichiarata;
-  --   2. SALTA_CON_SORGENTE e riga con sorgente_tipo_id + sorgente_uid ->
+  --   2. SALTA_CON_SORGENTE e riga con sorgente_tipo_id + una chiave
+  --      (sorgente_id o sorgente_uid, rev 2026-11-06 giro 0.3) ->
   --      l'emittente e' del documento padre, lo mette il normalize a valle;
   --   3. GUC app.current_user_id vuota -> LASCIA_NULL: RETURN NEW;
   --      SOLLEVA: E_EMITTENTE_NON_RISOLTO;
@@ -73,7 +74,7 @@ BEGIN
   -- 2) Riga nata da un documento sorgente: l'emittente e' quello del padre.
   IF v_opzione = 'SALTA_CON_SORGENTE'
      AND (v_row ->> 'sorgente_tipo_id') IS NOT NULL
-     AND (v_row ->> 'sorgente_uid') IS NOT NULL THEN
+     AND ((v_row ->> 'sorgente_id') IS NOT NULL OR (v_row ->> 'sorgente_uid') IS NOT NULL) THEN
     RETURN NEW;
   END IF;
 
@@ -127,7 +128,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.trgfn_default_emittente_fiscale()
-IS 'BEFORE INSERT generico: riempie emittente_fiscale_id, se NULL, con l''emittente di lavoro di chi scrive (script.fn_resolve_emittente_for_user dalla GUC app.current_user_id). TG_ARGV[0] = SOLLEVA (niente da cui dedurre -> E_EMITTENTE_NON_RISOLTO, DATO_ERRATO, campo emittente_fiscale_id) oppure LASCIA_NULL (RETURN NEW: decide un normalize a valle o il NOT NULL). TG_ARGV[1] facoltativo = SALTA_CON_SORGENTE: se la riga porta sorgente_tipo_id e sorgente_uid non si tocca, l''emittente e'' quello del documento padre. Un valore esplicito non si sovrascrive mai. Argomenti non ammessi -> E_TRIGGER_ARGOMENTI_INVALIDI. Colonna fissa emittente_fiscale_id (l''ancora del perimetro). Sostituisce dal 2026-09-15 le quattro copie vendite.trgfn_ordini/preventivi/contratti/ddt_default_emittente. Brief: brief-db-emittente-di-default-un-bb-solo, sezione 4.';
+IS '⭐ rev 2026-11-06 (20261106-41, brief-db-sorgente-documento-e-riga §7.2 lotto 0 giro 0.3): SALTA_CON_SORGENTE riconosce la riga nata da un documento con una delle due chiavi della sorgente, sorgente_id o sorgente_uid: dal lotto T le testate portano l''id del documento a chiave id. Una tabella senza sorgente_id la legge NULL dal JSON e conta sorgente_uid, come prima. BEFORE INSERT generico: riempie emittente_fiscale_id, se NULL, con l''emittente di lavoro di chi scrive (script.fn_resolve_emittente_for_user dalla GUC app.current_user_id). TG_ARGV[0] = SOLLEVA (niente da cui dedurre -> E_EMITTENTE_NON_RISOLTO, DATO_ERRATO, campo emittente_fiscale_id) oppure LASCIA_NULL (RETURN NEW: decide un normalize a valle o il NOT NULL). TG_ARGV[1] facoltativo = SALTA_CON_SORGENTE: se la riga porta sorgente_tipo_id e sorgente_uid non si tocca, l''emittente e'' quello del documento padre. Un valore esplicito non si sovrascrive mai. Argomenti non ammessi -> E_TRIGGER_ARGOMENTI_INVALIDI. Colonna fissa emittente_fiscale_id (l''ancora del perimetro). Sostituisce dal 2026-09-15 le quattro copie vendite.trgfn_ordini/preventivi/contratti/ddt_default_emittente. Brief: brief-db-emittente-di-default-un-bb-solo, sezione 4.';
 ```
 
 </div>

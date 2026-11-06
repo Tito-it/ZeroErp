@@ -2,8 +2,8 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-06
 
-**Riparte: team DB**, col giro 0.3 del lotto 0 (§7.2, «Lotto 0, i giri»). I giri 0.1 e 0.2 sono applicati, pgTAP
-verdi; gli orfani di dbdev sono puliti.
+**Riparte: Tid**, con il via al lotto R (righe di vendita, §7.2). Il **lotto 0 è chiuso**: i tre giri sono applicati,
+con i pgTAP verdi (il giro 0.3 il 2026-11-06), e gli orfani di dbdev sono puliti.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -23,13 +23,17 @@ verdi; gli orfani di dbdev sono puliti.
 | 7-quater | ✅ DB | giro 0.2: lato «in uscita», presidio degli orfani a tre livelli, presidio di struttura; provato in transazione (2026-11-06) | §7.2 «Lotto 0, i giri» | — |
 | 7-quinquies | ✅ Tid | apply del giro 0.2 (`20261106-17` … `-21`, CSV dei codici), pgTAP verdi (2026-11-06) | §7.2 | — |
 | 7-sexies | ✅ Tid | `sql-una-tantum-sorgenti-orfane-canali.sql` eseguito su dbdev: presidio degli orfani vuoto (2026-11-06) | §7.2 «Il giro 0.2» | — |
-| 8 | DB | lotto 0 giro 0.3, poi R, T, C, D, P, M, Z, ognuno col suo via; il §8 si riempie strada facendo | §7.2, §8 | — |
+| 7-septies | ✅ DB | giro 0.3: i lettori della sorgente di testata nelle due grammatiche, i lettori polimorfi sul BB che risolve; provato in transazione (2026-11-06) | §7.2 «Il giro 0.3» | — |
+| 7-octies | ✅ Tid | apply del giro 0.3 (`20261106-22` … `-45`), pgTAP verdi; verde anche il presidio della revisione del preventivo, con le quattro esclusioni `sorgente_*` rinviate al lotto R (2026-11-06) | §7.2 | — |
+| 7-nonies | Tid | via al lotto R | §7.2 «Lotto R» | — |
+| 8 | DB | lotti R, T, C, D, P, M, Z, ognuno col suo via; il §8 si riempie strada facendo | §7.2, §8 | 7-nonies |
 | 9 | BE/FE | il §8 intero, una volta sola | §8 | 8 |
 | 10 | DB | la documentazione del §7.3 (lotto DOC), poi archiviazione | §7.3 | 9 |
 
-**Decisioni aperte di Tid:** nessuna. Lavoro da committare: nessuno. I giri 0.1 e 0.2 del lotto 0 (changeSet
-`20261106-04` … `-21`, i CSV, i pgTAP, l'SQL una tantum degli orfani, la doc auto-generata) sono committati su
-`dev/db-tid` il 2026-11-06. ⚠️ I test Django sono rossi finché il BE non rigenera il file delle policy d'errore (§8.1
+**Decisioni aperte di Tid:** nessuna. **Lavoro da committare: il giro 0.3** (24 changeSet `20261106-22` … `-45`, applicati;
+il pgTAP nuovo e quello aggiornato; le esclusioni dichiarate in
+`vendite/test-fn-crea-revisione-preventivo-riga-completa-v1`; questo brief). I giri 0.1 e 0.2 del lotto 0 (changeSet `20261106-04` … `-21`, i CSV,
+i pgTAP, l'SQL una tantum degli orfani, la doc auto-generata) sono committati su `dev/db-tid` il 2026-11-06. ⚠️ I test Django sono rossi finché il BE non rigenera il file delle policy d'errore (§8.1
 BE-0.1-a, §8.2 BE-0.2-a): accettato dal piano, va detto nella PR.
 
 **Fermo collegato:** il lotto B di `brief-db-articoli-obsoleto-dal` (verbi che scrivono la sorgente,
@@ -478,7 +482,7 @@ tranne due funzioni che ritirano la loro copia (regola del 2).
 | --- | --- | --- |
 | **0.1** | catalogo dei livelli, colonne nuove, BB che risolve (con il ponte), BB che scrive, guard unico, codici | ✅ applicato da Tid, pgTAP verdi (2026-11-06) |
 | **0.2** | lato «in uscita» (S-9) montato sui bersagli; presidio degli orfani a tre livelli; presidio di struttura in CI | ✅ applicato da Tid, pgTAP verdi (2026-11-06) |
-| 0.3 | i lettori trasversali sul BB che risolve (lineage, legami, ritiro dei legami, push, diagnosi DDT, resi) e `script.fn_get_sorgente_emittente_sr_id` | da fare (prossimo) |
+| **0.3** | i lettori trasversali sul BB che risolve (lineage, legami, ritiro dei legami, push, diagnosi DDT, resi) e `script.fn_get_sorgente_emittente_sr_id` | ✅ applicato da Tid, pgTAP verdi (2026-11-06) |
 
 **Il giro 0.1, le scelte** (nomi e grammatica li ha scelti il team DB; nessuna è un cambio di modello):
 
@@ -612,6 +616,94 @@ permesso come applicazione, rossi da owner per costruzione (`magazzino/test-port
 
 Non coperto, e resta di Tid: l'apply, la corsa come applicazione, la baseline.
 
+**Il giro 0.3, le scelte** (team DB, 2026-11-06; nessuna è un cambio di modello):
+
+* **Due strumenti, non uno.** «Sul BB che risolve» vale per chi non sa in quale tabella sta il documento: il tipo è
+  polimorfo, e la risposta la dà `script.fn_sorgente_documento` (o il ponte, se la chiave arriva come testo). Chi invece
+  sa già dove cercare (una bolla viene da un ordine, un reso da una bolla) non ha bisogno del BB: gli serve la
+  **regola d'incontro del modello**, `(doc.id = x.sorgente_id OR doc.uid = x.sorgente_uid)`. È vera nelle due
+  grammatiche di oggi e anche nel modello finale (il guard unico vuole una sola chiave). È il join della chiave
+  polimorfa, come quello di una FK: si scrive in linea, non dietro una funzione, perché il planner la deve portare sugli
+  indici (`id`, `uid`, `(tipo, sorgente_*)`). Una funzione per riga nella lineage, che è insiemistica e seminata per
+  chiave, avrebbe spento i piani.
+* **Il perimetro: chi si romperebbe in silenzio.** I lettori delle testate G1 (bolla → ordine, reso → bolla), che il
+  lotto T converte all'id (S-5), e i lettori polimorfi che traducevano tipo per tipo:
+  * **regola d'incontro:** `fn_documento_lineage_archi` (archi H e R, nei rami «tutti» e in quelli seminati),
+    `fn_ddt_trigger_ordine_testata` e i suoi due chiamanti (diagnosi del push, check di emissione),
+    `fn_ddt_vincoli_cliente` e i suoi due chiamanti (guard del cliente, capability), `trgfn_ddt_normalize`, i quattro
+    trigger del reso (`normalize`, `default_magazzino`, `guard_cliente_ddt`, `guard_ddt_consegnato`), `fn_conferma_reso`,
+    `fn_annulla_reso`, il lato che legge di `fn_genera_ddt_riconsegna`, il motivo 1 di `fn_check_ordine_annullabile`,
+    `SALTA_CON_SORGENTE` di `trgfn_default_emittente_fiscale`;
+  * **BB che risolve:** `fn_documento_lineage_legami` (il `CASE` B/E/F/U → il ponte), `fn_documento_legami` (cinque
+    letture per tabella → una), `fn_documento_ritira_legami` (due → una), `script.fn_get_sorgente_emittente_sr_id`
+    (firma nuova sulle colonne del modello, che risolve col BB; la testuale controlla la forma e le passa).
+* **Firme.** `fn_ddt_trigger_ordine_testata` e `fn_ddt_vincoli_cliente` prendono `sorgente_id` **in coda**, `DEFAULT
+  NULL`. La firma nuova nasce accanto alla vecchia, i chiamanti passano alla nuova, poi la vecchia si ritira: la diagnosi
+  è `BEGIN ATOMIC` e la sua dipendenza va spostata prima del `DROP`. Indici nuovi `ix_ddt_v_sorgente_id`,
+  `ix_resi_sorgente_id` (parziali, oggi vuoti), gemelli di quelli sull'uid.
+* **Le firme ripulite.** Dove l'ultimo YAML aveva perso il `%TYPE` (copiato dall'auto-gen), la firma riprende
+  l'ancoraggio: `fn_check_ordine_annullabile(vendite.ordini.id%TYPE)` e `fn_available_actions_ddt(vendite.ddt.id%TYPE)`
+  (lo stesso tipo risolto: la firma non cambia). `SECURITY INVOKER` diventa esplicito dove mancava.
+
+**Che cosa resta ai lotti, dichiarato** (cambia con la colonna, o è il lato che scrive):
+
+* **lotto C:** il confronto con `commesse_attivita.sorgente_uid` e `commesse_sorgenti.sorgente_uid` (G3/G4 testuali)
+  in lineage, legami, ritiro e `fn_check_sorgente_chiudibile`; gli archi B/E/F/U della lineage su `commesse_sorgenti`; i
+  lister del push (scrivono la chiave G4 per la madre); `fn_resolve_termini_pagamento` (legge l'uid della riga di
+  commessa); la firma testuale di `fn_get_sorgente_emittente_sr_id`, coi suoi due chiamanti;
+* **lotto T:** le viste di lista `vw_ddt_lista`, `vw_resi_lista` (espongono `sorgente_uid` al BE: è un contratto, e
+  cambia con la conversione); le colonne ferme della capability (`c_non_edit_draft`) e gli argomenti del lock della
+  testata (`trgfn_doc_testata_lock_fuori_bozza`), che prendono `sorgente_id` insieme; la sorgente che **scrivono**
+  `fn_genera_ddt_da_ordine` e `fn_genera_ddt_riconsegna` (D-4) e il registro dei canali (si ritira);
+* **resi nella grammatica del lotto T:** `resi.sorgente_uid` è `NOT NULL`, quindi un reso col solo `sorgente_id` oggi
+  non si può costruire: i suoi lettori sono provati dall'equivalenza sulla popolazione, e il lotto T li ripassa.
+
+**I changeSet del giro 0.3:** `20261106-22` (indici), `-23` (emittente della sorgente), `-24` … `-27` (ordine di
+testata: firma nuova, diagnosi, check di emissione, ritiro della firma vecchia), `-28` … `-31` (vincoli del cliente:
+firma nuova, guard, capability, ritiro), `-32` (normalize della bolla), `-33` … `-36` (i quattro trigger del reso),
+`-37` … `-39` (conferma, annullo, ri-consegna), `-40` (annullabilità dell'ordine), `-41` (emittente di default), `-42`
+(legami), `-43` (ritiro dei legami), `-44` (legame della lineage), `-45` (archi della lineage). pgTAP: nuovo
+`vendite/test-sorgente-testate-due-grammatiche-v1`; aggiornato `vendite/test-fn-ddt-trigger-ordine-testata-v1` (test
+1, la firma). Nessun codice nuovo, nessun CSV.
+
+**La prova del giro 0.3** (2026-11-06, come `zeroerp_owner`, sempre in transazione annullata; scratch e dbdev
+verificati intatti dopo):
+
+* **i corpi di partenza sono quelli vivi:** per ognuno dei 22 oggetti riscritti, il `CREATE` dell'ultimo YAML rieseguito
+  sullo scratch dà lo stesso `pg_get_functiondef` del vivo. Unica eccezione, dichiarata: a
+  `fn_get_sorgente_emittente_sr_id` mancava `pg_temp` nel `search_path`, che gli ha dato `20261103-04`;
+* **l'estratto** dei 24 changeSet gira intero sullo scratch `zeroerp_ruoli` e su dbdev; `plpgsql_check` sulle 17
+  funzioni plpgsql toccate non dà errori (solo gli avvisi già noti: STABLE che chiama `fn_log_and_raise_error`, due
+  variabili inutilizzate preesistenti in `fn_genera_ddt_riconsegna`);
+* **equivalenza prima/dopo su tutta la popolazione di dbdev**, `EXCEPT ALL` nei due versi, zero differenze: archi della
+  lineage, tutti (1616) e seminati da ogni ordine, bolla e reso (1371); il legame di ogni arco (1616); diagnosi del push
+  (323); check di emissione e ordine di testata di ogni bolla (250); vincoli del cliente (427); annullabilità di ogni
+  ordine (592); legami di ogni documento dei sei tipi (1979); emittente di ogni riga di `commesse_sorgenti` (876). I
+  numeri sono fatti datati di dbdev: dicono che la popolazione di oggi non vede differenze, non che il ramo nuovo è
+  provato (quello lo prova il pgTAP sotto);
+* **tempi della lineage su dbdev**, prima → dopo, stessa sessione: tutti gli archi 7,9 → 5,2 ms (a cache calda); semi di
+  tutti gli ordini 903 → 789 ms; semi di tutte le bolle 316 → 323 ms. Invariati;
+* **il ramo nuovo si costruisce**: `vendite/test-sorgente-testate-due-grammatiche-v1` porta una bolla nella grammatica
+  del lotto T (l'ordine nel solo `sorgente_id`) e la fa leggere a ogni lettore: 16/16. Mutazioni: senza l'estratto
+  cade al test 2; con l'estratto e il `trgfn_ddt_normalize` di prima la bolla nuova (test 10) è rifiutata dal guard del
+  cliente;
+* **regressione prima/dopo su 122 pgTAP** (chi nomina un oggetto toccato, i builder di bolla e reso, chi scrive bolle e
+  resi): 1697 → 1713 ok; i 20 rossi sono **identici** riga per riga nelle due corse, tutti di scope o di permesso, rossi
+  da owner per costruzione (es. `script/test-guard-emittente-senza-utente` 4, 5, 9, 10; `vendite/test-esecutivi-ba-coppia-v1`
+  39 «rosso da owner, verde come app»). Le sole differenze sono le attese: il test nuovo e il test 1 di
+  `test-fn-ddt-trigger-ordine-testata-v1`, che ora vuole la firma con `sorgente_id`;
+* guardrail statici (`scripts/guardrail_*.py`, licenze): verdi.
+
+Non coperto, e resta di Tid: l'apply, la corsa dei pgTAP come applicazione (la RLS), la baseline. **Fatto da Tid il
+2026-11-06:** apply dei 24 changeSet, pgTAP verdi.
+
+⚠️ **Un rosso emerso alla corsa, e non dal giro 0.3:** il presidio sull'elenco della copia
+(`vendite/test-fn-crea-revisione-preventivo-riga-completa-v1`, test 1) era rosso già dal lotto A, per le quattro
+colonne `sorgente_*` di `preventivi_righe` (`20261105-02` e `20261106-05`) che nessuno aveva censito. La regressione
+del giro non lo comprendeva, perché il file non nomina nessun oggetto toccato. Le colonne sono dichiarate escluse nel
+test, con il rinvio al lotto R: la provenienza della revisione si scrive (revisione di partenza), non si ricopia
+dalla rev N. Il debito è scritto nel lotto R.
+
 #### Lotto R — righe di vendita (primo: sblocca il lotto B di `brief-db-articoli-obsoleto-dal`)
 
 * **Le tabelle:** `preventivi_righe`, `ordini_righe`, `ddt_righe`, `contratti_righe` (colonne del lotto A, ancora
@@ -619,6 +711,12 @@ Non coperto, e resta di Tid: l'apply, la corsa come applicazione, la baseline.
 * **I verbi del lotto B** si scrivono direttamente sul modello, con il BB che scrive:
   * offerta: riga da eccezione → l'eccezione, riga del solo listino → NULL (D-5);
   * riconsegna: la provenienza è il reso (D-4).
+* **Le copie esplicite delle righe si allineano nello stesso giro.** Il presidio
+  `vendite/test-fn-crea-revisione-preventivo-riga-completa-v1` dichiara escluse le quattro colonne `sorgente_*` di
+  `preventivi_righe`, con il rinvio a questo lotto (rev 2026-11-06). Prima era rosso dal lotto A, perché nessuno le aveva
+  censite. Quando `fn_crea_revisione_preventivo` scrive la provenienza, le quattro esclusioni si tolgono: altrimenti
+  il test 2 le segnala come stantie. Per le altre copie esplicite (push, DDT, riconsegna, contratto) il censimento
+  si fa con `prosrc ~* 'INSERT\s+INTO\s+vendite\.<righe>\s*\('`.
 * **Il primo montaggio del guard unico** toglie la sua voce da `dbops.riferimenti_morti_esenzioni` (messa da
   `20261106-16`), nello stesso giro.
 * **Restano accanto alla sorgente** (D-3): `ordini_righe.preventivo_riga_id` e `ordini_righe_fulfillment`. Il commento
@@ -832,6 +930,14 @@ Si allineano nel lotto DOC con un rimando a questo brief, oppure si chiudono se 
 | --- | --- | --- | --- |
 | BE-0.2-a | codice nuovo `E_SORG_ORIGINE_REFERENZIATA`, classe `CONFLITTO_STATO` (409): la cancellazione di un documento, una riga o un dettaglio da cui altri record dichiarano di nascere | `config.codici_errore` → file generato delle policy | rigenerare il file (come BE-0.1-a). Lo solleva il DB su un `DELETE`: le cancellazioni del BE (bozze di preventivo, ordine, bolla, righe) lo ricevono come 409 con la frase pronta. Nessun campo da accendere |
 | BE-0.2-b | `dbops.vw_sorgenti_orfane` ha colonne nuove (`grammatica`, `livello`, `sorgente_id`, `sorgente_dettaglio`) | vista del presidio | nessuna attesa: la legge il digest dei presidi, non il BE. Da verificare con un grep sui lettori |
+
+### 8.3 Dal lotto 0, giro 0.3 (2026-11-06)
+
+| # | Che cosa cambia | Percorso | Che cosa fa il BE/FE |
+| --- | --- | --- | --- |
+| — | i lettori della sorgente di testata leggono anche `sorgente_id`; firme con `sorgente_id` in coda per `vendite.fn_ddt_trigger_ordine_testata` e `vendite.fn_ddt_vincoli_cliente` | nessuna delle funzioni toccate cambia firma o colonne per il BE (grep su `backend/apps`, 2026-11-06: il BE chiama per nome solo `fn_documento_legami`, firma invariata) | nessuna |
+| — | `script.fn_get_sorgente_emittente_sr_id(tipo, sorgente_id, sorgente_uid)`, firma nuova; la testuale resta | il BE non la chiama (solo un commento nel file generato delle policy) | nessuna |
+| — | il dettaglio JSON di alcuni errori dei guard di bolla e reso porta in più `sorgente_id` | `E_DOC_SORGENTE_NON_TROVATA`, `E_DOC_CLIENTE_DIVERSO_DA_SORGENTE`, `E_RESO_DA_DDT_TRASFERIMENTO`, `E_RESO_DDT_NON_CONSEGNATO` | nessuna: chiave in più, nessuna tolta |
 
 ---
 
