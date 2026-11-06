@@ -118,9 +118,9 @@ DO $x$ BEGIN PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ddt', (SELECT ddt_id 
 -- La testata di reso su cui si tenteranno gli inserimenti.
 CREATE TEMP TABLE tmp_reso AS
 WITH t AS (
-  INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_uid, storicizza, meta)
+  INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_id, storicizza, meta)
   SELECT r.stato_reso_draft_id, r.sorgente_ddt_id,
-         (SELECT d.uid FROM vendite.ddt d WHERE d.id = (SELECT ddt_id FROM tmp_doc)),
+         (SELECT ddt_id FROM tmp_doc),
          false, jsonb_build_object('test_scope','pgtap_guard_origine')
   FROM tmp_refs r RETURNING id
 )

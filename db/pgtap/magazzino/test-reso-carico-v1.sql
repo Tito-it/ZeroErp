@@ -208,9 +208,9 @@ CREATE TEMP TABLE _r0 (reso bigint);
 DO $r0$
 DECLARE v_reso bigint;
 BEGIN
-    INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_uid, storicizza)
+    INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_id, storicizza)
     SELECT (SELECT s.id FROM config.stati_doc_reso s WHERE s.codice_interno = 'DRAFT'),
-           f.sorgente_ddt, (SELECT dd.uid FROM vendite.ddt dd WHERE dd.id = (SELECT ddt FROM _d)), false
+           f.sorgente_ddt, (SELECT ddt FROM _d), false
       FROM _fix f RETURNING id INTO v_reso;
     INSERT INTO _r0 VALUES (v_reso);
 END $r0$;

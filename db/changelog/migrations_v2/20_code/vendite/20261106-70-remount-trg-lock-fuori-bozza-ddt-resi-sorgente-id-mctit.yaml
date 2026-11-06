@@ -1,0 +1,50 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# BOLLE E RESI: IL LOCK FUORI BOZZA FERMA ANCHE SORGENTE_ID
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto T, giro T.2 (S-5).
+#
+# Fuori bozza la provenienza della testata non cambia (E_DOC_SORGENTE_FUORI_BOZZA):
+# il lock fermava sorgente_tipo_id e sorgente_uid. Dal giro T.2 la chiave di un
+# tipo a chiave id sta in sorgente_id: la terna nuova entra subito dopo quella
+# di sorgente_uid. Gli altri argomenti sono quelli vivi (pg_get_triggerdef del
+# 2026-11-06, uguali a 20261019-72). Il trigger e' scritto a mano, non da
+# ci_apply: si rimonta qui (linee-guida-sql §11.5). Le colonne ferme della
+# capability prendono la stessa colonna (20261106-66, -67).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261106-70-remount-trg-lock-fuori-bozza-ddt-resi-sorgente-id-mctit.yaml
+
+  - changeSet:
+      id: 20261106-70-remount-trg-lock-fuori-bozza-ddt-resi-sorgente-id
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Il lock fuori bozza di bolla e reso ferma anche sorgente_id
+        (E_DOC_SORGENTE_FUORI_BOZZA). brief-db-sorgente-documento-e-riga §7.2
+        lotto T, giro T.2.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER trg_ddt_a05_lock_fuori_bozza_upd ON vendite.ddt;
+              CREATE TRIGGER trg_ddt_a05_lock_fuori_bozza_upd BEFORE UPDATE ON vendite.ddt FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_doc_testata_lock_fuori_bozza('DDT_VENDITA', 'DRAFT', 'data', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'valuta_id', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'anno', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'serie', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'registro_id', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'causale_trasporto_id', 'E_DDT_CAUSALE_IMMUTABILE', '', 'billing_account_id', 'E_DDT_CLIENTE_IMMUTABILE', '', 'utility_id', 'E_DDT_CLIENTE_IMMUTABILE', '', 'destinatario_soggetto_ruolo_id', 'E_DDT_CLIENTE_IMMUTABILE', '', 'magazzino_id', 'E_DDT_MAGAZZINO_IMMUTABILE', '', 'magazzino_arrivo_id', 'E_DDT_MAGAZZINO_IMMUTABILE', '', 'emittente_fiscale_id', 'E_DOC_EMITTENTE_FUORI_BOZZA', '', 'sorgente_tipo_id', 'E_DOC_SORGENTE_FUORI_BOZZA', '', 'sorgente_uid', 'E_DOC_SORGENTE_FUORI_BOZZA', '', 'sorgente_id', 'E_DOC_SORGENTE_FUORI_BOZZA', '', 'mittente_soggetto_ruolo_id', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO', 'vettore_soggetto_ruolo_id', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO', 'aspetto_bene_id', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO', 'modalita_addebito_trasporto_id', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO', 'num_colli', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO', 'peso_lordo', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO', 'peso_netto', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO', 'volume', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO', 'targa', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO', 'autista', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO', 'data_ora_partenza', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO', 'data_ora_consegna_prev', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO', 'tracking_code', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO', 'meta', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO');
+
+              DROP TRIGGER trg_resi_a05_lock_fuori_bozza_upd ON vendite.resi;
+              CREATE TRIGGER trg_resi_a05_lock_fuori_bozza_upd BEFORE UPDATE ON vendite.resi FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_doc_testata_lock_fuori_bozza('RESO_VENDITA', 'DRAFT', 'data', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'valuta_id', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'anno', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'registro_id', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'magazzino_id', 'E_RESO_MAGAZZINO_IMMUTABILE', '', 'emittente_fiscale_id', 'E_DOC_EMITTENTE_FUORI_BOZZA', '', 'sorgente_tipo_id', 'E_DOC_SORGENTE_FUORI_BOZZA', '', 'sorgente_uid', 'E_DOC_SORGENTE_FUORI_BOZZA', '', 'sorgente_id', 'E_DOC_SORGENTE_FUORI_BOZZA', '', 'meta', 'E_DOC_CHIUSO', 'CONFERMATO');
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il montaggio precedente e' quello di 20261019-72: si riprende da li'.
+              SELECT 1;

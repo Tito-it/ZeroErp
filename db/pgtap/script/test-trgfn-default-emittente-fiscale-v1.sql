@@ -261,9 +261,9 @@ END $x$;
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _m WHERE lato = 'S')); END $ctx$;
 CREATE TEMP TABLE _r13 ON COMMIT DROP AS
 WITH ins AS (
-        INSERT INTO vendite.ddt (destinatario_soggetto_ruolo_id, stato_doc_ddt_id, data, sorgente_tipo_id, sorgente_uid,
+        INSERT INTO vendite.ddt (destinatario_soggetto_ruolo_id, stato_doc_ddt_id, data, sorgente_tipo_id, sorgente_id,
                                  causale_trasporto_id, storicizza, meta)
-        SELECT f.ba_sr, f.stato_ddt_draft, script.fn_data_operativa(), f.sorg_ordine, (SELECT uid FROM _ord), f.causale, false, '{}'::jsonb
+        SELECT f.ba_sr, f.stato_ddt_draft, script.fn_data_operativa(), f.sorg_ordine, (SELECT id FROM _ord), f.causale, false, '{}'::jsonb
           FROM _fix f
     RETURNING emittente_fiscale_id)
 SELECT emittente_fiscale_id FROM ins;

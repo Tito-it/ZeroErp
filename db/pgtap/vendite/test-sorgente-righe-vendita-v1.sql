@@ -98,7 +98,8 @@ SELECT is(
 SELECT results_eq(
   $$SELECT tabella::text COLLATE "default", livello_minimo, azione_cancellazione
       FROM script.fn_sorgente_guard_montaggi()
-     WHERE schema_tabella = 'vendite'
+     WHERE tabella IN ('vendite.preventivi_righe'::regclass, 'vendite.ordini_righe'::regclass,
+                       'vendite.ddt_righe'::regclass, 'vendite.contratti_righe'::regclass)
      ORDER BY 1$$,
   $$VALUES ('vendite.contratti_righe', 'RIGA', 'BLOCCA'),
            ('vendite.ddt_righe', 'RIGA', 'BLOCCA'),

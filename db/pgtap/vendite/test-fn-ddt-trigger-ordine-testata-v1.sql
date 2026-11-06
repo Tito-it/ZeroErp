@@ -5,7 +5,9 @@
 --   dell'ordine sorgente di TESTATA di una bolla, e il ritiro delle due copie
 --   in linea (regola del 2).
 -- ChangeSet: 20261103-43 (il BB), -44 (diagnosi del push), -45 (check di
---   emissione); 20261106-24 … -27 (la firma con sorgente_id)
+--   emissione); 20261106-24 … -27 (la firma con sorgente_id); 20261106-63 (il ramo
+--   del reso, provato in vendite/test-sorgente-testate-bolle-resi-v1). Dal giro T.2
+--   la bolla porta l'ordine in sorgente_id: l'helper passa le tre colonne.
 -- Brief: brief-db-addebito-trasporto-ordine §9.5, P-1
 -- ------------------------------------------------------------
 -- Indice test (plan 6):
@@ -52,7 +54,7 @@ $$;
 
 CREATE OR REPLACE FUNCTION pg_temp.trg(p_ddt bigint) RETURNS text
 LANGUAGE sql AS $$
-  SELECT vendite.fn_ddt_trigger_ordine_testata(d.sorgente_tipo_id, d.sorgente_uid)::text
+  SELECT vendite.fn_ddt_trigger_ordine_testata(d.sorgente_tipo_id, d.sorgente_uid, d.sorgente_id)::text
     FROM vendite.ddt d WHERE d.id = p_ddt
 $$;
 

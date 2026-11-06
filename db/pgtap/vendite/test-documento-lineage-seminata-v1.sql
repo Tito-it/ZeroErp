@@ -98,7 +98,7 @@ UPDATE vendite.ordini o
 
 UPDATE vendite.ddt d
    SET sorgente_tipo_id = (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'ORDINE_VENDITA'),
-       sorgente_uid     = (SELECT ordine_uid FROM g_ord)
+       sorgente_id      = (SELECT ordine_id FROM g_ord)
  WHERE d.id = (SELECT ddt_id FROM g_ddt);
 
 INSERT INTO vendite.commesse_sorgenti (commessa_id, sorgente_tipo_id, sorgente_uid, ruolo_link)

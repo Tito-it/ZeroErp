@@ -30,9 +30,7 @@ AS $function$
 --   l'ambito degli indirizzi DDT diventa DDT_VENDITA, il codice della
 --   sorgente; firma e RETURNS ancorati.
 DECLARE
-    v_sorg_ord_id     config.sorgenti.id%TYPE;
     v_stato_ord       config.stati_doc_ordini.codice_interno%TYPE;
-    v_ordine_uid      vendite.ordini.uid%TYPE;
     v_dest_ruolo_id   vendite.ordini.soggetto_ruolo_id%TYPE;
     v_ddt_id          vendite.ddt.id%TYPE;
     v_new_riga_id     vendite.ddt_righe.id%TYPE;
@@ -60,8 +58,8 @@ BEGIN
     END IF;
 
     -- 2) Ordine esiste + stato evadibile.
-    SELECT o.uid, o.soggetto_ruolo_id, sdo.codice_interno
-      INTO v_ordine_uid, v_dest_ruolo_id, v_stato_ord
+    SELECT o.soggetto_ruolo_id, sdo.codice_interno
+      INTO v_dest_ruolo_id, v_stato_ord
       FROM vendite.ordini o
       JOIN config.stati_doc_ordini sdo ON sdo.id = o.stato_doc_ordine_id
      WHERE o.id = p_ordine_id;
@@ -97,18 +95,21 @@ BEGIN
             NULL::uuid, p_ordine_id::text, v_stato_ord);
     END IF;
 
-    -- 3) Sorgente ORDINE_VENDITA (C1).
-    SELECT id INTO v_sorg_ord_id FROM config.sorgenti
-     WHERE codice_interno = 'ORDINE_VENDITA' AND attivo IS TRUE;
+    -- 3) La provenienza della bolla e delle sue righe: il tipo ORDINE_VENDITA e la
+    --    chiave dell'ordine per il key_selector del tipo (script.fn_sorgente_provenienza).
+    --    Una volta sola; la riga ci aggiunge sorgente_riga.
+    SELECT p.sorgente_tipo_id, p.sorgente_id, p.sorgente_uid
+      INTO v_prov_tipo_id, v_prov_id, v_prov_uid
+      FROM script.fn_sorgente_provenienza('ORDINE_VENDITA', p_ordine_id::text) p;
 
     -- 4) Testata DDT DRAFT. Billing/utility/valuta via trgfn_ddt_normalize.
     --    Lo stato non si scrive: DRAFT lo mette trg_ddt_a05_stato_iniziale_ins.
     INSERT INTO vendite.ddt (
         data, destinatario_soggetto_ruolo_id,
-        sorgente_tipo_id, sorgente_uid)
+        sorgente_tipo_id, sorgente_id, sorgente_uid)
     VALUES (
         COALESCE(p_data, (SELECT script.fn_data_operativa())), v_dest_ruolo_id,
-        v_sorg_ord_id, v_ordine_uid)
+        v_prov_tipo_id, v_prov_id, v_prov_uid)
     RETURNING id INTO v_ddt_id;
 
     -- 4-bis) Cascata indirizzi (D-1): copia 1:1 gli snapshot dell'ordine
@@ -126,12 +127,6 @@ BEGIN
        AND a.attivo IS TRUE
      WHERE oi.ordine_id = p_ordine_id
     ON CONFLICT (ddt_id, tipo_indirizzo_id) DO NOTHING;
-
-    -- La provenienza delle righe: il tipo e la chiave del documento, per il
-    -- key_selector del tipo (script.fn_sorgente_provenienza). Una volta sola.
-    SELECT p.sorgente_tipo_id, p.sorgente_id, p.sorgente_uid
-      INTO v_prov_tipo_id, v_prov_id, v_prov_uid
-      FROM script.fn_sorgente_provenienza('ORDINE_VENDITA', p_ordine_id::text) p;
 
     -- 5) Righe: copia snapshot A-2 + componenti + fulfillment.
     FOR v_riga IN
@@ -241,7 +236,7 @@ BEGIN
         -- "e alimenta mv_ddt_ordini": quella vista materializzata e' stata
         -- ritirata il 2026-08-05 (nessuno la leggeva, nessuno la
         -- aggiornava). Il legame ordine<->DDT si ricava da qui e da
-        -- ddt.sorgente_uid, che e' cio' che l'applicazione usa davvero.
+        -- dalla provenienza della testata (ddt.sorgente_*).
         -- qta_evasa = quantita base della riga DDT (derivata dal trigger).
         -- Il guard fulfillment valida articolo/uom/residuo (C2).
         -- rev 2026-11-03: anche per l'onere — e' il suo «gia' passato»
@@ -285,7 +280,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_genera_ddt_da_ordine(p_ordine_id bigint, p_righe jsonb, p_data date)
-IS 'Madre dell''evasione ordine -> bolla DRAFT. Piu'' bolle per lo stesso ordine; p_righe [{ordine_riga_id, qta_da_evadere (operativa)}], NULL = tutto il residuo. Per ogni riga copia lo snapshot di prezzi e componenti e la natura che l''ordine ha venduto, scrive la provenienza (ORDINE_VENDITA con la chiave dell''ordine da script.fn_sorgente_provenienza, e in sorgente_riga la riga d''ordine) e il fulfillment (vendite.ordini_righe_fulfillment, la quantita'' evasa; l''eccesso lo ferma il guard). La riga-onere (script.fn_natura_e_merce = false sulla natura congelata) passa intera nella prima bolla, anche se p_righe non la nomina; dopo, il suo residuo e'' 0. La testata dichiara l''ordine come sorgente. Rifiuti: E_DDT_ORDINE_NOT_FOUND, senza bersaglio (l''ordine non c''e'' o non e'' visibile); E_DDT_ORDINE_STATO_NON_EVADIBILE ed E_DDT_NIENTE_DA_EVADERE, col bersaglio sull''ordine; una bolla che porterebbe solo oneri e'' E_DDT_NIENTE_DA_EVADERE. Lo stato dell''ordine lo proietta vendite.fn_ordine_proietta_stato_evasione. Indirizzi di ambito DDT_VENDITA.';
+IS 'Madre dell''evasione ordine -> bolla DRAFT. Piu'' bolle per lo stesso ordine; p_righe [{ordine_riga_id, qta_da_evadere (operativa)}], NULL = tutto il residuo. La provenienza si legge una volta con script.fn_sorgente_provenienza (ORDINE_VENDITA con la chiave dell''ordine): la testata dichiara l''ordine, ogni riga lo dichiara con in sorgente_riga la riga d''ordine. Per ogni riga copia lo snapshot di prezzi e componenti e la natura che l''ordine ha venduto, e scrive il fulfillment (vendite.ordini_righe_fulfillment, la quantita'' evasa; l''eccesso lo ferma il guard). La riga-onere (script.fn_natura_e_merce = false sulla natura congelata) passa intera nella prima bolla, anche se p_righe non la nomina; dopo, il suo residuo e'' 0. Rifiuti: E_DDT_ORDINE_NOT_FOUND, senza bersaglio (l''ordine non c''e'' o non e'' visibile); E_DDT_ORDINE_STATO_NON_EVADIBILE ed E_DDT_NIENTE_DA_EVADERE, col bersaglio sull''ordine; una bolla che porterebbe solo oneri e'' E_DDT_NIENTE_DA_EVADERE. Lo stato dell''ordine lo proietta vendite.fn_ordine_proietta_stato_evasione. Indirizzi di ambito DDT_VENDITA.';
 ```
 
 </div>

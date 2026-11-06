@@ -1,0 +1,70 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# BOLLE E RESI: IL GUARD UNICO DELLA PROVENIENZA
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto T, giro T.2 (S-6).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   La testata di bolla e reso non aveva un controllo d'esistenza della sua
+#   provenienza: lo facevano di fatto i trigger di dominio che la rileggono, e
+#   solo per i tipi che conoscono. script.trgfn_guard_sorgente controlla la
+#   forma dal catalogo (tipo attivo, una sola chiave, quella del key_selector)
+#   e che il documento esista.
+#
+# ── ⚠️ CHE COSA CAMBIA ──────────────────────────────────────────────
+#   * livello DOCUMENTO: la testata cita il documento intero (non ha
+#     sorgente_riga);
+#   * azione BLOCCA, come una FK: un ordine, un reso o una bolla citati non si
+#     cancellano (E_SORG_ORIGINE_REFERENZIATA, dal lato «in uscita» che il
+#     catalogo monta gia' su ordini, resi e bolle);
+#   * INSERT e UPDATE OF le tre colonne. Nome a10: gira prima dei trigger di
+#     dominio che rileggono la sorgente (normalize, guard del cliente, z10);
+#   * chi scrive l'uid per un tipo a chiave id ora e' rifiutato
+#     (E_SORG_CHIAVE_NON_CONFORME): i due verbi della bolla e il builder pgTAP
+#     del reso passano al BB che scrive in questo giro; il BE che crea il reso
+#     e' una voce del §8 del brief (BE-T.2-a).
+#   Il presidio di struttura (dbops/test-sorgenti-struttura-v1) perde le due
+#   tabelle dal debito nello stesso giro.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261106-69-create-trigger-ddt-resi-guard-sorgente-unico-mctit.yaml
+
+  - changeSet:
+      id: 20261106-69-create-trigger-ddt-resi-guard-sorgente-unico
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Il guard unico della provenienza (script.trgfn_guard_sorgente, DOCUMENTO,
+        BLOCCA) sulle testate di bolla e reso.
+        brief-db-sorgente-documento-e-riga §7.2 lotto T, giro T.2.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_ddt_a10_guard_sorgente_ins_upd
+                  BEFORE INSERT OR UPDATE OF sorgente_tipo_id, sorgente_id, sorgente_uid
+                  ON vendite.ddt
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_sorgente('DOCUMENTO', 'BLOCCA');
+
+              CREATE TRIGGER trg_resi_a10_guard_sorgente_ins_upd
+                  BEFORE INSERT OR UPDATE OF sorgente_tipo_id, sorgente_id, sorgente_uid
+                  ON vendite.resi
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_sorgente('DOCUMENTO', 'BLOCCA');
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ddt_a10_guard_sorgente_ins_upd ON vendite.ddt;
+              DROP TRIGGER IF EXISTS trg_resi_a10_guard_sorgente_ins_upd ON vendite.resi;

@@ -12,15 +12,16 @@
 --   della provenienza (dbops.fn_sorgenti_orfane_perimetro) e la vista.
 --   Brief: brief-db-magazzino-lotto-2-motore §4.7 (la nascita);
 --   brief-db-sorgente-documento-e-riga §7.2 lotto 0, giro 0.2 (il perimetro e i tre
---   livelli, 20261106-20).
+--   livelli, 20261106-20); lotto T, giro T.2 (bolla e reso col guard unico: il caso
+--   TESTUALE passa su una tabella del test).
 --
 -- Elenco test (plan 12):
 --   1) il PERIMETRO contiene le sei tabelle di magazzino, con grammatica MODELLO_A
---   2) le testate di vendita sono nel perimetro, con grammatica TESTUALE (prima non c'erano)
+--   2) le testate di vendita sono nel perimetro: bolla e reso col guard unico (UNICO), le altre TESTUALE
 --   3) le esenzioni dichiarate sono tre, ognuna col suo motivo
 --   4) zero orfani di magazzino sul mondo costruito
 --   5) MODELLO_A: cancellato il bersaglio di un movimento -> UNA riga, livello DOCUMENTO
---   6) TESTUALE: una bolla che nomina un ordine che non c'e' -> UNA riga
+--   6) TESTUALE: una tabella senza guard che nomina un ordine che non c'e' -> UNA riga
 --   7) UNICO: una tabella col guard unico entra nel perimetro con la sua grammatica
 --   8) UNICO, livello DOCUMENTO: la bolla che non c'e'
 --   9) UNICO, livello RIGA: la riga di un'altra bolla
@@ -96,8 +97,8 @@ SELECT is(
     (SELECT string_agg(nome_tabella::text || ':' || grammatica, ',' ORDER BY nome_tabella)
        FROM dbops.fn_sorgenti_orfane_perimetro()
       WHERE schema_tabella = 'vendite' AND nome_tabella IN ('ordini', 'ddt', 'resi', 'contratti', 'fatture')),
-    'contratti:TESTUALE,ddt:TESTUALE,fatture:TESTUALE,ordini:TESTUALE,resi:TESTUALE',
-    '2) le testate di vendita sono nel perimetro, con la chiave in sorgente_uid (TESTUALE)');
+    'contratti:TESTUALE,ddt:UNICO,fatture:TESTUALE,ordini:TESTUALE,resi:UNICO',
+    '2) le testate di vendita sono nel perimetro: bolla e reso col guard unico, le altre con la chiave in sorgente_uid (TESTUALE)');
 
 SELECT results_eq(
     $$SELECT tabella::text COLLATE "default", orfani_esclusi_perche IS NOT NULL, guard_esente_perche IS NOT NULL
@@ -129,17 +130,21 @@ SELECT is(
              'magazzino.inventari_righe')::text FROM _fix),
     '5) MODELLO_A: cancellato il bersaglio, UNA riga con tabella, id, sorgente e bersaglio');
 
--- ===== TESTUALE: la bolla nomina un ordine che non c'e' =====
-ALTER TABLE vendite.ddt DISABLE TRIGGER USER;
-UPDATE vendite.ddt SET sorgente_tipo_id = (SELECT ord FROM _t), sorgente_uid = '00000000-0000-4000-8000-0000000000aa'
- WHERE id = (SELECT ddt2 FROM _b);
-ALTER TABLE vendite.ddt ENABLE TRIGGER USER;
+-- ===== TESTUALE: una tabella senza guard nomina un ordine che non c'e' =====
+-- Il caso si costruisce su una tabella del test: le testate vere passano al
+-- guard unico lotto dopo lotto (la bolla col giro T.2), e il ramo TESTUALE
+-- deve restare provato finche' esiste.
+CREATE TEMP TABLE _prov_testo (
+    id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    sorgente_tipo_id bigint, sorgente_uid uuid);
+INSERT INTO pg_temp._prov_testo (sorgente_tipo_id, sorgente_uid)
+SELECT ord, '00000000-0000-4000-8000-0000000000aa' FROM _t;
 
 SELECT is(
     (SELECT (o.grammatica, o.livello, o.sorgente_codice_interno, o.sorgente_uid, o.target_table::text)::text
-       FROM dbops.vw_sorgenti_orfane o WHERE o.tabella = 'vendite.ddt'::regclass AND o.riga_id = (SELECT ddt2 FROM _b)),
+       FROM dbops.vw_sorgenti_orfane o WHERE o.tabella = 'pg_temp._prov_testo'::regclass),
     '(TESTUALE,DOCUMENTO,ORDINE_VENDITA,00000000-0000-4000-8000-0000000000aa,vendite.ordini)',
-    '6) TESTUALE: la bolla che nomina un ordine inesistente e'' UNA riga orfana');
+    '6) TESTUALE: la riga senza guard che nomina un ordine inesistente e'' UNA riga orfana');
 
 -- ===== UNICO: una tabella col guard unico, con le provenienze scritte a guard spento =====
 CREATE TEMP TABLE _prov (

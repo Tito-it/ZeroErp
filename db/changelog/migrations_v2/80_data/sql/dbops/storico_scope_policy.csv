@@ -97,7 +97,6 @@ id,schema_tabella,nome_tabella,modo,colonna,padre_schema,padre_tabella,ragione,d
 98,vendite,commesse_sorgenti,PADRE,commessa_id,vendite,commesse,NULL,2026-09-11
 99,vendite,ddt,EF,emittente_fiscale_id,NULL,NULL,NULL,2026-09-11
 100,vendite,ddt_righe,PADRE,ddt_id,vendite,ddt,NULL,2026-09-11
-101,vendite,documenti_fatturazione_canali,NESSUNO,NULL,NULL,NULL,La madre non ha la row level security accesa (letto il 2026-09-11): nessun perimetro da congelare. Quando entrerà in RLS il presidio segnalerà questa riga e il modo andrà dichiarato.,2026-09-11
 102,vendite,fatturazione_lotti,SR,emittente_soggetto_ruolo_id,NULL,NULL,NULL,2026-09-11
 103,vendite,fatturazione_lotti_esiti,PADRE,lotto_id,vendite,fatturazione_lotti,NULL,2026-09-11
 104,vendite,fatturazione_lotti_fatture,PADRE,lotto_id,vendite,fatturazione_lotti,NULL,2026-09-11

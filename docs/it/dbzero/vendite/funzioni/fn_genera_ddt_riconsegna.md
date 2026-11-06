@@ -24,10 +24,6 @@ AS $function$
 --   sorgente; firma e RETURNS ancorati.
 DECLARE
     v_stato          config.stati_doc_reso.codice_interno%TYPE;
-    v_sorg_ord_id    config.sorgenti.id%TYPE;
-    v_ordine_uid     vendite.ordini.uid%TYPE;
-    v_sorgente_tipo_id config.sorgenti.id%TYPE;
-    v_sorgente_uid   vendite.ddt.sorgente_uid%TYPE;
     v_reso_uid       vendite.resi.uid%TYPE;
     v_new_ddt_id     vendite.ddt.id%TYPE;
     v_new_riga_id    vendite.ddt_righe.id%TYPE;
@@ -111,51 +107,18 @@ BEGIN
             NULL::uuid, p_reso_id::text, v_orig.stato);
     END IF;
 
-    -- 3) Order-backing: ordine di provenienza (righe ri-consegna
-    --    condividono lo stesso ordine, o nessuno se standalone).
-    SELECT o.uid INTO v_ordine_uid
-      FROM vendite.resi_righe rr
-      JOIN vendite.ordini_righe orr ON orr.id = rr.ordine_riga_id
-      JOIN vendite.ordini o         ON o.id = orr.ordine_id
-     WHERE rr.reso_id = p_reso_id
-       AND rr.ordine_riga_id IS NOT NULL
-     LIMIT 1;
-
-    -- rev 2026-08-28 (Fase D / R6): la sorgente si dichiara SEMPRE.
-    --   Order-backed -> ORDINE_VENDITA + uid dell'ordine (invariato).
-    --   Standalone   -> RESO_VENDITA  + uid del reso, che prima restava
-    --   NULL: il documento dichiarava di non venire da nessuna parte,
-    --   mentre viene da un reso, e su Transito/Passaggi quel DDT non
-    --   aveva origine.
-    --
-    -- config.sorgenti NON si tocca, ed e' la domanda che il brief si era
-    --   posto: key_selector governa la chiave POLIMORFA TESTUALE
-    --   (commesse_sorgenti, pratiche_sorgenti, le vw_stato_sorgente_*),
-    --   non questa colonna, che e' un uuid tipizzato. ORDINE_VENDITA e'
-    --   gia' a key_selector='id' e qui ci mette da sempre ordini.uid; e
-    --   vendite.fn_get_sorgente_documento_ref — quella che accende
-    --   l'azione «apri documento sorgente» — prova la via uuid PRIMA di
-    --   guardare il selettore, quindi risolve resi.uid e ne legge il
-    --   numero leggibile.
-    IF v_ordine_uid IS NOT NULL THEN
-        SELECT id INTO v_sorg_ord_id FROM config.sorgenti
-         WHERE codice_interno = 'ORDINE_VENDITA' AND attivo IS TRUE;
-        v_sorgente_tipo_id := v_sorg_ord_id;
-        v_sorgente_uid     := v_ordine_uid;
-    ELSE
-        SELECT id INTO v_sorgente_tipo_id FROM config.sorgenti
-         WHERE codice_interno = 'RESO_VENDITA' AND attivo IS TRUE;
-        -- Se il tipo non fosse a catalogo la colonna resta NULL, che e' il
-        --   comportamento di prima: un documento senza origine dichiarata.
-        --   NON si solleva — la ri-consegna e' merce che deve partire, e un
-        --   catalogo incompleto non e' un buon motivo per non farla partire.
-        v_sorgente_uid := CASE WHEN v_sorgente_tipo_id IS NOT NULL
-                               THEN v_orig.reso_uid END;
-    END IF;
+    -- 3) La provenienza della bolla e delle sue righe: il reso (D-4), con la chiave
+    --    per il key_selector del tipo (script.fn_sorgente_provenienza). Una volta sola;
+    --    la riga ci aggiunge sorgente_riga. L'ordine da cui la merce era partita resta
+    --    nel fulfillment, e la sua corsia di fatturazione la trova
+    --    vendite.fn_ddt_trigger_ordine_testata.
+    SELECT p.sorgente_tipo_id, p.sorgente_id, p.sorgente_uid
+      INTO v_prov_tipo_id, v_prov_id, v_prov_uid
+      FROM script.fn_sorgente_provenienza('RESO_VENDITA', p_reso_id::text) p;
 
     -- 4) Nuovo DDT DRAFT (lo stato lo mette trg_ddt_a05_stato_iniziale_ins).
     --    Denormalizzati dal DDT origine (normalize
-    --    COALESCE li preserva). Order-backed -> sorgente ORDINE_VENDITA.
+    --    COALESCE li preserva). La sorgente e' il reso.
     --
     -- ⭐ rev 2026-08-28 (Fase A, R1+R5): si eredita il blocco
     --    «relazione». Il gemello fn_genera_ddt_da_ordine parte
@@ -199,7 +162,7 @@ BEGIN
     --    come le altre colonne di questo blocco.
     INSERT INTO vendite.ddt (
         data, destinatario_soggetto_ruolo_id,
-        sorgente_tipo_id, sorgente_uid, billing_account_id,
+        sorgente_tipo_id, sorgente_id, sorgente_uid, billing_account_id,
         utility_id, valuta_id, emittente_fiscale_id,
         causale_trasporto_id, aspetto_bene_id,
         modalita_addebito_trasporto_id,
@@ -208,7 +171,7 @@ BEGIN
     VALUES (
         COALESCE(p_data, (SELECT script.fn_data_operativa())),
         v_orig.destinatario_soggetto_ruolo_id,
-        v_sorgente_tipo_id, v_sorgente_uid, v_orig.billing_account_id,
+        v_prov_tipo_id, v_prov_id, v_prov_uid, v_orig.billing_account_id,
         v_orig.utility_id, v_orig.valuta_id, v_orig.emittente_fiscale_id,
         v_orig.causale_trasporto_id, v_orig.aspetto_bene_id,
         v_orig.modalita_addebito_trasporto_id,
@@ -281,12 +244,6 @@ BEGIN
     --    esenta le righe di questo reso: si restituisce cio' che e' uscito,
     --    anche se l'articolo nel frattempo e' diventato solo componente. Si
     --    chiude subito dopo il ciclo.
-    -- La provenienza delle righe: il tipo e la chiave del documento, per il
-    -- key_selector del tipo (script.fn_sorgente_provenienza). Una volta sola.
-    SELECT p.sorgente_tipo_id, p.sorgente_id, p.sorgente_uid
-      INTO v_prov_tipo_id, v_prov_id, v_prov_uid
-      FROM script.fn_sorgente_provenienza('RESO_VENDITA', p_reso_id::text) p;
-
     PERFORM set_config('zeroerp.ddt_riconsegna', p_reso_id::text, true);
     FOR v_riga IN
         SELECT rr.id AS resi_riga_id, rr.articolo_id, rr.descrizione,
@@ -426,7 +383,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_genera_ddt_riconsegna(p_reso_id bigint, p_righe jsonb, p_data date)
-IS 'Madre della ri-spedizione di un reso: una bolla DRAFT nuova, legata all''ordine (order-backed) o senza ordine (standalone). Per ogni riga del reso con un residuo da riconsegnare (vendite.fn_resi_riga_residuo_riconsegna, al netto di riconsegne e rinunce; p_righe [{resi_riga_id, qta}], NULL = tutto il residuo) scrive la riga di bolla, il ponte vendite.resi_righe_riconsegne e, se order-backed, il fulfillment che richiude il residuo dell''ordine. Ogni riga porta la provenienza: RESO_VENDITA con la chiave del reso da script.fn_sorgente_provenienza, e in sorgente_riga la riga del reso; il legame con l''ordine resta nel fulfillment. La testata dichiara come sorgente l''ordine (order-backed) o il reso (standalone); la bolla d''origine del reso si legge con la regola (d.id = r.sorgente_id OR d.uid = r.sorgente_uid). Eredita dalla bolla d''origine le scelte (causale, aspetto, modalita'' di addebito, mittente, vettore, fatturazione_immediata) e gli indirizzi di ambito DDT_VENDITA, non le misure del viaggio (colli, pesi, volume, targa, autista, date, tracking). Ogni eredita'' di catalogo passa da un LEFT JOIN filtrato su attivo: un elemento ritirato lascia il campo vuoto invece di far fallire la generazione. Nel solo ramo standalone copia prezzo, sconto e aliquota dalla riga della bolla d''origine; nell''order-backed il valore lo risale vendite.fn_list_ddt_da_pushare dal fulfillment. La riga porta la natura della riga resa. Mentre scrive le righe accende la porta zeroerp.ddt_riconsegna (l''id del reso), con cui il guard delle regole sull''articolo esenta gli articoli del reso, e la richiude subito. Lo stato dell''ordine lo proietta vendite.fn_ordine_proietta_stato_evasione.';
+IS 'Madre della ri-spedizione di un reso: una bolla DRAFT nuova, legata all''ordine (order-backed) o senza ordine (standalone). La provenienza e'' il reso, per la testata e per ogni riga: RESO_VENDITA con la chiave del reso da script.fn_sorgente_provenienza, e sulla riga in sorgente_riga la riga del reso. Il legame con l''ordine resta nel fulfillment, e la corsia di fatturazione dell''ordine la trova vendite.fn_ddt_trigger_ordine_testata. Per ogni riga del reso con un residuo da riconsegnare (vendite.fn_resi_riga_residuo_riconsegna, al netto di riconsegne e rinunce; p_righe [{resi_riga_id, qta}], NULL = tutto il residuo) scrive la riga di bolla, il ponte vendite.resi_righe_riconsegne e, se order-backed, il fulfillment che richiude il residuo dell''ordine. La bolla d''origine del reso si legge con la regola (d.id = r.sorgente_id OR d.uid = r.sorgente_uid). Eredita dalla bolla d''origine le scelte (causale, aspetto, modalita'' di addebito, mittente, vettore, fatturazione_immediata) e gli indirizzi di ambito DDT_VENDITA, non le misure del viaggio (colli, pesi, volume, targa, autista, date, tracking). Ogni eredita'' di catalogo passa da un LEFT JOIN filtrato su attivo: un elemento ritirato lascia il campo vuoto invece di far fallire la generazione. Nel solo ramo standalone copia prezzo, sconto e aliquota dalla riga della bolla d''origine; nell''order-backed il valore lo risale vendite.fn_list_ddt_da_pushare dal fulfillment. La riga porta la natura della riga resa. Mentre scrive le righe accende la porta zeroerp.ddt_riconsegna (l''id del reso), con cui il guard delle regole sull''articolo esenta gli articoli del reso, e la richiude subito. Lo stato dell''ordine lo proietta vendite.fn_ordine_proietta_stato_evasione.';
 ```
 
 </div>

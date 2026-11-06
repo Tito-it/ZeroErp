@@ -96,7 +96,7 @@ DECLARE
     v_motivi_merce jsonb := '[]'::jsonb;
     v_motivo_merce jsonb;
     c_non_edit_draft CONSTANT jsonb :=
-        '["numero","sorgente_tipo_id","sorgente_uid","billing_account_id","emittente_fiscale_id"]'::jsonb;
+        '["numero","sorgente_tipo_id","sorgente_id","sorgente_uid","billing_account_id","emittente_fiscale_id"]'::jsonb;
     -- La testata nello stato, dal montaggio del lock (rev 2026-10-10):
     -- {modificabile, non_modificabili}.
     v_testata jsonb;

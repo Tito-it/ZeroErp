@@ -1,0 +1,434 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite.fn_genera_ddt_riconsegna: LA TESTATA DICHIARA IL RESO
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto T, giro T.2 (D-4 di Tid: la provenienza della bolla di riconsegna e' il
+#   reso; il legame con l'ordine resta nel fulfillment).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   La testata dichiarava l'ordine (se il reso ne aveva uno) o il reso, sempre
+#   con l'uid. Le righe, dal giro R.1, dichiarano il reso: testata e righe
+#   puntavano a due documenti diversi. Ora la testata dichiara il reso, con la
+#   chiave del key_selector (id), letta UNA volta per testata e righe.
+#
+# ── ⚠️ CHE COSA CAMBIA ──────────────────────────────────────────────
+#   * se ne va la ricerca dell'ordine dietro il reso (v_ordine_uid) e la scelta
+#     ordine/reso: la corsia di fatturazione di quell'ordine la trova chi la
+#     legge, vendite.fn_ddt_trigger_ordine_testata (20261106-63);
+#   * il tipo assente a catalogo non lascia piu' la testata senza sorgente: il BB
+#     solleva E_SORG_CONF, come gia' faceva per le righe;
+#   * COMMENT riscritto al presente. Firma invariata.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261106-72-update-fn-genera-ddt-riconsegna-sorgente-testata-reso-mctit.yaml
+
+  - changeSet:
+      id: 20261106-72-update-fn-genera-ddt-riconsegna-sorgente-testata-reso
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_genera_ddt_riconsegna: la testata dichiara il reso (D-4), con la chiave del key_selector. brief-db-sorgente-documento-e-riga §7.2 lotto T, giro T.2.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite' AND p.proname = 'fn_genera_ddt_riconsegna';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_genera_ddt_riconsegna(
+                  p_reso_id vendite.resi.id%TYPE,
+                  -- il payload delle righe scelte: nessuna colonna dietro
+                  p_righe   jsonb DEFAULT NULL::jsonb,
+                  p_data    vendite.ddt.data%TYPE DEFAULT script.fn_data_operativa())
+               RETURNS vendite.ddt.id%TYPE
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- rev 2026-10-24 (20261024-16, brief-modello-documento-vendita N-1/P-2):
+              --   lo stato iniziale non si scrive piu' qui: lo mette il trigger della
+              --   nascita (script.trgfn_doc_stato_iniziale), letto dal vocabolario.
+              -- rev 2026-10-20 (20261020-56, brief-db-grammatica-unica-documenti, 2d G-6):
+              --   l'ambito degli indirizzi DDT diventa DDT_VENDITA, il codice della
+              --   sorgente; firma e RETURNS ancorati.
+              DECLARE
+                  v_stato          config.stati_doc_reso.codice_interno%TYPE;
+                  v_reso_uid       vendite.resi.uid%TYPE;
+                  v_new_ddt_id     vendite.ddt.id%TYPE;
+                  v_new_riga_id    vendite.ddt_righe.id%TYPE;
+                  v_qta_base       vendite.ddt_righe.quantita%TYPE;
+                  v_orig           RECORD;
+                  v_riga           RECORD;
+                  v_ord            RECORD;
+                  v_residuo_ric    numeric;
+                  v_qta_ric        numeric;
+                  v_qta_op         numeric;
+                  v_riga_nr        vendite.ddt_righe.riga_nr%TYPE := 0;
+                  v_n              integer := 0;
+                  v_prov_tipo_id   vendite.ddt_righe.sorgente_tipo_id%TYPE;
+                  v_prov_id        vendite.ddt_righe.sorgente_id%TYPE;
+                  v_prov_uid       vendite.ddt_righe.sorgente_uid%TYPE;
+              BEGIN
+                  -- 1) Guard input.
+                  IF p_reso_id IS NULL OR p_reso_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_genera_ddt_riconsegna','E_VALIDAZIONE',
+                          jsonb_build_object('p_reso_id', p_reso_id),
+                          NULL::uuid, 'p_reso_id deve essere > 0');
+                  END IF;
+
+                  -- 2) Reso CONFERMATO + testata origine (DDT sorgente).
+                  --    rev 2026-08-28 (Fase A): si legge anche il blocco
+                  --    «relazione» — le colonne che dicono CON CHI e PERCHE'
+                  --    la merce si muove. Sono le stesse per il viaggio di
+                  --    andata e per la ri-consegna, perche' e' la stessa
+                  --    relazione commerciale eseguita una seconda volta.
+                  --
+                  -- ⚠️ I tre LEFT JOIN di catalogo NON sono decorativi: le
+                  --    colonne corrispondenti su vendite.ddt hanno un trigger
+                  --    dbops.trgfn_child_requires_active_parent. Ereditare un
+                  --    elemento RITIRATO DOPO farebbe FALLIRE la generazione
+                  --    della ri-consegna. Filtrando su `attivo` la colonna
+                  --    resta NULL — cioe' lo stato di prima di questa rev — e
+                  --    il documento si genera lo stesso. Un'eredita' che puo'
+                  --    impedire di generare e' un guasto nuovo, non una
+                  --    comodita'.
+                  --
+                  -- ⚠️ Il LEFT JOIN sulla testata puo' non trovare niente:
+                  --    resi.sorgente_uid e' NOT NULL ma nulla impone che il
+                  --    tipo sia DDT_VENDITA. In quel caso v_orig.* resta
+                  --    tutto NULL e NON si solleva: e' lo stato di oggi, e i
+                  --    guard dell'emissione fanno gia' il loro mestiere.
+                  SELECT sdr.codice_interno AS stato,
+                         r.uid AS reso_uid,
+                         d.id  AS ddt_origine_id,
+                         d.destinatario_soggetto_ruolo_id, d.billing_account_id,
+                         d.utility_id, d.valuta_id, d.emittente_fiscale_id,
+                         ct.id AS causale_trasporto_id,
+                         ab.id AS aspetto_bene_id,
+                         ma.id AS modalita_addebito_trasporto_id,
+                         d.mittente_soggetto_ruolo_id,
+                         d.vettore_soggetto_ruolo_id,
+                         d.fatturazione_immediata
+                    INTO v_orig
+                    FROM vendite.resi r
+                    JOIN config.stati_doc_reso sdr ON sdr.id = r.stato_doc_reso_id
+                    LEFT JOIN vendite.ddt d ON (d.id = r.sorgente_id OR d.uid = r.sorgente_uid)
+                    LEFT JOIN config.causali_trasporto ct
+                           ON ct.id = d.causale_trasporto_id AND ct.attivo IS TRUE
+                    LEFT JOIN config.aspetti_beni ab
+                           ON ab.id = d.aspetto_bene_id AND ab.attivo IS TRUE
+                    LEFT JOIN config.modalita_addebito_trasporto ma
+                           ON ma.id = d.modalita_addebito_trasporto_id AND ma.attivo IS TRUE
+                   WHERE r.id = p_reso_id;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_genera_ddt_riconsegna','E_RESO_NOT_FOUND',
+                          jsonb_build_object('reso_id', p_reso_id),
+                          NULL::uuid, p_reso_id::text);
+                  END IF;
+
+                  IF v_orig.stato IS DISTINCT FROM 'CONFERMATO' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_genera_ddt_riconsegna','E_RESO_NON_CONFERMATO',
+                          jsonb_build_object('reso_id', p_reso_id, 'stato', v_orig.stato),
+                          NULL::uuid, p_reso_id::text, v_orig.stato);
+                  END IF;
+
+                  -- 3) La provenienza della bolla e delle sue righe: il reso (D-4), con la chiave
+                  --    per il key_selector del tipo (script.fn_sorgente_provenienza). Una volta sola;
+                  --    la riga ci aggiunge sorgente_riga. L'ordine da cui la merce era partita resta
+                  --    nel fulfillment, e la sua corsia di fatturazione la trova
+                  --    vendite.fn_ddt_trigger_ordine_testata.
+                  SELECT p.sorgente_tipo_id, p.sorgente_id, p.sorgente_uid
+                    INTO v_prov_tipo_id, v_prov_id, v_prov_uid
+                    FROM script.fn_sorgente_provenienza('RESO_VENDITA', p_reso_id::text) p;
+
+                  -- 4) Nuovo DDT DRAFT (lo stato lo mette trg_ddt_a05_stato_iniziale_ins).
+                  --    Denormalizzati dal DDT origine (normalize
+                  --    COALESCE li preserva). La sorgente e' il reso.
+                  --
+                  -- ⭐ rev 2026-08-28 (Fase A, R1+R5): si eredita il blocco
+                  --    «relazione». Il gemello fn_genera_ddt_da_ordine parte
+                  --    da un ORDINE — che un blocco trasporto non ce l'ha
+                  --    proprio — e ciononostante fa cascadere gli indirizzi;
+                  --    qui si parte da un DDT, cioe' dall'unico documento che
+                  --    quel blocco ce l'ha TUTTO. Non era un caso di nicchia:
+                  --    era la stessa regola scritta in un posto e non
+                  --    nell'altro.
+                  --
+                  -- ⛔ COSA NON SI COPIA, ED E' DELIBERATO. Qui sotto NON
+                  --    compaiono, e nessuno le rimetta senza aver letto il
+                  --    perche':
+                  --      num_colli, peso_lordo, peso_netto, volume
+                  --        -> sbagliati PER COSTRUZIONE, non «stantii»: la
+                  --           ri-consegna porta un SOTTOINSIEME delle righe e
+                  --           su quelle una FRAZIONE della quantita' (il
+                  --           residuo di fn_resi_riga_residuo_riconsegna). Un
+                  --           peso copiato e' il peso di un collo che non e'
+                  --           quello che parte.
+                  --      targa, autista
+                  --        -> il mezzo e la persona di un viaggio GIA'
+                  --           AVVENUTO. Sono una misura, non una scelta.
+                  --      data_ora_partenza, data_ora_consegna_prev
+                  --        -> date di un viaggio concluso, su un documento
+                  --           che nasce in DRAFT.
+                  --      tracking_code
+                  --        -> il peggiore: punterebbe il cliente al COLLO
+                  --           PRECEDENTE. Un codice di tracciamento copiato
+                  --           non e' un campo vuoto, e' un'informazione
+                  --           sbagliata data a un terzo.
+                  --    Il criterio, in una riga: EREDITA CIO' CHE E' UNA
+                  --    SCELTA, NON CIO' CHE E' UNA MISURA.
+                  --
+                  -- ⚠️ fatturazione_immediata e' NOT NULL DEFAULT false: il
+                  --    COALESCE serve per il caso in cui la testata d'origine
+                  --    non sia stata trovata. Non e' un cancello sulla doppia
+                  --    fatturazione — quella e' gia' impedita a monte da
+                  --    vw_partite_merce/fn_list_ddt_da_pushare — e' una
+                  --    corsia di instradamento, cioe' un patto commerciale
+                  --    come le altre colonne di questo blocco.
+                  INSERT INTO vendite.ddt (
+                      data, destinatario_soggetto_ruolo_id,
+                      sorgente_tipo_id, sorgente_id, sorgente_uid, billing_account_id,
+                      utility_id, valuta_id, emittente_fiscale_id,
+                      causale_trasporto_id, aspetto_bene_id,
+                      modalita_addebito_trasporto_id,
+                      mittente_soggetto_ruolo_id, vettore_soggetto_ruolo_id,
+                      fatturazione_immediata)
+                  VALUES (
+                      COALESCE(p_data, (SELECT script.fn_data_operativa())),
+                      v_orig.destinatario_soggetto_ruolo_id,
+                      v_prov_tipo_id, v_prov_id, v_prov_uid, v_orig.billing_account_id,
+                      v_orig.utility_id, v_orig.valuta_id, v_orig.emittente_fiscale_id,
+                      v_orig.causale_trasporto_id, v_orig.aspetto_bene_id,
+                      v_orig.modalita_addebito_trasporto_id,
+                      v_orig.mittente_soggetto_ruolo_id, v_orig.vettore_soggetto_ruolo_id,
+                      COALESCE(v_orig.fatturazione_immediata, false))
+                  RETURNING id INTO v_new_ddt_id;
+
+                  -- 4-bis) Cascata indirizzi (R2): copia 1:1 gli snapshot del
+                  --   DDT d'origine, filtrati sui tipi ammessi in ambito DDT.
+                  --   origine_* propagati; idempotente (uno-per-tipo).
+                  --   Modellata sul passo 4-bis di fn_genera_ddt_da_ordine.
+                  --
+                  -- ⭐ E' il pezzo che oggi BLOCCA l'emissione: senza
+                  --   indirizzi, trgfn_ddt_guard_indirizzi_obbligatori alza
+                  --   E_INDIRIZZO_DOC_OBBLIGATORIO su un documento che il
+                  --   database ha generato da se'.
+                  --
+                  -- ⚠️ Il filtro su config.tipi_indirizzi_allowed SEMBRA
+                  --   ridondante — le righe di ddt_indirizzi sono gia'
+                  --   passate da trgfn_tipi_indirizzi_only_allowed('DDT_VENDITA') — e
+                  --   non lo e': un tipo RITIRATO DOPO resterebbe sulle righe
+                  --   vecchie e farebbe fallire questo INSERT contro lo
+                  --   stesso trigger. E' cio' che rende la copia tollerante
+                  --   al ritiro di un tipo.
+                  --
+                  -- ⚠️ Se la testata d'origine non e' stata trovata,
+                  --   v_orig.ddt_origine_id e' NULL e questa INSERT non
+                  --   inserisce niente: nessun ramo condizionale da
+                  --   mantenere.
+                  INSERT INTO vendite.ddt_indirizzi (
+                      ddt_id, tipo_indirizzo_id, snapshot,
+                      origine_indirizzo_id, origine_soggetto_ruolo_id)
+                  SELECT v_new_ddt_id, di.tipo_indirizzo_id, di.snapshot,
+                         di.origine_indirizzo_id, di.origine_soggetto_ruolo_id
+                    FROM vendite.ddt_indirizzi di
+                    JOIN config.tipi_indirizzi_allowed a
+                      ON a.tipo_indirizzo_id = di.tipo_indirizzo_id
+                     AND a.ambito = 'DDT_VENDITA'
+                     AND a.attivo IS TRUE
+                   WHERE di.ddt_id = v_orig.ddt_origine_id
+                  ON CONFLICT (ddt_id, tipo_indirizzo_id) DO NOTHING;
+
+                  -- 5) Righe ri-consegna con copertura residua.
+                  --    rev 2026-07-26: il residuo viene dall'helper UNICO
+                  --    fn_resi_riga_residuo_riconsegna, che sottrae anche le
+                  --    RINUNCE. Cosi' la quota dichiarata definitiva non e' piu'
+                  --    ri-spedibile: la richiesta viene troncata dal LEAST, e se
+                  --    tutto e' rinunciato la riga si salta (CONTINUE) fino a
+                  --    E_RESO_NESSUNA_RICONSEGNA_PENDENTE.
+                  --
+                  -- ⭐ rev 2026-08-28 (Fase A, R4+R4-quater): si legge anche
+                  --    il VALORE dalla riga di DDT d'origine.
+                  --    vendite.resi_righe.ddt_riga_id e' NOT NULL, quindi la
+                  --    sorgente c'e' sempre — a un salto solo, ed e' la
+                  --    stessa relazione da cui gia' arrivano articolo,
+                  --    descrizione e UoM.
+                  -- ⚠️ NON e' resi_righe la sorgente del valore: quella
+                  --    tabella il prezzo NON ce l'ha (articolo, descrizione,
+                  --    quantita', UoM, tipo, motivo — nessuna colonna di
+                  --    valore). Il reso e' uno snapshot di QUANTITA', non di
+                  --    VALORE. Chi cercasse il prezzo li' concluderebbe che
+                  --    «non c'e'», mentre sta sulla riga a monte.
+                  -- ⚠️ src_iva_id passa da un LEFT JOIN su config.iva
+                  --    filtrato su `attivo`, per la stessa ragione del passo
+                  --    2: vendite.ddt_righe ha un require_active_parent su
+                  --    iva_id, e un'aliquota ritirata farebbe fallire
+                  --    l'INSERT invece di lasciare il campo da scegliere.
+                  -- ⭐ rev 2026-10-13 (20261013-43, A-6): la porta della riconsegna. Il
+                  --    guard delle regole sull'articolo (script.trgfn_righe_guard_articolo_ammesso)
+                  --    esenta le righe di questo reso: si restituisce cio' che e' uscito,
+                  --    anche se l'articolo nel frattempo e' diventato solo componente. Si
+                  --    chiude subito dopo il ciclo.
+                  PERFORM set_config('zeroerp.ddt_riconsegna', p_reso_id::text, true);
+                  FOR v_riga IN
+                      SELECT rr.id AS resi_riga_id, rr.articolo_id, rr.descrizione,
+                             rr.uom_operativa_id, COALESCE(rr.factor_to_base, 1) AS factor,
+                             rr.quantita AS qta_resa, rr.ordine_riga_id,
+                             dr_src.natura_vendita_id   AS src_natura_vendita_id,
+                             dr_src.prezzo_unitario     AS src_prezzo_unitario,
+                             dr_src.sconto_percentuale  AS src_sconto_percentuale,
+                             iva_src.id                 AS src_iva_id,
+                             vendite.fn_resi_riga_residuo_riconsegna(rr.id) AS residuo_ric,
+                             (SELECT (e->>'qta')::numeric
+                                FROM jsonb_array_elements(COALESCE(p_righe,'[]'::jsonb)) e
+                               WHERE (e->>'resi_riga_id')::bigint = rr.id
+                               LIMIT 1) AS qta_richiesta
+                        FROM vendite.resi_righe rr
+                        JOIN config.tipi_reso tr ON tr.id = rr.tipo_reso_id
+                        JOIN vendite.ddt_righe dr_src ON dr_src.id = rr.ddt_riga_id
+                        LEFT JOIN config.iva iva_src
+                               ON iva_src.id = dr_src.iva_id AND iva_src.attivo IS TRUE
+                       WHERE rr.reso_id = p_reso_id
+                         AND rr.attivo IS TRUE
+                         AND tr.riapre_residuo IS TRUE
+                         AND (p_righe IS NULL OR rr.id IN (
+                               SELECT (e->>'resi_riga_id')::bigint
+                                 FROM jsonb_array_elements(p_righe) e))
+                       ORDER BY rr.riga_nr, rr.id
+                  LOOP
+                      v_residuo_ric := v_riga.residuo_ric;   -- base, al netto di ric+rin
+                      IF v_residuo_ric <= 0 THEN
+                          CONTINUE;  -- gia' ri-consegnata o interamente rinunciata
+                      END IF;
+
+                      IF p_righe IS NOT NULL THEN
+                          v_qta_ric := LEAST(COALESCE(v_riga.qta_richiesta, 0), v_residuo_ric);
+                      ELSE
+                          v_qta_ric := v_residuo_ric;
+                      END IF;
+                      IF v_qta_ric IS NULL OR v_qta_ric <= 0 THEN
+                          CONTINUE;
+                      END IF;
+
+                      v_qta_op := v_qta_ric / v_riga.factor;
+                      v_riga_nr := v_riga_nr + 1;
+
+                      -- Riga DDT (qta_operativa -> quantita via qta_from_operativa).
+                      --
+                      -- ⛔ IL VALORE SI SCRIVE SOLO NELLO STANDALONE, e la
+                      --    lettura sopra invece si fa sempre. Nell'ORDER-BACKED
+                      --    il prezzo si risale a ordini_righe_fulfillment al
+                      --    momento della lettura — e' il COALESCE di
+                      --    fn_list_ddt_da_pushare, lo stesso che fa il punto 3
+                      --    di script.fn_check_ddt_emittibile. Copiarlo qui
+                      --    creerebbe una SECONDA copia di un numero che ha gia'
+                      --    una sorgente, e le due divergono al primo cambio di
+                      --    prezzo sull'ordine.
+                      --    ⚠️ Nello STANDALONE quel secondo termine non esiste
+                      --    (il passo 5 non scrive nessun fulfillment), quindi
+                      --    senza questa copia la riga non ha NIENTE da cui
+                      --    ereditare e il documento non si emette.
+                      --
+                      -- ⚠️ iva_id: la copia e' una MISURA DI ATTESA, non la
+                      --    sede. Con il risolutore IVA la riga prendera'
+                      --    l'aliquota DA LI', come ogni altra riga — il
+                      --    documento a monte proietta, la fattura decide —
+                      --    e QUESTA COPIA VA TOLTA, o saranno due meccanismi
+                      --    per lo stesso campo. Finche' il risolutore non
+                      --    c'e', copiarla e' meglio del NULL: una riga con
+                      --    prezzo e senza aliquota entra in
+                      --    vw_ddt_righe_iva_base (che filtra il prezzo e NON
+                      --    l'aliquota) e produce una riga di riepilogo con
+                      --    imponibile pieno, codice IVA vuoto e imposta zero.
+                      INSERT INTO vendite.ddt_righe (
+                          ddt_id, riga_nr, articolo_id, descrizione,
+                          prezzo_unitario, sconto_percentuale, iva_id,
+                          qta_operativa, uom_operativa_id, factor_to_base,
+                          natura_vendita_id,
+                          sorgente_tipo_id, sorgente_id, sorgente_uid, sorgente_riga)
+                      VALUES (
+                          v_new_ddt_id, v_riga_nr, v_riga.articolo_id, v_riga.descrizione,
+                          CASE WHEN v_riga.ordine_riga_id IS NULL
+                               THEN v_riga.src_prezzo_unitario END,
+                          CASE WHEN v_riga.ordine_riga_id IS NULL
+                               THEN v_riga.src_sconto_percentuale END,
+                          CASE WHEN v_riga.ordine_riga_id IS NULL
+                               THEN v_riga.src_iva_id END,
+                          v_qta_op, v_riga.uom_operativa_id, v_riga.factor,
+                          -- La natura della riga di bolla d'origine (A-4, A-6): si
+                          -- restituisce cio' che e' uscito.
+                          v_riga.src_natura_vendita_id,
+                          -- La provenienza (D-4): il reso e la riga del reso. Il legame con
+                          -- l'ordine, se c'e', resta nel fulfillment.
+                          v_prov_tipo_id, v_prov_id, v_prov_uid, v_riga.resi_riga_id)
+                      RETURNING id, quantita INTO v_new_riga_id, v_qta_base;
+
+                      -- Aggancio duro: ponte reso -> riga DDT (chiude la coda).
+                      INSERT INTO vendite.resi_righe_riconsegne (
+                          resi_riga_id, ddt_riga_id, qta)
+                      VALUES (v_riga.resi_riga_id, v_new_riga_id, v_qta_base);
+
+                      -- Order-backed: fulfillment -> chiude il residuo ordine
+                      --   (guard reso-aware). Standalone -> nessun fulfillment.
+                      IF v_riga.ordine_riga_id IS NOT NULL THEN
+                          INSERT INTO vendite.ordini_righe_fulfillment (
+                              ordine_riga_id, ddt_riga_id, qta_evasa)
+                          VALUES (v_riga.ordine_riga_id, v_new_riga_id, v_qta_base);
+                      END IF;
+
+                      v_n := v_n + 1;
+                  END LOOP;
+                  PERFORM set_config('zeroerp.ddt_riconsegna', '', true);
+
+                  -- 6) Nessuna ri-consegna pendente -> errore (rollback testata orfana).
+                  IF v_n = 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_genera_ddt_riconsegna','E_RESO_NESSUNA_RICONSEGNA_PENDENTE',
+                          jsonb_build_object('reso_id', p_reso_id, 'righe', p_righe),
+                          NULL::uuid, p_reso_id::text);
+                  END IF;
+
+                  -- 7) Ri-proiezione stato ordine per gli ordini coinvolti: il
+                  --    fulfillment appena creato ha chiuso (in tutto o in parte)
+                  --    il residuo riaperto dal reso -> allinea lo stato ordine.
+                  FOR v_ord IN
+                      SELECT DISTINCT orr.ordine_id
+                        FROM vendite.resi_righe rr
+                        JOIN vendite.ordini_righe orr ON orr.id = rr.ordine_riga_id
+                       WHERE rr.reso_id = p_reso_id
+                         AND rr.ordine_riga_id IS NOT NULL
+                  LOOP
+                      -- ⭐ rev 2026-10-11: la proiezione e' il building block
+                      --    vendite.fn_ordine_proietta_stato_evasione (brief-db-ddt-righe-evase-dall-ordine).
+                      PERFORM vendite.fn_ordine_proietta_stato_evasione(v_ord.ordine_id);
+                  END LOOP;
+
+                  RETURN v_new_ddt_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_genera_ddt_riconsegna(vendite.resi.id%TYPE, jsonb, vendite.ddt.data%TYPE) IS
+                'Madre della ri-spedizione di un reso: una bolla DRAFT nuova, legata all''ordine (order-backed) o senza ordine (standalone). La provenienza e'' il reso, per la testata e per ogni riga: RESO_VENDITA con la chiave del reso da script.fn_sorgente_provenienza, e sulla riga in sorgente_riga la riga del reso. Il legame con l''ordine resta nel fulfillment, e la corsia di fatturazione dell''ordine la trova vendite.fn_ddt_trigger_ordine_testata. Per ogni riga del reso con un residuo da riconsegnare (vendite.fn_resi_riga_residuo_riconsegna, al netto di riconsegne e rinunce; p_righe [{resi_riga_id, qta}], NULL = tutto il residuo) scrive la riga di bolla, il ponte vendite.resi_righe_riconsegne e, se order-backed, il fulfillment che richiude il residuo dell''ordine. La bolla d''origine del reso si legge con la regola (d.id = r.sorgente_id OR d.uid = r.sorgente_uid). Eredita dalla bolla d''origine le scelte (causale, aspetto, modalita'' di addebito, mittente, vettore, fatturazione_immediata) e gli indirizzi di ambito DDT_VENDITA, non le misure del viaggio (colli, pesi, volume, targa, autista, date, tracking). Ogni eredita'' di catalogo passa da un LEFT JOIN filtrato su attivo: un elemento ritirato lascia il campo vuoto invece di far fallire la generazione. Nel solo ramo standalone copia prezzo, sconto e aliquota dalla riga della bolla d''origine; nell''order-backed il valore lo risale vendite.fn_list_ddt_da_pushare dal fulfillment. La riga porta la natura della riga resa. Mentre scrive le righe accende la porta zeroerp.ddt_riconsegna (l''id del reso), con cui il guard delle regole sull''articolo esenta gli articoli del reso, e la richiude subito. Lo stato dell''ordine lo proietta vendite.fn_ordine_proietta_stato_evasione.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo precedente e' quello di 20261106-56: un rollback lo riprende da li'.
+              SELECT 1;

@@ -111,7 +111,7 @@ DECLARE
     -- Le colonne ferme in ogni stato. billing_account_id non c'e'
     -- piu' (rev 2026-10-11): lo ferma il vincolo, quando c'e'.
     c_non_edit_draft CONSTANT jsonb :=
-        '["numero","sorgente_tipo_id","sorgente_uid"]'::jsonb;
+        '["numero","sorgente_tipo_id","sorgente_id","sorgente_uid"]'::jsonb;
     -- Le colonne «sempre» di QUESTA bolla: le costanti, piu' il
     -- cliente se un vincolo lo tiene (rev 2026-10-11).
     v_sempre     jsonb;

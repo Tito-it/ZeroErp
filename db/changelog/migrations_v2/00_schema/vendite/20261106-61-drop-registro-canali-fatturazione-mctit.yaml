@@ -1,0 +1,86 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL REGISTRO DEI CANALI DI FATTURAZIONE SI RITIRA
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto T, giro T.1 (D-10 di
+#   Tid, §6.4: il registro si ritira; D-7 decade con lui).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   vendite.documenti_fatturazione_canali doveva impedire che un documento si
+#   fatturasse per due strade. E' stata costruita solo la meta' che REGISTRA
+#   (un trigger su preventivi, ordini, bolle e contratti + la funzione che
+#   scrive); quella che BLOCCA non e' mai nata. Nessuna vista, funzione,
+#   policy, FK, BE o FE la legge (censito sul catalogo vivo, §6.4). La regola
+#   che voleva dare la tengono i predicati di eleggibilita' del push.
+#   Ritirarla toglie anche un lettore di ordini.sorgente_* e ddt.sorgente_*
+#   prima che il lotto T ne cambi la grammatica, e la grammatica G4 (l'uid come
+#   testo per un tipo a chiave id).
+#
+# ── ⚠️ CHE COSA SE NE VA, e in quale ordine ──────────────────────────
+#   1. i quattro trigger scritti a mano trg_<tabella>_z90_sync_canali_* (non li
+#      genera ci_apply: nascono da 20260224-34 e -46);
+#   2. vendite.trgfn_documenti_sync_canali e vendite.fn_set_documento_canale_stato,
+#      che servivano solo a loro;
+#   3. la tabella. I suoi trigger di audit, tx_id, storico e require_attivo li
+#      ha generati ci_apply e cadono con lei (nessun DDL su di loro, §11.5);
+#   4. la shadow storico.documenti_fatturazione_canali: senza la madre non
+#      riceve piu' niente e ci_apply non la ricrea (scopre le madri dalla
+#      colonna storicizza). La sua storia e' quella di un registro che nessuno
+#      leggeva: se ne va con lui. IF EXISTS: da zero, al primo passaggio, la
+#      shadow non e' ancora nata (la crea ci_apply dopo).
+#   Tutto in un changeSet solo, nella stessa fase: un DROP FUNCTION staccato
+#   dal DROP TRIGGER fallirebbe sui trigger dipendenti, e un DROP TABLE prima
+#   delle funzioni lascerebbe i trigger a scrivere su una tabella che non c'e'.
+#   Le registrazioni nei cataloghi (dbops.storico_scope_policy,
+#   config.storico_set_storicizza) le toglie 80_data/changelog/20261106-62.
+#
+# ⛔ DROP TABLE senza CASCADE: una dipendenza non censita deve fermare il
+#   migrate, non sparire insieme alla tabella.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261106-61-drop-registro-canali-fatturazione-mctit.yaml
+
+  - changeSet:
+      id: 20261106-61-drop-registro-canali-fatturazione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Ritira il registro dei canali di fatturazione: i quattro trigger
+        trg_*_z90_sync_canali_*, vendite.trgfn_documenti_sync_canali,
+        vendite.fn_set_documento_canale_stato, la tabella
+        vendite.documenti_fatturazione_canali e la sua shadow di storico.
+        brief-db-sorgente-documento-e-riga §7.2 lotto T, giro T.1 (D-10).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_preventivi_z90_sync_canali_ins_upd ON vendite.preventivi;
+              DROP TRIGGER IF EXISTS trg_ordini_z90_sync_canali_ins_upd ON vendite.ordini;
+              DROP TRIGGER IF EXISTS trg_ddt_z90_sync_canali_ins_upd ON vendite.ddt;
+              DROP TRIGGER IF EXISTS trg_contratti_z90_sync_canali_ins ON vendite.contratti;
+
+              DROP FUNCTION vendite.trgfn_documenti_sync_canali();
+              DROP FUNCTION vendite.fn_set_documento_canale_stato(
+                  bigint, text, character varying, character varying, bigint, text, text, jsonb);
+
+              -- ⛔ Senza CASCADE (vedi intestazione).
+              DROP TABLE vendite.documenti_fatturazione_canali;
+              DROP TABLE IF EXISTS storico.documenti_fatturazione_canali;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: il registro e i suoi dati non si ricostruiscono.
+              -- La struttura e' nei changeSet che l'hanno creata (20260224-32,
+              -- -33, -34, -46, 20260628-18, -19, 20260804-53).
+              SELECT 1;

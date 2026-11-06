@@ -29,7 +29,6 @@ search:
 - [ddt](tabelle/ddt.md)
 - [ddt_righe](tabelle/ddt_righe.md)
 - [ddt_righe_prelievi](tabelle/ddt_righe_prelievi.md)
-- [documenti_fatturazione_canali](tabelle/documenti_fatturazione_canali.md)
 - [emittenti_fiscali](tabelle/emittenti_fiscali.md)
 - [eventi_assets](tabelle/eventi_assets.md)
 - [fatturazione_lotti](tabelle/fatturazione_lotti.md)

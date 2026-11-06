@@ -1,0 +1,103 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite.fn_ddt_trigger_ordine_testata: L'ORDINE ANCHE DIETRO UN RESO
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto T, giro T.2 (D-4: la
+#   provenienza della bolla di riconsegna e' il reso).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   La funzione da' la corsia di fatturazione (ordini.fatturazione_trigger)
+#   dell'ordine dietro la testata di una bolla. La leggono la diagnosi del push
+#   e il check di emissione, per la sola riga-onere senza fulfillment.
+#   Fino a T.2 la riconsegna nata da un ordine dichiarava in testata l'ordine,
+#   e l'onere scritto su di lei seguiva la corsia di quell'ordine. Con D-4 la
+#   testata dichiara il reso: senza il ramo nuovo la corsia diventerebbe NULL e
+#   l'onere cambierebbe strada senza che nessuno l'abbia deciso.
+#
+# ── ⚠️ CHE COSA CAMBIA ──────────────────────────────────────────────
+#   Due rami, uno per tipo:
+#   * ORDINE_VENDITA: l'ordine stesso, con la regola d'incontro (id o uid);
+#   * RESO_VENDITA: l'ordine dietro il reso, dalle sue righe
+#     (resi_righe.ordine_riga_id), la prima per id. E' la regola con cui la
+#     riconsegna decideva se era «nata da un ordine». Un reso senza righe d'ordine
+#     (standalone) non ha corsia: NULL, come prima.
+#   Firma, RETURNS e proprieta' invariate (BEGIN ATOMIC: chi dipende da lei,
+#   vendite.fn_ddt_push_diagnosi, non si tocca). COMMENT riscritto al presente,
+#   in un change suo: il driver JDBC non spezza le istruzioni dopo un BEGIN ATOMIC.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261106-63-update-fn-ddt-trigger-ordine-testata-ramo-reso-mctit.yaml
+
+  - changeSet:
+      id: 20261106-63-update-fn-ddt-trigger-ordine-testata-ramo-reso
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_ddt_trigger_ordine_testata: la corsia dell'ordine anche quando
+        la testata della bolla dichiara un reso (la riconsegna, D-4).
+        brief-db-sorgente-documento-e-riga §7.2 lotto T, giro T.2.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite' AND p.proname = 'fn_ddt_trigger_ordine_testata';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_ddt_trigger_ordine_testata(
+                  p_sorgente_tipo_id vendite.ddt.sorgente_tipo_id%TYPE,
+                  p_sorgente_uid     vendite.ddt.sorgente_uid%TYPE,
+                  p_sorgente_id      vendite.ddt.sorgente_id%TYPE DEFAULT NULL)
+              RETURNS vendite.ordini.fatturazione_trigger%TYPE
+              LANGUAGE sql
+              STABLE
+              PARALLEL SAFE
+              SECURITY INVOKER
+              BEGIN ATOMIC
+                SELECT o.fatturazione_trigger
+                  FROM config.sorgenti so
+                  JOIN vendite.ordini o ON (o.id = p_sorgente_id OR o.uid = p_sorgente_uid)
+                 WHERE so.id = p_sorgente_tipo_id
+                   AND so.codice_interno = 'ORDINE_VENDITA'
+                UNION ALL
+                SELECT o.fatturazione_trigger
+                  FROM config.sorgenti so
+                  JOIN vendite.resi r ON (r.id = p_sorgente_id OR r.uid = p_sorgente_uid)
+                  JOIN LATERAL (SELECT orr.ordine_id
+                                  FROM vendite.resi_righe rr
+                                  JOIN vendite.ordini_righe orr ON orr.id = rr.ordine_riga_id
+                                 WHERE rr.reso_id = r.id
+                                 ORDER BY rr.id
+                                 LIMIT 1) x ON true
+                  JOIN vendite.ordini o ON o.id = x.ordine_id
+                 WHERE so.id = p_sorgente_tipo_id
+                   AND so.codice_interno = 'RESO_VENDITA';
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⛔ In un change suo: pgjdbc, dopo l'END di un BEGIN ATOMIC, non spezza
+              --   piu' le istruzioni (il COMMENT finirebbe nella stessa Parse).
+              COMMENT ON FUNCTION vendite.fn_ddt_trigger_ordine_testata(vendite.ddt.sorgente_tipo_id%TYPE, vendite.ddt.sorgente_uid%TYPE, vendite.ddt.sorgente_id%TYPE) IS
+                'Il fatturazione_trigger dell''ordine dietro la testata di una bolla. Se la testata dichiara un ordine (ORDINE_VENDITA), e'' quell''ordine, cercato con la regola (o.id = p_sorgente_id OR o.uid = p_sorgente_uid). Se dichiara un reso (RESO_VENDITA, la bolla di riconsegna), e'' l''ordine dietro le righe del reso (resi_righe.ordine_riga_id, la prima per id): la riconsegna segue la corsia dell''ordine da cui la merce era partita. NULL se la bolla non viene da un ordine ne'' da un reso nato da un ordine, se la sorgente manca o se il documento non e'' visibile (SECURITY INVOKER: la RLS di chi chiede). Serve alla riga-onere senza legame di fulfillment, scritta a mano sulla bolla, il cui trigger non si legge dal legame. La leggono vendite.fn_ddt_push_diagnosi e script.fn_check_ddt_emittibile. p_sorgente_id e'' in coda, DEFAULT NULL. BEGIN ATOMIC.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo precedente e' quello di 20261106-24: un rollback lo riprende da li'.
+              SELECT 1;

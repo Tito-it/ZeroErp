@@ -82,11 +82,11 @@ $f$;
 -- =========================================================
 CREATE TEMP TABLE _atteso (tabella text, colonna text, aperta_in text);
 INSERT INTO _atteso VALUES
-  -- DDT (D-1, D-5, D-10)
+  -- DDT (D-1, D-5, D-10; sorgente_id dal giro T.2 di brief-db-sorgente-documento-e-riga)
   ('ddt','data',''),('ddt','valuta_id',''),('ddt','anno',''),('ddt','serie',''),('ddt','registro_id',''),
   ('ddt','causale_trasporto_id',''),('ddt','billing_account_id',''),('ddt','utility_id',''),
   ('ddt','destinatario_soggetto_ruolo_id',''),('ddt','magazzino_id',''),('ddt','magazzino_arrivo_id',''),
-  ('ddt','emittente_fiscale_id',''),('ddt','sorgente_tipo_id',''),('ddt','sorgente_uid',''),
+  ('ddt','emittente_fiscale_id',''),('ddt','sorgente_tipo_id',''),('ddt','sorgente_uid',''),('ddt','sorgente_id',''),
   ('ddt','mittente_soggetto_ruolo_id','CONSEGNATO,EMESSO,SPEDITO'),('ddt','vettore_soggetto_ruolo_id','CONSEGNATO,EMESSO,SPEDITO'),
   ('ddt','aspetto_bene_id','CONSEGNATO,EMESSO,SPEDITO'),('ddt','modalita_addebito_trasporto_id','CONSEGNATO,EMESSO,SPEDITO'),
   ('ddt','num_colli','CONSEGNATO,EMESSO,SPEDITO'),('ddt','peso_lordo','CONSEGNATO,EMESSO,SPEDITO'),
@@ -96,7 +96,7 @@ INSERT INTO _atteso VALUES
   ('ddt','tracking_code','CONSEGNATO,EMESSO,SPEDITO'),('ddt','meta','CONSEGNATO,EMESSO,SPEDITO'),
   -- reso (D-2, D-5, D-10)
   ('resi','data',''),('resi','valuta_id',''),('resi','anno',''),('resi','registro_id',''),
-  ('resi','magazzino_id',''),('resi','emittente_fiscale_id',''),('resi','sorgente_tipo_id',''),('resi','sorgente_uid',''),
+  ('resi','magazzino_id',''),('resi','emittente_fiscale_id',''),('resi','sorgente_tipo_id',''),('resi','sorgente_uid',''),('resi','sorgente_id',''),
   ('resi','meta','CONFERMATO'),
   -- ordine (D-3, D-5, D-7, D-10)
   ('ordini','data',''),('ordini','valuta_id',''),('ordini','tasso_cambio',''),('ordini','anno',''),
