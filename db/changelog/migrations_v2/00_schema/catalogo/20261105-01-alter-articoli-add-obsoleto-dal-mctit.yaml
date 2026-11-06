@@ -1,0 +1,66 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# RITIRARE UN ARTICOLO SENZA CANCELLARLO — catalogo.articoli.obsoleto_dal
+#   Brief: brief-db-articoli-obsoleto-dal §3 (modello di Tid, 2026-11-04).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   Un articolo usato non si cancella e non si disattiva: attivo=false e'
+#   bloccato dai block_deact, e a ragione (attivo = «riferimento valido»).
+#   Mancava l'altro asse, «si sceglie per un uso nuovo»: lo stesso difetto che
+#   brief-db-deprecabilita-catalogo-vs-istanze ha chiuso sui cataloghi delle
+#   pratiche con obsoleto_dal.
+#
+# ── ⚠️ CONTRATTO ────────────────────────────────────────────────────
+#   · NULL = si sceglie; data raggiunta = ritirato; data futura = ritiro
+#     programmato. Il confronto e' alla data operativa (O-1) e si fa SOLO con
+#     script.fn_e_obsoleto (20261105-06), sede unica del predicato;
+#   · ritirato = la riga NUOVA lo respinge, la riga DERIVATA lo accetta, il
+#     magazzino non si blocca mai (O-5). attivo resta true;
+#   · niente backfill: nessun articolo nasce ritirato. %TYPE non vale nel DDL.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/catalogo/20261105-01-alter-articoli-add-obsoleto-dal-mctit.yaml
+
+  - changeSet:
+      id: 20261105-01-alter-articoli-add-obsoleto-dal
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        catalogo.articoli.obsoleto_dal (date NULL): data dalla quale l'articolo non si sceglie piu' per una
+        riga nuova (NULL = si sceglie; data futura = ritiro programmato). Asse separato da attivo, che resta
+        «riferimento valido». brief-db-articoli-obsoleto-dal §3.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: catalogo
+            tableName: articoli
+        - not:
+            - columnExists:
+                schemaName: catalogo
+                tableName: articoli
+                columnName: obsoleto_dal
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE catalogo.articoli
+                ADD COLUMN obsoleto_dal date NULL;
+
+              COMMENT ON COLUMN catalogo.articoli.obsoleto_dal IS
+                'Data dalla quale l''articolo non si SCEGLIE piu'' per una riga nuova: NULL = si sceglie; data raggiunta (alla data operativa) = ritirato; data futura = ritiro programmato. Il predicato e'' script.fn_e_obsoleto, sede unica. Ritirato: la riga nuova lo respinge (guard di riga e picker con lo stesso motivo E_ARTICOLO_OBSOLETO), la riga derivata da un altro documento lo accetta, il magazzino non si blocca mai. NON tocca attivo (riferimento valido), che resta true. brief-db-articoli-obsoleto-dal.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE catalogo.articoli DROP COLUMN obsoleto_dal;

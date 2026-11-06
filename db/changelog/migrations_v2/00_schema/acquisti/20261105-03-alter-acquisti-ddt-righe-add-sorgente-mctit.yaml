@@ -1,0 +1,71 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA RIGA DERIVATA DICE DA DOVE VIENE — sorgente polimorfa su acquisti.ddt_righe
+#   Brief: brief-db-articoli-obsoleto-dal §5.4, decisioni D e O-3 di Tid
+#   (2026-11-04).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   O-3: sugli acquisti vale la stessa regola delle vendite, quindi la riga di
+#   bolla d'acquisto deve dire se e' derivata. Il legame con l'ordine sta in
+#   acquisti.ordini_righe_fulfillment, scritto dopo la riga (D). Le colonne
+#   sono quelle di acquisti.ordini_righe. Oggi nessun verbo ne' il BE scrive
+#   righe d'acquisto (2026-11-04): chi lo fara' scrive la sorgente nello stesso
+#   INSERT.
+#
+# ── ⚠️ CONTRATTO ────────────────────────────────────────────────────
+#   Modello A di script.trgfn_guard_sorgente_polimorfa_tipizzata (montato in
+#   20_code): chiave in sorgente_riga se key_selector = 'id', in sorgente_uid se
+#   = 'uid'. FK senza indice (fn_populate_fk_index_policy, consentito=false).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/acquisti/20261105-03-alter-acquisti-ddt-righe-add-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20261105-03-alter-acquisti-ddt-righe-add-sorgente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        sorgente_tipo_id / sorgente_uid / sorgente_riga su acquisti.ddt_righe, come su acquisti.ordini_righe:
+        la riga generata da un verbo dice da dove viene nello stesso INSERT. brief-db-articoli-obsoleto-dal
+        §5.4 (D, O-3).
+      preConditions:
+        - onFail: HALT
+        - not:
+            - columnExists:
+                schemaName: acquisti
+                tableName: ddt_righe
+                columnName: sorgente_tipo_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE acquisti.ddt_righe
+                ADD COLUMN sorgente_tipo_id bigint NULL,
+                ADD COLUMN sorgente_uid     uuid   NULL,
+                ADD COLUMN sorgente_riga    bigint NULL,
+                ADD CONSTRAINT fk_a_ddt_righe_sorgente_tipo
+                    FOREIGN KEY (sorgente_tipo_id) REFERENCES config.sorgenti(id) ON UPDATE CASCADE;
+
+              COMMENT ON COLUMN acquisti.ddt_righe.sorgente_tipo_id IS
+                'FK -> config.sorgenti(id): da dove viene la riga, se l''ha generata un verbo (per esempio la riga dell''ordine d''acquisto). NULL = riga scelta dall''operatore. Si scrive nello STESSO INSERT, prima del legame in acquisti.ordini_righe_fulfillment; la chiave sta in sorgente_riga (key_selector id) o sorgente_uid (uid). Il guard dell''articolo ritirato legge questa colonna: valorizzata = riga derivata, passa. brief-db-articoli-obsoleto-dal (D, O-3).';
+              COMMENT ON COLUMN acquisti.ddt_righe.sorgente_uid IS
+                'Chiave della sorgente quando config.sorgenti.key_selector = ''uid''. Vedi sorgente_tipo_id.';
+              COMMENT ON COLUMN acquisti.ddt_righe.sorgente_riga IS
+                'Chiave della sorgente quando config.sorgenti.key_selector = ''id'' (l''id della riga di partenza). Vedi sorgente_tipo_id.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE acquisti.ddt_righe
+                DROP COLUMN sorgente_riga, DROP COLUMN sorgente_uid, DROP COLUMN sorgente_tipo_id;

@@ -31,6 +31,9 @@
 | tipo_eccezione | vendite.tipo_eccezione_contratto | NO |  |
 | stato_approvazione_prezzo | config.stato_approvazione_prezzo | YES |  |
 | pratica_approvazione_prezzo_id | bigint | YES |  |
+| sorgente_tipo_id | bigint | YES |  |
+| sorgente_uid | uuid | YES |  |
+| sorgente_riga | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -49,6 +52,7 @@
 | CHECK | chk_contrighe_quantita_per_fonte |  |
 | FOREIGN KEY | fk_contratti_righe_erogazione_fonte | tipo_erogazione, fonte_quantita_attesa |
 | FOREIGN KEY | fk_contratti_righe_periodicita | periodicita |
+| FOREIGN KEY | fk_contratti_righe_sorgente_tipo | sorgente_tipo_id |
 | FOREIGN KEY | fk_contratti_righe_uom_operativa_id | uom_operativa_id |
 | FOREIGN KEY | fk_contrighe_articoli | articolo_id |
 | FOREIGN KEY | fk_contrighe_contratti | contratto_id |
@@ -68,35 +72,39 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_contratti_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('CONTRATTO', 'contratto_id')` |
-| trg_contratti_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('CONTRATTO', 'contratto_id')` |
 | trg_contratti_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('CONTRATTO', 'contratto_id')` |
+| trg_contratti_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('CONTRATTO', 'contratto_id')` |
+| trg_contratti_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('CONTRATTO', 'contratto_id')` |
 | trg_contratti_righe_a05_guard_esclusione_immutabile_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_guard_esclusione_immutabile('contratto_id')` |
-| trg_contratti_righe_a10_articoli_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli', 'attivo', 'articolo_id', 'id')` |
 | trg_contratti_righe_a10_articoli_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli', 'attivo', 'articolo_id', 'id')` |
+| trg_contratti_righe_a10_articoli_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli', 'attivo', 'articolo_id', 'id')` |
 | trg_contratti_righe_a10_contratti_righe_componenti_block_d46424 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'contratti_righe_componenti', 'riga_contratto_id', 'id', 'attivo')` |
-| trg_contratti_righe_a10_default_erogazione_articolo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_default_erogazione_da_articolo()` |
 | trg_contratti_righe_a10_default_erogazione_articolo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_default_erogazione_da_articolo()` |
-| trg_contratti_righe_a10_default_fonte_qta_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_default_fonte_qta()` |
+| trg_contratti_righe_a10_default_erogazione_articolo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_default_erogazione_da_articolo()` |
 | trg_contratti_righe_a10_default_fonte_qta_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_default_fonte_qta()` |
+| trg_contratti_righe_a10_default_fonte_qta_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_default_fonte_qta()` |
 | trg_contratti_righe_a10_default_periodicita_listino_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_default_periodicita_da_listino('CONTRATTO', 'contratto_id')` |
 | trg_contratti_righe_a10_default_periodicita_listino_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_default_periodicita_da_listino('CONTRATTO', 'contratto_id')` |
-| trg_contratti_righe_a10_guard_articolo_ammesso_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_guard_articolo_ammesso('CONTRATTO', 'contratto_id')` |
-| trg_contratti_righe_a10_guard_articolo_ammesso_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_guard_articolo_ammesso('CONTRATTO', 'contratto_id')` |
-| trg_contratti_righe_a10_guard_erogazione_obbligatoria_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_guard_erogazione_obbligatoria('contratto_id')` |
+| trg_contratti_righe_a10_guard_articolo_ammesso_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_guard_articolo_ammesso('CONTRATTO', 'contratto_id', 'sorgente_tipo_id')` |
+| trg_contratti_righe_a10_guard_articolo_ammesso_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_guard_articolo_ammesso('CONTRATTO', 'contratto_id', 'sorgente_tipo_id')` |
 | trg_contratti_righe_a10_guard_erogazione_obbligatoria_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_guard_erogazione_obbligatoria('contratto_id')` |
+| trg_contratti_righe_a10_guard_erogazione_obbligatoria_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_guard_erogazione_obbligatoria('contratto_id')` |
 | trg_contratti_righe_a10_guard_erogazione_perimetro_ins | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_guard_erogazione_perimetro('CONTRATTO', 'contratto_id')` |
 | trg_contratti_righe_a10_guard_erogazione_perimetro_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_guard_erogazione_perimetro('CONTRATTO', 'contratto_id')` |
 | trg_contratti_righe_a10_guard_esclusione_senza_dati_ins | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_guard_esclusione_senza_dati('contratto_id')` |
 | trg_contratti_righe_a10_guard_pending_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_guard_pending('contratto_id')` |
-| trg_contratti_righe_a10_guard_periodicita_canone_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_guard_periodicita_canone('contratto_id')` |
 | trg_contratti_righe_a10_guard_periodicita_canone_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_guard_periodicita_canone('contratto_id')` |
-| trg_contratti_righe_a10_guard_quantita_per_fonte_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_guard_quantita_per_fonte('contratto_id')` |
+| trg_contratti_righe_a10_guard_periodicita_canone_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_guard_periodicita_canone('contratto_id')` |
 | trg_contratti_righe_a10_guard_quantita_per_fonte_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_guard_quantita_per_fonte('contratto_id')` |
+| trg_contratti_righe_a10_guard_quantita_per_fonte_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_guard_quantita_per_fonte('contratto_id')` |
+| trg_contratti_righe_a10_guard_sorgente_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_guard_sorgente_polimorfa_tipizzata()` |
+| trg_contratti_righe_a10_guard_sorgente_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_sorgente_polimorfa_tipizzata()` |
 | trg_contratti_righe_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('tipo_eccezione', 'E_CONTRATTO_RIGA_TIPO_ECCEZIONE_IMMUTABILE')` |
 | trg_contratti_righe_a10_note_contratto_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'note_contratto', 'target_riga_id', 'id', 'attivo')` |
-| trg_contratti_righe_a10_qta_from_operativa_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_qta_from_operativa('true', 'fonte_quantita_attesa')` |
 | trg_contratti_righe_a10_qta_from_operativa_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_qta_from_operativa('true', 'fonte_quantita_attesa')` |
+| trg_contratti_righe_a10_qta_from_operativa_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_qta_from_operativa('true', 'fonte_quantita_attesa')` |
+| trg_contratti_righe_a10_sorgenti_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_tipo_id', 'id')` |
+| trg_contratti_righe_a10_sorgenti_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_tipo_id', 'id')` |
 | trg_contratti_righe_a10_unita_misura_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_operativa_id', 'id')` |
 | trg_contratti_righe_a10_unita_misura_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_operativa_id', 'id')` |
 | trg_contratti_righe_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |

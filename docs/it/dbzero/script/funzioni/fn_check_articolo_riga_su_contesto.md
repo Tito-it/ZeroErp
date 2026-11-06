@@ -2,7 +2,7 @@
 # ⚙️ Funzione `fn_check_articolo_riga_su_contesto`
 
 ```sql
-CREATE FUNCTION fn_check_articolo_riga_su_contesto(p_contesto jsonb, p_articolo_id uuid, p_natura_vendita_id bigint)
+CREATE FUNCTION fn_check_articolo_riga_su_contesto(p_contesto jsonb, p_articolo_id uuid, p_natura_vendita_id bigint, p_scelta_nuova boolean)
 ```
 
 > 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
@@ -12,7 +12,7 @@ CREATE FUNCTION fn_check_articolo_riga_su_contesto(p_contesto jsonb, p_articolo_
 <div data-search-exclude markdown>
 
 ```sql
-CREATE OR REPLACE FUNCTION script.fn_check_articolo_riga_su_contesto(p_contesto jsonb, p_articolo_id uuid, p_natura_vendita_id bigint DEFAULT NULL::bigint)
+CREATE OR REPLACE FUNCTION script.fn_check_articolo_riga_su_contesto(p_contesto jsonb, p_articolo_id uuid, p_natura_vendita_id bigint DEFAULT NULL::bigint, p_scelta_nuova boolean DEFAULT false)
  RETURNS jsonb
  LANGUAGE plpgsql
  STABLE
@@ -41,6 +41,7 @@ DECLARE
     v_padre_codice catalogo.articoli.codice%TYPE := p_contesto ->> 'padre_codice';
     v_padre_iva    catalogo.articoli.iva_id%TYPE := (p_contesto ->> 'padre_iva_id')::bigint;
     v_causale      catalogo.articoli.causale_onere_id%TYPE;
+    v_obsoleto_dal catalogo.articoli.obsoleto_dal%TYPE;
 BEGIN
     -- =========================================================
     -- Scopo:
@@ -66,12 +67,36 @@ BEGIN
 
     SELECT a.codice, a.is_solo_componente,
            COALESCE(p_natura_vendita_id, a.natura_vendita_id),
-           a.is_composito, a.listino_tipologia_id, a.iva_id, a.causale_onere_id
-      INTO v_codice, v_solo_comp, v_natura_id, v_composito, v_tipologia, v_iva, v_causale
+           a.is_composito, a.listino_tipologia_id, a.iva_id, a.causale_onere_id,
+           a.obsoleto_dal
+      INTO v_codice, v_solo_comp, v_natura_id, v_composito, v_tipologia, v_iva, v_causale,
+           v_obsoleto_dal
       FROM catalogo.articoli a
      WHERE a.id = p_articolo_id;
     IF NOT FOUND THEN
         RETURN v_motivi;
+    END IF;
+
+    -- ===================== ARTICOLO RITIRATO ======================
+    -- Vale per OGNI documento, ed e' il primo motivo. Conta solo su una
+    -- SCELTA NUOVA (p_scelta_nuova = true): la dicono il guard di riga
+    -- (INSERT senza sorgente, o articolo cambiato: O-7, O-10) e il
+    -- picker. Chi giudica righe che esistono gia' (emissione, push,
+    -- correzione di struttura) passa il default false: la riga esistente
+    -- e la derivata restano (brief-db-articoli-obsoleto-dal §3).
+    -- «Ritirato» = script.fn_e_obsoleto, sede unica (O-1: data operativa).
+    IF p_scelta_nuova IS TRUE AND script.fn_e_obsoleto(v_obsoleto_dal) THEN
+        v_motivi := v_motivi || jsonb_build_object(
+            'codice',     'E_ARTICOLO_OBSOLETO',
+            'reason',     'OBSOLETO',
+            'reason_key', 'vendite.righe.articolo_reason.obsoleto',
+            'dettaglio',  jsonb_build_object(
+                              'campo',        CASE WHEN v_documento = 'ARTICOLO'
+                                                   THEN 'componente_id' ELSE 'articolo_id' END,
+                              'documento',    v_documento,
+                              'articolo_id',  p_articolo_id,
+                              'obsoleto_dal', v_obsoleto_dal),
+            'valori',     jsonb_build_array(v_codice, to_char(v_obsoleto_dal, 'DD/MM/YYYY')));
     END IF;
 
     -- =========================== PROMO ============================
@@ -406,8 +431,8 @@ BEGIN
 END;
 $function$
 
-COMMENT ON FUNCTION script.fn_check_articolo_riga_su_contesto(p_contesto jsonb, p_articolo_id uuid, p_natura_vendita_id bigint)
-IS 'Check pura (fn_check_*): i motivi, in ordine DICHIARATO, per cui l''articolo p_articolo_id non puo'' stare in una riga del documento descritto da p_contesto (costruito da script.fn_articolo_riga_contesto: mai a mano; senza documento E_PARAMETRO_INVALIDO). ''[]'' = ammesso; altrimenti {codice, reason, reason_key, dettaglio, valori}. Le regole, per documento, sono quelle scritte nel COMMENT di script.fn_check_articolo_riga, che e'' questa funzione sul contesto letto da quella firma; rev 2026-10-14 (20261014-06, D-7): KIT_SENZA_COMPONENTI (E_ARTICOLO_KIT_SENZA_COMPONENTI), un composito senza nessun legame attivo in catalogo.articoli_componenti, motivo 2 di preventivo, ordine, bolla e di AGGIUNTA e OVERRIDE di offerta e contratto (dopo il solo componente); il caso date-dipendente resta all''init dei componenti (E_DOC_COMPOSITO_BOM_VUOTA). In piu'' PROMO_ARTICOLO (D-6, 2026-10-14): 1. solo componente (E_PROMO_ARTICOLO_SOLO_COMPONENTE: nessun prezzo a se'', e il resolver salta la promo in contesto bundle); il composito non e'' un motivo (riceve la promo quando il contratto gli da'' un prezzo con un''eccezione). p_natura_vendita_id: la natura congelata della riga, se c''e''; altrimenti quella dell''articolo. Due chiamanti, una regola (A-2): la firma di sempre script.fn_check_articolo_riga (i guard di tabella) e il picker catalogo.fn_articoli_ammessi, che legge il contesto una volta e giudica ogni articolo trovato (R-5). Nasce il 2026-10-14 dal corpo di 20261013-59, brief-db-articoli-ammessi-per-documento (Lotto 4, §9.4). ⭐ rev 2026-10-19 (20261019-32, brief-db-grammatica-unica-documenti lotto 1, G-1 di Tid): il documento si nomina col codice della sorgente, CONTRATTO | OFFERTA_COMMERCIALE (era OFFERTA); dove sopra si legge OFFERTA come selettore, oggi e'' OFFERTA_COMMERCIALE. Le due check del listino (fn_check_esclusione_articolo_documento, fn_check_riga_erogazione) ricevono il documento del contesto com''e'': la chiave doc_listino non c''e'' piu'' (20261019-31). ⭐ rev 2026-10-19 (20261019-99, brief-db-grammatica-unica-documenti lotto 2b): la destinazione della natura e'' il codice della sorgente (ORDINE_VENDITA, era ORDINE): il motivo NATURA_NON_MERCE di ordine e bolla confronta due codici dello stesso vocabolario. ⭐ rev 2026-11-03 (20261103-17, brief-db-addebito-trasporto-ordine §8.1, decisione 1 di Tid): ordine e bolla ammettono la merce OPPURE l''articolo-onere (catalogo.articoli.causale_onere_id valorizzato); un servizio che non e'' un onere resta fuori con NATURA_NON_MERCE (E_RIGA_NATURA_NON_AMMESSA). «E'' merce» e'' il BB script.fn_natura_e_merce sulla natura giudicata (quella congelata della riga, altrimenti quella dell''articolo): ritirata la copia in linea della condizione sulla destinazione. Seguono da se'' il guard di riga, il picker catalogo.fn_articoli_ammessi e catalogo.fn_articolo_righe_vive_non_ammesse.';
+COMMENT ON FUNCTION script.fn_check_articolo_riga_su_contesto(p_contesto jsonb, p_articolo_id uuid, p_natura_vendita_id bigint, p_scelta_nuova boolean)
+IS 'Check pura (fn_check_*): i motivi, in ordine DICHIARATO, per cui l''articolo p_articolo_id non puo'' stare in una riga del documento descritto da p_contesto (costruito da script.fn_articolo_riga_contesto: mai a mano; senza documento E_PARAMETRO_INVALIDO). ''[]'' = ammesso; altrimenti {codice, reason, reason_key, dettaglio, valori}. Le regole, per documento, sono quelle scritte nel COMMENT di script.fn_check_articolo_riga, che e'' questa funzione sul contesto letto da quella firma; rev 2026-10-14 (20261014-06, D-7): KIT_SENZA_COMPONENTI (E_ARTICOLO_KIT_SENZA_COMPONENTI), un composito senza nessun legame attivo in catalogo.articoli_componenti, motivo 2 di preventivo, ordine, bolla e di AGGIUNTA e OVERRIDE di offerta e contratto (dopo il solo componente); il caso date-dipendente resta all''init dei componenti (E_DOC_COMPOSITO_BOM_VUOTA). In piu'' PROMO_ARTICOLO (D-6, 2026-10-14): 1. solo componente (E_PROMO_ARTICOLO_SOLO_COMPONENTE: nessun prezzo a se'', e il resolver salta la promo in contesto bundle); il composito non e'' un motivo (riceve la promo quando il contratto gli da'' un prezzo con un''eccezione). p_natura_vendita_id: la natura congelata della riga, se c''e''; altrimenti quella dell''articolo. Due chiamanti, una regola (A-2): la firma di sempre script.fn_check_articolo_riga (i guard di tabella) e il picker catalogo.fn_articoli_ammessi, che legge il contesto una volta e giudica ogni articolo trovato (R-5). Nasce il 2026-10-14 dal corpo di 20261013-59, brief-db-articoli-ammessi-per-documento (Lotto 4, §9.4). ⭐ rev 2026-10-19 (20261019-32, brief-db-grammatica-unica-documenti lotto 1, G-1 di Tid): il documento si nomina col codice della sorgente, CONTRATTO | OFFERTA_COMMERCIALE (era OFFERTA); dove sopra si legge OFFERTA come selettore, oggi e'' OFFERTA_COMMERCIALE. Le due check del listino (fn_check_esclusione_articolo_documento, fn_check_riga_erogazione) ricevono il documento del contesto com''e'': la chiave doc_listino non c''e'' piu'' (20261019-31). ⭐ rev 2026-10-19 (20261019-99, brief-db-grammatica-unica-documenti lotto 2b): la destinazione della natura e'' il codice della sorgente (ORDINE_VENDITA, era ORDINE): il motivo NATURA_NON_MERCE di ordine e bolla confronta due codici dello stesso vocabolario. ⭐ rev 2026-11-03 (20261103-17, brief-db-addebito-trasporto-ordine §8.1, decisione 1 di Tid): ordine e bolla ammettono la merce OPPURE l''articolo-onere (catalogo.articoli.causale_onere_id valorizzato); un servizio che non e'' un onere resta fuori con NATURA_NON_MERCE (E_RIGA_NATURA_NON_AMMESSA). «E'' merce» e'' il BB script.fn_natura_e_merce sulla natura giudicata (quella congelata della riga, altrimenti quella dell''articolo): ritirata la copia in linea della condizione sulla destinazione. Seguono da se'' il guard di riga, il picker catalogo.fn_articoli_ammessi e catalogo.fn_articolo_righe_vive_non_ammesse. ⭐ rev 2026-11-05 (20261105-09, brief-db-articoli-obsoleto-dal §4, Tid 2026-11-04/05): quarto parametro in coda p_scelta_nuova (default false) e motivo comune a tutti i documenti, il PRIMO: OBSOLETO (E_ARTICOLO_OBSOLETO, reason_key vendite.righe.articolo_reason.obsoleto, valori codice e data DD/MM/YYYY, campo articolo_id o componente_id per la distinta), l''articolo e'' ritirato secondo script.fn_e_obsoleto (catalogo.articoli.obsoleto_dal raggiunta alla data operativa). Conta SOLO con p_scelta_nuova = true: lo passano il guard di riga (script.trgfn_righe_guard_articolo_ammesso e catalogo.trgfn_articoli_componenti_guard_componente: INSERT senza sorgente, o articolo cambiato) e il picker catalogo.fn_articoli_ammessi. Il default false e'' il comportamento di prima, ed e'' quello giusto per chi giudica righe che esistono gia'' (script.fn_check_riga_documento_su_contesto: emissione, push, attivazione, ordine dall''offerta, correzione di struttura): la riga esistente e la derivata restano.';
 ```
 
 </div>

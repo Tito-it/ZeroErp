@@ -131,6 +131,7 @@ search:
 - [fn_doc_stato_iniziale_id](funzioni/fn_doc_stato_iniziale_id.md)
 - [fn_doc_stato_modello](funzioni/fn_doc_stato_modello.md)
 - [fn_doc_testata_in_stato](funzioni/fn_doc_testata_in_stato.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 2)
+- [fn_e_obsoleto](funzioni/fn_e_obsoleto.md)
 - [fn_elimina_credenziale](funzioni/fn_elimina_credenziale.md) — (scritta il 06-10-2026)
 - [fn_ensure_logconn](funzioni/fn_ensure_logconn.md) — Apre la connessione `dblink` persistente di nome **`logconn`** verso il canale di log, se il canale è acceso e la connessione non è già aperta. Su quella connessione i registri fuori transazione scrivono righe che sopravvivono all'annullamento della transazione di chi le scrive.
 - [fn_esigibilita_iva](funzioni/fn_esigibilita_iva.md)

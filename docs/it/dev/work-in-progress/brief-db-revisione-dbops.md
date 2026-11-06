@@ -985,3 +985,32 @@ Tid vorrà far partire senza.
 * Controllate e lasciate: `riferimenti_morti_esenzioni`, `vw_riferimenti_morti_da_sanare`,
   `fn_check_funzioni_riferimenti_morti`, `guide/presidi-e-registri-del-debito`,
   `guide/architettura-permessi-e-autorizzazioni`, `postgresql/row-level-security` (dicevano già «vuota»).
+
+## 12. Rosso da zero sul blocco 1b (scratch `zeroerp_ruoli`, 2026-11-05)
+
+Il migrate da zero sullo scratch si è fermato sul `20261104-50`. La sua `sqlCheck` vuole una sola
+`maintenance.fn_job_run_log_failure`, e ne ha trovate due, a 10 e a 11 argomenti. Su dbdev non succede.
+
+**Causa.** La firma a 11 argomenti (`p_sqlstate`) la porta il `20261016-39`, che ha `context: provision` e
+sta in `changelog-provision-post.yaml`. Da zero, quindi, gira **dopo** il migrate principale. Il `20261103-66`
+(proprietà in prestito, migrate principale) dà quella firma per fatta. Il suo `CREATE OR REPLACE` trova ancora
+la firma a 10 e crea un secondo overload.
+
+**Cura (team DB, 2026-11-05).** Il `-66` e il `-50` sono già su origin e restano come sono.
+
+* `20_code/maintenance/20261103-29-fix-fn-job-run-log-failure-firma-sqlstate-da-zero` occupa uno slot libero
+  prima del `-66`. La libertà dello slot è verificata sui file, sui `databasechangelog` di dbdev e dello
+  scratch e sulla storia git. Il changeSet agisce solo dove manca la firma a 11: toglie quella a 10 e crea quella
+  a 11 col corpo del `-39`. Su dbdev non fa niente.
+* Il `20261015-03` e il `20261016-39` escono da `changelog-provision-post.yaml`. Da zero, rigirati dopo il
+  migrate, ricreerebbero la firma a 10 e riporterebbero il corpo del `-39` sopra il `-66` e il `-50`, perdendo
+  la D26.
+
+**Prova** (SQL estratto, `BEGIN … ROLLBACK`):
+
+* sullo scratch, dopo aver tolto la firma a 11 per simulare il percorso da zero, `-29`, `-66` e `-50` lasciano
+  **una** funzione e le precondizioni del `-50` passano;
+* su dbdev il `-29` non fa niente.
+
+⚠️ Lo scratch attuale ha già i due overload, e lì il `-29` non fa niente: va ricostruito da zero
+(`ci-local.sh --fresh`).

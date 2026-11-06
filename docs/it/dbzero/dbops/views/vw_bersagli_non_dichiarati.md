@@ -27,7 +27,7 @@ SELECT m.m[1] AS tipo,
      LEFT JOIN config.tipi_entita te ON ((te.codice = m.m[1])))
   WHERE ((n.nspname <> ALL (ARRAY['pg_catalog'::name, 'information_schema'::name])) AND (p.prolang = ( SELECT pg_language.oid
            FROM pg_language
-          WHERE (pg_language.lanname = 'plpgsql'::name))) AND (p.prosrc ~~ '%bersaglio%'::text) AND ((te.codice IS NULL) OR (te.obsoleto_dal <= ( SELECT script.fn_data_operativa() AS fn_data_operativa))))
+          WHERE (pg_language.lanname = 'plpgsql'::name))) AND (p.prosrc ~~ '%bersaglio%'::text) AND ((te.codice IS NULL) OR script.fn_e_obsoleto(te.obsoleto_dal)))
   GROUP BY m.m[1],
         CASE
             WHEN (te.codice IS NULL) THEN 'ASSENTE'::text

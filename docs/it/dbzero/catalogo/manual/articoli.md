@@ -257,6 +257,26 @@ destinazione `ORDINE` (guard [`trgfn_articoli_guard_onere_natura`](/dbzero/catal
 senza dire la natura sarebbe stato un bene da evadere in ordine e in bolla, e una cessione di beni.
 Gli oneri del seed hanno la natura del servizio una tantum (destinazione commessa).
 
+### Ritirare un articolo senza cancellarlo: `obsoleto_dal` (2026-11-05)
+
+Un articolo usato non si cancella e non si spegne: `attivo` vuol dire «riferimento valido», e i
+trigger `block_deact` lo tengono `true` finché qualcuno lo usa. Per dire «non si sceglie più per
+il nuovo» c'è `obsoleto_dal date NULL`: vuota = si sceglie; data passata = ritirato; data futura =
+ritiro programmato. Il confronto è alla **data operativa**, col building block
+[`script.fn_e_obsoleto`](/dbzero/script/funzioni/fn_e_obsoleto).
+
+* **Riga nuova** su un articolo ritirato: respinta. Sulle righe di documento è il primo motivo
+  della check condivisa, `E_ARTICOLO_OBSOLETO`, che legge anche il picker
+  [`catalogo.fn_articoli_ammessi`](/dbzero/catalogo/funzioni/fn_articoli_ammessi); dove la check
+  non arriva (onere di commessa, kit di listino) il guard generico.
+* **Riga derivata** (con la sorgente): passa. **Riga esistente**: si modifica; solo il cambio di
+  articolo è una scelta nuova.
+* **Magazzino**: mai bloccato. **Copia di un listino**: l'articolo ritirato si salta.
+* La vista [`catalogo.vw_articoli_dettaglio`](/dbzero/catalogo/views/vw_articoli_dettaglio) porta
+  `obsoleto_dal` ed `e_obsoleto`.
+
+La regola completa, coi casi, è nella [guida dell'obsoleto](/guide/uso-di-obsoleto).
+
 ---
 
 ### Diagramma ER relazioni (focus articolo)

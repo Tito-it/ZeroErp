@@ -27,13 +27,14 @@ DECLARE
   v_parent_ref_type     text;   -- tipo della colonna referenziata (per cast)
   v_sql                 text;
   v_obsoleto_dal        date;
+  v_esenzione_col       text;   -- colonna che, valorizzata all'INSERT, esenta la riga (derivata)
 BEGIN
   /*
     Scopo
     -----
     Trigger function (OBSOLETO/REQUIRE): impedisce INSERT/UPDATE sul
     figlio se il catalogo padre referenziato e' OBSOLETO
-    (obsoleto_dal <= CURRENT_DATE). Asse separato da attivo: serve
+    (script.fn_e_obsoleto: data raggiunta alla data operativa). Asse separato da attivo: serve
     perche' i record obsoleti restano attivo=true (il REQUIRE-ATTIVO
     non li intercetta).
 
@@ -46,6 +47,14 @@ BEGIN
     [4] parent_ref_col      - colonna del padre referenziata dalla FK
                               (puo' essere UNIQUE diversa da PK).
                               Se omesso, fallback 'id'.
+    [5] esenzione_col       - (opzionale) colonna del figlio che, se
+                              valorizzata all'INSERT, dice che la riga e'
+                              DERIVATA da un altro documento: passa anche su
+                              un padre obsoleto (es. 'sorgente_tipo_id').
+                              Solo INSERT: sull'UPDATE conta il cambio della
+                              FK, che e' sempre una scelta nuova (O-7 di
+                              brief-db-articoli-obsoleto-dal). Chi la passa
+                              passa anche [4].
   */
 
   IF array_length(TG_ARGV, 1) < 4 THEN
@@ -59,7 +68,7 @@ BEGIN
         'tg_argv', TG_ARGV
       ),
       NULL::uuid,
-      'Attesi: parent_schema, parent_table, parent_obsoleto_col, fk_col [, parent_ref_col]'
+      'Attesi: parent_schema, parent_table, parent_obsoleto_col, fk_col [, parent_ref_col [, esenzione_col]]'
     );
   END IF;
 
@@ -68,6 +77,7 @@ BEGIN
   v_parent_obsoleto_col := TG_ARGV[2];
   v_fk_col              := TG_ARGV[3];
   v_parent_ref_col      := COALESCE(TG_ARGV[4], 'id');
+  v_esenzione_col       := TG_ARGV[5];
 
   IF NOT (TG_OP = 'INSERT' OR TG_OP = 'UPDATE') THEN
     RETURN NEW;
@@ -79,6 +89,28 @@ BEGIN
   -- FK NULL ammessa: se non valorizzata, nessun controllo sul padre
   IF v_fk_val_text IS NULL THEN
     RETURN NEW;
+  END IF;
+
+  -- Esenzione (TG_ARGV[5]): la riga DERIVATA passa, ma solo alla nascita.
+  -- Una colonna nominata che la tabella non ha e' un montaggio sbagliato:
+  -- si dice subito, invece di non esentare mai in silenzio.
+  IF v_esenzione_col IS NOT NULL THEN
+    IF NOT jsonb_exists(to_jsonb(NEW), v_esenzione_col) THEN
+      PERFORM script.fn_log_and_raise_error(
+        'database',
+        TG_NAME,
+        'E_CATALOGO_OBSOLETO_NUOVA_ISTANZA',
+        jsonb_build_object(
+          'table',         TG_TABLE_SCHEMA||'.'||TG_TABLE_NAME,
+          'esenzione_col', v_esenzione_col
+        ),
+        NULL::uuid,
+        'Configurazione errata: colonna di esenzione non esistente'
+      );
+    END IF;
+    IF TG_OP = 'INSERT' AND to_jsonb(NEW)->>v_esenzione_col IS NOT NULL THEN
+      RETURN NEW;
+    END IF;
   END IF;
 
   -- Su UPDATE: se la FK NON cambia, nessun controllo. Gli avanzamenti
@@ -145,7 +177,8 @@ BEGIN
     END IF;
 
     -- Obsoleto se obsoleto_dal valorizzata e raggiunta. NULL o futura = ok.
-    IF v_obsoleto_dal IS NOT NULL AND v_obsoleto_dal <= script.fn_data_operativa() THEN
+    -- ⭐ Il predicato e' il BB script.fn_e_obsoleto (20261105-04), sede unica.
+    IF script.fn_e_obsoleto(v_obsoleto_dal) THEN
       PERFORM script.fn_log_and_raise_error(
         'database',
         TG_NAME,
@@ -183,7 +216,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.trgfn_child_requires_non_obsolete_parent()
-IS 'Trigger function (OBSOLETO/REQUIRE): impedisce INSERT/UPDATE sul figlio se il catalogo padre referenziato ha obsoleto_dal <= CURRENT_DATE. Gemella di trgfn_child_requires_active_parent sull''asse obsoleto_dal. TG_ARGV: parent_schema, parent_table, parent_obsoleto_col, fk_col [, parent_ref_col]. Su UPDATE controlla solo se la FK cambia (lifecycle delle istanze storiche mai bloccato). FK NULL e obsoleto_dal NULL/futura = consentiti.';
+IS 'Trigger function (OBSOLETO/REQUIRE): impedisce INSERT/UPDATE sul figlio se il catalogo padre referenziato e'' ritirato (script.fn_e_obsoleto: obsoleto_dal raggiunta alla data operativa). Gemella di trgfn_child_requires_active_parent sull''asse obsoleto_dal. TG_ARGV: parent_schema, parent_table, parent_obsoleto_col, fk_col [, parent_ref_col [, esenzione_col]]. esenzione_col (rev 2026-11-05, brief-db-articoli-obsoleto-dal O-7/O-10): colonna del figlio che, valorizzata all''INSERT, dice che la riga e'' DERIVATA da un altro documento e la lascia passare; sull''UPDATE non vale. Su UPDATE controlla solo se la FK cambia (lifecycle delle istanze storiche mai bloccato). FK NULL e obsoleto_dal NULL/futura = consentiti.';
 ```
 
 </div>

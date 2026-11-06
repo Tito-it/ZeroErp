@@ -31,20 +31,28 @@ Fino al 31-10-2026 la periodicità delle righe non si copiava: una versione clon
 di quota fissa la perdeva (`20261031-38`, brief `brief-db-contratto-righe-periodiche-in-commessa`
 §7.7).
 
-Restituisce la versione nuova, quante righe e quanti componenti ha copiato e quanti componenti ha
-saltato.
+Restituisce la versione nuova, quante righe e quanti componenti ha copiato, quanti componenti ha
+saltato e, dal 6-11-2026, quante righe ha saltato (`righe_saltate`, in coda).
 
 ### Regole
 
+* **L'articolo ritirato non si ricopia** (6-11-2026, `20261106-01`): la riga il cui articolo è
+  ritirato alla data operativa si salta, con i suoi componenti e il suo kit, e la copia non si
+  ferma. Una versione nuova è un impegno nuovo a vendere. Il predicato è
+  [`script.fn_e_obsoleto`](/dbzero/script/funzioni/fn_e_obsoleto), lo stesso del guard di riga e
+  del picker: la copia scrive solo ciò che la riga accetta. Vedi la
+  [guida dell'obsoleto](/guide/uso-di-obsoleto).
 * Un componente che non ha giorni in comune fra la distinta e la versione nuova si salta (per
-  esempio la distinta lo toglie prima che la copia cominci): il conteggio lo dice.
+  esempio la distinta lo toglie prima che la copia cominci): il conteggio lo dice. Lo stesso
+  conteggio comprende i componenti dell'articolo ritirato.
 * Le righe spente non si copiano; nella copia tutto nasce acceso.
 * Gira con i permessi di chi la chiama (`SECURITY INVOKER`). Il permesso d'area lo chiede il
   backend.
 
 ### 🧪 Il presidio
 
-`db/pgtap/vendite/test-fn-chiudi-clona-versione-listino-v1.sql`.
+`db/pgtap/vendite/test-fn-chiudi-clona-versione-listino-v1.sql`; l'articolo ritirato in
+`db/pgtap/vendite/test-articolo-ritirato-v1.sql`.
 
 ---
 

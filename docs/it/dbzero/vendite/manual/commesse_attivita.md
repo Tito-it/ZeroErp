@@ -176,6 +176,16 @@ aliquota).
 
 Riferimento: `brief-db-immutabilita-quantita-e-porta-oneri` §4c.2 e §4c.3.
 
+**L'onere su un articolo ritirato (06-11-2026).** Un `ONERE` scelto a mano dalla porta oneri non
+nasce su un articolo ritirato alla data operativa, né vi si sposta (`E_CATALOGO_OBSOLETO_NUOVA_ISTANZA`).
+Lo tiene il guard generico
+[dbops.trgfn_child_requires_non_obsolete_parent](/dbzero/dbops/funzioni/trgfn_child_requires_non_obsolete_parent),
+montato su `articolo_id` con `WHEN (tipo_movimento = 'ONERE')` e l'esenzione `sorgente_tipo_id`
+(`20261106-02`). L'esenzione serve perché dal 03-11-2026 un `ONERE` arriva anche dal push di ordine e bolla, **con**
+la sorgente del documento: quella riga è derivata e passa. `NORMALE` e `RETTIFICA` non si
+controllano. Una riga già inserita si modifica: conta solo il cambio di articolo, e l'upsert che
+riscrive lo stesso articolo esce subito. Vedi la [guida dell'obsoleto](/guide/uso-di-obsoleto).
+
 ### La base del segmento: `segment_base` (10-10-2026)
 
 `segment_key` è una chiave composta in una stringa: la riga di documento

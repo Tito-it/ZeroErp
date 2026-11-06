@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Vista `catalogo.vw_articoli_dettaglio`
 
-> **Ultimo aggiornamento**: 3 novembre 2026
+> **Ultimo aggiornamento**: 6 novembre 2026
 
 > 👀 **Vedi anche**
 >
@@ -118,6 +118,23 @@ che guarda la natura fissata sulla riga; qui si parla dell'articolo.
 ⚠️ Come per le colonne precedenti, il backend le elenca per nome: finché non le
 aggiunge, al frontend non arrivano. Brief: `brief-db-addebito-trasporto-ordine`,
 sezione 9.9. Verifica: `db/pgtap/catalogo/test-vw-articoli-dettaglio-e-onere-v1.sql`.
+
+### 🔄 rev 2026-11-06 — l'articolo dice se è ritirato
+
+Due colonne in coda (`20261106-03`): `obsoleto_dal`, la data del ritiro, che il
+drawer mostra e modifica (vuota = si sceglie; futura = ritiro programmato;
+cancellarla riattiva l'articolo), ed `e_obsoleto`, vero quando l'articolo è
+ritirato **alla data operativa**. `e_obsoleto` è calcolato dal building block
+[`script.fn_e_obsoleto`](/dbzero/script/funzioni/fn_e_obsoleto), lo stesso del
+guard di riga e del picker: la lista e il drawer lo leggono e non confrontano
+date.
+
+Ritirato non vuol dire spento: l'articolo resta `attivo` e valido sulle righe che
+lo usano già. Vedi la [guida dell'obsoleto](/guide/uso-di-obsoleto).
+
+⚠️ Il backend le elenca per nome: finché non le aggiunge, al frontend non
+arrivano. Brief: `brief-db-articoli-obsoleto-dal`, §8. Verifica:
+`db/pgtap/vendite/test-articolo-ritirato-v1.sql`.
 
 ---
 {% include-markdown "signature-core.md" %}

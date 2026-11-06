@@ -39,6 +39,7 @@
 | gestito_a_magazzino | boolean | NO | false |
 | lead_time_giorni | integer | YES |  |
 | requires_lotto | boolean | NO | false |
+| obsoleto_dal | date | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

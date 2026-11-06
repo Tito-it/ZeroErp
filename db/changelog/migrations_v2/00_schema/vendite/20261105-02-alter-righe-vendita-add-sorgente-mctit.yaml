@@ -1,0 +1,122 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA RIGA DERIVATA DICE DA DOVE VIENE — sorgente polimorfa su preventivi,
+# bolle e contratti di vendita
+#   Brief: brief-db-articoli-obsoleto-dal §5.4, decisioni D, O-8, O-10 di Tid
+#   (2026-11-04).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   Il guard dell'articolo ritirato distingue la riga NUOVA dalla DERIVATA
+#   leggendo la riga stessa: sorgente_tipo_id IS NOT NULL (O-10). Queste tre
+#   tabelle non avevano dove scriverlo:
+#     · vendite.preventivi_righe: la revisione ricopia le righe (O-8, derivata);
+#     · vendite.ddt_righe: il legame con l'ordine sta in ordini_righe_fulfillment,
+#       scritto DOPO la riga; la riconsegna senza ordine non lo scrive (D);
+#     · vendite.contratti_righe: il contratto nato dall'offerta (D).
+#   Le colonne sono quelle di vendite.ordini_righe e vendite.fatture_righe.
+#
+# ── ⚠️ CONTRATTO (modello A di script.trgfn_guard_sorgente_polimorfa_tipizzata)
+#   · sorgente_tipo_id -> config.sorgenti(id); la chiave sta in sorgente_riga
+#     (bigint) se key_selector = 'id', in sorgente_uid (uuid) se = 'uid';
+#   · NULL = riga scelta dall'operatore; valorizzata = riga generata da un
+#     verbo, nello STESSO INSERT (O-10). La scrivono i verbi di 20_code;
+#   · la coerenza tipo/chiave/esistenza la presidia il guard polimorfo,
+#     montato in 20_code sulle stesse tabelle.
+#   · FK senza indice: la registra dbops.fn_populate_fk_index_policy a
+#     consentito=false, come le FK di sorgente di ordini e fatture. Nessuno
+#     cerca per sorgente_tipo_id: il guard legge la riga.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261105-02-alter-righe-vendita-add-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20261105-02-alter-righe-vendita-add-sorgente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        sorgente_tipo_id / sorgente_uid / sorgente_riga su vendite.preventivi_righe, vendite.ddt_righe e
+        vendite.contratti_righe, come su ordini e fatture: la riga generata da un verbo dice da dove viene
+        nello stesso INSERT. brief-db-articoli-obsoleto-dal §5.4 (D, O-8, O-10).
+      preConditions:
+        - onFail: HALT
+        - not:
+            - columnExists:
+                schemaName: vendite
+                tableName: preventivi_righe
+                columnName: sorgente_tipo_id
+        - not:
+            - columnExists:
+                schemaName: vendite
+                tableName: ddt_righe
+                columnName: sorgente_tipo_id
+        - not:
+            - columnExists:
+                schemaName: vendite
+                tableName: contratti_righe
+                columnName: sorgente_tipo_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.preventivi_righe
+                ADD COLUMN sorgente_tipo_id bigint NULL,
+                ADD COLUMN sorgente_uid     uuid   NULL,
+                ADD COLUMN sorgente_riga    bigint NULL,
+                ADD CONSTRAINT fk_preventivi_righe_sorgente_tipo
+                    FOREIGN KEY (sorgente_tipo_id) REFERENCES config.sorgenti(id) ON UPDATE CASCADE;
+
+              ALTER TABLE vendite.ddt_righe
+                ADD COLUMN sorgente_tipo_id bigint NULL,
+                ADD COLUMN sorgente_uid     uuid   NULL,
+                ADD COLUMN sorgente_riga    bigint NULL,
+                ADD CONSTRAINT fk_ddt_righe_sorgente_tipo
+                    FOREIGN KEY (sorgente_tipo_id) REFERENCES config.sorgenti(id) ON UPDATE CASCADE;
+
+              ALTER TABLE vendite.contratti_righe
+                ADD COLUMN sorgente_tipo_id bigint NULL,
+                ADD COLUMN sorgente_uid     uuid   NULL,
+                ADD COLUMN sorgente_riga    bigint NULL,
+                ADD CONSTRAINT fk_contratti_righe_sorgente_tipo
+                    FOREIGN KEY (sorgente_tipo_id) REFERENCES config.sorgenti(id) ON UPDATE CASCADE;
+
+              COMMENT ON COLUMN vendite.preventivi_righe.sorgente_tipo_id IS
+                'FK -> config.sorgenti(id): da dove viene la riga, se l''ha generata un verbo (oggi la revisione: PREVENTIVO_RIGA). NULL = riga scelta dall''operatore. Si scrive nello STESSO INSERT; la chiave sta in sorgente_riga (key_selector id) o sorgente_uid (uid). Il guard dell''articolo ritirato legge questa colonna: valorizzata = riga derivata, passa. brief-db-articoli-obsoleto-dal (O-8, O-10).';
+              COMMENT ON COLUMN vendite.preventivi_righe.sorgente_uid IS
+                'Chiave della sorgente quando config.sorgenti.key_selector = ''uid''. Vedi sorgente_tipo_id.';
+              COMMENT ON COLUMN vendite.preventivi_righe.sorgente_riga IS
+                'Chiave della sorgente quando config.sorgenti.key_selector = ''id'' (l''id della riga di partenza). Vedi sorgente_tipo_id.';
+
+              COMMENT ON COLUMN vendite.ddt_righe.sorgente_tipo_id IS
+                'FK -> config.sorgenti(id): da dove viene la riga, se l''ha generata un verbo (ORDINE_VENDITA_RIGA dalla bolla da ordine, RESO_VENDITA_RIGA dalla riconsegna). NULL = riga scelta dall''operatore. Si scrive nello STESSO INSERT, prima del legame in ordini_righe_fulfillment; la chiave sta in sorgente_riga (key_selector id) o sorgente_uid (uid). Il guard dell''articolo ritirato legge questa colonna: valorizzata = riga derivata, passa. brief-db-articoli-obsoleto-dal (D, O-10).';
+              COMMENT ON COLUMN vendite.ddt_righe.sorgente_uid IS
+                'Chiave della sorgente quando config.sorgenti.key_selector = ''uid''. Vedi sorgente_tipo_id.';
+              COMMENT ON COLUMN vendite.ddt_righe.sorgente_riga IS
+                'Chiave della sorgente quando config.sorgenti.key_selector = ''id'' (l''id della riga di partenza). Vedi sorgente_tipo_id.';
+
+              COMMENT ON COLUMN vendite.contratti_righe.sorgente_tipo_id IS
+                'FK -> config.sorgenti(id): da dove viene la riga, se l''ha generata un verbo (OFFERTA_COMMERCIALE dal contratto nato dall''offerta). NULL = riga scelta dall''operatore. Si scrive nello STESSO INSERT; la chiave sta in sorgente_riga (key_selector id) o sorgente_uid (uid). Il guard dell''articolo ritirato legge questa colonna: valorizzata = riga derivata, passa. brief-db-articoli-obsoleto-dal (D, O-10).';
+              COMMENT ON COLUMN vendite.contratti_righe.sorgente_uid IS
+                'Chiave della sorgente quando config.sorgenti.key_selector = ''uid''. Vedi sorgente_tipo_id.';
+              COMMENT ON COLUMN vendite.contratti_righe.sorgente_riga IS
+                'Chiave della sorgente quando config.sorgenti.key_selector = ''id'' (l''id della riga di partenza). Vedi sorgente_tipo_id.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.contratti_righe
+                DROP COLUMN sorgente_riga, DROP COLUMN sorgente_uid, DROP COLUMN sorgente_tipo_id;
+              ALTER TABLE vendite.ddt_righe
+                DROP COLUMN sorgente_riga, DROP COLUMN sorgente_uid, DROP COLUMN sorgente_tipo_id;
+              ALTER TABLE vendite.preventivi_righe
+                DROP COLUMN sorgente_riga, DROP COLUMN sorgente_uid, DROP COLUMN sorgente_tipo_id;

@@ -128,9 +128,13 @@ BEGIN
   INSERT INTO vendite.preventivi_righe (preventivo_id, articolo_id, qta_operativa, prezzo_unitario, iva_id)
   VALUES ((SELECT preventivo_id FROM g_prev), v_art, 1, 10, v_iva)
   RETURNING id INTO v_pr;
+  -- rev 2026-11-05 (brief-db-articoli-obsoleto-dal, 20261105-19): chi scrive
+  --   preventivo_riga_id scrive anche la sorgente (chk_ordini_righe_preventivo_ha_sorgente).
   INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione, qta_operativa,
-                                    prezzo_unitario, iva_id, preventivo_riga_id)
-  VALUES ((SELECT ordine_id FROM g_ord), 1, v_art, 'Riga pgTAP lineage seminata', 1, 10, v_iva, v_pr)
+                                    prezzo_unitario, iva_id, preventivo_riga_id,
+                                    sorgente_tipo_id, sorgente_riga)
+  VALUES ((SELECT ordine_id FROM g_ord), 1, v_art, 'Riga pgTAP lineage seminata', 1, 10, v_iva, v_pr,
+          (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'PREVENTIVO_RIGA'), v_pr)
   RETURNING id INTO v_or;
 
   -- H: la riga della bolla evade la riga d'ordine.

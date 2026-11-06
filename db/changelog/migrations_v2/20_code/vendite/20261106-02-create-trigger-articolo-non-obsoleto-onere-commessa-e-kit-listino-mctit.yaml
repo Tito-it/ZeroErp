@@ -1,0 +1,115 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'ARTICOLO RITIRATO NON SI SCEGLIE PER UN ONERE DI COMMESSA NE' PER UN KIT
+#   vendite.commesse_attivita.articolo_id   (solo ONERE, O-9)
+#   vendite.listini_kit.articolo_padre_id   (O-2)
+#   Brief: brief-db-articoli-obsoleto-dal §4 e §7.3 lotto C.
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   Sono due righe dove la check condivisa (script.fn_check_articolo_riga_su_contesto)
+#   non arriva: si monta il guard generico dbops.trgfn_child_requires_non_obsolete_parent
+#   (tier 2: un CREATE TRIGGER per relazione, forma di 20260630-05). Il
+#   predicato e' il BB script.fn_e_obsoleto, alla data operativa (O-1).
+#   AFTER INSERT OR UPDATE OF <fk>: la FK e' gia' finale; sull'UPDATE il guard
+#   controlla solo se l'articolo CAMBIA (una riga gia' inserita con un
+#   articolo poi ritirato resta e si modifica, §4).
+#
+# ── ⚠️ L'ONERE DI COMMESSA: SOLO LA RIGA SCELTA A MANO ───────────────
+#   O-9 (Tid, 2026-11-04): si respinge solo l'inserimento dell'ONERE, che
+#   nasceva solo dalla porta oneri (vendite.fn_aggiungi_onere_commessa, senza
+#   sorgente). Dal 2026-11-03 (brief-db-addebito-trasporto-ordine) un ONERE
+#   arriva anche dal push di ordine e bolla, CON la sorgente del documento:
+#   quella e' una riga DERIVATA e, per il modello (§3), passa. Quindi:
+#   WHEN (tipo_movimento = 'ONERE') + esenzione 'sorgente_tipo_id' (TG_ARGV[5],
+#   solo INSERT). Il fatto di O-9 era «l'onere e' sempre manuale»; il
+#   motivo («si controlla solo la riga che l'operatore sceglie») resta, e
+#   l'esenzione lo rispetta. NORMALE (sorgente obbligatoria) e RETTIFICA
+#   (accredito su una vendita gia' fatta) restano fuori, come in O-9.
+#   L'esenzione legge solo «la sorgente c'e'», non la forma della sua chiave:
+#   non dipende da brief-db-sorgente-documento-e-riga.
+#   ⚠️ L'upsert fn_upsert_commessa_attivita riscrive articolo_id col suo
+#   valore (ON CONFLICT … SET): il guard scatta ma, con l'articolo invariato,
+#   esce subito (ramo UPDATE del guard generico).
+#
+# ── ⚠️ IL KIT DI LISTINO ────────────────────────────────────────────
+#   Senza esenzione: una versione di listino e' sempre una scelta (O-2).
+#   articolo_padre_id e' immutabile (trg_listini_kit_a10_lock_columns_upd).
+#   La copia della versione salta l'articolo ritirato (20261106-01), quindi
+#   non urta questo guard.
+#
+# ── NOMI ────────────────────────────────────────────────────────────
+#   trg_commesse_attivita_a10_onere_articolo_non_obsoleto_ins_upd (61 char)
+#   trg_listini_kit_a10_articoli_require_non_obsoleto_ins_upd     (57 char)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261106-02-create-trigger-articolo-non-obsoleto-onere-commessa-e-kit-listino-mctit.yaml
+
+  - changeSet:
+      id: 20261106-02-create-trigger-articolo-non-obsoleto-onere-commessa-e-kit-listino
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Guard generico dell'obsoleto su vendite.commesse_attivita.articolo_id (solo ONERE, esente la riga con
+        sorgente) e su vendite.listini_kit.articolo_padre_id. brief-db-articoli-obsoleto-dal §7.3 (O-9, O-2).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM information_schema.columns
+               WHERE table_schema = 'catalogo' AND table_name = 'articoli' AND column_name = 'obsoleto_dal';
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'trgfn_child_requires_non_obsolete_parent'
+                 AND p.prosrc LIKE '%esenzione_col%';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- vendite.commesse_attivita.articolo_id -> catalogo.articoli(id), solo ONERE
+              DROP TRIGGER IF EXISTS trg_commesse_attivita_a10_onere_articolo_non_obsoleto_ins_upd
+                ON vendite.commesse_attivita;
+              CREATE TRIGGER trg_commesse_attivita_a10_onere_articolo_non_obsoleto_ins_upd
+                AFTER INSERT OR UPDATE OF articolo_id
+                ON vendite.commesse_attivita
+                FOR EACH ROW
+                WHEN (NEW.tipo_movimento::text = 'ONERE')
+                EXECUTE FUNCTION dbops.trgfn_child_requires_non_obsolete_parent(
+                  'catalogo', 'articoli', 'obsoleto_dal', 'articolo_id', 'id', 'sorgente_tipo_id'
+                );
+              COMMENT ON TRIGGER trg_commesse_attivita_a10_onere_articolo_non_obsoleto_ins_upd
+                ON vendite.commesse_attivita
+                IS 'Guard OBSOLETO (brief-db-articoli-obsoleto-dal O-9): l''ONERE scelto a mano (porta oneri, senza sorgente) non nasce su un articolo ritirato alla data operativa, ne'' vi si sposta. L''ONERE con sorgente (dal push di ordine e bolla) e'' derivato e passa all''INSERT. NORMALE e RETTIFICA fuori dal WHEN. Le righe esistenti si modificano: conta solo il cambio di articolo.';
+
+              -- vendite.listini_kit.articolo_padre_id -> catalogo.articoli(id)
+              DROP TRIGGER IF EXISTS trg_listini_kit_a10_articoli_require_non_obsoleto_ins_upd
+                ON vendite.listini_kit;
+              CREATE TRIGGER trg_listini_kit_a10_articoli_require_non_obsoleto_ins_upd
+                AFTER INSERT OR UPDATE OF articolo_padre_id
+                ON vendite.listini_kit
+                FOR EACH ROW
+                EXECUTE FUNCTION dbops.trgfn_child_requires_non_obsolete_parent(
+                  'catalogo', 'articoli', 'obsoleto_dal', 'articolo_padre_id', 'id'
+                );
+              COMMENT ON TRIGGER trg_listini_kit_a10_articoli_require_non_obsoleto_ins_upd
+                ON vendite.listini_kit
+                IS 'Guard OBSOLETO (brief-db-articoli-obsoleto-dal O-2): un kit di listino non nasce su un articolo ritirato alla data operativa. Senza esenzione: una versione di listino e'' sempre una scelta. La copia della versione salta l''articolo ritirato (vendite.fn_clona_versione_listino, O-6).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_listini_kit_a10_articoli_require_non_obsoleto_ins_upd ON vendite.listini_kit;
+              DROP TRIGGER IF EXISTS trg_commesse_attivita_a10_onere_articolo_non_obsoleto_ins_upd ON vendite.commesse_attivita;
