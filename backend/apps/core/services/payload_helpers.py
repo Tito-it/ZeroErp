@@ -276,27 +276,11 @@ class PayloadValidator:
             **self._em_kwargs(log_to_db=log_to_db, function_name=function_name),
         )
 
-    # Scopo: Guard scalare su stringa non vuota (post-strip). Speculare a
-    #        `guard_positive_int`: opera su valori scalari (kwarg, parametro
-    #        di firma) anziche' estrarre da payload come `require_string`.
-    #        Usato da service che ricevono identificatori testuali (es. UID
-    #        sorgente di documenti generati).
-    def guard_non_empty_string(
-        self,
-        value: Any,
-        *,
-        field: str,
-        log_to_db: bool | None = None,
-        function_name: str | None = None,
-    ) -> None:
-        ErrorManager.require(
-            isinstance(value, str) and value.strip() != "",
-            code=self._code,
-            message=f"Valore '{field}' non valido.",
-            detail=f"atteso stringa non vuota, ricevuto {value!r}",
-            context={field: value},
-            **self._em_kwargs(log_to_db=log_to_db, function_name=function_name),
-        )
+    # ⛔ `guard_non_empty_string` ritirato il 2026-11-08 (Tid): il suo ultimo
+    #    consumatore era l'uid della sorgente in `genera_documento`, che dal
+    #    giro D.1 di brief-db-sorgente-documento-e-riga riceve l'id. La
+    #    motivazione delle offerte, il caso precedente, la chiede il verbo DB
+    #    dal 2026-10-26.
 
     # Scopo: un aggiornamento deve portare almeno un campo da scrivere: un PATCH
     #        vuoto e' una richiesta malformata (400), MAI un «salvato» che non

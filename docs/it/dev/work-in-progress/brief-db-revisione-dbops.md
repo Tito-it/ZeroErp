@@ -29,8 +29,8 @@ regola canale/`run_as` ristretta ai `CODA` di `DOMINIO` (§18.9).
 `20261108-10` … `-13`; applicato da Tid su dbdev e scratch, pgTAP verdi, committato (§19.5).
 **Giro 7 applicato** (2026-11-07, §20): D35, D36, D37, D57, `20261108-25` … `-31`, con due decisioni di Tid nel giro
 (§20.1: il perimetro del presidio, il tetto dei lookup che cade); applicato da Tid, pgTAP di §20.5 verdi (§20.9).
-**Riparte: Tid** per il commit del giro 7 e il via al giro 8 (§8); **team BE** per BE4 (§5), il test di S-BE-2 e BE9
-(§18.9.2 punto 4). Resta al team DB S-BE-1 (§5).
+**Riparte: Tid** per il commit del giro 7 e il via al giro 8 (§8). Il team BE ha chiuso il test di S-BE-2 e BE9
+(2026-11-07, committati su `dev/backend-tid`) e BE4 (da committare), §5. Resta al team DB S-BE-1 (§5).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -78,7 +78,7 @@ regola canale/`run_as` ristretta ai `CODA` di `DOMINIO` (§18.9).
 | 9-tricies | team BE ✅, **Tid** ⏭️ | BE10 ✅: (a) un lavoro per azienda dal cockpit, con ownership per azienda (anticipo di BE9), (b) drenatore per azienda, (c) chi accoda, «Esegui ora» SISTEMA; BE6 per i tre codici nuovi ✅ (2026-11-07, mergiati con la PR #40). Utenti tecnici creati da Tid, **manca EMITEST** | §5 | 9-vicies-nonies |
 | 9-tricies-semel | ✅ sessione DB | Blocco 5b: l'`ENABLE` della RLS, il debito tolto, la decisione dell'indice della FK, S-BE-2, la guida; scritto e provato sullo scratch (2026-11-07) | §18.9 | 9-tricies |
 | 9-tricies-bis | ✅ Tid | Apply del 5b (`20261107-57`, `-58`, `20261108-08`, quattro CSV) su dbdev e scratch; pgTAP di §18.9.2 verdi (2026-11-07); commit dalla sessione DB. Il giro 5 è chiuso | §18.9.2 | 9-tricies-semel |
-| 9-tricies-ter | **team BE** ⏭️ | Il test di S-BE-2 a SISTEMA (`test_avvio_manuale_catalogo`), BE9 (il filtro di perimetro si ritira, lo fa la RLS) | §18.9.2, §5 | 9-tricies-bis |
+| 9-tricies-ter | **team BE** ✅ (2026-11-07, committato su `dev/backend-tid`) | Il test di S-BE-2 a SISTEMA (`test_avvio_manuale_catalogo`), BE9 (il filtro di perimetro si ritira, lo fa la RLS) | §18.9.2, §5 | 9-tricies-bis |
 | 9-tricies-quater | ✅ Tid | Il via al giro 6, coi numeri dal `20261108-10`; le viste dei lotti rinominate in «congelati» (2026-11-07) | §19 | 9-tricies-bis |
 | 9-tricies-quinquies | ✅ sessione DB | Giro 6 (Q14 ④, ⑦): scritto e provato sullo scratch | §19 | 9-tricies-quater |
 | 9-tricies-sexies | ✅ Tid | Apply del giro 6 (`20261108-10` … `-13`, `presidi.csv`, `presidi_testi.csv`) su dbdev e scratch; pgTAP di §19.3 verdi (2026-11-07); commit dalla sessione DB. Il giro 6 è chiuso | §19.5 | 9-tricies-quinquies |
@@ -86,17 +86,17 @@ regola canale/`run_as` ristretta ai `CODA` di `DOMINIO` (§18.9).
 | 9-tricies-octies | ✅ sessione DB | Giro 7 (D35, D36, D37, D57): scritto e provato sullo scratch | §20 | 9-tricies-septies |
 | 9-tricies-nonies | ✅ Tid | Apply del giro 7 (`20261108-25` … `-31`, sette CSV e il loader `20260429-08`) e convergenza; pgTAP di §20.5 verdi (2026-11-07) | §20.9 | 9-tricies-octies |
 | 9-tricies-undecies | **Tid** ⏭️ | Commit del giro 7 e via al giro 8 | §8 | 9-tricies-nonies |
-| 9-tricies-decies | **team BE** ⏭️ | BE4: il tetto `LOOKUP_MAX_SOURCE_ROWS` cade (`p_limit` NULL), ricerca e paginazione restano | §5 | — |
+| 9-tricies-decies | **team BE** ✅ (2026-11-07, da committare su `dev/backend-tid`) | BE4: il tetto `LOOKUP_MAX_SOURCE_ROWS` cade (`p_limit` NULL), ricerca e paginazione restano — fatto, §5 | §5 | — |
 | 9-nonies | ✅ Tid | Q16: la via fusa resta, marcata come soppressa (b, 2026-11-07) | §4 | 9-septies |
 | 9-decies | ✅ sessione DB | Giro 2, blocco 2b (Q16): la via soppressa; lettori censiti, scritto e provato sullo scratch | §14.7 | 9-nonies |
 | 10 | sessione DB | Giri 5-14 nell'ordine di §8, uno alla volta, ognuno col suo via e il suo apply | §8 | 9-vicies-septies |
-| 11 | team BE | Le ricadute di §5, quando il giro DB corrispondente è applicato. BE3, BE6 e BE10 ✅ (2026-11-07, mergiati); BE5 e BE7 (commenti stantii) quando capita | §5 | 10 |
+| 11 | team BE | Le ricadute di §5, quando il giro DB corrispondente è applicato. BE3, BE6 e BE10 ✅ (2026-11-07, mergiati); BE9 ✅ (2026-11-07, committato su `dev/backend-tid`), BE4 ✅ (da committare); BE5 e BE7 (commenti stantii) quando capita | §5 | 10 |
 | 11-bis | sessione DB | S-BE-1: la frase di `E_ATTIVO_PADRE_NON_ATTIVO` ed `E_PADRE_INESISTENTE` nomina `schema.tabella` all'operatore. ✅ Modello deciso da Tid (2026-11-07): frase senza tabelle, il padre come bersaglio `config.tipi_entita` nel `DATATYPE`; da dove il trigger sa il tipo resta al DB. Blocco a parte, dopo il 5b | §5 | — |
 | 12 | sessione DB | Pagine `manual/` e guide riallineate a ogni difetto chiuso, insieme al COMMENT; brief in `work-done/` | §1, §8 | 10 |
 
 **Decisioni aperte di Tid:** il debito della scelta 3 di §18.4 (il presidio non riconosce la policy come difesa di
 scrittura) si decide al giro 9. Il debito del registro dei marcatori (dieci tabelle di `dbops` con `tx_id` senza
-trigger) e `data_update` senza esecutore: proposta al giro 14 (§20.8). **Da committare:** il giro 7 (applicato e verde). L'indice della FK della coda: **false confermato** (Tid, 2026-11-07, §18.9).
+trigger) e `data_update` senza esecutore: proposta al giro 14 (§20.8). **Da committare:** il giro 7 (applicato e verde); lato BE, BE4 nel working tree di `dev/backend-tid` (2026-11-08). L'indice della FK della coda: **false confermato** (Tid, 2026-11-07, §18.9).
 **Da verificare:** se lo scratch è stato ricostruito con `ci-local.sh --fresh` dopo il `20261103-29` (§13).
 ⚠️ **Numerazione:** questo cantiere ha preso `20261107-01` … `-27`; il prossimo numero libero del giorno è il
 `-28`; il giro 4 ha preso `-28` … `-30`, `-33`, `-34`, il blocco 4b `-31`, `-32`, `-35` … `-40`; il prossimo libero è il
@@ -531,12 +531,12 @@ Si chiedono quando il giro DB corrispondente è applicato.
 | ~~BE1~~ | ~~L'handler della chiusura per scadenza passa `p_classe = 'DOMINIO'`~~ — ritirata (Q5, 2026-11-05): il cancello è il CHECK nel DB | `backend/apps/core/services/coda_lavori/chiusura_scadenze_handler.py:51-60` | D38 (Q5) |
 | BE2 | I `gaps` scritti a mano per `codice_interno` si ritirano | `backend/apps/core/services/non_editable_fields_helper.py` | D25 |
 | BE3 ✅ | I controlli preventivi «padre non attivo» si ritirano e si mappa il codice nuovo (`E_ATTIVO_PADRE_NON_ATTIVO`, CONFLITTO_STATO; `E_PADRE_INESISTENTE`, DATO_ERRATO; tutti e due con la colonna FK in `campo`). I commenti che dicono «`E_ATTIVO_REQUIRE`, TECNICO, 500» diventano falsi | `backend/apps/vendite/services/commesse_service.py:552`, `backend/apps/anagrafiche/db/anagrafiche_repository.py:98`; commenti in `backend/apps/magazzino/services/anagrafiche_magazzino_service.py:13-18`, `backend/apps/magazzino/services/magazzino_service.py:208`, `backend/apps/vendite/tests/services/test_commesse_service.py:2035` | D46 (giro 3) |
-| BE4 ⏭️ (pronta dal 2026-11-07) | **Decisione di Tid (2026-11-07): cade il tetto.** `list_lookup_codici` chiama `dbops.fn_get_lookup_codici` con `p_limit` NULL al posto di `LOOKUP_MAX_SOURCE_ROWS` (la costante e il commento «il limit interno è una guardia» si ritirano); la ricerca `ILIKE` e la paginazione con `sql_order_clause` e `fetch_paged_with_total` restano come sono. Da riscrivere la docstring («chiama con limit ampio…, obiettivo: evitare di modificare la funzione DB»). Non dipende dall'apply: lo spareggio DB del giro 7 non cambia il risultato per il backend, che riordina fuori | `backend/apps/core/db/dbops_repository.py:52-55, 378-470` | D57 |
+| BE4 ✅ (2026-11-07) | **Decisione di Tid (2026-11-07): cade il tetto.** `list_lookup_codici` chiama `dbops.fn_get_lookup_codici` con `p_limit` NULL al posto di `LOOKUP_MAX_SOURCE_ROWS` (la costante e il commento «il limit interno è una guardia» si ritirano); la ricerca `ILIKE` e la paginazione con `sql_order_clause` e `fetch_paged_with_total` restano come sono. Da riscrivere la docstring («chiama con limit ampio…, obiettivo: evitare di modificare la funzione DB»). Non dipende dall'apply: lo spareggio DB del giro 7 non cambia il risultato per il backend, che riordina fuori | `backend/apps/core/db/dbops_repository.py:52-55, 378-470` | D57 |
 | BE5 | Docstring stantie: «tre viste … SECURITY DEFINER» (`fn_conta_presidio` è INVOKER) e «registro non vuoto» (il corpo ammette vuoto) | `backend/apps/core/db/presidi_repository.py:16-22`, `backend/apps/core/tests/test_error_codes_db_policy_guardrail.py:66-67` | — |
 | BE6 ✅ fino al giro 5 | Codici nuovi → rigenerare `error_policies_generated.py`, e le voci di `error_messages_fallback.py`: dal giro 2 `E_DBOPS_CHIAMATA_NON_VALIDA`, `E_MERGE_RIGHE_DOPPIE`, `E_MERGE_FIGLIA_SOTTO_RLS`, `E_STRADARIO_SOPPRESSO` e gli altri di §14.1; dal giro 3 `E_ATTIVO_PADRE_NON_ATTIVO`, `E_PADRE_INESISTENTE`; dal blocco 4b `E_EMITTENTE_MODI_INVALIDO`, `E_EMITTENTE_MODI_NON_SCRIVIBILE` (li vede chi migra, non l'operatore: basta la policy generata); dal giro 5 (✅ 2026-11-07: policy rigenerata, solo i tre codici, nessuna classe mossa; tre ripieghi) `E_CODA_LAVORO_SENZA_EMITTENTE` (TECNICO), `E_CODA_SCOPE_ALTRUI` (NON_PERMESSO), `E_CODA_CHIAVE_ALTRUI` (TECNICO). Poi D12 (giro 9) | `backend/apps/core/services/error_messages_fallback.py:113-123` (la voce di `E_ATTIVO_REQUIRE` dice «trigger configurato male», ora è solo il generatore) | §2.5, §14.1, §15.2, §17.1 |
 | BE7 | Commento stantio: il test nomina il presidio `dbops.vw_run_senza_attore`, ritirato | `backend/apps/core/tests/services/test_job_run.py:136-138` | D42 |
 | BE8 | Il livello «sessione» degli override esce: via `session_key` da `_DIMENSIONI_OVERRIDE` e dalle firme di `ParameterRepository.get_parameter` e affini | `backend/apps/core/db/parameter_repository.py:97-140` | Q10 |
-| BE9 | Dopo la RLS su `dbops.coda_lavori` (blocco 5b): il filtro per `scope_key` scritto a mano negli elenchi e nei conteggi della coda lavori si ritira, la separazione la fa il DB (come per la coda di stampa). ⚠️ Cambia che cosa vede un operatore: oggi i lavori con la sua stessa `scope_key`, dopo quelli della sua azienda; i lavori SISTEMA solo il super admin | `backend/apps/core/services/coda_lavori/gestione_service.py:83-320`, `CodaLavoriRepository` | Q14.3 |
+| BE9 ✅ (2026-11-07) | Dopo la RLS su `dbops.coda_lavori` (blocco 5b): il filtro per `scope_key` scritto a mano negli elenchi e nei conteggi della coda lavori si ritira, la separazione la fa il DB (come per la coda di stampa). ⚠️ Cambia che cosa vede un operatore: oggi i lavori con la sua stessa `scope_key`, dopo quelli della sua azienda; i lavori SISTEMA solo il super admin | `backend/apps/core/services/coda_lavori/gestione_service.py:83-320`, `CodaLavoriRepository` | Q14.3 |
 | BE10 ✅ (2026-11-07) | **Prima della RLS (blocco 5b), dal 5a.** (a) ⛔ Un lavoro OPERATORE nasce dentro un'azienda: in modalità globale si accoda un lavoro per azienda, o si chiede di sceglierla. Dall'apply del 5a la porta rifiuta un lavoro senza emittente attivo nello scope (`E_CODA_LAVORO_SENZA_EMITTENTE`): oggi lo accodano il giro di fatturazione dal cockpit in modalità globale (FATTURAZIONE_GIRO/NUMERA, dbdev, ultimo 2026-10-26) e chiunque catturi uno scope senza emittente attivo. (b) Il drenatore della coda lavori prende, recupera e chiude i lavori **un'azienda alla volta**, con l'utente tecnico di `draina_coda_lavori` di quell'azienda (`dbops.vw_processi_roster`), come `draina_coda_stampa`; i lavori SISTEMA li vede ogni utente tecnico del drenatore (`claim` con `SKIP LOCKED`). Claim, reaper, `mark_done`/`mark_error` sotto quell'identità; l'esecuzione del lavoro resta con l'identità dello scope. Un'azienda senza utente tecnico non viene drenata, e lo dice `vw_processi_dominio_senza_identita`. (c) La porta, da una sessione dell'applicazione, accoda un lavoro OPERATORE solo a nome di chi è in sessione e nel suo perimetro (`E_CODA_SCOPE_ALTRUI`), e la chiave di un lavoro OPERATORE deve contenere la sua azienda (`E_CODA_CHIAVE_ALTRUI`): da censire i punti che accodano a nome d'altri | `backend/apps/core/services/coda_lavori/drainer_service.py`, `repository.py` (`claim`, `reap_stale`, `mark_*`), `scope.py`, i chiamanti di `CodaLavoriRepository.accoda` | Q14.3, §18 |
 
 Nessuna ricaduta FE diretta: D25 si vede nel form quando BE2 è fatto.
@@ -2476,7 +2476,10 @@ Guardrail `run_on_change`, `precondition_seed`, `ddl_su_trigger_automazione`, `g
 
 ### 20.7 Ricadute BE
 
-* **BE4** (§5), pronta da subito: non dipende dall'apply.
+* **BE4** (§5), pronta da subito: non dipende dall'apply. ✅ Fatta (2026-11-07): `list_lookup_codici` passa
+  `p_limit` NULL; la costante `LOOKUP_MAX_SOURCE_ROWS` e il commento «il limit interno è una guardia» sono
+  ritirati, la docstring dice perché. Ricerca, ordinamento e paginazione restano dove sono; i 41 test delle
+  lookup (API, DB, specializzate, pagina oltre l'ultima) verdi.
 * Nessun'altra: `shop.ricevute` non ha scrittori nel backend; `script.vw_audit_sources`, `fn_audit_summary` e il
   backend dell'audit non leggono le quattro colonne ritirate; il backend inserisce in `ai_query_log` senza
   `cleanup_at`.

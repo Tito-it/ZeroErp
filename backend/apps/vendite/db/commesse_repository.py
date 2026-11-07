@@ -281,7 +281,13 @@ class CommessaAttivitaInput:
     listino_versione_id: int | None = None
     listino_riga_id: int | None = None  # la riga di listino del prezzo (la rende «propagata»)
     sorgente_tipo_id: int | None = None
-    sorgente_uid: str | None = None
+    # ⭐ La chiave del documento d'origine COME LA HA CHI CHIAMA, in testo: l'id
+    #    o l'uid, secondo il tipo. La madre la traduce nella colonna del suo
+    #    `key_selector` (`script.fn_sorgente_chiave`). Fino al giro K.1 di
+    #    brief-db-sorgente-documento-e-riga (2026-11-07) si chiamava
+    #    `sorgente_uid`, come il parametro della madre: un nome che diceva
+    #    «uid» anche quando portava un id.
+    sorgente_chiave: str | None = None
     # ⭐ La RIGA del documento d'origine (dal giro C.3 di
     #    brief-db-sorgente-documento-e-riga, BE-C.3-a). None = provenienza dal
     #    documento intero (consumi, quote fisse del listino di un contratto):
@@ -1055,7 +1061,7 @@ class CommesseRepository(EventLogRepositoryMixin):
                     p_stato_approvazione => %s,
                     p_stato_emissione => %s,
                     p_sorgente_tipo_id => %s,
-                    p_sorgente_uid => %s,
+                    p_sorgente_chiave => %s,
                     p_tipo_movimento => %s,
                     p_meta => %s::jsonb,
                     p_causale_onere_id => %s,
@@ -1097,7 +1103,7 @@ class CommesseRepository(EventLogRepositoryMixin):
                     inp.stato_approvazione,
                     inp.stato_emissione,
                     inp.sorgente_tipo_id,
-                    inp.sorgente_uid,
+                    inp.sorgente_chiave,
                     inp.tipo_movimento,
                     self._to_jsonb_param(inp.meta),
                     inp.causale_onere_id,
@@ -1147,7 +1153,10 @@ class CommesseRepository(EventLogRepositoryMixin):
             "stato_approvazione": inp.stato_approvazione,
             "stato_emissione": inp.stato_emissione,
             "sorgente_tipo_id": inp.sorgente_tipo_id,
-            "sorgente_uid": inp.sorgente_uid,
+            # La chiave del documento (id o uid in testo): la legge il wrapper
+            # batch come `sorgente_chiave` dal giro K.1. ⛔ Con la chiave vecchia
+            # (`sorgente_uid`) la riga passerebbe la chiave NULL, senza errore.
+            "sorgente_chiave": inp.sorgente_chiave,
             # La riga del documento: la legge il wrapper batch (giro C.3).
             "sorgente_riga": inp.sorgente_riga,
             "tipo_movimento": inp.tipo_movimento,

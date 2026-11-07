@@ -261,8 +261,9 @@ def _lavora_item(
             None,
             emittente_fiscale_id=int(entity["emittente_fiscale_id"]),
             sorgente_tipo_id=int(item["sorgente_tipo_id"]),
+            # La fattura per id: la chiave della stampa la sceglie il DB dal
+            # tipo (giro D.1; la coda non porta più `sorgente_uid`).
             sorgente_id=fattura_id,
-            sorgente_uid=str(item["sorgente_uid"]),
             # Il tipo lo porta la riga (§9): senza, su una sorgente con piu'
             # tipi la risoluzione si fermerebbe con AMBIGUO.
             tipo_documento_output_id=item.get("tipo_documento_output_id"),

@@ -116,6 +116,12 @@ def service_with_mocks(
     storage_methods: dict[str, Any] | None = None,
 ) -> tuple[DocumentGenerationService, MagicMock, MagicMock, MagicMock]:
     repo = MagicMock()
+    # ⭐ La chiave della stampa (giro D.1): un tipo a chiave id, la coppia che
+    #    `script.fn_sorgente_chiave` darebbe per `sorgente_id`. Default qui,
+    #    perché ogni generazione la chiede; un test che la guarda la sovrascrive.
+    repo.chiave_sorgente.side_effect = (
+        lambda *, sorgente_tipo_id, chiave: (int(chiave), None)
+    )
     for name, value in (repo_methods or {}).items():
         getattr(repo, name).return_value = value
     reader = MagicMock()

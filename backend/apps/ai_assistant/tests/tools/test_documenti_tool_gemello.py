@@ -7,7 +7,7 @@
 #
 # ⭐ PERCHE' ESISTE (2026-09-25). Il permesso del tool e' quello del gemello,
 #    la lista documenti del PREVENTIVO (area `vendite`). Le sorgenti che il
-#    tool accetta stanno invece in `_SORGENTE_UID_RESOLVERS`: aggiungerne una
+#    tool accetta stanno invece in `_SORGENTE_VERIFICHE`: aggiungerne una
 #    seconda (un contratto, un ordine) la metterebbe sotto il permesso del
 #    preventivo — nessun errore, e un operatore senza l'area della sorgente
 #    nuova ne leggerebbe i documenti dall'AI. Il commento sul tool lo dice; qui
@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import unittest
 
-from apps.ai_assistant.tools.documenti_tools import _SORGENTE_UID_RESOLVERS
+from apps.ai_assistant.tools.documenti_tools import _SORGENTE_VERIFICHE
 # Il codice della sorgente del gemello: la view `preventivi_documenti_views` lo
 # prende da qui (dal 2026-10-11 non ne tiene piu' una copia locale).
 from apps.config.sorgenti import SORGENTE_PREVENTIVO
@@ -33,7 +33,7 @@ class TestDocumentiToolGemello(unittest.TestCase):
     #    voce in piu' nella mappa.
     def test_le_sorgenti_sono_quella_del_gemello(self) -> None:
         self.assertEqual(
-            set(_SORGENTE_UID_RESOLVERS), {SORGENTE_PREVENTIVO},
+            set(_SORGENTE_VERIFICHE), {SORGENTE_PREVENTIVO},
             "cerca_documenti_generati ha il permesso della lista documenti del "
             "preventivo: una sorgente diversa vuole il suo tool e il suo gemello",
         )

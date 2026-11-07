@@ -301,7 +301,8 @@ class TestPreventivoEmissioneAllegati(JwtMockedApiTest):
         self.assertEqual(kwargs["emittente_fiscale_id"], 11)
         self.assertEqual(kwargs["sorgente_tipo_id"], 5)
         self.assertEqual(kwargs["sorgente_id"], 7)
-        self.assertEqual(kwargs["sorgente_uid"], "0190b000-0000-0000-0000-000000000007")
+        # Giro D.1: la view passa l'id, la chiave della stampa la sceglie il DB.
+        self.assertNotIn("sorgente_uid", kwargs)
         self.assertEqual(len(kwargs["allegati"]), 1)
         self.assertEqual(kwargs["allegati"][0]["mime_type"], "application/pdf")
         self.assertEqual(kwargs["allegati"][0]["file_name"], "allegato.pdf")

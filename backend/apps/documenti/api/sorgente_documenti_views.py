@@ -175,7 +175,6 @@ def build_documenti_sorgente_views(
                     emittente_fiscale_id=int(entity["emittente_fiscale_id"]),
                     sorgente_tipo_id=sorgente_tipo_id,
                     sorgente_id=int(entity["id"]),
-                    sorgente_uid=str(entity["uid"]),
                     template_documento_id=template_id,
                     tipo_documento_output_id=tipo_output_id,
                     allegati=allegati,
@@ -236,7 +235,6 @@ def build_documenti_sorgente_views(
                     emittente_fiscale_id=int(entity["emittente_fiscale_id"]),
                     sorgente_tipo_id=sorgente_tipo_id,
                     sorgente_id=int(entity["id"]),
-                    sorgente_uid=str(entity["uid"]),
                     template_documento_id=template_id,
                     tipo_documento_output_id=tipo_output_id,
                 )
@@ -351,7 +349,7 @@ def build_documenti_sorgente_views(
             result = doc_service().list_documenti_per_sorgente(
                 request.user,
                 sorgente_tipo_id=sorgente_tipo_id,
-                sorgente_uid=str(entity["uid"]),
+                sorgente_id=int(entity["id"]),
                 search=p["search"],
                 order_by=p["order_by"],
                 order_dir=p["order_dir"],

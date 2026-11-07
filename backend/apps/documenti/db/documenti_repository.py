@@ -231,6 +231,11 @@ DOCUMENTO_GENERATO_CREATE_COLUMNS: tuple[str, ...] = (
     "template_documento_id",
     "template_versione_id",
     "sorgente_tipo_id",
+    # ⭐ La chiave del documento nella colonna del `key_selector` del suo tipo
+    #    (giro D.1 di brief-db-sorgente-documento-e-riga, 2026-11-07): l'una o
+    #    l'altra, mai tutte e due (`chk_documenti_generati_sorgente_forma`).
+    #    La coppia la dà `chiave_sorgente`.
+    "sorgente_id",
     "sorgente_uid",
     "sorgente_riga",
     "progressivo_sorgente",
@@ -498,6 +503,42 @@ _VERSIONI_FROM = """
     FROM documenti.template_documenti_versioni v
     JOIN documenti.render_engine_documento re ON re.id = v.render_engine_id
 """
+
+
+# Scopo: Il DOCUMENTO di una stampa, in SQL: tipo, la chiave nella colonna del
+#        `key_selector` del tipo (l'altra è NULL per CHECK, e non si guarda) e
+#        la riga (`IS NULL` = la testata). Ritorna `(condizioni, params)`.
+#        Un frammento, due usi: il progressivo e la lista delle stampe di un
+#        documento devono contare lo STESSO insieme di righe.
+# ⛔ Una sola delle due chiavi: la coppia viene da `chiave_sorgente`, e due
+#    chiavi o nessuna sono un errore del chiamante, non un filtro vuoto.
+def _filtro_documento_sorgente(
+    sorgente_tipo_id: int,
+    sorgente_id: int | None,
+    sorgente_uid: str | None,
+    sorgente_riga: int | None,
+    *,
+    alias: str = "",
+) -> tuple[list[str], list[Any]]:
+    if (sorgente_id is None) == (sorgente_uid is None):
+        raise ValueError(
+            "il documento di una stampa ha UNA chiave: "
+            f"sorgente_id={sorgente_id!r}, sorgente_uid={sorgente_uid!r}"
+        )
+    conditions = [f"{alias}sorgente_tipo_id = %s"]
+    params: list[Any] = [int(sorgente_tipo_id)]
+    if sorgente_id is not None:
+        conditions.append(f"{alias}sorgente_id = %s")
+        params.append(int(sorgente_id))
+    else:
+        conditions.append(f"{alias}sorgente_uid = %s::uuid")
+        params.append(str(sorgente_uid))
+    if sorgente_riga is None:
+        conditions.append(f"{alias}sorgente_riga IS NULL")
+    else:
+        conditions.append(f"{alias}sorgente_riga = %s")
+        params.append(int(sorgente_riga))
+    return conditions, params
 
 
 class DocumentiRepository:
@@ -1252,37 +1293,54 @@ class DocumentiRepository:
             raise RuntimeError("fn_risolvi_template_applicabile senza riga e senza errore")
         return results[0]
 
-    # Scopo: Calcola il prossimo progressivo per (sorgente_tipo, sorgente_uid,
-    #        sorgente_riga). `NULLS NOT DISTINCT` sull'unique vincolo DDL
-    #        gestisce correttamente `sorgente_riga IS NULL` (caso testata).
-    #        Race window protetta dall'unique: se due chiamate concorrenti
-    #        calcolano lo stesso N, l'INSERT del secondo solleva
+    # Scopo: La chiave da scrivere per un documento citato da una stampa: da
+    #        tipo e una chiave QUALSIASI del documento (id o uid, in testo) la
+    #        coppia `(sorgente_id, sorgente_uid)`, con la sola colonna del
+    #        `key_selector` del tipo valorizzata. Wrapper di
+    #        `script.fn_sorgente_chiave`, il BB DB che scrive la provenienza:
+    #        quale colonna tocca a un tipo lo sa il catalogo, non questo file.
+    # ⛔ Solleva (dal DB) su un documento che non esiste o non si vede
+    #    (`E_SORG_NOT_FOUND`, INVOKER), su un tipo spento (`E_SORG_CONF`), su una
+    #    chiave malformata (`E_SORG_FORMATO`).
+    def chiave_sorgente(
+        self, *, sorgente_tipo_id: int, chiave: str,
+    ) -> tuple[int | None, str | None]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT sorgente_id, sorgente_uid::text"
+                "  FROM script.fn_sorgente_chiave(%s, %s::text)",
+                [int(sorgente_tipo_id), str(chiave)],
+            )
+            row = cursor.fetchone()
+        # ROWS 1: la funzione solleva, non torna vuota. Zero righe e' il patto
+        # del DB rotto: RuntimeError e non `assert`, come
+        # `risolvi_template_applicabile` — il controllo resta acceso con `python -O`.
+        if row is None:
+            raise RuntimeError("fn_sorgente_chiave senza riga e senza errore")
+        return (None if row[0] is None else int(row[0])), row[1]
+
+    # Scopo: Calcola il prossimo progressivo per (tipo, chiave del documento,
+    #        riga) — la chiave della stampa del giro D.1, una per documento
+    #        (`uq_documenti_generati_sorgente_progressivo`, `NULLS NOT
+    #        DISTINCT`). Race window protetta dall'unique: se due chiamate
+    #        concorrenti calcolano lo stesso N, l'INSERT del secondo solleva
     #        IntegrityError che il service mappa.
     def next_progressivo_sorgente(
         self,
         *,
         sorgente_tipo_id: int,
-        sorgente_uid: str,
+        sorgente_id: int | None,
+        sorgente_uid: str | None,
         sorgente_riga: int | None,
     ) -> int:
-        if sorgente_riga is None:
-            sql = """
-                SELECT COALESCE(MAX(progressivo_sorgente), 0) + 1
-                  FROM documenti.documenti_generati
-                 WHERE sorgente_tipo_id = %s
-                   AND sorgente_uid     = %s
-                   AND sorgente_riga IS NULL
-            """
-            params: list[Any] = [int(sorgente_tipo_id), sorgente_uid]
-        else:
-            sql = """
-                SELECT COALESCE(MAX(progressivo_sorgente), 0) + 1
-                  FROM documenti.documenti_generati
-                 WHERE sorgente_tipo_id = %s
-                   AND sorgente_uid     = %s
-                   AND sorgente_riga    = %s
-            """
-            params = [int(sorgente_tipo_id), sorgente_uid, int(sorgente_riga)]
+        conditions, params = _filtro_documento_sorgente(
+            sorgente_tipo_id, sorgente_id, sorgente_uid, sorgente_riga,
+        )
+        sql = (
+            "SELECT COALESCE(MAX(progressivo_sorgente), 0) + 1"  # noqa: S608 — frammenti costanti del modulo, valori come parametri
+            "  FROM documenti.documenti_generati"
+            f" WHERE {' AND '.join(conditions)}"
+        )
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
             row = cursor.fetchone()
@@ -1369,8 +1427,8 @@ class DocumentiRepository:
 
     # Scopo: Lista paginata documenti generati per una sorgente specifica
     #        (lista configurabile `documenti.documenti_sorgente`, 84).
-    #        Filtra su (sorgente_tipo_id, sorgente_uid) e opzionalmente
-    #        `sorgente_riga`. Scope emittente whitelist via `ANY(%s)`.
+    #        Filtra sul documento (tipo + la chiave del suo `key_selector`,
+    #        `_filtro_documento_sorgente`) e sulla riga (NULL = testata). Scope emittente whitelist via `ANY(%s)`.
     #        Ordinamento dalla whitelist `DOCUMENTI_SORGENTE_ORDER_COLUMNS`;
     #        di partenza `generato_at DESC, id DESC` (timeline naturale per
     #        l'utente: piu' recenti in alto), tiebreaker `id` nello stesso
@@ -1383,7 +1441,8 @@ class DocumentiRepository:
         self,
         *,
         sorgente_tipo_id: int,
-        sorgente_uid: str,
+        sorgente_id: int | None,
+        sorgente_uid: str | None,
         sorgente_riga: int | None,
         emittente_ids_scope: list[int] | None,
         limit: int,
@@ -1403,16 +1462,9 @@ class DocumentiRepository:
             colonne_desc=DOCUMENTI_SORGENTE_SORT_COLONNE_DATA,
         )
 
-        conditions = [
-            "d.sorgente_tipo_id = %s",
-            "d.sorgente_uid = %s",
-        ]
-        params: list[Any] = [int(sorgente_tipo_id), sorgente_uid]
-        if sorgente_riga is None:
-            conditions.append("d.sorgente_riga IS NULL")
-        else:
-            conditions.append("d.sorgente_riga = %s")
-            params.append(int(sorgente_riga))
+        conditions, params = _filtro_documento_sorgente(
+            sorgente_tipo_id, sorgente_id, sorgente_uid, sorgente_riga, alias="d.",
+        )
         if emittente_ids_scope is not None:
             conditions.append("d.emittente_fiscale_id = ANY(%s)")
             params.append(list(emittente_ids_scope))
@@ -1434,7 +1486,8 @@ class DocumentiRepository:
                 d.template_documento_id,
                 d.template_versione_id,
                 d.sorgente_tipo_id,
-                d.sorgente_uid,
+                d.sorgente_id,
+                d.sorgente_uid::text AS sorgente_uid,
                 d.sorgente_riga,
                 d.progressivo_sorgente,
                 d.stato,
@@ -1493,7 +1546,8 @@ class DocumentiRepository:
                 d.template_documento_id,
                 d.template_versione_id,
                 d.sorgente_tipo_id,
-                d.sorgente_uid,
+                d.sorgente_id,
+                d.sorgente_uid::text AS sorgente_uid,
                 d.sorgente_riga,
                 d.progressivo_sorgente,
                 d.stato,
@@ -1543,7 +1597,8 @@ class DocumentiRepository:
                 d.template_documento_id,
                 d.template_versione_id,
                 d.sorgente_tipo_id,
-                d.sorgente_uid,
+                d.sorgente_id,
+                d.sorgente_uid::text AS sorgente_uid,
                 d.sorgente_riga,
                 d.stato,
                 d.titolo,
