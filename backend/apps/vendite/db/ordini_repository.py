@@ -423,16 +423,25 @@ class OrdiniRepository(
     #        aggancerebbe alla pratica quello sbagliato.
     #        L'offerta non passa piu' da qui: «l'offerta e' gia' trasformata?»
     #        lo dice `vendite.fn_offerta_documenti_vivi`, dentro il verbo DB.
+    # ⭐ L'origine e' la PROVENIENZA (`sorgente_*`): `documento_origine_tipo/_id`
+    #        non esistono piu' dal giro T.5 di brief-db-sorgente-documento-e-riga
+    #        (2026-11-07). La coppia da cercare la da' il BB che la scrive,
+    #        `script.fn_sorgente_provenienza(tipo, chiave)` — tipo e chiave che
+    #        il `key_selector` vuole (per il preventivo l'uid) — e l'ordine si
+    #        incontra con la regola del modello, una delle due chiavi.
+    #        ⚠️ Il BB solleva se il documento non e' visibile: un preventivo
+    #        fuori perimetro non ha ordini da cercare.
     def get_ordine_by_documento_origine(
         self, tipo: str, origine_id: int,
     ) -> dict[str, Any] | None:
         sql = """
-            SELECT id, numero
-              FROM vendite.ordini
-             WHERE documento_origine_tipo = %s
-               AND documento_origine_id   = %s
-               AND NOT is_abortito_snapshot
-             ORDER BY id
+            SELECT o.id, o.numero
+              FROM script.fn_sorgente_provenienza(%s, %s::text) p
+              JOIN vendite.ordini o
+                ON o.sorgente_tipo_id = p.sorgente_tipo_id
+               AND (o.sorgente_id = p.sorgente_id OR o.sorgente_uid = p.sorgente_uid)
+             WHERE NOT o.is_abortito_snapshot
+             ORDER BY o.id
              LIMIT 1
         """
         with connection.cursor() as cursor:

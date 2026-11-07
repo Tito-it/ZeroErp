@@ -2,59 +2,57 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: La PROVENIENZA di un ordine da offerta sul DATABASE PROVVISTO, dopo il
-#        lotto 2b della grammatica unica (brief-db-grammatica-unica-documenti
-#        §12, 2026-10-19): `vendite.ordini.documento_origine_tipo` ha la FK
-#        verso `config.sorgenti`. Dal 2026-10-21 la provenienza la scrive il
-#        verbo DB `vendite.fn_genera_ordine_da_offerta` (provato dalla
-#        giuntura `test_genera_ordine_da_offerta_db.py`): qui si scrive a mano,
-#        per provare chi la LEGGE.
-#        Lo stesso caso, letto dal BB dei legami: l'`origine` e' il codice
-#        della sorgente, e per l'offerta e' anche il tipo del documento da
-#        aprire.
-# Note: ⚠️ La giuntura che i test mockati non vedono: un codice corto
-#       (`OFFERTA`) e' un rifiuto della FK solo sul DB vero, e fino al giro
-#       BE del 2b era proprio cio' che `crea_ordine_da_offerta` scriveva.
-#       L'ordine lo costruisce lo stampo `dbops.fn_pgtap_crea_ordine`; l'id
-#       dell'offerta e' polimorfo (nessuna FK), quindi non serve un'offerta
-#       vera per provare il vocabolario. Transazione SEMPRE annullata.
-#       Opt-in `ZEROERP_TEST_DB_E2E=1`.
+# Scopo: La PROVENIENZA di un ordine sul DATABASE PROVVISTO, letta da chi la
+#        LEGGE: il lettore dell'ordine nato dal preventivo
+#        (`OrdiniRepository.get_ordine_by_documento_origine`, smistamento e
+#        handler della pratica) e l'etichetta per la stampa. La scrivono i
+#        verbi DB; qui si scrive a mano, con la coppia che da' il BB che scrive
+#        (`script.fn_sorgente_provenienza`), per provare i lettori.
+# Note: ⭐ Dal giro T.5 di brief-db-sorgente-documento-e-riga (2026-11-07) la
+#       provenienza e' SOLO `sorgente_tipo_id` + `sorgente_id | sorgente_uid`:
+#       `documento_origine_tipo/_id` non esistono piu', e con loro il test del
+#       «codice corto» rifiutato dalla loro FK (lotto 2b della grammatica
+#       unica). Il tipo ora e' un id di `config.sorgenti`, e il guard unico
+#       della provenienza vuole un documento che esiste: l'origine e' un
+#       preventivo vero (`dbops.fn_pgtap_crea_preventivo`), non un id
+#       inventato. Il preventivo ha chiave `uid`: la provenienza e'
+#       `sorgente_uid`, e i lettori la incontrano con la regola del modello.
+#       ⚠️ I legami dell'ordine (`fn_documento_legami`) riportano in testata
+#       la sola provenienza dall'OFFERTA (quella dal preventivo e' per riga):
+#       quel caso lo prova `test_genera_ordine_da_offerta_db`, sull'ordine che
+#       genera il verbo. Transazione SEMPRE annullata. Opt-in `ZEROERP_TEST_DB_E2E=1`.
 # ------------------------------------------------------------
 """
 Indice test eseguiti:
-1) OrigineOrdineSorgenteDbTests.test_provenienza_col_codice_della_sorgente
-   (anche: i legami dell'ordine la riportano, col tipo da aprire)
-2) OrigineOrdineSorgenteDbTests.test_il_codice_corto_e_rifiutato
-3) OrigineOrdineSorgenteDbTests.test_etichetta_dell_origine_per_la_stampa
-   (§12.10.4: `get_ordine` porta il nome del tipo d'origine da
+1) OrigineOrdineSorgenteDbTests.test_l_ordine_nato_dal_preventivo_si_trova
+   (BE-T.5-a: dalla provenienza; un preventivo senza ordini da' None)
+2) OrigineOrdineSorgenteDbTests.test_etichetta_dell_origine_per_la_stampa
+   (`get_ordine` porta il nome del tipo d'origine da
    `config.sorgenti.etichetta`, NULL senza origine; il builder lo passa)
 """
 from __future__ import annotations
 
 import unittest
 
-import psycopg
-from django.db import IntegrityError, connection, transaction
+from django.db import connection
 
-from apps.config.sorgenti import SORGENTE_OFFERTA_COMMERCIALE, SORGENTE_ORDINE_VENDITA
+from apps.config.sorgenti import SORGENTE_PREVENTIVO
 from apps.core.tests.db_e2e import apri_transazione_annullata, richiedi_db_provvisto
 from apps.vendite.db.ordini_repository import OrdiniRepository
 from apps.vendite.services.ordine_document_context_builder import (
     OrdineDocumentContextBuilder,
 )
-from apps.vendite.services._annullo_con_legami import legami_del_documento
 
-# Un id d'offerta qualunque: `documento_origine_id` e' polimorfo.
-_OFFERTA_ID = 987654321
-
-
-# Scopo: la provenienza scritta a mano sull'ordine del test (le colonne che il
-#        verbo DB valorizza nella sua INSERT).
+# Scopo: la provenienza scritta a mano sull'ordine del test, con la coppia
+#        del BB che la scrive per i verbi (tipo + la sola chiave del tipo).
 def _scrivi_origine(ordine_id: int, tipo: str, origine_id: int) -> None:
     with connection.cursor() as cur:
         cur.execute(
-            "UPDATE vendite.ordini SET documento_origine_tipo = %s, documento_origine_id = %s"
-            " WHERE id = %s",
+            "UPDATE vendite.ordini o"
+            "   SET (sorgente_tipo_id, sorgente_id, sorgente_uid) ="
+            "       (SELECT p.sorgente_tipo_id, p.sorgente_id, p.sorgente_uid"
+            "          FROM script.fn_sorgente_provenienza(%s, %s::text) p)"
+            " WHERE o.id = %s",
             [tipo, origine_id, ordine_id],
         )
 
@@ -69,32 +67,22 @@ class OrigineOrdineSorgenteDbTests(unittest.TestCase):
     def setUp(self) -> None:
         apri_transazione_annullata(self)
         with connection.cursor() as cur:
-            cur.execute("SELECT ordine_id FROM dbops.fn_pgtap_crea_ordine('origine 2b')")
+            cur.execute("SELECT preventivo_id FROM dbops.fn_pgtap_crea_preventivo('origine ordine')")
+            self.preventivo_id = int(cur.fetchone()[0])
+            cur.execute("SELECT ordine_id FROM dbops.fn_pgtap_crea_ordine('origine ordine')")
             self.ordine_id = int(cur.fetchone()[0])
 
-    def test_provenienza_col_codice_della_sorgente(self) -> None:
-        _scrivi_origine(self.ordine_id, SORGENTE_OFFERTA_COMMERCIALE, _OFFERTA_ID)
-        out = legami_del_documento(SORGENTE_ORDINE_VENDITA, self.ordine_id)
-        provenienze = [r for r in out["righe"] if r["natura"] == "PROVENIENZA"]
-        self.assertEqual(len(provenienze), 1, out["righe"])
-        riga = provenienze[0]
-        self.assertEqual(riga["origine"], SORGENTE_OFFERTA_COMMERCIALE)
-        self.assertEqual(riga["origine_id"], _OFFERTA_ID)
-        # Il tipo da aprire e' l'origine stessa: nessuna traduzione.
-        self.assertEqual(riga["origine_tipo_codice_interno"], SORGENTE_OFFERTA_COMMERCIALE)
-
-    def test_il_codice_corto_e_rifiutato(self) -> None:
-        with self.assertRaises(IntegrityError) as cm:
-            with transaction.atomic():
-                _scrivi_origine(self.ordine_id, "OFFERTA", _OFFERTA_ID)
-        # Il vincolo dal canale strutturato di libpq, non dal testo.
-        causa = cm.exception.__cause__
-        self.assertIsInstance(causa, psycopg.Error)
-        assert isinstance(causa, psycopg.Error)
-        self.assertEqual(
-            causa.diag.constraint_name,
-            "fk_ordini_documento_origine_tipo_sorgenti",
-        )
+    # BE-T.5-a: il lettore cercava `documento_origine_tipo/_id`, che dal giro
+    # T.5 non esistono. Ora parte dal preventivo (id) e incontra l'ordine sulla
+    # sua chiave `uid`: la giuntura che i mock dello smistamento non vedono.
+    def test_l_ordine_nato_dal_preventivo_si_trova(self) -> None:
+        repo = OrdiniRepository()
+        self.assertIsNone(repo.get_ordine_by_documento_origine(SORGENTE_PREVENTIVO, self.preventivo_id))
+        _scrivi_origine(self.ordine_id, SORGENTE_PREVENTIVO, self.preventivo_id)
+        trovato = repo.get_ordine_by_documento_origine(SORGENTE_PREVENTIVO, self.preventivo_id)
+        assert trovato is not None
+        self.assertEqual(trovato["id"], self.ordine_id)
+        self.assertIn("numero", trovato)
 
     # La giuntura della forma 3: la JOIN di `get_ordine` su `config.sorgenti`
     # per codice. Un nome di colonna sbagliato o un JOIN interno (l'ordine
@@ -108,11 +96,11 @@ class OrigineOrdineSorgenteDbTests(unittest.TestCase):
         self.assertIn("documento_origine_etichetta", senza)
         self.assertIsNone(senza["documento_origine_etichetta"])
 
-        _scrivi_origine(self.ordine_id, SORGENTE_OFFERTA_COMMERCIALE, _OFFERTA_ID)
+        _scrivi_origine(self.ordine_id, SORGENTE_PREVENTIVO, self.preventivo_id)
         with connection.cursor() as cur:
             cur.execute(
                 "SELECT etichetta FROM config.sorgenti WHERE codice_interno = %s",
-                [SORGENTE_OFFERTA_COMMERCIALE],
+                [SORGENTE_PREVENTIVO],
             )
             attesa = cur.fetchone()[0]
         con = repo.get_ordine(self.ordine_id)
@@ -122,5 +110,5 @@ class OrigineOrdineSorgenteDbTests(unittest.TestCase):
         origine = OrdineDocumentContextBuilder(repo=repo).build_context(
             self.ordine_id,
         )["ordine"]["origine"]
-        self.assertEqual(origine["tipo"], SORGENTE_OFFERTA_COMMERCIALE)
+        self.assertEqual(origine["tipo"], SORGENTE_PREVENTIVO)
         self.assertEqual(origine["etichetta"], attesa)

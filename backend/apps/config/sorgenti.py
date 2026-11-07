@@ -23,7 +23,9 @@
 #    QUESTO vocabolario dal 2026-10-19 (brief-db-grammatica-unica-documenti,
 #    lotto 2a): a DB `p_documento` e' `config.sorgenti.codice_interno%TYPE`.
 #    Dal lotto 2b (stesso giorno) lo sono anche l'ORIGINE e la DESTINAZIONE:
-#    `vendite.ordini.documento_origine_tipo` e
+#    `vendite.ordini.documento_origine_tipo` (ritirata il 2026-11-07, giro
+#    T.5 di brief-db-sorgente-documento-e-riga: l'origine e' la provenienza
+#    `sorgente_tipo_id`, e la vista lista ne da' il codice) e
 #    `config.nature_vendita.destinazione_tipo` (FK verso `config.sorgenti`),
 #    l'`origine` di `fn_documento_legami` (tranne `ONERE`, che non e' una
 #    sorgente). Dal 2026-10-20 (§12.8) anche l'`origine` delle partite di

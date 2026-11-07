@@ -92,17 +92,7 @@ class AnagraficheRepository:
             params.append(pattern)
         return self._risorse_umane_lookup(condizioni, params)
 
-    # Scopo: Una risorsa umana per id, nella stessa forma del lookup, o None.
-    #        Serve al guard applicativo «il responsabile e' una persona attiva»
-    #        prima dell'UPDATE (il DB lo rifiuta comunque, ma con un codice
-    #        TECNICO — `E_ATTIVO_REQUIRE` — che l'operatore non puo' leggere).
-    def get_risorsa_umana_lookup(self, risorsa_umana_id: int) -> dict | None:
-        righe = self._risorse_umane_lookup(
-            ["v.risorsa_umana_id = %s"], [risorsa_umana_id],
-        )
-        return righe[0] if righe else None
-
-    # Scopo: LA query del lookup, una sola per l'elenco e per il singolo id.
+    # Scopo: LA query del lookup delle risorse umane.
     #        Legge la VISTA MODELLO `anagrafiche.vw_risorse_umane_dettaglio`
     #        (risorsa + soggetto + qualifica + unita' organizzativa): il nome
     #        della persona e' la `ragione_sociale_completa` del soggetto, e la

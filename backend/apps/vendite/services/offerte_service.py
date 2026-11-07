@@ -914,8 +914,10 @@ class OfferteService:
 
     # Scopo: Push offerta ACCETTATA → contratto DRAFT (Step 8 brief DB,
     #        atterrato 2026-05-25). Pattern A idempotenza: la fn DB
-    #        `fn_push_offerta_a_contratto` ha guard UNIQUE su
-    #        `contratti.offerta_id` — doppia invocazione fallisce con
+    #        `fn_push_offerta_a_contratto` ha il guard dei documenti vivi
+    #        (`fn_offerta_documenti_vivi`, indice `uq_contratti_sorgente_offerta`;
+    #        `contratti.offerta_id` non c'e' piu' dal giro T.5) — doppia
+    #        invocazione fallisce con
     #        `E_OFFERTA_CONTRATTO_GIA_GENERATO`. Pratica opzionale.
     #
     #        Ritorna `OffertaPushResult` con id+numero del nuovo contratto
