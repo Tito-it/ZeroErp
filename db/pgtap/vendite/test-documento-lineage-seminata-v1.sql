@@ -165,7 +165,7 @@ BEGIN
     SELECT a.attivita_id INTO v_ca
       FROM dbops.fn_pgtap_crea_commessa_attivita((SELECT commessa_id FROM g_com),
                                                  p_sorgente_codice => k.codice,
-                                                 p_sorgente_uid    => k.uid) a;
+                                                 p_sorgente_chiave => k.uid) a;
   END LOOP;
 END $leg$;
 

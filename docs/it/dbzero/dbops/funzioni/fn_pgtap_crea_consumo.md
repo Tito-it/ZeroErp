@@ -26,7 +26,7 @@ AS $function$
 -- Uso:
 --   CREATE TEMP TABLE _src AS SELECT * FROM dbops.fn_pgtap_crea_consumo(<ba>);
 --   ... p_sorgente_tipo_id => (SELECT sorgente_tipo_id FROM _src),
---       p_sorgente_uid     => (SELECT consumo_id::text FROM _src),
+--       p_sorgente_chiave  => (SELECT consumo_id::text FROM _src),
 --       p_segment_key      => (SELECT segment_key FROM _src) || ':A' ...
 -- ⚠️ Sotto la RLS il billing account deve stare nel perimetro di chi
 --   agisce (lo stesso della commessa della fixture).

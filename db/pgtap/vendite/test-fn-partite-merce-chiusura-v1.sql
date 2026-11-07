@@ -219,7 +219,7 @@ SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('chiusura 1', p_ordine_id => (SE
 CREATE TEMP TABLE tmp_att1 AS
 SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita((SELECT commessa_id FROM tmp_com_ch), 20,
          (SELECT articolo_id FROM tmp_refs_ch),
-         p_sorgente_codice => 'ORDINE_VENDITA', p_sorgente_uid => (SELECT ordine_uid FROM tmp_o1)::text,
+         p_sorgente_codice => 'ORDINE_VENDITA', p_sorgente_chiave => (SELECT ordine_uid FROM tmp_o1)::text,
          p_sorgente_riga_id => (SELECT ordine_riga_id FROM tmp_o1), p_quantita => 15,
          p_competenza_dal => DATE '2026-08-01', p_competenza_al => DATE '2026-08-31');
 SELECT vendite.fn_emit_attivita_fatturabili_da_commessa((SELECT commessa_id FROM tmp_com_ch), true, false);
@@ -270,7 +270,7 @@ SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('chiusura 2', p_stato_codice_int
 CREATE TEMP TABLE tmp_att2 AS
 SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita((SELECT commessa_id FROM tmp_com_ch), 20,
          (SELECT articolo_id FROM tmp_refs_ch),
-         p_sorgente_codice => 'DDT_VENDITA', p_sorgente_uid => (SELECT ddt_uid FROM tmp_p)::text,
+         p_sorgente_codice => 'DDT_VENDITA', p_sorgente_chiave => (SELECT ddt_uid FROM tmp_p)::text,
          p_sorgente_riga_id => (SELECT ddt_riga_id FROM tmp_p), p_quantita => 6,
          p_competenza_dal => DATE '2026-08-01', p_competenza_al => DATE '2026-08-31');
 CREATE TEMP TABLE tmp_fatt2 AS
@@ -404,7 +404,7 @@ CREATE TEMP TABLE tmp_o5 AS SELECT ordine_id, ordine_uid, ordine_riga_id FROM tm
 CREATE TEMP TABLE tmp_att5 AS
 SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita((SELECT commessa_id FROM tmp_com_ch), 20,
          (SELECT articolo_id FROM tmp_refs_ch),
-         p_sorgente_codice => 'DDT_VENDITA', p_sorgente_uid => (SELECT ddt_uid FROM tmp_d5)::text,
+         p_sorgente_codice => 'DDT_VENDITA', p_sorgente_chiave => (SELECT ddt_uid FROM tmp_d5)::text,
          p_sorgente_riga_id => (SELECT ddt_riga_id FROM tmp_d5), p_quantita => 10,
          p_competenza_dal => DATE '2026-08-01', p_competenza_al => DATE '2026-08-31');
 SELECT vendite.fn_emit_attivita_fatturabili_da_commessa((SELECT commessa_id FROM tmp_com_ch), true, false);

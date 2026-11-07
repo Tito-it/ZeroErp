@@ -457,7 +457,7 @@ CREATE TEMP TABLE tmp_att_rett_rld AS
 SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita((SELECT commessa_id FROM tmp_comm_rett_rld), 25,
          (SELECT articolo_id FROM tmp_ddt_rett_rld),
          p_sorgente_codice  => 'DDT_VENDITA',
-         p_sorgente_uid     => (SELECT ddt_uid FROM tmp_ddt_rett_rld)::text,
+         p_sorgente_chiave  => (SELECT ddt_uid FROM tmp_ddt_rett_rld)::text,
          p_sorgente_riga_id => (SELECT ddt_riga_id FROM tmp_ddt_rett_rld),
          p_quantita         => 10);
 

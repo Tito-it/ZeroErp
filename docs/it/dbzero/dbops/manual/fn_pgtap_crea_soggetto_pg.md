@@ -1,20 +1,21 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_pgtap_crea_soggetto_pg`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
 > Approfondimento tabelle:
 >
-> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti) — la testata, scritta dalla fixture
-> * [anagrafiche.indirizzi_soggetti](/dbzero/anagrafiche/tabelle/indirizzi_soggetti) — gli indirizzi del soggetto, scritti dalla fixture
+> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti) — la testata, scritta dalla madre
+> * [anagrafiche.indirizzi_soggetti](/dbzero/anagrafiche/tabelle/indirizzi_soggetti) — gli indirizzi del soggetto, scritti dalla madre degli indirizzi
 > * [config.tipi_soggetto_dettaglio_tipi_indirizzo](/dbzero/config/tabelle/tipi_soggetto_dettaglio_tipi_indirizzo) — la matrice che dice quali indirizzi servono
 >
 > Approfondimento funzioni:
 >
-> * [anagrafiche.fn_scrivi_dati_societari](/dbzero/anagrafiche/funzioni/fn_scrivi_dati_societari) — il verbo dei dati societari
-> * [anagrafiche.fn_crea_contatto](/dbzero/anagrafiche/funzioni/fn_crea_contatto) — il building block del contatto
-> * [anagrafiche.fn_crea_soggetto_pg](/dbzero/anagrafiche/funzioni/fn_crea_soggetto_pg) — la madre di dominio, che la fixture non usa
+> * [anagrafiche.fn_crea_soggetto_pg](/dbzero/anagrafiche/funzioni/fn_crea_soggetto_pg) — la madre di dominio: testata, contatto, dati societari
+> * [anagrafiche.fn_crea_indirizzi_soggetto](/dbzero/anagrafiche/funzioni/fn_crea_indirizzi_soggetto) — la madre degli indirizzi del soggetto
+> * [anagrafiche.fn_scrivi_dati_societari](/dbzero/anagrafiche/funzioni/fn_scrivi_dati_societari) — il verbo dei dati societari, che la madre usa
+> * [anagrafiche.fn_crea_contatto](/dbzero/anagrafiche/funzioni/fn_crea_contatto) — il building block del contatto, che la madre usa
 > * [dbops.fn_pgtap_piva_libera](/dbzero/dbops/funzioni/fn_pgtap_piva_libera) — la partita IVA libera
 > * [dbops.fn_pgtap_indirizzo_libero_forma](/dbzero/dbops/funzioni/fn_pgtap_indirizzo_libero_forma) — i campi dell'indirizzo nella forma dello stato
 > * [dbops.fn_pgtap_crea_soggetto_ruolo](/dbzero/dbops/funzioni/fn_pgtap_crea_soggetto_ruolo) — il passo successivo: il ruolo
@@ -28,8 +29,8 @@
 ### 🎯 Scopo Principale
 
 Crea per un test un **soggetto persona giuridica già valido** — testata, dati societari,
-indirizzi obbligatori, contatto — e ne restituisce l'id. Al test basta passare la ragione
-sociale: natura, stato e partita IVA hanno un default.
+indirizzi obbligatori, contatto — dalle madri del dominio, e ne restituisce l'id. Al test
+basta passare la ragione sociale: natura, stato e partita IVA hanno un default.
 
 ---
 
@@ -52,28 +53,32 @@ immediati: un chiamante che poi costruisce a mano un'altra saga deve aprirsi la 
 
 * **Codice fiscale**: coincide con la partita IVA, come per una persona giuridica italiana.
   Il sesso non si scrive: per società ed enti non si indica.
-* **Dati societari**: passano dal verbo, come nell'applicazione. La forma giuridica è la
+* **Stato**: il test lo dà per id; la madre lo riceve col suo codice ISO2, e un codice che
+  indica più stati lo rifiuta lei (`E_STATO_ISO2_AMBIGUO`), come per l'applicazione.
+* **Dati societari**: li scrive la madre, che decide quando scriverli. La forma giuridica è la
   prima ammessa dalla natura per lo stato; numero REA e capitale ci sono solo se la forma li
   prevede (il numero REA si ricava dalla partita IVA, già unica). Nessun canale di
   fatturazione elettronica. Se la natura vieta i dati societari, non si scrivono.
-* **Indirizzi**: tutti i tipi obbligatori della matrice della natura, nella forma che lo
-  stato pretende (comune e CAP del catalogo, oppure località). Se la natura non ha tipi
-  obbligatori, se ne scrive comunque uno, il primo ammesso: il guard degli indirizzi
-  pretende almeno una riga.
-* **Contatto**: un contatto predefinito, scritto dal building block.
+* **Indirizzi**: un indirizzo del primo tipo obbligatorio della matrice della natura, nella
+  forma che lo stato pretende (comune e CAP del catalogo, oppure località); la madre degli
+  indirizzi lo copia sugli altri tipi obbligatori. Una natura senza tipi obbligatori nasce
+  **senza** indirizzi: il guard degli indirizzi non ne pretende nessuno.
+* **Contatto**: il contatto predefinito della madre, col nominativo uguale alla ragione
+  sociale e un'email di prova.
 
-⚠️ Una natura di persona fisica non passa: la rifiuta il guard del sesso, perché la fixture
-non ne ha uno da dare. Per una persona fisica c'è
+⚠️ Una natura di persona fisica non passa: la rifiuta la madre
+(`E_SOGGETTO_CREAZIONE_NATURA_ERRATA`), perché la persona fisica ha la sua porta. Per una persona fisica c'è
 [fn_pgtap_crea_operatore_umano](/dbzero/dbops/funzioni/fn_pgtap_crea_operatore_umano).
 
 ---
 
-### ⚠️ Testata e indirizzi sono scritti dalla fixture
+### ⭐ Tutto passa dalle madri
 
-Dati societari e contatto passano dal dominio. La testata del soggetto e i suoi indirizzi
-invece la fixture li scrive da sé, senza passare dalla madre
-[anagrafiche.fn_crea_soggetto_pg](/dbzero/anagrafiche/funzioni/fn_crea_soggetto_pg) né dalla
-madre degli indirizzi del soggetto.
+La testata, il contatto e i dati societari li scrive
+[anagrafiche.fn_crea_soggetto_pg](/dbzero/anagrafiche/funzioni/fn_crea_soggetto_pg), gli
+indirizzi [anagrafiche.fn_crea_indirizzi_soggetto](/dbzero/anagrafiche/funzioni/fn_crea_indirizzi_soggetto):
+la fixture sceglie solo i valori. Un soggetto di prova nasce quindi nella forma in cui lo
+produce l'applicazione, e un guard nuovo sulle madri arriva anche ai test.
 
 ---
 
@@ -87,15 +92,19 @@ un'istruzione **separata**.
 
 ### Codici errore
 
-La fixture non ne solleva di suoi: valgono i guard del soggetto, dei dati societari, degli
-indirizzi e del contatto, che scattano alla richiusura della finestra.
+La fixture solleva da sé solo per uno stato che non esiste. Valgono i codici delle due madri e
+i guard del soggetto, dei dati societari, degli indirizzi e del contatto, che scattano alla
+richiusura della finestra.
 
 ---
 
 ### Test
 
-Nessun pgTAP dedicato: la esercitano i test che costruiscono clienti, fornitori, banche e
-aziende, e quelli dei dati societari in `db/pgtap/anagrafiche/`.
+* `db/pgtap/anagrafiche/test-fn-pgtap-crea-soggetto-pg-v1.sql` — il contatto della madre,
+  gli indirizzi obbligatori, i dati societari, e una natura senza tipi obbligatori (costruita
+  nella transazione) che nasce senza indirizzi.
+* La esercitano i test che costruiscono clienti, fornitori, banche e aziende, e quelli dei dati
+  societari in `db/pgtap/anagrafiche/`.
 
 ---
 
@@ -107,6 +116,7 @@ aziende, e quelli dei dati societari in `db/pgtap/anagrafiche/`.
 * 2026-10-11 — i dati societari passano dal verbo, e i valori li decide la configurazione (`brief-db-dati-fiscali-e-societari-del-soggetto`).
 * 2026-10-17 — il contatto passa dal building block (`brief-db-processi-accensione-per-ambiente`).
 * 2026-10-19 — gli indirizzi nella forma che lo stato pretende; prima avevano la forma estera anche per l'Italia.
+* 2026-11-08 — testata e indirizzi dalle madri del dominio; il contatto prende il nominativo della madre; il ripiego «almeno un indirizzo» per una natura senza obbligatori è ritirato (decisione di Tid del 2026-11-07).
 
 ---
 

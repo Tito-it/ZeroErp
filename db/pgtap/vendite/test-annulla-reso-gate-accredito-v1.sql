@@ -147,7 +147,7 @@ BEGIN
     FROM dbops.fn_pgtap_crea_commessa_attivita((SELECT commessa_id FROM tmp_com_agr), p_prezzo,
              p_articolo_id      => (SELECT articolo_id FROM tmp_refs_agr),
              p_sorgente_codice  => 'DDT_VENDITA',
-             p_sorgente_uid     => p_ddt_uid::text,
+             p_sorgente_chiave  => p_ddt_uid::text,
              p_sorgente_riga_id => p_ddt_riga_id,
              p_quantita         => p_qta) a;
   SELECT f.fattura_riga_id INTO v_riga

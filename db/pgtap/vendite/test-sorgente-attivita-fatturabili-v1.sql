@@ -218,7 +218,7 @@ INSERT INTO _ca
 SELECT 'P', a.attivita_id
   FROM dbops.fn_pgtap_crea_commessa_attivita(pg_temp.comm('MP'), 30,
          p_sorgente_codice => 'PREVENTIVO',
-         p_sorgente_uid    => (SELECT preventivo_uid::text FROM _prev LIMIT 1),
+         p_sorgente_chiave => (SELECT preventivo_uid::text FROM _prev LIMIT 1),
          p_sorgente_riga_id => (SELECT preventivo_riga_id FROM _prev ORDER BY preventivo_riga_id LIMIT 1)) a;
 
 CREATE FUNCTION pg_temp.stato_smist() RETURNS text LANGUAGE sql STABLE AS $fx$

@@ -347,7 +347,7 @@ SELECT a.attivita_id
          p_prezzo_snapshot    => 20,
          p_articolo_id        => (SELECT articolo_id FROM tmp_refs_lr),
          p_sorgente_codice    => 'DDT_VENDITA',
-         p_sorgente_uid       => (SELECT d.uid::text FROM vendite.ddt d
+         p_sorgente_chiave    => (SELECT d.uid::text FROM vendite.ddt d
                                    WHERE d.id = (SELECT id FROM tmp_fix WHERE chiave = 'ddt_cons')),
          p_sorgente_riga_id   => (SELECT id FROM tmp_fix WHERE chiave = 'ddt_cons_riga'),
          p_quantita           => 3,

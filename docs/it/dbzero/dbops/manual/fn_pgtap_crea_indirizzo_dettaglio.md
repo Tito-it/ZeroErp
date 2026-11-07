@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_pgtap_crea_indirizzo_dettaglio`
 
-> **Ultimo aggiornamento**: 7 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -11,7 +11,7 @@
 >
 > Approfondimento funzioni:
 >
-> * [anagrafiche.fn_get_or_create_indirizzo_dettaglio](/dbzero/anagrafiche/funzioni/fn_get_or_create_indirizzo_dettaglio) — il «trova o crea» di dominio, che la fixture non usa
+> * [anagrafiche.fn_get_or_create_indirizzo_dettaglio](/dbzero/anagrafiche/funzioni/fn_get_or_create_indirizzo_dettaglio) — il «trova o crea» di dominio, che la fixture chiama
 > * [anagrafiche.trgfn_indirizzi_dettaglio_normalize](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_dettaglio_normalize) — calcola le colonne normalizzate su cui sta l'unicità
 > * [dbops.fn_pgtap_crea_pdp](/dbzero/dbops/funzioni/fn_pgtap_crea_pdp) — il punto di prelievo, su un indirizzo di questa fixture
 > * [dbops.fn_pgtap_crea_magazzino](/dbzero/dbops/funzioni/fn_pgtap_crea_magazzino) — il magazzino, idem
@@ -27,7 +27,8 @@
 
 Un indirizzo di dettaglio per un test, fabbricato e non cercato: civico 99999 sulla prima
 via viva di seed, con l'etichetta del test come interno. Ne torna l'id. Una via soppressa non si
-usa: il guard del ritiro rifiuterebbe l'indirizzo.
+usa: il guard del ritiro rifiuterebbe l'indirizzo. L'indirizzo lo trova o lo crea il building
+block del dominio, con le sue regole.
 
 ---
 
@@ -36,7 +37,7 @@ usa: il guard del ritiro rifiuterebbe l'indirizzo.
 `anagrafiche.indirizzi_dettaglio` è dato di macchina: su un database ricostruito non ce n'è
 nessuno, e una fixture che ne cerca uno «attivo» muore prima di eseguire un'asserzione. Lo
 stradario invece è seed, e c'è sempre: la fixture prende il primo per id, che serve solo come
-ancora. Se lo stradario è vuoto solleva, perché è un seed che manca e non un dato di
+ancora (la prima via viva). Se lo stradario è vuoto solleva, perché è un seed che manca e non un dato di
 macchina.
 
 ---
@@ -46,17 +47,17 @@ macchina.
 L'interno è l'etichetta troncata a **10 caratteri**, e l'unicità dell'indirizzo sta sulle
 colonne normalizzate dal trigger (stradario, civico, estensione, palazzina, scala, piano,
 interno, con i vuoti che contano come uguali). Una seconda chiamata con la stessa etichetta
-trova la riga esistente e ne torna l'id, toccando solo la data di aggiornamento. Ne segue:
+trova la riga esistente e ne torna l'id. Ne segue:
 
 * due etichette che coincidono nei primi 10 caratteri, una volta normalizzate, danno lo
   **stesso** indirizzo;
 * chi vuole indirizzi diversi deve dare etichette diverse entro quei 10 caratteri, come fa
   [fn_pgtap_crea_pdp](/dbzero/dbops/funzioni/fn_pgtap_crea_pdp), che ne usa una numerata.
 
-⚠️ Il «trova o crea» è scritto qui, non preso da
-[fn_get_or_create_indirizzo_dettaglio](/dbzero/anagrafiche/funzioni/fn_get_or_create_indirizzo_dettaglio):
-una riga trovata ma disattivata la fixture la torna com'è, dove il building block di dominio
-la riattiverebbe.
+⭐ Il «trova o crea» è quello del dominio,
+[fn_get_or_create_indirizzo_dettaglio](/dbzero/anagrafiche/funzioni/fn_get_or_create_indirizzo_dettaglio),
+non una copia: la chiave è normalizzata come la salva il trigger, la via deve risolversi, e una
+riga trovata ma disattivata torna attiva. È la stessa strada di chi scrive un indirizzo vero.
 
 ---
 
@@ -69,15 +70,17 @@ la normalizzazione o la geolocalizzazione si costruisce il suo.
 
 ### Codici errore
 
-Uno stradario vuoto è un'eccezione senza codice, sollevata dalla fixture. Valgono i guard
-dell'indirizzo di dettaglio.
+Uno stradario vuoto è un'eccezione senza codice, sollevata dalla fixture. Valgono i codici del
+building block di dominio (per esempio `E_INDIRIZZO_VIA_NON_RISOLTA` per una via che non si
+risolve) e i guard dell'indirizzo di dettaglio.
 
 ---
 
 ### Test
 
 * `db/pgtap/anagrafiche/test-indirizzi-dettaglio-unicita-v1.sql` — la stessa etichetta dà lo
-  stesso id, etichette diverse danno id diversi, sull'indice di unicità di oggi.
+  stesso id, etichette diverse danno id diversi, e sull'indirizzo disattivato torna lo stesso id,
+  riattivato (test 29).
 * La usano come fixture i test di magazzino, del perimetro di magazzino sotto RLS e dei punti
   di prelievo.
 
@@ -88,6 +91,8 @@ dell'indirizzo di dettaglio.
 * 2026-09-15 — nasce, per i test di magazzino che cercavano un indirizzo esistente e su un
   database ricostruito non lo trovavano.
 * 2026-10-25 — il «trova» segue il nuovo indice di unicità sulle colonne normalizzate.
+* 2026-11-08 — l'indirizzo lo trova o lo crea il building block del dominio: una riga spenta
+  torna attiva, invece di essere restituita spenta.
 
 ---
 

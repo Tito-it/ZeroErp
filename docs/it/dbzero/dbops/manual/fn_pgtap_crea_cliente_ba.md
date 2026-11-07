@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_pgtap_crea_cliente_ba`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -17,6 +17,7 @@
 > * [dbops.fn_pgtap_crea_soggetto_ruolo](/dbzero/dbops/funzioni/fn_pgtap_crea_soggetto_ruolo) — il ruolo CL
 > * [dbops.fn_pgtap_crea_mondo_cliente](/dbzero/dbops/funzioni/fn_pgtap_crea_mondo_cliente) — il mondo, che la compone dopo aver aperto il contesto
 > * [dbops.fn_pgtap_crea_cliente](/dbzero/dbops/funzioni/fn_pgtap_crea_cliente) — la stessa catena più la riga del cliente
+> * [dbops.fn_pgtap_valuta](/dbzero/dbops/funzioni/fn_pgtap_valuta) — la valuta delle radici della catena, per le fixture
 >
 > Guide:
 >
@@ -46,10 +47,12 @@ lo stesso building block dell'applicazione. Alla fixture restano le scelte del t
   codice è unico e una sigla fissa farebbe collidere la seconda chiamata con la prima. Il
   massimo si legge dalle **istanze**, che non sono sotto la sicurezza per riga: i conti lo
   sono, e un operatore vedrebbe solo quelli della sua azienda;
-* la prima categoria cliente e la prima **valuta**, per id. La valuta di un documento si
-  risolve lungo la catena «conto → azienda → gestore», e su un database ricostruito nessuno
-  dei tre la porta: valorizzando l'anello più vicino al documento la fixture non dipende da
-  com'è configurata la macchina;
+* la prima categoria cliente, per id, e la **valuta** di
+  [dbops.fn_pgtap_valuta](/dbzero/dbops/funzioni/fn_pgtap_valuta), la sede delle fixture per la
+  prima valuta del catalogo. La valuta di un documento si risolve lungo la catena «conto →
+  azienda → gestore», e su un database ricostruito nessuno dei tre la porta: il conto è una
+  radice della catena, e valorizzandolo la fixture non dipende da com'è configurata la
+  macchina;
 * l'utility: quella chiesta, o la prima a catalogo.
 
 ---
@@ -110,6 +113,8 @@ come ogni fixture.
 * 2026-09-23 — il codice libero si legge dalle istanze, fuori dalla sicurezza per riga.
 * 2026-10-18 — istanza, conto e legame li scrive `anagrafiche.fn_crea_billing_account`
   (regola del 2, `brief-db-processi-accensione-per-ambiente`, 2b-1 lotto 5).
+* 2026-11-08 — la valuta la dà `dbops.fn_pgtap_valuta`, la sede comune delle fixture, invece di
+  una copia della scelta.
 
 ---
 

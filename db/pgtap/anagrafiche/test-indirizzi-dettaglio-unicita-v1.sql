@@ -7,7 +7,7 @@
 -- I casi si COSTRUISCONO (civici 9997x, interni ZZPGTU*): nessuna asserzione
 -- si appoggia alle righe presenti.
 --
--- Elenco test (plan 28):
+-- Elenco test (plan 29):
 --  1) l'indice v2 e' sulle sette colonne nude, NULLS NOT DISTINCT (la clausola, non il nome)
 --  2) l'indice vecchio (COALESCE, civico nudo) non c'e' piu'
 --  3) CHECK di rete sul civico, forma esatta
@@ -34,8 +34,10 @@
 -- 24) D6: UPDATE su una chiave libera passa
 -- 25) D4: via che non si risolve (comune senza provincia) -> errore leggibile
 -- 26) fn_check_indirizzo_duplicato: l'SNC costruito e' un match esatto
--- 27) builder di fixture: la stessa etichetta da' lo stesso id (ON CONFLICT sul v2)
+-- 27) builder di fixture: la stessa etichetta da' lo stesso id
 -- 28) builder di fixture: etichette diverse danno id diversi
+-- 29) builder di fixture: sull'indirizzo disattivato restituisce lo stesso id, riattivato
+--     (passa dal BB del dominio, non da un suo INSERT: brief-db-revisione-dbops D64)
 --
 -- Scopo:
 --  - presidiare i tre buchi del brief (A civico SNC fuori dall'indice, B due
@@ -56,7 +58,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 -- ⚠️ 3. VINCOLI DIFFERITI: IMMEDIATE, o non verrebbero esercitati.
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(28);
+SELECT plan(29);
 
 -- =========================================================
 -- Fixture: uno stradario di seed che si risolve nella vista, e gli id
@@ -341,6 +343,23 @@ SELECT isnt(
     dbops.fn_pgtap_crea_indirizzo_dettaglio('pgtu uno'),
     dbops.fn_pgtap_crea_indirizzo_dettaglio('pgtu due'),
     '28. builder: etichette diverse danno id diversi'
+);
+
+-- 29) Il builder passa dal BB: sulla riga spenta la riattiva, come il dominio.
+--   Due chiamate in due istruzioni: la funzione e' VOLATILE e scrive.
+CREATE TEMP TABLE tmp_u_spento AS
+SELECT dbops.fn_pgtap_crea_indirizzo_dettaglio('pgtu spento') AS id;
+UPDATE anagrafiche.indirizzi_dettaglio SET attivo = false
+ WHERE id = (SELECT id FROM tmp_u_spento);
+CREATE TEMP TABLE tmp_u_riacceso AS
+SELECT dbops.fn_pgtap_crea_indirizzo_dettaglio('pgtu spento') AS id;
+
+SELECT is(
+    (SELECT r.id::text || ' ' || d.attivo::text
+       FROM tmp_u_riacceso r
+       JOIN anagrafiche.indirizzi_dettaglio d ON d.id = r.id),
+    (SELECT id::text FROM tmp_u_spento) || ' true',
+    '29. builder: sull''indirizzo disattivato restituisce lo stesso id, riattivato'
 );
 
 SELECT * FROM finish();

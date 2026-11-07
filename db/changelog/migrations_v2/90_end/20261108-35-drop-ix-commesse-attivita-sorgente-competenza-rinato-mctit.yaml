@@ -1,0 +1,54 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'INDICE RITIRATO DAL -70 NON RINASCE DA ZERO
+#   Scritto il 2026-11-07 (brief-db-sorgente-documento-e-riga, lotto C, giro C.3).
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────
+#   00_schema/vendite/20261107-70 ritira ix_commesse_attivita_sorgente_competenza
+#   (sorgente_uid, competenza_mese): al suo posto gli indici per tipo e chiave di
+#   20261107-71. Ma l'indice nasce in 90_end/20260703-58, con IF NOT EXISTS: da
+#   zero l'ordine e' PER FASE, il -58 gira DOPO il -70 e lo ricrea, sulla colonna
+#   ormai uuid. Su dbdev il -58 era passato prima: l'indice non c'e'.
+#
+# ── IL RIMEDIO ──────────────────────────────────────────────────────
+#   Il -58 e' committato: non si tocca. Qui, in 90_end e con un nome che in
+#   includeAll viene dopo il -58, l'indice si toglie se c'e'. IF EXISTS e' la
+#   forma giusta: su ogni database, a questo punto, il -70 ha gia' ritirato
+#   l'indice; c'e' solo se il -58 l'ha appena rifatto. Su dbdev non fa niente.
+#   La condizione del -70 da zero la da' 00_schema/vendite/20261107-05.
+#   Nessun changeSet di 90_end successivo al -58 legge l'indice (cercato il
+#   2026-11-07). Numero: primo libero del 08-11 su tutti i livelli (il 07-11 e'
+#   pieno).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261108-35-drop-ix-commesse-attivita-sorgente-competenza-rinato-mctit.yaml
+
+  - changeSet:
+      id: 20261108-35-drop-ix-commesse-attivita-sorgente-competenza-rinato
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Toglie ix_commesse_attivita_sorgente_competenza se 90_end/20260703-58 l'ha ricreato dopo
+        il ritiro di 20261107-70 (database da zero). Su dbdev non fa niente.
+        Brief: brief-db-sorgente-documento-e-riga §7.2 lotto C, giro C.3.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP INDEX IF EXISTS vendite.ix_commesse_attivita_sorgente_competenza;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              SELECT 1;

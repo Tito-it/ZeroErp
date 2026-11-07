@@ -168,7 +168,7 @@ CREATE OR REPLACE FUNCTION pg_temp.invia(v jsonb) RETURNS bigint AS $$
       p_stato_approvazione            => 'BOZZA',
       p_stato_emissione               => 'NON_EMESSA',
       p_sorgente_tipo_id              => (v ->> 'sorgente_tipo_id')::bigint,
-      p_sorgente_chiave               => v ->> 'sorgente_uid',
+      p_sorgente_chiave               => v ->> 'sorgente_chiave',
       -- La riga del documento, dal lister (come la passa il backend).
       p_sorgente_riga => (v ->> 'riga_id')::bigint,
       p_tipo_movimento                => (v ->> 'tipo_movimento')::varchar,
@@ -341,7 +341,7 @@ SELECT to_jsonb(x) AS v
 SELECT is(
   (SELECT (l.v ->> 'tipo_movimento') || '|' || ((l.v ->> 'causale_onere_id')::bigint = (SELECT id FROM _caus))::text
           || '|' || trim_scale((l.v ->> 'quantita')::numeric)::text
-          || '|' || (l.v ->> 'sorgente_uid' = (SELECT ddt_uid::text FROM _ba1))::text
+          || '|' || (l.v ->> 'sorgente_chiave' = (SELECT ddt_uid::text FROM _ba1))::text
      FROM _ld l WHERE (l.v ->> 'riga_id')::bigint = pg_temp.riga_ddt((SELECT ddt_id FROM _ba1), true)),
   'ONERE|true|1|true',
   '14) il lister della bolla: l''onere esce ONERE, con la causale, quantita'' 1, sorgente la bolla');

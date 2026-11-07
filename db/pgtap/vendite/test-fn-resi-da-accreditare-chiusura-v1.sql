@@ -128,7 +128,7 @@ BEGIN
   SELECT a.attivita_id INTO v_att
     FROM dbops.fn_pgtap_crea_commessa_attivita((SELECT commessa_id FROM tmp_com_ca), 20,
            (SELECT articolo_id FROM tmp_refs_ca),
-           p_sorgente_codice => 'DDT_VENDITA', p_sorgente_uid => p_ddt_uid::text,
+           p_sorgente_codice => 'DDT_VENDITA', p_sorgente_chiave => p_ddt_uid::text,
            p_sorgente_riga_id => p_ddt_riga_id, p_quantita => p_qta,
            p_competenza_dal => DATE '2026-08-01', p_competenza_al => DATE '2026-08-31') a;
   SELECT f.fattura_riga_id INTO v_riga

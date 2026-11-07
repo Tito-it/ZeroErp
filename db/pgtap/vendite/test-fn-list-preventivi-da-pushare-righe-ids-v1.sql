@@ -199,7 +199,7 @@ SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita(
     p_prezzo_snapshot    => 20.000000,
     p_articolo_id        => (SELECT art_serv_id FROM tmp_ri_refs),
     p_sorgente_codice    => 'PREVENTIVO',
-    p_sorgente_uid       => (SELECT uid::text FROM tmp_ri_prev),
+    p_sorgente_chiave    => (SELECT uid::text FROM tmp_ri_prev),
     p_sorgente_riga_id   => (SELECT id FROM tmp_ri_riga_b),
     p_quantita           => 2,
     p_stato_approvazione => 'BOZZA',

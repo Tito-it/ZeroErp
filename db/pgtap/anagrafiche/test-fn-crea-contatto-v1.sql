@@ -29,7 +29,8 @@
 --   10) soggetto NULL: E_SCRIPT_CHIAMATA_NON_VALIDA
 --   le copie ritirate
 --   11) nessuna delle quattro funzioni scrive piu' anagrafiche.contatti a mano
---   12) ... e tutte e quattro chiamano il BB
+--   12) ... e tutte e quattro passano dal BB (la fixture attraverso la madre
+--       anagrafiche.fn_crea_soggetto_pg: brief-db-revisione-dbops D63)
 --   13) il BB scrive con script.fn_scrivi_riga_da_jsonb
 -- ------------------------------------------------------------
 
@@ -95,8 +96,11 @@ SELECT is(
     (SELECT format('%s|%s', c.nominativo, c.is_default)
        FROM anagrafiche.contatti c JOIN t_s s ON s.soggetto_id = c.soggetto_id
       WHERE c.soggetto_ruolo_id IS NULL),
-    'Referente Contatti pgTAP|t',
-    '2. il builder ha scritto il contatto di default, attraverso il BB');
+    -- Il contatto di default lo scrive la madre anagrafiche.fn_crea_soggetto_pg,
+    --   che il builder chiama (brief-db-revisione-dbops D63): nominativo =
+    --   ragione sociale, come per l'applicazione.
+    'Contatti pgTAP|t',
+    '2. il builder ha scritto il contatto di default, attraverso la madre e il BB');
 
 CREATE TEMP TABLE t_c1 AS
 SELECT anagrafiche.fn_crea_contatto(
@@ -171,9 +175,15 @@ SELECT is(
     '11. nessuna delle quattro scrive piu'' anagrafiche.contatti a mano');
 
 SELECT is(
-    (SELECT count(*)::int FROM t_quattro WHERE pg_temp.corpo(f) ~ 'anagrafiche\.fn_crea_contatto\('),
+    (SELECT count(*)::int FROM t_quattro
+      WHERE pg_temp.corpo(f) ~ 'anagrafiche\.fn_crea_contatto\('
+         -- la fixture non ricopia la madre: la chiama, e il BB lo chiama lei
+         --   (riconosciuta per OID: il testo di un regprocedure dipende dal search_path)
+         OR (f::oid IN (SELECT p.oid FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                         WHERE n.nspname = 'dbops' AND p.proname = 'fn_pgtap_crea_soggetto_pg')
+             AND pg_temp.corpo(f) ~ 'anagrafiche\.fn_crea_soggetto_pg\(')),
     4,
-    '12. ... e tutte e quattro chiamano il BB');
+    '12. ... e tutte e quattro passano dal BB (la fixture attraverso la madre)');
 
 SELECT ok(
     pg_temp.corpo('anagrafiche.fn_crea_contatto(uuid, bigint, jsonb)'::regprocedure) ~ 'script\.fn_scrivi_riga_da_jsonb\(',

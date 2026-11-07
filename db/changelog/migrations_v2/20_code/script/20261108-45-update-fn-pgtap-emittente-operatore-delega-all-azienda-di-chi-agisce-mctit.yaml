@@ -1,0 +1,88 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_pgtap_emittente_operatore: delega a dbops.fn_pgtap_azienda_di_chi_agisce.
+#   Brief: brief-db-revisione-dbops, D66 e Q11 di Tid (giro 8, blocco 8b).
+#
+# Base: doc auto-generata del 2026-11-07 (= 20_code/script/20261021-67).
+#
+# ⚠️ PERCHE'. Senza un'azienda per chi agisce dbops.fn_pgtap_azienda_di_chi_agisce
+#   solleva, mentre questo helper ripiegava sull'emittente di un operatore
+#   qualunque e poi sul primo emittente attivo: un'azienda su cui chi agisce
+#   non puo' ne' leggere ne' scrivere. Decisione di Tid (Q11, 2026-11-05):
+#   delega, una sede. Firma, volatilita' e risultato invariati. COMMENT al
+#   presente (§5d). Presidio: script/test-fn-pgtap-emittente-operatore-v1.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261108-45-update-fn-pgtap-emittente-operatore-delega-all-azienda-di-chi-agisce-mctit.yaml
+
+  - changeSet:
+      id: 20261108-45-update-fn-pgtap-emittente-operatore-delega-all-azienda-di-chi-agisce
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_pgtap_emittente_operatore: delega a dbops.fn_pgtap_azienda_di_chi_agisce (D66, Q11).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_pgtap_emittente_operatore';
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_pgtap_azienda_di_chi_agisce';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_pgtap_emittente_operatore()
+              RETURNS anagrafiche.emittenti_fiscali.id%TYPE
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: dare a una fixture pgTAP l'emittente su cui l'operatore
+              --   corrente puo' davvero scrivere, invece di uno qualsiasi.
+              -- Uso, al posto di
+              --   (SELECT id FROM anagrafiche.emittenti_fiscali WHERE attivo LIMIT 1):
+              --   script.fn_pgtap_emittente_operatore()
+              -- ⭐ Una sede sola: la risposta e' quella di
+              --   dbops.fn_pgtap_azienda_di_chi_agisce, cioe' la regola di produzione
+              --   (script.fn_resolve_emittente_for_user). Senza contesto, senza
+              --   un'azienda o senza un'identita' OPERATORE solleva: un emittente
+              --   scelto al posto di chi agisce e' un'azienda su cui chi agisce non
+              --   puo' ne' leggere ne' scrivere.
+              DECLARE
+                  v_emittente anagrafiche.emittenti_fiscali.id%TYPE;
+              BEGIN
+                  SELECT a.emittente_fiscale_id
+                    INTO v_emittente
+                    FROM dbops.fn_pgtap_azienda_di_chi_agisce('script.fn_pgtap_emittente_operatore') a;
+
+                  RETURN v_emittente;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_pgtap_emittente_operatore() IS
+                  'Fixture pgTAP: l''emittente fiscale su cui l''operatore del contesto puo'' scrivere. Delega a dbops.fn_pgtap_azienda_di_chi_agisce, che lo risolve con la regola di produzione (script.fn_resolve_emittente_for_user: l''emittente scelto in alto, app.current_emittente_id, se l''utente lo puo'' usare, altrimenti la sua riga in config.user_emittenti_fiscali): una sede sola per la domanda. Senza contesto aperto, senza un''azienda per l''utente o senza un''identita'' OPERATORE attiva solleva, nominando questa funzione: non sceglie un emittente al posto di chi agisce. STABLE: non scrive.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo dal corpo della doc auto-generata
+              -- del 2026-11-07.
+              SELECT 1;

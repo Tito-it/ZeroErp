@@ -45,13 +45,13 @@ DECLARE
 BEGIN
     -- Il guard sul parametro PRIMA di costruire: uno stato
     -- sbagliato non deve lasciare un mondo a meta'.
-    SELECT s.id INTO v_stato_id
-      FROM config.stati_doc_preventivi s
-     WHERE s.codice_interno = p_stato_codice_interno;
+    -- Lo stato dalla sede della traduzione codice -> id
+    -- (script.fn_doc_stato_id): solo uno stato ATTIVO e' una destinazione.
+    v_stato_id := script.fn_doc_stato_id('vendite.preventivi'::regclass, p_stato_codice_interno);
 
     IF v_stato_id IS NULL THEN
         RAISE EXCEPTION
-            'fn_pgtap_crea_preventivo: nessuno stato documento preventivo con codice_interno = %',
+            'fn_pgtap_crea_preventivo: nessuno stato documento preventivo attivo con codice_interno = %',
             p_stato_codice_interno;
     END IF;
 
@@ -62,8 +62,10 @@ BEGIN
            v_cli_sr_id, v_utility
       FROM dbops.fn_pgtap_crea_mondo_cliente(p_etichetta) m;
 
-    SELECT v.id INTO v_valuta_id
-      FROM config.valute v ORDER BY v.id LIMIT 1;
+    -- La valuta dalla catena del dominio (vendite.fn_get_valuta_id:
+    -- billing account, poi emittente, poi gestore), come la risolvono i
+    -- trigger di default dei documenti: non la prima del catalogo.
+    v_valuta_id := vendite.fn_get_valuta_id(v_ba_id, v_ef_sr_id);
 
     INSERT INTO vendite.preventivi (
         billing_account_id, istanza_utility_id, utility_id,
@@ -92,7 +94,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_preventivo(p_etichetta text, p_stato_codice_interno character varying)
-IS 'Fixture pgTAP: un PREVENTIVO del mondo in una chiamata: azienda, operatore e cliente (dbops.fn_pgtap_crea_mondo_cliente) e la testata, con l''emittente del mondo, il suo billing account, la sua istanza e utility, la prima valuta del catalogo e una validita'' di trenta giorni da oggi. Il numero lo assegna il trigger del dominio, come in produzione. ⭐ Lo stato: il preventivo NASCE nello stato iniziale (trigger della nascita) e, se il secondo parametro ne chiede un altro, ci arriva per la matrice con dbops.fn_pgtap_porta_a_stato, sotto i guard veri; un passaggio che pretende cio'' che il builder non scrive (le righe, per l''emissione) si ferma: il test chiede la bozza, scrive le righe e porta avanti da se''. Uno stato inesistente solleva prima di costruire. ⛔ NON scrive righe: sono il caso del test. ⚠️ Senza contesto aperto lo apre sull''operatore che costruisce; esce con i vincoli IMMEDIATE. Brief: brief-db-fixture-rls-documenti-costruiti. Rev 2026-10-24 (20261024-24, brief-modello-documento-vendita N-1): nascita in bozza; COMMENT allineato dal 20261024-29. Rev 2026-10-27 (20261027-30, brief-modello-documento-vendita §15.13): lo stato iniziale dalla testata (vendite.preventivi) con script.fn_doc_stato_iniziale_id, non dal vocabolario.';
+IS 'Fixture pgTAP: un PREVENTIVO del mondo in una chiamata: azienda, operatore e cliente (dbops.fn_pgtap_crea_mondo_cliente) e la testata, con l''emittente del mondo, il suo billing account, la sua istanza e utility, la valuta della catena del dominio (vendite.fn_get_valuta_id: billing account, poi emittente, poi gestore) e una validita'' di trenta giorni dalla data operativa. Il numero lo assegna il trigger del dominio, come in produzione. Lo stato: lo traduce script.fn_doc_stato_id, quindi uno stato spento o inesistente solleva prima di costruire; il preventivo nasce nello stato iniziale della testata (script.fn_doc_stato_iniziale_id) e, se il secondo parametro ne chiede un altro, ci arriva per la matrice con dbops.fn_pgtap_porta_a_stato, sotto i guard veri; un passaggio che pretende cio'' che il builder non scrive (le righe, per l''emissione) si ferma: il test chiede la bozza, scrive le righe e porta avanti da se''. ⛔ NON scrive righe: sono il caso del test. ⚠️ Senza contesto aperto lo apre sull''operatore che costruisce; esce con i vincoli IMMEDIATE.';
 ```
 
 </div>
