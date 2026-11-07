@@ -10,6 +10,16 @@ databaseChangeLog:
       id: 20260224-37-backfill-attivita-preventivo-sorgente-uid
       author: mctit
       comment: "Backfill sorgente_uid su attivita_fatturabili per record PREVENTIVO storici."
+      # Backfill del pregresso: su un database ricostruito da zero (la CI) 00_schema
+      # corre tutto prima di 80_data, e 20261107-45 (brief-db-sorgente-documento-e-riga
+      # §7.2, lotto C) ha gia' tolto le colonne sorgente_* dall'attivita' fatturabile.
+      # Li' non c'e' storico da riallineare: MARK_RAN e' lo stato vero, non un salto.
+      preConditions:
+        - onFail: MARK_RAN
+        - columnExists:
+            schemaName: vendite
+            tableName: attivita_fatturabili
+            columnName: sorgente_tipo_id
       changes:
         - sql:
             splitStatements: true
