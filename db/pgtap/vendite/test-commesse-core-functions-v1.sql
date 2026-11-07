@@ -546,15 +546,15 @@ SELECT ok(
 SELECT ok(
   EXISTS (
     SELECT 1
+    -- rev 2026-11-07 (lotto C, giro C.1 di brief-db-sorgente-documento-e-riga):
+    --   la provenienza dell'AF e' la riga di commessa (commessa_id +
+    --   commessa_attivita_id), non piu' una copia in sorgente_* con tipo COMMESSA.
     FROM vendite.attivita_fatturabili af
-    JOIN config.sorgenti s
-      ON s.id = af.sorgente_tipo_id
     WHERE af.commessa_id = (SELECT commessa_id FROM tmp_commessa_core)
       AND af.commessa_attivita_id = (SELECT commessa_attivita_id FROM tmp_upsert_core)
       AND af.prezzo_bloccato IS FALSE
-      AND s.codice = 'COMMESSA'
   ),
-  'Propagazione snapshot su AF (commessa/prezzo_bloccato/sorgente)'
+  'Propagazione snapshot su AF (commessa/prezzo_bloccato/provenienza dalla riga di commessa)'
 );
 
 SELECT ok(

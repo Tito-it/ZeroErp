@@ -47,8 +47,8 @@
 --    database su cui gira.
 -- ------------------------------------------------------------
 -- Indice test (1..9):
---   1)  ⭐ invariante di forma: le attivita' dal pull portano sorgente COMMESSA
---       (anche quelle costruite qui)
+--   1)  ⭐ invariante di forma: il pull ha prodotto le attivita' costruite qui, e
+--       l'attivita' non ha colonne sorgente_* (la provenienza e' la riga di commessa)
 --   2)  ⭐ livello 1 dal PERCORSO REALE: il termine dell'ORDINE vince sul cliente
 --   3)  livello 1 porta anche la MODALITA' quando la sorgente e' un ordine
 --   4)  PREVENTIVO: porta il termine ma NON la modalita' (discesa indipendente)
@@ -291,14 +291,17 @@ LANGUAGE sql STABLE AS $f$ SELECT attivita_id FROM _af WHERE chiave = p $f$;
 --    Sulle attivita' costruite qui (devono esserci tutte e tre) e su tutte
 --    quelle del database.
 -- ============================================================
+-- rev 2026-11-07 (lotto C, giro C.1 di brief-db-sorgente-documento-e-riga): le
+--   colonne sorgente_* dell'attivita' non ci sono piu'. L'invariante si riscrive
+--   sulla forma che resta: l'attivita' non ha una provenienza sua, la sua
+--   provenienza e' la riga di commessa, e il livello 1 parte da li'.
 SELECT is(
     (SELECT count(*)::int FROM _af WHERE attivita_id IS NULL)
-    + (SELECT count(*)::int FROM vendite.attivita_fatturabili a
-         JOIN config.sorgenti s ON s.id = a.sorgente_tipo_id
-        WHERE s.codice_interno <> 'COMMESSA'
-          AND a.commessa_attivita_id IS NOT NULL),
+    + (SELECT count(*)::int FROM pg_attribute a
+        WHERE a.attrelid = 'vendite.attivita_fatturabili'::regclass
+          AND a.attnum > 0 AND NOT a.attisdropped AND a.attname LIKE 'sorgente%'),
     0,
-    '1) invariante: il pull ha prodotto le tre attivita'', e le attivita'' del pull portano sorgente COMMESSA');
+    '1) invariante: il pull ha prodotto le tre attivita'', e l''attivita'' non ha colonne sorgente_*: la provenienza e'' la riga di commessa');
 
 -- ============================================================
 -- 2) ⭐ IL TEST CHE CONTA — livello 1 dal percorso reale.

@@ -20,6 +20,9 @@
 --   unico su bolla e reso.
 --   rev 2026-11-07: il giro T.3 (20261106-76) monta il guard unico su ordine, contratto
 --   e fattura: le testate di vendita escono tutte dal debito.
+--   rev 2026-11-07: il lotto C, giro C.1, toglie attivita_fatturabili (le sue sorgente_*
+--   si ritirano: esce dal perimetro) e fatture_righe (guard unico montato). Il test 2
+--   legge schema e nome dal perimetro, non regclass::text, che dipende dal search_path.
 --
 -- Elenco test (plan 5):
 --   1) l'unica esenzione dal guard e' il log dei reconcile, col suo motivo (D-9)
@@ -47,7 +50,7 @@ SELECT results_eq(
 
 -- Il debito, per lotto. Si toglie, non si aggiunge.
 SELECT results_eq(
-    $$SELECT tabella::text COLLATE "default"
+    $$SELECT (schema_tabella || '.' || nome_tabella)::text COLLATE "default"
         FROM dbops.fn_sorgenti_orfane_perimetro()
        WHERE grammatica <> 'UNICO'
          AND guard_esente_perche IS NULL
@@ -63,11 +66,10 @@ SELECT results_eq(
         ('magazzino.movimenti_attesi'), ('magazzino.rettifiche'), ('magazzino.trasferimenti'),
         -- lotto P (pratiche)
         ('pratiche.pratiche_sorgenti'),
-        -- lotto C (le sorgente_* di attivita_fatturabili si ritirano), C, C
-        ('vendite.attivita_fatturabili'), ('vendite.commesse_attivita'), ('vendite.commesse_sorgenti'),
-        -- lotto C (fatture_righe: la sua sorgente_uid e' ancora l'impronta, G5, con
-        -- attivita_fatturabili); D
-        ('vendite.fatture_righe'), ('vendite.fatture_stampa_coda')$$,
+        -- lotto C (commesse)
+        ('vendite.commesse_attivita'), ('vendite.commesse_sorgenti'),
+        -- lotto D
+        ('vendite.fatture_stampa_coda')$$,
     '2) le tabelle ancora senza il guard unico sono esattamente il debito dichiarato (si toglie, non si aggiunge)');
 
 SELECT is_empty(

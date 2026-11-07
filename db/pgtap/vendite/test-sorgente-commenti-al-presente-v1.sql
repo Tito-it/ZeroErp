@@ -1,7 +1,8 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
--- Test: i COMMENT degli oggetti della provenienza (lotto 0 giro 0.3, lotto R, lotto T giro T.3)
+-- Test: i COMMENT degli oggetti della provenienza (lotto 0 giro 0.3, lotto R, lotto T giro T.3,
+--   lotto C giro C.1)
 --   descrivono l'oggetto al presente, come vuole linee-guida-sql §5d: niente
 --   brief, marcatori di revisione, id di changeSet, sigle di decisione.
 --   Il giro 0.3 li aveva scritti con un prefisso di cronaca; il giro R.2 li
@@ -71,13 +72,20 @@ INSERT INTO _fn VALUES
   ('vendite.fn_genera_ddt_riconsegna(bigint,jsonb,date)'),
   -- lotto T, giro T.3
   ('vendite.fn_offerta_documenti_vivi(bigint)'),
-  ('script.fn_check_preventivo_annullabile(bigint)');
+  ('script.fn_check_preventivo_annullabile(bigint)'),
+  -- lotto C, giro C.1
+  ('vendite.fn_emit_attivita_fatturabili_da_commessa(bigint,boolean,boolean,text[],uuid)'),
+  ('vendite.trgfn_attivita_fatturabili_normalize()'),
+  ('vendite.fn_resolve_termini_pagamento(bigint)'),
+  ('dbops.fn_sorgenti_orfane_perimetro()');
 
 CREATE TEMP TABLE _tab (tabella text PRIMARY KEY);
 INSERT INTO _tab VALUES ('vendite.preventivi_righe'), ('vendite.ordini_righe'),
                         ('vendite.ddt_righe'), ('vendite.contratti_righe'),
                         -- lotto T, giro T.3: le testate
-                        ('vendite.ordini'), ('vendite.contratti'), ('vendite.fatture');
+                        ('vendite.ordini'), ('vendite.contratti'), ('vendite.fatture'),
+                        -- lotto C, giro C.1: le righe di fattura
+                        ('vendite.fatture_righe');
 
 CREATE TEMP TABLE _ix (indice text PRIMARY KEY);
 INSERT INTO _ix VALUES
@@ -90,7 +98,10 @@ INSERT INTO _ix VALUES
   ('vendite.ix_ordini_v_sorgente_uid'), ('vendite.ix_ordini_v_sorgente_id'),
   ('vendite.ix_contratti_sorgente_uid'), ('vendite.ix_contratti_sorgente_id'),
   ('vendite.ix_fatture_v_sorgente_uid'), ('vendite.ix_fatture_v_sorgente_id'),
-  ('vendite.uq_ordini_v_sorgente_offerta'), ('vendite.uq_contratti_sorgente_offerta');
+  ('vendite.uq_ordini_v_sorgente_offerta'), ('vendite.uq_contratti_sorgente_offerta'),
+  -- lotto C, giro C.1
+  ('vendite.ix_fatture_righe_sorgente_id'), ('vendite.ix_fatture_righe_sorgente_uid'),
+  ('vendite.ix_fatture_righe_sorgente_riga');
 
 SELECT is(
   (SELECT count(*)::int FROM _fn WHERE to_regprocedure(firma) IS NULL)
