@@ -1,0 +1,71 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL CONTRATTO PRECEDENTE NON SI CANCELLA SOTTO I SUOI SUCCESSORI
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto T, giro T.4 (Tid,
+#   2026-11-07: «che i figli perdono il padre non va bene»).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   vendite.contratti.parent_contratto_id («collegamento opzionale a contratto
+#   precedente») aveva la FK in ON DELETE SET NULL dalla baseline (2025-08-30),
+#   senza una decisione scritta. Con il giro T.4 un contratto in bozza vuota si
+#   cancella: se era il precedente di altri contratti, SET NULL li avrebbe
+#   staccati in silenzio. NO ACTION e' il muro: cancellare un contratto che ha
+#   successori fallisce, da qualunque percorso. Il guard di -88 lo dice prima,
+#   con E_DELETE_CONTRATTO_CON_SUCCESSIVI.
+#
+# ── ⚠️ CHE COSA CAMBIA ──────────────────────────────────────────────
+#   * la FK si ricrea con lo stesso nome e le stesse colonne: cambia solo
+#     l'azione alla cancellazione. ON UPDATE CASCADE resta;
+#   * nessuna funzione cancella contratti, e nessuna contava sullo sgancio
+#     (catalogo vivo e grep, 2026-11-07): l'unico scrittore della colonna e'
+#     vendite.fn_create_contratto;
+#   * l'indice della FK lo accende -91 (registro dbops.fk_index_policy): la FK
+#     e il guard cercano i successori a ogni cancellazione.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261106-90-alter-fk-contratti-parent-no-action-mctit.yaml
+
+  - changeSet:
+      id: 20261106-90-alter-fk-contratti-parent-no-action
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.contratti.fk_contratti_parent da ON DELETE SET NULL a NO ACTION:
+        un contratto con successori non si cancella.
+        brief-db-sorgente-documento-e-riga §7.2 lotto T, giro T.4.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.contratti
+                  DROP CONSTRAINT fk_contratti_parent,
+                  ADD CONSTRAINT fk_contratti_parent
+                      FOREIGN KEY (parent_contratto_id) REFERENCES vendite.contratti (id)
+                      ON UPDATE CASCADE ON DELETE NO ACTION;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON CONSTRAINT fk_contratti_parent ON vendite.contratti
+              IS 'Il contratto precedente (parent_contratto_id). ON DELETE NO ACTION: un contratto che e'' il precedente di altri contratti non si cancella, i successori non perdono il loro precedente in silenzio (Tid, 2026-11-07, brief-db-sorgente-documento-e-riga giro T.4; prima era SET NULL). La frase per l''operatore la da'' prima vendite.trgfn_doc_guard_delete_solo_bozza (E_DELETE_CONTRATTO_CON_SUCCESSIVI), con lo stesso predicato.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.contratti
+                  DROP CONSTRAINT fk_contratti_parent,
+                  ADD CONSTRAINT fk_contratti_parent
+                      FOREIGN KEY (parent_contratto_id) REFERENCES vendite.contratti (id)
+                      ON UPDATE CASCADE ON DELETE SET NULL;

@@ -1,5 +1,8 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
+-- rev 2026-11-07 (brief-db-sorgente-documento-e-riga, giro T.4): la bolla si cancella solo da bozza VUOTA
+--   (nessuna riga attiva, 20261106-88). Il 27 cambia attesa: la bolla con la riga evasa e' rifiutata
+--   (E_DELETE_DOC_CON_RIGHE); tolta la riga (D-3), la bozza vuota si cancella e l'ordine torna CONFERMATO.
 -- pgTAP test per Zero ERP
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): gli ordini senza bolla (re_mk_ordine) da dbops.fn_pgtap_crea_ordine_con_righe, la bolla J da dbops.fn_pgtap_crea_ddt_senza_ordine (DRAFT); restano a mano la bolla standalone di D col legame scritto a mano e il legame in piu' di E (sono il caso).
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito): il reso di F dal builder dbops.fn_pgtap_crea_reso, in bozza; restano a mano la conferma (fn_conferma_reso, il test 30 ne misura l'effetto: resta anche l'azione conferma_reso in testa) e la ri-consegna dalla madre in bozza (fn_genera_ddt_riconsegna e' il verbo del 30, e i 31-35 lavorano sulla bolla in bozza).
@@ -45,8 +48,8 @@
 --  25) fuori bozza: motivo DDT_NON_IN_BOZZA nella vista
 --  B — ordine 10, bolla 10, riga tolta in bozza
 --  26) D-3: ultimo legame ritirato -> ordine CONFERMATO
---  C — la bolla da ordine si elimina intera in bozza
---  27) D-3: la testata si elimina, legame ritirato, ordine CONFERMATO
+--  C — la bolla da ordine si elimina solo vuota
+--  27) con la riga evasa la testata non si elimina; tolta la riga (D-3) si', e l'ordine e' CONFERMATO
 --  D — bolla standalone con un legame scritto a mano
 --  28) motivo DDT_SENZA_ORIGINE; la riga e' evasa, quindi ferma
 --  E — una riga che evade due righe d'ordine
@@ -389,15 +392,23 @@ SELECT ok(
   '26) D-3: tolto l''ultimo legame l''ordine torna CONFERMATO, residuo pieno');
 
 -- ============================================================
--- C — la bolla da ordine si elimina intera in bozza
+-- C — la bolla da ordine si elimina solo vuota
 -- ============================================================
+-- rev 2026-11-07 (giro T.4): la testata si cancella solo da bozza vuota. La
+-- bolla con la riga evasa e' rifiutata; la strada e' D-3, togliere la riga (il
+-- legame si ritira con lei), poi la bozza vuota.
 SELECT pg_temp.re_mk_ddt('c1', 'c', 10, p_qta_ordine => 10);
+SELECT pg_temp.re_prova('27a_dlt_ddt_con_righe',
+  format('DELETE FROM vendite.ddt WHERE id = %s', pg_temp.re_fix('c1_ddt')));
+DELETE FROM vendite.ddt_righe WHERE id = pg_temp.re_fix('c1_dr');
 SELECT pg_temp.re_prova('27_dlt_ddt',
   format('DELETE FROM vendite.ddt WHERE id = %s', pg_temp.re_fix('c1_ddt')));
 SELECT ok(
-  (SELECT righe = 1 FROM tmp_esito WHERE caso = '27_dlt_ddt')
+  (SELECT sqlstate = 'P0001' AND messaggio LIKE '%ha ancora delle righe%'
+     FROM tmp_esito WHERE caso = '27a_dlt_ddt_con_righe')
+  AND (SELECT righe = 1 FROM tmp_esito WHERE caso = '27_dlt_ddt')
   AND pg_temp.re_stato_ordine('c') = 'CONFERMATO',
-  '27) D-3: la bolla in bozza si elimina intera, i legami se ne vanno, ordine CONFERMATO');
+  '27) con la riga evasa la bolla non si elimina; tolta la riga (D-3) la bozza vuota si elimina, ordine CONFERMATO');
 
 -- ============================================================
 -- D — bolla standalone con un legame scritto a mano

@@ -2,7 +2,7 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-07
 
-**Riparte: Tid**, con l'apply del giro T.3 (`20261106-74` … `-87`, §7.2 «Il giro T.3») e la corsa dei pgTAP come applicazione. I giri T.1 e T.2 sono applicati e committati (2026-11-06). Il lotto 0 e il lotto R sono chiusi.
+**Riparte: Tid**, col via al giro T.5 (il ritiro delle colonne parallele, §7.2 «Lotto T, i giri»). I giri T.1 … T.4 sono applicati, verdi e committati. Il lotto 0 e il lotto R sono chiusi.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -37,14 +37,18 @@
 | 7-septdecies | ✅ Tid | T.4: il contratto si cancella solo da bozza vuota, come le altre testate (proposta DB accettata, 2026-11-06) | §7.2 «Lotto T, i giri» | — |
 | 7-septdecies-bis | ✅ Tid | via al giro T.3 (2026-11-07) | §7.2 «Lotto T, i giri» | — |
 | 7-septdecies-ter | ✅ DB | giro T.3: ordini, contratti, fatture nella grammatica del modello; i tre verbi, i lettori, il guard unico, l'unicità sull'offerta (D-8), V-1; provato in transazione (2026-11-07) | §7.2 «Il giro T.3» | — |
-| 7-septdecies-quater | Tid | apply del giro T.3 (`20261106-74` … `-87`), pgTAP come applicazione | §7.2 «Il giro T.3» | 7-septdecies-ter |
-| 7-octodecies | DB | giri T.4 e T.5, ognuno col suo via | §7.2 «Lotto T, i giri» | 7-septdecies-quater |
-| 8 | DB | lotti R, T, C, D, P, M, Z, ognuno col suo via; il §8 si riempie strada facendo. ⛔ Il lotto M porta anche D58, D29 e ⑧ di `brief-db-revisione-dbops`: prima del via si riverifica la loro analisi (promemoria in §7.2 «Lotto M») | §7.2, §8 | 7-octodecies |
+| 7-septdecies-quater | ✅ Tid | apply del giro T.3 (`20261106-74` … `-87`), pgTAP verdi, committato (2026-11-07, `b86108e56a`) | §7.2 «Il giro T.3» | — |
+| 7-octodecies | ✅ DB | giro T.4: ordini, bolle, resi e contratti si cancellano solo da bozza vuota; il guard esistente prende la metà «vuota», legge lo stato dal BB, diventa DEFINER; provato in transazione (2026-11-07) | §7.2 «Il giro T.4» | — |
+| 7-octodecies-ter | ✅ Tid | il contratto precedente di altri contratti non si cancella: `fk_contratti_parent` da `SET NULL` a `NO ACTION` (2026-11-07) | §7.2 «Il giro T.4» | — |
+| 7-octodecies-bis | ✅ Tid | apply del giro T.4 (`20261106-88` … `-91`, i due CSV dei codici, il CSV del registro indici), pgTAP verdi come applicazione (2026-11-07) | §7.2 «Il giro T.4» | — |
+| 7-novodecies | Tid | via al giro T.5 | §7.2 «Lotto T, i giri» | — |
+| 7-novodecies-bis | DB | giro T.5 | §7.2 «Lotto T, i giri» | 7-novodecies |
+| 8 | DB | lotti R, T, C, D, P, M, Z, ognuno col suo via; il §8 si riempie strada facendo. ⛔ Il lotto M porta anche D58, D29 e ⑧ di `brief-db-revisione-dbops`: prima del via si riverifica la loro analisi (promemoria in §7.2 «Lotto M») | §7.2, §8 | 7-novodecies-bis |
 | 9 | BE/FE | il §8 intero, una volta sola | §8 | 8 |
 | 10 | DB | la documentazione del §7.3 (lotto DOC), poi archiviazione | §7.3 | 9 |
 
-**Decisioni aperte di Tid:** nessuna (T.4, la cancellazione del contratto: proposta DB accettata, 2026-11-06).
-**Lavoro da committare:** il giro T.3 (i quattordici changeSet `20261106-74` … `-87`, il pgTAP nuovo, i dieci pgTAP allineati, questo brief), su `dev/db-tid`. I giri T.1 e T.2 (`20261106-61` … `-73`, `storico_scope_policy.csv`, i pgTAP, le
+**Decisioni aperte di Tid:** nessuna (il contratto precedente: deciso il 2026-11-07, §7.2 «Il giro T.4»).
+**Lavoro da committare:** nessuno. Il giro T.4 (`20261106-88` … `-91`, i tre CSV, il pgTAP nuovo, i quattro pgTAP allineati, le due pagine `manual/`, questo brief) è committato su `dev/db-tid` il 2026-11-07; il giro T.3 anche (`b86108e56a`). I giri T.1 e T.2 (`20261106-61` … `-73`, `storico_scope_policy.csv`, i pgTAP, le
 pagine `manual/` cancellate, questo brief) sono committati su `dev/db-tid` il 2026-11-06. Il lotto 0 intero e il lotto R (giri R.1 e R.2: changeSet `20261106-46` …
 `-60`, i due CSV, i pgTAP, i due brief) sono committati su `dev/db-tid` il 2026-11-06. ⚠️ I test Django sono rossi finché il BE non rigenera il file delle policy d'errore (§8.1
 BE-0.1-a, §8.2 BE-0.2-a): accettato dal piano, va detto nella PR.
@@ -926,8 +930,8 @@ colonne di oggi, poi se ne cambia la grammatica.
 | --- | --- | --- |
 | **T.1** | ritiro del registro dei canali (D-10): tabella, shadow di storico, i quattro trigger, le due funzioni, le registrazioni di catalogo, i due pgTAP, le pagine `manual/` | ✅ applicato da Tid, pgTAP verdi (2026-11-06) |
 | **T.2** | bolle e resi (S-5, D-4): conversione all'id, CHECK di forma (per il reso al posto del NOT NULL dell'uid), guard unico, i due verbi che scrivono la bolla (la riconsegna dichiara il **reso**), il builder pgTAP del reso, le viste di lista, la corsia dell'ordine dietro un reso, lock fuori bozza e colonne ferme della capability con `sorgente_id` | ✅ applicato da Tid, pgTAP verdi (2026-11-06) |
-| **T.3** | ordini, contratti, fatture: l'import esce (indici «idempotenza import»), `documento_origine_*` e `offerta_id` confluiscono in `sorgente_*` (preventivo e offerta per uid), l'unicità «un'offerta, un ordine/contratto vivo» sull'indice parziale per id del tipo con il pgTAP sul seed (D-8), guard unico, i tre verbi di push e i lettori | ✅ scritto e provato in transazione (2026-11-07); apply di Tid |
-| **T.4** | la cancellazione (V-4): «si cancella solo la bozza vuota» nel DB per ordini, bolle, resi e contratti | da fare (decisione presa) |
+| **T.3** | ordini, contratti, fatture: l'import esce (indici «idempotenza import»), `documento_origine_*` e `offerta_id` confluiscono in `sorgente_*` (preventivo e offerta per uid), l'unicità «un'offerta, un ordine/contratto vivo» sull'indice parziale per id del tipo con il pgTAP sul seed (D-8), guard unico, i tre verbi di push e i lettori | ✅ applicato da Tid, pgTAP verdi (2026-11-07) |
+| **T.4** | la cancellazione (V-4): «si cancella solo la bozza vuota» nel DB per ordini, bolle, resi e contratti; il contratto precedente di altri contratti non si cancella | ✅ applicato da Tid, pgTAP verdi (2026-11-07) |
 | **T.5** | ritiro delle colonne parallele (`documento_origine_*` con la FK per codice, il CHECK di co-presenza e i due indici `uq_ordini_v_documento_origine_offerta`, `ix_ordini_documento_origine`; `offerta_id` con la FK e `uq_contratti_offerta_id`), insieme alle righe dei tre verbi che le scrivono ancora e alle loro terne nel lock fuori bozza; il presidio di struttura ha già perso le cinque testate (T.2, T.3) | da fare |
 
 ✅ **Deciso per T.4 (Tid, 2026-11-06, «confermo tua proposta»):** il contratto, che oggi non ha né una regola DB di
@@ -1178,7 +1182,107 @@ Nessun codice nuovo, nessun CSV. pgTAP: nuovo `vendite/test-sorgente-testate-ord
   costruzione). Gli altri rossi delle due corse (103) sono gli stessi riga per riga: scope e permessi, rossi da owner;
 * guardrail statici (`scripts/guardrail_*.py`, preambolo pgTAP, licenze): verdi.
 
-Non coperto, e resta di Tid: l'apply, la corsa dei pgTAP come applicazione (la RLS), la baseline.
+Non coperto, e resta di Tid: l'apply, la corsa dei pgTAP come applicazione (la RLS), la baseline. **Fatto da Tid il
+2026-11-07:** apply dei quattordici changeSet, pgTAP verdi (commit `b86108e56a`).
+
+**Il giro T.4, le scelte** (team DB, 2026-11-07; nessuna è un cambio di modello: è V-4, con la decisione di Tid del
+2026-11-06 sul contratto):
+
+* **Un guard solo, quello che c'è.** `vendite.trgfn_doc_guard_delete_solo_bozza` faceva già la metà «in bozza» per
+  ordine, bolla e bozza email (Tid, 2026-08-26). Prende la metà «vuota» e si monta su reso e contratto (`-89`). Una
+  funzione nuova accanto sarebbe stata una seconda copia della stessa regola.
+* **«Vuota» = nessuna riga attiva.** È il predicato del BE (`count_righe`, `attivo IS TRUE`) e delle capability
+  (`senza_righe`): spostare la regola nel DB non ne cambia il significato. Una bozza con sole righe disattivate si
+  cancella, e quelle righe seguono la testata nella cascata. Codice nuovo `E_DELETE_DOC_CON_RIGHE` (`CONFLITTO_STATO`),
+  detto **dopo** `E_DELETE_DOC_NON_BOZZA`: fuori bozza il rimedio è annullare, in bozza è togliere le righe o annullare.
+* **Lo stato dal BB** `script.fn_get_stato_testata_documento` (regola del 2): il guard leggeva a mano i vocabolari di
+  bolla e ordine, il BB dà stato ed etichetta delle stesse testate (e di reso, contratto, mail). Con quattro testate le
+  letture a mano sarebbero diventate quattro. Escono; le etichette dei messaggi restano le stesse.
+* ⭐ **SECURITY DEFINER** (`search_path = pg_catalog, pg_temp`), come il lato «in uscita» della provenienza. La metà
+  «vuota» legge le righe, che hanno RLS, e la cascata che segue non passa dalla RLS: un guard invoker giudicherebbe sulle
+  righe che il chiamante vede, e la cascata cancellerebbe anche le altre. Oggi le due cose coincidono per costruzione (la
+  policy delle righe risolve l'emittente dalla testata, e solo l'OPERATORE scrive le testate): la postura toglie la
+  dipendenza da quella policy. Il test 2 del pgTAP nuovo la presidia.
+* **Il ramo per schema e tabella**, non per sola tabella: prima `acquisti.ddt` si sarebbe letto come la bolla di
+  vendita, se qualcuno vi avesse montato il guard.
+
+**Che cosa cambia per chi legge, dichiarato:**
+
+* **Un reso confermato non si cancella più** (`E_DELETE_DOC_NON_BOZZA`): lasciava orfani i movimenti di magazzino (V-4).
+* **Un contratto si cancella solo da bozza vuota.** Oggi nessun percorso BE lo cancella; `zeroerp_app` ha il privilegio.
+* **Una bozza con righe attive non si cancella più dal DB**, su nessuna delle quattro testate. Il BE lo controllava già
+  prima (`E_ORD_STATO_TRANSIZIONE`, `E_DDT_STATO_TRANSIZIONE`, `E_RESO_STATO_TRANSIZIONE`) e continua a farlo: per l'utente
+  non cambia niente (§8.7). Cambia per chi cancellava una bozza con righe da SQL: tre pgTAP (sotto).
+* **Il contratto precedente di altri contratti non si cancella** (`E_DELETE_CONTRATTO_CON_SUCCESSIVI`), nemmeno da
+  bozza vuota. ✅ **Deciso da Tid il 2026-11-07** («che i figli perdono il padre non va bene»), sull'osservazione del
+  team DB: `fk_contratti_parent` era `ON DELETE SET NULL` dalla baseline (2025-08-30, senza una decisione scritta), e
+  con la cancellazione delle bozze vuote avrebbe staccato i successori in silenzio. La forma è la coppia del fulfillment
+  delle righe: la FK passa a `NO ACTION` ed è la protezione, da qualunque percorso (`-90`); il guard dice prima la frase,
+  con lo stesso predicato e il numero dei successori (`-88`); l'indice parziale della FK si accende nel registro
+  (`-91`), perché FK e guard cercano i successori a ogni cancellazione. Nessuna funzione cancella contratti, e l'unico
+  scrittore della colonna è `vendite.fn_create_contratto` (catalogo vivo e grep, 2026-11-07).
+
+**I changeSet del giro T.4:** `20_code/vendite/20261106-88` (il guard: la bozza vuota, lo stato dal BB, DEFINER, il
+contratto precedente), `-89` (il montaggio su resi e contratti), `00_schema/vendite/-90` (`fk_contratti_parent` a `NO
+ACTION`, col COMMENT del vincolo), `80_data/changelog/-91` con `80_data/sql/vendite/fk_index_policy_contratti_parent.csv`
+(l'indice parziale della FK: CSV dedicato come i trenta seed del registro prima di lui, perché `fk_index_policy.csv`
+non ha un changeSet che lo carica in `migrations_v2`), `80_data/sql/config/codici_errore.csv` e `messaggi_errore.csv`
+(i due codici nuovi, id 1451 e 1452; la nota di `E_DELETE_DOC_NON_BOZZA` prende reso e contratto). Nessuna funzione
+nuova. pgTAP: nuovo `vendite/test-delete-testate-solo-bozza-vuota-v1` (19); allineati `script/test-sorgente-in-uscita-v1`,
+`vendite/test-ddt-righe-evase-dall-ordine-v1` (27), `vendite/test-trgfn-doc-righe-lock-fuori-bozza-v1` (11) e
+`vendite/test-delete-righe-documento-bozza-v1` (4), che cancellavano una bolla in bozza con righe attive. Pagine `manual/`: `vendite/trgfn_doc_guard_delete_solo_bozza`
+riscritta, `script/fn_get_stato_testata_documento` (il consumatore nuovo).
+
+**Gli allineamenti, uno per uno:**
+
+* `script/test-sorgente-in-uscita-v1` (8-11): la cascata dal documento portava la riga attiva e il suo prelievo. Ora la
+  bolla si svuota prima: il prelievo se ne va (tolto il figlio che lo bloccava) e la riga si disattiva. Il figlio
+  CANCELLA del 9 dichiara la riga disattivata invece del prelievo, perché la cascata dal documento porta ormai solo righe
+  disattivate (un prelievo vivo impedisce di disattivare la sua riga). Il livello dettaglio resta provato dal 4-5;
+* `vendite/test-ddt-righe-evase-dall-ordine-v1` (27, «la bolla in bozza si elimina intera»): è una conseguenza del
+  modello di allora, non una decisione (D-3 di quel brief riguarda il togliere una riga in bozza). Ora la bolla con la
+  riga evasa è rifiutata, e la strada è D-3: si toglie la riga, poi la bozza vuota, e l'ordine torna CONFERMATO;
+* `vendite/test-trgfn-doc-righe-lock-fuori-bozza-v1` (11, «il cascade non è fermato dal BB») e
+  `vendite/test-delete-righe-documento-bozza-v1` (4, «la testata si elimina, e le righe la seguono»): la riga della
+  bolla in bozza si disattiva prima, e la cascata la porta. Attese invariate. Il secondo costruisce il DELETE con
+  `format('%I')`: il primo censimento (grep sul testo `DELETE FROM vendite.ddt`) non l'aveva visto, l'ha trovato la
+  regressione.
+
+**La prova del giro T.4** (2026-11-07, come `zeroerp_owner`, in transazione annullata):
+
+* **il corpo di partenza è quello vivo:** `pg_get_functiondef` del guard uguale su scratch e dbdev e uguale alla doc
+  auto-generata; il rollback di `-88` lo rimette;
+* **l'estratto** dei due changeSet, con le due righe nuove dei CSV, gira su scratch e dbdev; `plpgsql_check` sul guard
+  montato su `vendite.resi` e su `config.email_outbox`: nessun avviso;
+* `vendite/test-delete-testate-solo-bozza-vuota-v1`: 19/19 con l'estratto su scratch e su dbdev; senza, 5/19 (passano
+  solo i casi che erano già veri: cancellare la bozza vuota, il rifiuto dell'ordine confermato). Il seed di `-91` è
+  simulato con l'upsert della riga del registro e `CALL dbops.apply_fk_index_policy()`: l'indice nasce parziale, col
+  nome registrato, su tutti e due (sullo scratch la riga del registro non c'era, e il `loadUpdateData` la inserisce);
+* **regressione prima/dopo su 178 pgTAP** (tutti `dbops/`, `storico/`, `maintenance/`, chi nomina la mail, il guard, i
+  suoi codici, il lettore dello stato, il guard delle righe, e chi cancella una delle quattro testate; sullo scratch, in
+  sequenza; prima = il file di HEAD senza estratto, dopo = il file dell'albero con l'estratto): fuori dai file del giro,
+  i rossi sono gli stessi riga per riga (scope e permessi, rossi da owner per costruzione). Tre differenze, spiegate:
+  * `vendite/test-delete-righe-documento-bozza-v1` test 4: il quarto allineamento (sopra), poi 10/10 con e senza;
+  * `vendite/test-contratti-modalita-pricing-v1`: nella corsa «dopo» il file non ha prodotto righe; rifatto da solo con
+    l'estratto, 4/4. Era occupazione dello scratch, non il giro;
+  * `dbops/test-guard-attivo-grammatica-e-codici-v1` test 23: il file è modificato nell'albero da un altro cantiere
+    (`brief-db-revisione-dbops`, changeSet `20261107-28` … `-31` non ancora committati). Il file dell'albero è rosso al 23
+    anche senza l'estratto; quello di HEAD con l'estratto è verde. Non è del giro;
+* **dopo il contratto precedente** (`-90`, `-91`, il ramo nuovo del guard), prima/dopo sui diciannove pgTAP che
+  leggono le azioni delle FK, `parent_contratto_id` o il registro degli indici, e sui presidi `dbops` di codici,
+  messaggi, postura e indici: esiti uguali riga per riga. Fanno eccezione il 27 allineato delle bolle e due file
+  dell'altro cantiere: il 23 già detto e `dbops/test-fk-info-su-pg-constraint-v1`, nuovo e non in HEAD, rosso uguale
+  con e senza l'estratto perché aspetta una funzione che quel cantiere non ha ancora applicato;
+* i quattro file allineati, con l'estratto, anche su dbdev: verdi, salvo il 43 di
+  `vendite/test-ddt-righe-evase-dall-ordine-v1`, dichiarato «rosso da owner, verde come app» e rosso uguale su HEAD;
+* guardrail statici (`scripts/guardrail_*.py`, licenze): verdi. Il controllo i18n segnala
+  `vendite.righe.articolo_reason.obsoleto`, preesistente e di un altro brief.
+* ⚠️ **alla corsa come applicazione (Tid, 2026-11-07) il test 1 del pgTAP nuovo era rosso**: confrontava
+  `tgrelid::regclass::text` con nomi qualificati, e come app `config` sta nel `search_path`, quindi usciva
+  `email_outbox` senza schema. Da owner era verde, ed è per questo che la prova non l'ha visto. Corretto prima del
+  commit: schema e nome da `pg_class` + `pg_namespace`; riprovato anche con gli schemi del test nel `search_path`.
+
+**Fatto da Tid il 2026-11-07:** apply di `-88` … `-91` e dei tre CSV, pgTAP verdi come applicazione.
 
 #### Lotto C — commesse e fatturazione
 
@@ -1327,8 +1431,9 @@ una volta sola.
 | --- | --- |
 | `guide/fatturazione.md` | lo schema delle tabelle (righe 121-129), l'idempotenza delle AF «sulla chiave sorgente» (317, 1317): ora è `commessa_attivita_id` (D-1) |
 | `guide/gestione-commesse.md` | idempotenza (526), `fn_link_commessa_sorgente` (546, 616), la riga di commessa che eredita `sorgente_uid` (782) |
-| `guide/gestione-ordini.md` | l'origine documentale `documento_origine_*` (186-187) → `sorgente_*` (S-8) |
-| `guide/gestione-ddt.md` | «da dove arriva» (133, 153): `sorgente_id` dell'ordine |
+| `guide/gestione-ordini.md` | l'origine documentale `documento_origine_*` (186-187) → `sorgente_*` (S-8); la bozza vuota che si elimina (544): la regola ora sta anche nel DB (giro T.4) |
+| `guide/gestione-ddt.md` | «da dove arriva» (133, 153): `sorgente_id` dell'ordine; la bozza vuota che si elimina (379), come per l'ordine (giro T.4) |
+| `guide/gestione-contratti.md` | non dice come si cancella un contratto: solo da bozza vuota (giro T.4, Tid 2026-11-06) |
 | `guide/gestione-offerte-commerciali.md` | il vincolo `uq_ordini_v_documento_origine_offerta` (505), che cambia chiave (D-8) |
 | `guide/gestione-pratiche.md`, `gestione-pratiche-configurazione.md` | il legame pratica → documento (56, 633; 196-197) |
 | `guide/uso-di-obsoleto.md` | la «riga derivata» riconosciuta dalla sorgente (194, 262, 326) |
@@ -1459,6 +1564,13 @@ ritirano; le voci sotto vanno fatte con il lotto BE, che arriva dopo il lotto Z 
 | — | `vendite.vw_fatture_lista`: `sorgente_id` in coda, di norma NULL | vista | nessuna |
 | — | `vendite.fn_push_offerta_a_contratto`: con una pratica il percorso ora va in fondo (V-1); il contratto entra in `pratiche_sorgenti` con l'id. Un tipo OFFERTA_COMMERCIALE assente dal catalogo è `E_SORG_CONF`, non più `E_CONFIG_MANCANTE` (tecnici tutti e due) | `offerte_service` (push a contratto con pratica) | nessuna obbligatoria; da guardare nello smoke «offerta → contratto con pratica», che prima si fermava con `E_SORG_FORMATO` |
 | — | un ordine o un contratto con una provenienza inesistente, o con la chiave della specie sbagliata, sono rifiutati dal guard unico (`E_SORG_NOT_FOUND`, `E_SORG_CHIAVE_NON_CONFORME`, `TECNICO`); un preventivo o un'offerta citati non si cancellano (`E_SORG_ORIGINE_REFERENZIATA`, codice di BE-0.2-a) | INSERT/UPDATE di `vendite.ordini`, `vendite.contratti`, `vendite.fatture`; DELETE delle bozze di preventivo | nessuna: il BE non scrive la provenienza di testata (grep, 2026-11-07); i 409 hanno la frase pronta |
+
+### 8.7 Dal lotto T, giro T.4 (2026-11-07)
+
+| # | Che cosa cambia | Percorso | Che cosa fa il BE/FE |
+| --- | --- | --- | --- |
+| BE-T.4-a | codici nuovi `E_DELETE_DOC_CON_RIGHE` e `E_DELETE_CONTRATTO_CON_SUCCESSIVI` (`CONFLITTO_STATO`, 409): una bozza con righe attive non si cancella, un contratto precedente di altri contratti nemmeno | `apps/core/services/error_policies_generated.py`, `error_messages_fallback.py` | rigenerarli dal catalogo, insieme a BE-0.1-a e BE-0.2-a |
+| — | ordine, bolla, reso e contratto si cancellano solo da bozza vuota anche nel DB; un reso confermato non si cancella più | `ordini_service.elimina_ordine`, `ddt_service.elimina_ddt`, `resi_service.elimina_reso` | nessuna: il controllo del BE resta come controllo preventivo, e ha lo stesso significato (stato iniziale, zero righe attive). I 409 del DB arrivano solo da un percorso che il BE non ha. Nessun percorso cancella un contratto (grep, 2026-11-07) |
 
 ---
 

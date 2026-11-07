@@ -1,0 +1,61 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# RESI E CONTRATTI: LA CANCELLAZIONE SOLO DA BOZZA VUOTA
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto T, giro T.4 (V-4;
+#   decisione di Tid del 2026-11-06 sul contratto).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   Reso e contratto non avevano una regola DB di cancellazione: un reso
+#   confermato si cancellava, e con lui (ON DELETE CASCADE) le righe da cui
+#   nascono i movimenti di magazzino, che restavano orfani. Il contratto
+#   prende la regola delle altre testate (Tid, 2026-11-06: scartata
+#   l'alternativa «il contratto non si cancella mai, solo l'annullo»).
+#
+# ── ⚠️ CHE COSA CAMBIA ──────────────────────────────────────────────
+#   * il guard di -88 montato BEFORE DELETE FOR EACH ROW, fascia _a10_: sul
+#     reso precede trg_resi_z90_storico_upd_dlt, come su ordini e bolle; sul
+#     contratto e' il primo BEFORE DELETE;
+#   * scritti a mano, come su ordini e bolle (20260826-22): non li genera
+#     ci_apply.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261106-89-create-trigger-resi-contratti-guard-delete-solo-bozza-mctit.yaml
+
+  - changeSet:
+      id: 20261106-89-create-trigger-resi-contratti-guard-delete-solo-bozza
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Il guard della cancellazione (vendite.trgfn_doc_guard_delete_solo_bozza)
+        montato su resi e contratti.
+        brief-db-sorgente-documento-e-riga §7.2 lotto T, giro T.4.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_resi_a10_guard_delete_solo_bozza_dlt
+                  BEFORE DELETE ON vendite.resi
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_doc_guard_delete_solo_bozza();
+
+              CREATE TRIGGER trg_contratti_a10_guard_delete_solo_bozza_dlt
+                  BEFORE DELETE ON vendite.contratti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_doc_guard_delete_solo_bozza();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_resi_a10_guard_delete_solo_bozza_dlt ON vendite.resi;
+              DROP TRIGGER IF EXISTS trg_contratti_a10_guard_delete_solo_bozza_dlt ON vendite.contratti;

@@ -1,0 +1,87 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'INDICE DELLA FK DEL CONTRATTO PRECEDENTE: DA false A true, PARZIALE
+#   dbops.fk_index_policy:
+#     * vendite.contratti.fk_contratti_parent -> true, parziale
+#       `WHERE parent_contratto_id IS NOT NULL` (linee-guida-sql §8.4)
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto T, giro T.4.
+#
+# ── PERCHE' ORA ──────────────────────────────────────────────────
+#   Finche' la FK era SET NULL nessuno cercava i successori di un contratto.
+#   Dal giro T.4 la FK e' NO ACTION (-90) e il guard della cancellazione
+#   (-88) cerca `parent_contratto_id = OLD.id` a ogni DELETE di un contratto,
+#   come fa il controllo referenziale. Senza indice, ogni cancellazione di una
+#   bozza di contratto e' una scansione intera della tabella dei contratti.
+#
+# ── PARZIALE ─────────────────────────────────────────────────────
+#   La colonna e' NULL su ogni contratto che non ha un precedente: guard e FK
+#   cercano sempre un valore, e `parent_contratto_id = $1` implica `IS NOT NULL`.
+#   Il nome resta quello che l'automazione aveva registrato.
+#
+# ⚠️ CSV DEDICATO con loader suo, come i trenta seed del registro che lo
+#   precedono (ultimo: 20261009-07): fk_index_policy.csv non ha un changeSet che
+#   lo carica in migrations_v2.
+# ⛔ Creazione e rimozione restano di dbops.apply_fk_index_policy() in 90_end:
+#   qui si tocca solo il flag (linee-guida-sql §8.7, «mai a mano»).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261106-91-upsert-fk-index-policy-contratti-parent-mctit.yaml
+
+  - changeSet:
+      id: 20261106-91-upsert-fk-index-policy-contratti-parent
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Registro indici FK del giro T.4 di brief-db-sorgente-documento-e-riga:
+        indice parziale (IS NOT NULL) sulla FK fk_contratti_parent, che il guard
+        della cancellazione e il controllo referenziale (NO ACTION) interrogano a
+        ogni DELETE di un contratto.
+      preConditions:
+        - onFail: MARK_RAN
+        - and:
+            - tableExists:
+                schemaName: dbops
+                tableName: fk_index_policy
+            - columnExists:
+                schemaName: vendite
+                tableName: contratti
+                columnName: parent_contratto_id
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/vendite/fk_index_policy_contratti_parent.csv
+            tableName: fk_index_policy
+            schemaName: dbops
+            separator: ","
+            encoding: UTF-8
+            primaryKey: "schema_name,table_name,constraint_name"
+            columns:
+              - column: { name: schema_name,         type: STRING }
+              - column: { name: table_name,          type: STRING }
+              - column: { name: constraint_name,     type: STRING }
+              - column: { name: consentito,          type: BOOLEAN }
+              - column: { name: dll_command,         type: STRING }
+              - column: { name: generated_by_script, type: BOOLEAN }
+              - column: { name: user_insert,         type: STRING }
+              - column: { name: data_insert,         type: STRING }
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              UPDATE dbops.fk_index_policy
+                 SET consentito  = false,
+                     dll_command = 'CREATE INDEX IF NOT EXISTS ix_contratti_parent_contratto_id ON vendite.contratti(parent_contratto_id);'
+               WHERE schema_name = 'vendite'
+                 AND table_name = 'contratti'
+                 AND constraint_name = 'fk_contratti_parent';

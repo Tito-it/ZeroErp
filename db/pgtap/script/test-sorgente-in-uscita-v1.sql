@@ -1,5 +1,9 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
+-- rev 2026-11-07 (brief-db-sorgente-documento-e-riga, giro T.4): la bolla si cancella solo da bozza VUOTA
+--   (nessuna riga attiva, 20261106-88). Prima dell'8 la bolla 1 si svuota: il prelievo se ne va e la riga 1
+--   si disattiva. Il figlio CANCELLA del 9 dichiara la riga disattivata invece del prelievo: la cascata dal
+--   documento porta ormai solo righe disattivate, e il dettaglio resta provato dal 4-5. Attese invariate.
 -- pgTAP test per Zero ERP
 --
 -- Il lato «in uscita» della provenienza polimorfa (S-9): script.trgfn_sorgente_in_uscita
@@ -23,10 +27,10 @@
 --   5) ...e il prelievo c'e' ancora
 --   6) cancellare la riga 2, da cui nasce un figlio CANCELLA: passa
 --   7) ...e il figlio se n'e' andato con lei
---   8) cancellare la bolla con un figlio BLOCCA sul documento -> rifiuto
---   9) ...e con un figlio che blocca e uno che cancella, non si cancella niente
+--   8) cancellare la bolla (vuota) con un figlio BLOCCA sul documento -> rifiuto
+--   9) ...e con un figlio che blocca e due che cancellano, non si cancella niente
 --  10) tolto il figlio che blocca, la bolla si cancella
---  11) ...e se ne vanno i figli CANCELLA del documento, della riga e del dettaglio
+--  11) ...e se ne vanno i figli CANCELLA del documento e della riga disattivata
 --  12) una bolla senza figli si cancella come prima
 --  13) il preventivo (chiave uid) con un figlio BLOCCA su sorgente_uid -> rifiuto
 --  14) la frase: il conteggio dei record che ne nascono, senza segnaposti grezzi
@@ -163,14 +167,23 @@ SELECT is((SELECT count(*)::int FROM pg_temp._figli_cancella WHERE sorgente_riga
     '7) ...e il figlio della riga se n''e'' andato con lei');
 
 -- ===== il documento =====
+-- rev 2026-11-07 (giro T.4): la bolla si cancella solo da bozza vuota. Si
+-- svuota: via il figlio del prelievo e il prelievo, la riga 1 disattivata. Il
+-- figlio che blocca dichiara il documento.
+DELETE FROM pg_temp._figli_blocca;
+DELETE FROM vendite.ddt_righe_prelievi WHERE id = (SELECT prel1 FROM _b);
+UPDATE vendite.ddt_righe SET attivo = false WHERE id = (SELECT r1 FROM _b);
+INSERT INTO pg_temp._figli_blocca (sorgente_tipo_id, sorgente_id)
+SELECT (SELECT ddt FROM _t), ddt1 FROM _b;
+
 SELECT is(pg_temp.codice_errore(format('DELETE FROM vendite.ddt WHERE id = %s', (SELECT ddt1 FROM _b))),
     'E_SORG_ORIGINE_REFERENZIATA',
     '8) cancellare la bolla con un figlio BLOCCA -> rifiuto');
 
 INSERT INTO pg_temp._figli_cancella (sorgente_tipo_id, sorgente_id)
 SELECT (SELECT ddt FROM _t), ddt1 FROM _b;
-INSERT INTO pg_temp._figli_cancella (sorgente_tipo_id, sorgente_id, sorgente_riga, sorgente_dettaglio)
-SELECT (SELECT ddt FROM _t), ddt1, r1, prel1 FROM _b;
+INSERT INTO pg_temp._figli_cancella (sorgente_tipo_id, sorgente_id, sorgente_riga)
+SELECT (SELECT ddt FROM _t), ddt1, r1 FROM _b;
 
 SELECT is(
     pg_temp.codice_errore(format('DELETE FROM vendite.ddt WHERE id = %s', (SELECT ddt1 FROM _b)))
@@ -185,7 +198,7 @@ SELECT lives_ok(format('DELETE FROM vendite.ddt WHERE id = %s', (SELECT ddt1 FRO
     '10) tolto il figlio che blocca, la bolla si cancella');
 
 SELECT is((SELECT count(*)::int FROM pg_temp._figli_cancella), 0,
-    '11) ...e i figli CANCELLA del documento e del dettaglio se ne vanno con lei');
+    '11) ...e i figli CANCELLA del documento e della riga disattivata se ne vanno con lei');
 
 SELECT lives_ok(format('DELETE FROM vendite.ddt WHERE id = %s', (SELECT ddt2 FROM _b)),
     '12) una bolla senza figli si cancella come prima');

@@ -1,5 +1,8 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
+-- rev 2026-11-07 (brief-db-sorgente-documento-e-riga, giro T.4): la bolla si cancella solo da bozza VUOTA
+--   (nessuna riga attiva, 20261106-88). Il caso 11 disattiva prima la riga della bolla in bozza: la cascata
+--   dalla testata porta solo righe disattivate, ed e' quella che il BB deve lasciar passare. Attesa invariata.
 -- rev 2026-10-26 (brief-modello-documento-vendita §11): pg_temp.lr_mk_contratto porta lo stato dal verbo
 --   (la porta ferma l'UPDATE diretto): ATTIVO da dbops.fn_pgtap_porta_a_stato, CESSATO da
 --   vendite.fn_cessa_contratto con la data di oggi; il contratto cessato (test 18) nasce nell'anno della
@@ -65,7 +68,7 @@
 --   8) 🔴 DDT consegnato, riga ALLOCATA: attivo = false -> rifiutato, verbo «modificare»
 --   9) DDT emesso, riga con fulfillment: DELETE -> E_RIGA_DOC_NON_BOZZA, non E_DELETE_BLOCKED_FUL (fascia _a05_)
 --  10) DDT emesso: UPDATE di quantita' -> rifiutato
---  11) DDT in bozza: la testata si elimina e le righe la seguono (il cascade non e' fermato dal BB)
+--  11) DDT in bozza vuota (riga disattivata): la testata si elimina e la riga la segue (il cascade non e' fermato dal BB)
 --  12) Ordine in bozza: DELETE di riga PASSA
 --  13) Ordine confermato: DELETE di riga -> E_RIGA_DOC_NON_BOZZA, verbo «togliere»
 --  14) Ordine confermato: UPDATE di riga (non la data confermata) -> rifiutato, verbo «modificare» (rev 2026-10-08)
@@ -392,6 +395,11 @@ SELECT pg_temp.lr_prova('10_emesso_upd',
   format('UPDATE vendite.ddt_righe SET quantita = quantita + 1, qta_operativa = qta_operativa + 1 WHERE id = %s', (SELECT id FROM tmp_fix WHERE chiave='ddt_emesso_riga')))
  WHERE EXISTS (SELECT 1 FROM tmp_fix WHERE chiave='ddt_emesso_riga');
 
+-- La bozza dev'essere vuota per cancellarsi (giro T.4): la riga si disattiva,
+-- e la cascata la porta con se'.
+UPDATE vendite.ddt_righe SET attivo = false
+ WHERE ddt_id = (SELECT id FROM tmp_fix WHERE chiave='ddt_bozza') AND attivo;
+
 SELECT pg_temp.lr_prova('11_bozza_testata',
   format('DELETE FROM vendite.ddt WHERE id = %s', (SELECT id FROM tmp_fix WHERE chiave='ddt_bozza')))
  WHERE EXISTS (SELECT 1 FROM tmp_fix WHERE chiave='ddt_bozza');
@@ -512,7 +520,7 @@ SELECT CASE
   ELSE is(
     (SELECT COALESCE(righe::text, sqlstate || ' ' || messaggio) FROM tmp_esito WHERE caso = '11_bozza_testata'),
     '1',
-    '11) DDT in bozza: la testata si elimina e le righe la seguono (testata assente = cascade, si passa)')
+    '11) DDT in bozza vuota: la testata si elimina e la riga disattivata la segue (testata assente = cascade, si passa)')
 END;
 
 -- ============================================================
