@@ -7,9 +7,9 @@
 --   del segmento; chi leggeva le colonne sorgente_* dell'attivita' (il
 --   normalize, la vista dello smistamento) legge la riga di commessa.
 -- Brief: brief-db-sorgente-documento-e-riga §7.2 lotto C, giro C.1 (D-1, D-3,
---   S-7, V-2, V-3)
+--   S-7, V-2, V-3); giro C.4 (D-2: ATTIVITA esce dalle sorgenti, 21-23)
 -- ------------------------------------------------------------
--- Indice test (plan 20):
+-- Indice test (plan 23):
 --   LA FORMA
 --    1) attivita_fatturabili non ha piu' colonne sorgente_*
 --    2) ... ed e' fuori dal perimetro della provenienza
@@ -37,6 +37,10 @@
 --   18) sorgente_riga senza il tipo: il CHECK di forma (23514)
 --   19) una commessa che non c'e': E_SORG_NOT_FOUND
 --   20) il presidio degli orfani non vede la riga di fattura che cita una riga vera
+--   L'ATTIVITA' NON E' UNA PROVENIENZA (giro C.4)
+--   21) ATTIVITA non e' piu' un tipo di config.sorgenti
+--   22) ... e resta un'entita' di config.tipi_entita, non sorgente
+--   23) ... e attivita_fatturabili non porta piu' il lato «in uscita»
 --
 -- ⚠️ Il mondo si COSTRUISCE: commesse, righe di commessa, preventivo, lotto e
 --   fattura dai builder dbops.fn_pgtap_*. Gira come l'applicazione (operatore in
@@ -51,7 +55,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(20);
+SELECT plan(23);
 
 -- L'esito di un'istruzione: PASSA, il codice d'errore applicativo (dal
 -- CONSTRAINT dell'errore di fn_log_and_raise_error), o SQLSTATE + vincolo.
@@ -348,6 +352,32 @@ SELECT is(
     WHERE o.tabella = 'vendite.fatture_righe'::regclass),
   0,
   '20) il presidio degli orfani non vede la riga di fattura che cita una riga vera');
+
+-- ============================================================
+-- L'ATTIVITA' NON E' UNA PROVENIENZA (giro C.4, D-2)
+-- ============================================================
+-- Niente nasce da un'attivita' fatturabile: la sua provenienza e' la riga di
+-- commessa (1). Il tipo stava a catalogo solo come genitore della FK di
+-- config.tipi_entita; l'entita' resta per le note.
+SELECT is(
+  (SELECT count(*)::int FROM config.sorgenti s WHERE s.codice_interno = 'ATTIVITA'),
+  0,
+  '21) ATTIVITA non e'' un tipo di config.sorgenti');
+
+SELECT is(
+  (SELECT format('%s|%s|%s', e.is_sorgente::text, (e.sorgente_codice_interno IS NULL)::text, e.etichetta_key)
+     FROM config.tipi_entita e WHERE e.codice = 'ATTIVITA'),
+  'false|true|config.tipi_entita.attivita',
+  '22) ATTIVITA resta un''entita'' (note), con is_sorgente false e senza legame al catalogo delle sorgenti');
+
+-- Il lato «in uscita» lo monta e lo smonta la convergenza di 90_end sul catalogo:
+-- la tabella non e' piu' documento, righe o dettaglio di nessun tipo.
+SELECT is(
+  (SELECT count(*)::int FROM pg_trigger tg
+    WHERE tg.tgrelid = 'vendite.attivita_fatturabili'::regclass
+      AND tg.tgfoid = 'script.trgfn_sorgente_in_uscita()'::regprocedure),
+  0,
+  '23) attivita_fatturabili non porta il lato «in uscita»: nessun tipo la dichiara');
 
 SELECT * FROM finish();
 ROLLBACK;

@@ -7,7 +7,7 @@
 -- ChangeSet: 20260908-31 (split + riferimento), -32 (la lista lo espone e lo
 --            ordina), -33 (i tre conteggi del banner)
 --
--- Elenco test (plan 16):
+-- Elenco test (plan 17):
 --   1) ⭐ ANDATA E RITORNO sulla forma documento: split(build(x)) = x
 --   2) ⭐ ANDATA E RITORNO sulla forma sourceless: 'MAN:<commessa>'
 --   3) una chiave irriconoscibile da' tre NULL e NON solleva
@@ -23,7 +23,10 @@
 --  13) ⭐ il banner conta DOCUMENTI, non segnalazioni
 --  14) ...e conta a parte le critiche del GIRO, che documenti non sono
 --  15) il denominatore viene dagli ESITI, non dal perimetro
---  16) ⚠️ il riferimento coincide con quello della dashboard Competenza
+--  16) ⚠️ il riferimento coincide con quello della dashboard Competenza, per un
+--      documento con numero e per uno senza
+--  17) ⭐ il riferimento di un documento SENZA numero (un consumo) e' il codice
+--      della commessa, non la chiave grezza
 --
 -- Scopo:
 --   Sulla scheda Critiche il documento di una segnalazione si leggeva come
@@ -39,6 +42,10 @@
 --   compone la chiave con fn_build_gruppo_fatturabile_key, il 16 costruisce
 --   una commessa con un'attivita' (dbops.fn_pgtap_crea_commessa) e legge la
 --   SUA riga di dashboard. Gli skip restano come rete, ma da zero non scattano.
+-- rev 2026-11-07 (brief-db-sorgente-documento-e-riga §3.6, V-7, 20261108-07): il
+--   16 costruisce anche un gruppo di consumi, un documento senza numero, e il 17
+--   chiede il codice della commessa: prima la funzione ripiegava sulla chiave
+--   grezza e la dashboard sul codice della commessa.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -49,7 +56,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Contesto applicativo: questo test gira come gira l'applicazione.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(16);
+SELECT plan(17);
 
 -- ============================================================
 -- 1..2 — ⭐ ANDATA E RITORNO, che e' il presidio delle due gemelle
@@ -275,10 +282,9 @@ SELECT is(
 --   commessa con un'attivita', dbops.fn_pgtap_crea_commessa) e si legge
 --   SOLO quella; prima si pescavano le prime cinque righe visibili, e da zero
 --   non ce n'era nessuna (skip).
--- ⚠️ La riga viene da un ordine, un documento con un numero: e' il caso che le due
---   scritture fanno coincidere. Per un documento SENZA numero (un consumo) oggi
---   divergono: la dashboard ripiega sul codice della commessa, la funzione sulla
---   chiave grezza (brief-db-sorgente-documento-e-riga §3.6, V-7, da decidere).
+-- Due gruppi: un ordine (un documento con un numero) e un consumo (un documento
+--   SENZA numero, label_selector NULL), su cui le due scritture ripiegano tutte e
+--   due sul codice della commessa.
 CREATE TEMP TABLE tmp_commessa_dash AS
 SELECT * FROM dbops.fn_pgtap_crea_commessa('riferimento dashboard', NULL, NULL, false);
 
@@ -291,8 +297,12 @@ SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita(
     p_sorgente_codice => 'ORDINE_VENDITA',
     p_sorgente_uid    => (SELECT ordine_uid::text FROM tmp_ordine_dash));
 
+-- Senza sorgente il builder costruisce un consumo vero e lo lega alla commessa.
+SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita(
+    p_commessa_id => (SELECT commessa_id FROM tmp_commessa_dash));
+
 CREATE TEMP TABLE tmp_dash AS
-SELECT g.gruppo_key, g.riferimento
+SELECT g.gruppo_key, g.riferimento, g.tipo_gruppo
   FROM vendite.vw_dash_competenza_gruppi g
  WHERE g.gruppo_key IS NOT NULL
    AND g.commessa_id = (SELECT commessa_id FROM tmp_commessa_dash);
@@ -301,12 +311,25 @@ SELECT CASE
   WHEN NOT EXISTS (SELECT 1 FROM tmp_dash)
     THEN skip('la dashboard Competenza non ha righe visibili all''operatore su questo database', 1)
   ELSE is(
-    (SELECT count(*) FROM tmp_dash d
-      WHERE vendite.fn_riferimento_gruppo_fatturabile(d.gruppo_key)
-            IS DISTINCT FROM d.riferimento),
-    0::bigint,
-    '16) il riferimento coincide con quello della dashboard Competenza')
+    (SELECT string_agg(d.tipo_gruppo || ':'
+                       || (vendite.fn_riferimento_gruppo_fatturabile(d.gruppo_key)
+                           IS NOT DISTINCT FROM d.riferimento)::text,
+                       ',' ORDER BY d.tipo_gruppo)
+       FROM tmp_dash d),
+    'ATTIVITA_CONSUMI:true,ORDINE_VENDITA:true',
+    '16) il riferimento coincide con quello della dashboard Competenza: ordine e consumo')
 END;
+
+-- ============================================================
+-- 17 — ⭐ un documento senza numero si nomina con la sua commessa
+-- ============================================================
+-- Il consumo non ha un numero: il riferimento e' il codice della commessa
+-- aperta in cui sta (vendite.fn_commessa_viva_di_sorgente), non la chiave.
+SELECT is(
+    (SELECT vendite.fn_riferimento_gruppo_fatturabile(d.gruppo_key)
+       FROM tmp_dash d WHERE d.tipo_gruppo = 'ATTIVITA_CONSUMI'),
+    (SELECT commessa_codice::text FROM tmp_commessa_dash),
+    '17) il riferimento di un consumo e'' il codice della sua commessa, non la chiave grezza');
 
 SELECT * FROM finish();
 ROLLBACK;

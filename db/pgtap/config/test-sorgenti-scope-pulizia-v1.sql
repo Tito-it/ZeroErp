@@ -8,7 +8,7 @@
 --  2) Constraint chk_sorgenti_scope attivo
 --  3) scope NOT NULL su tutti i record
 --  4) Sorgenti PUSH_COMMESSA: 5 record attivi
---  5) Sorgenti PIPELINE_MARKER: 2 record attivi
+--  5) Sorgenti PIPELINE_MARKER: la sola COMMESSA (ATTIVITA e' uscita col lotto C)
 --  6) Sorgenti ROW_VALIDATOR: nessuna (le sei di riga di vendita sono uscite col lotto R)
 --  7) Sorgente POST_INVOICE: FATTURA attiva
 --  8) Trigger polimorfo rimosso da attivita_fatturabili
@@ -89,16 +89,20 @@ SELECT ok(
 );
 
 -- ============================================================
--- 5) Sorgenti PIPELINE_MARKER: 2 record attivi
+-- 5) Sorgenti PIPELINE_MARKER: la sola COMMESSA
 -- ============================================================
-SELECT ok(
+-- rev 2026-11-07 (brief-db-sorgente-documento-e-riga lotto C, giro C.4,
+--   20261108-06): ATTIVITA non e' piu' una sorgente (D-2: niente nasce da
+--   un'attivita' fatturabile); resta come entita' in config.tipi_entita.
+SELECT is(
   (
-    SELECT count(*) = 2
+    SELECT string_agg(s.codice_interno::text, ',' ORDER BY s.codice_interno)
     FROM config.sorgenti s
     WHERE s.scope = 'PIPELINE_MARKER'
       AND s.attivo IS TRUE
   ),
-  'PIPELINE_MARKER: 2 sorgenti attive (ATTIVITA, COMMESSA)'
+  'COMMESSA',
+  '5) PIPELINE_MARKER: una sorgente attiva, COMMESSA'
 );
 
 -- ============================================================

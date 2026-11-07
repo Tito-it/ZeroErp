@@ -6,7 +6,8 @@
 --
 -- Elenco test (1..36):
 --  1-9)  Riferimenti minimi presenti (articoli, istanze utilities, sorgenti,
---        unita di misura, note_stili, sorgente id=1 con target valido,
+--        unita di misura, note_stili, l'entita' ATTIVITA delle note (non una
+--        sorgente),
 --        billing account, tipi doc fiscale, valute)
 -- 10)    Fixture: 13 attivita di commessa distinte create
 -- 11-12) Quantita negativa: consentita e mantenuta
@@ -158,14 +159,19 @@ SELECT ok(
     'Riferimento config.note_stili presente'
 );
 
-SELECT ok(
-    (SELECT count(*)
-       FROM config.sorgenti
-      WHERE id = 1
-        AND attivo IS TRUE
-        AND target_table IS NOT NULL
-        AND key_selector IN ('id', 'uid')) = 1,
-    'Sorgente id=1 configurata con target valido'
+-- rev 2026-11-07 (brief-db-sorgente-documento-e-riga, lotto C, giro C.4,
+--   20261108-06): il test chiedeva la sorgente id = 1, cioe' ATTIVITA, che esce
+--   dal catalogo delle sorgenti (niente nasce da un'attivita' fatturabile, la sua
+--   provenienza e' la riga di commessa). Il riferimento che serve a questo file e'
+--   l'ENTITA' delle note (23-24), che resta; per codice, non per id.
+SELECT is(
+    (SELECT format('%s|%s', e.is_sorgente::text,
+                   (NOT EXISTS (SELECT 1 FROM config.sorgenti s
+                                 WHERE s.codice_interno = 'ATTIVITA'))::text)
+       FROM config.tipi_entita e
+      WHERE e.codice = 'ATTIVITA'),
+    'false|true',
+    'Entita'' ATTIVITA presente per le note, e non e'' una sorgente'
 );
 
 SELECT ok(

@@ -99,7 +99,9 @@ INSERT INTO _fn VALUES
   ('dbops.fn_pgtap_crea_consumo(bigint,date,jsonb)'),
   ('dbops.fn_pgtap_consumo_della_commessa(bigint)'),
   ('dbops.fn_pgtap_provenienza_da_chiave(character varying)'),
-  ('dbops.fn_pgtap_crea_commessa_attivita(bigint,numeric,uuid,bigint,bigint,character varying,text,bigint,numeric,character varying,character varying,date,date,text)');
+  ('dbops.fn_pgtap_crea_commessa_attivita(bigint,numeric,uuid,bigint,bigint,character varying,text,bigint,numeric,character varying,character varying,date,date,text)'),
+  -- lotto C, V-7
+  ('vendite.fn_riferimento_gruppo_fatturabile(text)');
 
 CREATE TEMP TABLE _tab (tabella text PRIMARY KEY);
 INSERT INTO _tab VALUES ('vendite.preventivi_righe'), ('vendite.ordini_righe'),
