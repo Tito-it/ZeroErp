@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Vista `dbops.vw_codici_errore_forme_condizione`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 7 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -129,6 +129,10 @@ stato: lo scatto della CI (`scripts/codici-errore-baseline.sh`) confronta le fam
 codice con una baseline committata, ed è rosso quando un codice acquista una famiglia che non aveva o
 nasce con più di una. `IGNOTO` non entra nel confronto.
 
+Per questo nel catalogo dei presidi ([dbops.presidi](/dbzero/dbops/tabelle/presidi)) la sua natura
+è `CANCELLO`, presidiata dal passo B-7 di `ci-validate`, e sta fuori dal digest: la vista è la
+materia del cancello, e il verdetto lo dà la build.
+
 Condivide i punti ciechi di
 [vw_codici_errore_da_dichiarare](/dbzero/dbops/views/vw_codici_errore_da_dichiarare): legge
 letterali in corpi PL/pgSQL, e non vede i codici costruiti per concatenazione né i `RAISE EXCEPTION`
@@ -175,6 +179,9 @@ La vista è `security_invoker` e legge i cataloghi di sistema.
   per chiamata, e non più da un elenco espanso, che ne dichiarava dieci: la stima del piano era salita
   oltre la soglia in cui il JIT ottimizza, e ogni lettura pagava circa 300 ms di compilazione. Output
   invariato. I due test che la leggono la fotografano una volta sola.
+
+* 2026-11-07 — nel catalogo dei presidi passa da `LAVORAZIONE` a `CANCELLO`, presidiata dal
+  passo B-7 (`brief-db-revisione-dbops`, giro 6).
 
 ---
 

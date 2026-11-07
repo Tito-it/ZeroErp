@@ -1,6 +1,6 @@
 # Guida — I lavori automatici: che natura hanno e per conto di chi girano
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 7 novembre 2026
 >
 > Destinatari: chiunque debba capire, aggiungere o controllare un lavoro che il
 > sistema fa da solo — sviluppatori, analisti, e chi guarda se stanotte è andato
@@ -335,7 +335,7 @@ Non si va a memoria: ci sono viste che rispondono a una domanda ciascuna, e che
 | [vw_fatture_stampa_coda_da_guardare](/dbzero/dbops/views/vw_fatture_stampa_coda_da_guardare) | c'è una stampa in coda che si è fermata? (la gemella, per la coda stampa) |
 | [vw_email_da_guardare](/dbzero/dbops/views/vw_email_da_guardare) | c'è un'email che la coda deve a qualcuno da più di un'ora e nessuno ha preso in mano? |
 | [vw_processi_programmazione_da_guardare](/dbzero/dbops/views/vw_processi_programmazione_da_guardare) | c'è un processo che doveva farsi vivo e non l'ha fatto — un job pgAgent, o un COMMAND col suo contratto? |
-| [vw_lotti_fermi_da_guardare](/dbzero/dbops/views/vw_lotti_fermi_da_guardare) | c'è un giro di fatturazione fermo da più di un'ora che nessuno ha rilanciato né sciolto? (dal 19-09-2026: il verdetto «fermo» è quello del banner, letto dalla stessa sede) |
+| [vw_lotti_fermi_da_guardare](/dbzero/dbops/views/vw_lotti_fermi_da_guardare) | c'è un giro di fatturazione fermo da più di un'ora che nessuno ha rilanciato né sciolto? (dal 19-09-2026: il verdetto «fermo» è quello del banner, letto dalla stessa sede). Guarda i giri ancora pre-fiscali; un lotto congelato con documenti in errore lo guarda [vw_lotti_congelati_con_errori_da_guardare](/dbzero/dbops/views/vw_lotti_congelati_con_errori_da_guardare) |
 
 ### ⚠️ Un debito dichiarato non è un allarme
 
