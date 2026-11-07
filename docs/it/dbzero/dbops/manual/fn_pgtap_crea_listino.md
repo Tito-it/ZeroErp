@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_pgtap_crea_listino`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -41,9 +41,11 @@ non esiste. Restituisce il listino, la versione e la tipologia scelta.
 * **L'emittente è quello di chi agisce.** Il listino ha un guard di perimetro che rifiuta un
   emittente fuori dall'azienda dell'operatore: il contesto va aperto **prima**, e senza contesto
   la fixture si ferma con un errore che lo dice.
-* **La tipologia è la prima ammessa per l'utility**, nell'ordine del vocabolario. Non tutte le
-  tipologie valgono per tutte le utility: una qualunque sbatterebbe sul guard di tipologia. Un'utility
-  senza tipologie ammesse ferma la fixture con un errore che la nomina.
+* **La tipologia è la prima ammessa per l'utility che non è una quota fissa**, nell'ordine del
+  vocabolario. Non tutte le tipologie valgono per tutte le utility: una qualunque sbatterebbe sul
+  guard di tipologia. E la quota fissa non è un default, perché vorrebbe la periodicità sulle
+  righe (vedi sotto). Un'utility senza una tipologia ammessa che non sia di quota fissa ferma la
+  fixture con un errore che la nomina.
 
 Il codice del listino è casuale: l'unicità del codice è globale, e una sigla fissa farebbe
 collidere la seconda chiamata con la prima.
@@ -57,9 +59,11 @@ versione in bozza, le aggiunge **una riga d'appoggio** su un articolo suo (non g
 magazzino, della tipologia del listino, codice che comincia per `PGTAP_LST_ART_`) e la attiva con
 `dbops.fn_pgtap_porta_a_stato`. Chi conta le righe della versione ne trova una in più.
 
-La riga d'appoggio non ha periodicità. Se la tipologia scelta è di **quota fissa** e l'articolo
-d'appoggio risulta una quota fissa a canone, l'attivazione rifiuta la versione
-(`E_LISTINO_VERSIONE_QUOTA_FISSA_SENZA_PERIODICITA`) e la fixture si ferma lì.
+La riga d'appoggio non ha periodicità, e non le serve: l'articolo prende la tipologia del listino,
+che non è mai di quota fissa. Una quota fissa a canone senza periodicità non lascerebbe attivare la
+versione (`E_LISTINO_VERSIONE_QUOTA_FISSA_SENZA_PERIODICITA`): chi vuole un listino di quota fissa
+lo costruisce lui e dà la periodicità alle righe, con
+`dbops.fn_pgtap_listino_aggiungi_articoli`.
 
 ---
 
@@ -73,7 +77,10 @@ diversi da attiva: sono il caso del test. Per mettere articoli nel listino c'è
 
 ### Test
 
-Non ha un test suo: la presidiano i file che la usano, fra cui
+* `db/pgtap/dbops/test-fn-pgtap-crea-listino-v1.sql` — su un'utility dove la quota fissa è la
+  prima tipologia ammessa (costruita nella transazione) il listino nasce attivo, su una tipologia
+  che non è di quota fissa; la periodicità data alle righe.
+* La presidiano anche i file che la usano, fra cui
 `db/pgtap/dbops/test-fn-pgtap-crea-contratto-v1.sql`,
 `db/pgtap/dbops/test-fn-pgtap-crea-commessa-attivita-v1.sql` e
 `db/pgtap/vendite/test-listino-versione-al-modello-v1.sql`.
@@ -86,6 +93,8 @@ Non ha un test suo: la presidiano i file che la usano, fra cui
   (`brief-db-fixture-che-costruiscono-giro-2`).
 * 2026-10-28 — la versione non si scrive più direttamente attiva: nasce in bozza, prende la riga
   d'appoggio e si attiva dal verbo (`brief-modello-documento-vendita`, §16).
+* 2026-11-08 — la tipologia di default esclude la quota fissa: prima, su un'utility dove veniva
+  per prima, l'attivazione si fermava.
 
 ---
 

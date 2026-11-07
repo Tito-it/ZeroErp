@@ -1,0 +1,161 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_pgtap_crea_preventivo: lo stato e la valuta dalle loro sedi.
+#   Brief: brief-db-revisione-dbops, D73 e D74 (giro 8, blocco 8c).
+#
+# Base: doc auto-generata del 2026-11-07, verificata uguale al vivo dello scratch.
+#
+# ⚠️ PERCHE'. D73: lo stato si cercava sul vocabolario SENZA il filtro attivo, accanto alla sede
+#   script.fn_doc_stato_id:
+#   uno stato spento non si rifiutava prima di costruire. Ora la chiama. D74: la valuta dalla catena del dominio
+#   (vendite.fn_get_valuta_id), non la prima del catalogo. Firma e risultato
+#   invariati. COMMENT al presente (§5d).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261108-53-update-fn-pgtap-crea-preventivo-stato-e-valuta-dalle-sedi-mctit.yaml
+
+  - changeSet:
+      id: 20261108-53-update-fn-pgtap-crea-preventivo-stato-e-valuta-dalle-sedi
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_pgtap_crea_preventivo: stato da script.fn_doc_stato_id, valuta da vendite.fn_get_valuta_id (D73, D74).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_pgtap_crea_preventivo';
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_doc_stato_id';
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite' AND p.proname = 'fn_get_valuta_id';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_preventivo(
+                  -- l'etichetta e' un frammento di testo della fixture: tipo nudo.
+                  p_etichetta            text DEFAULT 'pgTAP'::text,
+                  p_stato_codice_interno config.stati_doc_preventivi.codice_interno%TYPE DEFAULT 'DRAFT'::character varying)
+              RETURNS TABLE(
+                  preventivo_id               vendite.preventivi.id%TYPE,
+                  preventivo_uid              vendite.preventivi.uid%TYPE,
+                  emittente_fiscale_id        anagrafiche.emittenti_fiscali.id%TYPE,
+                  emittente_soggetto_ruolo_id anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE,
+                  auth_user_id                anagrafiche.identita_digitali.auth_user_id%TYPE,
+                  billing_account_id          anagrafiche.billing_account.id%TYPE,
+                  istanza_utility_id          anagrafiche.billing_account.istanza_utility_id%TYPE,
+                  cliente_soggetto_ruolo_id   anagrafiche.billing_account.soggetto_ruolo_id%TYPE,
+                  utility_id                  anagrafiche.billing_account.utility_id%TYPE,
+                  stato_doc_preventivo_id     config.stati_doc_preventivi.id%TYPE,
+                  valuta_id                   config.valute.id%TYPE)
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: dare a una fixture pgTAP un PREVENTIVO del mondo in una
+              --   chiamata: azienda, operatore, cliente e testata.
+              -- Uso:
+              --   CREATE TEMP TABLE tmp_p AS
+              --   SELECT * FROM dbops.fn_pgtap_crea_preventivo('rls preventivi');
+              -- ⛔ Le righe NON le scrive: sono il caso del test.
+              -- ⭐ rev 2026-10-24 (20261024-24, brief-modello-documento-vendita N-1):
+              --   il preventivo NASCE nello stato iniziale (trigger della nascita); uno
+              --   stato diverso si raggiunge con dbops.fn_pgtap_porta_a_stato, sotto
+              --   i guard veri. Un passaggio che pretende cio' che il builder non
+              --   scrive (righe, indirizzi…) qui fallisce: il test lo scrive e porta
+              --   avanti da se'.
+              -- ⚠️ Senza contesto aperto, il mondo lo apre sull'operatore che
+              --   costruisce. Esce con i vincoli IMMEDIATE, come ogni helper.
+              DECLARE
+                  v_ef_id      anagrafiche.emittenti_fiscali.id%TYPE;
+                  v_ef_sr_id   anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE;
+                  v_user_id    anagrafiche.identita_digitali.auth_user_id%TYPE;
+                  v_ba_id      anagrafiche.billing_account.id%TYPE;
+                  v_ist_id     anagrafiche.billing_account.istanza_utility_id%TYPE;
+                  v_cli_sr_id  anagrafiche.billing_account.soggetto_ruolo_id%TYPE;
+                  v_utility    anagrafiche.billing_account.utility_id%TYPE;
+                  v_stato_id   config.stati_doc_preventivi.id%TYPE;
+                  v_valuta_id  config.valute.id%TYPE;
+                  v_preventivo vendite.preventivi.id%TYPE;
+                  v_uid        vendite.preventivi.uid%TYPE;
+              BEGIN
+                  -- Il guard sul parametro PRIMA di costruire: uno stato
+                  -- sbagliato non deve lasciare un mondo a meta'.
+                  -- Lo stato dalla sede della traduzione codice -> id
+                  -- (script.fn_doc_stato_id): solo uno stato ATTIVO e' una destinazione.
+                  v_stato_id := script.fn_doc_stato_id('vendite.preventivi'::regclass, p_stato_codice_interno);
+
+                  IF v_stato_id IS NULL THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_crea_preventivo: nessuno stato documento preventivo attivo con codice_interno = %',
+                          p_stato_codice_interno;
+                  END IF;
+
+                  SELECT m.emittente_fiscale_id, m.emittente_soggetto_ruolo_id,
+                         m.auth_user_id, m.billing_account_id, m.istanza_utility_id,
+                         m.cliente_soggetto_ruolo_id, m.utility_id
+                    INTO v_ef_id, v_ef_sr_id, v_user_id, v_ba_id, v_ist_id,
+                         v_cli_sr_id, v_utility
+                    FROM dbops.fn_pgtap_crea_mondo_cliente(p_etichetta) m;
+
+                  -- La valuta dalla catena del dominio (vendite.fn_get_valuta_id:
+                  -- billing account, poi emittente, poi gestore), come la risolvono i
+                  -- trigger di default dei documenti: non la prima del catalogo.
+                  v_valuta_id := vendite.fn_get_valuta_id(v_ba_id, v_ef_sr_id);
+
+                  INSERT INTO vendite.preventivi (
+                      billing_account_id, istanza_utility_id, utility_id,
+                      validita_dal, validita_al, valuta_id,
+                      emittente_fiscale_id, meta)
+                  VALUES (v_ba_id, v_ist_id, v_utility,
+                          (SELECT script.fn_data_operativa()), (SELECT script.fn_data_operativa()) + 30, v_valuta_id,
+                          v_ef_id,
+                          jsonb_build_object('test_scope', 'pgtap_' || p_etichetta))
+                  RETURNING id, uid INTO v_preventivo, v_uid;
+
+                  -- Lo stato chiesto (rev 20261024-24): il documento e' nato nello stato
+                  -- iniziale; se il test ne vuole un altro, ci arriva per la matrice.
+                  IF v_stato_id IS DISTINCT FROM script.fn_doc_stato_iniziale_id('vendite.preventivi'::regclass) THEN
+                      PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi'::regclass, v_preventivo, p_stato_codice_interno);
+                  END IF;
+
+                  -- Contratto dichiarato, non fiducia nel chiamato.
+                  SET CONSTRAINTS ALL IMMEDIATE;
+
+                  RETURN QUERY
+                  SELECT v_preventivo, v_uid, v_ef_id, v_ef_sr_id, v_user_id,
+                         v_ba_id, v_ist_id, v_cli_sr_id, v_utility,
+                         v_stato_id, v_valuta_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_crea_preventivo(text, config.stati_doc_preventivi.codice_interno%TYPE) IS
+                  'Fixture pgTAP: un PREVENTIVO del mondo in una chiamata: azienda, operatore e cliente (dbops.fn_pgtap_crea_mondo_cliente) e la testata, con l''emittente del mondo, il suo billing account, la sua istanza e utility, la valuta della catena del dominio (vendite.fn_get_valuta_id: billing account, poi emittente, poi gestore) e una validita'' di trenta giorni dalla data operativa. Il numero lo assegna il trigger del dominio, come in produzione. Lo stato: lo traduce script.fn_doc_stato_id, quindi uno stato spento o inesistente solleva prima di costruire; il preventivo nasce nello stato iniziale della testata (script.fn_doc_stato_iniziale_id) e, se il secondo parametro ne chiede un altro, ci arriva per la matrice con dbops.fn_pgtap_porta_a_stato, sotto i guard veri; un passaggio che pretende cio'' che il builder non scrive (le righe, per l''emissione) si ferma: il test chiede la bozza, scrive le righe e porta avanti da se''. ⛔ NON scrive righe: sono il caso del test. ⚠️ Senza contesto aperto lo apre sull''operatore che costruisce; esce con i vincoli IMMEDIATE.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo dal corpo della doc auto-generata
+              -- del 2026-11-07.
+              SELECT 1;

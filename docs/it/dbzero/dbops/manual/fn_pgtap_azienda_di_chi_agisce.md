@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_pgtap_azienda_di_chi_agisce`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -13,7 +13,7 @@
 > * [script.fn_resolve_emittente_for_user](/dbzero/script/funzioni/fn_resolve_emittente_for_user) — la regola di produzione che decide l'azienda
 > * [dbops.fn_pgtap_crea_mondo_cliente](/dbzero/dbops/funzioni/fn_pgtap_crea_mondo_cliente) — il mondo, che la usa quando il contesto è già aperto
 > * [dbops.fn_pgtap_cliente_del_builder](/dbzero/dbops/funzioni/fn_pgtap_cliente_del_builder) — il cliente dei builder, che la usa col billing account del test
-> * [script.fn_pgtap_emittente_operatore](/dbzero/script/funzioni/fn_pgtap_emittente_operatore) — l'helper di `script` che risponde alla stessa domanda, ma con un ripiego
+> * [script.fn_pgtap_emittente_operatore](/dbzero/script/funzioni/fn_pgtap_emittente_operatore) — l'helper di `script` che restituisce il solo emittente, delegando a questa funzione
 >
 > Guide:
 >
@@ -54,10 +54,10 @@ del chiamante (il parametro `p_chiamante`), così l'errore dice quale fixture l'
 * un utente senza identità OPERATORE attiva: il contesto è aperto su qualcuno che
   l'applicazione non farebbe entrare.
 
-⚠️ È la differenza con
-[script.fn_pgtap_emittente_operatore](/dbzero/script/funzioni/fn_pgtap_emittente_operatore),
-che con il contesto aperto e nessuna azienda risolta ripiega su un emittente di un altro
-operatore: la fixture che usa quella risposta scrive dove chi agisce non può leggere.
+⭐ È la sede unica della domanda: anche
+[script.fn_pgtap_emittente_operatore](/dbzero/script/funzioni/fn_pgtap_emittente_operatore)
+la chiama, e solleva negli stessi tre casi. Nessuna fixture sceglie un emittente al posto
+di chi agisce.
 
 ---
 
@@ -83,6 +83,8 @@ nomina il chiamante.
 * 2026-10-24 — estratta dal ramo «contesto già aperto» di `dbops.fn_pgtap_crea_mondo_cliente`
   (`brief-modello-documento-vendita`, §4-octies), perché servisse anche ai builder che
   ricevono il cliente di un'altra fixture.
+* 2026-11-08 — `script.fn_pgtap_emittente_operatore` delega a questa funzione: la domanda
+  «su quale azienda scrive chi agisce» ha una sede sola.
 
 ---
 

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_pgtap_crea_ddt_senza_ordine`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -11,6 +11,7 @@
 > * [dbops.fn_pgtap_crea_ddt_da_ordine](/dbzero/dbops/funzioni/fn_pgtap_crea_ddt_da_ordine) — il gemello, per la bolla nata da un ordine
 > * [dbops.fn_pgtap_porta_a_stato](/dbzero/dbops/funzioni/fn_pgtap_porta_a_stato) — la strada per portarla avanti
 > * [vendite.fn_annulla_ddt](/dbzero/vendite/funzioni/fn_annulla_ddt) — il verbo dell'annullo, che resta del test
+> * [script.fn_doc_stato_id](/dbzero/script/funzioni/fn_doc_stato_id) — lo stato chiesto, per codice, fra i soli attivi
 >
 > Guide:
 >
@@ -45,7 +46,10 @@ che serve al magazzino: mancava proprio il passo con la trappola.
   data alla nascita, indirizzi obbligatori.
 * **La riga** è una sola: 10 pezzi a 25 se il test non dice altro, con la prima aliquota
   attiva, dell'articolo del test o di un articolo di merce non gestita costruito apposta.
-* **Lo stato** si raggiunge per la matrice dei passaggi, sotto i controlli veri.
+* **Lo stato** chiesto lo traduce
+  [script.fn_doc_stato_id](/dbzero/script/funzioni/fn_doc_stato_id), fra i soli stati attivi
+  (uno stato spento si rifiuta prima di costruire), e si raggiunge per la matrice dei passaggi,
+  sotto i controlli veri.
 
 Restituisce la bolla, la riga con la quantità base, l'articolo, il cliente, l'azienda,
 l'operatore e lo stato.
@@ -80,6 +84,8 @@ vincoli **richiusi** (`IMMEDIATE`), come ogni helper di fixture.
   (`brief-db-pgtap-reso-costruito`, E-5).
 * 2026-10-27 — lo stato iniziale si legge dalla testata e non dal vocabolario
   (`brief-modello-documento-vendita` §15.13).
+* 2026-11-08 — lo stato chiesto si traduce dalla sede, fra i soli attivi, invece che da una copia
+  della regola.
 
 ---
 

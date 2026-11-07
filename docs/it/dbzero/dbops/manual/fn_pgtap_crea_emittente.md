@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_pgtap_crea_emittente`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -15,6 +15,7 @@
 > * [dbops.fn_pgtap_crea_soggetto_ruolo](/dbzero/dbops/funzioni/fn_pgtap_crea_soggetto_ruolo) — il ruolo EF coi suoi indirizzi
 > * [dbops.fn_pgtap_crea_emittente_operatore](/dbzero/dbops/funzioni/fn_pgtap_crea_emittente_operatore) — l'azienda insieme all'operatore che la vede
 > * [vendite.fn_get_valuta_id](/dbzero/vendite/funzioni/fn_get_valuta_id) — la risoluzione della valuta per cui l'emittente nasce con la sua
+> * [dbops.fn_pgtap_valuta](/dbzero/dbops/funzioni/fn_pgtap_valuta) — la valuta delle radici della catena, per le fixture
 >
 > Guide:
 >
@@ -57,7 +58,9 @@ La valuta di un documento si risolve lungo la catena «conto → emittente → g
 database ricostruito nessuno dei tre la porta: il primo documento morirebbe su
 `E_CONFIG_MANCANTE`. Il primo anello non basta, perché quando la risoluzione gira dentro un
 trigger sull'inserimento del conto la riga del conto non è ancora visibile. Per questo
-l'emittente nasce con la prima valuta a catalogo, per id.
+l'emittente nasce con la prima valuta a catalogo, per id, presa da
+[dbops.fn_pgtap_valuta](/dbzero/dbops/funzioni/fn_pgtap_valuta): è una radice della catena, e
+la valuta la dà agli altri.
 
 ---
 
@@ -81,6 +84,8 @@ l'emittente nasce con la prima valuta a catalogo, per id.
 * 2026-09-09 — l'emittente nasce con la valuta valorizzata.
 * 2026-10-17 — la riga la scrive il verbo `anagrafiche.fn_crea_emittente_fiscale` (regola
   del 2, `brief-db-processi-accensione-per-ambiente`, 2b-1); firma e ritorno invariati.
+* 2026-11-08 — la valuta la dà `dbops.fn_pgtap_valuta`, la sede comune delle fixture, invece di
+  una copia della scelta.
 
 ---
 

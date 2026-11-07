@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_pgtap_crea_reso`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -18,6 +18,7 @@
 > * [dbops.fn_pgtap_crea_ddt_da_ordine](/dbzero/dbops/funzioni/fn_pgtap_crea_ddt_da_ordine) — la bolla consegnata su cui si appoggia, se il test non ne dà una
 > * [dbops.fn_pgtap_crea_ddt_riconsegna](/dbzero/dbops/funzioni/fn_pgtap_crea_ddt_riconsegna) — la bolla di ri-consegna dopo un reso per ri-consegna
 > * [dbops.fn_pgtap_porta_a_stato](/dbzero/dbops/funzioni/fn_pgtap_porta_a_stato) — la strada per confermarlo
+> * [script.fn_doc_stato_id](/dbzero/script/funzioni/fn_doc_stato_id) — lo stato chiesto, per codice, fra i soli attivi
 >
 > Guide:
 >
@@ -93,8 +94,9 @@ rifiuto la chiede, e il rifiuto lo dà il controllo della riga resa (`E_RESO_RIG
 * **Non scrive i rientri di magazzino** né la bolla di ri-consegna: quella è di
   [dbops.fn_pgtap_crea_ddt_riconsegna](/dbzero/dbops/funzioni/fn_pgtap_crea_ddt_riconsegna).
 
-Uno stato, un tipo, una bolla, una riga o un reso che non esistono (o non si vedono) fermano
-la fixture. Esce con i vincoli **richiusi** (`IMMEDIATE`), come ogni helper di fixture.
+Uno stato che non esiste o è spento (lo stato chiesto lo traduce
+[script.fn_doc_stato_id](/dbzero/script/funzioni/fn_doc_stato_id), fra i soli attivi), un tipo,
+una bolla, una riga o un reso che non esistono (o non si vedono) fermano la fixture. Esce con i vincoli **richiusi** (`IMMEDIATE`), come ogni helper di fixture.
 
 ---
 
@@ -117,6 +119,8 @@ la fixture. Esce con i vincoli **richiusi** (`IMMEDIATE`), come ogni helper di f
   `dbops.fn_pgtap_porta_a_stato`, che concede l'azione del passaggio (§7.7).
 * 2026-11-03 — senza riga chiesta, la riga resa è la prima di merce
   (`brief-db-addebito-trasporto-ordine` §8.1).
+* 2026-11-08 — lo stato chiesto si traduce dalla sede, fra i soli attivi, invece che da una copia
+  della regola.
 
 ---
 

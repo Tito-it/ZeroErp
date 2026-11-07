@@ -1,0 +1,78 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_pgtap_valuta: la valuta delle radici della catena, una sede per le fixture.
+#   Brief: brief-db-revisione-dbops, D74 (giro 8, blocco 8c).
+#
+# ⚠️ PERCHE'. «La prima valuta del catalogo» era scritta in sette builder. Le
+#   tre radici della risoluzione del dominio (cliente BA, emittente, gestore) la
+#   prendono da qui; i quattro builder di documento la chiedono alla catena
+#   (vendite.fn_get_valuta_id), nei changeSet -48, -51, -53, -54. Le copie si
+#   ritirano nello stesso giro (regola del 2). RETURNS ancorato con %TYPE a
+#   config.valute.id. Presidio: dbops/test-fn-pgtap-valuta-v1.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261108-47-create-fn-pgtap-valuta-mctit.yaml
+
+  - changeSet:
+      id: 20261108-47-create-fn-pgtap-valuta
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_pgtap_valuta: la valuta delle radici della catena, per le fixture (D74).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_pgtap_valuta';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_valuta()
+               RETURNS config.valute.id%TYPE
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: la valuta di una fixture pgTAP che non ha una catena da cui
+              --   risolverla: le radici della risoluzione del dominio (billing account,
+              --   emittente, gestore), che la valuta la danno agli altri. I documenti
+              --   la chiedono invece alla catena (vendite.fn_get_valuta_id).
+              -- Uso:
+              --   'valuta_id', dbops.fn_pgtap_valuta()
+              DECLARE
+                  v_valuta config.valute.id%TYPE;
+              BEGIN
+                  -- La prima del catalogo, per id: config.valute e' seed, e la scelta
+                  -- non cambia fra un'esecuzione e l'altra.
+                  SELECT v.id INTO v_valuta
+                    FROM config.valute v
+                   ORDER BY v.id
+                   LIMIT 1;
+                  IF v_valuta IS NULL THEN
+                      RAISE EXCEPTION 'dbops.fn_pgtap_valuta: config.valute e'' vuota — e'' un seed di 80_data, non un dato di macchina';
+                  END IF;
+                  RETURN v_valuta;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_valuta() IS
+                  'Fixture pgTAP (building block): la valuta per una fixture che non ha una catena da cui risolverla, cioe'' le radici della risoluzione del dominio (vendite.fn_get_valuta_id: billing account, poi emittente, poi gestore): la usano dbops.fn_pgtap_crea_cliente_ba, dbops.fn_pgtap_crea_emittente e dbops.fn_pgtap_crea_gestore. La prima di config.valute per id, che e'' seed: la scelta non cambia fra un''esecuzione e l''altra. I builder di documento non la usano: chiedono la valuta alla catena, come i trigger di default. Catalogo vuoto: RAISE EXCEPTION. STABLE: non scrive.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_pgtap_valuta();

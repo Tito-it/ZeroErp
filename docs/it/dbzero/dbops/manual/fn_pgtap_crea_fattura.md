@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_pgtap_crea_fattura`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -18,6 +18,8 @@
 > * [vendite.fn_snapshot_indirizzi_fattura](/dbzero/vendite/funzioni/fn_snapshot_indirizzi_fattura) — gli indirizzi che l'uscita dalla bozza pretende
 > * [vendite.fn_snapshot_intestazione_fattura](/dbzero/vendite/funzioni/fn_snapshot_intestazione_fattura) — l'intestazione che l'uscita dalla bozza pretende
 > * [dbops.fn_pgtap_porta_a_stato](/dbzero/dbops/funzioni/fn_pgtap_porta_a_stato) — il passaggio di stato per la matrice
+> * [script.fn_doc_stato_id](/dbzero/script/funzioni/fn_doc_stato_id) — lo stato chiesto, per codice, fra i soli attivi
+> * [vendite.fn_get_valuta_id](/dbzero/vendite/funzioni/fn_get_valuta_id) — la valuta, dalla catena del dominio
 > * [anagrafiche.fn_parametri_importo_utility](/dbzero/anagrafiche/funzioni/fn_parametri_importo_utility) — i parametri che valgono senza la coppia (emittente, utility)
 >
 > Guide:
@@ -41,15 +43,16 @@ Ogni anello è una cosa che chi scrive il test non può indovinare:
 1. il cliente va legato all'azienda di **chi agisce** — lo fa un trigger, guardando la sessione —
    quindi il contesto va aperto prima (senza un conto del test la fixture lo apre da sé);
 2. il registro dipende dall'emittente di chi agisce: uno di un'altra azienda lo rifiuta un guard;
-3. la valuta si risolve lungo la catena «cliente → azienda → gestore»: su un database ricostruito
-   nessuno dei tre anelli regge da solo.
+3. la valuta si risolve lungo la catena «cliente → azienda → gestore»
+   ([vendite.fn_get_valuta_id](/dbzero/vendite/funzioni/fn_get_valuta_id)): la fixture la chiede a
+   lei, e su un database ricostruito la catena regge perché i builder del cliente, dell'azienda e
+   del gestore scrivono la loro.
 
 La coppia (emittente, utility) **non si scrive**: senza la sua riga valgono i parametri di sistema
 dell'utility, e una testata fiscale non la pretende. Scriverla nasconderebbe ai test proprio il
 caso dell'emittente nuovo.
 
-Tipo documento e valuta si scelgono dal catalogo con un ordine stabile: il primo attivo, la prima
-per id.
+Il tipo documento si sceglie dal catalogo con un ordine stabile: il primo attivo per id.
 
 ---
 
@@ -64,8 +67,9 @@ invece di produrre una testata che un guard rifiuterebbe più avanti.
 
 ### Lo stato: nasce in bozza, poi si porta avanti
 
-La fattura nasce nello stato iniziale. Lo stato chiesto si giudica prima di costruire (un codice
-che non esiste ferma la fixture); se non è l'iniziale, la fixture scrive indirizzi e intestazione
+La fattura nasce nello stato iniziale. Lo stato chiesto si giudica prima di costruire: lo traduce
+[script.fn_doc_stato_id](/dbzero/script/funzioni/fn_doc_stato_id) fra i soli stati attivi, e un
+codice che non esiste, o uno stato spento, ferma la fixture; se non è l'iniziale, la fixture scrive indirizzi e intestazione
 coi building block, come fa la fatturazione prima di emettere, e porta la fattura avanti per la
 matrice dei passaggi, sotto i controlli veri. Un passaggio che pretende ciò che la fixture non
 scrive (righe con IVA, scadenze, numero) fallisce: il test lo scrive e porta avanti da sé.
@@ -106,7 +110,8 @@ movimenti sono il caso del test, che li scrive coi propri importi. Esce con i vi
 
 * `db/pgtap/dbops/test-fn-pgtap-crea-fattura-v1.sql` — la testata esiste e porta registro e conto
   tornati; il registro è dell'azienda di chi agisce; la coppia (emittente, utility) non è scritta;
-  lo stato è quello chiesto; il terzo parametro riusa il cliente; uno stato inesistente parla; fuori
+  lo stato è quello chiesto; il terzo parametro riusa il cliente; uno stato inesistente parla, e uno spento si ferma prima
+  di costruire; la valuta è quella del billing account; fuori
   bozza indirizzi e intestazione ci sono, e con la spoliazione mancano (tutti e due, o i soli
   indirizzi); spogliare una bozza parla; minimo, totale e termine scritti alla nascita; la fattura
   senza utility.
@@ -124,6 +129,9 @@ movimenti sono il caso del test, che li scrive coi propri importi. Esce con i vi
   fattura senza utility; col conto del test non costruisce più un cliente in più
   (`brief-modello-documento-vendita`, N-1, Q-2, R-5, §4-octies).
 * 2026-10-27 — lo stato iniziale si legge dalla testata, non dal vocabolario.
+* 2026-11-08 — lo stato chiesto si traduce dalla sede, fra i soli attivi: uno stato spento si
+  ferma prima di costruire; la valuta viene dalla catena del dominio, non è più la prima del
+  catalogo.
 
 ---
 

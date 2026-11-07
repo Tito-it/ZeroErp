@@ -1,0 +1,208 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_pgtap_crea_lotto: l'esito del gruppo trattenuto dalla porta del dominio.
+#   Brief: brief-db-revisione-dbops, D67 e D73 (giro 8, blocco 8a).
+#
+# Base: doc auto-generata del 2026-11-07 (= 20_code/dbops/20261024-40).
+#
+# ⚠️ PERCHE'. L'esito era un INSERT su vendite.fatturazione_lotti_esiti accanto
+#   alla porta vendite.fn_segna_esito_gruppo_lotto: un ERRORE senza
+#   errore_quando, una forma che la pipeline non produce. Ora chiama la porta;
+#   la porta non solleva, quindi la fixture controlla che abbia marcato il
+#   gruppo. D73: lo stato chiesto da script.fn_doc_stato_id, piu' la condizione
+#   del lotto (applica_lotto). Firma e risultato invariati. COMMENT al presente
+#   (§5d). Presidio:
+#   test 8 di dbops/test-fn-pgtap-crea-lotto-v1.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261108-44-update-fn-pgtap-crea-lotto-esito-dalla-porta-mctit.yaml
+
+  - changeSet:
+      id: 20261108-44-update-fn-pgtap-crea-lotto-esito-dalla-porta
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_pgtap_crea_lotto: l'esito trattenuto da vendite.fn_segna_esito_gruppo_lotto (D67).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_pgtap_crea_lotto';
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite' AND p.proname = 'fn_segna_esito_gruppo_lotto';
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_doc_stato_id';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_lotto(
+                  -- l'etichetta e' un frammento di testo della fixture: tipo nudo.
+                  p_etichetta             text DEFAULT 'pgTAP'::text,
+                  p_stato_codice_interno  config.stati_doc_fiscale.codice_interno%TYPE DEFAULT 'DRAFT',
+                  p_billing_account_id    vendite.fatturazione_lotti.billing_account_id%TYPE DEFAULT NULL,
+                  p_tipo_doc_fiscale_id   vendite.fatturazione_lotti.tipo_doc_fiscale_id%TYPE DEFAULT NULL,
+                  p_competenza_mese       vendite.fatturazione_lotti.competenza_mese%TYPE DEFAULT NULL,
+                  p_gruppo_key_trattenuto vendite.fatturazione_lotti_esiti.gruppo_key%TYPE DEFAULT NULL,
+                  -- un interruttore del chiamante, non il riflesso di una colonna.
+                  p_del_cliente           boolean DEFAULT false)
+              RETURNS TABLE(
+                  lotto_id                    vendite.fatturazione_lotti.id%TYPE,
+                  codice                      vendite.fatturazione_lotti.codice%TYPE,
+                  lock_batch_id               vendite.fatturazione_lotti.lock_batch_id%TYPE,
+                  emittente_soggetto_ruolo_id vendite.fatturazione_lotti.emittente_soggetto_ruolo_id%TYPE,
+                  utility_id                  vendite.fatturazione_lotti.utility_id%TYPE,
+                  billing_account_id          anagrafiche.billing_account.id%TYPE,
+                  tipo_doc_fiscale_id         vendite.fatturazione_lotti.tipo_doc_fiscale_id%TYPE,
+                  competenza_mese             vendite.fatturazione_lotti.competenza_mese%TYPE,
+                  stato_doc_fiscale_id        vendite.fatturazione_lotti.stato_doc_fiscale_id%TYPE,
+                  esito_id                    vendite.fatturazione_lotti_esiti.id%TYPE)
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: dare a una fixture pgTAP un LOTTO di fatturazione
+              --   dell'azienda di chi agisce in una chiamata, nato dalla madre
+              --   del dominio e portato allo stato chiesto per la matrice.
+              -- Uso:
+              --   CREATE TEMP TABLE tmp_l AS
+              --   SELECT * FROM dbops.fn_pgtap_crea_lotto('pull');
+              --   -- il lotto «altrui» che trattiene un gruppo del test:
+              --   SELECT * FROM dbops.fn_pgtap_crea_lotto(
+              --              'altrui', 'DRAFT',
+              --              (SELECT billing_account_id FROM tmp_cliente),
+              --              p_gruppo_key_trattenuto => (SELECT gruppo_key FROM tmp_g));
+              -- ⛔ Fatture e ponte NON li scrive: sono il caso del test.
+              -- ⚠️ Esce con i vincoli IMMEDIATE, come ogni helper.
+              DECLARE
+                  v_ef_sr_id  anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE;
+                  v_ba_id     anagrafiche.billing_account.id%TYPE;
+                  v_utility   anagrafiche.billing_account.utility_id%TYPE;
+                  v_tipo_id   vendite.fatturazione_lotti.tipo_doc_fiscale_id%TYPE;
+                  v_mese      vendite.fatturazione_lotti.competenza_mese%TYPE;
+                  v_lotto     vendite.fatturazione_lotti.id%TYPE;
+                  v_esito     vendite.fatturazione_lotti_esiti.id%TYPE;
+                  v_marcati   integer;    -- gruppi marcati dalla porta: un conteggio
+              BEGIN
+                  -- 0. Lo stato si giudica PRIMA di costruire.
+                  --    Lo stato dalla sede della traduzione codice -> id
+                  --    (script.fn_doc_stato_id: solo uno stato attivo), e che valga per
+                  --    un lotto.
+                  IF NOT EXISTS (SELECT 1 FROM config.stati_doc_fiscale s
+                                  WHERE s.id = script.fn_doc_stato_id('vendite.fatturazione_lotti'::regclass,
+                                                                      p_stato_codice_interno)
+                                    AND s.applica_lotto IS TRUE) THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_crea_lotto: nessuno stato fiscale attivo applicabile a un lotto con codice_interno = %',
+                          coalesce(p_stato_codice_interno::text, 'NULL');
+                  END IF;
+
+                  -- 1. Il mondo. Senza p_billing_account_id costruisce anche il
+                  --    cliente; con, riusa quello e prende solo l'azienda di chi
+                  --    agisce, senza costruire un cliente in piu'
+                  --    (dbops.fn_pgtap_cliente_del_builder, rev 20261024-40).
+                  SELECT c.emittente_soggetto_ruolo_id, c.billing_account_id, c.utility_id
+                    INTO v_ef_sr_id, v_ba_id, v_utility
+                    FROM dbops.fn_pgtap_cliente_del_builder(
+                             p_etichetta, p_billing_account_id, 'fn_pgtap_crea_lotto') c;
+
+                  -- 2. Il catalogo si SCEGLIE, con il suo ORDER BY: un tipo
+                  --    documento che ha un registro (la madre lo pretende).
+                  v_tipo_id := p_tipo_doc_fiscale_id;
+                  IF v_tipo_id IS NULL THEN
+                      SELECT t.id INTO v_tipo_id
+                        FROM config.tipi_doc_fiscale t
+                       WHERE t.attivo IS TRUE
+                         AND EXISTS (SELECT 1 FROM vendite.tipi_doc_fiscale_registri m
+                                      WHERE m.tipo_doc_fiscale_id = t.id)
+                       ORDER BY t.id
+                       LIMIT 1;
+                  END IF;
+
+                  v_mese := COALESCE(p_competenza_mese,
+                                     date_trunc('month', (SELECT script.fn_data_operativa()))::date);
+
+                  -- 3. La madre: codice, lock_batch_id e stato DRAFT li decide lei.
+                  v_lotto := vendite.fn_create_fatturazione_lotto(
+                      p_competenza_mese             => v_mese,
+                      p_tipo_doc_fiscale_id         => v_tipo_id,
+                      p_utility_id                  => v_utility,
+                      p_billing_account_id          => CASE WHEN p_del_cliente THEN v_ba_id END,
+                      p_lock_batch_id               => NULL,
+                      p_meta                        => jsonb_build_object('test_scope', 'pgtap_' || p_etichetta),
+                      p_emittente_soggetto_ruolo_id => v_ef_sr_id);
+
+                  -- 4. Lo stato, per la matrice, sul lotto ancora vuoto.
+                  IF p_stato_codice_interno IS DISTINCT FROM 'DRAFT'
+                     AND (SELECT s.codice_interno FROM vendite.fatturazione_lotti l
+                            JOIN config.stati_doc_fiscale s ON s.id = l.stato_doc_fiscale_id
+                           WHERE l.id = v_lotto) IS DISTINCT FROM p_stato_codice_interno THEN
+                      PERFORM dbops.fn_pgtap_porta_a_stato('vendite.fatturazione_lotti'::regclass,
+                                                           v_lotto, p_stato_codice_interno);
+                  END IF;
+
+                  -- 5. L'esito che trattiene un gruppo, la forma dei pgTAP del pull,
+                  --    dalla porta del dominio: scrive anche errore_quando, come la
+                  --    pipeline. La porta non solleva mai (la chiama un gestore
+                  --    d'eccezione): un gruppo non marcato e' un errore del chiamante,
+                  --    e lo dice la fixture.
+                  IF p_gruppo_key_trattenuto IS NOT NULL THEN
+                      SELECT s.marcati INTO v_marcati
+                        FROM vendite.fn_segna_esito_gruppo_lotto(
+                                 p_lotto_id         => v_lotto,
+                                 p_stato            => 'ERRORE',
+                                 p_gruppo_key       => p_gruppo_key_trattenuto,
+                                 p_errore_codice    => 'E_PULL_COMMESSA',
+                                 p_errore_messaggio => 'pgTAP: gruppo trattenuto dal lotto ' || p_etichetta) s;
+                      IF v_marcati IS DISTINCT FROM 1 THEN
+                          RAISE EXCEPTION
+                              'fn_pgtap_crea_lotto: la porta vendite.fn_segna_esito_gruppo_lotto ha marcato % gruppi invece di 1 per %',
+                              coalesce(v_marcati::text, 'NULL'), p_gruppo_key_trattenuto;
+                      END IF;
+                      SELECT e.id INTO v_esito
+                        FROM vendite.fatturazione_lotti_esiti e
+                       WHERE e.lotto_id = v_lotto
+                         AND e.gruppo_key = p_gruppo_key_trattenuto;
+                  END IF;
+
+                  -- Contratto dichiarato, non fiducia nel chiamato.
+                  SET CONSTRAINTS ALL IMMEDIATE;
+
+                  RETURN QUERY
+                  SELECT l.id, l.codice, l.lock_batch_id, l.emittente_soggetto_ruolo_id,
+                         l.utility_id, v_ba_id, l.tipo_doc_fiscale_id, l.competenza_mese,
+                         l.stato_doc_fiscale_id, v_esito
+                    FROM vendite.fatturazione_lotti l
+                   WHERE l.id = v_lotto;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_crea_lotto(text, config.stati_doc_fiscale.codice_interno%TYPE, vendite.fatturazione_lotti.billing_account_id%TYPE, vendite.fatturazione_lotti.tipo_doc_fiscale_id%TYPE, vendite.fatturazione_lotti.competenza_mese%TYPE, vendite.fatturazione_lotti_esiti.gruppo_key%TYPE, boolean) IS
+                  'Fixture pgTAP: un LOTTO di fatturazione dell''azienda di chi agisce in una chiamata. Nasce dalla madre vendite.fn_create_fatturazione_lotto (codice, lock_batch_id, stato DRAFT), con emittente e utility del cliente: quello del terzo parametro (preso con dbops.fn_pgtap_cliente_del_builder, senza costruire un cliente in piu'') o uno nuovo del mondo. Il lotto e'' dell''azienda (billing_account_id NULL); p_del_cliente => true lo lega al cliente. Secondo parametro: lo stato, tradotto da script.fn_doc_stato_id (uno stato spento, inesistente o che non vale per un lotto solleva prima di costruire) e raggiunto per la matrice con dbops.fn_pgtap_porta_a_stato sul lotto ancora vuoto. Tipo documento: quello chiesto o il primo attivo con un registro (vendite.tipi_doc_fiscale_registri). Competenza: quella chiesta o il mese della data operativa. p_gruppo_key_trattenuto: l''esito ERRORE (E_PULL_COMMESSA) che trattiene quel gruppo nel lotto, scritto dalla porta vendite.fn_segna_esito_gruppo_lotto come lo scrive la pipeline (con errore_quando); se la porta non marca il gruppo solleva. Restituisce il lotto e l''id dell''esito. ⛔ NON scrive fatture ne'' ponte: sono il caso del test, e un lotto con fatture si muove col verbo vendite.fn_sync_lotto_fatture_stato. ⚠️ Esce con i vincoli IMMEDIATE, come ogni helper.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo dal corpo della doc auto-generata
+              -- del 2026-11-07.
+              SELECT 1;

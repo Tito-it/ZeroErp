@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_pgtap_porta_a_stato`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -24,8 +24,8 @@
 
 Porta una testata di fixture dallo stato corrente allo stato voluto, per le strade vere: cerca
 nella matrice dei passaggi della testata il percorso più corto e lo percorre un passo alla
-volta, ogni passo dal verbo del documento. Restituisce il codice dello stato in cui la testata
-si trova alla fine.
+volta, ogni passo dal verbo del documento. Restituisce il codice dello stato raggiunto, che è
+sempre quello chiesto: se il passaggio non è avvenuto, solleva.
 
 Il test crea la testata (che nasce nel suo stato iniziale), le scrive in bozza ciò che i
 passaggi pretendono — righe, indirizzi, prezzi — poi chiede lo stato.
@@ -100,15 +100,17 @@ Una testata con la porta di cui la fixture non conosce il verbo si ferma.
 
 Si ferma con un'eccezione su: una testata che la mappa non conosce, un id non valido, uno stato
 che il vocabolario non ha fra gli attivi, una testata che non c'è o non si vede, nessun
-percorso nella matrice, una porta senza verbo noto. Gli errori di un passo sono quelli del
-verbo.
+percorso nella matrice, una porta senza verbo noto, e uno **stato raggiunto diverso da quello
+chiesto**. Gli errori di un passo sono quelli del verbo.
 
-⚠️ La fixture **non confronta** lo stato raggiunto con quello chiesto: restituisce quello che
-trova. Conta sul fatto che ogni verbo cambi lo stato o sollevi, e i verbi dei documenti lo
-fanno. Fa eccezione la **chiusura di una versione di listino**: il verbo di processo chiude
-tutte le versioni attive scadute che l'operatore vede, non solo quella chiesta, e se la
-versione chiesta non è scaduta non la tocca e non solleva. La fixture allora restituisce lo
-stato di prima (attiva) senza errore, e chiude anche le altre versioni scadute del test.
+⭐ Lo stato raggiunto si **confronta** con quello chiesto, per ogni testata: un verbo che non
+porta dove deve è un errore del test, non uno stato da restituire come se fosse quello voluto.
+Il caso che lo rende necessario è la **chiusura di una versione di listino**: il verbo di
+processo chiude tutte le versioni attive scadute che l'operatore vede, non solo quella chiesta,
+e se la versione chiesta non è scaduta non la tocca e non dice niente. La fixture allora
+solleva, nominando lo stato rimasto (attiva); il test scrive prima la fine validità passata. ⚠️
+Il verbo resta globale: chiudendo la versione chiesta chiude anche le altre versioni scadute
+del test.
 
 Esce con i vincoli **richiusi** (`IMMEDIATE`), come ogni helper di fixture.
 
@@ -119,6 +121,9 @@ Esce con i vincoli **richiusi** (`IMMEDIATE`), come ogni helper di fixture.
 * `db/pgtap/vendite/test-righe-e-componenti-debiti-residui-v1.sql` — l'ordine in bozza con le
   righe arriva a confermato per la matrice; uno stato che il catalogo non ha e un documento che
   la fixture non conosce sono eccezioni, non ritorni muti.
+* `db/pgtap/dbops/test-fn-pgtap-porta-a-stato-v1.sql` — una versione di listino senza fine,
+  chiesta chiusa, solleva e nomina lo stato rimasto; con la fine passata arriva a chiusa; una
+  testata già nello stato chiesto lo restituisce senza passi.
 * `db/pgtap/dbops/test-fn-pgtap-crea-lotto-v1.sql` — il lotto vuoto raggiunge lo stato chiesto,
   e lo stato tornato è quello vero.
 * I presidi dei builder di documento (`db/pgtap/dbops/test-fn-pgtap-crea-*-v1.sql`) la usano per
@@ -137,6 +142,8 @@ Esce con i vincoli **richiusi** (`IMMEDIATE`), come ogni helper di fixture.
 * 2026-10-26 — contratto, offerta e commessa sotto la porta (§11, §13, §14).
 * 2026-10-27 — fattura e lotto sotto la porta, con i passaggi di processo (§15).
 * 2026-10-28 — la versione di listino sotto la porta (§16).
+* 2026-11-08 — lo stato raggiunto si confronta con quello chiesto: se il passaggio non è
+  avvenuto solleva, invece di restituire lo stato di prima.
 
 ---
 

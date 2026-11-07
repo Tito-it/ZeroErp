@@ -32,7 +32,11 @@ AS $function$
 -- ⚠️ La tipologia e' la prima AMMESSA per l'utility
 --   (config.listini_tipologie_utilities, guard
 --   trgfn_listini_guard_tipologia_utility): una qualunque sbatterebbe
---   sul guard per le utility che non la prevedono.
+--   sul guard per le utility che non la prevedono. E non e' una quota
+--   fissa (config.listini_tipologie.e_quota_fissa): l'articolo d'appoggio
+--   sarebbe una quota fissa a canone, che senza periodicita' non lascia
+--   attivare la versione. Chi vuole un listino di quota fissa lo
+--   costruisce e da' la periodicita' alle righe.
 -- ⛔ Le RIGHE del listino del test non le scrive: prezzi e componenti
 --   sono il caso del test. Ne scrive UNA d'appoggio, su un articolo suo
 --   (rev 2026-10-28, 20261028-25): una versione si attiva solo con un
@@ -62,12 +66,13 @@ BEGIN
        AND lt.attivo
      WHERE ltu.utility_id = p_utility_id
        AND ltu.attivo
+       AND lt.e_quota_fissa IS NOT TRUE
      ORDER BY lt.ordinamento, lt.id
      LIMIT 1;
 
     IF v_tipologia IS NULL THEN
         RAISE EXCEPTION
-            'fn_pgtap_crea_listino: nessuna tipologia di listino ammessa per l''utility % (config.listini_tipologie_utilities)',
+            'fn_pgtap_crea_listino: nessuna tipologia di listino ammessa per l''utility %, esclusa la quota fissa (config.listini_tipologie_utilities)',
             p_utility_id;
     END IF;
 
@@ -105,7 +110,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_listino(p_utility_id integer, p_etichetta text, p_valido_dal date, p_valido_al date)
-IS 'Fixture pgTAP: un listino con una versione ATTIVA, dell''emittente di chi agisce (contesto aperto prima), per l''utility scelta; tipologia = la prima ammessa per l''utility. Date della versione a scelta (default: da oggi, aperta). Le righe restano al test. Brief: brief-db-fixture-che-costruiscono-giro-2. Rev 2026-10-28 (20261028-25, brief-modello-documento-vendita §16): la versione nasce in bozza, prende una riga d''appoggio (un articolo suo, PGTAP_LST_ART_<casuale>) e si attiva dal verbo (dbops.fn_pgtap_porta_a_stato -> vendite.fn_attiva_versione_listino).';
+IS 'Fixture pgTAP: un listino con una versione ATTIVA, dell''emittente di chi agisce (contesto aperto prima), per l''utility scelta. Tipologia: la prima ammessa per l''utility (config.listini_tipologie_utilities) che non e'' una quota fissa (config.listini_tipologie.e_quota_fissa): la quota fissa a canone vuole la periodicita'' sulle righe, e chi vuole quel listino lo costruisce e la da'' (dbops.fn_pgtap_listino_aggiungi_articoli, p_periodicita). Date della versione a scelta (default: dalla data operativa, aperta). La versione nasce in bozza, prende una riga d''appoggio (un articolo suo, codice PGTAP_LST_ART_<casuale>: chi conta le righe ne trova una in piu'') e si attiva dal verbo (dbops.fn_pgtap_porta_a_stato, che chiama vendite.fn_attiva_versione_listino). Le altre righe restano al test. Senza contesto, o senza una tipologia ammessa che non sia di quota fissa: RAISE EXCEPTION.';
 ```
 
 </div>
