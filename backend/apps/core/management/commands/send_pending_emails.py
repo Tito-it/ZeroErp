@@ -31,8 +31,7 @@ from django.db import connection
 
 from apps.core.db._helpers import rows_to_list
 from apps.core.db.email_repository import EmailRepository
-from apps.core.db.processi_repository import ProcessiRepository
-from apps.core.services.coda_lavori.context import operator_identity_context
+from apps.core.services.giro_per_azienda import giro_per_azienda
 from apps.core.services.email_service import EmailDispatchService
 from apps.core.services.job_run import (
     ORIGINE_CRON,
@@ -127,10 +126,20 @@ class Command(ComandoAziendale):
     #    esattamente il guasto-per-assenza che questo cantiere esiste per
     #    togliere. ⇒ Si esegue senza identita' e lo si DICE.
     def _esegui(self, options) -> dict:
-        processi_repo = ProcessiRepository()
-        roster = processi_repo.roster_processo(PROCESSO_SEND_PENDING_EMAILS)
+        # ⭐ Il giro (roster, identita', isolamento, non serviti) e' il BB
+        #    `giro_per_azienda` (regola del 2, 2026-11-07).
+        # ⛔ UN'AZIENDA CHE FALLISCE NON PORTA VIA LE ALTRE: bastava un badge con
+        #    l'identita' spenta (`E_CODA_IDENTITA_NON_ATTIVA`) per fermare
+        #    l'INTERO giro — zero email spedite, reset password compresi. Lo
+        #    garantisce il BB.
+        giro = giro_per_azienda(
+            PROCESSO_SEND_PENDING_EMAILS,
+            lambda _badge: self._esegui_giro(options),
+            evento="send_pending_emails",
+            on_badge=self._scrivi_badge_fallito,
+        )
 
-        if not roster:
+        if giro.roster_vuoto:
             self.stderr.write(self.style.WARNING(
                 "⚠️  Nessun utente tecnico per send_pending_emails: il giro "
                 "parte SENZA identita' a database. Le email vengono spedite "
@@ -142,48 +151,19 @@ class Command(ComandoAziendale):
 
         totali = {"processate": 0, "inviate": 0, "fallite": 0}
         per_emittente: list[dict] = []
-        # ⛔ UN'AZIENDA CHE FALLISCE NON PORTA VIA LE ALTRE, ed e' la stessa
-        #    forma gia' provata in `draina_coda_stampa_per_roster`. Senza,
-        #    bastava un badge con l'identita' spenta — `operator_identity_context`
-        #    solleva `E_CODA_IDENTITA_NON_ATTIVA` — per fermare l'INTERO giro:
-        #    zero email spedite, reset password compresi. Sarebbe stato lo stesso
-        #    guasto-per-assenza che il ramo «roster vuoto» qui sopra evita,
-        #    lasciato aperto dall'altro lato.
-        badge_falliti: list[dict] = []
-        for badge in roster:
-            try:
-                with operator_identity_context(
-                    badge["auth_user_id"],
-                    username=badge["username"],
-                    identita_id=badge["identita_id"],
-                    emittente_attivo_id=badge["emittente_fiscale_id"],
-                ):
-                    parziale = self._esegui_giro(options)
-            except Exception as exc:  # isolamento per azienda voluto
-                logger.warning(
-                    "send_pending_emails.azienda_fallita emittente=%s badge=%s errore=%s",
-                    badge["emittente_codice"], badge["username"], exc, exc_info=True,
-                )
-                badge_falliti.append({
-                    "emittente_codice": badge["emittente_codice"], "errore": str(exc),
-                })
-                self.stderr.write(self.style.ERROR(
-                    f"⛔ {badge['emittente_codice']}: giro non eseguito — {exc}"
-                ))
-                continue
+        for badge, parziale in giro.serviti:
             for chiave in totali:
                 totali[chiave] += parziale.get(chiave, 0)
             per_emittente.append({
                 "emittente_codice": badge["emittente_codice"], **parziale,
             })
-        scoperti = processi_repo.emittenti_non_serviti(PROCESSO_SEND_PENDING_EMAILS)
-        if scoperti:
+        if giro.non_serviti:
             # ⭐ Il numero che rompe il silenzio, come per la fatturazione: senza
             #    badge quell'azienda non viene servita, e il giro chiuderebbe
             #    «FATTO» avendola saltata.
             self.stderr.write(self.style.WARNING(
                 "⚠️  Aziende senza utente tecnico, non servite: "
-                + ", ".join(e["emittente_codice"] for e in scoperti)
+                + ", ".join(giro.non_serviti)
             ))
         return {
             **totali,
@@ -192,9 +172,17 @@ class Command(ComandoAziendale):
             #    badge» si ripara creando l'utente tecnico, «il badge non ha
             #    funzionato» si ripara guardando l'errore. Un elenco solo
             #    manderebbe a fare la cosa sbagliata.
-            "badge_falliti": badge_falliti,
-            "emittenti_non_serviti": [e["emittente_codice"] for e in scoperti],
+            "badge_falliti": giro.falliti,
+            "emittenti_non_serviti": giro.non_serviti,
         }
+
+    # Scopo: la riga di console di un'azienda il cui giro non e' partito
+    #        (callback del BB; i riusciti non scrivono niente qui).
+    def _scrivi_badge_fallito(self, badge, _esito, errore) -> None:
+        if errore is not None:
+            self.stderr.write(self.style.ERROR(
+                f"⛔ {badge['emittente_codice']}: giro non eseguito — {errore}"
+            ))
 
     # Scopo: Processa la coda email — le righe che `config.vw_email_in_coda`
     #        dice essere ancora in coda (vedi header: il predicato e' la vista).

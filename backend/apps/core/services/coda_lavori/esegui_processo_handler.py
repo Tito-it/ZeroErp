@@ -11,8 +11,10 @@
 #        piano-be-fe-avvio-manuale §2.3). Il web non esegue niente: accoda
 #        (`ProcessiService.esegui_ora`); il drenatore — `draina_coda_lavori`,
 #        ogni minuto, sotto systemd — prende il lavoro e chiama questo handler
-#        dentro `operator_identity_context` con la terna di chi ha premuto
-#        (`run_as = OPERATORE`). Il comando lanciato registra il SUO run sul
+#        senza identita' (`run_as = SISTEMA` dal 2026-11-07, BE10 di
+#        brief-db-revisione-dbops: il processo e' di MANUTENZIONE e il comando
+#        lavora da se' sulle aziende del suo roster; chi ha premuto viaggia nel
+#        payload, `richiesto_da`). Il comando lanciato registra il SUO run sul
 #        giornale, sotto il processo eseguito, con `origine = COMMAND` e
 #        l'utente di chi ha premuto: lo legge dall'ambiente (`job_run.py`,
 #        `ZEROERP_JOB_ORIGINE` / `ZEROERP_JOB_AUTH_USER_ID`). Il lavoro di coda
@@ -85,7 +87,6 @@ from apps.core.services.avvio_manuale import (
     TETTO_SOTTOPROCESSO_SECONDI,
     motivi_esegui_ora,
 )
-from apps.core.services.coda_lavori.context import E_SCOPE_OPERATORE
 from apps.core.services.sottoprocesso import lancia_con_tetto
 from apps.core.services.coda_lavori.drain_engine import contesto_terminale
 from apps.core.services.job_run import (
@@ -100,7 +101,7 @@ from apps.core.services.sveglie import RUN_COMMAND, Sveglia, sveglia_di_processo
 logger = logging.getLogger(__name__)
 
 # Codici RIUSATI, perche' la condizione e' la stessa di dove sono nati
-# (brief §9.1): payload che non risolve nel dichiarato, wrapper assente, scope
+# (brief §9.1): payload che non risolve nel dichiarato, wrapper assente, payload
 # senza l'attore. `E_CONFIG_MANCANTE` (wrapper assente) viene da
 # `service_errors`, come `E_VALIDATION_INPUT`.
 E_PAYLOAD = E_VALIDATION_INPUT
@@ -199,8 +200,8 @@ def _acceso(processo_codice: str, unit: str) -> bool | None:
 #        sveglia dal dichiarato; ricontrolla il predicato; verifica il wrapper;
 #        lancia il sottoprocesso con l'ambiente del figlio e il tetto; traduce
 #        l'esito. Ritorna il `result` del lavoro su exit 0.
-#        `scope` e' lo scope OPERATORE catturato all'enqueue: da li' si prende
-#        l'attore per il giornale del comando.
+#        `scope` e' None: il lavoro e' SISTEMA (BE10). L'attore per il
+#        giornale del comando e' `payload.richiesto_da`.
 def esegui_processo_handler(
     payload: dict[str, Any], *, scope: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -221,17 +222,19 @@ def esegui_processo_handler(
 
     # 3. L'attore: senza, il run del comando non saprebbe dire CHI ha premuto,
     #    e scriverlo come CRON sarebbe il contrario di cio' per cui la
-    #    variabile esiste. Un lavoro OPERATORE arriva sempre con la terna
-    #    (il produttore la rifiuta prima di accodare): qui e' il presidio.
-    auth_user_id = (scope or {}).get("auth_user_id")
-    if auth_user_id is None:
+    #    variabile esiste. Dal 2026-11-07 (BE10) il lavoro e' SISTEMA e
+    #    l'attore viaggia nel payload (`richiesto_da`), che il produttore
+    #    scrive sempre: qui e' il presidio, terminale (riprovare non lo fa
+    #    comparire).
+    auth_user_id = payload.get("richiesto_da")
+    if not isinstance(auth_user_id, int) or isinstance(auth_user_id, bool):
         raise ServiceError(
-            code=E_SCOPE_OPERATORE,
+            code=E_VALIDATION_INPUT,
             message=(
                 f"Il lavoro «Esegui ora» della sveglia {unit} non porta l'utente "
                 f"che l'ha chiesto: il comando non si lancia senza un attore."
             ),
-            detail=f"scope={scope!r}",
+            detail=f"richiesto_da={auth_user_id!r}",
             context=contesto_terminale(unit=unit),
         )
 

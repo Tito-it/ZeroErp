@@ -52,19 +52,26 @@ class DispatchTests(SimpleTestCase):
     #    vuole dire «senza emittente». L'handler gira sul ruolo applicativo
     #    normale con `scope=None`, quindi puo' toccare solo cio' che non ha un
     #    perimetro.
+    #    ⭐ BE10 (2026-11-07): e gira SENZA identita' anche dentro il giro di
+    #    un utente tecnico — col badge addosso lavorerebbe col perimetro di
+    #    quell'azienda, che non e' il suo.
+    @patch(f"{_MOD}.senza_identita_context")
     @patch(f"{_MOD}.get_handler")
     def test_dispatch_sistema_senza_canale_scope_none(
-        self, get_handler_mock,
+        self, get_handler_mock, senza_ctx,
     ) -> None:
         import apps.core.services.coda_lavori.drainer_service as modulo
 
-        handler = MagicMock(return_value={"ok": 1})
+        dentro: list[bool] = []
+        handler = MagicMock(side_effect=lambda *_a, **_k: (
+            dentro.append(senza_ctx.return_value.__enter__.called), {"ok": 1})[1])
         get_handler_mock.return_value = handler
 
         result = _dispatch_item(_item("SISTEMA", None))
 
         get_handler_mock.assert_called_once_with("h")
         handler.assert_called_once_with({"a": 1}, scope=None)
+        self.assertEqual(dentro, [True])
         self.assertEqual(result, {"ok": 1})
         # ⭐ Si guarda il MODULO, non una chiamata: un gateway importato e non
         #    ancora usato sarebbe il primo passo per rimetterlo.
@@ -136,10 +143,19 @@ class RegistryTests(SimpleTestCase):
 _CTX = "apps.core.services.coda_lavori.context"
 
 
+# Scopo: una connessione finta che risponde alla lettura dei GUC identita'
+#        con `precedente` (tutti '' = nessuna identita') e registra le query.
+def _connessione_finta(conn, precedente=None):
+    from apps.core.api.jwt_audit_authentication import JWT_IDENTITY_GUCS
+    cursor = conn.cursor.return_value.__enter__.return_value
+    cursor.fetchone.return_value = tuple(precedente or ("",) * len(JWT_IDENTITY_GUCS))
+    return cursor
+
+
 class OperatorIdentityContextTests(SimpleTestCase):
 
-    # 5. Identità completa → set_jwt_gucs (5 GUC come nel web) + reset canonico
-    #    nel finally (JWT_GUC_RESET_SQL sulla connessione del worker).
+    # 5. Identità completa → set_jwt_gucs (6 GUC come nel web); senza
+    #    un'identità prima, all'uscita il reset canonico (JWT_GUC_RESET_SQL).
     @patch(f"{_CTX}.connection")
     @patch(f"{_CTX}.set_jwt_gucs", return_value=True)
     def test_context_operatore_setta_6_guc_e_resetta(
@@ -149,6 +165,7 @@ class OperatorIdentityContextTests(SimpleTestCase):
         from apps.core.services.coda_lavori.context import (
             operator_identity_context,
         )
+        cursor = _connessione_finta(conn)
         with operator_identity_context(
             9, username="op9", identita_id=5, emittente_attivo_id=3,
         ):
@@ -156,8 +173,29 @@ class OperatorIdentityContextTests(SimpleTestCase):
                 username="op9", user_id=9, identita_id=5,
                 emittente_attivo_id=3,
             )
-        cursor = conn.cursor.return_value.__enter__.return_value
-        cursor.execute.assert_called_once_with(JWT_GUC_RESET_SQL)
+        self.assertEqual(cursor.execute.call_args.args, (JWT_GUC_RESET_SQL,))
+
+    # 5-ter. ⛔ BE10: dentro l'identità di un badge, all'uscita torna QUELLA,
+    #        non il vuoto. Azzerando, la `mark_done` del drenatore girava senza
+    #        identità e sotto la RLS aggiornava zero righe senza dirlo.
+    @patch(f"{_CTX}.connection")
+    @patch(f"{_CTX}.set_jwt_gucs", return_value=True)
+    def test_context_operatore_rimette_l_identita_esterna(
+        self, _set_gucs, conn,
+    ) -> None:
+        from apps.core.api.jwt_audit_authentication import JWT_IDENTITY_GUCS
+        from apps.core.services.coda_lavori.context import (
+            _IDENTITA_RIPRISTINA_SQL,
+            operator_identity_context,
+        )
+        badge = ("badge@ACME", "70", "700", "OPERATORE", "7000", "3")
+        self.assertEqual(len(badge), len(JWT_IDENTITY_GUCS))
+        cursor = _connessione_finta(conn, badge)
+        with operator_identity_context(9, username="op9", identita_id=5):
+            pass
+        self.assertEqual(
+            cursor.execute.call_args.args, (_IDENTITA_RIPRISTINA_SQL, list(badge)),
+        )
 
     # 5-bis. Job accodato PRIMA del cantiere impersonazione: la chiave non
     #        esiste nello scope → None → modalità globale, comportamento
@@ -170,6 +208,7 @@ class OperatorIdentityContextTests(SimpleTestCase):
         from apps.core.services.coda_lavori.context import (
             operator_identity_context,
         )
+        _connessione_finta(conn)
         with operator_identity_context(9, username="op9", identita_id=5):
             set_gucs.assert_called_once_with(
                 username="op9", user_id=9, identita_id=5,
@@ -192,19 +231,42 @@ class OperatorIdentityContextTests(SimpleTestCase):
         set_gucs.assert_not_called()
 
     # 7. Identità revocata tra enqueue ed esecuzione → fail-loud (niente
-    #    esecuzione con RLS a 0 righe) E reset dei GUC parziali nel finally.
+    #    esecuzione con RLS a 0 righe) E i GUC parziali via nel finally: torna
+    #    l'identità di prima (qui nessuna, quindi il reset canonico).
     @patch(f"{_CTX}.connection")
     @patch(f"{_CTX}.set_jwt_gucs", return_value=False)
     def test_context_operatore_identita_inattiva_raises_e_resetta(
         self, _set_gucs, conn,
     ) -> None:
+        from apps.core.api.jwt_audit_authentication import JWT_GUC_RESET_SQL
         from apps.core.services.coda_lavori.context import (
             operator_identity_context,
         )
+        cursor = _connessione_finta(conn)
         with self.assertRaises(ServiceError) as ctx:
             with operator_identity_context(9, username="op9", identita_id=5):
                 pass  # pragma: no cover
         self.assertEqual(ctx.exception.code, "E_CODA_IDENTITA_NON_ATTIVA")
-        # Il reset gira comunque (GUC parziali azzerate).
-        cursor = conn.cursor.return_value.__enter__.return_value
-        self.assertEqual(cursor.execute.call_count, 1)
+        self.assertEqual(cursor.execute.call_args.args, (JWT_GUC_RESET_SQL,))
+
+
+class SenzaIdentitaContextTests(SimpleTestCase):
+
+    # 8. ⭐ BE10: senza identità dentro il blocco (reset canonico), e
+    #    all'uscita torna quella del badge, anche su eccezione.
+    @patch(f"{_CTX}.connection")
+    def test_azzera_e_rimette_anche_su_eccezione(self, conn) -> None:
+        from apps.core.api.jwt_audit_authentication import JWT_GUC_RESET_SQL
+        from apps.core.services.coda_lavori.context import (
+            _IDENTITA_RIPRISTINA_SQL,
+            senza_identita_context,
+        )
+        badge = ("badge@ACME", "70", "700", "OPERATORE", "7000", "3")
+        cursor = _connessione_finta(conn, badge)
+        with self.assertRaises(RuntimeError):
+            with senza_identita_context():
+                self.assertEqual(cursor.execute.call_args.args, (JWT_GUC_RESET_SQL,))
+                raise RuntimeError("lavoro fallito")
+        self.assertEqual(
+            cursor.execute.call_args.args, (_IDENTITA_RIPRISTINA_SQL, list(badge)),
+        )

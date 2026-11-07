@@ -1,6 +1,6 @@
 # Brief DB — Revisione dello schema `dbops`: i difetti di codice e i metadati
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-07 (giro 5, blocco 5a applicato e committato)
+## ⏭️ Chi riparte — aggiornato al 2026-11-07 (giro 5, blocco 5a applicato; BE10 e BE6 fatte)
 
 **Giro 1 chiuso e committato** (blocco 1d in `8c75d5682a`). **Decisioni di §4 prese** (Tid, 2026-11-05/06):
 tutte, Q1-Q15 (la Q7 non è mai esistita), con la Q14 punto per punto. **Ordine dei giri deciso** (2026-11-06):
@@ -21,8 +21,10 @@ committati insieme.
 la correzione dei 137 lavori senza azienda, §18.6), pgTAP verdi.
 Il team BE ha chiuso BE3 e BE6 fino al blocco 4b (§5, 2026-11-07, merge di `Tito-dev`); al team DB resta la
 segnalazione S-BE-1 (§5: la frase di due codici nomina le tabelle).
-**Riparte: il team BE** con **BE10** (drenatore per azienda, un lavoro per azienda in modalità globale) e BE6 per i tre
-codici nuovi del giro 5 (§5); poi Tid crea gli utenti tecnici di `draina_coda_lavori` e dà il via al blocco 5b (l'`ENABLE`).
+**Riparte: Tid**, per il commit del giro BE e il via al blocco 5b (l'`ENABLE`). BE10 (a), (b), (c) e BE6 del giro 5 ✅
+(team BE, 2026-11-07, da committare, §5), con l'ownership della coda già per azienda (anticipo di BE9). Gli utenti
+tecnici di `draina_coda_lavori` li ha creati Tid (2026-11-07): ⚠️ manca quello di **EMITEST** (§5). Al team DB la
+richiesta S-BE-2 (§5).
 Le scelte di §18.4 restano da guardare (la 1 rivede metà della Q14 ③).
 
 | # | Chi | Che cosa | Dove | Aspetta |
@@ -68,7 +70,7 @@ Le scelte di §18.4 restano da guardare (la 1 rivede metà della Q14 ③).
 | 9-vicies-septies | ✅ Tid | Via al giro 5, coi numeri `20261107-51` … `-58` e `%TYPE`; decisioni del giro: drenatore per azienda, porta DEFINER, `draina_coda_lavori` di DOMINIO, un lavoro un'azienda (2026-11-07) | §18.1 | 9-vicies-semel-bis |
 | 9-vicies-octies | ✅ sessione DB | Giro 5, blocco 5a (Q14 ③, D9): scritto e provato sullo scratch, prima e dopo l'apply | §18 | 9-vicies-septies |
 | 9-vicies-nonies | ✅ Tid | Correzione dei dati su dbdev (§18.6 punto 1), apply del 5a su dbdev e scratch, pgTAP di §18.6 verdi (2026-11-07); commit del 5a dalla sessione DB | §18.6 | 9-vicies-octies |
-| 9-tricies | **team BE** ⏭️ | BE10 (drenatore per azienda, un lavoro per azienda in modalità globale) e BE6 per i tre codici nuovi | §5 | 9-vicies-nonies |
+| 9-tricies | team BE ✅, **Tid** ⏭️ | BE10 ✅: (a) un lavoro per azienda dal cockpit, con ownership per azienda (anticipo di BE9), (b) drenatore per azienda, (c) chi accoda, «Esegui ora» SISTEMA; BE6 per i tre codici nuovi ✅ (2026-11-07, da committare). Utenti tecnici creati da Tid, manca EMITEST | §5 | 9-vicies-nonies |
 | 9-tricies-semel | sessione DB | Blocco 5b: l'`ENABLE` della RLS, il debito tolto, la decisione dell'indice della FK, la guida; dopo BE10 e gli utenti tecnici | §18.8 | 9-tricies |
 | 9-nonies | ✅ Tid | Q16: la via fusa resta, marcata come soppressa (b, 2026-11-07) | §4 | 9-septies |
 | 9-decies | ✅ sessione DB | Giro 2, blocco 2b (Q16): la via soppressa; lettori censiti, scritto e provato sullo scratch | §14.7 | 9-nonies |
@@ -515,11 +517,11 @@ Si chiedono quando il giro DB corrispondente è applicato.
 | BE3 ✅ | I controlli preventivi «padre non attivo» si ritirano e si mappa il codice nuovo (`E_ATTIVO_PADRE_NON_ATTIVO`, CONFLITTO_STATO; `E_PADRE_INESISTENTE`, DATO_ERRATO; tutti e due con la colonna FK in `campo`). I commenti che dicono «`E_ATTIVO_REQUIRE`, TECNICO, 500» diventano falsi | `backend/apps/vendite/services/commesse_service.py:552`, `backend/apps/anagrafiche/db/anagrafiche_repository.py:98`; commenti in `backend/apps/magazzino/services/anagrafiche_magazzino_service.py:13-18`, `backend/apps/magazzino/services/magazzino_service.py:208`, `backend/apps/vendite/tests/services/test_commesse_service.py:2035` | D46 (giro 3) |
 | BE4 | La ricerca dei lookup passa alla funzione DB (o cade il tetto `LOOKUP_MAX_SOURCE_ROWS`); la paginazione resta com'è | `backend/apps/core/db/dbops_repository.py:55, 415-470` | D57 |
 | BE5 | Docstring stantie: «tre viste … SECURITY DEFINER» (`fn_conta_presidio` è INVOKER) e «registro non vuoto» (il corpo ammette vuoto) | `backend/apps/core/db/presidi_repository.py:16-22`, `backend/apps/core/tests/test_error_codes_db_policy_guardrail.py:66-67` | — |
-| BE6 ✅ fino al blocco 4b | Codici nuovi → rigenerare `error_policies_generated.py`, e le voci di `error_messages_fallback.py`: dal giro 2 `E_DBOPS_CHIAMATA_NON_VALIDA`, `E_MERGE_RIGHE_DOPPIE`, `E_MERGE_FIGLIA_SOTTO_RLS`, `E_STRADARIO_SOPPRESSO` e gli altri di §14.1; dal giro 3 `E_ATTIVO_PADRE_NON_ATTIVO`, `E_PADRE_INESISTENTE`; dal blocco 4b `E_EMITTENTE_MODI_INVALIDO`, `E_EMITTENTE_MODI_NON_SCRIVIBILE` (li vede chi migra, non l'operatore: basta la policy generata); dal giro 5 (da fare) `E_CODA_LAVORO_SENZA_EMITTENTE` (TECNICO), `E_CODA_SCOPE_ALTRUI` (NON_PERMESSO), `E_CODA_CHIAVE_ALTRUI` (TECNICO). Poi D12 (giro 9) | `backend/apps/core/services/error_messages_fallback.py:113-123` (la voce di `E_ATTIVO_REQUIRE` dice «trigger configurato male», ora è solo il generatore) | §2.5, §14.1, §15.2, §17.1 |
+| BE6 ✅ fino al giro 5 | Codici nuovi → rigenerare `error_policies_generated.py`, e le voci di `error_messages_fallback.py`: dal giro 2 `E_DBOPS_CHIAMATA_NON_VALIDA`, `E_MERGE_RIGHE_DOPPIE`, `E_MERGE_FIGLIA_SOTTO_RLS`, `E_STRADARIO_SOPPRESSO` e gli altri di §14.1; dal giro 3 `E_ATTIVO_PADRE_NON_ATTIVO`, `E_PADRE_INESISTENTE`; dal blocco 4b `E_EMITTENTE_MODI_INVALIDO`, `E_EMITTENTE_MODI_NON_SCRIVIBILE` (li vede chi migra, non l'operatore: basta la policy generata); dal giro 5 (✅ 2026-11-07: policy rigenerata, solo i tre codici, nessuna classe mossa; tre ripieghi) `E_CODA_LAVORO_SENZA_EMITTENTE` (TECNICO), `E_CODA_SCOPE_ALTRUI` (NON_PERMESSO), `E_CODA_CHIAVE_ALTRUI` (TECNICO). Poi D12 (giro 9) | `backend/apps/core/services/error_messages_fallback.py:113-123` (la voce di `E_ATTIVO_REQUIRE` dice «trigger configurato male», ora è solo il generatore) | §2.5, §14.1, §15.2, §17.1 |
 | BE7 | Commento stantio: il test nomina il presidio `dbops.vw_run_senza_attore`, ritirato | `backend/apps/core/tests/services/test_job_run.py:136-138` | D42 |
 | BE8 | Il livello «sessione» degli override esce: via `session_key` da `_DIMENSIONI_OVERRIDE` e dalle firme di `ParameterRepository.get_parameter` e affini | `backend/apps/core/db/parameter_repository.py:97-140` | Q10 |
 | BE9 | Dopo la RLS su `dbops.coda_lavori` (blocco 5b): il filtro per `scope_key` scritto a mano negli elenchi e nei conteggi della coda lavori si ritira, la separazione la fa il DB (come per la coda di stampa). ⚠️ Cambia che cosa vede un operatore: oggi i lavori con la sua stessa `scope_key`, dopo quelli della sua azienda; i lavori SISTEMA solo il super admin | `backend/apps/core/services/coda_lavori/gestione_service.py:83-320`, `CodaLavoriRepository` | Q14.3 |
-| BE10 | **Prima della RLS (blocco 5b), dal 5a.** (a) ⛔ Un lavoro OPERATORE nasce dentro un'azienda: in modalità globale si accoda un lavoro per azienda, o si chiede di sceglierla. Dall'apply del 5a la porta rifiuta un lavoro senza emittente attivo nello scope (`E_CODA_LAVORO_SENZA_EMITTENTE`): oggi lo accodano il giro di fatturazione dal cockpit in modalità globale (FATTURAZIONE_GIRO/NUMERA, dbdev, ultimo 2026-10-26) e chiunque catturi uno scope senza emittente attivo. (b) Il drenatore della coda lavori prende, recupera e chiude i lavori **un'azienda alla volta**, con l'utente tecnico di `draina_coda_lavori` di quell'azienda (`dbops.vw_processi_roster`), come `draina_coda_stampa`; i lavori SISTEMA li vede ogni utente tecnico del drenatore (`claim` con `SKIP LOCKED`). Claim, reaper, `mark_done`/`mark_error` sotto quell'identità; l'esecuzione del lavoro resta con l'identità dello scope. Un'azienda senza utente tecnico non viene drenata, e lo dice `vw_processi_dominio_senza_identita`. (c) La porta, da una sessione dell'applicazione, accoda un lavoro OPERATORE solo a nome di chi è in sessione e nel suo perimetro (`E_CODA_SCOPE_ALTRUI`), e la chiave di un lavoro OPERATORE deve contenere la sua azienda (`E_CODA_CHIAVE_ALTRUI`): da censire i punti che accodano a nome d'altri | `backend/apps/core/services/coda_lavori/drainer_service.py`, `repository.py` (`claim`, `reap_stale`, `mark_*`), `scope.py`, i chiamanti di `CodaLavoriRepository.accoda` | Q14.3, §18 |
+| BE10 ✅ (2026-11-07) | **Prima della RLS (blocco 5b), dal 5a.** (a) ⛔ Un lavoro OPERATORE nasce dentro un'azienda: in modalità globale si accoda un lavoro per azienda, o si chiede di sceglierla. Dall'apply del 5a la porta rifiuta un lavoro senza emittente attivo nello scope (`E_CODA_LAVORO_SENZA_EMITTENTE`): oggi lo accodano il giro di fatturazione dal cockpit in modalità globale (FATTURAZIONE_GIRO/NUMERA, dbdev, ultimo 2026-10-26) e chiunque catturi uno scope senza emittente attivo. (b) Il drenatore della coda lavori prende, recupera e chiude i lavori **un'azienda alla volta**, con l'utente tecnico di `draina_coda_lavori` di quell'azienda (`dbops.vw_processi_roster`), come `draina_coda_stampa`; i lavori SISTEMA li vede ogni utente tecnico del drenatore (`claim` con `SKIP LOCKED`). Claim, reaper, `mark_done`/`mark_error` sotto quell'identità; l'esecuzione del lavoro resta con l'identità dello scope. Un'azienda senza utente tecnico non viene drenata, e lo dice `vw_processi_dominio_senza_identita`. (c) La porta, da una sessione dell'applicazione, accoda un lavoro OPERATORE solo a nome di chi è in sessione e nel suo perimetro (`E_CODA_SCOPE_ALTRUI`), e la chiave di un lavoro OPERATORE deve contenere la sua azienda (`E_CODA_CHIAVE_ALTRUI`): da censire i punti che accodano a nome d'altri | `backend/apps/core/services/coda_lavori/drainer_service.py`, `repository.py` (`claim`, `reap_stale`, `mark_*`), `scope.py`, i chiamanti di `CodaLavoriRepository.accoda` | Q14.3, §18 |
 
 Nessuna ricaduta FE diretta: D25 si vede nel form quando BE2 è fatto.
 
@@ -564,6 +566,61 @@ ricognizione regalata (la stessa ragione per cui `targets` porta un codice di `c
 una tabella: `api.md` §`targets`). Si chiede al team DB di decidere la forma: il nome della cosa al posto
 della tabella (da dove leggerlo è una scelta del modello), i nomi tecnici nel solo contesto del diario.
 Il backend non ha niente da cambiare quando la frase cambia: la legge dal catalogo.
+
+**Stato al 2026-11-07, BE10 (team BE, da committare): (a), (b) e (c) fatte.**
+
+* **(b) Il drenatore per azienda.** `draina_coda_lavori_per_roster` (nuovo, in `drainer_service.py`) gira un'azienda
+  alla volta con l'utente tecnico di `draina_coda_lavori`; il command lo chiama, e chiude rosso (D9) se il giro di
+  un'azienda non parte. ⛔ **Il difetto trovato per strada, che non dava errore**: `operator_identity_context`,
+  uscendo, **azzerava** i GUC invece di rimettere quelli di prima. Dentro il giro del badge, la `mark_done` dopo un
+  lavoro OPERATORE sarebbe girata senza identità: sotto la RLS del 5b zero righe aggiornate, il lavoro IN_CORSO fino
+  al reaper. Ora rimette l'identità esterna; i lavori SISTEMA girano in `senza_identita_context` (col badge addosso
+  avrebbero il perimetro di quell'azienda). Provato sul DB vero (`core/tests/db/test_identita_annidata_db.py`, rosso
+  per mutazione).
+  ⚠️ **Roster vuoto = niente drenato**, nemmeno i lavori SISTEMA, e il command lo scrive per primo. Gli utenti tecnici
+  si possono creare **già ora** (`draina_coda_lavori` è DOMINIO dal 5a): conviene farlo prima del deploy di questo
+  giro BE, o la coda si ferma finché non ci sono.
+* **(c) Chi accoda a nome d'altri.** Censiti i chiamanti di `accoda`. Il produttore del giro notturno
+  (`accoda_giri_fatturazione`, command `run_fatturazione_batch`, anche da «Esegui ora») accodava fuori da ogni
+  identità: dal 5a **ogni azienda tornava `E_CODA_SCOPE_ALTRUI`** (ricavato dal codice, non osservato sul dbdev).
+  Ora accoda dentro l'identità del badge. Le chiavi: quella del giro contiene la `scope_key` (l'azienda, quando è
+  una); quella di «Esegui ora» (`esegui:<unit>`) no, ed è risolta col punto sotto.
+* **«Esegui ora» è un lavoro SISTEMA** (decisione di Tid, 2026-11-07). `avvio_manuale` è di MANUTENZIONE, quindi il
+  guard di classe lo ammette già; chi preme viaggia nel payload (`richiesto_da`) come attore del comando. Un lavoro
+  per azienda sarebbe stato falso (il comando serve da sé tutto il suo roster) e la chiave senza azienda avrebbe dato
+  `E_CODA_CHIAVE_ALTRUI`. ⚠️ Dopo il 5b un lavoro SISTEMA lo vedono solo super admin e drenatore: oggi «Esegui ora» è
+  solo `SUPER_ADMIN` (`AdminAPIView`), quindi chi preme continua a vederlo.
+* **Regola del 2 (ok Tid, 2026-11-07).** Il giro sul roster era scritto tre volte (stampa, email, produttore della
+  fatturazione), con nomi già divergenti; BE10 sarebbe stata la quarta. Estratto il BB
+  `apps/core/services/giro_per_azienda.py`, ritirate le tre copie nello stesso giro, voce nel catalogo BB.
+* **(a) Il cockpit accoda un lavoro per azienda** (scelta A di Tid, 2026-11-07). `POST fatturazione/run/` e
+  `fatturazione/numera/` rispondono `{lavori: [...]}`: uno con un'azienda scelta, uno per ciascuna azienda della combo
+  di topbar dalla modalità globale (`aziende_della_richiesta`, `scope_in_azienda` in `coda_lavori/scope.py`; il ciclo in
+  `vendite/services/fatturazione_accodamento_service.py`). Lo scope di ogni lavoro è quello che avrebbe catturato chi
+  sceglie l'azienda, e quello del giro notturno: la chiave di dedup è una per (atto, azienda) qualunque strada arrivi.
+  **Le selezioni si dividono per azienda** (decisione di Tid): i gruppi dalla `vw_dash_competenza_gruppi` della
+  competenza, i lotti dalla loro azienda; una riga senza azienda è un 400 e non si accoda niente (tutto o niente, il
+  gesto è uno). FE: `useJobPolling().seguiLavori` (regola del 2, ok Tid) in cockpit e lista Lotti; il verbo di mese
+  resta a un gesto per volta, tenuto dal pulsante.
+  ⭐ **Anticipato BE9 per l'ownership** (decisione di Tid): col lavoro per azienda la `scope_key` del lavoro è quella
+  dell'azienda («3»), e chi l'aveva accodato in modalità globale («3,4») non l'avrebbe più visto — polling a 404, UI
+  code vuota. Ora un lavoro è di chi ha la sua `emittente_fiscale_id` nel perimetro, la regola della policy, in due
+  frammenti del repository (`_filtro_perimetro`, `_espr_nel_perimetro`) usati da polling, elenchi, conteggi, azioni,
+  `is_mio` e lo split miei/altri del cockpit. ⚠️ Cambia cosa vede un operatore già da ora: i lavori delle sue aziende,
+  i SISTEMA solo chi non ha filtro. **A BE9, dopo il 5b, resta solo ritirare il filtro**: lo fa la RLS. Presidio sul DB
+  vero: `core/tests/db/test_coda_perimetro_db.py`, rosso per mutazione.
+* **Utenti tecnici** (creati da Tid, 2026-11-07, letti da `vw_processi_roster`): `draina_coda_lavori` serve DEVA, DEVB,
+  PGTAPEF202; ⚠️ **EMITEST non è servita** (gli altri tre processi del roster sì). Finché manca, la coda lavori di
+  EMITEST non si drena, e il command lo scrive a ogni corsa: va creato prima del 5b
+  (`script.fn_crea_utente_tecnico('draina_coda_lavori', 'EMITEST')`).
+
+**⏭️ Richiesta al team DB (S-BE-2, 2026-11-07): il tipo `ESEGUI_PROCESSO` dice ancora OPERATORE.** In
+`80_data/sql/dbops/coda_lavori_tipi.csv` la riga ha `run_as_default = OPERATORE` e la descrizione «con l'identità di chi
+preme (run_as OPERATORE)». Il backend passa `SISTEMA` esplicito, quindi non è un blocco; ma il default è il
+suggerimento che chiunque altro accodi leggerebbe, e la pagina `manual/coda_lavori_tipi` lo ripete. Si chiede di
+portarli a `SISTEMA`, con la ragione. ⚠️ Nello stesso giro il backend gira una riga di
+`core/tests/db/test_avvio_manuale_catalogo.py` (`test_tipo_esegui_processo`, che oggi pretende OPERATORE): va detto al
+team BE all'apply.
 
 ## 6. Difetti fuori schema trovati leggendo i chiamanti
 

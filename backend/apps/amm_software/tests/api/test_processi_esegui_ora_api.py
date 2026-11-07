@@ -3,23 +3,22 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: Smoke test HTTP di POST /amm-software/processi/<codice>/esegui-ora/:
-#        la porta (`AdminAPIView`), l'header obbligatorio, la cattura dello
-#        scope PRIMA di accodare e i parametri di accodamento. Repository
+#        la porta (`AdminAPIView`), l'header obbligatorio e i parametri di
+#        accodamento. Repository
 #        MOCKATI, nessun database (piano-be-fe-avvio-manuale §5.5, «view»).
 # Note: ⚠️ La sede della fiducia e' `AdminAPIView` (v1 solo SUPER_ADMIN,
 #        brief §8.5): il test 3 lo pinna sulla CLASSE, non sul comportamento —
 #        un `post_permission` decorativo non lo vedrebbe nessuno.
-#        ⭐ La terna dello scope si cattura col BB `scope_operatore_da_request`
-#        (in `coda_lavori.scope`): i suoi tre nomi si mockano LA', come nei
-#        test del giro di fatturazione.
+#        ⭐ Dal 2026-11-07 (BE10) il lavoro e' SISTEMA: nessuno scope si
+#        cattura, chi preme viaggia nel payload come attore (`richiesto_da`).
 #
 # Indice test:
 #   1. senza JWT -> 401
 #   2. senza Idempotency-Key -> 400
 #   3. la view e' una AdminAPIView, e la rotta risolve
-#   4. JWT senza identita_id -> E_CODA_SCOPE_OPERATORE_INVALIDO, niente accoda
-#   5. ok -> 200 {job_id, stato, unit}; accoda con scope catturato, run_as
-#      OPERATORE, chiave per unit, payload {processo_codice, unit}
+#   4. (ritirato con BE10: lo scope non si cattura piu')
+#   5. ok -> 200 {job_id, stato, unit}; accoda SISTEMA senza scope, chiave
+#      per unit, payload {processo_codice, unit, richiesto_da}
 #   6. unit assente -> 400 con `fields: ["unit"]`, niente accoda
 # ------------------------------------------------------------
 
@@ -37,10 +36,6 @@ from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 from apps.core.tests._sveglie import prima_sveglia_candidata
 
 _AUTH = "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate"
-_SCOPE = "apps.core.services.coda_lavori.scope"
-_RESOLVER_SCOPE = f"{_SCOPE}.PermissionResolver"
-_EXTRACT_IDENTITA = f"{_SCOPE}.extract_identita_id_from_request"
-_EXTRACT_EMITTENTE = f"{_SCOPE}.extract_emittente_attivo_from_request"
 # I due repository che il service costruisce da se': si sostituiscono dove il
 # service li importa.
 _SVC = "apps.core.services.processi_service"
@@ -85,28 +80,12 @@ class ProcessiEseguiOraApiTests(JwtMockedApiTest):
         # Nessun `post_permission` decorativo: la fiducia sta nella classe base.
         self.assertFalse(hasattr(ProcessiEseguiOraView, "post_permission"))
 
-    # 4. Terna incompleta: rifiuto PRIMA di accodare, col codice che il
-    #    drenatore solleverebbe un minuto dopo.
-    @patch(_AUTH, return_value=(_mock_user(), None))
-    @patch(_EXTRACT_IDENTITA, return_value=None)
-    @patch(_PROCESSI_REPO)
-    @patch(_CODA_REPO)
-    def test_senza_identita_rifiuta_prima_di_accodare(self, coda_cls, _repo, _extract, _auth) -> None:
-        resp = self._post({"unit": self.unit})
-        self.assertEqual(resp.status_code, 400)
-        self.assertEqual(resp.json()["error"]["code"], "E_CODA_SCOPE_OPERATORE_INVALIDO")
-        coda_cls.return_value.accoda.assert_not_called()
-
     # 5. Il caso buono: 200 con l'handle, e `accoda` con tutto quello che il
     #    drenatore e la UI code si aspettano.
     @patch(_AUTH, return_value=(_mock_user(), None))
-    @patch(_EXTRACT_EMITTENTE, return_value=None)
-    @patch(_EXTRACT_IDENTITA, return_value=5)
-    @patch(_RESOLVER_SCOPE)
     @patch(_PROCESSI_REPO)
     @patch(_CODA_REPO)
-    def test_ok_accoda(self, coda_cls, repo_cls, resolver, _extract, _extract_ef, _auth) -> None:
-        resolver.get_emittenti_pk_ids.return_value = None  # admin globale
+    def test_ok_accoda(self, coda_cls, repo_cls, _auth) -> None:
         repo_cls.return_value.get_processo.return_value = {"codice": PROCESSO_DIGEST_PRESIDI}
         # Acceso, detto: un MagicMock al posto della lettura passerebbe per caso.
         repo_cls.return_value.acceso_processo.return_value = True
@@ -118,23 +97,21 @@ class ProcessiEseguiOraApiTests(JwtMockedApiTest):
         self.assertEqual(resp.json()["data"], {"job_id": 777, "stato": "PENDING", "unit": self.unit})
         kwargs = coda.accoda.call_args.kwargs
         self.assertEqual(kwargs["job_type"], JOB_TYPE_ESEGUI_PROCESSO)
-        self.assertEqual(kwargs["run_as"], "OPERATORE")
+        # ⭐ SISTEMA e senza scope: il processo e' di MANUTENZIONE, e in
+        #    modalita' globale un lavoro OPERATORE la porta lo rifiuterebbe.
+        self.assertEqual(kwargs["run_as"], "SISTEMA")
+        self.assertIsNone(kwargs["scope"])
         self.assertEqual(kwargs["idempotency_key"], chiave_idempotenza(self.unit))
-        self.assertEqual(kwargs["payload"], {"processo_codice": PROCESSO_DIGEST_PRESIDI, "unit": self.unit})
-        self.assertEqual(kwargs["scope"], {
-            "auth_user_id": 9, "username": "op9", "identita_id": 5,
-            "emittente_attivo_id": None, "emittente_ids": None, "scope_key": "ALL",
+        self.assertEqual(kwargs["payload"], {
+            "processo_codice": PROCESSO_DIGEST_PRESIDI, "unit": self.unit,
+            "richiesto_da": 9,
         })
 
     # 6. `unit` assente: 400 parlante col campo da accendere, niente accoda.
     @patch(_AUTH, return_value=(_mock_user(), None))
-    @patch(_EXTRACT_EMITTENTE, return_value=None)
-    @patch(_EXTRACT_IDENTITA, return_value=5)
-    @patch(_RESOLVER_SCOPE)
     @patch(_PROCESSI_REPO)
     @patch(_CODA_REPO)
-    def test_unit_assente_400_con_campo(self, coda_cls, repo_cls, resolver, _extract, _extract_ef, _auth) -> None:
-        resolver.get_emittenti_pk_ids.return_value = None
+    def test_unit_assente_400_con_campo(self, coda_cls, repo_cls, _auth) -> None:
         repo_cls.return_value.get_processo.return_value = {"codice": PROCESSO_DIGEST_PRESIDI}
         resp = self._post({})
         self.assertEqual(resp.status_code, 400)

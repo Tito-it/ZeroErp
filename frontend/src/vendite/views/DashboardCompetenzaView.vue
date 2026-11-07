@@ -1333,8 +1333,8 @@ function onApprovaMese() {
 //
 // ⭐ CONCORRENZA (2026-08-17, brief-fe-fatturazione-job-concorrenti). L'emissione
 // mirata ammette piu' giri in volo insieme (`maxConcurrent: Infinity`, decisione
-// D1: nessun tetto); i due verbi di perimetro restano a uno per volta col
-// default del BB. Il pezzo che rende la cosa sostenibile non e' il polling
+// D1: nessun tetto); il verbo di mese resta a un GESTO per volta, tenuto dal
+// pulsante (dal 2026-11-07 un gesto sono N giri, uno per azienda). Il pezzo che rende la cosa sostenibile non e' il polling
 // multi-job — quello e' la meccanica — ma il fatto che ogni giro si porti
 // dietro il PROPRIO contesto (`gruppi`, `etichetta`, `competenza`) fino
 // all'esito: senza, due esiti che arrivano a distanza di secondi sono
@@ -1365,7 +1365,7 @@ function useVerboFatturazione({ apiFn, keys, buildEsitoOk, maxConcurrent = 1 }) 
   //    aperto fino all'esito, e aprirlo azzera la key (`azzeraGesto`).
   const gesto = useChiaveGesto()
 
-  const { start, isFollowing, nJobsInCorso, resume } = useJobPolling({
+  const { seguiLavori, nJobsInCorso, resume } = useJobPolling({
     fetchStatus: (jobId) => getFatturazioneRun(jobId),
     maxConcurrent,
     onDone: (stato, context) => {
@@ -1419,34 +1419,52 @@ function useVerboFatturazione({ apiFn, keys, buildEsitoOk, maxConcurrent = 1 }) 
         (config) => apiFn(competenza, opzioni, config),
       ))
       if (res === null) return false
+      // ⭐ La risposta e' una LISTA di lavori, uno per azienda (BE10 a,
+      //    2026-11-07): dalla modalita' «Tutti gli emittenti» un gesto ne
+      //    accoda uno per ciascuna azienda, ognuno con le SUE righe
+      //    (`lavoro.gruppi`). Li segue il BB (`seguiLavori`), e ogni giro porta
+      //    il suo contesto fino all'esito.
+      // ⚠️ Con piu' aziende l'etichetta del giro nomina l'azienda: due esiti
+      //    che arrivano a distanza di secondi devono dire di CHI sono.
+      const lavori = Array.isArray(res.lavori) ? res.lavori : []
+      const piuAziende = lavori.length > 1
+      const { seguiti, nonSeguiti } = seguiLavori(lavori, (lavoro) => ({
+        jobId: lavoro.job_id,
+        competenza,
+        giro: piuAziende
+          ? [giro, lavoro.emittente_codice].filter(Boolean).join(' · ')
+          : giro,
+        gruppi: lavoro.gruppi ?? [],
+      }))
       // Stessa selezione ancora viva → il BE non crea un secondo job:
-      // restituisce l'id di QUELLO in corso (chiave di idempotenza
-      // competenza+scope+gruppi). Seguirlo di nuovo lo conterebbe due volte;
-      // e all'operatore va detto che non ha avviato niente di nuovo.
-      if (isFollowing(res.job_id)) {
+      // restituisce l'id di QUELLO in corso (chiave di idempotenza competenza +
+      // azienda + gruppi). Seguirlo di nuovo lo conterebbe due volte; e
+      // all'operatore va detto che non ha avviato niente di nuovo.
+      if (seguiti.length === 0 && nonSeguiti.length === 0) {
         notify.info(t('vendite.dashboard_competenza.fattura_giro_gia_in_corso'))
         return true
       }
-      const gruppiGiro = apiOptions?.gruppi ?? []
-      const avviato = start(res.job_id, {
-        jobId: res.job_id, competenza, giro, gruppi: gruppiGiro,
-      })
-      if (!avviato) {
-        // Job accodato ma non seguito (tetto raggiunto sui verbi di
-        // perimetro): il lavoro parte lo stesso, l'esito no — dirlo e' il
-        // minimo, tacere lascerebbe credere che non sia successo nulla.
+      if (nonSeguiti.length > 0) {
+        // Lavori accodati ma non seguiti (tetto raggiunto): il lavoro parte lo
+        // stesso, l'esito no — dirlo e' il minimo, tacere lascerebbe credere
+        // che non sia successo nulla.
         notify.warn(t(keys.inCoda))
-        return true
+      } else {
+        notify.success(t(keys.accodato))
       }
-      notify.success(t(keys.accodato))
-      // Marcatura DOPO l'avvio riuscito: se il POST fallisce non devono
-      // restare righe segnate per un giro che non è mai partito.
-      if (gruppiGiro.length) {
-        marcaGiro(res.job_id, gruppiGiro)
-        // La selezione si libera ORA, non a fine giro: e' cio' che permette
-        // di comporre subito il giro successivo senza aspettare — il punto
-        // di tutto questo cantiere. Escono solo i gruppi di QUESTO giro.
-        const inviati = new Set(gruppiGiro)
+      // Marcatura DOPO l'avvio riuscito, e dei SOLI giri seguiti: lo `smarca`
+      // arriva dal loro esito, e una riga marcata da un giro che nessuno segue
+      // resterebbe «in corso» per sempre.
+      const inviati = new Set()
+      for (const lavoro of seguiti) {
+        if (!lavoro.gruppi?.length) continue
+        marcaGiro(lavoro.job_id, lavoro.gruppi)
+        for (const chiave of lavoro.gruppi) inviati.add(chiave)
+      }
+      // La selezione si libera ORA, non a fine giro: e' cio' che permette di
+      // comporre subito il giro successivo senza aspettare. Escono solo i
+      // gruppi dei giri presi in carico.
+      if (inviati.size > 0) {
         selezioneGruppi.value = selezioneGruppi.value.filter(
           (r) => !inviati.has(r.gruppo_key),
         )
@@ -1563,6 +1581,12 @@ const {
   avvia: onFatturaMese, nGiriInCorso: nGiriMese, resume: resumeMese, azzeraGesto: azzeraGestoMese,
 } = useVerboFatturazione({
   apiFn: runFatturazione,
+  // ⭐ Senza tetto dal 2026-11-07 (BE10 a): dalla modalita' «Tutti gli
+  //    emittenti» un gesto accoda un giro per azienda, e il tetto 1 ne
+  //    seguirebbe uno solo. «Un giro di mese per volta» resta, ma lo tiene il
+  //    PULSANTE, spento finche' un giro e' vivo (`giroMeseInCorso`): il tetto
+  //    contava i lavori, la regola parla del gesto.
+  maxConcurrent: Infinity,
   keys: {
     accodato: 'vendite.dashboard_competenza.fattura_mese_accodato',
     errore: 'vendite.dashboard_competenza.fattura_mese_errore',

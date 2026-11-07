@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1190, di cui 124 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1193, di cui 124 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -284,10 +284,16 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_CLIENTI_GIORNI_SCADENZA_OBBLIGATORI": "DATO_ERRATO",
     # dbops.trgfn_coda_archiviazione: una riga di coda ancora VIVA (PENDING o IN_CORSO) non si archivia. L'archiviazione è la bandiera che toglie una riga dall'elenco senza toccarne lo stato, e vale solo su una riga che ha finito: archiviarne una viva la lascerebbe nel conteggio del badge in topbar - che conta esattamente PENDING e IN_CORSO - e fuori dalla lista, senza nessun modo di arrivarci per rimetterla a posto. Sulla coda stampa il danno è più concreto: la riga occuperebbe il posto di riga viva della fattura in ex_fatture_stampa_coda_vivo e bloccherebbe la ristampa della fattura restando invisibile. Classe CONFLITTO_STATO e non DATO_ERRATO: non c'è nessun campo che l'operatore possa correggere, c'è una riga che in questo momento sta ancora lavorando - ed è esattamente il criterio della guida. Si accoda alla famiglia E_CODA_*, dove E_CODA_IDENTITA_NON_ATTIVA è già CONFLITTO_STATO. Piano: brief-db-archiviazione-righe-code, PARTE DB sezione 9.
     "E_CODA_ARCHIVIAZIONE_NON_AMMESSA": "CONFLITTO_STATO",
+    # dbops.fn_accoda_lavoro: c'e' gia' un lavoro vivo con lo stesso job_type e la stessa idempotency_key, ma di un'azienda fuori dal perimetro di chi accoda. La porta non ne restituisce l'id, che la policy nasconderebbe. TECNICO: la chiave di business di un lavoro OPERATORE deve contenere la sua azienda; due aziende con la stessa chiave sono un errore di chi la costruisce.
+    "E_CODA_CHIAVE_ALTRUI": "TECNICO",
     "E_CODA_HANDLER_NON_REGISTRATO": "TECNICO",
     "E_CODA_IDENTITA_NON_ATTIVA": "CONFLITTO_STATO",
     # Scritto dal backend in dbops.coda_lavori.ultimo_errore (core/services/coda_lavori/repository.py, reap_stale), non sollevato: un lavoro rimasto IN_CORSO oltre la soglia (worker morto o ucciso) viene recuperato dal reaper. Non attraversa HTTP: lo legge chi guarda la coda. TECNICO: un worker morto, e il lavoro e' gia' stato rimesso in coda o chiuso dal reaper. Gemello di E_STAMPA_JOB_STANTIO sulla coda di stampa. Messo a catalogo il 2026-10-07 (brief-db-codici-sfilati-e-lista-parametri R-1).
     "E_CODA_JOB_STANTIO": "TECNICO",
+    # dbops.fn_accoda_lavoro: un lavoro OPERATORE senza emittente attivo nello scope (emittente_attivo_id). Un lavoro OPERATORE appartiene a un'azienda (dbops.coda_lavori.emittente_fiscale_id, chk_coda_lavori_run_as_emittente): in modalita' globale se ne accoda uno per azienda, o si chiede di sceglierla. TECNICO e non DATO_ERRATO: lo scope lo costruisce il backend, non una persona in un form.
+    "E_CODA_LAVORO_SENZA_EMITTENTE": "TECNICO",
+    # dbops.fn_accoda_lavoro, da una sessione dell'applicazione: lo scope di un lavoro OPERATORE nomina un'identita' diversa da chi accoda (scope.auth_user_id <> app.current_user_id), chi accoda non ha la veste OPERATORE, o l'azienda del lavoro e' fuori dal suo perimetro. La porta e' SECURITY DEFINER e vede tutte le righe: fa da se' il controllo che la policy rls_coda_lavori_ef_perimetro farebbe su un INSERT.
+    "E_CODA_SCOPE_ALTRUI": "NON_PERMESSO",
     # Coda lavori generica (worker): codici sollevati durante il dispatch/ · esecuzione dei job. Non attraversano HTTP nel flusso normale (finiscono · in `ultimo_errore` del job), ma la regola è: registrati prima dell'uso.
     "E_CODA_SCOPE_OPERATORE_INVALIDO": "DATO_ERRATO",
     "E_CODICE": "DATO_ERRATO",

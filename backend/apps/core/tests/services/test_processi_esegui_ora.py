@@ -41,7 +41,7 @@
 #   12. unit non del processo -> E_VALIDATION_INPUT campo `unit`, niente accoda
 #   13. motivo del predicato -> rifiuto col SUO codice PRIMA di accodare
 #   14. gia' in coda -> E_PROCESSO_AVVIO_GIA_IN_CODA con job_id, niente accoda
-#   15. ok -> `accoda` con job_type, run_as OPERATORE, chiave per unit, scope,
+#   15. ok -> `accoda` con job_type, run_as SISTEMA, chiave per unit, attore,
 #       payload {processo_codice, unit}; risposta {job_id, stato, unit}
 #   16. il dettaglio porta `sveglie[]` con la capability, UNA query per i vivi,
 #       e `accensione` letta UNA volta e passata a ogni sveglia
@@ -84,10 +84,6 @@ from apps.core.tests._sveglie import prima_sveglia_candidata
 _DRAWER = repo_root() / "frontend/src/amministrazione/components/ProcessoDrawer.vue"
 _LOCALES = repo_root() / "frontend/src/locales"
 
-_SCOPE = {
-    "auth_user_id": 9, "username": "op9", "identita_id": 5,
-    "emittente_attivo_id": None, "emittente_ids": None, "scope_key": "ALL",
-}
 
 
 # Scopo: una sveglia costruita a mano, per i casi che il dichiarato non ha.
@@ -224,7 +220,7 @@ class EseguiOraServiceTests(SimpleTestCase):
             with self.subTest(unit=unit):
                 svc, coda = _service(get_processo={"codice": "x"})
                 with self.assertRaises(ServiceError) as cm:
-                    svc.esegui_ora("x", unit=unit, scope=_SCOPE)
+                    svc.esegui_ora("x", unit=unit, richiesto_da=9)
                 self.assertEqual(cm.exception.code, E_VALIDATION_INPUT)
                 self.assertEqual(cm.exception.context.get("field"), "unit")
                 coda.lavori_vivi_per_chiave.assert_not_called()
@@ -234,7 +230,7 @@ class EseguiOraServiceTests(SimpleTestCase):
     def test_processo_inesistente(self) -> None:
         svc, coda = _service(get_processo=None)
         with self.assertRaises(ServiceError) as cm:
-            svc.esegui_ora("non_esiste", unit="zeroerp-x", scope=_SCOPE)
+            svc.esegui_ora("non_esiste", unit="zeroerp-x", richiesto_da=9)
         self.assertEqual(cm.exception.code, E_NOT_FOUND)
         coda.accoda.assert_not_called()
 
@@ -245,7 +241,7 @@ class EseguiOraServiceTests(SimpleTestCase):
         svc, coda = _service(get_processo={"codice": PROCESSO_DRAINA_CODA_LAVORI})
         with self.assertRaises(ServiceError) as cm:
             # La unit del digest, chiesta sul processo del drenatore.
-            svc.esegui_ora(PROCESSO_DRAINA_CODA_LAVORI, unit=candidata.unit, scope=_SCOPE)
+            svc.esegui_ora(PROCESSO_DRAINA_CODA_LAVORI, unit=candidata.unit, richiesto_da=9)
         self.assertEqual(cm.exception.code, E_VALIDATION_INPUT)
         self.assertEqual(cm.exception.context.get("field"), "unit")
         coda.accoda.assert_not_called()
@@ -255,7 +251,7 @@ class EseguiOraServiceTests(SimpleTestCase):
         drenatore = sveglie_di_processo(PROCESSO_DRAINA_CODA_LAVORI)[0]
         svc, coda = _service(get_processo={"codice": PROCESSO_DRAINA_CODA_LAVORI})
         with self.assertRaises(ServiceError) as cm:
-            svc.esegui_ora(PROCESSO_DRAINA_CODA_LAVORI, unit=drenatore.unit, scope=_SCOPE)
+            svc.esegui_ora(PROCESSO_DRAINA_CODA_LAVORI, unit=drenatore.unit, richiesto_da=9)
         self.assertEqual(cm.exception.code, am.E_SVEGLIA_NON_AVVIABILE_A_MANO)
         coda.accoda.assert_not_called()
 
@@ -269,7 +265,7 @@ class EseguiOraServiceTests(SimpleTestCase):
             vivi={chiave: {"id": 88, "stato": "PENDING"}},
         )
         with self.assertRaises(ServiceError) as cm:
-            svc.esegui_ora(PROCESSO_DIGEST_PRESIDI, unit=s.unit, scope=_SCOPE)
+            svc.esegui_ora(PROCESSO_DIGEST_PRESIDI, unit=s.unit, richiesto_da=9)
         self.assertEqual(cm.exception.code, am.E_AVVIO_GIA_IN_CODA)
         self.assertEqual(cm.exception.context.get("job_id"), 88)
         coda.lavori_vivi_per_chiave.assert_called_once_with(
@@ -282,14 +278,18 @@ class EseguiOraServiceTests(SimpleTestCase):
     def test_ok_accoda(self) -> None:
         s = prima_sveglia_candidata()
         svc, coda = _service(get_processo={"codice": PROCESSO_DIGEST_PRESIDI})
-        esito = svc.esegui_ora(PROCESSO_DIGEST_PRESIDI, unit=f"  {s.unit} ", scope=_SCOPE)
+        esito = svc.esegui_ora(PROCESSO_DIGEST_PRESIDI, unit=f"  {s.unit} ", richiesto_da=9)
         self.assertEqual(esito, {"job_id": 4321, "stato": "PENDING", "unit": s.unit})
         kwargs = coda.accoda.call_args.kwargs
         self.assertEqual(kwargs["job_type"], JOB_TYPE_ESEGUI_PROCESSO)
-        self.assertEqual(kwargs["run_as"], "OPERATORE")
+        # ⭐ SISTEMA dal 2026-11-07 (BE10): processo di MANUTENZIONE, e un
+        #    lavoro per azienda sarebbe stato falso. Chi preme e' l'attore.
+        self.assertEqual(kwargs["run_as"], "SISTEMA")
+        self.assertIsNone(kwargs["scope"])
         self.assertEqual(kwargs["idempotency_key"], chiave_idempotenza(s.unit))
-        self.assertEqual(kwargs["scope"], _SCOPE)
-        self.assertEqual(kwargs["payload"], {"processo_codice": PROCESSO_DIGEST_PRESIDI, "unit": s.unit})
+        self.assertEqual(kwargs["payload"], {
+            "processo_codice": PROCESSO_DIGEST_PRESIDI, "unit": s.unit, "richiesto_da": 9,
+        })
         self.assertEqual(kwargs["origine"], "API")
 
     # 16-bis. ⭐ P-2: su un processo spento «Esegui ora» e' rifiutato PRIMA di
@@ -299,7 +299,7 @@ class EseguiOraServiceTests(SimpleTestCase):
         s = prima_sveglia_candidata()
         svc, coda = _service(get_processo={"codice": PROCESSO_DIGEST_PRESIDI}, acceso=False)
         with self.assertRaises(ServiceError) as cm:
-            svc.esegui_ora(PROCESSO_DIGEST_PRESIDI, unit=s.unit, scope=_SCOPE)
+            svc.esegui_ora(PROCESSO_DIGEST_PRESIDI, unit=s.unit, richiesto_da=9)
         self.assertEqual(cm.exception.code, am.E_PROCESSO_SPENTO)
         coda.accoda.assert_not_called()
 

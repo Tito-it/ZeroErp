@@ -654,12 +654,14 @@ def esiti_fatturazione(
 ) -> dict[str, Any]:
     from apps.core.db.maintenance_repository import MaintenanceRepository
     from apps.core.services.coda_lavori.gestione_service import (
-        scope_key_operatore,
+        perimetro_coda_operatore,
     )
     from apps.core.services.coda_lavori.repository import CodaLavoriRepository
 
-    # (a) Giri lanciati dall'APP: totale complessivo + split miei/altri.
-    caller_scope_key = None if user is None else scope_key_operatore(user)
+    # (a) Giri lanciati dall'APP: totale complessivo + split miei/altri. «Miei»
+    #     = delle aziende del mio perimetro; senza utente nessuno è mio (`[]`:
+    #     None vorrebbe dire «tutte le aziende», l'admin globale).
+    caller_emittenti = [] if user is None else perimetro_coda_operatore(user)
     giri = [
         {
             **r,
@@ -670,7 +672,7 @@ def esiti_fatturazione(
         for r in CodaLavoriRepository().summary_per_job_type(
             job_types=list(JOB_TYPES_FATTURAZIONE_APP),
             competenza_mese=competenza_mese,
-            caller_scope_key=caller_scope_key,
+            caller_emittenti=caller_emittenti,
         )
     ]
 

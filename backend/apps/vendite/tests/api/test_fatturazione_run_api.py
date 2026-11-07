@@ -13,12 +13,14 @@
 #   1) run_richiede_jwt — 401
 #   2) run_richiede_idempotency_key — 400
 #   3) run_ok_accoda_operatore_scope_business_key — 200 + kwargs accoda
-#      (identità completa + scope_key nello scope)
+#      (identità completa, scope DENTRO l'azienda scelta, chiave per azienda)
+#   3-bis) run_modalita_globale_un_lavoro_per_azienda — BE10 a: N aziende,
+#      N lavori, ognuno con la sua scope_key e la sua chiave
 #   4) run_senza_identita_400 — JWT senza claim identita_id
-#   5) stato_ok_ritorna_job — 200, ownership scope-based (scope_key richiedente)
+#   5) stato_ok_ritorna_job — 200, ownership per azienda (perimetro richiedente)
 #   6) stato_non_trovato_404 — job di altro scope/inesistente
-#   7) stato_admin_vede_tutto — whitelist None → owner_scope_key None (no filtro)
-#   8) stato_ownership_scope_non_enqueuer — fix cross-operatore (filtro per scope)
+#   7) stato_admin_vede_tutto — whitelist None → owner_emittenti None (no filtro)
+#   8) stato_ownership_azienda_non_enqueuer — fix cross-operatore (filtro per azienda)
 # ------------------------------------------------------------
 
 import json
@@ -30,8 +32,14 @@ from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 _AUTH = "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate"
 _REPO = "apps.vendite.api.views.CodaLavoriRepository"
-# Il resolver del POLLING (ownership scope-based) vive nella view di vendite.
-_RESOLVER = "apps.vendite.api.views.PermissionResolver"
+# ⭐ Dal 2026-11-07 (BE10 a) l'ACCODAMENTO sta nel service, un lavoro per
+#    azienda: il repository della coda si mocka la'; le aziende vengono dalla
+#    combo di topbar (`EmittenteAttivoRepository.list_selezionabili`).
+_REPO_ACCODA = "apps.vendite.services.fatturazione_accodamento_service.CodaLavoriRepository"
+_AZIENDE = "apps.core.services.coda_lavori.scope.EmittenteAttivoRepository"
+# Il resolver del POLLING (ownership per azienda) e' quello del BB della
+# gestione code (`perimetro_coda_operatore`), che la view chiama.
+_RESOLVER = "apps.core.services.coda_lavori.gestione_service.PermissionResolver"
 # ⭐ Dal 2026-09-15 la CATTURA dello scope all'enqueue sta nel BB
 #    `coda_lavori.scope.scope_operatore_da_request` (seconda occorrenza: «Esegui
 #    ora» dal drawer dei processi): i tre nomi dell'enqueue si mockano LA', non
@@ -77,18 +85,23 @@ class FatturazioneRunApiTests(JwtMockedApiTest):
         self.assertEqual(resp.status_code, 400)
 
     # 3. Accoda un job OPERATORE con identità COMPLETA nello scope catturato
-    #    (auth_user_id + username + identita_id dal JWT) e chiave BUSINESS.
+    #    (auth_user_id + username + identita_id dal JWT), DENTRO l'azienda
+    #    scelta, e chiave BUSINESS di quell'azienda.
     #    Token None = pattern test pre-§8.3.4 (bypassa la validazione claim
     #    della subclass); il claim è coperto dal mock dell'extract della view.
     @patch(_AUTH, return_value=(_mock_user(), None))
     @patch(_EXTRACT_EMITTENTE, return_value=3)
     @patch(_EXTRACT_IDENTITA, return_value=5)
     @patch(_RESOLVER_SCOPE)
-    @patch(_REPO)
+    @patch(_AZIENDE)
+    @patch(_REPO_ACCODA)
     def test_run_ok_accoda_operatore_scope_business_key(
-        self, repo_cls, resolver, _extract, _extract_ef, _auth,
+        self, repo_cls, aziende_cls, resolver, _extract, _extract_ef, _auth,
     ) -> None:
-        resolver.get_emittenti_pk_ids.return_value = [4, 3]  # non ordinati
+        resolver.get_emittenti_pk_ids.return_value = [3]
+        aziende_cls.return_value.list_selezionabili.return_value = [
+            {"emittente_fiscale_id": 3, "codice": "ACME", "soggetto_ruolo_id": 30},
+        ]
         repo_cls.return_value.accoda.return_value = 555
 
         resp = self.client.post(
@@ -98,9 +111,12 @@ class FatturazioneRunApiTests(JwtMockedApiTest):
         )
 
         self.assertEqual(resp.status_code, 200)
-        body = resp.json()["data"]
-        self.assertEqual(body["job_id"], 555)
-        self.assertEqual(body["stato"], "PENDING")
+        self.assertEqual(resp.json()["data"], {"lavori": [{
+            "job_id": 555, "stato": "PENDING",
+            "emittente_fiscale_id": 3, "emittente_codice": "ACME",
+        }]})
+        # Con un'azienda scelta la combo si chiede per QUELLA sola.
+        aziende_cls.return_value.list_selezionabili.assert_called_once_with(9, solo_id=3)
 
         kwargs = repo_cls.return_value.accoda.call_args.kwargs
         self.assertEqual(kwargs["job_type"], "FATTURAZIONE_GIRO")
@@ -110,30 +126,68 @@ class FatturazioneRunApiTests(JwtMockedApiTest):
             # Congelato all'enqueue: senza, il worker girerebbe in modalità
             # globale e il giro chiesto «dentro 3» toccherebbe anche il 4.
             "emittente_attivo_id": 3,
-            "emittente_ids": [4, 3],
-            # scope_key = componente-scope della chiave business (emittenti
-            # ORDINATI) = token di ownership del polling (scope-based)
-            "scope_key": "3,4",
+            "emittente_ids": [3],
+            "scope_key": "3",
         })
         # competenza normalizzata al 1° nel payload del job
         self.assertEqual(kwargs["payload"]["competenza_mese"], "2026-06-01")
-        # ⭐ Chiave business = tipo + CORSIA + competenza + emittenti ORDINATI.
-        #    La corsia e' entrata il 2026-09-05 (opzione A): senza, il batch
-        #    notturno avrebbe visto «immediata» e «differita» dello stesso mese e
-        #    della stessa azienda come lo stesso lavoro, e ne avrebbe scartata
-        #    una in silenzio. Qui il valore e' «differita» — il giro on-demand di
-        #    massa — quindi per il verbo web cambia la FORMA, non il
-        #    comportamento: nessun giro che si deduplicava smette di farlo.
+        # ⭐ Chiave business = tipo + CORSIA + competenza + AZIENDA. La corsia
+        #    e' entrata il 2026-09-05 (opzione A); l'azienda e' la scope_key del
+        #    lavoro, la stessa del giro notturno per quell'azienda.
         self.assertEqual(
             kwargs["idempotency_key"],
-            "FATTURAZIONE_GIRO:differita:2026-06-01:3,4",
+            "FATTURAZIONE_GIRO:differita:2026-06-01:3",
+        )
+
+    # 3-bis. ⭐ BE10 (a): in modalità globale (nessun emittente attivo) un
+    #    lavoro PER AZIENDA della combo, ognuno nella sua azienda e con la sua
+    #    chiave. Un lavoro senza azienda la porta lo rifiuterebbe
+    #    (`E_CODA_LAVORO_SENZA_EMITTENTE`).
+    @patch(_AUTH, return_value=(_mock_user(), None))
+    @patch(_EXTRACT_EMITTENTE, return_value=None)
+    @patch(_EXTRACT_IDENTITA, return_value=5)
+    @patch(_RESOLVER_SCOPE)
+    @patch(_AZIENDE)
+    @patch(_REPO_ACCODA)
+    def test_run_modalita_globale_un_lavoro_per_azienda(
+        self, repo_cls, aziende_cls, resolver, _extract, _extract_ef, _auth,
+    ) -> None:
+        resolver.get_emittenti_pk_ids.return_value = [4, 3]
+        aziende_cls.return_value.list_selezionabili.return_value = [
+            {"emittente_fiscale_id": 3, "codice": "ACME", "soggetto_ruolo_id": 30},
+            {"emittente_fiscale_id": 4, "codice": "BETA", "soggetto_ruolo_id": 40},
+        ]
+        repo_cls.return_value.accoda.side_effect = [555, 556]
+
+        resp = self.client.post(
+            _RUN, data=json.dumps({"competenza_mese": "2026-06-15"}),
+            content_type="application/json",
+            headers={"Idempotency-Key": "k-run-3"},
+        )
+
+        self.assertEqual(resp.status_code, 200)
+        lavori = resp.json()["data"]["lavori"]
+        self.assertEqual(
+            [(lv["job_id"], lv["emittente_codice"]) for lv in lavori],
+            [(555, "ACME"), (556, "BETA")],
+        )
+        aziende_cls.return_value.list_selezionabili.assert_called_once_with(9, solo_id=None)
+        chiamate = [c.kwargs for c in repo_cls.return_value.accoda.call_args_list]
+        self.assertEqual(
+            [(c["scope"]["emittente_attivo_id"], c["scope"]["scope_key"]) for c in chiamate],
+            [(3, "3"), (4, "4")],
+        )
+        self.assertEqual(
+            [c["idempotency_key"] for c in chiamate],
+            ["FATTURAZIONE_GIRO:differita:2026-06-01:3",
+             "FATTURAZIONE_GIRO:differita:2026-06-01:4"],
         )
 
     # 4. JWT senza claim identita_id (token anomalo) → 400 parlante, no accoda.
     @patch(_AUTH, return_value=(_mock_user(), None))
     @patch(_EXTRACT_IDENTITA, return_value=None)
     @patch(_RESOLVER_SCOPE)
-    @patch(_REPO)
+    @patch(_REPO_ACCODA)
     def test_run_senza_identita_400(
         self, repo_cls, _resolver, _extract, _auth,
     ) -> None:
@@ -150,8 +204,8 @@ class FatturazioneRunApiTests(JwtMockedApiTest):
         )
         repo_cls.return_value.accoda.assert_not_called()
 
-    # 5. Polling: ritorna lo stato del job, ownership SCOPE-based (la scope_key
-    #    del richiedente, non l'id di chi ha accodato).
+    # 5. Polling: ritorna lo stato del job, ownership per AZIENDA (il
+    #    perimetro del richiedente, non l'id di chi ha accodato).
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_RESOLVER)
     @patch(_REPO)
@@ -167,9 +221,9 @@ class FatturazioneRunApiTests(JwtMockedApiTest):
 
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()["data"]["stato"], "FATTO")
-        # get_stato invocato con la scope_key del richiedente (ownership scope)
+        # get_stato invocato col perimetro del richiedente (ownership per azienda)
         repo_cls.return_value.get_stato.assert_called_once_with(
-            555, owner_scope_key="72",
+            555, owner_emittenti=[72],
         )
 
     # 6. Job inesistente o di altro SCOPE → 404 (get_stato None).
@@ -183,7 +237,7 @@ class FatturazioneRunApiTests(JwtMockedApiTest):
         self.assertEqual(resp.status_code, 404)
         self.assertEqual(resp.json()["error"]["code"], "E_JOB_NON_TROVATO")
 
-    # 7. Admin globale (whitelist None) → owner_scope_key=None: nessun filtro,
+    # 7. Admin globale (whitelist None) → owner_emittenti=None: nessun filtro,
     #    vede ogni job.
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_RESOLVER)
@@ -198,20 +252,20 @@ class FatturazioneRunApiTests(JwtMockedApiTest):
         resp = self.client.get(f"{_RUN}555/")
         self.assertEqual(resp.status_code, 200)
         repo_cls.return_value.get_stato.assert_called_once_with(
-            555, owner_scope_key=None,
+            555, owner_emittenti=None,
         )
 
-    # 8. Fix cross-operatore: l'ownership del polling dipende dalla SCOPE_KEY del
-    #    richiedente (whitelist), NON dall'id di chi ha accodato → un altro
-    #    operatore con la stessa whitelist risolve la stessa ownership e vede il
-    #    job condiviso via dedup (qui user_id 99 ≠ enqueuer, ma stessa scope 3,4).
+    # 8. Fix cross-operatore: l'ownership del polling dipende dal PERIMETRO del
+    #    richiedente (le sue aziende), NON dall'id di chi ha accodato → un altro
+    #    operatore delle stesse aziende vede il job condiviso via dedup (qui
+    #    user_id 99 ≠ enqueuer).
     @patch(_AUTH, return_value=(_mock_user(user_id=99, username="altro_op"), None))
     @patch(_RESOLVER)
     @patch(_REPO)
-    def test_stato_ownership_scope_non_enqueuer(
+    def test_stato_ownership_azienda_non_enqueuer(
         self, repo_cls, resolver, _auth,
     ) -> None:
-        resolver.get_emittenti_pk_ids.return_value = [4, 3]  # stessa whitelist
+        resolver.get_emittenti_pk_ids.return_value = [4, 3]  # stesse aziende
         repo_cls.return_value.get_stato.return_value = {
             "id": 555, "job_type": "FATTURAZIONE_GIRO", "stato": "IN_CORSO",
             "tentativi": 0, "max_tentativi": 5,
@@ -219,7 +273,7 @@ class FatturazioneRunApiTests(JwtMockedApiTest):
         }
         resp = self.client.get(f"{_RUN}555/")
         self.assertEqual(resp.status_code, 200)
-        # filtrato per SCOPE (3,4), non per user_id 99
+        # filtrato per AZIENDE (4, 3), non per user_id 99
         repo_cls.return_value.get_stato.assert_called_once_with(
-            555, owner_scope_key="3,4",
+            555, owner_emittenti=[4, 3],
         )
