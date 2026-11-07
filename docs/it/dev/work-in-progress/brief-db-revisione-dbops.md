@@ -16,7 +16,7 @@ di Tid, §16.9): registro dei modi e risolutore generato, dopo l'apply del giro 
 `20261107-31`, `-32`, `-35` … `-40`, due CSV nuovi o cambiati e due codici (1453, 1454); provato sullo scratch e su dbdev.
 **Blocco 4b applicato** (Tid, 2026-11-07): pgTAP di §17.5 verdi. **Giro 4 chiuso**: giro 4, blocco 4b e baseline B-7
 committati insieme.
-**Riparte: Tid**, col via al giro 5 (la coda lavori sotto RLS, §8). Il team BE ha BE3 e BE6 (§5): il giro 3 è applicato; dal blocco 4b anche i due codici nuovi in BE6.
+**Riparte: Tid**, col via al giro 5 (la coda lavori sotto RLS, §8). BE3 e BE6 fatte dal team BE (§5, 2026-11-07, da committare); al team DB la segnalazione S-BE-1 (§5: la frase di due codici nomina le tabelle).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -62,7 +62,8 @@ committati insieme.
 | 9-nonies | ✅ Tid | Q16: la via fusa resta, marcata come soppressa (b, 2026-11-07) | §4 | 9-septies |
 | 9-decies | ✅ sessione DB | Giro 2, blocco 2b (Q16): la via soppressa; lettori censiti, scritto e provato sullo scratch | §14.7 | 9-nonies |
 | 10 | sessione DB | Giri 5-14 nell'ordine di §8, uno alla volta, ognuno col suo via e il suo apply | §8 | 9-vicies-septies |
-| 11 | team BE | Le ricadute di §5, quando il giro DB corrispondente è applicato (BE3 e BE6 ora: il giro 3 è applicato); BE5 e BE7 (commenti stantii) quando capita | §5 | 10 |
+| 11 | team BE | Le ricadute di §5, quando il giro DB corrispondente è applicato. BE3 e BE6 ✅ (2026-11-07, da committare); BE5 e BE7 (commenti stantii) quando capita | §5 | 10 |
+| 11-bis | sessione DB | S-BE-1: la frase di `E_ATTIVO_PADRE_NON_ATTIVO` ed `E_PADRE_INESISTENTE` nomina `schema.tabella` all'operatore | §5 | — |
 | 12 | sessione DB | Pagine `manual/` e guide riallineate a ogni difetto chiuso, insieme al COMMENT; brief in `work-done/` | §1, §8 | 10 |
 
 **Decisioni aperte di Tid:** nessuna. Le scelte del giro 3 (§15.3) e del blocco 4b (§17.3) sono applicate: se una non
@@ -497,10 +498,10 @@ Si chiedono quando il giro DB corrispondente è applicato.
 | --- | --- | --- | --- |
 | ~~BE1~~ | ~~L'handler della chiusura per scadenza passa `p_classe = 'DOMINIO'`~~ — ritirata (Q5, 2026-11-05): il cancello è il CHECK nel DB | `backend/apps/core/services/coda_lavori/chiusura_scadenze_handler.py:51-60` | D38 (Q5) |
 | BE2 | I `gaps` scritti a mano per `codice_interno` si ritirano | `backend/apps/core/services/non_editable_fields_helper.py` | D25 |
-| BE3 | I controlli preventivi «padre non attivo» si ritirano e si mappa il codice nuovo (`E_ATTIVO_PADRE_NON_ATTIVO`, CONFLITTO_STATO; `E_PADRE_INESISTENTE`, DATO_ERRATO; tutti e due con la colonna FK in `campo`). I commenti che dicono «`E_ATTIVO_REQUIRE`, TECNICO, 500» diventano falsi | `backend/apps/vendite/services/commesse_service.py:552`, `backend/apps/anagrafiche/db/anagrafiche_repository.py:98`; commenti in `backend/apps/magazzino/services/anagrafiche_magazzino_service.py:13-18`, `backend/apps/magazzino/services/magazzino_service.py:208`, `backend/apps/vendite/tests/services/test_commesse_service.py:2035` | D46 (giro 3) |
+| BE3 ✅ | I controlli preventivi «padre non attivo» si ritirano e si mappa il codice nuovo (`E_ATTIVO_PADRE_NON_ATTIVO`, CONFLITTO_STATO; `E_PADRE_INESISTENTE`, DATO_ERRATO; tutti e due con la colonna FK in `campo`). I commenti che dicono «`E_ATTIVO_REQUIRE`, TECNICO, 500» diventano falsi | `backend/apps/vendite/services/commesse_service.py:552`, `backend/apps/anagrafiche/db/anagrafiche_repository.py:98`; commenti in `backend/apps/magazzino/services/anagrafiche_magazzino_service.py:13-18`, `backend/apps/magazzino/services/magazzino_service.py:208`, `backend/apps/vendite/tests/services/test_commesse_service.py:2035` | D46 (giro 3) |
 | BE4 | La ricerca dei lookup passa alla funzione DB (o cade il tetto `LOOKUP_MAX_SOURCE_ROWS`); la paginazione resta com'è | `backend/apps/core/db/dbops_repository.py:55, 415-470` | D57 |
 | BE5 | Docstring stantie: «tre viste … SECURITY DEFINER» (`fn_conta_presidio` è INVOKER) e «registro non vuoto» (il corpo ammette vuoto) | `backend/apps/core/db/presidi_repository.py:16-22`, `backend/apps/core/tests/test_error_codes_db_policy_guardrail.py:66-67` | — |
-| BE6 | Codici nuovi → rigenerare `error_policies_generated.py`, e le voci di `error_messages_fallback.py`: dal giro 2 `E_DBOPS_CHIAMATA_NON_VALIDA`, `E_MERGE_RIGHE_DOPPIE`, `E_MERGE_FIGLIA_SOTTO_RLS`, `E_STRADARIO_SOPPRESSO` e gli altri di §14.1; dal giro 3 `E_ATTIVO_PADRE_NON_ATTIVO`, `E_PADRE_INESISTENTE`; dal blocco 4b `E_EMITTENTE_MODI_INVALIDO`, `E_EMITTENTE_MODI_NON_SCRIVIBILE` (li vede chi migra, non l'operatore: basta la policy generata). Poi D12 (giro 9) | `backend/apps/core/services/error_messages_fallback.py:113-123` (la voce di `E_ATTIVO_REQUIRE` dice «trigger configurato male», ora è solo il generatore) | §2.5, §14.1, §15.2, §17.1 |
+| BE6 ✅ | Codici nuovi → rigenerare `error_policies_generated.py`, e le voci di `error_messages_fallback.py`: dal giro 2 `E_DBOPS_CHIAMATA_NON_VALIDA`, `E_MERGE_RIGHE_DOPPIE`, `E_MERGE_FIGLIA_SOTTO_RLS`, `E_STRADARIO_SOPPRESSO` e gli altri di §14.1; dal giro 3 `E_ATTIVO_PADRE_NON_ATTIVO`, `E_PADRE_INESISTENTE`; dal blocco 4b `E_EMITTENTE_MODI_INVALIDO`, `E_EMITTENTE_MODI_NON_SCRIVIBILE` (li vede chi migra, non l'operatore: basta la policy generata). Poi D12 (giro 9) | `backend/apps/core/services/error_messages_fallback.py:113-123` (la voce di `E_ATTIVO_REQUIRE` dice «trigger configurato male», ora è solo il generatore) | §2.5, §14.1, §15.2, §17.1 |
 | BE7 | Commento stantio: il test nomina il presidio `dbops.vw_run_senza_attore`, ritirato | `backend/apps/core/tests/services/test_job_run.py:136-138` | D42 |
 | BE8 | Il livello «sessione» degli override esce: via `session_key` da `_DIMENSIONI_OVERRIDE` e dalle firme di `ParameterRepository.get_parameter` e affini | `backend/apps/core/db/parameter_repository.py:97-140` | Q10 |
 | BE9 | Dopo la RLS su `dbops.coda_lavori`: il filtro per `scope_key` scritto a mano negli elenchi e nei conteggi della coda lavori si ritira, la separazione la fa il DB (come per la coda di stampa) | `backend/apps/core/services/coda_lavori/gestione_service.py:83-320`, `CodaLavoriRepository` | Q14.3 |
@@ -521,6 +522,33 @@ perso né rinominato colonne: sono cambiate con `CREATE OR REPLACE VIEW`, che no
 **BE6**, una volta sola per i codici dei giri 2 e 3. Il giro 3 non cambia firme né colonne di oggetti che il
 backend legga; cambia i codici che i guard ATTIVO sollevano (un 500 che diventa 409 o 400) e la frase.
 Censiti nel backend: i due controlli preventivi di BE3 e i tre commenti che li motivano.
+
+**Stato al 2026-11-07, dopo il giro BE** (team BE, da committare): **BE3 e BE6 fatte.**
+
+* **BE6.** `error_policies_generated.py` rigenerato (venti codici nuovi dei giri 2, 3, 4b e del lotto T di
+  `brief-db-sorgente-documento-e-riga`; nessuna classe esistente cambiata, `--check` pulito), venti
+  ripieghi in `error_messages_fallback.py`. La frase di ripiego di `E_ATTIVO_REQUIRE` ora dice solo il
+  generatore.
+* **BE3.** Ritirato il controllo preventivo del responsabile in `commesse_service.aggiorna_commessa_testata`,
+  e con lui `get_risorsa_umana_lookup` (repository e service), che serviva solo a quello: il rifiuto è il
+  409 `E_ATTIVO_PADRE_NON_ATTIVO` del require, col campo. La persona inesistente resta la FK (`E_VENDITE_FK`
+  col campo). Prova sul DB vero: `vendite/tests/db/test_commessa_testata_db.py`. Il controllo del magazzino
+  (`magazzino_service._magazzino_o_400`) resta: legge il magazzino sotto la RLS e risponde anche «fuori dal
+  tuo perimetro», che il require non dice; corretto il solo commento.
+  Nessun override `highlight_form_fields` sui due codici: sono guard generici, e la colonna FK non è sempre
+  un input della pagina (`api.md` §la promessa e il canale). Resta il banner di classe.
+
+**⏭️ Segnalazione al team DB (S-BE-1, 2026-11-07): la frase dei due codici nomina le tabelle.**
+`E_ATTIVO_PADRE_NON_ATTIVO` ed `E_PADRE_INESISTENTE` sono dichiarati «per l'operatore» (§15, pagina
+`manual/trgfn_child_requires_active_parent.md` §Codici errore), ma i valori della frase sono `v_padre` e
+`v_figlia`, cioè `schema.tabella`: sulla commessa l'operatore legge *«anagrafiche.risorse_umane (id = 5) non
+è attivo: non vi si può collegare una riga attiva di vendite.commesse»*. Fino a BE3 il backend la copriva con
+una frase sua; ritirato il controllo (decisione di Tid, 2026-11-07), è questa la frase che arriva a video.
+Non sono parole dell'operatore, e il catalogo serve anche portale e shop, dove un nome di tabella è
+ricognizione regalata (la stessa ragione per cui `targets` porta un codice di `config.tipi_entita`, mai
+una tabella: `api.md` §`targets`). Si chiede al team DB di decidere la forma: il nome della cosa al posto
+della tabella (da dove leggerlo è una scelta del modello), i nomi tecnici nel solo contesto del diario.
+Il backend non ha niente da cambiare quando la frase cambia: la legge dal catalogo.
 
 ## 6. Difetti fuori schema trovati leggendo i chiamanti
 

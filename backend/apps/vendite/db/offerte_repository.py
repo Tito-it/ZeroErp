@@ -220,12 +220,22 @@ _FROM_JOINS_OFFERTA = """
     -- LEFT JOIN col contratto VIVO generato dal push. Il FE usa
     -- contratto_id/numero per il dialog "gia' generato" e per il deep-link a
     -- ContrattoDrawer post-push.
-    -- ⛔ Il filtro sui vivi NON e' facoltativo (brief-db-annullo-documento-con-
-    --    legami R-5, 2026-10-11): `uq_contratti_offerta_id` vale sui soli
-    --    contratti non abortiti, quindi un'offerta puo' avere un contratto
-    --    annullato e uno vivo. Senza il filtro la riga dell'offerta si DUPLICA;
-    --    con il filtro resta «0 o 1», ed e' lo stesso predicato dell'indice.
-    LEFT JOIN vendite.contratti c ON c.offerta_id = o.id AND NOT c.is_abortito_snapshot
+    -- ⭐ Il contratto VIVO lo dice la sede unica `vendite.fn_offerta_documenti_vivi`
+    --    (la provenienza `sorgente_*` con la regola d'incontro, i soli non
+    --    abortiti): dal giro T.5 di brief-db-sorgente-documento-e-riga
+    --    (2026-11-07) `contratti.offerta_id` non esiste piu'. Riscrivere qui
+    --    la regola d'incontro sarebbe la sua seconda copia.
+    -- ⛔ «0 o 1» lo garantisce `uq_contratti_sorgente_offerta`, sui soli non
+    --    abortiti: un contratto annullato e uno vivo non duplicano la riga.
+    --    Il LIMIT 1 tiene la forma anche se l'indice mancasse.
+    LEFT JOIN LATERAL (
+        SELECT dv.documento_id
+          FROM vendite.fn_offerta_documenti_vivi(o.id) dv
+         WHERE dv.tipo = 'CONTRATTO'
+         ORDER BY dv.documento_id
+         LIMIT 1
+    ) cv ON true
+    LEFT JOIN vendite.contratti c ON c.id = cv.documento_id
     -- Decode emittente fiscale: codice + ragione sociale del soggetto
     -- (nessun fallback a `emittenti_fiscali.descrizione`, rimosso col brief
     -- emittente-ragione-sociale-dal-soggetto). Pattern allineato a
@@ -1059,10 +1069,12 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
     # Scopo: Push offerta ACCETTATA → contratto DRAFT invocando la fn DB
     #        `vendite.fn_push_offerta_a_contratto`. La fn:
     #          - guard stato ACCETTATA (E_OFFERTA_PUSH_STATO_NON_AMMESSO)
-    #          - guard idempotenza UNIQUE su contratti.offerta_id
-    #            (E_OFFERTA_CONTRATTO_GIA_GENERATO se gia' pushato)
-    #          - INSERT contratto DRAFT con sorgente_tipo OFFERTA_COMMERCIALE +
-    #            sorgente_uid + offerta_id
+    #          - guard idempotenza dalla sede unica dei documenti vivi
+    #            (`vendite.fn_offerta_documenti_vivi`, indice
+    #            `uq_contratti_sorgente_offerta`): E_OFFERTA_CONTRATTO_GIA_GENERATO
+    #            se gia' pushato
+    #          - INSERT contratto DRAFT con la provenienza OFFERTA_COMMERCIALE
+    #            (`contratti.offerta_id` ritirata il 2026-11-07, giro T.5)
     #          - copia eccezioni 1:1 → contratti_righe
     #          - UPSERT utility 1:1 → contratti_utilities (sovrascrive il
     #            record gia' creato dal trigger snapshot_precontrattuali)

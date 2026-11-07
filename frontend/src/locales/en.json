@@ -507,6 +507,8 @@
       "descrizione_breve": "Short description",
       "descrizione_fattura": "Invoice description",
       "descrizione_locale": "Local description",
+      "dettaglio_fk_column": "Column to the line (detail)",
+      "dettaglio_table": "Detail table",
       "direzione": "Direction",
       "emissione": "Issue state",
       "emittibile": "Can be issued",
@@ -575,7 +577,9 @@
       "richiede_cliente": "Requires the customer",
       "richiede_abbinamento": "Requires matching",
       "richiede_pdp": "Requires PDP",
+      "righe_fk_column": "Column to the document (lines)",
       "righe_lavorabili": "Workable lines",
+      "righe_table": "Lines table",
       "ripartizione": "Split",
       "ripetibilita": "Repeatability",
       "scadenza": "Expiry state",
@@ -2181,7 +2185,8 @@
         "composito_come_bundle": "It is a kit: it enters a price list as a bundle, with its components' prices.",
         "tipologia_mancante": "The item has no price-list type: it cannot enter a price list.",
         "tipologia_incompatibile": "The item's type is not the price list's type.",
-        "kit_senza_componenti": "Kit without components: complete its bill of materials before using it."
+        "kit_senza_componenti": "Kit without components: complete its bill of materials before using it.",
+        "obsoleto": "Item withdrawn: it cannot be chosen for a new line."
       }
     },
     "date_consegna": {
