@@ -152,7 +152,7 @@ SELECT vendite.fn_link_commessa_sorgente(
   -- stessa: esiste per costruzione -> passa formato ed esistenza del guard
   -- sorgente polimorfa. rev 2026-07-27 (bonifica).
   p_sorgente_uid => (SELECT commessa_id FROM tmp_commessa_a)::text,
-  p_sorgente_riga => 1,
+  p_sorgente_riga => NULL,
   p_meta => '{}'::jsonb
 );
 
@@ -291,7 +291,7 @@ SELECT vendite.fn_link_commessa_sorgente(
   -- stessa: esiste per costruzione -> passa formato ed esistenza del guard
   -- sorgente polimorfa. rev 2026-07-27 (bonifica).
   p_sorgente_uid => (SELECT commessa_id FROM tmp_commessa_b)::text,
-  p_sorgente_riga => 2,
+  p_sorgente_riga => NULL,
   p_meta => '{}'::jsonb
 );
 

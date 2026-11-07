@@ -195,14 +195,14 @@ SELECT a.commessa_attivita_id, 'PGTAP_RLS_COMMESSE',
 
 -- 2. la sorgente della commessa: la commessa e' la ROOT di se stessa, che e'
 --    la forma che `fn_link_commessa_sorgente` scrive.
---    ⚠️ `sorgente_uid` e' `id::text` perche' config.sorgenti.key_selector di
---    COMMESSA e' `id`: il guard polimorfo valida FORMATO ed esistenza.
+--    ⚠️ La chiave va in `sorgente_id` perche' config.sorgenti.key_selector di
+--    COMMESSA e' `id`: il guard unico valida chiave ed esistenza (giro C.2).
 INSERT INTO vendite.commesse_sorgenti
-    (commessa_id, sorgente_tipo_id, sorgente_uid, ruolo_link)
+    (commessa_id, sorgente_tipo_id, sorgente_id, ruolo_link)
 SELECT cm.commessa_id,
        (SELECT s.id FROM config.sorgenti s
          WHERE s.codice_interno = 'COMMESSA' AND s.attivo),
-       cm.commessa_id::text, 'ROOT'
+       cm.commessa_id, 'ROOT'
   FROM _commesse cm;
 
 -- 3. il lavoro fatturabile

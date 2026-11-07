@@ -254,9 +254,9 @@ SELECT vendite.fn_link_commessa_sorgente(
            (SELECT commessa_id FROM _c), (SELECT ord FROM _t), (SELECT ordine_uid::text FROM _d)) AS link_id;
 
 SELECT is(
-    (SELECT cs.sorgente_uid FROM vendite.commesse_sorgenti cs WHERE cs.id = (SELECT link_id FROM _l26)),
-    (SELECT ordine_id::text FROM _d),
-    '26) fn_link: l''uid dell''ordine si stocca come id::text');
+    (SELECT cs.sorgente_id FROM vendite.commesse_sorgenti cs WHERE cs.id = (SELECT link_id FROM _l26)),
+    (SELECT ordine_id FROM _d),
+    '26) fn_link: l''uid dell''ordine si stocca come id, in sorgente_id');
 
 CREATE TEMP TABLE _l27 AS
 SELECT vendite.fn_link_commessa_sorgente(
@@ -264,8 +264,8 @@ SELECT vendite.fn_link_commessa_sorgente(
 
 SELECT is(
     (SELECT cs.sorgente_uid FROM vendite.commesse_sorgenti cs WHERE cs.id = (SELECT link_id FROM _l27)),
-    (SELECT preventivo_uid::text FROM _p),
-    '27) fn_link: l''id del preventivo si stocca come uid::text');
+    (SELECT preventivo_uid FROM _p),
+    '27) fn_link: l''id del preventivo si stocca come uid, in sorgente_uid');
 
 SELECT * FROM finish();
 ROLLBACK;

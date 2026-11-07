@@ -11,7 +11,7 @@
 -- ChangeSet: 20261106-22 … -45
 -- Brief: brief-db-sorgente-documento-e-riga §7.2 lotto 0 giro 0.3
 -- ------------------------------------------------------------
--- Indice test (plan 16):
+-- Indice test (plan 15):
 --   1) fixture: la bolla porta l'ordine nel solo sorgente_id
 --   2) vendite.fn_ddt_trigger_ordine_testata lo trova per id
 --   3) ... e per uid, come prima (la grammatica di oggi)
@@ -24,10 +24,9 @@
 --  10) una bolla nuova col solo sorgente_id eredita il cliente dall'ordine (trgfn_ddt_normalize)
 --  11) script.fn_get_sorgente_emittente_sr_id(tipo, id, NULL): l'emittente dell'ordine
 --  12) ... (tipo, NULL, uid): lo stesso
---  13) la firma testuale controlla ancora la forma canonica: E_SORG_FORMATO
+--  13) la firma testuale si e' ritirata (giro C.2: i chiamanti passano le colonne del modello)
 --  14) firma nuova: nessuna chiave E_SORG_KEY_MISSING, documento che non c'e' E_SORG_EMITTENTE_NON_RISOLTO
---  15) la firma testuale da' lo stesso emittente (la porta passa alla firma nuova)
---  16) le firme vecchie dei due BB di bolla sono ritirate, le nuove ci sono
+--  15) le firme vecchie dei due BB di bolla sono ritirate, le nuove ci sono
 --
 -- ⚠️ I resi non si provano qui nella grammatica del lotto T: resi.sorgente_uid e'
 --   NOT NULL fino al lotto T, che lo toglie quando converte. I loro lettori sono
@@ -44,7 +43,7 @@ SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('pgTAP sorgente due grammatiche'
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _m)); END $ctx$;
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(16);
+SELECT plan(15);
 
 CREATE FUNCTION pg_temp.esito(p_sql text) RETURNS text
 LANGUAGE plpgsql AS $f$
@@ -160,10 +159,12 @@ SELECT is(
   (SELECT emittente_sr_id FROM _k),
   '12) ... (tipo, NULL, uid): lo stesso, il BB legge la chiave che riceve');
 
-SELECT is(
-  (SELECT pg_temp.esito(format('SELECT script.fn_get_sorgente_emittente_sr_id(%s, %L)', t_ord, '0' || ordine_id::text)) FROM _k),
-  'E_SORG_FORMATO',
-  '13) la firma testuale controlla ancora la forma: una chiave non canonica (zeri davanti) e'' E_SORG_FORMATO');
+-- rev 2026-11-07 (brief-db-sorgente-documento-e-riga giro C.2): la porta
+--   testuale si e' ritirata; la forma canonica del testo la controlla il BB
+--   della porta del link (script/test-guard-sorgente-polimorfa-testuale-v1).
+SELECT ok(
+  to_regprocedure('script.fn_get_sorgente_emittente_sr_id(bigint,text)') IS NULL,
+  '13) la firma testuale del risolutore si e'' ritirata: resta quella sulle colonne del modello');
 
 SELECT is(
   (SELECT pg_temp.esito(format('SELECT script.fn_get_sorgente_emittente_sr_id(%s, NULL::bigint, NULL::uuid)', t_ord)) FROM _k)
@@ -173,18 +174,13 @@ SELECT is(
   '14) ... i codici: nessuna chiave E_SORG_KEY_MISSING, documento che non c''e'' E_SORG_EMITTENTE_NON_RISOLTO');
 
 SELECT is(
-  (SELECT script.fn_get_sorgente_emittente_sr_id(k.t_ord, k.ordine_id::text) FROM _k k),
-  (SELECT emittente_sr_id FROM _k),
-  '15) la firma testuale (chiave canonica) da'' lo stesso emittente: la porta passa alla firma nuova');
-
-SELECT is(
   ARRAY[to_regprocedure('vendite.fn_ddt_trigger_ordine_testata(bigint,uuid)') IS NOT NULL,
         to_regprocedure('vendite.fn_ddt_vincoli_cliente(bigint,bigint,uuid)') IS NOT NULL,
         to_regprocedure('vendite.fn_ddt_trigger_ordine_testata(bigint,uuid,bigint)') IS NOT NULL,
         to_regprocedure('vendite.fn_ddt_vincoli_cliente(bigint,bigint,uuid,bigint)') IS NOT NULL,
         to_regprocedure('script.fn_get_sorgente_emittente_sr_id(bigint,bigint,uuid)') IS NOT NULL]::text[],
   ARRAY['false', 'false', 'true', 'true', 'true'],
-  '16) firme vecchie dei BB di bolla ritirate; le firme con sorgente_id ci sono');
+  '15) firme vecchie dei BB di bolla ritirate; le firme con sorgente_id ci sono');
 
 SELECT * FROM finish();
 ROLLBACK;

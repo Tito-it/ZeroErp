@@ -162,11 +162,11 @@ FROM dbops.fn_pgtap_crea_commessa(
 SELECT throws_ok(
   $$
   INSERT INTO vendite.commesse_sorgenti (
-    commessa_id, sorgente_tipo_id, sorgente_uid, ruolo_link
+    commessa_id, sorgente_tipo_id, sorgente_id, ruolo_link
   )
   SELECT
     (SELECT id FROM tmp_commessa_cs), (SELECT sorgente_tipo_id FROM tmp_refs_cs),
-    (SELECT id::text FROM tmp_commessa_cs), 'SECONDARIA';
+    (SELECT id FROM tmp_commessa_cs), 'SECONDARIA';
   $$,
   '23514',
   NULL,
@@ -174,20 +174,20 @@ SELECT throws_ok(
 );
 
 INSERT INTO vendite.commesse_sorgenti (
-  commessa_id, sorgente_tipo_id, sorgente_uid, ruolo_link
+  commessa_id, sorgente_tipo_id, sorgente_id, ruolo_link
 )
 SELECT
   (SELECT id FROM tmp_commessa_cs), (SELECT sorgente_tipo_id FROM tmp_refs_cs),
-  (SELECT id::text FROM tmp_commessa_cs), 'ROOT';
+  (SELECT id FROM tmp_commessa_cs), 'ROOT';
 
 SELECT throws_ok(
   $$
   INSERT INTO vendite.commesse_sorgenti (
-    commessa_id, sorgente_tipo_id, sorgente_uid, ruolo_link
+    commessa_id, sorgente_tipo_id, sorgente_id, ruolo_link
   )
   SELECT
     (SELECT id FROM tmp_commessa_cs), (SELECT sorgente_tipo_id FROM tmp_refs_cs),
-    (SELECT id::text FROM tmp_commessa_cs2), 'ROOT';
+    (SELECT id FROM tmp_commessa_cs2), 'ROOT';
   $$,
   '23505',
   NULL,

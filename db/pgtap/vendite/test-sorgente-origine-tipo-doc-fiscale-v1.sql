@@ -183,7 +183,7 @@ SELECT vendite.fn_link_commessa_sorgente(
   p_commessa_id => (SELECT commessa_id FROM tmp_commessa_sot),
   p_sorgente_tipo_id => (SELECT sorgente_root_id FROM tmp_refs_sot),
   p_sorgente_uid => (SELECT commessa_id FROM tmp_commessa_sot)::text,
-  p_sorgente_riga => 1,
+  p_sorgente_riga => NULL,
   p_meta => '{}'::jsonb
 );
 

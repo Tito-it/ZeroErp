@@ -159,7 +159,7 @@ SELECT vendite.fn_link_commessa_sorgente(
   p_commessa_id => (SELECT commessa_id FROM tmp_com1),
   p_sorgente_tipo_id => (SELECT sorgente_root_id FROM tmp_refs),
   p_sorgente_uid => (SELECT commessa_id FROM tmp_com1)::text,
-  p_sorgente_riga => 1, p_meta => '{}'::jsonb);
+  p_sorgente_riga => NULL, p_meta => '{}'::jsonb);
 
 -- Riga A: quella che verra' annullata.
 CREATE TEMP TABLE tmp_riga_a AS

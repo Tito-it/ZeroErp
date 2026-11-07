@@ -241,7 +241,7 @@ SELECT ok(
   EXISTS (SELECT 1 FROM vendite.commesse_sorgenti cs
            WHERE cs.commessa_id = (SELECT id FROM tmp_pc_commessa)
              AND cs.sorgente_tipo_id = (SELECT sorg_contratto_id FROM tmp_pc_refs)
-             AND cs.sorgente_uid = (SELECT id::text FROM tmp_pc_contratto))
+             AND cs.sorgente_id = (SELECT id FROM tmp_pc_contratto))
   AND NOT EXISTS (SELECT 1 FROM vendite.fn_list_contratti_da_pushare(
                     p_contratto_id => (SELECT id FROM tmp_pc_contratto))),
   '6) la madre ha scritto il link contratto -> commessa, e il contratto non e'' piu'' da mandare');

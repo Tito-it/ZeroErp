@@ -337,7 +337,7 @@ SELECT ok(
   (SELECT count(*) = 1 AND bool_and(cs.commessa_id = pg_temp.ac_fix('b_cm1') AND cs.ruolo_link = 'ROOT')
      FROM vendite.commesse_sorgenti cs
     WHERE cs.sorgente_tipo_id = (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'PREVENTIVO')
-      AND cs.sorgente_uid = (SELECT p.uid::text FROM vendite.preventivi p WHERE p.id = pg_temp.ac_fix('b_prev'))),
+      AND cs.sorgente_uid = (SELECT p.uid FROM vendite.preventivi p WHERE p.id = pg_temp.ac_fix('b_prev'))),
   '2b) la madre delle righe ha scritto il link preventivo -> commessa, ROOT (D-13)');
 
 SELECT is(
@@ -416,10 +416,11 @@ SELECT ok(
           = ARRAY[pg_temp.ac_fix('b_cm1'), pg_temp.ac_fix('b_cm2')]
      FROM vendite.commesse_sorgenti cs
     WHERE cs.sorgente_tipo_id = (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'PREVENTIVO')
-      AND cs.sorgente_uid = (SELECT p.uid::text FROM vendite.preventivi p WHERE p.id = pg_temp.ac_fix('b_prev')))
+      AND cs.sorgente_uid = (SELECT p.uid FROM vendite.preventivi p WHERE p.id = pg_temp.ac_fix('b_prev')))
   AND vendite.fn_commessa_viva_di_sorgente(
         (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'PREVENTIVO'),
-        (SELECT p.uid::text FROM vendite.preventivi p WHERE p.id = pg_temp.ac_fix('b_prev')))
+        NULL::bigint,
+        (SELECT p.uid FROM vendite.preventivi p WHERE p.id = pg_temp.ac_fix('b_prev')))
       = pg_temp.ac_fix('b_cm2'),
   '12b) il link verso la commessa annullata resta come storia; la commessa aperta del preventivo e'' la nuova');
 
@@ -479,10 +480,10 @@ SELECT ok(
   AND (SELECT count(*) = 2
          FROM vendite.commesse_sorgenti cs
         WHERE cs.sorgente_tipo_id = (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'ORDINE_VENDITA')
-          AND cs.sorgente_uid = pg_temp.ac_fix('c_ord')::text)
+          AND cs.sorgente_id = pg_temp.ac_fix('c_ord'))
   AND vendite.fn_commessa_viva_di_sorgente(
         (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'ORDINE_VENDITA'),
-        pg_temp.ac_fix('c_ord')::text) = pg_temp.ac_fix('c_cm2'),
+        pg_temp.ac_fix('c_ord'), NULL::uuid) = pg_temp.ac_fix('c_cm2'),
   '14b) l''ordine si rimanda in una commessa nuova: due link (chiave id), aperta la nuova');
 
 SELECT pg_temp.ac_prova('14d_flag_aperta',

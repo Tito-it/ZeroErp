@@ -220,11 +220,11 @@ SELECT is(
 -- ============================================================
 SELECT throws_ok(
   format(
-    $$INSERT INTO vendite.commesse_sorgenti (commessa_id, sorgente_tipo_id, sorgente_uid, ruolo_link)
-      VALUES (%s, %s, %L, 'ROOT')$$,
+    $$INSERT INTO vendite.commesse_sorgenti (commessa_id, sorgente_tipo_id, sorgente_id, ruolo_link)
+      VALUES (%s, %s, %s, 'ROOT')$$,
     (SELECT commessa1_id FROM tmp_commesse_link),
     (SELECT sorgente_tipo_id FROM tmp_refs_link),
-    (SELECT src_uid FROM tmp_src_link WHERE tag = 'D')
+    (SELECT src_uid::bigint FROM tmp_src_link WHERE tag = 'D')
   ),
   '23505',
   NULL,
@@ -272,10 +272,10 @@ SELECT ok(
 SELECT ok(
   (SELECT count(*) = 2 FROM vendite.commesse_sorgenti cs
     WHERE cs.sorgente_tipo_id = (SELECT sorgente_tipo_id FROM tmp_refs_link)
-      AND cs.sorgente_uid = (SELECT src_uid FROM tmp_src_link WHERE tag = 'A'))
+      AND cs.sorgente_id = (SELECT src_uid::bigint FROM tmp_src_link WHERE tag = 'A'))
   AND vendite.fn_commessa_viva_di_sorgente(
         (SELECT sorgente_tipo_id FROM tmp_refs_link),
-        (SELECT src_uid FROM tmp_src_link WHERE tag = 'A'))
+        (SELECT src_uid::bigint FROM tmp_src_link WHERE tag = 'A'), NULL::uuid)
       = (SELECT commessa2_id FROM tmp_commesse_link),
   '10) A ha due link (la storia), e la sua commessa aperta e'' commessa2');
 

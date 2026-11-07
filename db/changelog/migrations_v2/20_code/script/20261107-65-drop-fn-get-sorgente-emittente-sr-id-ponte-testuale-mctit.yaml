@@ -1,0 +1,133 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# SI RITIRA IL PONTE TESTUALE: script.fn_get_sorgente_emittente_sr_id(bigint, text)
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto C, giro C.2 (S-4; il ponte
+#   del giro 0.3 «si ritira quando l'ultimo chiamante passa le colonne tipizzate»).
+#
+#   I due chiamanti (vendite.fn_check_commessa_sorgente_emittente_omogeneo e
+#   vendite.fn_guard_commessa_sorgente_emittente) passano le colonne del modello da
+#   20261107-64. Nessun altro chiamante DB (pg_proc, dbdev, 2026-11-07), nessuno nel
+#   backend. Resta la firma sulle colonne del modello (tipo, sorgente_id, sorgente_uid).
+#   I codici che il ponte sollevava (E_SORG_FORMATO, E_SORG_KEYSEL) li sollevano
+#   anche altri: restano registrati.
+#   Rollback: la porta torna com'era (= 20261106-23), con la chiave in text
+#   esplicito (il %TYPE di allora oggi darebbe uuid).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261107-65-drop-fn-get-sorgente-emittente-sr-id-ponte-testuale-mctit.yaml
+
+  - changeSet:
+      id: 20261107-65-drop-fn-get-sorgente-emittente-sr-id-ponte-testuale
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Ritirata la porta testuale script.fn_get_sorgente_emittente_sr_id(bigint, text): i suoi
+        chiamanti passano le colonne del modello. brief-db-sorgente-documento-e-riga §7.2 lotto C,
+        giro C.2.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION script.fn_get_sorgente_emittente_sr_id(bigint, text);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_sorgente_emittente_sr_id(
+                  p_sorgente_tipo_id config.sorgenti.id%TYPE,
+                  p_sorgente_uid     text
+              )
+              RETURNS anagrafiche.soggetti_ruoli.id%TYPE
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_selector  config.sorgenti.key_selector%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo: la porta per chi ha la chiave del documento come TESTO
+                  --   canonico (vendite.commesse_sorgenti, G3: id::text o uuid::text
+                  --   secondo key_selector). Controlla la forma come prima, poi passa
+                  --   la chiave giusta alla funzione sulle colonne del modello
+                  --   (tipo, sorgente_id, sorgente_uid), che risolve e legge
+                  --   l'emittente (brief-db-sorgente-documento-e-riga §7.2 giro 0.3).
+                  -- ⭐ Il ponte: si ritira quando l'ultimo chiamante passa le colonne
+                  --   tipizzate (lotto C, commesse_sorgenti a sorgente_id/sorgente_uid).
+                  -- =========================================================
+                  IF p_sorgente_tipo_id IS NULL OR p_sorgente_tipo_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_get_sorgente_emittente_sr_id', 'E_SORG_CONF',
+                          jsonb_build_object('detail', 'Tipo sorgente non valorizzato',
+                                             'sorgente_tipo_id', p_sorgente_tipo_id),
+                          NULL::uuid, COALESCE(p_sorgente_tipo_id::text, '<nessuno>'));
+                  END IF;
+
+                  SELECT s.key_selector INTO v_selector
+                    FROM config.sorgenti s
+                   WHERE s.id = p_sorgente_tipo_id
+                     AND s.attivo = true;
+
+                  IF v_selector IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_get_sorgente_emittente_sr_id', 'E_SORG_CONF',
+                          jsonb_build_object('detail', 'Sorgente non attiva o senza key_selector',
+                                             'sorgente_tipo_id', p_sorgente_tipo_id),
+                          NULL::uuid, p_sorgente_tipo_id::text);
+                  END IF;
+
+                  IF NULLIF(btrim(p_sorgente_uid), '') IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_get_sorgente_emittente_sr_id', 'E_SORG_KEY_MISSING',
+                          jsonb_build_object('sorgente_tipo_id', p_sorgente_tipo_id,
+                                             'key_selector', v_selector),
+                          NULL::uuid, p_sorgente_tipo_id::text, v_selector);
+                  END IF;
+
+                  -- La forma CANONICA secondo il catalogo (script.fn_sorgente_chiave_id /
+                  -- _uuid, la stessa regola del guard), sul valore RICEVUTO.
+                  IF v_selector = 'id' THEN
+                      IF script.fn_sorgente_chiave_id(p_sorgente_uid) IS NULL THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'script', 'fn_get_sorgente_emittente_sr_id', 'E_SORG_FORMATO',
+                              jsonb_build_object('sorgente_tipo_id', p_sorgente_tipo_id,
+                                                 'sorgente_uid', p_sorgente_uid,
+                                                 'key_selector', v_selector),
+                              NULL::uuid, concat('atteso id::text, ricevuto «', p_sorgente_uid, '»'));
+                      END IF;
+                      RETURN script.fn_get_sorgente_emittente_sr_id(
+                          p_sorgente_tipo_id, script.fn_sorgente_chiave_id(p_sorgente_uid), NULL::uuid);
+                  ELSIF v_selector = 'uid' THEN
+                      IF script.fn_sorgente_chiave_uuid(p_sorgente_uid) IS NULL THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'script', 'fn_get_sorgente_emittente_sr_id', 'E_SORG_FORMATO',
+                              jsonb_build_object('sorgente_tipo_id', p_sorgente_tipo_id,
+                                                 'sorgente_uid', p_sorgente_uid,
+                                                 'key_selector', v_selector),
+                              NULL::uuid, concat('atteso uuid, ricevuto «', p_sorgente_uid, '»'));
+                      END IF;
+                      RETURN script.fn_get_sorgente_emittente_sr_id(
+                          p_sorgente_tipo_id, NULL::bigint, script.fn_sorgente_chiave_uuid(p_sorgente_uid));
+                  END IF;
+
+                  PERFORM script.fn_log_and_raise_error(
+                      'script', 'fn_get_sorgente_emittente_sr_id', 'E_SORG_KEYSEL',
+                      jsonb_build_object('sorgente_tipo_id', p_sorgente_tipo_id,
+                                         'key_selector', v_selector),
+                      NULL::uuid, v_selector);
+                  RETURN NULL;  -- non si arriva qui: fn_log_and_raise_error solleva
+              END;
+              $function$;

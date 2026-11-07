@@ -67,7 +67,7 @@ SELECT results_eq(
         -- lotto P (pratiche)
         ('pratiche.pratiche_sorgenti'),
         -- lotto C (commesse)
-        ('vendite.commesse_attivita'), ('vendite.commesse_sorgenti'),
+        ('vendite.commesse_attivita'),
         -- lotto D
         ('vendite.fatture_stampa_coda')$$,
     '2) le tabelle ancora senza il guard unico sono esattamente il debito dichiarato (si toglie, non si aggiunge)');

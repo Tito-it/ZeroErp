@@ -220,7 +220,7 @@ search:
 - [fn_ricalcola_prezzo_padre_da_componenti](manual/fn_ricalcola_prezzo_padre_da_componenti.md)
 - [fn_sblocca_credenziale](manual/fn_sblocca_credenziale.md) — (scritta il 25-09-2026)
 - [fn_scope_ba_ownership](manual/fn_scope_ba_ownership.md) — (latest review 20-04-2026 — ruolo-aware)
-- [fn_scope_coda_lavori_perimetro](manual/fn_scope_coda_lavori_perimetro.md) — **Chi guarda può vedere questo lavoro della coda?** La regola della policy di `dbops.coda_lavori`: un lavoro operatore chi ha la sua azienda nel perimetro, un lavoro di sistema il super admin e il drenatore. Pura, con chi guarda già calcolato dalla policy.
+- [fn_scope_coda_lavori_perimetro](manual/fn_scope_coda_lavori_perimetro.md) — **Chi guarda può vedere questo lavoro della coda?** È la regola della policy `rls_coda_lavori_ef_perimetro` su `dbops.coda_lavori`, e ne è la sede unica:
 - [fn_scope_ef_perimetro](manual/fn_scope_ef_perimetro.md) — (nata il 2026-10-18; firma attuale da `20261018-24`)
 - [fn_scope_ef_whitelist](manual/fn_scope_ef_whitelist.md) — (rev 2026-06-01 — refactor RLS: delega alla canonica)
 - [fn_scope_ef_whitelist_via_asset](manual/fn_scope_ef_whitelist_via_asset.md) — (rev 2026-09-15 — Lotto 1 del magazzino)

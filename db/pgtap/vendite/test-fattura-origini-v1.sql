@@ -121,8 +121,8 @@ SELECT dbops.fn_pgtap_crea_ddt((SELECT billing_account_id FROM t_o1),
                                (SELECT cliente_soggetto_ruolo_id FROM t_o1),
                                'VENDITA') AS ddt_id;
 
-INSERT INTO vendite.commesse_sorgenti (commessa_id, sorgente_tipo_id, sorgente_uid, ruolo_link)
-SELECT (SELECT commessa_id FROM t_c1), s.id, (SELECT ddt_id::text FROM t_ddt), 'COLLEGATO'
+INSERT INTO vendite.commesse_sorgenti (commessa_id, sorgente_tipo_id, sorgente_id, ruolo_link)
+SELECT (SELECT commessa_id FROM t_c1), s.id, (SELECT ddt_id FROM t_ddt), 'COLLEGATO'
   FROM config.sorgenti s
  WHERE s.codice_interno = 'DDT_VENDITA';
 

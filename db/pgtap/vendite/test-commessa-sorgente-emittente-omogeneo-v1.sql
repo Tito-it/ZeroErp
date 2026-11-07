@@ -15,8 +15,14 @@
 --  4) Il check risponde true per una sorgente dello stesso billing account
 --  5) Il collegamento reale passa (via vendite.fn_link_commessa_sorgente)
 --  6) ⭐ Il guard nuovo scatta DOPO il guard polimorfo
---  7) Il risolutore chiede la chiave in forma CANONICA: l'id della commessa
---     con zeri davanti -> E_SORG_FORMATO (rev 2026-10-05, 20261005-26)
+--  7) Il ponte testuale del risolutore non c'e' piu': la chiave passa dalle
+--     colonne del modello (rev 2026-11-07, brief-db-sorgente-documento-e-riga
+--     giro C.2; la forma canonica del testo la controlla il BB della porta,
+--     script/test-guard-sorgente-polimorfa-testuale-v1 22-24)
+--
+-- ⚠️ rev 2026-11-07 (giro C.2): risolutore, check e guard prendono il documento
+--   con le colonne del modello (tipo, sorgente_id, sorgente_uid). La commessa
+--   sorgente e' un tipo a chiave id: sorgente_id = l'id, sorgente_uid NULL.
 --
 -- Scopo:
 --  - la sorgente si fabbrica con il tipo COMMESSA (target vendite.commesse,
@@ -107,7 +113,7 @@ SELECT
 --   documenti, billing account delle attivita') sono esercitate dai
 --   percorsi reali del push.
 SELECT is(
-    (SELECT script.fn_get_sorgente_emittente_sr_id(r.sorgente_tipo_id, t.root_id::text)
+    (SELECT script.fn_get_sorgente_emittente_sr_id(r.sorgente_tipo_id, t.root_id, NULL::uuid)
        FROM tmp_refs_sorg_emitt r, tmp_ids_sorg_emitt t),
     (SELECT c.emittente_soggetto_ruolo_id
        FROM vendite.commesse c, tmp_ids_sorg_emitt t WHERE c.id = t.root_id),
@@ -122,7 +128,7 @@ SELECT is(
 -- non un dettaglio difensivo.
 SELECT throws_ok(
     format(
-        $q$SELECT script.fn_get_sorgente_emittente_sr_id(%s, '999999999')$q$,
+        $q$SELECT script.fn_get_sorgente_emittente_sr_id(%s, 999999999999, NULL::uuid)$q$,
         (SELECT sorgente_tipo_id FROM tmp_refs_sorg_emitt)
     ),
     'P0001',
@@ -135,7 +141,7 @@ SELECT throws_ok(
 -- =========================================================
 SELECT ok(
     (SELECT vendite.fn_check_commessa_sorgente_emittente_omogeneo(
-                t.dest_id, r.sorgente_tipo_id, t.root_id::text)
+                t.dest_id, r.sorgente_tipo_id, t.root_id, NULL::uuid)
        FROM tmp_refs_sorg_emitt r, tmp_ids_sorg_emitt t),
     'Sorgente dello stesso billing account: il check dice omogeneo'
 );
@@ -178,31 +184,15 @@ SELECT ok(
 
 
 -- =========================================================
--- 7) La chiave si chiede in FORMA CANONICA (20261005-26)
+-- 7) Il ponte testuale non c'e' piu' (giro C.2)
 -- =========================================================
--- Il commento della funzione diceva gia' «chiave CANONICA», ma la regex
--- '^[0-9]+$' accettava '007': la stessa commessa del test 2, con zeri
--- davanti, rispondeva il suo emittente. Ora la regola e' quella del guard
--- e del rubinetto (script.fn_sorgente_chiave_id). Si asserisce il CODICE.
-CREATE OR REPLACE FUNCTION pg_temp.codice_errore_emitt(p_sql text)
-RETURNS text AS $fn$
--- ⚠️ `text` esplicito: e' il canale CONSTRAINT dell'eccezione, non una colonna.
-DECLARE v_codice text;
-BEGIN
-  EXECUTE p_sql;
-  RETURN 'NESSUN ERRORE';
-EXCEPTION WHEN OTHERS THEN
-  GET STACKED DIAGNOSTICS v_codice = CONSTRAINT_NAME;
-  RETURN COALESCE(NULLIF(v_codice, ''), SQLSTATE);
-END $fn$ LANGUAGE plpgsql;
-
-SELECT is(
-    pg_temp.codice_errore_emitt(format(
-        $q$SELECT script.fn_get_sorgente_emittente_sr_id(%s, %L)$q$,
-        (SELECT sorgente_tipo_id FROM tmp_refs_sorg_emitt),
-        '0' || (SELECT root_id FROM tmp_ids_sorg_emitt)::text)),
-    'E_SORG_FORMATO',
-    'Il risolutore rifiuta la chiave non canonica (zeri davanti) con E_SORG_FORMATO'
+-- Il risolutore aveva una porta testuale per chi teneva la chiave del link come
+-- testo canonico. Il link tiene le colonne del modello, i due chiamanti le
+-- passano, e la porta si e' ritirata: la forma canonica del testo resta un
+-- compito del BB della porta del link.
+SELECT ok(
+    to_regprocedure('script.fn_get_sorgente_emittente_sr_id(bigint,text)') IS NULL,
+    'Il risolutore dell''emittente non ha piu'' la porta testuale (bigint, text)'
 );
 
 SELECT * FROM finish();

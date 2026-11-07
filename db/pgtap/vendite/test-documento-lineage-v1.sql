@@ -559,9 +559,9 @@ SELECT is(
 --    dell'operatore copre tutte e 60 le commesse e tutti e 13 i resi, quindi
 --    sarebbe verde anche con i rami vecchi. E' un presidio per il giorno in cui
 --    un operatore sara' ristretto a un emittente.
--- ⭐ E' anche il collaudo delle chiavi POLIMORFE di commesse_sorgenti.sorgente_uid
---    (uid per il preventivo, id::text per ordine e contratto): un join scritto
---    con la chiave sbagliata non darebbe errore, azzererebbe quel gruppo di archi.
+-- ⭐ E' anche il collaudo delle chiavi di commesse_sorgenti (sorgente_uid per il
+--    preventivo, sorgente_id per ordine e contratto): un join scritto sulla
+--    colonna sbagliata non darebbe errore, azzererebbe quel gruppo di archi.
 SELECT is(
     (SELECT count(*)::int
        FROM vendite.vw_documento_lineage_archi a
@@ -633,11 +633,11 @@ SELECT is(
     0, '41) archi: ogni arco ha un rango_origine dichiarato');
 
 -- ⭐ IL PRESIDIO DELLA CHIAVE POLIMORFA, sul ramo appena nato.
---    commesse_sorgenti.sorgente_uid segue config.sorgenti.key_selector: 'uid'
---    per il preventivo, 'id' per ordine, contratto e DDT. Il ramo U usa
---    d.id::text — e se un giorno qualcuno lo «allineasse» al ramo B copiandogli
---    d.uid::text, non ci sarebbe NESSUN errore: il join non troverebbe piu'
---    niente e il gruppo di archi U si azzererebbe. Le commesse tornerebbero
+--    La chiave di commesse_sorgenti segue config.sorgenti.key_selector:
+--    sorgente_uid per il preventivo, sorgente_id per ordine, contratto e DDT. Il
+--    ramo U legge sorgente_id — e se un giorno qualcuno lo «allineasse» al ramo B
+--    facendogli leggere sorgente_uid, non ci sarebbe NESSUN errore: il join non
+--    troverebbe piu' niente e il gruppo di archi U si azzererebbe. Le commesse tornerebbero
 --    senza origine come prima, e nessun test se ne accorgerebbe.
 -- ⚠️ Il test parte dalla RIGA e cerca l'arco, non viceversa: e' l'unico verso
 --    che vede un gruppo di archi SPARITO. Contare gli archi U non lo direbbe —
@@ -650,7 +650,7 @@ SELECT is(
        FROM vendite.commesse_sorgenti cs
        JOIN config.sorgenti s ON s.id = cs.sorgente_tipo_id
                              AND s.codice_interno = 'DDT_VENDITA'
-       JOIN vendite.ddt      d  ON d.id::text = cs.sorgente_uid
+       JOIN vendite.ddt      d  ON d.id       = cs.sorgente_id
        JOIN vendite.commesse cm ON cm.id      = cs.commessa_id
       WHERE NOT EXISTS (
               SELECT 1 FROM _lin_archi a
