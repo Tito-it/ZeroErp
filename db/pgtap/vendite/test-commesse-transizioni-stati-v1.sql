@@ -185,7 +185,7 @@ FROM vendite.fn_upsert_commessa_attivita(
   p_commessa_id => (SELECT commessa_id FROM tmp_commessa_tsc),
   -- La riga NORMALE ha la sua sorgente (vincolo 20261012-27).
   p_sorgente_tipo_id => (SELECT x.sorgente_tipo_id FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa_tsc)) x),
-  p_sorgente_uid => (SELECT x.consumo_id::text FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa_tsc)) x),
+  p_sorgente_chiave => (SELECT x.consumo_id::text FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa_tsc)) x),
   p_segment_key => ((SELECT x.segment_key FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa_tsc)) x) || ':' || 'SEG-TSC-1')::varchar,
   p_articolo_id => (SELECT articolo_id FROM tmp_refs_tsc),
   p_istanza_utility_id => (SELECT istanza_utility_id FROM tmp_refs_tsc),

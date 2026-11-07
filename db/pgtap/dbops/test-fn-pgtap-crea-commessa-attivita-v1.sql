@@ -107,7 +107,7 @@ SELECT vendite.fn_link_commessa_sorgente(
     p_commessa_id      => (SELECT commessa_id FROM t_c),
     p_sorgente_tipo_id => (SELECT s.id FROM config.sorgenti s
                             WHERE s.codice_interno = 'COMMESSA' AND s.attivo),
-    p_sorgente_uid     => (SELECT commessa_id FROM t_c)::text);
+    p_sorgente_chiave  => (SELECT commessa_id FROM t_c)::text);
 
 -- Lo stato si cambia dal verbo (la porta, giro 10): la fixture cammina la
 -- matrice e concede da se' l'azione cambia_stato_commessa.

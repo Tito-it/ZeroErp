@@ -36,7 +36,7 @@ AS $function$
 --   SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita(
 --              p_commessa_id        => ...,
 --              p_sorgente_codice    => 'PREVENTIVO',
---              p_sorgente_uid       => (SELECT uid::text FROM tmp_prev),
+--              p_sorgente_uid       => (SELECT uid::text FROM tmp_prev),  -- il SUO parametro: il nome resta
 --              p_sorgente_riga_id   => (SELECT id FROM tmp_riga),
 --              p_stato_emissione    => 'EMESSA');
 -- ⛔ L'emissione NON la fa: lo stato di emissione lo DICHIARA il test
@@ -210,7 +210,7 @@ BEGIN
         p_stato_approvazione            => p_stato_approvazione,
         p_stato_emissione               => p_stato_emissione,
         p_sorgente_tipo_id              => v_sorg_id,
-        p_sorgente_uid                  => v_sorg_chiave,
+        p_sorgente_chiave               => v_sorg_chiave,
         p_sorgente_riga                 => p_sorgente_riga_id,
         p_tipo_movimento                => 'NORMALE',
         p_meta                          => jsonb_build_object('test_scope', 'pgtap_commessa_attivita')) r;

@@ -167,8 +167,8 @@ SELECT is(
 
 SELECT throws_ok(
   $$INSERT INTO vendite.fatture_stampa_coda
-        (sorgente_tipo_id, sorgente_id, sorgente_uid, tipo_documento_output_id)
-    SELECT r.sorg_fattura, f.id, f.id::text, r.tipo_ddt
+        (sorgente_tipo_id, sorgente_id, tipo_documento_output_id)
+    SELECT r.sorg_fattura, f.id, r.tipo_ddt
       FROM _rif r, _fatture f WHERE f.fattura = 'F1'$$,
   '23P01', NULL,
   '8) un INSERT diretto accanto alla riga NULL viva: il vincolo lo rifiuta');
@@ -180,34 +180,34 @@ SELECT throws_ok(
 -- test guarda solo il legame dell'override.
 SELECT lives_ok(
   $$INSERT INTO vendite.fatture_stampa_coda
-        (sorgente_tipo_id, sorgente_id, sorgente_uid, template_documento_id,
+        (sorgente_tipo_id, sorgente_id, template_documento_id,
          tipo_documento_output_id, stato)
-    SELECT r.sorg_fattura, f.id, f.id::text, r.std_fattura, r.tipo_fv, 'FATTO'
+    SELECT r.sorg_fattura, f.id, r.std_fattura, r.tipo_fv, 'FATTO'
       FROM _rif r, _fatture f WHERE f.fattura = 'F2'$$,
   '9) override coerente: lo standard della fattura, col suo tipo');
 
 SELECT throws_ok(
   $$INSERT INTO vendite.fatture_stampa_coda
-        (sorgente_tipo_id, sorgente_id, sorgente_uid, template_documento_id,
+        (sorgente_tipo_id, sorgente_id, template_documento_id,
          tipo_documento_output_id, stato)
-    SELECT r.sorg_fattura, f.id, f.id::text, r.std_fattura, r.tipo_ddt, 'FATTO'
+    SELECT r.sorg_fattura, f.id, r.std_fattura, r.tipo_ddt, 'FATTO'
       FROM _rif r, _fatture f WHERE f.fattura = 'F2'$$,
   '23503', NULL,
   '10) override con un tipo diverso da quello del modello: FK composta');
 
 SELECT throws_ok(
   $$INSERT INTO vendite.fatture_stampa_coda
-        (sorgente_tipo_id, sorgente_id, sorgente_uid, template_documento_id, stato)
-    SELECT r.sorg_fattura, f.id, f.id::text, r.std_fattura, 'FATTO'
+        (sorgente_tipo_id, sorgente_id, template_documento_id, stato)
+    SELECT r.sorg_fattura, f.id, r.std_fattura, 'FATTO'
       FROM _rif r, _fatture f WHERE f.fattura = 'F2'$$,
   '23514', NULL,
   '11) override senza tipo: CHECK');
 
 SELECT throws_ok(
   $$INSERT INTO vendite.fatture_stampa_coda
-        (sorgente_tipo_id, sorgente_id, sorgente_uid, template_documento_id,
+        (sorgente_tipo_id, sorgente_id, template_documento_id,
          tipo_documento_output_id, stato)
-    SELECT r.sorg_fattura, f.id, f.id::text, r.std_ddt, r.tipo_ddt, 'FATTO'
+    SELECT r.sorg_fattura, f.id, r.std_ddt, r.tipo_ddt, 'FATTO'
       FROM _rif r, _fatture f WHERE f.fattura = 'F2'$$,
   '23503', NULL,
   '12) override col modello di un''altra sorgente (DDT): FK composta');

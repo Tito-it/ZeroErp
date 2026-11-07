@@ -142,7 +142,7 @@ BEGIN
     PERFORM vendite.fn_link_commessa_sorgente(
         p_commessa_id      => v_commessa,
         p_sorgente_tipo_id => (r ->> 'sorgente_tipo_id')::bigint,
-        p_sorgente_uid     => r ->> 'sorgente_uid');
+        p_sorgente_chiave  => r ->> 'sorgente_uid');
 
     FOR r IN SELECT * FROM jsonb_array_elements(p_righe) LOOP
         PERFORM vendite.fn_upsert_commessa_attivita(
@@ -173,7 +173,7 @@ BEGIN
             p_prezzo_bloccato               => (r ->> 'prezzo_bloccato')::boolean,
             p_pricing_mode                  => r ->> 'pricing_mode',
             p_sorgente_tipo_id              => (r ->> 'sorgente_tipo_id')::bigint,
-            p_sorgente_uid                  => r ->> 'sorgente_uid',
+            p_sorgente_chiave               => r ->> 'sorgente_uid',
             -- La riga del documento, dal lister (come la passa il backend).
             p_sorgente_riga => (r ->> 'riga_id')::bigint,
             p_meta                          => r -> 'meta');

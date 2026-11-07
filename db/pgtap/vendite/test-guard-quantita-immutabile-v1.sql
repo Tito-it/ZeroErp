@@ -144,7 +144,7 @@ FROM vendite.fn_upsert_commessa_attivita(
   p_stato_emissione => 'NON_EMESSA',
   -- La riga NORMALE ha la sua sorgente (vincolo 20261012-27).
   p_sorgente_tipo_id => (SELECT x.sorgente_tipo_id FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa)) x),
-  p_sorgente_uid => (SELECT x.consumo_id::text FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa)) x),
+  p_sorgente_chiave => (SELECT x.consumo_id::text FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa)) x),
   p_tipo_movimento => 'NORMALE',
   p_meta => jsonb_build_object('case', 'GUARD_Q')
 ) r;

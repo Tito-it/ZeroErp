@@ -154,7 +154,7 @@ SELECT vendite.fn_get_or_create_commessa(
 SELECT vendite.fn_link_commessa_sorgente(
   p_commessa_id      => (SELECT commessa_id FROM tmp_rif_comm),
   p_sorgente_tipo_id => (SELECT src_preventivo_id FROM tmp_rif_refs),
-  p_sorgente_uid     => (SELECT uid::text FROM tmp_rif_prev0),
+  p_sorgente_chiave  => (SELECT uid::text FROM tmp_rif_prev0),
   p_meta             => jsonb_build_object('test_scope', 'pgtap_vgrif')
 );
 
@@ -185,7 +185,7 @@ SELECT * FROM vendite.fn_upsert_commessa_attivita(
   p_stato_approvazione => 'APPROVATA',
   p_stato_emissione => 'NON_EMESSA',
   p_sorgente_tipo_id => (SELECT src_preventivo_id FROM tmp_rif_refs),
-  p_sorgente_uid => (SELECT uid::text FROM tmp_rif_prev0),
+  p_sorgente_chiave => (SELECT uid::text FROM tmp_rif_prev0),
   p_tipo_movimento => 'NORMALE',
   p_meta => jsonb_build_object('test_scope', 'pgtap_vgrif')
 );

@@ -289,8 +289,8 @@ BEGIN
         RETURN;
     END IF;
     INSERT INTO vendite.fatture_stampa_coda
-        (sorgente_tipo_id, sorgente_id, sorgente_uid, stato)
-    VALUES (v_tipo_id, v_fattura_id, v_fattura_id::text, 'PENDING');
+        (sorgente_tipo_id, sorgente_id, stato)
+    VALUES (v_tipo_id, v_fattura_id, 'PENDING');
 END
 $stampa$;
 

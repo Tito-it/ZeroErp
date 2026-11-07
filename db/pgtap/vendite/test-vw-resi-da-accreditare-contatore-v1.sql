@@ -112,7 +112,7 @@ SELECT vendite.fn_link_commessa_sorgente(
   -- target. fn_emit pretende solo che una ROOT esista, non ne dereferenzia
   -- il tipo. rev 2026-07-27 (bonifica: prima era una stringa inventata su
   -- sorgente PREVENTIVO, illegale dal guard del 2026-07-18).
-  p_sorgente_uid => (SELECT commessa_id FROM tmp_com)::text,
+  p_sorgente_chiave => (SELECT commessa_id FROM tmp_com)::text,
   p_sorgente_riga => NULL, p_meta => '{}'::jsonb);
 
 CREATE OR REPLACE FUNCTION pg_temp.mk_af(p_segment varchar, p_qta numeric)
@@ -125,7 +125,7 @@ BEGIN
     -- La riga NORMALE ha la sua sorgente (vincolo 20261012-27).
     -- La provenienza e' il documento che la chiave nomina (come nel push).
     p_sorgente_tipo_id => (SELECT k.sorgente_tipo_id FROM dbops.fn_pgtap_provenienza_da_chiave(p_segment) k),
-    p_sorgente_uid => (SELECT k.sorgente_chiave FROM dbops.fn_pgtap_provenienza_da_chiave(p_segment) k),
+    p_sorgente_chiave => (SELECT k.sorgente_chiave FROM dbops.fn_pgtap_provenienza_da_chiave(p_segment) k),
     p_sorgente_riga => (SELECT k.sorgente_riga FROM dbops.fn_pgtap_provenienza_da_chiave(p_segment) k),
     p_segment_key => p_segment,
     p_articolo_id => r.articolo_id, p_istanza_utility_id => r.istanza_utility_id,

@@ -34,6 +34,13 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
+-- ⭐ La stampa e' di un preventivo VERO, del mondo dell'operatore in sessione: dal
+--   lotto D di brief-db-sorgente-documento-e-riga il guard unico verifica che il
+--   documento stampato esista, e la chiave di un preventivo e' il suo uid.
+CREATE TEMP TABLE _dg_src AS
+SELECT p.preventivo_uid FROM dbops.fn_pgtap_crea_preventivo('dg file', 'DRAFT') p;
+
+
 SELECT plan(8);
 
 -- ============================================================
@@ -90,7 +97,7 @@ WITH ins_d AS (
     (SELECT id FROM tmp_dgf_template),
     (SELECT id FROM tmp_dgf_versione),
     (SELECT sorgente_id FROM tmp_dgf_ctx),
-    'PGTAP-FILE-001', NULL, 1,
+    (SELECT preventivo_uid FROM _dg_src), NULL, 1,
     'Doc file', 'doc-file.pdf',
     '{"y": 1, "_meta": {"context_version": 1}}'::jsonb,
     repeat('1', 64), repeat('2', 64), repeat('3', 64),

@@ -16,6 +16,10 @@
 #   2. dbops.fn_run_automations(... STORICO ...) -> crea storico.<table>
 #   3. Append riga in 80_data/sql/dbops/audit_sources.csv
 # Nessun cambio di schema richiesto.
+#
+# Rev 2026-11-07 (brief-db-revisione-dbops, giro 7, D37): via le quattro colonne
+# di tracciamento, tolte dalla tabella da 00_schema/dbops/20261108-25 e dal CSV.
+# Il mirror (runOnChange + ANY) rigira col CSV cambiato.
 # ------------------------------------------------------------
 
 databaseChangeLog:
@@ -55,10 +59,7 @@ databaseChangeLog:
               - column: { name: attivo, type: STRING }
               - column: { name: data_insert, type: STRING }
               - column: { name: user_insert, type: STRING }
-              - column:
-                  name: data_update
-                  type: STRING
-                  defaultValue: "NOW()"
-              - column: { name: user_update, type: STRING }
-              - column: { name: tx_id, type: uuid }
-              - column: { name: storicizza, type: STRING }
+              # ⛔ data_update, user_update, tx_id e storicizza non ci sono piu':
+              #   le ha tolte 00_schema/dbops/20261108-25 (D37 di
+              #   brief-db-revisione-dbops, giro 7). Da zero questo loader gira
+              #   DOPO quel DROP: una colonna elencata qui farebbe morire il migrate.

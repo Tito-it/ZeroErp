@@ -1,0 +1,84 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D37 — dbops.audit_sources PERDE LE COLONNE CHE NESSUNO SCRIVE
+#   Brief: brief-db-revisione-dbops, giro 7 (§20), decisione Q4 di Tid
+#   (2026-11-05): la tabella resta FUORI dall'ambito delle automazioni e perde
+#   tx_id, storicizza, data_update e user_update.
+#
+# ── ⭐ PERCHE' SI TOLGONO E NON SI ESEGUONO ─────────────────────────
+#   Le quattro colonne promettono tre automazioni (tx_id, storico, audit di
+#   aggiornamento) che su questa tabella non gira nessuno: `dbops` espone alle
+#   automazioni solo i suoi registri (automation_scope.csv), e audit_sources e'
+#   un catalogo seminato dal mirror CSV. storicizza = true non produce storico,
+#   data_update resta l'orario dell'INSERT. Una colonna che promette senza
+#   esecutore dice il falso a chi la legge.
+#
+# ── ⚠️ CHI LE NOMINAVA (censito il 2026-11-07) ──────────────────────
+#   · il loader 80_data/changelog/20260429-08 e il CSV audit_sources.csv:
+#     elencavano le quattro colonne. Sono un mirror runOnChange (validCheckSums
+#     ANY), corretto nello STESSO giro. ⛔ Da zero il loader gira DOPO questo
+#     DROP (80_data viene dopo 00_schema): con le colonne ancora elencate il
+#     migrate morirebbe;
+#   · config.storico_set_storicizza, la riga derivata 'dbops.audit_sources':
+#     fn_apply_storicizza_defaults fallirebbe su di lei a ogni corsa (la colonna
+#     non c'e' piu') e il sync non la pota (la tabella esiste). La cancella
+#     80_data/changelog/20261108-30;
+#   · script.vw_audit_sources, script.fn_audit_summary, il backend
+#     (amm_software) e il frontend leggono code, label_key, area_funzionale,
+#     storico_table e attivo: nessuno legge le quattro colonne.
+#   Nessuna vista dipende dalle colonne (pg_depend: solo DEFAULT e NOT NULL).
+#
+# ⛔ attivo, data_insert e user_insert restano: attivo e' un dato (quali
+#   sorgenti si navigano), gli altri due li riempie il DEFAULT alla nascita.
+#
+# IF EXISTS: idempotente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20261108-25-alter-audit-sources-drop-colonne-senza-esecutore-mctit.yaml
+
+  - changeSet:
+      id: 20261108-25-alter-audit-sources-drop-colonne-senza-esecutore
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.audit_sources perde tx_id, storicizza, data_update e user_update: fuori dall'ambito
+        delle automazioni nessuno le scriveva (D37, Q4). COMMENT della tabella riscritto.
+        Brief: brief-db-revisione-dbops, giro 7.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            { schemaName: dbops, tableName: audit_sources }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.audit_sources
+                  DROP COLUMN IF EXISTS tx_id,
+                  DROP COLUMN IF EXISTS storicizza,
+                  DROP COLUMN IF EXISTS data_update,
+                  DROP COLUMN IF EXISTS user_update;
+
+              COMMENT ON TABLE dbops.audit_sources IS
+                  'Catalogo delle sorgenti dell''audit: ogni riga descrive una tabella storico.* navigabile dal drawer di amministrazione (codice, tabella e colonna di chiave della shadow, chiave della label, area funzionale). La legge script.vw_audit_sources, solo le righe attive. Seminata dal CSV di 80_data. Fuori dall''ambito delle automazioni: non porta colonne di tracciamento (tx_id, storicizza, data_update, user_update) che nessuno scriverebbe; lo presidia dbops.vw_marcatori_automazione_senza_esecutore.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE dbops.audit_sources
+                  ADD COLUMN IF NOT EXISTS data_update timestamp with time zone NOT NULL DEFAULT now(),
+                  ADD COLUMN IF NOT EXISTS user_update text NOT NULL DEFAULT CURRENT_USER,
+                  ADD COLUMN IF NOT EXISTS tx_id uuid NULL,
+                  ADD COLUMN IF NOT EXISTS storicizza boolean NOT NULL DEFAULT true;
+              COMMENT ON TABLE dbops.audit_sources IS
+                  'Lookup table audit-sources. Ogni riga descrive una storico.* navigabile dal drawer admin.';

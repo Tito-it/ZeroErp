@@ -21,8 +21,10 @@
 --   1) il PERIMETRO contiene le sei tabelle di magazzino, con grammatica MODELLO_A
 --   2) le testate di vendita sono nel perimetro, tutte col guard unico (UNICO): bolla e reso
 --      dal giro T.2, ordine, contratto e fattura dal giro T.3 di brief-db-sorgente-documento-e-riga
---   3) l'esenzione dichiarata e' una, il log dei reconcile, col suo motivo (il lotto C,
---      giro C.1, toglie attivita_fatturabili e fatture_righe)
+--   3) le esenzioni dichiarate sono due, col loro motivo: il log dei reconcile, da
+--      tutte e due, e la coda di stampa, dal solo guard unico (il lotto C, giro C.1,
+--      toglie attivita_fatturabili e fatture_righe; il lotto D, giro D.1, aggiunge
+--      la coda: la sua chiave e' una FK vera)
 --   4) zero orfani di magazzino sul mondo costruito
 --   5) MODELLO_A: cancellato il bersaglio di un movimento -> UNA riga, livello DOCUMENTO
 --   6) TESTUALE: una tabella senza guard che nomina un ordine che non c'e' -> UNA riga
@@ -119,8 +121,8 @@ SELECT results_eq(
         FROM dbops.fn_sorgenti_orfane_perimetro()
        WHERE orfani_esclusi_perche IS NOT NULL OR guard_esente_perche IS NOT NULL
        ORDER BY 1$$,
-    $$VALUES ('pratiche.reconcile_errori', true, true)$$,
-    '3) l''esenzione dichiarata e'' una, il log dei reconcile, col suo motivo');
+    $$VALUES ('pratiche.reconcile_errori', true, true), ('vendite.fatture_stampa_coda', false, true)$$,
+    '3) le esenzioni dichiarate sono due: il log dei reconcile (da tutte e due) e la coda di stampa (dal solo guard)');
 
 SELECT is(
     (SELECT count(*) FROM dbops.vw_sorgenti_orfane o WHERE pg_temp.qn(o.tabella) LIKE 'magazzino.%'),

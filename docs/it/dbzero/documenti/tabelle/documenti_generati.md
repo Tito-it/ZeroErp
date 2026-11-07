@@ -14,7 +14,7 @@
 | template_documento_id | bigint | NO |  |
 | template_versione_id | bigint | NO |  |
 | sorgente_tipo_id | bigint | NO |  |
-| sorgente_uid | text | NO |  |
+| sorgente_uid | uuid | YES |  |
 | sorgente_riga | bigint | YES |  |
 | progressivo_sorgente | integer | NO |  |
 | stato | character varying(30) | NO | 'GENERATO'::character varying |
@@ -43,7 +43,7 @@
 | CHECK | chk_documenti_generati_nome_file_non_vuoto |  |
 | CHECK | chk_documenti_generati_pdf_hash_len |  |
 | CHECK | chk_documenti_generati_progressivo_pos |  |
-| CHECK | chk_documenti_generati_sorgente_uid_non_vuoto |  |
+| CHECK | chk_documenti_generati_sorgente_forma |  |
 | CHECK | chk_documenti_generati_stato |  |
 | CHECK | chk_documenti_generati_template_hash_len |  |
 | CHECK | chk_documenti_generati_titolo_non_vuoto |  |
@@ -54,7 +54,7 @@
 | FOREIGN KEY | documenti_generati_tipo_documento_output_id_fkey | tipo_documento_output_id |
 | FOREIGN KEY | fk_documenti_generati_django_auth_user | generato_da_user_id |
 | PRIMARY KEY | documenti_generati_pkey | id |
-| UNIQUE | uq_documenti_generati_sorgente_progressivo | sorgente_tipo_id, sorgente_uid, sorgente_riga, progressivo_sorgente |
+| UNIQUE | uq_documenti_generati_sorgente_progressivo | sorgente_tipo_id, sorgente_id, sorgente_uid, sorgente_riga, progressivo_sorgente |
 | UNIQUE | uq_documenti_generati_uid | uid |
 
 ## 📑 Indici
@@ -62,33 +62,37 @@
 |------|-------------|
 | documenti_generati_pkey | `CREATE UNIQUE INDEX documenti_generati_pkey ON documenti.documenti_generati USING btree (id)` |
 | ix_documenti_generati_generato_at | `CREATE INDEX ix_documenti_generati_generato_at ON documenti.documenti_generati USING btree (generato_at DESC)` |
+| ix_documenti_generati_sorgente_riga | `CREATE INDEX ix_documenti_generati_sorgente_riga ON documenti.documenti_generati USING btree (sorgente_tipo_id, sorgente_riga) WHERE (sorgente_riga IS NOT NULL)` |
+| ix_documenti_generati_sorgente_uid | `CREATE INDEX ix_documenti_generati_sorgente_uid ON documenti.documenti_generati USING btree (sorgente_tipo_id, sorgente_uid) WHERE (sorgente_uid IS NOT NULL)` |
 | ix_documenti_generati_stato | `CREATE INDEX ix_documenti_generati_stato ON documenti.documenti_generati USING btree (stato)` |
 | ix_documenti_generati_template_versione | `CREATE INDEX ix_documenti_generati_template_versione ON documenti.documenti_generati USING btree (template_versione_id)` |
-| uq_documenti_generati_sorgente_progressivo | `CREATE UNIQUE INDEX uq_documenti_generati_sorgente_progressivo ON documenti.documenti_generati USING btree (sorgente_tipo_id, sorgente_uid, sorgente_riga, progressivo_sorgente) NULLS NOT DISTINCT` |
+| uq_documenti_generati_sorgente_progressivo | `CREATE UNIQUE INDEX uq_documenti_generati_sorgente_progressivo ON documenti.documenti_generati USING btree (sorgente_tipo_id, sorgente_id, sorgente_uid, sorgente_riga, progressivo_sorgente) NULLS NOT DISTINCT` |
 | uq_documenti_generati_uid | `CREATE UNIQUE INDEX uq_documenti_generati_uid ON documenti.documenti_generati USING btree (uid)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_documenti_generati_a10_block_delete_dlt | BEFORE | DELETE | `EXECUTE FUNCTION documenti.trgfn_documenti_generati_block_delete()` |
-| trg_documenti_generati_a10_check_coerenza_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION documenti.trgfn_documenti_generati_check_coerenza()` |
 | trg_documenti_generati_a10_check_coerenza_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION documenti.trgfn_documenti_generati_check_coerenza()` |
+| trg_documenti_generati_a10_check_coerenza_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION documenti.trgfn_documenti_generati_check_coerenza()` |
 | trg_documenti_generati_a10_emittenti_fiscali_require_att_e49311 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'emittenti_fiscali', 'attivo', 'emittente_fiscale_id', 'id')` |
 | trg_documenti_generati_a10_emittenti_fiscali_require_att_e49311 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'emittenti_fiscali', 'attivo', 'emittente_fiscale_id', 'id')` |
 | trg_documenti_generati_a10_guard_emittente_scope_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_guard_emittente_scope('fiscale', 'emittente_fiscale_id')` |
 | trg_documenti_generati_a10_guard_emittente_scope_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_emittente_scope('fiscale', 'emittente_fiscale_id')` |
+| trg_documenti_generati_a10_guard_sorgente_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_sorgente('DOCUMENTO', 'BLOCCA')` |
+| trg_documenti_generati_a10_guard_sorgente_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_guard_sorgente('DOCUMENTO', 'BLOCCA')` |
 | trg_documenti_generati_a10_guard_versione_contesto_ins | BEFORE | INSERT | `EXECUTE FUNCTION documenti.trgfn_documenti_generati_guard_versione_contesto()` |
 | trg_documenti_generati_a10_protect_snapshot_upd | BEFORE | UPDATE | `EXECUTE FUNCTION documenti.trgfn_documenti_generati_protect_snapshot()` |
-| trg_documenti_generati_a10_sorgenti_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_tipo_id', 'id')` |
 | trg_documenti_generati_a10_sorgenti_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_tipo_id', 'id')` |
-| trg_documenti_generati_a10_template_documenti_require_at_e5973a | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('documenti', 'template_documenti', 'attivo', 'template_documento_id', 'id')` |
+| trg_documenti_generati_a10_sorgenti_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_tipo_id', 'id')` |
 | trg_documenti_generati_a10_template_documenti_require_at_e5973a | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('documenti', 'template_documenti', 'attivo', 'template_documento_id', 'id')` |
+| trg_documenti_generati_a10_template_documenti_require_at_e5973a | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('documenti', 'template_documenti', 'attivo', 'template_documento_id', 'id')` |
 | trg_documenti_generati_a10_template_documenti_versioni_r_2d8913 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('documenti', 'template_documenti_versioni', 'attivo', 'template_versione_id', 'id')` |
 | trg_documenti_generati_a10_template_documenti_versioni_r_2d8913 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('documenti', 'template_documenti_versioni', 'attivo', 'template_versione_id', 'id')` |
-| trg_documenti_generati_a10_tipi_documento_output_require_e76386 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('documenti', 'tipi_documento_output', 'attivo', 'tipo_documento_output_id', 'id')` |
 | trg_documenti_generati_a10_tipi_documento_output_require_e76386 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('documenti', 'tipi_documento_output', 'attivo', 'tipo_documento_output_id', 'id')` |
-| trg_documenti_generati_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_documenti_generati_a10_tipi_documento_output_require_e76386 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('documenti', 'tipi_documento_output', 'attivo', 'tipo_documento_output_id', 'id')` |
 | trg_documenti_generati_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_documenti_generati_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_documenti_generati_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_documenti_generati_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_get_lookup_codici`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 7 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -85,10 +85,13 @@ Si ordina per `descrizione` o per `codice`, in un verso o nell'altro; i vuoti va
 Ordinare per codice su una tabella che non ha né la colonna né un override ordina per
 descrizione.
 
-⚠️ L'ordinamento non ha uno spareggio: due righe con la stessa descrizione possono uscire in un
-ordine qualunque, e chi pagina con `p_offset` può vedere una riga due volte o mai. Il backend non
-pagina da qui: chiama la funzione da zero con un tetto ampio e ordina e pagina fuori, con l'`id`
-come spareggio.
+⭐ A parità di valore decide l'`id`, **nello stesso verso** della colonna: l'ordine è totale, e
+chi sfoglia con `p_limit` e `p_offset` vede ogni riga una volta sola, senza ripetizioni né buchi.
+È la stessa regola dello spareggio che il backend usa per le sue liste.
+
+Senza `p_limit` la funzione restituisce tutte le righe che passano i filtri. Il backend la chiama
+così, da zero e senza tetto, e cerca, ordina e pagina fuori, con il suo spareggio sull'`id`: un
+tetto applicato prima della ricerca deciderebbe quali righe la ricerca può trovare.
 
 ---
 
@@ -105,7 +108,8 @@ come spareggio.
 ### Test
 
 * `db/pgtap/dbops/test-fn-get-lookup-codici.sql` — ordinamento nei due versi su tabelle reali, il
-  filtro `attivo`, i rifiuti di parametro e dell'`id` `uuid`.
+  filtro `attivo`, i rifiuti di parametro e dell'`id` `uuid`, lo spareggio sull'`id` nei due versi e
+  le pagine che, concatenate, danno la lista intera.
 * `db/pgtap/dbops/test-fn-get-lookup-codici-obsoleto-v1.sql` — il filtro dell'obsolescenza: il
   default che mostra tutto, l'esclusione, il ritiro programmato, la tabella senza la colonna e la
   colonna del tipo sbagliato.
@@ -121,6 +125,9 @@ come spareggio.
 * 2026-06-30 — nasce il filtro su `obsoleto_dal` (`brief-db-obsoleto-dal-filtro-lookup-e-guard`).
 * 2026-10-09 — la data di riferimento del filtro passa da quella di sistema alla data operativa
   (`script.fn_data_operativa`), il «oggi» del fuso aziendale.
+* 2026-11-07 — l'ordinamento prende lo spareggio sull'`id`. Prima, a parità di valore, l'ordine
+  lo sceglieva il piano; e il backend chiamava con un tetto di diecimila righe e cercava dopo il
+  taglio, così su una tabella più lunga la ricerca non vedeva le righe oltre il tetto.
 
 ---
 

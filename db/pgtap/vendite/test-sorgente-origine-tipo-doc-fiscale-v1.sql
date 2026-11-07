@@ -182,7 +182,7 @@ SELECT vendite.fn_get_or_create_commessa(
 SELECT vendite.fn_link_commessa_sorgente(
   p_commessa_id => (SELECT commessa_id FROM tmp_commessa_sot),
   p_sorgente_tipo_id => (SELECT sorgente_root_id FROM tmp_refs_sot),
-  p_sorgente_uid => (SELECT commessa_id FROM tmp_commessa_sot)::text,
+  p_sorgente_chiave => (SELECT commessa_id FROM tmp_commessa_sot)::text,
   p_sorgente_riga => NULL,
   p_meta => '{}'::jsonb
 );
@@ -235,7 +235,7 @@ FROM vendite.fn_upsert_commessa_attivita(
   p_stato_approvazione => 'APPROVATA',
   p_stato_emissione => 'NON_EMESSA',
   p_sorgente_tipo_id => (SELECT sorgente_preventivo_id FROM tmp_refs_sot),
-  p_sorgente_uid => (SELECT uid::text FROM tmp_prev_sot),
+  p_sorgente_chiave => (SELECT uid::text FROM tmp_prev_sot),
   p_tipo_movimento => 'NORMALE',
   p_meta => jsonb_build_object('case', 'SORGENTE_ORIGINE_TEST')
 ) r;

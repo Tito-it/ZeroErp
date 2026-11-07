@@ -174,7 +174,7 @@ SELECT vendite.fn_get_or_create_commessa(
 SELECT vendite.fn_link_commessa_sorgente(
   p_commessa_id      => (SELECT commessa_id FROM tmp_vg_comm),
   p_sorgente_tipo_id => (SELECT src_preventivo_id FROM tmp_vg_refs),
-  p_sorgente_uid     => (SELECT uid::text FROM tmp_vg_prev),
+  p_sorgente_chiave  => (SELECT uid::text FROM tmp_vg_prev),
   p_meta             => jsonb_build_object('test_scope', 'pgtap_vgruppi')
 );
 
@@ -214,7 +214,7 @@ CROSS JOIN LATERAL (
     p_sorgente_tipo_id => CASE WHEN x.g = 'P'
                                THEN (SELECT src_preventivo_id FROM tmp_vg_refs)
                                ELSE (SELECT src_contratto_id FROM tmp_vg_refs) END,
-    p_sorgente_uid => CASE WHEN x.g = 'P'
+    p_sorgente_chiave => CASE WHEN x.g = 'P'
                            THEN (SELECT uid::text FROM tmp_vg_prev)
                            ELSE (SELECT uid::text FROM tmp_vg_contr) END,
     p_tipo_movimento => 'NORMALE',

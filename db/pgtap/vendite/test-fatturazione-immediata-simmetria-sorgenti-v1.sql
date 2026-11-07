@@ -424,7 +424,7 @@ CREATE TEMP TABLE tmp_link_fi AS
 SELECT vendite.fn_link_commessa_sorgente(
   p_commessa_id      => (SELECT commessa_imm FROM tmp_comm_fi),
   p_sorgente_tipo_id => (SELECT sorgente_ordine_id FROM tmp_refs_fi),
-  p_sorgente_uid     => (SELECT uid::text FROM tmp_ord_imm),
+  p_sorgente_chiave  => (SELECT uid::text FROM tmp_ord_imm),
   p_meta             => jsonb_build_object('test_scope', 'pgtap_fi_simmetria')
 ) AS link_id;
 
@@ -522,7 +522,7 @@ CREATE TEMP TABLE tmp_link_prev_fi AS
 SELECT vendite.fn_link_commessa_sorgente(
   p_commessa_id      => (SELECT commessa_dif FROM tmp_comm_fi),
   p_sorgente_tipo_id => (SELECT sorgente_preventivo_id FROM tmp_refs_fi),
-  p_sorgente_uid     => (SELECT uid::text FROM tmp_prev_fi),
+  p_sorgente_chiave  => (SELECT uid::text FROM tmp_prev_fi),
   p_meta             => jsonb_build_object('test_scope', 'pgtap_fi_simmetria_prev')
 ) AS link_id;
 

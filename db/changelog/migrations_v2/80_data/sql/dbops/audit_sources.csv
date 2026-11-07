@@ -1,9 +1,9 @@
-id,code,storico_table,storico_pk_col,label_key,area_funzionale,attivo,data_insert,user_insert,data_update,user_update,tx_id,storicizza
-1,user_override_aree,storico.user_override_aree,user_override_aree_id,amm.audit_tabella_override_aree,PERMESSI,t,2026-04-29 00:00:00,titodb,2026-04-29 00:00:00,titodb,NULL,t
-2,user_override_azioni,storico.user_override_azioni,user_override_azioni_id,amm.audit_tabella_override_azioni,PERMESSI,t,2026-04-29 00:00:00,titodb,2026-04-29 00:00:00,titodb,NULL,t
-3,user_override_oggetti,storico.user_override_oggetti,user_override_oggetti_id,amm.audit_tabella_override_oggetti,PERMESSI,t,2026-04-29 00:00:00,titodb,2026-04-29 00:00:00,titodb,NULL,t
-4,user_emittenti_fiscali,storico.user_emittenti_fiscali,user_emittenti_fiscali_id,amm.audit_tabella_emittenti,EMITTENTI,t,2026-04-29 00:00:00,titodb,2026-04-29 00:00:00,titodb,NULL,t
-8,identita_digitali,storico.identita_digitali,identita_digitali_id,amm.audit_tabella_identita,AUTH,t,2026-04-29 00:00:00,titodb,2026-04-29 00:00:00,titodb,NULL,t
-9,profili_accesso_aree,storico.profili_accesso_aree,profili_accesso_aree_id,amm.audit_tabella_profilo_accesso_aree,PERMESSI,t,2026-05-04 00:00:00,titodb,2026-05-04 00:00:00,titodb,NULL,t
-10,profili_accesso_azioni,storico.profili_accesso_azioni,profili_accesso_azioni_id,amm.audit_tabella_profilo_accesso_azioni,PERMESSI,t,2026-05-04 00:00:00,titodb,2026-05-04 00:00:00,titodb,NULL,t
-11,profili_accesso_bindings,storico.profili_accesso_bindings,profili_accesso_bindings_id,amm.audit_tabella_profilo_accesso_bindings,PERMESSI,t,2026-05-04 00:00:00,titodb,2026-05-04 00:00:00,titodb,NULL,t
+id,code,storico_table,storico_pk_col,label_key,area_funzionale,attivo,data_insert,user_insert
+1,user_override_aree,storico.user_override_aree,user_override_aree_id,amm.audit_tabella_override_aree,PERMESSI,t,2026-04-29 00:00:00,titodb
+2,user_override_azioni,storico.user_override_azioni,user_override_azioni_id,amm.audit_tabella_override_azioni,PERMESSI,t,2026-04-29 00:00:00,titodb
+3,user_override_oggetti,storico.user_override_oggetti,user_override_oggetti_id,amm.audit_tabella_override_oggetti,PERMESSI,t,2026-04-29 00:00:00,titodb
+4,user_emittenti_fiscali,storico.user_emittenti_fiscali,user_emittenti_fiscali_id,amm.audit_tabella_emittenti,EMITTENTI,t,2026-04-29 00:00:00,titodb
+8,identita_digitali,storico.identita_digitali,identita_digitali_id,amm.audit_tabella_identita,AUTH,t,2026-04-29 00:00:00,titodb
+9,profili_accesso_aree,storico.profili_accesso_aree,profili_accesso_aree_id,amm.audit_tabella_profilo_accesso_aree,PERMESSI,t,2026-05-04 00:00:00,titodb
+10,profili_accesso_azioni,storico.profili_accesso_azioni,profili_accesso_azioni_id,amm.audit_tabella_profilo_accesso_azioni,PERMESSI,t,2026-05-04 00:00:00,titodb
+11,profili_accesso_bindings,storico.profili_accesso_bindings,profili_accesso_bindings_id,amm.audit_tabella_profilo_accesso_bindings,PERMESSI,t,2026-05-04 00:00:00,titodb

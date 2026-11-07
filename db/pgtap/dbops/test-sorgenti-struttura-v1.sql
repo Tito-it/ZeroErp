@@ -23,9 +23,12 @@
 --   rev 2026-11-07: il lotto C, giro C.1, toglie attivita_fatturabili (le sue sorgente_*
 --   si ritirano: esce dal perimetro) e fatture_righe (guard unico montato). Il test 2
 --   legge schema e nome dal perimetro, non regclass::text, che dipende dal search_path.
+--   rev 2026-11-07: il lotto D, giro D.1 (20261108-17), monta il guard unico su
+--   documenti_generati; la coda di stampa perde sorgente_uid (20261108-18) ed e'
+--   esente dal guard col motivo (20261108-21): la sua chiave e' una FK vera.
 --
 -- Elenco test (plan 5):
---   1) l'unica esenzione dal guard e' il log dei reconcile, col suo motivo (D-9)
+--   1) dal guard sono esenti il log dei reconcile (D-9) e la coda di stampa (D-3), col motivo
 --   2) le tabelle ancora senza il guard unico sono esattamente il debito dichiarato
 --   3) ogni montaggio del guard unico ha argomenti validi
 --   4) nessuna tabella monta il guard unico insieme a una delle due sorelle vecchie
@@ -45,8 +48,8 @@ SELECT results_eq(
         FROM dbops.fn_sorgenti_orfane_perimetro()
        WHERE guard_esente_perche IS NOT NULL
        ORDER BY 1$$,
-    $$VALUES ('pratiche.reconcile_errori', true)$$,
-    '1) dal guard e'' esente solo il log dei reconcile, con il motivo scritto');
+    $$VALUES ('pratiche.reconcile_errori', true), ('vendite.fatture_stampa_coda', true)$$,
+    '1) dal guard sono esenti il log dei reconcile e la coda di stampa, con il motivo scritto');
 
 -- Il debito, per lotto. Si toglie, non si aggiunge.
 SELECT results_eq(
@@ -59,15 +62,11 @@ SELECT results_eq(
     $$VALUES
         -- lotto M (acquisti e magazzino)
         ('acquisti.ddt'), ('acquisti.ddt_righe'), ('acquisti.ordini'), ('acquisti.ordini_righe'),
-        -- lotto D (documenti generati, coda di stampa)
-        ('documenti.documenti_generati'),
         -- lotto M
         ('magazzino.eventi_assets'), ('magazzino.inventari'), ('magazzino.movimenti'),
         ('magazzino.movimenti_attesi'), ('magazzino.rettifiche'), ('magazzino.trasferimenti'),
         -- lotto P (pratiche)
-        ('pratiche.pratiche_sorgenti'),
-        -- lotto D
-        ('vendite.fatture_stampa_coda')$$,
+        ('pratiche.pratiche_sorgenti')$$,
     '2) le tabelle ancora senza il guard unico sono esattamente il debito dichiarato (si toglie, non si aggiunge)');
 
 SELECT is_empty(

@@ -165,32 +165,54 @@ SELECT t.lato, v.id AS versione_id, v.template_documento_id AS template_id
 --   nasce — con un errore che parla di coerenza, non di perimetro.
 -- ⚠️ I tre hash sono `character varying(64)` con un CHECK sulla lunghezza:
 --   `encode(sha256(...),'hex')` ne fa esattamente 64.
-CREATE TEMP TABLE _documenti AS
-WITH d AS (
-    INSERT INTO documenti.documenti_generati
-        (tipo_documento_output_id, template_documento_id, template_versione_id,
-         sorgente_tipo_id, sorgente_uid, progressivo_sorgente,
-         titolo, nome_file, context_json,
-         context_hash, template_hash, pdf_hash, emittente_fiscale_id)
-    SELECT c.tipo_output_id, t.template_id, v.versione_id,
-           c.sorgente_tipo_id, 'PGTAP-' || t.lato, 1,
-           'Documento pgTAP RLS ' || t.lato,
-           'pgtap-rls-' || t.lato || '.pdf',
-           -- _meta.context_version = versione_contesto della versione: lo
-           --   pretende il guard della forma (20260930-20).
-           jsonb_build_object('lato', t.lato,
-                              '_meta', jsonb_build_object('context_version', 1)),
-           encode(sha256(('ctx'  || t.lato)::bytea), 'hex')::varchar,
-           encode(sha256(('tpl'  || t.lato)::bytea), 'hex')::varchar,
-           encode(sha256(('pdf'  || t.lato)::bytea), 'hex')::varchar,
-           t.emittente_fiscale_id
-      FROM _template t
-      JOIN _versioni v ON v.template_id = t.template_id
-      CROSS JOIN _catalogo c
-    RETURNING id, emittente_fiscale_id
-)
-SELECT t.lato, d.id AS documento_id, t.emittente_fiscale_id, t.auth_user_id
-  FROM d JOIN _template t ON t.emittente_fiscale_id = d.emittente_fiscale_id;
+-- ⭐ La stampa e' di una FATTURA VERA del suo mondo: dal lotto D di
+--   brief-db-sorgente-documento-e-riga il guard unico verifica che il documento
+--   stampato esista, e la chiave di una fattura e' il suo id (sorgente_id). La
+--   fattura la costruisce il builder dentro il contesto dell'operatore del mondo
+--   (con un contesto aperto riusa la sua azienda), e la stampa nasce nello
+--   stesso contesto: un mondo alla volta.
+CREATE TEMP TABLE _documenti
+    (lato text, documento_id bigint, emittente_fiscale_id bigint, auth_user_id integer);
+
+DO $stampe$
+DECLARE
+    v_t       record;
+    v_fattura vendite.fatture.id%TYPE;
+BEGIN
+    FOR v_t IN SELECT * FROM _template ORDER BY lato LOOP
+        PERFORM script.fn_pgtap_set_contesto_operatore(v_t.auth_user_id);
+
+        SELECT f.fattura_id INTO v_fattura
+          FROM dbops.fn_pgtap_crea_fattura('dg satelliti ' || v_t.lato) f;
+
+        WITH d AS (
+            INSERT INTO documenti.documenti_generati
+                (tipo_documento_output_id, template_documento_id, template_versione_id,
+                 sorgente_tipo_id, sorgente_id, progressivo_sorgente,
+                 titolo, nome_file, context_json,
+                 context_hash, template_hash, pdf_hash, emittente_fiscale_id)
+            SELECT c.tipo_output_id, v_t.template_id, v.versione_id,
+                   c.sorgente_tipo_id, v_fattura, 1,
+                   'Documento pgTAP RLS ' || v_t.lato,
+                   'pgtap-rls-' || v_t.lato || '.pdf',
+                   -- _meta.context_version = versione_contesto della versione: lo
+                   --   pretende il guard della forma (20260930-20).
+                   jsonb_build_object('lato', v_t.lato,
+                                      '_meta', jsonb_build_object('context_version', 1)),
+                   encode(sha256(('ctx'  || v_t.lato)::bytea), 'hex')::varchar,
+                   encode(sha256(('tpl'  || v_t.lato)::bytea), 'hex')::varchar,
+                   encode(sha256(('pdf'  || v_t.lato)::bytea), 'hex')::varchar,
+                   v_t.emittente_fiscale_id
+              FROM _versioni v
+              CROSS JOIN _catalogo c
+             WHERE v.template_id = v_t.template_id
+            RETURNING id
+        )
+        INSERT INTO _documenti
+        SELECT v_t.lato, d.id, v_t.emittente_fiscale_id, v_t.auth_user_id FROM d;
+    END LOOP;
+END
+$stampe$;
 
 -- Il diario: chi ha generato cosa, quando, con quale esito.
 INSERT INTO documenti.documenti_generati_eventi

@@ -17,7 +17,7 @@ CREATE OR REPLACE FUNCTION vendite.fn_accoda_stampe_lotto(p_lotto_id bigint, p_t
  LANGUAGE plpgsql
 AS $function$
 DECLARE
-    v_sorgente_tipo_id config.sorgenti.id%TYPE;
+    v_sorgente_tipo_id vendite.fatture_stampa_coda.sorgente_tipo_id%TYPE;
     -- tipo esplicito: un conteggio, non una colonna
     v_accodate         integer := 0;
 BEGIN
@@ -31,6 +31,8 @@ BEGIN
     -- rev 2026-10-20 (20261020-30): il tipo di documento da
     --   stampare lo dice chi accoda; NULL = decide il DB alla
     --   stampa, se il candidato e' uno.
+    -- rev 2026-11-07 (20261108-19): la fattura sta solo in
+    --   sorgente_id; il doppione testuale e' ritirato.
 
     -- Guard parametri ID: no NULL, no <= 0 (non normalizzare).
     IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
@@ -59,14 +61,14 @@ BEGIN
             NULL::uuid, 'config.sorgenti FATTURA assente');
     END IF;
 
-    -- Accoda le fatture del lotto.
-    -- sorgente_uid = id::text (key_selector FATTURA).
+    -- Accoda le fatture del lotto: la fattura in sorgente_id
+    -- (key_selector FATTURA = id, FK vera).
     -- ON CONFLICT senza bersaglio: ex_fatture_stampa_coda_vivo e'
     -- un vincolo di esclusione, e l'unico altro vincolo e' la PK.
     INSERT INTO vendite.fatture_stampa_coda
-        (sorgente_tipo_id, sorgente_id, sorgente_uid, lotto_id,
+        (sorgente_tipo_id, sorgente_id, lotto_id,
          tipo_documento_output_id)
-    SELECT v_sorgente_tipo_id, f.id, f.id::text, p_lotto_id,
+    SELECT v_sorgente_tipo_id, f.id, p_lotto_id,
            p_tipo_documento_output_id
       FROM vendite.fatturazione_lotti_fatture lf
       JOIN vendite.fatture f ON f.id = lf.fattura_id
@@ -79,7 +81,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_accoda_stampe_lotto(p_lotto_id bigint, p_tipo_documento_output_id bigint)
-IS 'Accoda in vendite.fatture_stampa_coda un work-item PENDING per ogni fattura del lotto (sorgente FATTURA, sorgente_uid=id::text), col tipo di documento da stampare p_tipo_documento_output_id (NULL = decide il DB alla stampa, se fra i modelli che possono stampare ce n''e'' uno solo). Idempotente via il vincolo di esclusione ex_fatture_stampa_coda_vivo (ON CONFLICT DO NOTHING): una riga viva per (fattura, tipo), e una riga col tipo NULL esclude le altre righe vive della stessa fattura. Ritorna il numero di righe effettivamente accodate. Chiamata dal task pipeline stampa_documenti_lotto; numerazione (backstop) e render vivono nel worker drainer. Brief: brief-db-processi-fatturazione-cockpit §4; rev 2026-08-04 (D-M): via il predicato su lf.esclusa; rev 2026-10-20 (brief-db-modelli-documento-standard §9): il parametro del tipo.';
+IS 'Accoda in vendite.fatture_stampa_coda un work-item PENDING per ogni fattura del lotto (sorgente FATTURA, la fattura in sorgente_id), col tipo di documento da stampare p_tipo_documento_output_id (NULL = decide il DB alla stampa, se fra i modelli che possono stampare ce n''e'' uno solo). Idempotente via il vincolo di esclusione ex_fatture_stampa_coda_vivo (ON CONFLICT DO NOTHING): una riga viva per (fattura, tipo), e una riga col tipo NULL esclude le altre righe vive della stessa fattura. Ritorna il numero di righe effettivamente accodate. Chiamata dal task pipeline stampa_documenti_lotto; numerazione (backstop) e render vivono nel worker drainer. Brief: brief-db-processi-fatturazione-cockpit §4; rev 2026-08-04 (D-M): via il predicato su lf.esclusa; rev 2026-10-20 (brief-db-modelli-documento-standard §9): il parametro del tipo; rev 2026-11-07 (brief-db-sorgente-documento-e-riga, lotto D): non scrive piu'' il doppione testuale sorgente_uid.';
 ```
 
 </div>

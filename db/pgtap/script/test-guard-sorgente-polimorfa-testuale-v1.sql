@@ -288,7 +288,7 @@ CREATE TEMP TABLE tmp_guard_link12 AS
 SELECT vendite.fn_link_commessa_sorgente(
   p_commessa_id => (SELECT commessa_host FROM tmp_guard_commesse),
   p_sorgente_tipo_id => (SELECT src_commessa FROM tmp_guard_refs),
-  p_sorgente_uid => (SELECT commessa_src2::text FROM tmp_guard_commesse),
+  p_sorgente_chiave => (SELECT commessa_src2::text FROM tmp_guard_commesse),
   p_sorgente_riga => NULL,
   p_meta => '{}'::jsonb
 ) AS link_id;
@@ -377,7 +377,7 @@ CREATE TEMP TABLE tmp_guard_link16 AS
 SELECT vendite.fn_link_commessa_sorgente(
     p_commessa_id => (SELECT commessa_host FROM tmp_guard_commesse),
     p_sorgente_tipo_id => (SELECT src_ordine FROM tmp_guard_refs),
-    p_sorgente_uid => (SELECT uid::text FROM tmp_ordine_libero),
+    p_sorgente_chiave => (SELECT uid::text FROM tmp_ordine_libero),
     p_sorgente_riga => NULL,
     p_meta => '{}'::jsonb) AS link_id;
 
@@ -518,7 +518,7 @@ CREATE TEMP TABLE tmp_guard_link24 AS
 SELECT vendite.fn_link_commessa_sorgente(
     p_commessa_id => (SELECT commessa_host FROM tmp_guard_commesse),
     p_sorgente_tipo_id => (SELECT src_commessa FROM tmp_guard_refs),
-    p_sorgente_uid => ' ' || (SELECT commessa_src3::text FROM tmp_guard_src3) || ' ',
+    p_sorgente_chiave => ' ' || (SELECT commessa_src3::text FROM tmp_guard_src3) || ' ',
     p_sorgente_riga => NULL,
     p_meta => '{}'::jsonb) AS link_id;
 

@@ -192,7 +192,7 @@ RETURNS vendite.commesse_attivita.id%TYPE LANGUAGE sql AS $fx$
       p_commessa_id                   => p_commessa_id,
       -- La riga NORMALE ha la sua sorgente (vincolo 20261012-27).
       p_sorgente_tipo_id => (SELECT x.sorgente_tipo_id FROM dbops.fn_pgtap_consumo_della_commessa(p_commessa_id) x),
-      p_sorgente_uid => (SELECT x.consumo_id::text FROM dbops.fn_pgtap_consumo_della_commessa(p_commessa_id) x),
+      p_sorgente_chiave => (SELECT x.consumo_id::text FROM dbops.fn_pgtap_consumo_della_commessa(p_commessa_id) x),
       p_segment_key                   => ((SELECT x.segment_key FROM dbops.fn_pgtap_consumo_della_commessa(p_commessa_id) x) || ':' || p_seg)::varchar,
       p_articolo_id                   => (SELECT articolo_id FROM tmp_refs_guc),
       p_istanza_utility_id            => (SELECT istanza_utility_id FROM tmp_refs_guc),
@@ -284,7 +284,7 @@ BEGIN
     p_commessa_id      => v_id,
     p_sorgente_tipo_id => (SELECT s.id FROM config.sorgenti s
                             WHERE s.codice_interno = 'COMMESSA' AND s.attivo IS TRUE),
-    p_sorgente_uid     => v_id::text);
+    p_sorgente_chiave  => v_id::text);
   PERFORM pg_temp.fx_riga(v_id, 'SEG-GUC-B1', 'APPROVATA', 'NON_EMESSA');
   PERFORM * FROM vendite.fn_cambia_stato_commessa(v_id, 'PRONTA_FATTURAZIONE');
   -- L'emissione marca la riga EMESSA: la strada vera, non un UPDATE.

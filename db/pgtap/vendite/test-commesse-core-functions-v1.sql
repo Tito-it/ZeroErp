@@ -213,7 +213,7 @@ SELECT vendite.fn_link_commessa_sorgente(
   p_commessa_id => (SELECT commessa_id FROM tmp_commessa_core),
   p_sorgente_tipo_id => (SELECT root_sorgente_tipo_id FROM tmp_refs_commesse_core),
   -- ROOT: uid = id della commessa stessa, esiste per costruzione.
-  p_sorgente_uid => (SELECT commessa_id FROM tmp_commessa_core)::text,
+  p_sorgente_chiave => (SELECT commessa_id FROM tmp_commessa_core)::text,
   p_sorgente_riga => NULL,
   p_meta => jsonb_build_object('test_scope', 'pgtap_commesse_core')
 ) AS link_id;
@@ -229,7 +229,7 @@ SELECT vendite.fn_link_commessa_sorgente(
   p_sorgente_tipo_id => (SELECT root_sorgente_tipo_id FROM tmp_refs_commesse_core),
   -- La chiave che il link ha stoccato (COMMESSA: l'id, in sorgente_id), resa a testo
   -- come la passa il chiamante.
-  p_sorgente_uid => (
+  p_sorgente_chiave => (
     SELECT COALESCE(cs.sorgente_id::text, cs.sorgente_uid::text)
     FROM vendite.commesse_sorgenti cs
     WHERE cs.id = (SELECT link_id FROM tmp_link_core)
@@ -269,7 +269,7 @@ CREATE TEMP TABLE tmp_link_core_collegato AS
 SELECT vendite.fn_link_commessa_sorgente(
   p_commessa_id => (SELECT commessa_id FROM tmp_commessa_core),
   p_sorgente_tipo_id => (SELECT root_sorgente_tipo_id FROM tmp_refs_commesse_core),
-  p_sorgente_uid => (SELECT commessa_id FROM tmp_commessa_core_2)::text,
+  p_sorgente_chiave => (SELECT commessa_id FROM tmp_commessa_core_2)::text,
   p_sorgente_riga => NULL,
   p_meta => '{}'::jsonb
 ) AS link_id;
@@ -318,7 +318,7 @@ FROM vendite.fn_upsert_commessa_attivita(
   p_stato_approvazione => 'APPROVATA',
   p_stato_emissione => 'NON_EMESSA',
   p_sorgente_tipo_id => (SELECT x.sorgente_tipo_id FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa_core)) x),
-  p_sorgente_uid => (SELECT x.consumo_id::text FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa_core)) x),
+  p_sorgente_chiave => (SELECT x.consumo_id::text FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa_core)) x),
   p_tipo_movimento => 'NORMALE',
   p_meta => jsonb_build_object('case', 'UPSERT_INSERT')
 ) r;
@@ -403,7 +403,7 @@ FROM vendite.fn_upsert_commessa_attivita(
   p_stato_approvazione => 'APPROVATA',
   p_stato_emissione => 'NON_EMESSA',
   p_sorgente_tipo_id => (SELECT x.sorgente_tipo_id FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa_core)) x),
-  p_sorgente_uid => (SELECT x.consumo_id::text FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa_core)) x),
+  p_sorgente_chiave => (SELECT x.consumo_id::text FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa_core)) x),
   p_tipo_movimento => 'NORMALE',
   p_meta => jsonb_build_object('case', 'UPSERT_UPDATE')
 ) r;
@@ -504,7 +504,7 @@ SELECT * FROM vendite.fn_upsert_commessa_attivita(
   p_stato_approvazione => 'APPROVATA',
   p_stato_emissione => 'NON_EMESSA',
   p_sorgente_tipo_id => (SELECT x.sorgente_tipo_id FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa_core)) x),
-  p_sorgente_uid => (SELECT x.consumo_id::text FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa_core)) x),
+  p_sorgente_chiave => (SELECT x.consumo_id::text FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa_core)) x),
   p_tipo_movimento => 'NORMALE',
   p_meta => jsonb_build_object('case', 'UPSERT_PRICE_UPDATE')
 );

@@ -159,7 +159,7 @@ BEGIN
   SELECT c.id INTO v_causale_id FROM config.causali_onere c WHERE c.attivo ORDER BY c.id LIMIT 1;
   PERFORM vendite.fn_upsert_commessa_attivita(
     p_commessa_id => (SELECT commessa_id FROM tmp_com_ch),
-    p_sorgente_tipo_id => NULL, p_sorgente_uid => NULL,
+    p_sorgente_tipo_id => NULL, p_sorgente_chiave => NULL,
     p_segment_key => p_segment, p_articolo_id => r.articolo_id,
     p_istanza_utility_id => r.istanza_utility_id, p_data_attivita => DATE '2026-08-15',
     p_uom_id => r.uom_id, p_quantita => p_qta,

@@ -192,7 +192,7 @@ SELECT vendite.fn_get_or_create_commessa(
 SELECT vendite.fn_link_commessa_sorgente(
   p_commessa_id      => (SELECT commessa_id FROM tmp_gr_comm),
   p_sorgente_tipo_id => (SELECT src_preventivo_id FROM tmp_gr_refs),
-  p_sorgente_uid     => (SELECT uid::text FROM tmp_gr_prev),
+  p_sorgente_chiave  => (SELECT uid::text FROM tmp_gr_prev),
   p_meta             => jsonb_build_object('test_scope', 'pgtap_gruppi')
 );
 

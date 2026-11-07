@@ -1,6 +1,6 @@
 # Guida — Audit e Tracciabilità
 
-> **Ultimo aggiornamento**: 19 settembre 2026
+> **Ultimo aggiornamento**: 7 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend, analisti funzionali
 >
@@ -339,16 +339,21 @@ in [`dbops.automation_rules_tbl`](/dbzero/dbops/tabelle/automation_rules_tbl) a 
 | `dbops.idempotency_keys` | 1 giorno   | id=24, priorità 190 | Base `data_insert`; scadenza scritta alla nascita |
 | `dbops.error_log`        | 90 giorni  | id=25, priorità 190 | Base `occurred_at`; scadenza calcolata dal job |
 | `dbops.audit_log`        | 90 giorni  | id=26, priorità 190 | Base `executed_at`; scadenza calcolata dal job |
+| `dbops.ai_query_log`     | 90 giorni  | id=28, priorità 190 | Testo scritto all'assistente; base `data_insert`; scadenza scritta alla nascita |
 
 ⛔ **Una tabella con `cleanup_at` si pulisce solo se sta in
 [`dbops.automation_scope`](/dbzero/dbops/tabelle/automation_scope)**: l'orchestratore scorre
 le tabelle dello scope, non tutte quelle che hanno la colonna. Per lo schema `dbops` lo
 scope elenca `sessioni_utente`, `processi_accensione`, `idempotency_keys`, `request_log`,
-`error_log` e `audit_log`.
+`error_log`, `audit_log` e `ai_query_log`. Una tabella con `cleanup_at` fuori dallo scope la
+segnala il presidio
+[`dbops.vw_marcatori_automazione_senza_esecutore`](/dbzero/dbops/views/vw_marcatori_automazione_senza_esecutore).
 
 Errori e chiamate restano **90 giorni** insieme: chi indaga su una richiesta guarda la
 chiamata (`request_log`) e l'errore che ne è uscito (`error_log`), e i due registri devono
-scadere insieme. `audit_log`, il registro dei giri delle automazioni, segue la stessa regola.
+scadere insieme. `audit_log`, il registro dei giri delle automazioni, segue la stessa regola, e
+così `ai_query_log`, le domande all'assistente con le risposte: testo degli utenti che non si
+tiene oltre.
 
 ⚠️ `error_log` e `audit_log` **non** hanno il trigger alla nascita: li scrivono anche
 sessioni dblink, con un ruolo che non legge le regole di scadenza, e il trigger farebbe
@@ -379,8 +384,8 @@ batch resta per il **pregresso** (righe a `NULL`), una volta.
 | `vendite.fatturazione_lotti_task_runs` | 750 giorni | `started_at` | id=18  |
 | `vendite.commesse_push_log`            | 750 giorni | `run_at`     | id=19  |
 
-Lo stesso trigger è montato anche su due registri di `dbops`, `request_log` (90 giorni) e
-`idempotency_keys` (un giorno), con le regole della tabella sopra.
+Lo stesso trigger è montato anche su tre registri di `dbops`, `request_log` e `ai_query_log`
+(90 giorni) e `idempotency_keys` (un giorno), con le regole della tabella sopra.
 
 750 e non 30: sono i quattro registri che `script.vw_giornale_entita` legge insieme (più
 il registro di giro del push, a cui punta il `correlation_id` di `event_log`) e la storia

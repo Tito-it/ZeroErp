@@ -304,7 +304,7 @@ BEGIN
         p_stato_approvazione            => 'BOZZA',
         p_stato_emissione               => 'NON_EMESSA',
         p_sorgente_tipo_id              => (v ->> 'sorgente_tipo_id')::bigint,
-        p_sorgente_uid                  => v ->> 'sorgente_uid',
+        p_sorgente_chiave               => v ->> 'sorgente_uid',
         p_tipo_movimento                => (v ->> 'tipo_movimento')::varchar,
         p_meta                          => v -> 'meta') u;
     v_ids := v_ids || v_id;
@@ -668,7 +668,7 @@ BEGIN
       p_tipo_doc_fiscale_id => r.tipo_doc_fiscale_id, p_valuta_id => r.valuta_id,
       p_stato_approvazione => 'BOZZA', p_stato_emissione => 'NON_EMESSA',
       -- la provenienza: il consumo della commessa (un documento vero), la chiave lo nomina
-      p_sorgente_tipo_id => (SELECT sorgente_tipo_id FROM tmp_ac_src), p_sorgente_uid => (SELECT consumo_id::text FROM tmp_ac_src),
+      p_sorgente_tipo_id => (SELECT sorgente_tipo_id FROM tmp_ac_src), p_sorgente_chiave => (SELECT consumo_id::text FROM tmp_ac_src),
       p_tipo_movimento => 'NORMALE') u;
   IF p_emissione <> 'NON_EMESSA' THEN
     UPDATE vendite.commesse_attivita SET stato_emissione = p_emissione WHERE id = v;

@@ -1,0 +1,144 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL DOCUMENTO GENERATO NELLA GRAMMATICA DEL MODELLO: documenti.documenti_generati
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto D, giro D.1 (S-4, S-5, V-6).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   La tabella teneva la chiave del documento stampato come TESTO in sorgente_uid,
+#   e per la fattura in due forme (V-6): l'uid dalla stampa della UI, l'id dal
+#   drenatore della coda. Nel modello la chiave sta in una sola delle due colonne
+#   tipizzate, secondo il key_selector del tipo: sorgente_id bigint oppure
+#   sorgente_uid uuid (S-4). Le righe si convertono qui, nel changeSet della forma.
+#
+# ── LA FORMA ─────────────────────────────────────────────────────────
+#   1. Via il CHECK «uid non vuoto», l'unicita' sulla chiave testuale e il NOT
+#      NULL di sorgente_uid: sono la forma di prima.
+#   2. Ogni riga passa alla coppia che restituisce il BB che scrive
+#      (script.fn_sorgente_chiave), che traduce una chiave dell'altra specie
+#      leggendo il documento: l'uid di un ordine diventa il suo id, l'id di un
+#      preventivo il suo uid. Coi trigger della tabella spenti e riaccesi com'erano:
+#      lo snapshot del documento generato e' immutabile, e questa e' la migrazione
+#      del modello, non una modifica dello snapshot.
+#   3. sorgente_uid diventa uuid; l'unicita' delle versioni per documento passa
+#      sulla chiave nuova (NULLS NOT DISTINCT: una delle due chiavi e' sempre
+#      NULL), con lo stesso nome; il CHECK di forma; i COMMENT, al presente.
+#
+# ── ⚠️ V-6, LE DUE SERIE DI PROGRESSIVI ─────────────────────────────
+#   Una fattura stampata dalle due strade ha due serie di progressivo_sorgente,
+#   una per chiave. Convertite, le due serie stanno sulla stessa chiave: se due
+#   versioni hanno lo stesso numero, l'unicita' nuova ferma il migrate (si
+#   rinumera a mano, prima). Su dbdev nessuna fattura e' in forma uid (2026-11-07):
+#   le 31 righe FATTURA sono tutte del drenatore, e il SQL manuale non serve.
+#   ⚠️ Una chiave che non trova il documento ferma il migrate (E_SORG_NOT_FOUND
+#   dal BB): un orfano si corregge a mano, prima. Su dbdev nessuno (2026-11-07).
+#   Da zero la tabella e' vuota. Rollback: forward-only.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/documenti/20261108-14-alter-documenti-generati-sorgente-forma-mctit.yaml
+
+  - changeSet:
+      id: 20261108-14-alter-documenti-generati-sorgente-forma
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        documenti.documenti_generati: la chiave del documento dal testo alle colonne tipizzate
+        (sorgente_id / sorgente_uid uuid) col BB che scrive, unicita' delle versioni sulla chiave
+        nuova, CHECK di forma, COMMENT. brief-db-sorgente-documento-e-riga §7.2 lotto D, giro D.1.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 1. La forma di prima.
+              ALTER TABLE documenti.documenti_generati
+                DROP CONSTRAINT chk_documenti_generati_sorgente_uid_non_vuoto;
+              ALTER TABLE documenti.documenti_generati
+                DROP CONSTRAINT uq_documenti_generati_sorgente_progressivo;
+              ALTER TABLE documenti.documenti_generati
+                ALTER COLUMN sorgente_uid DROP NOT NULL;
+
+              -- 2. Ogni riga alla coppia del key_selector, dal BB che scrive.
+              DO $do$
+              DECLARE
+                  v_nomi text[];
+                  v_modi "char"[];
+                  i      integer;
+              BEGIN
+                  -- L'elenco si legge UNA volta, prima di spegnere: uno spento di proposito
+                  -- resta spento, uno ALWAYS torna ALWAYS.
+                  SELECT array_agg(t.tgname::text ORDER BY t.tgname),
+                         array_agg(t.tgenabled    ORDER BY t.tgname)
+                    INTO v_nomi, v_modi
+                    FROM pg_catalog.pg_trigger t
+                   WHERE t.tgrelid = 'documenti.documenti_generati'::regclass
+                     AND NOT t.tgisinternal
+                     AND t.tgenabled <> 'D';
+
+                  FOR i IN 1 .. COALESCE(cardinality(v_nomi), 0) LOOP
+                      EXECUTE format('ALTER TABLE documenti.documenti_generati DISABLE TRIGGER %I', v_nomi[i]);
+                  END LOOP;
+
+                  -- ⚠️ Nessuna rete: una chiave che non e' ne' id ne' uuid, o che non
+                  --    trova il documento, ferma il migrate col codice del BB.
+                  UPDATE documenti.documenti_generati dg
+                     SET sorgente_id  = k.sorgente_id,
+                         sorgente_uid = k.sorgente_uid::text
+                    FROM documenti.documenti_generati d0
+                    CROSS JOIN LATERAL script.fn_sorgente_chiave(d0.sorgente_tipo_id, d0.sorgente_uid) k
+                   WHERE d0.id = dg.id;
+
+                  FOR i IN 1 .. COALESCE(cardinality(v_nomi), 0) LOOP
+                      EXECUTE format('ALTER TABLE documenti.documenti_generati ENABLE %s TRIGGER %I',
+                                     CASE v_modi[i] WHEN 'A' THEN 'ALWAYS'
+                                                    WHEN 'R' THEN 'REPLICA'
+                                                    ELSE '' END,
+                                     v_nomi[i]);
+                  END LOOP;
+              END;
+              $do$;
+
+              -- 3. Il tipo, l'unicita' e la forma.
+              -- ⚠️ Il cast non ha rete: restano solo le chiavi canoniche dei tipi a uid.
+              ALTER TABLE documenti.documenti_generati
+                ALTER COLUMN sorgente_uid TYPE uuid USING sorgente_uid::uuid;
+
+              -- ⚠️ Qui si ferma il migrate se una fattura ha due versioni con lo stesso
+              --    numero nelle due serie di prima (V-6).
+              ALTER TABLE documenti.documenti_generati
+                ADD CONSTRAINT uq_documenti_generati_sorgente_progressivo
+                UNIQUE NULLS NOT DISTINCT (sorgente_tipo_id, sorgente_id, sorgente_uid, sorgente_riga, progressivo_sorgente);
+              COMMENT ON CONSTRAINT uq_documenti_generati_sorgente_progressivo ON documenti.documenti_generati IS
+                'La numerazione delle versioni stampate di un documento: tipo, chiave del documento (sorgente_id o sorgente_uid, una delle due e'' sempre NULL: NULLS NOT DISTINCT), riga e progressivo. Una serie sola per documento, qualunque strada lo stampi (la UI o il drenatore della coda). Serve anche la ricerca per tipo e sorgente_id.';
+
+              ALTER TABLE documenti.documenti_generati
+                ADD CONSTRAINT chk_documenti_generati_sorgente_forma CHECK (num_nonnulls(sorgente_id, sorgente_uid) = 1);
+              COMMENT ON CONSTRAINT chk_documenti_generati_sorgente_forma ON documenti.documenti_generati IS
+                'La forma della provenienza: il tipo c''e'' sempre (NOT NULL) e con lui una sola chiave del documento, sorgente_id oppure sorgente_uid. Quale delle due, e che il documento e la riga esistano, lo verifica script.trgfn_guard_sorgente.';
+
+              -- 4. I COMMENT delle colonne, al presente.
+              COMMENT ON COLUMN documenti.documenti_generati.sorgente_tipo_id IS
+                'Il tipo del documento stampato (config.sorgenti): preventivo, offerta, ordine, DDT, contratto, fattura. Con lui una sola chiave del documento, quella del key_selector del tipo; la forma la tiene chk_documenti_generati_sorgente_forma, documento e riga li verifica script.trgfn_guard_sorgente, che blocca anche la cancellazione del documento finche'' una sua stampa lo cita. Fa parte dello snapshot: non cambia dopo la generazione.';
+              COMMENT ON COLUMN documenti.documenti_generati.sorgente_id IS
+                'La chiave del documento stampato quando il suo tipo ha key_selector ''id'' (ordine, DDT, contratto, fattura): l''id del documento. In alternativa a sorgente_uid, mai tutte e due. La coppia giusta da una chiave qualsiasi la restituisce script.fn_sorgente_chiave. Fa parte dello snapshot.';
+              COMMENT ON COLUMN documenti.documenti_generati.sorgente_uid IS
+                'La chiave del documento stampato quando il suo tipo ha key_selector ''uid'' (preventivo, offerta): l''uid del documento. In alternativa a sorgente_id, mai tutte e due. La coppia giusta da una chiave qualsiasi la restituisce script.fn_sorgente_chiave. Fa parte dello snapshot.';
+              COMMENT ON COLUMN documenti.documenti_generati.sorgente_riga IS
+                'La riga del documento stampato, quando la stampa e'' di una riga: l''id nella tabella delle righe che config.sorgenti dichiara per il tipo. NULL quando la stampa e'' del documento intero. Fa parte dello snapshot.';
+              COMMENT ON COLUMN documenti.documenti_generati.progressivo_sorgente IS
+                'Il numero della versione stampata del documento, da 1: una serie per documento (uq_documenti_generati_sorgente_progressivo). Fa parte dello snapshot.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: la chiave testuale non si ricostruisce, e nessuno la legge.
+              SELECT 1;

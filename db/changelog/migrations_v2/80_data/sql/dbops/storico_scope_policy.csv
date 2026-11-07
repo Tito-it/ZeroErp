@@ -121,3 +121,4 @@ id,schema_tabella,nome_tabella,modo,colonna,padre_schema,padre_tabella,ragione,d
 123,vendite,ddt_righe_prelievi,PADRE,ddt_riga_id,vendite,ddt_righe,NULL,2026-09-29
 124,vendite,resi_righe_rientri,PADRE,resi_riga_id,vendite,resi_righe,NULL,2026-09-29
 125,dbops,processi_accensione,NESSUNO,NULL,NULL,NULL,"La scelta a mano di un'installazione sulla sveglia di un processo: dato di macchina senza emittente e senza row level security (letto il 2026-10-17). La storia dei gesti e' la stessa per tutti, come la riga (brief-db-processi-accensione-per-ambiente, S-1).",2026-10-17
+126,shop,ricevute,BA,billing_account_id,NULL,NULL,NULL,2026-11-07

@@ -444,7 +444,7 @@ BEGIN
                   --    NATURA (rev 2026-08-18). Sono due presidi distinti, e
                   --    vale sapere quale fa cosa.
                   p_sorgente_tipo_id              => NULL,
-                  p_sorgente_uid                  => NULL,
+                  p_sorgente_chiave               => NULL,
                   p_tipo_movimento                => 'RETTIFICA',
                   -- ⭐ P-7: si EREDITA il meta della riga rettificata e ci si
                   --    sovrappone il proprio, invece di enumerare le chiavi da

@@ -1,0 +1,55 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL GUARD UNICO SUI DOCUMENTI GENERATI: script.trgfn_guard_sorgente su documenti.documenti_generati
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto D, giro D.1 (S-6, S-9).
+#
+#   Livello minimo DOCUMENTO: si stampa il documento intero, e una riga, se c'e',
+#   si verifica. Azione BLOCCA, come una FK: un documento che ha una stampa non si
+#   cancella. CANCELLA non e' possibile: il documento generato e' append-only
+#   (trg_documenti_generati_a10_block_delete_dlt), e la sua storia sta nello stato.
+#   ⚠️ CHE COSA CAMBIA: la cancellazione di un documento stampato (una bozza di
+#   fattura stampata dalla UI, un preventivo emesso e stampato) prima passava e
+#   lasciava la stampa orfana; ora si ferma con E_SORG_ORIGINE_REFERENZIATA. Il
+#   lato in uscita sulle tabelle dei documenti e' gia' montato (convergenza a
+#   ci_apply, dbops.fn_sorgente_converge_uscita).
+#   Nome a10: i BEFORE ROW scattano in ordine alfabetico, e il guard viene dopo
+#   check_coerenza e guard_emittente_scope, che non leggono il documento.
+#   Rollback: DROP TRIGGER.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/documenti/20261108-17-create-trigger-documenti-generati-guard-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20261108-17-create-trigger-documenti-generati-guard-sorgente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        documenti.documenti_generati: montato script.trgfn_guard_sorgente(DOCUMENTO, BLOCCA).
+        brief-db-sorgente-documento-e-riga §7.2 lotto D, giro D.1.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_documenti_generati_a10_guard_sorgente_ins_upd
+                  BEFORE INSERT OR UPDATE OF sorgente_tipo_id, sorgente_id, sorgente_uid, sorgente_riga
+                  ON documenti.documenti_generati
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_sorgente('DOCUMENTO', 'BLOCCA');
+              COMMENT ON TRIGGER trg_documenti_generati_a10_guard_sorgente_ins_upd ON documenti.documenti_generati IS
+                'Il guard unico della provenienza (script.trgfn_guard_sorgente, livello DOCUMENTO, azione BLOCCA): il tipo esiste ed e'' attivo, la chiave e'' quella del key_selector del tipo, il documento stampato esiste, la riga se c''e'' appartiene al documento. BLOCCA perche'' il documento generato non si cancella (append-only): un documento che ha una stampa non si cancella.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER trg_documenti_generati_a10_guard_sorgente_ins_upd ON documenti.documenti_generati;

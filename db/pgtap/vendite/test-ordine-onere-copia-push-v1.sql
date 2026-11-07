@@ -168,7 +168,7 @@ CREATE OR REPLACE FUNCTION pg_temp.invia(v jsonb) RETURNS bigint AS $$
       p_stato_approvazione            => 'BOZZA',
       p_stato_emissione               => 'NON_EMESSA',
       p_sorgente_tipo_id              => (v ->> 'sorgente_tipo_id')::bigint,
-      p_sorgente_uid                  => v ->> 'sorgente_uid',
+      p_sorgente_chiave               => v ->> 'sorgente_uid',
       -- La riga del documento, dal lister (come la passa il backend).
       p_sorgente_riga => (v ->> 'riga_id')::bigint,
       p_tipo_movimento                => (v ->> 'tipo_movimento')::varchar,

@@ -1,6 +1,6 @@
 # Guida — Presidi e registri del debito
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 7 novembre 2026
 >
 > **Destinatari**: sviluppatori database e backend, e chi costruisce o mantiene un
 > controllo automatico (un guardrail, un pgTAP di presidio, una vista di controllo)
@@ -482,6 +482,34 @@ vede. E PostgreSQL stampa lo stesso `CHECK` in due forme diverse (colonna `text`
 di questi limiti è scritto nel commento della vista e ha un caso costruito nel
 pgTAP.
 
+### 3.7 Una colonna che promette un'automazione
+
+**Cosa sorveglia.** Alcune colonne sono una promessa: `tx_id` dice «qui si scrive
+la transazione», `storicizza` dice «di questa riga resta la storia», `cleanup_at`
+dice «questa riga scade». A mantenerle sono le automazioni del database, che però
+lavorano solo sulle tabelle del loro ambito. Una tabella fuori dall'ambito che ha
+una di quelle colonne promette qualcosa che nessuno fa: la storia non c'è, il
+transaction id resta vuoto, le righe non scadono mai. E non lo dice nessuno.
+
+**Come misura.** Il perimetro lo dà il catalogo: ogni tabella con una delle tre
+colonne. La misura
+([`dbops.vw_marcatori_automazione_senza_esecutore`](/dbzero/dbops/views/vw_marcatori_automazione_senza_esecutore))
+chiede se c'è un esecutore: la tabella è nell'ambito, con lo stesso filtro dei
+runner, oppure, per `tx_id` e `storicizza`, il trigger è montato a mano. Per
+`cleanup_at` il trigger a mano non basta: il purge è solo del runner.
+
+**Il registro**
+([`dbops.marcatori_automazione_debito`](/dbzero/dbops/tabelle/marcatori_automazione_debito))
+porta i casi noti, con la ragione e il modo di chiuderli: l'ambito, il trigger a
+mano o la colonna tolta. Il cancello è
+`db/pgtap/dbops/test-marcatori-automazione-senza-esecutore-v1.sql`: rosso su una
+riga non dichiarata e su una riga di registro che non serve più.
+
+**Il limite, detto qui.** `data_update` e `user_update` restano fuori dal
+criterio, per decisione, anche dove nessuno li riscrive. E la misura riconosce i
+marcatori per **nome**: una colonna di storicizzazione rinominata con un override
+dei runner non la vede.
+
 ---
 
 ## 4. Dove gira ogni presidio, e perché
@@ -496,7 +524,7 @@ e per questo alcuni hanno anche un giro a mano.
 | Codice errore e canali (§3.3) | guardrail SQL | — |
 | Tipo di risposta (§3.4) | suite Django, con database provvisto | `ZEROERP_TEST_DB_E2E=1` |
 | Famiglie di condizione (§3.5) | `codici-errore-baseline.sh` | stesso script |
-| Baseline pgTAP, con i pgTAP di presidio (§2.2, §3.2, §3.6) | suite pgTAP con `baseline-rossi-ci.tsv` | `pgtap-baseline.sh` con `baseline-rossi.tsv` |
+| Baseline pgTAP, con i pgTAP di presidio (§2.2, §3.2, §3.6, §3.7) | suite pgTAP con `baseline-rossi-ci.tsv` | `pgtap-baseline.sh` con `baseline-rossi.tsv` |
 
 ### Cosa dà davvero il cancello in CI
 

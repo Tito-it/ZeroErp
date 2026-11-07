@@ -2,7 +2,7 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-07
 
-**Riparte: Tid**, col via al lotto D (§7.2 «Lotto D»). Il lotto C è chiuso: i quattro giri e V-7 sono applicati, pgTAP verdi come applicazione e committati (2026-11-07). Il lotto C è in quattro giri (§7.2 «Lotto C, i giri»): C.1, C.2 e C.3 sono applicati e committati (`e1713fff2e`, `036e047ecc`, `6a21da572d`). I lotti 0, R e T sono chiusi e committati. ⚠️ Dall'apply del giro T.5 i due percorsi BE del §8.8 danno errore, dall'apply di C.1 quelli del §8.9, dall'apply di C.2 quelli del §8.10, dall'apply di C.3 gli smoke del §8.11: accettato dal piano.
+**Riparte: Tid**, con due decisioni (riga 7-quadragies-quater) e poi il via al lotto P. Il lotto D (un giro, D.1) e il giro K.1 (il nome della chiave, richiesta BE) sono applicati su dbdev e scratch, pgTAP verdi come applicazione e committati (2026-11-07). Il lotto C è chiuso: i quattro giri e V-7 sono applicati, pgTAP verdi come applicazione e committati (2026-11-07). Il lotto C è in quattro giri (§7.2 «Lotto C, i giri»): C.1, C.2 e C.3 sono applicati e committati (`e1713fff2e`, `036e047ecc`, `6a21da572d`). I lotti 0, R e T sono chiusi e committati. ⚠️ Dall'apply del giro T.5 i due percorsi BE del §8.8 danno errore, dall'apply di C.1 quelli del §8.9, dall'apply di C.2 quelli del §8.10, dall'apply di C.3 gli smoke del §8.11: accettato dal piano.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -61,14 +61,20 @@
 | 7-tricies-ter | ✅ Tid | via al giro C.4 (`ATTIVITA` esce dalle sorgenti) (2026-11-07) | §7.2 «Lotto C, i giri» | — |
 | 7-tricies-quinquies | ✅ DB | giro C.4: `ATTIVITA` esce da `config.sorgenti` e resta entità, il lato «in uscita» su `attivita_fatturabili` lo smonta la convergenza; V-7: il riferimento di un gruppo senza numero è il codice della commessa; provato in transazione (2026-11-07) | §7.2 «Il giro C.4» | — |
 | 7-tricies-sexies | ✅ Tid | apply del giro C.4 (`20261108-06`, `-07`, `sorgenti.csv`, `tipi_entita.csv`) su dbdev (19:06) e scratch (19:07), pgTAP verdi come applicazione, committato su `dev/db-tid` (2026-11-07) | §7.2 «Il giro C.4» | — |
-| 7-tricies-septies | Tid | via al lotto D | §7.2 «Lotto D» | 7-tricies-sexies |
-| 8 | DB | lotti D, P, M, Z, ognuno col suo via; il §8 si riempie strada facendo. ⛔ Il lotto M porta anche D58, D29 e ⑧ di `brief-db-revisione-dbops`: prima del via si riverifica la loro analisi (promemoria in §7.2 «Lotto M») | §7.2, §8 | 7-tricies-septies |
+| 7-tricies-septies | ✅ Tid | via al lotto D (2026-11-07) | §7.2 «Lotto D» | — |
+| 7-tricies-octies | ✅ DB | giro D.1: `documenti_generati` nelle colonne tipizzate col BB che scrive, una serie di versioni per documento (V-6 senza SQL manuale), guard unico (DOCUMENTO, BLOCCA), snapshot su `sorgente_id`; la coda di stampa perde `sorgente_uid` ed è esente dal guard col motivo (FK vera); provato in transazione (2026-11-07) | §7.2 «Il giro D.1, le scelte» | — |
+| 7-tricies-novies | ✅ Tid | apply del giro D.1 (`20261108-14` … `-21`) su dbdev (23:05) e scratch (23:11); pgTAP verdi come applicazione (Tid, e la regressione DB del giro K.1 sullo scratch), committato su `dev/db-tid` (2026-11-07). ⚠️ Dall'apply i percorsi BE del §8.13 danno errore, come accettato dal piano | §7.2 «Il giro D.1, le scelte», §8.13 | — |
+| 7-quadragies | ✅ Tid | richiesta BE e via al giro K.1, il nome della chiave (2026-11-07) | §7.2 «Il giro K.1» | — |
+| 7-quadragies-bis | ✅ DB | giro K.1: `p_sorgente_chiave` nella madre e nella porta, la chiave `sorgente_chiave` del batch, i quattro chiamanti per nome, 54 pgTAP allineati; provato in transazione (2026-11-07) | §7.2 «Il giro K.1» | — |
+| 7-quadragies-ter | ✅ Tid | apply del giro K.1 (`20261108-22` … `-24`, `-32` … `-34`) su dbdev (23:10) e scratch (23:11); pgTAP verdi come applicazione (Tid, e la regressione DB sullo scratch), committato su `dev/db-tid` (2026-11-07). ⚠️ Dall'apply il push del BE dà errore fino a BE-K.1-a e -b (§8.14) | §7.2 «Il giro K.1», §8.14 | — |
+| 7-quadragies-quater | Tid | due decisioni: l'esenzione della coda di stampa dal guard (proposta DB, applicata); il nome della colonna dei lister del push (`sorgente_uid` o `sorgente_chiave`) | §7.2 «Il giro D.1, le scelte», «Il giro K.1» | — |
+| 8 | DB | lotti P, M, Z, ognuno col suo via; il §8 si riempie strada facendo. ⛔ Il lotto M porta anche D58, D29 e ⑧ di `brief-db-revisione-dbops`: prima del via si riverifica la loro analisi (promemoria in §7.2 «Lotto M») | §7.2, §8 | 7-quadragies-quater |
 | 9-bis | ✅ BE | il §8 fino al lotto T: codici, reso, ordine dal preventivo, contratto dall'offerta (2026-11-07, da committare su `dev/backend-tid`). I due percorsi rotti dal giro T.5 sono ripristinati | §8 «Stato al 2026-11-07, dopo il giro BE» | — |
 | 9 | BE/FE | il §8 dei lotti che restano, una volta sola | §8 | 8 |
 | 10 | DB | la documentazione del §7.3 (lotto DOC), poi archiviazione | §7.3 | 9 |
 
-**Decisioni aperte di Tid:** nessuna. ⚠️ Da guardare all'apply di V-7: un documento senza numero che non sta più in una commessa aperta ripiega ancora sulla chiave grezza (§7.2 «Il giro C.4»).
-**Lavoro da committare:** nessuno. Il giro C.4 e V-7 (`20261108-06`, `-07`, `sorgenti.csv`, `tipi_entita.csv`, i cinque pgTAP allineati, questo brief) sono committati su `dev/db-tid` (2026-11-07). Il giro C.3 (`20261107-70` … `-99`, `20261108-01` … `-05`) è committato (`6a21da572d`). Il giro C.2 (`20261107-59` … `-69`) è committato (`036e047ecc`). I changeSet `20261107-51` … `-55` (la coda dei lavori) sono di un altro cantiere, committati a parte (`347cc46f02`). Il giro C.1 (`20261107-41` … `-50`) è committato (`e1713fff2e`). Il giro T.5 (`20261106-92` … `-99`) è committato (`d385cbd3d3`). Il giro T.4 (`20261106-88` … `-91`, i tre CSV, il pgTAP nuovo, i quattro pgTAP allineati, le due pagine `manual/`, questo brief) è committato su `dev/db-tid` il 2026-11-07; il giro T.3 anche (`b86108e56a`). I giri T.1 e T.2 (`20261106-61` … `-73`, `storico_scope_policy.csv`, i pgTAP, le
+**Decisioni aperte di Tid:** l'esenzione della coda di stampa dal guard unico (proposta DB, applicata: la FK resta; l'alternativa costa la cleanup delle fatture, §7.2 «Il giro D.1, le scelte»); il nome della colonna della chiave nei cinque lister del push (§7.2 «Il giro K.1»). ⏭️ Da applicare: niente. `20_code/dbops/20261108-09` (i COMMENT di quattro builder pgTAP) risulta applicato su dbdev e scratch (2026-11-07, 22:30), col suo presidio verde. ⚠️ Da guardare all'apply di V-7: un documento senza numero che non sta più in una commessa aperta ripiega ancora sulla chiave grezza (§7.2 «Il giro C.4»).
+**Lavoro da committare:** nessuno. Il giro D.1 (gli otto changeSet, il pgTAP nuovo `documenti/test-sorgente-documenti-generati-v1`, i quindici pgTAP allineati), il giro K.1 (sei changeSet, 54 pgTAP allineati), `20_code/dbops/20261108-09` col presidio `dbops/test-builder-pgtap-vincoli-immediate-v1`, le pagine auto-generate dei loro oggetti e questo brief sono committati su `dev/db-tid` (2026-11-07). Non del cantiere, lasciati fuori: i changeSet `20261108-25` … `-31` coi loro CSV, pgTAP e pagine, i due indici auto-generati, le tre guide e `brief-db-revisione-dbops.md`. Il giro C.4 e V-7 (`20261108-06`, `-07`, `sorgenti.csv`, `tipi_entita.csv`, i cinque pgTAP allineati, questo brief) sono committati su `dev/db-tid` (2026-11-07). Il giro C.3 (`20261107-70` … `-99`, `20261108-01` … `-05`) è committato (`6a21da572d`). Il giro C.2 (`20261107-59` … `-69`) è committato (`036e047ecc`). I changeSet `20261107-51` … `-55` (la coda dei lavori) sono di un altro cantiere, committati a parte (`347cc46f02`). Il giro C.1 (`20261107-41` … `-50`) è committato (`e1713fff2e`). Il giro T.5 (`20261106-92` … `-99`) è committato (`d385cbd3d3`). Il giro T.4 (`20261106-88` … `-91`, i tre CSV, il pgTAP nuovo, i quattro pgTAP allineati, le due pagine `manual/`, questo brief) è committato su `dev/db-tid` il 2026-11-07; il giro T.3 anche (`b86108e56a`). I giri T.1 e T.2 (`20261106-61` … `-73`, `storico_scope_policy.csv`, i pgTAP, le
 pagine `manual/` cancellate, questo brief) sono committati su `dev/db-tid` il 2026-11-06. Il lotto 0 intero e il lotto R (giri R.1 e R.2: changeSet `20261106-46` …
 `-60`, i due CSV, i pgTAP, i due brief) sono committati su `dev/db-tid` il 2026-11-06. ⚠️ I test Django sono rossi finché il BE non rigenera il file delle policy d'errore (§8.1
 BE-0.1-a, §8.2 BE-0.2-a): accettato dal piano, va detto nella PR.
@@ -1944,6 +1950,154 @@ Non coperto, e resta di Tid: la baseline.
 * `fatture_stampa_coda`: `sorgente_uid` si ritira (doppione di `sorgente_id`, che è una FK vera).
 * **Voci per il §8 (BE):** il drainer della coda passa `sorgente_id`; `sorgente_documenti_views`; i `*_document_context_builder`.
 
+#### Il giro D.1, le scelte (2026-11-07)
+
+Un giro solo: le due tabelle sono piccole e non hanno lettori DB della chiave (censimento 2026-11-07: nessuna funzione
+né vista legge `documenti_generati.sorgente_uid`; della coda, `vendite.fn_accoda_stampe_lotto` la scrive e
+`dbops.vw_fatture_stampa_coda_da_guardare` la proietta).
+
+* **`documenti_generati` alla grammatica del modello** (`00_schema/documenti/20261108-14`). Ogni riga passa alla coppia
+  del BB che scrive, `script.fn_sorgente_chiave(tipo, chiave text)`: traduce una chiave dell'altra specie leggendo il
+  documento, quindi l'uid di un ordine, di una bolla, di un contratto o di una fattura stampata dalla UI diventa il suo
+  id, e una chiave che non trova il documento ferma il migrate. Coi trigger spenti e riaccesi com'erano (lo snapshot è
+  immutabile, e questa è la migrazione del modello). `sorgente_uid` diventa `uuid`; l'unicità delle versioni
+  `uq_documenti_generati_sorgente_progressivo` passa sulla chiave nuova, con lo stesso nome e `NULLS NOT DISTINCT`; il
+  CHECK di forma `chk_documenti_generati_sorgente_forma`; via il CHECK «uid non vuoto». I COMMENT delle colonne, che
+  non c'erano, al presente.
+* **V-6, senza SQL manuale.** Il piano lo prevedeva per rinumerare le due serie di progressivi della stessa fattura.
+  Su dbdev non serve (fatto datato, 2026-11-07): le 31 stampe FATTURA sono tutte in forma id, cioè del drenatore; la UI
+  non ha mai stampato una fattura. La rete resta nel changeSet: se due versioni della stessa fattura hanno lo stesso
+  numero, l'unicità nuova ferma il migrate e si rinumera a mano, prima. Da qui in avanti la serie è una per documento,
+  qualunque strada lo stampi (pgTAP, test 6).
+* **Il guard unico, `DOCUMENTO` + `BLOCCA`** (`20_code/documenti/20261108-17`). `CANCELLA` non è possibile: il documento
+  generato è append-only (`trg_documenti_generati_a10_block_delete_dlt`). Il lato «in uscita» sulle tabelle dei sei
+  documenti è già montato.
+* **Lo snapshot prende `sorgente_id`** (`20_code/documenti/20261108-16`): le due chiavi si confrontano con
+  `IS DISTINCT FROM`, perché una delle due è sempre NULL e `!=` su NULL direbbe «uguale».
+* **La coda perde `sorgente_uid`** (`00_schema/vendite/20261108-18`, che toglie anche la vista del presidio,
+  `20_code/vendite/20261108-19` per l'accodamento, `20_code/dbops/20261108-20` per la vista ricreata, con
+  `security_invoker` e lo stesso GRANT).
+* **⚖️ La coda è esente dal guard unico, col motivo** (`20_code/dbops/20261108-21`). Proposta DB, da confermare da Tid.
+  La coda resta nel perimetro (ha `sorgente_tipo_id` e `sorgente_id`), ma la sua chiave è una FK vera verso
+  `vendite.fatture`, `ON DELETE CASCADE`. Con il guard unico, `BLOCCA` fermerebbe la cancellazione di una fattura che
+  la FK porta via con la sua coda; `CANCELLA` farebbe la stessa cosa della FK una seconda volta. E la cleanup delle
+  fatture trova le figlie da `pg_constraint`: senza la FK non vedrebbe la coda. Quindi la FK resta, e la coda entra
+  nelle esenzioni del perimetro accanto al log dei reconcile: esente dal **solo** guard, non dal presidio degli orfani.
+  ⚠️ Il prezzo, dichiarato: la forma (il tipo è FATTURA) non la verifica nessuno; la tengono l'unico scrittore e la
+  FK, che non accetta un id che non sia una fattura. L'alternativa è ritirare la FK e montare il guard con `CANCELLA`:
+  costa la cleanup delle fatture.
+
+**Che cosa cambia per chi legge, dichiarato:**
+
+* **Un documento stampato non si cancella** (`E_SORG_ORIGINE_REFERENZIATA`): prima la cancellazione passava e lasciava
+  la stampa orfana. Riguarda i sei tipi che si stampano; il caso vivo è stretto (un preventivo o un'offerta si stampano
+  dopo l'emissione, ordini, bolle, resi e contratti si cancellano solo da bozza vuota, la fattura numerata non si
+  cancella), ma ora la regola sta nel DB e non nel percorso.
+* **La lista delle stampe di un documento vede anche quelle del drenatore**: la chiave è una sola.
+* **Il BE che scrive o legge la chiave come testo dà errore** fino alle sue voci (§8.13).
+
+**I changeSet del giro D.1:** `00_schema/documenti/20261108-14` (la forma), `-15` (due indici «chi deriva da X»:
+`sorgente_uid` e `sorgente_riga`; `sorgente_id` lo serve l'unicità), `20_code/documenti/20261108-16` (lo snapshot),
+`-17` (il guard), `00_schema/vendite/20261108-18` (la colonna della coda e la vista), `20_code/vendite/20261108-19`
+(l'accodamento), `20_code/dbops/20261108-20` (la vista), `-21` (l'esenzione). Nessun codice d'errore nuovo, nessuna
+funzione nuova; firme invariate (`%TYPE` dove c'è la colonna). pgTAP nuovo:
+`documenti/test-sorgente-documenti-generati-v1` (18: forma, stampe per uid e per id, una serie per documento, guard,
+snapshot, `BLOCCA`, orfani, la coda). pgTAP allineati (quindici): i due presidi del perimetro,
+`dbops/test-sorgenti-struttura-v1` (1: due esenzioni; 2: il debito perde le due tabelle del lotto D) e
+`dbops/test-sorgenti-orfane-v1` (3: le due esenzioni, trovato dalla regressione); le sei fixture che
+stampavano una chiave inventata (`'PGTAP-…'`) stampano un preventivo vero, costruito dal builder nel mondo
+dell'operatore (`documenti/test-documenti-generati`, `-eventi`, `-file`, `-template-standard-v1`,
+`-template-porta-unica-v1`, `-versione-contesto-v1`, dove le stampe si distinguono per numero e non più per chiave), e
+`rls/test-rls-documenti-satelliti` una fattura vera per mondo, costruita e stampata nel contesto del suo operatore; i
+quattro della coda tolgono la colonna dalle INSERT (`dbops/test-coda-archiviazione`, `rls/test-rls-fatture-stampa-coda`,
+`-write-guard`, `vendite/test-stampa-coda-tipo-documento-v1`), il fondamento chiede che non ci sia
+(`vendite/test-stampa-coda-fondamenta-v1`, 4: `hasnt_column`), e il presidio della coda riconosce le sue righe da
+`ultimo_errore` (`dbops/test-vw-fatture-stampa-coda-da-guardare`).
+
+**La prova del giro D.1** (2026-11-07, come `zeroerp_owner`, in transazione annullata):
+
+* **l'estratto** degli otto changeSet, con la convergenza di `90_end`, gira intero su scratch e dbdev. Su dbdev converte
+  1.384 stampe (fatto datato): 418 contratti, 106 bolle, 166 ordini e 31 fatture passano a `sorgente_id`, 651 preventivi
+  e 12 offerte a `sorgente_uid uuid`; zero orfani, nessuna collisione sull'unicità nuova. La convergenza non monta
+  niente (il lato in uscita sui sei documenti c'era già). La vista ricreata resta `security_invoker`, con gli stessi
+  privilegi di prima;
+* **i rami nuovi si costruiscono**: il pgTAP nuovo è 18/18 con l'estratto su scratch e dbdev; senza, rosso su 15 casi
+  (la forma, la stampa per id, il guard, lo snapshot, `BLOCCA`, la coda);
+* **regressione prima/dopo su 626 pgTAP** (tutti `dbops/`, `config/`, `documenti/`, `rls/`, `script/`, e chi nomina
+  `documenti_generati`, la stampa, la sorgente, la cleanup delle fatture o `genera_documento`; sullo scratch, in
+  sequenza; prima = l'albero di HEAD senza estratto, dopo = l'albero allineato con l'estratto): 7607 ok prima, 7608 dopo,
+  gli stessi rossi numero per numero (scope, permessi e credenziali, rossi da owner per costruzione). Le differenze: il
+  presidio del `-09`, che su HEAD non c'è, e **una trovata dalla regressione**: il test 3 di
+  `dbops/test-sorgenti-orfane-v1` elenca anche lui le esenzioni del perimetro, e il censimento (sul presidio di
+  struttura) non lo vedeva. Allineato, 12/12 su scratch e dbdev, rosso sul 3 senza estratto. Le quattordici fixture
+  allineate danno sullo scratch gli stessi verdi di HEAD;
+* **un rosso preesistente, non di questo giro**: il test 16 di `documenti/test-documenti-generati-eventi` (vuole
+  `42501` dalla RLS, riceve `23503` dalla FK) è rosso su HEAD su scratch e dbdev, prima di ogni modifica;
+* guardrail statici: verdi (preambolo, DDL sui trigger d'automazione, GRANT, preCondition, `runOnChange`, letterali,
+  timestamp, v1 congelato).
+
+**Dopo l'apply** (Tid, 2026-11-07, dbdev 23:05, scratch 23:11): pgTAP verdi come applicazione.
+
+Non coperto, e resta di Tid: la baseline.
+
+#### Il giro K.1 — il nome della chiave (richiesta BE, 2026-11-07)
+
+Il BE chiede, per tenere pulito, che il parametro della chiave del documento si chiami `p_sorgente_chiave` nella
+madre della riga di commessa e nella porta del link, e che lo seguano la chiave JSON del batch e i chiamanti SQL per
+nome. Via di Tid del 2026-11-07, coi progressivi `-22`, `-23`, `-24` e poi il primo libero (`-32`, `-33`, `-34`: da
+`-25` a `-31` sono di un altro cantiere).
+
+* **Perché.** Il parametro riceve la chiave come la ha il chiamante, l'id o l'uid in testo, per qualunque tipo: il nome
+  `p_sorgente_uid` diceva «uid» anche quando passava un id, e dal modello (S-4) `sorgente_uid` è la colonna `uuid` dei
+  tipi a chiave uid. Il tipo resta `text` esplicito, motivato: non è una colonna, è la chiave in testo che il BB che
+  scrive traduce.
+* **La porta e la madre** (`20_code/vendite/20261108-22`, `-23`): il nome di un parametro non cambia con
+  `CREATE OR REPLACE`, quindi DROP + CREATE della stessa firma di tipi (con i `%TYPE` dei changeSet di prima). Nessun
+  oggetto dipende dalle due funzioni (`pg_depend`, dbdev e scratch). Corpi dai loro ultimi changeSet, verificati uguali
+  al vivo sui due database, col solo nome cambiato (nella porta anche il messaggio del parametro mancante); COMMENT dal
+  vivo col nome nuovo; i privilegi tornano uguali (PUBLIC, `zeroerp_app`, il proprietario).
+* **I chiamanti per nome** (`-24` il batch, con la chiave JSON `sorgente_chiave`; `-32` la porta degli oneri; `-33`
+  l'accredito della riga di reso; `20_code/dbops/20261108-34` il builder pgTAP): `CREATE OR REPLACE`, stesse firme, corpi
+  dai loro ultimi changeSet, uguali al vivo.
+* **⚖️ Il parametro del builder `dbops.fn_pgtap_crea_commessa_attivita` resta `p_sorgente_uid`**: la richiesta nomina la
+  madre e la porta, e il builder lo chiamano per nome una trentina di pgTAP. Rinominarlo è un'altra decisione, di Tid.
+
+**I pgTAP allineati:** 53 file, 97 chiamate per nome alla porta o alla madre (sostituite solo dentro le parentesi di
+quelle due chiamate: altre venti funzioni hanno un parametro con lo stesso nome, e lì resta); la chiave JSON del batch in
+`vendite/test-fn-batch-upsert-commessa-attivita-v1` e `vendite/test-riga-listino-propagata-dalla-commessa-v1`; e
+`vendite/test-onere-batch-e-sezione-documento-v1`, trovato dalla regressione (sotto). In tutto 54 file.
+
+* **⚖️ Due nomi per la stessa chiave, trovato dalla regressione.** I cinque lister del push
+  (`vendite.fn_list_{preventivi,ordini,ddt,contratti,consumi}_da_pushare`) restituiscono la chiave del documento nella
+  colonna `sorgente_uid`, e il batch ora la vuole in `sorgente_chiave`. Il BE costruisce le righe del batch da sé
+  (`commesse_repository.py:1150`), quindi gli basta BE-K.1-b; un pgTAP passava invece la riga del lister così com'era
+  (`vendite/test-onere-batch-e-sezione-documento-v1`, `to_jsonb(l)`), e lì la chiave arrivava NULL: allineato, copiando
+  la colonna nella chiave. Da decidere (Tid, col BE): se anche la colonna dei lister prende il nome `sorgente_chiave`.
+  Costa cinque `RETURNS TABLE` da ricreare (DROP + CREATE) e i lettori BE della colonna (`commesse_source_handlers`,
+  `PushableRow`).
+
+**La prova del giro K.1** (2026-11-07):
+
+* **i corpi** vengono dagli ultimi changeSet delle sei funzioni, verificati uguali al `prosrc` vivo su dbdev e scratch;
+  l'SQL estratto dai sei file gira intero sui due database in transazione annullata, con gli stessi privilegi di prima,
+  nessun COMMENT che nomini il nome vecchio, e `plpgsql_check` pulito (l'unico avviso, la variabile `i` del batch, c'è
+  già sul vivo); un campione di nove pgTAP (madre, porta, batch, oneri, accredito, builder, link, presidio dei COMMENT)
+  dà 119 ok su dbdev;
+* ⚠️ **l'apply è arrivato durante la regressione** (Tid: il D.1, il K.1 e i changeSet `-25` … `-31` di un altro cantiere,
+  dbdev 23:05–23:10, scratch 23:11). Il «dopo» con l'estratto non vale (l'estratto del D.1 su un database già applicato
+  si ferma al primo DROP), e il «prima» di HEAD vale solo per i 529 file finiti prima delle 23:11:05 sullo scratch. La
+  prova giusta diventa l'albero allineato senza estratto sul database applicato (scratch, 677 pgTAP: tutti quelli del
+  giro D.1 e chi nomina la madre, la porta, il batch, gli oneri, l'accredito, il builder o le commesse), confrontato col
+  «prima» valido: il «prima» del giro D.1 (HEAD, prima dell'apply, 625 file) e i 529 del K.1. 8207 ok; su 656 file con un
+  «prima» valido, diversi due: `dbops/test-fn-get-lookup-codici` (dell'altro cantiere, verde, 11 → 13) e
+  `vendite/test-onere-batch-e-sezione-documento-v1`, **il difetto sopra**, allineato e 10/10 su scratch e dbdev. Dei 21
+  senza un «prima» valido, uno solo rosso, il 17 di `vendite/test-ordine-al-modello-v1`, dichiarato «rosso da owner»
+  nel file stesso.
+
+**Dopo l'apply** (Tid, 2026-11-07): pgTAP verdi come applicazione.
+
+Non coperto, e resta di Tid: la baseline.
+
 #### Lotto P — pratiche
 
 * `pratiche_sorgenti`: da testo alle colonne tipizzate (S-4). Si riscrive l'`ON CONFLICT` vivo di
@@ -2331,6 +2485,24 @@ di §8.9, §8.10, §8.11; gli undici smoke rossi dall'apply (nove Python, due ba
   (oggi `fn_pgtap_crea_ddt_da_ordine` in `smoke-nota-credito-resi`, verde perché il suo percorso non
   incontra un guard differito). Se un builder potesse lasciare i vincoli come li ha trovati — o dichiarare
   nel COMMENT che li chiude — il BB lato smoke non servirebbe.
+  ↩️ **Risposta del team DB (2026-11-07).** Il contratto c'è già, ed è voluto: i builder escono IMMEDIATE
+  per chiudere la **propria** unità di lavoro, così una fixture rotta si ferma nel builder e non tre verbi
+  dopo (guida `pgtap-come-si-scrive-un-test`, §«Il mondo si costruisce»: «gli helper escono con i vincoli
+  IMMEDIATE»). «Lasciarli come li ha trovati» non si può: in PostgreSQL il modo dei vincoli di una
+  transazione non si legge, quindi non si ripristina (la stessa guida lo dice per la riga di contesto).
+  Resta la dichiarazione, ed è quasi tutta già scritta: il COMMENT di 21 builder su 25 dice che escono
+  IMMEDIATE; mancano `fn_pgtap_crea_cliente_ba`, `fn_pgtap_crea_emittente_operatore`,
+  `fn_pgtap_crea_soggetto_ruolo` e `fn_pgtap_porta_a_stato` (dbdev, 2026-11-07). Quei quattro COMMENT
+  li chiude `20_code/dbops/20261108-09` (via di Tid, 2026-11-07), e il presidio
+  `dbops/test-builder-pgtap-vincoli-immediate-v1` tiene la regola per i builder futuri: perimetro derivato dal
+  corpo, senza elenco. Provato in transazione su scratch e dbdev: 2/2 con l'estratto, senza il test 2 nomina
+  i quattro. ⇒ **`ripristina_vincoli_differiti`
+  è la risposta giusta e resta**: rimette differiti solo i vincoli `INITIALLY DEFERRED`, cioè proprio il
+  default della transazione. `SET CONSTRAINTS ALL DEFERRED`, che usano i pgTAP «fattura + atto», differirebbe
+  anche i `DEFERRABLE INITIALLY IMMEDIATE`, e in uno smoke non va. Ogni smoke che chiama un builder e poi
+  un verbo vero lo chiama dopo il builder, anche `smoke-nota-credito-resi`, che oggi è verde solo perché il
+  suo percorso non incontra un guard differito. Lato DB non serve un BB gemello: i pgTAP vogliono IMMEDIATE,
+  e il solo consumatore è lo smoke.
 * **Fuori dal brief, nello stesso giro**: `smoke-test-soggetti.sh` leggeva `ruolo_codice`, rinominato in
   `ruolo_codice_interno` dal commit `61eb42c39` (2026-11-04): il parser falliva in silenzio e la lista dei
   ruoli sembrava vuota.
@@ -2346,6 +2518,30 @@ Nessuna rottura. V-7 è la voce BE-C.3-e del §8.11.
 | --- | --- | --- | --- |
 | — | `config.sorgenti` non ha più il tipo `ATTIVITA` (id 1); `config.tipi_entita.ATTIVITA` resta, con `is_sorgente` false: le note delle attività fatturabili non cambiano | `apps/config/sorgenti.py` non ha la costante; `config/tests/db/test_sorgenti_repository.py:71-72` usa `"ATTIVITA"` solo come stringa d'esempio, su un cursore finto (grep, 2026-11-07) | nessuna obbligatoria; l'esempio del test si può passare a un codice che esiste (`COMMESSA`) |
 | — | cancellare un'attività fatturabile non passa più dal lato «in uscita» (`E_SORG_ORIGINE_REFERENZIATA`): niente nasce da un'attività | nessun percorso BE lo aspettava | nessuna |
+
+### 8.13 Dal lotto D, giro D.1 (2026-11-07)
+
+⚠️ Dall'apply la stampa di un documento e il drenatore della coda danno errore fino a BE-D.1-a … -e. Percorso intero,
+elenco chiuso (grep su `backend/apps`, 2026-11-07, fuori dai test).
+
+| # | Che cosa cambia | Percorso | Che cosa fa il BE/FE |
+| --- | --- | --- | --- |
+| BE-D.1-a | `documenti.documenti_generati`: la chiave del documento stampato sta in `sorgente_id` (tipi a chiave id: ordine, DDT, contratto, fattura) **oppure** in `sorgente_uid uuid` (preventivo, offerta), mai tutte e due (`chk_documenti_generati_sorgente_forma`); il guard unico rifiuta la chiave sbagliata (`E_SORG_CHIAVE_NON_CONFORME`) | `documenti/services/document_generation_service.py:192-330` (`genera_documento` riceve già `sorgente_id` e `sorgente_uid`), `:448-525` (la ristampa); `documenti/db/documenti_repository.py:229-240` (`DOCUMENTO_GENERATO_CREATE_COLUMNS` non ha `sorgente_id`) | scrive la coppia del `key_selector` del tipo: `sorgente_id` per i tipi a chiave id, `sorgente_uid` per quelli a uid. La coppia giusta da una chiave qualsiasi la dà `script.fn_sorgente_chiave(tipo, chiave text)`. `sorgente_id` entra nelle colonne dell'INSERT |
+| BE-D.1-b | il progressivo delle versioni è uno per documento, sulla chiave nuova (`uq_documenti_generati_sorgente_progressivo`: tipo, `sorgente_id`, `sorgente_uid`, riga, progressivo, `NULLS NOT DISTINCT`) | `documenti_repository.next_progressivo_sorgente` (`:1255-1290`: MAX+1 su `sorgente_uid = %s`) | MAX+1 sulla chiave del tipo (`sorgente_id = %s` oppure `sorgente_uid = %s::uuid`), riga con `IS NOT DISTINCT FROM` |
+| BE-D.1-c | la lista e il dettaglio delle stampe di un documento si cercano sulla chiave del tipo; `sorgente_uid` è `uuid` | `documenti_repository.list_documenti_per_sorgente` (`:1372-1420`, filtra `d.sorgente_uid = %s` col testo), le SELECT di dettaglio (`:1437`, `:1496`, `:1546`); `documenti/api/sorgente_documenti_views.py:178`, `:239`, `:354` (`sorgente_uid=str(entity["uid"])` per i sei domini); FE `documenti/components/DocumentiGeneratiSorgenteList.vue` (via API) | la factory passa la chiave del tipo (l'id dell'entità per ordine, DDT, contratto, fattura; l'uid per preventivo e offerta), il repository filtra sulla colonna giusta e restituisce `sorgente_id` accanto a `sorgente_uid`. Se il contratto dell'API cambia, il componente FE lo segue. Da qui la lista vede anche le stampe del drenatore |
+| BE-D.1-d | `vendite.fatture_stampa_coda.sorgente_uid` non c'è più: la fattura è in `sorgente_id` | `vendite/db/pipeline_repository.py:2705` (`RETURNING … c.sorgente_uid`); `vendite/services/stampa_coda_drainer_service.py:265` (`sorgente_uid=str(item["sorgente_uid"])` a `genera_documento`) | il claim non la restituisce; il drenatore passa a `genera_documento` la fattura in `sorgente_id`, come chiede BE-D.1-a |
+| BE-D.1-e | un documento che ha una stampa non si cancella (`E_SORG_ORIGINE_REFERENZIATA`, `CONFLITTO_STATO`, già nel registro) | la cancellazione delle bozze e dei preventivi; oggi il caso è stretto (si stampa dopo l'emissione, e i documenti si cancellano solo da bozza vuota) | nessuna obbligatoria: il codice c'è già. Se un percorso cancella una bozza stampata, il messaggio lo dice |
+| — | `ai_assistant/tools/documenti_tools.py:105-135` risolve l'uid del PREVENTIVO dall'id e lo passa | solo PREVENTIVO, a chiave uid | nessuna, se `genera_documento` (BE-D.1-a) sceglie la colonna dal tipo |
+| — | i `*_document_context_builder` (`vendite/services/{preventivo,offerta,contratto,ddt,fattura}_document_context_builder.py`) ricevono `sorgente_id` da `build_context` | non leggono la chiave della stampa (grep, 2026-11-07) | nessuna |
+
+### 8.14 Dal giro K.1, il nome della chiave (2026-11-07)
+
+⚠️ Dall'apply il push di una riga di commessa dà errore fino a BE-K.1-a e -b (richiesta del BE: chiude la sua voce).
+
+| # | Che cosa cambia | Percorso | Che cosa fa il BE/FE |
+| --- | --- | --- | --- |
+| BE-K.1-a | `vendite.fn_upsert_commessa_attivita` e `vendite.fn_link_commessa_sorgente`: il parametro della chiave del documento si chiama `p_sorgente_chiave` (prima `p_sorgente_uid`); tipo e significato invariati | `vendite/db/commesse_repository.py:1058` (`p_sorgente_uid => %s` verso la madre); nessuna chiamata BE alla porta per nome (grep, 2026-11-07) | il nome nuovo nella chiamata |
+| BE-K.1-b | `vendite.fn_batch_upsert_commessa_attivita`: la chiave della riga è `sorgente_chiave` (prima `sorgente_uid`). Una riga con la chiave vecchia passa la chiave NULL | `commesse_repository.py:1150` (`"sorgente_uid": inp.sorgente_uid` nella riga del batch); da verificare se finiscono nel batch `vendite/services/commesse_push_orchestrator.py:269` e `vendite/db/resi_repository.py:680` | la chiave nuova nelle righe del batch |
 
 ---
 
