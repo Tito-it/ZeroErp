@@ -198,7 +198,7 @@ RETURNS bigint AS $$
       p_stato_approvazione            => 'BOZZA',
       p_stato_emissione               => 'NON_EMESSA',
       p_sorgente_tipo_id              => (v ->> 'sorgente_tipo_id')::bigint,
-      p_sorgente_chiave               => v ->> 'sorgente_uid',
+      p_sorgente_chiave               => v ->> 'sorgente_chiave',
       -- La riga del documento, dal lister (come la passa il backend).
       p_sorgente_riga => (v ->> 'riga_id')::bigint,
       p_tipo_movimento                => (v ->> 'tipo_movimento')::varchar,
@@ -260,7 +260,7 @@ SELECT (SELECT v FROM tmp_pc_lista)
        || jsonb_build_object(
             'segment_key',      x.segment_key || ':PGT-PC-TC:' || substr(md5(clock_timestamp()::text), 1, 8),
             'sorgente_tipo_id', x.sorgente_tipo_id,
-            'sorgente_uid',     x.consumo_id::text,
+            'sorgente_chiave',  x.consumo_id::text,
             'riga_id',          NULL) AS v
   FROM dbops.fn_pgtap_consumo_della_commessa((SELECT id FROM tmp_pc_commessa)) x;
 

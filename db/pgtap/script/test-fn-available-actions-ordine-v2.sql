@@ -194,7 +194,7 @@ SELECT vendite.fn_upsert_commessa_attivita(
          p_pricing_mode                  => pr.pricing_mode,
          p_stato_emissione               => 'EMESSA',
          p_sorgente_tipo_id              => pr.sorgente_tipo_id,
-         p_sorgente_chiave               => pr.sorgente_uid,
+         p_sorgente_chiave               => pr.sorgente_chiave,
          p_meta                          => pr.meta)
   FROM tmp_pushrow_aa2 pr, tmp_commessa_aa2 c;
 

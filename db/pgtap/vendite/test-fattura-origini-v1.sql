@@ -104,16 +104,16 @@ END $leg$;
 --   l'id il legame risulterebbe ritirato.
 CREATE TEMP TABLE t_a_o1 AS
 SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita((SELECT commessa_id FROM t_c1),
-    p_sorgente_codice => 'ORDINE_VENDITA', p_sorgente_uid => (SELECT ordine_uid::text FROM t_o1));
+    p_sorgente_codice => 'ORDINE_VENDITA', p_sorgente_chiave => (SELECT ordine_uid::text FROM t_o1));
 CREATE TEMP TABLE t_a_pa AS
 SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita((SELECT commessa_id FROM t_c1),
-    p_sorgente_codice => 'PREVENTIVO', p_sorgente_uid => (SELECT preventivo_uid::text FROM t_pa));
+    p_sorgente_codice => 'PREVENTIVO', p_sorgente_chiave => (SELECT preventivo_uid::text FROM t_pa));
 CREATE TEMP TABLE t_a_o3 AS
 SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita((SELECT commessa_id FROM t_c1),
-    p_sorgente_codice => 'ORDINE_VENDITA', p_sorgente_uid => (SELECT ordine_uid::text FROM t_o3));
+    p_sorgente_codice => 'ORDINE_VENDITA', p_sorgente_chiave => (SELECT ordine_uid::text FROM t_o3));
 CREATE TEMP TABLE t_a_o2 AS
 SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita((SELECT commessa_id FROM t_c2),
-    p_sorgente_codice => 'ORDINE_VENDITA', p_sorgente_uid => (SELECT ordine_uid::text FROM t_o2));
+    p_sorgente_codice => 'ORDINE_VENDITA', p_sorgente_chiave => (SELECT ordine_uid::text FROM t_o2));
 
 -- Il DDT legato alla commessa C1, senza righe in nessuna fattura.
 CREATE TEMP TABLE t_ddt AS

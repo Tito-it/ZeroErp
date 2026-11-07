@@ -142,7 +142,7 @@ BEGIN
     PERFORM vendite.fn_link_commessa_sorgente(
         p_commessa_id      => v_commessa,
         p_sorgente_tipo_id => (r ->> 'sorgente_tipo_id')::bigint,
-        p_sorgente_chiave  => r ->> 'sorgente_uid');
+        p_sorgente_chiave  => r ->> 'sorgente_chiave');
 
     FOR r IN SELECT * FROM jsonb_array_elements(p_righe) LOOP
         PERFORM vendite.fn_upsert_commessa_attivita(
@@ -173,7 +173,7 @@ BEGIN
             p_prezzo_bloccato               => (r ->> 'prezzo_bloccato')::boolean,
             p_pricing_mode                  => r ->> 'pricing_mode',
             p_sorgente_tipo_id              => (r ->> 'sorgente_tipo_id')::bigint,
-            p_sorgente_chiave               => r ->> 'sorgente_uid',
+            p_sorgente_chiave               => r ->> 'sorgente_chiave',
             -- La riga del documento, dal lister (come la passa il backend).
             p_sorgente_riga => (r ->> 'riga_id')::bigint,
             p_meta                          => r -> 'meta');
@@ -187,7 +187,7 @@ BEGIN
               FROM vendite.attivita_fatturabili a
               JOIN vendite.commesse_attivita ca ON ca.id = a.commessa_attivita_id
              WHERE a.commessa_id = v_commessa
-               AND vendite.fn_documento_uid_di_attivita(ca.sorgente_tipo_id, ca.segment_key) = p_righe -> 0 ->> 'sorgente_uid');
+               AND vendite.fn_documento_uid_di_attivita(ca.sorgente_tipo_id, ca.segment_key) = p_righe -> 0 ->> 'sorgente_chiave');
 END
 $f$;
 
@@ -399,7 +399,7 @@ CREATE TEMP TABLE _ca7 AS
 SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita(
     p_commessa_id      => (SELECT commessa_id FROM _com7),
     p_sorgente_codice  => 'DDT_VENDITA',
-    p_sorgente_uid     => (SELECT ddt_uid::text FROM _ddt7),
+    p_sorgente_chiave  => (SELECT ddt_uid::text FROM _ddt7),
     p_sorgente_riga_id => (SELECT ddt_riga_id FROM _ddt7),
     p_quantita         => (SELECT quantita FROM _ddt7));
 SELECT vendite.fn_emit_attivita_fatturabili_da_commessa(

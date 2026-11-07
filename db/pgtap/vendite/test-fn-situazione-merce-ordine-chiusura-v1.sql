@@ -125,7 +125,7 @@ RETURNS void AS $$
 BEGIN
   PERFORM dbops.fn_pgtap_crea_commessa_attivita((SELECT commessa_id FROM tmp_com_sm), 20,
             (SELECT articolo_id FROM tmp_refs_sm),
-            p_sorgente_codice => 'ORDINE_VENDITA', p_sorgente_uid => p_ordine_uid::text,
+            p_sorgente_codice => 'ORDINE_VENDITA', p_sorgente_chiave => p_ordine_uid::text,
             p_sorgente_riga_id => p_ordine_riga_id, p_quantita => p_qta,
             p_competenza_dal => DATE '2026-08-01', p_competenza_al => DATE '2026-08-31');
   PERFORM vendite.fn_emit_attivita_fatturabili_da_commessa((SELECT commessa_id FROM tmp_com_sm), true, false);

@@ -1,0 +1,216 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL LISTER DEL PUSH CHIAMA LA CHIAVE COL SUO NOME: sorgente_chiave in vendite.fn_list_consumi_da_pushare
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 «Il giro K.2» (decisione e via di Tid del 2026-11-07).
+#
+#   La colonna sorgente_uid del RETURNS TABLE diventa sorgente_chiave: e' la chiave
+#   del documento come la riceve la madre (p_sorgente_chiave, 20261108-23) e come la
+#   legge il batch (la chiave JSON sorgente_chiave, 20261108-24). Il nome sorgente_uid
+#   diceva «la colonna uuid dei tipi a uid» (S-4), e il batch non la trovava.
+#   ⚠️ %TYPE: l'ancora di prima (commesse_attivita.sorgente_uid%TYPE) si era risolta a
+#   text al CREATE; oggi la colonna e' uuid (20261107-70), e ricreata darebbe uuid.
+#   Il valore e' l'uid in testo che la madre traduce: text esplicito, col perche'
+#   accanto. Le altre colonne restano ancorate, e si risolvono ai tipi di prima.
+#   Il nome di una colonna di RETURNS TABLE non cambia con CREATE OR REPLACE: DROP +
+#   CREATE della stessa firma. Nessun oggetto dipende dalla funzione (pg_depend, dbdev
+#   e scratch, 2026-11-07): i chiamanti DB sono plpgsql e non leggono la colonna.
+#   Dichiarazione e corpo dall'ultimo YAML (20261020-89), corpo uguale al vivo
+#   (dbdev e scratch, 2026-11-07); SECURITY INVOKER esplicito,
+#   che l'ultimo YAML non dichiarava (e' il default: nessun cambio di comportamento). Il COMMENT si riscrive al presente
+#   (linee-guida-sql §5d); il GRANT a zeroerp_app torna, EXECUTE a PUBLIC lo da' la CREATE.
+#   ⚠️ CHE COSA CAMBIA: chi legge la colonna per nome (il backend, PushableRow) non la
+#   trova fino alla sua voce del §8 (BE-K.2-a).
+#   Rollback: il nome di prima torna rieseguendo 20261020-89 dopo un DROP.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261108-40-update-fn-list-consumi-da-pushare-sorgente-chiave-mctit.yaml
+
+  - changeSet:
+      id: 20261108-40-update-fn-list-consumi-da-pushare-sorgente-chiave
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_list_consumi_da_pushare: la chiave del documento esce nella colonna sorgente_chiave (DROP + CREATE). brief-db-sorgente-documento-e-riga §7.2 «Il giro K.2» (via di Tid del 2026-11-07).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- La colonna della chiave cambia nome nel RETURNS TABLE: CREATE OR REPLACE non lo ammette.
+              -- ⛔ MAI con CASCADE: i chiamanti DB sono plpgsql (nessuna riga in pg_depend), e un
+              --    CASCADE farebbe sparire in silenzio chi un giorno ne dipendera'.
+              DROP FUNCTION vendite.fn_list_consumi_da_pushare(vendite.commesse_attivita.competenza_mese%TYPE, anagrafiche.billing_account.id%TYPE, integer, vendite.attivita_consumi.id%TYPE);
+
+              CREATE FUNCTION vendite.fn_list_consumi_da_pushare(
+                  p_competenza_mese    vendite.commesse_attivita.competenza_mese%TYPE DEFAULT NULL::date,
+                  p_billing_account_id anagrafiche.billing_account.id%TYPE DEFAULT NULL::bigint,
+                  p_limit              integer DEFAULT NULL::integer,
+                  p_consumo_id         vendite.attivita_consumi.id%TYPE DEFAULT NULL::bigint)
+               RETURNS TABLE(
+                  -- nudi (utility_id, fatturazione_immediata, termine_pagamento_id, modalita_pagamento_id): valori calcolati o polimorfi: nessuna colonna di cui siano il riflesso
+                  consumo_id                  vendite.attivita_consumi.id%TYPE,
+                  consumo_uid                 vendite.attivita_consumi.uid%TYPE,
+                  billing_account_id          anagrafiche.billing_account.id%TYPE,
+                  utility_id                  integer,
+                  emittente_soggetto_ruolo_id anagrafiche.soggetti_ruoli.id%TYPE,
+                  competenza_dal              vendite.commesse_attivita.competenza_dal%TYPE,
+                  competenza_al               vendite.commesse_attivita.competenza_al%TYPE,
+                  fatturazione_immediata      boolean,
+                  sorgente_tipo_id            vendite.commesse_attivita.sorgente_tipo_id%TYPE,
+                  -- text esplicito, non %TYPE: e' la chiave del documento come la riceve la madre
+                  -- (vendite.fn_upsert_commessa_attivita, p_sorgente_chiave), l'uid in testo. Non e' il
+                  -- riflesso di una colonna: commesse_attivita.sorgente_uid e' uuid e tiene solo la
+                  -- chiave dei tipi a uid.
+                  sorgente_chiave             text,
+                  segment_key                 vendite.commesse_attivita.segment_key%TYPE,
+                  articolo_id                 vendite.commesse_attivita.articolo_id%TYPE,
+                  istanza_utility_id          vendite.commesse_attivita.istanza_utility_id%TYPE,
+                  data_attivita               vendite.commesse_attivita.data_attivita%TYPE,
+                  uom_id                      vendite.commesse_attivita.uom_id%TYPE,
+                  quantita                    vendite.commesse_attivita.quantita%TYPE,
+                  qta_operativa               vendite.commesse_attivita.qta_operativa%TYPE,
+                  uom_operativa_id            vendite.commesse_attivita.uom_operativa_id%TYPE,
+                  factor_to_base              vendite.commesse_attivita.factor_to_base%TYPE,
+                  competenza_mese             vendite.commesse_attivita.competenza_mese%TYPE,
+                  prezzo_snapshot             vendite.commesse_attivita.prezzo_snapshot%TYPE,
+                  prezzo_bloccato             vendite.commesse_attivita.prezzo_bloccato%TYPE,
+                  pricing_mode                vendite.commesse_attivita.pricing_mode%TYPE,
+                  tipo_movimento              vendite.commesse_attivita.tipo_movimento%TYPE,
+                  valuta_id                   vendite.commesse_attivita.valuta_id%TYPE,
+                  meta                        vendite.commesse_attivita.meta%TYPE,
+                  tipo_doc_fiscale_id         vendite.commesse_attivita.tipo_doc_fiscale_id%TYPE,
+                  termine_pagamento_id        bigint,
+                  modalita_pagamento_id       integer)
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- rev 2026-10-20 (20261020-89, brief-db-grammatica-unica-documenti, 2e G-8):
+              --   la chiave e' ATTIVITA_CONSUMI:<uid>, composta da
+              --   script.fn_segment_key (era CONS:<uid>). Firma e RETURNS ancorati.
+              DECLARE
+                v_sorgente_tipo_id    config.sorgenti.id%TYPE;
+                v_tipo_doc_fiscale_id config.sorgenti.tipo_doc_fiscale_id%TYPE;
+              BEGIN
+                -- rev 2026-06-28 (analisi-hardcoded-codice §3a): sorgente risolta
+                -- per codice_interno (immutabile), non per codice (mutabile).
+                -- rev 2026-07-27 (brief emissione mirata PARTE B, D-6): a differenza
+                -- di ordini/contratti/DDT, qui fatturazione_immediata RESTA la
+                -- costante FALSE. Non e' una dimenticanza: e' dominio. Un consumo
+                -- e' una misura, la corsia la decide il contratto che lo governa.
+                -- Guard: p_consumo_id, se specificato, deve essere > 0.
+                IF p_consumo_id IS NOT NULL AND p_consumo_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite',
+                    'fn_list_consumi_da_pushare',
+                    'E_PUSH_SORGENTE_ID_INVALIDO',
+                    jsonb_build_object('parametro', 'p_consumo_id', 'valore', p_consumo_id),
+                    NULL::uuid,
+                    'p_consumo_id', p_consumo_id::text
+                  );
+                END IF;
+
+                SELECT s.id, s.tipo_doc_fiscale_id
+                  INTO v_sorgente_tipo_id, v_tipo_doc_fiscale_id
+                FROM config.sorgenti s
+                WHERE s.codice_interno = 'ATTIVITA_CONSUMI' AND s.attivo IS TRUE
+                LIMIT 1;
+
+                IF v_sorgente_tipo_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_list_consumi_da_pushare', 'E_CODICE',
+                    jsonb_build_object('codice', 'ATTIVITA_CONSUMI'),
+                    NULL::uuid,
+                    'ATTIVITA_CONSUMI', 'config.sorgenti'
+                  );
+                END IF;
+
+                RETURN QUERY
+                SELECT
+                  ac.id, ac.uid,
+                  ac.billing_account_id,
+                  ba.utility_id,
+                  anagrafiche.fn_get_emittente_fiscale_id(ac.billing_account_id),
+                  ac.periodo_dal, ac.periodo_al,
+                  -- fatturazione_immediata: costante FALSE PER SCELTA DI DOMINIO
+                  -- (D-6, 2026-07-27). I consumi seguono sempre la corsia
+                  -- differita; la corsia immediata si ottiene marcando il
+                  -- CONTRATTO che governa la fornitura, non la singola lettura.
+                  -- NON sostituire con una colonna: vedi header del changeSet.
+                  FALSE,
+                  v_sorgente_tipo_id,
+                  ac.uid::text,
+                  script.fn_segment_key('ATTIVITA_CONSUMI', ac.uid::text),
+                  NULL::uuid,
+                  ba.istanza_utility_id,
+                  COALESCE(ac.periodo_dal, ac.competenza_mese),
+                  ac.uom_id,
+                  ac.consumo_totale,
+                  ac.consumo_totale,
+                  ac.uom_id,
+                  1::numeric,
+                  ac.competenza_mese,
+                  NULL::numeric,
+                  -- prezzo_bloccato: FALSE per una ragione DIVERSA e non
+                  -- correlata alla precedente — un consumo non porta prezzo
+                  -- dalla sorgente (prezzo_snapshot NULL sopra), quindi non
+                  -- c'e' nulla da bloccare: il prezzo lo risolve il pricing.
+                  FALSE,
+                  'FIXED'::varchar,
+                  'NORMALE'::varchar,
+                  NULL::integer,
+                  jsonb_build_object(
+                    'consumo_uid',         ac.uid,
+                    'stato_calcolo',       ac.stato_calcolo,
+                    'periodo_dal',         ac.periodo_dal,
+                    'periodo_al',          ac.periodo_al,
+                    'tipo_commessa',       'AUTO',
+                    'policy_fatturazione', 'DA_DOCUMENTO'
+                  ),
+                  v_tipo_doc_fiscale_id,
+                  NULL::bigint,
+                  NULL::integer
+                FROM vendite.attivita_consumi ac
+                JOIN anagrafiche.billing_account ba ON ba.id = ac.billing_account_id
+                WHERE ac.stato_calcolo = 'OK'
+                  AND ac.fattura_id IS NULL
+                  AND (p_competenza_mese IS NULL OR ac.competenza_mese = p_competenza_mese)
+                  AND (p_billing_account_id IS NULL OR ac.billing_account_id = p_billing_account_id)
+                  -- Estensione 2026-05: NULL = lista globale; NOT NULL = singolo consumo.
+                  AND (p_consumo_id IS NULL OR ac.id = p_consumo_id)
+                  -- Esclusione "gia' inviato" (rev 2026-10-12, 20261012-10): dal
+                  -- classificatore unico, sul segmento che questa funzione scrive
+                  -- ('CONS:<uid>', sopra). Il NOT EXISTS di prima cercava
+                  -- 'CONS:<uid>:%', con i due punti finali che il segmento base non
+                  -- ha: vedeva solo le righe del fan-out per componente
+                  -- (':COMP:<x>', HandlerConsumi._expand_rows), che e' uno stub
+                  -- RIMANDATO (Tid, 2026-06-16) e non ne scrive. ⚠️ Il giorno in cui
+                  -- il fan-out si accende deve usare il suffisso '#CMP:' che il
+                  -- classificatore vede (DEC-2), non ':COMP:'. Una riga ANNULLATA
+                  -- non occupa (D-5).
+                  AND script.fn_get_stato_push_segment(
+                        script.fn_segment_key('ATTIVITA_CONSUMI', ac.uid::text)) = 'LIBERA'
+                ORDER BY ac.competenza_mese, ac.id
+                LIMIT p_limit;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_list_consumi_da_pushare(vendite.commesse_attivita.competenza_mese%TYPE, anagrafiche.billing_account.id%TYPE, integer, vendite.attivita_consumi.id%TYPE) IS
+                'I consumi da mandare in commessa: stato_calcolo OK, non ancora fatturati (fattura_id NULL) e non gia'' instradati (script.fn_get_stato_push_segment = LIBERA: una riga ANNULLATA non occupa, e annullata la commessa il consumo torna da mandare). p_consumo_id: un consumo solo (NULL = tutti; <= 0 solleva E_PUSH_SORGENTE_ID_INVALIDO); la sorgente ATTIVITA_CONSUMI assente dal catalogo solleva E_CODICE. Filtri in AND, ordine per competenza e consumo, p_limit come tetto. Il consumo non ha righe: una riga di commessa per consumo, senza articolo e senza prezzo. La chiave del documento esce in sorgente_chiave, l''uid del consumo in testo, come la riceve la madre vendite.fn_upsert_commessa_attivita (p_sorgente_chiave) e come la legge la chiave sorgente_chiave del batch vendite.fn_batch_upsert_commessa_attivita; la chiave del push ATTIVITA_CONSUMI:<uid> la compone script.fn_segment_key. Un fan-out per componente dovra'' usare il suffisso #CMP:, che il classificatore vede. fatturazione_immediata e'' FALSE per scelta di dominio: un consumo e'' una misura, e la corsia la decide il contratto che lo governa; non va sostituita con una colonna. termine_pagamento_id e modalita_pagamento_id sono NULL: un consumo non ha condizioni di pagamento. Il backend legge le colonne per nome.';
+
+              GRANT EXECUTE ON FUNCTION vendite.fn_list_consumi_da_pushare(vendite.commesse_attivita.competenza_mese%TYPE, anagrafiche.billing_account.id%TYPE, integer, vendite.attivita_consumi.id%TYPE) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il nome di prima torna rieseguendo 20261020-89 dopo un DROP della firma.
+              SELECT 1;
