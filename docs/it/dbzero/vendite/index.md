@@ -523,7 +523,7 @@ search:
 - [vw_fatture_scadenze_lista](views/vw_fatture_scadenze_lista.md) — (rev 2026-09-17)
 - [vw_fondi_fattura_da_decidere](views/vw_fondi_fattura_da_decidere.md) — (latest review 15-08-2026)
 - [vw_listini_versioni_azioni](views/vw_listini_versioni_azioni.md)
-- [vw_lotti_chiusi_con_gruppi_in_errore](views/vw_lotti_chiusi_con_gruppi_in_errore.md)
+- [vw_lotti_congelati_con_gruppi_in_errore](views/vw_lotti_congelati_con_gruppi_in_errore.md)
 - [vw_lotti_fase](views/vw_lotti_fase.md) — **In che fase è questo lotto**, e in un posto solo.
 - [vw_lotti_fatture_incoerenti](views/vw_lotti_fatture_incoerenti.md) — (rev 2026-10-24, R-1)
 - [vw_lotti_gruppi_azioni](views/vw_lotti_gruppi_azioni.md)

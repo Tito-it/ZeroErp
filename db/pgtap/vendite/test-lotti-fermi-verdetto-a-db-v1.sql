@@ -10,8 +10,8 @@
 -- ⭐ COSA PRESIDIA QUESTO FILE, IN UNA RIGA:
 --     il predicato «questo lotto e' fermo» ha UNA sede (la vista), la funzione
 --     che il backend legge e il presidio che il digest conta sono due LETTORI
---     della stessa riga, e la spartizione con vw_lotti_chiusi_con_gruppi_in_errore
---     e la soglia di un'ora stanno nel presidio e non nella sede.
+--     della stessa riga, e la spartizione con vw_lotti_congelati_con_gruppi_in_errore
+--     (sull'asse fiscale) e la soglia di un'ora stanno nel presidio e non nella sede.
 --
 -- ⛔ IL MONDO SI COSTRUISCE, NON SI CERCA: azienda, operatore, cliente,
 --   registro, lotti e fattura li scrive il file (builder del 18-09), quindi
@@ -23,7 +23,7 @@
 --   Il test 18 toglie la veste per provare la CECITA' della vista e l'onesta'
 --   del contatore DEFINER, e la rimette subito dopo.
 --
--- Elenco test (plan 21):
+-- Elenco test (plan 24):
 --  1) struttura: la sede esiste con fermo, fermo_motivo, fermo_da
 --  2) struttura: la funzione ha UNDICI colonne e l'ultima e' `fermo`
 --  3) lotto pulito: non fermo, motivo e orologio NULL
@@ -49,6 +49,9 @@
 -- 19) catalogo: la riga e' ZERO / DEFINER / GIORNALIERA
 -- 20) lotto inesistente: la funzione risponde UNA riga di zeri con fermo = false
 -- 21) la funzione rifiuta p_lotto_id NULL (P0001, E_PARAMETRO_INVALIDO)
+-- 22) congelato + job IN_ESECUZIONE + esito ERRORE → nei congelati, non nei fermi
+-- 23) COMPLETATO in bozza + esito ERRORE da due ore → nei fermi, non nei congelati
+-- 24) stato fiscale ignoto + esito ERRORE → nei congelati, non nei fermi
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -62,7 +65,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(21);
+SELECT plan(24);
 
 -- ============================================================
 -- Fixture: due lotti (DRAFT e DEFINITIVA) e una fattura DRAFT nel primo
@@ -350,7 +353,7 @@ SELECT is(
 );
 
 -- ============================================================
--- 17) La spartizione con vw_lotti_chiusi_con_gruppi_in_errore
+-- 17) La spartizione con vw_lotti_congelati_con_gruppi_in_errore (anche 22-24)
 -- ============================================================
 INSERT INTO vendite.fatturazione_lotti_log (lotto_id, messaggio, status, data_ora)
 SELECT l.id, 'pgTAP: critica del giro su lotto chiuso', 'C', now() - interval '2 hours'
@@ -420,6 +423,96 @@ SELECT throws_ok(
     'P0001',
     NULL,
     '21. p_lotto_id NULL: rifiutato (P0001)'
+);
+
+-- ============================================================
+-- 22-24) L'asse fiscale dei due presidi (rev 2026-11-07, brief-db-revisione-dbops
+--   giro 6, Q14 ⑦): pre-fiscale -> vw_lotti_fermi_da_guardare, congelato o
+--   ignoto -> vw_lotti_congelati_con_gruppi_in_errore, qualunque stato_lotto.
+-- ============================================================
+-- Un lotto congelato con un esito in ERRORE e il job ancora IN_ESECUZIONE (il
+-- default della colonna): e' il BUCO di prima, che non vedeva nessuno.
+INSERT INTO vendite.fatturazione_lotti_esiti
+    (lotto_id, gruppo_key, stato_esecuzione, errore_codice, errore_messaggio, errore_quando)
+SELECT l.id, 'PGTAP:FERMO:def1', 'ERRORE', 'E_PULL_COMMESSA', 'rotto dopo il congelamento',
+       now() - interval '2 hours'
+  FROM _lotto_def l;
+
+SELECT is(
+    (SELECT (
+        (SELECT l.stato_lotto FROM vendite.fatturazione_lotti l WHERE l.id = (SELECT id FROM _lotto_def)),
+        (SELECT c.gruppi_in_errore::int FROM vendite.vw_lotti_congelati_con_gruppi_in_errore c
+          WHERE c.lotto_id = (SELECT id FROM _lotto_def)),
+        (SELECT count(*)::int FROM dbops.vw_lotti_congelati_con_errori_da_guardare d
+          WHERE d.lotto_id = (SELECT id FROM _lotto_def)),
+        (SELECT count(*)::int FROM dbops.vw_lotti_fermi_da_guardare
+          WHERE lotto_id = (SELECT id FROM _lotto_def))
+    )::text),
+    ('IN_ESECUZIONE', 1, 1, 0)::text,
+    '22. congelato + job IN_ESECUZIONE + esito ERRORE: lo vedono i congelati (vendite e dbops), non i fermi'
+);
+
+-- Un lotto ancora in bozza che NASCE COMPLETATO (il guard del COMPLETATO e' su
+-- UPDATE) con un esito in ERRORE da due ore: e' il DOPPIONE di prima.
+CREATE TEMP TABLE _lotto_compl AS
+WITH ins AS (
+    INSERT INTO vendite.fatturazione_lotti
+        (codice, tipo_doc_fiscale_id, competenza_mese,
+         emittente_soggetto_ruolo_id, stato_doc_fiscale_id, stato_lotto, meta)
+    SELECT 'PGTAP-FERMO-C-' || r.emittente_sr_id, r.tipo_doc_fiscale_id,
+           date_trunc('month', script.fn_data_operativa())::date, r.emittente_sr_id,
+           r.stato_draft_id, 'COMPLETATO', jsonb_build_object('test_scope', 'pgtap_lotti_fermi')
+      FROM _rif r
+    RETURNING id
+)
+SELECT id FROM ins;
+
+INSERT INTO vendite.fatturazione_lotti_esiti
+    (lotto_id, gruppo_key, stato_esecuzione, errore_codice, errore_messaggio, errore_quando)
+SELECT l.id, 'PGTAP:FERMO:compl1', 'ERRORE', 'E_PULL_COMMESSA', 'rotto in bozza',
+       now() - interval '2 hours'
+  FROM _lotto_compl l;
+
+SELECT is(
+    (SELECT (
+        (SELECT count(*)::int FROM dbops.vw_lotti_fermi_da_guardare
+          WHERE lotto_id = (SELECT id FROM _lotto_compl)),
+        (SELECT count(*)::int FROM vendite.vw_lotti_congelati_con_gruppi_in_errore
+          WHERE lotto_id = (SELECT id FROM _lotto_compl))
+    )::text),
+    (1, 0)::text,
+    '23. COMPLETATO in bozza + esito ERRORE da due ore: lo vedono i fermi, non i congelati (niente doppione)'
+);
+
+-- Un lotto con lo stato fiscale IGNOTO: pre_fiscale e' COALESCE(..., false),
+-- quindi cade fra i congelati, dove un esito in errore resta visibile.
+CREATE TEMP TABLE _lotto_ignoto AS
+WITH ins AS (
+    INSERT INTO vendite.fatturazione_lotti
+        (codice, tipo_doc_fiscale_id, competenza_mese,
+         emittente_soggetto_ruolo_id, stato_doc_fiscale_id, meta)
+    SELECT 'PGTAP-FERMO-I-' || r.emittente_sr_id, r.tipo_doc_fiscale_id,
+           date_trunc('month', script.fn_data_operativa())::date, r.emittente_sr_id,
+           NULL, jsonb_build_object('test_scope', 'pgtap_lotti_fermi')
+      FROM _rif r
+    RETURNING id
+)
+SELECT id FROM ins;
+
+INSERT INTO vendite.fatturazione_lotti_esiti
+    (lotto_id, gruppo_key, stato_esecuzione, errore_codice, errore_messaggio)
+SELECT l.id, 'PGTAP:FERMO:ign1', 'ERRORE', 'E_PULL_COMMESSA', 'rotto, stato ignoto'
+  FROM _lotto_ignoto l;
+
+SELECT is(
+    (SELECT (
+        (SELECT c.stato_codice_interno IS NULL FROM vendite.vw_lotti_congelati_con_gruppi_in_errore c
+          WHERE c.lotto_id = (SELECT id FROM _lotto_ignoto)),
+        (SELECT count(*)::int FROM dbops.vw_lotti_fermi_da_guardare
+          WHERE lotto_id = (SELECT id FROM _lotto_ignoto))
+    )::text),
+    (true, 0)::text,
+    '24. stato fiscale ignoto + esito ERRORE: lo vedono i congelati, con lo stato NULL; non i fermi'
 );
 
 SELECT * FROM finish();

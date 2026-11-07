@@ -4,8 +4,16 @@
 --   COMPLETATO si guadagna.
 --   Brief: brief-db-annullamento-chiude-la-vita §9 (decisioni di Tid, 2026-09-23).
 --   ChangeSet: 20260923-30 (guard su COMPLETATO), -31 (l'annullo chiude gli
---   esiti), -33 (dbops.vw_lotti_chiusi_con_errori_da_guardare) + la riga in
---   presidi.csv. Il -32 (COMMENT) e il -34 (allineamento del pregresso) non
+--   esiti), -33 (dbops.vw_lotti_chiusi_con_errori_da_guardare, dal 2026-11-07
+--   vw_lotti_congelati_con_errori_da_guardare: 20261108-10, -11) + la riga in
+--   presidi.csv.
+-- ⭐ Rev 2026-11-07 (brief-db-revisione-dbops, giro 6, Q14 ⑦): i due presidi
+--   dei lotti si spartiscono l'asse FISCALE. Un lotto in bozza con un esito in
+--   errore e' un lotto fermo; uno congelato e' la contraddizione dei
+--   «congelati». Per questo D nasce DEFINITIVA (la porta dell'esito si vede su
+--   un lotto congelato), e B, che si annulla dalla bozza, prima e' fermo e dopo
+--   e' ANNULLATA: congelato, e assente solo perche' l'annullo gli chiude gli
+--   esiti (il 18 lo prova riaprendone uno). Il -32 (COMMENT) e il -34 (allineamento del pregresso) non
 --   hanno asserzioni qui: il primo e' testo, il secondo gira una volta sola.
 --
 -- ⭐ COSA PRESIDIA QUESTO FILE, IN UNA RIGA:
@@ -27,29 +35,31 @@
 --   Il test 16 toglie la veste per provare la cecita' della vista e l'onesta'
 --   del contatore DEFINER, e la rimette subito dopo.
 --
--- Elenco test (plan 17):
+-- Elenco test (plan 18):
 --  1) il guard e' montato: BEFORE UPDATE OF stato_lotto, la funzione giusta
 --  2) lotto con un documento in ERRORE: COMPLETATO rifiutato, con il CODICE
 --     (P0001 + E_LOTTO_COMPLETATO_NON_GUADAGNATO) e la frase del ramo «fermo»
 --  3) ...e stato_lotto e' rimasto IN_ESECUZIONE
 --  4) contrasto: lo stesso documento COMPLETED → COMPLETATO passa
 --  5) lotto ANNULLATO senza niente di fermo: COMPLETATO rifiutato, ramo «annullato»
---  6) prima dell'annullo: il lotto chiuso con un documento in ERRORE e' nominato
---     dalla sorgente di vendite E dal lettore a catalogo
+--  6) prima dell'annullo: il lotto in bozza con un documento in ERRORE e' fermo
+--     per la sede, e i congelati non lo nominano (e' pre-fiscale)
 --  7) l'annullo non solleva
 --  8) dopo: i tre esiti aperti (ERRORE, COMPLETED, PENDING) sono ESCLUSO, con il
 --     motivo dell'annullo e il timbro scritto dal trigger
 --  9) l'esito gia' ESCLUSO tiene il SUO motivo
--- 10) dopo: il lotto non e' piu' nominato, da nessuno dei due (contrasto col 6)
+-- 10) dopo: il lotto e' congelato (ANNULLATA) e i congelati non lo nominano
 -- 11) la sede unica non lo dice piu' fermo, e gli esiti in errore sono zero
 -- 12) il giornale ha UNA riga ANNULLO_LOTTO `I` con il numero dei documenti usciti
 -- 13) un lotto annullato SENZA esiti non scrive nessuna riga ANNULLO_LOTTO
 -- 14) stato_lotto dell'annullato e' ancora COMPLETATO (l'annullo non lo tocca)
 -- 15) la porta dell'ESITO resta aperta: un documento marcato ERRORE su un lotto
---     GIA' COMPLETATO e' nominato dal lettore a catalogo
+--     CONGELATO e GIA' COMPLETATO e' nominato dal lettore a catalogo
 -- 16) DEFINER onesto: senza veste il lettore risponde ZERO (cecita') e
 --     fn_conta_presidio conta comunque la riga costruita (delta = 1)
 -- 17) catalogo: la riga e' ZERO / DEFINER / GIORNALIERA / attiva
+-- 18) contrasto del 10: un ERRORE scritto sull'annullato lo fa comparire fra i
+--     congelati — la vista non filtra gli annullati
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -63,10 +73,10 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(17);
+SELECT plan(18);
 
 -- ============================================================
--- Fixture: i riferimenti, e quattro lotti in DRAFT
+-- Fixture: i riferimenti, tre lotti in DRAFT e uno DEFINITIVA
 -- ============================================================
 CREATE TEMP TABLE _rif AS
 SELECT m.soggetto_ruolo_id                                   AS emittente_sr_id,
@@ -74,7 +84,9 @@ SELECT m.soggetto_ruolo_id                                   AS emittente_sr_id,
          WHERE t.codice_interno = 'BACKOFFICE')              AS tipo_doc_fiscale_id,
        -- ⛔ codice_interno, mai un id.
        (SELECT s.id FROM config.stati_doc_fiscale s
-         WHERE s.codice_interno = 'DRAFT')                   AS stato_draft_id
+         WHERE s.codice_interno = 'DRAFT')                   AS stato_draft_id,
+       (SELECT s.id FROM config.stati_doc_fiscale s
+         WHERE s.codice_interno = 'DEFINITIVA')              AS stato_definitiva_id
   FROM _mondo m;
 
 -- A: il lotto del guard — nasce IN_ESECUZIONE (il default), come un giro in corso.
@@ -82,7 +94,8 @@ SELECT m.soggetto_ruolo_id                                   AS emittente_sr_id,
 --    (che e' su UPDATE), ed e' il modo di costruire il pregresso che il guard
 --    oggi impedirebbe.
 -- C: un lotto vuoto, che si annulla e poi si prova a completare.
--- D: la porta dell'esito — nasce COMPLETATO, l'ERRORE gli arriva dopo.
+-- D: la porta dell'esito — nasce COMPLETATO e DEFINITIVA (congelato), l'ERRORE
+--    gli arriva dopo.
 CREATE TEMP TABLE _lotti AS
 WITH ins AS (
     INSERT INTO vendite.fatturazione_lotti
@@ -90,7 +103,8 @@ WITH ins AS (
          emittente_soggetto_ruolo_id, stato_doc_fiscale_id, stato_lotto, meta)
     SELECT 'PGTAP-VITA-' || v.sigla || '-' || r.emittente_sr_id, r.tipo_doc_fiscale_id,
            date_trunc('month', script.fn_data_operativa())::date, r.emittente_sr_id,
-           r.stato_draft_id, v.stato_lotto,
+           CASE v.sigla WHEN 'D' THEN r.stato_definitiva_id ELSE r.stato_draft_id END,
+           v.stato_lotto,
            jsonb_build_object('test_scope', 'pgtap_annullamento_vita', 'sigla', v.sigla)
       FROM _rif r,
            (VALUES ('A', 'IN_ESECUZIONE'),
@@ -221,13 +235,13 @@ UPDATE vendite.fatturazione_lotti_esiti
 
 SELECT is(
     (SELECT ROW(
-        (SELECT c.gruppi_in_errore::int FROM vendite.vw_lotti_chiusi_con_gruppi_in_errore c
-          WHERE c.lotto_id = (SELECT id FROM _lotti WHERE sigla = 'B')),
-        (SELECT d.stato_codice_interno FROM dbops.vw_lotti_chiusi_con_errori_da_guardare d
-          WHERE d.lotto_id = (SELECT id FROM _lotti WHERE sigla = 'B'))
+        (SELECT s.fermo FROM vendite.vw_lotti_segnalazioni_summary s
+          WHERE s.lotto_id = (SELECT id FROM _lotti WHERE sigla = 'B')),
+        (SELECT count(*)::int FROM vendite.vw_lotti_congelati_con_gruppi_in_errore c
+          WHERE c.lotto_id = (SELECT id FROM _lotti WHERE sigla = 'B'))
     )::text),
-    ROW(1, 'DRAFT')::text,
-    '6. prima dell''annullo: il lotto chiuso con un documento in ERRORE e'' nominato dalla sorgente e dal lettore a catalogo'
+    ROW(true, 0)::text,
+    '6. prima dell''annullo: il lotto in bozza con un documento in ERRORE e'' fermo per la sede, e i congelati non lo nominano (e'' pre-fiscale)'
 );
 
 SELECT lives_ok(
@@ -256,18 +270,20 @@ SELECT is(
     '9. l''esito gia'' ESCLUSO tiene il SUO motivo'
 );
 
--- ⭐ Il contrasto col 6: stesso lotto, stessa vista, e la sola differenza e'
---   l'annullo. La vista non filtra gli annullati: il lotto esce perche' non ha
---   piu' documenti in ERRORE.
+-- ⭐ Dopo l'annullo il lotto e' ANNULLATA, cioe' congelato: sta sull'asse dei
+--   congelati, e non compare perche' non ha piu' documenti in ERRORE. La vista
+--   non filtra gli annullati: lo prova il 18, che gliene riapre uno.
 SELECT is(
     (SELECT ROW(
-        (SELECT count(*)::int FROM vendite.vw_lotti_chiusi_con_gruppi_in_errore c
+        (SELECT f.pre_fiscale FROM vendite.vw_lotti_fase f
+          WHERE f.lotto_id = (SELECT id FROM _lotti WHERE sigla = 'B')),
+        (SELECT count(*)::int FROM vendite.vw_lotti_congelati_con_gruppi_in_errore c
           WHERE c.lotto_id = (SELECT id FROM _lotti WHERE sigla = 'B')),
-        (SELECT count(*)::int FROM dbops.vw_lotti_chiusi_con_errori_da_guardare d
+        (SELECT count(*)::int FROM dbops.vw_lotti_congelati_con_errori_da_guardare d
           WHERE d.lotto_id = (SELECT id FROM _lotti WHERE sigla = 'B'))
     )::text),
-    ROW(0, 0)::text,
-    '10. dopo l''annullo il lotto non e'' piu'' nominato, ne'' dalla sorgente ne'' dal lettore'
+    ROW(false, 0, 0)::text,
+    '10. dopo l''annullo il lotto e'' congelato (ANNULLATA) e non e'' nominato, ne'' dalla sorgente ne'' dal lettore'
 );
 
 SELECT is(
@@ -308,11 +324,11 @@ SELECT is(
 -- Il contatore PRIMA che D diventi una contraddizione: il 16 misura il DELTA,
 -- cosi' non dipende da cosa c'e' sulla macchina.
 CREATE TEMP TABLE _conta_prima AS
-SELECT dbops.fn_conta_presidio('dbops.vw_lotti_chiusi_con_errori_da_guardare') AS n;
+SELECT dbops.fn_conta_presidio('dbops.vw_lotti_congelati_con_errori_da_guardare') AS n;
 
--- ⭐ D e' gia' COMPLETATO: l'ERRORE gli arriva dopo, dal marcatore. Il guard
---   del 20260923-30 non lo vede (stato_lotto non cambia) — ed e' per questo che
---   il presidio esiste ancora.
+-- ⭐ D e' gia' COMPLETATO e congelato (DEFINITIVA): l'ERRORE gli arriva dopo,
+--   dal marcatore. Il guard del 20260923-30 non lo vede (stato_lotto non
+--   cambia) — ed e' per questo che il presidio esiste ancora.
 DO $porta$
 BEGIN
     PERFORM vendite.fn_segna_esito_gruppo_lotto(
@@ -326,10 +342,10 @@ $porta$;
 
 SELECT is(
     (SELECT ROW(count(*), min(d.gruppi_in_errore))::text
-       FROM dbops.vw_lotti_chiusi_con_errori_da_guardare d
+       FROM dbops.vw_lotti_congelati_con_errori_da_guardare d
       WHERE d.lotto_id = (SELECT id FROM _lotti WHERE sigla = 'D')),
     ROW(1::bigint, 1::bigint)::text,
-    '15. la porta dell''esito e'' aperta: ERRORE marcato su un lotto gia'' COMPLETATO, e il presidio lo nomina'
+    '15. la porta dell''esito e'' aperta: ERRORE marcato su un lotto congelato e gia'' COMPLETATO, e il presidio lo nomina'
 );
 
 -- ⚠️ Si toglie la VESTE, non l'utente: `app.current_user_id` vuoto vale
@@ -338,8 +354,8 @@ SELECT set_config('app.ruolo_applicativo', '', true);
 
 SELECT is(
     (SELECT ROW(
-        (SELECT count(*)::int FROM dbops.vw_lotti_chiusi_con_errori_da_guardare),
-        (SELECT dbops.fn_conta_presidio('dbops.vw_lotti_chiusi_con_errori_da_guardare')
+        (SELECT count(*)::int FROM dbops.vw_lotti_congelati_con_errori_da_guardare),
+        (SELECT dbops.fn_conta_presidio('dbops.vw_lotti_congelati_con_errori_da_guardare')
               - (SELECT n FROM _conta_prima))
     )::text),
     ROW(0, 1::bigint)::text,
@@ -354,9 +370,24 @@ SELECT set_config('app.ruolo_applicativo', 'OPERATORE', true);
 SELECT is(
     (SELECT ROW(p.natura, p.perimetro, p.cadenza, p.attivo, p.obsoleto_dal IS NULL)::text
        FROM dbops.presidi p
-      WHERE p.vista = 'dbops.vw_lotti_chiusi_con_errori_da_guardare'),
+      WHERE p.vista = 'dbops.vw_lotti_congelati_con_errori_da_guardare'),
     ROW('ZERO', 'DEFINER', 'GIORNALIERA', true, true)::text,
     '17. a catalogo: ZERO, DEFINER (le tabelle hanno la RLS), GIORNALIERA, attivo'
+);
+
+-- ============================================================
+-- 18) Il contrasto del 10: la vista non filtra gli annullati
+-- ============================================================
+INSERT INTO vendite.fatturazione_lotti_esiti
+    (lotto_id, gruppo_key, stato_esecuzione, errore_codice, errore_messaggio)
+SELECT l.id, 'PGTAP:VITA:B5', 'ERRORE', 'E_PULL_COMMESSA', 'riaperto dopo l''annullo'
+  FROM _lotti l WHERE l.sigla = 'B';
+
+SELECT is(
+    (SELECT count(*)::int FROM vendite.vw_lotti_congelati_con_gruppi_in_errore c
+      WHERE c.lotto_id = (SELECT id FROM _lotti WHERE sigla = 'B')),
+    1,
+    '18. un ERRORE scritto sull''annullato lo fa comparire fra i congelati: la vista non filtra gli annullati'
 );
 
 SELECT * FROM finish();
