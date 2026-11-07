@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_pgtap_listino_aggiungi_articoli`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -26,7 +26,8 @@
 
 Fixture pgTAP che **mette degli articoli in una versione di listino**: allinea la tipologia di
 listino dell'articolo a quella del listino, se è diversa, poi scrive una riga attiva per
-articolo con l'unità di misura base e il prezzo dato (100 se non lo si dà).
+articolo con l'unità di misura base, il prezzo dato (100 se non lo si dà) e la periodicità data
+(nessuna, se non la si dà).
 
 ---
 
@@ -48,12 +49,20 @@ nato.
 
 ---
 
+### ⚠️ La periodicità
+
+L'ultimo parametro, facoltativo, è la **periodicità** delle righe. Serve a una quota fissa a
+canone: senza, la versione che la contiene non si attiva
+(`E_LISTINO_VERSIONE_QUOTA_FISSA_SENZA_PERIODICITA`). Il test che mette in listino una quota fissa
+la dà; per gli altri articoli si lascia vuota. È in coda alla firma: le chiamate per posizione
+con tre argomenti restano valide.
+
+---
+
 ### Che cosa non fa
 
 * scrive le righe anche su una versione **attiva**, non solo in bozza: l'inserimento di una riga
   non è fermato dallo stato della versione;
-* non scrive la **periodicità**: la riga di un articolo a quota fissa a canone nasce senza, anche
-  su una versione attiva;
 * non scrive i componenti di un bundle né le periodicità di un kit;
 * una versione che non esiste, o un listino senza tipologia, la fermano con un errore semplice,
   senza codice registrato.
@@ -62,7 +71,9 @@ nato.
 
 ### Test
 
-Non ha un test suo: la presidiano i file che la usano, per esempio
+* `db/pgtap/dbops/test-fn-pgtap-crea-listino-v1.sql` — la riga aggiunta con la periodicità
+  data.
+* La presidiano anche i file che la usano, per esempio
 `db/pgtap/vendite/test-righe-articolo-ammesso-v1.sql`,
 `db/pgtap/catalogo/test-articoli-ammessi-picker-v1.sql` e
 `db/pgtap/vendite/test-righe-adesione-v1.sql`.
@@ -73,6 +84,7 @@ Non ha un test suo: la presidiano i file che la usano, per esempio
 
 * 2026-10-13 — nasce quando override ed esclusioni cominciano a pretendere l'articolo nel listino
   del documento (`brief-db-articoli-ammessi-per-documento`, Lotto 3b).
+* 2026-11-08 — nasce il parametro della periodicità, facoltativo e in coda.
 
 ---
 

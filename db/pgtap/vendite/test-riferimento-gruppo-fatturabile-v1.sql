@@ -295,7 +295,7 @@ SELECT o.* FROM dbops.fn_pgtap_crea_ordine('riferimento dashboard', 'DRAFT',
 SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita(
     p_commessa_id     => (SELECT commessa_id FROM tmp_commessa_dash),
     p_sorgente_codice => 'ORDINE_VENDITA',
-    p_sorgente_uid    => (SELECT ordine_uid::text FROM tmp_ordine_dash));
+    p_sorgente_chiave => (SELECT ordine_uid::text FROM tmp_ordine_dash));
 
 -- Senza sorgente il builder costruisce un consumo vero e lo lega alla commessa.
 SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita(

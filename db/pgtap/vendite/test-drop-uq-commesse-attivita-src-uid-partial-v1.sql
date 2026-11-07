@@ -84,7 +84,7 @@ SELECT lives_ok(
       PERFORM dbops.fn_pgtap_crea_commessa_attivita(
           p_commessa_id      => (SELECT id FROM tmp_commessa_srcuid),
           p_sorgente_codice  => 'PREVENTIVO',
-          p_sorgente_uid     => (SELECT preventivo_uid::text FROM tmp_prev_srcuid),
+          p_sorgente_chiave  => (SELECT preventivo_uid::text FROM tmp_prev_srcuid),
           -- due righe dello stesso preventivo, distinte dall'etichetta della chiave
           p_chiave_etichetta => v.riga::text,
           p_stato_approvazione => 'BOZZA')

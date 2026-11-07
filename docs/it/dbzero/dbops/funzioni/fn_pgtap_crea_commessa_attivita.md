@@ -2,7 +2,7 @@
 # ⚙️ Funzione `fn_pgtap_crea_commessa_attivita`
 
 ```sql
-CREATE FUNCTION fn_pgtap_crea_commessa_attivita(p_commessa_id bigint, p_prezzo_snapshot numeric, p_articolo_id uuid, p_listino_versione_id bigint, p_listino_riga_id bigint, p_sorgente_codice character varying, p_sorgente_uid text, p_sorgente_riga_id bigint, p_quantita numeric, p_stato_approvazione character varying, p_stato_emissione character varying, p_competenza_dal date, p_competenza_al date, p_chiave_etichetta text)
+CREATE FUNCTION fn_pgtap_crea_commessa_attivita(p_commessa_id bigint, p_prezzo_snapshot numeric, p_articolo_id uuid, p_listino_versione_id bigint, p_listino_riga_id bigint, p_sorgente_codice character varying, p_sorgente_chiave text, p_sorgente_riga_id bigint, p_quantita numeric, p_stato_approvazione character varying, p_stato_emissione character varying, p_competenza_dal date, p_competenza_al date, p_chiave_etichetta text)
 ```
 
 > 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
@@ -12,7 +12,7 @@ CREATE FUNCTION fn_pgtap_crea_commessa_attivita(p_commessa_id bigint, p_prezzo_s
 <div data-search-exclude markdown>
 
 ```sql
-CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_commessa_attivita(p_commessa_id bigint, p_prezzo_snapshot numeric DEFAULT 10, p_articolo_id uuid DEFAULT NULL::uuid, p_listino_versione_id bigint DEFAULT NULL::bigint, p_listino_riga_id bigint DEFAULT NULL::bigint, p_sorgente_codice character varying DEFAULT NULL::character varying, p_sorgente_uid text DEFAULT NULL::text, p_sorgente_riga_id bigint DEFAULT NULL::bigint, p_quantita numeric DEFAULT 1, p_stato_approvazione character varying DEFAULT 'APPROVATA'::character varying, p_stato_emissione character varying DEFAULT 'NON_EMESSA'::character varying, p_competenza_dal date DEFAULT NULL::date, p_competenza_al date DEFAULT NULL::date, p_chiave_etichetta text DEFAULT NULL::text)
+CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_commessa_attivita(p_commessa_id bigint, p_prezzo_snapshot numeric DEFAULT 10, p_articolo_id uuid DEFAULT NULL::uuid, p_listino_versione_id bigint DEFAULT NULL::bigint, p_listino_riga_id bigint DEFAULT NULL::bigint, p_sorgente_codice character varying DEFAULT NULL::character varying, p_sorgente_chiave text DEFAULT NULL::text, p_sorgente_riga_id bigint DEFAULT NULL::bigint, p_quantita numeric DEFAULT 1, p_stato_approvazione character varying DEFAULT 'APPROVATA'::character varying, p_stato_emissione character varying DEFAULT 'NON_EMESSA'::character varying, p_competenza_dal date DEFAULT NULL::date, p_competenza_al date DEFAULT NULL::date, p_chiave_etichetta text DEFAULT NULL::text)
  RETURNS TABLE(attivita_id bigint, articolo_id uuid, uom_id bigint, competenza_dal date, competenza_al date)
  LANGUAGE plpgsql
 AS $function$
@@ -36,7 +36,7 @@ AS $function$
 --   SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita(
 --              p_commessa_id        => ...,
 --              p_sorgente_codice    => 'PREVENTIVO',
---              p_sorgente_uid       => (SELECT uid::text FROM tmp_prev),  -- il SUO parametro: il nome resta
+--              p_sorgente_chiave    => (SELECT uid::text FROM tmp_prev),
 --              p_sorgente_riga_id   => (SELECT id FROM tmp_riga),
 --              p_stato_emissione    => 'EMESSA');
 -- ⛔ L'emissione NON la fa: lo stato di emissione lo DICHIARA il test
@@ -105,12 +105,12 @@ BEGIN
                 'fn_pgtap_crea_commessa_attivita: nessuna sorgente attiva con codice_interno = %',
                 p_sorgente_codice;
         END IF;
-        IF p_sorgente_uid IS NULL THEN
+        IF p_sorgente_chiave IS NULL THEN
             RAISE EXCEPTION
-                'fn_pgtap_crea_commessa_attivita: la sorgente % vuole la chiave del documento (p_sorgente_uid)',
+                'fn_pgtap_crea_commessa_attivita: la sorgente % vuole la chiave del documento (p_sorgente_chiave)',
                 p_sorgente_codice;
         END IF;
-        v_sorg_chiave := p_sorgente_uid;
+        v_sorg_chiave := p_sorgente_chiave;
         -- La chiave del push nomina il documento col suo UID, qualunque forma
         -- di chiave passi il test (come il push, che passa sempre l'uid): la
         -- chiave del gruppo fatturabile lo legge da li', e il guard della chiave
@@ -119,8 +119,8 @@ BEGIN
         v_segment  := script.fn_segment_key(
                           p_sorgente_codice,
                           COALESCE((SELECT d.documento_uid::text
-                                      FROM script.fn_sorgente_documento_da_chiave(v_sorg_id, p_sorgente_uid) d),
-                                   p_sorgente_uid),
+                                      FROM script.fn_sorgente_documento_da_chiave(v_sorg_id, p_sorgente_chiave) d),
+                                   p_sorgente_chiave),
                           p_sorgente_riga_id);
     END IF;
 
@@ -223,8 +223,8 @@ BEGIN
 END;
 $function$
 
-COMMENT ON FUNCTION dbops.fn_pgtap_crea_commessa_attivita(p_commessa_id bigint, p_prezzo_snapshot numeric, p_articolo_id uuid, p_listino_versione_id bigint, p_listino_riga_id bigint, p_sorgente_codice character varying, p_sorgente_uid text, p_sorgente_riga_id bigint, p_quantita numeric, p_stato_approvazione character varying, p_stato_emissione character varying, p_competenza_dal date, p_competenza_al date, p_chiave_etichetta text)
-IS 'Fixture pgTAP: una riga di commessa su una commessa gia'' costruita (dbops.fn_pgtap_crea_commessa), scritta dalla madre vendite.fn_upsert_commessa_attivita: di default APPROVATA e NON_EMESSA, quantita'' 1, prezzo snapshot FIXED (secondo parametro, default 10). Il builder decide il CONTESTO: istanza dal billing account della commessa, competenza dalla commessa o il mese corrente, chiave del push. La PROVENIENZA: senza p_sorgente_codice la riga nasce da un consumo nuovo del billing account della commessa (dbops.fn_pgtap_crea_consumo; tipo ATTIVITA_CONSUMI, documento senza righe); con p_sorgente_codice viene dal documento indicato, con la sua chiave (p_sorgente_uid, l''id o l''uid in testo, la traduce la madre) e la sua riga (p_sorgente_riga_id). La chiave del push la compone script.fn_segment_key, il solo costruttore, con l''uid del documento; p_chiave_etichetta le aggiunge '':<etichetta>'' per righe distinte dalla stessa provenienza. Il chiamante sceglie l''OGGETTO e la provenienza del prezzo: p_articolo_id (assente, lo costruisce dbops.fn_pgtap_crea_articolo), p_listino_versione_id, p_listino_riga_id (da lei l''unita'' di misura e, se mancano, articolo e versione; una riga di listino invisibile sotto la RLS di chi agisce non ferma il builder se il chiamante da'' anche articolo e versione, come il backend). La coerenza fra articolo, riga e versione la tiene la tabella (vendite.trgfn_attivita_guard_listino_riga); documento e riga della provenienza li verifica script.trgfn_guard_sorgente. Non emette e non lega a una fattura: lo stato di emissione lo dichiara il test. Una commessa, un articolo, una riga di listino o una sorgente inesistenti parlano. Esce con i vincoli IMMEDIATE.';
+COMMENT ON FUNCTION dbops.fn_pgtap_crea_commessa_attivita(p_commessa_id bigint, p_prezzo_snapshot numeric, p_articolo_id uuid, p_listino_versione_id bigint, p_listino_riga_id bigint, p_sorgente_codice character varying, p_sorgente_chiave text, p_sorgente_riga_id bigint, p_quantita numeric, p_stato_approvazione character varying, p_stato_emissione character varying, p_competenza_dal date, p_competenza_al date, p_chiave_etichetta text)
+IS 'Fixture pgTAP: una riga di commessa su una commessa gia'' costruita (dbops.fn_pgtap_crea_commessa), scritta dalla madre vendite.fn_upsert_commessa_attivita: di default APPROVATA e NON_EMESSA, quantita'' 1, prezzo snapshot FIXED (secondo parametro, default 10). Il builder decide il CONTESTO: istanza dal billing account della commessa, competenza dalla commessa o il mese corrente, chiave del push. La PROVENIENZA: senza p_sorgente_codice la riga nasce da un consumo nuovo del billing account della commessa (dbops.fn_pgtap_crea_consumo; tipo ATTIVITA_CONSUMI, documento senza righe); con p_sorgente_codice viene dal documento indicato, con la sua chiave (p_sorgente_chiave, l''id o l''uid in testo, la traduce la madre) e la sua riga (p_sorgente_riga_id). La chiave del push la compone script.fn_segment_key, il solo costruttore, con l''uid del documento; p_chiave_etichetta le aggiunge '':<etichetta>'' per righe distinte dalla stessa provenienza. Il chiamante sceglie l''OGGETTO e la provenienza del prezzo: p_articolo_id (assente, lo costruisce dbops.fn_pgtap_crea_articolo), p_listino_versione_id, p_listino_riga_id (da lei l''unita'' di misura e, se mancano, articolo e versione; una riga di listino invisibile sotto la RLS di chi agisce non ferma il builder se il chiamante da'' anche articolo e versione, come il backend). La coerenza fra articolo, riga e versione la tiene la tabella (vendite.trgfn_attivita_guard_listino_riga); documento e riga della provenienza li verifica script.trgfn_guard_sorgente. Non emette e non lega a una fattura: lo stato di emissione lo dichiara il test. Una commessa, un articolo, una riga di listino o una sorgente inesistenti parlano. Esce con i vincoli IMMEDIATE.';
 ```
 
 </div>

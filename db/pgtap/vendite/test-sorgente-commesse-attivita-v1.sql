@@ -163,14 +163,14 @@ SELECT 'ORD'::text AS k, a.*
   FROM dbops.fn_pgtap_crea_commessa_attivita(
          p_commessa_id      => (SELECT commessa_id FROM _comm),
          p_sorgente_codice  => 'ORDINE_VENDITA',
-         p_sorgente_uid     => (SELECT ordine_uid::text FROM _or),
+         p_sorgente_chiave  => (SELECT ordine_uid::text FROM _or),
          p_sorgente_riga_id => (SELECT ordine_riga_id FROM _or)) a;
 INSERT INTO _a
 SELECT 'PREV', a.*
   FROM dbops.fn_pgtap_crea_commessa_attivita(
          p_commessa_id      => (SELECT commessa_id FROM _comm),
          p_sorgente_codice  => 'PREVENTIVO',
-         p_sorgente_uid     => (SELECT preventivo_uid::text FROM _pv),
+         p_sorgente_chiave  => (SELECT preventivo_uid::text FROM _pv),
          p_sorgente_riga_id => (SELECT preventivo_riga_id FROM _pv)) a;
 
 CREATE FUNCTION pg_temp.att(p text) RETURNS bigint LANGUAGE sql STABLE AS
@@ -208,7 +208,7 @@ SELECT is(
 
 SELECT is(
   pg_temp.esito(format($q$SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita(
-                           p_commessa_id => %s, p_sorgente_codice => 'ORDINE_VENDITA', p_sorgente_uid => %L)$q$,
+                           p_commessa_id => %s, p_sorgente_codice => 'ORDINE_VENDITA', p_sorgente_chiave => %L)$q$,
                        (SELECT commessa_id FROM _comm), (SELECT ordine_id::text FROM _or))),
   'PASSA',
   '9) senza riga, la provenienza e'' il documento intero: il livello DOCUMENTO la ammette');
@@ -243,7 +243,7 @@ SELECT is(
 
 SELECT is(
   pg_temp.esito(format($q$SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita(
-                           p_commessa_id => %s, p_sorgente_codice => 'ORDINE_VENDITA', p_sorgente_uid => %L)$q$,
+                           p_commessa_id => %s, p_sorgente_codice => 'ORDINE_VENDITA', p_sorgente_chiave => %L)$q$,
                        (SELECT commessa_id FROM _comm), (SELECT (max(id) + 1000000)::text FROM vendite.ordini))),
   'E_SORG_NOT_FOUND',
   '11) un ordine che non c''e'': la madre lo rifiuta prima di scrivere');
@@ -279,7 +279,7 @@ CREATE TEMP TABLE _em AS
 SELECT a.* FROM dbops.fn_pgtap_crea_commessa_attivita(
          p_commessa_id      => (SELECT commessa_id FROM _comm),
          p_sorgente_codice  => 'ORDINE_VENDITA',
-         p_sorgente_uid     => (SELECT ordine_id::text FROM _or),
+         p_sorgente_chiave  => (SELECT ordine_id::text FROM _or),
          p_stato_emissione  => 'EMESSA') a;
 
 SELECT is(

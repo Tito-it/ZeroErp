@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_pgtap_crea_ddt_da_ordine`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -16,6 +16,8 @@
 > * [dbops.fn_pgtap_crea_ddt](/dbzero/dbops/funzioni/fn_pgtap_crea_ddt) — la bolla in bozza senza ordine, per il magazzino
 > * [dbops.fn_pgtap_crea_ddt_senza_ordine](/dbzero/dbops/funzioni/fn_pgtap_crea_ddt_senza_ordine) — il gemello, per la bolla senza ordine
 > * [vendite.fn_annulla_ddt](/dbzero/vendite/funzioni/fn_annulla_ddt) — il verbo dell'annullo, che resta del test
+> * [script.fn_natura_e_merce](/dbzero/script/funzioni/fn_natura_e_merce) — il predicato «la riga è merce», con cui la fixture tiene fuori gli oneri
+> * [script.fn_doc_stato_id](/dbzero/script/funzioni/fn_doc_stato_id) — lo stato chiesto, per codice, fra i soli attivi
 >
 > Guide:
 >
@@ -57,33 +59,37 @@ una regola cambiava si correggevano tutte le copie. La strada ha una sede sola.
   [vendite.fn_genera_ddt_da_ordine](/dbzero/vendite/funzioni/fn_genera_ddt_da_ordine), come
   in produzione: copia le righe, scrive il legame con la riga d'ordine e proietta l'ordine a
   evaso o parzialmente evaso. Si evade tutto il residuo, oppure una quantità per l'unica
-  riga attiva dell'ordine, oppure le righe nella grammatica della madre (le due scelte
+  riga attiva **di merce** dell'ordine, oppure le righe nella grammatica della madre (le due scelte
   insieme sono un errore). La data della bolla è quella chiesta, o la data operativa.
 * **Ciò che l'emissione pretende** e la cascata dall'ordine non porta: la causale per codice
   (di norma `VENDITA`) e gli indirizzi obbligatori mancanti.
-* **Lo stato** si raggiunge per la matrice dei passaggi, sotto i controlli veri.
+* **Lo stato** chiesto lo traduce
+  [script.fn_doc_stato_id](/dbzero/script/funzioni/fn_doc_stato_id), fra i soli stati attivi, e
+  si raggiunge per la matrice dei passaggi, sotto i controlli veri.
 * **Un ordine speciale** — più righe, un kit coi componenti, una data che il test misura — lo
   costruisce e lo conferma il test, e lo passa: la bolla nasce da lì. Cliente, righe, data e
   momento di fatturazione sono allora dell'ordine, e passarli è un errore.
 
-La fixture restituisce la bolla, la sua **prima** riga (per numero di riga) con la quantità
-base, l'ordine e la riga d'ordine che quella riga evade, l'articolo, il cliente, l'azienda,
-l'operatore e lo stato. Con più righe, il test le legge da sé.
+La fixture restituisce la bolla, la sua **prima riga di merce** (per numero di riga) con la
+quantità base, l'ordine e la riga d'ordine che quella riga evade, l'articolo, il cliente,
+l'azienda, l'operatore e lo stato. Con più righe, il test le legge da sé.
 
 ---
 
-### ⚠️ Con un onere nell'ordine, «la prima riga» può essere l'onere
+### ⭐ Gli oneri non sono mai «la riga»
 
 Le righe-onere (il trasporto, le spese) passano dall'ordine alla bolla **intere**, nella
-prima bolla, anche se il test non le ha chieste. La fixture non distingue la merce
-dall'onere:
+prima bolla, anche se il test non le ha chieste. La fixture distingue la merce dall'onere con
+[script.fn_natura_e_merce](/dbzero/script/funzioni/fn_natura_e_merce), sulla natura congelata
+della riga:
 
-* la riga restituita è la prima per numero: se l'onere sta al numero 1, è l'onere;
-* la quantità da evadere sull'«unica riga» conta tutte le righe attive dell'ordine, oneri
-  compresi: un ordine con una riga di merce e un onere la rifiuta, e il test deve dare le
-  righe nella grammatica della madre.
+* la riga restituita è la prima riga **di merce** per numero, anche se l'onere sta al numero 1;
+  una bolla senza merce viene restituita lo stesso, con la riga vuota;
+* la quantità da evadere sull'«unica riga» conta le sole righe attive **di merce**
+  dell'ordine: un ordine con una riga di merce e un onere la accetta, e l'onere lo porta la
+  madre.
 
-Il builder del reso, invece, sceglie già la prima riga di **merce**.
+È lo stesso criterio del builder del reso.
 
 ---
 
@@ -104,7 +110,7 @@ Il builder del reso, invece, sceglie già la prima riga di **merce**.
 
 ### I parametri si giudicano prima di costruire
 
-Uno stato o una causale che non esistono, uno stato abortito, la quantità e le righe insieme,
+Uno stato che non esiste o è spento, una causale che non esiste, uno stato abortito, la quantità e le righe insieme,
 un ordine del test insieme a cliente, righe, data o momento di fatturazione: la fixture si
 ferma **prima** di costruire, così un errore del chiamante non lascia un mondo a metà. Un
 ordine che non esiste o non si vede si ferma subito dopo.
@@ -120,7 +126,9 @@ Senza un contesto aperto, il mondo lo apre sull'operatore che costruisce. Esce c
   dall'ordine, col numero e la sorgente; il legame fra le due righe; l'ordine evaso; causale
   e indirizzi; la bozza; due spedizioni dalla stessa riga; momento di fatturazione e cliente
   del test; la causale scelta; la data dell'ordine; l'ordine con più righe del test; gli
-  errori del chiamante e lo stato abortito rifiutati prima di costruire.
+  errori del chiamante e lo stato abortito rifiutati prima di costruire; un ordine con una
+  merce e un onere, dove la quantità da evadere vale per la merce e la riga tornata è la merce
+  (test 17).
 
 ---
 
@@ -136,6 +144,8 @@ Senza un contesto aperto, il mondo lo apre sull'operatore che costruisce. Esce c
 * 2026-11-03 — con gli oneri sulle righe d'ordine e di bolla, il censimento di
   `brief-db-addebito-trasporto-ordine` (§8.1) segnala che la fixture prende «la prima riga»;
   il giro ha corretto solo il builder del reso.
+* 2026-11-08 — la riga restituita e la riga da evadere sono di merce: gli oneri non contano più;
+  lo stato chiesto si traduce dalla sede, fra i soli attivi.
 
 ---
 

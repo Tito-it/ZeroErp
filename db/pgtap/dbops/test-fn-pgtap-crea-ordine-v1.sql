@@ -21,7 +21,7 @@
 --   - il quarto parametro sceglie la data dell'ordine alla nascita (rev
 --     2026-10-25, 20261025-03, brief-db-pgtap-bolla-e-reso-costruiti D-1).
 --
--- Elenco test (plan 11):
+-- Elenco test (plan 13):
 --   1) la funzione esiste con la firma dichiarata
 --   2) la testata esiste, col cliente e il billing account tornati
 --   3) l'emittente e' quello del billing account (il guard emittente/BA)
@@ -34,6 +34,8 @@
 --  10) un passaggio che vuole le righe (CONFERMATO) il builder non lo salta:
 --      lo rifiuta il guard vero (rev 2026-10-24)
 --  11) quarto parametro: la data dell'ordine e' quella chiesta (rev 2026-10-25)
+--  12) guard: uno stato SPENTO parla prima di costruire (lo stato da script.fn_doc_stato_id, D73)
+--  13) la valuta dell'ordine e' quella della catena del dominio: quella del billing account (D74)
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -46,7 +48,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 --   viene chiamata come la chiamera' un file su un database ricostruito: senza
 --   nessuna veste in sessione. Aprirlo prima nasconderebbe meta' del contratto.
 
-SELECT plan(11);
+SELECT plan(13);
 
 -- 1) La firma
 SELECT has_function(
@@ -182,6 +184,40 @@ SELECT is(
     (SELECT o.data FROM vendite.ordini o WHERE o.id = (SELECT ordine_id FROM t_data)),
     DATE '2026-08-05',
     'quarto parametro: l''ordine nasce alla data chiesta'
+);
+
+-- 12) Uno stato spento: il builder lo rifiuta prima di costruire.
+-- Lo stato SPENTO si costruisce: una copia dello stato iniziale, disattivata e
+--   non iniziale, con un codice suo (brief-db-revisione-dbops D73).
+INSERT INTO config.stati_doc_ordini (codice_interno, codice, descrizione, attivo, fase, esito, terminale, pdf_mode, pdf_allow_allegati, is_abortito, iniziale, emissione)
+SELECT 'PGTAP_SPENTO', 'PGTAP_SPENTO', 'Fixture pgTAP: stato spento', false, s.fase, s.esito, s.terminale, s.pdf_mode, s.pdf_allow_allegati, s.is_abortito, false, s.emissione
+  FROM config.stati_doc_ordini s
+ WHERE s.id = script.fn_doc_stato_iniziale_id('vendite.ordini'::regclass);
+
+SELECT throws_like($$
+    SELECT dbops.fn_pgtap_crea_ordine('presidio stato spento', 'PGTAP_SPENTO')
+$$,
+    '%nessuno stato documento ordine attivo%',
+    '12) guard: uno stato spento parla prima di costruire, nominando il builder'
+);
+
+-- 13) La valuta dalla catena.
+-- La valuta del documento dalla catena del dominio (vendite.fn_get_valuta_id): un
+--   billing account con una valuta che NON e' la prima del catalogo la passa al
+--   documento (brief-db-revisione-dbops D74).
+UPDATE anagrafiche.billing_account
+   SET valuta_id = (SELECT max(v.id) FROM config.valute v)
+ WHERE id = (SELECT billing_account_id FROM t_o1);
+
+CREATE TEMP TABLE t_val AS
+SELECT * FROM dbops.fn_pgtap_crea_ordine('presidio ordine valuta', 'DRAFT',
+                                          (SELECT billing_account_id FROM t_o1));
+
+SELECT is(
+    (SELECT o.valuta_id FROM vendite.ordini o WHERE o.id = (SELECT ordine_id FROM t_val)),
+    (SELECT ba.valuta_id FROM anagrafiche.billing_account ba
+      WHERE ba.id = (SELECT billing_account_id FROM t_o1)),
+    '13) la valuta dell''ordine e'' quella del billing account, non la prima del catalogo'
 );
 
 SELECT * FROM finish();

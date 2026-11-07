@@ -202,7 +202,7 @@ search:
 - [fn_norm_testo](manual/fn_norm_testo.md) — (rev 2026-08-21)
 - [fn_norm_via](manual/fn_norm_via.md) — (rev 2026-08-21)
 - [fn_notify_permessi_catalogo](manual/fn_notify_permessi_catalogo.md) — (scritta il 04-10-2026)
-- [fn_pgtap_emittente_operatore](manual/fn_pgtap_emittente_operatore.md) — (rev 2026-08-21)
+- [fn_pgtap_emittente_operatore](manual/fn_pgtap_emittente_operatore.md) — Restituisce l'**emittente fiscale su cui l'operatore del contesto può scrivere**.
 - [fn_pgtap_emittente_sr_operatore](manual/fn_pgtap_emittente_sr_operatore.md) — (rev 2026-08-21)
 - [fn_pgtap_set_contesto_operatore](manual/fn_pgtap_set_contesto_operatore.md) — (rev 2026-08-21)
 - [fn_predicato_soggetto_ruolo_visibile](manual/fn_predicato_soggetto_ruolo_visibile.md) — (latest review 10-10-2026)

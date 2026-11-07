@@ -54,7 +54,7 @@ SELECT * FROM dbops.fn_pgtap_crea_commessa('presidio fattura', NULL,
 CREATE TEMP TABLE t_a1 AS
 SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita((SELECT commessa_id FROM t_c), 25,
                   p_sorgente_codice  => 'DDT_VENDITA',
-                  p_sorgente_uid     => (SELECT ddt_uid FROM t_b)::text,
+                  p_sorgente_chiave  => (SELECT ddt_uid FROM t_b)::text,
                   p_sorgente_riga_id => (SELECT ddt_riga_id FROM t_b),
                   p_quantita         => 10);
 

@@ -43,10 +43,12 @@ DECLARE
     v_riga       vendite.ddt_righe.id%TYPE;
 BEGIN
     -- 0. I parametri si giudicano PRIMA di costruire.
-    SELECT s.id, s.is_abortito INTO v_stato_id, v_abortito
+    -- Lo stato dalla sede della traduzione codice -> id
+    -- (script.fn_doc_stato_id: solo uno stato attivo).
+    v_stato_id := script.fn_doc_stato_id('vendite.ddt'::regclass, p_stato_codice_interno);
+    SELECT s.is_abortito INTO v_abortito
       FROM config.stati_doc_ddt s
-     WHERE s.codice_interno = p_stato_codice_interno
-       AND s.attivo IS TRUE;
+     WHERE s.id = v_stato_id;
     IF v_stato_id IS NULL THEN
         RAISE EXCEPTION
             'fn_pgtap_crea_ddt_senza_ordine: nessuno stato attivo della bolla con codice_interno = %',
@@ -124,7 +126,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_ddt_senza_ordine(p_etichetta text, p_stato_codice_interno character varying, p_billing_account_id bigint, p_quantita numeric, p_prezzo numeric, p_articolo_id uuid, p_causale_codice character varying, p_data date, p_magazzino_id bigint)
-IS 'Fixture pgTAP: una BOLLA SENZA ORDINE con una riga prezzata, nello stato chiesto (secondo parametro, default CONSEGNATO), per la strada vera del dominio. ⭐ Esiste per la TRAPPOLA D''ORDINE che i file ricopiavano: testata con causale e indirizzi, riga che senza ordine porta da se'' prezzo e aliquota su un articolo merce, passaggi per la matrice. Il cliente: quello del terzo parametro o uno nuovo (dbops.fn_pgtap_cliente_del_builder, che apre il contesto se manca). La testata da dbops.fn_pgtap_crea_ddt: causale per codice (p_causale_codice, default VENDITA; inesistente solleva), magazzino (p_magazzino_id), data alla nascita (p_data; NULL = data operativa), indirizzi obbligatori. UNA riga di p_quantita (default 10) a p_prezzo (default 25), prima IVA attiva, articolo p_articolo_id o costruito (merce non gestita); un articolo gestito a magazzino solleva (la bolla muoverebbe merce: righe e prelievi li scrive il test, su dbops.fn_pgtap_crea_ddt). Lo stato con dbops.fn_pgtap_porta_a_stato, sotto i guard veri; uno stato abortito si rifiuta prima di costruire (l''annullo e'' del verbo vendite.fn_annulla_ddt). Restituisce bolla, riga con la sua quantita'' base, articolo, cliente, emittente, operatore e stato. Gemello di dbops.fn_pgtap_crea_ddt_da_ordine. ⚠️ Esce con i vincoli IMMEDIATE, come ogni helper. Brief: brief-db-pgtap-reso-costruito (E-5), 2026-10-25. Rev 2026-10-27 (20261027-35, brief-modello-documento-vendita §15.13): lo stato iniziale dalla testata (vendite.ddt) con script.fn_doc_stato_iniziale_id, non dal vocabolario.';
+IS 'Fixture pgTAP: una BOLLA SENZA ORDINE con una riga prezzata, nello stato chiesto (secondo parametro, default CONSEGNATO), per la strada vera del dominio. Esiste per la trappola d''ordine che i file ricopiavano: testata con causale e indirizzi, riga che senza ordine porta da se'' prezzo e aliquota su un articolo merce, passaggi per la matrice. Il cliente: quello del terzo parametro o uno nuovo (dbops.fn_pgtap_cliente_del_builder, che apre il contesto se manca). La testata da dbops.fn_pgtap_crea_ddt: causale per codice (p_causale_codice, default VENDITA; inesistente solleva), magazzino (p_magazzino_id), data alla nascita (p_data; NULL = data operativa), indirizzi obbligatori. Una riga di p_quantita (default 10) a p_prezzo (default 25), prima IVA attiva, articolo p_articolo_id o costruito (merce non gestita); un articolo gestito a magazzino solleva (la bolla muoverebbe merce: righe e prelievi li scrive il test, su dbops.fn_pgtap_crea_ddt). Lo stato chiesto lo traduce script.fn_doc_stato_id (solo uno stato attivo): uno stato spento o inesistente, e uno stato abortito, si rifiutano prima di costruire (l''annullo e'' del verbo vendite.fn_annulla_ddt); si raggiunge con dbops.fn_pgtap_porta_a_stato, sotto i guard veri. Restituisce bolla, riga con la sua quantita'' base, articolo, cliente, emittente, operatore e stato. Gemello di dbops.fn_pgtap_crea_ddt_da_ordine. ⚠️ Esce con i vincoli IMMEDIATE, come ogni helper.';
 ```
 
 </div>

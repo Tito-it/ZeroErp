@@ -1,6 +1,6 @@
 # Brief DB — Revisione dello schema `dbops`: i difetti di codice e i metadati
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-07 (giro 7 applicato)
+## ⏭️ Chi riparte — aggiornato al 2026-11-08 (giro 8 applicato e verde)
 
 **Giro 1 chiuso e committato** (blocco 1d in `8c75d5682a`). **Decisioni di §4 prese** (Tid, 2026-11-05/06):
 tutte, Q1-Q15 (la Q7 non è mai esistita), con la Q14 punto per punto. **Ordine dei giri deciso** (2026-11-06):
@@ -28,9 +28,14 @@ regola canale/`run_as` ristretta ai `CODA` di `DOMINIO` (§18.9).
 **Giro 6 chiuso** (2026-11-07, §19): Q14 ④ e ⑦, le viste dei lotti rinominate in «congelati» (decisione di Tid),
 `20261108-10` … `-13`; applicato da Tid su dbdev e scratch, pgTAP verdi, committato (§19.5).
 **Giro 7 applicato** (2026-11-07, §20): D35, D36, D37, D57, `20261108-25` … `-31`, con due decisioni di Tid nel giro
-(§20.1: il perimetro del presidio, il tetto dei lookup che cade); applicato da Tid, pgTAP di §20.5 verdi (§20.9).
-**Riparte: Tid** per il commit del giro 7 e il via al giro 8 (§8); **team BE** per BE4 (§5), il test di S-BE-2 e BE9
-(§18.9.2 punto 4). Resta al team DB S-BE-1 (§5).
+(§20.1: il perimetro del presidio, il tetto dei lookup che cade); applicato da Tid, pgTAP di §20.5 verdi, convergenza
+su `shop.ricevute` letta sul catalogo dei due database (§20.9), **committato** (`11203bab2e`). **Giro 7 chiuso.**
+**Giro 8 preparato** (§21): i difetti riverificati sulla scheda di oggi; D68 è già chiuso dall'altro cantiere.
+**Via al giro 8 dato** (Tid, 2026-11-07, §21.3): dal **`20261108-41`** (dato da Tid), D68 fuori, D63 come da proposta.
+**Giro 8 applicato** (Tid, 2026-11-08, §21.10): `20261108-41` … `-60` su dbdev e scratch, pgTAP verdi.
+**Riparte: Tid** per il commit del giro 8, poi la sessione DB col giro 7-bis (§20.8.2); **team BE** per BE4 (§5), il test di S-BE-2 e BE9 (§18.9.2 punto 4).
+Resta al team DB S-BE-1 (§5): **non è ancora fatto** (2026-11-07, le due frasi di `messaggi_errore.csv` nominano
+ancora le tabelle).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -85,7 +90,13 @@ regola canale/`run_as` ristretta ai `CODA` di `DOMINIO` (§18.9).
 | 9-tricies-septies | ✅ Tid | Il via al giro 7, coi numeri dal `20261108-25` e `%TYPE`; nel giro il perimetro del presidio (`tx_id`, `storicizza`, `cleanup_at`) e il tetto dei lookup che cade, con lo spareggio (2026-11-07) | §20.1 | 9-tricies-sexies |
 | 9-tricies-octies | ✅ sessione DB | Giro 7 (D35, D36, D37, D57): scritto e provato sullo scratch | §20 | 9-tricies-septies |
 | 9-tricies-nonies | ✅ Tid | Apply del giro 7 (`20261108-25` … `-31`, sette CSV e il loader `20260429-08`) e convergenza; pgTAP di §20.5 verdi (2026-11-07) | §20.9 | 9-tricies-octies |
-| 9-tricies-undecies | **Tid** ⏭️ | Commit del giro 7 e via al giro 8 | §8 | 9-tricies-nonies |
+| 9-tricies-undecies | ✅ Tid | Commit del giro 7 (`11203bab2e`). Il giro 7 è chiuso | §20.9 | 9-tricies-nonies |
+| 9-tricies-duodecies | ✅ sessione DB | Giro 8 preparato: difetti riverificati sulla scheda del 2026-11-07, D68 passato all'altro cantiere | §21 | 9-tricies-undecies |
+| 9-tricies-terdecies | ✅ Tid | Via al giro 8: dal `20261108-41` (dato da Tid), D68 fuori, D63 come da proposta (2026-11-07) | §21.3 | 9-tricies-duodecies |
+| 9-tricies-quaterdecies | ✅ sessione DB | Giro 8 (D63, D64, D66, D67, D69, D70, D71, D73, D74): scritto e provato sullo scratch (2026-11-08), `-41` … `-60` | §21 | 9-tricies-terdecies |
+| 9-tricies-quindecies | ✅ Tid | Apply del giro 8 (`20261108-41` … `-60`) su dbdev e scratch; pgTAP di §21.7 verdi (2026-11-08) | §21.10 | 9-tricies-quaterdecies |
+| 9-tricies-septdecies | **Tid** ⏭️ | Commit del giro 8 | §21.10 | 9-tricies-quindecies |
+| 9-tricies-sexdecies | sessione DB ⏭️ dopo il commit | Giro 7-bis: `tx_id` e `data_update`/`user_update` in `dbops`, `ui` nell'ambito, l'override del marcatore | §20.8.2 | 9-tricies-quindecies |
 | 9-tricies-decies | **team BE** ⏭️ | BE4: il tetto `LOOKUP_MAX_SOURCE_ROWS` cade (`p_limit` NULL), ricerca e paginazione restano | §5 | — |
 | 9-nonies | ✅ Tid | Q16: la via fusa resta, marcata come soppressa (b, 2026-11-07) | §4 | 9-septies |
 | 9-decies | ✅ sessione DB | Giro 2, blocco 2b (Q16): la via soppressa; lettori censiti, scritto e provato sullo scratch | §14.7 | 9-nonies |
@@ -95,13 +106,15 @@ regola canale/`run_as` ristretta ai `CODA` di `DOMINIO` (§18.9).
 | 12 | sessione DB | Pagine `manual/` e guide riallineate a ogni difetto chiuso, insieme al COMMENT; brief in `work-done/` | §1, §8 | 10 |
 
 **Decisioni aperte di Tid:** il debito della scelta 3 di §18.4 (il presidio non riconosce la policy come difesa di
-scrittura) si decide al giro 9. Il debito del registro dei marcatori (dieci tabelle di `dbops` con `tx_id` senza
-trigger) e `data_update` senza esecutore: proposta al giro 14 (§20.8). **Da committare:** il giro 7 (applicato e verde). L'indice della FK della coda: **false confermato** (Tid, 2026-11-07, §18.9).
+scrittura) si decide al giro 9. Residuo del giro 7 deciso (§20.8.1): `tx_id` si toglie da `dbops` tranne dove
+lega ad altri domini, `ui` entra nell'ambito, `dbops` resta fuori coi trigger a mano, l'override si legge. Confermati da Tid (2026-11-07):
+il criterio dello scrittore per `data_update`/`user_update` in `dbops` (§20.8.2, punto 2) e il giro 7-bis dopo il giro 8. **Da
+committare:** il giro 8 (`-41` … `-60`, i pgTAP, le pagine `manual/`, questo brief): applicato e verde. L'indice della FK della coda: **false confermato** (Tid, 2026-11-07, §18.9).
 **Da verificare:** se lo scratch è stato ricostruito con `ci-local.sh --fresh` dopo il `20261103-29` (§13).
 ⚠️ **Numerazione:** questo cantiere ha preso `20261107-01` … `-27`; il prossimo numero libero del giorno è il
 `-28`; il giro 4 ha preso `-28` … `-30`, `-33`, `-34`, il blocco 4b `-31`, `-32`, `-35` … `-40`; il prossimo libero è il
 `-41`. Il giro 5 ha preso `-51` … `-58` (il 5b `-57`, `-58`) e `20261108-08` (dato da Tid; `-41` … `-50` e `-59` … `-69`
-sono dell'altro cantiere). Il giro 6 ha preso `20261108-10` … `-13` (dato da Tid). Il giro 7 ha preso `20261108-25` … `-31` (dato da Tid), la
+sono dell'altro cantiere). Il giro 6 ha preso `20261108-10` … `-13` (dato da Tid). Il giro 8 ha preso `20261108-41` … `-60` (dato da Tid). Il giro 7 ha preso `20261108-25` … `-31` (dato da Tid), la
 regola 28 di `automation_rules_tbl`, la riga 126 di `storico_scope_policy`, gli id 1-10 del registro nuovo; nessun
 codice errore. Gli id dei messaggi presi qui: 1442-1450, 1453-1454 e 1455-1457 (1451 e 1452 li ha presi l'altro
 cantiere, giro T.4); il prossimo libero è 1458. L'altro cantiere aperto
@@ -513,7 +526,7 @@ la R3 del brief maintenance (nomi di brief fuori dalle note dei CSV) lo decide T
 | Q9 | D60 e §2.8: ramo dblink di `fn_audit_*`; `fn_audit_begin/end`; i sei strumenti DBA senza chiamanti | Ritirare il ramo dblink e `begin/end`; riparare `fn_find_function_usage` e `fn_search_column_usage` (servono ai censimenti), ritirare gli altri quattro **✅ Deciso (Tid, 2026-11-05): il ramo dblink di `fn_audit_log_once` si ritira** (giro 2; la riga si scrive sempre nella transazione del chiamante; il fallimento lo registra `error_log`). `begin/end` già ritirati (C1), `fn_find_function_usage` e `fn_search_column_usage` già riparati (1a). I quattro strumenti DBA restano (C1): **i due del D53 si riparano** (Tid, 2026-11-05): una funzione sola su `pg_constraint` con `unnest(conkey, confkey) WITH ORDINALITY`, l'altra la chiama |
 | Q10 | `app.session_key` (D61, `fn_set_gucs_conn`): lo imposta il BE all'autenticazione, o il livello sessione esce da `fn_get_parameter_di_sessione`? | ~~Esce: nessuno lo usa~~ (una misura, non un motivo). **✅ Deciso (Tid, 2026-11-05): il livello «sessione» esce dal modello, da tutte e due le catene** — colonna `config.parameter_overrides.session_key`, livello in `script.fn_get_parameter_full` e `script.fn_get_parameter_di_sessione`, dimensione `session_key` nel repository BE. Motivo di modello: un override è configurazione che resta, una sessione di login scade; nessuna porta lo crea né lo pulisce. Fuori dal perimetro `dbops`: un giro suo, con la richiesta BE8 |
 | Q11 | D66: `script.fn_pgtap_emittente_operatore` senza azienda — solleva o delega? | Delega a quella di dbops (una sede). **✅ Deciso (Tid, 2026-11-05): delega.** Censimento del 2026-11-05 (scratch, da owner, helper con un `WARNING` su chiamata e ripiego, dentro la transazione di ogni file): 103 file la nominano, 94 la chiamano, nessuno cade sul ripiego; i 6 file con `not ok` lo sono uguali senza lo strumento |
-| Q12 | D68: chiave di default del segmento senza sorgente — `COMMESSA:<id>…` o `MAN:`? | `MAN:`, che è la forma di una riga senza documento. **✅ Deciso (Tid, 2026-11-05): `MAN:<commessa>:<n>`**, con la regola del progressivo della porta degli oneri; nel giro si verifica anche la sorgente che la fixture scrive sulla riga |
+| Q12 | D68: chiave di default del segmento senza sorgente — `COMMESSA:<id>…` o `MAN:`? | `MAN:`, che è la forma di una riga senza documento. **✅ Deciso (Tid, 2026-11-05): `MAN:<commessa>:<n>`**, con la regola del progressivo della porta degli oneri; nel giro si verifica anche la sorgente che la fixture scrive sulla riga. **Superata (2026-11-07)** da una decisione di Tid in `brief-db-sorgente-documento-e-riga` (§«Le fixture dei pgTAP»): senza sorgente il builder crea un consumo vero e la chiave la compone `script.fn_segment_key`; la sorgente della riga, che la Q12 chiedeva di verificare, era la commessa stessa ed è corretta lì (§21.1) |
 | Q13 | §3.3: la regola sui COMMENT, e se vale per loro la R3 del brief maintenance | Sì, con il presidio di testo. **✅ Deciso (Tid, 2026-11-05): il COMMENT descrive l'oggetto, al presente; nessun brief, mai (né percorso né nome), nessun marcatore di revisione, id di changeSet o misura.** Scritto come standard in `linee-guida-sql.md` §5d. Riscrittura per famiglia quando la famiglia si riapre, in ogni giro; il residuo e il presidio di testo su `obj_description` nel giro 14 |
 | Q14 | Altri dubbi dei lotti, da confermare o girare in difetto: `fn_get_pipeline_task_implementation` ripiega in silenzio sul default per una variante inesistente; una FK registrata a `false` sparisce da ogni presidio; `vw_coda_lavori_da_guardare` è definer su tabella senza RLS e catalogata `LIBERO`; `vw_codici_errore_forme_condizione` è catalogata `LAVORAZIONE` ma la usa lo scatto B-7 come cancello; `vw_processi_dominio_senza_difesa` riconosce il guard dal solo `proname`; `obsoleto_dal IS NULL` fa uscire dai presidi un processo a ritiro programmato che gira ancora (sette viste); un lotto congelato con `stato_lotto` IN_ESECUZIONE/ERRORE ed esiti in ERRORE non lo guarda né `vw_lotti_fermi_da_guardare` né `vw_lotti_chiusi_con_errori_da_guardare`; uno storno di un'uscita senza costo entra in `vw_magazzino_movimenti_senza_costo`; `sessioni_utente.evento = 'SCADENZA'` ammesso e mai scritto; `credenziali_di_prova` senza FK verso la credenziale (un'etichetta che sopravvive alla credenziale); il trigger DELETE_BLOCK è `AFTER DELETE` in fase `a10`; un `ADD CONSTRAINT` overlap su dati già sovrapposti (23P01) ferma il giro; il guard utility gira solo in `ci_apply`, senza processo | Da decidere uno per uno; la sessione DB li apre come difetti solo su conferma. **Decisi (Tid, 2026-11-05/06):** ① variante inesistente → **difetto**, giro 2 (stessa funzione di D44): con una variante chiesta e assente la funzione non restituisce righe (il BE solleva già `E_PIPELINE_TASK_HANDLER_NOT_FOUND`), il default vale solo senza variante; ② FK a `false` che sparisce da `vw_fk_senza_indice` → **difetto**, giro 10, blocco 10d: in `dbops.fk_index_policy` `consentito` lascia il posto a `decisione` (NOT NULL, `DA_DECIDERE` / `CON_INDICE` / `SENZA_INDICE`, default `DA_DECIDERE`) e a `motivo` (facoltativo); la scoperta scrive solo `DA_DECIDERE` e solo sulle FK nuove, la decisione la scrive solo un seed; il presidio mostra le `DA_DECIDERE`; righe di oggi: quelle scritte da un seed diventano decisioni, quelle scritte solo dall'automazione `DA_DECIDERE` (censimento dei seed nel giro); censiti e riscritti nello stesso giro lettori e scrittori di `consentito` (apply, populate, vista, CSV di `80_data`, pgTAP); ③ `vw_coda_lavori_da_guardare` `LIBERO` → **non è un difetto** della vista (è il presidio di sistema, vede tutte le aziende di proposito); la nota del presidio dice perché è `LIBERO`. **Ma la coda si corregge:** `dbops.coda_lavori` va sotto RLS come `vendite.fatture_stampa_coda` — la separazione fra aziende sta nel DB, non nel BE (oggi la fa solo `core/services/coda_lavori/gestione_service.py` con lo `scope_key`); poi il BE si ripulisce (BE9). Il giro 5, con D9 (stessa tabella). Vincoli da tenere: il drenatore deve vedere e prendere i lavori di tutte le aziende (ramo della policy per l'identità di processo), un lavoro `SISTEMA` non ha emittente; dopo la RLS si rivaluta il `perimetro` della vista. La RLS sulla coda era stata rinviata come «ondata futura» in `brief-be-fe-gestione-code-lavori-stampa`, non scartata; ④ `vw_codici_errore_forme_condizione` → **difetto di metadato**: in `presidi.csv` natura `CANCELLO`, `presidiato_da` = passo B-7 di `ci-validate.yaml` (via `scripts/sql/codici_errore_famiglie_snapshot.sql` e la baseline), nota riscritta; nel giro 6; ⑤ `vw_processi_dominio_senza_difesa` riconosce il guard dal solo `proname` → **difetto**: la vista conta come difesa anche un'omonima in un altro schema e un trigger disattivato; il guard si riconosce dalla funzione esatta per OID (`'script.trgfn_guard_emittente_scope'::regproc`, il criterio della Q3), conta solo un trigger acceso (`tgenabled <> 'D'`) su INSERT e UPDATE, e il processo vivo si legge con il BB della Q2; pgTAP con un'omonima in un altro schema e con il guard disattivato, in tutti e due i casi la tabella compare; si corregge nel giro 9, quello delle sette viste della Q2, così la vista si apre una volta sola; ⑥ ritiro programmato → chiuso con la Q2; ⑦ lotto congelato con esiti in ERRORE e job non COMPLETATO → **difetto**, giro 6: i due presidi si spartiscono l'asse su criteri diversi (`vw_lotti_fermi_da_guardare` sullo stato fiscale, `vendite.vw_lotti_chiusi_con_gruppi_in_errore` sullo stato del job), e ne nascono un buco (congelato + IN_ESECUZIONE/ERRORE, ammesso dalla matrice dei job, non lo vede nessuno: è il caso della R-1) e un doppione (COMPLETATO in bozza con esito ERRORE lo vedono tutti e due); l'asse diventa uno solo, lo stato fiscale: non congelato → presidio dei lotti fermi, invariato; congelato con un esito ERRORE → l'altro, qualunque `stato_lotto` (`stato_lotto = 'COMPLETATO'` lascia il posto a `NOT pre_fiscale` di `vw_lotti_fase`; lo stato fiscale ignoto cade qui); gli annullati restano fuori perché l'annullo chiude gli esiti, non per un filtro; censiti i lettori della vista di `vendite`, valutato il nome («chiusi» → «congelati»); pgTAP: congelato + job ERRORE + esito ERRORE solo nel secondo, COMPLETATO in bozza + errore solo nel primo. **Non solo i COMMENT:** nello stesso giro si riscrive la documentazione che descrive la spartizione — `dbops/manual/vw_lotti_fermi_da_guardare.md`, `dbops/manual/vw_lotti_chiusi_con_errori_da_guardare.md`, `vendite/manual/vw_lotti_segnalazioni_summary.md`, `vendite/manual/fn_get_lotto_segnalazioni_summary.md`, le note in `presidi.csv` e `presidi_testi.csv`, la guida `processi-automatici-classe-e-identita.md` e `Messaggi-di-Errore-e-Generazione-Log.md` dove ne parlano; `backend/vendite/manual/api_lotto_segnalazioni_summary.md` va al team BE se descrive la spartizione; ⑧ storno di un'uscita senza costo in `vw_magazzino_movimenti_senza_costo` → **difetto**, nel lotto M di `brief-db-sorgente-documento-e-riga`, con D58 e D29 (§8.1): lo storno è lo specchio dell'originale e ne prende il costo (`fn_scrivi_movimento` rifiuta un costo passato), quindi lo storno di un'uscita senza costo è un'entrata senza costo, conseguenza di una conseguenza, mentre la causa (il carico senza valore) è già nella vista; la vista aggiunge `storno_di_movimento_id IS NULL`; pgTAP: uscita senza costo stornata, lo storno non compare e il carico che l'ha causata sì; documentazione nello stesso giro: `dbops/manual/vw_magazzino_movimenti_senza_costo.md`, note di `presidi.csv` e `presidi_testi.csv`, `magazzino/manual/fn_scrivi_movimento.md` e `magazzino/manual/inventari_righe.md` dove parlano del presidio, `dbops/manual/vw_magazzino_valore_giacenza_divergente.md` se cita la regola; ⑨ `sessioni_utente.evento = 'SCADENZA'` → **difetto**, `SCADENZA` si ritira dal vincolo `chk_sessioni_utente_evento` (giro 9): la scadenza di un token non è un gesto, nessuno la compie, e scriverla vorrebbe dire inventare un evento da un'assenza; chi vuole le sessioni scadute le legge dalla scadenza del token; nello stesso changeSet, prima del vincolo stretto, il conteggio delle righe `SCADENZA` (se ce n'è una il vincolo si ferma); censiti i lettori (valore ritirato = filtro nascosto: oggi nessuno in BE e FE); documentazione nello stesso giro: `dbops/manual/sessioni_utente.md` e il COMMENT della tabella («traccia … scadenza»); pgTAP: un INSERT con `SCADENZA` è respinto; si valuta se `test-stati-check-scrittori-v1` va esteso ai vincoli sugli eventi; ⑩ `credenziali_di_prova` senza FK → **difetto**, giro 11: il motivo del COMMENT («in CI `django.auth_user` nasce dopo Liquibase») è un fatto, non una ragione — le FK verso `django.auth_user` stanno nel ponte `90_end` con la loro preCondition (più di venti), e la gemella `soggetti_di_prova` ha la sua; si aggiunge `credenziali_di_prova.auth_user_id → django.auth_user` in `90_end`, `NO ACTION` come la gemella (una cascata la respingerebbe il guard dell'etichetta); da decidere nel giro come si comporta `script.fn_elimina_credenziale` su un utente etichettato (rifiuto con codice, oppure unica porta che toglie etichetta e utente insieme — proposta: la seconda); censimento degli orfani prima dell'`ADD CONSTRAINT`; pgTAP sui due mondi (FK presente su dbdev, assente in CI fino al ponte); documentazione nello stesso giro: COMMENT della tabella (motivo e brief citato), `dbops/manual/credenziali_di_prova.md`, `dbops/manual/trgfn_etichette_di_prova_guard.md`, `dbops/manual/vw_radici_di_prova_in_produzione.md`, `dbops/manual/soggetti_di_prova.md` se confronta le due, la doc di `fn_elimina_credenziale`; `backend/amm-software/manual/api_amm_software.md` al team BE se ne parla; ⑪ DELETE_BLOCK `AFTER DELETE` in fase `a10` → **difetto**, nel giro della Q3 (stesso registro, stesso apply): `dbops.fn_apply_delete_block_trigger` crea il trigger `AFTER`, quindi le cascate delle FK (trigger interni, prima in ordine di nome) cancellano i figli prima del rifiuto, un guard o una FK di un figlio può parlare al posto di `E_DELETE_NOT_ALLOWED`, cascate e storico girano per poi annullarsi, e il nome `a10` (zona dei guard `BEFORE`) mente; i due blocchi scritti a mano (eventi dei documenti generati, versioni dei template) sono già `BEFORE`; il generatore crea `BEFORE DELETE … FOR EACH ROW`, i nove trigger di oggi si ricreano con l'apply, il presidio di convergenza della Q3 controlla anche il momento (un `AFTER` è difforme); pgTAP: trigger generato `BEFORE`, cliente con figli in cascata rifiutato con `E_DELETE_NOT_ALLOWED` e figli intatti; documentazione nello stesso giro: `dbops/manual/automation_delete_block.md`, `fn_apply_delete_block_trigger.md`, `fn_run_automations_delete_block.md`, `proc_automations_delete_block_job.md`, `script/manual/trgfn_delete_block_by_guc.md`, la guida `automazione-db.md`; ⑫ `ADD CONSTRAINT` overlap su dati già sovrapposti → **difetto**, nel giro della Q3 insieme alla D59 (stessa funzione): `dbops.fn_apply_automazione_overlap` non gestisce il `23P01`, quindi ferma la corsa intera (e la catena di `ci_apply`) con l'errore generico, senza dire regola né righe e senza riga d'audit; i dati sovrapposti sono un difetto dei dati, da rendere visibile senza fermare le regole che non c'entrano: un blocco `EXCEPTION WHEN exclusion_violation` per ogni `ADD CONSTRAINT` (variabili a `%TYPE`), audit `WARN` con motivo `DATI_SOVRAPPOSTI`, la tabella e le coppie di id sovrapposte, poi la regola successiva; presidio di convergenza (lo schema della Q3): regola overlap attiva senza il suo vincolo; e la regola si dà per applicata solo col **suo** vincolo, non con un qualsiasi `EXCLUDE` della tabella (`v_any_exclusion`, riconoscimento per presenza); pgTAP: due righe sovrapposte → corsa non ferma, vincolo non nato, audit con le coppie, presidio con la regola, e una seconda regola su un'altra tabella applicata lo stesso; documentazione nello stesso giro: `dbops/manual/automazione_overlap.md`, `dbops/manual/fn_apply_automazione_overlap.md`, `maintenance/manual/proc_automations_overlap_job.md`, guida `automazione-db.md` §4.3, il COMMENT della funzione; ⑬ guard utility solo in `ci_apply`, senza processo → **difetto**, nel giro della Q3 insieme alla D30 (stessa funzione): `ci_apply` chiama a mano seed e apply, quindi la famiglia è invisibile a panorama, roster e presidi dei processi, non converge fra un `ci_apply` e l'altro, non ha runner, e il seed a ogni corsa è una seconda sorgente del registro (come il seed overlap ritirato); nasce il processo `automations_guard_utility` in `dbops.processi` con `ci_ordine` fra delete_block (70) e overlap (80), per esempio 75; nasce il runner `dbops.fn_run_automations_guard_utility` sul modello degli altri, e `ci_apply` chiama quello al posto delle due righe; il seed esce da `ci_apply` (il registro lo scrive il suo CSV di `80_data`; seed come diagnosi o ritiro, con la D30); processo vivo col BB della Q2, registro con la regola unica della Q3; pgTAP: processo in catena al suo posto, `ci_apply` senza l'apply diretto, il runner applica una riga nuova; documentazione nello stesso giro: `dbops/manual/automazione_guard_utility_tipo_ruolo.md`, `fn_apply_automazione_guard_utility_tipo_ruolo.md`, `fn_seed_automazione_guard_utility_tipo_ruolo.md`, una pagina per il runner nuovo, guida `automazione-db.md` (§4.6 e l'elenco dei processi), le guide sui processi che elencano la catena. **La Q14 è chiusa.** |
 | Q15 | Giro 1a: `vw_codici_errore_da_dichiarare` e `vw_punti_canale_campo` guardano il solo plpgsql. Una funzione `LANGUAGE sql` può chiamare `fn_log_and_raise_error` con un codice letterale: entrano nel perimetro? | Sì: il corpo ora lo legge il BB anche per le `BEGIN ATOMIC`, e il perimetro di un presidio sui codici è il modello (chi può sollevare), non il linguaggio. Un giro a sé, perché può far comparire righe nuove nei due presidi. **✅ Deciso (Tid, 2026-11-06): sì, in un giro suo**; un codice nuovo che emerge porta la rigenerazione BE (come BE6) |
@@ -769,7 +782,7 @@ entra nel giro che apre lo stesso oggetto.
 | 5 ✅ | A | **La coda lavori sotto RLS.** Q14 ③, D9 — blocco 5a (§18): azienda del lavoro, policy inerte, porta DEFINER, D9; blocco 5b (§18.9): l'`ENABLE`, S-BE-2. Applicato e verde | Separare le aziende nel DB è un contratto deciso (Q14 ③). D9 (`fn_accoda_lavoro`) è la stessa tabella. Poi BE9 e la revisione del `perimetro` di `vw_coda_lavori_da_guardare` |
 | 6 ✅ | A | **Presidi che guardano il campo sbagliato.** Q14 ④, ⑦ — chiuso (§19): applicato, pgTAP verdi, committato | Un presidio che non vede un caso che il modello ammette (il buco dei lotti congelati) dice il falso. Tutti e due riaprono il catalogo `presidi.csv` / `presidi_testi.csv`. ⑧ va nell'altro brief (§8.1) |
 | 7 ✅ | A | **Promesse senza esecutore, ricerca dei lookup.** D35, D36, D37 (Q4), D57 — applicato e verde (§20) | Tutti riaprono l'ambito delle automazioni o un lettore che non vede tutto. BE4. D25 è passato al giro 10a (stessa funzione di D32) |
-| 8 | A | **Le fixture.** D63, D64, D66 (Q11), D67, D68 (Q12), D70; + D69, D71, D73 (B) e D74 (C) | Fixture che producono una forma che l'applicazione non produce. Le B e la C usano gli stessi builder: un giro solo |
+| 8 | A | **Le fixture.** D63, D64, D66 (Q11), D67, D70; + D69, D71, D73 (B) e D74 (C). D68 chiuso dall'altro cantiere (§21.1) | Fixture che producono una forma che l'applicazione non produce. Le B e la C usano gli stessi builder: un giro solo |
 | 9 | B | **Il processo vivo, e correzioni locali.** D11 (Q2): il BB «processo vivo» con sveglia, accensione, guard, panorama, roster e le sette viste, fra cui Q14 ⑤; D38, D39 (Q5); D8, D12, D22, D24, D52; Q14 ⑨ | Il BB deve nascere **prima** del giro 10, che lo usa (⑬). D38 e D39 sono lo stesso motore. Gli altri sono correzioni locali, ognuna su un oggetto suo |
 | 10 | B | **Il framework delle automazioni e la convergenza dei registri (Q3).** Quattro blocchi, ognuno provato prima del successivo, come il giro 1: | Le copie del framework e i registri che aggiungono e non tolgono. Le A di questo giro (D25, D30, D59) entrano qui perché aprono le stesse funzioni |
 | 10a | | Lock di colonna: D25 (A), D28, D32, R2; BE2 | `fn_lock_columns_divergenze` si apre una volta |
@@ -2494,11 +2507,232 @@ Guardrail `run_on_change`, `precondition_seed`, `ddl_su_trigger_automazione`, `g
   sfugge. Il limite è scritto nella pagina della vista e nella guida dei presidi; se si vuole chiuderlo, la vista legge l'override
   con `dbops.fn_get_override_col`, come la provision.
 
+#### 20.8.1 Le decisioni di Tid sul residuo (2026-11-07)
+
+1. **`tx_id` in `dbops`: si toglie**, tranne dove il valore fa da riferimento alle righe degli altri domini, cioè
+   lega la riga a ciò che la stessa transazione ha scritto altrove (audit, storico, registri degli errori).
+2. **`data_update` / `user_update`:** lo schema `ui` **entra nell'ambito** delle automazioni. `dbops` **resta fuori**,
+   salvo i registri che ci sono già per nome: in `dbops` i trigger si montano **a mano**, e va scritto come regola.
+   Se togliere le colonne o montare i trigger, tabella per tabella: **aperto** (§20.8.2, punto 2).
+3. **Il marcatore riconosciuto per nome: si risolve.** La vista legge l'override con `dbops.fn_get_override_col`.
+
+#### 20.8.2 Che cosa ne viene, sulla struttura dello scratch (2026-11-07)
+
+Fatti datati, letti sul catalogo. In `dbops` le tabelle con `tx_id` sono 23:
+
+* **le dieci del debito** (§20.8), senza il trigger del `tx_id` né quello di audit;
+* **otto coi due trigger a mano, sempre in coppia** (`tx_id` e audit): `processi`, `processi_bersagli`,
+  `processi_identita`, `coda_lavori`, `coda_lavori_tipi`, `rls_perimetro_debito`, `stati_check_dichiarazioni` e
+  `marcatori_automazione_debito`, il registro nato al giro 7;
+* **cinque registri nell'ambito per nome** (`audit_log`, `error_log`, `idempotency_keys`, `processi_accensione`,
+  `sessioni_utente`), coi trigger del framework.
+
+1. **Il criterio del `tx_id` vale anche per le otto coi trigger a mano**, non solo per le dieci: dove si toglie la
+   colonna si tolgono anche i trigger. Prima di scrivere si censiscono, tabella per tabella, i **lettori** del
+   `tx_id` (funzioni, viste, backend) e chi scrive la riga. Proposta di lettura del criterio: resta dove la riga la
+   scrive una transazione di dominio o di sessione (`coda_lavori` e i cinque registri); si toglie dove la riga la
+   scrive solo un seed, perché lì il `tx_id` lega la riga al solo migrate. Su questo il registro del debito si
+   svuota dei `tx_id`, e resta la sede per gli altri marcatori.
+2. **`data_update` / `user_update` in `dbops`, aperto.** Proposta della sessione DB: lo stesso criterio, guardato
+   dallo **scrittore**. Una tabella che qualcuno aggiorna a runtime (una funzione o il backend) tiene le colonne e
+   monta i due trigger a mano. Una tabella che scrive solo un seed le perde: chi e quando l'ha cambiata lo dicono già
+   `databasechangelog` e git, e le colonne direbbero sempre «il migratore, al migrate». Va deciso insieme al punto
+   1: sulle otto tabelle i due trigger stanno in coppia.
+3. **`ui` nell'ambito: l'ambito è uno solo per tutte le automazioni.** `dbops.automation_scope` non ha una colonna
+   per l'automazione: con `ui,*all`, come `shop` al giro 7, la convergenza monta su `ui` **tutto ciò che le regole
+   prevedono**, non solo l'audit (13 tabelle, 10 con `data_update`, 6 con `attivo`, nessuna con `tx_id` o
+   `storicizza`, nessuna sotto RLS). Si censiscono nel blocco i montaggi attesi (in particolare i guard ATTIVO sulle
+   FK fra tabelle di `ui` e verso gli altri domini) e gli scrittori del backend, che potrebbero vedere un rifiuto
+   nuovo. Nella guida `automazione-db.md` la frase «gli schemi fuori ambito (`ui`, `dbops`)» cambia.
+4. **La regola «in `dbops` a mano»** va in `automazione-db.md` (§l'ambito, che oggi dice «`dbops` è nell'ambito
+   tabella per tabella») e in `audit-e-tracciabilita.md`: `dbops` non entra con `*all`; una sua tabella entra per
+   nome solo come registro con una scadenza; le altre, se tengono un marcatore, montano i trigger a mano, e la vista
+   dei marcatori lo controlla.
+
+✅ **Confermato da Tid (2026-11-07)**: il punto 2 col criterio dello scrittore, e il giro 7-bis.
+
+**Quando:** non più al giro 14. Un giro **7-bis** subito dopo il giro 8, che ha già il via. Contiene i
+punti 1, 2 e 4 e la lettura dell'override; tocca le stesse tabelle e lo stesso presidio, che così si riapre una volta
+sola. `ui` nell'ambito (punto 3) in un blocco suo dello stesso giro, perché la convergenza monta su un altro schema.
+
 ### 20.9 Chiusura (2026-11-07)
 
 Tid ha applicato il giro 7 su dbdev e scratch (`20261108-25` … `-31`, i sette CSV e il loader `20260429-08`), con la
 convergenza che monta su `shop.ricevute` audit, `tx_id` e storico, e ha lanciato i pgTAP di §20.5: verdi. Le pagine
 auto-generate (la vista e il registro nuovi, i COMMENT riscritti di `audit_sources`, `ai_query_log` e
 `fn_get_lookup_codici`) si rigenerano con `gen_db_docs.py` ed entrano nel commit del giro. Restano fuori dal commit le
-modifiche dell'altro cantiere (`20261108-14` … `-24`, `-32` … `-34` e i loro pgTAP). **Il giro 7 è chiuso**; restano
-BE4 al team BE (§5) e il residuo di §20.8, proposto al giro 14.
+modifiche dell'altro cantiere (`20261108-14` … `-24`, `-32` … `-34` e i loro pgTAP). **Il giro 7 è chiuso**,
+committato in `11203bab2e`; restano BE4 al team BE (§5) e il residuo di §20.8, proposto al giro 14.
+
+La convergenza su `shop.ricevute` è letta sul catalogo, non dedotta dai test (sessione DB, 2026-11-07, sola lettura):
+su dbdev e sullo scratch la tabella ha `trg_ricevute_audit_data_user_upd`, `trg_ricevute_gen_tx_id_ins_upd` e
+`trg_ricevute_z90_storico_upd_dlt`, la shadow `storico.ricevute` esiste, `vw_storico_scope_da_dichiarare` è vuota e il
+presidio dei marcatori ha le sue dieci righe dichiarate.
+
+## 21. Giro 8 — le fixture: preparazione, 2026-11-07
+
+Non è ancora scritto niente: il giro aspetta il via di Tid (§21.3).
+
+### 21.1 D68 è già chiuso, dall'altro cantiere
+
+`brief-db-sorgente-documento-e-riga` ha riscritto `dbops.fn_pgtap_crea_commessa_attivita` (`20261108-01`, poi
+`20261108-34` per il nome nuovo del parametro della madre), su decisione di Tid del 2026-11-07: senza sorgente il
+builder crea un consumo vero (`vendite.attivita_consumi`) e la chiave la compone `script.fn_segment_key`; con la
+sorgente, la chiave nomina il documento col suo uid. La chiave `PGT-SEG-<md5>` non c'è più. La decisione revoca la
+forma della Q12 (`MAN:<commessa>:<n>`), che qui non si applica. Resta di D68, per il giro 14, il solo COMMENT della
+fixture (M36), se l'altro cantiere non l'ha già riscritto.
+
+### 21.2 Gli altri difetti, sulla scheda del 2026-11-07
+
+| # | Stato | Che cosa si vede oggi |
+| --- | --- | --- |
+| D63 | aperto | `fn_pgtap_crea_soggetto_pg` scrive ancora con INSERT `anagrafiche.soggetti` e due volte `indirizzi_soggetti` (gli obbligatori della matrice, poi il ripiego «il primo tipo ammesso» se non ce n'è nessuno) |
+| D64 | aperto | `fn_pgtap_crea_indirizzo_dettaglio` (riscritta al giro 2 per la via viva, `20261107-15`) tiene l'`ON CONFLICT … DO UPDATE` al posto di `anagrafiche.fn_get_or_create_indirizzo_dettaglio` |
+| D66 | aperto | `script.fn_pgtap_emittente_operatore` ripiega ancora su un operatore reale e poi sul primo emittente attivo per id (Q11: delega a `dbops.fn_pgtap_azienda_di_chi_agisce`) |
+| D67 | aperto | `fn_pgtap_crea_lotto` scrive l'esito con un INSERT su `vendite.fatturazione_lotti_esiti` |
+| D69 | aperto | `fn_pgtap_listino_aggiungi_articoli` scrive le righe senza periodicità; `fn_pgtap_crea_listino` le aggiunge con quel builder |
+| D70 | aperto | `fn_pgtap_porta_a_stato` verso `CHIUSA` chiama `vendite.fn_chiudi_versioni_listino_scadute()` e non controlla lo stato raggiunto |
+| D71 | aperto | `fn_pgtap_crea_ddt_da_ordine` conta le righe attive dell'ordine senza filtro di natura: un ordine con una riga di merce e un onere rifiuta `p_qta_da_evadere` |
+| D73 | aperto | `script.fn_doc_stato_id` lo usa solo `fn_pgtap_crea_preventivo_con_righe`; gli altri builder che cercano uno stato si censiscono nel giro |
+| D74 | aperto | «la prima valuta del catalogo» nei sette builder del brief |
+
+Gli altri builder toccati oggi dall'altro cantiere (`20261108-09`: i COMMENT di `fn_pgtap_porta_a_stato` e
+`fn_pgtap_crea_cliente_ba`) non cambiano il corpo: D70 e D74 restano come sono descritti. ⚠️ Prima di scrivere ogni
+changeSet il corpo si riprende dalla scheda del giorno: l'altro cantiere lavora sugli stessi builder.
+
+### 21.3 Il via (Tid, 2026-11-07)
+
+1. **I numeri: dal primo libero.** Cercato su tutti i livelli, nel working tree e su `origin/Tito-dev`, e nei brief
+   aperti: il più alto è il `20261108-34` (altro cantiere). **Tid dà il `20261108-41`**: il giro 8 parte da lì
+   (`-35` … `-40` non sono di questo cantiere).
+2. **D68 fuori dal giro: sì**, chiuso dall'altro cantiere con la decisione del 2026-11-07 che supera la Q12 (§21.1).
+3. **D63, il ripiego «almeno un indirizzo»: come da proposta.** La fixture chiama
+   `fn_crea_indirizzi_soggetto` con gli indirizzi obbligatori della matrice; il ripiego resta solo se il guard
+   degli indirizzi pretende una riga anche quando la matrice non ne rende obbligatorio nessuno (lo si legge sul
+   guard nel giro), e allora passa anche lui dalla madre.
+
+### 21.4 Che cosa è stato scritto (2026-11-08)
+
+Tre blocchi, `20261108-41` … `-60`, tutti in `20_code` (uno solo in `20_code/script`). Il corpo di ogni funzione
+viene dalla doc auto-generata, verificata uguale al vivo dello scratch; firma, `RETURNS`, `SECURITY INVOKER` e la
+firma dei `COMMENT ON` vengono dall'ultimo YAML che li ancorava con `%TYPE`. `fn_pgtap_porta_a_stato`, che nessuno
+YAML aveva mai ancorato, ha i tipi espliciti con il perché accanto. Ogni COMMENT riscritto al presente (§5d).
+
+| changeSet | Oggetto | Difetto | Che cosa |
+| --- | --- | --- | --- |
+| `-41` | `dbops.fn_pgtap_crea_indirizzo_dettaglio` | D64 | l'indirizzo da `anagrafiche.fn_get_or_create_indirizzo_dettaglio`: la riga spenta torna attiva, la via si risolve |
+| `-42` | `dbops.fn_pgtap_porta_a_stato` | D70 | uno stato raggiunto diverso da quello chiesto solleva, per ogni testata |
+| `-43` | `dbops.fn_pgtap_crea_ddt_da_ordine` | D71, D73 | riga restituita e riga da evadere di merce (`script.fn_natura_e_merce`); lo stato da `script.fn_doc_stato_id` |
+| `-44` | `dbops.fn_pgtap_crea_lotto` | D67, D73 | l'esito trattenuto dalla porta `vendite.fn_segna_esito_gruppo_lotto` (con `errore_quando`); lo stato da `script.fn_doc_stato_id` |
+| `-45` | `script.fn_pgtap_emittente_operatore` | D66 (Q11) | delega a `dbops.fn_pgtap_azienda_di_chi_agisce`: niente più ripieghi |
+| `-46` | `dbops.fn_pgtap_crea_soggetto_pg` | D63 | testata, contatto e dati societari da `anagrafiche.fn_crea_soggetto_pg`, indirizzi da `fn_crea_indirizzi_soggetto`; il ripiego si ritira |
+| `-47` | `dbops.fn_pgtap_valuta` (nuova) | D74 | la valuta delle radici della catena, una sede |
+| `-48` | `dbops.fn_pgtap_crea_ddt` | D73, D74 | stato iniziale da `script.fn_doc_stato_iniziale_id` (era `'DRAFT'` in linea); valuta da `vendite.fn_get_valuta_id` |
+| `-49`, `-50`, `-52`, `-55` | `_crea_ddt_riconsegna`, `_crea_ddt_senza_ordine`, `_crea_ordine_con_righe`, `_crea_reso` | D73 | lo stato da `script.fn_doc_stato_id` (la copia in linea si ritira) |
+| `-51`, `-53`, `-54` | `_crea_ordine`, `_crea_preventivo`, `_crea_fattura` | D73, D74 | lo stato da `script.fn_doc_stato_id`: uno stato **spento** ora solleva prima di costruire; valuta da `vendite.fn_get_valuta_id` |
+| `-56`, `-57`, `-58` | `_crea_cliente_ba`, `_crea_emittente`, `_crea_gestore` | D74 | la valuta da `dbops.fn_pgtap_valuta` |
+| `-59` | `dbops.fn_pgtap_listino_aggiungi_articoli` | D69 | `p_periodicita` in coda, `DEFAULT NULL`; firma nuova (DROP + CREATE nello stesso changeSet) |
+| `-60` | `dbops.fn_pgtap_crea_listino` | D69 | la tipologia di default è la prima ammessa che non è una quota fissa |
+
+pgTAP nuovi: `dbops/test-fn-pgtap-porta-a-stato-v1` (3), `anagrafiche/test-fn-pgtap-crea-soggetto-pg-v1` (4),
+`script/test-fn-pgtap-emittente-operatore-v1` (3), `dbops/test-fn-pgtap-valuta-v1` (3),
+`dbops/test-fn-pgtap-crea-listino-v1` (3). Estesi: `anagrafiche/test-indirizzi-dettaglio-unicita-v1` (28 → 29),
+`dbops/test-fn-pgtap-crea-ddt-da-ordine-v1` (16 → 17), `dbops/test-fn-pgtap-crea-lotto-v1` (test 8 con
+`errore_quando`), `dbops/test-fn-pgtap-crea-ordine-v1` (11 → 13), `dbops/test-fn-pgtap-crea-preventivo-v1` (9 → 10),
+`dbops/test-fn-pgtap-crea-fattura-v1` (15 → 17). Riallineato: `anagrafiche/test-fn-crea-contatto-v1` (test 2 e 12, §21.5
+punto 2). I casi si costruiscono nella transazione del test: lo stato spento (una copia dello stato iniziale,
+disattivata), la natura senza tipi obbligatori, l'utility con la quota fissa in testa, il billing account con una
+valuta che non è la prima del catalogo.
+
+### 21.5 Le scelte dentro il giro (da guardare, Tid)
+
+1. **D74, due sedi e non una.** §2.9 chiedeva «un BB di fixture». Sul modello la valuta di un documento la risolve
+   il dominio (`vendite.fn_get_valuta_id`: billing account, poi emittente, poi gestore), ed è quella che scrivono i
+   trigger di default: i quattro builder di documento la chiedono lì. Solo le tre radici della catena (cliente BA,
+   emittente, gestore) non hanno da chi prenderla, e usano `dbops.fn_pgtap_valuta`. Le sette copie si ritirano
+   tutte; il test 3 di `test-fn-pgtap-valuta-v1` controlla che nessuna fixture legga più `config.valute` da sé.
+2. **D63, il contatto della fixture cambia forma.** La madre scrive il contatto di default con il nominativo uguale
+   alla ragione sociale (la fixture scriveva «Referente …» e `default_context = 'soggetto'`). È la forma
+   dell'applicazione. Il test 2 di `test-fn-crea-contatto-v1` riallinea l'attesa; il test 12 conta la fixture fra
+   chi passa dal BB del contatto, attraverso la madre.
+3. **D66, l'identità OPERATORE.** `dbops.fn_pgtap_azienda_di_chi_agisce` pretende anche un'identità OPERATORE
+   attiva per l'utente di contesto, che il vecchio helper non chiedeva. Delegare vuol dire prendere anche questa
+   regola (Q11: una sede).
+4. **D73 tocca anche `_crea_fattura`**, che §2.9 non elencava: cercava lo stato senza il filtro `attivo`, come ordine
+   e preventivo. E `_crea_ddt` scriveva `'DRAFT'` in linea: ora lo stato iniziale della testata. Le frasi d'errore di
+   ordine, preventivo e fattura restano le stesse con «attivo» aggiunto, così le attese dei test di oggi valgono.
+5. **D71, la bolla senza merce.** La riga restituita si legge in `LEFT JOIN`: una bolla che non ha una riga di merce
+   torna lo stesso, con la riga a NULL, invece di non tornare.
+6. **D69, la firma.** `p_periodicita` in coda con `DEFAULT NULL`: le chiamate per posizione di oggi restano valide.
+   La firma nuova vuole DROP + CREATE; nessun oggetto del catalogo ne dipende, e i GRANT li ridanno i privilegi di
+   default e il loop dei grant.
+
+### 21.6 Le prove (scratch `zeroerp_ruoli`, come owner, SQL estratto dagli YAML, `BEGIN … ROLLBACK`)
+
+* `preConditions` estratte ed eseguite su scratch e dbdev: verdi.
+* Applicati i 20 changeSet in una transazione annullata: firma, risultato, volatilità e sicurezza di ogni funzione
+  identici al vivo (una sola funzione per nome); cambiano solo `fn_pgtap_listino_aggiungi_articoli` (il parametro in
+  coda) e `fn_pgtap_valuta` (nuova).
+* «Senza → con», sui file del giro: rosso **solo** il caso del difetto senza, tutto verde con.
+
+| File | Senza | Con |
+| --- | --- | --- |
+| `anagrafiche/test-indirizzi-dettaglio-unicita-v1` (29) | 28/29 (29: l'indirizzo resta spento) | 29/29 |
+| `dbops/test-fn-pgtap-porta-a-stato-v1` (3) | 2/3 (1: nessun errore) | 3/3 |
+| `dbops/test-fn-pgtap-crea-ddt-da-ordine-v1` (17) | 16/17 (17: «ne ha 2») | 17/17 |
+| `dbops/test-fn-pgtap-crea-lotto-v1` (9) | 8/9 (8: `errore_quando` vuoto) | 9/9 |
+| `anagrafiche/test-fn-pgtap-crea-soggetto-pg-v1` (4) | 2/4 (1: «Referente», 4: il ripiego) | 4/4 |
+| `script/test-fn-pgtap-emittente-operatore-v1` (3) | 1/3 (1, 3: il ripiego) | 3/3 |
+| `anagrafiche/test-fn-crea-contatto-v1` (13) | 12/13 (2: l'attesa nuova) | 13/13 |
+| `dbops/test-fn-pgtap-crea-ordine-v1` (13) | 11/13 (12: lo stato spento, 13: la valuta) | 13/13 |
+| `dbops/test-fn-pgtap-crea-preventivo-v1` (10) | 9/10 (10: lo stato spento) | 10/10 |
+| `dbops/test-fn-pgtap-crea-fattura-v1` (17) | 15/17 (16, 17) | 17/17 |
+| `dbops/test-fn-pgtap-valuta-v1` (3) | — (la funzione non c'è) | 3/3 |
+| `dbops/test-fn-pgtap-crea-listino-v1` (3) | 0/3 (1: la versione non si attiva) | 3/3 |
+
+* Regressione del blocco 8a (`-41` … `-44`) su 620 file che usano un builder: 538 verdi; 82 rossi, di cui 79
+  **identici senza** le correzioni (rossi preesistenti, presi da owner) e 3 che erano deadlock con altre sessioni
+  sullo scratch, verdi rilanciati a scratch libero. Nessuna regressione.
+* Regressione dei tre blocchi (`-41` … `-60`) su 974 file che chiamano una fixture `fn_pgtap_*`: 869 verdi; 105
+  rossi, di cui 103 **identici senza** le correzioni (preesistenti, presi da owner). Gli altri due
+  (`anagrafiche/test-soggetti-indirizzi-required`, `test-soggetti-ruoli-indirizzi-required`) aprono più transazioni
+  e la prova con l'estratto non li sa comporre; usano solo `fn_pgtap_piva_libera` e `fn_pgtap_indirizzo_libero_forma`,
+  che il giro non tocca. Nessuna regressione.
+* Guardrail `ddl_su_trigger_automazione`, `grant_ruolo_batch`, `pgtap_preambolo`, `precondition_seed`,
+  `run_on_change`, `sql_letterali`, `timestamp_senza_fuso`, `v1_congelato` verdi; pre-commit sui file verde.
+
+* **Dopo l'apply (Tid, 2026-11-08)**: `test-fn-crea-contatto-v1` 12 rosso come app su dbdev. Il ramo nuovo del test
+  riconosceva la fixture con `f::text LIKE 'dbops.…'`: come app `dbops` è nel `search_path` e il `regprocedure` si
+  stampa senza schema (da owner no, per questo la prova era verde). Ora la riconosce per OID. I dodici file di §21.6,
+  come app sullo scratch: tutti verdi.
+
+### 21.7 Per Tid
+
+1. Apply su dbdev e scratch: `20261108-41` … `-60` (solo `20_code`, nessun CSV, nessun codice errore nuovo).
+2. pgTAP: i dodici file di §21.6 (cinque nuovi: `dbops/test-fn-pgtap-porta-a-stato-v1`,
+   `anagrafiche/test-fn-pgtap-crea-soggetto-pg-v1`, `script/test-fn-pgtap-emittente-operatore-v1`,
+   `dbops/test-fn-pgtap-valuta-v1`, `dbops/test-fn-pgtap-crea-listino-v1`). Le fixture le usano quasi tutti i file:
+   una corsa intera dice di più di una lista.
+3. La baseline B-7 non dovrebbe muoversi (nessun codice, nessun presidio di catalogo).
+
+### 21.8 Doc
+
+* Pagine `manual/` riallineate, una per oggetto: le diciannove fixture di §21.4, più
+  `dbops/manual/fn_pgtap_azienda_di_chi_agisce.md` (descriveva il ripiego di `script.fn_pgtap_emittente_operatore`);
+  nuova `dbops/manual/fn_pgtap_valuta.md`.
+* Le schede auto-generate (le COMMENT riscritte, la funzione nuova) le rigenera `gen_db_docs.py` dopo l'apply.
+
+### 21.9 Residuo
+
+* Nessun difetto del giro resta aperto. M36 (COMMENT di fixture) è chiuso per gli oggetti toccati qui; il resto va
+  al giro 14.
+* Subito dopo: il giro 7-bis (§20.8.2), confermato da Tid.
+
+### 21.10 Chiusura (2026-11-08)
+
+Tid ha applicato il giro 8 su dbdev e scratch (`20261108-41` … `-60`) e ha lanciato i pgTAP di §21.7: verdi, dopo
+la correzione del test 12 di `test-fn-crea-contatto-v1` (§21.6, il confronto per OID). Le schede auto-generate (la
+funzione nuova `dbops.fn_pgtap_valuta`, le firme e i COMMENT riscritti) si rigenerano con `gen_db_docs.py` ed entrano
+nel commit del giro. Restano fuori dal commit le modifiche dell'altro cantiere. **Il giro 8 è chiuso**; il prossimo è
+il giro 7-bis (§20.8.2), poi il giro 9 (§8).
+

@@ -22,7 +22,7 @@
 --     di pagamento alla nascita;
 --   - rev 2026-10-24 (20261024-42): la fattura senza utility.
 --
--- Elenco test (plan 15):
+-- Elenco test (plan 17):
 --   1) la funzione esiste con la firma dichiarata
 --   2) la testata esiste davvero, e porta il registro e il BA tornati
 --   3) il registro e' dell'azienda di chi agisce
@@ -42,6 +42,8 @@
 -- ⚠️ La fixture apre il contesto chiamando il BB: la riga del template
 --   sarebbe ridondante, ma non dannosa. Qui si usa il BB come lo usera' un
 --   file vero — prima chiamata senza contesto, come in CI.
+--  16) guard: uno stato SPENTO parla prima di costruire (lo stato da script.fn_doc_stato_id, D73)
+--  17) la valuta della fattura e' quella della catena del dominio: quella del billing account (D74)
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -55,7 +57,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 --   viene chiamata come la chiamera' un file su un database ricostruito: senza
 --   nessuna veste in sessione. Aprirlo prima nasconderebbe meta' del contratto.
 
-SELECT plan(15);
+SELECT plan(17);
 
 -- ============================================================
 -- 1) La firma
@@ -257,6 +259,40 @@ SELECT is(
       WHERE f8.id = (SELECT fattura_id FROM t_f8) AND f1.id = (SELECT fattura_id FROM t_f1)),
     'true true true',
     '15) p_senza_utility: la fattura nasce senza utility e il builder torna quella scritta (NULL); senza, ha quella del cliente'
+);
+
+-- 16) Uno stato spento: il builder lo rifiuta prima di costruire.
+-- Lo stato SPENTO si costruisce: una copia dello stato iniziale, disattivata e
+--   non iniziale, con un codice suo (brief-db-revisione-dbops D73).
+INSERT INTO config.stati_doc_fiscale (codice, descrizione, attivo, codice_interno, applica_lotto, applica_fattura, chiude_lotto, fase, is_abortito, congela_fiscale, iniziale)
+SELECT 'PGTAP_SPENTO', 'Fixture pgTAP: stato spento', false, 'PGTAP_SPENTO', s.applica_lotto, s.applica_fattura, s.chiude_lotto, s.fase, s.is_abortito, s.congela_fiscale, false
+  FROM config.stati_doc_fiscale s
+ WHERE s.id = script.fn_doc_stato_iniziale_id('vendite.fatture'::regclass);
+
+SELECT throws_like($$
+    SELECT dbops.fn_pgtap_crea_fattura('presidio stato spento', 'PGTAP_SPENTO')
+$$,
+    '%nessuno stato documento fiscale attivo%',
+    '16) guard: uno stato spento parla prima di costruire, nominando il builder'
+);
+
+-- 17) La valuta dalla catena.
+-- La valuta del documento dalla catena del dominio (vendite.fn_get_valuta_id): un
+--   billing account con una valuta che NON e' la prima del catalogo la passa al
+--   documento (brief-db-revisione-dbops D74).
+UPDATE anagrafiche.billing_account
+   SET valuta_id = (SELECT max(v.id) FROM config.valute v)
+ WHERE id = (SELECT billing_account_id FROM t_f1);
+
+CREATE TEMP TABLE t_fval AS
+SELECT * FROM dbops.fn_pgtap_crea_fattura('presidio fattura valuta', 'DRAFT',
+                                           (SELECT billing_account_id FROM t_f1));
+
+SELECT is(
+    (SELECT f.valuta_id FROM vendite.fatture f WHERE f.id = (SELECT fattura_id FROM t_fval)),
+    (SELECT ba.valuta_id FROM anagrafiche.billing_account ba
+      WHERE ba.id = (SELECT billing_account_id FROM t_f1)),
+    '17) la valuta della fattura e'' quella del billing account, non la prima del catalogo'
 );
 
 SELECT * FROM finish();

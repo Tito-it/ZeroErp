@@ -364,7 +364,7 @@ SELECT a.attivita_id
   CROSS JOIN LATERAL dbops.fn_pgtap_crea_commessa_attivita(
                        p_commessa_id     => (SELECT commessa_id FROM tmp_commessa_gk),
                        p_sorgente_codice => 'PREVENTIVO',
-                       p_sorgente_uid    => p.preventivo_uid::text) a;
+                       p_sorgente_chiave => p.preventivo_uid::text) a;
 
 CREATE TEMP TABLE tmp_commessa AS
 SELECT ca.commessa_id,

@@ -174,7 +174,7 @@ CREATE OR REPLACE FUNCTION pg_temp.invia(v jsonb) RETURNS bigint LANGUAGE sql AS
       p_prezzo_bloccato => (v ->> 'prezzo_bloccato')::boolean,
       p_pricing_mode => (v ->> 'pricing_mode')::varchar,
       p_sorgente_tipo_id => (v ->> 'sorgente_tipo_id')::bigint,
-      p_sorgente_chiave => v ->> 'sorgente_uid',
+      p_sorgente_chiave => v ->> 'sorgente_chiave',
       p_tipo_movimento => (v ->> 'tipo_movimento')::varchar,
       p_meta => COALESCE(v -> 'meta', '{}'::jsonb)) u
 $fx$;

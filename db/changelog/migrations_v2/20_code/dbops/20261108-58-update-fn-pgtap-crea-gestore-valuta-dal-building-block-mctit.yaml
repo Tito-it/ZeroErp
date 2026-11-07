@@ -1,0 +1,119 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_pgtap_crea_gestore: la valuta da dbops.fn_pgtap_valuta.
+#   Brief: brief-db-revisione-dbops, D74 (giro 8, blocco 8c).
+#
+# Base: doc auto-generata del 2026-11-07, verificata uguale al vivo dello scratch.
+#
+# ⚠️ PERCHE'. «La prima valuta del catalogo» era una delle sette copie di D74:
+#   ora il building block di fixture (20261108-47). Firma e risultato
+#   invariati. COMMENT al presente (§5d).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261108-58-update-fn-pgtap-crea-gestore-valuta-dal-building-block-mctit.yaml
+
+  - changeSet:
+      id: 20261108-58-update-fn-pgtap-crea-gestore-valuta-dal-building-block
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_pgtap_crea_gestore: la valuta da dbops.fn_pgtap_valuta (D74).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_pgtap_crea_gestore';
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_pgtap_valuta';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_gestore(
+                  p_etichetta text DEFAULT 'pgTAP'
+              )
+               RETURNS TABLE (
+                  gestore_id                anagrafiche.gestori.id%TYPE,
+                  gestore_soggetto_ruolo_id anagrafiche.gestori.soggetto_ruolo_id%TYPE,
+                  gestore_soggetto_id       anagrafiche.soggetti.id%TYPE
+               )
+               LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: dare a una fixture pgTAP il GESTORE dell'installazione.
+              --   `anagrafiche.gestori` e' dato di MACCHINA: da zero e' vuota, e
+              --   «il primo gestore» non esiste.
+              -- ⚠️ PRENDI-O-COSTRUISCI, e non e' pigrizia: il gestore e' un
+              --   singleton, e un secondo lo rifiuta un guard. Su dbdev questa
+              --   funzione risponde quello che c'e' e non scrive niente.
+              -- Uso:
+              --   CREATE TEMP TABLE tmp_gestore AS
+              --   SELECT * FROM dbops.fn_pgtap_crea_gestore('conto gestore');
+              -- ⛔ I conti bancari del gestore NON li scrive: sono il caso del test.
+              -- ⚠️ Esce con i vincoli IMMEDIATE, come ogni helper.
+              DECLARE
+                  v_id  anagrafiche.gestori.id%TYPE;
+                  v_sr  anagrafiche.gestori.soggetto_ruolo_id%TYPE;
+                  v_sog anagrafiche.soggetti.id%TYPE;
+              BEGIN
+                  SELECT g.id, g.soggetto_ruolo_id, sr.soggetto_id
+                    INTO v_id, v_sr, v_sog
+                    FROM anagrafiche.gestori g
+                    JOIN anagrafiche.soggetti_ruoli sr ON sr.id = g.soggetto_ruolo_id
+                   ORDER BY g.id
+                   LIMIT 1;
+
+                  IF v_id IS NOT NULL THEN
+                      RETURN QUERY SELECT v_id, v_sr, v_sog;
+                      RETURN;
+                  END IF;
+
+                  -- ⛔ LA FINESTRA DIFFERITA: il ruolo GE ha i suoi indirizzi
+                  --   obbligatori e un guard differito, e il preambolo dei pgTAP
+                  --   mette i vincoli IMMEDIATE.
+                  SET CONSTRAINTS ALL DEFERRED;
+
+                  v_sog := dbops.fn_pgtap_crea_soggetto_pg('Gestore ' || p_etichetta);
+                  v_sr  := dbops.fn_pgtap_crea_soggetto_ruolo(
+                               v_sog, 'GE'::character varying);
+
+                  INSERT INTO anagrafiche.gestori
+                      (soggetto_ruolo_id, descrizione, cd_prod_software, valuta_id)
+                  VALUES (v_sr, 'Gestore pgTAP ' || p_etichetta, 'ZEROERP',
+                          dbops.fn_pgtap_valuta())
+                  RETURNING id INTO v_id;
+
+                  -- Saga completa: i guard differiti scattano QUI, su un mondo
+                  -- finito.
+                  SET CONSTRAINTS ALL IMMEDIATE;
+
+                  RETURN QUERY SELECT v_id, v_sr, v_sog;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_crea_gestore(text) IS
+                  'Fixture pgTAP: il GESTORE dell''installazione — lo PRENDE se c''e'', lo costruisce (soggetto + ruolo GE + riga, dentro la finestra differita) se non c''e'', con la valuta di dbops.fn_pgtap_valuta (il gestore e'' l''ultima radice della catena vendite.fn_get_valuta_id). ⚠️ anagrafiche.gestori e'' dato di MACCHINA: su un database ricostruito e'' vuota, e i quattro file che leggevano «il primo Gestore» non trovavano niente. ⛔ Prendi-o-costruisci e non costruisci-sempre, perche'' il gestore e'' un SINGLETON: un secondo lo rifiuta un guard, quindi un builder che creasse sempre sarebbe rosso proprio su dbdev. ⛔ I conti bancari del gestore NON li scrive: uso, IBAN e predefinito sono il caso del test. ⚠️ Esce con i vincoli IMMEDIATE, come ogni helper.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo dal corpo della doc auto-generata
+              -- del 2026-11-07.
+              SELECT 1;

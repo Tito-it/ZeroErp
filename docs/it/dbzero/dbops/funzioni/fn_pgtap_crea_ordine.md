@@ -55,13 +55,13 @@ DECLARE
 BEGIN
     -- Il guard sul parametro PRIMA di costruire: uno stato
     -- sbagliato non deve lasciare un mondo a meta'.
-    SELECT s.id INTO v_stato_id
-      FROM config.stati_doc_ordini s
-     WHERE s.codice_interno = p_stato_codice_interno;
+    -- Lo stato dalla sede della traduzione codice -> id
+    -- (script.fn_doc_stato_id): solo uno stato ATTIVO e' una destinazione.
+    v_stato_id := script.fn_doc_stato_id('vendite.ordini'::regclass, p_stato_codice_interno);
 
     IF v_stato_id IS NULL THEN
         RAISE EXCEPTION
-            'fn_pgtap_crea_ordine: nessuno stato documento ordine con codice_interno = %',
+            'fn_pgtap_crea_ordine: nessuno stato documento ordine attivo con codice_interno = %',
             p_stato_codice_interno;
     END IF;
 
@@ -73,8 +73,10 @@ BEGIN
       FROM dbops.fn_pgtap_cliente_del_builder(
                p_etichetta, p_billing_account_id, 'fn_pgtap_crea_ordine') c;
 
-    SELECT v.id INTO v_valuta_id
-      FROM config.valute v ORDER BY v.id LIMIT 1;
+    -- La valuta dalla catena del dominio (vendite.fn_get_valuta_id:
+    -- billing account, poi emittente, poi gestore), come la risolvono i
+    -- trigger di default dei documenti: non la prima del catalogo.
+    v_valuta_id := vendite.fn_get_valuta_id(v_ba_id, v_ef_sr_id);
 
     -- ⚠️ data e' NOT NULL con un DEFAULT di tabella: NULL vuol dire
     --   «quello della tabella». Due rami invece di ricopiare qui il
@@ -114,7 +116,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_ordine(p_etichetta text, p_stato_codice_interno character varying, p_billing_account_id bigint, p_data date)
-IS 'Fixture pgTAP: un ORDINE di vendita del mondo in una chiamata: azienda, operatore e cliente (dbops.fn_pgtap_crea_mondo_cliente) e la testata, con l''emittente del mondo, il suo billing account, la sua utility e la prima valuta del catalogo. Numero, anno, registro e fatturazione_trigger li assegnano i trigger del dominio, come in produzione. ⭐ Lo stato: l''ordine NASCE nello stato iniziale (trigger della nascita) e, se il secondo parametro ne chiede un altro, ci arriva per la matrice con dbops.fn_pgtap_porta_a_stato, sotto i guard veri; un passaggio che pretende cio'' che il builder non scrive (le righe, per la conferma) si ferma: il test chiede la bozza, scrive le righe e porta avanti da se''. Uno stato inesistente solleva prima di costruire. ⛔ NON scrive righe: sono il caso del test. ⚠️ Senza contesto aperto lo apre sull''operatore che costruisce; esce con i vincoli IMMEDIATE. Brief: brief-db-fixture-rls-documenti-costruiti. ⚠️ Terzo parametro (rev 2026-10-22, 20261022-10, richiesta BE R-3): il billing account di un cliente gia'' costruito, per il secondo ordine dello stesso cliente; verificato dell''azienda di chi agisce da dbops.fn_pgtap_cliente_ba_del_mondo, e un BA di un''altra azienda solleva. Rev 2026-10-24 (20261024-23, brief-modello-documento-vendita N-1): nascita in bozza; COMMENT allineato dal 20261024-29. Quarto parametro (rev 2026-10-25, 20261025-03, brief-db-pgtap-bolla-e-reso-costruiti D-1): la data dell''ordine, scritta alla nascita nell''INSERT (fuori bozza e'' congelata); NULL = il default della colonna. DROP + CREATE. Rev 2026-10-27 (20261027-32, brief-modello-documento-vendita §15.13): lo stato iniziale dalla testata (vendite.ordini) con script.fn_doc_stato_iniziale_id, non dal vocabolario.';
+IS 'Fixture pgTAP: un ORDINE di vendita del mondo in una chiamata: azienda, operatore e cliente (dbops.fn_pgtap_cliente_del_builder: quello del terzo parametro, verificato dell''azienda di chi agisce, o uno nuovo del mondo) e la testata, con l''emittente del mondo, il billing account, la sua utility e la valuta della catena del dominio (vendite.fn_get_valuta_id: billing account, poi emittente, poi gestore). Numero, anno, registro e fatturazione_trigger li assegnano i trigger del dominio, come in produzione. Quarto parametro: la data dell''ordine, scritta alla nascita (NULL = il default della colonna). Lo stato: lo traduce script.fn_doc_stato_id, quindi uno stato spento o inesistente solleva prima di costruire; l''ordine nasce nello stato iniziale della testata (script.fn_doc_stato_iniziale_id) e, se il secondo parametro ne chiede un altro, ci arriva per la matrice con dbops.fn_pgtap_porta_a_stato, sotto i guard veri; un passaggio che pretende cio'' che il builder non scrive (le righe, per la conferma) si ferma: il test chiede la bozza, scrive le righe e porta avanti da se''. ⛔ NON scrive righe: sono il caso del test (le scrive dbops.fn_pgtap_crea_ordine_con_righe). ⚠️ Senza contesto aperto lo apre sull''operatore che costruisce; esce con i vincoli IMMEDIATE.';
 ```
 
 </div>

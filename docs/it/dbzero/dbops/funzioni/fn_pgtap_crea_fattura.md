@@ -66,13 +66,16 @@ DECLARE
                            OR COALESCE(p_spoglia_intestazione, false);
 BEGIN
     -- 0. Lo stato si giudica PRIMA di costruire.
-    SELECT s.id, s.ordine INTO v_stato_id, v_ordine
+    -- Lo stato dalla sede della traduzione codice -> id
+    -- (script.fn_doc_stato_id): solo uno stato ATTIVO e' una destinazione.
+    v_stato_id := script.fn_doc_stato_id('vendite.fatture'::regclass, p_stato_codice_interno);
+    SELECT s.ordine INTO v_ordine
       FROM config.stati_doc_fiscale s
-     WHERE s.codice_interno = p_stato_codice_interno;
+     WHERE s.id = v_stato_id;
 
     IF v_stato_id IS NULL THEN
         RAISE EXCEPTION
-            'fn_pgtap_crea_fattura: nessuno stato documento fiscale con codice_interno = %',
+            'fn_pgtap_crea_fattura: nessuno stato documento fiscale attivo con codice_interno = %',
             p_stato_codice_interno;
     END IF;
 
@@ -125,8 +128,10 @@ BEGIN
       FROM config.tipi_doc_fiscale t
      WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1;
 
-    SELECT v.id INTO v_valuta_id
-      FROM config.valute v ORDER BY v.id LIMIT 1;
+    -- La valuta dalla catena del dominio (vendite.fn_get_valuta_id:
+    -- billing account, poi emittente, poi gestore), come la risolvono i
+    -- trigger di default dei documenti: non la prima del catalogo.
+    v_valuta_id := vendite.fn_get_valuta_id(v_ba_id, v_ef_sr_id);
 
     -- 4. Il registro dell'azienda di chi agisce: lo crea se non
     --    c'e', e non ne pesca uno di un'altra (il guard
@@ -190,7 +195,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_fattura(p_etichetta text, p_stato_codice_interno character varying, p_billing_account_id bigint, p_spoglia_indirizzi boolean, p_spoglia_intestazione boolean, p_minimo boolean, p_totale_a_pagare numeric, p_termine_pagamento_id bigint, p_senza_utility boolean)
-IS 'Fixture pgTAP: una FATTURA del mondo in una chiamata — azienda, operatore e cliente (dbops.fn_pgtap_crea_mondo_cliente), il registro coerente con l''emittente di chi agisce (script.fn_pgtap_registro_fattura) e la testata nello stato scelto. ⭐ Esiste per la CATENA D''ORDINE: cliente legato a chi agisce, registro dell''azienda giusta, valuta risolvibile — tre anelli che su un database ricostruito non esistono e che ogni file riscriveva a mano. ⭐ Lo stato: la fattura nasce nello stato iniziale (trigger della nascita) e, se il test ne chiede un altro, ci arriva per la matrice (dbops.fn_pgtap_porta_a_stato) sotto i guard veri, con indirizzi e intestazione scritti dai building block come fa la pipeline. ⚠️ Terzo parametro: un billing account gia'' costruito, per la SECONDA fattura dello stesso cliente; viene verificato (dbops.fn_pgtap_cliente_ba_del_mondo), e un BA di un''altra azienda solleva. Quarto e quinto parametro: la fattura arriva nello stato chiesto SENZA indirizzi e/o SENZA intestazione congelata; si spoglia nell''ultimo stato non congelato del percorso (congela_fiscale = false, letto dal vocabolario). Spogliare una fattura che resta in bozza solleva. Dal sesto all''ottavo parametro (rev 20261024-36, R-5): minimo, totale a pagare e termine di pagamento, scritti alla nascita nell''INSERT della testata. ⛔ NON scrive righe, scadenze, contabili ne'' movimenti: sono il caso del test. ⚠️ Esce con i vincoli IMMEDIATE, come ogni helper. Brief: brief-db-fixture-che-costruiscono-giro-2. Rev 2026-10-21 (20261021-17): la coppia (emittente, utility) non si scrive piu''. Rev 2026-10-22: il BA lo verifica il building block. Rev 2026-10-24 (20261024-25, -27, brief-modello-documento-vendita N-1 e Q-2): nascita in bozza e spoliazione, DROP + CREATE; 20261024-36 (R-5): minimo, totale a pagare, termine. Rev 2026-10-24 (20261024-40, §4-octies): col billing account del test non costruisce piu'' un cliente in piu'' (dbops.fn_pgtap_cliente_del_builder). Nono parametro (rev 20261024-42, §4-octies): p_senza_utility, la fattura nasce senza utility (la colonna e'' nullable; i pgTAP dei fondi la ricopiavano a mano). DROP + CREATE. Rev 2026-10-27 (20261027-38, brief-modello-documento-vendita §15.13): lo stato iniziale dalla testata (vendite.fatture) con script.fn_doc_stato_iniziale_id, non dal vocabolario.';
+IS 'Fixture pgTAP: una FATTURA del mondo in una chiamata: azienda, operatore e cliente (dbops.fn_pgtap_cliente_del_builder: quello del terzo parametro, verificato dell''azienda di chi agisce, o uno nuovo del mondo), il registro coerente con l''emittente di chi agisce (script.fn_pgtap_registro_fattura) e la testata nello stato scelto. Esiste per la catena d''ordine: cliente legato a chi agisce, registro dell''azienda giusta, valuta risolvibile, che su un database ricostruito non esistono. La valuta dalla catena del dominio (vendite.fn_get_valuta_id: billing account, poi emittente, poi gestore). Lo stato: lo traduce script.fn_doc_stato_id, quindi uno stato spento o inesistente solleva prima di costruire; la fattura nasce nello stato iniziale della testata (script.fn_doc_stato_iniziale_id) e, se il test ne chiede un altro, ci arriva per la matrice (dbops.fn_pgtap_porta_a_stato) sotto i guard veri, con indirizzi e intestazione scritti dai building block come fa la pipeline. Quarto e quinto parametro: la fattura arriva nello stato chiesto senza indirizzi e/o senza intestazione congelata; si spoglia nell''ultimo stato non congelato del percorso (congela_fiscale = false, letto dal vocabolario); spogliare una fattura che resta in bozza solleva. Dal sesto all''ottavo: minimo, totale a pagare e termine di pagamento, scritti alla nascita. Nono, p_senza_utility: la fattura nasce senza utility (la colonna e'' nullable). ⛔ NON scrive righe, scadenze, contabili ne'' movimenti: sono il caso del test. ⚠️ Esce con i vincoli IMMEDIATE, come ogni helper.';
 ```
 
 </div>

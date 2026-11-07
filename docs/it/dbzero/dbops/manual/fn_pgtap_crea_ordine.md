@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_pgtap_crea_ordine`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -16,6 +16,8 @@
 > * [dbops.fn_pgtap_crea_ordine_con_righe](/dbzero/dbops/funzioni/fn_pgtap_crea_ordine_con_righe) — l'ordine con le righe, costruito sopra questa
 > * [dbops.fn_pgtap_crea_preventivo](/dbzero/dbops/funzioni/fn_pgtap_crea_preventivo) — il gemello, per il preventivo
 > * [dbops.fn_pgtap_porta_a_stato](/dbzero/dbops/funzioni/fn_pgtap_porta_a_stato) — la strada per portarlo avanti
+> * [script.fn_doc_stato_id](/dbzero/script/funzioni/fn_doc_stato_id) — lo stato chiesto, per codice, fra i soli attivi
+> * [vendite.fn_get_valuta_id](/dbzero/vendite/funzioni/fn_get_valuta_id) — la valuta, dalla catena del dominio
 >
 > Guide:
 >
@@ -50,9 +52,10 @@ stessa regola scritta più volte: ora ha una sede.
   **verificato** dell'azienda di chi agisce: uno di un'altra azienda si ferma subito.
 * **L'emittente** è quello del cliente, scritto esplicito: è lo stesso che il controllo
   emittente/billing account pretende.
-* **Utility** dal billing account, **valuta** la prima del catalogo, scritta esplicita: la
-  catena di default («cliente → azienda → gestore») su un database ricostruito non regge da
-  sola.
+* **Utility** dal billing account. **La valuta** dalla catena del dominio,
+  [vendite.fn_get_valuta_id](/dbzero/vendite/funzioni/fn_get_valuta_id) («cliente → azienda →
+  gestore»), scritta esplicita: è la valuta che il dominio darebbe all'ordine, e il cliente di
+  prova ne ha una perché i builder delle radici la scrivono.
 * **La data** dell'ordine si sceglie **alla nascita**: fuori bozza è congelata, quindi o si
   sceglie qui o non si sceglie più. Senza, vale il default della colonna (la data
   operativa). Serve a chi costruisce bolle di date passate.
@@ -79,9 +82,9 @@ dell'ordine, sotto i controlli veri. Un passaggio che pretende ciò che la fixtu
 (le righe, per la conferma) qui si ferma: allora il test chiede la bozza, scrive le righe e
 porta avanti da sé.
 
-⚠️ Lo stato chiesto si cerca per codice **prima** di costruire, ma senza guardare se è
-attivo: uno stato che non c'è si ferma subito; uno disattivato passa questo controllo e si
-ferma più tardi, nella strada della matrice, a mondo già costruito.
+Lo stato chiesto si traduce per codice **prima** di costruire, con
+[script.fn_doc_stato_id](/dbzero/script/funzioni/fn_doc_stato_id), fra i soli stati attivi: uno
+stato che non c'è, o che è spento, ferma la fixture subito, senza lasciare un mondo a metà.
 
 Esce con i vincoli **richiusi** (`IMMEDIATE`), come ogni helper di fixture.
 
@@ -91,7 +94,8 @@ Esce con i vincoli **richiusi** (`IMMEDIATE`), come ogni helper di fixture.
 
 * `db/pgtap/dbops/test-fn-pgtap-crea-ordine-v1.sql` — la testata esiste ed è scrivibile;
   l'emittente è quello del billing account; numero e registro vengono dal dominio; lo stato
-  chiesto si raggiunge per la matrice e uno inesistente parla; la seconda chiamata riusa
+  chiesto si raggiunge per la matrice, uno inesistente parla e uno spento si ferma prima di
+  costruire; la valuta è quella del billing account; la seconda chiamata riusa
   l'azienda; il cliente del test è riusato e uno di un'altra azienda rifiutato; la conferma
   senza righe non si salta; la data scelta alla nascita.
 
@@ -107,6 +111,9 @@ Esce con i vincoli **richiusi** (`IMMEDIATE`), come ogni helper di fixture.
 * 2026-10-25 — quarto parametro, la data alla nascita (`brief-db-pgtap-bolla-e-reso-costruiti` D-1).
 * 2026-10-27 — lo stato iniziale si legge dalla testata e non dal vocabolario
   (`brief-modello-documento-vendita` §15.13).
+* 2026-11-08 — lo stato chiesto si traduce dalla sede, fra i soli attivi: uno stato spento si
+  ferma prima di costruire; la valuta viene dalla catena del dominio, non è più la prima del
+  catalogo.
 
 ---
 

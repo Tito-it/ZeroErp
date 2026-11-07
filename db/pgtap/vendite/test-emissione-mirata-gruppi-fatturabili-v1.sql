@@ -231,7 +231,7 @@ CROSS JOIN LATERAL dbops.fn_pgtap_crea_commessa_attivita(
     p_sorgente_codice  => CASE WHEN x.g = 'P' THEN 'PREVENTIVO' ELSE 'CONTRATTO' END,
     -- ⚠️ UID anche per CONTRATTO (key_selector='id'): e' la convenzione del
     -- push, cioe' cio' che commesse_attivita contiene davvero (D-9).
-    p_sorgente_uid     => CASE WHEN x.g = 'P'
+    p_sorgente_chiave  => CASE WHEN x.g = 'P'
                                THEN (SELECT uid::text FROM tmp_gr_prev)
                                ELSE (SELECT uid::text FROM tmp_gr_contr) END,
     -- Le due righe di ogni documento si distinguono con l'etichetta della chiave:

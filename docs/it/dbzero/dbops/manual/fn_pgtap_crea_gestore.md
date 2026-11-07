@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_pgtap_crea_gestore`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -14,6 +14,7 @@
 > * [dbops.fn_pgtap_crea_soggetto_pg](/dbzero/dbops/funzioni/fn_pgtap_crea_soggetto_pg) — il soggetto della società
 > * [dbops.fn_pgtap_crea_soggetto_ruolo](/dbzero/dbops/funzioni/fn_pgtap_crea_soggetto_ruolo) — il ruolo GE coi suoi indirizzi
 > * [dbops.fn_pgtap_crea_filiale_bancaria](/dbzero/dbops/funzioni/fn_pgtap_crea_filiale_bancaria) — la filiale su cui il test aggancia i conti del gestore
+> * [dbops.fn_pgtap_valuta](/dbzero/dbops/funzioni/fn_pgtap_valuta) — la valuta delle radici della catena, per le fixture
 >
 > Guide:
 >
@@ -47,8 +48,8 @@ unicità oltre la chiave è sul soggetto ruolo.
 ### Che cosa sceglie quando costruisce
 
 Descrizione con l'etichetta del test, codice prodotto `ZEROERP`, la prima valuta a catalogo
-per id: la valuta del gestore è l'ultimo anello della catena con cui si risolve la valuta di
-un documento.
+per id, presa da [dbops.fn_pgtap_valuta](/dbzero/dbops/funzioni/fn_pgtap_valuta): la valuta
+del gestore è l'ultimo anello della catena con cui si risolve la valuta di un documento.
 
 ---
 
@@ -88,6 +89,8 @@ della valuta di default dei documenti in `db/pgtap/vendite/`.
   ricostruito.
 * 2026-10-10 — ritirato `uq_gestori_singleton`, che nonostante il nome ripeteva la chiave
   primaria: il singleton è rimasto al guard.
+* 2026-11-08 — la valuta la dà `dbops.fn_pgtap_valuta`, la sede comune delle fixture, invece di
+  una copia della scelta.
 
 ---
 

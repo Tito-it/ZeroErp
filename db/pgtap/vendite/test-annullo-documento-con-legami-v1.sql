@@ -468,7 +468,7 @@ BEGIN
   -- La riga nasce dal preventivo: il builder compone la chiave del push col suo uid.
   SELECT a.attivita_id INTO v_ca
     FROM dbops.fn_pgtap_crea_commessa_attivita(v_commessa, p_sorgente_codice => 'PREVENTIVO',
-                                               p_sorgente_uid => v_uid) a;
+                                               p_sorgente_chiave => v_uid) a;
   INSERT INTO tmp_al_fix VALUES ('e_ca', v_ca);
   SELECT a.attivita_id INTO v_ca FROM dbops.fn_pgtap_crea_commessa_attivita(v_commessa) a;
   INSERT INTO tmp_al_fix VALUES ('e_ca_altra', v_ca);
