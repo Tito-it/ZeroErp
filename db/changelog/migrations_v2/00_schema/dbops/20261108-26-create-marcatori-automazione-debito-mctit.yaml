@@ -1,0 +1,110 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D35/D37 — IL REGISTRO DEL DEBITO dei marcatori di automazione senza esecutore
+#   Brief: brief-db-revisione-dbops, giro 7 (§20). Perimetro deciso da Tid
+#   (2026-11-07): i tre marcatori che promettono un'automazione vera — tx_id,
+#   storicizza, cleanup_at. data_update/user_update restano fuori.
+#
+# ── ⭐ LA DOMANDA DEL PRESIDIO ──────────────────────────────────────
+#   «Esiste una tabella con una colonna che promette un'automazione che nessuno
+#   esegue?» tx_id senza dbops.trgfn_tx_id_managed, storicizza senza storico,
+#   cleanup_at senza purge. La risposta la da' dbops.vw_marcatori_automazione_
+#   senza_esecutore (20261108-27), dal catalogo di PostgreSQL e dall'ambito.
+#
+# ── ⛔ PERCHE' UN REGISTRO ──────────────────────────────────────────
+#   Lo stesso patto di dbops.rls_perimetro_debito: il presidio si accende
+#   subito e il debito noto si DICHIARA, riga per riga, con la sua ragione. Una
+#   riga zittisce il presidio su quella tabella e quel marcatore soltanto, e
+#   DEVE calare: una riga che non serve piu' esce come DEBITO_ESTINTO e fa rosso.
+#
+# ⚠️ Il registro porta tx_id e le colonne di audit, e i due trigger sono scritti
+#   a mano qui: dbops non e' nell'ambito, e un registro che presidia i marcatori
+#   senza esecutore non puo' esserne la prima riga (precedente:
+#   dbops.rls_perimetro_debito, 20260909-75).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20261108-26-create-marcatori-automazione-debito-mctit.yaml
+
+  - changeSet:
+      id: 20261108-26-create-marcatori-automazione-debito
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Crea dbops.marcatori_automazione_debito: le tabelle con un marcatore di automazione
+        (tx_id, storicizza, cleanup_at) senza esecutore, lasciate tali per una decisione e con la
+        ragione scritta. Alimenta dbops.vw_marcatori_automazione_senza_esecutore.
+        Brief: brief-db-revisione-dbops, giro 7.
+      preConditions:
+        - onFail: HALT
+        - not:
+            - tableExists:
+                { schemaName: dbops, tableName: marcatori_automazione_debito }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Id assegnati a mano nel CSV: seed di CATALOGO, nomina tabelle del
+              -- software e vale identico su ogni installazione.
+              CREATE TABLE dbops.marcatori_automazione_debito (
+                  id                 int  NOT NULL
+                                       CONSTRAINT pk_marcatori_automazione_debito PRIMARY KEY,
+                  marcatore          text NOT NULL,
+                  schema_tabella     text NOT NULL,
+                  nome_tabella       text NOT NULL,
+                  ragione            text NOT NULL,
+                  data_registrazione date NOT NULL DEFAULT script.fn_data_operativa(),
+                  data_insert        timestamp with time zone NOT NULL DEFAULT now(),
+                  user_insert        text NOT NULL DEFAULT CURRENT_USER,
+                  data_update        timestamp with time zone NOT NULL DEFAULT now(),
+                  user_update        text NOT NULL DEFAULT CURRENT_USER,
+                  tx_id              uuid NULL,
+                  -- ⚠️ Il marcatore ENTRA nella chiave: una tabella puo' avere
+                  --   due marcatori scoperti, e i due debiti si pagano a parte.
+                  CONSTRAINT uq_marcatori_automazione_debito_target
+                      UNIQUE (marcatore, schema_tabella, nome_tabella),
+                  -- ⭐ Il CONTRATTO del vocabolario: il pgTAP legge da qui i
+                  --   marcatori ammessi e pretende un ramo della vista per ognuno.
+                  CONSTRAINT chk_marcatori_automazione_debito_marcatore
+                      CHECK (marcatore IN ('TX_ID', 'STORICIZZA', 'CLEANUP_AT')),
+                  -- ⚠️ Misura la LUNGHEZZA, non la qualita': ferma 'TODO', non una
+                  --   frase vuota. La ragione la legge una persona.
+                  CONSTRAINT chk_marcatori_automazione_debito_ragione
+                      CHECK (length(btrim(ragione)) >= 40)
+              );
+
+              COMMENT ON TABLE dbops.marcatori_automazione_debito IS
+                  'Registro del debito di dbops.vw_marcatori_automazione_senza_esecutore: le tabelle con un marcatore di automazione (tx_id, storicizza, cleanup_at) che nessuno esegue, lasciate tali per una decisione. Una riga zittisce il presidio su quella tabella e quel marcatore soltanto. Dichiarare un debito non lo assolve: il registro deve calare, e una riga che non trova piu'' il suo caso esce dal presidio come DEBITO_ESTINTO. Seminato dal CSV di 80_data (mirror: una riga tolta si cancella anche con un changeSet).';
+              COMMENT ON COLUMN dbops.marcatori_automazione_debito.marcatore IS
+                  'Quale promessa resta senza esecutore. TX_ID = la colonna tx_id senza il trigger di dbops.trgfn_tx_id_managed; STORICIZZA = la colonna storicizza senza il trigger di script.trgfn_storico_generic; CLEANUP_AT = la colonna cleanup_at su una tabella che il purge non vede (fuori ambito o esclusa dalla pulizia). Entra nella chiave.';
+              COMMENT ON COLUMN dbops.marcatori_automazione_debito.ragione IS
+                  'La ragione tecnica per cui il marcatore resta senza esecutore, e che cosa servirebbe per chiudere il debito (il trigger montato, la tabella nell''ambito o la colonna tolta). Almeno quaranta caratteri: chi legge il presidio deve capire da qui se la riga e'' un cantiere aperto o un allarme.';
+              COMMENT ON COLUMN dbops.marcatori_automazione_debito.data_registrazione IS
+                  'Quando il debito e'' stato dichiarato: l''orologio del registro. Sta nel CSV, non si lascia al DEFAULT, o ripartirebbe da capo a ogni installazione.';
+
+              CREATE TRIGGER trg_marcatori_automazione_debito_audit_data_user_ins_upd
+                  BEFORE INSERT OR UPDATE
+                  ON dbops.marcatori_automazione_debito
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_audit_data_user_generic();
+
+              CREATE TRIGGER trg_marcatori_automazione_debito_gen_tx_id_ins_upd
+                  BEFORE INSERT OR UPDATE
+                  ON dbops.marcatori_automazione_debito
+                  FOR EACH ROW
+                  EXECUTE FUNCTION dbops.trgfn_tx_id_managed();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TABLE IF EXISTS dbops.marcatori_automazione_debito;

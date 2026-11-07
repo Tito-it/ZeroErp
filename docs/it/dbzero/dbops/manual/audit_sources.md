@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.audit_sources`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 7 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -68,12 +68,16 @@ La vista e il riepilogo la vedono al rilascio successivo, senza altre modifiche.
 
 ---
 
-### ⚠️ Le colonne di audit standard ci sono, le automazioni no
+### ⭐ Fuori dalle automazioni, e senza le colonne che le promettono
 
-La tabella ha le colonne di audit (`data_*`, `user_*`), `tx_id` e `storicizza`, ma **non** sta
-nello scope delle automazioni: nessun trigger di audit, di transaction id o di storico la tocca.
-`data_update` e `user_update` sono quelli che scrive il seed, `tx_id` resta vuoto e `storicizza`
-non produce uno storico.
+La tabella **non** sta nello scope delle automazioni: è un catalogo che riempie solo il seed, e
+nessun trigger di audit, di transaction id o di storico la tocca. Per questo non porta né `tx_id`
+né `storicizza`, né `data_update` e `user_update`: sarebbero colonne che nessuno scrive, e che
+direbbero il falso a chi le legge. Restano `data_insert` e `user_insert`, che riempie il default
+alla nascita della riga.
+
+⛔ Una tabella che ha una di quelle colonne senza chi la esegue la segnala il presidio
+[dbops.vw_marcatori_automazione_senza_esecutore](/dbzero/dbops/views/vw_marcatori_automazione_senza_esecutore).
 
 ---
 
@@ -96,6 +100,9 @@ non produce uno storico.
   fisico da `code`.
 * 2026-09-12 — la sorgente `risorse_umane_auth_user` è cancellata, insieme alla tabella ponte
   legacy e al suo storico; l'audit delle identità passa da `identita_digitali`.
+* 2026-11-07 — escono `tx_id`, `storicizza`, `data_update` e `user_update`, che fuori dallo scope
+  delle automazioni nessuno scriveva; con loro la riga della tabella in
+  `config.storico_set_storicizza`.
 
 ---
 

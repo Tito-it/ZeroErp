@@ -194,7 +194,7 @@ L'assistente risponde solo a domande relative a ZeroERP. Riduce la superficie di
 
 ### 4.7 Audit come rilevamento
 
-Ogni interazione e' loggata in `dbops.ai_query_log` (input, strumenti+parametri, risposta, provider, modello, token, durata; `request_id` correla con `request_log`; scritture marcate `confirmed: true`). Oltre alla tracciabilita', e' il modo per **accorgersi di comportamenti anomali**. Per le **scritture confermate** il logging e' stato reso affidabile il 2026-06-26 (P2 di [analisi-sicurezza-aggiornata.md](../dev/work-done/analisi-sicurezza-aggiornata.md), Step 2 applicato): un fallimento non passa piu' in silenzio. Per le sole **letture** il best-effort resta accettabile. Quando arriveranno MCP e profilo supporto, quegli accessi ricadono nella prima categoria, non nella seconda.
+Ogni interazione e' loggata in `dbops.ai_query_log` (input, strumenti+parametri, risposta, provider, modello, token, durata; `request_id` correla con `request_log`; scritture marcate `confirmed: true`). Oltre alla tracciabilita', e' il modo per **accorgersi di comportamenti anomali**. Per le **scritture confermate** il logging e' stato reso affidabile il 2026-06-26 (P2 di [analisi-sicurezza-aggiornata.md](../dev/work-done/analisi-sicurezza-aggiornata.md), Step 2 applicato): un fallimento non passa piu' in silenzio. Per le sole **letture** il best-effort resta accettabile. Le righe scadono dopo novanta giorni, come gli altri registri: la regola e il trigger stanno nella scheda di [dbops.ai_query_log](/dbzero/dbops/tabelle/ai_query_log). Quando arriveranno MCP e profilo supporto, quegli accessi ricadono nella prima categoria, non nella seconda.
 
 ### 4.8 Cosa NON e' una difesa
 
@@ -306,7 +306,7 @@ Queste garanzie sono esplicite nel system prompt e nell'architettura:
 
 **Decisione bloccante prima della produzione — perimetro dei dati.** Con `AI_PROVIDER=anthropic` o
 `mistral`, ogni `tool_result` invia **dati reali di clienti** a un fornitore esterno nell'esercizio
-ordinario, e `dbops.ai_query_log.input_text` conserva in chiaro le domande degli operatori. La scelta del
+ordinario, e `dbops.ai_query_log.input_text` conserva in chiaro le domande degli operatori per novanta giorni. La scelta del
 provider di produzione (esterno con DPA, opzione EU, o modello self-hosted) e le sue implicazioni di
 trattamento vanno decise **prima** della prima installazione, non dopo: e' il requisito R7 di
 [analisi-diagnostica-produzione-senza-accesso-db.md](../dev/work-done/analisi-diagnostica-produzione-senza-accesso-db.md)

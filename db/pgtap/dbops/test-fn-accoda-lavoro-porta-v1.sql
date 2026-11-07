@@ -66,10 +66,9 @@ SELECT 'PGTAP-PORTA-' || txid_current()::text AS chiave,
 
 CREATE FUNCTION pg_temp.come(p_lato text) RETURNS void
 LANGUAGE sql AS $$
-    SELECT set_config('app.ruolo_applicativo', 'OPERATORE', true),
-           set_config('app.current_emittente_id', '', true),
-           set_config('app.current_user_id',
-                      (SELECT m.auth_user_id::text FROM _mondi m WHERE m.lato = p_lato), true);
+    SELECT script.fn_pgtap_set_contesto_operatore(
+               (SELECT m.auth_user_id::integer FROM _mondi m WHERE m.lato = p_lato)),
+           set_config('app.current_emittente_id', '', true);
 $$;
 
 -- Il codice applicativo di un rifiuto (fn_log_and_raise_error lo mette nel

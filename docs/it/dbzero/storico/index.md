@@ -92,6 +92,7 @@ search:
 - [resi_righe_rinunce](tabelle/resi_righe_rinunce.md)
 - [rettifiche](tabelle/rettifiche.md)
 - [rettifiche_righe](tabelle/rettifiche_righe.md)
+- [ricevute](tabelle/ricevute.md)
 - [risorse_umane](tabelle/risorse_umane.md)
 - [scope_policy](tabelle/scope_policy.md)
 - [sepa_mandati](tabelle/sepa_mandati.md)

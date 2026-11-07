@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.automation_scope`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 7 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -11,6 +11,7 @@
 > Approfondimento viste:
 >
 > * [dbops.vw_fk_senza_indice](/dbzero/dbops/views/vw_fk_senza_indice) — legge l'elenco direttamente, per decidere quali FK guardare
+> * [dbops.vw_marcatori_automazione_senza_esecutore](/dbzero/dbops/views/vw_marcatori_automazione_senza_esecutore) — le tabelle con una colonna che promette un'automazione che nessuno esegue
 >
 > Approfondimento funzioni:
 >
@@ -72,6 +73,13 @@ audit, lock, blocco del `DELETE`, regola del periodo. Lo schema `ui` è fuori, e
 sua tabella ha bisogno di un comportamento che altrove dà l'automazione, il
 trigger si scrive a mano. Uno schema nuovo che deve avere le automazioni entra con una
 riga nel seed.
+
+⛔ Una tabella fuori dall'elenco non deve promettere ciò che nessuno esegue: una colonna `tx_id`,
+`storicizza` o `cleanup_at` senza il trigger montato a mano (o, per `cleanup_at`, senza il purge,
+che è solo del runner) la segnala il presidio
+[dbops.vw_marcatori_automazione_senza_esecutore](/dbzero/dbops/views/vw_marcatori_automazione_senza_esecutore),
+che usa lo stesso filtro dei due livelli qui sotto. Il debito noto sta in
+[dbops.marcatori_automazione_debito](/dbzero/dbops/tabelle/marcatori_automazione_debito).
 
 ---
 

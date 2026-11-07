@@ -1,6 +1,6 @@
 # Brief DB — Revisione dello schema `dbops`: i difetti di codice e i metadati
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-07 (giro 6 chiuso)
+## ⏭️ Chi riparte — aggiornato al 2026-11-07 (giro 7 applicato)
 
 **Giro 1 chiuso e committato** (blocco 1d in `8c75d5682a`). **Decisioni di §4 prese** (Tid, 2026-11-05/06):
 tutte, Q1-Q15 (la Q7 non è mai esistita), con la Q14 punto per punto. **Ordine dei giri deciso** (2026-11-06):
@@ -27,8 +27,10 @@ tecnici di `draina_coda_lavori` ci sono tutti, EMITEST compresa. Scelte 1 e 3 di
 regola canale/`run_as` ristretta ai `CODA` di `DOMINIO` (§18.9).
 **Giro 6 chiuso** (2026-11-07, §19): Q14 ④ e ⑦, le viste dei lotti rinominate in «congelati» (decisione di Tid),
 `20261108-10` … `-13`; applicato da Tid su dbdev e scratch, pgTAP verdi, committato (§19.5).
-**Riparte: Tid** per il via al giro 7 (§8); **team BE** per il test di S-BE-2 e BE9 (§18.9.2 punto 4).
-Resta al team DB S-BE-1 (§5).
+**Giro 7 applicato** (2026-11-07, §20): D35, D36, D37, D57, `20261108-25` … `-31`, con due decisioni di Tid nel giro
+(§20.1: il perimetro del presidio, il tetto dei lookup che cade); applicato da Tid, pgTAP di §20.5 verdi (§20.9).
+**Riparte: Tid** per il commit del giro 7 e il via al giro 8 (§8); **team BE** per BE4 (§5), il test di S-BE-2 e BE9
+(§18.9.2 punto 4). Resta al team DB S-BE-1 (§5).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -80,7 +82,11 @@ Resta al team DB S-BE-1 (§5).
 | 9-tricies-quater | ✅ Tid | Il via al giro 6, coi numeri dal `20261108-10`; le viste dei lotti rinominate in «congelati» (2026-11-07) | §19 | 9-tricies-bis |
 | 9-tricies-quinquies | ✅ sessione DB | Giro 6 (Q14 ④, ⑦): scritto e provato sullo scratch | §19 | 9-tricies-quater |
 | 9-tricies-sexies | ✅ Tid | Apply del giro 6 (`20261108-10` … `-13`, `presidi.csv`, `presidi_testi.csv`) su dbdev e scratch; pgTAP di §19.3 verdi (2026-11-07); commit dalla sessione DB. Il giro 6 è chiuso | §19.5 | 9-tricies-quinquies |
-| 9-tricies-septies | **Tid** ⏭️ | Il via al giro 7 | §8 | 9-tricies-sexies |
+| 9-tricies-septies | ✅ Tid | Il via al giro 7, coi numeri dal `20261108-25` e `%TYPE`; nel giro il perimetro del presidio (`tx_id`, `storicizza`, `cleanup_at`) e il tetto dei lookup che cade, con lo spareggio (2026-11-07) | §20.1 | 9-tricies-sexies |
+| 9-tricies-octies | ✅ sessione DB | Giro 7 (D35, D36, D37, D57): scritto e provato sullo scratch | §20 | 9-tricies-septies |
+| 9-tricies-nonies | ✅ Tid | Apply del giro 7 (`20261108-25` … `-31`, sette CSV e il loader `20260429-08`) e convergenza; pgTAP di §20.5 verdi (2026-11-07) | §20.9 | 9-tricies-octies |
+| 9-tricies-undecies | **Tid** ⏭️ | Commit del giro 7 e via al giro 8 | §8 | 9-tricies-nonies |
+| 9-tricies-decies | **team BE** ⏭️ | BE4: il tetto `LOOKUP_MAX_SOURCE_ROWS` cade (`p_limit` NULL), ricerca e paginazione restano | §5 | — |
 | 9-nonies | ✅ Tid | Q16: la via fusa resta, marcata come soppressa (b, 2026-11-07) | §4 | 9-septies |
 | 9-decies | ✅ sessione DB | Giro 2, blocco 2b (Q16): la via soppressa; lettori censiti, scritto e provato sullo scratch | §14.7 | 9-nonies |
 | 10 | sessione DB | Giri 5-14 nell'ordine di §8, uno alla volta, ognuno col suo via e il suo apply | §8 | 9-vicies-septies |
@@ -89,12 +95,15 @@ Resta al team DB S-BE-1 (§5).
 | 12 | sessione DB | Pagine `manual/` e guide riallineate a ogni difetto chiuso, insieme al COMMENT; brief in `work-done/` | §1, §8 | 10 |
 
 **Decisioni aperte di Tid:** il debito della scelta 3 di §18.4 (il presidio non riconosce la policy come difesa di
-scrittura) si decide al giro 9. L'indice della FK della coda: **false confermato** (Tid, 2026-11-07, §18.9).
+scrittura) si decide al giro 9. Il debito del registro dei marcatori (dieci tabelle di `dbops` con `tx_id` senza
+trigger) e `data_update` senza esecutore: proposta al giro 14 (§20.8). **Da committare:** il giro 7 (applicato e verde). L'indice della FK della coda: **false confermato** (Tid, 2026-11-07, §18.9).
 **Da verificare:** se lo scratch è stato ricostruito con `ci-local.sh --fresh` dopo il `20261103-29` (§13).
 ⚠️ **Numerazione:** questo cantiere ha preso `20261107-01` … `-27`; il prossimo numero libero del giorno è il
 `-28`; il giro 4 ha preso `-28` … `-30`, `-33`, `-34`, il blocco 4b `-31`, `-32`, `-35` … `-40`; il prossimo libero è il
 `-41`. Il giro 5 ha preso `-51` … `-58` (il 5b `-57`, `-58`) e `20261108-08` (dato da Tid; `-41` … `-50` e `-59` … `-69`
-sono dell'altro cantiere). Il giro 6 ha preso `20261108-10` … `-13` (dato da Tid). Gli id dei messaggi presi qui: 1442-1450, 1453-1454 e 1455-1457 (1451 e 1452 li ha presi l'altro
+sono dell'altro cantiere). Il giro 6 ha preso `20261108-10` … `-13` (dato da Tid). Il giro 7 ha preso `20261108-25` … `-31` (dato da Tid), la
+regola 28 di `automation_rules_tbl`, la riga 126 di `storico_scope_policy`, gli id 1-10 del registro nuovo; nessun
+codice errore. Gli id dei messaggi presi qui: 1442-1450, 1453-1454 e 1455-1457 (1451 e 1452 li ha presi l'altro
 cantiere, giro T.4); il prossimo libero è 1458. L'altro cantiere aperto
 (`brief-db-sorgente-documento-e-riga`) numera oggi nel blocco `20261106-74` … `-87`.
 
@@ -149,7 +158,7 @@ sono difetti: il peso dice l'ordine dei giri, non se si fanno.
 
 | Classe | Difetti |
 | --- | --- |
-| **A** — D14, D15, D54, D56 ✅ scritti nel giro 1a (§12); D1 ✅ nel blocco 1b (§12.8); D40, D41 ✅ nel blocco 1c (§12.9); D43 ✅ nel blocco 1d (§12.10); D3, D4, D44 ✅ nel giro 2 (§14); D46, D47, D51 ✅ nel giro 3 (§15); D6, D53 ✅ nel giro 4 (§16), D21 ✅ nel blocco 4b (§17) | D1 (contratto del 2026-07-22: un dblink fallito restituisce la sentinella), D3, D4, D6, D14, D15, D21, D25, D30 (cinque righe del seed senza prefisso), D35, D36, D37, D40, D41, D43, D44, D46, D47, D51, D53, D54, D56, D57, D58, D59, D63, D64, D66, D67, D68, D70 |
+| **A** — D14, D15, D54, D56 ✅ scritti nel giro 1a (§12); D1 ✅ nel blocco 1b (§12.8); D40, D41 ✅ nel blocco 1c (§12.9); D43 ✅ nel blocco 1d (§12.10); D3, D4, D44 ✅ nel giro 2 (§14); D46, D47, D51 ✅ nel giro 3 (§15); D6, D53 ✅ nel giro 4 (§16), D21 ✅ nel blocco 4b (§17); D35, D36, D37, D57 ✅ nel giro 7 (§20) | D1 (contratto del 2026-07-22: un dblink fallito restituisce la sentinella), D3, D4, D6, D14, D15, D21, D25, D30 (cinque righe del seed senza prefisso), D35, D36, D37, D40, D41, D43, D44, D46, D47, D51, D53, D54, D56, D57, D58, D59, D63, D64, D66, D67, D68, D70 |
 | **B** — D26 ✅ nel blocco 1b (§12.8); D7 ✅ nel blocco 1d (§12.10); D45, D60 ✅ nel giro 2 (§14); D5, D18, D49 ✅ nel giro 3 (§15) | D2, D5, D7, D8, D9, D10, D11, D12, D13, D16, D17, D18, D19, D20, D22, D23, D24, D26, D27, D28, D29, D32, D33, D34, D38, D39, D45, D49, D52, D60, D69, D71, D73 |
 | **C** | D17-bis, D42, D48, D50, D55, D61, D62, D65, D72, D74 — ✅ scritti nel giro C1 (§10) tutti tranne D17-bis e D74; di D61 restano i quattro strumenti DBA (Q9) |
 
@@ -522,7 +531,7 @@ Si chiedono quando il giro DB corrispondente è applicato.
 | ~~BE1~~ | ~~L'handler della chiusura per scadenza passa `p_classe = 'DOMINIO'`~~ — ritirata (Q5, 2026-11-05): il cancello è il CHECK nel DB | `backend/apps/core/services/coda_lavori/chiusura_scadenze_handler.py:51-60` | D38 (Q5) |
 | BE2 | I `gaps` scritti a mano per `codice_interno` si ritirano | `backend/apps/core/services/non_editable_fields_helper.py` | D25 |
 | BE3 ✅ | I controlli preventivi «padre non attivo» si ritirano e si mappa il codice nuovo (`E_ATTIVO_PADRE_NON_ATTIVO`, CONFLITTO_STATO; `E_PADRE_INESISTENTE`, DATO_ERRATO; tutti e due con la colonna FK in `campo`). I commenti che dicono «`E_ATTIVO_REQUIRE`, TECNICO, 500» diventano falsi | `backend/apps/vendite/services/commesse_service.py:552`, `backend/apps/anagrafiche/db/anagrafiche_repository.py:98`; commenti in `backend/apps/magazzino/services/anagrafiche_magazzino_service.py:13-18`, `backend/apps/magazzino/services/magazzino_service.py:208`, `backend/apps/vendite/tests/services/test_commesse_service.py:2035` | D46 (giro 3) |
-| BE4 | La ricerca dei lookup passa alla funzione DB (o cade il tetto `LOOKUP_MAX_SOURCE_ROWS`); la paginazione resta com'è | `backend/apps/core/db/dbops_repository.py:55, 415-470` | D57 |
+| BE4 ⏭️ (pronta dal 2026-11-07) | **Decisione di Tid (2026-11-07): cade il tetto.** `list_lookup_codici` chiama `dbops.fn_get_lookup_codici` con `p_limit` NULL al posto di `LOOKUP_MAX_SOURCE_ROWS` (la costante e il commento «il limit interno è una guardia» si ritirano); la ricerca `ILIKE` e la paginazione con `sql_order_clause` e `fetch_paged_with_total` restano come sono. Da riscrivere la docstring («chiama con limit ampio…, obiettivo: evitare di modificare la funzione DB»). Non dipende dall'apply: lo spareggio DB del giro 7 non cambia il risultato per il backend, che riordina fuori | `backend/apps/core/db/dbops_repository.py:52-55, 378-470` | D57 |
 | BE5 | Docstring stantie: «tre viste … SECURITY DEFINER» (`fn_conta_presidio` è INVOKER) e «registro non vuoto» (il corpo ammette vuoto) | `backend/apps/core/db/presidi_repository.py:16-22`, `backend/apps/core/tests/test_error_codes_db_policy_guardrail.py:66-67` | — |
 | BE6 ✅ fino al giro 5 | Codici nuovi → rigenerare `error_policies_generated.py`, e le voci di `error_messages_fallback.py`: dal giro 2 `E_DBOPS_CHIAMATA_NON_VALIDA`, `E_MERGE_RIGHE_DOPPIE`, `E_MERGE_FIGLIA_SOTTO_RLS`, `E_STRADARIO_SOPPRESSO` e gli altri di §14.1; dal giro 3 `E_ATTIVO_PADRE_NON_ATTIVO`, `E_PADRE_INESISTENTE`; dal blocco 4b `E_EMITTENTE_MODI_INVALIDO`, `E_EMITTENTE_MODI_NON_SCRIVIBILE` (li vede chi migra, non l'operatore: basta la policy generata); dal giro 5 (✅ 2026-11-07: policy rigenerata, solo i tre codici, nessuna classe mossa; tre ripieghi) `E_CODA_LAVORO_SENZA_EMITTENTE` (TECNICO), `E_CODA_SCOPE_ALTRUI` (NON_PERMESSO), `E_CODA_CHIAVE_ALTRUI` (TECNICO). Poi D12 (giro 9) | `backend/apps/core/services/error_messages_fallback.py:113-123` (la voce di `E_ATTIVO_REQUIRE` dice «trigger configurato male», ora è solo il generatore) | §2.5, §14.1, §15.2, §17.1 |
 | BE7 | Commento stantio: il test nomina il presidio `dbops.vw_run_senza_attore`, ritirato | `backend/apps/core/tests/services/test_job_run.py:136-138` | D42 |
@@ -723,7 +732,7 @@ entra nel giro che apre lo stesso oggetto.
 | 4 ✅ | A | **Riconoscimento e strumenti.** D6, D53 (Q9) — applicato e verde (§16). D21 (+ M18) nel blocco 4b: registro dei modi e risolutori generati, applicato e verde (§17) | D6 dà il riconoscimento del trigger dalla funzione (`tgfoid`): il giro 10 lo riusa, quindi viene prima |
 | 5 ✅ | A | **La coda lavori sotto RLS.** Q14 ③, D9 — blocco 5a (§18): azienda del lavoro, policy inerte, porta DEFINER, D9; blocco 5b (§18.9): l'`ENABLE`, S-BE-2. Applicato e verde | Separare le aziende nel DB è un contratto deciso (Q14 ③). D9 (`fn_accoda_lavoro`) è la stessa tabella. Poi BE9 e la revisione del `perimetro` di `vw_coda_lavori_da_guardare` |
 | 6 ✅ | A | **Presidi che guardano il campo sbagliato.** Q14 ④, ⑦ — chiuso (§19): applicato, pgTAP verdi, committato | Un presidio che non vede un caso che il modello ammette (il buco dei lotti congelati) dice il falso. Tutti e due riaprono il catalogo `presidi.csv` / `presidi_testi.csv`. ⑧ va nell'altro brief (§8.1) |
-| 7 | A | **Promesse senza esecutore, ricerca dei lookup.** D35, D36, D37 (Q4), D57 | Tutti riaprono l'ambito delle automazioni o un lettore che non vede tutto. BE4. D25 è passato al giro 10a (stessa funzione di D32) |
+| 7 ✅ | A | **Promesse senza esecutore, ricerca dei lookup.** D35, D36, D37 (Q4), D57 — applicato e verde (§20) | Tutti riaprono l'ambito delle automazioni o un lettore che non vede tutto. BE4. D25 è passato al giro 10a (stessa funzione di D32) |
 | 8 | A | **Le fixture.** D63, D64, D66 (Q11), D67, D68 (Q12), D70; + D69, D71, D73 (B) e D74 (C) | Fixture che producono una forma che l'applicazione non produce. Le B e la C usano gli stessi builder: un giro solo |
 | 9 | B | **Il processo vivo, e correzioni locali.** D11 (Q2): il BB «processo vivo» con sveglia, accensione, guard, panorama, roster e le sette viste, fra cui Q14 ⑤; D38, D39 (Q5); D8, D12, D22, D24, D52; Q14 ⑨ | Il BB deve nascere **prima** del giro 10, che lo usa (⑬). D38 e D39 sono lo stesso motore. Gli altri sono correzioni locali, ognuna su un oggetto suo |
 | 10 | B | **Il framework delle automazioni e la convergenza dei registri (Q3).** Quattro blocchi, ognuno provato prima del successivo, come il giro 1: | Le copie del framework e i registri che aggiungono e non tolgono. Le A di questo giro (D25, D30, D59) entrano qui perché aprono le stesse funzioni |
@@ -2306,3 +2315,154 @@ come app i pgTAP di §19.3: verdi. Le pagine auto-generate (le due viste nuove, 
 `dbops` e `vendite`, i COMMENT riscritti dal `-12`) le ha rigenerate Tid ed entrano nel commit del giro. Restano fuori
 le modifiche dell'altro cantiere (§19.3 punto 4: il `20261108-09`, `test-builder-pgtap-vincoli-immediate-v1`, i due
 pgTAP del giro 5 e le pagine auto-generate delle quattro fixture `fn_pgtap_*`). **Il giro 6 è chiuso.**
+
+## 20. Giro 7 — promesse senza esecutore, ricerca dei lookup (D35, D36, D37, D57), 2026-11-07
+
+**Via di Tid (2026-11-07)**, coi numeri dal `20261108-25` (il `-14` … `-24` sono dell'altro cantiere) e il promemoria
+sul `%TYPE`.
+
+### 20.1 Le decisioni di Tid, prese nel giro (2026-11-07)
+
+1. **Il perimetro del presidio di D35/D37**: i tre marcatori che promettono un'automazione vera, cioè `tx_id`,
+   `storicizza` e `cleanup_at`. Le tabelle note entrano in un registro del debito, con la ragione. `data_update` e
+   `user_update` restano fuori dal criterio (residuo, §20.9).
+2. **D57**: il tetto del backend cade (BE4: `p_limit` NULL); la ricerca e la paginazione del backend restano dove
+   sono. Il DB aggiunge lo spareggio `id` all'`ORDER BY`, così `p_limit` e `p_offset` diventano onesti per chiunque.
+   **`p_offset` resta**: con lo spareggio è corretto, e toglierlo a metà firma romperebbe la chiamata per posizione.
+   La firma non cambia.
+
+Il censimento che ha portato alle due domande è **struttura** (colonne e trigger letti sul catalogo dello scratch, il
+2026-11-07), non popolazione. Fatti datati: le tabelle con `tx_id` fuori dall'ambito sono 17 di `dbops`, di cui 8 coi
+trigger montati a mano. Con `data_update` e senza nessuno che lo riscriva ce ne sono circa 30 in `dbops` e 10 in `ui`.
+`storicizza` fuori dall'ambito: solo `shop.ricevute` e `dbops.audit_sources`. `cleanup_at` fuori dall'ambito: solo
+`dbops.ai_query_log`.
+
+### 20.2 Che cosa è stato scritto
+
+| changeSet / file | Oggetto | Che cosa |
+| --- | --- | --- |
+| `00_schema/dbops/20261108-25` | `dbops.audit_sources` | D37: `DROP COLUMN` di `tx_id`, `storicizza`, `data_update`, `user_update`; COMMENT della tabella riscritto |
+| `00_schema/dbops/20261108-26` | `dbops.marcatori_automazione_debito` | il registro del debito: chiave (marcatore, schema, tabella), CHECK del vocabolario e della ragione (≥ 40), audit e `tx_id` coi trigger a mano (come `rls_perimetro_debito`) |
+| `20_code/dbops/20261108-27` | `dbops.vw_marcatori_automazione_senza_esecutore` | il presidio, `security_invoker`, tre stati come `vw_rls_perimetro_scoperto` |
+| `20_code/dbops/20261108-28` | `dbops.ai_query_log` | D36: `trg_ai_query_log_m50_cleanup_at_ins` (`trgfn_cleanup_at_alla_nascita`); COMMENT della tabella, di `user_id` e di `cleanup_at` (M9) |
+| `20_code/dbops/20261108-29` | `dbops.fn_get_lookup_codici` | D57: `ORDER BY … NULLS LAST, t.id <stesso verso>`; DECLARE ancorato (quattro variabili sugli override, il tipo dell'id su `pg_type.typname`); firma e risultato identici; COMMENT riscritto (§5d) |
+| `80_data/changelog/20261108-30` | `config.storico_set_storicizza` | DELETE della riga `dbops.audit_sources`: senza la colonna, `fn_apply_storicizza_defaults` fallirebbe su di lei a ogni corsa, e il sync non la pota (la tabella esiste) |
+| `80_data/changelog/20261108-31` + `marcatori_automazione_debito.csv` | il registro | seed di catalogo: le dieci tabelle di `dbops` con `tx_id` e senza trigger (§20.9) |
+| `80_data/changelog/20260429-08` + `audit_sources.csv` | il mirror di `audit_sources` | via le quattro colonne dal loader e dal CSV (mirror `runOnChange` + `ANY`, si può cambiare). ⛔ Da zero il loader gira **dopo** il DROP: con le colonne elencate il migrate morirebbe |
+| `automation_scope.csv` | l'ambito | D35: `shop,*all`; D36: `dbops,ai_query_log` |
+| `automation_rules_tbl.csv` | regola 28 | `CLEANUP_AT` di `dbops.ai_query_log`: 90 giorni, base `data_insert` (il 27 è `CODICE_MAIUSCOLO`) |
+| `storico_scope_policy.csv` | riga 126 | `shop.ricevute`, modo `BA` su `billing_account_id`: la tabella è sotto RLS (senza riga sarebbe `SENZA_RIGA`, con `NESSUNO` sarebbe `PROTETTA_NESSUNO`); il soggetto-ruolo della riga è il cliente, non l'emittente |
+| `presidi.csv`, `presidi_testi.csv` | catalogo | la vista nuova: `ZERO`, stato atteso `DEBITO_DICHIARATO`, registro, `SETTIMANALE`, `LIBERO`, `SVILUPPO` |
+
+pgTAP:
+
+* `dbops/test-marcatori-automazione-senza-esecutore-v1` (nuovo, 13, runner owner): il presidio sul database, le tre
+  chiusure del giro, e su casi costruiti in uno schema di prova i tre marcatori, il trigger a mano, il trigger
+  disabilitato, l'ambito, l'esclusione dalla pulizia, i tre stati, i due CHECK, il vocabolario letto dal CHECK, lo
+  schema `storico` fuori.
+* `dbops/test-registri-dbops-scadenza-v1` (4): il quinto registro, `ai_query_log`, nei quattro test.
+* `dbops/test-fn-get-lookup-codici` (11 → 13): lo spareggio nei due versi e le pagine da due che, concatenate, danno
+  la lista intera (casi costruiti). Le attese dei test 2-8 prendono lo spareggio anche loro: confrontavano due ordini
+  entrambi indeterminati, e il verde dipendeva dai dati del catalogo.
+
+### 20.3 Le scelte dentro il giro (da guardare, Tid)
+
+1. **La vista guarda l'ambito, non il trigger montato dai runner.** Una tabella nuova nell'ambito non ha i trigger
+   finché la convergenza non gira, ma la sua promessa ha un esecutore che arriva: guardare il trigger farebbe rosso il
+   presidio fra l'apply e la convergenza, su un caso che il modello prevede. Il trigger a mano conta come esecutore
+   per `tx_id` e `storicizza`, non per `cleanup_at` (il purge è solo del runner, e una tabella in
+   `automation_cleanup_exclusions` resta scoperta).
+2. **Lo stesso filtro dei runner**: tabelle `relkind = 'r'`, partizioni comprese (i runner le scorrono una a una e il
+   trigger del padre si clona sulle partizioni), schema in `fn_resolve_scope`, tabella ammessa da `fn_table_in_scope`.
+   Letto sui corpi dei runner `tx_id`, `storico`, `storico_provision` e `cleanup`.
+3. **Lo schema `storico` è fuori**: le shadow ricopiano le colonne della madre. Le funzioni trigger si riconoscono per
+   nome e schema, non con una costante `regprocedure` che legherebbe la funzione alla vista.
+4. **Base `data_insert` per `ai_query_log`**: la tabella non ha un orario dell'evento diverso dall'INSERT. Nessuno la
+   scrive via dblink (il limite di `error_log` e `audit_log`): il trigger alla nascita regge, come su `request_log`.
+5. **La riga di `storico_set_storicizza` si cancella qualunque sia `insert_manuale`**: la colonna non c'è più per una
+   decisione (Q4), non per un caso da guardare.
+6. **`%TYPE` in `fn_get_lookup_codici`**: la firma e il `RETURNS TABLE` restano a tipi espliciti, con il perché scritto
+   accanto (la funzione è polimorfa). Il DECLARE è ancorato dove esiste la colonna di cui la variabile è il riflesso.
+   `VOLATILE` e `SECURITY INVOKER` scritti; nessun `COST`, `ROWS` o `SET` da ripetere (letti sul vivo).
+
+### 20.4 Le prove (scratch `zeroerp_ruoli`, come owner, SQL estratto dagli YAML, `BEGIN … ROLLBACK`)
+
+L'SQL estratto nell'ordine del migrate (`-25` … `-29`), i CSV simulati come upsert (`audit_sources.csv` con le colonne
+nuove, le righe nuove di scope, regola 28, mappa 126, presidi e testi, il registro), poi il `-30`. Il presidio,
+sullo scratch, vede le **dieci** righe dichiarate e niente fuori da `DEBITO_DICHIARATO`, in tutti gli schemi.
+`fn_get_lookup_codici` resta **una** funzione, con `pg_get_function_identity_arguments` e `pg_get_function_result`
+identici al vivo. `fn_conta_presidio` sulla vista nuova dà 0. «Senza → con»:
+
+| File | Senza | Con |
+| --- | --- | --- |
+| `dbops/test-marcatori-automazione-senza-esecutore-v1` (13) | — (la vista non c'è) | 13/13 |
+| `dbops/test-registri-dbops-scadenza-v1` (4) | 1/4 | 4/4 |
+| `dbops/test-fn-get-lookup-codici` (13) | 11/13 (12 e 13: il difetto) | 13/13 |
+| `dbops/test-storico-scope-policy-v1` (36) | 36/36 | 34/36 → **36/36 dopo la convergenza su `shop`** (vedi sotto) |
+| `storico/test-storico-scope-congelato-v1`, `test-fn-get-lookup-codici-obsoleto-v1`, `test-audit-sources-seed`, `script/test-fn-audit-summary`, `test-catalogo-presidi-v1`, `test-presidi-testi-v1`, `test-conta-presidio-per-variante-v1`, `maintenance/test-cleanup-job-ambito-registro-v1`, `test-cleanup-framework`, `script/test-giornale-registri-catalogo-v1`, `documenti/test-documenti-schema-base`, `rls/test-rls-viste-security-invoker`, `test-presidi-debito-dichiarato` | verdi | verdi, identici |
+
+⚠️ **I due rossi di `test-storico-scope-policy-v1` (5 e 29) sono la finestra fra l'apply e la convergenza**: la riga
+126 della mappa c'è, il trigger di storico su `shop.ricevute` non ancora, e `vw_storico_scope_da_dichiarare` la
+mostra `RIGA_SENZA_MADRE`. Simulata nella stessa transazione la convergenza sul solo `shop` (audit, storico
+provision, storico, `tx_id`, `fn_storico_arma_scope_tutte`): nascono `trg_ricevute_audit_data_user_upd`,
+`trg_ricevute_gen_tx_id_ins_upd`, `trg_ricevute_z90_storico_upd_dlt` e la shadow `storico.ricevute`, la vista torna
+vuota e il file è 36/36. Da zero, in CI, la convergenza la fa `ci_apply`.
+
+Guardrail `run_on_change`, `precondition_seed`, `ddl_su_trigger_automazione`, `grant_ruolo_batch`, `pgtap_preambolo`,
+`sql_letterali`, `timestamp_senza_fuso`, `v1_congelato` verdi; pre-commit sui file verde. Scratch pulito dopo le prove.
+
+### 20.5 Per Tid
+
+1. Apply su dbdev e scratch: `20261108-25` … `-31`, e i CSV `automation_scope.csv`, `automation_rules_tbl.csv`,
+   `storico_scope_policy.csv`, `audit_sources.csv` (col loader `20260429-08`), `marcatori_automazione_debito.csv`,
+   `presidi.csv`, `presidi_testi.csv`.
+2. **Poi `make db-ci-apply`** (la convergenza): monta su `shop.ricevute` audit, `tx_id` e storico (la provision crea
+   `storico.ricevute`, `fn_storico_arma_scope_tutte` arma lo scope `BA`). Prima, `test-storico-scope-policy-v1`
+   5 e 29 sono rossi per la riga 126 senza madre (§20.4): non è un rosso del giro.
+3. pgTAP: `dbops/test-marcatori-automazione-senza-esecutore-v1` (runner owner), `dbops/test-registri-dbops-scadenza-v1`,
+   `dbops/test-fn-get-lookup-codici` e `-obsoleto-v1`, `dbops/test-storico-scope-policy-v1`,
+   `storico/test-storico-scope-congelato-v1`, `dbops/test-audit-sources-seed`, `script/test-fn-audit-summary`,
+   `dbops/test-catalogo-presidi-v1`, `dbops/test-presidi-testi-v1`.
+4. Dopo la convergenza, `vw_fk_senza_indice` (una misura) ha tre righe in più: le tre FK di `shop.ricevute`, che ora
+   è nell'ambito. Le tratta la politica degli indici delle FK (giro 10d).
+
+### 20.6 Doc
+
+* `dbops/manual/`: `ai_query_log.md` (la scadenza vera, i quattro pezzi), `audit_sources.md` (fuori dalle automazioni
+  e senza le colonne), `fn_get_lookup_codici.md` (lo spareggio, il tetto che cade), `automation_scope.md` (il
+  presidio); nuove `vw_marcatori_automazione_senza_esecutore.md` e `marcatori_automazione_debito.md`.
+* `shop/manual/ricevute.md`: i trigger del framework dalla convergenza, lo storico col modo `BA`.
+* Guide: `audit-e-tracciabilita.md` (la riga di `ai_query_log`, lo scope di `dbops`, il trigger alla nascita su tre
+  registri), `integrazione-ai.md` (le domande si tengono novanta giorni), `presidi-e-registri-del-debito.md` (§3.7
+  nuovo, la riga del §4).
+* Le pagine auto-generate (le due nuove, i COMMENT riscritti, la scheda della funzione) le rigenera `gen_db_docs.py`
+  dopo l'apply.
+
+### 20.7 Ricadute BE
+
+* **BE4** (§5), pronta da subito: non dipende dall'apply.
+* Nessun'altra: `shop.ricevute` non ha scrittori nel backend; `script.vw_audit_sources`, `fn_audit_summary` e il
+  backend dell'audit non leggono le quattro colonne ritirate; il backend inserisce in `ai_query_log` senza
+  `cleanup_at`.
+
+### 20.8 Residuo
+
+* **Il debito dichiarato**: le dieci tabelle di `dbops` con `tx_id` e senza trigger (`automazione_chiusura_scadenze`,
+  `cause_fallimento`, `codici_errore_senza_policy`, `emittente_modi`, `messaggi_errore_codici_legacy`, `presidi`,
+  `presidi_cause`, `presidi_testi`, `riferimenti_morti_esenzioni`, `storico_scope_policy`). Per ognuna una decisione
+  di Tid: i due trigger a mano, come su `dbops.processi`, o la colonna tolta, come su `audit_sources`. Proposta: si
+  decide al giro 14, che riapre i COMMENT di `dbops`.
+* **`data_update`/`user_update` senza esecutore** fuori dal criterio, per decisione (§20.1). Proposta: entra nel
+  giro 14 come domanda, insieme al debito qui sopra; le tabelle di `ui` sono di un altro perimetro.
+* Il marcatore si riconosce per **nome**: una colonna di storicizzazione rinominata con un override `STORICIZZA_COL`
+  sfugge. Il limite è scritto nella pagina della vista e nella guida dei presidi; se si vuole chiuderlo, la vista legge l'override
+  con `dbops.fn_get_override_col`, come la provision.
+
+### 20.9 Chiusura (2026-11-07)
+
+Tid ha applicato il giro 7 su dbdev e scratch (`20261108-25` … `-31`, i sette CSV e il loader `20260429-08`), con la
+convergenza che monta su `shop.ricevute` audit, `tx_id` e storico, e ha lanciato i pgTAP di §20.5: verdi. Le pagine
+auto-generate (la vista e il registro nuovi, i COMMENT riscritti di `audit_sources`, `ai_query_log` e
+`fn_get_lookup_codici`) si rigenerano con `gen_db_docs.py` ed entrano nel commit del giro. Restano fuori dal commit le
+modifiche dell'altro cantiere (`20261108-14` … `-24`, `-32` … `-34` e i loro pgTAP). **Il giro 7 è chiuso**; restano
+BE4 al team BE (§5) e il residuo di §20.8, proposto al giro 14.

@@ -20,7 +20,9 @@ DECLARE
   v_order_col   text    := lower(btrim(COALESCE(p_order_col, 'descrizione')));
   v_order_dir   text    := upper(btrim(COALESCE(p_order_dir, 'ASC')));
   v_offset      integer := COALESCE(p_offset, 0);
-  v_id_type     text;
+  -- ⭐ Ancorate dove esiste la colonna di cui sono il riflesso: il catalogo di
+  --   PostgreSQL per il tipo dell'id, gli override per schema, tabella e colonne.
+  v_id_type     pg_catalog.pg_type.typname%TYPE;
   v_has_codice          boolean;
   v_has_codice_interno  boolean;
   v_has_descrizione     boolean;
@@ -31,10 +33,10 @@ DECLARE
   v_conds       text[]  := ARRAY[]::text[];
   v_sql         text;
   -- Override dichiarativi da automation_overrides_cols.
-  v_rel_schema              text;
-  v_rel_table               text;
-  v_codice_col_override         text;
-  v_codice_interno_col_override text;
+  v_rel_schema                  dbops.automation_overrides_cols.schema_name%TYPE;
+  v_rel_table                   dbops.automation_overrides_cols.table_name%TYPE;
+  v_codice_col_override         dbops.automation_overrides_cols.col_name%TYPE;
+  v_codice_interno_col_override dbops.automation_overrides_cols.col_name%TYPE;
 BEGIN
   -- =========================================================
   -- Scopo:
@@ -44,7 +46,11 @@ BEGIN
   --
   -- Regole:
   --   - id deve essere integer/bigint (uuid non ammesso)
-  --   - ordinamento ammesso solo su codice|descrizione e ASC|DESC
+  --   - ordinamento ammesso solo su codice|descrizione e ASC|DESC,
+  --     con lo spareggio sull'id nello STESSO verso: l'ordine e'
+  --     totale, e p_limit/p_offset sfogliano le righe senza
+  --     ripeterne o saltarne (due descrizioni uguali non escono piu'
+  --     in un ordine qualunque)
   --   - se la tabella ha colonna attivo e p_attivo_only=true,
   --     applica attivo IS TRUE
   --   - se la tabella ha colonna obsoleto_dal e
@@ -308,7 +314,10 @@ BEGIN
     v_sql := v_sql || ' WHERE ' || array_to_string(v_conds, ' AND ');
   END IF;
 
-  v_sql := v_sql || format(' ORDER BY t.%I %s NULLS LAST', v_order_col, v_order_dir);
+  -- ⭐ Spareggio sull'id, nello stesso verso della colonna (la regola del
+  --   BB sql_order_clause del backend): senza, a parita' di valore l'ordine
+  --   lo sceglie il piano, e chi pagina vede una riga due volte o mai.
+  v_sql := v_sql || format(' ORDER BY t.%I %s NULLS LAST, t.id %s', v_order_col, v_order_dir, v_order_dir);
 
   IF p_limit IS NOT NULL THEN
     v_sql := v_sql || format(' LIMIT %s', p_limit);
@@ -323,7 +332,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_get_lookup_codici(p_rel regclass, p_order_col text, p_order_dir text, p_attivo_only boolean, p_limit integer, p_offset integer, p_includi_obsoleti boolean)
-IS 'Lookup generico id/codice/codice_interno/descrizione/attivo. Filtri opzionali e introspettivi: attivo (p_attivo_only, DEFAULT true) e obsoleto_dal (p_includi_obsoleti, DEFAULT true = mostra tutto; false = esclude obsoleto_dal <= CURRENT_DATE, selezione per il nuovo). Colonne attivo/obsoleto_dal opzionali: se assenti il filtro non si applica. Consulta automation_overrides_cols (CODICE_COL/CODICE_INTERNO_COL). Base: 20260520-04.';
+IS 'Lookup generico di catalogo: per una tabella qualunque (p_rel) restituisce id, codice, codice_interno, descrizione e attivo, leggendo la struttura dal catalogo di PostgreSQL. Filtri facoltativi: attivo (p_attivo_only, DEFAULT true: solo le righe attive) e obsoleto_dal (p_includi_obsoleti, DEFAULT true: mostra tutto; false esclude le righe che script.fn_e_obsoleto dice ritirate); se la tabella non ha la colonna il filtro non si applica. Le chiavi con un altro nome si dichiarano in dbops.automation_overrides_cols (CODICE_COL, CODICE_INTERNO_COL). Ordina per descrizione o codice, ASC o DESC, con lo spareggio sull''id nello stesso verso: l''ordine e'' totale e p_limit/p_offset sfogliano senza ripetere ne'' saltare righe. Solleva E_PARAMETRO_INVALIDO (parametri) ed E_LOOKUP_STRUTTURA_TABELLA_INVALIDA (forma della tabella).';
 ```
 
 </div>

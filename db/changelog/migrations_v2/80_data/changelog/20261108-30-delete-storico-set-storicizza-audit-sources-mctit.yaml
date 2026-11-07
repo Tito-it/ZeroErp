@@ -1,0 +1,60 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D37 — il lettore della colonna ritirata: config.storico_set_storicizza
+#   Brief: brief-db-revisione-dbops, giro 7 (§20).
+#
+# 00_schema/dbops/20261108-25 toglie dbops.audit_sources.storicizza. La riga
+# 'dbops.audit_sources' di config.storico_set_storicizza la scrisse il sync
+# (insert_manuale = false) quando la colonna aveva DEFAULT true, e resterebbe:
+#   · maintenance.proc_sync_storico_set_storicizza pota solo le righe il cui
+#     nome non risolve piu' a nessun oggetto, e la tabella esiste;
+#   · maintenance.fn_apply_storicizza_defaults, a ogni corsa, farebbe
+#     ALTER COLUMN storicizza SET DEFAULT true su una colonna che non c'e':
+#     esito FALLITA, corsa rossa, per sempre.
+# ⇒ Si cancella qui, qualunque sia insert_manuale: la colonna non c'e' piu' per
+#   una decisione (Q4), non per un caso da guardare.
+#
+# Seed di macchina? No: la riga non e' nel CSV (la deriva il sync), quindi su un
+# database ricostruito da zero non esiste e il DELETE non tocca niente.
+# In 80_data, come il precedente 20260912-09, dopo il DROP della colonna.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261108-30-delete-storico-set-storicizza-audit-sources-mctit.yaml
+
+  - changeSet:
+      id: 20261108-30-delete-storico-set-storicizza-audit-sources
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Toglie 'dbops.audit_sources' da config.storico_set_storicizza: la colonna storicizza e'
+        ritirata (20261108-25) e fn_apply_storicizza_defaults fallirebbe su quella riga a ogni corsa.
+        Brief: brief-db-revisione-dbops, giro 7 (D37).
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: storico_set_storicizza
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DELETE FROM config.storico_set_storicizza s
+               WHERE s.table_name = 'dbops.audit_sources';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- La riga la rimette il sync, se la colonna torna col suo DEFAULT
+              -- (rollback di 20261108-25). Forward-only.
+              SELECT 1;

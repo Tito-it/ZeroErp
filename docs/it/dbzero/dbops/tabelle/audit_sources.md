@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Lookup table audit-sources. Ogni riga descrive una storico.* navigabile dal drawer admin.
+> Catalogo delle sorgenti dell'audit: ogni riga descrive una tabella storico.* navigabile dal drawer di amministrazione (codice, tabella e colonna di chiave della shadow, chiave della label, area funzionale). La legge script.vw_audit_sources, solo le righe attive. Seminata dal CSV di 80_data. Fuori dall'ambito delle automazioni: non porta colonne di tracciamento (tx_id, storicizza, data_update, user_update) che nessuno scriverebbe; lo presidia dbops.vw_marcatori_automazione_senza_esecutore.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
@@ -17,10 +17,6 @@
 | attivo | boolean | NO | true |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
-| data_update | timestamp with time zone | NO | now() |
-| user_update | text | NO | CURRENT_USER |
-| tx_id | uuid | YES |  |
-| storicizza | boolean | NO | true |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
