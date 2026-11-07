@@ -71,7 +71,13 @@ UPDATE vendite.ordini o
    SET documento_origine_tipo = 'PREVENTIVO',
        documento_origine_id   = CASE o.id WHEN (SELECT ordine_id FROM t_o1)
                                           THEN (SELECT preventivo_id FROM t_p1)
-                                          ELSE (SELECT preventivo_id FROM t_p3) END
+                                          ELSE (SELECT preventivo_id FROM t_p3) END,
+       -- la provenienza, che la lineage legge (giro T.3 di brief-db-sorgente-documento-e-riga)
+       sorgente_tipo_id       = (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'PREVENTIVO'),
+       sorgente_uid           = (SELECT p.uid FROM vendite.preventivi p
+                                  WHERE p.id = CASE o.id WHEN (SELECT ordine_id FROM t_o1)
+                                                         THEN (SELECT preventivo_id FROM t_p1)
+                                                         ELSE (SELECT preventivo_id FROM t_p3) END)
  WHERE o.id IN ((SELECT ordine_id FROM t_o1), (SELECT ordine_id FROM t_o3));
 
 DO $leg$

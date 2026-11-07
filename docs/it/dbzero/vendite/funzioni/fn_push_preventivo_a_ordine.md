@@ -16,6 +16,8 @@ CREATE OR REPLACE FUNCTION vendite.fn_push_preventivo_a_ordine(p_preventivo_id b
  RETURNS bigint
  LANGUAGE plpgsql
 AS $function$
+-- rev 2026-11-06 (brief-db-sorgente-documento-e-riga giro T.3): la testata scrive
+--   la provenienza (sorgente_*), letta una volta per testata e righe.
 -- rev 2026-10-31 (20261031-16, brief-modello-documento-vendita §17):
 --   lo stato di accettazione dal vocabolario, non 'ACCETTATO'.
 -- rev 2026-10-24 (20261024-20, brief-modello-documento-vendita N-1/P-2):
@@ -151,7 +153,15 @@ BEGIN
             NULL::uuid, p_preventivo_id::text);
     END IF;
 
-    -- 4) Testata ordine: DRAFT, documento_origine = (PREVENTIVO, id).
+    -- La provenienza: il tipo e la chiave del preventivo, per il key_selector
+    -- del tipo (script.fn_sorgente_provenienza). Una volta sola, per la testata
+    -- e per le righe.
+    SELECT p.sorgente_tipo_id, p.sorgente_id, p.sorgente_uid
+      INTO v_prov_tipo_id, v_prov_id, v_prov_uid
+      FROM script.fn_sorgente_provenienza('PREVENTIVO', p_preventivo_id::text) p;
+
+    -- 4) Testata ordine: DRAFT, la provenienza (sorgente_*) e la sua colonna
+    --    parallela documento_origine = (PREVENTIVO, id), che si ritira a parte.
     --    numero/serie/anno li genera il trigger trgfn_ordini_gen_numero
     --    (motore dei registri, 20260831-*; fino al 2026-09-13 qui c'era il
     --    nome morto trgfn_ordini_gen_codice — brief prefisso-sul-registro 6.3).
@@ -159,11 +169,13 @@ BEGIN
         soggetto_ruolo_id, billing_account_id, utility_id, valuta_id,
         termine_pagamento_id, emittente_fiscale_id, data,
         fatturazione_trigger,
+        sorgente_tipo_id, sorgente_id, sorgente_uid,
         documento_origine_tipo, documento_origine_id)
     VALUES (
         v_soggetto_ruolo_id, v_ba_id, v_utility_id, v_valuta_id,
         v_termine_pag_id, v_emittente_fiscale_id, v_data,
         v_fatt_trigger,
+        v_prov_tipo_id, v_prov_id, v_prov_uid,
         'PREVENTIVO', p_preventivo_id)
     RETURNING id INTO v_ordine_id;
 
@@ -188,12 +200,6 @@ BEGIN
     --    is_composito e, come oggi, scarta righe senza articolo.
     --    riga_nr progressivo; quantita derivata dal trigger
     --    qta_from_operativa; link di riga preventivo_riga_id (idempotenza).
-    -- La provenienza delle righe: il tipo e la chiave del documento, per il
-    -- key_selector del tipo (script.fn_sorgente_provenienza). Una volta sola.
-    SELECT p.sorgente_tipo_id, p.sorgente_id, p.sorgente_uid
-      INTO v_prov_tipo_id, v_prov_id, v_prov_uid
-      FROM script.fn_sorgente_provenienza('PREVENTIVO', p_preventivo_id::text) p;
-
     FOR v_riga IN
         SELECT v.id AS riga_id, v.articolo_id, v.descrizione,
                v.prezzo_unitario, v.sconto_percentuale, v.iva_id,
@@ -301,7 +307,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_push_preventivo_a_ordine(p_preventivo_id bigint, p_righe_ids bigint[], p_pratica_id bigint, p_fatturazione_trigger character varying, p_flusso_id bigint)
-IS 'Push di un preventivo in uno stato di accettazione in un ordine DRAFT: testata, righe e componenti, in una transazione. Le righe sono quelle residue di vendite.vw_preventivi_righe_smistabili_ordine (tutte, o quelle di p_righe_ids), con i prezzi del preventivo, la natura che il preventivo ha venduto e la data chiesta dal cliente, NULL se anteriore alla data dell''ordine (script.fn_data_consegna_ammessa). Ogni riga porta due legami alla riga del preventivo: preventivo_riga_id, il legame di consumo che l''annullo dell''ordine azzera (vendite.fn_documento_ritira_legami), e la provenienza, che resta: PREVENTIVO con la chiave del preventivo da script.fn_sorgente_provenienza, e la riga in sorgente_riga. Il composito prende i prezzi dei componenti del preventivo come override (vendite.fn_ordine_riga_componenti_init). La corsia di fatturazione p_fatturazione_trigger passa in testata com''e'', NULL compreso: la risolve vendite.trgfn_ordini_normalize. Aggancio opzionale alla pratica (ROOT il preventivo, COLLEGATO l''ordine, con p_flusso_id). Lo stato del preventivo (accettato o evaso) lo proietta vendite.fn_preventivo_proietta_stato_smistamento. Il rifiuto per stato porta il bersaglio sul preventivo, citato per id, solo se il preventivo esiste. SECURITY INVOKER.';
+IS 'Push di un preventivo in uno stato di accettazione in un ordine DRAFT: testata, righe e componenti, in una transazione. La testata porta la provenienza: PREVENTIVO con la chiave del preventivo da script.fn_sorgente_provenienza (letta una volta per testata e righe), e accanto la colonna parallela documento_origine_* (PREVENTIVO, id). Le righe sono quelle residue di vendite.vw_preventivi_righe_smistabili_ordine (tutte, o quelle di p_righe_ids), con i prezzi del preventivo, la natura che il preventivo ha venduto e la data chiesta dal cliente, NULL se anteriore alla data dell''ordine (script.fn_data_consegna_ammessa). Ogni riga porta due legami alla riga del preventivo: preventivo_riga_id, il legame di consumo che l''annullo dell''ordine azzera (vendite.fn_documento_ritira_legami), e la provenienza, che resta: PREVENTIVO con la chiave del preventivo da script.fn_sorgente_provenienza, e la riga in sorgente_riga. Il composito prende i prezzi dei componenti del preventivo come override (vendite.fn_ordine_riga_componenti_init). La corsia di fatturazione p_fatturazione_trigger passa in testata com''e'', NULL compreso: la risolve vendite.trgfn_ordini_normalize. Aggancio opzionale alla pratica (ROOT il preventivo, COLLEGATO l''ordine, con p_flusso_id). Lo stato del preventivo (accettato o evaso) lo proietta vendite.fn_preventivo_proietta_stato_smistamento. Il rifiuto per stato porta il bersaglio sul preventivo, citato per id, solo se il preventivo esiste. SECURITY INVOKER.';
 ```
 
 </div>

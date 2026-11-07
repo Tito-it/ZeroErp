@@ -1,0 +1,108 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I DOCUMENTI VIVI DELL'OFFERTA DALLA PROVENIENZA
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto T, giro T.3 (S-8).
+#
+# L'ordine e il contratto nati da un'offerta si riconoscevano dalle colonne
+# parallele (ordini.documento_origine_*, contratti.offerta_id). Ora dalla
+# provenienza, con la regola d'incontro del modello
+# (doc.id = sorgente_id OR doc.uid = sorgente_uid), sugli indici
+# ix_*_sorgente_uid / _id. Firma e RETURNS TABLE invariati (20261019-97).
+# ⚠️ L'offerta si legge sotto la RLS di chi chiama: un'offerta che chi chiama non
+#    vede non ha documenti vivi. I tre consumatori (la capability, il push a
+#    contratto, la generazione dell'ordine) leggono l'offerta prima, con la
+#    stessa RLS.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261106-78-update-fn-offerta-documenti-vivi-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20261106-78-update-fn-offerta-documenti-vivi-sorgente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_offerta_documenti_vivi: l'ordine e il contratto nati
+        dall'offerta si riconoscono dalla provenienza (sorgente_*), non dalle
+        colonne parallele. brief-db-sorgente-documento-e-riga §7.2 lotto T, giro T.3.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_offerta_documenti_vivi(
+                  p_offerta_id vendite.offerte_commerciali.id%TYPE)
+              -- tipo: il codice di config.tipi_entita del documento vivo (CONTRATTO,
+              -- ORDINE_VENDITA); documento_id: polimorfo (contratto o ordine), tipo nudo.
+              RETURNS TABLE(
+                  tipo         config.tipi_entita.codice%TYPE,
+                  documento_id bigint)
+              LANGUAGE sql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+                  SELECT 'CONTRATTO'::text, c.id
+                    FROM vendite.offerte_commerciali oc
+                    JOIN config.sorgenti s ON s.codice_interno = 'OFFERTA_COMMERCIALE'
+                    JOIN vendite.contratti c
+                      ON c.sorgente_tipo_id = s.id
+                     AND (c.sorgente_id = oc.id OR c.sorgente_uid = oc.uid)
+                   WHERE oc.id = p_offerta_id
+                     AND NOT c.is_abortito_snapshot
+                  UNION ALL
+                  SELECT 'ORDINE_VENDITA'::text, o.id
+                    FROM vendite.offerte_commerciali oc
+                    JOIN config.sorgenti s ON s.codice_interno = 'OFFERTA_COMMERCIALE'
+                    JOIN vendite.ordini o
+                      ON o.sorgente_tipo_id = s.id
+                     AND (o.sorgente_id = oc.id OR o.sorgente_uid = oc.uid)
+                   WHERE oc.id = p_offerta_id
+                     AND NOT o.is_abortito_snapshot
+                   ORDER BY 1, 2;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_offerta_documenti_vivi(vendite.offerte_commerciali.id%TYPE) IS
+                  'I contratti e gli ordini vivi (non annullati) nati da un''offerta: risponde a «l''offerta e'' '
+                  'gia'' trasformata?». Il documento nato dall''offerta e'' quello che la dichiara come provenienza '
+                  '(sorgente_tipo_id OFFERTA_COMMERCIALE, con la chiave dell''offerta in sorgente_uid o sorgente_id). '
+                  'Un documento annullato conserva la provenienza ma non consuma l''offerta: vivi da '
+                  'is_abortito_snapshot, la colonna dei due indici unici parziali uq_contratti_sorgente_offerta e '
+                  'uq_ordini_v_sorgente_offerta. tipo = codice di config.tipi_entita (CONTRATTO, ORDINE_VENDITA), '
+                  'lo stesso del bersaglio dell''errore; documento_id polimorfo, tipo nudo. L''offerta si legge sotto '
+                  'la RLS di chi chiama: un''offerta che non vede non ha documenti vivi. Sede unica per '
+                  'vendite.fn_push_offerta_a_contratto, vendite.fn_genera_ordine_da_offerta e '
+                  'script.fn_available_actions_offerta. SECURITY INVOKER.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_offerta_documenti_vivi(
+                  p_offerta_id vendite.offerte_commerciali.id%TYPE)
+              RETURNS TABLE(
+                  tipo         config.tipi_entita.codice%TYPE,
+                  documento_id bigint)
+              LANGUAGE sql
+              STABLE
+              AS $function$
+                  SELECT 'CONTRATTO'::text, c.id
+                    FROM vendite.contratti c
+                   WHERE c.offerta_id = p_offerta_id
+                     AND NOT c.is_abortito_snapshot
+                  UNION ALL
+                  SELECT 'ORDINE_VENDITA'::text, o.id
+                    FROM vendite.ordini o
+                   WHERE o.documento_origine_tipo = 'OFFERTA_COMMERCIALE'
+                     AND o.documento_origine_id   = p_offerta_id
+                     AND NOT o.is_abortito_snapshot
+                   ORDER BY 1, 2;
+              $function$;

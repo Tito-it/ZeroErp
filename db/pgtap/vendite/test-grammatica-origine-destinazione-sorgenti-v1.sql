@@ -31,9 +31,11 @@
 --       sorgente (character varying, non text)
 --
 -- ⭐ 8 … 11 costruiscono il caso su un ordine in bozza dello stampo
---   (dbops.fn_pgtap_crea_ordine). Non serve un'offerta vera: la provenienza
---   e' una coppia (tipo, id) senza FK sull'id, e i due lettori la restituiscono
---   com'e'. L'offerta inventata ha un id che nessuna offerta usa.
+--   (dbops.fn_pgtap_crea_ordine) e un'offerta vera in bozza (cliente e listino
+--   dai builder). rev 2026-11-07 (brief-db-sorgente-documento-e-riga, giro T.3):
+--   i due lettori leggono la provenienza (sorgente_*), che il guard unico vuole
+--   verso un documento che esiste; prima bastava un id d'offerta inventato nella
+--   colonna parallela. Il 9 scrive le due, come i verbi.
 -- ⚠️ Il 7 legge il TESTO delle definizioni: vede i confronti scritti sulla
 --   colonna (`documento_origine_tipo = 'OFFERTA'`), non quelli su una variabile
 --   che ne porta il valore. Per quelli il presidio e' il comportamento (8 … 11 e
@@ -144,8 +146,26 @@ SELECT is_empty(
 CREATE TEMP TABLE _ord ON COMMIT DROP AS
 SELECT * FROM dbops.fn_pgtap_crea_ordine('pgTAP grammatica 2b');
 
+CREATE TEMP TABLE _cli ON COMMIT DROP AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba(
+    'pgTAP grammatica 2b',
+    (SELECT u.id FROM config.utilities u
+      WHERE NOT EXISTS (SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = u.id)
+      ORDER BY u.id LIMIT 1));
+CREATE TEMP TABLE _lis ON COMMIT DROP AS
+SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM _cli), 'pgTAP grammatica 2b');
+
 CREATE TEMP TABLE _off ON COMMIT DROP AS
-SELECT coalesce(max(o.id), 0) + 1000000 AS id FROM vendite.offerte_commerciali o;
+WITH ins AS (
+  INSERT INTO vendite.offerte_commerciali (emittente_fiscale_id, billing_account_id,
+      istanza_utility_id, utility_id, listino_id, listino_versione_id,
+      validita_dal, validita_al, stato_doc_offerta_id)
+  SELECT script.fn_pgtap_emittente_operatore(), c.billing_account_id, c.istanza_utility_id, c.utility_id,
+         l.listino_id, l.listino_versione_id, script.fn_data_operativa(), script.fn_data_operativa() + 364,
+         (SELECT s.id FROM config.stati_doc_offerte s WHERE s.codice_interno = 'BOZZA')
+    FROM _cli c, _lis l
+  RETURNING id, uid)
+SELECT id, uid FROM ins;
 
 SELECT is(
     pg_temp.vincolo_violato(format(
@@ -156,8 +176,11 @@ SELECT is(
 
 SELECT is(
     pg_temp.vincolo_violato(format(
-        $$UPDATE vendite.ordini SET documento_origine_tipo = 'OFFERTA_COMMERCIALE', documento_origine_id = %s WHERE id = %s$$,
-        (SELECT id FROM _off), (SELECT ordine_id FROM _ord))),
+        $$UPDATE vendite.ordini SET documento_origine_tipo = 'OFFERTA_COMMERCIALE', documento_origine_id = %s,
+                 sorgente_tipo_id = (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'OFFERTA_COMMERCIALE'),
+                 sorgente_uid = %L
+           WHERE id = %s$$,
+        (SELECT id FROM _off), (SELECT uid FROM _off), (SELECT ordine_id FROM _ord))),
     'NESSUN ERRORE',
     '9) origine OFFERTA_COMMERCIALE: passa');
 

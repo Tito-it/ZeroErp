@@ -1,0 +1,53 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ORDINI E CONTRATTI: IL LOCK FUORI BOZZA FERMA ANCHE SORGENTE_ID
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto T, giro T.3 (S-8).
+#
+# Fuori bozza la provenienza della testata non cambia (E_DOC_SORGENTE_FUORI_BOZZA):
+# il lock fermava sorgente_tipo_id, sorgente_uid e le colonne parallele
+# (documento_origine_* dell'ordine, offerta_id del contratto). Col modello la
+# chiave di un tipo a chiave id sta in sorgente_id: la terna nuova entra subito
+# dopo quella di sorgente_uid, come per bolle e resi (20261106-70). Gli altri
+# argomenti sono quelli vivi (pg_get_triggerdef del 2026-11-07, uguali su scratch
+# e dbdev). Le colonne parallele restano nel lock finche' si ritirano (giro T.5).
+# Il trigger e' scritto a mano, non da ci_apply: si rimonta qui
+# (linee-guida-sql §11.5).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261106-77-remount-trg-lock-fuori-bozza-ordini-contratti-sorgente-id-mctit.yaml
+
+  - changeSet:
+      id: 20261106-77-remount-trg-lock-fuori-bozza-ordini-contratti-sorgente-id
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Il lock fuori bozza di ordine e contratto ferma anche sorgente_id
+        (E_DOC_SORGENTE_FUORI_BOZZA). brief-db-sorgente-documento-e-riga §7.2
+        lotto T, giro T.3.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER trg_ordini_a05_lock_fuori_bozza_upd ON vendite.ordini;
+              CREATE TRIGGER trg_ordini_a05_lock_fuori_bozza_upd BEFORE UPDATE ON vendite.ordini FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_doc_testata_lock_fuori_bozza('ORDINE_VENDITA', 'DRAFT', 'data', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'valuta_id', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'tasso_cambio', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'anno', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'serie', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'registro_id', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'utility_id', 'E_DOC_CLIENTE_FUORI_BOZZA', '', 'emittente_fiscale_id', 'E_DOC_EMITTENTE_FUORI_BOZZA', '', 'modalita_pagamento_id', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'termine_pagamento_id', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'agente_soggetto_ruolo_id', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'fatturazione_trigger', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'sorgente_tipo_id', 'E_DOC_SORGENTE_FUORI_BOZZA', '', 'sorgente_uid', 'E_DOC_SORGENTE_FUORI_BOZZA', '', 'sorgente_id', 'E_DOC_SORGENTE_FUORI_BOZZA', '', 'documento_origine_tipo', 'E_DOC_SORGENTE_FUORI_BOZZA', '', 'documento_origine_id', 'E_DOC_SORGENTE_FUORI_BOZZA', '', 'meta', 'E_DOC_CHIUSO', 'CONFERMATO,PARZIALMENTE_EVASO,ALLOCATO,SPEDITO,CONSEGNATO,EVASO');
+
+              DROP TRIGGER trg_contratti_a05_lock_fuori_bozza_upd ON vendite.contratti;
+              CREATE TRIGGER trg_contratti_a05_lock_fuori_bozza_upd BEFORE UPDATE ON vendite.contratti FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_doc_testata_lock_fuori_bozza('CONTRATTO', 'DRAFT', 'data', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'valuta_id', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'billing_account_id', 'E_DOC_CLIENTE_FUORI_BOZZA', '', 'istanza_utility_id', 'E_DOC_CLIENTE_FUORI_BOZZA', '', 'utility_id', 'E_DOC_UTILITY_IMMUTABILE', '-', 'emittente_fiscale_id', 'E_DOC_EMITTENTE_IMMUTABILE', '-', 'listino_id', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'listino_versione_id', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'tipo_variazione_globale', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'valore_variazione_globale', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'ambito', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'valido_dal', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'generazione_canone', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'mese_partenza_canone', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'parent_contratto_id', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'categoria_cliente_id_snapshot', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'offerta_id', 'E_DOC_SORGENTE_FUORI_BOZZA', '', 'sorgente_tipo_id', 'E_DOC_SORGENTE_FUORI_BOZZA', '', 'sorgente_uid', 'E_DOC_SORGENTE_FUORI_BOZZA', '', 'sorgente_id', 'E_DOC_SORGENTE_FUORI_BOZZA', '', 'valido_al', 'E_DOC_CHIUSO', 'ATTIVO', 'codice_cig', 'E_DOC_CHIUSO', 'ATTIVO', 'codice_cup', 'E_DOC_CHIUSO', 'ATTIVO', 'codice_commessa', 'E_DOC_CHIUSO', 'ATTIVO', 'meta', 'E_DOC_CHIUSO', 'ATTIVO');
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il montaggio precedente e' quello vivo prima di questo changeSet
+              -- (20261029-20 per il contratto, 20261019-72 per l'ordine): si riprende da li'.
+              SELECT 1;

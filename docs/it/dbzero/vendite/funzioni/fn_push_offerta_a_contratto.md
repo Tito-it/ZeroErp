@@ -16,6 +16,11 @@ CREATE OR REPLACE FUNCTION vendite.fn_push_offerta_a_contratto(p_offerta_id bigi
  RETURNS bigint
  LANGUAGE plpgsql
 AS $function$
+-- rev 2026-11-06 (brief-db-sorgente-documento-e-riga giro T.3): la testata scrive
+--   la provenienza con la chiave del key_selector (sorgente_id/sorgente_uid),
+--   letta una volta per testata e righe; offerta_id resta accanto finche' si
+--   ritira. L'aggancio alla pratica scrive l'id del contratto, non il suo uid
+--   (il tipo CONTRATTO ha chiave id: l'uid lo rifiutava il guard testuale).
 -- rev 2026-10-24 (20261024-13, brief-modello-documento-vendita N-1/P-2):
 --   lo stato iniziale non si scrive piu' qui: lo mette il trigger della
 --   nascita (script.trgfn_doc_stato_iniziale), letto dal vocabolario.
@@ -30,10 +35,8 @@ DECLARE
     v_offerta               vendite.offerte_commerciali%ROWTYPE;
     v_stato_cod             config.stati_doc_offerte.codice_interno%TYPE;
     v_accettazione          config.stati_doc_offerte.accettazione%TYPE;
-    v_sorgente_ofc_id       config.sorgenti.id%TYPE;
     v_sorgente_contratto_id config.sorgenti.id%TYPE;
     v_contratto_id          vendite.contratti.id%TYPE;
-    v_contratto_uid         vendite.contratti.uid%TYPE;
     v_eccezione             vendite.offerte_commerciali_eccezioni%ROWTYPE;
     v_riga_id               vendite.contratti_righe.id%TYPE;
     v_prov_tipo_id          vendite.contratti_righe.sorgente_tipo_id%TYPE;
@@ -150,20 +153,12 @@ BEGIN
         );
     END IF;
 
-    -- Config: sorgente OFFERTA_COMMERCIALE.
-    SELECT id INTO v_sorgente_ofc_id
-      FROM config.sorgenti
-     WHERE codice_interno = 'OFFERTA_COMMERCIALE';
-
-    IF v_sorgente_ofc_id IS NULL THEN
-        PERFORM script.fn_log_and_raise_error(
-            'vendite', 'fn_push_offerta_a_contratto',
-            'E_CONFIG_MANCANTE',
-            jsonb_build_object('tabella', 'config.sorgenti', 'codice', 'OFFERTA_COMMERCIALE'),
-            NULL::uuid,
-            'sorgente OFFERTA_COMMERCIALE non trovata in config.sorgenti'
-        );
-    END IF;
+    -- La provenienza: il tipo e la chiave dell'offerta, per il key_selector del
+    -- tipo (script.fn_sorgente_provenienza, che solleva E_SORG_CONF se il tipo
+    -- non e' a catalogo). Una volta sola, per la testata e per le righe.
+    SELECT p.sorgente_tipo_id, p.sorgente_id, p.sorgente_uid
+      INTO v_prov_tipo_id, v_prov_id, v_prov_uid
+      FROM script.fn_sorgente_provenienza('OFFERTA_COMMERCIALE', p_offerta_id::text) p;
 
     -- =====================================================
     -- Successione su overlap (meccanismo generico, brief §3.4)
@@ -223,6 +218,7 @@ BEGIN
             valido_dal,
             valido_al,
             sorgente_tipo_id,
+            sorgente_id,
             sorgente_uid,
             offerta_id,
             emittente_fiscale_id,
@@ -240,15 +236,16 @@ BEGIN
             v_offerta.tipo_variazione_globale,
             v_offerta.validita_dal,
             v_offerta.validita_al,
-            v_sorgente_ofc_id,
-            v_offerta.uid,
+            v_prov_tipo_id,
+            v_prov_id,
+            v_prov_uid,
             p_offerta_id,
             v_offerta.emittente_fiscale_id,
             v_offerta.generazione_canone,
             v_offerta.mese_partenza_canone,
             COALESCE(v_offerta.meta, '{}'::jsonb)
         )
-        RETURNING id, uid INTO v_contratto_id, v_contratto_uid;
+        RETURNING id INTO v_contratto_id;
     EXCEPTION
         WHEN exclusion_violation THEN
             v_overlap_id := vendite.fn_contratto_sovrapposto(
@@ -291,12 +288,6 @@ BEGIN
        AND a.attivo IS TRUE
      WHERE oi.offerta_id = p_offerta_id
     ON CONFLICT (contratto_id, tipo_indirizzo_id) DO NOTHING;
-
-    -- La provenienza delle righe: il tipo e la chiave del documento, per il
-    -- key_selector del tipo (script.fn_sorgente_provenienza). Una volta sola.
-    SELECT p.sorgente_tipo_id, p.sorgente_id, p.sorgente_uid
-      INTO v_prov_tipo_id, v_prov_id, v_prov_uid
-      FROM script.fn_sorgente_provenienza('OFFERTA_COMMERCIALE', p_offerta_id::text) p;
 
     -- Copia eccezioni offerta -> contratti_righe (loop per-eccezione).
     FOR v_eccezione IN
@@ -456,7 +447,8 @@ BEGIN
         VALUES (
             p_pratica_id,
             v_sorgente_contratto_id,
-            v_contratto_uid::text,
+            -- la chiave testuale del contratto, che ha chiave id: l'id
+            v_contratto_id::text,
             'COLLEGATO'
         )
         ON CONFLICT ON CONSTRAINT uq_pratiche_sorgenti_pratica_tipo_uid_ruolo
@@ -468,7 +460,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_push_offerta_a_contratto(p_offerta_id bigint, p_pratica_id bigint, p_chiudi_contratto_esistente boolean)
-IS 'Genera un contratto DRAFT da un''offerta commerciale in uno stato di accettazione. Un''offerta genera al piu'' un documento vivo fra contratto e ordine, letti da vendite.fn_offerta_documenti_vivi (E_OFFERTA_CONTRATTO_GIA_GENERATO, E_OFFERTA_ORDINE_GIA_GENERATO), col bersaglio sul documento gia'' generato, in un array; un documento annullato conserva la provenienza ma non consuma l''offerta. Applica la successione dei contratti (advisory lock, sovrapposizione, instradamento; p_chiudi_contratto_esistente). Copia gli indirizzi ammessi per CONTRATTO, le utility, e le eccezioni dell''offerta come righe del contratto, una per eccezione nell''ordine dell''id, coi loro componenti e con le marche di approvazione prezzo 1:1. Ogni riga porta la provenienza: OFFERTA_COMMERCIALE con la chiave dell''offerta da script.fn_sorgente_provenienza, e in sorgente_riga l''eccezione copiata. Gli indici unici uq_contratti_offerta_id e uq_ordini_v_documento_origine_offerta valgono sui soli documenti vivi. SECURITY INVOKER.';
+IS 'Genera un contratto DRAFT da un''offerta commerciale in uno stato di accettazione. Un''offerta genera al piu'' un documento vivo fra contratto e ordine, letti da vendite.fn_offerta_documenti_vivi (E_OFFERTA_CONTRATTO_GIA_GENERATO, E_OFFERTA_ORDINE_GIA_GENERATO), col bersaglio sul documento gia'' generato, in un array; un documento annullato conserva la provenienza ma non consuma l''offerta. Applica la successione dei contratti (advisory lock, sovrapposizione, instradamento; p_chiudi_contratto_esistente). La testata porta la provenienza: OFFERTA_COMMERCIALE con la chiave dell''offerta da script.fn_sorgente_provenienza (letta una volta per testata e righe), e accanto offerta_id, la colonna parallela con la FK. Copia gli indirizzi ammessi per CONTRATTO, le utility, e le eccezioni dell''offerta come righe del contratto, una per eccezione nell''ordine dell''id, coi loro componenti e con le marche di approvazione prezzo 1:1. Ogni riga porta la provenienza: OFFERTA_COMMERCIALE con la chiave dell''offerta da script.fn_sorgente_provenienza, e in sorgente_riga l''eccezione copiata. L''aggancio facoltativo alla pratica (p_pratica_id) scrive il contratto come COLLEGATO in pratiche.pratiche_sorgenti, con la sua chiave testuale: l''id, perche'' il tipo CONTRATTO ha chiave id. Gli indici unici uq_contratti_sorgente_offerta e uq_ordini_v_sorgente_offerta (e, sulle colonne parallele, uq_contratti_offerta_id e uq_ordini_v_documento_origine_offerta) valgono sui soli documenti vivi. SECURITY INVOKER.';
 ```
 
 </div>

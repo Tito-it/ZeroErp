@@ -61,6 +61,7 @@
 | CHECK | chk_fatture_bollo_importo_finito |  |
 | CHECK | chk_fatture_imponibile_tot_finito |  |
 | CHECK | chk_fatture_imposta_tot_finito |  |
+| CHECK | chk_fatture_sorgente_forma |  |
 | CHECK | chk_fatture_tasso_cambio_finito |  |
 | CHECK | chk_fatture_totale_a_pagare_finito |  |
 | CHECK | chk_fatture_totale_doc_finito |  |
@@ -90,12 +91,13 @@
 | ix_fatture_sorgente_tipo_id | `CREATE INDEX ix_fatture_sorgente_tipo_id ON vendite.fatture USING btree (sorgente_tipo_id)` |
 | ix_fatture_termine_pagamento_id | `CREATE INDEX ix_fatture_termine_pagamento_id ON vendite.fatture USING btree (termine_pagamento_id)` |
 | ix_fatture_tipo_doc_fiscale_id | `CREATE INDEX ix_fatture_tipo_doc_fiscale_id ON vendite.fatture USING btree (tipo_doc_fiscale_id)` |
+| ix_fatture_v_sorgente_id | `CREATE INDEX ix_fatture_v_sorgente_id ON vendite.fatture USING btree (sorgente_tipo_id, sorgente_id) WHERE (sorgente_id IS NOT NULL)` |
+| ix_fatture_v_sorgente_uid | `CREATE INDEX ix_fatture_v_sorgente_uid ON vendite.fatture USING btree (sorgente_tipo_id, sorgente_uid) WHERE (sorgente_uid IS NOT NULL)` |
 | ix_fatture_valuta_id | `CREATE INDEX ix_fatture_valuta_id ON vendite.fatture USING btree (valuta_id)` |
 | ix_vendite_fatture_stato_doc_fiscale_id | `CREATE INDEX ix_vendite_fatture_stato_doc_fiscale_id ON vendite.fatture USING btree (stato_doc_fiscale_id)` |
 | pk_fatture | `CREATE UNIQUE INDEX pk_fatture ON vendite.fatture USING btree (id)` |
 | uq_fatture_numero | `CREATE UNIQUE INDEX uq_fatture_numero ON vendite.fatture USING btree (registro_id, anno, COALESCE(serie, ''::character varying), numero) WHERE (numero IS NOT NULL)` |
 | uq_fatture_uid | `CREATE UNIQUE INDEX uq_fatture_uid ON vendite.fatture USING btree (uid)` |
-| uq_fatture_v_sorgente_fk | `CREATE UNIQUE INDEX uq_fatture_v_sorgente_fk ON vendite.fatture USING btree (sorgente_tipo_id, sorgente_uid) WITH (fillfactor='100', deduplicate_items='true') WHERE (sorgente_tipo_id IS NOT NULL)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
@@ -110,26 +112,28 @@
 | trg_fatture_a10_guard_intestazione_congelata_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_fattura_satellite_guard_congelamento('id')` |
 | trg_fatture_a10_guard_registro_emittente_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_fatture_guard_registro_emittente()` |
 | trg_fatture_a10_guard_registro_emittente_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_fatture_guard_registro_emittente()` |
+| trg_fatture_a10_guard_sorgente_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_guard_sorgente('DOCUMENTO', 'BLOCCA')` |
+| trg_fatture_a10_guard_sorgente_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_sorgente('DOCUMENTO', 'BLOCCA')` |
 | trg_fatture_a10_guard_stato_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_fatture_guard_stato()` |
 | trg_fatture_a10_guard_uscita_draft_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_fatture_guard_uscita_draft()` |
 | trg_fatture_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('natura_doc_id', 'E_COLONNA_NON_MODIFICABILE')` |
 | trg_fatture_a10_nature_doc_fiscale_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'nature_doc_fiscale', 'attivo', 'natura_doc_id', 'id')` |
 | trg_fatture_a10_nature_doc_fiscale_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'nature_doc_fiscale', 'attivo', 'natura_doc_id', 'id')` |
-| trg_fatture_a10_registri_fatturazione_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'registri_fatturazione', 'attivo', 'registro_id', 'id')` |
 | trg_fatture_a10_registri_fatturazione_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'registri_fatturazione', 'attivo', 'registro_id', 'id')` |
+| trg_fatture_a10_registri_fatturazione_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'registri_fatturazione', 'attivo', 'registro_id', 'id')` |
 | trg_fatture_a10_sorgenti_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_tipo_id', 'id')` |
 | trg_fatture_a10_sorgenti_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_tipo_id', 'id')` |
 | trg_fatture_a10_stati_doc_fiscale_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_fiscale', 'attivo', 'stato_doc_fiscale_id', 'id')` |
 | trg_fatture_a10_stati_doc_fiscale_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_fiscale', 'attivo', 'stato_doc_fiscale_id', 'id')` |
-| trg_fatture_a10_termini_pagamento_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'termini_pagamento', 'attivo', 'termine_pagamento_id', 'id')` |
 | trg_fatture_a10_termini_pagamento_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'termini_pagamento', 'attivo', 'termine_pagamento_id', 'id')` |
-| trg_fatture_a10_tipi_doc_fiscale_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'tipi_doc_fiscale', 'attivo', 'tipo_doc_fiscale_id', 'id')` |
+| trg_fatture_a10_termini_pagamento_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'termini_pagamento', 'attivo', 'termine_pagamento_id', 'id')` |
 | trg_fatture_a10_tipi_doc_fiscale_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'tipi_doc_fiscale', 'attivo', 'tipo_doc_fiscale_id', 'id')` |
+| trg_fatture_a10_tipi_doc_fiscale_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'tipi_doc_fiscale', 'attivo', 'tipo_doc_fiscale_id', 'id')` |
 | trg_fatture_a11_numerata_non_annulabile_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_fatture_numerata_non_annulabile()` |
 | trg_fatture_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_fatture_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_fatture_def_guard_stato_lotto_coerente_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION vendite.trgfn_lotto_fatture_guard_stato_coerente()` |
 | trg_fatture_def_guard_stato_lotto_coerente_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION vendite.trgfn_lotto_fatture_guard_stato_coerente()` |
+| trg_fatture_def_guard_stato_lotto_coerente_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION vendite.trgfn_lotto_fatture_guard_stato_coerente()` |
 | trg_fatture_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_fatture_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_fatture_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('fatture_id')` |

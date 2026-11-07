@@ -15,6 +15,8 @@ CREATE OR REPLACE FUNCTION vendite.fn_genera_ordine_da_offerta(p_offerta_id bigi
  RETURNS bigint
  LANGUAGE plpgsql
 AS $function$
+-- rev 2026-11-06 (brief-db-sorgente-documento-e-riga giro T.3): la testata scrive
+--   la provenienza (sorgente_*), letta una volta per testata e righe.
 -- rev 2026-10-24 (20261024-19, brief-modello-documento-vendita N-1/P-2):
 --   lo stato iniziale non si scrive piu' qui: lo mette il trigger della
 --   nascita (script.trgfn_doc_stato_iniziale), letto dal vocabolario.
@@ -154,18 +156,31 @@ BEGIN
         jsonb_build_object('offerta_id', p_offerta_id,
                            'codice',     v_offerta.codice));
 
-    -- 5. La testata.
+    -- 5. La testata, con la provenienza: il tipo e la chiave dell'offerta, per il
+    --    key_selector del tipo (script.fn_sorgente_provenienza), letti una volta per
+    --    la testata e per le righe. Accanto, la colonna parallela
+    --    documento_origine_*, che si ritira a parte.
     --    Lo stato non si scrive: DRAFT lo mette trg_ordini_a05_stato_iniziale_ins.
+    SELECT p.sorgente_tipo_id, p.sorgente_id, p.sorgente_uid
+      INTO v_prov_tipo_id, v_prov_id, v_prov_uid
+      FROM script.fn_sorgente_provenienza('OFFERTA_COMMERCIALE', p_offerta_id::text) p;
+
     INSERT INTO vendite.ordini (
         billing_account_id,
         emittente_fiscale_id,
         valuta_id,
+        sorgente_tipo_id,
+        sorgente_id,
+        sorgente_uid,
         documento_origine_tipo,
         documento_origine_id)
     VALUES (
         v_offerta.billing_account_id,
         v_offerta.emittente_fiscale_id,
         v_offerta.valuta_id,
+        v_prov_tipo_id,
+        v_prov_id,
+        v_prov_uid,
         'OFFERTA_COMMERCIALE',
         p_offerta_id)
     RETURNING id, data, emittente_fiscale_id
@@ -180,12 +195,6 @@ BEGIN
     SELECT ef.soggetto_ruolo_id INTO v_emittente_sr_id
       FROM anagrafiche.emittenti_fiscali ef
      WHERE ef.id = v_emittente_fiscale_id;
-
-    -- La provenienza delle righe: il tipo e la chiave del documento, per il
-    -- key_selector del tipo (script.fn_sorgente_provenienza). Una volta sola.
-    SELECT p.sorgente_tipo_id, p.sorgente_id, p.sorgente_uid
-      INTO v_prov_tipo_id, v_prov_id, v_prov_uid
-      FROM script.fn_sorgente_provenienza('OFFERTA_COMMERCIALE', p_offerta_id::text) p;
 
     FOR v_riga IN
         SELECT r.*
@@ -232,7 +241,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_genera_ordine_da_offerta(p_offerta_id bigint)
-IS 'Genera un ordine DRAFT da un''offerta in uno stato di accettazione, in una transazione, e ne restituisce l''id. Gemello di vendite.fn_push_offerta_a_contratto. Passi: l''offerta FOR UPDATE, sotto RLS (assente: E_OFFERTA_NON_TROVATA); solo da uno stato di accettazione del vocabolario (E_ORD_ORIGINE_NON_CONVERTIBILE); i documenti vivi da vendite.fn_offerta_documenti_vivi, un ordine (E_ORD_OFFERTA_GIA_CONVERTITA) o un contratto (E_OFFERTA_CONTRATTO_GIA_GENERATO), col bersaglio nel contesto; il primo motivo di script.fn_check_righe_offerta_in_ordine (E_DOC_RIGA_NON_AMMESSA), lo stesso della capability, prima di scrivere; la testata con cliente, emittente e valuta dell''offerta e la provenienza (OFFERTA_COMMERCIALE, id) nella stessa INSERT; l''indirizzo di default (vendite.fn_doc_indirizzo_default); le righe di vendite.fn_offerta_righe_espanse nel loro ordine (riga_nr dalla posizione), coi prezzi negoziati, ognuna con la sua provenienza: OFFERTA_COMMERCIALE con la chiave dell''offerta da script.fn_sorgente_provenienza, e in sorgente_riga l''eccezione da cui viene, NULL per la riga del solo listino. Il composito nasce a 0 e prende il prezzo dai componenti, che crea vendite.fn_ordine_riga_componenti_init coi prezzi dell''offerta come override (esclusi quelli a 0, che la init rifiuta). SECURITY INVOKER: sotto RLS e coi guard dell''ordine, come se scrivesse l''operatore. L''unicita'' e'' di uq_ordini_v_documento_origine_offerta.';
+IS 'Genera un ordine DRAFT da un''offerta in uno stato di accettazione, in una transazione, e ne restituisce l''id. Gemello di vendite.fn_push_offerta_a_contratto. Passi: l''offerta FOR UPDATE, sotto RLS (assente: E_OFFERTA_NON_TROVATA); solo da uno stato di accettazione del vocabolario (E_ORD_ORIGINE_NON_CONVERTIBILE); i documenti vivi da vendite.fn_offerta_documenti_vivi, un ordine (E_ORD_OFFERTA_GIA_CONVERTITA) o un contratto (E_OFFERTA_CONTRATTO_GIA_GENERATO), col bersaglio nel contesto; il primo motivo di script.fn_check_righe_offerta_in_ordine (E_DOC_RIGA_NON_AMMESSA), lo stesso della capability, prima di scrivere; la testata con cliente, emittente e valuta dell''offerta e la provenienza nella stessa INSERT: OFFERTA_COMMERCIALE con la chiave dell''offerta da script.fn_sorgente_provenienza (letta una volta per testata e righe), e accanto la colonna parallela documento_origine_* (OFFERTA_COMMERCIALE, id); l''indirizzo di default (vendite.fn_doc_indirizzo_default); le righe di vendite.fn_offerta_righe_espanse nel loro ordine (riga_nr dalla posizione), coi prezzi negoziati, ognuna con la sua provenienza: OFFERTA_COMMERCIALE con la chiave dell''offerta da script.fn_sorgente_provenienza, e in sorgente_riga l''eccezione da cui viene, NULL per la riga del solo listino. Il composito nasce a 0 e prende il prezzo dai componenti, che crea vendite.fn_ordine_riga_componenti_init coi prezzi dell''offerta come override (esclusi quelli a 0, che la init rifiuta). SECURITY INVOKER: sotto RLS e coi guard dell''ordine, come se scrivesse l''operatore. L''unicita'' la tiene uq_ordini_v_sorgente_offerta, sulla provenienza (e uq_ordini_v_documento_origine_offerta sulla colonna parallela).';
 ```
 
 </div>

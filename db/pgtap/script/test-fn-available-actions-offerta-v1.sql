@@ -276,11 +276,16 @@ SELECT dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', i.offerta_id,
 INSERT INTO vendite.ordini (
     soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
     stato_doc_ordine_id, valuta_id, data, storicizza,
-    documento_origine_tipo, documento_origine_id
+    documento_origine_tipo, documento_origine_id,
+    -- la provenienza, come la scrive il verbo (giro T.3 di brief-db-sorgente-documento-e-riga)
+    sorgente_tipo_id, sorgente_uid
 )
 SELECT od.soggetto_ruolo_id, (SELECT c.billing_account_id FROM tmp_aa_cli c), od.emittente_fiscale_id,
        od.stato_draft_ordine_id, od.valuta_id, DATE '2087-01-02', false,
-       'OFFERTA_COMMERCIALE', (SELECT offerta_id FROM tmp_aa_ids WHERE slot = 'ACCT-ORD')
+       'OFFERTA_COMMERCIALE', (SELECT offerta_id FROM tmp_aa_ids WHERE slot = 'ACCT-ORD'),
+       (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'OFFERTA_COMMERCIALE'),
+       (SELECT o.uid FROM vendite.offerte_commerciali o
+         WHERE o.id = (SELECT offerta_id FROM tmp_aa_ids WHERE slot = 'ACCT-ORD'))
   FROM tmp_aa_ord od;
 
 -- ============================================================

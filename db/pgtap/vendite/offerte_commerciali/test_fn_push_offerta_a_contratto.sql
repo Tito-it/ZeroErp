@@ -228,7 +228,9 @@ SELECT dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', o.id, 'ACCETT
 INSERT INTO vendite.ordini (
     soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
     stato_doc_ordine_id, valuta_id, data, storicizza,
-    documento_origine_tipo, documento_origine_id
+    documento_origine_tipo, documento_origine_id,
+    -- la provenienza, come la scrive il verbo (giro T.3 di brief-db-sorgente-documento-e-riga)
+    sorgente_tipo_id, sorgente_uid
 )
 SELECT
     (SELECT c.soggetto_ruolo_id FROM tmp_push_cli c),
@@ -237,7 +239,9 @@ SELECT
     (SELECT id FROM config.stati_doc_ordini WHERE codice_interno = 'DRAFT' AND attivo IS TRUE LIMIT 1),
     (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1),
     DATE '2102-01-02', false,
-    'OFFERTA_COMMERCIALE', (SELECT id FROM tmp_push_offerta_ord)
+    'OFFERTA_COMMERCIALE', (SELECT id FROM tmp_push_offerta_ord),
+    (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'OFFERTA_COMMERCIALE'),
+    (SELECT o.uid FROM vendite.offerte_commerciali o WHERE o.id = (SELECT id FROM tmp_push_offerta_ord))
   FROM tmp_push_ctx ctx;
 
 -- ============================================================

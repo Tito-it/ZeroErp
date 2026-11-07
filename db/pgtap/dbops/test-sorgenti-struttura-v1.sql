@@ -18,6 +18,8 @@
 --   rev 2026-11-06: il lotto T, giro T.1 (20261106-61), toglie il registro dei
 --   canali: la tabella non esiste piu'. Il giro T.2 (20261106-69) monta il guard
 --   unico su bolla e reso.
+--   rev 2026-11-07: il giro T.3 (20261106-76) monta il guard unico su ordine, contratto
+--   e fattura: le testate di vendita escono tutte dal debito.
 --
 -- Elenco test (plan 5):
 --   1) l'unica esenzione dal guard e' il log dei reconcile, col suo motivo (D-9)
@@ -63,13 +65,9 @@ SELECT results_eq(
         ('pratiche.pratiche_sorgenti'),
         -- lotto C (le sorgente_* di attivita_fatturabili si ritirano), C, C
         ('vendite.attivita_fatturabili'), ('vendite.commesse_attivita'), ('vendite.commesse_sorgenti'),
-        -- lotto T (testate)
-        ('vendite.contratti'),
-        -- lotto T; C (fatture_righe: la sua sorgente_uid e' ancora l'impronta, G5, con
+        -- lotto C (fatture_righe: la sua sorgente_uid e' ancora l'impronta, G5, con
         -- attivita_fatturabili); D
-        ('vendite.fatture'), ('vendite.fatture_righe'), ('vendite.fatture_stampa_coda'),
-        -- lotto T
-        ('vendite.ordini')$$,
+        ('vendite.fatture_righe'), ('vendite.fatture_stampa_coda')$$,
     '2) le tabelle ancora senza il guard unico sono esattamente il debito dichiarato (si toglie, non si aggiunge)');
 
 SELECT is_empty(

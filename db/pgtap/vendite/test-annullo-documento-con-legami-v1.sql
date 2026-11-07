@@ -296,9 +296,14 @@ DECLARE r RECORD; v_ord bigint;
 BEGIN
   SELECT * INTO r FROM tmp_al_refs;
   INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
-      stato_doc_ordine_id, valuta_id, data, storicizza, documento_origine_tipo, documento_origine_id)
+      stato_doc_ordine_id, valuta_id, data, storicizza, documento_origine_tipo, documento_origine_id,
+      sorgente_tipo_id, sorgente_uid)
+  -- la provenienza accanto alla colonna parallela, come la scrive il verbo
+  -- (giro T.3 di brief-db-sorgente-documento-e-riga)
   VALUES (r.soggetto_ruolo_id, r.billing_account_id, r.emittente_fiscale_id, r.ord_draft_id,
-          r.valuta_id, script.fn_data_operativa(), false, 'OFFERTA_COMMERCIALE', p_offerta)
+          r.valuta_id, script.fn_data_operativa(), false, 'OFFERTA_COMMERCIALE', p_offerta,
+          (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'OFFERTA_COMMERCIALE'),
+          (SELECT o.uid FROM vendite.offerte_commerciali o WHERE o.id = p_offerta))
   RETURNING id INTO v_ord;
   RETURN v_ord;
 END $$ LANGUAGE plpgsql;

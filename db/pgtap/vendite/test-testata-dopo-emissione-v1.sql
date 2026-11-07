@@ -98,11 +98,11 @@ INSERT INTO _atteso VALUES
   ('resi','data',''),('resi','valuta_id',''),('resi','anno',''),('resi','registro_id',''),
   ('resi','magazzino_id',''),('resi','emittente_fiscale_id',''),('resi','sorgente_tipo_id',''),('resi','sorgente_uid',''),('resi','sorgente_id',''),
   ('resi','meta','CONFERMATO'),
-  -- ordine (D-3, D-5, D-7, D-10)
+  -- ordine (D-3, D-5, D-7, D-10; sorgente_id dal giro T.3 di brief-db-sorgente-documento-e-riga)
   ('ordini','data',''),('ordini','valuta_id',''),('ordini','tasso_cambio',''),('ordini','anno',''),
   ('ordini','serie',''),('ordini','registro_id',''),('ordini','utility_id',''),('ordini','emittente_fiscale_id',''),
   ('ordini','modalita_pagamento_id',''),('ordini','termine_pagamento_id',''),('ordini','agente_soggetto_ruolo_id',''),
-  ('ordini','fatturazione_trigger',''),('ordini','sorgente_tipo_id',''),('ordini','sorgente_uid',''),
+  ('ordini','fatturazione_trigger',''),('ordini','sorgente_tipo_id',''),('ordini','sorgente_uid',''),('ordini','sorgente_id',''),
   ('ordini','documento_origine_tipo',''),('ordini','documento_origine_id',''),
   ('ordini','meta','ALLOCATO,CONFERMATO,CONSEGNATO,EVASO,PARZIALMENTE_EVASO,SPEDITO'),
   -- preventivo (D-3, D-6, D-7, D-9, D-10)
@@ -122,13 +122,13 @@ INSERT INTO _atteso VALUES
   -- della testata sono condizioni, ferme fuori dalla bozza (confermato da Tid).
   ('offerte_commerciali','generazione_canone',''),('offerte_commerciali','mese_partenza_canone',''),
   ('offerte_commerciali','meta','ACCETTATA,EMESSA'),('offerte_commerciali','motivazione_rifiuto','ACCETTATA,EMESSA'),
-  -- contratto (D-3, D-5, D-6, D-7, D-10)
+  -- contratto (D-3, D-5, D-6, D-7, D-10; sorgente_id dal giro T.3 di brief-db-sorgente-documento-e-riga)
   ('contratti','data',''),('contratti','valuta_id',''),('contratti','billing_account_id',''),
   ('contratti','istanza_utility_id',''),('contratti','utility_id','-'),('contratti','emittente_fiscale_id','-'),
   ('contratti','listino_id',''),('contratti','listino_versione_id',''),('contratti','tipo_variazione_globale',''),
   ('contratti','valore_variazione_globale',''),('contratti','ambito',''),('contratti','valido_dal',''),
   ('contratti','parent_contratto_id',''),('contratti','categoria_cliente_id_snapshot',''),('contratti','offerta_id',''),('contratti','sorgente_tipo_id',''),
-  ('contratti','sorgente_uid',''),
+  ('contratti','sorgente_uid',''),('contratti','sorgente_id',''),
   ('contratti','generazione_canone',''),('contratti','mese_partenza_canone',''),
   ('contratti','valido_al','ATTIVO'),('contratti','codice_cig','ATTIVO'),('contratti','codice_cup','ATTIVO'),
   ('contratti','codice_commessa','ATTIVO'),('contratti','meta','ATTIVO');

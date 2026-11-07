@@ -1,12 +1,12 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
--- Test: i COMMENT degli oggetti della provenienza (lotto 0 giro 0.3, lotto R)
+-- Test: i COMMENT degli oggetti della provenienza (lotto 0 giro 0.3, lotto R, lotto T giro T.3)
 --   descrivono l'oggetto al presente, come vuole linee-guida-sql §5d: niente
 --   brief, marcatori di revisione, id di changeSet, sigle di decisione.
 --   Il giro 0.3 li aveva scritti con un prefisso di cronaca; il giro R.2 li
 --   riscrive interi, e questo file tiene il punto.
--- ChangeSet: 20261106-59 (e i COMMENT di -46 … -58)
+-- ChangeSet: 20261106-59 (e i COMMENT di -46 … -58, -74 … -87)
 -- Brief: brief-db-sorgente-documento-e-riga §7.2 lotto R, giro R.2
 -- ------------------------------------------------------------
 -- Indice test (plan 5):
@@ -68,11 +68,16 @@ INSERT INTO _fn VALUES
   ('vendite.fn_crea_revisione_preventivo(bigint,text)'),
   ('vendite.fn_push_offerta_a_contratto(bigint,bigint,boolean)'),
   ('vendite.fn_genera_ddt_da_ordine(bigint,jsonb,date)'),
-  ('vendite.fn_genera_ddt_riconsegna(bigint,jsonb,date)');
+  ('vendite.fn_genera_ddt_riconsegna(bigint,jsonb,date)'),
+  -- lotto T, giro T.3
+  ('vendite.fn_offerta_documenti_vivi(bigint)'),
+  ('script.fn_check_preventivo_annullabile(bigint)');
 
 CREATE TEMP TABLE _tab (tabella text PRIMARY KEY);
 INSERT INTO _tab VALUES ('vendite.preventivi_righe'), ('vendite.ordini_righe'),
-                        ('vendite.ddt_righe'), ('vendite.contratti_righe');
+                        ('vendite.ddt_righe'), ('vendite.contratti_righe'),
+                        -- lotto T, giro T.3: le testate
+                        ('vendite.ordini'), ('vendite.contratti'), ('vendite.fatture');
 
 CREATE TEMP TABLE _ix (indice text PRIMARY KEY);
 INSERT INTO _ix VALUES
@@ -80,7 +85,12 @@ INSERT INTO _ix VALUES
   ('vendite.ix_preventivi_righe_sorgente_uid'), ('vendite.ix_preventivi_righe_sorgente_riga'),
   ('vendite.ix_ordini_righe_sorgente_uid'), ('vendite.ix_ordini_righe_sorgente_riga'),
   ('vendite.ix_ddt_righe_sorgente_id'), ('vendite.ix_ddt_righe_sorgente_riga'),
-  ('vendite.ix_contratti_righe_sorgente_uid'), ('vendite.ix_contratti_righe_sorgente_riga');
+  ('vendite.ix_contratti_righe_sorgente_uid'), ('vendite.ix_contratti_righe_sorgente_riga'),
+  -- lotto T, giro T.3
+  ('vendite.ix_ordini_v_sorgente_uid'), ('vendite.ix_ordini_v_sorgente_id'),
+  ('vendite.ix_contratti_sorgente_uid'), ('vendite.ix_contratti_sorgente_id'),
+  ('vendite.ix_fatture_v_sorgente_uid'), ('vendite.ix_fatture_v_sorgente_id'),
+  ('vendite.uq_ordini_v_sorgente_offerta'), ('vendite.uq_contratti_sorgente_offerta');
 
 SELECT is(
   (SELECT count(*)::int FROM _fn WHERE to_regprocedure(firma) IS NULL)
@@ -107,7 +117,7 @@ SELECT is(
     WHERE coalesce(col_description(a.attrelid, a.attnum), '') ~* m.re
        OR col_description(a.attrelid, a.attnum) IS NULL),
   '',
-  '3) i COMMENT delle colonne sorgente_* delle righe di vendita descrivono al presente');
+  '3) i COMMENT delle colonne sorgente_* delle righe e delle testate di vendita descrivono al presente');
 
 SELECT is(
   (SELECT coalesce(string_agg(k.conname, ', ' ORDER BY k.conname), '')

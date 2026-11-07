@@ -94,12 +94,15 @@ BEGIN
               JOIN vendite.preventivi_righe pr ON pr.id = orr.preventivo_riga_id
              WHERE orr.ordine_id = p_id
             UNION ALL
+            -- La provenienza dall'offerta: l'ordine la dichiara in sorgente_*
+            -- (regola d'incontro del modello).
             SELECT NULL::bigint, NULL::integer, 'OFFERTA_COMMERCIALE'::character varying, 'PROVENIENZA'::text,
-                   o.documento_origine_id, NULL::bigint, NULL::numeric
+                   oc.id, NULL::bigint, NULL::numeric
               FROM vendite.ordini o
-             WHERE o.id = p_id
-               AND o.documento_origine_tipo = 'OFFERTA_COMMERCIALE'
-               AND o.documento_origine_id IS NOT NULL;
+              JOIN config.sorgenti s ON s.id = o.sorgente_tipo_id
+                                    AND s.codice_interno = 'OFFERTA_COMMERCIALE'
+              JOIN vendite.offerte_commerciali oc ON (oc.id = o.sorgente_id OR oc.uid = o.sorgente_uid)
+             WHERE o.id = p_id;
 
     ELSIF p_documento = 'PREVENTIVO' THEN
         v_sorgente := 'PREVENTIVO';
@@ -201,11 +204,15 @@ BEGIN
         v_sorgente := 'CONTRATTO';
 
         RETURN QUERY
+            -- La provenienza dall'offerta: il contratto la dichiara in sorgente_*
+            -- (regola d'incontro del modello).
             SELECT NULL::bigint, NULL::integer, 'OFFERTA_COMMERCIALE'::character varying, 'PROVENIENZA'::text,
-                   c.offerta_id, NULL::bigint, NULL::numeric
+                   oc.id, NULL::bigint, NULL::numeric
               FROM vendite.contratti c
-             WHERE c.id = p_id
-               AND c.offerta_id IS NOT NULL;
+              JOIN config.sorgenti s ON s.id = c.sorgente_tipo_id
+                                    AND s.codice_interno = 'OFFERTA_COMMERCIALE'
+              JOIN vendite.offerte_commerciali oc ON (oc.id = c.sorgente_id OR oc.uid = c.sorgente_uid)
+             WHERE c.id = p_id;
     END IF;
 
     -- ⭐ rev 2026-11-06 (20261106-42, giro 0.3): la chiave delle righe di

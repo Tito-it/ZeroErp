@@ -17,7 +17,8 @@
 --
 -- Elenco test (plan 12):
 --   1) il PERIMETRO contiene le sei tabelle di magazzino, con grammatica MODELLO_A
---   2) le testate di vendita sono nel perimetro: bolla e reso col guard unico (UNICO), le altre TESTUALE
+--   2) le testate di vendita sono nel perimetro, tutte col guard unico (UNICO): bolla e reso
+--      dal giro T.2, ordine, contratto e fattura dal giro T.3 di brief-db-sorgente-documento-e-riga
 --   3) le esenzioni dichiarate sono tre, ognuna col suo motivo
 --   4) zero orfani di magazzino sul mondo costruito
 --   5) MODELLO_A: cancellato il bersaglio di un movimento -> UNA riga, livello DOCUMENTO
@@ -97,8 +98,8 @@ SELECT is(
     (SELECT string_agg(nome_tabella::text || ':' || grammatica, ',' ORDER BY nome_tabella)
        FROM dbops.fn_sorgenti_orfane_perimetro()
       WHERE schema_tabella = 'vendite' AND nome_tabella IN ('ordini', 'ddt', 'resi', 'contratti', 'fatture')),
-    'contratti:TESTUALE,ddt:UNICO,fatture:TESTUALE,ordini:TESTUALE,resi:UNICO',
-    '2) le testate di vendita sono nel perimetro: bolla e reso col guard unico, le altre con la chiave in sorgente_uid (TESTUALE)');
+    'contratti:UNICO,ddt:UNICO,fatture:UNICO,ordini:UNICO,resi:UNICO',
+    '2) le testate di vendita sono nel perimetro, tutte col guard unico (UNICO)');
 
 SELECT results_eq(
     $$SELECT tabella::text COLLATE "default", orfani_esclusi_perche IS NOT NULL, guard_esente_perche IS NOT NULL

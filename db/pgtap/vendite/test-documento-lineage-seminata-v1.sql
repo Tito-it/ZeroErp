@@ -93,7 +93,10 @@ SELECT dbops.fn_pgtap_crea_ddt((SELECT billing_account_id FROM g_ord),
 
 UPDATE vendite.ordini o
    SET documento_origine_tipo = 'PREVENTIVO',
-       documento_origine_id   = (SELECT preventivo_id FROM g_prev)
+       documento_origine_id   = (SELECT preventivo_id FROM g_prev),
+       -- la provenienza, che la lineage legge (giro T.3 di brief-db-sorgente-documento-e-riga)
+       sorgente_tipo_id       = (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'PREVENTIVO'),
+       sorgente_uid           = (SELECT p.uid FROM vendite.preventivi p WHERE p.id = (SELECT preventivo_id FROM g_prev))
  WHERE o.id = (SELECT ordine_id FROM g_ord);
 
 UPDATE vendite.ddt d
