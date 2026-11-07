@@ -2,7 +2,7 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-07
 
-**Riparte: Tid**, col commit del giro C.3 e il via al giro C.4 e alla correzione di V-7 (§3.6). Il lotto C è in quattro giri (§7.2 «Lotto C, i giri»): C.1 e C.2 sono applicati e committati (`e1713fff2e`, `036e047ecc`); C.3 è applicato su dbdev e scratch, pgTAP verdi come applicazione (2026-11-07), da committare. I lotti 0, R e T sono chiusi e committati. ⚠️ Dall'apply del giro T.5 i due percorsi BE del §8.8 danno errore, dall'apply di C.1 quelli del §8.9, dall'apply di C.2 quelli del §8.10, dall'apply di C.3 gli smoke del §8.11: accettato dal piano.
+**Riparte: Tid**, col via al lotto D (§7.2 «Lotto D»). Il lotto C è chiuso: i quattro giri e V-7 sono applicati, pgTAP verdi come applicazione e committati (2026-11-07). Il lotto C è in quattro giri (§7.2 «Lotto C, i giri»): C.1, C.2 e C.3 sono applicati e committati (`e1713fff2e`, `036e047ecc`, `6a21da572d`). I lotti 0, R e T sono chiusi e committati. ⚠️ Dall'apply del giro T.5 i due percorsi BE del §8.8 danno errore, dall'apply di C.1 quelli del §8.9, dall'apply di C.2 quelli del §8.10, dall'apply di C.3 gli smoke del §8.11: accettato dal piano.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -55,17 +55,20 @@
 | 7-vicies-octies-ter | ✅ Tid | il guard unico su `commesse_attivita` a livello DOCUMENTO, perché le quote fisse del listino di un contratto vengono dal contratto intero; le fixture dei pgTAP passano a un consumo vero al posto della commessa fittizia (2026-11-07) | §7.2 «Il giro C.3» | — |
 | 7-vicies-novies | ✅ DB | giro C.3: `commesse_attivita` nella grammatica del modello (S-5), guard unico (DOCUMENTO), guard della chiave del push, la chiave del gruppo dalla `segment_key` (D-6), lettori e viste, fixture sui consumi; 71 pgTAP allineati; provato in transazione (2026-11-07) | §7.2 «Il giro C.3» | — |
 | 7-tricies | ✅ Tid | apply del giro C.3 (`20261107-70` … `-99`, `20261108-01` … `-05`, i due CSV dei codici) su dbdev e scratch, pgTAP verdi come applicazione (2026-11-07). ⚠️ Dall'apply gli smoke del §8.11 (BE-C.3-c) danno errore, come accettato dal piano | §7.2 «Il giro C.3», §8.11 | — |
-| 7-tricies-bis-commit | Tid | commit del giro C.3 su `dev/db-tid` | — | — |
+| 7-tricies-bis-commit | ✅ Tid | commit del giro C.3 su `dev/db-tid` (2026-11-07, `6a21da572d`) | — | — |
 | 7-tricies-bis | ✅ Tid | V-7: vale il codice della commessa, come la dashboard (2026-11-07) | §3.6 | — |
-| 7-tricies-quater | Tid | via alla correzione di V-7 (proposta DB in §3.6) | §3.6 | — |
-| 7-tricies-ter | Tid | via al giro C.4 (`ATTIVITA` esce dalle sorgenti) | §7.2 «Lotto C, i giri» | — |
-| 8 | DB | giro C.4, poi lotti D, P, M, Z, ognuno col suo via; il §8 si riempie strada facendo. ⛔ Il lotto M porta anche D58, D29 e ⑧ di `brief-db-revisione-dbops`: prima del via si riverifica la loro analisi (promemoria in §7.2 «Lotto M») | §7.2, §8 | 7-tricies-ter |
+| 7-tricies-quater | ✅ Tid | via alla correzione di V-7 (proposta DB in §3.6) (2026-11-07) | §3.6 | — |
+| 7-tricies-ter | ✅ Tid | via al giro C.4 (`ATTIVITA` esce dalle sorgenti) (2026-11-07) | §7.2 «Lotto C, i giri» | — |
+| 7-tricies-quinquies | ✅ DB | giro C.4: `ATTIVITA` esce da `config.sorgenti` e resta entità, il lato «in uscita» su `attivita_fatturabili` lo smonta la convergenza; V-7: il riferimento di un gruppo senza numero è il codice della commessa; provato in transazione (2026-11-07) | §7.2 «Il giro C.4» | — |
+| 7-tricies-sexies | ✅ Tid | apply del giro C.4 (`20261108-06`, `-07`, `sorgenti.csv`, `tipi_entita.csv`) su dbdev (19:06) e scratch (19:07), pgTAP verdi come applicazione, committato su `dev/db-tid` (2026-11-07) | §7.2 «Il giro C.4» | — |
+| 7-tricies-septies | Tid | via al lotto D | §7.2 «Lotto D» | 7-tricies-sexies |
+| 8 | DB | lotti D, P, M, Z, ognuno col suo via; il §8 si riempie strada facendo. ⛔ Il lotto M porta anche D58, D29 e ⑧ di `brief-db-revisione-dbops`: prima del via si riverifica la loro analisi (promemoria in §7.2 «Lotto M») | §7.2, §8 | 7-tricies-septies |
 | 9-bis | ✅ BE | il §8 fino al lotto T: codici, reso, ordine dal preventivo, contratto dall'offerta (2026-11-07, da committare su `dev/backend-tid`). I due percorsi rotti dal giro T.5 sono ripristinati | §8 «Stato al 2026-11-07, dopo il giro BE» | — |
 | 9 | BE/FE | il §8 dei lotti che restano, una volta sola | §8 | 8 |
 | 10 | DB | la documentazione del §7.3 (lotto DOC), poi archiviazione | §7.3 | 9 |
 
-**Decisioni aperte di Tid:** nessuna (V-7 deciso il 2026-11-07: il codice della commessa; la correzione aspetta il via). ⚠️ Da guardare all'apply: il guard della chiave del push (`20261108-03`, `-04`) è una proposta DB, conseguenza di D-6 (§7.2 «Il giro C.3»).
-**Lavoro da committare:** il giro C.3, applicato (`20261107-70` … `-99`, `20261108-01` … `-05`, i due CSV dei codici, il pgTAP nuovo, i 71 pgTAP allineati, questo brief), su `dev/db-tid`. Il giro C.2 (`20261107-59` … `-69`) è committato (`036e047ecc`). I changeSet `20261107-51` … `-55` (la coda dei lavori) sono di un altro cantiere, committati a parte (`347cc46f02`). Il giro C.1 (`20261107-41` … `-50`) è committato (`e1713fff2e`). Il giro T.5 (`20261106-92` … `-99`) è committato (`d385cbd3d3`). Il giro T.4 (`20261106-88` … `-91`, i tre CSV, il pgTAP nuovo, i quattro pgTAP allineati, le due pagine `manual/`, questo brief) è committato su `dev/db-tid` il 2026-11-07; il giro T.3 anche (`b86108e56a`). I giri T.1 e T.2 (`20261106-61` … `-73`, `storico_scope_policy.csv`, i pgTAP, le
+**Decisioni aperte di Tid:** nessuna. ⚠️ Da guardare all'apply di V-7: un documento senza numero che non sta più in una commessa aperta ripiega ancora sulla chiave grezza (§7.2 «Il giro C.4»).
+**Lavoro da committare:** nessuno. Il giro C.4 e V-7 (`20261108-06`, `-07`, `sorgenti.csv`, `tipi_entita.csv`, i cinque pgTAP allineati, questo brief) sono committati su `dev/db-tid` (2026-11-07). Il giro C.3 (`20261107-70` … `-99`, `20261108-01` … `-05`) è committato (`6a21da572d`). Il giro C.2 (`20261107-59` … `-69`) è committato (`036e047ecc`). I changeSet `20261107-51` … `-55` (la coda dei lavori) sono di un altro cantiere, committati a parte (`347cc46f02`). Il giro C.1 (`20261107-41` … `-50`) è committato (`e1713fff2e`). Il giro T.5 (`20261106-92` … `-99`) è committato (`d385cbd3d3`). Il giro T.4 (`20261106-88` … `-91`, i tre CSV, il pgTAP nuovo, i quattro pgTAP allineati, le due pagine `manual/`, questo brief) è committato su `dev/db-tid` il 2026-11-07; il giro T.3 anche (`b86108e56a`). I giri T.1 e T.2 (`20261106-61` … `-73`, `storico_scope_policy.csv`, i pgTAP, le
 pagine `manual/` cancellate, questo brief) sono committati su `dev/db-tid` il 2026-11-06. Il lotto 0 intero e il lotto R (giri R.1 e R.2: changeSet `20261106-46` …
 `-60`, i due CSV, i pgTAP, i due brief) sono committati su `dev/db-tid` il 2026-11-06. ⚠️ I test Django sono rossi finché il BE non rigenera il file delle policy d'errore (§8.1
 BE-0.1-a, §8.2 BE-0.2-a): accettato dal piano, va detto nella PR.
@@ -298,7 +301,7 @@ Non aspettano il modello: sono sbagliati oggi. Per ognuno, se i dati di dbdev va
 | V-4 | la cancellazione di reso e contratto non ha regola DB; «si cancella solo la bozza vuota» per ordini, DDT e resi sta solo nel BE | testate di vendita | un reso confermato cancellato lascia **movimenti di magazzino orfani** |
 | V-5 | i canali di fatturazione si aprono all'INSERT della bozza e non si tolgono al DELETE | `trgfn_documenti_sync_canali` | spiega gli orfani PREVENTIVO, ORDINE e DDT del §3.2; i 14 CONTRATTO restano senza spiegazione (nel repo nessun DELETE di contratti) |
 | V-6 | la stessa fattura in `documenti_generati` con due chiavi | UI e drainer | la lista UI non vede i PDF del drainer; due serie di `progressivo_sorgente` |
-| V-7 | il **riferimento** di un gruppo fatturabile il cui documento non ha numero (i consumi: `label_selector` NULL) diverge: `vendite.vw_dash_competenza_gruppi` ripiega sul codice della commessa, `vendite.fn_riferimento_gruppo_fatturabile` (che conosce solo la chiave) sulla chiave grezza | le due scritture della stessa scala di ripiego (il test 16 di `vendite/test-riferimento-gruppo-fatturabile-v1` le dichiara gemelle) | la dashboard Competenza e la scheda Critiche del lotto nominano lo stesso gruppo di consumi in due modi. Trovato dalla regressione del giro C.3 (2026-11-07): prima nessun test costruiva un gruppo di consumi. ✅ **Tid, 2026-11-07: vale il codice della commessa** (il ripiego della dashboard). Proposta DB: `fn_riferimento_gruppo_fatturabile`, che conosce solo la chiave, trova la commessa del documento con `vendite.fn_commessa_viva_di_sorgente` (il BB del giro C.2) e ne usa il codice prima della chiave grezza; la firma non cambia. Da fare col via (nel giro C.4 o in un giro a sé); poi il test 16 torna a costruire anche un gruppo di consumi |
+| V-7 | il **riferimento** di un gruppo fatturabile il cui documento non ha numero (i consumi: `label_selector` NULL) diverge: `vendite.vw_dash_competenza_gruppi` ripiega sul codice della commessa, `vendite.fn_riferimento_gruppo_fatturabile` (che conosce solo la chiave) sulla chiave grezza | le due scritture della stessa scala di ripiego (il test 16 di `vendite/test-riferimento-gruppo-fatturabile-v1` le dichiara gemelle) | la dashboard Competenza e la scheda Critiche del lotto nominano lo stesso gruppo di consumi in due modi. Trovato dalla regressione del giro C.3 (2026-11-07): prima nessun test costruiva un gruppo di consumi. ✅ **Tid, 2026-11-07: vale il codice della commessa** (il ripiego della dashboard). Proposta DB: `fn_riferimento_gruppo_fatturabile`, che conosce solo la chiave, trova la commessa del documento con `vendite.fn_commessa_viva_di_sorgente` (il BB del giro C.2) e ne usa il codice prima della chiave grezza; la firma non cambia. ✅ Corretto col giro C.4 (`20261108-07`), provato dai test 16 e 17 di `vendite/test-riferimento-gruppo-fatturabile-v1`, che costruiscono un gruppo di consumi (2026-11-07) |
 
 Guida, manuali e memoria del team si riscrivono **nel lotto DOC**, alla fine, dal censimento del §7.3 (Tid, 2026-11-06): una volta sola, sullo stato finale.
 
@@ -1425,7 +1428,7 @@ leggevano la riga di commessa di oggi), poi le due grammatiche che cambiano, il 
 | **C.1** | `attivita_fatturabili` e `fatture_righe` (G5): il pull ritrova la riga emessa per `commessa_attivita_id` (V-3, D-1); i lettori delle colonne dell'attività (normalize, catena dei termini, smistamento V-2) leggono la riga di commessa; via `sorgente_*` e `sorgente_origine_tipo_id` (D-3); `fatture_righe` nel modello (conversione, CHECK, guard unico); il presidio degli orfani perde le due esenzioni | ✅ DB, provato in transazione; ✅ applicato da Tid, pgTAP verdi (2026-11-07) |
 | **C.2** | `commesse_sorgenti` (S-4): dal testo alle colonne tipizzate (`sorgente_uid` da `text` a `uuid`, `sorgente_id`), l'unicità sulla chiave nuova, il guard unico al posto del testuale; `fn_link_commessa_sorgente`, `fn_commessa_viva_di_sorgente` e i lettori (archi della lineage, chiudibile, annullabilità dell'ordine, guard della fatturazione immediata, guard dell'emittente, la firma testuale di `fn_get_sorgente_emittente_sr_id`), il builder | ✅ DB, provato in transazione; ✅ applicato da Tid, pgTAP verdi (2026-11-07) |
 | **C.3** | `commesse_attivita` (S-5): all'id per i tipi a chiave `id`, `sorgente_uid` a `uuid`, `sorgente_riga` riempita; CHECK di forma e guard unico; la madre e i cinque lister del push; i lettori (legami, ritiro, lineage, origini della fattura, gruppo fatturabile con l'uid dal BB che risolve, D-6); il ramo del ponte per le commesse | ✅ DB, provato in transazione; ✅ applicato da Tid, pgTAP verdi (2026-11-07) |
-| **C.4** | `ATTIVITA` esce dalle sorgenti e resta in `tipi_entita` (D-2); il lato «in uscita» su `attivita_fatturabili` si smonta con la convergenza | da fare, col via |
+| **C.4** | `ATTIVITA` esce dalle sorgenti e resta in `tipi_entita` (D-2); il lato «in uscita» su `attivita_fatturabili` si smonta con la convergenza; con lui la correzione di V-7 | ✅ DB, provato in transazione; ✅ applicato da Tid (2026-11-07) |
 
 **Il giro C.1, le scelte** (team DB, 2026-11-07; via di Tid lo stesso giorno, «procedere con lo sviluppo»; nessuna è
 un cambio di modello: sono D-1, D-3, S-7, V-2 e V-3 per D-12):
@@ -1860,6 +1863,78 @@ Non coperto, e resta di Tid: la baseline.
 due CSV dei codici; pgTAP verdi come applicazione. Da qui il guard della chiave del push (`20261108-03`, `-04`) è montato:
 gli smoke del backend che scrivono chiavi a mano si rompono (§8.11, BE-C.3-c), come accettato dal piano.
 
+**Il giro C.4, le scelte** (team DB, 2026-11-07; via di Tid lo stesso giorno, al giro e a V-7). Nessuna è un cambio di
+modello: sono D-2 e la decisione di Tid su V-7.
+
+* **`ATTIVITA` esce da `config.sorgenti`** (D-2). Niente nasce da un'attività fatturabile: nessuna funzione, né BE né FE,
+  la scrive o la legge come provenienza; la provenienza dell'attività è la sua riga di commessa (`commessa_attivita_id`,
+  FK NOT NULL) e dal giro C.1 la tabella non ha più colonne `sorgente_*`. Il tipo stava a catalogo come genitore della FK di
+  `config.tipi_entita`. Censimento delle FK verso `config.sorgenti` (30, su `id` e su `codice_interno`; dbdev, fatto
+  datato): nessuna riga porta il tipo, salvo la gemella in `tipi_entita`.
+* **L'entità resta.** `config.tipi_entita.ATTIVITA` tiene le note delle attività (`vendite.note_attivita_fatturabili`,
+  `script.fn_scope_note_ef_perimetro`) e la sua chiave di traduzione; `is_sorgente` passa a false e la nota del CSV dice
+  il perché.
+* **La forma del ritiro** è quella del giro R.2, nei tre posti nell'ordine in cui girano: `tipi_entita.csv`
+  (`is_sorgente = f`), `sorgenti.csv` senza la riga, `80_data/changelog/20261108-06` che la cancella dove esiste.
+* **Il lato «in uscita»** su `vendite.attivita_fatturabili` lo smonta la convergenza di `90_end` (`20261106-21`) nella
+  stessa migrazione: la tabella non è più documento, righe o dettaglio di nessun tipo. Nessun changeSet suo. COMMESSA
+  resta l'unico tipo dello scope `PIPELINE_MARKER`.
+* **V-7** (`20_code/vendite/20261108-07`): `fn_riferimento_gruppo_fatturabile` cerca la commessa quando il numero
+  manca. Forma `MAN:<commessa>`: dalla chiave, come prima. Forma documento senza numero (un consumo): la commessa aperta
+  del documento, `vendite.fn_commessa_viva_di_sorgente`, con l'id del documento (lo dà già la risoluzione del numero,
+  `fn_get_sorgente_documento_ref`) e l'uid della chiave (`script.fn_sorgente_chiave_uuid`, che non solleva), con la
+  regola d'incontro. Firma e `RETURNS` restano `text` esplicito, motivato nel corpo; `DECLARE` ancorato dove c'è una
+  colonna. ⚠️ Il limite, dichiarato: un documento che non sta più in una commessa aperta ripiega ancora sulla chiave
+  grezza; la dashboard non lo mostra, perché le sue righe vengono dalle righe di commessa da emettere.
+
+**Che cosa cambia per chi legge, dichiarato:**
+
+* **La scheda Critiche del lotto nomina un gruppo di consumi col codice della commessa**, come la dashboard Competenza.
+* **Cancellare un'attività fatturabile non passa più dal lato «in uscita»**: niente la cita come provenienza.
+* **`config.sorgenti` non ha più l'id 1.** Lo cercava per id un solo pgTAP (sotto), che il censimento sui codici non
+  vedeva.
+
+**I changeSet del giro C.4:** `80_data/changelog/20261108-06` (il DELETE), `20_code/vendite/20261108-07` (V-7);
+`80_data/sql/config/sorgenti.csv`, `tipi_entita.csv`. Nessun codice d'errore nuovo, nessuna funzione nuova. pgTAP
+allineati (cinque): `vendite/test-sorgente-attivita-fatturabili-v1` (+3, 21-23: non è una sorgente, resta un'entità, il
+lato in uscita smontato), `vendite/test-riferimento-gruppo-fatturabile-v1` (16 costruisce anche un gruppo di consumi, +1:
+17, il codice della commessa), `config/test-sorgenti-scope-pulizia-v1` (5: `PIPELINE_MARKER` è la sola COMMESSA),
+`vendite/test-sorgente-commenti-al-presente-v1` (l'elenco chiuso prende la funzione di V-7),
+`vendite/test-attivita-fatturabili.sql` (6: chiedeva la sorgente `id = 1`; ora l'entità delle note, per codice).
+
+**La prova del giro C.4** (2026-11-07, come `zeroerp_owner`, in transazione annullata):
+
+* **l'estratto** dei due changeSet, col caricamento della riga di `tipi_entita.csv` simulato da un UPDATE e la convergenza
+  di `90_end`, gira intero su scratch e dbdev; la convergenza smonta un trigger solo,
+  `vendite.attivita_fatturabili`; `plpgsql_check` sulla funzione: pulito;
+* **i rami nuovi si costruiscono**: con l'estratto i cinque file sono verdi su scratch e dbdev; senza, rossi esattamente
+  sui casi nuovi (21-23; 16-17, dove il 16 riproduce V-7: `ATTIVITA_CONSUMI:false`, e il 17 dà la chiave grezza al
+  posto del codice della commessa; il 5 dello scope; il 2 del presidio dei COMMENT, che vede i marcatori di storia del
+  COMMENT vivo);
+* **equivalenza prima/dopo su dbdev** (fatto datato): 88 chiavi di gruppo (dashboard, gruppi, esiti e log dei lotti),
+  zero differenze, e la dashboard coincide con la funzione su tutte le sue righe, prima e dopo. Nessun gruppo di consumi
+  nella popolazione: il ramo cambiato lo provano solo i casi costruiti (16, 17);
+* **regressione prima/dopo su 283 pgTAP** (tutti `dbops/` e `storico/`, e chi nomina `config.sorgenti`,
+  `config.tipi_entita`, il riferimento, la lista delle segnalazioni, la dashboard, il lato in uscita e la sua
+  convergenza, lo scope `PIPELINE_MARKER`, le note delle attività; sullo scratch, in sequenza; prima = l'albero di HEAD
+  senza estratto, dopo = l'albero allineato con l'estratto): 3646 ok prima, 3650 dopo; 37 rossi, gli stessi test numero
+  per numero (scope e permessi, rossi da owner per costruzione). Le differenze sono i quattro casi nuovi e **una trovata
+  dalla regressione**: il test 6 di `vendite/test-attivita-fatturabili.sql` cercava la sorgente per id, e il censimento
+  (sui codici fra apici) non lo vedeva. Allineato, 36/36 su scratch e dbdev;
+* guardrail statici: verdi, tranne `guardrail_pgtap_preambolo`, rosso per i due file del cantiere della coda lavori, come
+  al giro C.3.
+
+⚠️ **L'apply è arrivato durante la prova** (Tid: dbdev 19:06, scratch 19:07, con i due mirror e la convergenza). Il
+«prima» della regressione era già finito (19:03–19:06); il «dopo» è girato in parte sullo scratch già applicato, dove
+l'estratto non cambia niente (`DELETE 0`, la convergenza vuota): stesso stato. Il test 6 di
+`vendite/test-attivita-fatturabili.sql` era ancora quello di HEAD al momento dell'apply: rosso sui due database fino
+all'allineamento di questo giro. Dopo l'apply: `ATTIVITA` non è in `config.sorgenti` ed è entità con `is_sorgente` false,
+il lato in uscita su `attivita_fatturabili` è smontato, la funzione ha lo stesso corpo sui due database.
+
+**Dopo l'apply** (Tid, 2026-11-07): pgTAP verdi come applicazione, col test 6 di `vendite/test-attivita-fatturabili.sql` allineato.
+
+Non coperto, e resta di Tid: la baseline.
+
 #### Lotto D — documenti generati e coda di stampa
 
 * `documenti_generati`:
@@ -2219,8 +2294,17 @@ Dall'apply del giro C.3 si rompono gli smoke della voce BE-C.3-c; le altre voci 
 | BE-C.3-c | la chiave del push di una riga con provenienza deve cominciare con il codice del tipo e l'uid del documento (`E_COMMESSA_ATTIVITA_CHIAVE_NON_DEL_DOCUMENTO`, `TECNICO`, nuovo) | gli smoke: l'helper `crea_riga_commessa` (`backend/scripts/tests/_smoke_commessa.py:38-85`, sorgente di default COMMESSA con l'id della commessa, chiavi `SMOKE:...` scritte a mano) e i suoi chiamanti (`smoke-fattura-scadenze.py`, `smoke-group-attivita-contratto.py`, `smoke-ritorno-lotto-a-draft.py`, `smoke-push-termine-documento-commessa.py`, `smoke-fattura-aggregazione-termini.py`); `smoke-push-onere-ordine.py:162-175` legge `ca.sorgente_uid` aspettando l'uid dell'ordine | l'helper compone la chiave con `script.fn_segment_key(<codice>, <uid del documento>, <riga>)` su un documento vero (come fa ora il builder pgTAP: un consumo, `dbops.fn_pgtap_crea_consumo`, o il documento del test); lo smoke dell'onere legge `ca.sorgente_id` (l'id dell'ordine) |
 | BE-C.3-d | codice nuovo `E_COMMESSA_ATTIVITA_CHIAVE_NON_DEL_DOCUMENTO` nei CSV | `error_policies_generated.py` | rigenerare il file delle policy d'errore |
 | — | `vendite.fn_ritira_commessa_attivita_da_sorgente` e `script.fn_check_sorgente_chiudibile` prendono `(tipo, sorgente_id, sorgente_uid, ...)` con la regola d'incontro, al posto della chiave testuale | nessun chiamante nel BE (grep, 2026-11-07) | nessuna |
-| BE-C.3-e | V-7, quando la correzione sarà applicata: per un gruppo il cui documento non ha numero (i consumi), `vendite.fn_riferimento_gruppo_fatturabile` restituisce il codice della commessa invece della chiave grezza, come la colonna `riferimento` di `vendite.vw_dash_competenza_gruppi` | `fn_list_lotto_segnalazioni` (colonna del riferimento della scheda Critiche del lotto); nessuna chiamata diretta nel backend (grep, 2026-11-07) | nessuna: cambia solo il testo mostrato; se il FE o i test BE confrontano il riferimento con la chiave, si allineano |
+| BE-C.3-e | V-7, dall'apply di `20261108-07` (giro C.4): per un gruppo il cui documento non ha numero (i consumi), `vendite.fn_riferimento_gruppo_fatturabile` restituisce il codice della commessa invece della chiave grezza, come la colonna `riferimento` di `vendite.vw_dash_competenza_gruppi` | `fn_list_lotto_segnalazioni` (colonna del riferimento della scheda Critiche del lotto); nessuna chiamata diretta nel backend (grep, 2026-11-07) | nessuna: cambia solo il testo mostrato; se il FE o i test BE confrontano il riferimento con la chiave, si allineano |
 | — | contesti d'errore: `E_RIGA_COMMESSA_NON_MANUALE` porta `sorgente_id` e `sorgente_uid` (prima solo `sorgente_uid`), il documento lo nomina il BB che risolve; `E_RITIRO_SORGENTE_PARAMETRO_MANCANTE` nomina `p_sorgente_id / p_sorgente_uid` | i messaggi passano da `ErrorManager`; nessun consumatore legge quelle chiavi (grep, 2026-11-07) | nessuna |
+
+### 8.12 Dal lotto C, giro C.4 (2026-11-07)
+
+Nessuna rottura. V-7 è la voce BE-C.3-e del §8.11.
+
+| # | Che cosa cambia | Percorso | Che cosa fa il BE/FE |
+| --- | --- | --- | --- |
+| — | `config.sorgenti` non ha più il tipo `ATTIVITA` (id 1); `config.tipi_entita.ATTIVITA` resta, con `is_sorgente` false: le note delle attività fatturabili non cambiano | `apps/config/sorgenti.py` non ha la costante; `config/tests/db/test_sorgenti_repository.py:71-72` usa `"ATTIVITA"` solo come stringa d'esempio, su un cursore finto (grep, 2026-11-07) | nessuna obbligatoria; l'esempio del test si può passare a un codice che esiste (`COMMESSA`) |
+| — | cancellare un'attività fatturabile non passa più dal lato «in uscita» (`E_SORG_ORIGINE_REFERENZIATA`): niente nasce da un'attività | nessun percorso BE lo aspettava | nessuna |
 
 ---
 
