@@ -1,0 +1,89 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.vw_lotti_chiusi_con_errori_da_guardare -> vw_lotti_congelati_con_errori_da_guardare
+#   Brief: brief-db-revisione-dbops, giro 6 (Q14 ⑦).
+#
+# Il presidio a catalogo della contraddizione definita in
+# vendite.vw_lotti_congelati_con_gruppi_in_errore (20261108-10, che ha tolto la
+# vista col nome vecchio). Resta un LETTORE: aggiunge solo l'emittente, per chi
+# arriva dal digest; lo stato fiscale ora lo porta la vista di vendite, perche'
+# e' il suo criterio.
+#
+# ⚠️ In dbops e non in vendite, come prima: iscrivere a catalogo una vista di
+#   vendite porterebbe l'intero schema nel perimetro di test-catalogo-presidi-v1.
+# ⚠️ La riga del catalogo cambia nome nei CSV di 80_data (presidi.csv,
+#   presidi_testi.csv); la riga vecchia la toglie il 20261108-13.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261108-11-create-vw-lotti-congelati-con-errori-da-guardare-mctit.yaml
+
+  - changeSet:
+      id: 20261108-11-create-vw-lotti-congelati-con-errori-da-guardare
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Presidio dbops.vw_lotti_congelati_con_errori_da_guardare: il lettore a catalogo
+        di vendite.vw_lotti_congelati_con_gruppi_in_errore, col nome nuovo (era
+        vw_lotti_chiusi_con_errori_da_guardare). Giro 6 di brief-db-revisione-dbops
+        (Q14 ⑦).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >-
+              SELECT count(*) FROM pg_class
+               WHERE oid = to_regclass('vendite.vw_lotti_congelati_con_gruppi_in_errore')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE VIEW dbops.vw_lotti_congelati_con_errori_da_guardare
+              WITH (security_invoker = true) AS
+              SELECT c.lotto_id,
+                     c.lotto_codice,
+                     c.competenza_mese,
+                     c.stato_lotto,
+                     c.stato_codice_interno,
+                     c.emittente_soggetto_ruolo_id,
+                     ef.codice AS emittente_codice,
+                     c.gruppi_in_errore,
+                     c.primo_errore,
+                     c.ultimo_errore,
+                     c.codici_errore
+                FROM vendite.vw_lotti_congelati_con_gruppi_in_errore c
+                LEFT JOIN anagrafiche.emittenti_fiscali ef
+                       ON ef.soggetto_ruolo_id = c.emittente_soggetto_ruolo_id;
+
+              COMMENT ON VIEW dbops.vw_lotti_congelati_con_errori_da_guardare IS
+                  'PRESIDIO: i lotti CONGELATI (stato fiscale non piu'' pre-fiscale, o ignoto) che '
+                  'contengono documenti in ERRORE, qualunque sia stato_lotto. DEVE restare VUOTA. '
+                  '⭐ E'' un LETTORE: la contraddizione la definisce '
+                  'vendite.vw_lotti_congelati_con_gruppi_in_errore, qui si aggiunge solo '
+                  'l''emittente, per chi arriva dal digest. ⭐ Si spartisce l''asse fiscale con '
+                  'dbops.vw_lotti_fermi_da_guardare: pre-fiscale -> quel presidio, congelato -> '
+                  'questo, senza buchi ne'' doppioni. Un lotto ANNULLATO non compare perche'' '
+                  'l''annullo gli chiude gli esiti, non perche'' qualcuno lo filtri. ⚠️ In dbops e '
+                  'non in vendite: iscrivere a catalogo una vista di vendite porterebbe l''intero '
+                  'schema nel perimetro di test-catalogo-presidi-v1 (test 2). ⛔ Perimetro DEFINER '
+                  'a catalogo: le tabelle sotto hanno la RLS e le viste sono security_invoker — '
+                  'da una sessione senza GUC risponde zero PER CECITA'', il digest conta da '
+                  'proprietario con fn_conta_presidio, una persona legge col proprio perimetro. '
+                  'Fino al 2026-11-07 si chiamava vw_lotti_chiusi_con_errori_da_guardare '
+                  '(brief-db-annullamento-chiude-la-vita §9.6). Brief: brief-db-revisione-dbops, '
+                  'giro 6 (Q14 ⑦).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS dbops.vw_lotti_congelati_con_errori_da_guardare;

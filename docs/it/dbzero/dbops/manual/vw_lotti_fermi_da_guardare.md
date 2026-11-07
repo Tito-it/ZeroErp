@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Vista `dbops.vw_lotti_fermi_da_guardare`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 7 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -13,7 +13,7 @@
 >
 > * [vendite.vw_lotti_segnalazioni_summary](/dbzero/vendite/views/vw_lotti_segnalazioni_summary) — la sede: da lì vengono «fermo», il motivo e l'orologio
 > * [vendite.vw_lotti_fase](/dbzero/vendite/views/vw_lotti_fase) — l'asse pre-fiscale
-> * [dbops.vw_lotti_chiusi_con_errori_da_guardare](/dbzero/dbops/views/vw_lotti_chiusi_con_errori_da_guardare) — l'altro presidio dei lotti: chiuso e in errore
+> * [dbops.vw_lotti_congelati_con_errori_da_guardare](/dbzero/dbops/views/vw_lotti_congelati_con_errori_da_guardare) — l'altro presidio dei lotti: congelato e in errore
 > * [dbops.vw_coda_lavori_da_guardare](/dbzero/dbops/views/vw_coda_lavori_da_guardare) — la stessa soglia di un'ora, per la stessa ragione
 >
 > Approfondimento funzioni:
@@ -65,17 +65,18 @@ banner diceva «fermo», al primo addendo aggiunto in un posto solo. La regola s
 ### ⭐ Solo i lotti pre-fiscali
 
 Un lotto il cui stato fiscale è congelato non è «fermo» in questo senso: lì non si può più
-rilanciare. La parte chiusa del ciclo la guarda l'altro presidio dei lotti,
-`dbops.vw_lotti_chiusi_con_errori_da_guardare`: qui «si può ancora agire e nessuno agisce», là «è
-chiuso e non doveva».
+rilanciare. La parte congelata del ciclo la guarda l'altro presidio dei lotti,
+`dbops.vw_lotti_congelati_con_errori_da_guardare`: qui «si può ancora agire e nessuno agisce», là «è
+congelato e non doveva».
 
-⚠️ I due presidi però non leggono lo stesso asse: questo guarda la fase fiscale del lotto, l'altro
-lo stato di esecuzione `COMPLETATO`. Non si spartiscono tutti i lotti: un lotto congelato che non
-è `COMPLETATO` non è guardato da nessuno dei due.
+I due presidi leggono **lo stesso asse**, lo stato fiscale, e si spartiscono tutti i lotti: un
+lotto pre-fiscale con un documento in errore è qui, qualunque sia lo stato di esecuzione del giro
+(anche un giro che risulta `COMPLETATO`); uno congelato è nell'altro. Nessun lotto è guardato da
+tutti e due, nessuno da nessuno.
 
 ⚠️ Il pre-fiscale è **fail-closed sull'ignoto**: un lotto senza uno stato fiscale risolvibile non
-compare qui. Non è un buco: sull'ignoto la prudenza dice «non si tocca», e un presidio che
-invitasse a rilanciarlo direbbe la cosa sbagliata.
+compare qui, perché un presidio che invitasse a rilanciarlo direbbe la cosa sbagliata. Non resta
+scoperto: con un documento in errore lo vede l'altro presidio.
 
 ---
 
@@ -108,6 +109,9 @@ degli schemi che vi compaiono, e `vendite` porterebbe dentro tutte le sue viste.
 * `db/pgtap/vendite/test-lotti-fermi-verdetto-a-db-v1.sql`, test 15-19 — la soglia nei due versi,
   la spartizione sul pre-fiscale, il `DEFINER` onesto (senza identità la vista è vuota **e** il
   contatore conta la riga costruita), la riga a catalogo.
+* `db/pgtap/vendite/test-lotti-fermi-verdetto-a-db-v1.sql`, test 22-24 — l'asse condiviso con
+  l'altro presidio: un lotto congelato col giro in esecuzione è là, un lotto completato in bozza è
+  qui, lo stato fiscale ignoto è là.
 * `db/pgtap/dbops/test-catalogo-presidi-v1.sql` — la riga a catalogo combacia con la vista.
 
 ---
@@ -118,6 +122,9 @@ degli schemi che vi compaiono, e `vendite` porterebbe dentro tutte le sue viste.
   (`brief-db-osservabilita-lotto-fermo-r6-indici` §2, `analisi-osservabilita-log` passo C), lettore
   della sede che Tid aveva deciso il 18-09: la regola va a DB. Su dev nasce piena, con giri di prova
   lasciati a metà, e il pregresso non si esclude per farla partire verde.
+* 2026-11-07 — l'altro presidio dei lotti passa sullo stesso asse fiscale e diventa
+  `vw_lotti_congelati_con_errori_da_guardare`: finisce il buco (congelato non `COMPLETATO`) e il
+  doppione (`COMPLETATO` in bozza). Questa vista non cambia (`brief-db-revisione-dbops`, giro 6).
 
 ---
 

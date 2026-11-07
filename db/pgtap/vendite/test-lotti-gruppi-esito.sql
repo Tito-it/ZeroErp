@@ -375,8 +375,11 @@ BEGIN
     --   per la strada del runner (IN_ESECUZIONE -> COMPLETATO, giudicata dal
     --   guard della matrice config.transizioni_stati_lotto_job). Prima: INSERT
     --   a mano gia' COMPLETATO, coi riferimenti pescati.
+    -- rev 2026-11-07 (brief-db-revisione-dbops giro 6, Q14 ⑦): il lotto nasce
+    --   DEFINITIVA, cioe' congelato: il presidio guarda lo stato FISCALE, non
+    --   stato_lotto, e un lotto in bozza con un errore e' dei lotti fermi.
     SELECT l.lotto_id INTO v_lotto_id
-      FROM dbops.fn_pgtap_crea_lotto('lotti gruppi esito chiuso', 'DRAFT',
+      FROM dbops.fn_pgtap_crea_lotto('lotti gruppi esito chiuso', 'DEFINITIVA',
                                      (SELECT t.billing_account_id FROM tmp_esito t)) l;
 
     UPDATE vendite.fatturazione_lotti SET stato_lotto = 'IN_ESECUZIONE' WHERE id = v_lotto_id;
@@ -395,9 +398,9 @@ $lotto_sano$;
 -- ⛔ Il controllo negativo: senza, il test 12 passerebbe anche su una vista che
 --   nomina QUALUNQUE lotto chiuso — cioe' su un presidio che grida sempre.
 SELECT is_empty(
-    format($$SELECT lotto_codice FROM vendite.vw_lotti_chiusi_con_gruppi_in_errore
+    format($$SELECT lotto_codice FROM vendite.vw_lotti_congelati_con_gruppi_in_errore
               WHERE lotto_id = %s$$, current_setting('pgtap.lotto_chiuso')),
-    '11. un lotto COMPLETATO con i suoi documenti a posto NON viene nominato'
+    '11. un lotto congelato e COMPLETATO con i suoi documenti a posto NON viene nominato'
 );
 
 -- ============================================================
@@ -418,10 +421,10 @@ $contraddizione$;
 
 SELECT is(
     (SELECT gruppi_in_errore::int
-       FROM vendite.vw_lotti_chiusi_con_gruppi_in_errore
+       FROM vendite.vw_lotti_congelati_con_gruppi_in_errore
       WHERE lotto_id = current_setting('pgtap.lotto_chiuso')::bigint),
     1,
-    '12. un lotto COMPLETATO con un documento in ERRORE viene nominato'
+    '12. un lotto congelato e COMPLETATO con un documento in ERRORE viene nominato'
 );
 
 -- ============================================================

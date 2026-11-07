@@ -1,6 +1,6 @@
 # Brief DB — Revisione dello schema `dbops`: i difetti di codice e i metadati
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-07 (giro 5 chiuso: blocco 5b applicato e committato)
+## ⏭️ Chi riparte — aggiornato al 2026-11-07 (giro 6 chiuso)
 
 **Giro 1 chiuso e committato** (blocco 1d in `8c75d5682a`). **Decisioni di §4 prese** (Tid, 2026-11-05/06):
 tutte, Q1-Q15 (la Q7 non è mai esistita), con la Q14 punto per punto. **Ordine dei giri deciso** (2026-11-06):
@@ -25,8 +25,10 @@ segnalazione S-BE-1 (§5: la frase di due codici nomina le tabelle).
 `dbops.coda_lavori` è sotto RLS. BE10 (a), (b), (c) e BE6 del giro 5 ✅ e **mergiati** (team BE, PR #40, §5); gli utenti
 tecnici di `draina_coda_lavori` ci sono tutti, EMITEST compresa. Scelte 1 e 3 di §18.4 ok (Tid). S-BE-2 fatta, con la
 regola canale/`run_as` ristretta ai `CODA` di `DOMINIO` (§18.9).
-**Riparte: team BE** per il test di S-BE-2 e BE9 (§18.9.2 punto 4); **Tid** per il via al giro 6 (§8). Resta al team
-DB S-BE-1 (§5).
+**Giro 6 chiuso** (2026-11-07, §19): Q14 ④ e ⑦, le viste dei lotti rinominate in «congelati» (decisione di Tid),
+`20261108-10` … `-13`; applicato da Tid su dbdev e scratch, pgTAP verdi, committato (§19.5).
+**Riparte: Tid** per il via al giro 7 (§8); **team BE** per il test di S-BE-2 e BE9 (§18.9.2 punto 4).
+Resta al team DB S-BE-1 (§5).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -75,7 +77,10 @@ DB S-BE-1 (§5).
 | 9-tricies-semel | ✅ sessione DB | Blocco 5b: l'`ENABLE` della RLS, il debito tolto, la decisione dell'indice della FK, S-BE-2, la guida; scritto e provato sullo scratch (2026-11-07) | §18.9 | 9-tricies |
 | 9-tricies-bis | ✅ Tid | Apply del 5b (`20261107-57`, `-58`, `20261108-08`, quattro CSV) su dbdev e scratch; pgTAP di §18.9.2 verdi (2026-11-07); commit dalla sessione DB. Il giro 5 è chiuso | §18.9.2 | 9-tricies-semel |
 | 9-tricies-ter | **team BE** ⏭️ | Il test di S-BE-2 a SISTEMA (`test_avvio_manuale_catalogo`), BE9 (il filtro di perimetro si ritira, lo fa la RLS) | §18.9.2, §5 | 9-tricies-bis |
-| 9-tricies-quater | **Tid** ⏭️ | Il via al giro 6 | §8 | 9-tricies-bis |
+| 9-tricies-quater | ✅ Tid | Il via al giro 6, coi numeri dal `20261108-10`; le viste dei lotti rinominate in «congelati» (2026-11-07) | §19 | 9-tricies-bis |
+| 9-tricies-quinquies | ✅ sessione DB | Giro 6 (Q14 ④, ⑦): scritto e provato sullo scratch | §19 | 9-tricies-quater |
+| 9-tricies-sexies | ✅ Tid | Apply del giro 6 (`20261108-10` … `-13`, `presidi.csv`, `presidi_testi.csv`) su dbdev e scratch; pgTAP di §19.3 verdi (2026-11-07); commit dalla sessione DB. Il giro 6 è chiuso | §19.5 | 9-tricies-quinquies |
+| 9-tricies-septies | **Tid** ⏭️ | Il via al giro 7 | §8 | 9-tricies-sexies |
 | 9-nonies | ✅ Tid | Q16: la via fusa resta, marcata come soppressa (b, 2026-11-07) | §4 | 9-septies |
 | 9-decies | ✅ sessione DB | Giro 2, blocco 2b (Q16): la via soppressa; lettori censiti, scritto e provato sullo scratch | §14.7 | 9-nonies |
 | 10 | sessione DB | Giri 5-14 nell'ordine di §8, uno alla volta, ognuno col suo via e il suo apply | §8 | 9-vicies-septies |
@@ -83,14 +88,13 @@ DB S-BE-1 (§5).
 | 11-bis | sessione DB | S-BE-1: la frase di `E_ATTIVO_PADRE_NON_ATTIVO` ed `E_PADRE_INESISTENTE` nomina `schema.tabella` all'operatore. ✅ Modello deciso da Tid (2026-11-07): frase senza tabelle, il padre come bersaglio `config.tipi_entita` nel `DATATYPE`; da dove il trigger sa il tipo resta al DB. Blocco a parte, dopo il 5b | §5 | — |
 | 12 | sessione DB | Pagine `manual/` e guide riallineate a ogni difetto chiuso, insieme al COMMENT; brief in `work-done/` | §1, §8 | 10 |
 
-**Decisioni aperte di Tid:** la decisione dell'indice della FK della coda (false, §18.9) è da guardare; il debito
-della scelta 3 di §18.4 (il presidio non riconosce la policy come difesa di scrittura) si decide al giro 9.
-**Da committare:** niente di questo cantiere.
+**Decisioni aperte di Tid:** il debito della scelta 3 di §18.4 (il presidio non riconosce la policy come difesa di
+scrittura) si decide al giro 9. L'indice della FK della coda: **false confermato** (Tid, 2026-11-07, §18.9).
 **Da verificare:** se lo scratch è stato ricostruito con `ci-local.sh --fresh` dopo il `20261103-29` (§13).
 ⚠️ **Numerazione:** questo cantiere ha preso `20261107-01` … `-27`; il prossimo numero libero del giorno è il
 `-28`; il giro 4 ha preso `-28` … `-30`, `-33`, `-34`, il blocco 4b `-31`, `-32`, `-35` … `-40`; il prossimo libero è il
 `-41`. Il giro 5 ha preso `-51` … `-58` (il 5b `-57`, `-58`) e `20261108-08` (dato da Tid; `-41` … `-50` e `-59` … `-69`
-sono dell'altro cantiere). Gli id dei messaggi presi qui: 1442-1450, 1453-1454 e 1455-1457 (1451 e 1452 li ha presi l'altro
+sono dell'altro cantiere). Il giro 6 ha preso `20261108-10` … `-13` (dato da Tid). Gli id dei messaggi presi qui: 1442-1450, 1453-1454 e 1455-1457 (1451 e 1452 li ha presi l'altro
 cantiere, giro T.4); il prossimo libero è 1458. L'altro cantiere aperto
 (`brief-db-sorgente-documento-e-riga`) numera oggi nel blocco `20261106-74` … `-87`.
 
@@ -717,8 +721,8 @@ entra nel giro che apre lo stesso oggetto.
 | 2 ✅ | A | **Le fusioni e la pipeline.** D3, D4, D45 (Q1); D60 con R6 e R7 (Q9: il ramo dblink di `fn_audit_log_once` esce, nasce il parametro della durata); D44 con Q14 ① | Le porte che falliscono appena le si usa vengono prima di tutto. D60 entra qui (prima era nel giro 7) perché le fusioni devono scrivere la durata nella colonna, e il parametro per farlo lo porta D60. ① è la stessa funzione di D44 |
 | 3 ✅ | A | **I guard ATTIVO.** D46, D47, D49, D5, D51 (Q8, con il censimento delle fixture che chiudono i differiti), D18 — applicato e verde (§15) | Sono le stesse due o tre funzioni trigger (`trgfn_child_requires_active_parent`, `…_non_obsolete_parent`, `trgfn_prevent_deactivate_if_children`): prima erano divise fra i giri 2, 4, 6 e 7. Codice sbagliato e lettura sotto la RLS sbagliata sono errori che l'operatore vede. Alla fine del giro, una sola rigenerazione BE (BE6) per i codici dei giri 2 e 3; BE3 |
 | 4 ✅ | A | **Riconoscimento e strumenti.** D6, D53 (Q9) — applicato e verde (§16). D21 (+ M18) nel blocco 4b: registro dei modi e risolutori generati, applicato e verde (§17) | D6 dà il riconoscimento del trigger dalla funzione (`tgfoid`): il giro 10 lo riusa, quindi viene prima |
-| 5 | A | **La coda lavori sotto RLS.** Q14 ③, D9 — blocco 5a scritto (§18): azienda del lavoro, policy inerte, porta DEFINER, D9; il 5b (l'`ENABLE`) dopo BE10 | Separare le aziende nel DB è un contratto deciso (Q14 ③). D9 (`fn_accoda_lavoro`) è la stessa tabella. Poi BE9 e la revisione del `perimetro` di `vw_coda_lavori_da_guardare` |
-| 6 | A | **Presidi che guardano il campo sbagliato.** Q14 ④, ⑦ | Un presidio che non vede un caso che il modello ammette (il buco dei lotti congelati) dice il falso. Tutti e due riaprono il catalogo `presidi.csv` / `presidi_testi.csv`. ⑧ va nell'altro brief (§8.1) |
+| 5 ✅ | A | **La coda lavori sotto RLS.** Q14 ③, D9 — blocco 5a (§18): azienda del lavoro, policy inerte, porta DEFINER, D9; blocco 5b (§18.9): l'`ENABLE`, S-BE-2. Applicato e verde | Separare le aziende nel DB è un contratto deciso (Q14 ③). D9 (`fn_accoda_lavoro`) è la stessa tabella. Poi BE9 e la revisione del `perimetro` di `vw_coda_lavori_da_guardare` |
+| 6 ✅ | A | **Presidi che guardano il campo sbagliato.** Q14 ④, ⑦ — chiuso (§19): applicato, pgTAP verdi, committato | Un presidio che non vede un caso che il modello ammette (il buco dei lotti congelati) dice il falso. Tutti e due riaprono il catalogo `presidi.csv` / `presidi_testi.csv`. ⑧ va nell'altro brief (§8.1) |
 | 7 | A | **Promesse senza esecutore, ricerca dei lookup.** D35, D36, D37 (Q4), D57 | Tutti riaprono l'ambito delle automazioni o un lettore che non vede tutto. BE4. D25 è passato al giro 10a (stessa funzione di D32) |
 | 8 | A | **Le fixture.** D63, D64, D66 (Q11), D67, D68 (Q12), D70; + D69, D71, D73 (B) e D74 (C) | Fixture che producono una forma che l'applicazione non produce. Le B e la C usano gli stessi builder: un giro solo |
 | 9 | B | **Il processo vivo, e correzioni locali.** D11 (Q2): il BB «processo vivo» con sveglia, accensione, guard, panorama, roster e le sette viste, fra cui Q14 ⑤; D38, D39 (Q5); D8, D12, D22, D24, D52; Q14 ⑨ | Il BB deve nascere **prima** del giro 10, che lo usa (⑬). D38 e D39 sono lo stesso motore. Gli altri sono correzioni locali, ognuna su un oggetto suo |
@@ -2140,7 +2144,7 @@ EMITEST servita (Tid, 2026-11-07; dbdev: `vw_emittenti_non_serviti` vuota per `d
 | changeSet / file | Oggetto | Che cosa |
 | --- | --- | --- |
 | `20_code/dbops/20261107-57` | `dbops.coda_lavori` | `ENABLE ROW LEVEL SECURITY`, senza `FORCE`. preCondition: la policy c'è ed è `FOR ALL`, la porta è DEFINER, nessuna postura sbagliata (tabella dell'app, `BYPASSRLS` all'app, `FORCE`: 0). Corregge il COMMENT di `coda_lavori_tipi.run_as_default` («worker BYPASSRLS», falso) |
-| `80_data/changelog/20261107-58` + `fk_index_policy_coda_lavori_emittente.csv` | `dbops.fk_index_policy` | `fk_coda_lavori_emittente_fiscale` a **false**, dichiarata (§10.9): nessuna query dell'applicazione entra dall'azienda, la policy la passa a una funzione; come `config.email_log` |
+| `80_data/changelog/20261107-58` + `fk_index_policy_coda_lavori_emittente.csv` | `dbops.fk_index_policy` | `fk_coda_lavori_emittente_fiscale` a **false**, dichiarata (§10.9): nessuna query dell'applicazione entra dall'azienda, la policy la passa a una funzione; come `config.email_log`. **Confermata da Tid** (2026-11-07): il costo è la lettura intera della coda quando un'azienda si spegne o si cancella, gesti di amministrazione; si passa a true con una riga del CSV se una query entrerà dall'azienda |
 | `80_data/changelog/20261108-08` + `rls_perimetro_debito.csv` | `dbops.rls_perimetro_debito` | la riga 92 (`POLICY_INERTE`) esce dal CSV e, con una `DELETE` per id e coordinate, da dove c'è |
 | `80_data/sql/dbops/coda_lavori_tipi.csv` | `ESEGUI_PROCESSO` | **S-BE-2**: `run_as_default` SISTEMA, descrizione con la ragione (chi preme è l'attore, `richiesto_da`) |
 | `80_data/sql/dbops/processi.csv` | `avvio_manuale` | la descrizione diceva «CODA perché l'identità è la sua»: il lavoro è SISTEMA, chi preme è l'attore |
@@ -2221,3 +2225,84 @@ Da owner, l'SQL estratto dagli YAML nell'ordine del migrate (`-57`, `-58`, `2026
 **Esito (Tid, 2026-11-07):** apply su dbdev e scratch (`databasechangelog`: i tre changeSet `EXECUTED`; la coda ha
 `relrowsecurity = true`, `relforcerowsecurity = false`; la riga 92 del debito non c'è più; `ESEGUI_PROCESSO` è SISTEMA),
 pgTAP verdi. Blocco 5b committato dalla sessione DB. **Il giro 5 è chiuso.**
+
+## 19. Giro 6 — i presidi che guardano il campo sbagliato (Q14 ④, ⑦), 2026-11-07
+
+**Via di Tid (2026-11-07)** («intanto procedi», dopo la conferma dell'indice false), coi numeri dal `20261108-10` (il `-09`
+è dell'altro cantiere). **Decisione di Tid nel giro:** le due viste dei lotti si rinominano in «congelati», perché il
+criterio non è più `stato_lotto = COMPLETATO`. Nessun lettore in backend o frontend (censito).
+
+### 19.1 Che cosa è stato scritto
+
+| changeSet / file | Oggetto | Che cosa |
+| --- | --- | --- |
+| `20_code/vendite/20261108-10` | `vendite.vw_lotti_congelati_con_gruppi_in_errore` | DROP del presidio di dbops e di `vw_lotti_chiusi_con_gruppi_in_errore`, CREATE col nome nuovo: `stato_lotto = 'COMPLETATO'` lascia il posto a `NOT pre_fiscale` di `vw_lotti_fase` (lo stato ignoto cade qui); nasce la colonna `stato_codice_interno`; COMMENT di vista e di tre colonne |
+| `20_code/dbops/20261108-11` | `dbops.vw_lotti_congelati_con_errori_da_guardare` | il lettore a catalogo col nome nuovo; aggiunge solo l'emittente |
+| `20_code/vendite/20261108-12` | tre COMMENT | il guard del COMPLETATO, `vw_lotti_segnalazioni_summary` e `vw_lotti_fermi_da_guardare`: nominavano la vista vecchia o descrivevano la spartizione vecchia («sull'ignoto il lotto non compare» ora è coperto dai congelati). Nessun corpo cambia |
+| `80_data/changelog/20261108-13` | catalogo dei presidi | DELETE della riga col nome vecchio in `presidi_cause`, `presidi_testi`, `presidi` (il loader non cancella; precedente: `20261104-17`) |
+| `presidi.csv`, `presidi_testi.csv` | tre righe | ⑦: la riga dei lotti col nome e la nota nuovi, la nota dei lotti fermi riallineata. ④: `vw_codici_errore_forme_condizione` passa a `CANCELLO`, `presidiato_da` = il passo B-7 di `ci-validate` (via `scripts/sql/codici_errore_famiglie_snapshot.sql`), nota e testi riscritti |
+
+* Il commento nel **corpo** di `vendite.fn_annulla_lotto_da_draft` nomina ancora il nome vecchio: è un fatto datato
+  (2026-09-07, vero allora), e non si riscrive la funzione per un commento storico. Lo stesso per i commenti storici di
+  `test-annulla-lotto-non-riscrive-stato-v1` e `test-lotti-attivita-stato-esecuzione-v2`.
+* ④: il COMMENT della vista dice «una MISURA, non un cancello» e resta: parla del conteggio, che non è un verdetto; il
+  cancello è il B-7, che la legge. Lo dicono la nota del presidio e la pagina `manual/`.
+* I GRANT delle due viste nuove li danno i privilegi di default degli schemi (`zeroerp_app`): nessun GRANT nei changeSet.
+
+pgTAP:
+
+* `vendite/test-lotti-fermi-verdetto-a-db-v1` (21 → 24): i tre casi costruiti della ⑦ — 22 congelato col job
+  IN_ESECUZIONE e un esito in ERRORE (il buco: solo nei congelati), 23 COMPLETATO in bozza con un esito in ERRORE da due
+  ore (il doppione: solo nei fermi), 24 stato fiscale ignoto (nei congelati, con lo stato NULL).
+* `vendite/test-annullamento-chiude-la-vita-v1` (17 → 18): D nasce DEFINITIVA (la porta dell'esito si vede su un lotto
+  congelato); B, annullato dalla bozza, prima è fermo (6), dopo è ANNULLATA e assente (10); il 18 nuovo gli riapre un
+  documento in errore e lo fa comparire: la vista non filtra gli annullati.
+* `vendite/test-lotti-gruppi-esito` (13): il lotto dei test 11-12 nasce DEFINITIVA.
+
+### 19.2 Le prove (scratch `zeroerp_ruoli`, prima dell'apply)
+
+Da owner, l'SQL estratto dagli YAML nell'ordine del migrate (`-10`, `-11`, `-12`, i CSV simulati, `-13`), `BEGIN …
+ROLLBACK`. Le due viste nuove sono vuote sullo scratch. «Senza → con»:
+
+| File | Senza | Con |
+| --- | --- | --- |
+| `vendite/test-lotti-fermi-verdetto-a-db-v1` (24) | 20/24 | 23/24 — il 18 (cecità senza veste) è rosso da owner per costruzione, come senza |
+| `vendite/test-annullamento-chiude-la-vita-v1` (18) | 5/18 | 17/18 — il 16 è il gemello del 18 di sopra: da owner la vista vede la riga (1, non 0) |
+| `vendite/test-lotti-gruppi-esito` (13) | 10/13 | 13/13 |
+| `test-annulla-lotto-non-riscrive-stato-v1`, `test-lotti-attivita-stato-esecuzione-v2`, `test-catalogo-presidi-v1`, `test-presidi-testi-v1`, `test-conta-presidio-per-variante-v1`, `test-presidi-debito-dichiarato`, `test-presidio-processi-testo-per-causa-v1`, `rls/test-rls-viste-security-invoker`, `test-vw-codici-errore-valore-atteso`, `test-vw-codici-errore-motivo-nominato` | verdi | verdi, identici |
+
+Guardrail `run_on_change`, `precondition_seed`, `ddl_su_trigger_automazione`, `grant_ruolo_batch` verdi; pre-commit sui
+file verde.
+
+### 19.3 Per Tid
+
+1. Apply su dbdev e scratch: `20261108-10`, `-11`, `-12`, `-13` e i CSV `presidi.csv`, `presidi_testi.csv`.
+2. pgTAP **come app** (i tre file di `vendite` girano come app; da owner il test della cecità è rosso per
+   costruzione): `vendite/test-lotti-fermi-verdetto-a-db-v1`, `vendite/test-annullamento-chiude-la-vita-v1`,
+   `vendite/test-lotti-gruppi-esito`, `vendite/test-annulla-lotto-non-riscrive-stato-v1`; e
+   `dbops/test-catalogo-presidi-v1`, `dbops/test-presidi-testi-v1`, `dbops/test-conta-presidio-per-variante-v1`.
+3. Dopo l'apply, un primo sguardo ai due presidi sul dbdev: i congelati con un esito in errore che oggi nessuno vedeva
+   possono comparire (è il buco che si chiude, non un rosso del giro).
+4. ⚠️ Nel working tree ci sono modifiche dell'altro cantiere su due pgTAP del giro 5 (`test-fn-accoda-lavoro-porta-v1`,
+   `test-rls-coda-lavori-perimetro-v1`: `pg_temp.come` passa da `fn_pgtap_set_contesto_operatore`) e il `20261108-09`.
+   Non sono di questo giro e non vanno nel suo commit. `test-coda-lavori` (giro 5b) imposta ancora
+   `app.current_user_id` a mano in `pg_temp.veste`: se l'altro cantiere uniforma i builder, è un punto da includere.
+
+### 19.4 Doc
+
+* `dbops/manual/vw_lotti_chiusi_con_errori_da_guardare.md` → `vw_lotti_congelati_con_errori_da_guardare.md` (rinominata
+  e riscritta: l'asse, la tabella dei due presidi, le porte, i test, la storia).
+* `dbops/manual/vw_lotti_fermi_da_guardare.md` (il buco e il doppione documentati come fatti di prima, l'asse comune),
+  `vendite/manual/vw_lotti_segnalazioni_summary.md`, `dbops/manual/vw_codici_errore_forme_condizione.md` (④), la guida
+  `processi-automatici-classe-e-identita.md`.
+* Gli indici degli schemi li rigenera `gen_db_docs.py` alla build della doc; la pagina auto-generata della vista di
+  `vendite` nasce lì. Non c'è una pagina `manual/` di `vendite` per la vista: non c'era nemmeno prima.
+* Nessuna ricaduta BE: `api_lotto_segnalazioni_summary` non descrive la spartizione, e nessun codice legge le due viste.
+
+### 19.5 Chiusura (2026-11-07)
+
+Tid ha applicato il giro 6 su dbdev e scratch (`20261108-10` … `-13`, `presidi.csv`, `presidi_testi.csv`) e lanciato
+come app i pgTAP di §19.3: verdi. Le pagine auto-generate (le due viste nuove, le due ritirate, gli indici degli schemi
+`dbops` e `vendite`, i COMMENT riscritti dal `-12`) le ha rigenerate Tid ed entrano nel commit del giro. Restano fuori
+le modifiche dell'altro cantiere (§19.3 punto 4: il `20261108-09`, `test-builder-pgtap-vincoli-immediate-v1`, i due
+pgTAP del giro 5 e le pagine auto-generate delle quattro fixture `fn_pgtap_*`). **Il giro 6 è chiuso.**
