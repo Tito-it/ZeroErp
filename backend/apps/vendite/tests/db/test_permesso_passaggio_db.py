@@ -59,10 +59,8 @@ class PermessoPassaggioDbTests(unittest.TestCase):
             # quelli di un altro stato.
             self.assertEqual(ddt["stato"], "CONSEGNATO")
             self.ddt_id = ddt["id"]
-            cur.execute("SELECT id FROM config.sorgenti WHERE codice_interno = 'DDT_VENDITA'")
-            sorgente_tipo_id = cur.fetchone()[0]
         self.reso_id = int(ResiRepository().create_reso(
-            sorgente_tipo_id=sorgente_tipo_id, sorgente_uid=ddt["uid"], data=None,
+            ddt_id=int(ddt["id"]), data=None,
             meta={"test_scope": "permesso passaggio db"},
         )["id"])
 

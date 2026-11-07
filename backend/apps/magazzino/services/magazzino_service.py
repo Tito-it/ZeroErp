@@ -205,8 +205,8 @@ def _riga_o_404(
 #        non e' attivo o non e' nel perimetro, l'operatore ha scelto male.
 # ⚠️ Non e' una regola del DB riscritta: e' la TRADUZIONE di un dato di form
 #    prima che il DB risponda con la FK (400 senza contesto) o col require
-#    del padre attivo (`E_ATTIVO_REQUIRE`, TECNICO, cioe' un 500 per un
-#    magazzino spento scelto da una tendina invecchiata).
+#    del padre attivo (`E_ATTIVO_PADRE_NON_ATTIVO`, 409, con nella frase i
+#    nomi delle tabelle, non una frase per chi ha scelto da una tendina).
 def _magazzino_o_400(repository: MagazzinoRepository, magazzino_id: int) -> dict[str, Any]:
     magazzino = repository.get_magazzino(magazzino_id)
     ErrorManager.require(

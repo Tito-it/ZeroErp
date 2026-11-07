@@ -46,7 +46,8 @@
 | 7-vicies | ✅ Tid | apply del giro T.5 (`20261106-92` … `-99`, i due CSV dei codici), pgTAP verdi come applicazione (2026-11-07). ⚠️ Dall'apply i due percorsi BE del §8.8 (BE-T.5-a, BE-T.5-b) danno errore, come accettato dal piano | §7.2 «Il giro T.5», §8.8 | — |
 | 7-vicies-bis | Tid | via al prossimo lotto (C, D, P, M o Z) | §7.2 | — |
 | 8 | DB | lotti C, D, P, M, Z, ognuno col suo via; il §8 si riempie strada facendo. ⛔ Il lotto M porta anche D58, D29 e ⑧ di `brief-db-revisione-dbops`: prima del via si riverifica la loro analisi (promemoria in §7.2 «Lotto M») | §7.2, §8 | 7-vicies-bis |
-| 9 | BE/FE | il §8 intero, una volta sola | §8 | 8 |
+| 9-bis | ✅ BE | il §8 fino al lotto T: codici, reso, ordine dal preventivo, contratto dall'offerta (2026-11-07, da committare su `dev/backend-tid`). I due percorsi rotti dal giro T.5 sono ripristinati | §8 «Stato al 2026-11-07, dopo il giro BE» | — |
+| 9 | BE/FE | il §8 dei lotti che restano, una volta sola | §8 | 8 |
 | 10 | DB | la documentazione del §7.3 (lotto DOC), poi archiviazione | §7.3 | 9 |
 
 **Decisioni aperte di Tid:** nessuna (il contratto precedente: deciso il 2026-11-07, §7.2 «Il giro T.4»).
@@ -1606,7 +1607,7 @@ Si allineano nel lotto DOC con un rimando a questo brief, oppure si chiudono se 
 
 | # | Che cosa cambia | Percorso | Che cosa fa il BE/FE |
 | --- | --- | --- | --- |
-| BE-0.1-a | cinque codici nuovi, classe `TECNICO`: `E_SORG_CHIAVE_NON_CONFORME`, `E_SORG_RIGA_NON_DEL_DOCUMENTO`, `E_SORG_DETTAGLIO_NON_DELLA_RIGA`, `E_SORG_LIVELLO_NON_PREVISTO`, `E_SORG_LIVELLO_MANCANTE` | `config.codici_errore` → `config.vw_codici_errore_identita` → il file generato delle policy (`error_policies_generated.py`) | rigenerare il file col comando che lo produce: il controllo di divergenza (`test_error_policies_divergenza_db`) è rosso finché non lo si fa. Nessun `ui_action`: sono 500 |
+| BE-0.1-a ✅ | cinque codici nuovi, classe `TECNICO`: `E_SORG_CHIAVE_NON_CONFORME`, `E_SORG_RIGA_NON_DEL_DOCUMENTO`, `E_SORG_DETTAGLIO_NON_DELLA_RIGA`, `E_SORG_LIVELLO_NON_PREVISTO`, `E_SORG_LIVELLO_MANCANTE` | `config.codici_errore` → `config.vw_codici_errore_identita` → il file generato delle policy (`error_policies_generated.py`) | rigenerare il file col comando che lo produce: il controllo di divergenza (`test_error_policies_divergenza_db`) è rosso finché non lo si fa. Nessun `ui_action`: sono 500 |
 | BE-0.1-b | `vendite.fn_get_sorgente_documento_ref`: un id per un tipo a chiave `uid` ora si risolve; un id per un tipo a chiave `id` torna solo se il documento esiste ed è visibile | firma, colonne e `ROWS 1` invariati | nessuna azione attesa; lo leggono `vendite_repository` e `types.py` per il numero del documento d'origine. Da verificare negli smoke delle liste che lo usano |
 | BE-0.1-c | `config.fn_sorgente_tabella` sul BB dei livelli | firma e risultato invariati | nessuna (`famiglie_repository`) |
 | — | le colonne nuove (`sorgente_id`, `sorgente_riga` su `commesse_attivita`, `sorgente_dettaglio`) | vuote | nessuna finché un lotto di famiglia non le scrive |
@@ -1615,7 +1616,7 @@ Si allineano nel lotto DOC con un rimando a questo brief, oppure si chiudono se 
 
 | # | Che cosa cambia | Percorso | Che cosa fa il BE/FE |
 | --- | --- | --- | --- |
-| BE-0.2-a | codice nuovo `E_SORG_ORIGINE_REFERENZIATA`, classe `CONFLITTO_STATO` (409): la cancellazione di un documento, una riga o un dettaglio da cui altri record dichiarano di nascere | `config.codici_errore` → file generato delle policy | rigenerare il file (come BE-0.1-a). Lo solleva il DB su un `DELETE`: le cancellazioni del BE (bozze di preventivo, ordine, bolla, righe) lo ricevono come 409 con la frase pronta. Nessun campo da accendere |
+| BE-0.2-a ✅ | codice nuovo `E_SORG_ORIGINE_REFERENZIATA`, classe `CONFLITTO_STATO` (409): la cancellazione di un documento, una riga o un dettaglio da cui altri record dichiarano di nascere | `config.codici_errore` → file generato delle policy | rigenerare il file (come BE-0.1-a). Lo solleva il DB su un `DELETE`: le cancellazioni del BE (bozze di preventivo, ordine, bolla, righe) lo ricevono come 409 con la frase pronta. Nessun campo da accendere |
 | BE-0.2-b | `dbops.vw_sorgenti_orfane` ha colonne nuove (`grammatica`, `livello`, `sorgente_id`, `sorgente_dettaglio`) | vista del presidio | nessuna attesa: la legge il digest dei presidi, non il BE. Da verificare con un grep sui lettori |
 
 ### 8.3 Dal lotto 0, giro 0.3 (2026-11-06)
@@ -1640,8 +1641,8 @@ Il giro T.1 (ritiro del registro dei canali) non ha voci: BE e FE non lo nominan
 
 | # | Che cosa cambia | Percorso | Che cosa fa il BE/FE |
 | --- | --- | --- | --- |
-| BE-T.2-a | il reso si scrive con la chiave della bolla in `sorgente_id`: l'uid della bolla in `sorgente_uid` ora è rifiutato dal guard unico con `E_SORG_CHIAVE_NON_CONFORME` (codice esistente, `TECNICO`) | `resi_service.py:534-535` → `resi_repository.create_reso` (`:636`, `:647`), `INSERT INTO vendite.resi` | passare `sorgente_id` = l'id della bolla (e `sorgente_uid` NULL), oppure prendere la coppia da `script.fn_sorgente_provenienza('DDT_VENDITA', <id bolla>)`, il BB che scrive. Test: `tests/services/test_resi_service.py:261`, `tests/db/test_resi_create_db.py:58-83`, `tests/services/test_righe_bozza_guard.py:321` (INSERT a mano con l'uid) |
-| BE-T.2-b | la bolla d'origine del reso non si trova più per uid: dopo la conversione `resi.sorgente_uid` è NULL | `resi_repository.get_stato_e_ddt_origine` (`:333`, `LEFT JOIN vendite.ddt d ON d.uid = r.sorgente_uid`) | il join con la regola d'incontro, `(d.id = r.sorgente_id OR d.uid = r.sorgente_uid)`, oppure `ddt_origine_id` da `vendite.vw_resi_lista`, che lo dà già |
+| BE-T.2-a ✅ | il reso si scrive con la chiave della bolla in `sorgente_id`: l'uid della bolla in `sorgente_uid` ora è rifiutato dal guard unico con `E_SORG_CHIAVE_NON_CONFORME` (codice esistente, `TECNICO`) | `resi_service.py:534-535` → `resi_repository.create_reso` (`:636`, `:647`), `INSERT INTO vendite.resi` | passare `sorgente_id` = l'id della bolla (e `sorgente_uid` NULL), oppure prendere la coppia da `script.fn_sorgente_provenienza('DDT_VENDITA', <id bolla>)`, il BB che scrive. Test: `tests/services/test_resi_service.py:261`, `tests/db/test_resi_create_db.py:58-83`, `tests/services/test_righe_bozza_guard.py:321` (INSERT a mano con l'uid) |
+| BE-T.2-b ✅ | la bolla d'origine del reso non si trova più per uid: dopo la conversione `resi.sorgente_uid` è NULL | `resi_repository.get_stato_e_ddt_origine` (`:333`, `LEFT JOIN vendite.ddt d ON d.uid = r.sorgente_uid`) | il join con la regola d'incontro, `(d.id = r.sorgente_id OR d.uid = r.sorgente_uid)`, oppure `ddt_origine_id` da `vendite.vw_resi_lista`, che lo dà già |
 | BE-T.2-c | `vendite.vw_ddt_lista`: colonna nuova `sorgente_id` (in coda); `sorgente_uid` NULL per ogni bolla di oggi (le sue sorgenti hanno chiave `id`); per la **bolla di riconsegna** `sorgente_codice_interno` = `RESO_VENDITA` e `ordine_origine_id`/`ordine_origine_numero` NULL (la provenienza è il reso, D-4) | vista → `ddt_repository.py:72` (filtro su `ordine_origine_numero`), FE `DdtSearchTable.vue:9` (colonna `ordine_origine_numero`) | nessuna obbligatoria. Da decidere lato BE/FE: la riconsegna non si trova più filtrando per numero d'ordine, e la sua colonna «ordine» è vuota. Se serve mostrarne l'origine, la vista ha tipo e chiave della sorgente (il reso) |
 | BE-T.2-d | `vendite.vw_resi_lista`: colonna nuova `sorgente_id` (in coda); `sorgente_uid` NULL; `ddt_origine_id`/`ddt_origine_numero` invariati | vista → FE `ResoDrawer.vue:353`, `ResoForm.vue:92` | nessuna: il FE legge `ddt_origine_*`, che restano |
 | — | le colonne non modificabili in bozza di bolla e reso (`non_editable_fields` della capability) contengono anche `sorgente_id` | `script.fn_available_actions_ddt`, `script.fn_available_actions_reso` | nessuna: nessun form espone la sorgente |
@@ -1657,9 +1658,9 @@ ritirano; le voci sotto vanno fatte con il lotto BE, che arriva dopo il lotto Z 
 
 | # | Che cosa cambia | Percorso | Che cosa fa il BE/FE |
 | --- | --- | --- | --- |
-| BE-T.3-a | l'ordine dall'offerta sbatte su un indice nuovo, `uq_ordini_v_sorgente_offerta` (23505), quando la provenienza è scritta e la colonna parallela no; dal giro T.5 è l'unico | `ordini_service.py:88` (`_UNIQUE_CONSTRAINTS`, mappa `uq_ordini_v_documento_origine_offerta` → `E_ORD_OFFERTA_GIA_CONVERTITA`) | aggiungere `uq_ordini_v_sorgente_offerta` con lo stesso codice e la stessa frase; la voce vecchia si toglie con T.5. Gemello sul contratto: `uq_contratti_sorgente_offerta` (oggi nessuna mappa BE per `uq_contratti_offerta_id`: il verbo lo previene con `E_OFFERTA_CONTRATTO_GIA_GENERATO`) |
-| BE-T.3-b | l'ordine nato dal preventivo si trova dalla provenienza: `sorgente_tipo_id` PREVENTIVO + `sorgente_uid` = l'uid del preventivo. `documento_origine_*` si ritira in T.5 | `ordini_repository.get_ordine_by_documento_origine` (`:426-433`, `WHERE documento_origine_tipo = %s AND documento_origine_id = %s`) ← `post_smistamento_handler.py:73`, `preventivi_service.py:2144` | leggere da `vendite.vw_ordini_lista` (`documento_origine_tipo`, `documento_origine_id`: alias stabili, ora calcolati dalla provenienza), oppure la regola d'incontro su `vendite.ordini` (`(p.id = o.sorgente_id OR p.uid = o.sorgente_uid)` col tipo). Test: `tests/db/test_origine_ordine_sorgente_db.py:56` (scrive la colonna parallela a mano, con un'offerta che non esiste: dal giro T.3 la vista la legge dalla provenienza, e dal T.5 la colonna non c'è), `tests/db/test_genera_ordine_da_offerta_db.py:129`, `tests/handlers/test_post_smistamento_handler.py`, `tests/services/test_preventivi_service.py:740` |
-| BE-T.3-c | il contratto nato dall'offerta si trova dalla provenienza; `offerta_id` si ritira in T.5 | `offerte_repository.py:228` (`LEFT JOIN vendite.contratti c ON c.offerta_id = o.id AND NOT c.is_abortito_snapshot`) | leggere da `vendite.fn_offerta_documenti_vivi(offerta_id)`, la sede unica dei documenti vivi, o con la regola d'incontro su `contratti.sorgente_*` |
+| BE-T.3-a ✅ | l'ordine dall'offerta sbatte su un indice nuovo, `uq_ordini_v_sorgente_offerta` (23505), quando la provenienza è scritta e la colonna parallela no; dal giro T.5 è l'unico | `ordini_service.py:88` (`_UNIQUE_CONSTRAINTS`, mappa `uq_ordini_v_documento_origine_offerta` → `E_ORD_OFFERTA_GIA_CONVERTITA`) | aggiungere `uq_ordini_v_sorgente_offerta` con lo stesso codice e la stessa frase; la voce vecchia si toglie con T.5. Gemello sul contratto: `uq_contratti_sorgente_offerta` (oggi nessuna mappa BE per `uq_contratti_offerta_id`: il verbo lo previene con `E_OFFERTA_CONTRATTO_GIA_GENERATO`) |
+| BE-T.3-b ✅ | l'ordine nato dal preventivo si trova dalla provenienza: `sorgente_tipo_id` PREVENTIVO + `sorgente_uid` = l'uid del preventivo. `documento_origine_*` si ritira in T.5 | `ordini_repository.get_ordine_by_documento_origine` (`:426-433`, `WHERE documento_origine_tipo = %s AND documento_origine_id = %s`) ← `post_smistamento_handler.py:73`, `preventivi_service.py:2144` | leggere da `vendite.vw_ordini_lista` (`documento_origine_tipo`, `documento_origine_id`: alias stabili, ora calcolati dalla provenienza), oppure la regola d'incontro su `vendite.ordini` (`(p.id = o.sorgente_id OR p.uid = o.sorgente_uid)` col tipo). Test: `tests/db/test_origine_ordine_sorgente_db.py:56` (scrive la colonna parallela a mano, con un'offerta che non esiste: dal giro T.3 la vista la legge dalla provenienza, e dal T.5 la colonna non c'è), `tests/db/test_genera_ordine_da_offerta_db.py:129`, `tests/handlers/test_post_smistamento_handler.py`, `tests/services/test_preventivi_service.py:740` |
+| BE-T.3-c ✅ | il contratto nato dall'offerta si trova dalla provenienza; `offerta_id` si ritira in T.5 | `offerte_repository.py:228` (`LEFT JOIN vendite.contratti c ON c.offerta_id = o.id AND NOT c.is_abortito_snapshot`) | leggere da `vendite.fn_offerta_documenti_vivi(offerta_id)`, la sede unica dei documenti vivi, o con la regola d'incontro su `contratti.sorgente_*` |
 | — | `vendite.vw_ordini_lista`: tre colonne nuove in coda (`sorgente_tipo_id`, `sorgente_id`, `sorgente_uid`); `documento_origine_tipo`, `_id`, `_codice` invariati di nome, tipo e valore, calcolati dalla provenienza | vista → `ordini_repository.py:280-286` (etichetta dell'origine per la stampa), FE `OrdiniSearchTable.vue` | nessuna |
 | — | `vendite.vw_fatture_lista`: `sorgente_id` in coda, di norma NULL | vista | nessuna |
 | — | `vendite.fn_push_offerta_a_contratto`: con una pratica il percorso ora va in fondo (V-1); il contratto entra in `pratiche_sorgenti` con l'id. Un tipo OFFERTA_COMMERCIALE assente dal catalogo è `E_SORG_CONF`, non più `E_CONFIG_MANCANTE` (tecnici tutti e due) | `offerte_service` (push a contratto con pratica) | nessuna obbligatoria; da guardare nello smoke «offerta → contratto con pratica», che prima si fermava con `E_SORG_FORMATO` |
@@ -1669,7 +1670,7 @@ ritirano; le voci sotto vanno fatte con il lotto BE, che arriva dopo il lotto Z 
 
 | # | Che cosa cambia | Percorso | Che cosa fa il BE/FE |
 | --- | --- | --- | --- |
-| BE-T.4-a | codici nuovi `E_DELETE_DOC_CON_RIGHE` e `E_DELETE_CONTRATTO_CON_SUCCESSIVI` (`CONFLITTO_STATO`, 409): una bozza con righe attive non si cancella, un contratto precedente di altri contratti nemmeno | `apps/core/services/error_policies_generated.py`, `error_messages_fallback.py` | rigenerarli dal catalogo, insieme a BE-0.1-a e BE-0.2-a |
+| BE-T.4-a ✅ | codici nuovi `E_DELETE_DOC_CON_RIGHE` e `E_DELETE_CONTRATTO_CON_SUCCESSIVI` (`CONFLITTO_STATO`, 409): una bozza con righe attive non si cancella, un contratto precedente di altri contratti nemmeno | `apps/core/services/error_policies_generated.py`, `error_messages_fallback.py` | rigenerarli dal catalogo, insieme a BE-0.1-a e BE-0.2-a |
 | — | ordine, bolla, reso e contratto si cancellano solo da bozza vuota anche nel DB; un reso confermato non si cancella più | `ordini_service.elimina_ordine`, `ddt_service.elimina_ddt`, `resi_service.elimina_reso` | nessuna: il controllo del BE resta come controllo preventivo, e ha lo stesso significato (stato iniziale, zero righe attive). I 409 del DB arrivano solo da un percorso che il BE non ha. Nessun percorso cancella un contratto (grep, 2026-11-07) |
 
 ### 8.8 Dal lotto T, giro T.5 (2026-11-07)
@@ -1678,11 +1679,33 @@ Le colonne parallele non ci sono più: le due voci di T.3 che le leggevano (§8.
 
 | # | Che cosa cambia | Percorso | Che cosa fa il BE/FE |
 | --- | --- | --- | --- |
-| BE-T.5-a | `vendite.ordini.documento_origine_tipo` e `_id` non esistono più | `ordini_repository.get_ordine_by_documento_origine` (`:426-433`) ← `post_smistamento_handler.py:73`, `preventivi_service.py:2144`; test `tests/db/test_origine_ordine_sorgente_db.py:56`, `tests/db/test_genera_ordine_da_offerta_db.py:129` | è BE-T.3-b: leggere da `vendite.vw_ordini_lista` (alias stabili) o con la regola d'incontro su `sorgente_*` |
-| BE-T.5-b | `vendite.contratti.offerta_id` non esiste più | `offerte_repository.py:228` (`LEFT JOIN vendite.contratti c ON c.offerta_id = o.id`) | è BE-T.3-c: `vendite.fn_offerta_documenti_vivi(offerta_id)` |
-| BE-T.5-c | `uq_ordini_v_documento_origine_offerta` non esiste più | `ordini_service.py:88` (`_UNIQUE_CONSTRAINTS`) | la voce vecchia si toglie; resta `uq_ordini_v_sorgente_offerta` (BE-T.3-a) |
+| BE-T.5-a ✅ | `vendite.ordini.documento_origine_tipo` e `_id` non esistono più | `ordini_repository.get_ordine_by_documento_origine` (`:426-433`) ← `post_smistamento_handler.py:73`, `preventivi_service.py:2144`; test `tests/db/test_origine_ordine_sorgente_db.py:56`, `tests/db/test_genera_ordine_da_offerta_db.py:129` | è BE-T.3-b: leggere da `vendite.vw_ordini_lista` (alias stabili) o con la regola d'incontro su `sorgente_*` |
+| BE-T.5-b ✅ | `vendite.contratti.offerta_id` non esiste più | `offerte_repository.py:228` (`LEFT JOIN vendite.contratti c ON c.offerta_id = o.id`) | è BE-T.3-c: `vendite.fn_offerta_documenti_vivi(offerta_id)` |
+| BE-T.5-c ✅ | `uq_ordini_v_documento_origine_offerta` non esiste più | `ordini_service.py:88` (`_UNIQUE_CONSTRAINTS`) | la voce vecchia si toglie; resta `uq_ordini_v_sorgente_offerta` (BE-T.3-a) |
 | — | `vw_ordini_lista`: `documento_origine_tipo`, `_id`, `_codice` restano, calcolati dalla provenienza | `ordini_repository.py:280-286`, `ordine_document_context_builder.py:213`, FE `OrdiniSearchTable.vue` | nessuna |
 | — | la capability perde dalle colonne ferme `documento_origine_*` dell'ordine e `offerta_id` del contratto (`non_editable_fields`, dal montaggio del lock). Su tutti gli ordini e contratti di dbdev è l'unica differenza della capability (2026-11-07) | capability di ordine e contratto | nessuna, se il FE non le nomina (grep FE, 2026-11-07: le nomina solo un commento) |
+
+
+**Stato al 2026-11-07, dopo il giro BE** (team BE, da committare). Fatte le voci segnate ✅ di §8:
+
+* **I codici** (BE-0.1-a, BE-0.2-a, BE-T.4-a): policy rigenerate e ripieghi scritti, nello stesso giro di
+  BE6 di `brief-db-revisione-dbops`.
+* **Il reso** (BE-T.2-a/b): `ResiRepository.create_reso` riceve la bolla (`ddt_id`) e scrive la coppia di
+  `script.fn_sorgente_provenienza('DDT_VENDITA', <id>)`, il BB che scrive; il service non legge più il tipo
+  in `config.sorgenti` (il BB solleva su tipo spento o bolla non visibile). `get_stato_e_ddt_origine` incontra
+  la bolla con la regola del modello. I tre test che scrivevano l'uid a mano passano dal repository.
+* **L'ordine dal preventivo** (BE-T.3-b, BE-T.5-a): `get_ordine_by_documento_origine` parte dalla coppia del
+  BB che scrive e incontra l'ordine con la regola del modello; `vw_ordini_lista` non porta
+  `is_abortito_snapshot`, che il lettore filtra. `test_origine_ordine_sorgente_db` riscritto su un preventivo
+  vero; il caso dei legami (provenienza dall'offerta) è passato a `test_genera_ordine_da_offerta_db`, sull'ordine
+  che genera il verbo. Il test del «codice corto» rifiutato dalla FK di `documento_origine_tipo` è uscito con la
+  colonna.
+* **Il contratto dall'offerta** (BE-T.3-c, BE-T.5-b): il dettaglio dell'offerta legge il contratto vivo da
+  `vendite.fn_offerta_documenti_vivi`. Nessun test sul DB leggeva quel dettaglio: ne è nato uno (push, prima e
+  dopo).
+* **L'indice dell'ordine dall'offerta** (BE-T.3-a, BE-T.5-c): la mappa di `ordini_service` nomina
+  `uq_ordini_v_sorgente_offerta`.
+* BE-T.2-e: nessuna mappa BE su `E_DOC_SORGENTE_NON_TROVATA`, niente da fare.
 
 ---
 

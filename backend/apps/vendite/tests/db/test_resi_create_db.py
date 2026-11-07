@@ -17,7 +17,8 @@
 """
 Indice test eseguiti:
 1) CreateResoDbTests.test_la_testata_nasce_dal_ddt_consegnato_coi_default
-   (anche: il dettaglio porta il magazzino di rientro della bolla d'origine)
+   (anche: il dettaglio porta il magazzino di rientro della bolla d'origine,
+   e la lettura dei guard di riga risolve la bolla dalla provenienza)
 """
 from __future__ import annotations
 
@@ -55,11 +56,10 @@ class CreateResoDbTests(unittest.TestCase):
                     cur.execute("SELECT script.fn_data_operativa()")
                     oggi = cur.fetchone()[0]
 
-                    # Il payload di `resi_service.crea_reso`: `sorgente_uid`
-                    # e' `str(ddt["uid"])`, `data` None (non indicata).
+                    # Il payload di `resi_service.crea_reso`: la bolla, `data`
+                    # None (non indicata). La provenienza la sceglie il BB.
                     creato = ResiRepository().create_reso(
-                        sorgente_tipo_id=sorgente_tipo_id,
-                        sorgente_uid=ddt["uid"],
+                        ddt_id=int(ddt["id"]),
                         data=None,
                         meta=_META,
                     )
@@ -67,7 +67,7 @@ class CreateResoDbTests(unittest.TestCase):
 
                     cur.execute(
                         """
-                        SELECT sorgente_tipo_id, sorgente_uid::text AS sorgente_uid,
+                        SELECT sorgente_tipo_id, sorgente_id, sorgente_uid::text AS sorgente_uid,
                                stato_doc_reso_id, data, destinatario_soggetto_ruolo_id,
                                billing_account_id, emittente_fiscale_id,
                                meta, jsonb_typeof(meta) AS meta_tipo, uid::text AS uid
@@ -80,7 +80,11 @@ class CreateResoDbTests(unittest.TestCase):
                     assert riga is not None
                     self.assertEqual(riga["uid"], creato["uid"])
                     self.assertEqual(riga["sorgente_tipo_id"], sorgente_tipo_id)
-                    self.assertEqual(riga["sorgente_uid"], ddt["uid"])
+                    # La bolla ha chiave `id` nel catalogo delle sorgenti: la
+                    # provenienza e' `sorgente_id`, l'uid resta vuoto (giro T.2
+                    # di brief-db-sorgente-documento-e-riga).
+                    self.assertEqual(riga["sorgente_id"], ddt["id"])
+                    self.assertIsNone(riga["sorgente_uid"])
                     # Lo stato non si passa: nasce in bozza perche' lo mette
                     # il DB (brief-modello-documento-vendita P-2).
                     self.assertEqual(riga["stato_doc_reso_id"], stato_bozza_id)
@@ -108,5 +112,15 @@ class CreateResoDbTests(unittest.TestCase):
                     self.assertEqual(dettaglio["magazzino_id"], mag_bolla)
                     self.assertEqual(dettaglio["magazzino_codice"], codice_bolla)
                     self.assertIn("magazzino_descrizione", dettaglio)
+
+                    # La lettura dei guard di riga risolve la bolla dalla
+                    # provenienza col BB del DB `script.fn_sorgente_documento`
+                    # e col filtro sul tipo: e' l'id da cui `gestisci_riga`
+                    # copia le righe. Un mock non vedrebbe ne' la firma del BB
+                    # ne' il parametro del tipo.
+                    guard = ResiRepository().get_stato_e_ddt_origine(creato["id"])
+                    assert guard is not None
+                    self.assertEqual(guard["ddt_origine_id"], ddt["id"])
+                    self.assertEqual(guard["stato_codice_interno"], "DRAFT")
             finally:
                 transaction.set_rollback(True)

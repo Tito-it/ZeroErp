@@ -35,8 +35,7 @@ from typing import Any
 
 from django.db import transaction
 
-from apps.config.db.sorgenti_repository import SorgentiRepository
-from apps.config.sorgenti import SORGENTE_DDT_VENDITA, SORGENTE_RESO_VENDITA
+from apps.config.sorgenti import SORGENTE_RESO_VENDITA
 from apps.core.db._helpers import richiedi_codice_a_vocabolario
 from apps.core.api.constants import MAX_LIMIT
 from apps.core.services.documento_modello import e_stato_iniziale
@@ -504,16 +503,6 @@ def crea_reso(payload: dict[str, Any]) -> dict[str, Any]:
         function_name=f"{_FN}.crea_reso",
     )
 
-    sorgente = SorgentiRepository().get_sorgente_attiva(SORGENTE_DDT_VENDITA)
-    ErrorManager.require(
-        sorgente is not None,
-        code="E_RESO_VALIDAZIONE",
-        message="Sorgente DDT_VENDITA non configurata in config.sorgenti.",
-        function_name=f"{_FN}.crea_reso",
-    )
-    assert sorgente is not None
-    sorgente_tipo_id = sorgente["id"]
-
     # Le righe sono FACOLTATIVE alla nascita (un reso puo' nascere vuoto): se
     # ci sono, una lista di voci, ogni voce un oggetto (BB), giudicate PRIMA di
     # scrivere la testata. I campi della riga li legge `_crea_riga`.
@@ -530,9 +519,10 @@ def crea_reso(payload: dict[str, Any]) -> dict[str, Any]:
         # Lo stato non si passa: il reso nasce nello stato iniziale del suo
         # vocabolario, e lo mette il DB (BB `script.trgfn_doc_stato_iniziale`,
         # brief-modello-documento-vendita P-2).
+        # La provenienza (tipo + chiave) la sceglie il repository dal BB del
+        # DB, `script.fn_sorgente_provenienza`: qui basta la bolla.
         creato = repo.create_reso(
-            sorgente_tipo_id=int(sorgente_tipo_id),
-            sorgente_uid=str(ddt["uid"]),
+            ddt_id=int(ddt["id"]),
             data=_parse_data_iso(data.get("data"), op="crea_reso"),
             meta=meta if isinstance(meta, dict) else None,
             magazzino_id=data.get("magazzino_id"),
