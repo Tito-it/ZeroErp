@@ -6,9 +6,9 @@
 #        code-lavori-stampa, FASE BE). Mock dei repository (nessun DB).
 #
 # Indice test:
-#   1) conteggi_code_scoped_operatore — owner filter = scope_key, worker attivi
+#   1) conteggi_code_scoped_operatore — owner filter = aziende del perimetro, worker attivi
 #   2) conteggi_code_worker_mai_girato — liveness assente → worker giù
-#   3) elenca_coda_lavori_operatore — filtro owner + caller key per is_mio
+#   3) elenca_coda_lavori_operatore — filtro owner + perimetro del chiamante per is_mio
 #   4) elenca_coda_lavori_tutti_aperto_senza_permesso — visibilità libera
 #   5) elenca_coda_lavori_tutti_con_permesso — owner filter None
 #   6) elenca_coda_stampa_ambito_per_operatore — miei=user_insert, tutti=None
@@ -82,7 +82,7 @@ def _patch_all(
 
 class ConteggiCodeTests(SimpleTestCase):
 
-    # 1. Operatore scoped: coda lavori filtrata per scope_key, coda stampa per
+    # 1. Operatore scoped: coda lavori filtrata per azienda del lavoro, coda stampa per
     #    auth_user_id; worker con run recente → attivo.
     def test_conteggi_code_scoped_operatore(self) -> None:
         patches, _resolver, repo_cls, maint_cls = _patch_all(emittenti=[4, 3])
@@ -114,7 +114,7 @@ class ConteggiCodeTests(SimpleTestCase):
                 p.stop()
 
         repo_cls.return_value.count_per_stato.assert_called_once_with(
-            owner_scope_key="3,4",
+            owner_emittenti=[4, 3],
         )
         self.assertEqual(esito["coda_lavori"], {"pending": 2, "in_corso": 1})
         self.assertEqual(esito["coda_stampa"], {"pending": 5, "in_corso": 0})
@@ -138,7 +138,7 @@ class ConteggiCodeTests(SimpleTestCase):
 
         # Admin globale (whitelist None) → nessun filtro sulla coda lavori.
         repo_cls.return_value.count_per_stato.assert_called_once_with(
-            owner_scope_key=None,
+            owner_emittenti=None,
         )
         # Stessa forma di `job_liveness` (2026-09-14): ne' un segno di vita ne'
         # una corsa conclusa — non un `last_ok` che di una corsa inesistente
@@ -154,7 +154,7 @@ class ConteggiCodeTests(SimpleTestCase):
 
 class ElencaCodaLavoriTests(SimpleTestCase):
 
-    # 3. Operatore: righe filtrate per la propria scope_key, caller key per is_mio.
+    # 3. Operatore: righe filtrate per le sue aziende, il suo perimetro per is_mio.
     def test_elenca_coda_lavori_operatore(self) -> None:
         patches, _resolver, repo_cls, _maint = _patch_all(emittenti=[7])
         try:
@@ -168,8 +168,8 @@ class ElencaCodaLavoriTests(SimpleTestCase):
                 p.stop()
 
         kwargs = repo_cls.return_value.elenca.call_args.kwargs
-        self.assertEqual(kwargs["owner_scope_key"], "7")
-        self.assertEqual(kwargs["caller_scope_key"], "7")
+        self.assertEqual(kwargs["owner_emittenti"], [7])
+        self.assertEqual(kwargs["caller_emittenti"], [7])
         self.assertEqual(kwargs["stati"], ["ERRORE"])
         # ⭐ Default ordinamento (2026-09-07): l'ultimo lavoro ENTRATO in coda in
         #    testa. Era `started_at` — «l'ultimo AVVIATO» — e un lavoro in
@@ -225,8 +225,8 @@ class ElencaCodaLavoriTests(SimpleTestCase):
                 p.stop()
         kwargs = repo_cls.return_value.elenca.call_args.kwargs
         # Nessun filtro righe; la caller key resta per marcare `is_mio`.
-        self.assertIsNone(kwargs["owner_scope_key"])
-        self.assertEqual(kwargs["caller_scope_key"], "7")
+        self.assertIsNone(kwargs["owner_emittenti"])
+        self.assertEqual(kwargs["caller_emittenti"], [7])
 
     # 5. `tutti` con code_manage → identico (owner filter None, caller resta).
     def test_elenca_coda_lavori_tutti_con_permesso(self) -> None:
@@ -240,8 +240,8 @@ class ElencaCodaLavoriTests(SimpleTestCase):
             for p in patches:
                 p.stop()
         kwargs = repo_cls.return_value.elenca.call_args.kwargs
-        self.assertIsNone(kwargs["owner_scope_key"])
-        self.assertEqual(kwargs["caller_scope_key"], "7")
+        self.assertIsNone(kwargs["owner_emittenti"])
+        self.assertEqual(kwargs["caller_emittenti"], [7])
 
 
 class ElencaCodaStampaTests(SimpleTestCase):
@@ -315,7 +315,7 @@ class DettaglioJobTests(SimpleTestCase):
             for p in patches:
                 p.stop()
         repo_cls.return_value.get_dettaglio.assert_called_once_with(
-            5, owner_scope_key=None, caller_scope_key="7",
+            5, owner_emittenti=None, caller_emittenti=[7],
         )
         self.assertEqual(esito, {"id": 5})
 
@@ -333,7 +333,7 @@ class AzioniJobTests(SimpleTestCase):
             for p in patches:
                 p.stop()
         repo_cls.return_value.annulla.assert_called_once_with(
-            5, owner_scope_key="7",
+            5, owner_emittenti=[7],
         )
         self.assertEqual(esito, {"job_id": 5, "stato": "ANNULLATO"})
 
@@ -374,7 +374,7 @@ class AzioniJobTests(SimpleTestCase):
             for p in patches:
                 p.stop()
         repo_cls.return_value.requeue.assert_called_once_with(
-            5, extra_tentativi=2, owner_scope_key="7",
+            5, extra_tentativi=2, owner_emittenti=[7],
         )
         self.assertEqual(esito, {"job_id": 5, "stato": "PENDING"})
 

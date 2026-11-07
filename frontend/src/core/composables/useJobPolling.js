@@ -221,6 +221,38 @@ export function useJobPolling(opts) {
     return true
   }
 
+  // Scopo: segue i LAVORI di un gesto solo — la risposta di un endpoint che
+  //        accoda un lavoro per azienda (`[{ job_id, ... }]`, BE10 a del
+  //        brief-db-revisione-dbops, 2026-11-07). `contestoDi(lavoro)` da' il
+  //        contesto di ciascuno (quello che tornera' nei callback). Ritorna
+  //        `{ seguiti, giaSeguiti, nonSeguiti }`, tre liste di lavori:
+  //          - `seguiti`: presi in carico ADESSO — sono i soli di cui il
+  //            chiamante puo' marcare le righe, perche' i soli di cui
+  //            arrivera' un esito;
+  //          - `giaSeguiti`: la dedup del BE ha restituito un lavoro ancora
+  //            vivo che si stava gia' seguendo;
+  //          - `nonSeguiti`: accodati ma rifiutati dal tetto — il lavoro parte
+  //            lo stesso, l'esito qui non arriva.
+  // ⭐ Estratto alla seconda occorrenza (cockpit competenza e lista Lotti,
+  //    regola del 2, ok Tid 2026-11-07): il ciclo e' lo stesso, cambia solo
+  //    cosa ciascuna vista marca. Le notifiche restano al chiamante: le parole
+  //    sono del verbo, non del polling.
+  // ⚠️ Una risposta senza `lavori` e' una lista vuota, non un errore: tre liste
+  //    vuote dicono al chiamante che non c'e' niente da seguire.
+  function seguiLavori(lavori, contestoDi = () => null) {
+    const esito = { seguiti: [], giaSeguiti: [], nonSeguiti: [] }
+    for (const lavoro of Array.isArray(lavori) ? lavori : []) {
+      if (isFollowing(lavoro.job_id)) {
+        esito.giaSeguiti.push(lavoro)
+      } else if (start(lavoro.job_id, contestoDi(lavoro))) {
+        esito.seguiti.push(lavoro)
+      } else {
+        esito.nonSeguiti.push(lavoro)
+      }
+    }
+    return esito
+  }
+
   // Scopo: sta gia' seguendo questo job? Serve al chiamante per distinguere
   //        «ne hai avviato un altro» da «e' lo stesso di prima».
   function isFollowing(jobId) {
@@ -282,6 +314,7 @@ export function useJobPolling(opts) {
 
   return {
     start,
+    seguiLavori,
     stop,
     suspend,
     resume,

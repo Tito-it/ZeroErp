@@ -21,8 +21,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
+from apps.core.db.emittente_attivo_repository import EmittenteAttivoRepository
 from apps.core.services.auth_helpers import (
     extract_emittente_attivo_from_request,
     extract_identita_id_from_request,
@@ -92,4 +94,58 @@ def scope_operatore_da_request(request: Any) -> dict[str, Any]:
         # Token di ownership del polling e delle liste: scope-based (chi
         # condivide lo scope vede il job condiviso via dedup).
         "scope_key": scope_key_da_emittenti(emittente_ids),
+    }
+
+
+# Scopo: Le AZIENDE in cui nasce un lavoro OPERATORE accodato da questa
+#        richiesta: l'emittente attivo, se l'operatore ne ha scelto uno;
+#        altrimenti (modalità globale) ognuna di quelle che potrebbe scegliere
+#        nella combo di topbar. Ogni voce è la riga di
+#        `EmittenteAttivoRepository.list_selezionabili`: `emittente_fiscale_id`
+#        (PK), `codice`, `ragione_sociale`, `soggetto_ruolo_id`.
+# ⭐ BE10 (a) di brief-db-revisione-dbops (decisione di Tid, 2026-11-07): un
+#    lavoro OPERATORE nasce dentro un'azienda — la porta `fn_accoda_lavoro`
+#    rifiuta lo scope senza emittente attivo (`E_CODA_LAVORO_SENZA_EMITTENTE`)
+#    e un lavoro che copre più aziende non esiste. In modalità globale se ne
+#    accoda uno per azienda.
+# ⭐ La fonte è la COMBO, e non è un caso: «le aziende per cui posso
+#    lavorare» è la stessa domanda di «le aziende che posso scegliere», e una
+#    seconda risposta scritta qui potrebbe dare un'azienda che la combo non
+#    offre (e che la porta rifiuterebbe come fuori perimetro).
+# ⛔ Nessuna azienda (perimetro vuoto, o l'emittente attivo non è più
+#    selezionabile) → `E_PERMISSION_DENIED` subito, prima di accodare: zero
+#    lavori accodati con un 200 sarebbe un «fatto» che non ha fatto niente.
+def aziende_della_richiesta(scope: Mapping[str, Any]) -> list[dict[str, Any]]:
+    attivo = scope.get("emittente_attivo_id")
+    aziende = EmittenteAttivoRepository().list_selezionabili(
+        int(scope["auth_user_id"]),
+        solo_id=None if attivo is None else int(attivo),
+    )
+    ErrorManager.require(
+        bool(aziende),
+        code="E_PERMISSION_DENIED",
+        message=(
+            "Nessuna azienda per cui accodare il lavoro: l'azienda scelta non è "
+            "più nel tuo perimetro, o il perimetro è vuoto."
+        ),
+        detail=f"auth_user_id={scope.get('auth_user_id')!r} emittente_attivo_id={attivo!r}",
+    )
+    return aziende
+
+
+# Scopo: Lo scope di un lavoro OPERATORE dentro UN'azienda, a partire dallo
+#        scope catturato dalla richiesta: stessa terna d'identità, emittente
+#        attivo = quell'azienda, whitelist = quell'azienda sola, e la
+#        `scope_key` che ne deriva.
+# ⭐ È la stessa forma che avrebbe catturato l'operatore SCEGLIENDO l'azienda
+#    nella combo (le funzioni di scope intersecano con l'emittente attivo), ed
+#    è quella del giro notturno (`accoda_giri_fatturazione`): la chiave di
+#    dedup è una per (atto, azienda), qualunque sia la strada da cui arriva.
+def scope_in_azienda(scope: Mapping[str, Any], emittente_fiscale_id: int) -> dict[str, Any]:
+    azienda = [int(emittente_fiscale_id)]
+    return {
+        **scope,
+        "emittente_attivo_id": azienda[0],
+        "emittente_ids": azienda,
+        "scope_key": scope_key_da_emittenti(azienda),
     }

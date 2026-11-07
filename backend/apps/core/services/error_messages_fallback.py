@@ -191,9 +191,18 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
         "La riga della coda sta ancora lavorando: si mette via solo quando ha "
         "finito."
     ),
+    "E_CODA_CHIAVE_ALTRUI": "Un lavoro con la stessa chiave è già in coda per un'altra azienda.",
     "E_CODA_HANDLER_NON_REGISTRATO": "Tipo di lavoro non cablato nel sistema.",
     "E_CODA_IDENTITA_NON_ATTIVA": "Identità operatore non più attiva: lavoro non eseguibile.",
     "E_CODA_JOB_STANTIO": "Esecuzione interrotta (worker morto o kill): recuperata dal reaper.",
+    "E_CODA_LAVORO_SENZA_EMITTENTE": (
+        "Il lavoro non si accoda: un lavoro per conto di un operatore "
+        "appartiene a un'azienda, e la richiesta non ne indica una."
+    ),
+    "E_CODA_SCOPE_ALTRUI": (
+        "Il lavoro non si accoda: è intestato a un'altra persona o a un'azienda "
+        "che chi lo chiede non gestisce."
+    ),
     "E_CODA_SCOPE_OPERATORE_INVALIDO": "Lavoro accodato con scope operatore incompleto.",
     "E_CODICE": "Codice di configurazione non trovato.",
     "E_CODICE_MAIUSCOLO": "Automazione del codice in maiuscolo fallita su una tabella.",

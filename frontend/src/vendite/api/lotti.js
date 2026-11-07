@@ -275,10 +275,15 @@ export function getFatturazioneEsiti(competenzaMese = null) {
 }
 
 // POST «Fattura competenza» (C-3/C-6): avvia un GIRO di fatturazione on-demand,
-// NON bloccante (I-3). Accoda un job in dbops.coda_lavori e ritorna subito
-// { job_id, stato: 'PENDING' }; l'avanzamento si segue via getFatturazioneRun.
+// NON bloccante (I-3). Accoda in dbops.coda_lavori UN LAVORO PER AZIENDA (uno
+// con un'azienda scelta, uno per ciascuna in modalita' «Tutti gli emittenti»:
+// BE10 a, 2026-11-07) e ritorna subito { lavori: [{ job_id, stato,
+// emittente_fiscale_id, emittente_codice, gruppi? }] }; ogni lavoro si segue
+// via getFatturazioneRun (`useJobPolling().seguiLavori`).
 // Si ferma a EMESSA (D-1): la numerazione è atto separato (I-7). Idempotenza a
-// 2 layer: header HTTP + chiave business competenza+scope[+gruppi].
+// 2 layer: header HTTP + chiave business competenza+azienda[+gruppi].
+// ⭐ Con i gruppi il backend divide la selezione per azienda: ogni lavoro
+//    porta in `gruppi` le SUE chiavi, ed e' su quelle che si marcano le righe.
 //
 // `gruppi` (emissione mirata): array di `gruppo_key` prese da
 // listDashboardCompetenzaGruppi. Presente → si fatturano SOLO quei gruppi
@@ -305,7 +310,9 @@ export function runFatturazione(competenzaMese, { gruppi = null, dataDocumento =
 // POST «Rendi definitive competenza» (C-4/C-7): numerazione di PERIMETRO, NON
 // bloccante. Accoda un job che esegue lo step DEFINITIVA (numera + accoda
 // stampa) sui lotti EMESSA del mese. Atto fiscale SEPARATO dalla fatturazione
-// (I-7). Ritorna { job_id, stato: 'PENDING' }; avanzamento via getFatturazioneRun.
+// (I-7). Ritorna { lavori: [...] } come runFatturazione, un lavoro per azienda;
+// con una selezione ogni lavoro porta in `lotti` i SUOI id. Avanzamento via
+// getFatturazioneRun.
 // `dataDocumento` (facoltativa): UNA data per l'INTERO atto — vale per tutti i
 // lotti che il giro numera, non una per lotto (decisione 5 del brief).
 // ⭐ `lotti`: il perimetro SELEZIONATO. Assente = tutti i lotti emessi della
@@ -323,8 +330,8 @@ export function runNumerazione(competenzaMese, { dataDocumento = null, lotti = n
   )
 }
 
-// GET stato di un job accodato (polling, C-3/C-4/C-6/C-7). Ownership per SCOPE:
-// un job di altro scope/inesistente → 404. Sola lettura (nessuna Idempotency-Key).
+// GET stato di un job accodato (polling, C-3/C-4/C-6/C-7). Ownership per
+// AZIENDA: un job di un'azienda fuori dal perimetro, o inesistente → 404. Sola lettura (nessuna Idempotency-Key).
 export function getFatturazioneRun(jobId) {
   return api.get(`/vendite/fatturazione/run/${jobId}/`)
 }

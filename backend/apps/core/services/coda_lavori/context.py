@@ -38,18 +38,57 @@ from django.db import connection
 # Import dal layer api: `set_jwt_gucs`/`JWT_GUC_RESET_SQL` sono la fonte
 # canonica dei 5 GUC identità (stessa CTE del web — riuso, non copia).
 # Precedente di direzione services→api: tracciamento_service.
-from apps.core.api.jwt_audit_authentication import JWT_GUC_RESET_SQL, set_jwt_gucs
+from apps.core.api.jwt_audit_authentication import (
+    JWT_GUC_RESET_SQL,
+    JWT_IDENTITY_GUCS,
+    set_jwt_gucs,
+)
 from apps.core.services.error_manager import ErrorManager
 
 E_SCOPE_OPERATORE = "E_CODA_SCOPE_OPERATORE_INVALIDO"
 E_IDENTITA_NON_ATTIVA = "E_CODA_IDENTITA_NON_ATTIVA"
 
+# Lettura e riscrittura dei GUC identita', derivate dalla tupla canonica come
+# `JWT_GUC_RESET_SQL`: nessuna lista ricopiata. I nomi sono costanti fidate.
+_IDENTITA_LEGGI_SQL: str = "SELECT " + ", ".join(
+    f"current_setting('{_guc}', true)" for _guc in JWT_IDENTITY_GUCS
+)
+_IDENTITA_RIPRISTINA_SQL: str = "SELECT " + ", ".join(
+    f"set_config('{_guc}', %s, false)" for _guc in JWT_IDENTITY_GUCS
+)
+
+
+# Scopo: L'identita' che la connessione porta ADESSO (i GUC canonici, '' se
+#        assenti). Serve a chi apre un contesto dentro un altro: all'uscita deve
+#        rimettere QUESTA, non azzerare.
+def _identita_corrente() -> tuple[str, ...]:
+    with connection.cursor() as cursor:
+        cursor.execute(_IDENTITA_LEGGI_SQL)
+        row = cursor.fetchone()
+    return tuple(v or "" for v in (row or ("",) * len(JWT_IDENTITY_GUCS)))
+
+
+# Scopo: Rimette l'identita' letta all'ingresso. Senza identita' prima, e' il
+#        reset canonico del middleware (`JWT_GUC_RESET_SQL`).
+# ⚠️ Non si rivalida: l'identita' esterna l'ha gia' validata chi l'ha aperta,
+#    e il contesto interno ne e' solo una parentesi.
+def _ripristina_identita(valori: tuple[str, ...]) -> None:
+    with connection.cursor() as cursor:
+        if any(valori):
+            cursor.execute(_IDENTITA_RIPRISTINA_SQL, list(valori))
+        else:
+            cursor.execute(JWT_GUC_RESET_SQL)
+
 
 # Scopo: Esegue il blocco con l'identità completa dell'operatore impostata
-#        (5 GUC, RLS attiva che risolve all'operatore). Ripristina (azzera)
-#        TUTTI i GUC all'uscita, sempre — anche su eccezione — per non lasciare
-#        l'identità "appiccicata" alla connessione riusata dal worker per il
-#        job successivo (stesso reset canonico del middleware web).
+#        (5 GUC, RLS attiva che risolve all'operatore). All'uscita, sempre —
+#        anche su eccezione — RIMETTE l'identità che c'era prima: nessuna (il
+#        reset canonico del middleware) o quella del contesto esterno.
+# ⛔ Rimettere, non azzerare (BE10, brief-db-revisione-dbops §5). Il drenatore
+#    della coda lavori gira con l'utente tecnico dell'azienda e, dentro, esegue
+#    ogni lavoro con l'identità di chi l'ha accodato. Azzerando, la `mark_done`
+#    successiva girava senza identità: sotto la RLS aggiorna zero righe, senza
+#    errore, e il lavoro resta IN_CORSO fino al reaper.
 @contextmanager
 def operator_identity_context(
     auth_user_id: int | None,
@@ -71,6 +110,7 @@ def operator_identity_context(
         ),
     )
     assert auth_user_id is not None and username and identita_id is not None
+    precedente = _identita_corrente()
     # Stessa CTE del web: valida (auth_user, identità) attiva + setta i 5 GUC
     # in un round-trip. False = identità revocata/inattiva o errore DB.
     identita_attiva = set_jwt_gucs(
@@ -95,7 +135,21 @@ def operator_identity_context(
         )
         yield
     finally:
-        # Azzera TUTTI i GUC identità (session-scoped) — reset canonico
-        # condiviso col middleware web (JWT_GUC_RESET_SQL).
-        with connection.cursor() as cursor:
-            cursor.execute(JWT_GUC_RESET_SQL)
+        # Anche su identità non attiva: i GUC parziali spariscono e torna
+        # quella di prima.
+        _ripristina_identita(precedente)
+
+
+# Scopo: Esegue il blocco SENZA identità, e all'uscita rimette quella di prima.
+#        È il contesto di un lavoro `SISTEMA` dentro il giro di un utente
+#        tecnico: senza, il lavoro girerebbe col perimetro di quell'azienda,
+#        che non è il suo.
+@contextmanager
+def senza_identita_context() -> Iterator[None]:
+    precedente = _identita_corrente()
+    with connection.cursor() as cursor:
+        cursor.execute(JWT_GUC_RESET_SQL)
+    try:
+        yield
+    finally:
+        _ripristina_identita(precedente)
