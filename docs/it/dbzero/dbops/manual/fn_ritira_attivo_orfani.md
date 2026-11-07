@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_ritira_attivo_orfani`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 7 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -28,10 +28,10 @@ block rimasto senza figlia rifiuterebbe ogni disattivazione del padre con
 
 ---
 
-### ⛔ Gli argomenti insufficienti restano
+### ⛔ Gli argomenti fuori grammatica restano
 
-Un trigger con meno argomenti del minimo (`ARGOMENTI_INSUFFICIENTI`) non è un residuo: è un
-errore di scrittura. Il ritiro non lo tocca, lo segnala il presidio e lo corregge una persona.
+Un trigger montato fuori dalla grammatica degli argomenti (`ARGOMENTI_INVALIDI`: uno mancante,
+vuoto o in più) non è un residuo: è un errore di scrittura. Il ritiro non lo tocca, lo segnala il presidio e lo corregge una persona.
 
 ---
 
@@ -54,7 +54,7 @@ job, proprietari delle tabelle.
 ### Test
 
 * `db/pgtap/dbops/test-trigger-attivo-orfani-v1.sql` — il ritiro toglie i due orfani della
-  fixture, lascia `ARGOMENTI_INSUFFICIENTI` e i trigger validi (compreso un require polimorfo senza
+  fixture, lascia `ARGOMENTI_INVALIDI` e i trigger validi (compreso un require polimorfo senza
   FK), dopo il ritiro il padre si spegne, e il generatore lo chiama fuori dal dry run.
 
 ---

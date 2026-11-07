@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_trigger_argomenti`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 7 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -13,6 +13,7 @@
 > * [dbops.fn_lock_columns_divergenze](/dbzero/dbops/funzioni/fn_lock_columns_divergenze) — legge i lucchetti di colonna montati
 > * [dbops.fn_ritira_attivo_eccezioni](/dbzero/dbops/funzioni/fn_ritira_attivo_eccezioni) — riconosce i trigger ATTIVO di una FK eccezione
 > * [dbops.fn_trigger_attivo_orfani](/dbzero/dbops/funzioni/fn_trigger_attivo_orfani) — riconosce i trigger ATTIVO orfani
+> * [dbops.fn_trigger_attivo_argomenti](/dbzero/dbops/funzioni/fn_trigger_attivo_argomenti) — interpreta per nome gli argomenti dei trigger ATTIVO
 > * [script.fn_doc_lock_regola](/dbzero/script/funzioni/fn_doc_lock_regola) — legge i lucchetti dei documenti
 > * [script.fn_doc_lock_montaggi](/dbzero/script/funzioni/fn_doc_lock_montaggi) — elenca i montaggi dei lucchetti dei documenti
 >

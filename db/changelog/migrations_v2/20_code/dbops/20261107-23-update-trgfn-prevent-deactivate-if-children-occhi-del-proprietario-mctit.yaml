@@ -1,0 +1,214 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.trgfn_prevent_deactivate_if_children (il block ATTIVO, sul padre):
+# grammatica condivisa, argomenti obbligatori, figlie cercate fuori dalla row
+# security.
+#   Brief: brief-db-revisione-dbops, D18, D49, D51 (giro 3).
+#
+# ⚠️ TRE DIFETTI, UNA FUNZIONE.
+#   D18 — leggeva TG_ARGV a mano (indici, default): ora gli argomenti li da'
+#         dbops.fn_trigger_attivo_argomenti, la stessa grammatica di chi rilegge
+#         pg_trigger.
+#   D49 — ref_col e parent_attivo_col erano facoltativi, con un ripiego che
+#         indovinava la colonna e scriveva in error_log a ogni scatto. Ogni
+#         montaggio ne porta cinque: ora sono obbligatori, e un montaggio
+#         incompleto si ferma con E_ATTIVO_BLOCK_ARGS.
+#   D51 — cercava le figlie sotto la row security di chi spegne il padre: le
+#         figlie attive di un'altra azienda non contavano. Ora le cerca
+#         dbops.fn_trigger_figlie_presenti, fuori dalla row security (Q8).
+#
+# ⭐ IN PIU', dalla grammatica: una colonna referenziata o di stato che il padre
+#   non ha non si legge piu' come NULL (cioe' «niente da controllare»): e' un
+#   montaggio sbagliato, E_ATTIVO_BLOCK_ARGS.
+#
+# INVARIATO: la transizione controllata (attivo TRUE -> FALSE), il ramo della
+#   colonna referenziata NULL (nessuna figlia puo' riferirla: si registra e si
+#   passa, E_ATTIVO_BLOCK_REF_NULL), i due codici del rifiuto e i loro valori
+#   nello stesso ordine (padre, colonna referenziata, valore, figlia, colonna
+#   FK), presidiato dal test 13 di dbops/test-trgfn-prevent-deactivate-if-children-pdp.
+#
+# Corpo di partenza: la scheda auto-generata del 2026-11-07. Owner: resta quello
+#   di oggi (CREATE OR REPLACE).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261107-23-update-trgfn-prevent-deactivate-if-children-occhi-del-proprietario-mctit.yaml
+
+  - changeSet:
+      id: 20261107-23-update-trgfn-prevent-deactivate-if-children-occhi-del-proprietario
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.trgfn_prevent_deactivate_if_children: argomenti da
+        dbops.fn_trigger_attivo_argomenti, tutti obbligatori; figlie cercate da
+        dbops.fn_trigger_figlie_presenti, fuori dalla row security (D18, D49, D51).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_trigger_figlie_presenti';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.trgfn_prevent_deactivate_if_children()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_g            record;   -- riga di dbops.fn_trigger_attivo_argomenti
+                v_f            record;   -- riga di dbops.fn_trigger_figlie_presenti
+                v_vecchia      jsonb;
+                v_old_attivo   boolean;
+                v_new_attivo   boolean;
+                -- il valore della colonna referenziata: la nomina il montaggio, testo
+                v_ref_val      text;
+              BEGIN
+                /*
+                  Scopo
+                  -----
+                  Trigger function (ATTIVO/BLOCK, BEFORE UPDATE OF <attivo> sul
+                  padre): impedisce la disattivazione (attivo TRUE -> FALSE) se
+                  esistono figli collegati; se la figlia ha la colonna attivo,
+                  contano solo i figli attivi.
+
+                  Argomenti (TG_ARGV), tutti obbligatori: figlia_schema,
+                  figlia_tabella, fk_col, ref_col, stato_col (l'attivo del padre).
+                  La grammatica e' dbops.fn_trigger_attivo_argomenti.
+
+                  Le figlie le cerca dbops.fn_trigger_figlie_presenti, fuori
+                  dalla row security: che un padre sia usato non dipende da chi
+                  guarda.
+                */
+
+                SELECT * INTO v_g
+                  FROM dbops.fn_trigger_attivo_argomenti('trgfn_prevent_deactivate_if_children', TG_ARGV);
+
+                v_vecchia := to_jsonb(OLD);
+
+                IF NOT v_g.valido
+                   OR NOT jsonb_exists(v_vecchia, v_g.ref_col)
+                   OR NOT jsonb_exists(v_vecchia, v_g.stato_col) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    TG_NAME,
+                    'E_ATTIVO_BLOCK_ARGS',
+                    jsonb_build_object(
+                      'trigger', TG_NAME,
+                      'table',   TG_TABLE_SCHEMA||'.'||TG_TABLE_NAME,
+                      'tg_argv', to_jsonb(TG_ARGV)
+                    ),
+                    NULL::uuid,
+                    format('%s su %s.%s: %s', TG_NAME, TG_TABLE_SCHEMA, TG_TABLE_NAME,
+                           COALESCE(v_g.dettaglio,
+                                    format('la tabella non ha la colonna %s',
+                                           CASE WHEN NOT jsonb_exists(v_vecchia, v_g.ref_col)
+                                                THEN v_g.ref_col ELSE v_g.stato_col END)))
+                  );
+                END IF;
+
+                v_old_attivo := (v_vecchia->>v_g.stato_col)::boolean;
+                v_new_attivo := (to_jsonb(NEW)->>v_g.stato_col)::boolean;
+
+                -- Si controlla solo la transizione TRUE -> FALSE
+                IF NOT (TG_OP = 'UPDATE'
+                        AND COALESCE(v_old_attivo, FALSE) IS TRUE
+                        AND COALESCE(v_new_attivo, FALSE) IS FALSE) THEN
+                  RETURN NEW;
+                END IF;
+
+                v_ref_val := v_vecchia->>v_g.ref_col;
+
+                IF v_ref_val IS NULL THEN
+                  -- Nessuna figlia puo' riferire una chiave NULL: si registra e si passa.
+                  PERFORM script.fn_log_error_only(
+                    'database',
+                    'trgfn_prevent_deactivate_if_children',
+                    'E_ATTIVO_BLOCK_REF_NULL',
+                    jsonb_build_object(
+                      'parent_table', TG_TABLE_SCHEMA||'.'||TG_TABLE_NAME,
+                      'ref_col',      v_g.ref_col,
+                      'note',         'Colonna referenziata NULL: controllo figli saltato'
+                    ),
+                    NULL::uuid,
+                    format('%s.%s: colonna referenziata %s NULL, controllo figli saltato',
+                           TG_TABLE_SCHEMA, TG_TABLE_NAME, v_g.ref_col)
+                  );
+                  RETURN NEW;
+                END IF;
+
+                SELECT * INTO v_f
+                  FROM dbops.fn_trigger_figlie_presenti(TG_RELID, TG_NAME, v_ref_val);
+
+                IF NOT v_f.configurato THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    TG_NAME,
+                    'E_ATTIVO_BLOCK_FKCOL_NOT_FOUND',
+                    jsonb_build_object(
+                      'parent_table', TG_TABLE_SCHEMA||'.'||TG_TABLE_NAME,
+                      'child_table',  v_g.figlia_schema||'.'||v_g.figlia_tabella,
+                      'fk_col',       v_g.fk_col,
+                      'ref_col',      v_g.ref_col,
+                      'dettaglio',    v_f.dettaglio
+                    ),
+                    NULL::uuid,
+                    v_f.dettaglio
+                  );
+                END IF;
+
+                IF v_f.presenti THEN
+                  -- Due codici perche' i rimedi sono due: con la colonna attivo le
+                  -- figlie si disattivano, senza si tolgono. La frase sta a catalogo;
+                  -- qui viaggiano i dati, nell'ordine che i due messaggi consumano
+                  -- (padre, colonna referenziata, valore, figlia), e la colonna FK in piu'.
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    TG_NAME,
+                    CASE WHEN v_f.figlia_attivo_col IS NOT NULL
+                         THEN 'E_ATTIVO_BLOCK_CHILDREN_ACTIVE'
+                         ELSE 'E_ATTIVO_BLOCK_CHILDREN_EXIST'
+                    END,
+                    jsonb_build_object(
+                      'parent_table',     TG_TABLE_SCHEMA||'.'||TG_TABLE_NAME,
+                      'child_table',      v_g.figlia_schema||'.'||v_g.figlia_tabella,
+                      'ref_col',          v_g.ref_col,
+                      'ref_val',          v_ref_val,
+                      'fk_col',           v_g.fk_col,
+                      'child_attivo_col', v_f.figlia_attivo_col,
+                      'child_has_attivo', v_f.figlia_attivo_col IS NOT NULL,
+                      'campo',            v_g.stato_col
+                    ),
+                    NULL::uuid,
+                    TG_TABLE_SCHEMA||'.'||TG_TABLE_NAME,
+                    v_g.ref_col,
+                    v_ref_val,
+                    v_g.figlia_schema||'.'||v_g.figlia_tabella,
+                    v_g.fk_col
+                  );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.trgfn_prevent_deactivate_if_children() IS
+                'Trigger function ATTIVO/BLOCK, montata dal generatore dbops.fn_run_automations_attivo come BEFORE UPDATE OF <attivo> sul padre: impedisce la disattivazione (attivo da TRUE a FALSE) se esistono righe figlie collegate. Se la figlia ha la colonna attivo contano solo le figlie attive e il rifiuto e'' E_ATTIVO_BLOCK_CHILDREN_ACTIVE (rimedio: disattivarle); se non ce l''ha conta ogni riga e il rifiuto e'' E_ATTIVO_BLOCK_CHILDREN_EXIST (rimedio: toglierle). I due messaggi consumano gli stessi valori nello stesso ordine: padre, colonna referenziata, suo valore, figlia (e la colonna FK in piu''). TG_ARGV, tutti obbligatori, nella grammatica di dbops.fn_trigger_attivo_argomenti: figlia_schema, figlia_tabella, fk_col, ref_col (la colonna del padre referenziata dalla FK, anche una UNIQUE non primaria), stato_col (la colonna attivo del padre, con l''override di dbops.automation_overrides_cols). Un montaggio fuori grammatica, o che nomina una colonna che il padre non ha, solleva E_ATTIVO_BLOCK_ARGS; una figlia o una colonna FK che non esiste, E_ATTIVO_BLOCK_FKCOL_NOT_FOUND. Le figlie le cerca dbops.fn_trigger_figlie_presenti, fuori dalla row security: che un padre sia usato non dipende da chi guarda. Con la colonna referenziata NULL nessuna figlia puo'' riferirla: registra E_ATTIVO_BLOCK_REF_NULL in dbops.error_log e lascia passare.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo dal corpo della scheda auto-generata del 2026-11-07.
+              SELECT 1;

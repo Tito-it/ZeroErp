@@ -17,206 +17,156 @@ CREATE OR REPLACE FUNCTION dbops.trgfn_child_requires_non_obsolete_parent()
  LANGUAGE plpgsql
 AS $function$
 DECLARE
-  v_parent_schema       text;
-  v_parent_table        text;
-  v_parent_obsoleto_col text;
-  v_fk_col              text;
-  v_parent_ref_col      text;   -- colonna referenziata dalla FK (non sempre la PK)
-  v_fk_val_text         text;   -- valore FK dal figlio (come text)
-  v_fk_old_text         text;   -- valore FK precedente (su UPDATE)
-  v_parent_ref_type     text;   -- tipo della colonna referenziata (per cast)
-  v_sql                 text;
-  v_obsoleto_dal        date;
-  v_esenzione_col       text;   -- colonna che, valorizzata all'INSERT, esenta la riga (derivata)
+  v_g            record;   -- riga di dbops.fn_trigger_attivo_argomenti
+  v_p            record;   -- riga di dbops.fn_trigger_padre_stato
+  v_nuova        jsonb;
+  -- la chiave del padre come la scrive la figlia: la nomina il montaggio, testo
+  v_fk_val_text  text;
+  v_fk_old_text  text;
+  -- la colonna di stato la nomina il montaggio: il tipo e' quello di script.fn_e_obsoleto
+  v_obsoleto_dal date;
+  v_padre        text;
+  v_figlia       text;
 BEGIN
   /*
     Scopo
     -----
-    Trigger function (OBSOLETO/REQUIRE): impedisce INSERT/UPDATE sul
-    figlio se il catalogo padre referenziato e' OBSOLETO
-    (script.fn_e_obsoleto: data raggiunta alla data operativa). Asse separato da attivo: serve
-    perche' i record obsoleti restano attivo=true (il REQUIRE-ATTIVO
-    non li intercetta).
+    Trigger function (OBSOLETO/REQUIRE, sulla figlia): una riga nuova,
+    o una riga che cambia la FK, non si collega a una voce di
+    catalogo ritirata (script.fn_e_obsoleto: obsoleto_dal raggiunta
+    alla data operativa). Asse separato dall'attivo: le voci
+    ritirate restano attivo = true.
 
-    Argomenti attesi (TG_ARGV)
-    --------------------------
-    [0] parent_schema       - schema della tabella padre
-    [1] parent_table        - nome tabella padre
-    [2] parent_obsoleto_col - nome colonna obsoleto_dal del padre
-    [3] fk_col              - nome colonna FK sul figlio
-    [4] parent_ref_col      - colonna del padre referenziata dalla FK
-                              (puo' essere UNIQUE diversa da PK).
-                              Se omesso, fallback 'id'.
-    [5] esenzione_col       - (opzionale) colonna del figlio che, se
-                              valorizzata all'INSERT, dice che la riga e'
-                              DERIVATA da un altro documento: passa anche su
-                              un padre obsoleto (es. 'sorgente_tipo_id').
-                              Solo INSERT: sull'UPDATE conta il cambio della
-                              FK, che e' sempre una scelta nuova (O-7 di
-                              brief-db-articoli-obsoleto-dal). Chi la passa
-                              passa anche [4].
+    Argomenti (TG_ARGV): padre_schema, padre_tabella, stato_col
+    (obsoleto_dal del padre), fk_col, ref_col, obbligatori; e
+    esenzione_col, facoltativo: una colonna della figlia che,
+    valorizzata all'INSERT, dice che la riga e' derivata da un altro
+    documento e la lascia passare. La grammatica e'
+    dbops.fn_trigger_attivo_argomenti.
+
+    Il padre lo legge dbops.fn_trigger_padre_stato, fuori dalla row
+    security, come la gemella trgfn_child_requires_active_parent.
   */
 
-  IF array_length(TG_ARGV, 1) < 4 THEN
+  SELECT * INTO v_g
+    FROM dbops.fn_trigger_attivo_argomenti('trgfn_child_requires_non_obsolete_parent', TG_ARGV);
+
+  v_nuova := to_jsonb(NEW);
+
+  IF NOT v_g.valido
+     OR NOT jsonb_exists(v_nuova, v_g.fk_col)
+     OR (v_g.esenzione_col IS NOT NULL AND NOT jsonb_exists(v_nuova, v_g.esenzione_col)) THEN
     PERFORM script.fn_log_and_raise_error(
       'database',
       TG_NAME,
-      'E_CATALOGO_OBSOLETO_NUOVA_ISTANZA',
+      'E_TRIGGER_ARGOMENTI_INVALIDI',
       jsonb_build_object(
         'trigger', TG_NAME,
         'table',   TG_TABLE_SCHEMA||'.'||TG_TABLE_NAME,
-        'tg_argv', TG_ARGV
+        'tg_argv', to_jsonb(TG_ARGV)
       ),
       NULL::uuid,
-      'Attesi: parent_schema, parent_table, parent_obsoleto_col, fk_col [, parent_ref_col [, esenzione_col]]'
+      format('%s su %s.%s: %s', TG_NAME, TG_TABLE_SCHEMA, TG_TABLE_NAME,
+             COALESCE(v_g.dettaglio,
+                      format('la tabella non ha la colonna %s',
+                             CASE WHEN NOT jsonb_exists(v_nuova, v_g.fk_col)
+                                  THEN v_g.fk_col ELSE v_g.esenzione_col END)))
     );
   END IF;
-
-  v_parent_schema       := TG_ARGV[0];
-  v_parent_table        := TG_ARGV[1];
-  v_parent_obsoleto_col := TG_ARGV[2];
-  v_fk_col              := TG_ARGV[3];
-  v_parent_ref_col      := COALESCE(TG_ARGV[4], 'id');
-  v_esenzione_col       := TG_ARGV[5];
 
   IF NOT (TG_OP = 'INSERT' OR TG_OP = 'UPDATE') THEN
     RETURN NEW;
   END IF;
 
-  -- Estrai il valore della FK dal record NEW (via to_jsonb, no EXECUTE per riga)
-  v_fk_val_text := to_jsonb(NEW)->>v_fk_col;
-
-  -- FK NULL ammessa: se non valorizzata, nessun controllo sul padre
+  -- FK NULL ammessa: nessun padre da controllare
+  v_fk_val_text := v_nuova->>v_g.fk_col;
   IF v_fk_val_text IS NULL THEN
     RETURN NEW;
   END IF;
 
-  -- Esenzione (TG_ARGV[5]): la riga DERIVATA passa, ma solo alla nascita.
-  -- Una colonna nominata che la tabella non ha e' un montaggio sbagliato:
-  -- si dice subito, invece di non esentare mai in silenzio.
-  IF v_esenzione_col IS NOT NULL THEN
-    IF NOT jsonb_exists(to_jsonb(NEW), v_esenzione_col) THEN
-      PERFORM script.fn_log_and_raise_error(
-        'database',
-        TG_NAME,
-        'E_CATALOGO_OBSOLETO_NUOVA_ISTANZA',
-        jsonb_build_object(
-          'table',         TG_TABLE_SCHEMA||'.'||TG_TABLE_NAME,
-          'esenzione_col', v_esenzione_col
-        ),
-        NULL::uuid,
-        'Configurazione errata: colonna di esenzione non esistente'
-      );
-    END IF;
-    IF TG_OP = 'INSERT' AND to_jsonb(NEW)->>v_esenzione_col IS NOT NULL THEN
-      RETURN NEW;
-    END IF;
+  -- La riga DERIVATA passa, ma solo alla nascita: sull'UPDATE conta
+  -- il cambio della FK, che e' sempre una scelta nuova.
+  IF v_g.esenzione_col IS NOT NULL
+     AND TG_OP = 'INSERT'
+     AND v_nuova->>v_g.esenzione_col IS NOT NULL THEN
+    RETURN NEW;
   END IF;
 
-  -- Su UPDATE: se la FK NON cambia, nessun controllo. Gli avanzamenti
-  -- di lifecycle (cambio stato, ecc.) sulle istanze storiche non
-  -- ri-puntano il catalogo e non devono mai essere bloccati.
+  -- Su UPDATE: se la FK non cambia, nessun controllo. Gli avanzamenti
+  -- delle istanze storiche non ripuntano il catalogo.
   IF TG_OP = 'UPDATE' THEN
-    v_fk_old_text := to_jsonb(OLD)->>v_fk_col;
+    v_fk_old_text := to_jsonb(OLD)->>v_g.fk_col;
     IF v_fk_old_text IS NOT DISTINCT FROM v_fk_val_text THEN
       RETURN NEW;
     END IF;
   END IF;
 
-  -- Ricava il tipo della colonna referenziata sul padre per cast corretto
-  SELECT a.atttypid::regtype::text
-    INTO v_parent_ref_type
-    FROM pg_attribute a
-    JOIN pg_class c     ON c.oid = a.attrelid
-    JOIN pg_namespace n ON n.oid = c.relnamespace
-   WHERE n.nspname = v_parent_schema
-     AND c.relname = v_parent_table
-     AND a.attname = v_parent_ref_col
-     AND a.attnum > 0
-     AND NOT a.attisdropped;
+  SELECT * INTO v_p
+    FROM dbops.fn_trigger_padre_stato(TG_RELID, TG_NAME, v_fk_val_text);
 
-  IF v_parent_ref_type IS NULL THEN
+  IF NOT v_p.configurato THEN
+    PERFORM script.fn_log_and_raise_error(
+      'database',
+      TG_NAME,
+      'E_TRIGGER_ARGOMENTI_INVALIDI',
+      jsonb_build_object(
+        'trigger',      TG_NAME,
+        'table',        TG_TABLE_SCHEMA||'.'||TG_TABLE_NAME,
+        'parent_table', v_g.padre_schema||'.'||v_g.padre_tabella,
+        'tg_argv',      to_jsonb(TG_ARGV)
+      ),
+      NULL::uuid,
+      format('%s su %s.%s: %s', TG_NAME, TG_TABLE_SCHEMA, TG_TABLE_NAME, v_p.dettaglio)
+    );
+  END IF;
+
+  v_padre  := v_g.padre_schema||'.'||v_g.padre_tabella;
+  v_figlia := TG_TABLE_SCHEMA||'.'||TG_TABLE_NAME;
+
+  IF NOT v_p.trovato THEN
+    PERFORM script.fn_log_and_raise_error(
+      'database',
+      TG_NAME,
+      'E_PADRE_INESISTENTE',
+      jsonb_build_object(
+        'parent_table', v_padre,
+        'child_table',  v_figlia,
+        'ref_col',      v_g.ref_col,
+        'ref_val',      v_fk_val_text,
+        'campo',        v_g.fk_col
+      ),
+      NULL::uuid,
+      v_padre, v_g.ref_col, v_fk_val_text, v_figlia
+    );
+  END IF;
+
+  -- Obsoleto se obsoleto_dal e' valorizzata e raggiunta; NULL o futura: ok.
+  v_obsoleto_dal := (v_p.valore #>> '{}')::date;
+
+  IF script.fn_e_obsoleto(v_obsoleto_dal) THEN
     PERFORM script.fn_log_and_raise_error(
       'database',
       TG_NAME,
       'E_CATALOGO_OBSOLETO_NUOVA_ISTANZA',
       jsonb_build_object(
-        'parent_table', v_parent_schema||'.'||v_parent_table,
-        'ref_col',      v_parent_ref_col
+        'parent_table',  v_padre,
+        'ref_col',       v_g.ref_col,
+        'ref_val',       v_fk_val_text,
+        'obsoleto_dal',  v_obsoleto_dal,
+        'campo',         v_g.fk_col
       ),
       NULL::uuid,
-      'Colonna referenziata padre non trovata'
+      format('Catalogo %s.%s obsoleto dal %s: non utilizzabile per nuove istanze',
+             v_g.padre_schema, v_g.padre_tabella, v_obsoleto_dal)
     );
   END IF;
-
-  -- Legge obsoleto_dal del padre (cast del parametro al tipo della colonna referenziata)
-  v_sql := format(
-    'SELECT %I FROM %I.%I WHERE %I = ($1)::%s',
-    v_parent_obsoleto_col, v_parent_schema, v_parent_table,
-    v_parent_ref_col, v_parent_ref_type
-  );
-
-  BEGIN
-    EXECUTE v_sql INTO v_obsoleto_dal USING v_fk_val_text;
-
-    IF NOT FOUND THEN
-      -- Coerente con REQUIRE: il padre dovrebbe esistere (FK), ma se
-      -- non trovato segnaliamo configurazione/dato incoerente.
-      PERFORM script.fn_log_and_raise_error(
-        'database',
-        TG_NAME,
-        'E_CATALOGO_OBSOLETO_NUOVA_ISTANZA',
-        jsonb_build_object(
-          'parent_table', v_parent_schema||'.'||v_parent_table,
-          'ref_col',      v_parent_ref_col,
-          'ref_val',      v_fk_val_text
-        ),
-        NULL::uuid,
-        'Catalogo padre non trovato per la FK indicata'
-      );
-    END IF;
-
-    -- Obsoleto se obsoleto_dal valorizzata e raggiunta. NULL o futura = ok.
-    -- ⭐ Il predicato e' il BB script.fn_e_obsoleto (20261105-04), sede unica.
-    IF script.fn_e_obsoleto(v_obsoleto_dal) THEN
-      PERFORM script.fn_log_and_raise_error(
-        'database',
-        TG_NAME,
-        'E_CATALOGO_OBSOLETO_NUOVA_ISTANZA',
-        jsonb_build_object(
-          'parent_table',  v_parent_schema||'.'||v_parent_table,
-          'ref_col',       v_parent_ref_col,
-          'ref_val',       v_fk_val_text,
-          'obsoleto_dal',  v_obsoleto_dal
-        ),
-        NULL::uuid,
-        format('Catalogo %s.%s obsoleto dal %s: non utilizzabile per nuove istanze',
-               v_parent_schema, v_parent_table, v_obsoleto_dal)
-      );
-    END IF;
-
-  EXCEPTION
-    WHEN undefined_column OR undefined_table THEN
-      PERFORM script.fn_log_and_raise_error(
-        'database',
-        TG_NAME,
-        'E_CATALOGO_OBSOLETO_NUOVA_ISTANZA',
-        jsonb_build_object(
-          'parent_table', v_parent_schema||'.'||v_parent_table,
-          'fk_col',       v_fk_col,
-          'obsoleto_col', v_parent_obsoleto_col
-        ),
-        NULL::uuid,
-        'Configurazione errata: tabella/colonna non esistente'
-      );
-  END;
 
   RETURN NEW;
 END;
 $function$
 
 COMMENT ON FUNCTION dbops.trgfn_child_requires_non_obsolete_parent()
-IS 'Trigger function (OBSOLETO/REQUIRE): impedisce INSERT/UPDATE sul figlio se il catalogo padre referenziato e'' ritirato (script.fn_e_obsoleto: obsoleto_dal raggiunta alla data operativa). Gemella di trgfn_child_requires_active_parent sull''asse obsoleto_dal. TG_ARGV: parent_schema, parent_table, parent_obsoleto_col, fk_col [, parent_ref_col [, esenzione_col]]. esenzione_col (rev 2026-11-05, brief-db-articoli-obsoleto-dal O-7/O-10): colonna del figlio che, valorizzata all''INSERT, dice che la riga e'' DERIVATA da un altro documento e la lascia passare; sull''UPDATE non vale. Su UPDATE controlla solo se la FK cambia (lifecycle delle istanze storiche mai bloccato). FK NULL e obsoleto_dal NULL/futura = consentiti.';
+IS 'Trigger function OBSOLETO/REQUIRE, sulla figlia, montata a mano: una riga nuova, o una riga che cambia la FK, non si collega a una voce di catalogo ritirata (script.fn_e_obsoleto: obsoleto_dal raggiunta alla data operativa), con E_CATALOGO_OBSOLETO_NUOVA_ISTANZA (CONFLITTO_STATO, colonna FK in campo). Gemella di dbops.trgfn_child_requires_active_parent sull''asse obsoleto_dal: le voci ritirate restano attivo = true. Su UPDATE controlla solo se la FK cambia, cosi'' il ciclo di vita delle istanze storiche non si blocca; FK NULL e obsoleto_dal NULL o futura passano. Un padre assente (possibile dove il collegamento non e'' una FK) solleva E_PADRE_INESISTENTE; un montaggio sbagliato (argomenti fuori grammatica, una colonna FK o di esenzione che la figlia non ha, una tabella o una colonna del padre che non esiste) E_TRIGGER_ARGOMENTI_INVALIDI. TG_ARGV nella grammatica di dbops.fn_trigger_attivo_argomenti: padre_schema, padre_tabella, stato_col (obsoleto_dal del padre), fk_col, ref_col, obbligatori; esenzione_col facoltativo, una colonna della figlia che, valorizzata all''INSERT, dice che la riga e'' derivata da un altro documento e la lascia passare (sull''UPDATE non vale). Il padre lo legge dbops.fn_trigger_padre_stato, fuori dalla row security, come la gemella.';
 ```
 
 </div>

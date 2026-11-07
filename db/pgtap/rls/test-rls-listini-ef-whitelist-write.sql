@@ -154,16 +154,11 @@ BEGIN
 END
 $fixture$;
 
--- ⛔ QUI, E ANCORA IN CONTESTO SUPER ADMIN. Non e' una sfumatura.
+-- I vincoli differiti della fixture si chiudono qui, dove l'unita' di lavoro
+--   (listino e versione) e' completa. Il contesto in cui si chiudono non conta:
 --   `trgfn_child_requires_active_parent` su `listini_versioni` legge il listino
---   padre, ed e' DIFFERITO: non scatta all'INSERT, scatta quando i vincoli
---   vengono verificati. E li' legge SOTTO LA RLS, col contesto attivo IN QUEL
---   MOMENTO — non con quello in cui la riga e' stata scritta.
---   ⇒ Tornando operatore prima di questa riga, il padre diventa invisibile e il
---     guard alza «Padre non attivo» su un listino perfettamente attivo: un rosso
---     che sembra un difetto della fixture e invece e' la RLS che funziona.
---   ⚠️ Vale per qualunque fixture che cambi attore: i vincoli differiti si
---     chiudono nei panni di chi ha scritto.
+--   padre fuori dalla RLS (dbops.fn_trigger_padre_stato), quindi lo vede attivo
+--   anche chi non lo vede. Lo prova dbops/test-guard-attivo-occhi-del-proprietario-v1.
 SET CONSTRAINTS ALL IMMEDIATE;
 
 -- Si torna all'operatore normale: da qui in poi si collauda cio' che vede e

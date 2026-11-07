@@ -1,14 +1,16 @@
 # Brief DB — Revisione dello schema `dbops`: i difetti di codice e i metadati
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-07
+## ⏭️ Chi riparte — aggiornato al 2026-11-07 (giro 3 chiuso)
 
 **Giro 1 chiuso e committato** (blocco 1d in `8c75d5682a`). **Decisioni di §4 prese** (Tid, 2026-11-05/06):
 tutte, Q1-Q15 (la Q7 non è mai esistita), con la Q14 punto per punto. **Ordine dei giri deciso** (2026-11-06):
 si fa tutto lo sviluppo DB, per gravità, e i lavori sugli stessi oggetti vanno insieme (Tid ha delegato
 l'ordine alla sessione DB). Il piano è riscritto in §8, giri 2-14. **Giro 2 chiuso** (2026-11-07, §14):
-blocchi 2a e 2b (Q16), `20261107-01` … `-19`, applicati su dbdev e sullo scratch, pgTAP verdi.
-**Riparte: Tid**, con la baseline B-7 (§14.4), il commit del giro 2 e il via al giro 3 (§8: i guard ATTIVO).
-Il team BE, a oggi, non ha niente da fare che aspetti un giro: §5 (nuove BE8 e BE9, ritirata BE1).
+blocchi 2a e 2b (Q16), `20261107-01` … `-19`, applicati su dbdev e sullo scratch, pgTAP verdi, committato
+(`93b650e517`). **Giro 3 chiuso** (2026-11-07, §15): i guard ATTIVO, D5, D18, D46, D47, D49, D51,
+`20261107-20` … `-27` e i due CSV dei codici, applicati, pgTAP verdi, committato.
+**Riparte: Tid**, con la baseline B-7 (§14.4 e §15.5 insieme) e il via al giro 4. Il team BE ha BE3 e BE6 (§5):
+il giro 3 è applicato.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -36,22 +38,24 @@ Il team BE, a oggi, non ha niente da fare che aspetti un giro: §5 (nuove BE8 e 
 | 9-octies | ✅ Tid | Apply del giro 2 fino al `-17` (il `-05` rinumerato, §14.7.5); pgTAP come app: tre rossi (2026-11-07) | §14.3 | 9-decies |
 | 9-undecies | ✅ sessione DB | I tre rossi: nomi delle tabelle senza schema per l'app, l'indice della FK tolto dalla politica; `-18`, `-19`, CSV | §14.8 | 9-octies |
 | 9-duodecies | ✅ Tid | Apply di `-18`, `-19` e di `fk_index_policy_bonifica_ridondanze.csv`; pgTAP di §14.3 verdi (2026-11-07). Il giro 2 è chiuso | §14.3, §14.8 | 9-undecies |
-| 9-terdecies | **Tid** ⏭️ | Baseline B-7: l'aggiornamento con le quattro righe di §14.4 (`scripts/codici-errore-baseline.sh --update`, dopo averle confrontate) | §14.4 | 9-duodecies |
-| 9-quaterdecies | **Tid** ⏭️ | Commit del giro 2 e via al giro 3 | §8 | 9-terdecies |
+| 9-terdecies | **Tid** ⏭️ | Baseline B-7: l'aggiornamento con le righe di §14.4 e di §15.5 (`scripts/codici-errore-baseline.sh --update`, dopo averle confrontate); non è nei commit dei giri 2 e 3 | §14.4, §15.5 | 9-septdecies |
+| 9-quaterdecies | ✅ Tid | Commit del giro 2 (`93b650e517`) e via al giro 3, con i numeri dal primo libero e `%TYPE` (2026-11-07) | §8 | — |
+| 9-quindecies | ✅ sessione DB | Giro 3 (D5, D18, D46, D47, D49, D51 con Q8): scritto e provato sullo scratch | §15 | 9-quaterdecies |
+| 9-sexdecies | ✅ Tid | Apply del giro 3 (`20261107-20` … `-27`, i due CSV dei codici); pgTAP come app di §15.6 verdi (2026-11-07) | §15.6 | 9-quindecies |
+| 9-septdecies | ✅ sessione DB, su richiesta di Tid | Commit del giro 3 (2026-11-07). Il giro 3 è chiuso | §8 | 9-sexdecies |
+| 9-octodecies | **Tid** ⏭️ | Via al giro 4 | §8 | 9-septdecies |
 | 9-nonies | ✅ Tid | Q16: la via fusa resta, marcata come soppressa (b, 2026-11-07) | §4 | 9-septies |
 | 9-decies | ✅ sessione DB | Giro 2, blocco 2b (Q16): la via soppressa; lettori censiti, scritto e provato sullo scratch | §14.7 | 9-nonies |
-| 10 | sessione DB | Giri 3-14 nell'ordine di §8, uno alla volta, ognuno col suo via e il suo apply | §8 | 9-quaterdecies |
-| 11 | team BE | Le ricadute di §5, quando il giro DB corrispondente è applicato; BE5 e BE7 (commenti stantii) quando capita | §5 | 10 |
+| 10 | sessione DB | Giri 4-14 nell'ordine di §8, uno alla volta, ognuno col suo via e il suo apply | §8 | 9-octodecies |
+| 11 | team BE | Le ricadute di §5, quando il giro DB corrispondente è applicato (BE3 e BE6 ora: il giro 3 è applicato); BE5 e BE7 (commenti stantii) quando capita | §5 | 10 |
 | 12 | sessione DB | Pagine `manual/` e guide riallineate a ogni difetto chiuso, insieme al COMMENT; brief in `work-done/` | §1, §8 | 10 |
 
-**Decisioni aperte di Tid:** la baseline B-7 (§14.4). **Da verificare:** se lo scratch è stato ricostruito con
-`ci-local.sh --fresh` dopo il `20261103-29` (§13). **Da committare:** il giro 2, applicato (§14.1, §14.7, §14.8:
-diciotto changeSet `20261107-01` … `-04`, `-06` … `-19`; i due CSV dei codici e
-`fk_index_policy_bonifica_ridondanze.csv`; un pgTAP nuovo e due riallineati; le pagine e le guide di §14.5,
-§14.7.3 e `dbops/manual/fn_nome_qualificato`) e questo brief.
-⚠️ **Numerazione:** questo cantiere ha preso il blocco `20261107-01` … `-19`; l'altro cantiere aperto oggi
-(`brief-db-sorgente-documento-e-riga`) parta da `20261107-20`: il blocco è usato fino al `-19`. Gli id dei messaggi presi qui: 1442-1448;
-l'altro cantiere parta da 1449.
+**Decisioni aperte di Tid:** la baseline B-7 (§14.4, §15.5); le scelte dentro il giro 3 (§15.3), già applicate:
+se una non va, la si corregge con un changeSet nuovo.
+**Da verificare:** se lo scratch è stato ricostruito con `ci-local.sh --fresh` dopo il `20261103-29` (§13).
+⚠️ **Numerazione:** questo cantiere ha preso `20261107-01` … `-27`; il prossimo numero libero del giorno è il
+`-28`. Gli id dei messaggi presi qui: 1442-1450; il prossimo libero è 1451. L'altro cantiere aperto
+(`brief-db-sorgente-documento-e-riga`) numera oggi nel blocco `20261106-74` … `-87`.
 
 > **Chi scrive:** sessione DB (`dev/db-tid`), 2026-11-04; decisioni registrate il 2026-11-06. **A chi:** Tid e team DB; §5 al team BE.
 > **Origine:** verifica delle pagine `docs/it/dbzero/dbops/manual/` contro lo standard e contro il
@@ -104,8 +108,8 @@ sono difetti: il peso dice l'ordine dei giri, non se si fanno.
 
 | Classe | Difetti |
 | --- | --- |
-| **A** — D14, D15, D54, D56 ✅ scritti nel giro 1a (§12); D1 ✅ nel blocco 1b (§12.8); D40, D41 ✅ nel blocco 1c (§12.9); D43 ✅ nel blocco 1d (§12.10) | D1 (contratto del 2026-07-22: un dblink fallito restituisce la sentinella), D3, D4, D6, D14, D15, D21, D25, D30 (cinque righe del seed senza prefisso), D35, D36, D37, D40, D41, D43, D44, D46, D47, D51, D53, D54, D56, D57, D58, D59, D63, D64, D66, D67, D68, D70 |
-| **B** — D26 ✅ nel blocco 1b (§12.8); D7 ✅ nel blocco 1d (§12.10) | D2, D5, D7, D8, D9, D10, D11, D12, D13, D16, D17, D18, D19, D20, D22, D23, D24, D26, D27, D28, D29, D32, D33, D34, D38, D39, D45, D49, D52, D60, D69, D71, D73 |
+| **A** — D14, D15, D54, D56 ✅ scritti nel giro 1a (§12); D1 ✅ nel blocco 1b (§12.8); D40, D41 ✅ nel blocco 1c (§12.9); D43 ✅ nel blocco 1d (§12.10); D3, D4, D44 ✅ nel giro 2 (§14); D46, D47, D51 ✍️ scritti nel giro 3 (§15) | D1 (contratto del 2026-07-22: un dblink fallito restituisce la sentinella), D3, D4, D6, D14, D15, D21, D25, D30 (cinque righe del seed senza prefisso), D35, D36, D37, D40, D41, D43, D44, D46, D47, D51, D53, D54, D56, D57, D58, D59, D63, D64, D66, D67, D68, D70 |
+| **B** — D26 ✅ nel blocco 1b (§12.8); D7 ✅ nel blocco 1d (§12.10); D45, D60 ✅ nel giro 2 (§14); D5, D18, D49 ✍️ scritti nel giro 3 (§15) | D2, D5, D7, D8, D9, D10, D11, D12, D13, D16, D17, D18, D19, D20, D22, D23, D24, D26, D27, D28, D29, D32, D33, D34, D38, D39, D45, D49, D52, D60, D69, D71, D73 |
 | **C** | D17-bis, D42, D48, D50, D55, D61, D62, D65, D72, D74 — ✅ scritti nel giro C1 (§10) tutti tranne D17-bis e D74; di D61 restano i quattro strumenti DBA (Q9) |
 
 ⚠️ D31 non c'è: il ramo del `tx_id` non registrato l'ha già giudicato il brief chiuso
@@ -476,10 +480,10 @@ Si chiedono quando il giro DB corrispondente è applicato.
 | --- | --- | --- | --- |
 | ~~BE1~~ | ~~L'handler della chiusura per scadenza passa `p_classe = 'DOMINIO'`~~ — ritirata (Q5, 2026-11-05): il cancello è il CHECK nel DB | `backend/apps/core/services/coda_lavori/chiusura_scadenze_handler.py:51-60` | D38 (Q5) |
 | BE2 | I `gaps` scritti a mano per `codice_interno` si ritirano | `backend/apps/core/services/non_editable_fields_helper.py` | D25 |
-| BE3 | I controlli preventivi «padre non attivo» si ritirano e si mappa il codice nuovo | `backend/apps/vendite/services/commesse_service.py:552`, `backend/apps/anagrafiche/db/anagrafiche_repository.py:98` | D46 |
+| BE3 | I controlli preventivi «padre non attivo» si ritirano e si mappa il codice nuovo (`E_ATTIVO_PADRE_NON_ATTIVO`, CONFLITTO_STATO; `E_PADRE_INESISTENTE`, DATO_ERRATO; tutti e due con la colonna FK in `campo`). I commenti che dicono «`E_ATTIVO_REQUIRE`, TECNICO, 500» diventano falsi | `backend/apps/vendite/services/commesse_service.py:552`, `backend/apps/anagrafiche/db/anagrafiche_repository.py:98`; commenti in `backend/apps/magazzino/services/anagrafiche_magazzino_service.py:13-18`, `backend/apps/magazzino/services/magazzino_service.py:208`, `backend/apps/vendite/tests/services/test_commesse_service.py:2035` | D46 (giro 3) |
 | BE4 | La ricerca dei lookup passa alla funzione DB (o cade il tetto `LOOKUP_MAX_SOURCE_ROWS`); la paginazione resta com'è | `backend/apps/core/db/dbops_repository.py:55, 415-470` | D57 |
 | BE5 | Docstring stantie: «tre viste … SECURITY DEFINER» (`fn_conta_presidio` è INVOKER) e «registro non vuoto» (il corpo ammette vuoto) | `backend/apps/core/db/presidi_repository.py:16-22`, `backend/apps/core/tests/test_error_codes_db_policy_guardrail.py:66-67` | — |
-| BE6 | Codici nuovi di D44-D47, D12 → rigenerare `error_policies_generated.py` | — | §2.5 |
+| BE6 | Codici nuovi → rigenerare `error_policies_generated.py`, e le voci di `error_messages_fallback.py`: dal giro 2 `E_DBOPS_CHIAMATA_NON_VALIDA`, `E_MERGE_RIGHE_DOPPIE`, `E_MERGE_FIGLIA_SOTTO_RLS`, `E_STRADARIO_SOPPRESSO` e gli altri di §14.1; dal giro 3 `E_ATTIVO_PADRE_NON_ATTIVO`, `E_PADRE_INESISTENTE`. Poi D12 (giro 9) | `backend/apps/core/services/error_messages_fallback.py:113-123` (la voce di `E_ATTIVO_REQUIRE` dice «trigger configurato male», ora è solo il generatore) | §2.5, §14.1, §15.2 |
 | BE7 | Commento stantio: il test nomina il presidio `dbops.vw_run_senza_attore`, ritirato | `backend/apps/core/tests/services/test_job_run.py:136-138` | D42 |
 | BE8 | Il livello «sessione» degli override esce: via `session_key` da `_DIMENSIONI_OVERRIDE` e dalle firme di `ParameterRepository.get_parameter` e affini | `backend/apps/core/db/parameter_repository.py:97-140` | Q10 |
 | BE9 | Dopo la RLS su `dbops.coda_lavori`: il filtro per `scope_key` scritto a mano negli elenchi e nei conteggi della coda lavori si ritira, la separazione la fa il DB (come per la coda di stampa) | `backend/apps/core/services/coda_lavori/gestione_service.py:83-320`, `CodaLavoriRepository` | Q14.3 |
@@ -495,6 +499,11 @@ in `test_tracciamento_repositories.py`, che usano `fn_run_automations` come nome
 `audit_log` finta: non si rompono e non vanno toccati. Le tre viste del blocco 1a che il BE legge nei suoi
 test (`vw_punti_canale_campo`, `vw_stati_check_scrittori`, `vw_codici_errore_da_dichiarare`) non hanno
 perso né rinominato colonne: sono cambiate con `CREATE OR REPLACE VIEW`, che non lo permette.
+
+**Stato al 2026-11-07** (giro 2 applicato, giro 3 scritto): dopo l'apply del giro 3 si chiedono **BE3** e
+**BE6**, una volta sola per i codici dei giri 2 e 3. Il giro 3 non cambia firme né colonne di oggetti che il
+backend legga; cambia i codici che i guard ATTIVO sollevano (un 500 che diventa 409 o 400) e la frase.
+Censiti nel backend: i due controlli preventivi di BE3 e i tre commenti che li motivano.
 
 ## 6. Difetti fuori schema trovati leggendo i chiamanti
 
@@ -556,7 +565,7 @@ entra nel giro che apre lo stesso oggetto.
 | --- | --- | --- | --- |
 | 1 ✅ | A | D1 (+ D26), D14 + D15, D40, D41, D43, D54, D56 (+ D7) | Applicato e verde (§12) |
 | 2 ✅ | A | **Le fusioni e la pipeline.** D3, D4, D45 (Q1); D60 con R6 e R7 (Q9: il ramo dblink di `fn_audit_log_once` esce, nasce il parametro della durata); D44 con Q14 ① | Le porte che falliscono appena le si usa vengono prima di tutto. D60 entra qui (prima era nel giro 7) perché le fusioni devono scrivere la durata nella colonna, e il parametro per farlo lo porta D60. ① è la stessa funzione di D44 |
-| 3 | A | **I guard ATTIVO.** D46, D47, D49, D5, D51 (Q8, con il censimento delle fixture che chiudono i differiti), D18 | Sono le stesse due o tre funzioni trigger (`trgfn_child_requires_active_parent`, `…_non_obsolete_parent`, `trgfn_prevent_deactivate_if_children`): prima erano divise fra i giri 2, 4, 6 e 7. Codice sbagliato e lettura sotto la RLS sbagliata sono errori che l'operatore vede. Alla fine del giro, una sola rigenerazione BE (BE6) per i codici dei giri 2 e 3; BE3 |
+| 3 ✍️ | A | **I guard ATTIVO.** D46, D47, D49, D5, D51 (Q8, con il censimento delle fixture che chiudono i differiti), D18 — scritto e provato sullo scratch (§15), da applicare | Sono le stesse due o tre funzioni trigger (`trgfn_child_requires_active_parent`, `…_non_obsolete_parent`, `trgfn_prevent_deactivate_if_children`): prima erano divise fra i giri 2, 4, 6 e 7. Codice sbagliato e lettura sotto la RLS sbagliata sono errori che l'operatore vede. Alla fine del giro, una sola rigenerazione BE (BE6) per i codici dei giri 2 e 3; BE3 |
 | 4 | A | **Riconoscimento e strumenti.** D6, D21 (+ M18), D53 (Q9) | D6 dà il riconoscimento del trigger dalla funzione (`tgfoid`): il giro 10 lo riusa, quindi viene prima |
 | 5 | A | **La coda lavori sotto RLS.** Q14 ③, D9 | Separare le aziende nel DB è un contratto deciso (Q14 ③). D9 (`fn_accoda_lavoro`) è la stessa tabella. Poi BE9 e la revisione del `perimetro` di `vw_coda_lavori_da_guardare` |
 | 6 | A | **Presidi che guardano il campo sbagliato.** Q14 ④, ⑦ | Un presidio che non vede un caso che il modello ammette (il buco dei lotti congelati) dice il falso. Tutti e due riaprono il catalogo `presidi.csv` / `presidi_testi.csv`. ⑧ va nell'altro brief (§8.1) |
@@ -1323,3 +1332,155 @@ che possono disfare un oggetto creato in `00_schema`.
 **✅ Applicato da Tid il 2026-11-07** su dbdev e sullo scratch, `20261107-01` … `-19` (senza `-05`,
 rinumerato al `-17`) e i tre CSV; pgTAP di §14.3 verdi come app. Il giro 2 è chiuso. Restano: la baseline
 B-7 (§14.4), il commit, e i residui di §14.6, §14.7.4 e §14.8, assegnati ai loro giri.
+
+## 15. Giro 3 — i guard ATTIVO, 2026-11-07
+
+**Via di Tid (2026-11-07):** giro 3, dopo il commit del giro 2 (`93b650e517`); YAML dal primo numero libero
+(`20261107-20`), e `%TYPE` dove si ancora. Difetti: D5, D18, D46, D47, D49, D51 (con Q8).
+
+### 15.1 Il censimento dei montaggi (D49, D18)
+
+Letto dal catalogo dello scratch e di dbdev il 2026-11-07 (struttura, non popolazione): il generatore monta
+il block e il require **sempre con cinque argomenti**; i require scritti a mano (sette dell'attivo, immediati,
+su contratti, ordini e righe componenti; cinque dell'obsoleto, su pratiche, flussi, listini kit, attività di
+commessa e indirizzi) ne hanno cinque, uno dell'obsoleto sei (l'esenzione). Nessun montaggio usava i
+ripieghi: gli argomenti diventano obbligatori senza toccare un trigger. Tutti hanno una FK verso il padre;
+il ramo «padre assente» (D5) resta un caso del modello (un require su chiave polimorfa), provato su TEMP.
+
+Lettori di `tgargs` censiti sul vivo (corpo delle funzioni): `fn_trigger_attivo_orfani`,
+`fn_ritira_attivo_eccezioni` e le tre di D6 (`fn_trigger_exists_block_by_args`, `…_require_by_args`,
+`fn_drop_triggers_by_function_args`). Le altre cinque funzioni che nominano le trgfn lo fanno nei commenti.
+
+### 15.2 Che cosa è stato scritto
+
+| changeSet | Oggetto | Difetti |
+| --- | --- | --- |
+| `20_code/dbops/20261107-20` | nuovo `dbops.fn_trigger_attivo_argomenti(name, text[])`: la grammatica per nome dei tre trigger, tutti gli argomenti obbligatori, rinumera TG_ARGV (base 0) | D18, D49 |
+| `20_code/dbops/20261107-21` | nuovo `dbops.fn_trigger_padre_stato(oid, name, text)`, DEFINER: stato del padre (jsonb) e «trovato», fuori dalla RLS, per le due require | D51, D5 |
+| `20_code/dbops/20261107-22` | nuovo `dbops.fn_trigger_figlie_presenti(oid, name, text)`, DEFINER: le figlie che tengono acceso il padre, fuori dalla RLS | D51 |
+| `20_code/dbops/20261107-23` | `trgfn_prevent_deactivate_if_children`: grammatica, argomenti obbligatori, figlie dal `-22`; una colonna referenziata o di stato che il padre non ha è `E_ATTIVO_BLOCK_ARGS` invece di un NULL | D18, D49, D51 |
+| `20_code/dbops/20261107-24` | `trgfn_child_requires_active_parent`: `E_ATTIVO_PADRE_NON_ATTIVO`, `E_PADRE_INESISTENTE`, `E_TRIGGER_ARGOMENTI_INVALIDI`; padre dal `-21`; l'attivo della figlia letto sulla riga | D5, D18, D46, D49, D51 |
+| `20_code/dbops/20261107-25` | `trgfn_child_requires_non_obsolete_parent`: `E_TRIGGER_ARGOMENTI_INVALIDI` nei rami di montaggio, `E_PADRE_INESISTENTE`; padre dal `-21` | D5, D18, D47, D49 |
+| `20_code/dbops/20261107-26` | `fn_trigger_attivo_orfani` dalla grammatica; il motivo `ARGOMENTI_INSUFFICIENTI` diventa `ARGOMENTI_INVALIDI`; COMMENT di `fn_ritira_attivo_orfani` riscritto (lo nomina) | D18 |
+| `20_code/dbops/20261107-27` | `fn_ritira_attivo_eccezioni` dalla grammatica, non per posizione | D18 |
+| `80_data/sql/config/codici_errore.csv`, `messaggi_errore.csv` | `E_ATTIVO_PADRE_NON_ATTIVO` (CONFLITTO_STATO, id 1449), `E_PADRE_INESISTENTE` (DATO_ERRATO, id 1450); note di `E_ATTIVO_REQUIRE` (M35), `E_TRIGGER_ARGOMENTI_INVALIDI`, `E_CATALOGO_OBSOLETO_NUOVA_ISTANZA` riscritte | D46, D47, D5 |
+
+I COMMENT dei sette oggetti sono riscritti per intero secondo §5d (niente brief, niente marcatori di
+revisione, niente misure): il «⭐ rev 2026-08-20 … misurato 168 su 349» del block esce.
+
+### 15.3 Le scelte dentro il giro (da guardare, Tid)
+
+1. **`E_ATTIVO_REQUIRE` resta al generatore, non ai rami di montaggio del trigger.** D46 diceva «resta per
+   il montaggio»: l'ho letto come «per chi monta», cioè il generatore, che è quello che il suo messaggio dice
+   («Errore generazione regola ATTIVO_require»). I rami di montaggio della funzione trigger escono con
+   `E_TRIGGER_ARGOMENTI_INVALIDI`, lo stesso codice di D47 per la gemella: una regola, un codice, nelle due
+   require. Il block tiene i suoi (`E_ATTIVO_BLOCK_ARGS`, `E_ATTIVO_BLOCK_FKCOL_NOT_FOUND`), che non erano
+   in discussione.
+2. **La lettura fuori dalla RLS vale anche per la require dell'obsoleto.** D51/Q8 nominano i due guard
+   ATTIVO; la require dell'obsoleto legge il padre con la stessa forma, e una lettura sola per le due require
+   è la regola del 2. Un catalogo è obsoleto o no per tutti.
+3. **Le due DEFINER ricevono il trigger, non i nomi.** Una DEFINER che esegue SQL dinamico su nomi passati
+   dal chiamante leggerebbe qualunque colonna di qualunque tabella per chiunque la chiami: l'applicazione
+   può montare un trigger con argomenti a piacere su una TEMP sua. Le due letture prendono `(tgrelid,
+   tgname)`, leggono gli argomenti dal montaggio e rispondono solo se la tabella del trigger è del loro
+   proprietario (cioè l'hanno montata le migrazioni). Rifiutano anche se la tabella da leggere è sotto RLS
+   per il proprietario stesso (FORCE o un altro proprietario): «non ho potuto guardare» non diventa «non
+   c'è». La regola, generale, è scritta in `linee-guida-trigger.md` §«BEFORE e AFTER».
+4. **Il ramo della colonna referenziata NULL del block resta com'era** (si registra e si passa): nessuna
+   figlia può riferire una chiave NULL, quindi il controllo saltato è corretto sul modello; non era in D49.
+5. **Il rifiuto per l'operatore porta `campo`** (la colonna FK nelle require, la colonna attivo nel block)
+   anche in `E_CATALOGO_OBSOLETO_NUOVA_ISTANZA`. Nessun `bersaglio`: il padre può essere una riga che
+   l'operatore non vede.
+
+### 15.4 Le prove (scratch `zeroerp_ruoli`, SQL estratto dagli YAML, `BEGIN … ROLLBACK`)
+
+* **L'estratto in ordine di numero, con le dieci preCondition** eseguite come `SELECT` col valore atteso al
+  loro posto, e le due righe dei CSV simulate da un INSERT: passa intero su scratch e su dbdev, come owner.
+  Dopo le prove i due database sono puliti (funzioni e messaggi nuovi assenti, corpi di oggi intatti).
+* **`plpgsql_check`** sulle sei plpgsql (le trgfn con una tabella dei loro montaggi): nessun errore; solo
+  gli avvisi «STABLE che chiama una VOLATILE» (`fn_log_and_raise_error`, `fn_get_override_col`), gli stessi
+  delle fusioni del giro 2.
+* **Il difetto, prima della correzione, come app** (sonda e file nuovo senza estratto): chiudendo i differiti
+  nei panni dell'operatore di un'azienda, il listino attivo di un'altra risponde «Errore generazione regola
+  ATTIVO_require. Sqlerrm: Padre non attivo» (`E_ATTIVO_REQUIRE`); lo stesso operatore spegne una tipologia
+  usata da un listino attivo dell'altra azienda.
+* **pgTAP** (con / senza l'estratto in testa; da owner salvo dove detto):
+
+| File | Con | Senza |
+| --- | --- | --- |
+| nuovo `dbops/test-guard-attivo-grammatica-e-codici-v1` (23, runner owner: trigger su TEMP) | 23/23, anche col `search_path` dell'app | si ferma al 4 (la grammatica non esiste) |
+| nuovo `dbops/test-guard-attivo-occhi-del-proprietario-v1` (9, runner app) | da owner 1, 3, 4, 5, 9 verdi; 2, 6, 7, 8 rossi per costruzione (dichiarato nel file) | come app: 1-2 verdi, 3-5 rossi col difetto, poi si ferma (le letture non esistono) |
+| `dbops/test-trigger-attivo-orfani-v1` (ora runner owner, motivo rinominato) | 10/10 | rossi 4 e 7 (il motivo) |
+| `catalogo/test-articoli-approvvigionamento-v1` (test 10: la frase nuova) | 12/12 | rosso il 10 |
+| `dbops/test-trgfn-prevent-deactivate-if-children-pdp` (13), `config/test-trgfn-prevent-deactivate-if-children-toponomastica` (9), `dbops/test-automazione-attivo-eccezioni-v1` (8), `pratiche/test-guard-non-obsolete-parent-v1` (10), `vendite/test-articolo-ritirato-v1` (17), `dbops/test-fusioni-comune-stradario-v1` (37), `anagrafiche/test-fn-create-indirizzo-v1` (6) | tutti verdi | tutti verdi |
+| presidi trasversali: `dbops/test-riferimenti-morti-v1` (12), `dbops/test-security-definer-search-path-v1` (5), `script/test-catalogo-messaggi-errore-completo` (7), `script/test-rubinetto-primo-motivo-v1` (7), `dbops/test-corpo-funzione-senza-commenti-v1` (15), `dbops/test-punti-canale-campo-v1` (18), `dbops/test-vw-codici-errore-valore-atteso` (7), `-motivo-nominato` (10) | tutti verdi | tutti verdi |
+| `rls/test-rls-listini-ef-whitelist-write` (8, commento della fixture riscritto) | da owner 4 e 5 rossi, per costruzione | uguale |
+
+* Guardrail dei changelog, del preambolo pgTAP, dei letterali e del fuso verdi; header di licenza a posto. Il
+  pre-commit è rosso solo su `check-i18n-keys` per `vendite.righe.articolo_reason.obsoleto`, come al giro 2:
+  la chiave è del cantiere degli articoli.
+* ⚠️ Due corse con l'estratto hanno preso un deadlock contro sessioni concorrenti sullo scratch (una corsa
+  pgTAP da `zeroerp_owner`, poi l'altro cantiere che provava le sue ALTER su `vendite.fatture`); rilanciate a
+  scratch libero, sono passate. Non è un difetto del giro, ma le prove di due cantieri sullo stesso scratch
+  si pestano.
+
+### 15.5 La baseline B-7 si muove ancora
+
+Fotografia di `scripts/sql/codici_errore_famiglie_snapshot.sql` in transazione sullo scratch, senza e con
+l'estratto (le righe del giro 2, §14.4, non sono ancora nella baseline committata):
+
+| Codice | Senza | Con | Perché |
+| --- | --- | --- | --- |
+| `E_ATTIVO_REQUIRE` | `NOT_FOUND`, 6 | — | i rami del trigger escono; resta il generatore, che la misura non legge |
+| `E_CATALOGO_OBSOLETO_NUOVA_ISTANZA` | `NOT_FOUND`, 6 | — | i rami di montaggio e del padre assente escono (D47, D5) |
+| `E_DBOPS_CHIAMATA_NON_VALIDA` | `PARAMETRO`, 9 | `PARAMETRO`, 15 | le due letture DEFINER, stessa famiglia |
+| `E_TRIGGER_ARGOMENTI_INVALIDI` | `ECCEZIONE,ENUM,VALORE_ATTESO`, 6 | stesse, 10 | i rami di montaggio delle due require, nessuna famiglia nuova |
+
+Nessun «nasce generico» né «accumula»: i due codici nuovi la misura non li legge. ⚠️ La fotografia «senza»
+differisce dalla baseline committata anche fuori da questo brief (per esempio `E_GENERICO` a 9 punti,
+`E_DDT_*`): sono di altri cantieri, e il confronto riga per riga resta di Tid.
+
+### 15.6 Per Tid
+
+1. Apply su dbdev e sullo scratch: `20261107-20` … `-27` e i due CSV dei codici.
+2. pgTAP **come app**: i due nuovi (`dbops/test-guard-attivo-grammatica-e-codici-v1` gira da owner per il
+   suo marcatore), `dbops/test-trigger-attivo-orfani-v1`, `catalogo/test-articoli-approvvigionamento-v1`,
+   `rls/test-rls-listini-ef-whitelist-write`, `dbops/test-trgfn-prevent-deactivate-if-children-pdp`,
+   `config/test-trgfn-prevent-deactivate-if-children-toponomastica`, `dbops/test-automazione-attivo-eccezioni-v1`,
+   `pratiche/test-guard-non-obsolete-parent-v1`, `vendite/test-articolo-ritirato-v1`,
+   `script/test-catalogo-messaggi-errore-completo`, `dbops/test-riferimenti-morti-v1`,
+   `dbops/test-security-definer-search-path-v1`. ⚠️ Il giro cambia il comportamento di **tutti** i
+   trigger ATTIVO: un rosso altrove nella suite, su un guard che legge figlie o padre di un'altra azienda,
+   è da guardare come effetto di D51 (oggi la suite non ne ha uno noto).
+3. La baseline B-7: le righe di §14.4 e di §15.5 insieme, dopo averle confrontate.
+4. Il commit, e il via al giro 4.
+
+**Esito (Tid, 2026-11-07):** apply su dbdev e sullo scratch, pgTAP di §15.6 verdi come app. La baseline B-7
+resta da fare (punto 3).
+
+### 15.7 Doc
+
+* Pagine `manual/` riscritte sul comportamento nuovo: `trgfn_child_requires_active_parent`,
+  `trgfn_child_requires_non_obsolete_parent` (anche l'esenzione e i cablaggi, che non conosceva),
+  `trgfn_prevent_deactivate_if_children`. Aggiornate: `fn_trigger_attivo_orfani`, `fn_ritira_attivo_orfani`,
+  `fn_ritira_attivo_eccezioni`, `fn_trigger_argomenti`. Nuove: `fn_trigger_attivo_argomenti`,
+  `fn_trigger_padre_stato`, `fn_trigger_figlie_presenti`, con le voci in `dbops/index.md` e `index.ci.md`
+  (le schede auto-generate nascono alla rigenerazione della doc).
+* Guide: `automazione-db.md` §4.2 (i codici, la lettura fuori dalla RLS, la grammatica);
+  `linee-guida-trigger.md` (un guard che decide su una riga correlata non la legge sotto la RLS di chi
+  scrive, e una DEFINER di lettura riceve il trigger, non i nomi; la grammatica ATTIVO come esempio di
+  funzione condivisa).
+* Q8, il censimento delle fixture: l'unica che chiudeva i differiti «nei panni di chi ha scritto» apposta è
+  `rls/test-rls-listini-ef-whitelist-write`; il suo commento ora dice il vero (il contesto non conta più). Le
+  altre fixture che cambiano attore non dipendevano dal require: nessuna da cambiare.
+
+### 15.8 Residuo
+
+* **D6, giro 4.** Le tre funzioni di riconoscimento e ritiro per argomenti leggono ancora `tgargs` per
+  posizione: nel giro 4 passano dalla grammatica di `-20` (il presidio 23 del test nuovo le aggiungerà al suo
+  elenco).
+* **BE3 e BE6** (§5): il giro 3 è applicato, il team BE può farle.
+* La require dell'obsoleto e gli altri trigger scritti a mano non sono nel presidio degli orfani (che guarda
+  solo i generati): un montaggio a mano verso una colonna sparita ora si ferma con
+  `E_TRIGGER_ARGOMENTI_INVALIDI` invece di passare, ma nessuno lo ritira da solo. È la scelta di oggi
+  («orfano = nome morto» dei soli generati), non un difetto aperto.

@@ -1,19 +1,21 @@
 ## 📘 Documentazione Concettuale – Trigger function `dbops.trgfn_child_requires_non_obsolete_parent`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 7 novembre 2026
 >
 > 👀 **Vedi anche**
 >
 > Approfondimento tabelle:
 >
 > * [pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche) — figlia cablata, verso `pratiche.tipi_prestazione`
-> * [pratiche.flussi](/dbzero/pratiche/tabelle/flussi) — figlia cablata, verso `pratiche.template_flussi`
+> * [vendite.listini_kit](/dbzero/vendite/tabelle/listini_kit) — figlia cablata, verso `catalogo.articoli`
 >
 > Approfondimento funzioni:
 >
 > * [dbops.trgfn_child_requires_active_parent](/dbzero/dbops/funzioni/trgfn_child_requires_active_parent) — la gemella sull'asse `attivo`
+> * [dbops.fn_trigger_attivo_argomenti](/dbzero/dbops/funzioni/fn_trigger_attivo_argomenti) — la grammatica degli argomenti
+> * [dbops.fn_trigger_padre_stato](/dbzero/dbops/funzioni/fn_trigger_padre_stato) — legge il catalogo, fuori dalla row level security
+> * [script.fn_e_obsoleto](/dbzero/script/funzioni/fn_e_obsoleto) — il predicato «ritirato alla data operativa»
 > * [dbops.fn_get_lookup_codici](/dbzero/dbops/funzioni/fn_get_lookup_codici) — la selezione che nasconde le voci obsolete
-> * [script.fn_data_operativa](/dbzero/script/funzioni/fn_data_operativa) — l'«oggi» con cui si giudica l'obsolescenza
 >
 > Guide:
 >
@@ -24,8 +26,8 @@
 ### 🎯 Scopo Principale
 
 Impedisce di **creare** un'istanza, o di **ricollegarla**, verso una voce di catalogo **obsoleta**,
-cioè con `obsoleto_dal` raggiunto alla data operativa. Le istanze che puntano già a quella voce
-restano, e i loro avanzamenti di stato non si bloccano.
+cioè con `obsoleto_dal` raggiunto alla data operativa (`script.fn_e_obsoleto`). Le istanze che
+puntano già a quella voce restano, e i loro avanzamenti di stato non si bloccano.
 
 È la difesa in profondità di «la selezione nasconde, il database rifiuta»: la selezione nasconde
 le voci obsolete (`dbops.fn_get_lookup_codici` senza obsoleti), questo trigger vieta di usarle
@@ -53,36 +55,36 @@ questo che serve un trigger suo.
 * Una FK vuota passa: è facoltativa.
 * Su un aggiornamento, se la FK non cambia il controllo non si fa: un cambio di stato di
   un'istanza storica non ripunta il catalogo e non si blocca mai.
+* Una riga **derivata** da un altro documento passa all'inserimento, se il montaggio nomina la
+  colonna di esenzione e la riga la valorizza (per esempio `sorgente_tipo_id`). Sull'aggiornamento
+  l'esenzione non vale: cambiare la FK è sempre una scelta nuova.
 * Una voce con `obsoleto_dal` vuoto, o con una data futura (ritiro programmato), si può usare.
-* La data si confronta con la **data operativa** (`script.fn_data_operativa`), non con la data
-  del server.
-
-⚠️ Un padre che non si trova passa senza errore: il ramo «catalogo non trovato» non scatta mai,
-perché il controllo dopo l'interrogazione dinamica guarda un indicatore che quell'interrogazione
-non aggiorna. Con la FK vera il caso non si presenta.
+* Il catalogo si legge con `dbops.fn_trigger_padre_stato`, fuori dalla row level security, come
+  la gemella: una voce è obsoleta o no per tutti.
 
 ---
 
 ### Il cablaggio
 
-Un trigger per relazione, `AFTER INSERT OR UPDATE OF` la colonna FK, con gli argomenti: schema e
-tabella del catalogo, nome della colonna `obsoleto_dal`, colonna FK del figlio, colonna
-referenziata (`id` se manca). Oggi sono cablate `pratiche.pratiche` verso
-`pratiche.tipi_prestazione` e `pratiche.flussi` verso `pratiche.template_flussi`. Un catalogo
-nuovo è un altro trigger, nessuna logica nuova.
+Un trigger per relazione, con gli argomenti nella grammatica di `dbops.fn_trigger_attivo_argomenti`:
+schema e tabella del catalogo, nome della colonna `obsoleto_dal`, colonna FK del figlio, colonna
+referenziata — tutti obbligatori — e, facoltativa, la colonna di esenzione del figlio. Cablaggi di
+esempio: `pratiche.pratiche` verso `pratiche.tipi_prestazione`, `pratiche.flussi` verso
+`pratiche.template_flussi`, `vendite.listini_kit` verso `catalogo.articoli`,
+`vendite.commesse_attivita` verso `catalogo.articoli` (con l'esenzione della riga derivata),
+`anagrafiche.indirizzi_dettaglio` verso `config.stradario` (la via soppressa). Un catalogo nuovo è
+un altro trigger, nessuna logica nuova.
 
 ---
 
 ### Codici errore
 
-Tutti i rifiuti escono con `E_CATALOGO_OBSOLETO_NUOVA_ISTANZA`:
-
-* la voce di catalogo è obsoleta — il caso per cui il codice esiste;
-* il trigger è montato con meno di quattro argomenti, o la colonna referenziata, la tabella o la
-  colonna `obsoleto_dal` non esistono.
-
-⚠️ I casi di configurazione usano lo stesso codice di dominio, di classe conflitto di stato: chi
-li riceve legge «catalogo obsoleto» per un trigger montato male.
+* `E_CATALOGO_OBSOLETO_NUOVA_ISTANZA` (conflitto di stato, colonna FK nel campo) — la voce di
+  catalogo è obsoleta: il caso per cui il codice esiste.
+* `E_PADRE_INESISTENTE` (dato errato) — nessuna voce del catalogo ha quella chiave; succede dove il
+  collegamento non è una FK.
+* `E_TRIGGER_ARGOMENTI_INVALIDI` — il trigger è montato fuori grammatica, o nomina una colonna FK o
+  di esenzione che la figlia non ha, o una tabella o una colonna del catalogo che non esiste.
 
 ---
 
@@ -92,6 +94,9 @@ li riceve legge «catalogo obsoleto» per un trigger montato male.
   selezionabile o con ritiro programmato passa, voce obsoleta si rifiuta; un aggiornamento che non
   tocca la FK passa anche quando la voce è diventata obsoleta; il ricollegamento a una voce
   obsoleta si rifiuta; la voce obsoleta resta attiva.
+* `db/pgtap/dbops/test-guard-attivo-grammatica-e-codici-v1.sql` — su tabelle temporanee: il
+  catalogo assente, l'esenzione della riga derivata, i montaggi sbagliati col loro codice.
+* `db/pgtap/vendite/test-articolo-ritirato-v1.sql` — il kit e l'onere su un articolo ritirato.
 
 ---
 
@@ -100,6 +105,11 @@ li riceve legge «catalogo obsoleto» per un trigger montato male.
 * 2026-06-30 — nasce con il cablaggio su pratiche e flussi
   (`brief-db-obsoleto-dal-filtro-lookup-e-guard`).
 * 2026-10-09 — «oggi» diventa la data operativa, nel fuso aziendale; prima era la data del server.
+* 2026-11-05 — la colonna di esenzione della riga derivata, e il predicato in `script.fn_e_obsoleto`.
+* 2026-11-07 — i montaggi sbagliati escono con `E_TRIGGER_ARGOMENTI_INVALIDI` (prima con il codice
+  dell'obsoleto, un 409 che chiedeva all'operatore di scegliere un'altra voce); il catalogo assente
+  si riconosce (prima passava); la colonna referenziata è obbligatoria; il catalogo si legge fuori
+  dalla row level security.
 
 ---
 
