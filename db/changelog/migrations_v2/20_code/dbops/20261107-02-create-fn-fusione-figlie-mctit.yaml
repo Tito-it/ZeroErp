@@ -1,0 +1,157 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_fusione_figlie: chi riferisce una riga di una tabella, letto dal
+# catalogo. Il primo dei tre building block della fusione.
+#   Brief: brief-db-revisione-dbops, D3 e D4 (giro 2, decisione Q1).
+#
+# ⚠️ IL DIFETTO CHE CHIUDE. dbops.fn_admin_merge_comune ripuntava solo
+#   config.stradario: codici postali, indirizzi, soggetti, indirizzi dei
+#   soggetti e aree di fatturazione restavano sul comune soppresso. Un elenco
+#   scritto a mano invecchia alla prima FK nuova; la decisione di Tid (Q1) e'
+#   che le figlie si derivano da pg_constraint.
+#
+# ⭐ LA REGOLA, IN UN POSTO SOLO. Le figlie sono le FK che puntano al padre
+#   (contype 'f', confrelid = padre). conparentid = 0 tiene solo il vincolo
+#   dichiarato: su una tabella partizionata le partizioni ne hanno una copia
+#   ciascuna, e ripuntarle due volte non serve. Le colonne escono in coppia
+#   (figlia, padre), nell'ordine del vincolo: vale anche per una FK composta, o
+#   verso una chiave che non e' la primaria. Il controllo dei doppi
+#   (fn_fusione_righe_doppie) e il ripuntamento (fn_fusione_ripunta_figlie)
+#   leggono questa funzione: «chi sono le figlie» e' scritto una volta.
+#
+# ⭐ I DUE RIFIUTI, entrambi TECNICO (li produce solo un uso sbagliato):
+#   - un padre assente o senza chiave primaria di una colonna
+#     (E_DBOPS_CHIAMATA_NON_VALIDA): origine e destinazione si indicano con
+#     quella chiave;
+#   - una figlia sotto RLS per chi lancia: la fusione vedrebbe solo una parte
+#     delle righe e lascerebbe le altre sul padre soppresso, in silenzio. Si
+#     ferma prima di scrivere (E_MERGE_FIGLIA_SOTTO_RLS). row_security_active
+#     risponde per current_user: la funzione e' INVOKER, quindi e' chi lancia.
+#
+# INVOKER, STABLE, senza SET search_path: legge solo il catalogo, nomi tutti
+#   qualificati. Il nome della porta (p_porta) viaggia nei messaggi, perche'
+#   chi legge l'errore sappia quale fusione ha lanciato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261107-02-create-fn-fusione-figlie-mctit.yaml
+
+  - changeSet:
+      id: 20261107-02-create-fn-fusione-figlie
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Nuovo dbops.fn_fusione_figlie: le FK che puntano a un padre, dal catalogo, con le
+        colonne in coppia. Building block della fusione (D3, D4).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_fusione_figlie';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION dbops.fn_fusione_figlie(
+                  p_padre regclass,
+                  p_porta dbops.error_log.function_name%TYPE DEFAULT NULL -- nome della fusione che chiama, per i messaggi
+              )
+              RETURNS TABLE(
+                  figlia       regclass,
+                  vincolo      pg_catalog.pg_constraint.conname%TYPE,
+                  -- name[]: l'array di pg_attribute.attname (un %TYPE[] qui non e' sintassi valida)
+                  colonne_fk   name[],
+                  colonne_rif  name[],
+                  chiave_padre pg_catalog.pg_attribute.attname%TYPE
+              )
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_chi    dbops.error_log.function_name%TYPE := COALESCE(p_porta, 'dbops.fn_fusione_figlie');
+                  v_chiave pg_catalog.pg_attribute.attname%TYPE;
+                  v_rls    regclass;
+              BEGIN
+                  IF p_padre IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', v_chi, 'E_DBOPS_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('campo', 'p_padre'),
+                          NULL::uuid,
+                          v_chi, 'manca la tabella da fondere');
+                  END IF;
+
+                  -- La chiave con cui si indicano origine e destinazione.
+                  SELECT a.attname
+                    INTO v_chiave
+                    FROM pg_catalog.pg_constraint c
+                    JOIN pg_catalog.pg_attribute a
+                      ON a.attrelid = c.conrelid AND a.attnum = c.conkey[1]
+                   WHERE c.conrelid = p_padre
+                     AND c.contype = 'p'
+                     AND array_length(c.conkey, 1) = 1;
+                  IF v_chiave IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', v_chi, 'E_DBOPS_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('campo', 'p_padre', 'padre', p_padre::text),
+                          NULL::uuid,
+                          v_chi, format('%s non ha una chiave primaria di una colonna', p_padre));
+                  END IF;
+
+                  -- Una figlia che chi lancia vede solo in parte: ci si ferma prima.
+                  SELECT c.conrelid::regclass
+                    INTO v_rls
+                    FROM pg_catalog.pg_constraint c
+                   WHERE c.contype = 'f'
+                     AND c.confrelid = p_padre
+                     AND c.conparentid = 0
+                     AND row_security_active(c.conrelid)
+                   ORDER BY c.conrelid::regclass::text
+                   LIMIT 1;
+                  IF v_rls IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', v_chi, 'E_MERGE_FIGLIA_SOTTO_RLS',
+                          jsonb_build_object('padre', p_padre::text, 'figlia', v_rls::text),
+                          NULL::uuid,
+                          v_rls::text);
+                  END IF;
+
+                  RETURN QUERY
+                  SELECT c.conrelid::regclass,
+                         c.conname,
+                         array_agg(af.attname ORDER BY k.ord),
+                         array_agg(ar.attname ORDER BY k.ord),
+                         v_chiave
+                    FROM pg_catalog.pg_constraint c
+                   CROSS JOIN LATERAL unnest(c.conkey, c.confkey) WITH ORDINALITY AS k(col, colrif, ord)
+                    JOIN pg_catalog.pg_attribute af
+                      ON af.attrelid = c.conrelid AND af.attnum = k.col
+                    JOIN pg_catalog.pg_attribute ar
+                      ON ar.attrelid = c.confrelid AND ar.attnum = k.colrif
+                   WHERE c.contype = 'f'
+                     AND c.confrelid = p_padre
+                     AND c.conparentid = 0
+                   GROUP BY c.conrelid, c.conname
+                   ORDER BY c.conrelid::regclass::text, c.conname;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_fusione_figlie(regclass, text) IS
+                  'Le tabelle che riferiscono una riga della tabella data, lette dal catalogo: una riga per ogni chiave esterna dichiarata verso il padre (le copie sulle partizioni no), con le colonne della figlia e quelle del padre in coppia, nell''ordine del vincolo, e la chiave primaria del padre con cui si indicano origine e destinazione. E'' la sede unica di «chi va ripuntato» per le fusioni: la leggono dbops.fn_fusione_righe_doppie e dbops.fn_fusione_ripunta_figlie. Si ferma con E_DBOPS_CHIAMATA_NON_VALIDA se il padre manca o non ha una chiave primaria di una colonna, e con E_MERGE_FIGLIA_SOTTO_RLS se chi la lancia vede una figlia sotto RLS, perche'' la fusione lascerebbe sul padre le righe che non vede. p_porta e'' il nome della fusione che chiama, e compare nei messaggi.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_fusione_figlie(regclass, text);

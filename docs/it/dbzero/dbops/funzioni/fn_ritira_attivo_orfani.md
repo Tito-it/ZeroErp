@@ -44,7 +44,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_ritira_attivo_orfani()
-IS 'Toglie i trigger ATTIVO che nominano una tabella o una colonna che non esiste piu'' (motivi TABELLA_ASSENTE e COLONNA_ASSENTE di dbops.fn_trigger_attivo_orfani, il lettore unico). Non tocca ARGOMENTI_INSUFFICIENTI: e'' un errore di scrittura, lo segnala il presidio. Torna quanti ne ha tolti. Chiamata in testa da dbops.fn_run_automations_attivo, fuori dal dry run, accanto a fn_ritira_attivo_eccezioni: chi genera ritira, e un DROP TABLE della figlia non lascia piu'' il block sul padre (E_ATTIVO_BLOCK_FKCOL_NOT_FOUND). Brief: brief-be-utenti-di-sviluppo §9.5 (R-1, Q-1).';
+IS 'Toglie i trigger ATTIVO che nominano una tabella o una colonna che non esiste piu'' (motivi TABELLA_ASSENTE e COLONNA_ASSENTE di dbops.fn_trigger_attivo_orfani, il lettore unico). Non tocca ARGOMENTI_INVALIDI: e'' un errore di scrittura, lo segnala il presidio. Torna quanti ne ha tolti. Chiamata in testa da dbops.fn_run_automations_attivo, fuori dal dry run, accanto a dbops.fn_ritira_attivo_eccezioni: chi genera ritira, e un DROP TABLE della figlia non lascia il block sul padre a sollevare E_ATTIVO_BLOCK_FKCOL_NOT_FOUND.';
 ```
 
 </div>

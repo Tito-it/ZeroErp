@@ -1,0 +1,38 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL LATO «IN USCITA» CONVERGE AL CATALOGO, A OGNI MIGRAZIONE
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto 0, giro 0.2.
+#
+# ── PERCHE' QUI ─────────────────────────────────────────────────────
+#   Le tabelle su cui si monta script.trgfn_sorgente_in_uscita le dice
+#   config.sorgenti, che e' un seed di 80_data: su un database da zero c'e' solo
+#   dopo. 90_end gira dopo i seed. runAlways: una riga nuova del catalogo (o un
+#   livello tolto) converge alla migrazione successiva senza un changeSet suo.
+#   A regime non fa niente. Non dipende dalle automazioni di ci_apply: sta fuori da
+#   90_end/ci_apply.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261106-21-converge-sorgente-in-uscita-mctit.yaml
+
+  - changeSet:
+      id: 20261106-21-converge-sorgente-in-uscita
+      author: mctit
+      runAlways: true
+      failOnError: true
+      comment: >
+        Monta (o toglie) il lato «in uscita» della provenienza sulle tabelle che config.sorgenti dichiara:
+        dbops.fn_sorgente_converge_uscita(). brief-db-sorgente-documento-e-riga §7.2 lotto 0, giro 0.2.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              SELECT count(*) FROM dbops.fn_sorgente_converge_uscita();

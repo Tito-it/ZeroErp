@@ -1,5 +1,9 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
+-- rev 2026-11-07 (brief-db-sorgente-documento-e-riga, giro T.5, 20261106-96): documento_origine_tipo e'
+--   ritirato. L'origine dell'ordine e' la provenienza, sorgente_tipo_id: una FK per id verso
+--   config.sorgenti, quindi il codice corto non si puo' piu' scrivere. Cambiano 1, 6, 8 e 9; la colonna
+--   «a codice» che resta e' la destinazione della natura. Piano invariato.
 -- pgTAP test per Zero ERP
 --
 -- Una grammatica sola per i tipi di documento — lotto 2b: l'origine
@@ -12,17 +16,18 @@
 --   ChangeSet: 20261019-87 … -99.
 --
 -- Elenco test (plan 12):
---  1) ordini.documento_origine_tipo: FK verso config.sorgenti(codice_interno)
+--  1) l'origine dell'ordine e' sorgente_tipo_id, FK verso config.sorgenti(id);
+--       documento_origine_tipo non c'e' piu' (giro T.5)
 --  2) nature_vendita.destinazione_tipo: FK verso config.sorgenti(codice_interno)
---  3) nessun CHECK enumera i codici sulle due colonne
---  4) le due colonne sono lunghe quanto config.sorgenti.codice_interno
+--  3) nessun CHECK enumera i codici sulla destinazione della natura
+--  4) la destinazione della natura e' lunga quanto config.sorgenti.codice_interno
 --  5) la natura MERCE va in ORDINE_VENDITA (il seed parla il codice della
 --       sorgente)
---  6) l'unicita' «un'offerta, un ordine vivo» nomina OFFERTA_COMMERCIALE
+--  6) l'unicita' «un'offerta, un ordine vivo» nomina l'id di OFFERTA_COMMERCIALE
 --  7) nessuna vista e nessuna funzione di vendite, catalogo, script confronta
 --       una delle due colonne col codice corto (OFFERTA, ORDINE)
---  8) un ordine con origine OFFERTA (il codice corto) e' rifiutato dalla FK
---  9) …con OFFERTA_COMMERCIALE passa
+--  8) il codice corto OFFERTA non e' una sorgente: nessuna provenienza lo puo' nominare
+--  9) un ordine con la provenienza OFFERTA_COMMERCIALE e la chiave dell'offerta passa
 -- 10) fn_documento_legami dell'ordine: il legame di provenienza ha origine
 --       OFFERTA_COMMERCIALE e punta all'offerta
 -- 11) fn_offerta_documenti_vivi dell'offerta: l'ordine, col codice
@@ -31,9 +36,11 @@
 --       sorgente (character varying, non text)
 --
 -- ⭐ 8 … 11 costruiscono il caso su un ordine in bozza dello stampo
---   (dbops.fn_pgtap_crea_ordine). Non serve un'offerta vera: la provenienza
---   e' una coppia (tipo, id) senza FK sull'id, e i due lettori la restituiscono
---   com'e'. L'offerta inventata ha un id che nessuna offerta usa.
+--   (dbops.fn_pgtap_crea_ordine) e un'offerta vera in bozza (cliente e listino
+--   dai builder). rev 2026-11-07 (brief-db-sorgente-documento-e-riga, giro T.3):
+--   i due lettori leggono la provenienza (sorgente_*), che il guard unico vuole
+--   verso un documento che esiste; prima bastava un id d'offerta inventato nella
+--   colonna parallela. Il 9 scrive la sola provenienza, come i verbi dal giro T.5.
 -- ⚠️ Il 7 legge il TESTO delle definizioni: vede i confronti scritti sulla
 --   colonna (`documento_origine_tipo = 'OFFERTA'`), non quelli su una variabile
 --   che ne porta il valore. Per quelli il presidio e' il comportamento (8 … 11 e
@@ -65,10 +72,9 @@ $fx$;
 
 CREATE TEMP TABLE _col ON COMMIT DROP AS
 SELECT * FROM (VALUES
-    ('vendite.ordini'::regclass,        'documento_origine_tipo'::name),
     ('config.nature_vendita'::regclass, 'destinazione_tipo'::name)) v(tabella, colonna);
 
--- 1) e 2) la FK verso le sorgenti, una per colonna
+-- 1) l'origine dell'ordine: la provenienza, FK per id; la colonna a codice e' ritirata
 SELECT ok(
     EXISTS (SELECT 1
               FROM pg_constraint c
@@ -76,10 +82,13 @@ SELECT ok(
               JOIN pg_attribute ar ON ar.attrelid = c.confrelid AND ar.attnum = c.confkey[1]
              WHERE c.contype = 'f'
                AND c.conrelid = 'vendite.ordini'::regclass
-               AND a.attname = 'documento_origine_tipo'
+               AND a.attname = 'sorgente_tipo_id'
                AND c.confrelid = 'config.sorgenti'::regclass
-               AND ar.attname = 'codice_interno'),
-    '1) ordini.documento_origine_tipo: FK verso config.sorgenti(codice_interno)');
+               AND ar.attname = 'id')
+    AND NOT EXISTS (SELECT 1 FROM pg_attribute a
+                     WHERE a.attrelid = 'vendite.ordini'::regclass
+                       AND a.attname = 'documento_origine_tipo' AND NOT a.attisdropped),
+    '1) l''origine dell''ordine e'' sorgente_tipo_id, FK verso config.sorgenti(id); documento_origine_tipo ritirato');
 
 SELECT ok(
     EXISTS (SELECT 1
@@ -101,7 +110,7 @@ SELECT is_empty(
        WHERE c.contype = 'c'
          AND pg_get_constraintdef(c.oid) LIKE '%' || k.colonna || '%'
          AND pg_get_constraintdef(c.oid) ~ '''[A-Z_]+'''$$,
-    '3) nessun CHECK enumera i codici sulle due colonne');
+    '3) nessun CHECK enumera i codici sulla destinazione della natura');
 
 -- 4) la lunghezza del nome (G-3: il vincolo si adegua al nome)
 SELECT is_empty(
@@ -113,7 +122,7 @@ SELECT is_empty(
                                  FROM pg_attribute s
                                 WHERE s.attrelid = 'config.sorgenti'::regclass
                                   AND s.attname = 'codice_interno')$$,
-    '4) le due colonne sono lunghe quanto config.sorgenti.codice_interno');
+    '4) la destinazione della natura e'' lunga quanto config.sorgenti.codice_interno');
 
 -- 5) il seed
 SELECT is(
@@ -123,9 +132,11 @@ SELECT is(
 
 -- 6) l'unicita' dell'ordine da offerta
 SELECT ok(
-    (SELECT pg_get_indexdef('vendite.uq_ordini_v_documento_origine_offerta'::regclass))
-        LIKE '%''OFFERTA_COMMERCIALE''%',
-    '6) uq_ordini_v_documento_origine_offerta nomina OFFERTA_COMMERCIALE');
+    (SELECT pg_get_expr(i.indpred, i.indrelid) FROM pg_index i
+      WHERE i.indexrelid = 'vendite.uq_ordini_v_sorgente_offerta'::regclass)
+        LIKE '%(sorgente_tipo_id = ' || (SELECT s.id FROM config.sorgenti s
+                                          WHERE s.codice_interno = 'OFFERTA_COMMERCIALE')::text || ')%',
+    '6) uq_ordini_v_sorgente_offerta nomina l''id di OFFERTA_COMMERCIALE');
 
 -- 7) nessun confronto col codice corto nelle definizioni vive
 SELECT is_empty(
@@ -144,22 +155,42 @@ SELECT is_empty(
 CREATE TEMP TABLE _ord ON COMMIT DROP AS
 SELECT * FROM dbops.fn_pgtap_crea_ordine('pgTAP grammatica 2b');
 
+CREATE TEMP TABLE _cli ON COMMIT DROP AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba(
+    'pgTAP grammatica 2b',
+    (SELECT u.id FROM config.utilities u
+      WHERE NOT EXISTS (SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = u.id)
+      ORDER BY u.id LIMIT 1));
+CREATE TEMP TABLE _lis ON COMMIT DROP AS
+SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM _cli), 'pgTAP grammatica 2b');
+
 CREATE TEMP TABLE _off ON COMMIT DROP AS
-SELECT coalesce(max(o.id), 0) + 1000000 AS id FROM vendite.offerte_commerciali o;
+WITH ins AS (
+  INSERT INTO vendite.offerte_commerciali (emittente_fiscale_id, billing_account_id,
+      istanza_utility_id, utility_id, listino_id, listino_versione_id,
+      validita_dal, validita_al, stato_doc_offerta_id)
+  SELECT script.fn_pgtap_emittente_operatore(), c.billing_account_id, c.istanza_utility_id, c.utility_id,
+         l.listino_id, l.listino_versione_id, script.fn_data_operativa(), script.fn_data_operativa() + 364,
+         (SELECT s.id FROM config.stati_doc_offerte s WHERE s.codice_interno = 'BOZZA')
+    FROM _cli c, _lis l
+  RETURNING id, uid)
+SELECT id, uid FROM ins;
+
+-- 8) la provenienza nomina il tipo per id (FK verso config.sorgenti): il codice
+--    corto non e' una riga del catalogo, quindi nessuna provenienza lo puo' dire.
+SELECT is_empty(
+    $$SELECT s.id FROM config.sorgenti s WHERE s.codice_interno IN ('OFFERTA', 'ORDINE')$$,
+    '8) i codici corti OFFERTA e ORDINE non sono sorgenti: nessuna provenienza li puo'' nominare');
 
 SELECT is(
     pg_temp.vincolo_violato(format(
-        $$UPDATE vendite.ordini SET documento_origine_tipo = 'OFFERTA', documento_origine_id = %s WHERE id = %s$$,
-        (SELECT id FROM _off), (SELECT ordine_id FROM _ord))),
-    'fk_ordini_documento_origine_tipo_sorgenti',
-    '8) origine OFFERTA (il codice corto): rifiutata dalla FK verso le sorgenti');
-
-SELECT is(
-    pg_temp.vincolo_violato(format(
-        $$UPDATE vendite.ordini SET documento_origine_tipo = 'OFFERTA_COMMERCIALE', documento_origine_id = %s WHERE id = %s$$,
-        (SELECT id FROM _off), (SELECT ordine_id FROM _ord))),
+        $$UPDATE vendite.ordini
+             SET sorgente_tipo_id = (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'OFFERTA_COMMERCIALE'),
+                 sorgente_uid = %L
+           WHERE id = %s$$,
+        (SELECT uid FROM _off), (SELECT ordine_id FROM _ord))),
     'NESSUN ERRORE',
-    '9) origine OFFERTA_COMMERCIALE: passa');
+    '9) la provenienza OFFERTA_COMMERCIALE con la chiave dell''offerta: passa');
 
 SELECT results_eq(
     format($$SELECT l.origine::text, l.natura, l.origine_id

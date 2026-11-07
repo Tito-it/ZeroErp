@@ -1,0 +1,71 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL CONTRATTO PERDE LA COLONNA PARALLELA DELLA PROVENIENZA: offerta_id
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto T, giro T.5 (S-8).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   offerta_id diceva da quale offerta nasce il contratto accanto alla provenienza
+#   (sorgente_*), che dal giro T.3 e' quella che il database legge. Il verbo smette
+#   di scriverla (-94), il lock fuori bozza la toglie dal montaggio (-95): qui si
+#   ritira, con l'indice unico e la FK.
+#
+# ── ⚠️ CHE COSA SE NE VA, E CHE COSA LO SOSTITUISCE ─────────────────
+#   * uq_contratti_offerta_id: «un'offerta, un contratto vivo»; la regola resta su
+#     uq_contratti_sorgente_offerta (D-8, T.3);
+#   * fk_contratti_offerta: un'offerta citata non si cancella. Lo fa il guard unico
+#     della provenienza (BLOCCA, T.3) col lato «in uscita» montato sulle offerte;
+#     la riga nel registro degli indici esce in -99;
+#   * la colonna, col suo COMMENT.
+#   Il COMMENT della tabella delle offerte e quello del trigger degli snapshot del
+#   contratto nominavano offerta_id o il suo indice: si riscrivono sulla provenienza.
+#
+#   Nessuna funzione, vista o trigger generato la legge (catalogo vivo,
+#   2026-11-07); nessun changeSet di 80_data o 90_end la nomina. Il BE la legge
+#   ancora: §8.6 del brief (BE-T.3-c), accettato dal piano. Rollback: forward-only.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261106-97-alter-contratti-drop-offerta-id-mctit.yaml
+
+  - changeSet:
+      id: 20261106-97-alter-contratti-drop-offerta-id
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.contratti: via offerta_id, con l'indice unico e la FK verso l'offerta.
+        brief-db-sorgente-documento-e-riga §7.2 lotto T, giro T.5.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP INDEX vendite.uq_contratti_offerta_id;
+
+              ALTER TABLE vendite.contratti
+                  DROP CONSTRAINT fk_contratti_offerta,
+                  DROP COLUMN offerta_id;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON TABLE vendite.offerte_commerciali
+              IS 'Testata offerta commerciale: predecessore tracciato del contratto (offerta->contratto = condizioni quadro). Un''offerta propone al cliente condizioni quadro per una utility specifica (billing_account + istanza_utility), con listino di riferimento, variazione globale e offerte_commerciali_eccezioni per eccezioni puntuali. Stati: BOZZA (editabile) -> EMESSA -> ACCETTATA (push a contratto DRAFT) oppure RIFIUTATA. SUPERATA: terminale tecnico impostato dal trigger revisione quando viene creata una revisione successiva (fn_crea_revisione_offerta, Step 7). La versione listino viene fissata (congelata) al momento dell''emissione (§5.3). La numerazione OFC-* e'' generata da config.sistema_codici (Step 5). La scadenza (validita_al) e'' un avviso non bloccante (§5.6). Un''offerta genera al piu'' un documento vivo fra contratto e ordine: lo leggono i verbi da vendite.fn_offerta_documenti_vivi, e lo tengono sulla provenienza gli indici unici uq_contratti_sorgente_offerta e uq_ordini_v_sorgente_offerta (dal 2026-11-07, giro T.5 di brief-db-sorgente-documento-e-riga; prima contratti.offerta_id UNIQUE). rev 2026-05-24.';
+
+              COMMENT ON TRIGGER trg_contratti_z90_snapshot_da_stato_ins_upd ON vendite.contratti
+              IS 'Snapshot di stato (BB vendite.trgfn_doc_snapshot_da_stato): is_abortito_snapshot e is_draft_snapshot da config.stati_doc_contratti (is_abortito, is_bozza), per la colonna GENERATED partecipa_overlap_snapshot e per uq_contratti_sorgente_offerta (un''offerta genera al piu'' un contratto vivo, sulla provenienza). Prende il posto di trg_contratti_z90_sync_is_abortito_snapshot_ins_upd (2026-10-11, brief-db-annullo-documento-con-legami D-6).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: la colonna tornerebbe vuota, e la sua verita' e' la provenienza.
+              SELECT 1;

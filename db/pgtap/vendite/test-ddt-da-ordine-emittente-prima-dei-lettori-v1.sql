@@ -182,17 +182,18 @@ SELECT is(
 -- IL MAGAZZINO SCELTO A MANO, su una bolla che l'emittente lo eredita
 -- ============================================================
 -- La forma di fn_genera_ddt_da_ordine (niente emittente, la sorgente
--- dell'ordine), piu' il magazzino.
+-- dell'ordine con la chiave del key_selector, sorgente_id: giro T.2 di
+-- brief-db-sorgente-documento-e-riga), piu' il magazzino.
 SELECT lives_ok(
     format($q$INSERT INTO vendite.ddt (data, stato_doc_ddt_id, destinatario_soggetto_ruolo_id,
-                                      sorgente_tipo_id, sorgente_uid, magazzino_id)
-              VALUES (script.fn_data_operativa(), %s, %s, %s, %L, %s)$q$,
+                                      sorgente_tipo_id, sorgente_id, magazzino_id)
+              VALUES (script.fn_data_operativa(), %s, %s, %s, %s, %s)$q$,
            (SELECT ddt_draft FROM _fix), (SELECT cliente_soggetto_ruolo_id FROM _o),
-           (SELECT sorg_ord FROM _fix), (SELECT ordine_uid FROM _o), (SELECT mag_x FROM _fix)),
+           (SELECT sorg_ord FROM _fix), (SELECT ordine_id FROM _o), (SELECT mag_x FROM _fix)),
     '9) bolla da ordine con un altro magazzino della stessa azienda: nasce');
 SELECT is(
     (SELECT count(*)::int FROM vendite.ddt d
-      WHERE d.sorgente_uid = (SELECT ordine_uid FROM _o) AND d.magazzino_id = (SELECT mag_x FROM _fix)),
+      WHERE d.sorgente_id = (SELECT ordine_id FROM _o) AND d.magazzino_id = (SELECT mag_x FROM _fix)),
     1,
     '10) ...e tiene il suo (il default non sovrascrive)');
 
@@ -201,10 +202,10 @@ SELECT is(
 --     risposta e' la stessa.
 SELECT throws_like(
     format($q$INSERT INTO vendite.ddt (data, stato_doc_ddt_id, destinatario_soggetto_ruolo_id,
-                                      sorgente_tipo_id, sorgente_uid, magazzino_id)
-              VALUES (script.fn_data_operativa(), %s, %s, %s, %L, %s)$q$,
+                                      sorgente_tipo_id, sorgente_id, magazzino_id)
+              VALUES (script.fn_data_operativa(), %s, %s, %s, %s, %s)$q$,
            (SELECT ddt_draft FROM _fix), (SELECT cliente_soggetto_ruolo_id FROM _o),
-           (SELECT sorg_ord FROM _fix), (SELECT ordine_uid FROM _o), (SELECT id FROM _mag2)),
+           (SELECT sorg_ord FROM _fix), (SELECT ordine_id FROM _o), (SELECT id FROM _mag2)),
     '%non appartiene all''azienda che emette la bolla%',
     '11) bolla da ordine col magazzino di un''altra azienda: E_DDT_MAGAZZINO_INCOERENTE');
 

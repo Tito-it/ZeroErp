@@ -1,0 +1,109 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL GUARD UNICO SULLE RIGHE DI VENDITA, AL POSTO DEL TIPIZZATO
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto R («le righe di vendita»).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   Le quattro righe di vendita montano dal lotto A il guard tipizzato (modello A:
+#   la chiave del tipo id in sorgente_riga). Col modello la chiave del documento
+#   sta in sorgente_id o sorgente_uid e la riga in sorgente_riga: il guard
+#   tipizzato rifiuterebbe ogni riga che i verbi del lotto R scrivono. Il guard
+#   unico (20261106-15) verifica forma, documento, riga del documento.
+#
+# ── ⚠️ CHE COSA CAMBIA ──────────────────────────────────────────────
+#   Su preventivi_righe, ordini_righe, ddt_righe, contratti_righe: DROP del
+#   trigger tipizzato e CREATE, con lo STESSO nome (l'ordine fra i BEFORE ROW
+#   non cambia: _a10_guard_sorgente prima di _a10_regole_articolo, come dal
+#   lotto A), del guard unico. Eventi: INSERT e UPDATE OF le quattro colonne
+#   (sorgente_id in piu').
+#   Argomenti: livello minimo e azione alla cancellazione dell'origine.
+#   - preventivi_righe RIGA: la revisione cita sempre la riga.
+#   - ordini_righe DOCUMENTO: la riga del solo listino cita l'offerta intera (D-5).
+#   - ddt_righe RIGA: evasione e riconsegna citano sempre la riga.
+#   - contratti_righe RIGA: ogni riga e' un'eccezione copiata.
+#   BLOCCA su tutte: l'origine non si cancella finche' una riga la cita
+#   (E_SORG_ORIGINE_REFERENZIATA, script.trgfn_sorgente_in_uscita), come una FK.
+#   Da qui il guard e' montato: la sua voce nel registro dei riferimenti morti
+#   esce (-58).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261106-57-create-trigger-righe-vendita-guard-sorgente-unico-mctit.yaml
+
+  - changeSet:
+      id: 20261106-57-create-trigger-righe-vendita-guard-sorgente-unico
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Guard unico della provenienza sulle quattro righe di vendita, al posto del tipizzato. brief-db-sorgente-documento-e-riga §7.2 lotto R.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_constraint
+               WHERE conname = 'chk_ordini_righe_sorgente_forma';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER trg_preventivi_righe_a10_guard_sorgente_ins_upd ON vendite.preventivi_righe;
+              CREATE TRIGGER trg_preventivi_righe_a10_guard_sorgente_ins_upd
+                  BEFORE INSERT OR UPDATE OF sorgente_tipo_id, sorgente_id, sorgente_uid, sorgente_riga
+                  ON vendite.preventivi_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_sorgente('RIGA', 'BLOCCA');
+
+              DROP TRIGGER trg_ordini_righe_a10_guard_sorgente_ins_upd ON vendite.ordini_righe;
+              CREATE TRIGGER trg_ordini_righe_a10_guard_sorgente_ins_upd
+                  BEFORE INSERT OR UPDATE OF sorgente_tipo_id, sorgente_id, sorgente_uid, sorgente_riga
+                  ON vendite.ordini_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_sorgente('DOCUMENTO', 'BLOCCA');
+
+              DROP TRIGGER trg_ddt_righe_a10_guard_sorgente_ins_upd ON vendite.ddt_righe;
+              CREATE TRIGGER trg_ddt_righe_a10_guard_sorgente_ins_upd
+                  BEFORE INSERT OR UPDATE OF sorgente_tipo_id, sorgente_id, sorgente_uid, sorgente_riga
+                  ON vendite.ddt_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_sorgente('RIGA', 'BLOCCA');
+
+              DROP TRIGGER trg_contratti_righe_a10_guard_sorgente_ins_upd ON vendite.contratti_righe;
+              CREATE TRIGGER trg_contratti_righe_a10_guard_sorgente_ins_upd
+                  BEFORE INSERT OR UPDATE OF sorgente_tipo_id, sorgente_id, sorgente_uid, sorgente_riga
+                  ON vendite.contratti_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_sorgente('RIGA', 'BLOCCA');
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER trg_preventivi_righe_a10_guard_sorgente_ins_upd ON vendite.preventivi_righe;
+              CREATE TRIGGER trg_preventivi_righe_a10_guard_sorgente_ins_upd
+                  BEFORE INSERT OR UPDATE OF sorgente_tipo_id, sorgente_riga, sorgente_uid ON vendite.preventivi_righe
+                  FOR EACH ROW EXECUTE FUNCTION script.trgfn_guard_sorgente_polimorfa_tipizzata();
+
+              DROP TRIGGER trg_ordini_righe_a10_guard_sorgente_ins_upd ON vendite.ordini_righe;
+              CREATE TRIGGER trg_ordini_righe_a10_guard_sorgente_ins_upd
+                  BEFORE INSERT OR UPDATE OF sorgente_tipo_id, sorgente_riga, sorgente_uid ON vendite.ordini_righe
+                  FOR EACH ROW EXECUTE FUNCTION script.trgfn_guard_sorgente_polimorfa_tipizzata();
+
+              DROP TRIGGER trg_ddt_righe_a10_guard_sorgente_ins_upd ON vendite.ddt_righe;
+              CREATE TRIGGER trg_ddt_righe_a10_guard_sorgente_ins_upd
+                  BEFORE INSERT OR UPDATE OF sorgente_tipo_id, sorgente_riga, sorgente_uid ON vendite.ddt_righe
+                  FOR EACH ROW EXECUTE FUNCTION script.trgfn_guard_sorgente_polimorfa_tipizzata();
+
+              DROP TRIGGER trg_contratti_righe_a10_guard_sorgente_ins_upd ON vendite.contratti_righe;
+              CREATE TRIGGER trg_contratti_righe_a10_guard_sorgente_ins_upd
+                  BEFORE INSERT OR UPDATE OF sorgente_tipo_id, sorgente_riga, sorgente_uid ON vendite.contratti_righe
+                  FOR EACH ROW EXECUTE FUNCTION script.trgfn_guard_sorgente_polimorfa_tipizzata();

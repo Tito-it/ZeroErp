@@ -1,0 +1,64 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# INDICI SULLA CHIAVE ID DELLA SORGENTE: vendite.ddt e vendite.resi
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto 0 giro 0.3 («i lettori trasversali sul BB che risolve»).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   Le bolle di un ordine e i resi di una bolla si cercano dal documento a monte
+#   (lineage seminata, annullabilita' dell'ordine). Oggi lo fa l'indice su
+#   (sorgente_tipo_id, sorgente_uid); con la chiave id (sorgente_id, 20261106-05)
+#   la stessa ricerca vuole il suo indice, o la regola d'incontro dei lettori del
+#   giro 0.3 non arriva a un Index Cond sul ramo dell'id.
+#
+# ── ⚠️ CHE COSA CAMBIA ──────────────────────────────────────────────
+#   Due indici nuovi, parziali (sorgente_id IS NOT NULL): oggi vuoti, nessun
+#   costo di scrittura fino al lotto T. Non sono unici: piu' bolle per ordine e
+#   piu' resi per bolla sono la regola (20260709-01).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261106-22-create-ix-ddt-resi-sorgente-id-mctit.yaml
+
+  - changeSet:
+      id: 20261106-22-create-ix-ddt-resi-sorgente-id
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Indici (sorgente_tipo_id, sorgente_id) su vendite.ddt e vendite.resi, per i lettori
+        della sorgente di testata nelle due grammatiche. brief-db-sorgente-documento-e-riga §7.2 lotto 0 giro 0.3.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM information_schema.columns
+               WHERE table_schema = 'vendite' AND table_name = 'resi' AND column_name = 'sorgente_id';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE INDEX ix_ddt_v_sorgente_id ON vendite.ddt USING btree (sorgente_tipo_id, sorgente_id)
+               WHERE sorgente_id IS NOT NULL;
+              COMMENT ON INDEX vendite.ix_ddt_v_sorgente_id IS
+                'Le bolle nate da un documento a chiave id (l''ordine), per tipo e id: il ramo sorgente_id della regola d''incontro dei lettori della sorgente di testata (brief-db-sorgente-documento-e-riga §7.2 giro 0.3). Gemello di ix_ddt_v_sorgente (ramo uid). Non unico: piu'' bolle per ordine.';
+
+              CREATE INDEX ix_resi_sorgente_id ON vendite.resi USING btree (sorgente_tipo_id, sorgente_id)
+               WHERE sorgente_id IS NOT NULL;
+              COMMENT ON INDEX vendite.ix_resi_sorgente_id IS
+                'I resi nati da una bolla, per tipo e id: il ramo sorgente_id della regola d''incontro dei lettori della sorgente di testata (brief-db-sorgente-documento-e-riga §7.2 giro 0.3). Gemello di ix_resi_sorgente (ramo uid). Non unico: piu'' resi per bolla.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP INDEX IF EXISTS vendite.ix_resi_sorgente_id;
+              DROP INDEX IF EXISTS vendite.ix_ddt_v_sorgente_id;

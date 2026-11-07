@@ -1,0 +1,153 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_trigger_attivo_argomenti: la grammatica degli argomenti dei trigger
+# ATTIVO, scritta una volta.
+#   Brief: brief-db-revisione-dbops, D18 e D49 (giro 3).
+#
+# ⚠️ IL DIFETTO CHE CHIUDE (D18). Quale argomento e' cosa, quanti ce ne
+#   vogliono e quali default valgono stavano scritti in cinque posti: le tre
+#   funzioni trigger (TG_ARGV, da 0), dbops.fn_trigger_attivo_orfani (minimi 3 e
+#   4, default 'id' e 'attivo') e dbops.fn_ritira_attivo_eccezioni (posizioni
+#   a mano, da 1). Cinque copie della stessa grammatica, con due basi diverse.
+#   Qui la si legge per NOME: chi monta, chi scatta e chi rilegge pg_trigger
+#   chiamano questa funzione.
+#
+# ⚠️ D49: GLI ARGOMENTI SONO TUTTI OBBLIGATORI. I ripieghi («ref_col omesso:
+#   id», «parent_attivo_col omesso: attivo») scrivevano in error_log a ogni
+#   scatto e indovinavano una colonna. Il generatore monta sempre cinque
+#   argomenti, e cosi' i trigger scritti a mano (censiti nel brief, §15.1): il
+#   ripiego non serviva a nessun montaggio, e una colonna indovinata e' una
+#   colonna sbagliata che non si vede. Ora un montaggio incompleto e' un
+#   montaggio rifiutato.
+#
+# LA GRAMMATICA (argomenti da 1, come dbops.fn_trigger_argomenti):
+#   trgfn_prevent_deactivate_if_children (block, sul padre), 5 argomenti:
+#     figlia_schema, figlia_tabella, fk_col, ref_col, stato_col (l'attivo del padre)
+#   trgfn_child_requires_active_parent (require, sulla figlia), 5 argomenti:
+#     padre_schema, padre_tabella, stato_col (l'attivo del padre), fk_col, ref_col
+#   trgfn_child_requires_non_obsolete_parent (require, sulla figlia), 5 o 6:
+#     come sopra con stato_col = obsoleto_dal del padre, piu' esenzione_col
+#
+#   TG_ARGV arriva con base 0: la funzione rinumera da 1 prima di leggere, cosi'
+#   il trigger le passa TG_ARGV com'e' e il lettore l'array di
+#   dbops.fn_trigger_argomenti, e rispondono uguale.
+#
+# Non solleva: risponde valido = false con il motivo in dettaglio, e i campi a
+#   NULL. Chi chiama sceglie il suo codice (il trigger) o il suo motivo (il
+#   presidio degli orfani).
+#
+# IMMUTABLE, LANGUAGE sql col corpo stringa: non legge tabelle.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261107-20-create-fn-trigger-attivo-argomenti-mctit.yaml
+
+  - changeSet:
+      id: 20261107-20-create-fn-trigger-attivo-argomenti
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Nuovo dbops.fn_trigger_attivo_argomenti: la grammatica degli argomenti dei tre
+        trigger ATTIVO (block, require attivo, require non obsoleto), per nome e con tutti gli
+        argomenti obbligatori (D18, D49).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_trigger_attivo_argomenti';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION dbops.fn_trigger_attivo_argomenti(
+                  p_funzione  pg_catalog.pg_proc.proname%TYPE,
+                  -- text[]: TG_ARGV o dbops.fn_trigger_argomenti(tgargs), nessuna colonna da ancorare
+                  p_argomenti text[]
+              )
+              RETURNS TABLE(
+                  valido         boolean,
+                  -- il motivo, se non valido: testo composto
+                  dettaglio      text,
+                  figlia_schema  pg_catalog.pg_namespace.nspname%TYPE,
+                  figlia_tabella pg_catalog.pg_class.relname%TYPE,
+                  padre_schema   pg_catalog.pg_namespace.nspname%TYPE,
+                  padre_tabella  pg_catalog.pg_class.relname%TYPE,
+                  fk_col         pg_catalog.pg_attribute.attname%TYPE,
+                  ref_col        pg_catalog.pg_attribute.attname%TYPE,
+                  stato_col      pg_catalog.pg_attribute.attname%TYPE,
+                  esenzione_col  pg_catalog.pg_attribute.attname%TYPE
+              )
+              LANGUAGE sql
+              IMMUTABLE PARALLEL SAFE
+              AS $function$
+                -- Scopo: gli argomenti di un trigger ATTIVO letti per nome.
+                --   Una riga sola; valido = false con il motivo in dettaglio e
+                --   i campi a NULL se il montaggio non rispetta la grammatica.
+                -- Uso: SELECT * FROM dbops.fn_trigger_attivo_argomenti(
+                --        'trgfn_child_requires_active_parent', TG_ARGV);
+                WITH g AS (
+                    SELECT
+                        -- la base dell'array non e' sempre 1 (TG_ARGV parte da 0)
+                        ARRAY(SELECT u.x
+                                FROM unnest(p_argomenti) WITH ORDINALITY AS u(x, n)
+                               ORDER BY u.n) AS a,
+                        p_funzione = 'trgfn_prevent_deactivate_if_children' AS is_block,
+                        CASE p_funzione
+                            WHEN 'trgfn_prevent_deactivate_if_children'     THEN 5
+                            WHEN 'trgfn_child_requires_active_parent'       THEN 5
+                            WHEN 'trgfn_child_requires_non_obsolete_parent' THEN 5
+                        END AS minimo,
+                        CASE p_funzione
+                            WHEN 'trgfn_prevent_deactivate_if_children'     THEN 5
+                            WHEN 'trgfn_child_requires_active_parent'       THEN 5
+                            WHEN 'trgfn_child_requires_non_obsolete_parent' THEN 6
+                        END AS massimo
+                ),
+                v AS (
+                    SELECT g.*,
+                           CASE
+                             WHEN g.minimo IS NULL THEN
+                               format('%s non e'' una funzione trigger ATTIVO', p_funzione)
+                             WHEN cardinality(g.a) NOT BETWEEN g.minimo AND g.massimo THEN
+                               format('%s argomenti, attesi %s', cardinality(g.a),
+                                      CASE WHEN g.minimo = g.massimo THEN g.minimo::text
+                                           ELSE format('%s o %s', g.minimo, g.massimo) END)
+                             WHEN EXISTS (SELECT 1 FROM unnest(g.a) AS x
+                                           WHERE NULLIF(btrim(x), '') IS NULL) THEN
+                               'un argomento e'' vuoto'
+                           END AS errore
+                      FROM g
+                )
+                SELECT v.errore IS NULL,
+                       v.errore,
+                       CASE WHEN v.errore IS NULL AND v.is_block     THEN v.a[1] END,
+                       CASE WHEN v.errore IS NULL AND v.is_block     THEN v.a[2] END,
+                       CASE WHEN v.errore IS NULL AND NOT v.is_block THEN v.a[1] END,
+                       CASE WHEN v.errore IS NULL AND NOT v.is_block THEN v.a[2] END,
+                       CASE WHEN v.errore IS NULL THEN CASE WHEN v.is_block THEN v.a[3] ELSE v.a[4] END END,
+                       CASE WHEN v.errore IS NULL THEN CASE WHEN v.is_block THEN v.a[4] ELSE v.a[5] END END,
+                       CASE WHEN v.errore IS NULL THEN CASE WHEN v.is_block THEN v.a[5] ELSE v.a[3] END END,
+                       CASE WHEN v.errore IS NULL AND NOT v.is_block THEN v.a[6] END
+                  FROM v;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_trigger_attivo_argomenti(name, text[]) IS
+                'La grammatica degli argomenti dei trigger ATTIVO, letta per nome: una riga con valido, dettaglio (il motivo, se non valido) e i campi figlia_schema, figlia_tabella, padre_schema, padre_tabella, fk_col, ref_col, stato_col, esenzione_col. Block (dbops.trgfn_prevent_deactivate_if_children, sul padre): figlia_schema, figlia_tabella, fk_col, ref_col, stato_col = attivo del padre. Require (dbops.trgfn_child_requires_active_parent, sulla figlia): padre_schema, padre_tabella, stato_col = attivo del padre, fk_col, ref_col. Require non obsoleto (dbops.trgfn_child_requires_non_obsolete_parent): come il require, stato_col = obsoleto_dal del padre, e un sesto facoltativo, esenzione_col. Tutti gli altri argomenti sono obbligatori e non vuoti: nessun ripiego. Accetta TG_ARGV (base 0) e l''array di dbops.fn_trigger_argomenti (base 1): rinumera prima di leggere. Non solleva: con un montaggio fuori grammatica i campi sono NULL e il chiamante sceglie il codice. La leggono le tre funzioni trigger, i building block dbops.fn_trigger_padre_stato e dbops.fn_trigger_figlie_presenti, dbops.fn_trigger_attivo_orfani e dbops.fn_ritira_attivo_eccezioni.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_trigger_attivo_argomenti(name, text[]);

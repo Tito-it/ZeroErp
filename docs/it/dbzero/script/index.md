@@ -131,6 +131,7 @@ search:
 - [fn_doc_stato_iniziale_id](funzioni/fn_doc_stato_iniziale_id.md)
 - [fn_doc_stato_modello](funzioni/fn_doc_stato_modello.md)
 - [fn_doc_testata_in_stato](funzioni/fn_doc_testata_in_stato.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 2)
+- [fn_e_obsoleto](funzioni/fn_e_obsoleto.md)
 - [fn_elimina_credenziale](funzioni/fn_elimina_credenziale.md) — (scritta il 06-10-2026)
 - [fn_ensure_logconn](funzioni/fn_ensure_logconn.md) — Apre la connessione `dblink` persistente di nome **`logconn`** verso il canale di log, se il canale è acceso e la connessione non è già aperta. Su quella connessione i registri fuori transazione scrivono righe che sopravvivono all'annullamento della transazione di chi le scrive.
 - [fn_esigibilita_iva](funzioni/fn_esigibilita_iva.md)
@@ -243,9 +244,9 @@ search:
 - [fn_registra_tentativo_login](funzioni/fn_registra_tentativo_login.md) — (riscritta il 25-09-2026)
 - [fn_resolve_codice_postale](funzioni/fn_resolve_codice_postale.md) — Risolve il `codice_postale_id` con logica di fallback a due livelli. Unica source of truth per la logica CAP (prima nel watcher Vue).
 - [fn_resolve_controparte_sr_id](funzioni/fn_resolve_controparte_sr_id.md) — (nata il 2026-10-21, `20261021-30`)
-- [fn_resolve_emittente_fiscale_id](funzioni/fn_resolve_emittente_fiscale_id.md) — (rev 2026-08-22)
+- [fn_resolve_emittente_fiscale_id](funzioni/fn_resolve_emittente_fiscale_id.md) — Risponde a **una** domanda di fatto, *«di chi è questa riga?»*, **fuori dalla row security**: dato un modo e un valore, restituisce l'id dell'emittente fiscale, oppure `NULL` se il riferimento non porta a nessun emittente.
 - [fn_resolve_emittente_for_user](funzioni/fn_resolve_emittente_for_user.md)
-- [fn_resolve_emittente_sr_id](funzioni/fn_resolve_emittente_sr_id.md)
+- [fn_resolve_emittente_sr_id](funzioni/fn_resolve_emittente_sr_id.md) — La stessa domanda del gemello fiscale, *«di chi è questa riga?»*, **fuori dalla row security**, con la risposta nell'altra convenzione: il **soggetto-ruolo** dell'emittente, oppure `NULL` se il riferimento non porta a nessun emittente. Il doppio binario fra id dell'emittente fiscale e soggetto-ruolo è una scelta dichiarata del progetto.
 - [fn_resolve_indirizzo_documento](funzioni/fn_resolve_indirizzo_documento.md) — (latest review 02-08-2026)
 - [fn_resolve_livello_area](funzioni/fn_resolve_livello_area.md) — (latest review 04-05-2026 — modello legacy `profili_reparto_*` dismesso)
 - [fn_resolve_livello_oggetto](funzioni/fn_resolve_livello_oggetto.md) — (riscritta il 04-10-2026, brief-db-permessi-tetto-area)
@@ -306,8 +307,14 @@ search:
 - [fn_segment_key_sorgente](funzioni/fn_segment_key_sorgente.md)
 - [fn_snapshot_indirizzo](funzioni/fn_snapshot_indirizzo.md)
 - [fn_snapshot_indirizzo_soggetto](funzioni/fn_snapshot_indirizzo_soggetto.md) — (latest review 02-08-2026)
+- [fn_sorgente_chiave](funzioni/fn_sorgente_chiave.md)
 - [fn_sorgente_chiave_id](funzioni/fn_sorgente_chiave_id.md) — (scritta il 05-10-2026)
 - [fn_sorgente_chiave_uuid](funzioni/fn_sorgente_chiave_uuid.md) — (scritta il 05-10-2026)
+- [fn_sorgente_documento](funzioni/fn_sorgente_documento.md)
+- [fn_sorgente_documento_da_chiave](funzioni/fn_sorgente_documento_da_chiave.md)
+- [fn_sorgente_guard_argomenti](funzioni/fn_sorgente_guard_argomenti.md)
+- [fn_sorgente_guard_montaggi](funzioni/fn_sorgente_guard_montaggi.md)
+- [fn_sorgente_provenienza](funzioni/fn_sorgente_provenienza.md)
 - [fn_sqlstate_di_ambiente](funzioni/fn_sqlstate_di_ambiente.md) — (latest review 16-10-2026)
 - [fn_stato_abortito_id](funzioni/fn_stato_abortito_id.md)
 - [fn_stato_accettazione_id](funzioni/fn_stato_accettazione_id.md)
@@ -359,6 +366,7 @@ search:
 - [trgfn_doc_testata_guard_data_consegna_righe](funzioni/trgfn_doc_testata_guard_data_consegna_righe.md) — (nato il 2026-10-13, dal collaudo)
 - [trgfn_guard_date_validita](funzioni/trgfn_guard_date_validita.md)
 - [trgfn_guard_emittente_scope](funzioni/trgfn_guard_emittente_scope.md) — (rev 2026-09-04 — chiuso il ramo «nessun utente in sessione → passa»: il criterio è `row_security_active()`. Prima: rev 2026-08-22, la **risoluzione** esce dal guard e passa a una `SECURITY DEFINER`, chiudendo un fail-open, e arrivano le modalità `ente_incasso` e `contabile`; rev 2026-06-01, modalità `fiscale` PK e delega alla canonica `fn_check_user_emittente_scope`) La trigger function **`script.trgfn_guard_emittente_scope`** implementa il defense-in-depth: blocca INSERT/UPDATE se l'utente corrente non ha visibilità sull'emittente fiscale della riga.
+- [trgfn_guard_sorgente](funzioni/trgfn_guard_sorgente.md)
 - [trgfn_guard_sorgente_polimorfa_testuale](funzioni/trgfn_guard_sorgente_polimorfa_testuale.md) — Valida la sorgente polimorfa delle **tabelle di collegamento a chiave unica TESTUALE** (modello B): la colonna `sorgente_uid` è **TEXT** e contiene la chiave nel **formato dettato da `config.sorgenti.key_selector`**:
 - [trgfn_guard_sorgente_polimorfa_tipizzata](funzioni/trgfn_guard_sorgente_polimorfa_tipizzata.md) — Valida la **coerenza dei riferimenti di sorgente** per le tabelle che adottano il **modello A — colonne tipizzate alternative**:
 - [trgfn_guard_utility_tipo_ruolo_by_cols](funzioni/trgfn_guard_utility_tipo_ruolo_by_cols.md) — La funzione **`script.trgfn_guard_utility_tipo_ruolo_by_cols()`** e` una trigger function generica che applica il controllo utility/ruolo su tabelle con colonne configurabili.
@@ -380,6 +388,7 @@ search:
 - [trgfn_righe_guard_periodicita_canone](funzioni/trgfn_righe_guard_periodicita_canone.md) — (funzione nata il 2026-11-01, `20261101-05`; trigger `20261101-06`; CHECK `20261101-04` — brief `brief-db-contratto-righe-periodiche-in-commessa` §6.11, passo 4)
 - [trgfn_righe_guard_quantita_per_fonte](funzioni/trgfn_righe_guard_quantita_per_fonte.md)
 - [trgfn_righe_natura_vendita](funzioni/trgfn_righe_natura_vendita.md) — (latest review 2026-10-13, brief-db-articoli-ammessi-per-documento A-4; `20261013-14`)
+- [trgfn_sorgente_in_uscita](funzioni/trgfn_sorgente_in_uscita.md)
 - [trgfn_storico_generic](funzioni/trgfn_storico_generic.md) — (latest review 02-02-26) * **Unificazion- logica**: evitare duplicazioni del codice di storicizzazione in diverse funzioni trigger. * **Flessibilità**: applicabile a qualsiasi tabella storica semplicemente specificando il parametro `TG_ARGV[0]` con il nome della colonna di riferimento. * **Robustezza**: gestione completa degli errori con logging, senza interrompere il flusso DML principale.
 - [trgfn_sync_stato_iso2](funzioni/trgfn_sync_stato_iso2.md) — * **Sincronizzazione automatica** del campo `stato_iso2` all’interno delle tabelle che lo richiedono. * **Garantire coerenza** tra il campo `stato_id` e il relativo `codice_iso2`, estraendolo dinamicamente da `config.stati`.
 - [uuid_nil](funzioni/uuid_nil.md) — * Fornire un valore UUID costante, composto interamente da zeri. * Usato come **fallback** o **default** quando non è possibile generare o recuperare un UUID valido.

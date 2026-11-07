@@ -27,6 +27,12 @@
 --   8. ⭐ l'esenzione «pgAgent» del registro c'e' SE E SOLO SE pgagent.pga_job
 --      manca su questa macchina (90_end/20260914-03: un registro descrive una
 --      macchina alla volta)
+--   9. la vista delle voci rientrate legge la misura da
+--      dbops.fn_check_funzioni_riferimenti_morti() (la 10 e la 11 la sostituiscono)
+--  10. ⭐ una voce la cui funzione esce NON_MISURATO NON e' rientrata
+--      (20261104-54, brief-db-revisione-dbops D7)
+--  11. una voce coperta da un difetto non e' rientrata, una voce su una funzione
+--      che la misura non vede piu' si'
 --
 -- ── ⚠️ I TEST 2 E 3 SONO IL PRESIDIO VERO DEL 20260914-02, E LO SONO DA OGNI
 --   RUOLO. Il primo digest settimanale (14-09) ha dato «rientrati: 1» sulla
@@ -67,7 +73,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(9);
+SELECT plan(12);
 
 -- ============================================================
 -- 1. L'estensione c'e'?
@@ -327,6 +333,77 @@ SELECT is(
                      WHERE n.nspname = 'pgagent' AND c.relname = 'pga_job' AND c.relkind = 'r')
        THEN 0::bigint ELSE 1::bigint END,
   'l''esenzione pgAgent del registro c''e'' se e solo se pgagent.pga_job manca su questa macchina'
+);
+
+-- ============================================================
+-- 9-11. La vista delle voci rientrate, su una misura COSTRUITA
+--
+-- ⛔ Il caso vero (plpgsql_check che solleva invece di rispondere) non si
+--   costruisce in un test: provati il 2026-11-04 un errore di sintassi, un
+--   1/0, una IMMUTABLE che solleva al planning, un record non assegnato, una
+--   polimorfica, un event trigger, trigger su vista, partizionata e con
+--   transition table — plpgsql_check li RIFERISCE tutti, nessuno lo fa
+--   sollevare. Solleva per l'ambiente (estensione irraggiungibile, lock): non
+--   per una funzione.
+-- ⭐ Allora si prova la vista VIVA su una misura costruita: il suo testo
+--   (pg_get_viewdef) con la chiamata alla misura sostituita da una funzione in
+--   pg_temp con le stesse colonne. Non e' una copia della logica: e' la vista,
+--   con un'altra sorgente. La 9 prova che la sostituzione avviene.
+-- ============================================================
+CREATE FUNCTION pg_temp.fn_pgtap_misura_finta()
+RETURNS TABLE(classe text, schema_nome text, funzione text, argomenti text, esito text)
+LANGUAGE sql AS $f$
+  VALUES ('NON_MISURATO', 'pgtap_rm', 'fn_non_misurata', '', 'error:CHECK-KO:lo strumento ha sollevato'),
+         ('REALE',        'pgtap_rm', 'fn_coperta',      '', 'error:42P01:1:istruzione SQL:tabella_sparita_pgtap')
+$f$;
+
+INSERT INTO dbops.riferimenti_morti_esenzioni (id, schema_nome, funzione, esito_like, motivo)
+VALUES (990001, 'pgtap_rm', 'fn_non_misurata', '%tabella_sparita_pgtap%',
+        'pgTAP: voce su una funzione che lo strumento non ha potuto misurare'),
+       (990002, 'pgtap_rm', 'fn_coperta',      '%tabella_sparita_pgtap%',
+        'pgTAP: voce su una funzione col difetto ancora presente nella misura'),
+       (990003, 'pgtap_rm', 'fn_guarita',      '%tabella_sparita_pgtap%',
+        'pgTAP: voce su una funzione che la misura non vede piu, da togliere');
+
+-- ⚠️ Il testo si legge con search_path = pg_catalog: pg_get_viewdef qualifica
+--   i nomi RISPETTO al search_path di chi chiama, e l'app ha dbops nel suo
+--   (rosso visto da Tid, 2026-11-04: la sostituzione non trovava il nome).
+-- ⛔ Se la sostituzione non avviene, la 10 e la 11 NON eseguono la vista con la
+--   misura vera: e' una compilazione di centinaia di funzioni, e dopo la 6
+--   (conteggio DEFINER) cade su tmp_raw, che e' del proprietario. Diventano
+--   rosse con una riga sentinella.
+SET LOCAL search_path = pg_catalog;
+CREATE TEMP TABLE _rientrati_testo ON COMMIT DROP AS
+SELECT v.orig,
+       CASE WHEN strpos(v.sost, 'dbops.fn_check_funzioni_riferimenti_morti()') = 0
+             AND strpos(v.sost, 'pg_temp.fn_pgtap_misura_finta()') > 0
+            THEN v.sost
+            ELSE $q$SELECT 990001 AS id, 'sostituzione mancata'::text AS funzione$q$
+       END AS finta
+  FROM (SELECT d AS orig,
+               replace(d, 'dbops.fn_check_funzioni_riferimenti_morti()',
+                          'pg_temp.fn_pgtap_misura_finta()') AS sost
+          FROM pg_get_viewdef('dbops.vw_riferimenti_morti_rientrati'::regclass) AS d) v;
+RESET search_path;
+
+SELECT ok(
+  (SELECT strpos(orig, 'dbops.fn_check_funzioni_riferimenti_morti()') > 0
+          AND strpos(finta, 'pg_temp.fn_pgtap_misura_finta()') > 0
+     FROM _rientrati_testo),
+  'la vista delle voci rientrate legge la misura da fn_check_funzioni_riferimenti_morti: la sostituzione avviene'
+);
+
+SELECT is_empty(
+  format($q$SELECT funzione FROM (%s) v WHERE v.id = 990001$q$,
+         rtrim((SELECT finta FROM _rientrati_testo), '; ')),
+  'una voce la cui funzione esce NON_MISURATO non e'' rientrata: di quella funzione non si sa niente'
+);
+
+SELECT results_eq(
+  format($q$SELECT funzione FROM (%s) v WHERE v.id IN (990002, 990003) ORDER BY 1$q$,
+         rtrim((SELECT finta FROM _rientrati_testo), '; ')),
+  $$VALUES ('fn_guarita'::text)$$,
+  'una voce coperta da un difetto non e'' rientrata; una su una funzione che la misura non vede piu'' si'''
 );
 
 SELECT * FROM finish();

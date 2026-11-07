@@ -64,7 +64,7 @@ BEGIN
       INTO v_modo
       FROM config.tipi_entita te
      WHERE te.codice = NEW.entity_type
-       AND (te.obsoleto_dal IS NULL OR te.obsoleto_dal > (SELECT script.fn_data_operativa()));
+       AND NOT script.fn_e_obsoleto(te.obsoleto_dal);
 
     -- ⛔ Rev 2026-08-22 (20260822-47). Questo ramo mancava, e la
     --   versione precedente si affidava al CHECK sulla colonna.
@@ -85,7 +85,7 @@ BEGIN
           INTO v_ammessi
           FROM config.tipi_entita te
          WHERE te.modo_risoluzione_emittente IS NOT NULL
-           AND (te.obsoleto_dal IS NULL OR te.obsoleto_dal > (SELECT script.fn_data_operativa()));
+           AND NOT script.fn_e_obsoleto(te.obsoleto_dal);
 
         PERFORM script.fn_log_and_raise_error(
             'vendite',

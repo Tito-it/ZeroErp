@@ -1,0 +1,93 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.processi_bersagli.emittente_via: la via di un bersaglio e' un modo del
+#   registro dbops.emittente_modi (FK), al posto del CHECK ritirato in 00_schema
+#   (20261107-32).
+#   Brief: brief-db-revisione-dbops, D21 e M18 (blocco 4b).
+#
+# ⭐ LA REGOLA. La via e' il modo con cui il guard di scrittura
+#   (script.trgfn_guard_emittente_scope) risolve l'emittente della riga, e la
+#   colonna e' quella che il modo legge: i due argomenti con cui il guard e'
+#   montato. «padre» non era una via: la versione di listino dichiara listino
+#   (il CSV dei bersagli, 80_data, lo riscrive prima di questo changeSet).
+#
+# In 90_end perche' gira dopo i due seed (registro e bersagli, 80_data).
+#   ⚠️ Difensivo: un bersaglio con una via che il registro non ha lo dice con una
+#   frase, non con un 23503 nudo.
+#
+# I COMMENT di tabella e colonne si riscrivono per intero (M18: quello della via
+#   prometteva «lo stesso vocabolario del guard», e il CHECK non lo dava).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261107-40-fk-processi-bersagli-via-emittente-modi-mctit.yaml
+
+  - changeSet:
+      id: 20261107-40-fk-processi-bersagli-via-emittente-modi
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        FK fk_processi_bersagli_emittente_via (dbops.processi_bersagli.emittente_via ->
+        dbops.emittente_modi.modo) al posto del CHECK chk_processi_bersagli_via; COMMENT di tabella
+        e colonne riscritti (D21, M18).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists: { schemaName: dbops, tableName: emittente_modi }
+            - columnExists: { schemaName: dbops, tableName: processi_bersagli, columnName: emittente_via }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $via$
+              DECLARE
+                  -- un elenco di coppie id/via per il messaggio: nessuna colonna di cui sia il riflesso
+                  v_fuori text;
+              BEGIN
+                  SELECT string_agg(format('%s (%s)', b.id, b.emittente_via), ', ' ORDER BY b.id)
+                    INTO v_fuori
+                    FROM dbops.processi_bersagli b
+                   WHERE b.emittente_via IS NOT NULL
+                     AND NOT EXISTS (SELECT 1 FROM dbops.emittente_modi m
+                                      WHERE m.modo = b.emittente_via);
+                  IF v_fuori IS NOT NULL THEN
+                      RAISE EXCEPTION
+                        'Impossibile legare dbops.processi_bersagli.emittente_via al registro dei modi: bersagli con una via che dbops.emittente_modi non ha (%). '
+                        'Correggerli nel CSV 80_data/sql/dbops/processi_bersagli.csv con il modo del guard montato sulla tabella.',
+                        v_fuori;
+                  END IF;
+              END
+              $via$;
+
+              ALTER TABLE dbops.processi_bersagli
+                  DROP CONSTRAINT IF EXISTS chk_processi_bersagli_via;
+
+              ALTER TABLE dbops.processi_bersagli
+                  ADD CONSTRAINT fk_processi_bersagli_emittente_via
+                      FOREIGN KEY (emittente_via) REFERENCES dbops.emittente_modi (modo);
+
+              CREATE INDEX ix_processi_bersagli_emittente_via
+                  ON dbops.processi_bersagli (emittente_via);
+
+              COMMENT ON TABLE dbops.processi_bersagli IS
+                  'Le tabelle che ogni processo scrive, con il percorso che porta all''emittente della riga. La leggono i presidi dbops.vw_processi_dominio_senza_emittente (processo di dominio senza bersagli, tabella o colonna inesistente, percorso non dichiarato) e dbops.vw_processi_dominio_senza_difesa (bersaglio senza policy o senza guard di scrittura), che trovano l''omissione prima che il processo giri. E'' un elenco dichiarato: dice dove il processo scrive secondo chi l''ha registrato, non che scriva solo li''.';
+              COMMENT ON COLUMN dbops.processi_bersagli.emittente_via IS
+                  'Come la riga raggiunge l''emittente: un modo di dbops.emittente_modi (FK), lo stesso che il guard di scrittura script.trgfn_guard_emittente_scope riceve come primo argomento. Si dichiara il modo con cui il guard montato sulla tabella la risolve (una versione di listino: listino, sulla colonna listino_id). NULL = nessun percorso dichiarato: per un processo di dominio e'' una riga rossa in dbops.vw_processi_dominio_senza_emittente.';
+              COMMENT ON COLUMN dbops.processi_bersagli.emittente_colonna IS
+                  'La colonna della riga che il modo di emittente_via legge, la stessa che il guard di scrittura riceve come secondo argomento (per una versione di listino col modo listino: listino_id). Obbligatoria insieme alla via (chk_processi_bersagli_via_colonna). dbops.vw_processi_dominio_senza_emittente la verifica sul catalogo: una colonna inesistente e'' una riga rossa.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE dbops.processi_bersagli DROP CONSTRAINT IF EXISTS fk_processi_bersagli_emittente_via;
+              DROP INDEX IF EXISTS dbops.ix_processi_bersagli_emittente_via;

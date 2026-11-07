@@ -9,7 +9,7 @@
 --  3) scope NOT NULL su tutti i record
 --  4) Sorgenti PUSH_COMMESSA: 5 record attivi
 --  5) Sorgenti PIPELINE_MARKER: 2 record attivi
---  6) Sorgenti ROW_VALIDATOR: le SEI sorgenti di riga sono attive (D-L1-f)
+--  6) Sorgenti ROW_VALIDATOR: nessuna (le sei di riga di vendita sono uscite col lotto R)
 --  7) Sorgente POST_INVOICE: FATTURA attiva
 --  8) Trigger polimorfo rimosso da attivita_fatturabili
 --  9) Nessuna sorgente porta piu' il marchio meta.archived
@@ -25,6 +25,11 @@
 --   nominato come sorgente — sei tabelle di riga che esistono — non chi lo
 --   nomina oggi; il guard tipizzato pretende attivo=true. Il file tiene il
 --   nome storico (la pulizia dello scope resta il suo oggetto: test 1-5, 7, 8).
+-- rev 2026-11-06 (brief-db-sorgente-documento-e-riga lotto R, giro R.2, 20261106-60):
+--   il test 6 si capovolge di nuovo, e questa volta per il modello: una riga si
+--   scrive col tipo del suo documento + sorgente_riga (S-2), e i sei tipi *_RIGA di
+--   vendita escono da config.sorgenti (restano entita' in config.tipi_entita). Lo
+--   scope ROW_VALIDATOR resta ammesso dal CHECK finche' il lotto Z non lo ritira.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -97,19 +102,12 @@ SELECT ok(
 );
 
 -- ============================================================
--- 6) Sorgenti ROW_VALIDATOR: le sei sorgenti di riga sono attive (D-L1-f)
+-- 6) Sorgenti ROW_VALIDATOR: nessuna. La riga non e' un documento: si cita col
+--    tipo del suo documento e sorgente_riga (vendite/test-sorgente-righe-vendita-v1).
 -- ============================================================
--- Per NOME e non per conteggio: un conteggio resta vero anche se una riga
--- sparisce e un'altra entra. L'insieme e' il contratto del CSV di sorgenti.
-SELECT is(
-  (
-    SELECT string_agg(s.codice_interno, ',' ORDER BY s.id)
-    FROM config.sorgenti s
-    WHERE s.scope = 'ROW_VALIDATOR'
-      AND s.attivo IS TRUE
-  ),
-  'PREVENTIVO_RIGA,CONTRATTO_RIGA,ORDINE_VENDITA_RIGA,DDT_VENDITA_RIGA,FATTURA_RIGA,RESO_VENDITA_RIGA',
-  'ROW_VALIDATOR: le sei sorgenti di riga sono ATTIVE — il catalogo dice che cosa puo'' essere nominato (D-L1-f)'
+SELECT is_empty(
+  $$SELECT s.codice_interno FROM config.sorgenti s WHERE s.scope = 'ROW_VALIDATOR'$$,
+  'ROW_VALIDATOR: nessuna sorgente di riga — una riga si cita col tipo del suo documento e sorgente_riga'
 );
 
 -- ============================================================

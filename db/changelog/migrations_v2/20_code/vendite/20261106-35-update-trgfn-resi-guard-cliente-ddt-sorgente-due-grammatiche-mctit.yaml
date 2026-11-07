@@ -1,0 +1,134 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite.trgfn_resi_guard_cliente_ddt: LA BOLLA SORGENTE NELLE DUE GRAMMATICHE
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto 0 giro 0.3 («i lettori trasversali sul BB che risolve»).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   La sorgente di una testata (bolla -> ordine, reso -> bolla) oggi porta l'uid
+#   del documento in sorgente_uid; il lotto T la converte all'id, in sorgente_id
+#   (S-5). Un lettore che confronta solo l'uid, dopo il lotto T, torna zero righe
+#   in silenzio. Qui legge con la regola d'incontro del modello:
+#     (doc.id = x.sorgente_id OR doc.uid = x.sorgente_uid)
+#   vera nelle due grammatiche e anche nel modello finale (una sola delle due
+#   chiavi e' valorizzata, il guard unico lo garantisce): il lettore non si
+#   ritocca nei lotti di famiglia. E' il join della chiave polimorfa, come il
+#   join di una FK: si scrive in linea, non dietro una funzione, perche' il
+#   planner deve poterla usare sugli indici (id, uid, (tipo, sorgente_*)).
+#
+# ── ⚠️ CHE COSA CAMBIA ──────────────────────────────────────────────
+#   Cambio, ricerca e dettaglio guardano anche sorgente_id. Sui dati di oggi (solo sorgente_uid valorizzata) il risultato e' lo stesso.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261106-35-update-trgfn-resi-guard-cliente-ddt-sorgente-due-grammatiche-mctit.yaml
+
+  - changeSet:
+      id: 20261106-35-update-trgfn-resi-guard-cliente-ddt-sorgente-due-grammatiche
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.trgfn_resi_guard_cliente_ddt: la sorgente di testata nelle due grammatiche. brief-db-sorgente-documento-e-riga §7.2 giro 0.3.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite' AND p.proname = 'trgfn_resi_guard_cliente_ddt';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_resi_guard_cliente_ddt()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: il reso ha il billing account del DDT da cui nasce,
+              --   NULL compreso (D-3 e D-6 di brief-db-esecutivi-ba-coppia).
+              --   Su INSERT e su ogni UPDATE che tocca BA o sorgente, in
+              --   qualunque stato: il BA del DDT sorgente e' bloccato fuori
+              --   bozza, quindi quello del reso non cambia mai.
+              --   rev 2026-10-10 (§10.2 domanda 3): un DDT sorgente che non si
+              --   trova (o non si vede) e' un errore, non «niente da confrontare».
+              -- Uso: BEFORE INSERT OR UPDATE, fascia _z10_ (dopo il normalize).
+              DECLARE
+                  v_ba_ddt   vendite.ddt.billing_account_id%TYPE;
+                  v_ddt_lbl  text;
+                  v_reso_lbl text;
+              BEGIN
+                  IF TG_OP = 'UPDATE'
+                     AND NEW.billing_account_id IS NOT DISTINCT FROM OLD.billing_account_id
+                     AND NEW.sorgente_tipo_id   IS NOT DISTINCT FROM OLD.sorgente_tipo_id
+                     AND NEW.sorgente_uid       IS NOT DISTINCT FROM OLD.sorgente_uid
+                     AND NEW.sorgente_id        IS NOT DISTINCT FROM OLD.sorgente_id THEN
+                      RETURN NEW;
+                  END IF;
+
+                  IF NOT EXISTS (SELECT 1 FROM config.sorgenti s
+                                  WHERE s.id = NEW.sorgente_tipo_id
+                                    AND s.codice_interno = 'DDT_VENDITA') THEN
+                      RETURN NEW;
+                  END IF;
+
+                  v_reso_lbl := 'reso ' || COALESCE(NEW.numero, '#' || NEW.id::text);
+
+                  SELECT d.billing_account_id, 'DDT ' || COALESCE(d.numero, '#' || d.id::text)
+                    INTO v_ba_ddt, v_ddt_lbl
+                    FROM vendite.ddt d
+                   WHERE (d.id = NEW.sorgente_id OR d.uid = NEW.sorgente_uid);
+
+                  -- DDT dichiarato e non trovato, o invisibile sotto RLS: fail-
+                  -- closed (rev 2026-10-10). Prima passava.
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', TG_NAME::text, 'E_DOC_SORGENTE_NON_TROVATA',
+                          jsonb_build_object(
+                              'campo',        'sorgente_uid',
+                              'reso_id',      NEW.id,
+                              'sorgente',     'DDT_VENDITA',
+                              'sorgente_uid', NEW.sorgente_uid,
+                              'sorgente_id',  NEW.sorgente_id),
+                          NEW.tx_id,
+                          v_reso_lbl,
+                          'DDT');
+                  END IF;
+
+                  IF v_ba_ddt IS DISTINCT FROM NEW.billing_account_id THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', TG_NAME::text, 'E_DOC_CLIENTE_DIVERSO_DA_SORGENTE',
+                          jsonb_build_object(
+                              'campo',                  'billing_account_id',
+                              'reso_id',                NEW.id,
+                              'billing_account_id',     NEW.billing_account_id,
+                              'sorgente_uid',           NEW.sorgente_uid,
+                              'sorgente_id',            NEW.sorgente_id,
+                              'billing_account_ddt',    v_ba_ddt),
+                          NEW.tx_id,
+                          v_reso_lbl,
+                          v_ddt_lbl);
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_resi_guard_cliente_ddt() IS
+                '⭐ rev 2026-11-06 (20261106-35, brief-db-sorgente-documento-e-riga §7.2 lotto 0 giro 0.3): la bolla del reso nelle due grammatiche: il cambio si vede anche su sorgente_id, la bolla si cerca con (d.id = NEW.sorgente_id OR d.uid = NEW.sorgente_uid), il dettaglio dell''errore porta anche sorgente_id. Dal lotto T il reso porta l''id della bolla. Guard BEFORE INSERT OR UPDATE su vendite.resi, fascia _z10_ (dopo trgfn_resi_normalize): il reso ha il billing account del DDT sorgente (DDT_VENDITA), NULL compreso (D-3, D-6 di brief-db-esecutivi-ba-coppia). E_DOC_CLIENTE_DIVERSO_DA_SORGENTE, come DDT e fulfillment. In qualunque stato: il BA del DDT sorgente e'' bloccato fuori bozza e il DDT di un reso e'' consegnato, quindi il BA del reso non cambia mai — per questo il reso non ha un lock fuori bozza sul cliente. DDT letto come INVOKER, come il normalize. rev 2026-10-10 (§10.2 domanda 3, Tid): DDT sorgente dichiarato e non trovato — inesistente o invisibile sotto RLS — e'' E_DOC_SORGENTE_NON_TROVATA (fail-closed; su INSERT parla prima vendite.trgfn_resi_guard_ddt_consegnato, su un UPDATE della sorgente solo questo guard).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo precedente e' quello di 20261010-07:
+              -- un rollback lo riprende da li'.
+              SELECT 1;

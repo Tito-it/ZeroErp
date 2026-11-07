@@ -49,7 +49,7 @@ BEGIN
   --     applica attivo IS TRUE
   --   - se la tabella ha colonna obsoleto_dal e
   --     p_includi_obsoleti=false, esclude i record con
-  --     obsoleto_dal <= CURRENT_DATE (selezione per il nuovo).
+  --     script.fn_e_obsoleto(obsoleto_dal) (selezione per il nuovo).
   --     Default p_includi_obsoleti=true: mostra tutto (storico).
   --   - attivo e obsoleto_dal sono OPZIONALI: se la colonna manca,
   --     il relativo predicato non viene applicato (lista intera).
@@ -300,7 +300,8 @@ BEGIN
   END IF;
 
   IF NOT p_includi_obsoleti AND v_has_obsoleto THEN
-    v_conds := array_append(v_conds, '(t.obsoleto_dal IS NULL OR t.obsoleto_dal > (SELECT script.fn_data_operativa()))');
+    -- ⭐ Il predicato e' il BB script.fn_e_obsoleto (20261105-04), sede unica.
+    v_conds := array_append(v_conds, 'NOT script.fn_e_obsoleto(t.obsoleto_dal)');
   END IF;
 
   IF array_length(v_conds, 1) > 0 THEN

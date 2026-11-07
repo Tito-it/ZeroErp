@@ -1,5 +1,8 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
+-- rev 2026-11-07 (brief-db-sorgente-documento-e-riga, giro T.5, 20261106-96/-97): le colonne parallele
+--   della provenienza (ordini.documento_origine_*, contratti.offerta_id) sono ritirate; la fixture
+--   scrive e il test legge la sola provenienza (sorgente_*), come i verbi. Attese invariate.
 -- pgTAP test per Zero ERP
 -- Copyright (C) 2026 Tid (Michele Carlo Titini)
 --
@@ -92,13 +95,14 @@ SELECT dbops.fn_pgtap_crea_ddt((SELECT billing_account_id FROM g_ord),
                                'VENDITA') AS ddt_id;
 
 UPDATE vendite.ordini o
-   SET documento_origine_tipo = 'PREVENTIVO',
-       documento_origine_id   = (SELECT preventivo_id FROM g_prev)
+   SET -- la provenienza, che la lineage legge (giro T.5 di brief-db-sorgente-documento-e-riga)
+       sorgente_tipo_id       = (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'PREVENTIVO'),
+       sorgente_uid           = (SELECT p.uid FROM vendite.preventivi p WHERE p.id = (SELECT preventivo_id FROM g_prev))
  WHERE o.id = (SELECT ordine_id FROM g_ord);
 
 UPDATE vendite.ddt d
    SET sorgente_tipo_id = (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'ORDINE_VENDITA'),
-       sorgente_uid     = (SELECT ordine_uid FROM g_ord)
+       sorgente_id      = (SELECT ordine_id FROM g_ord)
  WHERE d.id = (SELECT ddt_id FROM g_ddt);
 
 INSERT INTO vendite.commesse_sorgenti (commessa_id, sorgente_tipo_id, sorgente_uid, ruolo_link)
@@ -128,9 +132,15 @@ BEGIN
   INSERT INTO vendite.preventivi_righe (preventivo_id, articolo_id, qta_operativa, prezzo_unitario, iva_id)
   VALUES ((SELECT preventivo_id FROM g_prev), v_art, 1, 10, v_iva)
   RETURNING id INTO v_pr;
+  -- rev 2026-11-06 (brief-db-sorgente-documento-e-riga lotto R, 20261106-57): la
+  --   provenienza nel modello, come la scrive vendite.fn_push_preventivo_a_ordine:
+  --   PREVENTIVO + l'uid del preventivo + la riga, accanto a preventivo_riga_id.
   INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione, qta_operativa,
-                                    prezzo_unitario, iva_id, preventivo_riga_id)
-  VALUES ((SELECT ordine_id FROM g_ord), 1, v_art, 'Riga pgTAP lineage seminata', 1, 10, v_iva, v_pr)
+                                    prezzo_unitario, iva_id, preventivo_riga_id,
+                                    sorgente_tipo_id, sorgente_uid, sorgente_riga)
+  VALUES ((SELECT ordine_id FROM g_ord), 1, v_art, 'Riga pgTAP lineage seminata', 1, 10, v_iva, v_pr,
+          (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'PREVENTIVO'),
+          (SELECT p.uid FROM vendite.preventivi p WHERE p.id = (SELECT preventivo_id FROM g_prev)), v_pr)
   RETURNING id INTO v_or;
 
   -- H: la riga della bolla evade la riga d'ordine.

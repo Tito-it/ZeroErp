@@ -1,0 +1,352 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_available_actions_ddt: SORGENTE_ID FRA LE COLONNE FERME
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto T, giro T.2 (S-5).
+#
+# La bolla in bozza non lascia modificare la sua provenienza: le colonne ferme
+# erano sorgente_tipo_id e sorgente_uid. Dal giro T.2 la chiave di un tipo a
+# chiave id sta in sorgente_id: entra nell'elenco, accanto alle altre due. Il
+# lock fuori bozza della testata prende la stessa colonna (20261106-70).
+# Nient'altro cambia; il COMMENT e' gia' al presente e resta.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261106-66-update-fn-available-actions-ddt-colonne-ferme-sorgente-id-mctit.yaml
+
+  - changeSet:
+      id: 20261106-66-update-fn-available-actions-ddt-colonne-ferme-sorgente-id
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_available_actions_ddt: sorgente_id fra le colonne non modificabili in bozza. brief-db-sorgente-documento-e-riga §7.2 lotto T, giro T.2.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_available_actions_ddt';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_available_actions_ddt(p_ddt_id vendite.ddt.id%TYPE)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+               SET plan_cache_mode TO 'force_generic_plan'
+              AS $function$
+              -- Scopo: capability DDT per il detail API (data-driven,
+              --   config.transizioni_stati_ddt). Mirror di fn_available_actions_ordine.
+              --   rev 2026-07-11: + blocco pdf {mode, allow_allegati} da
+              --   config.stati_doc_ddt (bottone PDF data-driven via capabilities).
+              --   rev 2026-07-16: + enabled/reason/reason_key da meta.requires_righe
+              --   (documento vuoto non avanza di stato).
+              --   rev 2026-07-19: le transizioni verso EMESSO delegano a
+              --   script.fn_check_ddt_emittibile (TUTTE le condizioni di emissione,
+              --   non solo le righe): brief-db-guard-righe-avanzamento-stato §1a-bis.
+              --   rev 2026-07-19 (bis): reason push DDT_GIA_INVIATO/DDT_GIA_FATTURATO
+              --   via fn_get_stato_push_segment (brief-db-push-commessa-gia-inviato §4b).
+              --   rev 2026-07-19 (ter): catch-all DDT_NON_PUSHABILE decomposto
+              --   nelle 7 cause via vendite.fn_ddt_push_diagnosi (fonte unica) +
+              --   rami DDT_FATTURA_DA_ORDINE/SOLO_TRASPORTO/MERCE_IN_VIAGGIO +
+              --   precedenza a due livelli — brief-db-ddt-reason-push-catch-all §3.
+              --   rev 2026-08-04: + nessuna_azione_key dal meta dello stato,
+              --   esposta quando nessuna azione e' abilitata: sugli stati chiusi
+              --   CONSEGNATO e RESO dice all'operatore cosa fare invece
+              --   (brief-db-vie-uscita-operatore §4, regola R3).
+              --   rev 2026-08-06: + target_state_descrizione, la forma leggibile
+              --   dello stato di destinazione. E' il campo che mancava alla frase
+              --   «Portare il DDT nello stato {x}?», dove il FE poteva mettere
+              --   solo il nome dell'azione: il codice_interno non e' quella forma
+              --   (DRAFT -> Bozza) e tradurlo nel FE sarebbe una seconda copia
+              --   del vocabolario degli stati. NULL su cio' che non cambia stato.
+              --   rev 2026-08-10 (2): la nota di stato non e' piu' subordinata alla
+              --   lista vuota, e cambia nome. Decisione §5 di Tid: «la nota spiega lo
+              --   stato chiuso, e compare sempre» — anche accanto a un'azione ancora
+              --   viva, dove l'operatore legge cos'e' successo E ha il suo bottone.
+              --   Cade quindi il presupposto che la faceva sparire: via
+              --   v_nessuna_azione e il suo NOT EXISTS, che erano diventati codice
+              --   morto, e via il commento che spiegava perche' non si appoggiavano a
+              --   v_can_change — era la motivazione di una regola che non esiste piu'.
+              --   Il campo si chiama ora `stato_info_key`: `nessuna_azione_key`
+              --   diventava falso proprio nel momento in cui inizia a mostrarsi
+              --   quando le azioni ci sono, e il vocabolario giusto era gia' dall'altra
+              --   parte (le chiavi i18n stanno sotto vendite.<dominio>.stato_info.*).
+              --   ⚠️ La PROPRIETA' nel meta dello stato resta `nessuna_azione_key`, ed
+              --   e' voluto: il presidio scripts/check_i18n_keys.py trova quelle chiavi
+              --   proprio per quel nome (RE_SEED_KEY sui CSV, elenco _PROP_KEY), e
+              --   rinominarla senza toccare il guard lo renderebbe verde per cecita' —
+              --   il caso peggiore, gia' denunciato nel §8.3 del brief. Rinomina della
+              --   proprieta' proposta come slice a se'.
+              --   brief-db-vie-uscita-operatore §4; attivita-urgenti-del-10-08 §2.
+              --   ⭐ rev 2026-09-21 (D14, seconda leva, forma B2 — decisione D4 di Tid):
+              --   la partita del push si legge UNA volta. Prima erano quattro letture:
+              --   EXISTS sul lister (push_ok), due EXISTS su fn_get_stato_push_segment
+              --   riga per riga (GIA_INVIATO / GIA_FATTURATO) e la diagnosi per il
+              --   motivo — e lister e diagnosi calcolavano ciascuno la partita del
+              --   documento. Ora vendite.fn_ddt_push_diagnosi e' la FONTE UNICA (il
+              --   lister ne deriva) ed espone `segment`: una SELECT aggregata da' il
+              --   flag (esiste motivo NULL: vero per COSTRUZIONE, perche' il push legge
+              --   la stessa cosa), la precedenza sul segmento (ALLOCATA -> GIA_INVIATO,
+              --   EMESSA -> GIA_FATTURATO: come prima, PRIMA del min(rank)) e il motivo
+              --   piu' forte. ⚠️ Perimetro: la diagnosi guarda le righe ATTIVE, mentre i
+              --   due EXISTS di prima scandivano ddt_righe senza guardare `attivo`; la
+              --   differenza si raggiunge solo disattivando una riga gia' instradata su
+              --   un DDT emesso (D7 del brief). `DDT_ROUTED` non va piu' escluso dal
+              --   min(rank): una riga ROUTED ha per definizione segment ALLOCATA o
+              --   EMESSA, quindi non arriva mai al ramo del motivo.
+              --   brief-db-partita-merce-per-documento §10.
+              --   ⭐ rev 2026-10-25 (20261025-20, brief-modello-documento-vendita §7, M-3):
+              --   il PERMESSO del passaggio nasconde l'azione (linee-guida-sql §12.1:
+              --   permesso => nascondi). L'azione che il passaggio chiede la dice la sua
+              --   riga della matrice, letta da script.fn_doc_passaggio (il lettore unico,
+              --   lo stesso del verbo e del backend); chi non ce l'ha
+              --   (script.fn_check_azione_processo, la stessa regola del verbo) non vede il
+              --   bottone. Una riga senza azione resta a tutti: il permesso sul documento
+              --   lo controlla il backend.
+              DECLARE
+                  -- Tipi nudi solo per valori CALCOLATI (azioni e motivi jsonb, flag,
+                  -- motivi e chiavi i18n composti): nessuna colonna di cui siano il riflesso.
+                  v_ddt        vendite.ddt%ROWTYPE;
+                  v_stato_cod  config.stati_doc_ddt.codice_interno%TYPE;
+                  v_pdf_mode   config.stati_doc_ddt.pdf_mode%TYPE;
+                  v_pdf_allow  config.stati_doc_ddt.pdf_allow_allegati%TYPE;
+                  v_stato_info_key    text;
+                  v_actions    jsonb;
+                  v_can_change boolean := false;
+                  v_ha_righe   boolean := false;
+                  v_motivi     jsonb := '[]'::jsonb;
+                  v_emit_ok    boolean := true;
+                  v_emit_reason     text := NULL;
+                  v_emit_reason_key text := NULL;
+                  v_push_ok    boolean := false;
+                  v_push_reason     text := NULL;
+                  v_push_reason_key text := NULL;
+                  -- Le due facce del `segment` della diagnosi (precedenza GIA_*).
+                  v_push_allocata  boolean := false;
+                  v_push_emessa    boolean := false;
+                  -- Le colonne ferme in ogni stato. billing_account_id non c'e'
+                  -- piu' (rev 2026-10-11): lo ferma il vincolo, quando c'e'.
+                  c_non_edit_draft CONSTANT jsonb :=
+                      '["numero","sorgente_tipo_id","sorgente_id","sorgente_uid"]'::jsonb;
+                  -- Le colonne «sempre» di QUESTA bolla: le costanti, piu' il
+                  -- cliente se un vincolo lo tiene (rev 2026-10-11).
+                  v_sempre     jsonb;
+                  -- La testata nello stato, dal montaggio del lock (rev 2026-10-10):
+                  -- {modificabile, non_modificabili}.
+                  v_testata jsonb;
+              BEGIN
+                  -- Riga completa: serve sia per lo stato sia per passarla alla
+                  -- fn_check (che valuta i valori della riga, non un id).
+                  SELECT d.* INTO v_ddt FROM vendite.ddt d WHERE d.id = p_ddt_id;
+
+                  IF NOT FOUND THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- Stato corrente + capability PDF + la chiave "nessuna azione"
+                  -- dello stato (dato, non codice: si cambia il testo senza
+                  -- toccare questa funzione).
+                  SELECT sdd.codice_interno, sdd.pdf_mode, sdd.pdf_allow_allegati,
+                         -- ⚠️ La PROPRIETA' nel meta resta `nessuna_azione_key` mentre il
+                         -- campo del blob si chiama ora `stato_info_key`. L'asimmetria e'
+                         -- voluta e la spiega la rev 2026-08-10 (2) in testa: il presidio
+                         -- i18n si aggancia a QUESTO nome.
+                         sdd.meta->>'nessuna_azione_key'
+                    INTO v_stato_cod, v_pdf_mode, v_pdf_allow, v_stato_info_key
+                    FROM config.stati_doc_ddt sdd
+                   WHERE sdd.id = v_ddt.stato_doc_ddt_id;
+
+                  -- Precondizione "documento non vuoto" per le transizioni che la
+                  -- esigono (meta.requires_righe), diverse da EMESSO.
+                  v_ha_righe := EXISTS (
+                      SELECT 1 FROM vendite.ddt_righe r
+                       WHERE r.ddt_id = p_ddt_id
+                         AND r.attivo IS TRUE
+                  );
+
+                  -- Precondizioni COMPLETE dell'emissione: single source coi guard
+                  -- (righe, causale, prezzi, indirizzi, componenti). Il primo motivo
+                  -- e' quello mostrato all'utente.
+                  v_motivi := script.fn_check_ddt_emittibile(v_ddt);
+                  IF jsonb_array_length(v_motivi) > 0 THEN
+                      v_emit_ok         := false;
+                      v_emit_reason     := v_motivi -> 0 ->> 'reason';
+                      v_emit_reason_key := v_motivi -> 0 ->> 'reason_key';
+                  END IF;
+
+                  SELECT COALESCE(
+                      jsonb_agg(
+                          jsonb_build_object(
+                              'key',              t.meta->>'action_key',
+                              'target_state',     sa.codice_interno,
+                              -- Forma leggibile della destinazione: la colonna
+                              -- accanto, nello stesso JOIN. Il FE non puo'
+                              -- derivarla dal codice.
+                              'target_state_descrizione', sa.descrizione,
+                              'label_key',        t.meta->>'label_key',
+                              'requires_confirm', COALESCE((t.meta->>'requires_confirm')::boolean, false),
+                              'outlined',         COALESCE((t.meta->>'outlined')::boolean, false),
+                              -- Verso EMESSO comandano i motivi della fn_check;
+                              -- altrove resta il predicato requires_righe.
+                              'enabled',          CASE WHEN sa.codice_interno = 'EMESSO'
+                                                       THEN v_emit_ok
+                                                       ELSE NOT (COALESCE((t.meta->>'requires_righe')::boolean, false)
+                                                                 AND NOT v_ha_righe) END,
+                              'reason',           CASE WHEN sa.codice_interno = 'EMESSO'
+                                                       THEN v_emit_reason
+                                                       WHEN COALESCE((t.meta->>'requires_righe')::boolean, false)
+                                                            AND NOT v_ha_righe
+                                                       THEN 'DOCUMENTO_SENZA_RIGHE' END,
+                              'reason_key',       CASE WHEN sa.codice_interno = 'EMESSO'
+                                                       THEN v_emit_reason_key
+                                                       WHEN COALESCE((t.meta->>'requires_righe')::boolean, false)
+                                                            AND NOT v_ha_righe
+                                                       THEN 'common.azione_reason.senza_righe' END,
+                              -- Elenco completo dei motivi: il FE puo' mostrarli
+                              -- tutti nel tooltip invece del solo primo.
+                              'reasons',          CASE WHEN sa.codice_interno = 'EMESSO'
+                                                            AND jsonb_array_length(v_motivi) > 0
+                                                       THEN v_motivi END
+                          )
+                          ORDER BY sa.ordine
+                      ),
+                      '[]'::jsonb
+                  )
+                  INTO v_actions
+                  -- I passaggi manuali che l'utente puo' fare, dal BB comune (rev
+                  -- 2026-10-27, 20261027-45, §15.14): matrice viva, manuale, permesso.
+                  FROM script.fn_doc_azioni_permesse('vendite.ddt'::regclass, v_ddt.stato_doc_ddt_id) t
+                  JOIN config.stati_doc_ddt sa ON sa.id = t.stato_a_id
+                  WHERE t.meta ? 'action_key'
+                    AND t.meta ? 'label_key';
+
+                  -- Conta anche le azioni disabilitate: la barra azioni deve
+                  -- comparire proprio per mostrare il pulsante grigio + tooltip.
+                  v_can_change := jsonb_array_length(v_actions) > 0;
+
+                  -- ⭐ UNA lettura della diagnosi (fonte unica, D4 B2). Quattro aggregati
+                  -- sulla stessa scansione:
+                  --   push_ok   = esiste una riga con motivo NULL. E' vero per COSTRUZIONE,
+                  --               non per pgTAP: il lister che alimenta il push e' `FROM
+                  --               fn_ddt_push_diagnosi WHERE motivo IS NULL`.
+                  --   allocata  = esiste una riga instradata e non ancora fatturata;
+                  --   emessa    = esiste una riga fatturata;
+                  --   reason    = il motivo piu' forte (min rank, precedenza Decisione E).
+                  -- I COALESCE: su un DDT senza righe attive gli aggregati sono NULL.
+                  SELECT COALESCE(bool_or(g.motivo IS NULL), false),
+                         COALESCE(bool_or(g.segment = 'ALLOCATA'), false),
+                         COALESCE(bool_or(g.segment = 'EMESSA'), false),
+                         (array_agg(g.motivo ORDER BY g.motivo_rank)
+                            FILTER (WHERE g.motivo IS NOT NULL))[1]
+                    INTO v_push_ok, v_push_allocata, v_push_emessa, v_push_reason
+                    FROM vendite.fn_ddt_push_diagnosi(p_ddt_id) g;
+
+                  IF v_push_ok THEN
+                      -- Ammesso: nessun motivo.
+                      v_push_reason := NULL;
+                  -- Nessuna riga pushabile: PRIMA la precedenza sul segmento (stesso
+                  -- ordine di prima: un DDT annullato con una riga instradata dice
+                  -- «gia' inviato»), POI il motivo della diagnosi.
+                  ELSIF v_push_allocata THEN
+                      -- pushato, in attesa di fatturazione
+                      v_push_reason     := 'DDT_GIA_INVIATO';
+                      v_push_reason_key := 'vendite.ddt.push_commessa_reason.gia_inviato';
+                  ELSIF v_push_emessa THEN
+                      v_push_reason     := 'DDT_GIA_FATTURATO';
+                      v_push_reason_key := 'vendite.ddt.push_commessa_reason.gia_fatturato';
+                  ELSE
+                      -- Catch-all DECOMPOSTO (brief-db-ddt-reason-push-catch-all §3): il
+                      -- motivo piu' forte, mappato a una reason. Solo 3 cause hanno ramo
+                      -- proprio; le altre (senza-BA, contatore, annullato, reso, senza
+                      -- partita, ri-consegna, non misurabile) restano nel generico, che
+                      -- NON afferma una condizione di stato (Decisione C). DDT_ROUTED non
+                      -- puo' arrivare qui: ha sempre un segment ALLOCATA o EMESSA.
+                      v_push_reason := CASE v_push_reason
+                          WHEN 'DDT_FATTURA_DA_ORDINE' THEN 'DDT_FATTURA_DA_ORDINE'
+                          WHEN 'DDT_SOLO_TRASPORTO'    THEN 'DDT_SOLO_TRASPORTO'
+                          WHEN 'DDT_MERCE_IN_VIAGGIO'  THEN 'DDT_MERCE_IN_VIAGGIO'
+                          ELSE 'DDT_NON_PUSHABILE'
+                      END;
+                      v_push_reason_key := 'vendite.ddt.push_commessa_reason.' || CASE v_push_reason
+                          WHEN 'DDT_FATTURA_DA_ORDINE' THEN 'fattura_da_ordine'
+                          WHEN 'DDT_SOLO_TRASPORTO'    THEN 'solo_trasporto'
+                          WHEN 'DDT_MERCE_IN_VIAGGIO'  THEN 'merce_in_viaggio'
+                          ELSE 'non_pushabile'
+                      END;
+                  END IF;
+
+                  IF v_push_ok THEN
+                      v_actions := v_actions || jsonb_build_array(
+                          jsonb_build_object(
+                              'key',              'push_commessa',
+                              'target_state',     NULL,
+                              -- Non e' un cambio di stato: nessuna destinazione
+                              -- da nominare.
+                              'target_state_descrizione', NULL,
+                              'label_key',        'vendite.ddt.azione_push_commessa',
+                              'requires_confirm', true,
+                              'outlined',         false,
+                              'enabled',          true,
+                              'reason',           NULL,
+                              'reason_key',       NULL
+                          )
+                      );
+                  END IF;
+
+                  -- La testata nello stato, letta dal montaggio del lock di testata
+                  -- (rev 2026-10-10): le colonne «sempre» della capability, poi quelle
+                  -- che il lock blocca in questo stato. Nessuno stato scritto qui.
+                  -- ⭐ Il cliente (rev 2026-10-11, brief-db-testata-dopo-emissione
+                  -- §11, R-DB-1): fermo anche in bozza se la bolla ha una sorgente
+                  -- (ordine o reso) o evade gia' righe d'ordine. I vincoli li dice
+                  -- vendite.fn_ddt_vincoli_cliente, la stessa funzione da cui il guard
+                  -- vendite.trgfn_ddt_guard_cliente_sorgente solleva: il campo si
+                  -- spegne esattamente quando il guard lo rifiuterebbe. La bolla
+                  -- senza sorgente riceve il cliente in bozza (D-2 di
+                  -- brief-db-esecutivi-ba-coppia).
+                  v_sempre := c_non_edit_draft
+                              || CASE WHEN EXISTS (
+                                          SELECT 1
+                                            FROM vendite.fn_ddt_vincoli_cliente(
+                                                   v_ddt.id, v_ddt.sorgente_tipo_id, v_ddt.sorgente_uid,
+                                                   v_ddt.sorgente_id))
+                                      THEN '["billing_account_id"]'::jsonb
+                                      ELSE '[]'::jsonb END;
+                  v_testata := script.fn_doc_testata_in_stato('vendite.ddt'::regclass, v_stato_cod, v_sempre);
+
+                  RETURN jsonb_build_object(
+                      'available_actions',            v_actions,
+                      'can_change_state',             v_can_change,
+                      'can_edit_testata',  (v_testata ->> 'modificabile')::boolean,
+                      'can_edit_righe',               (v_stato_cod = 'DRAFT'),
+                      -- Dal montaggio del lock dei satelliti (rev 2026-10-11, R-DB-3).
+                      'can_edit_indirizzi',  script.fn_doc_riga_modificabile('vendite.ddt_indirizzi'::regclass, v_stato_cod),
+                      'can_push_commessa',            v_push_ok,
+                      'can_push_commessa_reason',     v_push_reason,
+                      'can_push_commessa_reason_key', v_push_reason_key,
+                      'stato_info_key',           v_stato_info_key,
+                      'non_editable_fields', v_testata -> 'non_modificabili',
+                      'pdf',                          jsonb_build_object('mode', v_pdf_mode, 'allow_allegati', v_pdf_allow),
+                      'stato_codice',                 v_stato_cod
+                  );
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo precedente e' quello di 20261106-30: un rollback lo riprende da li'.
+              SELECT 1;

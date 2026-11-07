@@ -1,0 +1,98 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# INDICI «CHI DERIVA DA X» SULLE RIGHE DI VENDITA
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto R («le righe di vendita»).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   Il modello vuole un indice non unico per la ricerca «chi deriva da X» (§4,
+#   brief-db-articoli-obsoleto-dal §9.2). Col guard unico montato (20261106-57),
+#   cancellare una riga o un documento d'origine fa contare al lato «in uscita»
+#   le righe che lo citano: per tipo + sorgente_riga o per tipo + chiave.
+#
+# ── ⚠️ CHE COSA CAMBIA ──────────────────────────────────────────────
+#   Otto indici parziali, uno per chiave che le quattro tabelle scrivono
+#   (uid per preventivo e offerta; id per ordine e reso) e uno per sorgente_riga.
+#   Non unici. Nessun dato da indicizzare da zero.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261106-47-create-ix-righe-vendita-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20261106-47-create-ix-righe-vendita-sorgente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Indici non unici (tipo, chiave) e (tipo, riga) della provenienza sulle quattro righe di vendita. brief-db-sorgente-documento-e-riga §7.2 lotto R.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_constraint
+               WHERE conname = 'chk_contratti_righe_sorgente_forma';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE INDEX ix_preventivi_righe_sorgente_uid ON vendite.preventivi_righe USING btree (sorgente_tipo_id, sorgente_uid)
+               WHERE sorgente_uid IS NOT NULL;
+              COMMENT ON INDEX vendite.ix_preventivi_righe_sorgente_uid IS
+                'Chi deriva da X: le righe nate da un documento, per tipo e chiave del documento. Lo usano il lato in uscita della provenienza (script.trgfn_sorgente_in_uscita, alla cancellazione dell''origine) e i lettori della lineage. Non unico: piu'' righe derivano dallo stesso documento.';
+
+              CREATE INDEX ix_preventivi_righe_sorgente_riga ON vendite.preventivi_righe USING btree (sorgente_tipo_id, sorgente_riga)
+               WHERE sorgente_riga IS NOT NULL;
+              COMMENT ON INDEX vendite.ix_preventivi_righe_sorgente_riga IS
+                'Chi deriva da X: le righe nate da una riga di un documento, per tipo e riga. Lo usano il lato in uscita della provenienza (script.trgfn_sorgente_in_uscita, alla cancellazione dell''origine) e i lettori della lineage. Non unico: piu'' righe derivano dallo stesso documento.';
+
+              CREATE INDEX ix_ordini_righe_sorgente_uid ON vendite.ordini_righe USING btree (sorgente_tipo_id, sorgente_uid)
+               WHERE sorgente_uid IS NOT NULL;
+              COMMENT ON INDEX vendite.ix_ordini_righe_sorgente_uid IS
+                'Chi deriva da X: le righe nate da un documento, per tipo e chiave del documento. Lo usano il lato in uscita della provenienza (script.trgfn_sorgente_in_uscita, alla cancellazione dell''origine) e i lettori della lineage. Non unico: piu'' righe derivano dallo stesso documento.';
+
+              CREATE INDEX ix_ordini_righe_sorgente_riga ON vendite.ordini_righe USING btree (sorgente_tipo_id, sorgente_riga)
+               WHERE sorgente_riga IS NOT NULL;
+              COMMENT ON INDEX vendite.ix_ordini_righe_sorgente_riga IS
+                'Chi deriva da X: le righe nate da una riga di un documento, per tipo e riga. Lo usano il lato in uscita della provenienza (script.trgfn_sorgente_in_uscita, alla cancellazione dell''origine) e i lettori della lineage. Non unico: piu'' righe derivano dallo stesso documento.';
+
+              CREATE INDEX ix_ddt_righe_sorgente_id ON vendite.ddt_righe USING btree (sorgente_tipo_id, sorgente_id)
+               WHERE sorgente_id IS NOT NULL;
+              COMMENT ON INDEX vendite.ix_ddt_righe_sorgente_id IS
+                'Chi deriva da X: le righe nate da un documento, per tipo e chiave del documento. Lo usano il lato in uscita della provenienza (script.trgfn_sorgente_in_uscita, alla cancellazione dell''origine) e i lettori della lineage. Non unico: piu'' righe derivano dallo stesso documento.';
+
+              CREATE INDEX ix_ddt_righe_sorgente_riga ON vendite.ddt_righe USING btree (sorgente_tipo_id, sorgente_riga)
+               WHERE sorgente_riga IS NOT NULL;
+              COMMENT ON INDEX vendite.ix_ddt_righe_sorgente_riga IS
+                'Chi deriva da X: le righe nate da una riga di un documento, per tipo e riga. Lo usano il lato in uscita della provenienza (script.trgfn_sorgente_in_uscita, alla cancellazione dell''origine) e i lettori della lineage. Non unico: piu'' righe derivano dallo stesso documento.';
+
+              CREATE INDEX ix_contratti_righe_sorgente_uid ON vendite.contratti_righe USING btree (sorgente_tipo_id, sorgente_uid)
+               WHERE sorgente_uid IS NOT NULL;
+              COMMENT ON INDEX vendite.ix_contratti_righe_sorgente_uid IS
+                'Chi deriva da X: le righe nate da un documento, per tipo e chiave del documento. Lo usano il lato in uscita della provenienza (script.trgfn_sorgente_in_uscita, alla cancellazione dell''origine) e i lettori della lineage. Non unico: piu'' righe derivano dallo stesso documento.';
+
+              CREATE INDEX ix_contratti_righe_sorgente_riga ON vendite.contratti_righe USING btree (sorgente_tipo_id, sorgente_riga)
+               WHERE sorgente_riga IS NOT NULL;
+              COMMENT ON INDEX vendite.ix_contratti_righe_sorgente_riga IS
+                'Chi deriva da X: le righe nate da una riga di un documento, per tipo e riga. Lo usano il lato in uscita della provenienza (script.trgfn_sorgente_in_uscita, alla cancellazione dell''origine) e i lettori della lineage. Non unico: piu'' righe derivano dallo stesso documento.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP INDEX IF EXISTS vendite.ix_contratti_righe_sorgente_riga;
+              DROP INDEX IF EXISTS vendite.ix_contratti_righe_sorgente_uid;
+              DROP INDEX IF EXISTS vendite.ix_ddt_righe_sorgente_riga;
+              DROP INDEX IF EXISTS vendite.ix_ddt_righe_sorgente_id;
+              DROP INDEX IF EXISTS vendite.ix_ordini_righe_sorgente_riga;
+              DROP INDEX IF EXISTS vendite.ix_ordini_righe_sorgente_uid;
+              DROP INDEX IF EXISTS vendite.ix_preventivi_righe_sorgente_riga;
+              DROP INDEX IF EXISTS vendite.ix_preventivi_righe_sorgente_uid;

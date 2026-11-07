@@ -53,6 +53,7 @@ AS $function$
         JOIN config.codici_postali cp     ON s.codice_postale_id = cp.id
         LEFT JOIN config.stati st         ON t.stato_id = st.id
       WHERE s.comune_id = p_comune_id
+        AND s.obsoleto_dal IS NULL        -- una via soppressa non si sceglie
         AND (t.descrizione || ' ' || v.descrizione)
             ILIKE '%' || p_indirizzo || '%'
       ORDER BY v.descrizione;
@@ -87,7 +88,7 @@ AS $function$
   $function$
 
 COMMENT ON FUNCTION script.fn_get_stradario(p_comune_id integer, p_indirizzo text)
-IS 'Stradario per comune (o ricerca libera su stradario_generale). cod_postale e provincia sono text esplicito: erano character = char(1) (brief-db-bonifica-riferimenti-morti F2).';
+IS 'Le vie di un comune (config.stradario), filtrate per testo; senza comune, la ricerca libera sulle vie generali. Per comune restituisce solo le vie vive: una via soppressa (obsoleto_dal valorizzata, fusa in un''altra) non si sceglie per il nuovo. cod_postale e provincia sono text esplicito.';
 ```
 
 </div>

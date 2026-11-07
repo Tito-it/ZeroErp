@@ -51,6 +51,8 @@ DECLARE
     v_sorgente_id config.sorgenti.id%TYPE;
     v_ddt         vendite.ddt.id%TYPE;
     v_ddt_uid     vendite.ddt.uid%TYPE;
+    v_prov_id     vendite.resi.sorgente_id%TYPE;
+    v_prov_uid    vendite.resi.sorgente_uid%TYPE;
     v_reso        vendite.resi.id%TYPE;
     v_reso_stato  config.stati_doc_reso.codice_interno%TYPE;
     v_ddt_riga    vendite.ddt_righe.id%TYPE;
@@ -96,16 +98,16 @@ BEGIN
             RAISE EXCEPTION
                 'fn_pgtap_crea_reso: con p_reso_id la data e'' quella del reso — non si passa';
         END IF;
-        SELECT r.id, r.sorgente_uid, s.codice_interno
-          INTO v_reso, v_ddt_uid, v_reso_stato
+        SELECT r.id, d.id, d.uid, s.codice_interno
+          INTO v_reso, v_ddt, v_ddt_uid, v_reso_stato
           FROM vendite.resi r
           JOIN config.stati_doc_reso s ON s.id = r.stato_doc_reso_id
+          LEFT JOIN vendite.ddt d ON (d.id = r.sorgente_id OR d.uid = r.sorgente_uid)
          WHERE r.id = p_reso_id;
         IF NOT FOUND THEN
             RAISE EXCEPTION
                 'fn_pgtap_crea_reso: reso id = % non esiste o non e'' visibile', p_reso_id;
         END IF;
-        SELECT d.id INTO v_ddt FROM vendite.ddt d WHERE d.uid = v_ddt_uid;
         IF p_ddt_id IS NOT NULL AND p_ddt_id IS DISTINCT FROM v_ddt THEN
             RAISE EXCEPTION
                 'fn_pgtap_crea_reso: il reso % e'' della bolla %, non della bolla %',
@@ -125,21 +127,21 @@ BEGIN
                 'fn_pgtap_crea_reso: bolla id = % non esiste o non e'' visibile', v_ddt;
         END IF;
 
-        SELECT s.id INTO v_sorgente_id
-          FROM config.sorgenti s
-         WHERE s.codice_interno = 'DDT_VENDITA'
-           AND s.attivo IS TRUE;
+        -- La provenienza: la bolla, con la chiave del key_selector (il BB che scrive).
+        SELECT p.sorgente_tipo_id, p.sorgente_id, p.sorgente_uid
+          INTO v_sorgente_id, v_prov_id, v_prov_uid
+          FROM script.fn_sorgente_provenienza('DDT_VENDITA', v_ddt::text) p;
 
         -- ⚠️ data e' NOT NULL con un DEFAULT di tabella: due rami,
         --   la sede del default resta il DDL.
         IF p_data IS NULL THEN
-            INSERT INTO vendite.resi (sorgente_tipo_id, sorgente_uid, meta)
-            VALUES (v_sorgente_id, v_ddt_uid,
+            INSERT INTO vendite.resi (sorgente_tipo_id, sorgente_id, sorgente_uid, meta)
+            VALUES (v_sorgente_id, v_prov_id, v_prov_uid,
                     jsonb_build_object('test_scope', 'pgtap_' || p_etichetta))
             RETURNING id INTO v_reso;
         ELSE
-            INSERT INTO vendite.resi (sorgente_tipo_id, sorgente_uid, data, meta)
-            VALUES (v_sorgente_id, v_ddt_uid, p_data,
+            INSERT INTO vendite.resi (sorgente_tipo_id, sorgente_id, sorgente_uid, data, meta)
+            VALUES (v_sorgente_id, v_prov_id, v_prov_uid, p_data,
                     jsonb_build_object('test_scope', 'pgtap_' || p_etichetta))
             RETURNING id INTO v_reso;
         END IF;
@@ -207,7 +209,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_reso(p_etichetta text, p_ddt_id bigint, p_quantita numeric, p_tipo_reso_codice character varying, p_stato_codice_interno character varying, p_ddt_riga_id bigint, p_ordine_riga_id bigint, p_reso_id bigint, p_data date)
-IS 'Fixture pgTAP: un RESO su una bolla, nello stato chiesto (quinto parametro, default CONFERMATO), per la strada vera del dominio. ⭐ Esiste per la TRAPPOLA D''ORDINE che ogni file ricopiava: testata legata alla bolla, riga legata alla riga della bolla e alla riga d''ordine che essa evade, azione conferma_reso concessa, verbo di conferma. La bolla: p_ddt_id, quella del reso p_reso_id (a cui si aggiunge una riga, finche'' e'' in bozza), o una bolla consegnata costruita da dbops.fn_pgtap_crea_ddt_da_ordine. La testata porta solo sorgente DDT_VENDITA, uid della bolla e data (p_data; NULL = il default della colonna): cliente, emittente, stato iniziale, numero e magazzino li mettono i trigger del dominio. Del reso il database non ha una madre di creazione (testata e righe le scrive il backend), quindi il builder fa gli INSERT. La riga: p_ddt_riga_id (deve essere della bolla) o la prima riga attiva; p_ordine_riga_id o la prima riga d''ordine del legame (ORDER BY id; NULL se la riga della bolla non nasce da un ordine); quantita'' operativa p_quantita (default: la meta'' della riga della bolla, arrotondata in su); tipo per codice (p_tipo_reso_codice, default RESO_A_CREDITO); articolo, descrizione, unita'' e fattore dalla riga della bolla. La coerenza (quantita'', origine, bolla consegnata, cliente) la giudicano i guard veri. Lo stato: uno stato non iniziale si raggiunge con dbops.fn_pgtap_porta_a_stato, che sul reso passa dal verbo (vendite.fn_conferma_reso) e concede all''operatore in sessione l''azione che la matrice chiede per il passaggio; uno stato abortito si rifiuta prima di costruire (l''annullo e'' del verbo vendite.fn_annulla_reso, caso del test). Restituisce reso, la riga scritta, bolla, riga della bolla, riga d''ordine, quantita'' base, tipo e stato. Uno stato, un tipo, una bolla, una riga o un reso inesistenti sollevano. ⚠️ Esce con i vincoli IMMEDIATE, come ogni helper. Brief: brief-db-pgtap-reso-costruito, 2026-10-25. Rev 20261025-36 (§7.7): lo stato da dbops.fn_pgtap_porta_a_stato, l''azione dalla matrice. Rev 2026-11-03 (20261103-35, brief-db-addebito-trasporto-ordine §8.1): senza p_ddt_riga_id la riga resa e'' la prima riga attiva di MERCE della bolla (script.fn_natura_e_merce sulla natura congelata), non la prima: un onere non si rende. Una riga chiesta con p_ddt_riga_id si prende com''e'', anche un onere (il test del rifiuto E_RESO_RIGA_ONERE).';
+IS 'Fixture pgTAP: un reso su una bolla, nello stato chiesto (quinto parametro, default CONFERMATO), per la strada vera del dominio: testata legata alla bolla, riga legata alla riga della bolla e alla riga d''ordine che essa evade, azione conferma_reso concessa, verbo di conferma. La bolla: p_ddt_id, quella del reso p_reso_id (a cui si aggiunge una riga, finche'' e'' in bozza; la bolla si legge con la regola d''incontro sulle due colonne della sorgente), o una bolla consegnata costruita da dbops.fn_pgtap_crea_ddt_da_ordine. La testata porta la provenienza dal BB che scrive (script.fn_sorgente_provenienza: DDT_VENDITA con la chiave della bolla per il key_selector del tipo) e la data (p_data; NULL = il default della colonna); cliente, emittente, stato iniziale, numero e magazzino li mettono i trigger del dominio. Del reso il database non ha una madre di creazione (testata e righe le scrive il backend), quindi il builder fa gli INSERT. La riga: p_ddt_riga_id (deve essere della bolla) o la prima riga attiva di merce della bolla (script.fn_natura_e_merce sulla natura congelata; un onere non si rende, una riga chiesta con p_ddt_riga_id si prende com''e''); p_ordine_riga_id o la prima riga d''ordine del legame (ORDER BY id; NULL se la riga della bolla non nasce da un ordine); quantita'' operativa p_quantita (default: la meta'' della riga della bolla, arrotondata in su); tipo per codice (p_tipo_reso_codice, default RESO_A_CREDITO); articolo, descrizione, unita'' e fattore dalla riga della bolla. La coerenza (quantita'', origine, bolla consegnata, cliente) la giudicano i guard veri. Uno stato non iniziale si raggiunge con dbops.fn_pgtap_porta_a_stato, che sul reso passa dal verbo (vendite.fn_conferma_reso) e concede all''operatore in sessione l''azione che la matrice chiede; uno stato abortito si rifiuta prima di costruire (l''annullo e'' del verbo vendite.fn_annulla_reso, caso del test). Restituisce reso, la riga scritta, bolla, riga della bolla, riga d''ordine, quantita'' base, tipo e stato. Uno stato, un tipo, una bolla, una riga o un reso inesistenti sollevano. Esce con i vincoli IMMEDIATE, come ogni helper.';
 ```
 
 </div>

@@ -1,0 +1,117 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_audit_log_once: la riga si scrive sempre nella transazione del
+# chiamante, e porta la durata nella sua colonna.
+#   Brief: brief-db-revisione-dbops, D60 e R6 (giro 2).
+#
+# Base: il corpo vivo (doc auto-generata, dbops/funzioni/fn_audit_log_once):
+# la funzione nasce nel primo albero, nessun changeSet di migrations_v2 la
+# riscrive.
+#
+# ⚠️ IL DIFETTO (D60). Con myapp.log_with_dblink = 'on' la riga passava dal
+#   canale dblink, che non la puo' scrivere: il ruolo del canale ha diritti solo
+#   su error_log e job_run_log. Il ramo componeva poi l'INSERT a mano, con
+#   p_parts NULL che diventava 'null'::text[] e p_params NULL il JSON null, e il
+#   tx_id era quello della sessione remota. Acceso, faceva fallire la
+#   transazione del chiamante. Il ramo esce (decisione di Tid, Q9): la riga e'
+#   un fatto della transazione che la scrive, e se la transazione si annulla si
+#   annulla anche la riga. Il fallimento lo registra error_log, che ha il suo
+#   canale.
+#
+# ⭐ LA DURATA (R6). dbops.audit_log.duration_ms non la scriveva piu' nessuno:
+#   la scriveva solo fn_audit_end, ritirata. Nasce p_duration_ms, in coda e
+#   facoltativo: le chiamate di oggi (tutte per nome) restano valide. La durata
+#   ha una sede sola, la colonna: chi la misura smette di metterla in result.
+#
+# Firma: un parametro in piu' cambia l'identita', quindi DROP + CREATE (con un
+#   CREATE OR REPLACE nascerebbe un secondo overload, e le chiamate per nome
+#   diventerebbero ambigue). Nessun oggetto dipende dalla funzione in pg_depend
+#   (nessuna BEGIN ATOMIC la chiama: verificato sullo scratch il 2026-11-07).
+#   Parametri e risultato ancorati alle colonne con %TYPE: i tipi risolti sono
+#   quelli di prima. I GRANT a zeroerp_app li rifa' il loop di ci_apply;
+#   EXECUTE a PUBLIC torna col CREATE, com'era.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261107-01-update-fn-audit-log-once-senza-dblink-con-durata-mctit.yaml
+
+  - changeSet:
+      id: 20261107-01-update-fn-audit-log-once-senza-dblink-con-durata
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_audit_log_once: tolto il ramo dblink (D60), nuovo parametro in coda
+        p_duration_ms (R6). DROP + CREATE: la firma cambia.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_audit_log_once';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION dbops.fn_audit_log_once(text, text, jsonb, text, text, text[], text, boolean,
+                                                    text, text, integer, jsonb, text, text);
+
+              CREATE FUNCTION dbops.fn_audit_log_once(
+                  p_function_name dbops.audit_log.function_name%TYPE,
+                  p_status        dbops.audit_log.status%TYPE,
+                  p_params        dbops.audit_log.params%TYPE        DEFAULT '{}'::jsonb,
+                  p_message       dbops.audit_log.message%TYPE       DEFAULT NULL,
+                  p_exec_mode     dbops.audit_log.exec_mode%TYPE     DEFAULT NULL,
+                  p_parts         dbops.audit_log.parts%TYPE         DEFAULT NULL,
+                  p_rule_type     dbops.audit_log.rule_type%TYPE     DEFAULT NULL,
+                  p_dry_run       dbops.audit_log.dry_run%TYPE       DEFAULT NULL,
+                  p_sqlstate      dbops.audit_log.sqlstate%TYPE      DEFAULT NULL,
+                  p_error_context dbops.audit_log.error_context%TYPE DEFAULT NULL,
+                  p_rows_affected dbops.audit_log.rows_affected%TYPE DEFAULT NULL,
+                  p_result        dbops.audit_log.result%TYPE        DEFAULT NULL,
+                  p_host          dbops.audit_log.host%TYPE          DEFAULT NULL,
+                  p_app_version   dbops.audit_log.app_version%TYPE   DEFAULT NULL,
+                  p_duration_ms   dbops.audit_log.duration_ms%TYPE   DEFAULT NULL
+              )
+              RETURNS dbops.audit_log.id%TYPE
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: la porta unica di scrittura di dbops.audit_log. Una riga
+              --   intera, una volta, nella transazione del chiamante: se la
+              --   transazione si annulla, si annulla anche la riga.
+              DECLARE
+                  v_id dbops.audit_log.id%TYPE;
+              BEGIN
+                  INSERT INTO dbops.audit_log(
+                      function_name, status, params, message, exec_mode, parts,
+                      rule_type, dry_run, sqlstate, error_context, rows_affected,
+                      result, host, app_version, duration_ms)
+                  VALUES (
+                      p_function_name, p_status, p_params, p_message, p_exec_mode, p_parts,
+                      p_rule_type, p_dry_run, p_sqlstate, p_error_context, p_rows_affected,
+                      p_result, p_host, p_app_version, p_duration_ms)
+                  RETURNING id INTO v_id;
+
+                  RETURN v_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_audit_log_once(text, text, jsonb, text, text, text[], text, boolean,
+                                                          text, text, integer, jsonb, text, text, integer) IS
+                  'La porta unica di scrittura del registro delle automazioni (dbops.audit_log): scrive una riga intera, una volta, e ne restituisce l''id. La riga nasce nella transazione del chiamante e si annulla con lei: un esito che deve sopravvivere a un errore non sta qui ma in dbops.error_log. p_duration_ms e'' la durata del lavoro in millisecondi, misurata da chi chiama; la durata ha una sede sola, la colonna duration_ms. Tutti i parametri tranne nome e stato sono facoltativi.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo dal corpo di oggi.
+              SELECT 1;

@@ -1,0 +1,908 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'ARTICOLO RITIRATO E' UN MOTIVO DELLA CHECK DI RIGA
+#   script.fn_check_articolo_riga_su_contesto
+#   Brief: brief-db-articoli-obsoleto-dal §4 (variante decisa da Tid il
+#   2026-11-05: il motivo sta nella check che guard e picker condividono,
+#   linee-guida-sql §12.6).
+#
+# ── ⭐ PERCHE' QUI ──────────────────────────────────────────────────
+#   Il guard di riga (script.trgfn_righe_guard_articolo_ammesso) e il picker
+#   (catalogo.fn_articoli_ammessi) leggono gia' questa check: con il motivo
+#   qui il picker mostra l'articolo ritirato fra gli esclusi, col suo motivo,
+#   e il guard lo respinge con le stesse parole. Un secondo guard accanto
+#   avrebbe fatto proporre al picker cio' che la riga poi rifiuta.
+#
+# ── ⭐ COSA CAMBIA ───────────────────────────────────────────────────
+#   · parametro in coda p_scelta_nuova boolean DEFAULT false (la firma cambia:
+#     DROP + CREATE, COMMENT e GRANT rifatti). Default false = comportamento di
+#     prima, ed e' giusto per chi giudica righe che esistono gia'
+#     (script.fn_check_riga_documento_su_contesto). true lo passano solo il
+#     guard di riga, calcolato dalla riga, e il picker;
+#   · motivo OBSOLETO, il PRIMO, comune a tutti i documenti
+#     (E_ARTICOLO_OBSOLETO, a catalogo in codici_errore.csv): con p_scelta_nuova = true e
+#     script.fn_e_obsoleto(catalogo.articoli.obsoleto_dal) vero;
+#   · obsoleto_dal letta nella stessa SELECT dell'articolo, in una variabile
+#     ancorata (%TYPE).
+#
+# ── ⚠️ COSA NON CAMBIA ──────────────────────────────────────────────
+#   Gli altri motivi e il loro ordine. Corpo dal vivo (pg_get_functiondef,
+#   = 20261103-17), firma ancorata dal 20261103-17 con il parametro in coda.
+#   Chiamanti DB (plpgsql, legano per nome a ogni sessione, nessuna riga in
+#   pg_depend): fn_articoli_ammessi (-12), fn_check_articolo_riga (-10),
+#   fn_check_riga_documento_su_contesto (default, invariata).
+#   pgTAP che leggono il corpo per firma a tre argomenti, aggiornati nello
+#   stesso giro: test-guard-esclusione-figlio-bundle-v1 (t.1),
+#   test-contratto-righe-lista-v1 (t.12).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261105-09-update-fn-check-articolo-riga-su-contesto-obsoleto-mctit.yaml
+
+  - changeSet:
+      id: 20261105-09-update-fn-check-articolo-riga-su-contesto-obsoleto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_check_articolo_riga_su_contesto: parametro in coda p_scelta_nuova (default false) e primo
+        motivo comune OBSOLETO (E_ARTICOLO_OBSOLETO) quando la scelta e' nuova e l'articolo e' ritirato
+        (script.fn_e_obsoleto). brief-db-articoli-obsoleto-dal §4.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_e_obsoleto';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION script.fn_check_articolo_riga_su_contesto(jsonb, catalogo.articoli.id%TYPE, config.nature_vendita.id%TYPE);
+
+              CREATE FUNCTION script.fn_check_articolo_riga_su_contesto(
+                  p_contesto          jsonb,
+                  p_articolo_id       catalogo.articoli.id%TYPE,
+                  p_natura_vendita_id config.nature_vendita.id%TYPE DEFAULT NULL,
+                  p_scelta_nuova      boolean DEFAULT false)
+              RETURNS jsonb
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+
+              DECLARE
+                  v_motivi       jsonb := '[]'::jsonb;
+                  v_documento    config.tipi_entita.codice%TYPE := p_contesto ->> 'documento';
+                  v_documento_id bigint := (p_contesto ->> 'documento_id')::bigint;
+                  v_tipo_ecc     vendite.tipo_eccezione_contratto
+                                     := (p_contesto ->> 'tipo_eccezione')::vendite.tipo_eccezione_contratto;
+                  v_padre_id     catalogo.articoli.id%TYPE := (p_contesto ->> 'articolo_padre_id')::uuid;
+                  v_codice       catalogo.articoli.codice%TYPE;
+                  v_solo_comp    catalogo.articoli.is_solo_componente%TYPE;
+                  v_natura_id    config.nature_vendita.id%TYPE;
+                  v_destinazione config.nature_vendita.destinazione_tipo%TYPE;
+                  v_natura_descr config.nature_vendita.descrizione%TYPE;
+                  v_listino_id   vendite.listini.id%TYPE := (p_contesto ->> 'listino_id')::bigint;
+                  v_versione_id  vendite.listini_versioni.id%TYPE := (p_contesto ->> 'listino_versione_id')::bigint;
+                  v_etichetta    text := p_contesto ->> 'etichetta';
+                  v_in_listino   boolean;
+                  v_composito    catalogo.articoli.is_composito%TYPE;
+                  v_tipologia    catalogo.articoli.listino_tipologia_id%TYPE;
+                  v_iva          catalogo.articoli.iva_id%TYPE;
+                  v_tip_listino  vendite.listini.tipologia_id%TYPE := (p_contesto ->> 'listino_tipologia_id')::bigint;
+                  v_padre_codice catalogo.articoli.codice%TYPE := p_contesto ->> 'padre_codice';
+                  v_padre_iva    catalogo.articoli.iva_id%TYPE := (p_contesto ->> 'padre_iva_id')::bigint;
+                  v_causale      catalogo.articoli.causale_onere_id%TYPE;
+                  v_obsoleto_dal catalogo.articoli.obsoleto_dal%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   I motivi per cui l'articolo NON puo' stare in una riga del
+                  --   documento del contesto. '[]' = ammesso. Non solleva: lo fa
+                  --   il guard di tabella (§12.5.2).
+                  -- Ritorna: array ORDINATO di
+                  --   {codice, reason, reason_key, dettaglio, valori}.
+                  -- =========================================================
+                  IF v_documento IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite',
+                          'script.fn_check_articolo_riga_su_contesto',
+                          'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_contesto'),
+                          NULL::uuid,
+                          'p_contesto senza documento: va costruito da script.fn_articolo_riga_contesto');
+                  END IF;
+
+                  IF p_articolo_id IS NULL THEN
+                      RETURN v_motivi;
+                  END IF;
+
+                  SELECT a.codice, a.is_solo_componente,
+                         COALESCE(p_natura_vendita_id, a.natura_vendita_id),
+                         a.is_composito, a.listino_tipologia_id, a.iva_id, a.causale_onere_id,
+                         a.obsoleto_dal
+                    INTO v_codice, v_solo_comp, v_natura_id, v_composito, v_tipologia, v_iva, v_causale,
+                         v_obsoleto_dal
+                    FROM catalogo.articoli a
+                   WHERE a.id = p_articolo_id;
+                  IF NOT FOUND THEN
+                      RETURN v_motivi;
+                  END IF;
+
+                  -- ===================== ARTICOLO RITIRATO ======================
+                  -- Vale per OGNI documento, ed e' il primo motivo. Conta solo su una
+                  -- SCELTA NUOVA (p_scelta_nuova = true): la dicono il guard di riga
+                  -- (INSERT senza sorgente, o articolo cambiato: O-7, O-10) e il
+                  -- picker. Chi giudica righe che esistono gia' (emissione, push,
+                  -- correzione di struttura) passa il default false: la riga esistente
+                  -- e la derivata restano (brief-db-articoli-obsoleto-dal §3).
+                  -- «Ritirato» = script.fn_e_obsoleto, sede unica (O-1: data operativa).
+                  IF p_scelta_nuova IS TRUE AND script.fn_e_obsoleto(v_obsoleto_dal) THEN
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_ARTICOLO_OBSOLETO',
+                          'reason',     'OBSOLETO',
+                          'reason_key', 'vendite.righe.articolo_reason.obsoleto',
+                          'dettaglio',  jsonb_build_object(
+                                            'campo',        CASE WHEN v_documento = 'ARTICOLO'
+                                                                 THEN 'componente_id' ELSE 'articolo_id' END,
+                                            'documento',    v_documento,
+                                            'articolo_id',  p_articolo_id,
+                                            'obsoleto_dal', v_obsoleto_dal),
+                          'valori',     jsonb_build_array(v_codice, to_char(v_obsoleto_dal, 'DD/MM/YYYY')));
+                  END IF;
+
+                  -- =========================== PROMO ============================
+                  -- Una promo si crea solo se il calcolo del prezzo la puo'
+                  -- applicare (D-6). Il composito la riceve (prezzo da
+                  -- un'eccezione di contratto): non e' un motivo.
+                  IF v_documento = 'PROMO_ARTICOLO' THEN
+                      -- 1. Solo componente: nessun prezzo a se', e in contesto
+                      --    bundle il resolver salta la promo.
+                      IF v_solo_comp IS TRUE THEN
+                          v_motivi := v_motivi || jsonb_build_object(
+                              'codice',     'E_PROMO_ARTICOLO_SOLO_COMPONENTE',
+                              'reason',     'SOLO_COMPONENTE',
+                              'reason_key', 'vendite.promo_articoli.articolo_reason.solo_componente',
+                              'dettaglio',  jsonb_build_object(
+                                                'campo',       'articolo_id',
+                                                'documento',   v_documento,
+                                                'articolo_id', p_articolo_id),
+                              'valori',     jsonb_build_array(v_codice));
+                      END IF;
+
+                      RETURN v_motivi;
+                  END IF;
+
+                  -- ===================== VERSIONE DI LISTINO =====================
+                  -- La riga standalone (vendite.listini_righe). Il composito sta nella
+                  -- versione per un'altra strada, coi suoi componenti: qui e' un motivo.
+                  IF v_documento = 'LISTINO_VERSIONE' THEN
+                      -- 1. Solo componente (D-3).
+                      IF v_solo_comp IS TRUE THEN
+                          v_motivi := v_motivi || jsonb_build_object(
+                              'codice',     'E_ARTICOLO_SOLO_COMPONENTE',
+                              'reason',     'SOLO_COMPONENTE',
+                              'reason_key', 'vendite.righe.articolo_reason.solo_componente',
+                              'dettaglio',  jsonb_build_object(
+                                                'campo',       'articolo_id',
+                                                'documento',   v_documento,
+                                                'articolo_id', p_articolo_id),
+                              'valori',     jsonb_build_array());
+                      END IF;
+
+                      -- 2. Composito: il suo prezzo e' la somma dei componenti.
+                      IF v_composito IS TRUE THEN
+                          v_motivi := v_motivi || jsonb_build_object(
+                              'codice',     'E_LISTINO_RIGA_COMPOSITO_VIETATO',
+                              'reason',     'COMPOSITO_COME_BUNDLE',
+                              'reason_key', 'vendite.righe.articolo_reason.composito_come_bundle',
+                              'dettaglio',  jsonb_build_object(
+                                                'campo',       'articolo_id',
+                                                'documento',   v_documento,
+                                                'articolo_id', p_articolo_id),
+                              'valori',     jsonb_build_array(v_codice));
+                      END IF;
+
+                      -- 3. La tipologia: mancante, o diversa da quella del listino.
+                      IF v_tipologia IS NULL THEN
+                          v_motivi := v_motivi || jsonb_build_object(
+                              'codice',     'E_ARTICOLO_TIPOLOGIA_MANCANTE',
+                              'reason',     'TIPOLOGIA_MANCANTE',
+                              'reason_key', 'vendite.righe.articolo_reason.tipologia_mancante',
+                              'dettaglio',  jsonb_build_object(
+                                                'campo',               'articolo_id',
+                                                'documento',           v_documento,
+                                                'articolo_id',         p_articolo_id,
+                                                'listino_versione_id', v_documento_id,
+                                                'listino_tipologia_id', v_tip_listino),
+                              'valori',     jsonb_build_array(v_codice, v_documento_id::text));
+                      ELSIF v_tipologia IS DISTINCT FROM v_tip_listino THEN
+                          v_motivi := v_motivi || jsonb_build_object(
+                              'codice',     'E_ARTICOLO_TIPOLOGIA_INCOMPATIBILE',
+                              'reason',     'TIPOLOGIA_INCOMPATIBILE',
+                              'reason_key', 'vendite.righe.articolo_reason.tipologia_incompatibile',
+                              'dettaglio',  jsonb_build_object(
+                                                'campo',                 'articolo_id',
+                                                'documento',             v_documento,
+                                                'articolo_id',           p_articolo_id,
+                                                'articolo_tipologia_id', v_tipologia,
+                                                'listino_versione_id',   v_documento_id,
+                                                'listino_tipologia_id',  v_tip_listino),
+                              'valori',     jsonb_build_array(v_codice, v_tipologia::text,
+                                                              v_tip_listino::text, v_documento_id::text));
+                      END IF;
+
+                      RETURN v_motivi;
+                  END IF;
+
+                  -- ========================== DISTINTA ==========================
+                  -- Il componente di v_padre_id (catalogo.articoli_componenti).
+                  -- Il solo componente qui e' il caso normale: non e' un motivo.
+                  IF v_documento = 'ARTICOLO' THEN
+                      -- 1. Un articolo non e' componente di se stesso.
+                      IF p_articolo_id = v_padre_id THEN
+                          v_motivi := v_motivi || jsonb_build_object(
+                              'codice',     'E_BOM_COMPONENTE_PADRE',
+                              'reason',     'COMPONENTE_PADRE',
+                              'reason_key', 'catalogo.distinta.componente_reason.componente_padre',
+                              'dettaglio',  jsonb_build_object(
+                                                'campo',         'componente_id',
+                                                'documento',     v_documento,
+                                                'prodotto_id',   v_padre_id,
+                                                'componente_id', p_articolo_id),
+                              'valori',     jsonb_build_array(v_codice));
+                      END IF;
+
+                      -- 2. La distinta ha un livello solo (D-4).
+                      IF v_composito IS TRUE THEN
+                          v_motivi := v_motivi || jsonb_build_object(
+                              'codice',     'E_BOM_COMPONENTE_COMPOSITO',
+                              'reason',     'COMPONENTE_COMPOSITO',
+                              'reason_key', 'catalogo.distinta.componente_reason.componente_composito',
+                              'dettaglio',  jsonb_build_object(
+                                                'campo',         'componente_id',
+                                                'documento',     v_documento,
+                                                'prodotto_id',   v_padre_id,
+                                                'componente_id', p_articolo_id),
+                              'valori',     jsonb_build_array(v_codice, COALESCE(v_padre_codice, v_padre_id::text)));
+                      END IF;
+
+                      -- 3. L'IVA del componente e' quella del padre.
+                      IF v_iva IS DISTINCT FROM v_padre_iva THEN
+                          v_motivi := v_motivi || jsonb_build_object(
+                              'codice',     'E_BOM_IVA_DISCORDANTE',
+                              'reason',     'IVA_DISCORDANTE',
+                              'reason_key', 'catalogo.distinta.componente_reason.iva_discordante',
+                              'dettaglio',  jsonb_build_object(
+                                                'campo',         'componente_id',
+                                                'documento',     v_documento,
+                                                'prodotto_id',   v_padre_id,
+                                                'componente_id', p_articolo_id,
+                                                'iva_padre_id',  v_padre_iva,
+                                                'iva_figlio_id', v_iva),
+                              'valori',     jsonb_build_array(
+                                                COALESCE(v_padre_codice, v_padre_id::text),
+                                                COALESCE(p_contesto ->> 'padre_aliquota', '—'),
+                                                v_codice,
+                                                COALESCE((SELECT i.aliquota_iva::text FROM config.iva i WHERE i.id = v_iva), '—')));
+                      END IF;
+
+                      RETURN v_motivi;
+                  END IF;
+
+                  -- ======================= OFFERTA, CONTRATTO =======================
+                  IF v_documento IN ('OFFERTA_COMMERCIALE', 'CONTRATTO') THEN
+                      -- «Nel listino» = una riga della versione espansa (il contesto).
+                      v_in_listino := v_versione_id IS NOT NULL
+                                      AND (p_contesto -> 'articoli_listino') @> to_jsonb(p_articolo_id);
+
+                      IF v_tipo_ecc = 'ESCLUSIONE'::vendite.tipo_eccezione_contratto THEN
+                          -- 1. Figlio di bundle: si esclude il bundle, non il componente.
+                          v_motivi := v_motivi || script.fn_check_esclusione_articolo_documento(
+                              v_documento, v_documento_id, p_articolo_id);
+                      ELSE
+                          -- 1. Solo componente (D-3).
+                          IF v_solo_comp IS TRUE THEN
+                              v_motivi := v_motivi || jsonb_build_object(
+                                  'codice',     'E_ARTICOLO_SOLO_COMPONENTE',
+                                  'reason',     'SOLO_COMPONENTE',
+                                  'reason_key', 'vendite.righe.articolo_reason.solo_componente',
+                                  'dettaglio',  jsonb_build_object(
+                                                    'campo',       'articolo_id',
+                                                    'documento',   v_documento,
+                                                    'articolo_id', p_articolo_id),
+                                  'valori',     jsonb_build_array());
+                          END IF;
+
+                          -- 2. Un kit senza nessun componente attivo non si vende (D-7):
+                          --    l'init dei componenti lo rifiuterebbe sempre. Il caso «componenti
+                          --    ma non validi alla data» resta all'init (E_DOC_COMPOSITO_BOM_VUOTA).
+                          IF v_composito IS TRUE AND NOT EXISTS (
+                                 SELECT 1 FROM catalogo.articoli_componenti ac
+                                  WHERE ac.prodotto_id = p_articolo_id
+                                    AND COALESCE(ac.attivo, TRUE)) THEN
+                              v_motivi := v_motivi || jsonb_build_object(
+                                  'codice',     'E_ARTICOLO_KIT_SENZA_COMPONENTI',
+                                  'reason',     'KIT_SENZA_COMPONENTI',
+                                  'reason_key', 'vendite.righe.articolo_reason.kit_senza_componenti',
+                                  'dettaglio',  jsonb_build_object(
+                                                    'campo',       'articolo_id',
+                                                    'documento',   v_documento,
+                                                    'articolo_id', p_articolo_id),
+                                  'valori',     jsonb_build_array(v_codice));
+                          END IF;
+
+                          -- 3. Tipologia fuori utility: la stessa domanda del form
+                          --    delle erogazioni, composta (erogazione e fonte NULL).
+                          v_motivi := v_motivi || script.fn_check_riga_erogazione(
+                              v_documento, v_documento_id, p_articolo_id,
+                              v_tipo_ecc, NULL, NULL);
+
+                          -- 4. Nessuna erogazione ammessa (§8.1).
+                          IF NOT EXISTS (SELECT 1 FROM vendite.fn_articolo_erogazioni(p_articolo_id)) THEN
+                              v_motivi := v_motivi || jsonb_build_object(
+                                  'codice',     'E_ARTICOLO_SENZA_EROGAZIONE',
+                                  'reason',     'SENZA_EROGAZIONE',
+                                  'reason_key', 'vendite.righe.articolo_reason.senza_erogazione',
+                                  'dettaglio',  jsonb_build_object(
+                                                    'campo',       'articolo_id',
+                                                    'documento',   v_documento,
+                                                    'articolo_id', p_articolo_id),
+                                  'valori',     jsonb_build_array(v_codice));
+                          END IF;
+
+                          -- 5a. AGGIUNTA di un articolo gia' nel listino.
+                          IF v_tipo_ecc = 'AGGIUNTA'::vendite.tipo_eccezione_contratto
+                             AND v_in_listino THEN
+                              v_motivi := v_motivi || jsonb_build_object(
+                                  'codice',     'E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO',
+                                  'reason',     'AGGIUNTA_GIA_IN_LISTINO',
+                                  'reason_key', 'vendite.righe.articolo_reason.aggiunta_gia_in_listino',
+                                  'dettaglio',  jsonb_build_object(
+                                                    'campo',               'articolo_id',
+                                                    'documento',           v_documento,
+                                                    'articolo_id',         p_articolo_id,
+                                                    'listino_id',          v_listino_id,
+                                                    'listino_versione_id', v_versione_id),
+                                  'valori',     jsonb_build_array(v_codice, v_etichetta));
+                          END IF;
+                      END IF;
+
+                      -- 5b. OVERRIDE ed ESCLUSIONE vivono sul listino (A-5).
+                      IF v_tipo_ecc <> 'AGGIUNTA'::vendite.tipo_eccezione_contratto THEN
+                          IF v_versione_id IS NULL THEN
+                              v_motivi := v_motivi || jsonb_build_object(
+                                  'codice',     'E_RIGA_ECCEZIONE_SENZA_LISTINO',
+                                  'reason',     'ECCEZIONE_SENZA_LISTINO',
+                                  'reason_key', 'vendite.righe.articolo_reason.eccezione_senza_listino',
+                                  'dettaglio',  jsonb_build_object(
+                                                    'campo',          'articolo_id',
+                                                    'documento',      v_documento,
+                                                    'articolo_id',    p_articolo_id,
+                                                    'tipo_eccezione', v_tipo_ecc,
+                                                    'listino_id',     v_listino_id),
+                                  'valori',     jsonb_build_array(v_etichetta));
+                          ELSIF NOT v_in_listino THEN
+                              v_motivi := v_motivi || jsonb_build_object(
+                                  'codice',     'E_RIGA_ECCEZIONE_FUORI_LISTINO',
+                                  'reason',     'ECCEZIONE_FUORI_LISTINO',
+                                  'reason_key', 'vendite.righe.articolo_reason.eccezione_fuori_listino',
+                                  'dettaglio',  jsonb_build_object(
+                                                    'campo',               'articolo_id',
+                                                    'documento',           v_documento,
+                                                    'articolo_id',         p_articolo_id,
+                                                    'tipo_eccezione',      v_tipo_ecc,
+                                                    'listino_id',          v_listino_id,
+                                                    'listino_versione_id', v_versione_id),
+                                  'valori',     jsonb_build_array(v_codice, v_etichetta));
+                          END IF;
+                      END IF;
+
+                      RETURN v_motivi;
+                  END IF;
+
+                  -- =================== PREVENTIVO, ORDINE, BOLLA ====================
+                  SELECT nv.destinazione_tipo, COALESCE(nv.descrizione, nv.codice)
+                    INTO v_destinazione, v_natura_descr
+                    FROM config.nature_vendita nv
+                   WHERE nv.id = v_natura_id;
+
+                  -- 1. Solo componente: vive solo dentro un kit (D-3).
+                  IF v_solo_comp IS TRUE THEN
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_ARTICOLO_SOLO_COMPONENTE',
+                          'reason',     'SOLO_COMPONENTE',
+                          'reason_key', 'vendite.righe.articolo_reason.solo_componente',
+                          'dettaglio',  jsonb_build_object(
+                                            'campo',       'articolo_id',
+                                            'documento',   v_documento,
+                                            'articolo_id', p_articolo_id),
+                          -- Frase chiusa: niente da infilare nei segnaposto.
+                          'valori',     jsonb_build_array());
+                  END IF;
+
+                  -- 2. Un kit senza nessun componente attivo non si vende (D-7):
+                  --    l'init dei componenti lo rifiuterebbe sempre. Il caso «componenti
+                  --    ma non validi alla data» resta all'init (E_DOC_COMPOSITO_BOM_VUOTA).
+                  IF v_composito IS TRUE AND NOT EXISTS (
+                         SELECT 1 FROM catalogo.articoli_componenti ac
+                          WHERE ac.prodotto_id = p_articolo_id
+                            AND COALESCE(ac.attivo, TRUE)) THEN
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_ARTICOLO_KIT_SENZA_COMPONENTI',
+                          'reason',     'KIT_SENZA_COMPONENTI',
+                          'reason_key', 'vendite.righe.articolo_reason.kit_senza_componenti',
+                          'dettaglio',  jsonb_build_object(
+                                            'campo',       'articolo_id',
+                                            'documento',   v_documento,
+                                            'articolo_id', p_articolo_id),
+                          'valori',     jsonb_build_array(v_codice));
+                  END IF;
+
+                  -- 3. La natura, secondo la destinazione. rev 2026-10-19
+                  --    (20261019-99, lotto 2b): la destinazione e' il codice della
+                  --    sorgente, come il documento (ORDINE_VENDITA, era ORDINE).
+                  --    rev 2026-11-03 (20261103-17, brief-db-addebito-trasporto-ordine
+                  --    §8.1): ordine e bolla ammettono la merce OPPURE l'articolo-onere
+                  --    (causale_onere_id valorizzato: la sua natura non e' mai merce,
+                  --    lo tiene catalogo.trgfn_articoli_guard_onere_natura). Un servizio
+                  --    che non e' un onere resta fuori. «E' merce» e' il BB
+                  --    script.fn_natura_e_merce (sede unica del predicato).
+                  IF v_documento = 'PREVENTIVO' AND v_destinazione = 'CONTRATTO' THEN
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA',
+                          'reason',     'RICORRENTE_USA_OFFERTA',
+                          'reason_key', 'vendite.righe.articolo_reason.ricorrente_usa_offerta',
+                          'dettaglio',  jsonb_build_object(
+                                            'campo',             'articolo_id',
+                                            'documento',         v_documento,
+                                            'articolo_id',       p_articolo_id,
+                                            'articolo_codice',   v_codice,
+                                            'natura_vendita_id', v_natura_id,
+                                            'destinazione_tipo', v_destinazione),
+                          'valori',     jsonb_build_array(COALESCE(v_codice, p_articolo_id::text)));
+                  ELSIF v_documento IN ('ORDINE_VENDITA', 'DDT_VENDITA')
+                        AND script.fn_natura_e_merce(v_natura_id) IS NOT TRUE
+                        AND v_causale IS NULL THEN
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_RIGA_NATURA_NON_AMMESSA',
+                          'reason',     'NATURA_NON_MERCE',
+                          'reason_key', 'vendite.righe.articolo_reason.natura_non_merce',
+                          'dettaglio',  jsonb_build_object(
+                                            'campo',             'articolo_id',
+                                            'documento',         v_documento,
+                                            'articolo_id',       p_articolo_id,
+                                            'natura_vendita_id', v_natura_id,
+                                            'destinazione_tipo', v_destinazione),
+                          'valori',     jsonb_build_array(
+                                            COALESCE(v_codice, p_articolo_id::text),
+                                            COALESCE(v_natura_descr, '?')));
+                  END IF;
+
+                  RETURN v_motivi;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_check_articolo_riga_su_contesto(jsonb, catalogo.articoli.id%TYPE, config.nature_vendita.id%TYPE, boolean) IS
+                'Check pura (fn_check_*): i motivi, in ordine DICHIARATO, per cui l''articolo p_articolo_id non puo'' stare in una riga del documento descritto da p_contesto (costruito da script.fn_articolo_riga_contesto: mai a mano; senza documento E_PARAMETRO_INVALIDO). ''[]'' = ammesso; altrimenti {codice, reason, reason_key, dettaglio, valori}. Le regole, per documento, sono quelle scritte nel COMMENT di script.fn_check_articolo_riga, che e'' questa funzione sul contesto letto da quella firma; rev 2026-10-14 (20261014-06, D-7): KIT_SENZA_COMPONENTI (E_ARTICOLO_KIT_SENZA_COMPONENTI), un composito senza nessun legame attivo in catalogo.articoli_componenti, motivo 2 di preventivo, ordine, bolla e di AGGIUNTA e OVERRIDE di offerta e contratto (dopo il solo componente); il caso date-dipendente resta all''init dei componenti (E_DOC_COMPOSITO_BOM_VUOTA). In piu'' PROMO_ARTICOLO (D-6, 2026-10-14): 1. solo componente (E_PROMO_ARTICOLO_SOLO_COMPONENTE: nessun prezzo a se'', e il resolver salta la promo in contesto bundle); il composito non e'' un motivo (riceve la promo quando il contratto gli da'' un prezzo con un''eccezione). p_natura_vendita_id: la natura congelata della riga, se c''e''; altrimenti quella dell''articolo. Due chiamanti, una regola (A-2): la firma di sempre script.fn_check_articolo_riga (i guard di tabella) e il picker catalogo.fn_articoli_ammessi, che legge il contesto una volta e giudica ogni articolo trovato (R-5). Nasce il 2026-10-14 dal corpo di 20261013-59, brief-db-articoli-ammessi-per-documento (Lotto 4, §9.4). ⭐ rev 2026-10-19 (20261019-32, brief-db-grammatica-unica-documenti lotto 1, G-1 di Tid): il documento si nomina col codice della sorgente, CONTRATTO | OFFERTA_COMMERCIALE (era OFFERTA); dove sopra si legge OFFERTA come selettore, oggi e'' OFFERTA_COMMERCIALE. Le due check del listino (fn_check_esclusione_articolo_documento, fn_check_riga_erogazione) ricevono il documento del contesto com''e'': la chiave doc_listino non c''e'' piu'' (20261019-31). ⭐ rev 2026-10-19 (20261019-99, brief-db-grammatica-unica-documenti lotto 2b): la destinazione della natura e'' il codice della sorgente (ORDINE_VENDITA, era ORDINE): il motivo NATURA_NON_MERCE di ordine e bolla confronta due codici dello stesso vocabolario. ⭐ rev 2026-11-03 (20261103-17, brief-db-addebito-trasporto-ordine §8.1, decisione 1 di Tid): ordine e bolla ammettono la merce OPPURE l''articolo-onere (catalogo.articoli.causale_onere_id valorizzato); un servizio che non e'' un onere resta fuori con NATURA_NON_MERCE (E_RIGA_NATURA_NON_AMMESSA). «E'' merce» e'' il BB script.fn_natura_e_merce sulla natura giudicata (quella congelata della riga, altrimenti quella dell''articolo): ritirata la copia in linea della condizione sulla destinazione. Seguono da se'' il guard di riga, il picker catalogo.fn_articoli_ammessi e catalogo.fn_articolo_righe_vive_non_ammesse. ⭐ rev 2026-11-05 (20261105-09, brief-db-articoli-obsoleto-dal §4, Tid 2026-11-04/05): quarto parametro in coda p_scelta_nuova (default false) e motivo comune a tutti i documenti, il PRIMO: OBSOLETO (E_ARTICOLO_OBSOLETO, reason_key vendite.righe.articolo_reason.obsoleto, valori codice e data DD/MM/YYYY, campo articolo_id o componente_id per la distinta), l''articolo e'' ritirato secondo script.fn_e_obsoleto (catalogo.articoli.obsoleto_dal raggiunta alla data operativa). Conta SOLO con p_scelta_nuova = true: lo passano il guard di riga (script.trgfn_righe_guard_articolo_ammesso e catalogo.trgfn_articoli_componenti_guard_componente: INSERT senza sorgente, o articolo cambiato) e il picker catalogo.fn_articoli_ammessi. Il default false e'' il comportamento di prima, ed e'' quello giusto per chi giudica righe che esistono gia'' (script.fn_check_riga_documento_su_contesto: emissione, push, attivazione, ordine dall''offerta, correzione di struttura): la riga esistente e la derivata restano.';
+
+              GRANT EXECUTE ON FUNCTION script.fn_check_articolo_riga_su_contesto(jsonb, catalogo.articoli.id%TYPE, config.nature_vendita.id%TYPE, boolean) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION script.fn_check_articolo_riga_su_contesto(jsonb, catalogo.articoli.id%TYPE, config.nature_vendita.id%TYPE, boolean);
+
+              CREATE FUNCTION script.fn_check_articolo_riga_su_contesto(
+                  p_contesto          jsonb,
+                  p_articolo_id       catalogo.articoli.id%TYPE,
+                  p_natura_vendita_id config.nature_vendita.id%TYPE DEFAULT NULL)
+              RETURNS jsonb
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+
+              DECLARE
+                  v_motivi       jsonb := '[]'::jsonb;
+                  v_documento    config.tipi_entita.codice%TYPE := p_contesto ->> 'documento';
+                  v_documento_id bigint := (p_contesto ->> 'documento_id')::bigint;
+                  v_tipo_ecc     vendite.tipo_eccezione_contratto
+                                     := (p_contesto ->> 'tipo_eccezione')::vendite.tipo_eccezione_contratto;
+                  v_padre_id     catalogo.articoli.id%TYPE := (p_contesto ->> 'articolo_padre_id')::uuid;
+                  v_codice       catalogo.articoli.codice%TYPE;
+                  v_solo_comp    catalogo.articoli.is_solo_componente%TYPE;
+                  v_natura_id    config.nature_vendita.id%TYPE;
+                  v_destinazione config.nature_vendita.destinazione_tipo%TYPE;
+                  v_natura_descr config.nature_vendita.descrizione%TYPE;
+                  v_listino_id   vendite.listini.id%TYPE := (p_contesto ->> 'listino_id')::bigint;
+                  v_versione_id  vendite.listini_versioni.id%TYPE := (p_contesto ->> 'listino_versione_id')::bigint;
+                  v_etichetta    text := p_contesto ->> 'etichetta';
+                  v_in_listino   boolean;
+                  v_composito    catalogo.articoli.is_composito%TYPE;
+                  v_tipologia    catalogo.articoli.listino_tipologia_id%TYPE;
+                  v_iva          catalogo.articoli.iva_id%TYPE;
+                  v_tip_listino  vendite.listini.tipologia_id%TYPE := (p_contesto ->> 'listino_tipologia_id')::bigint;
+                  v_padre_codice catalogo.articoli.codice%TYPE := p_contesto ->> 'padre_codice';
+                  v_padre_iva    catalogo.articoli.iva_id%TYPE := (p_contesto ->> 'padre_iva_id')::bigint;
+                  v_causale      catalogo.articoli.causale_onere_id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   I motivi per cui l'articolo NON puo' stare in una riga del
+                  --   documento del contesto. '[]' = ammesso. Non solleva: lo fa
+                  --   il guard di tabella (§12.5.2).
+                  -- Ritorna: array ORDINATO di
+                  --   {codice, reason, reason_key, dettaglio, valori}.
+                  -- =========================================================
+                  IF v_documento IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite',
+                          'script.fn_check_articolo_riga_su_contesto',
+                          'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_contesto'),
+                          NULL::uuid,
+                          'p_contesto senza documento: va costruito da script.fn_articolo_riga_contesto');
+                  END IF;
+
+                  IF p_articolo_id IS NULL THEN
+                      RETURN v_motivi;
+                  END IF;
+
+                  SELECT a.codice, a.is_solo_componente,
+                         COALESCE(p_natura_vendita_id, a.natura_vendita_id),
+                         a.is_composito, a.listino_tipologia_id, a.iva_id, a.causale_onere_id
+                    INTO v_codice, v_solo_comp, v_natura_id, v_composito, v_tipologia, v_iva, v_causale
+                    FROM catalogo.articoli a
+                   WHERE a.id = p_articolo_id;
+                  IF NOT FOUND THEN
+                      RETURN v_motivi;
+                  END IF;
+
+                  -- =========================== PROMO ============================
+                  -- Una promo si crea solo se il calcolo del prezzo la puo'
+                  -- applicare (D-6). Il composito la riceve (prezzo da
+                  -- un'eccezione di contratto): non e' un motivo.
+                  IF v_documento = 'PROMO_ARTICOLO' THEN
+                      -- 1. Solo componente: nessun prezzo a se', e in contesto
+                      --    bundle il resolver salta la promo.
+                      IF v_solo_comp IS TRUE THEN
+                          v_motivi := v_motivi || jsonb_build_object(
+                              'codice',     'E_PROMO_ARTICOLO_SOLO_COMPONENTE',
+                              'reason',     'SOLO_COMPONENTE',
+                              'reason_key', 'vendite.promo_articoli.articolo_reason.solo_componente',
+                              'dettaglio',  jsonb_build_object(
+                                                'campo',       'articolo_id',
+                                                'documento',   v_documento,
+                                                'articolo_id', p_articolo_id),
+                              'valori',     jsonb_build_array(v_codice));
+                      END IF;
+
+                      RETURN v_motivi;
+                  END IF;
+
+                  -- ===================== VERSIONE DI LISTINO =====================
+                  -- La riga standalone (vendite.listini_righe). Il composito sta nella
+                  -- versione per un'altra strada, coi suoi componenti: qui e' un motivo.
+                  IF v_documento = 'LISTINO_VERSIONE' THEN
+                      -- 1. Solo componente (D-3).
+                      IF v_solo_comp IS TRUE THEN
+                          v_motivi := v_motivi || jsonb_build_object(
+                              'codice',     'E_ARTICOLO_SOLO_COMPONENTE',
+                              'reason',     'SOLO_COMPONENTE',
+                              'reason_key', 'vendite.righe.articolo_reason.solo_componente',
+                              'dettaglio',  jsonb_build_object(
+                                                'campo',       'articolo_id',
+                                                'documento',   v_documento,
+                                                'articolo_id', p_articolo_id),
+                              'valori',     jsonb_build_array());
+                      END IF;
+
+                      -- 2. Composito: il suo prezzo e' la somma dei componenti.
+                      IF v_composito IS TRUE THEN
+                          v_motivi := v_motivi || jsonb_build_object(
+                              'codice',     'E_LISTINO_RIGA_COMPOSITO_VIETATO',
+                              'reason',     'COMPOSITO_COME_BUNDLE',
+                              'reason_key', 'vendite.righe.articolo_reason.composito_come_bundle',
+                              'dettaglio',  jsonb_build_object(
+                                                'campo',       'articolo_id',
+                                                'documento',   v_documento,
+                                                'articolo_id', p_articolo_id),
+                              'valori',     jsonb_build_array(v_codice));
+                      END IF;
+
+                      -- 3. La tipologia: mancante, o diversa da quella del listino.
+                      IF v_tipologia IS NULL THEN
+                          v_motivi := v_motivi || jsonb_build_object(
+                              'codice',     'E_ARTICOLO_TIPOLOGIA_MANCANTE',
+                              'reason',     'TIPOLOGIA_MANCANTE',
+                              'reason_key', 'vendite.righe.articolo_reason.tipologia_mancante',
+                              'dettaglio',  jsonb_build_object(
+                                                'campo',               'articolo_id',
+                                                'documento',           v_documento,
+                                                'articolo_id',         p_articolo_id,
+                                                'listino_versione_id', v_documento_id,
+                                                'listino_tipologia_id', v_tip_listino),
+                              'valori',     jsonb_build_array(v_codice, v_documento_id::text));
+                      ELSIF v_tipologia IS DISTINCT FROM v_tip_listino THEN
+                          v_motivi := v_motivi || jsonb_build_object(
+                              'codice',     'E_ARTICOLO_TIPOLOGIA_INCOMPATIBILE',
+                              'reason',     'TIPOLOGIA_INCOMPATIBILE',
+                              'reason_key', 'vendite.righe.articolo_reason.tipologia_incompatibile',
+                              'dettaglio',  jsonb_build_object(
+                                                'campo',                 'articolo_id',
+                                                'documento',             v_documento,
+                                                'articolo_id',           p_articolo_id,
+                                                'articolo_tipologia_id', v_tipologia,
+                                                'listino_versione_id',   v_documento_id,
+                                                'listino_tipologia_id',  v_tip_listino),
+                              'valori',     jsonb_build_array(v_codice, v_tipologia::text,
+                                                              v_tip_listino::text, v_documento_id::text));
+                      END IF;
+
+                      RETURN v_motivi;
+                  END IF;
+
+                  -- ========================== DISTINTA ==========================
+                  -- Il componente di v_padre_id (catalogo.articoli_componenti).
+                  -- Il solo componente qui e' il caso normale: non e' un motivo.
+                  IF v_documento = 'ARTICOLO' THEN
+                      -- 1. Un articolo non e' componente di se stesso.
+                      IF p_articolo_id = v_padre_id THEN
+                          v_motivi := v_motivi || jsonb_build_object(
+                              'codice',     'E_BOM_COMPONENTE_PADRE',
+                              'reason',     'COMPONENTE_PADRE',
+                              'reason_key', 'catalogo.distinta.componente_reason.componente_padre',
+                              'dettaglio',  jsonb_build_object(
+                                                'campo',         'componente_id',
+                                                'documento',     v_documento,
+                                                'prodotto_id',   v_padre_id,
+                                                'componente_id', p_articolo_id),
+                              'valori',     jsonb_build_array(v_codice));
+                      END IF;
+
+                      -- 2. La distinta ha un livello solo (D-4).
+                      IF v_composito IS TRUE THEN
+                          v_motivi := v_motivi || jsonb_build_object(
+                              'codice',     'E_BOM_COMPONENTE_COMPOSITO',
+                              'reason',     'COMPONENTE_COMPOSITO',
+                              'reason_key', 'catalogo.distinta.componente_reason.componente_composito',
+                              'dettaglio',  jsonb_build_object(
+                                                'campo',         'componente_id',
+                                                'documento',     v_documento,
+                                                'prodotto_id',   v_padre_id,
+                                                'componente_id', p_articolo_id),
+                              'valori',     jsonb_build_array(v_codice, COALESCE(v_padre_codice, v_padre_id::text)));
+                      END IF;
+
+                      -- 3. L'IVA del componente e' quella del padre.
+                      IF v_iva IS DISTINCT FROM v_padre_iva THEN
+                          v_motivi := v_motivi || jsonb_build_object(
+                              'codice',     'E_BOM_IVA_DISCORDANTE',
+                              'reason',     'IVA_DISCORDANTE',
+                              'reason_key', 'catalogo.distinta.componente_reason.iva_discordante',
+                              'dettaglio',  jsonb_build_object(
+                                                'campo',         'componente_id',
+                                                'documento',     v_documento,
+                                                'prodotto_id',   v_padre_id,
+                                                'componente_id', p_articolo_id,
+                                                'iva_padre_id',  v_padre_iva,
+                                                'iva_figlio_id', v_iva),
+                              'valori',     jsonb_build_array(
+                                                COALESCE(v_padre_codice, v_padre_id::text),
+                                                COALESCE(p_contesto ->> 'padre_aliquota', '—'),
+                                                v_codice,
+                                                COALESCE((SELECT i.aliquota_iva::text FROM config.iva i WHERE i.id = v_iva), '—')));
+                      END IF;
+
+                      RETURN v_motivi;
+                  END IF;
+
+                  -- ======================= OFFERTA, CONTRATTO =======================
+                  IF v_documento IN ('OFFERTA_COMMERCIALE', 'CONTRATTO') THEN
+                      -- «Nel listino» = una riga della versione espansa (il contesto).
+                      v_in_listino := v_versione_id IS NOT NULL
+                                      AND (p_contesto -> 'articoli_listino') @> to_jsonb(p_articolo_id);
+
+                      IF v_tipo_ecc = 'ESCLUSIONE'::vendite.tipo_eccezione_contratto THEN
+                          -- 1. Figlio di bundle: si esclude il bundle, non il componente.
+                          v_motivi := v_motivi || script.fn_check_esclusione_articolo_documento(
+                              v_documento, v_documento_id, p_articolo_id);
+                      ELSE
+                          -- 1. Solo componente (D-3).
+                          IF v_solo_comp IS TRUE THEN
+                              v_motivi := v_motivi || jsonb_build_object(
+                                  'codice',     'E_ARTICOLO_SOLO_COMPONENTE',
+                                  'reason',     'SOLO_COMPONENTE',
+                                  'reason_key', 'vendite.righe.articolo_reason.solo_componente',
+                                  'dettaglio',  jsonb_build_object(
+                                                    'campo',       'articolo_id',
+                                                    'documento',   v_documento,
+                                                    'articolo_id', p_articolo_id),
+                                  'valori',     jsonb_build_array());
+                          END IF;
+
+                          -- 2. Un kit senza nessun componente attivo non si vende (D-7):
+                          --    l'init dei componenti lo rifiuterebbe sempre. Il caso «componenti
+                          --    ma non validi alla data» resta all'init (E_DOC_COMPOSITO_BOM_VUOTA).
+                          IF v_composito IS TRUE AND NOT EXISTS (
+                                 SELECT 1 FROM catalogo.articoli_componenti ac
+                                  WHERE ac.prodotto_id = p_articolo_id
+                                    AND COALESCE(ac.attivo, TRUE)) THEN
+                              v_motivi := v_motivi || jsonb_build_object(
+                                  'codice',     'E_ARTICOLO_KIT_SENZA_COMPONENTI',
+                                  'reason',     'KIT_SENZA_COMPONENTI',
+                                  'reason_key', 'vendite.righe.articolo_reason.kit_senza_componenti',
+                                  'dettaglio',  jsonb_build_object(
+                                                    'campo',       'articolo_id',
+                                                    'documento',   v_documento,
+                                                    'articolo_id', p_articolo_id),
+                                  'valori',     jsonb_build_array(v_codice));
+                          END IF;
+
+                          -- 3. Tipologia fuori utility: la stessa domanda del form
+                          --    delle erogazioni, composta (erogazione e fonte NULL).
+                          v_motivi := v_motivi || script.fn_check_riga_erogazione(
+                              v_documento, v_documento_id, p_articolo_id,
+                              v_tipo_ecc, NULL, NULL);
+
+                          -- 4. Nessuna erogazione ammessa (§8.1).
+                          IF NOT EXISTS (SELECT 1 FROM vendite.fn_articolo_erogazioni(p_articolo_id)) THEN
+                              v_motivi := v_motivi || jsonb_build_object(
+                                  'codice',     'E_ARTICOLO_SENZA_EROGAZIONE',
+                                  'reason',     'SENZA_EROGAZIONE',
+                                  'reason_key', 'vendite.righe.articolo_reason.senza_erogazione',
+                                  'dettaglio',  jsonb_build_object(
+                                                    'campo',       'articolo_id',
+                                                    'documento',   v_documento,
+                                                    'articolo_id', p_articolo_id),
+                                  'valori',     jsonb_build_array(v_codice));
+                          END IF;
+
+                          -- 5a. AGGIUNTA di un articolo gia' nel listino.
+                          IF v_tipo_ecc = 'AGGIUNTA'::vendite.tipo_eccezione_contratto
+                             AND v_in_listino THEN
+                              v_motivi := v_motivi || jsonb_build_object(
+                                  'codice',     'E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO',
+                                  'reason',     'AGGIUNTA_GIA_IN_LISTINO',
+                                  'reason_key', 'vendite.righe.articolo_reason.aggiunta_gia_in_listino',
+                                  'dettaglio',  jsonb_build_object(
+                                                    'campo',               'articolo_id',
+                                                    'documento',           v_documento,
+                                                    'articolo_id',         p_articolo_id,
+                                                    'listino_id',          v_listino_id,
+                                                    'listino_versione_id', v_versione_id),
+                                  'valori',     jsonb_build_array(v_codice, v_etichetta));
+                          END IF;
+                      END IF;
+
+                      -- 5b. OVERRIDE ed ESCLUSIONE vivono sul listino (A-5).
+                      IF v_tipo_ecc <> 'AGGIUNTA'::vendite.tipo_eccezione_contratto THEN
+                          IF v_versione_id IS NULL THEN
+                              v_motivi := v_motivi || jsonb_build_object(
+                                  'codice',     'E_RIGA_ECCEZIONE_SENZA_LISTINO',
+                                  'reason',     'ECCEZIONE_SENZA_LISTINO',
+                                  'reason_key', 'vendite.righe.articolo_reason.eccezione_senza_listino',
+                                  'dettaglio',  jsonb_build_object(
+                                                    'campo',          'articolo_id',
+                                                    'documento',      v_documento,
+                                                    'articolo_id',    p_articolo_id,
+                                                    'tipo_eccezione', v_tipo_ecc,
+                                                    'listino_id',     v_listino_id),
+                                  'valori',     jsonb_build_array(v_etichetta));
+                          ELSIF NOT v_in_listino THEN
+                              v_motivi := v_motivi || jsonb_build_object(
+                                  'codice',     'E_RIGA_ECCEZIONE_FUORI_LISTINO',
+                                  'reason',     'ECCEZIONE_FUORI_LISTINO',
+                                  'reason_key', 'vendite.righe.articolo_reason.eccezione_fuori_listino',
+                                  'dettaglio',  jsonb_build_object(
+                                                    'campo',               'articolo_id',
+                                                    'documento',           v_documento,
+                                                    'articolo_id',         p_articolo_id,
+                                                    'tipo_eccezione',      v_tipo_ecc,
+                                                    'listino_id',          v_listino_id,
+                                                    'listino_versione_id', v_versione_id),
+                                  'valori',     jsonb_build_array(v_codice, v_etichetta));
+                          END IF;
+                      END IF;
+
+                      RETURN v_motivi;
+                  END IF;
+
+                  -- =================== PREVENTIVO, ORDINE, BOLLA ====================
+                  SELECT nv.destinazione_tipo, COALESCE(nv.descrizione, nv.codice)
+                    INTO v_destinazione, v_natura_descr
+                    FROM config.nature_vendita nv
+                   WHERE nv.id = v_natura_id;
+
+                  -- 1. Solo componente: vive solo dentro un kit (D-3).
+                  IF v_solo_comp IS TRUE THEN
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_ARTICOLO_SOLO_COMPONENTE',
+                          'reason',     'SOLO_COMPONENTE',
+                          'reason_key', 'vendite.righe.articolo_reason.solo_componente',
+                          'dettaglio',  jsonb_build_object(
+                                            'campo',       'articolo_id',
+                                            'documento',   v_documento,
+                                            'articolo_id', p_articolo_id),
+                          -- Frase chiusa: niente da infilare nei segnaposto.
+                          'valori',     jsonb_build_array());
+                  END IF;
+
+                  -- 2. Un kit senza nessun componente attivo non si vende (D-7):
+                  --    l'init dei componenti lo rifiuterebbe sempre. Il caso «componenti
+                  --    ma non validi alla data» resta all'init (E_DOC_COMPOSITO_BOM_VUOTA).
+                  IF v_composito IS TRUE AND NOT EXISTS (
+                         SELECT 1 FROM catalogo.articoli_componenti ac
+                          WHERE ac.prodotto_id = p_articolo_id
+                            AND COALESCE(ac.attivo, TRUE)) THEN
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_ARTICOLO_KIT_SENZA_COMPONENTI',
+                          'reason',     'KIT_SENZA_COMPONENTI',
+                          'reason_key', 'vendite.righe.articolo_reason.kit_senza_componenti',
+                          'dettaglio',  jsonb_build_object(
+                                            'campo',       'articolo_id',
+                                            'documento',   v_documento,
+                                            'articolo_id', p_articolo_id),
+                          'valori',     jsonb_build_array(v_codice));
+                  END IF;
+
+                  -- 3. La natura, secondo la destinazione. rev 2026-10-19
+                  --    (20261019-99, lotto 2b): la destinazione e' il codice della
+                  --    sorgente, come il documento (ORDINE_VENDITA, era ORDINE).
+                  --    rev 2026-11-03 (20261103-17, brief-db-addebito-trasporto-ordine
+                  --    §8.1): ordine e bolla ammettono la merce OPPURE l'articolo-onere
+                  --    (causale_onere_id valorizzato: la sua natura non e' mai merce,
+                  --    lo tiene catalogo.trgfn_articoli_guard_onere_natura). Un servizio
+                  --    che non e' un onere resta fuori. «E' merce» e' il BB
+                  --    script.fn_natura_e_merce (sede unica del predicato).
+                  IF v_documento = 'PREVENTIVO' AND v_destinazione = 'CONTRATTO' THEN
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA',
+                          'reason',     'RICORRENTE_USA_OFFERTA',
+                          'reason_key', 'vendite.righe.articolo_reason.ricorrente_usa_offerta',
+                          'dettaglio',  jsonb_build_object(
+                                            'campo',             'articolo_id',
+                                            'documento',         v_documento,
+                                            'articolo_id',       p_articolo_id,
+                                            'articolo_codice',   v_codice,
+                                            'natura_vendita_id', v_natura_id,
+                                            'destinazione_tipo', v_destinazione),
+                          'valori',     jsonb_build_array(COALESCE(v_codice, p_articolo_id::text)));
+                  ELSIF v_documento IN ('ORDINE_VENDITA', 'DDT_VENDITA')
+                        AND script.fn_natura_e_merce(v_natura_id) IS NOT TRUE
+                        AND v_causale IS NULL THEN
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_RIGA_NATURA_NON_AMMESSA',
+                          'reason',     'NATURA_NON_MERCE',
+                          'reason_key', 'vendite.righe.articolo_reason.natura_non_merce',
+                          'dettaglio',  jsonb_build_object(
+                                            'campo',             'articolo_id',
+                                            'documento',         v_documento,
+                                            'articolo_id',       p_articolo_id,
+                                            'natura_vendita_id', v_natura_id,
+                                            'destinazione_tipo', v_destinazione),
+                          'valori',     jsonb_build_array(
+                                            COALESCE(v_codice, p_articolo_id::text),
+                                            COALESCE(v_natura_descr, '?')));
+                  END IF;
+
+                  RETURN v_motivi;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_check_articolo_riga_su_contesto(jsonb, catalogo.articoli.id%TYPE, config.nature_vendita.id%TYPE) IS
+                'Check pura (fn_check_*): i motivi, in ordine DICHIARATO, per cui l''articolo p_articolo_id non puo'' stare in una riga del documento descritto da p_contesto (costruito da script.fn_articolo_riga_contesto: mai a mano; senza documento E_PARAMETRO_INVALIDO). ''[]'' = ammesso; altrimenti {codice, reason, reason_key, dettaglio, valori}. Le regole, per documento, sono quelle scritte nel COMMENT di script.fn_check_articolo_riga, che e'' questa funzione sul contesto letto da quella firma; rev 2026-10-14 (20261014-06, D-7): KIT_SENZA_COMPONENTI (E_ARTICOLO_KIT_SENZA_COMPONENTI), un composito senza nessun legame attivo in catalogo.articoli_componenti, motivo 2 di preventivo, ordine, bolla e di AGGIUNTA e OVERRIDE di offerta e contratto (dopo il solo componente); il caso date-dipendente resta all''init dei componenti (E_DOC_COMPOSITO_BOM_VUOTA). In piu'' PROMO_ARTICOLO (D-6, 2026-10-14): 1. solo componente (E_PROMO_ARTICOLO_SOLO_COMPONENTE: nessun prezzo a se'', e il resolver salta la promo in contesto bundle); il composito non e'' un motivo (riceve la promo quando il contratto gli da'' un prezzo con un''eccezione). p_natura_vendita_id: la natura congelata della riga, se c''e''; altrimenti quella dell''articolo. Due chiamanti, una regola (A-2): la firma di sempre script.fn_check_articolo_riga (i guard di tabella) e il picker catalogo.fn_articoli_ammessi, che legge il contesto una volta e giudica ogni articolo trovato (R-5). Nasce il 2026-10-14 dal corpo di 20261013-59, brief-db-articoli-ammessi-per-documento (Lotto 4, §9.4). ⭐ rev 2026-10-19 (20261019-32, brief-db-grammatica-unica-documenti lotto 1, G-1 di Tid): il documento si nomina col codice della sorgente, CONTRATTO | OFFERTA_COMMERCIALE (era OFFERTA); dove sopra si legge OFFERTA come selettore, oggi e'' OFFERTA_COMMERCIALE. Le due check del listino (fn_check_esclusione_articolo_documento, fn_check_riga_erogazione) ricevono il documento del contesto com''e'': la chiave doc_listino non c''e'' piu'' (20261019-31). ⭐ rev 2026-10-19 (20261019-99, brief-db-grammatica-unica-documenti lotto 2b): la destinazione della natura e'' il codice della sorgente (ORDINE_VENDITA, era ORDINE): il motivo NATURA_NON_MERCE di ordine e bolla confronta due codici dello stesso vocabolario. ⭐ rev 2026-11-03 (20261103-17, brief-db-addebito-trasporto-ordine §8.1, decisione 1 di Tid): ordine e bolla ammettono la merce OPPURE l''articolo-onere (catalogo.articoli.causale_onere_id valorizzato); un servizio che non e'' un onere resta fuori con NATURA_NON_MERCE (E_RIGA_NATURA_NON_AMMESSA). «E'' merce» e'' il BB script.fn_natura_e_merce sulla natura giudicata (quella congelata della riga, altrimenti quella dell''articolo): ritirata la copia in linea della condizione sulla destinazione. Seguono da se'' il guard di riga, il picker catalogo.fn_articoli_ammessi e catalogo.fn_articolo_righe_vive_non_ammesse.';
+
+              GRANT EXECUTE ON FUNCTION script.fn_check_articolo_riga_su_contesto(jsonb, catalogo.articoli.id%TYPE, config.nature_vendita.id%TYPE) TO zeroerp_app;

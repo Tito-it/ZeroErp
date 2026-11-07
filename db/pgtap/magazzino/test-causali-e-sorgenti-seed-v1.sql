@@ -13,6 +13,11 @@
 --   DDT_VENDITA_RIGA non c'era, e lo scarico del Lotto 3 sarebbe stato verde
 --   su dev e rosso in CI. Ora stanno nel CSV, attive (D-L1-f), e questo file
 --   lo asserisce su ogni database.
+-- rev 2026-11-06 (brief-db-sorgente-documento-e-riga lotto R, giro R.2, 20261106-60):
+--   le sei *_RIGA di vendita escono dalle sorgenti (S-2: una riga si scrive col tipo
+--   del suo documento + sorgente_riga). Restano le quattro di magazzino, che il
+--   lotto M porta allo stesso modello; il ritiro delle sei lo asserisce
+--   vendite/test-sorgente-righe-vendita-v1.
 -- ⚠️ Nessuna fixture: il soggetto e' il seed. Le asserzioni sono sull'INSIEME
 --   dei codici (un catalogo puo' crescere con i lotti successivi: si asserisce
 --   che i sedici ci siano, non che siano gli unici).
@@ -26,9 +31,9 @@
 --    5) magazzino.ambito_causale non esiste (D-8)
 --    6) le due causali dello storno hanno verso opposto (D-L1-d), INV_INIZIALE non e' una rettifica
 --   config.sorgenti:
---    7) le dieci sorgenti di P-2 esistono, ATTIVE
+--    7) le quattro sorgenti di magazzino di P-2 esistono, ATTIVE
 --    8) ...e ogni target_table risolve (to_regclass): le tabelle esistono
---    9) le cinque *_RIGA di vendite sono ROW_VALIDATOR, le cinque di magazzino sono MAGAZZINO
+--    9) le quattro di magazzino sono MAGAZZINO
 --   10) MAGAZZINO e' ammesso dal CHECK chk_sorgenti_scope
 --   catalogo.articoli:
 --   11) requires_lotto esiste, NOT NULL, default false — accanto a requires_serial
@@ -96,12 +101,6 @@ SELECT ok(
 -- ============================================================
 CREATE TEMP TABLE _attese_sorgenti (codice_interno text, scope text, target_table text) ON COMMIT DROP;
 INSERT INTO _attese_sorgenti VALUES
-    ('PREVENTIVO_RIGA',     'ROW_VALIDATOR', 'vendite.preventivi_righe'),
-    ('CONTRATTO_RIGA',      'ROW_VALIDATOR', 'vendite.contratti_righe'),
-    ('ORDINE_VENDITA_RIGA', 'ROW_VALIDATOR', 'vendite.ordini_righe'),
-    ('DDT_VENDITA_RIGA',    'ROW_VALIDATOR', 'vendite.ddt_righe'),
-    ('FATTURA_RIGA',        'ROW_VALIDATOR', 'vendite.fatture_righe'),
-    ('RESO_VENDITA_RIGA',   'ROW_VALIDATOR', 'vendite.resi_righe'),
     ('INVENTARIO_RIGA',     'MAGAZZINO',     'magazzino.inventari_righe'),
     ('RETTIFICA_RIGA',      'MAGAZZINO',     'magazzino.rettifiche_righe'),
     ('TRASFERIMENTO_RIGA',  'MAGAZZINO',     'magazzino.trasferimenti_righe'),
@@ -112,7 +111,7 @@ SELECT is(
       WHERE NOT EXISTS (SELECT 1 FROM config.sorgenti s
                          WHERE s.codice_interno = a.codice_interno AND s.attivo)),
     0,
-    '7) le dieci sorgenti di P-2 esistono e sono ATTIVE — comprese le cinque *_RIGA di vendite (D-L1-f)');
+    '7) le quattro sorgenti di magazzino di P-2 esistono e sono ATTIVE');
 
 SELECT is(
     (SELECT count(*)::int FROM _attese_sorgenti a
@@ -129,7 +128,7 @@ SELECT is(
        JOIN config.sorgenti s ON s.codice_interno = a.codice_interno
       WHERE s.scope <> a.scope),
     0,
-    '9) le sei *_RIGA di documento sono ROW_VALIDATOR, le quattro operazioni di magazzino sono MAGAZZINO (D-7)');
+    '9) le quattro operazioni di magazzino sono MAGAZZINO (D-7)');
 
 SELECT ok(
     (SELECT pg_get_constraintdef(oid) ~ '''MAGAZZINO'''

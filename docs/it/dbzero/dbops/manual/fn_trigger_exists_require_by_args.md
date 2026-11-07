@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_trigger_exists_require_by_args`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 7 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -10,7 +10,8 @@
 > * [dbops.trgfn_child_requires_active_parent](/dbzero/dbops/funzioni/trgfn_child_requires_active_parent) — la funzione del trigger che cerca
 > * [dbops.fn_trigger_exists_block_by_args](/dbzero/dbops/funzioni/fn_trigger_exists_block_by_args) — la gemella per il block sul padre
 > * [dbops.fn_trigger_exists_by_name](/dbzero/dbops/funzioni/fn_trigger_exists_by_name) — il controllo per nome, l'altra metà della strategia
-> * [dbops.fn_trigger_argomenti](/dbzero/dbops/funzioni/fn_trigger_argomenti) — la lettura degli argomenti che altri lettori usano
+> * [dbops.fn_trigger_attivo_argomenti](/dbzero/dbops/funzioni/fn_trigger_attivo_argomenti) — la grammatica degli argomenti, la stessa che legge il trigger
+> * [dbops.fn_trigger_argomenti](/dbzero/dbops/funzioni/fn_trigger_argomenti) — gli argomenti salvati di un trigger
 >
 > Guide:
 >
@@ -29,24 +30,33 @@ Serve a `dbops.fn_run_automations_attivo` quando la regola riconosce i trigger p
 
 ---
 
-### ⚠️ Oggi non riconosce nessun trigger
+### Come riconosce un trigger
 
-Il confronto si fa sul testo della definizione del trigger (`pg_get_triggerdef`), cercando la
-chiamata con gli argomenti separati da una **virgola senza spazio**. PostgreSQL scrive la
-definizione con gli argomenti separati da **virgola e spazio**: il testo cercato non compare mai,
-e la funzione restituisce sempre falso.
-
-Conseguenze sul motore: con la strategia `BOTH` (quella del seed) decide solo il nome; con
-`BY_FUNCTION` ogni giro toglierebbe e ricreerebbe il trigger.
-
-Il confronto è anche `ILIKE`: il trattino basso dei nomi vale come carattere qualsiasi.
+* **La funzione, per identità.** Un trigger è un require se esegue proprio
+  `dbops.trgfn_child_requires_active_parent`, riconosciuta dal suo identificativo interno e non dal
+  nome scritto: la risposta è la stessa con qualunque `search_path` di chi chiama. Il require del
+  ritiro (`dbops.trgfn_child_requires_non_obsolete_parent`) con gli stessi argomenti non è un
+  require ATTIVO.
+* **Gli argomenti, per nome.** Gli argomenti salvati del trigger si leggono con la grammatica dei
+  trigger ATTIVO, la stessa che il trigger usa quando scatta. Un montaggio che la grammatica rifiuta
+  non è riconosciuto.
+* **Confronto esatto.** Una maiuscola diversa è un altro nome, e il trattino basso è un carattere
+  come gli altri.
 
 ---
 
 ### Che cosa non fa
 
-Non guarda il nome né gli eventi del trigger, né che sia un constraint trigger differito: solo
-funzione e argomenti. È `STABLE` e non tocca niente.
+Non guarda il nome né gli eventi del trigger, né se è acceso o differito. Non dice quanti trigger
+corrispondono, solo se ce n'è almeno uno. È `STABLE` e non tocca niente.
+
+---
+
+### Test
+
+`dbops/test-trigger-attivo-riconoscimento-per-funzione-v1`: un require montato come lo monta il
+generatore è riconosciuto, anche col `search_path` dell'applicazione; una maiuscola diversa o la
+funzione del ritiro no.
 
 ---
 

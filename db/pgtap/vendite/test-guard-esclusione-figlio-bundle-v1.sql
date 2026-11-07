@@ -130,10 +130,12 @@ SELECT plan(5);
 --    script.fn_check_articolo_riga_su_contesto, che la firma di sempre compone
 --    col contesto del documento.
 -- ============================================================
+-- rev 2026-11-05 (20261105-09, brief-db-articoli-obsoleto-dal): la check ha il
+--   quarto parametro p_scelta_nuova, la firma letta qui lo segue.
 SELECT ok(
     (SELECT regexp_replace(prosrc, '--[^\n]*', '', 'g') ~ 'fn_check_esclusione_articolo_documento\s*\('
        FROM pg_proc
-      WHERE oid = 'script.fn_check_articolo_riga_su_contesto(jsonb,uuid,bigint)'::regprocedure),
+      WHERE oid = 'script.fn_check_articolo_riga_su_contesto(jsonb,uuid,bigint,boolean)'::regprocedure),
     '1) script.fn_check_articolo_riga_su_contesto compone script.fn_check_esclusione_articolo_documento'
 );
 

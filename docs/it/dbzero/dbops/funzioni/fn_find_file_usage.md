@@ -13,31 +13,21 @@ CREATE FUNCTION fn_find_file_usage(p_target_table regclass)
 
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_find_file_usage(p_target_table regclass)
- RETURNS TABLE(table_with_fk regclass, fk_column name, referenced_table regclass, pk_column name)
+ RETURNS TABLE(table_with_fk regclass, fk_name name, posizione bigint, fk_column name, referenced_table regclass, referenced_column name)
  LANGUAGE sql
  STABLE
 AS $function$
-  -- ================================================
-  -- Funzione: dbops.fn_find_file_usage(regclass)
-  -- Scopo:   trova tutte le foreign key che fanno riferimento
-  --          ad una tabella specificata in input
-  -- ================================================
-
-  SELECT
-    c.conrelid::regclass               AS table_with_fk,
-    a.attname                          AS fk_column,
-    c.confrelid::regclass             AS referenced_table,
-    af.attname                         AS pk_column
-  FROM pg_constraint c
-  JOIN pg_class t   ON c.conrelid = t.oid
-  JOIN pg_attribute a ON a.attrelid = t.oid
-                    AND a.attnum = ANY(c.conkey)
-  JOIN pg_class ft  ON c.confrelid = ft.oid
-  JOIN pg_attribute af ON af.attrelid = ft.oid
-                      AND af.attnum = ANY(c.confkey)
-  WHERE c.contype = 'f'
-    AND c.confrelid = p_target_table;
+  -- Scopo: le FK che puntano a una tabella, una riga per colonna
+  --   della chiave. Le legge dbops.fn_foreign_keys_info.
+  -- Uso: SELECT * FROM dbops.fn_find_file_usage('vendite.fatture');
+  SELECT i.source_table, i.constraint_name, i.posizione, i.source_column,
+         i.target_table, i.target_column
+    FROM dbops.fn_foreign_keys_info(p_target_table) i
+   WHERE i.relazione = 'incoming';
 $function$
+
+COMMENT ON FUNCTION dbops.fn_find_file_usage(p_target_table regclass)
+IS 'Le FK che puntano a una tabella (chi la usa): una riga per colonna della chiave, con la tabella che porta la FK, il nome del vincolo, la posizione della colonna nella chiave, la colonna della figlia e quella del padre a cui punta (referenced_column: puo'' essere una UNIQUE che non e'' la chiave primaria). Sono le righe incoming di dbops.fn_foreign_keys_info: le coppie di colonne e il trattamento delle partizioni sono i suoi. Strumento DBA.';
 ```
 
 </div>

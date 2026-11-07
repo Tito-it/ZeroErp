@@ -1,0 +1,151 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'ARTICOLO DICE SE E' RITIRATO — catalogo.vw_articoli_dettaglio
+#   Brief: brief-db-articoli-obsoleto-dal §7.3 lotto D (§8: obsoleto_dal nel
+#   form articolo e riconoscibile in lista).
+#
+# ── ⭐ COSA CAMBIA ───────────────────────────────────────────────────
+#   · + obsoleto_dal (in coda): la data del ritiro, che il drawer mostra e
+#     modifica (cancellarla = riattivare);
+#   · + e_obsoleto (in coda) = script.fn_e_obsoleto(obsoleto_dal): ritirato
+#     ALLA DATA OPERATIVA, col BB unico del guard e del picker. Il FE legge il
+#     booleano per la lista e il badge, e non rifà il confronto di date
+#     (niente logica duplicata fra livelli). Il BB e' STABLE e il planner lo
+#     incorpora (provato al lotto A).
+#   Colonne nuove IN CODA: CREATE OR REPLACE VIEW non sposta le altre.
+#
+# ── ⚠️ COSA NON CAMBIA ──────────────────────────────────────────────
+#   Tutte le altre colonne, i join. Nessuna security_invoker, com'era. I
+#   GRANT si conservano su CREATE OR REPLACE; il COMMENT si riscrive solo per
+#   la nota di revisione in coda. Corpo dal vivo di dbdev (= 20261103-53,
+#   confrontato il 2026-11-06, md5 di pg_get_viewdef e del COMMENT).
+#
+# ── ⚠️ RICADUTA SUL BE ──────────────────────────────────────────────
+#   catalogo_repository proietta le colonne PER NOME (ARTICOLI_DETAIL_COLUMNS
+#   per lista e drawer, _LOOKUP_ARTICOLI_COLONNE per i picker): finche' il BE
+#   non le nomina, al FE non arrivano. Richiesta nel brief, §8.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20261106-03-update-vw-articoli-dettaglio-obsoleto-dal-mctit.yaml
+
+  - changeSet:
+      id: 20261106-03-update-vw-articoli-dettaglio-obsoleto-dal
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        catalogo.vw_articoli_dettaglio: + obsoleto_dal ed e_obsoleto (script.fn_e_obsoleto), in coda.
+        brief-db-articoli-obsoleto-dal §7.3 lotto D.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_e_obsoleto';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW catalogo.vw_articoli_dettaglio AS
+               SELECT a.id,
+                  a.codice,
+                  a.descrizione,
+                  a.descrizione_breve,
+                  a.uom_id,
+                  a.tipo_voce_id,
+                  a.gruppo_voce_id,
+                  a.spesa_id,
+                  a.iva_id,
+                  a.conto_contabile_vendita_id,
+                  a.conto_contabile_acquisto_id,
+                  a.is_composito,
+                  a.is_solo_componente,
+                  a.requires_serial,
+                  a.listino_tipologia_id,
+                  a.meta,
+                  a.user_insert,
+                  a.user_update,
+                  a.data_insert,
+                  a.data_update,
+                  a.tx_id,
+                  a.storicizza,
+                  a.attivo,
+                  a.note_target_tipo,
+                  a.note_id,
+                  u.id AS uom_ref_id,
+                  u.codice AS uom_codice,
+                  u.descrizione AS uom_descrizione,
+                  t.id AS tipologia_ref_id,
+                  t.codice AS tipologia_codice,
+                  t.descrizione AS tipologia_descrizione,
+                  g.id AS gruppo_ref_id,
+                  g.codice AS gruppo_codice,
+                  g.descrizione AS gruppo_descrizione,
+                  s.id AS spesa_ref_id,
+                  s.codice AS spesa_codice,
+                  s.descrizione AS spesa_descrizione,
+                  i.id AS iva_ref_id,
+                  i.codice AS iva_codice,
+                  i.descrizione AS iva_descrizione,
+                  i.aliquota_iva AS iva_aliquota_iva,
+                  lt.codice AS tipologia_listino_codice,
+                  lt.descrizione AS tipologia_listino_descrizione,
+                  a.is_composito AND NOT a.is_solo_componente AS puo_gestire_bom,
+                      CASE
+                          WHEN a.is_composito AND NOT a.is_solo_componente THEN NULL::text
+                          WHEN a.is_solo_componente THEN 'ARTICOLO_SOLO_COMPONENTE'::text
+                          ELSE 'ARTICOLO_NON_COMPOSITO'::text
+                      END AS motivo_non_gestibile_bom,
+                  a.is_composito AND (EXISTS ( SELECT 1
+                         FROM catalogo.articoli_componenti ac
+                        WHERE ac.prodotto_id = a.id AND ac.validita @> (( SELECT script.fn_data_operativa() AS fn_data_operativa)) AND ac.attivo = true)) AS has_componenti_alla_data,
+                  a.natura_vendita_id,
+                  nv.codice_interno AS natura_vendita_codice_interno,
+                  nv.descrizione AS natura_vendita_descrizione,
+                  nv.destinazione_tipo AS natura_vendita_destinazione_tipo,
+                  a.modo_approvvigionamento_id,
+                  ma.codice_interno AS modo_approvvigionamento_codice_interno,
+                  ma.descrizione AS modo_approvvigionamento_descrizione,
+                  a.gestito_a_magazzino,
+                  a.lead_time_giorni,
+                  a.requires_lotto,
+                  a.causale_onere_id IS NOT NULL AS e_onere,
+                  a.causale_onere_id,
+                  a.obsoleto_dal,
+                  script.fn_e_obsoleto(a.obsoleto_dal) AS e_obsoleto
+                 FROM catalogo.articoli a
+                   LEFT JOIN catalogo.unita_misura u ON u.id = a.uom_id
+                   LEFT JOIN vendite.articoli_tipologie t ON t.id = a.tipo_voce_id
+                   LEFT JOIN vendite.articoli_gruppi g ON g.id = a.gruppo_voce_id
+                   LEFT JOIN vendite.articoli_spesa s ON s.id = a.spesa_id
+                   LEFT JOIN config.iva i ON i.id = a.iva_id
+                   LEFT JOIN config.listini_tipologie lt ON lt.id = a.listino_tipologia_id
+                   LEFT JOIN config.nature_vendita nv ON nv.id = a.natura_vendita_id
+                   LEFT JOIN config.modi_approvvigionamento ma ON ma.id = a.modo_approvvigionamento_id;
+
+              COMMENT ON VIEW catalogo.vw_articoli_dettaglio IS
+                  'Vista della lista (ui.lista_definizione 26) e del drawer articolo: catalogo.articoli + decodifiche (uom, tipologia, gruppo, spesa, iva, tipologia listino, natura di vendita) + capability BoM. Nessuna security_invoker, e non deve prenderla per imitazione: catalogo.articoli non ha RLS e la vista non attraversa tabelle protette (presidio sul merito: db/pgtap/rls/test-rls-viste-security-invoker.sql). ⭐ rev 2026-09-18 (P-1, brief-db-magazzino-lotto-2-motore sezione 4.9): + requires_lotto in coda — la primitiva di magazzino pretende il lotto quando e'' vero (passo 6), e l''operatore deve poterlo vedere e impostare; SENZA lock BoM (Lotto 1 sezione 4.3: il lotto non entra nella distinta), quindi ne'' fra i non_editable_fields del BE ne'' disabilitato nel drawer. rev 2026-09-13 (P-6, brief-db-modifiche-certe-ciclo-vendita-e-articolo sezione 5.2): + modo_approvvigionamento_id, modo_approvvigionamento_codice_interno, modo_approvvigionamento_descrizione, gestito_a_magazzino, lead_time_giorni, in coda (CREATE OR REPLACE VIEW puo'' solo appendere). La decodifica e'' sulla forma di natura_vendita_*: codice_interno per la logica, descrizione a video; NON `_codice`, che mentirebbe sulla sorgente (linee-guida-sql 6c). ⚠️ catalogo_repository proietta ARTICOLI_DETAIL_COLUMNS per nome: una colonna nuova non esce finche'' il BE non la nomina. Rev 2026-10-25 (20261025-57/-60, brief-db-grammatica-unica-documenti lotto 3, G-7): tolta e rimessa identica perche'' la colonna che legge cambia tipo; note_target_tipo vale ARTICOLO (era ARTICOLI) e diventa varchar(50), dalla colonna di catalogo.articoli. rev 2026-11-03 (20261103-53, brief-db-addebito-trasporto-ordine §9.9, richiesta del FE): + e_onere e causale_onere_id in coda: il picker articoli e il form articolo sanno se l''articolo scelto e'' un onere (date di consegna nascoste sulla riga nuova; flag magazzino, composito, lotto, matricola spenti, gemello del guard trgfn_articoli_guard_onere_natura). Anche queste colonne non escono finche'' il BE non le nomina. ⭐ rev 2026-11-06 (20261106-03, brief-db-articoli-obsoleto-dal §7.3 lotto D): + obsoleto_dal ed e_obsoleto in coda. obsoleto_dal e'' la data del ritiro (NULL = si sceglie; futura = ritiro programmato); e_obsoleto e'' il BB script.fn_e_obsoleto alla data operativa, lo stesso predicato del guard di riga e del picker: il FE lo legge e non confronta date. Anche queste colonne non escono finche'' il BE non le nomina.';
+
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.obsoleto_dal IS
+                  'La data del ritiro dell''articolo (catalogo.articoli.obsoleto_dal): NULL = si sceglie; passata = ritirato; futura = ritiro programmato. Il drawer la mostra e la modifica; cancellarla riattiva. brief-db-articoli-obsoleto-dal §3.';
+
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.e_obsoleto IS
+                  'Ritirato alla data operativa: script.fn_e_obsoleto(obsoleto_dal), lo stesso BB del guard di riga (E_ARTICOLO_OBSOLETO) e del picker (catalogo.fn_articoli_ammessi). La leggono la lista e il drawer: il FE non confronta date. Ritirato non vuol dire non attivo: l''articolo resta valido sulle righe che lo usano gia''. brief-db-articoli-obsoleto-dal §3 e §4.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Togliere colonne da una vista e' un DROP + CREATE, e il DROP
+              --   perderebbe i grant. Il corpo precedente e' in 20261103-53.
+              SELECT 1;

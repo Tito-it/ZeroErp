@@ -18,6 +18,7 @@
 | tx_id | uuid | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
+| sorgente_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

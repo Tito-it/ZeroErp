@@ -38,6 +38,9 @@ usata dal backend come entry point di ricerca.
 
 ---
 
+⭐ Restituisce solo le vie **vive**: una via soppressa (`obsoleto_dal` valorizzata, fusa in
+un'altra) non si propone più.
+
 ### Parametri
 
 | Parametro     | Tipo                      | Obbligatorio | Default | Note                                                     |

@@ -1,6 +1,6 @@
 # Guida — Framework di Automazione DB
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 7 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali; chi amministra un'installazione (§9)
 >
@@ -158,7 +158,7 @@ Ogni azione del framework viene registrata in `dbops.audit_log` con:
 * `duration_ms` — tempo di esecuzione
 * `sqlstate` / `error_context` — in caso di errore
 
-Opzionalmente, il log può avvenire **fuori transazione** via dblink (`logconn`), utile quando si vuole conservare il log anche se la transazione fa rollback. Si attiva con il GUC `myapp.log_with_dblink='on'`: per l'audit l'interruttore assente vale spento, al contrario degli altri registri fuori transazione. Il dettaglio, e perché oggi quel ramo non va acceso, è in [Messaggi di audit](/guide/messaggi-audit#logging-fuori-transazione).
+La riga d'audit nasce sempre nella transazione dell'automazione: se la corsa si annulla, si annulla anche la riga. Ciò che deve sopravvivere a un errore lo scrive il registro degli errori; il perché è in [Messaggi di audit](/guide/messaggi-audit#una-riga-della-transazione).
 
 ---
 
@@ -303,6 +303,12 @@ Molte tabelle hanno una colonna `attivo` per il soft-delete (disattivare un reco
 Il suffisso finale è un hash corto della FK, aggiunto solo quando il nome supererebbe i 63 caratteri. ⚠️ Due FK dalla stessa figlia allo stesso padre danno quindi lo stesso nome, se è corto: la seconda risulta «già presente» e resta senza trigger (vedi [dbops.fn_run_automations_attivo](/dbzero/dbops/funzioni/fn_run_automations_attivo)).
 
 **Effetto:** se `OLD.attivo = true` e `NEW.attivo = false` e il padre ha figli attivi → operazione **bloccata con errore**; un figlio attivo che punta a un padre spento → **rifiutato** al commit.
+
+**I rifiuti, e a chi parlano.** Il block solleva `E_ATTIVO_BLOCK_CHILDREN_ACTIVE` (figli da spegnere) o `E_ATTIVO_BLOCK_CHILDREN_EXIST` (figli da togliere, se la figlia non ha `attivo`); il require `E_ATTIVO_PADRE_NON_ATTIVO`, e `E_PADRE_INESISTENTE` quando la chiave non riferisce nessuna riga (succede solo su un require montato a mano su una chiave polimorfa). Sono codici per l'operatore: la frase nomina padre, chiave e figlia. Un trigger montato male parla a chi l'ha montato: `E_ATTIVO_BLOCK_ARGS` e `E_ATTIVO_BLOCK_FKCOL_NOT_FOUND` per il block, `E_TRIGGER_ARGOMENTI_INVALIDI` per il require.
+
+**⭐ Padre e figli si guardano con gli occhi del proprietario.** Che un padre sia spento, o ancora usato, non dipende da chi guarda: le due funzioni trigger leggono il padre ([`dbops.fn_trigger_padre_stato`](/dbzero/dbops/funzioni/fn_trigger_padre_stato)) e cercano i figli ([`dbops.fn_trigger_figlie_presenti`](/dbzero/dbops/funzioni/fn_trigger_figlie_presenti)) fuori dalla row level security. Un catalogo visibile a tutti non si spegne se lo usa un'altra azienda, e un require differito si chiude allo stesso modo qualunque sia il contesto al commit. Le due letture rispondono solo per trigger montati su tabelle del proprietario del database: gli argomenti li hanno scritti le migrazioni.
+
+**Gli argomenti** sono cinque per entrambi, tutti obbligatori, nella grammatica di [`dbops.fn_trigger_attivo_argomenti`](/dbzero/dbops/funzioni/fn_trigger_attivo_argomenti): la usano i trigger, le due letture e chi rilegge i montaggi (orfani, eccezioni). Un require scritto a mano segue la stessa grammatica.
 
 **Le eccezioni: quando padre e figlio NON si legano sull'attivo.** Ci sono coppie in cui `attivo` sul padre e `attivo` sul figlio rispondono a due domande diverse, e legarle rende impossibile uno stato legittimo. Si dichiarano in [`dbops.automazione_attivo_eccezioni`](/dbzero/dbops/tabelle/automazione_attivo_eccezioni), una FK per riga col suo motivo (seed da `80_data`, CSV `dbops/automazione_attivo_eccezioni.csv`). Per quelle FK il motore non genera né il block né il require, e in testa a ogni giro chiama [`dbops.fn_ritira_attivo_eccezioni`](/dbzero/dbops/funzioni/fn_ritira_attivo_eccezioni), che toglie i trigger già generati riconoscendoli per **funzione e argomenti** (il nome può portare un hash, oltre i 63 caratteri). Il presidio è `db/pgtap/dbops/test-automazione-attivo-eccezioni-v1.sql`.
 

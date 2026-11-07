@@ -61,10 +61,11 @@
 --   33) DDT: il BA tolto in bozza toglie la utility e lascia il destinatario
 --   34) omaggio e campionatura senza BA: la check d'emissione ha il motivo cliente
 --   35) DDT senza BA (conto lavoro) consegnato: il reso nasce senza BA (D-3, «NULL compreso»)
---   36) DDT con un ordine sorgente che non esiste: E_DOC_SORGENTE_NON_TROVATA
---   37) reso spostato su un DDT che non esiste: E_DOC_SORGENTE_NON_TROVATA (UPDATE)
+--   36) DDT con un ordine sorgente che non esiste: E_SORG_NOT_FOUND (dal giro T.2 lo dice il guard
+--       unico, a10, prima del guard del cliente: brief-db-sorgente-documento-e-riga)
+--   37) reso spostato su un DDT che non esiste: E_SORG_NOT_FOUND (UPDATE)
 --   38) lock dell'emittente fuori bozza montato su offerte, contratti e resi
---   39) DDT di E1 dall'ordine di E2 (invisibile): E_DOC_SORGENTE_NON_TROVATA
+--   39) DDT di E1 dall'ordine di E2 (invisibile): E_SORG_NOT_FOUND
 --       ⚠️ ROSSO DA OWNER, VERDE COME APP: da owner la RLS non c'e', l'ordine si
 --       vede e parla E_DOC_CLIENTE_DIVERSO_DA_SORGENTE. Per ultimo: cambia
 --       contesto (memoria del progetto, prova pre-apply da owner).
@@ -310,8 +311,8 @@ SELECT throws_like(
 -- ============================================================
 CREATE TEMP TABLE _dord AS
 WITH d AS (
-    INSERT INTO vendite.ddt (stato_doc_ddt_id, emittente_fiscale_id, sorgente_tipo_id, sorgente_uid)
-    SELECT k.ddt_draft, k.ef, k.src_ordine, o.uid FROM _k k, _ord o
+    INSERT INTO vendite.ddt (stato_doc_ddt_id, emittente_fiscale_id, sorgente_tipo_id, sorgente_id)
+    SELECT k.ddt_draft, k.ef, k.src_ordine, o.id FROM _k k, _ord o
     RETURNING id, billing_account_id, utility_id, destinatario_soggetto_ruolo_id
 )
 SELECT * FROM d;
@@ -322,12 +323,12 @@ SELECT is(
     '17) DDT da ordine senza BA: billing account, utility e destinatario sono quelli dell''ordine');
 
 SELECT throws_like(
-    format($q$INSERT INTO vendite.ddt (destinatario_soggetto_ruolo_id, billing_account_id, stato_doc_ddt_id, emittente_fiscale_id, sorgente_tipo_id, sorgente_uid)
-              VALUES (%s, %s, %s, %s, %s, %L)$q$,
+    format($q$INSERT INTO vendite.ddt (destinatario_soggetto_ruolo_id, billing_account_id, stato_doc_ddt_id, emittente_fiscale_id, sorgente_tipo_id, sorgente_id)
+              VALUES (%s, %s, %s, %s, %s, %s)$q$,
            (SELECT soggetto_ruolo_id FROM _c WHERE lato = 'B'),
            (SELECT billing_account_id FROM _c WHERE lato = 'B'),
            (SELECT ddt_draft FROM _k), (SELECT ef FROM _k),
-           (SELECT src_ordine FROM _k), (SELECT uid FROM _ord)),
+           (SELECT src_ordine FROM _k), (SELECT id FROM _ord)),
     '%il cliente deve essere quello di ordine%',
     '18) DDT dall''ordine di A col BA di B: E_DOC_CLIENTE_DIVERSO_DA_SORGENTE (D-6)');
 
@@ -350,7 +351,7 @@ SELECT d.id, 1, k.articolo, 'Riga evasione pgTAP', 1, 1 FROM _dord d, _k k;
 INSERT INTO vendite.ordini_righe_fulfillment (ordine_riga_id, ddt_riga_id, qta_evasa)
 SELECT (SELECT r.id FROM vendite.ordini_righe r WHERE r.ordine_id = (SELECT id FROM _ord)),
        (SELECT r.id FROM vendite.ddt_righe r WHERE r.ddt_id = (SELECT id FROM _dord)), 1;
-UPDATE vendite.ddt SET sorgente_tipo_id = NULL, sorgente_uid = NULL WHERE id = (SELECT id FROM _dord);
+UPDATE vendite.ddt SET sorgente_tipo_id = NULL, sorgente_id = NULL, sorgente_uid = NULL WHERE id = (SELECT id FROM _dord);
 
 SELECT throws_like(
     format('UPDATE vendite.ddt SET billing_account_id = %s WHERE id = %s',
@@ -362,10 +363,10 @@ SELECT throws_like(
 SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', (SELECT con_ba FROM _d), 'CONSEGNATO');
 
 SELECT throws_like(
-    format($q$INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_uid, destinatario_soggetto_ruolo_id, billing_account_id, emittente_fiscale_id)
-              VALUES (%s, %s, %L, %s, %s, %s)$q$,
+    format($q$INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_id, destinatario_soggetto_ruolo_id, billing_account_id, emittente_fiscale_id)
+              VALUES (%s, %s, %s, %s, %s, %s)$q$,
            (SELECT reso_draft FROM _k), (SELECT src_ddt FROM _k),
-           (SELECT uid FROM vendite.ddt WHERE id = (SELECT con_ba FROM _d)),
+           (SELECT con_ba FROM _d),
            (SELECT soggetto_ruolo_id FROM _c WHERE lato = 'B'),
            (SELECT billing_account_id FROM _c WHERE lato = 'B'),
            (SELECT ef FROM _k)),
@@ -503,8 +504,8 @@ SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', (SELECT id FROM _cl), 'CONSEG
 
 CREATE TEMP TABLE _r35 AS
 WITH r AS (
-    INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_uid, destinatario_soggetto_ruolo_id, emittente_fiscale_id)
-    SELECT k.reso_draft, k.src_ddt, d.uid, d.destinatario_soggetto_ruolo_id, k.ef
+    INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_id, destinatario_soggetto_ruolo_id, emittente_fiscale_id)
+    SELECT k.reso_draft, k.src_ddt, d.id, d.destinatario_soggetto_ruolo_id, k.ef
       FROM _k k, vendite.ddt d WHERE d.id = (SELECT id FROM _cl)
     RETURNING id, billing_account_id, utility_id
 )
@@ -516,19 +517,18 @@ SELECT is(
     '35) dal DDT di conto lavoro senza BA il reso nasce senza BA: «quello del DDT, NULL compreso» (D-3)');
 
 SELECT throws_like(
-    format($q$INSERT INTO vendite.ddt (destinatario_soggetto_ruolo_id, stato_doc_ddt_id, emittente_fiscale_id, sorgente_tipo_id, sorgente_uid)
-              VALUES (%s, %s, %s, %s, %L)$q$,
+    format($q$INSERT INTO vendite.ddt (destinatario_soggetto_ruolo_id, stato_doc_ddt_id, emittente_fiscale_id, sorgente_tipo_id, sorgente_id)
+              VALUES (%s, %s, %s, %s, %s)$q$,
            (SELECT soggetto_ruolo_id FROM _c WHERE lato = 'A'),
            (SELECT ddt_draft FROM _k), (SELECT ef FROM _k),
-           (SELECT src_ordine FROM _k), gen_random_uuid()),
-    '%il documento da cui nasce (ordine) non esiste o non e'' visibile%',
-    '36) DDT che dichiara un ordine che non esiste: E_DOC_SORGENTE_NON_TROVATA (fail-closed)');
+           (SELECT src_ordine FROM _k), -1),
+    '%Riferimento sorgente non trovato%',
+    '36) DDT che dichiara un ordine che non esiste: E_SORG_NOT_FOUND dal guard unico, prima del guard del cliente (fail-closed)');
 
 SELECT throws_like(
-    format('UPDATE vendite.resi SET sorgente_uid = %L WHERE id = %s',
-           gen_random_uuid(), (SELECT id FROM _r35)),
-    '%il documento da cui nasce (DDT) non esiste o non e'' visibile%',
-    '37) reso spostato su un DDT che non esiste: E_DOC_SORGENTE_NON_TROVATA (su UPDATE il guard del consegnato non gira)');
+    format('UPDATE vendite.resi SET sorgente_id = -1 WHERE id = %s', (SELECT id FROM _r35)),
+    '%Riferimento sorgente non trovato%',
+    '37) reso spostato su un DDT che non esiste: E_SORG_NOT_FOUND dal guard unico (su UPDATE il guard del consegnato non gira)');
 
 SELECT is(
     (SELECT string_agg(c.relname || ':' || ('emittente_fiscale_id' = ANY (dbops.fn_trigger_argomenti(t.tgargs)))::text,
@@ -551,19 +551,19 @@ CREATE TEMP TABLE _c2 AS
 SELECT c.* FROM dbops.fn_pgtap_crea_cliente_ba('esecutivi E2') c;
 SET CONSTRAINTS ALL IMMEDIATE;
 CREATE TEMP TABLE _ord2 AS
-SELECT o.ordine_uid AS uid
+SELECT o.ordine_id AS id, o.ordine_uid AS uid
   FROM dbops.fn_pgtap_crea_ordine('esecutivi E2', 'DRAFT', (SELECT billing_account_id FROM _c2)) o;
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _m)); END $ctx$;
 
 SELECT throws_like(
-    format($q$INSERT INTO vendite.ddt (destinatario_soggetto_ruolo_id, billing_account_id, stato_doc_ddt_id, emittente_fiscale_id, sorgente_tipo_id, sorgente_uid)
-              VALUES (%s, %s, %s, %s, %s, %L)$q$,
+    format($q$INSERT INTO vendite.ddt (destinatario_soggetto_ruolo_id, billing_account_id, stato_doc_ddt_id, emittente_fiscale_id, sorgente_tipo_id, sorgente_id)
+              VALUES (%s, %s, %s, %s, %s, %s)$q$,
            (SELECT soggetto_ruolo_id  FROM _c WHERE lato = 'A'),
            (SELECT billing_account_id FROM _c WHERE lato = 'A'),
            (SELECT ddt_draft FROM _k), (SELECT ef FROM _k),
-           (SELECT src_ordine FROM _k), (SELECT uid FROM _ord2)),
-    '%il documento da cui nasce (ordine) non esiste o non e'' visibile%',
-    '39) DDT di E1 col BA di E1 dall''ordine di E2, invisibile: E_DOC_SORGENTE_NON_TROVATA (rosso da owner, verde come app)');
+           (SELECT src_ordine FROM _k), (SELECT id FROM _ord2)),
+    '%Riferimento sorgente non trovato%',
+    '39) DDT di E1 col BA di E1 dall''ordine di E2, invisibile: E_SORG_NOT_FOUND dal guard unico (rosso da owner, verde come app)');
 
 SELECT * FROM finish();
 ROLLBACK;

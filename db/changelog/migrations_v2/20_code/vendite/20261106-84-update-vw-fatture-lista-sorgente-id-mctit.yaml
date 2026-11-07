@@ -1,0 +1,118 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA LISTA DELLE FATTURE: SORGENTE_ID IN CODA
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto T, giro T.3 (D-11).
+#
+# La vista esponeva la provenienza di testata con il tipo e l'uid. Col modello la chiave
+# di un tipo a chiave id sta in sorgente_id: va in coda (CREATE OR REPLACE VIEW puo' solo
+# appendere), come nelle liste di bolle e resi. Di norma e' NULL: la fattura aggrega
+# (D-11). Corpo vivo (pg_get_viewdef del 2026-11-07); security_invoker ripetuto. Il
+# COMMENT e' riscritto al presente (linee-guida-sql §5d).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261106-84-update-vw-fatture-lista-sorgente-id-mctit.yaml
+
+  - changeSet:
+      id: 20261106-84-update-vw-fatture-lista-sorgente-id
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.vw_fatture_lista: sorgente_id in coda.
+        brief-db-sorgente-documento-e-riga §7.2 lotto T, giro T.3.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_fatture_lista WITH (security_invoker=on) AS
+               SELECT f.id,
+                  f.uid,
+                  f.numero,
+                  f.serie,
+                  f.anno,
+                  f.data,
+                  f.registro_id,
+                  f.stato_doc_fiscale_id,
+                  sdf.codice_interno AS stato_codice_interno,
+                  sdf.descrizione AS stato_descrizione,
+                  sdf.fase,
+                  f.tipo_doc_fiscale_id,
+                  tdf.codice_interno AS tipo_doc_fiscale_codice_interno,
+                  tdf.descrizione AS tipo_doc_fiscale_descrizione,
+                  f.natura_doc_id,
+                  ndf.codice_interno AS natura_doc_codice_interno,
+                  ndf.descrizione AS natura_doc_descrizione,
+                  f.billing_account_id,
+                  ba.codice AS ba_codice,
+                  s_cli.id AS soggetto_id,
+                  s_cli.ragione_sociale_completa,
+                  s_cli.id_fiscale_univoco_cf_piva,
+                  f.emittente_soggetto_ruolo_id,
+                  ef.id AS emittente_fiscale_id,
+                  ef.codice AS emittente_fiscale_codice,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  f.utility_id,
+                  u.codice AS utility_codice,
+                  u.descrizione AS utility_descrizione,
+                  f.valuta_id,
+                  v_val.codice AS valuta_codice,
+                  f.imponibile_tot,
+                  f.imposta_tot,
+                  f.totale_doc,
+                  f.totale_a_pagare,
+                  f.sorgente_tipo_id,
+                  src.codice_interno AS sorgente_codice_interno,
+                  f.sorgente_uid,
+                  f.data_insert,
+                  f.user_insert,
+                  f.data_update,
+                  f.user_update,
+                  pr.pratica_id,
+                  pr.pratica_numero,
+                  pr.n_pratiche,
+                  vendite.fn_numero_documento_fattura(f.numero, f.serie) AS numero_documento,
+                  reg.codice AS registro_codice,
+                  reg.descrizione AS registro_descrizione,
+                  f.sorgente_id
+                 FROM vendite.fatture f
+                   JOIN config.nature_doc_fiscale ndf ON ndf.id = f.natura_doc_id
+                   LEFT JOIN config.stati_doc_fiscale sdf ON sdf.id = f.stato_doc_fiscale_id
+                   LEFT JOIN config.tipi_doc_fiscale tdf ON tdf.id = f.tipo_doc_fiscale_id
+                   LEFT JOIN anagrafiche.billing_account ba ON ba.id = f.billing_account_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_cli ON sr_cli.id = ba.soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_cli ON s_cli.id = sr_cli.soggetto_id
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ef.soggetto_ruolo_id = f.emittente_soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = f.emittente_soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
+                   LEFT JOIN config.utilities u ON u.id = f.utility_id
+                   LEFT JOIN config.valute v_val ON v_val.id = f.valuta_id
+                   LEFT JOIN config.sorgenti src ON src.id = f.sorgente_tipo_id
+                   LEFT JOIN LATERAL pratiche.fn_pratica_del_documento(( SELECT so_pr.id
+                         FROM config.sorgenti so_pr
+                        WHERE so_pr.codice_interno::text = 'FATTURA'::text AND so_pr.attivo IS TRUE), f.id::text) pr(n_pratiche, pratica_id, pratica_numero) ON true
+                   LEFT JOIN vendite.registri_fatturazione reg ON reg.id = f.registro_id;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON VIEW vendite.vw_fatture_lista IS
+                'Vista canonica della lista delle fatture di vendita, sorella di vw_contratti/ddt/offerte_commerciali/ordini/preventivi/resi_lista, con gli stessi nomi canonici (stato_codice_interno, stato_descrizione, ragione_sociale_completa, id_fiscale_univoco_cf_piva, ba_codice, utility_codice, utility_descrizione, emittente_ragione_sociale, soggetto_id). Il cliente si risolve da billing account a soggetto (la fattura non porta un soggetto-ruolo cliente); emittente_fiscale_id deriva da anagrafiche.emittenti_fiscali.soggetto_ruolo_id, unico (uq_emittenti_fiscali_ruolo): il join non moltiplica le righe. Gli importi tengono i nomi della tabella (imponibile_tot, imposta_tot, totale_doc, totale_a_pagare). Sola denormalizzazione, nessuno scope: security_invoker=on, la RLS di vendite.fatture morde. Un solo join interno, config.nature_doc_fiscale (natura_doc_id e'' NOT NULL con FK); tutto il resto e'' LEFT, perche'' una fattura che la sua policy lascia passare non sparisca per la RLS diversa di un''altra tabella (billing account) o per una colonna nullable. Bozze incluse: numero, serie e anno sono NULL finche'' non e'' numerata. numero_documento e'' vendite.fn_numero_documento_fattura(numero, serie), il numero parlante (NULL sulla non numerata). registro_codice e registro_descrizione da vendite.registri_fatturazione. La provenienza di testata (sorgente_tipo_id, sorgente_codice_interno, sorgente_uid e in coda sorgente_id) e'' di norma NULL: la fattura aggrega, e la provenienza sta sulle righe. Il lotto di appartenenza non c''e'': la lista serve a raggiungere la fattura senza passare dal lotto. Le colonne del grafo non stanno qui: le legge il backend da vendite.fn_documento_lineage_sintesi. Le colonne nuove vanno in coda: CREATE OR REPLACE VIEW puo'' solo appendere.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Le colonne in coda non si tolgono con CREATE OR REPLACE VIEW: si torna indietro
+              -- solo con un changeSet nuovo (DROP + CREATE + GRANT).
+              SELECT 1;

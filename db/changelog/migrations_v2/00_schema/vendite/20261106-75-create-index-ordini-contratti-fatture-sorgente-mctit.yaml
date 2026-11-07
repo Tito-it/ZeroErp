@@ -1,0 +1,101 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ORDINI, CONTRATTI, FATTURE: GLI INDICI DELLA PROVENIENZA DI TESTATA
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto T, giro T.3 (D-8).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   * «Chi deriva da X», non unici, parziali, uno per chiave: li usano il lato
+#     in uscita della provenienza (script.trgfn_sorgente_in_uscita cerca i figli
+#     per tipo + chiave a ogni cancellazione di un'origine) e i lettori della
+#     lineage e dei documenti vivi. Sostituiscono, non uniti, gli indici
+#     «idempotenza import» tolti da 20261106-74.
+#   * «Un'offerta, un ordine vivo» e «un'offerta, un contratto vivo» (D-8): la
+#     regola passa sulla chiave della provenienza. Il predicato parziale nomina
+#     l'id del tipo OFFERTA_COMMERCIALE (14, esplicito nel seed
+#     80_data/sql/config/sorgenti.csv): un indice non puo' leggere il catalogo.
+#     Lo presidia vendite/test-sorgente-testate-ordini-contratti-v1, che confronta
+#     il predicato con il catalogo. NULLS NOT DISTINCT sulla chiave intera
+#     (linee-guida-sql §8.4-bis): tipo + le due chiavi alternative.
+#   Gli indici gemelli sulle colonne parallele (uq_ordini_v_documento_origine_offerta,
+#   uq_contratti_offerta_id) restano fino al giro T.5, che ritira le colonne.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261106-75-create-index-ordini-contratti-fatture-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20261106-75-create-index-ordini-contratti-fatture-sorgente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Gli indici «chi deriva da X» di ordini, contratti e fatture, e l'unicita'
+        «un'offerta, un documento vivo» sulla chiave della provenienza (D-8).
+        brief-db-sorgente-documento-e-riga §7.2 lotto T, giro T.3.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE INDEX ix_ordini_v_sorgente_uid ON vendite.ordini USING btree (sorgente_tipo_id, sorgente_uid)
+               WHERE sorgente_uid IS NOT NULL;
+              COMMENT ON INDEX vendite.ix_ordini_v_sorgente_uid IS
+                'Chi deriva da X: gli ordini nati da un documento a chiave uid (preventivo, offerta), per tipo e chiave. Lo usano il lato in uscita della provenienza (script.trgfn_sorgente_in_uscita, alla cancellazione dell''origine), la lineage e i documenti vivi dell''offerta. Non unico: piu'' ordini dallo stesso preventivo.';
+
+              CREATE INDEX ix_ordini_v_sorgente_id ON vendite.ordini USING btree (sorgente_tipo_id, sorgente_id)
+               WHERE sorgente_id IS NOT NULL;
+              COMMENT ON INDEX vendite.ix_ordini_v_sorgente_id IS
+                'Chi deriva da X: gli ordini nati da un documento a chiave id, per tipo e chiave. Lo usa il lato in uscita della provenienza (script.trgfn_sorgente_in_uscita, alla cancellazione dell''origine). Non unico.';
+
+              CREATE INDEX ix_contratti_sorgente_uid ON vendite.contratti USING btree (sorgente_tipo_id, sorgente_uid)
+               WHERE sorgente_uid IS NOT NULL;
+              COMMENT ON INDEX vendite.ix_contratti_sorgente_uid IS
+                'Chi deriva da X: i contratti nati da un documento a chiave uid (l''offerta), per tipo e chiave. Lo usano il lato in uscita della provenienza (script.trgfn_sorgente_in_uscita, alla cancellazione dell''origine), la lineage e i documenti vivi dell''offerta. Non unico: un''offerta ha al piu'' un contratto vivo, ma anche quelli annullati.';
+
+              CREATE INDEX ix_contratti_sorgente_id ON vendite.contratti USING btree (sorgente_tipo_id, sorgente_id)
+               WHERE sorgente_id IS NOT NULL;
+              COMMENT ON INDEX vendite.ix_contratti_sorgente_id IS
+                'Chi deriva da X: i contratti nati da un documento a chiave id, per tipo e chiave. Lo usa il lato in uscita della provenienza (script.trgfn_sorgente_in_uscita, alla cancellazione dell''origine). Non unico.';
+
+              CREATE INDEX ix_fatture_v_sorgente_uid ON vendite.fatture USING btree (sorgente_tipo_id, sorgente_uid)
+               WHERE sorgente_uid IS NOT NULL;
+              COMMENT ON INDEX vendite.ix_fatture_v_sorgente_uid IS
+                'Chi deriva da X: le fatture nate da un documento a chiave uid, per tipo e chiave. Lo usa il lato in uscita della provenienza (script.trgfn_sorgente_in_uscita, alla cancellazione dell''origine). Non unico.';
+
+              CREATE INDEX ix_fatture_v_sorgente_id ON vendite.fatture USING btree (sorgente_tipo_id, sorgente_id)
+               WHERE sorgente_id IS NOT NULL;
+              COMMENT ON INDEX vendite.ix_fatture_v_sorgente_id IS
+                'Chi deriva da X: le fatture nate da un documento a chiave id, per tipo e chiave. Lo usa il lato in uscita della provenienza (script.trgfn_sorgente_in_uscita, alla cancellazione dell''origine). Non unico.';
+
+              -- D-8: 14 = config.sorgenti OFFERTA_COMMERCIALE (id esplicito nel seed).
+              CREATE UNIQUE INDEX uq_ordini_v_sorgente_offerta ON vendite.ordini USING btree (sorgente_tipo_id, sorgente_id, sorgente_uid)
+                NULLS NOT DISTINCT
+               WHERE sorgente_tipo_id = 14 AND NOT is_abortito_snapshot;
+              COMMENT ON INDEX vendite.uq_ordini_v_sorgente_offerta IS
+                'Un''offerta genera al piu'' un ordine vivo: unico sulla provenienza (tipo e chiave) fra gli ordini nati da un''offerta e non annullati (is_abortito_snapshot). Un ordine annullato conserva la provenienza e non consuma l''offerta. Il predicato nomina l''id di OFFERTA_COMMERCIALE in config.sorgenti (14, esplicito nel seed): lo presidia vendite/test-sorgente-testate-ordini-contratti-v1. Gemello di uq_contratti_sorgente_offerta; il controllo preventivo, con il bersaglio, e'' vendite.fn_offerta_documenti_vivi.';
+
+              CREATE UNIQUE INDEX uq_contratti_sorgente_offerta ON vendite.contratti USING btree (sorgente_tipo_id, sorgente_id, sorgente_uid)
+                NULLS NOT DISTINCT
+               WHERE sorgente_tipo_id = 14 AND NOT is_abortito_snapshot;
+              COMMENT ON INDEX vendite.uq_contratti_sorgente_offerta IS
+                'Un''offerta genera al piu'' un contratto vivo: unico sulla provenienza (tipo e chiave) fra i contratti nati da un''offerta e non annullati (is_abortito_snapshot). Un contratto annullato conserva la provenienza e non consuma l''offerta. Il predicato nomina l''id di OFFERTA_COMMERCIALE in config.sorgenti (14, esplicito nel seed): lo presidia vendite/test-sorgente-testate-ordini-contratti-v1. Gemello di uq_ordini_v_sorgente_offerta; il controllo preventivo, con il bersaglio, e'' vendite.fn_offerta_documenti_vivi.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP INDEX IF EXISTS vendite.uq_contratti_sorgente_offerta;
+              DROP INDEX IF EXISTS vendite.uq_ordini_v_sorgente_offerta;
+              DROP INDEX IF EXISTS vendite.ix_fatture_v_sorgente_id;
+              DROP INDEX IF EXISTS vendite.ix_fatture_v_sorgente_uid;
+              DROP INDEX IF EXISTS vendite.ix_contratti_sorgente_id;
+              DROP INDEX IF EXISTS vendite.ix_contratti_sorgente_uid;
+              DROP INDEX IF EXISTS vendite.ix_ordini_v_sorgente_id;
+              DROP INDEX IF EXISTS vendite.ix_ordini_v_sorgente_uid;

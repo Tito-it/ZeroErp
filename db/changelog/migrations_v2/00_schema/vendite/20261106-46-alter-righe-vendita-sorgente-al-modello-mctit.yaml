@@ -1,0 +1,280 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE RIGHE DI VENDITA AL MODELLO DELLA PROVENIENZA: residui tolti, dati derivati, forma
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto R («le righe di vendita»).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   Il modello (§4): tipo del documento + una chiave (sorgente_id o sorgente_uid,
+#   secondo il key_selector) + sorgente_riga = la riga. Sulle righe di vendita
+#   restano due residui della provenienza come «import» (§3.4, scheda 2.2 e 2.5):
+#   il DEFAULT 0 di sorgente_riga (lo 0 e' una riga che non esiste) e l'indice
+#   unico (tipo, uid), che blocca due righe dello stesso documento e il secondo
+#   ordine dopo un annullo. I verbi del lotto R scrivono la provenienza su ogni
+#   riga che generano: i residui vanno via prima.
+#
+#   Le righe gia' nate da un documento, dove l'origine si ricava in modo esatto,
+#   prendono la provenienza: e' la migrazione del modello, non una correzione.
+#   Ordini dal preventivo (preventivo_riga_id), bolle dall'ordine (fulfillment),
+#   riconsegne dal reso (resi_righe_riconsegne). Revisioni del preventivo e
+#   contratti dall'offerta non hanno un legame salvato da cui ricavarla: restano
+#   senza (dichiarato nel brief).
+#
+# ── ⚠️ CHE COSA CAMBIA ──────────────────────────────────────────────
+#   1. DROP DEFAULT 0 su ordini_righe e fatture_righe; DROP dei due indici unici
+#      uq_ordini_righe_v_sorgente_fk, uq_fatture_righe_v_sorgente_fk.
+#   2. ordini_righe: 0 -> NULL dove il tipo e' NULL; la riga col preventivo_riga_id
+#      prende PREVENTIVO + la chiave del preventivo + la riga.
+#   3. ddt_righe: riconsegna -> RESO_VENDITA + reso + riga del reso; evasione ->
+#      ORDINE_VENDITA + ordine + riga d'ordine. Solo con un'origine sola.
+#      2 e 3 coi trigger della tabella spenti e riaccesi come erano (la forma del
+#      backfill 20261105-19, provata): l'UPDATE di righe fuori bozza e' una
+#      migrazione, non una modifica dell'operatore. Il guard unico arriva dopo
+#      (20261106-57) e non rivaluta le righe: sono costruite dai legami.
+#   4. CHECK chk_<tabella>_sorgente_forma sulle quattro tabelle (preventivi,
+#      ordini, bolle, contratti): tutto NULL, o il tipo con una sola chiave.
+#      fatture_righe no: la sua sorgente_uid e' ancora l'impronta (G5), lotto C.
+#   5. COMMENT delle quattro colonne sorgente_* sulle quattro tabelle, al modello.
+#   Da zero (CI) le tabelle sono vuote: 2 e 3 non toccano niente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261106-46-alter-righe-vendita-sorgente-al-modello-mctit.yaml
+
+  - changeSet:
+      id: 20261106-46-alter-righe-vendita-sorgente-al-modello
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Righe di vendita al modello della provenienza: via DEFAULT 0 e indici unici (tipo, uid), provenienza
+        delle righe derivate ricavabile, CHECK di forma, commenti delle colonne. brief-db-sorgente-documento-e-riga §7.2 lotto R.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_class c
+               WHERE c.oid = to_regclass('vendite.uq_ordini_righe_v_sorgente_fk');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 1. I residui della provenienza come «import»: il DEFAULT 0 (una riga che non
+              --    esiste) e l'unicita' per (tipo, uid), che due righe dello stesso documento
+              --    violerebbero.
+              ALTER TABLE vendite.ordini_righe  ALTER COLUMN sorgente_riga DROP DEFAULT;
+              ALTER TABLE vendite.fatture_righe ALTER COLUMN sorgente_riga DROP DEFAULT;
+              DROP INDEX vendite.uq_ordini_righe_v_sorgente_fk;
+              DROP INDEX vendite.uq_fatture_righe_v_sorgente_fk;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 2. Le righe d'ordine: lo 0 diventa NULL, la riga dal preventivo prende la provenienza.
+              DO $do$
+              DECLARE
+                  v_nomi text[];
+                  v_modi "char"[];
+                  i      integer;
+              BEGIN
+                  -- L'elenco si legge UNA volta, prima di spegnere: uno spento di proposito
+                  -- resta spento, uno ALWAYS torna ALWAYS.
+                  SELECT array_agg(t.tgname::text ORDER BY t.tgname),
+                         array_agg(t.tgenabled    ORDER BY t.tgname)
+                    INTO v_nomi, v_modi
+                    FROM pg_catalog.pg_trigger t
+                   WHERE t.tgrelid = 'vendite.ordini_righe'::regclass
+                     AND NOT t.tgisinternal
+                     AND t.tgenabled <> 'D';
+
+                  FOR i IN 1 .. COALESCE(cardinality(v_nomi), 0) LOOP
+                      EXECUTE format('ALTER TABLE vendite.ordini_righe DISABLE TRIGGER %I', v_nomi[i]);
+                  END LOOP;
+
+                  -- Lo 0 di sorgente_riga e' una riga che non esiste: il documento intero e' NULL.
+                  UPDATE vendite.ordini_righe r
+                     SET sorgente_riga = NULL
+                   WHERE r.sorgente_tipo_id IS NULL
+                     AND r.sorgente_riga = 0;
+
+                  -- La riga nata dal preventivo porta la sua provenienza: il tipo PREVENTIVO,
+                  -- la chiave del preventivo per il key_selector del tipo, la riga.
+                  UPDATE vendite.ordini_righe r
+                     SET sorgente_tipo_id = s.id,
+                         sorgente_id      = CASE WHEN s.key_selector = 'id'  THEN p.id  END,
+                         sorgente_uid     = CASE WHEN s.key_selector = 'uid' THEN p.uid END,
+                         sorgente_riga    = pr.id
+                    FROM vendite.preventivi_righe pr
+                    JOIN vendite.preventivi p ON p.id = pr.preventivo_id
+                    JOIN config.sorgenti s    ON s.codice_interno = 'PREVENTIVO'
+                   WHERE pr.id = r.preventivo_riga_id
+                     AND r.sorgente_tipo_id IS NULL;
+
+                  FOR i IN 1 .. COALESCE(cardinality(v_nomi), 0) LOOP
+                      EXECUTE format('ALTER TABLE vendite.ordini_righe ENABLE %s TRIGGER %I',
+                                     CASE v_modi[i] WHEN 'A' THEN 'ALWAYS'
+                                                    WHEN 'R' THEN 'REPLICA'
+                                                    ELSE '' END,
+                                     v_nomi[i]);
+                  END LOOP;
+              END;
+              $do$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 3. Le righe di bolla: dalla riconsegna e dall'evasione dell'ordine.
+              DO $do$
+              DECLARE
+                  v_nomi text[];
+                  v_modi "char"[];
+                  i      integer;
+              BEGIN
+                  -- L'elenco si legge UNA volta, prima di spegnere: uno spento di proposito
+                  -- resta spento, uno ALWAYS torna ALWAYS.
+                  SELECT array_agg(t.tgname::text ORDER BY t.tgname),
+                         array_agg(t.tgenabled    ORDER BY t.tgname)
+                    INTO v_nomi, v_modi
+                    FROM pg_catalog.pg_trigger t
+                   WHERE t.tgrelid = 'vendite.ddt_righe'::regclass
+                     AND NOT t.tgisinternal
+                     AND t.tgenabled <> 'D';
+
+                  FOR i IN 1 .. COALESCE(cardinality(v_nomi), 0) LOOP
+                      EXECUTE format('ALTER TABLE vendite.ddt_righe DISABLE TRIGGER %I', v_nomi[i]);
+                  END LOOP;
+
+                  -- La riga della riconsegna viene dalla riga del reso (resi_righe_riconsegne);
+                  -- le altre righe evase vengono dalla riga d'ordine (ordini_righe_fulfillment).
+                  -- Solo dove l'origine e' una: una riga con piu' origini resta senza.
+                  UPDATE vendite.ddt_righe d
+                     SET sorgente_tipo_id = s.id,
+                         sorgente_id      = CASE WHEN s.key_selector = 'id'  THEN re.id  END,
+                         sorgente_uid     = CASE WHEN s.key_selector = 'uid' THEN re.uid END,
+                         sorgente_riga    = x.resi_riga_id
+                    FROM (SELECT rrr.ddt_riga_id, min(rrr.resi_riga_id) AS resi_riga_id
+                            FROM vendite.resi_righe_riconsegne rrr
+                           GROUP BY rrr.ddt_riga_id
+                          HAVING count(DISTINCT rrr.resi_riga_id) = 1) x
+                    JOIN vendite.resi_righe rr ON rr.id = x.resi_riga_id
+                    JOIN vendite.resi re       ON re.id = rr.reso_id
+                    JOIN config.sorgenti s     ON s.codice_interno = 'RESO_VENDITA'
+                   WHERE d.id = x.ddt_riga_id
+                     AND d.sorgente_tipo_id IS NULL;
+
+                  UPDATE vendite.ddt_righe d
+                     SET sorgente_tipo_id = s.id,
+                         sorgente_id      = CASE WHEN s.key_selector = 'id'  THEN o.id  END,
+                         sorgente_uid     = CASE WHEN s.key_selector = 'uid' THEN o.uid END,
+                         sorgente_riga    = x.ordine_riga_id
+                    FROM (SELECT f.ddt_riga_id, min(f.ordine_riga_id) AS ordine_riga_id
+                            FROM vendite.ordini_righe_fulfillment f
+                           GROUP BY f.ddt_riga_id
+                          HAVING count(DISTINCT f.ordine_riga_id) = 1) x
+                    JOIN vendite.ordini_righe orr ON orr.id = x.ordine_riga_id
+                    JOIN vendite.ordini o         ON o.id = orr.ordine_id
+                    JOIN config.sorgenti s        ON s.codice_interno = 'ORDINE_VENDITA'
+                   WHERE d.id = x.ddt_riga_id
+                     AND d.sorgente_tipo_id IS NULL;
+
+                  FOR i IN 1 .. COALESCE(cardinality(v_nomi), 0) LOOP
+                      EXECUTE format('ALTER TABLE vendite.ddt_righe ENABLE %s TRIGGER %I',
+                                     CASE v_modi[i] WHEN 'A' THEN 'ALWAYS'
+                                                    WHEN 'R' THEN 'REPLICA'
+                                                    ELSE '' END,
+                                     v_nomi[i]);
+                  END LOOP;
+              END;
+              $do$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 4. La forma della provenienza, sulle quattro tabelle.
+
+              ALTER TABLE vendite.preventivi_righe
+                ADD CONSTRAINT chk_preventivi_righe_sorgente_forma CHECK (
+                  (sorgente_tipo_id IS NULL AND sorgente_id IS NULL AND sorgente_uid IS NULL AND sorgente_riga IS NULL)
+                  OR (sorgente_tipo_id IS NOT NULL AND num_nonnulls(sorgente_id, sorgente_uid) = 1));
+              COMMENT ON CONSTRAINT chk_preventivi_righe_sorgente_forma ON vendite.preventivi_righe IS
+                'La forma della provenienza: o nessuna colonna sorgente_* valorizzata (la riga e'' una scelta nuova), o il tipo con una sola chiave del documento, sorgente_id oppure sorgente_uid. Quale delle due, e che il documento e la riga esistano, lo verifica script.trgfn_guard_sorgente.';
+
+              ALTER TABLE vendite.ordini_righe
+                ADD CONSTRAINT chk_ordini_righe_sorgente_forma CHECK (
+                  (sorgente_tipo_id IS NULL AND sorgente_id IS NULL AND sorgente_uid IS NULL AND sorgente_riga IS NULL)
+                  OR (sorgente_tipo_id IS NOT NULL AND num_nonnulls(sorgente_id, sorgente_uid) = 1));
+              COMMENT ON CONSTRAINT chk_ordini_righe_sorgente_forma ON vendite.ordini_righe IS
+                'La forma della provenienza: o nessuna colonna sorgente_* valorizzata (la riga e'' una scelta nuova), o il tipo con una sola chiave del documento, sorgente_id oppure sorgente_uid. Quale delle due, e che il documento e la riga esistano, lo verifica script.trgfn_guard_sorgente.';
+
+              ALTER TABLE vendite.ddt_righe
+                ADD CONSTRAINT chk_ddt_righe_sorgente_forma CHECK (
+                  (sorgente_tipo_id IS NULL AND sorgente_id IS NULL AND sorgente_uid IS NULL AND sorgente_riga IS NULL)
+                  OR (sorgente_tipo_id IS NOT NULL AND num_nonnulls(sorgente_id, sorgente_uid) = 1));
+              COMMENT ON CONSTRAINT chk_ddt_righe_sorgente_forma ON vendite.ddt_righe IS
+                'La forma della provenienza: o nessuna colonna sorgente_* valorizzata (la riga e'' una scelta nuova), o il tipo con una sola chiave del documento, sorgente_id oppure sorgente_uid. Quale delle due, e che il documento e la riga esistano, lo verifica script.trgfn_guard_sorgente.';
+
+              ALTER TABLE vendite.contratti_righe
+                ADD CONSTRAINT chk_contratti_righe_sorgente_forma CHECK (
+                  (sorgente_tipo_id IS NULL AND sorgente_id IS NULL AND sorgente_uid IS NULL AND sorgente_riga IS NULL)
+                  OR (sorgente_tipo_id IS NOT NULL AND num_nonnulls(sorgente_id, sorgente_uid) = 1));
+              COMMENT ON CONSTRAINT chk_contratti_righe_sorgente_forma ON vendite.contratti_righe IS
+                'La forma della provenienza: o nessuna colonna sorgente_* valorizzata (la riga e'' una scelta nuova), o il tipo con una sola chiave del documento, sorgente_id oppure sorgente_uid. Quale delle due, e che il documento e la riga esistano, lo verifica script.trgfn_guard_sorgente.';
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 5. I commenti delle colonne, al modello.
+              COMMENT ON COLUMN vendite.preventivi_righe.sorgente_tipo_id IS
+                'Il tipo del documento da cui la riga deriva (config.sorgenti). NULL: la riga e'' una scelta nuova. Con il tipo, una sola chiave del documento, quella del key_selector del tipo, e la riga in sorgente_riga quando la provenienza e'' una riga. La forma la tiene chk_preventivi_righe_sorgente_forma; documento e riga li verifica script.trgfn_guard_sorgente, che blocca anche la cancellazione dell''origine finche'' la riga la cita. Una riga con il tipo e'' derivata: il guard dell''articolo ritirato la lascia passare. La scrive la revisione (vendite.fn_crea_revisione_preventivo): PREVENTIVO, la revisione di partenza, la riga copiata.';
+              COMMENT ON COLUMN vendite.preventivi_righe.sorgente_id IS
+                'La chiave del documento d''origine quando il suo tipo ha key_selector ''id'': l''id del documento. In alternativa a sorgente_uid, mai tutte e due.';
+              COMMENT ON COLUMN vendite.preventivi_righe.sorgente_uid IS
+                'La chiave del documento d''origine quando il suo tipo ha key_selector ''uid'': l''uid del documento. In alternativa a sorgente_id, mai tutte e due.';
+              COMMENT ON COLUMN vendite.preventivi_righe.sorgente_riga IS
+                'La riga del documento d''origine da cui la riga deriva: l''id nella tabella delle righe che config.sorgenti dichiara per il tipo. NULL quando la provenienza e'' il documento intero.';
+              COMMENT ON COLUMN vendite.ordini_righe.sorgente_tipo_id IS
+                'Il tipo del documento da cui la riga deriva (config.sorgenti). NULL: la riga e'' una scelta nuova. Con il tipo, una sola chiave del documento, quella del key_selector del tipo, e la riga in sorgente_riga quando la provenienza e'' una riga. La forma la tiene chk_ordini_righe_sorgente_forma; documento e riga li verifica script.trgfn_guard_sorgente, che blocca anche la cancellazione dell''origine finche'' la riga la cita. Una riga con il tipo e'' derivata: il guard dell''articolo ritirato la lascia passare. La scrivono il push dal preventivo (vendite.fn_push_preventivo_a_ordine: PREVENTIVO e la riga, accanto a preventivo_riga_id, che e'' il legame di consumo e l''annullo azzera) e l''ordine dall''offerta (vendite.fn_genera_ordine_da_offerta: OFFERTA_COMMERCIALE e l''eccezione da cui la riga viene, NULL per la riga del solo listino).';
+              COMMENT ON COLUMN vendite.ordini_righe.sorgente_id IS
+                'La chiave del documento d''origine quando il suo tipo ha key_selector ''id'': l''id del documento. In alternativa a sorgente_uid, mai tutte e due.';
+              COMMENT ON COLUMN vendite.ordini_righe.sorgente_uid IS
+                'La chiave del documento d''origine quando il suo tipo ha key_selector ''uid'': l''uid del documento. In alternativa a sorgente_id, mai tutte e due.';
+              COMMENT ON COLUMN vendite.ordini_righe.sorgente_riga IS
+                'La riga del documento d''origine da cui la riga deriva: l''id nella tabella delle righe che config.sorgenti dichiara per il tipo. NULL quando la provenienza e'' il documento intero.';
+              COMMENT ON COLUMN vendite.ddt_righe.sorgente_tipo_id IS
+                'Il tipo del documento da cui la riga deriva (config.sorgenti). NULL: la riga e'' una scelta nuova. Con il tipo, una sola chiave del documento, quella del key_selector del tipo, e la riga in sorgente_riga quando la provenienza e'' una riga. La forma la tiene chk_ddt_righe_sorgente_forma; documento e riga li verifica script.trgfn_guard_sorgente, che blocca anche la cancellazione dell''origine finche'' la riga la cita. Una riga con il tipo e'' derivata: il guard dell''articolo ritirato la lascia passare. La scrivono la bolla dall''ordine (vendite.fn_genera_ddt_da_ordine: ORDINE_VENDITA e la riga d''ordine) e la riconsegna (vendite.fn_genera_ddt_riconsegna: RESO_VENDITA e la riga del reso). Le quantita'' evase stanno in ordini_righe_fulfillment e la riconsegna in resi_righe_riconsegne: sono legami propri, non la provenienza.';
+              COMMENT ON COLUMN vendite.ddt_righe.sorgente_id IS
+                'La chiave del documento d''origine quando il suo tipo ha key_selector ''id'': l''id del documento. In alternativa a sorgente_uid, mai tutte e due.';
+              COMMENT ON COLUMN vendite.ddt_righe.sorgente_uid IS
+                'La chiave del documento d''origine quando il suo tipo ha key_selector ''uid'': l''uid del documento. In alternativa a sorgente_id, mai tutte e due.';
+              COMMENT ON COLUMN vendite.ddt_righe.sorgente_riga IS
+                'La riga del documento d''origine da cui la riga deriva: l''id nella tabella delle righe che config.sorgenti dichiara per il tipo. NULL quando la provenienza e'' il documento intero.';
+              COMMENT ON COLUMN vendite.contratti_righe.sorgente_tipo_id IS
+                'Il tipo del documento da cui la riga deriva (config.sorgenti). NULL: la riga e'' una scelta nuova. Con il tipo, una sola chiave del documento, quella del key_selector del tipo, e la riga in sorgente_riga quando la provenienza e'' una riga. La forma la tiene chk_contratti_righe_sorgente_forma; documento e riga li verifica script.trgfn_guard_sorgente, che blocca anche la cancellazione dell''origine finche'' la riga la cita. Una riga con il tipo e'' derivata: il guard dell''articolo ritirato la lascia passare. La scrive il contratto dall''offerta (vendite.fn_push_offerta_a_contratto: OFFERTA_COMMERCIALE e l''eccezione copiata).';
+              COMMENT ON COLUMN vendite.contratti_righe.sorgente_id IS
+                'La chiave del documento d''origine quando il suo tipo ha key_selector ''id'': l''id del documento. In alternativa a sorgente_uid, mai tutte e due.';
+              COMMENT ON COLUMN vendite.contratti_righe.sorgente_uid IS
+                'La chiave del documento d''origine quando il suo tipo ha key_selector ''uid'': l''uid del documento. In alternativa a sorgente_id, mai tutte e due.';
+              COMMENT ON COLUMN vendite.contratti_righe.sorgente_riga IS
+                'La riga del documento d''origine da cui la riga deriva: l''id nella tabella delle righe che config.sorgenti dichiara per il tipo. NULL quando la provenienza e'' il documento intero.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il CHECK e gli indici si possono ripristinare; i dati derivati restano veri.
+              ALTER TABLE vendite.contratti_righe  DROP CONSTRAINT IF EXISTS chk_contratti_righe_sorgente_forma;
+              ALTER TABLE vendite.ddt_righe        DROP CONSTRAINT IF EXISTS chk_ddt_righe_sorgente_forma;
+              ALTER TABLE vendite.ordini_righe     DROP CONSTRAINT IF EXISTS chk_ordini_righe_sorgente_forma;
+              ALTER TABLE vendite.preventivi_righe DROP CONSTRAINT IF EXISTS chk_preventivi_righe_sorgente_forma;

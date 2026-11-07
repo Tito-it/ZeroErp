@@ -99,6 +99,10 @@ INSERT INTO _escluse VALUES
     ('data_update',       'audit: default now(), trigger'),
     ('tx_id',             'framework tx_id: trgfn_tx_id_managed'),
     ('natura_vendita_id', 'la deriva e la CONGELA dall''articolo trgfn_preventivi_righe_set_natura_vendita (BEFORE INSERT): nominarla scriverebbe un valore sovrascritto');
+-- rev 2026-11-06 (lotto R di brief-db-sorgente-documento-e-riga, 20261106-53):
+--   le quattro sorgente_* NON sono piu' escluse: la copia le NOMINA. Non le
+--   ricopia dalla rev N (direbbero da dove veniva lei): ci scrive la rev N e la
+--   riga copiata. Il valore lo prova vendite/test-sorgente-righe-vendita-v1 (5, 6).
 
 -- Le colonne NOMINATE nell'INSERT della copia righe, lette dal corpo VIVO:
 -- il blocco «INSERT INTO vendite.preventivi_righe ( ... )» della funzione.

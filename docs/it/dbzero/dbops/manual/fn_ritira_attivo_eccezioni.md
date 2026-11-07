@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_ritira_attivo_eccezioni`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 7 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -36,15 +36,18 @@ basta, i trigger che ci sono vanno tolti. Chi genera i trigger li ritira.
 
 I nomi generati oltre i 63 caratteri sono troncati con un hash, quindi il nome non è una chiave.
 La funzione guarda i trigger non interni delle due funzioni del framework ATTIVO, ne legge gli
-argomenti con `dbops.fn_trigger_argomenti` e li confronta con la riga del registro:
+argomenti con `dbops.fn_trigger_argomenti`, li interpreta per nome con
+`dbops.fn_trigger_attivo_argomenti` (la grammatica delle funzioni trigger) e li confronta con la
+riga del registro:
 
 | Trigger | Funzione | Dove sta la FK della riga |
 | --- | --- | --- |
-| require, sul **figlio** | `dbops.trgfn_child_requires_active_parent` | la tabella del trigger è la figlia, la colonna FK è il quarto argomento |
-| block, sul **padre** | `dbops.trgfn_prevent_deactivate_if_children` | primo, secondo e terzo argomento: schema, tabella e colonna FK della figlia |
+| require, sul **figlio** | `dbops.trgfn_child_requires_active_parent` | la tabella del trigger è la figlia, con la sua colonna FK |
+| block, sul **padre** | `dbops.trgfn_prevent_deactivate_if_children` | gli argomenti nominano schema, tabella e colonna FK della figlia |
 
 Una riga del registro che nomina una tabella che non esiste non trova trigger e non produce
-errori.
+errori. Un trigger montato fuori grammatica non si riconosce: non è un'eccezione, è un errore di
+scrittura, e lo riporta `dbops.fn_trigger_attivo_orfani`.
 
 ---
 
@@ -76,6 +79,8 @@ delle tabelle.
   §12.3).
 * 2026-09-26 — gli argomenti si leggono da `dbops.fn_trigger_argomenti` invece che con una
   decodifica locale di `tgargs`.
+* 2026-11-07 — gli argomenti si interpretano per nome con `dbops.fn_trigger_attivo_argomenti`,
+  non più per posizione.
 
 ---
 

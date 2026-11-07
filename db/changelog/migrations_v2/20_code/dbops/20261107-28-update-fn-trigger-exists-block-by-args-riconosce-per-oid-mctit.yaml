@@ -1,0 +1,112 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_trigger_exists_block_by_args: il block si riconosce dalla funzione
+#   (tgfoid) e dagli argomenti letti con la grammatica, non dal testo del
+#   CREATE TRIGGER.
+#   Brief: brief-db-revisione-dbops, D6 (giro 4).
+#
+# ⚠️ IL DIFETTO CHE CHIUDE (D6). Cercava in pg_get_triggerdef il testo
+#   «EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('a','b',…)»
+#   con ILIKE. Non lo trovava mai, per due ragioni indipendenti:
+#     - pg_get_triggerdef separa gli argomenti con «', '», il pattern con «','»;
+#     - PostgreSQL scrive lo schema della funzione solo se non e' nel
+#       search_path: con dbops nel search_path (quello dell'applicazione) il
+#       testo e' «EXECUTE FUNCTION trgfn_…(…)», senza «dbops.».
+#   E ILIKE tratta «_» come jolly. Risposta sempre falsa: la strategia BOTH
+#   del runner decideva col solo nome, BY_FUNCTION toglieva e ricreava a ogni
+#   giro, e l'esito dipendeva da chi lanciava il runner.
+#
+# ⭐ LA FORMA NUOVA. La funzione del trigger per OID ('…()'::regprocedure, con
+#   lo schema scritto: non dipende dal search_path), gli argomenti da
+#   pg_trigger.tgargs (dbops.fn_trigger_argomenti) letti per NOME dalla
+#   grammatica dei trigger ATTIVO (dbops.fn_trigger_attivo_argomenti): il
+#   riconoscimento e il trigger leggono gli argomenti nello stesso modo, e un
+#   montaggio fuori grammatica non e' riconosciuto (valido = false). Confronto
+#   esatto, non ILIKE: sono identificatori.
+#
+# ⚠️ LA FIRMA CAMBIA: i parametri passano da text ai tipi del catalogo
+#   (%TYPE di pg_namespace.nspname, pg_class.relname, pg_attribute.attname,
+#   cioe' name), quindi DROP e CREATE. L'unico chiamante, il runner
+#   dbops.fn_run_automations_attivo, passa name e text: text -> name e' un cast
+#   implicito, la chiamata si risolve senza toccarlo. I privilegi tornano dai
+#   default privileges dello schema (come le funzioni nuove del giro 3).
+#
+# Corpo di partenza: la scheda auto-generata del 2026-11-07 (riscritto).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261107-28-update-fn-trigger-exists-block-by-args-riconosce-per-oid-mctit.yaml
+
+  - changeSet:
+      id: 20261107-28-update-fn-trigger-exists-block-by-args-riconosce-per-oid
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_trigger_exists_block_by_args riconosce il block dalla funzione (tgfoid) e dagli
+        argomenti letti con dbops.fn_trigger_attivo_argomenti, non da un ILIKE su
+        pg_get_triggerdef che non trovava mai niente (D6). Firma ancorata al catalogo.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_trigger_attivo_argomenti';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION dbops.fn_trigger_exists_block_by_args(regclass, text, text, text, text, text);
+
+              CREATE FUNCTION dbops.fn_trigger_exists_block_by_args(
+                  -- regclass: la tabella padre, su cui il block e' montato (pg_trigger.tgrelid e' un oid)
+                  p_parent_rel        regclass,
+                  p_child_schema      pg_catalog.pg_namespace.nspname%TYPE,
+                  p_child_table       pg_catalog.pg_class.relname%TYPE,
+                  p_fk_col            pg_catalog.pg_attribute.attname%TYPE,
+                  p_parent_ref_col    pg_catalog.pg_attribute.attname%TYPE,
+                  p_parent_attivo_col pg_catalog.pg_attribute.attname%TYPE
+              )
+              RETURNS boolean
+              LANGUAGE sql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+                -- Scopo: c'e' sul padre un block montato con questi argomenti?
+                --   La funzione per OID, gli argomenti per nome dalla grammatica.
+                SELECT EXISTS (
+                    SELECT 1
+                      FROM pg_catalog.pg_trigger t
+                     CROSS JOIN LATERAL dbops.fn_trigger_attivo_argomenti(
+                             'trgfn_prevent_deactivate_if_children',
+                             dbops.fn_trigger_argomenti(t.tgargs)) g
+                     WHERE t.tgrelid = p_parent_rel
+                       AND NOT t.tgisinternal
+                       AND t.tgfoid = 'dbops.trgfn_prevent_deactivate_if_children()'::pg_catalog.regprocedure
+                       AND g.valido
+                       AND g.figlia_schema  = p_child_schema
+                       AND g.figlia_tabella = p_child_table
+                       AND g.fk_col         = p_fk_col
+                       AND g.ref_col        = p_parent_ref_col
+                       AND g.stato_col      = p_parent_attivo_col
+                );
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_trigger_exists_block_by_args(regclass, name, name, name, name, name) IS
+                'Dice se sulla tabella padre c''e'' un block ATTIVO (dbops.trgfn_prevent_deactivate_if_children) montato con questi argomenti: figlia (schema e tabella), colonna FK della figlia, colonna referenziata del padre, colonna attivo del padre. Riconosce la funzione del trigger per OID, quindi con qualunque search_path, e legge gli argomenti per nome con la grammatica dei trigger ATTIVO (dbops.fn_trigger_attivo_argomenti su dbops.fn_trigger_argomenti): un montaggio fuori grammatica non e'' riconosciuto. Confronto esatto degli identificatori. La chiama dbops.fn_run_automations_attivo per le strategie di esistenza BY_FUNCTION e BOTH.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo dal corpo della scheda auto-generata del 2026-11-07.
+              SELECT 1;

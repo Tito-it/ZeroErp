@@ -39,16 +39,18 @@
 |------|--------|--------|--------|
 | trg_listini_kit_a10_articoli_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli', 'attivo', 'articolo_padre_id', 'id')` |
 | trg_listini_kit_a10_articoli_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli', 'attivo', 'articolo_padre_id', 'id')` |
-| trg_listini_kit_a10_guard_ins_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_listini_kit_guard()` |
+| trg_listini_kit_a10_articoli_require_non_obsoleto_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_non_obsolete_parent('catalogo', 'articoli', 'obsoleto_dal', 'articolo_padre_id', 'id')` |
+| trg_listini_kit_a10_articoli_require_non_obsoleto_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_non_obsolete_parent('catalogo', 'articoli', 'obsoleto_dal', 'articolo_padre_id', 'id')` |
 | trg_listini_kit_a10_guard_ins_upd_dlt | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_listini_kit_guard()` |
+| trg_listini_kit_a10_guard_ins_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_listini_kit_guard()` |
 | trg_listini_kit_a10_guard_ins_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION vendite.trgfn_listini_kit_guard()` |
-| trg_listini_kit_a10_listini_versioni_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'listini_versioni', 'attivo', 'listino_versione_id', 'id')` |
 | trg_listini_kit_a10_listini_versioni_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'listini_versioni', 'attivo', 'listino_versione_id', 'id')` |
+| trg_listini_kit_a10_listini_versioni_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'listini_versioni', 'attivo', 'listino_versione_id', 'id')` |
 | trg_listini_kit_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('articolo_padre_id', 'E_LISTINO_RIGA_IDENTITA_IMMUTABILE', 'listino_versione_id', 'E_LISTINO_RIGA_IDENTITA_IMMUTABILE')` |
-| trg_listini_kit_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_listini_kit_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_listini_kit_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_listini_kit_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_listini_kit_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_listini_kit_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 
 ---
 {% include-markdown "signature-core.md" %}

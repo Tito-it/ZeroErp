@@ -1,0 +1,94 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_find_file_usage: chi punta a una tabella, letto da
+#   dbops.fn_foreign_keys_info (le entranti), non da una seconda query sullo
+#   stesso catalogo.
+#   Brief: brief-db-revisione-dbops, D53 (giro 4, Q9 di Tid: una funzione sola
+#   su pg_constraint, l'altra la chiama).
+#
+# ⚠️ IL DIFETTO CHE CHIUDE (D53). Univa pg_attribute due volte con
+#   «attnum = ANY(conkey)» e «attnum = ANY(confkey)»: su una FK composita ogni
+#   colonna della figlia si accoppiava con ogni colonna del padre (prodotto
+#   cartesiano). E rispondeva alla stessa domanda di dbops.fn_foreign_keys_info
+#   con un'altra query: due copie, gia' divergenti.
+#
+# ⭐ LA FORMA NUOVA: le righe incoming di dbops.fn_foreign_keys_info. Il
+#   risultato prende il nome del vincolo e la posizione della colonna nella
+#   chiave (senza, le righe di una FK composita non si raggruppano), e la
+#   colonna del padre si chiama referenced_column: la FK puo' puntare a una
+#   UNIQUE che non e' la chiave primaria, e pk_column diceva il falso.
+#
+# ⚠️ IL RISULTATO CAMBIA: DROP e CREATE. Nessun chiamante nel database, nel
+#   backend e nei test (censito il 2026-11-07).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261107-34-update-fn-find-file-usage-dalle-fk-entranti-mctit.yaml
+
+  - changeSet:
+      id: 20261107-34-update-fn-find-file-usage-dalle-fk-entranti
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_find_file_usage legge le FK entranti da dbops.fn_foreign_keys_info: niente piu'
+        prodotto cartesiano sulle FK composite, nome del vincolo e posizione nel risultato (D53, Q9).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_foreign_keys_info'
+                 AND pg_catalog.pg_get_function_identity_arguments(p.oid) = 'p_tabella regclass';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION dbops.fn_find_file_usage(regclass);
+
+              CREATE FUNCTION dbops.fn_find_file_usage(
+                  -- regclass: la tabella referenziata (pg_constraint.confrelid e' un oid)
+                  p_target_table regclass
+              )
+              RETURNS TABLE(
+                  -- regclass: la tabella che porta la FK
+                  table_with_fk     regclass,
+                  fk_name           pg_catalog.pg_constraint.conname%TYPE,
+                  -- la posizione della colonna nella chiave: nessuna colonna da ancorare
+                  posizione         bigint,
+                  fk_column         pg_catalog.pg_attribute.attname%TYPE,
+                  -- regclass: la tabella referenziata
+                  referenced_table  regclass,
+                  referenced_column pg_catalog.pg_attribute.attname%TYPE
+              )
+              LANGUAGE sql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+                -- Scopo: le FK che puntano a una tabella, una riga per colonna
+                --   della chiave. Le legge dbops.fn_foreign_keys_info.
+                -- Uso: SELECT * FROM dbops.fn_find_file_usage('vendite.fatture');
+                SELECT i.source_table, i.constraint_name, i.posizione, i.source_column,
+                       i.target_table, i.target_column
+                  FROM dbops.fn_foreign_keys_info(p_target_table) i
+                 WHERE i.relazione = 'incoming';
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_find_file_usage(regclass) IS
+                'Le FK che puntano a una tabella (chi la usa): una riga per colonna della chiave, con la tabella che porta la FK, il nome del vincolo, la posizione della colonna nella chiave, la colonna della figlia e quella del padre a cui punta (referenced_column: puo'' essere una UNIQUE che non e'' la chiave primaria). Sono le righe incoming di dbops.fn_foreign_keys_info: le coppie di colonne e il trattamento delle partizioni sono i suoi. Strumento DBA.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo dal corpo della scheda auto-generata del 2026-11-07.
+              SELECT 1;

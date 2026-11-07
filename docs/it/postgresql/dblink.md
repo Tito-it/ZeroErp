@@ -1,6 +1,6 @@
 # Estensione PostgreSQL: `dblink`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 7 novembre 2026
 >
 > **Destinatari**: chi installa un server, chi scrive una funzione che deve lasciare una traccia anche se la transazione fallisce
 >
@@ -26,12 +26,12 @@ all'errore che racconta.
 | `script.fn_log_error_only` | la riga di `dbops.error_log` di un errore (la chiama anche `fn_log_and_raise_error` prima del `RAISE`) |
 | `maintenance.fn_job_run_log_failure` | il verbale di un job **fallito** in `maintenance.job_run_log` |
 | `dbops.fn_get_or_create_session_tx_id` | il `tx_id` di sessione |
-| `dbops.fn_audit_log_once` | l'audit delle automazioni, **solo** con `myapp.log_with_dblink = on`; altrimenti in transazione |
 
 La connessione si chiama `logconn` e la apre `script.fn_ensure_logconn`: una per sessione, riusata
-finché la sessione vive. Le prime tre funzioni **non sollevano** se il canale è spento o non
-risponde: emettono un `WARNING` (il `tx_id` prende la sentinella) e il chiamante prosegue. L'audit,
-con il canale che non si apre, ripiega sulla scrittura in transazione.
+finché la sessione vive. Le tre funzioni **non sollevano** se il canale è spento o non
+risponde: emettono un `WARNING` (il `tx_id` prende la sentinella) e il chiamante prosegue.
+L'audit delle automazioni (`dbops.fn_audit_log_once`) non usa il canale: la sua riga vive nella
+transazione di chi chiama.
 
 ---
 
@@ -93,8 +93,7 @@ seguono `fn_ensure_logconn` e le prime tre funzioni della tabella in *Chi lo usa
 
 Con il canale spento `fn_get_or_create_session_tx_id` restituisce la sentinella, e le scritture sulle
 tabelle tracciate la prendono come `tx_id`; `fn_log_error_only` e `fn_job_run_log_failure` non scrivono
-e lo dicono con un `WARNING`. ⚠️ L'audit (`fn_audit_log_once`) non segue ancora la regola comune: per
-lui l'interruttore assente vale spento, e solo `on` accende il ramo fuori transazione.
+e lo dicono con un `WARNING`. L'audit non dipende dal canale.
 
 Il dettaglio dei tre parametri sta nella pagina [Parametri personalizzati (GUC)](/postgresql/parametri-personalizzati-(GUC)).
 

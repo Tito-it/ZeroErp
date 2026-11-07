@@ -1,5 +1,8 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
+-- rev 2026-11-07 (brief-db-sorgente-documento-e-riga, giro T.5, 20261106-97): contratti.offerta_id e'
+--   ritirata; il contratto nato dall'offerta si riconosce dalla provenienza (sorgente_uid = l'uid
+--   dell'offerta, col tipo OFFERTA_COMMERCIALE). Attese invariate.
 -- pgTAP test per Zero ERP
 -- rev 2026-10-26 (brief-modello-documento-vendita §11): A esce dalla bozza (1-bis) con dbops.fn_pgtap_porta_a_stato, non piu' con l'UPDATE diretto dello stato che la porta del contratto ora rifiuta.
 -- rev 2026-10-26 (brief-modello-documento-vendita §13, giro 9): lo stato dell'offerta si cambia solo dal verbo; le offerte A, B, C arrivano ad ACCETTATA con dbops.fn_pgtap_porta_a_stato invece dei due UPDATE di stato.
@@ -167,7 +170,7 @@ SELECT throws_ok(
 SELECT ok(
     NOT EXISTS (
         SELECT 1 FROM vendite.contratti
-         WHERE offerta_id = (SELECT id FROM vendite.offerte_commerciali WHERE meta->>'pgtap_succ' = 'B')
+         WHERE sorgente_uid = (SELECT uid FROM vendite.offerte_commerciali WHERE meta->>'pgtap_succ' = 'B')
     ),
     '3) overlap con chiudi=false -> nessun contratto creato per l''offerta B'
 );
@@ -189,7 +192,7 @@ SELECT ok(
 -- ============================================================
 SELECT is(
     (SELECT valido_al FROM vendite.contratti
-      WHERE offerta_id = (SELECT id FROM vendite.offerte_commerciali WHERE meta->>'pgtap_succ' = 'A')),
+      WHERE sorgente_uid = (SELECT uid FROM vendite.offerte_commerciali WHERE meta->>'pgtap_succ' = 'A')),
     '2098-05-31'::date,
     '5) successione -> vecchio contratto A accorciato a validita_dal del nuovo - 1'
 );

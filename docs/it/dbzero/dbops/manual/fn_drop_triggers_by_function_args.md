@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_drop_triggers_by_function_args`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 7 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -13,7 +13,7 @@
 > * [dbops.fn_run_automations_attivo](/dbzero/dbops/funzioni/fn_run_automations_attivo) — l'unico chiamante
 > * [dbops.trgfn_child_requires_active_parent](/dbzero/dbops/funzioni/trgfn_child_requires_active_parent) — la funzione dei trigger *require* che toglie
 > * [dbops.trgfn_prevent_deactivate_if_children](/dbzero/dbops/funzioni/trgfn_prevent_deactivate_if_children) — la funzione dei trigger *block* che toglie
-> * [dbops.fn_trigger_argomenti](/dbzero/dbops/funzioni/fn_trigger_argomenti) — la lettura condivisa degli argomenti, che qui non si usa
+> * [dbops.fn_trigger_argomenti](/dbzero/dbops/funzioni/fn_trigger_argomenti) — la lettura degli argomenti salvati di un trigger
 >
 > Guide:
 >
@@ -38,29 +38,14 @@ con la stessa funzione e gli stessi argomenti, poi crea.
 * Solo i trigger **utente** della tabella indicata; i trigger interni di PostgreSQL restano.
 * Se la tabella indicata è una **partizione**, non toglie niente: i trigger di una tabella
   partizionata si governano sul padre.
-* Un trigger si toglie quando la sua definizione contiene la chiamata alla funzione con quegli
-  argomenti, nello stesso ordine e separati da virgola e spazio. Un trigger sulla stessa
-  funzione con argomenti diversi resta.
-
----
-
-### ⚠️ Il confronto è sul testo della definizione
-
-La funzione ricostruisce la chiamata attesa come testo (schema, nome, argomenti fra apici) e la
-cerca nella definizione che PostgreSQL restituisce per ogni trigger. Ne vengono tre
-conseguenze:
-
-* **Dipende dal `search_path` di chi chiama.** PostgreSQL scrive il nome della funzione con lo
-  schema solo se lo schema **non** è nel `search_path` della sessione. Il testo atteso porta
-  sempre lo schema: con `dbops` nel `search_path` la definizione dice la funzione senza schema,
-  il confronto non trova niente e la funzione non toglie niente, senza errore. Per lo stesso
-  motivo la doc auto-generata fissa il `search_path` a `public` prima di leggere le definizioni.
-* Il confronto è un `ILIKE`: il trattino basso degli argomenti vale come jolly, e un argomento
-  che differisce per un carattere in quella posizione si considera uguale.
-* La grammatica degli argomenti è ricopiata qui, invece di passare da
-  `dbops.fn_trigger_argomenti`, che legge gli argomenti salvati e non il testo. Le
-  [linee guida dei trigger](/linee-guida-trigger#il-nome-della-funzione-trigger) chiedono a chi
-  legge gli argomenti da fuori di usare la lettura condivisa.
+* La funzione si indica con schema e nome, e si riconosce per **identità**: la risposta è la stessa
+  con qualunque `search_path` di chi chiama. Una funzione che non esiste non ha trigger da togliere,
+  e la risposta è zero.
+* Gli argomenti si confrontano con quelli **salvati** del trigger (`dbops.fn_trigger_argomenti`):
+  stesso numero, stesso ordine, stesso testo. Un trigger sulla stessa funzione con argomenti
+  diversi resta; una maiuscola o un trattino basso diversi fanno un argomento diverso.
+* È generica: confronta l'elenco intero degli argomenti, senza sapere che cosa significano. La
+  grammatica di una famiglia di trigger la applica chi la chiama.
 
 ---
 
@@ -75,15 +60,9 @@ com'è.
 
 ### Test
 
-Nessun pgTAP la chiama per nome. Il ramo che la usa (riconciliazione della regola ATTIVO) non ha
-una prova di comportamento.
-
----
-
-### Note di migrazione
-
-* 2025-08-28 — nasce nel primo albero dei changeSet (`db/changelog/migrations/50_dbops`).
-* 2026-01-13 — ultima versione del corpo: esclude le partizioni.
+`dbops/test-trigger-attivo-riconoscimento-per-funzione-v1`: toglie il solo trigger con gli
+argomenti chiesti e lascia gli altri sulla stessa tabella, anche col `search_path`
+dell'applicazione; per una funzione che non esiste risponde zero.
 
 ---
 

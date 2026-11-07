@@ -1,0 +1,122 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA CHIAVE ID DEL DOCUMENTO DI ORIGINE: sorgente_id SULLE TABELLE DI VENDITA
+#   Brief: brief-db-sorgente-documento-e-riga §4 (il modello di Tid, 2026-11-06),
+#   §7.2 lotto 0 («le colonne nuove dove mancano»).
+#
+# ── ⭐ IL MODELLO ────────────────────────────────────────────────────
+#   sorgente_tipo_id  il tipo del DOCUMENTO (config.sorgenti);
+#   sorgente_id       la chiave del documento se il tipo ha key_selector 'id';
+#   sorgente_uid      la chiave del documento se il tipo ha key_selector 'uid';
+#   sorgente_riga     la riga di quel documento, NULL = il documento intero.
+#   Oggi nessuna di queste tabelle ha sorgente_id: per un documento a chiave id
+#   la chiave finiva in sorgente_riga (modello A) o in sorgente_uid come testo o
+#   come uid (le altre grammatiche del §3.1).
+#
+# ── ⚠️ ADDITIVO ──────────────────────────────────────────────────────
+#   Colonne nullable, senza default, vuote: nessuno le scrive e nessuno le legge.
+#   Le riempie e le presidia il lotto della famiglia (R, T, C), con la conversione
+#   dei dati nello stesso changeSet e il guard unico script.trgfn_guard_sorgente.
+#   Nessun indice qui: lo decide il lotto che monta il lettore.
+#
+# ── LE TABELLE ──────────────────────────────────────────────────────
+#   testate:  ordini, ddt, resi, contratti, fatture
+#   righe:    preventivi_righe, ordini_righe, ddt_righe, contratti_righe, fatture_righe
+#   commesse: commesse_sorgenti, commesse_attivita (+ sorgente_riga, che non aveva)
+#   ⛔ Fuori, dichiarate: documenti_fatturazione_canali (il registro si ritira nel
+#   lotto T, D-10), attivita_fatturabili (le sue sorgente_* sono ridondanti e si
+#   ritirano nel lotto C, D-3), fatture_stampa_coda (ha gia' sorgente_id, FK vera).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261106-05-alter-vendite-add-sorgente-id-mctit.yaml
+
+  - changeSet:
+      id: 20261106-05-alter-vendite-add-sorgente-id
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        sorgente_id (bigint, vuota) su dodici tabelle di vendita e sorgente_riga su commesse_attivita:
+        le colonne del modello della provenienza. brief-db-sorgente-documento-e-riga §7.2 lotto 0.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*) FROM information_schema.columns
+               WHERE table_schema = 'vendite'
+                 AND ((column_name = 'sorgente_id'
+                       AND table_name IN ('ordini', 'ddt', 'resi', 'contratti', 'fatture',
+                                          'preventivi_righe', 'ordini_righe', 'ddt_righe',
+                                          'contratti_righe', 'fatture_righe',
+                                          'commesse_sorgenti', 'commesse_attivita'))
+                   OR (column_name = 'sorgente_riga' AND table_name = 'commesse_attivita'));
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.ordini            ADD COLUMN sorgente_id bigint NULL;
+              ALTER TABLE vendite.ddt               ADD COLUMN sorgente_id bigint NULL;
+              ALTER TABLE vendite.resi              ADD COLUMN sorgente_id bigint NULL;
+              ALTER TABLE vendite.contratti         ADD COLUMN sorgente_id bigint NULL;
+              ALTER TABLE vendite.fatture           ADD COLUMN sorgente_id bigint NULL;
+              ALTER TABLE vendite.preventivi_righe  ADD COLUMN sorgente_id bigint NULL;
+              ALTER TABLE vendite.ordini_righe      ADD COLUMN sorgente_id bigint NULL;
+              ALTER TABLE vendite.ddt_righe         ADD COLUMN sorgente_id bigint NULL;
+              ALTER TABLE vendite.contratti_righe   ADD COLUMN sorgente_id bigint NULL;
+              ALTER TABLE vendite.fatture_righe     ADD COLUMN sorgente_id bigint NULL;
+              ALTER TABLE vendite.commesse_sorgenti ADD COLUMN sorgente_id bigint NULL;
+              ALTER TABLE vendite.commesse_attivita
+                  ADD COLUMN sorgente_id   bigint NULL,
+                  ADD COLUMN sorgente_riga bigint NULL;
+
+              DO $c$
+              DECLARE
+                  v_tabella text;
+              BEGIN
+                  FOREACH v_tabella IN ARRAY ARRAY[
+                      'ordini', 'ddt', 'resi', 'contratti', 'fatture',
+                      'preventivi_righe', 'ordini_righe', 'ddt_righe', 'contratti_righe',
+                      'fatture_righe', 'commesse_sorgenti', 'commesse_attivita']
+                  LOOP
+                      EXECUTE format(
+                          'COMMENT ON COLUMN vendite.%I.sorgente_id IS %L', v_tabella,
+                          'La chiave del documento di origine quando il suo tipo (sorgente_tipo_id, '
+                          || 'config.sorgenti) ha key_selector ''id'': l''id del documento. In alternativa a '
+                          || 'sorgente_uid, mai tutte e due. Se la provenienza e'' una riga di quel documento, '
+                          || 'la riga sta in sorgente_riga. La chiave giusta la restituisce '
+                          || 'script.fn_sorgente_chiave; la verifica il guard script.trgfn_guard_sorgente. '
+                          || 'Resta NULL finche'' la tabella scrive la provenienza nella grammatica precedente.');
+                  END LOOP;
+              END
+              $c$;
+
+              COMMENT ON COLUMN vendite.commesse_attivita.sorgente_riga IS
+                  'La riga del documento di origine da cui nasce la riga di commessa (la riga del preventivo, dell''ordine, del contratto): l''id nella tabella delle righe che config.sorgenti dichiara per il tipo (righe_table). NULL = la provenienza e'' il documento intero. Resta NULL finche'' la tabella scrive la provenienza nella grammatica precedente.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.commesse_attivita DROP COLUMN IF EXISTS sorgente_riga,
+                                                    DROP COLUMN IF EXISTS sorgente_id;
+              ALTER TABLE vendite.commesse_sorgenti DROP COLUMN IF EXISTS sorgente_id;
+              ALTER TABLE vendite.fatture_righe     DROP COLUMN IF EXISTS sorgente_id;
+              ALTER TABLE vendite.contratti_righe   DROP COLUMN IF EXISTS sorgente_id;
+              ALTER TABLE vendite.ddt_righe         DROP COLUMN IF EXISTS sorgente_id;
+              ALTER TABLE vendite.ordini_righe      DROP COLUMN IF EXISTS sorgente_id;
+              ALTER TABLE vendite.preventivi_righe  DROP COLUMN IF EXISTS sorgente_id;
+              ALTER TABLE vendite.fatture           DROP COLUMN IF EXISTS sorgente_id;
+              ALTER TABLE vendite.contratti         DROP COLUMN IF EXISTS sorgente_id;
+              ALTER TABLE vendite.resi              DROP COLUMN IF EXISTS sorgente_id;
+              ALTER TABLE vendite.ddt               DROP COLUMN IF EXISTS sorgente_id;
+              ALTER TABLE vendite.ordini            DROP COLUMN IF EXISTS sorgente_id;

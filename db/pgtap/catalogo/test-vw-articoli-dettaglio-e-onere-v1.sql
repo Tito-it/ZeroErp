@@ -12,8 +12,12 @@
 --   2) la merce: e_onere falso, causale NULL
 --   3) e_onere e' la definizione di articolo-onere su tutto il catalogo
 --      (causale_onere_id IS NOT NULL), seed compreso
---   4) le due colonne nuove sono in coda (il BE legge per nome, il resto non
---      si sposta)
+--   4) le due colonne nuove stanno subito dopo requires_lotto, dove le ha
+--      messe in coda il 20261103-53 (il BE legge per nome, il resto non si
+--      sposta). Si controlla la posizione relativa e non "le ultime 3": le
+--      colonne aggiunte in coda dopo (obsoleto_dal ed e_obsoleto, 20261106-03)
+--      sono legittime e non devono far diventare rosso il test.
+--      Rev. 2026-11-06.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -60,13 +64,15 @@ SELECT is(
 SELECT is(
   (SELECT string_agg(c.column_name::text, ',' ORDER BY c.ordinal_position)
      FROM information_schema.columns c
+    CROSS JOIN (SELECT c2.ordinal_position AS pos
+                  FROM information_schema.columns c2
+                 WHERE c2.table_schema = 'catalogo'
+                   AND c2.table_name = 'vw_articoli_dettaglio'
+                   AND c2.column_name = 'requires_lotto') r
     WHERE c.table_schema = 'catalogo' AND c.table_name = 'vw_articoli_dettaglio'
-      AND c.ordinal_position > (SELECT max(c2.ordinal_position) - 3
-                                  FROM information_schema.columns c2
-                                 WHERE c2.table_schema = 'catalogo'
-                                   AND c2.table_name = 'vw_articoli_dettaglio')),
+      AND c.ordinal_position BETWEEN r.pos AND r.pos + 2),
   'requires_lotto,e_onere,causale_onere_id',
-  '4) e_onere e causale_onere_id in coda, dopo requires_lotto');
+  '4) e_onere e causale_onere_id subito dopo requires_lotto');
 
 SELECT * FROM finish();
 ROLLBACK;

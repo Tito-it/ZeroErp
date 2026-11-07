@@ -1,0 +1,78 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL GUARD UNICO NASCE SENZA TABELLE: UNA VOCE NEL REGISTRO DEI RIFERIMENTI MORTI
+#   dbops.riferimenti_morti_esenzioni, riga script.trgfn_guard_sorgente
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto 0 (giro 0.1).
+#
+# ── PERCHE' ─────────────────────────────────────────────────────────
+#   dbops/test-riferimenti-morti-v1 (test 3) segnala ogni funzione trigger che
+#   nessun trigger monta: «non validabile, e gia' di per se' un residuo». Il guard
+#   unico (20261106-15) nasce cosi' di proposito: il lotto 0 e' additivo, e il
+#   guard lo monta ogni lotto di famiglia sulle sue tabelle, dopo la conversione.
+#   Trovato provando il presidio con l'SQL estratto, prima dell'apply.
+#
+# ── ⚠️ COME SI ESCE ─────────────────────────────────────────────────
+#   La voce si toglie nel changeSet che monta il guard sulla PRIMA tabella vera
+#   (lotto R): da li' vw_riferimenti_morti_rientrati la elenca e il test 4 dello
+#   stesso presidio e' rosso finche' la riga non cala. Precedente identico:
+#   20260804-65 / 20260915-18 per la sorella _tipizzata.
+#
+# ── FORMA ───────────────────────────────────────────────────────────
+#   INSERT idempotente sulla chiave naturale (schema_nome, funzione, esito_like),
+#   runOnChange: false. Senza DELETE del registro: le altre voci non sono di
+#   questo cantiere.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261106-16-seed-esenzione-riferimenti-morti-guard-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20261106-16-seed-esenzione-riferimenti-morti-guard-sorgente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Voce del registro del debito per script.trgfn_guard_sorgente («senza alcun trigger»): il guard unico
+        nasce senza tabelle nel lotto 0 e lo montano i lotti di famiglia. Esce col primo montaggio (lotto R).
+        brief-db-sorgente-documento-e-riga §7.2 lotto 0.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: dbops
+            tableName: riferimenti_morti_esenzioni
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              INSERT INTO dbops.riferimenti_morti_esenzioni
+                     (schema_nome, funzione, esito_like, motivo, data_registrazione)
+              VALUES (
+                'script',
+                'trgfn_guard_sorgente',
+                '%senza alcun trigger%',
+                'ORFANA DI PROPOSITO, per la durata del lotto 0 della sorgente polimorfa. '
+                'Il guard unico della provenienza nasce senza tabelle: il lotto 0 e'' '
+                'additivo, e il guard lo monta ogni lotto di famiglia sulle sue tabelle, '
+                'dopo la conversione dei dati. Ha un pgTAP proprio '
+                '(script/test-guard-sorgente-v1), che lo monta su tabelle temporanee. '
+                'Esce da questo registro col changeSet che lo monta sulla prima tabella '
+                'vera (lotto R, le righe di vendita).',
+                DATE '2026-11-06'
+              )
+              ON CONFLICT ON CONSTRAINT uq_riferimenti_morti_esenzioni_voce DO NOTHING;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DELETE FROM dbops.riferimenti_morti_esenzioni e
+               WHERE (e.schema_nome, e.funzione, e.esito_like)
+                   = ('script', 'trgfn_guard_sorgente', '%senza alcun trigger%');

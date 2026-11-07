@@ -67,7 +67,7 @@ SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('presidio bolla');
 -- 2) Stato, sorgente, numero
 SELECT is(
     (SELECT s.codice_interno::text || ' ' || so.codice_interno::text
-         || ' ' || (d.sorgente_uid = b.ordine_uid)::text || ' ' || (d.numero IS NOT NULL)::text
+         || ' ' || (d.sorgente_id = b.ordine_id AND d.sorgente_uid IS NULL)::text || ' ' || (d.numero IS NOT NULL)::text
        FROM t_b b
        JOIN vendite.ddt d ON d.id = b.ddt_id
        JOIN config.stati_doc_ddt s ON s.id = d.stato_doc_ddt_id

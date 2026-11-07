@@ -116,7 +116,8 @@ SELECT is(has_sequence_privilege('zeroerp_app', 'dbops.error_log_id_seq', 'USAGE
 --        DROP+CREATE, che riporta i default.
 -- ============================================================
 SELECT is(has_function_privilege('zeroerp_app',
-            'dbops.fn_audit_log_once(text,text,jsonb,text,text,text[],text,boolean,text,text,integer,jsonb,text,text)',
+            -- firma con p_duration_ms in coda (20_code/dbops/20261107-01)
+            'dbops.fn_audit_log_once(text,text,jsonb,text,text,text[],text,boolean,text,text,integer,jsonb,text,text,integer)',
             'EXECUTE'), true,
           '13. fn_audit_log_once: EXECUTE concesso — è la porta di scrittura dell''app');
 -- ⭐ 14-15: la modalità sessione è ritirata (90_end/20261104-18). Un ritorno

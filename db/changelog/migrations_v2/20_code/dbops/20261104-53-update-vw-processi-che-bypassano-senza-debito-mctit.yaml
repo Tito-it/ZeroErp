@@ -1,0 +1,88 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.vw_processi_che_bypassano: il debito dichiarato non c'e' piu', e la
+# vista deve restare vuota.
+#   Brief: brief-db-revisione-dbops, D43 (giro 1, blocco 1d).
+#
+# Base: 20_code/dbops/20260904-10, l'unico changeSet della vista, verificato
+# uguale al vivo.
+#
+# ⚠️ IL DIFETTO. La vista classificava DEBITO_DICHIARATO, per NOME, il ruolo
+#   zeroerp_batch_fatturazione, e scriveva su ogni riga la nota fissa «Ritiro
+#   previsto alla fase 6-bis». Il ruolo e' ritirato dal 2026-10-15, ma il nome
+#   restava: e il presidio (dbops.presidi) contava solo le righe diverse da
+#   DEBITO_DICHIARATO. Se un ruolo con quel nome tornasse con BYPASSRLS, il
+#   presidio sulla row level security tacerebbe.
+#
+# ⭐ LA CORREZIONE. Il debito dichiarato era UNO, ed e' chiuso: con lui spariscono
+#   il nome, la nota e la colonna stato, che senza debito varrebbe sempre
+#   NON_DICHIARATO. La vista elenca i ruoli applicativi (login, non superuser)
+#   con BYPASSRLS, e deve restare VUOTA. Un debito nuovo, se servira', si
+#   dichiara con un changeSet sulla vista e sul presidio, come questo: non con
+#   una lista di nomi che sopravvive al debito.
+#   Il presidio si riallinea nello stesso rilascio: la riga di presidi.csv
+#   perde colonna_stato e stato_atteso (si contano tutte le righe, soglia ZERO)
+#   e la nota si riscrive. Fra questo changeSet e il mirror di 80_data nessuno
+#   conta i presidi: la convergenza e' in 90_end.
+#
+# ⚠️ LA FORMA. Una colonna che sparisce: CREATE OR REPLACE non lo permette,
+#   quindi DROP e CREATE. Nessun oggetto dipende dalla vista (pg_depend: solo
+#   la sua regola). SELECT all'app torna dai default privileges del migratore
+#   su dbops. security_invoker: legge solo pg_roles, che vedono tutti; si
+#   allinea alle altre viste dei presidi sul catalogo.
+#   I lettori della colonna stato: db/pgtap/dbops/test-processi-registro.sql
+#   (test 13) e scripts/ritira_ruoli_dismessi.sh, aggiornati insieme.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261104-53-update-vw-processi-che-bypassano-senza-debito-mctit.yaml
+
+  - changeSet:
+      id: 20261104-53-update-vw-processi-che-bypassano-senza-debito
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.vw_processi_che_bypassano senza il debito dichiarato per nome (ritirato il
+        2026-10-15): elenca i ruoli applicativi con BYPASSRLS e deve restare vuota (D43).
+        Colonne stato e nota tolte: DROP e CREATE.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_class c
+                JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+               WHERE n.nspname = 'dbops' AND c.relname = 'vw_processi_che_bypassano'
+                 AND c.relkind = 'v';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP VIEW dbops.vw_processi_che_bypassano;
+
+              CREATE VIEW dbops.vw_processi_che_bypassano
+              WITH (security_invoker = true) AS
+              SELECT r.rolname AS ruolo
+                FROM pg_catalog.pg_roles r
+               WHERE r.rolbypassrls
+                 AND r.rolcanlogin
+                 AND NOT r.rolsuper;
+
+              COMMENT ON VIEW dbops.vw_processi_che_bypassano IS
+                  'PRESIDIO — deve restare VUOTA. I ruoli APPLICATIVI (con login, non superuser) che hanno BYPASSRLS: un ruolo cosi'' scavalca la separazione dei dati fra aziende emittenti. ⚠️ Non dice «nessuno bypassa la RLS»: pgAgent bypassa perche'' e'' superuser e il proprietario delle tabelle per proprieta'', e devono, perche'' fanno DDL. Fino al 2026-11-04 la vista ammetteva un debito dichiarato per nome (zeroerp_batch_fatturazione, ritirato il 2026-10-15) e il presidio contava solo le righe non dichiarate: un ruolo tornato con quel nome sarebbe passato muto. Un debito nuovo si dichiara con un changeSet sulla vista e sul presidio, non con una lista di nomi. A catalogo in dbops.presidi, soglia ZERO; lo prova db/pgtap/dbops/test-processi-registro.sql. security_invoker: legge solo pg_roles.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo dal corpo di 20260904-10
+              -- (DROP e CREATE, con le colonne stato e nota).
+              SELECT 1;

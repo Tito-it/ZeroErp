@@ -1,0 +1,45 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL BB DEGLI SNAPSHOT DI STATO NOMINA GLI INDICI DELLA PROVENIENZA
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto T, giro T.5.
+#
+#   Il COMMENT di vendite.trgfn_doc_snapshot_da_stato diceva a che cosa servono gli
+#   snapshot: uq_contratti_offerta_id e uq_ordini_v_documento_origine_offerta, che si
+#   ritirano in -96 e -97. Gli stessi snapshot servono agli indici della provenienza
+#   (uq_contratti_sorgente_offerta, uq_ordini_v_sorgente_offerta, D-8 del giro T.3).
+#   Cambia solo quella frase (COMMENT vivo del 2026-11-07); il corpo non cambia.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261106-98-comment-trgfn-doc-snapshot-da-stato-indici-provenienza-mctit.yaml
+
+  - changeSet:
+      id: 20261106-98-comment-trgfn-doc-snapshot-da-stato-indici-provenienza
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.trgfn_doc_snapshot_da_stato: il COMMENT nomina gli indici unici della provenienza.
+        brief-db-sorgente-documento-e-riga §7.2 lotto T, giro T.5.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.trgfn_doc_snapshot_da_stato()
+              IS 'BB (2026-10-11, brief-db-annullo-documento-con-legami D-6): copia sulla riga le bandiere booleane del vocabolario degli stati, a ogni INSERT e UPDATE (BEFORE, fascia _z90_, senza OF: lo snapshot e'' derivato e una scrittura a mano non lo falsifica). Montaggio: [0] colonna di stato, [1] vocabolario (schema.tabella), poi coppie (colonna snapshot, colonna del vocabolario). Serve a indici e colonne generate, che non leggono un''altra tabella: vendite.contratti (is_abortito_snapshot, is_draft_snapshot -> partecipa_overlap_snapshot e uq_contratti_sorgente_offerta) e vendite.ordini (is_abortito_snapshot -> uq_ordini_v_sorgente_offerta). Stato NULL o assente: false. Montaggio sbagliato: E_VENDITE_CHIAMATA_NON_VALIDA. Regola del 2: prende il posto di vendite.trgfn_contratti_sync_is_abortito_snapshot.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.trgfn_doc_snapshot_da_stato()
+              IS 'BB (2026-10-11, brief-db-annullo-documento-con-legami D-6): copia sulla riga le bandiere booleane del vocabolario degli stati, a ogni INSERT e UPDATE (BEFORE, fascia _z90_, senza OF: lo snapshot e'' derivato e una scrittura a mano non lo falsifica). Montaggio: [0] colonna di stato, [1] vocabolario (schema.tabella), poi coppie (colonna snapshot, colonna del vocabolario). Serve a indici e colonne generate, che non leggono un''altra tabella: vendite.contratti (is_abortito_snapshot, is_draft_snapshot -> partecipa_overlap_snapshot e uq_contratti_offerta_id) e vendite.ordini (is_abortito_snapshot -> uq_ordini_v_documento_origine_offerta). Stato NULL o assente: false. Montaggio sbagliato: E_VENDITE_CHIAMATA_NON_VALIDA. Regola del 2: prende il posto di vendite.trgfn_contratti_sync_is_abortito_snapshot.';

@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Le tabelle che ogni processo SCRIVE, con il percorso che porta all'emittente. Serve al presidio «dichiarato DOMINIO ma senza percorso» (dbops.vw_processi_dominio_senza_emittente), che prende l'omissione di progetto PRIMA che il processo giri — a runtime non e' recuperabile. ⚠️ E' un elenco DICHIARATO: prova che qualcuno ha detto dove il processo scrive, non che scriva solo li'. Brief: brief-db-processi-automatici-identita-e-perimetro §2.3.
+> Le tabelle che ogni processo scrive, con il percorso che porta all'emittente della riga. La leggono i presidi dbops.vw_processi_dominio_senza_emittente (processo di dominio senza bersagli, tabella o colonna inesistente, percorso non dichiarato) e dbops.vw_processi_dominio_senza_difesa (bersaglio senza policy o senza guard di scrittura), che trovano l'omissione prima che il processo giri. E' un elenco dichiarato: dice dove il processo scrive secondo chi l'ha registrato, non che scriva solo li'.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
@@ -25,8 +25,8 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | chk_processi_bersagli_via |  |
 | CHECK | chk_processi_bersagli_via_colonna |  |
+| FOREIGN KEY | fk_processi_bersagli_emittente_via | emittente_via |
 | FOREIGN KEY | fk_processi_bersagli_processi | processo_id |
 | PRIMARY KEY | pk_processi_bersagli | id |
 | UNIQUE | uq_processi_bersagli_target | processo_id, schema_tabella, nome_tabella |
@@ -34,6 +34,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_processi_bersagli_emittente_via | `CREATE INDEX ix_processi_bersagli_emittente_via ON dbops.processi_bersagli USING btree (emittente_via)` |
 | ix_processi_bersagli_processo_id | `CREATE INDEX ix_processi_bersagli_processo_id ON dbops.processi_bersagli USING btree (processo_id)` |
 | pk_processi_bersagli | `CREATE UNIQUE INDEX pk_processi_bersagli ON dbops.processi_bersagli USING btree (id)` |
 | uq_processi_bersagli_target | `CREATE UNIQUE INDEX uq_processi_bersagli_target ON dbops.processi_bersagli USING btree (processo_id, schema_tabella, nome_tabella)` |

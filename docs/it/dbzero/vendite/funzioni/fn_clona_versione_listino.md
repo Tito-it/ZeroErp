@@ -13,7 +13,7 @@ CREATE FUNCTION fn_clona_versione_listino(p_sorgente_id bigint, p_codice_version
 
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_clona_versione_listino(p_sorgente_id bigint, p_codice_versione character varying, p_valido_dal date, p_valido_al date DEFAULT NULL::date)
- RETURNS TABLE(versione_id bigint, righe_copiate integer, componenti_copiati integer, componenti_saltati integer)
+ RETURNS TABLE(versione_id bigint, righe_copiate integer, componenti_copiati integer, componenti_saltati integer, righe_saltate integer)
  LANGUAGE plpgsql
 AS $function$
 DECLARE
@@ -22,6 +22,7 @@ DECLARE
     v_nuova_id   vendite.listini_versioni.id%TYPE;
     -- CONTEGGI delle righe copiate e dei componenti della sorgente.
     v_righe      integer;
+    v_righe_sorg integer;
     v_componenti integer;
     v_comp_sorg  integer;
 BEGIN
@@ -89,16 +90,26 @@ BEGIN
 
     -- 4. Le righe attive.
     -- rev 2026-10-31 (20261031-38): con la periodicita', che il clone perdeva.
+    -- rev 2026-11-06 (20261106-01, O-6): l'articolo ritirato si salta, con
+    --   lo stesso BB del guard di riga: la copia scrive solo cio' che passa.
+    SELECT count(*) INTO v_righe_sorg
+      FROM vendite.listini_righe r
+     WHERE r.listino_versione_id = p_sorgente_id
+       AND r.attivo IS TRUE;
+
     INSERT INTO vendite.listini_righe (listino_versione_id, articolo_id, uom_id,
                                        prezzo, periodicita, meta, attivo)
     SELECT v_nuova_id, r.articolo_id, r.uom_id, r.prezzo, r.periodicita, r.meta, TRUE
       FROM vendite.listini_righe r
+      JOIN catalogo.articoli a ON a.id = r.articolo_id
      WHERE r.listino_versione_id = p_sorgente_id
-       AND r.attivo IS TRUE;
+       AND r.attivo IS TRUE
+       AND NOT script.fn_e_obsoleto(a.obsoleto_dal);
     GET DIAGNOSTICS v_righe = ROW_COUNT;
 
     -- 5. I componenti attivi, nel periodo comune alla riga di
     --    distinta e alla versione nuova; gli altri si saltano.
+    --    Si saltano anche quelli dell'articolo ritirato (O-6).
     SELECT count(*) INTO v_comp_sorg
       FROM vendite.listini_righe_componenti c
      WHERE c.listino_versione_id = p_sorgente_id
@@ -115,25 +126,31 @@ BEGIN
            TRUE
       FROM vendite.listini_righe_componenti c
       JOIN catalogo.articoli_componenti ac ON ac.id = c.articolo_componente_id
+      JOIN catalogo.articoli ap ON ap.id = c.articolo_padre_id
      WHERE c.listino_versione_id = p_sorgente_id
        AND c.attivo IS TRUE
+       AND NOT script.fn_e_obsoleto(ap.obsoleto_dal)
        AND GREATEST(ac.valido_dal, p_valido_dal)
            <= LEAST(COALESCE(ac.valido_al, 'infinity'::date),
                     COALESCE(p_valido_al,  'infinity'::date));
     GET DIAGNOSTICS v_componenti = ROW_COUNT;
 
     -- 6. rev 2026-10-31 (20261031-38, D-2-bis): i kit, con la loro periodicita'.
+    --    rev 2026-11-06 (O-6): non quelli dell'articolo ritirato.
     INSERT INTO vendite.listini_kit (listino_versione_id, articolo_padre_id, periodicita, meta)
     SELECT v_nuova_id, k.articolo_padre_id, k.periodicita, k.meta
       FROM vendite.listini_kit k
-     WHERE k.listino_versione_id = p_sorgente_id;
+      JOIN catalogo.articoli ap ON ap.id = k.articolo_padre_id
+     WHERE k.listino_versione_id = p_sorgente_id
+       AND NOT script.fn_e_obsoleto(ap.obsoleto_dal);
 
-    RETURN QUERY SELECT v_nuova_id, v_righe, v_componenti, v_comp_sorg - v_componenti;
+    RETURN QUERY SELECT v_nuova_id, v_righe, v_componenti, v_comp_sorg - v_componenti,
+                        v_righe_sorg - v_righe;
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_clona_versione_listino(p_sorgente_id bigint, p_codice_versione character varying, p_valido_dal date, p_valido_al date)
-IS 'VERBO «Clona» di una versione di listino, in una transazione: la sorgente nel perimetro, da qualunque stato (SECURITY INVOKER, la RLS delle tabelle del listino; FOR KEY SHARE; non trovata E_VENDITE_LISTINO_VERSIONE_NOT_FOUND); prima cio'' che vieta, sul campo valido_dal (il primo motivo di script.fn_check_versione_listino_clonabile: E_LISTINO_VERSIONE_CLONE_PRIMA_DELLA_SORGENTE, decisione D2); poi la versione nuova dello stesso listino (codice, decorrenza e fine dai parametri; nasce BOZZA, attivo e meta dai default), le righe attive della sorgente (articolo, uom, prezzo, meta) e i componenti attivi con la validita'' ricalcolata come intersezione fra la riga di distinta e la versione nuova. Si saltano i componenti senza intersezione. Ritorna la versione nuova, righe e componenti copiati, componenti saltati. Prende il posto di listini_repository.clone_versione e della regola D2 del service. Il permesso d''area resta al backend. EXECUTE solo all''applicazione. Brief: brief-modello-documento-vendita §16.14 (C-1 = a, Tid 2026-10-29).';
+IS 'VERBO «Clona» di una versione di listino, in una transazione: la sorgente nel perimetro, da qualunque stato (SECURITY INVOKER, la RLS delle tabelle del listino; FOR KEY SHARE; non trovata E_VENDITE_LISTINO_VERSIONE_NOT_FOUND); prima cio'' che vieta, sul campo valido_dal (il primo motivo di script.fn_check_versione_listino_clonabile: E_LISTINO_VERSIONE_CLONE_PRIMA_DELLA_SORGENTE, decisione D2); poi la versione nuova dello stesso listino (codice, decorrenza e fine dai parametri; nasce BOZZA, attivo e meta dai default), le righe attive della sorgente (articolo, uom, prezzo, meta) e i componenti attivi con la validita'' ricalcolata come intersezione fra la riga di distinta e la versione nuova. Si saltano i componenti senza intersezione. Ritorna la versione nuova, righe e componenti copiati, componenti saltati. Prende il posto di listini_repository.clone_versione e della regola D2 del service. Il permesso d''area resta al backend. EXECUTE solo all''applicazione. Brief: brief-modello-documento-vendita §16.14 (C-1 = a, Tid 2026-10-29). rev 2026-10-31 (20261031-38): copia la periodicita'' delle righe e i kit. ⭐ rev 2026-11-06 (20261106-01, brief-db-articoli-obsoleto-dal O-6): l''articolo ritirato alla data operativa (script.fn_e_obsoleto, lo stesso BB del guard di riga e del picker) non si ricopia: si saltano la sua riga, i suoi componenti e i suoi kit, e la copia non si ferma (O-2: una versione nuova e'' un impegno nuovo a vendere). + righe_saltate in coda al risultato; componenti_saltati conta anche i componenti dell''articolo ritirato. RETURNS TABLE cambiato: DROP + CREATE.';
 ```
 
 </div>

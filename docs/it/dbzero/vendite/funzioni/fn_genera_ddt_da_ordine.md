@@ -30,9 +30,7 @@ AS $function$
 --   l'ambito degli indirizzi DDT diventa DDT_VENDITA, il codice della
 --   sorgente; firma e RETURNS ancorati.
 DECLARE
-    v_sorg_ord_id     config.sorgenti.id%TYPE;
     v_stato_ord       config.stati_doc_ordini.codice_interno%TYPE;
-    v_ordine_uid      vendite.ordini.uid%TYPE;
     v_dest_ruolo_id   vendite.ordini.soggetto_ruolo_id%TYPE;
     v_ddt_id          vendite.ddt.id%TYPE;
     v_new_riga_id     vendite.ddt_righe.id%TYPE;
@@ -47,6 +45,9 @@ DECLARE
     -- Il BERSAGLIO dei due rifiuti di evasione. ⚠️ `jsonb` esplicito: e' un
     -- frammento del context, non il valore di una colonna.
     v_bersagli        jsonb;
+    v_prov_tipo_id    vendite.ddt_righe.sorgente_tipo_id%TYPE;
+    v_prov_id         vendite.ddt_righe.sorgente_id%TYPE;
+    v_prov_uid        vendite.ddt_righe.sorgente_uid%TYPE;
 BEGIN
     -- 1) Guard input.
     IF p_ordine_id IS NULL OR p_ordine_id <= 0 THEN
@@ -57,8 +58,8 @@ BEGIN
     END IF;
 
     -- 2) Ordine esiste + stato evadibile.
-    SELECT o.uid, o.soggetto_ruolo_id, sdo.codice_interno
-      INTO v_ordine_uid, v_dest_ruolo_id, v_stato_ord
+    SELECT o.soggetto_ruolo_id, sdo.codice_interno
+      INTO v_dest_ruolo_id, v_stato_ord
       FROM vendite.ordini o
       JOIN config.stati_doc_ordini sdo ON sdo.id = o.stato_doc_ordine_id
      WHERE o.id = p_ordine_id;
@@ -94,18 +95,21 @@ BEGIN
             NULL::uuid, p_ordine_id::text, v_stato_ord);
     END IF;
 
-    -- 3) Sorgente ORDINE_VENDITA (C1).
-    SELECT id INTO v_sorg_ord_id FROM config.sorgenti
-     WHERE codice_interno = 'ORDINE_VENDITA' AND attivo IS TRUE;
+    -- 3) La provenienza della bolla e delle sue righe: il tipo ORDINE_VENDITA e la
+    --    chiave dell'ordine per il key_selector del tipo (script.fn_sorgente_provenienza).
+    --    Una volta sola; la riga ci aggiunge sorgente_riga.
+    SELECT p.sorgente_tipo_id, p.sorgente_id, p.sorgente_uid
+      INTO v_prov_tipo_id, v_prov_id, v_prov_uid
+      FROM script.fn_sorgente_provenienza('ORDINE_VENDITA', p_ordine_id::text) p;
 
     -- 4) Testata DDT DRAFT. Billing/utility/valuta via trgfn_ddt_normalize.
     --    Lo stato non si scrive: DRAFT lo mette trg_ddt_a05_stato_iniziale_ins.
     INSERT INTO vendite.ddt (
         data, destinatario_soggetto_ruolo_id,
-        sorgente_tipo_id, sorgente_uid)
+        sorgente_tipo_id, sorgente_id, sorgente_uid)
     VALUES (
         COALESCE(p_data, (SELECT script.fn_data_operativa())), v_dest_ruolo_id,
-        v_sorg_ord_id, v_ordine_uid)
+        v_prov_tipo_id, v_prov_id, v_prov_uid)
     RETURNING id INTO v_ddt_id;
 
     -- 4-bis) Cascata indirizzi (D-1): copia 1:1 gli snapshot dell'ordine
@@ -193,14 +197,18 @@ BEGIN
             ddt_id, riga_nr, articolo_id, descrizione,
             prezzo_unitario, sconto_percentuale, iva_id,
             qta_operativa, uom_operativa_id, factor_to_base,
-            natura_vendita_id)
+            natura_vendita_id,
+            sorgente_tipo_id, sorgente_id, sorgente_uid, sorgente_riga)
         VALUES (
             v_ddt_id, v_riga_nr, v_riga.articolo_id, v_riga.descrizione,
             CASE WHEN v_riga.is_composito THEN 0 ELSE v_riga.prezzo_unitario END,
             v_riga.sconto_percentuale, v_riga.iva_id,
             v_qta_op, v_riga.uom_operativa_id, v_riga.factor_to_base,
             -- La natura con cui l'ordine ha venduto la riga (A-4).
-            v_riga.natura_vendita_id)
+            v_riga.natura_vendita_id,
+            -- La provenienza: l'ordine e la riga che si evade. La quantita'
+            -- evasa e' del fulfillment, qui sotto.
+            v_prov_tipo_id, v_prov_id, v_prov_uid, v_riga.ordine_riga_id)
         RETURNING id, quantita INTO v_new_riga_id, v_qta_base;
 
         -- Componenti CASO A (A-2): copia 1:1 (no resolver). La qta
@@ -228,7 +236,7 @@ BEGIN
         -- "e alimenta mv_ddt_ordini": quella vista materializzata e' stata
         -- ritirata il 2026-08-05 (nessuno la leggeva, nessuno la
         -- aggiornava). Il legame ordine<->DDT si ricava da qui e da
-        -- ddt.sorgente_uid, che e' cio' che l'applicazione usa davvero.
+        -- dalla provenienza della testata (ddt.sorgente_*).
         -- qta_evasa = quantita base della riga DDT (derivata dal trigger).
         -- Il guard fulfillment valida articolo/uom/residuo (C2).
         -- rev 2026-11-03: anche per l'onere — e' il suo «gia' passato»
@@ -272,7 +280,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_genera_ddt_da_ordine(p_ordine_id bigint, p_righe jsonb, p_data date)
-IS 'Madre evasione ordine->DDT (DRAFT): multi-DDT (A-1), copia snapshot prezzi/componenti (A-2), fulfillment riga-riga (over-shipping via guard, C2), proiezione stato ordine CONFERMATO/PARZIALMENTE_EVASO/EVASO (C5). sorgente=ORDINE_VENDITA (C1). p_righe [{ordine_riga_id, qta_da_evadere(operativa)}] NULL=tutto il residuo. Pattern fn_push_preventivo_a_ordine. rev 2026-07-09. ⭐ rev 2026-08-24: i due rifiuti di evasione (E_DDT_ORDINE_STATO_NON_EVADIBILE, E_DDT_NIENTE_DA_EVADERE) portano il BERSAGLIO sull''ordine, nel canale DATATYPE dell''eccezione: l''evasione si lancia anche in massa, e li'' la frase dice QUALE ordine ha rifiutato ma non ci porta. Il bersaglio si compone una volta sola dopo la lettura dell''ordine — a quel punto esiste ED e'' visibile — e non costa nessuna query in piu''. ⛔ E_DDT_ORDINE_NOT_FOUND resta SENZA bersaglio, di proposito: l''ordine non c''e'' o la RLS lo nasconde, e un pulsante che apre il vuoto e'' peggio di nessun pulsante. Brief: brief-db-bersaglio-errore.md §6 L6. ⭐ rev 2026-10-11 (brief-db-ddt-righe-evase-dall-ordine §5.2): la proiezione dello stato dell''ordine (step 7) e'' il building block vendite.fn_ordine_proietta_stato_evasione, condiviso coi cinque verbi del reso, con vendite.fn_ddt_riga_correggi_qta_evasa e col ritiro del legame in bozza; la copia scritta a mano qui si ritira (regola del 2). Comportamento invariato. ⭐ rev 2026-10-13 (20261013-12, brief-db-articoli-ammessi-per-documento A-4): la riga di bolla porta la natura della riga d''ordine che evade, che script.trgfn_righe_natura_vendita in modo CHIAMANTE accetta: si spedisce cio'' che l''ordine ha venduto, anche se l''articolo nel frattempo ha cambiato natura. Firma invariata. Rev 2026-10-20 (20261020-55, brief-db-grammatica-unica-documenti 2d, G-6): l''ambito degli indirizzi DDT diventa DDT_VENDITA, il codice della sorgente. ⭐ Rev 2026-11-03 (20261103-36, brief-db-addebito-trasporto-ordine §8.2, K-4/K-5, decisioni di Tid): la riga-onere dell''ordine (script.fn_natura_e_merce = false sulla natura congelata) passa INTERA nella PRIMA bolla, anche se p_righe non la nomina, e qta_da_evadere per lei non conta; il legame e'' il fulfillment con la quantita'' intera (lo pretende vendite.trgfn_ordini_ful_guard_consistenza), quindi la seconda bolla la salta (residuo 0) e l''annullo della bolla, che ritira il legame, la rende di nuovo copiabile. La natura congelata viaggia come per le altre righe. Il conteggio del passo 6 e'' della sola merce: una bolla che porterebbe solo oneri e'' E_DDT_NIENTE_DA_EVADERE. Firma invariata.';
+IS 'Madre dell''evasione ordine -> bolla DRAFT. Piu'' bolle per lo stesso ordine; p_righe [{ordine_riga_id, qta_da_evadere (operativa)}], NULL = tutto il residuo. La provenienza si legge una volta con script.fn_sorgente_provenienza (ORDINE_VENDITA con la chiave dell''ordine): la testata dichiara l''ordine, ogni riga lo dichiara con in sorgente_riga la riga d''ordine. Per ogni riga copia lo snapshot di prezzi e componenti e la natura che l''ordine ha venduto, e scrive il fulfillment (vendite.ordini_righe_fulfillment, la quantita'' evasa; l''eccesso lo ferma il guard). La riga-onere (script.fn_natura_e_merce = false sulla natura congelata) passa intera nella prima bolla, anche se p_righe non la nomina; dopo, il suo residuo e'' 0. Rifiuti: E_DDT_ORDINE_NOT_FOUND, senza bersaglio (l''ordine non c''e'' o non e'' visibile); E_DDT_ORDINE_STATO_NON_EVADIBILE ed E_DDT_NIENTE_DA_EVADERE, col bersaglio sull''ordine; una bolla che porterebbe solo oneri e'' E_DDT_NIENTE_DA_EVADERE. Lo stato dell''ordine lo proietta vendite.fn_ordine_proietta_stato_evasione. Indirizzi di ambito DDT_VENDITA.';
 ```
 
 </div>

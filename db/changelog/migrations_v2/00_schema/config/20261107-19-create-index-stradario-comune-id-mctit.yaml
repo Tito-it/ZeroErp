@@ -1,0 +1,59 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# config.stradario: l'indice della FK comune_id torna, e resta.
+#   Brief: brief-db-revisione-dbops, Q16 (giro 2, §14.8).
+#
+# ⚠️ IL DIFETTO (visto da Tid dopo l'apply, pgTAP 30 come app). 00_schema/config/
+#   20261107-09 creava ix_config_stradario_comune_id, perche' la chiave unica
+#   delle vie e' diventata parziale e non copre piu' la FK. Ma
+#   80_data/sql/dbops/fk_index_policy_bonifica_ridondanze.csv diceva
+#   consentito = false per quella FK (dal 2026-07-27 l'indice era ridondante col
+#   vincolo unico totale), e dbops.apply_fk_index_policy, che gira in 90_end,
+#   toglie per nome l'indice di una riga a false: creato e subito tolto.
+#
+# ⭐ LA CORREZIONE, in due pezzi:
+#   - la riga del CSV torna a consentito = true (nello stesso giro): la
+#     politica smette di togliere l'indice;
+#   - questo changeSet lo rimette. La politica non lo ricreerebbe da sola:
+#     dbops.vw_fk_senza_indice guarda solo gli schemi di dbops.automation_scope,
+#     e config non c'e'. IF NOT EXISTS: da zero lo crea gia' il -09, e la riga
+#     a true non lo toglie piu'.
+#   Il nome e la forma sono quelli della riga di politica (dll_command).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261107-19-create-index-stradario-comune-id-mctit.yaml
+
+  - changeSet:
+      id: 20261107-19-create-index-stradario-comune-id
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config.stradario: torna ix_config_stradario_comune_id, che la politica degli indici
+        toglieva (riga a consentito = false, ora true): la chiave unica delle vie e' parziale
+        e non copre la FK comune_id.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE INDEX IF NOT EXISTS ix_config_stradario_comune_id
+                  ON config.stradario (comune_id);
+
+              COMMENT ON INDEX config.ix_config_stradario_comune_id IS
+                  'L''indice della chiave esterna comune_id: la chiave unica delle vie e'' parziale e non copre le vie soppresse.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo: togliere l'indice lascia
+              -- scoperta la FK comune_id.
+              SELECT 1;

@@ -75,7 +75,8 @@ BEGIN
               FROM config.stradario s
              WHERE s.stradario_generale_id = p_stradario_generale_id
                AND s.comune_id             = p_comune_id
-               AND s.codice_postale_id     = p_codice_postale_id;
+               AND s.codice_postale_id     = p_codice_postale_id
+               AND s.obsoleto_dal IS NULL;   -- la via viva: la soppressa ha la stessa terna
         ELSE
             -- Senza CAP: prendi il primo stradario per la combinazione
             SELECT s.id
@@ -83,6 +84,7 @@ BEGIN
               FROM config.stradario s
              WHERE s.stradario_generale_id = p_stradario_generale_id
                AND s.comune_id             = p_comune_id
+               AND s.obsoleto_dal IS NULL
              ORDER BY s.id
              LIMIT 1;
         END IF;
@@ -146,7 +148,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_check_indirizzo_duplicato(p_stradario_id integer, p_civico integer, p_estensione_civico character varying, p_palazzina character varying, p_scala character varying, p_piano character varying, p_interno character varying, p_stradario_generale_id integer, p_comune_id integer, p_codice_postale_id integer)
-IS 'Check duplicato indirizzo con risoluzione stradario. Flusso A: p_stradario_id diretto. Flusso B: risolve da stradario_generale_id + comune_id + codice_postale_id. Usa fn_build_indirizzo_normalizzato, cerca match prefix con exact_match. STABLE, PARALLEL SAFE.';
+IS 'Cerca un indirizzo uguale o simile a quello che si sta per creare. Flusso A: la via per id. Flusso B: la via si risolve da via generale, comune ed eventuale codice postale, fra le vie vive (una via soppressa ha la stessa terna di quella viva che ne ha preso il posto). Compone la chiave con anagrafiche.fn_build_indirizzo_normalizzato e cerca per prefisso, con exact_match. STABLE, PARALLEL SAFE.';
 ```
 
 </div>

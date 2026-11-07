@@ -1,11 +1,13 @@
 ## 📘 Documentazione Concettuale – Funzione `script.fn_get_stato_testata_documento`
 
+> **Ultimo aggiornamento**: 7 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 > [vendite.trgfn_dlt_block_ordrig_ddtrig](/dbzero/vendite/funzioni/trgfn_dlt_block_ordrig_ddtrig) — il motivo per cui esiste (l'etichetta per i legami a valle)
 > [vendite.trgfn_doc_righe_lock_fuori_bozza](/dbzero/vendite/funzioni/trgfn_doc_righe_lock_fuori_bozza) — il building block delle righe, dal 2026-09-22 il consumatore principale (tre documenti)
 > [vendite.contratti](/dbzero/vendite/tabelle/contratti) — terzo tipo, `CONTRATTO` (rev 2026-09-22)
-> [vendite.trgfn_doc_guard_delete_solo_bozza](/dbzero/vendite/funzioni/trgfn_doc_guard_delete_solo_bozza) — il guard gemello, sulla testata
+> [vendite.trgfn_doc_guard_delete_solo_bozza](/dbzero/vendite/funzioni/trgfn_doc_guard_delete_solo_bozza) — il guard gemello, sulla testata: dal 2026-11-07 ne legge stato ed etichetta (ordine, DDT, reso, contratto, bozza email)
 > [script.fn_get_testata_id_di_riga](/dbzero/script/funzioni/fn_get_testata_id_di_riga) — il lettore gemello: dalla riga alla testata, per le tabelle nipoti (dal 2026-10-05)
 > [vendite.ddt](/dbzero/vendite/tabelle/ddt)
 > [vendite.ordini](/dbzero/vendite/tabelle/ordini)

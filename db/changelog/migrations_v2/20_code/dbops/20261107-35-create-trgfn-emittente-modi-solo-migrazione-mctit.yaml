@@ -1,0 +1,113 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.trgfn_emittente_modi_solo_migrazione: il registro dei modi lo scrive solo
+#   il proprietario della tabella, cioe' il migrate.
+#   Brief: brief-db-revisione-dbops, D21 (blocco 4b).
+#
+# ⭐ PERCHE'. Dal registro si genera script.fn_resolve_emittente_fiscale_id, la
+#   SECURITY DEFINER che dice di chi e' una riga a 101 policy e ai guard di
+#   scrittura. Una riga del registro e' quindi codice di sicurezza: chi la scrive
+#   decide la strada da cui il risolutore leggera' l'emittente. La scrive solo il
+#   seed, dal proprietario (script.fn_is_proprietario_tabella).
+#
+# ⚠️ E' un TRIGGER e non un permesso: il giro dei grant di ci_apply ri-concede
+#   all'applicazione i privilegi sulle tabelle a ogni passata (stessa ragione di
+#   ui.trgfn_lista_definizione_guard_multi_emittente).
+#
+# Righe: INSERT, UPDATE, DELETE (BEFORE ROW); TRUNCATE (BEFORE STATEMENT).
+#   Codice: E_EMITTENTE_MODI_NON_SCRIVIBILE, NON_PERMESSO.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261107-35-create-trgfn-emittente-modi-solo-migrazione-mctit.yaml
+
+  - changeSet:
+      id: 20261107-35-create-trgfn-emittente-modi-solo-migrazione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Nuovo guard dbops.trgfn_emittente_modi_solo_migrazione su dbops.emittente_modi: righe e
+        TRUNCATE solo dal proprietario della tabella (il migrate); E_EMITTENTE_MODI_NON_SCRIVIBILE
+        (D21, blocco 4b).
+      preConditions:
+        - onFail: HALT
+        - tableExists: { schemaName: dbops, tableName: emittente_modi }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION dbops.trgfn_emittente_modi_solo_migrazione()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              VOLATILE
+              SECURITY INVOKER
+              AS $function$
+              DECLARE
+                -- il modo della riga toccata; NULL per il TRUNCATE (trigger di istruzione)
+                v_modo dbops.emittente_modi.modo%TYPE;
+              BEGIN
+                -- Scopo: dbops.emittente_modi si scrive solo dal proprietario
+                --   della tabella (il migrate, dal seed). INVOKER per
+                --   costruzione: script.fn_is_proprietario_tabella guarda chi
+                --   esegue l'istruzione.
+                IF script.fn_is_proprietario_tabella(TG_RELID) THEN
+                  IF TG_LEVEL = 'ROW' AND TG_OP <> 'DELETE' THEN
+                    RETURN NEW;
+                  END IF;
+                  RETURN OLD;
+                END IF;
+
+                IF TG_LEVEL = 'ROW' THEN
+                  IF TG_OP = 'DELETE' THEN
+                    v_modo := OLD.modo;
+                  ELSE
+                    v_modo := NEW.modo;
+                  END IF;
+                END IF;
+
+                PERFORM script.fn_log_and_raise_error(
+                    'dbops',
+                    'trgfn_emittente_modi_solo_migrazione',
+                    'E_EMITTENTE_MODI_NON_SCRIVIBILE',
+                    jsonb_build_object(
+                        'operazione',   TG_OP,
+                        'modo',         v_modo,
+                        'current_user', current_user,
+                        'detail',       'I modi si dichiarano nel seed emittente_modi.csv e arrivano col migrate'
+                    ),
+                    NULL::uuid,
+                    TG_OP::text
+                );
+                RETURN NULL;  -- irraggiungibile: la riga sopra solleva
+              END
+              $function$;
+
+              COMMENT ON FUNCTION dbops.trgfn_emittente_modi_solo_migrazione() IS
+                'Guard di dbops.emittente_modi (BEFORE INSERT, UPDATE, DELETE di riga e BEFORE TRUNCATE): il registro dei modi lo scrive solo il proprietario della tabella, cioe'' il migrate dal seed emittente_modi.csv (script.fn_is_proprietario_tabella); chiunque altro riceve E_EMITTENTE_MODI_NON_SCRIVIBILE. Dal registro si generano i risolutori dell''emittente, SECURITY DEFINER e letti dalle policy: una riga e'' codice di sicurezza, non configurazione. E'' un trigger e non un permesso perche'' il giro dei grant di ci_apply ri-concede i privilegi sulle tabelle a ogni passata.';
+
+              CREATE TRIGGER trg_emittente_modi_a05_solo_migrazione_ins_upd_dlt
+                  BEFORE INSERT OR UPDATE OR DELETE ON dbops.emittente_modi
+                  FOR EACH ROW
+                  EXECUTE FUNCTION dbops.trgfn_emittente_modi_solo_migrazione();
+
+              CREATE TRIGGER trg_emittente_modi_a05_solo_migrazione_trn
+                  BEFORE TRUNCATE ON dbops.emittente_modi
+                  FOR EACH STATEMENT
+                  EXECUTE FUNCTION dbops.trgfn_emittente_modi_solo_migrazione();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_emittente_modi_a05_solo_migrazione_ins_upd_dlt ON dbops.emittente_modi;
+              DROP TRIGGER IF EXISTS trg_emittente_modi_a05_solo_migrazione_trn ON dbops.emittente_modi;
+              DROP FUNCTION IF EXISTS dbops.trgfn_emittente_modi_solo_migrazione();

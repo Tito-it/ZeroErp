@@ -1,6 +1,6 @@
 # Guida Operativa – Riclassificazione Vie e Toponomastica
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 7 novembre 2026
 >
 > **Destinatari**: amministratori database, operatori manutenzione dati
 >
@@ -52,7 +52,7 @@ Per tutte le casistiche si adotta la stessa logica in quattro passi:
 
 Il campo `stradario_id` su `anagrafiche.indirizzi_dettaglio` è protetto dal guard `trgfn_indirizzi_dettaglio_protect_update`: cambiarlo è bloccato, a meno che nella transazione sia acceso il flag di manutenzione `zeroerp.maintenance_indirizzi_dettaglio`.
 
-⚠️ Il passo 2 della policy — puntare un indirizzo a un'altra via — ha una funzione, [`dbops.fn_admin_merge_stradario`](/dbzero/dbops/funzioni/fn_admin_merge_stradario): fonde due vie, registra la fusione in `storico.stradario_trasformazioni` e ripunta sulla destinazione gli indirizzi della via d'origine. Oggi però **fallisce appena la via d'origine ha un indirizzo**: non apre il flag di manutenzione, il guard respinge il cambio di `stradario_id` (`E_COLONNA_NON_MODIFICABILE`) e la fusione intera si annulla. Passa solo la fusione di una via senza indirizzi. Le due procedure di manutenzione qui sotto non cambiano `stradario_id`: **rinormalizzano** i dati esistenti, non spostano gli indirizzi.
+⚠️ Il passo 2 della policy — puntare un indirizzo a un'altra via — ha una funzione, [`dbops.fn_admin_merge_stradario`](/dbzero/dbops/funzioni/fn_admin_merge_stradario): fonde due vie, registra la fusione in `storico.stradario_trasformazioni` e ripunta sulla destinazione gli indirizzi della via d'origine. Apre la porta di manutenzione degli indirizzi solo per il tempo del ripuntamento, e la richiude subito dopo: fuori dalla fusione il cambio di `stradario_id` resta rifiutato (`E_COLONNA_NON_MODIFICABILE`). Se un indirizzo della via d'origine è identico a uno della destinazione, la fusione **si ferma** con `E_MERGE_RIGHE_DOPPIE` e l'elenco dei doppi, e non unisce niente da sola: si corregge il doppio, poi si rilancia. ⭐ La via d'origine resta nello stradario, **soppressa**: è la radice della catena delle trasformazioni, ma non si propone più nelle ricerche, non riceve indirizzi e non si fonde più. Se poi si fondono due comuni, una via soppressa non collide con la via viva che ne ha preso il posto. Le due procedure di manutenzione qui sotto non cambiano `stradario_id`: **rinormalizzano** i dati esistenti, non spostano gli indirizzi.
 
 ---
 

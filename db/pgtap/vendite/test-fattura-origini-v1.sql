@@ -1,5 +1,8 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
+-- rev 2026-11-07 (brief-db-sorgente-documento-e-riga, giro T.5, 20261106-96/-97): le colonne parallele
+--   della provenienza (ordini.documento_origine_*, contratti.offerta_id) sono ritirate; la fixture
+--   scrive e il test legge la sola provenienza (sorgente_*), come i verbi. Attese invariate.
 -- pgTAP test per Zero ERP
 -- Test: le ORIGINI di una fattura (vendite.fn_fattura_origini, 20261027-22) e il
 --   registro dei tipi che si citano (config.sorgenti.citato_in_fattura, 20261027-21).
@@ -68,10 +71,12 @@ CREATE TEMP TABLE t_pa AS SELECT * FROM dbops.fn_pgtap_crea_preventivo('pgtap or
 -- O1 nasce da P1 con una riga portata (arco A vivo); O3 dichiara P3 senza
 -- righe portate (arco A ritirato: non ha portato nulla).
 UPDATE vendite.ordini o
-   SET documento_origine_tipo = 'PREVENTIVO',
-       documento_origine_id   = CASE o.id WHEN (SELECT ordine_id FROM t_o1)
-                                          THEN (SELECT preventivo_id FROM t_p1)
-                                          ELSE (SELECT preventivo_id FROM t_p3) END
+   SET -- la provenienza, che la lineage legge (giro T.5 di brief-db-sorgente-documento-e-riga)
+       sorgente_tipo_id       = (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'PREVENTIVO'),
+       sorgente_uid           = (SELECT p.uid FROM vendite.preventivi p
+                                  WHERE p.id = CASE o.id WHEN (SELECT ordine_id FROM t_o1)
+                                                         THEN (SELECT preventivo_id FROM t_p1)
+                                                         ELSE (SELECT preventivo_id FROM t_p3) END)
  WHERE o.id IN ((SELECT ordine_id FROM t_o1), (SELECT ordine_id FROM t_o3));
 
 DO $leg$
@@ -84,9 +89,15 @@ BEGIN
   INSERT INTO vendite.preventivi_righe (preventivo_id, articolo_id, qta_operativa, prezzo_unitario, iva_id)
   VALUES ((SELECT preventivo_id FROM t_p1), v_art, 1, 10, v_iva)
   RETURNING id INTO v_pr;
+  -- rev 2026-11-06 (brief-db-sorgente-documento-e-riga lotto R, 20261106-57): la
+  --   provenienza nel modello, come la scrive vendite.fn_push_preventivo_a_ordine:
+  --   PREVENTIVO + l'uid del preventivo + la riga, accanto a preventivo_riga_id.
   INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione, qta_operativa,
-                                    prezzo_unitario, iva_id, preventivo_riga_id)
-  VALUES ((SELECT ordine_id FROM t_o1), 1, v_art, 'Riga pgTAP origini', 1, 10, v_iva, v_pr);
+                                    prezzo_unitario, iva_id, preventivo_riga_id,
+                                    sorgente_tipo_id, sorgente_uid, sorgente_riga)
+  VALUES ((SELECT ordine_id FROM t_o1), 1, v_art, 'Riga pgTAP origini', 1, 10, v_iva, v_pr,
+          (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'PREVENTIVO'),
+          (SELECT p.uid FROM vendite.preventivi p WHERE p.id = (SELECT preventivo_id FROM t_p1)), v_pr);
 END $leg$;
 
 -- Le righe di commessa. ⚠️ La chiave della riga e' l'uid della testata: con

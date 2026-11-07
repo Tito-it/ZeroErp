@@ -1,0 +1,83 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# «E' OBSOLETO» — script.fn_e_obsoleto, building block
+#   Brief: brief-db-articoli-obsoleto-dal §4 (Tid, 2026-11-05: «non scriviamo
+#   un quinto punto, fai un BB che tutti usano»).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   La domanda «questa voce di catalogo e' ritirata, oggi?» era scritta a mano
+#   in quattro oggetti, con due forme:
+#     · dbops.fn_get_lookup_codici            (obsoleto_dal IS NULL OR > oggi)
+#     · dbops.trgfn_child_requires_non_obsolete_parent (IS NOT NULL AND <= oggi)
+#     · dbops.vw_bersagli_non_dichiarati      (<= oggi)
+#     · vendite.trgfn_event_log_deriva_scope  (IS NULL OR > oggi, due volte)
+#   Gli articoli sarebbero stati la quinta copia. Le quattro passano a questo
+#   BB nello stesso giro (20261105-05, -06, -07, -08): regola del 2.
+#
+# ── ⚠️ CONTRATTO ────────────────────────────────────────────────────
+#   · vero se la data c'e' ed e' raggiunta alla data operativa
+#     (script.fn_data_operativa, O-1: il ritiro programmato e' una scadenza);
+#   · falso se la data e' NULL (mai ritirata) o futura (ritiro programmato):
+#     mai NULL, quindi NOT fn_e_obsoleto(x) e' il filtro «si sceglie»;
+#   · ⛔ NON e' la regola dei processi (dbops.processi.obsoleto_dal): li'
+#     qualunque data spegne il processo subito, senza confronto con oggi. E'
+#     un altro contratto, e non passa di qui.
+#   BEGIN ATOMIC (linee-guida-sql §5c): la dipendenza da fn_data_operativa
+#   resta in pg_depend, e il planner la incorpora nelle query che la usano.
+#   Parametro date esplicito: il BB serve colonne di tabelle diverse, nessuna
+#   colonna lo ancora.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261105-04-create-fn-e-obsoleto-mctit.yaml
+
+  - changeSet:
+      id: 20261105-04-create-fn-e-obsoleto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_e_obsoleto: building block «la voce di catalogo e' ritirata oggi» (obsoleto_dal valorizzata e
+        raggiunta alla data operativa). Sede unica del predicato: ritira quattro copie in linea (-05, -06, -07,
+        -08) e lo usano articoli, picker e guard. brief-db-articoli-obsoleto-dal §4.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION script.fn_e_obsoleto(
+                  p_obsoleto_dal date)
+              RETURNS boolean
+              LANGUAGE sql
+              STABLE
+              PARALLEL SAFE
+              SECURITY INVOKER
+              BEGIN ATOMIC
+                SELECT p_obsoleto_dal IS NOT NULL
+                   AND p_obsoleto_dal <= script.fn_data_operativa();
+              END;
+        # ⛔ Il COMMENT e il GRANT stanno in un change loro: pgjdbc esegue un
+        #    BEGIN ATOMIC solo se e' da solo nel suo sql: (linee-guida-sql §5c).
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION script.fn_e_obsoleto(date) IS
+                'Building block: la voce di catalogo e'' RITIRATA oggi, cioe'' obsoleto_dal e'' valorizzata e raggiunta alla data operativa (script.fn_data_operativa). Falso se NULL (mai ritirata) o futura (ritiro programmato): mai NULL, quindi NOT script.fn_e_obsoleto(x) e'' il filtro «si sceglie per il nuovo». Sede unica del predicato (regola del 2): lo usano dbops.fn_get_lookup_codici, dbops.trgfn_child_requires_non_obsolete_parent, dbops.vw_bersagli_non_dichiarati, vendite.trgfn_event_log_deriva_scope e il motivo E_ARTICOLO_OBSOLETO di script.fn_check_articolo_riga_su_contesto. ⛔ Non e'' la regola dei processi (dbops.processi.obsoleto_dal: qualunque data spegne subito). BEGIN ATOMIC (linee-guida-sql §5c). brief-db-articoli-obsoleto-dal §4.';
+
+              GRANT EXECUTE ON FUNCTION script.fn_e_obsoleto(date) TO zeroerp_app;
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION script.fn_e_obsoleto(date);

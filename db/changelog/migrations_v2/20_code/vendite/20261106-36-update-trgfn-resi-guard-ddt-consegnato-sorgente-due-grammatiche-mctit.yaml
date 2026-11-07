@@ -1,0 +1,117 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite.trgfn_resi_guard_ddt_consegnato: LA BOLLA SORGENTE NELLE DUE GRAMMATICHE
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto 0 giro 0.3 («i lettori trasversali sul BB che risolve»).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   La sorgente di una testata (bolla -> ordine, reso -> bolla) oggi porta l'uid
+#   del documento in sorgente_uid; il lotto T la converte all'id, in sorgente_id
+#   (S-5). Un lettore che confronta solo l'uid, dopo il lotto T, torna zero righe
+#   in silenzio. Qui legge con la regola d'incontro del modello:
+#     (doc.id = x.sorgente_id OR doc.uid = x.sorgente_uid)
+#   vera nelle due grammatiche e anche nel modello finale (una sola delle due
+#   chiavi e' valorizzata, il guard unico lo garantisce): il lettore non si
+#   ritocca nei lotti di famiglia. E' il join della chiave polimorfa, come il
+#   join di una FK: si scrive in linea, non dietro una funzione, perche' il
+#   planner deve poterla usare sugli indici (id, uid, (tipo, sorgente_*)).
+#
+# ── ⚠️ CHE COSA CAMBIA ──────────────────────────────────────────────
+#   Le due letture della bolla e il dettaglio degli errori guardano anche sorgente_id. Sui dati di oggi (solo sorgente_uid valorizzata) il risultato e' lo stesso.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261106-36-update-trgfn-resi-guard-ddt-consegnato-sorgente-due-grammatiche-mctit.yaml
+
+  - changeSet:
+      id: 20261106-36-update-trgfn-resi-guard-ddt-consegnato-sorgente-due-grammatiche
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.trgfn_resi_guard_ddt_consegnato: la sorgente di testata nelle due grammatiche. brief-db-sorgente-documento-e-riga §7.2 giro 0.3.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite' AND p.proname = 'trgfn_resi_guard_ddt_consegnato';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_resi_guard_ddt_consegnato()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: il reso e' ammesso solo se il DDT sorgente e' CONSEGNATO
+              --   (non si rende cio' che non e' stato consegnato). Solo per
+              --   sorgente DDT_VENDITA (data-driven).
+              DECLARE
+                  v_is_ddt boolean;
+                  v_stato  config.stati_doc_ddt.codice_interno%TYPE;
+                  v_ddt    vendite.ddt%ROWTYPE;
+              BEGIN
+                  -- Applica solo alla sorgente DDT_VENDITA.
+                  SELECT EXISTS (
+                      SELECT 1 FROM config.sorgenti
+                       WHERE id = NEW.sorgente_tipo_id
+                         AND codice_interno = 'DDT_VENDITA'
+                  ) INTO v_is_ddt;
+
+                  IF NOT v_is_ddt THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT sdd.codice_interno INTO v_stato
+                    FROM vendite.ddt d
+                    JOIN config.stati_doc_ddt sdd ON sdd.id = d.stato_doc_ddt_id
+                   WHERE (d.id = NEW.sorgente_id OR d.uid = NEW.sorgente_uid);
+
+                  -- rev 2026-09-28 (brief-db-magazzino-lotto-3-scarico-da-ddt, D-L3-c): una
+                  --   bolla di TRASFERIMENTO fra depositi non genera un reso. La merce e'
+                  --   rimasta nostra (e' entrata nel magazzino di arrivo al CONSEGNATO): un
+                  --   reso la farebbe rientrare una seconda volta, con un accredito verso un
+                  --   cliente che non l'ha mai comprata. Si riconosce dalla causale di
+                  --   magazzino della sua causale di trasporto (TRASF_OUT), non dal codice
+                  --   scritto a mano. Prima del controllo di stato: e' la risposta vera.
+                  SELECT d.* INTO v_ddt
+                    FROM vendite.ddt d
+                   WHERE (d.id = NEW.sorgente_id OR d.uid = NEW.sorgente_uid);
+                  IF FOUND AND vendite.fn_ddt_causale_magazzino(v_ddt) = 'TRASF_OUT' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','trgfn_resi_guard_ddt_consegnato','E_RESO_DA_DDT_TRASFERIMENTO',
+                          jsonb_build_object('sorgente_uid', NEW.sorgente_uid, 'sorgente_id', NEW.sorgente_id, 'ddt_id', v_ddt.id),
+                          NULL::uuid, COALESCE(v_ddt.numero, v_ddt.id::text));
+                  END IF;
+
+                  IF v_stato IS DISTINCT FROM 'CONSEGNATO' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','trgfn_resi_guard_ddt_consegnato','E_RESO_DDT_NON_CONSEGNATO',
+                          jsonb_build_object('sorgente_uid', NEW.sorgente_uid, 'sorgente_id', NEW.sorgente_id, 'stato_ddt', v_stato),
+                          NULL::uuid, COALESCE(v_stato, 'NULL'));
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_resi_guard_ddt_consegnato() IS
+                '⭐ rev 2026-11-06 (20261106-36, brief-db-sorgente-documento-e-riga §7.2 lotto 0 giro 0.3): lo stato e la causale della bolla del reso si leggono dalla bolla cercata nelle due grammatiche, (d.id = NEW.sorgente_id OR d.uid = NEW.sorgente_uid); il dettaglio dei due errori porta anche sorgente_id. Dal lotto T il reso porta l''id della bolla. Guard: reso ammesso solo se il DDT sorgente (DDT_VENDITA, per sorgente_uid) e in stato CONSEGNATO (E_RESO_DDT_NON_CONSEGNATO). brief §3. rev 2026-07-13. rev 2026-09-28 (brief-db-magazzino-lotto-3-scarico-da-ddt, D-L3-c): una bolla di TRASFERIMENTO fra depositi (causale di magazzino TRASF_OUT) non genera un reso — E_RESO_DA_DDT_TRASFERIMENTO, prima del controllo di stato: la merce e'' rimasta nostra, un reso la farebbe rientrare due volte.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo precedente e' quello di 20260928-72:
+              -- un rollback lo riprende da li'.
+              SELECT 1;

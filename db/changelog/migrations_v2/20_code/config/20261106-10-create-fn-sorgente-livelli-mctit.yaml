@@ -1,0 +1,179 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DOVE VIVONO IL DOCUMENTO, LE SUE RIGHE E IL LORO DETTAGLIO: config.fn_sorgente_livelli
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto 0 («Catalogo», «BB che
+#   risolve»), scheda pratiche-documenti-BB §B (config.fn_sorgente_tabella: «serve la
+#   gemella per tabella righe e dettaglio»).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   Il guard unico, il BB che risolve, il presidio degli orfani e il lato «in
+#   uscita» compongono SQL dinamico sulle tabelle che config.sorgenti dichiara per un
+#   tipo. Schema, nome e oid si leggono da pg_class una volta, qui (⛔ mai
+#   target_table::text: dipende dal search_path di chi legge). Con le tabelle,
+#   le due domande che ogni lettore si farebbe da solo: la tabella del documento ha
+#   la colonna uid? la colonna dell'etichetta (label_selector) esiste?
+#
+# ── ⭐ REGOLA DEL 2 ──────────────────────────────────────────────────
+#   config.fn_sorgente_tabella faceva la stessa lettura per il solo documento: da
+#   qui la legge da questa funzione. Firma, colonne e comportamento invariati
+#   (nessuna riga se la sorgente non c'e' o non dichiara la tabella).
+#
+# ── FORMA ───────────────────────────────────────────────────────────
+#   fn_sorgente_livelli: LANGUAGE sql BEGIN ATOMIC (legge config.sorgenti e il
+#   catalogo; le dipendenze stanno in pg_depend), STABLE, INVOKER, ROWS 1. Una
+#   riga per il tipo, anche con i livelli a NULL; nessuna se il tipo non esiste.
+#   Non filtra su attivo: lo restituisce, e il chiamante decide.
+#   ⚠️ BEGIN ATOMIC da solo nel suo sql: (pgjdbc); COMMENT e GRANT nel secondo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20261106-10-create-fn-sorgente-livelli-mctit.yaml
+
+  - changeSet:
+      id: 20261106-10-create-fn-sorgente-livelli
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config.fn_sorgente_livelli(tipo): documento, righe e dettaglio di un tipo di sorgente, dal catalogo
+        di PostgreSQL; config.fn_sorgente_tabella la usa. brief-db-sorgente-documento-e-riga §7.2 lotto 0.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM information_schema.columns
+               WHERE table_schema = 'config' AND table_name = 'sorgenti'
+                 AND column_name = 'dettaglio_fk_column';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION config.fn_sorgente_livelli(
+                  p_sorgente_tipo_id config.sorgenti.id%TYPE)
+              RETURNS TABLE(
+                  codice_interno      config.sorgenti.codice_interno%TYPE,
+                  attivo              config.sorgenti.attivo%TYPE,
+                  key_selector        config.sorgenti.key_selector%TYPE,
+                  label_selector      config.sorgenti.label_selector%TYPE,
+                  documento_relid     pg_catalog.pg_class.oid%TYPE,
+                  documento_schema    pg_catalog.pg_namespace.nspname%TYPE,
+                  documento_tabella   pg_catalog.pg_class.relname%TYPE,
+                  documento_ha_uid    boolean,
+                  documento_ha_label  boolean,
+                  righe_relid         pg_catalog.pg_class.oid%TYPE,
+                  righe_schema        pg_catalog.pg_namespace.nspname%TYPE,
+                  righe_tabella       pg_catalog.pg_class.relname%TYPE,
+                  righe_fk_column     config.sorgenti.righe_fk_column%TYPE,
+                  dettaglio_relid     pg_catalog.pg_class.oid%TYPE,
+                  dettaglio_schema    pg_catalog.pg_namespace.nspname%TYPE,
+                  dettaglio_tabella   pg_catalog.pg_class.relname%TYPE,
+                  dettaglio_fk_column config.sorgenti.dettaglio_fk_column%TYPE)
+              LANGUAGE sql
+              STABLE
+              SECURITY INVOKER
+              ROWS 1
+              SET search_path TO 'pg_catalog', 'pg_temp'
+              BEGIN ATOMIC
+                  SELECT s.codice_interno,
+                         s.attivo,
+                         s.key_selector,
+                         s.label_selector,
+                         dc.oid,
+                         dn.nspname,
+                         dc.relname,
+                         EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a
+                                  WHERE a.attrelid = dc.oid AND a.attname = 'uid'
+                                    AND a.attnum > 0 AND NOT a.attisdropped),
+                         EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a
+                                  WHERE a.attrelid = dc.oid
+                                    AND a.attname = s.label_selector::name
+                                    AND a.attnum > 0 AND NOT a.attisdropped),
+                         rc.oid,
+                         rn.nspname,
+                         rc.relname,
+                         s.righe_fk_column,
+                         tc.oid,
+                         tn.nspname,
+                         tc.relname,
+                         s.dettaglio_fk_column
+                    FROM config.sorgenti s
+                    LEFT JOIN pg_catalog.pg_class     dc ON dc.oid = s.target_table
+                    LEFT JOIN pg_catalog.pg_namespace dn ON dn.oid = dc.relnamespace
+                    LEFT JOIN pg_catalog.pg_class     rc ON rc.oid = s.righe_table
+                    LEFT JOIN pg_catalog.pg_namespace rn ON rn.oid = rc.relnamespace
+                    LEFT JOIN pg_catalog.pg_class     tc ON tc.oid = s.dettaglio_table
+                    LEFT JOIN pg_catalog.pg_namespace tn ON tn.oid = tc.relnamespace
+                   WHERE s.id = p_sorgente_tipo_id;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION config.fn_sorgente_livelli(config.sorgenti.id%TYPE) IS
+                'Dove vivono il documento di un tipo di sorgente, le sue righe e il loro dettaglio: schema, nome e oid delle tabelle che config.sorgenti dichiara (target_table, righe_table, dettaglio_table), letti da pg_class e pg_namespace, con le colonne FK di righe e dettaglio. Dice anche se la tabella del documento ha la colonna uid e se la colonna di label_selector esiste. Una riga per il tipo, con i livelli assenti a NULL; nessuna riga se il tipo non esiste. Non filtra su attivo: lo restituisce. La leggono il guard della provenienza, il BB che risolve, il presidio degli orfani e config.fn_sorgente_tabella. INVOKER, STABLE.';
+
+              REVOKE EXECUTE ON FUNCTION config.fn_sorgente_livelli(config.sorgenti.id%TYPE) FROM PUBLIC;
+              GRANT EXECUTE ON FUNCTION config.fn_sorgente_livelli(config.sorgenti.id%TYPE) TO zeroerp_app;
+
+              CREATE OR REPLACE FUNCTION config.fn_sorgente_tabella(
+                  p_codice_interno config.sorgenti.codice_interno%TYPE)
+              RETURNS TABLE(
+                  schema_tabella pg_catalog.pg_namespace.nspname%TYPE,
+                  nome_tabella   pg_catalog.pg_class.relname%TYPE,
+                  relid          pg_catalog.pg_class.oid%TYPE)
+              LANGUAGE sql
+              STABLE
+              SECURITY INVOKER
+              SET search_path TO 'pg_catalog', 'pg_temp'
+              AS $function$
+              -- =========================================================
+              -- Scopo: dove vive il documento di una sorgente: schema, nome
+              --   e oid della sua target_table.
+              -- Parametri: p_codice_interno, il codice della sorgente.
+              -- Ritorna: una riga, oppure NESSUNA se la sorgente non c'e' o
+              --   non dichiara una tabella (target_table e' nullable). Il
+              --   chiamante decide che cosa vuol dire.
+              -- ⭐ La lettura del catalogo di PostgreSQL sta in
+              --   config.fn_sorgente_livelli (documento, righe, dettaglio):
+              --   qui se ne prende il solo documento.
+              -- =========================================================
+              SELECT l.documento_schema, l.documento_tabella, l.documento_relid
+                FROM config.sorgenti s
+                CROSS JOIN LATERAL config.fn_sorgente_livelli(s.id) l
+               WHERE s.codice_interno = p_codice_interno
+                 AND l.documento_relid IS NOT NULL;
+              $function$;
+
+              COMMENT ON FUNCTION config.fn_sorgente_tabella(config.sorgenti.codice_interno%TYPE) IS
+                'Dove vive il documento di una sorgente: schema, nome e oid della sua target_table, letti da config.fn_sorgente_livelli (pg_class/pg_namespace, mai target_table::text, che dipende dal search_path di chi legge). Nessuna riga se la sorgente non c''e'' o non dichiara una tabella. La leggono il guard dei riferimenti e la check di spegnimento delle famiglie, la storia dell''emittente del BA e la lista delle famiglie. INVOKER, STABLE.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION config.fn_sorgente_tabella(
+                  p_codice_interno config.sorgenti.codice_interno%TYPE)
+              RETURNS TABLE(
+                  schema_tabella pg_catalog.pg_namespace.nspname%TYPE,
+                  nome_tabella   pg_catalog.pg_class.relname%TYPE,
+                  relid          pg_catalog.pg_class.oid%TYPE)
+              LANGUAGE sql STABLE SECURITY INVOKER
+              SET search_path TO 'pg_catalog', 'pg_temp'
+              AS $function$
+              SELECT n.nspname, c.relname, c.oid
+                FROM config.sorgenti s
+                JOIN pg_catalog.pg_class c     ON c.oid = s.target_table
+                JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+               WHERE s.codice_interno = p_codice_interno;
+              $function$;
+              DROP FUNCTION config.fn_sorgente_livelli(config.sorgenti.id%TYPE);

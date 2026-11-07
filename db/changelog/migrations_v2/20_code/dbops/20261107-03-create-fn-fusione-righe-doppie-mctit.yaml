@@ -1,0 +1,200 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_fusione_righe_doppie: le righe che una fusione renderebbe doppie.
+# Il secondo dei tre building block della fusione.
+#   Brief: brief-db-revisione-dbops, D3 e D4 (giro 2, decisione Q1).
+#
+# ⚠️ IL DIFETTO CHE CHIUDE. Due indirizzi uguali sulle due vie collidono su
+#   uq_indirizzi_dettaglio_norm_v2; due vie uguali sui due comuni su
+#   uq_stradario_comune_stradario_gen_cp. La fusione falliva al primo doppio,
+#   col 23505 e senza dire quali righe. Decisione di Tid (Q1): un doppio ferma
+#   la fusione con un codice e l'ELENCO dei doppi, nessuna unione automatica.
+#
+# ⭐ COME SI TROVANO, senza scrivere a mano nessuna chiave. Per ogni figlia (da
+#   dbops.fn_fusione_figlie) e per ogni suo indice unico che contiene una
+#   colonna della FK: si costruisce ogni riga dell'origine come diventerebbe
+#   (le colonne della FK prese dalla destinazione, le altre uguali), e la si
+#   confronta, sulle colonne dell'indice, con le righe che ci sono gia'.
+#   - NULLS NOT DISTINCT dell'indice si rispetta: IS NOT DISTINCT FROM, oppure
+#     = (due NULL non collidono);
+#   - un indice parziale si rispetta: il suo predicato si applica alla riga
+#     com'e' e alla riga com'e' gia', e la riga costruita ha gli stessi nomi di
+#     colonna della tabella, quindi il predicato del catalogo vale tale e
+#     quale;
+#   - le colonne INCLUDE non sono chiave (indnkeyatts) e non contano;
+#   - un indice su espressioni non si legge: lo copre il ripuntamento, che
+#     intercetta il 23505 e risponde con lo stesso codice (fn_fusione_ripunta_
+#     figlie). Anche una colonna che un trigger ricalcola dalla FK sfugge al
+#     confronto, e la prende lo stesso ripiego.
+#   Una riga si nomina con la sua chiave primaria (jsonb), o col ctid se la
+#   tabella non ne ha.
+#
+# INVOKER, STABLE, senza SET search_path: legge, nomi tutti qualificati con
+#   %I e regclass. Le righe le vede chi lancia: il controllo sulla RLS sta in
+#   fn_fusione_figlie, che si ferma prima.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261107-03-create-fn-fusione-righe-doppie-mctit.yaml
+
+  - changeSet:
+      id: 20261107-03-create-fn-fusione-righe-doppie
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Nuovo dbops.fn_fusione_righe_doppie: le righe delle figlie che la fusione di due
+        righe del padre renderebbe doppie, indice per indice (D3, D4).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_fusione_righe_doppie';
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_fusione_figlie';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION dbops.fn_fusione_righe_doppie(
+                  p_padre     regclass,
+                  p_id_orig   bigint,             -- generica su ogni padre: la chiave si confronta con =
+                  p_id_target bigint,
+                  p_porta     dbops.error_log.function_name%TYPE DEFAULT NULL -- nome della fusione che chiama, per i messaggi
+              )
+              RETURNS TABLE(
+                  tabella           regclass,
+                  indice            regclass,
+                  riga_origine      jsonb,
+                  riga_destinazione jsonb
+              )
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_chi     dbops.error_log.function_name%TYPE := COALESCE(p_porta, 'dbops.fn_fusione_righe_doppie');
+                  r_fk      record;
+                  r_ix      record;
+                  v_nuova   text;   -- la riga dell'origine con la FK gia' sulla destinazione
+                  v_fk      text;   -- le colonne della FK nella figlia
+                  v_rif     text;   -- le colonne riferite nel padre
+                  v_riga_c  text;   -- come si nomina una riga, alias c
+                  v_riga_r  text;   -- come si nomina una riga, alias r0
+                  v_on      text;
+              BEGIN
+                  IF p_id_orig IS NULL OR p_id_target IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', v_chi, 'E_DBOPS_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('campo', CASE WHEN p_id_orig IS NULL THEN 'p_id_orig' ELSE 'p_id_target' END),
+                          NULL::uuid,
+                          v_chi, 'origine e destinazione sono obbligatorie');
+                  END IF;
+
+                  FOR r_fk IN
+                      SELECT f.figlia, f.colonne_fk, f.colonne_rif, f.chiave_padre
+                        FROM dbops.fn_fusione_figlie(p_padre, v_chi) f
+                  LOOP
+                      SELECT string_agg(format('c.%I', x.c), ', ' ORDER BY x.o),
+                             string_agg(format('p.%I', x.r), ', ' ORDER BY x.o)
+                        INTO v_fk, v_rif
+                        FROM unnest(r_fk.colonne_fk, r_fk.colonne_rif) WITH ORDINALITY AS x(c, r, o);
+
+                      -- La riga com'e' dopo la fusione: ogni colonna della FK dalla
+                      -- destinazione, le altre uguali.
+                      SELECT string_agg(
+                                 CASE WHEN x.r IS NOT NULL
+                                      THEN format('(SELECT p.%I FROM %s p WHERE p.%I = $2) AS %I',
+                                                  x.r, p_padre, r_fk.chiave_padre, a.attname)
+                                      ELSE format('c.%I', a.attname)
+                                 END, ', ' ORDER BY a.attnum)
+                        INTO v_nuova
+                        FROM pg_catalog.pg_attribute a
+                        LEFT JOIN unnest(r_fk.colonne_fk, r_fk.colonne_rif) AS x(c, r)
+                          ON x.c = a.attname
+                       WHERE a.attrelid = r_fk.figlia
+                         AND a.attnum > 0
+                         AND NOT a.attisdropped;
+
+                      -- Il nome di una riga: la chiave primaria, o il ctid.
+                      SELECT COALESCE(
+                                 'jsonb_build_object(' || string_agg(format('%L, %%1$s.%I', a.attname, a.attname), ', '
+                                                                     ORDER BY k.o) || ')',
+                                 'jsonb_build_object(''ctid'', %1$s.ctid::text)')
+                        INTO v_riga_c
+                        FROM pg_catalog.pg_constraint pk
+                       CROSS JOIN LATERAL unnest(pk.conkey) WITH ORDINALITY AS k(col, o)
+                        JOIN pg_catalog.pg_attribute a
+                          ON a.attrelid = pk.conrelid AND a.attnum = k.col
+                       WHERE pk.conrelid = r_fk.figlia
+                         AND pk.contype = 'p';
+                      v_riga_r := format(v_riga_c, 'r0');
+                      v_riga_c := format(v_riga_c, 'c');
+
+                      FOR r_ix IN
+                          SELECT i.indexrelid::regclass AS indice,
+                                 i.indnullsnotdistinct,
+                                 COALESCE(pg_get_expr(i.indpred, i.indrelid), 'true') AS predicato,
+                                 array_agg(a.attname ORDER BY k.o) AS chiave
+                            FROM pg_catalog.pg_index i
+                           CROSS JOIN LATERAL unnest((i.indkey::int2[])[0:i.indnkeyatts - 1]) WITH ORDINALITY AS k(col, o)
+                            JOIN pg_catalog.pg_attribute a
+                              ON a.attrelid = i.indrelid AND a.attnum = k.col
+                           WHERE i.indrelid = r_fk.figlia
+                             AND i.indisunique
+                             AND i.indexprs IS NULL
+                           GROUP BY i.indexrelid, i.indnullsnotdistinct, i.indpred, i.indrelid
+                          HAVING array_agg(a.attname) && r_fk.colonne_fk
+                           ORDER BY i.indexrelid::regclass::text
+                      LOOP
+                          SELECT string_agg(format('n.%1$I %2$s r.%1$I', x.c,
+                                                   CASE WHEN r_ix.indnullsnotdistinct
+                                                        THEN 'IS NOT DISTINCT FROM' ELSE '=' END),
+                                            ' AND ')
+                            INTO v_on
+                            FROM unnest(r_ix.chiave) AS x(c);
+
+                          RETURN QUERY EXECUTE format(
+                              $q$
+                              SELECT %1$L::regclass, %2$L::regclass, n.__riga, r.__riga
+                                FROM (SELECT *
+                                        FROM (SELECT %3$s, %4$s AS __riga
+                                                FROM %5$s c
+                                               WHERE (%6$s) = (SELECT %7$s FROM %8$s p WHERE p.%9$I = $1)) n0
+                                       WHERE %10$s) n
+                                JOIN (SELECT r0.*, %11$s AS __riga
+                                        FROM %5$s r0
+                                       WHERE %10$s) r
+                                  ON %12$s
+                              $q$,
+                              r_fk.figlia, r_ix.indice, v_nuova, v_riga_c, r_fk.figlia,
+                              v_fk, v_rif, p_padre, r_fk.chiave_padre, r_ix.predicato,
+                              v_riga_r, v_on)
+                          USING p_id_orig, p_id_target;
+                      END LOOP;
+                  END LOOP;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_fusione_righe_doppie(regclass, bigint, bigint, text) IS
+                  'Le righe che la fusione di p_id_orig in p_id_target, due righe di p_padre, renderebbe doppie: per ogni tabella figlia (dbops.fn_fusione_figlie) e per ogni suo indice unico che contiene una colonna della chiave esterna, la riga dell''origine come diventerebbe e la riga che c''e'' gia'' e che avrebbe la stessa chiave. Ogni riga si nomina con la sua chiave primaria in jsonb (o col ctid). Rispetta NULLS NOT DISTINCT e il predicato di un indice parziale; le colonne INCLUDE non contano. Non legge gli indici su espressioni: quelli li intercetta dbops.fn_fusione_ripunta_figlie al momento della scrittura. Sola lettura: nessuna riga vuol dire che la fusione non trova doppi. p_porta e'' il nome della fusione che chiama, e compare nei messaggi.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_fusione_righe_doppie(regclass, bigint, bigint, text);

@@ -20,11 +20,11 @@ databaseChangeLog:
   - include:
       file: migrations_v2/90_end/20260912-30-drop-trgfn-audit-version-info-provision-mctit.yaml
       relativeToChangelogFile: true
-  - include:
-      file: migrations_v2/20_code/maintenance/20261015-03-update-fn-job-run-log-failure-ruolo-sessione-mctit.yaml
-      relativeToChangelogFile: true
-  # 16-10-2026: p_sqlstate in coda al verbale dei fallimenti (DROP + CREATE della
-  # firma). brief-db-presidio-job-run-a-chi-tocca §4.4.
-  - include:
-      file: migrations_v2/20_code/maintenance/20261016-39-update-fn-job-run-log-failure-sqlstate-mctit.yaml
-      relativeToChangelogFile: true
+  # ⛔ 05-11-2026: 20261015-03 e 20261016-39 (maintenance.fn_job_run_log_failure)
+  #   NON si includono piu'. Dal 20261103-66 la funzione si modifica nel migrate
+  #   principale con la proprieta' in prestito; da zero questi due, rigirati qui
+  #   DOPO il migrate, ricreavano la firma a 10 argomenti (-03) e riportavano il
+  #   corpo del -39 sopra quello del -66 e del -50. La firma con p_sqlstate da
+  #   zero la porta 20261103-29. Sui database dove sono gia' passati restano
+  #   registrati nel databasechangelog. Errore sullo scratch zeroerp_ruoli,
+  #   2026-11-05.

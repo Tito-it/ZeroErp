@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_trigger_attivo_orfani`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 7 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -8,6 +8,7 @@
 >
 > * [dbops.fn_ritira_attivo_orfani](/dbzero/dbops/funzioni/fn_ritira_attivo_orfani) — il ritiro che usa questo elenco
 > * [dbops.fn_trigger_argomenti](/dbzero/dbops/funzioni/fn_trigger_argomenti) — legge gli argomenti dei trigger
+> * [dbops.fn_trigger_attivo_argomenti](/dbzero/dbops/funzioni/fn_trigger_attivo_argomenti) — la grammatica degli argomenti, la stessa delle funzioni trigger
 > * [dbops.trgfn_prevent_deactivate_if_children](/dbzero/dbops/funzioni/trgfn_prevent_deactivate_if_children) — il block sul padre, uno dei due trigger guardati
 > * [dbops.trgfn_child_requires_active_parent](/dbzero/dbops/funzioni/trgfn_child_requires_active_parent) — il require sul figlio, l'altro
 >
@@ -43,8 +44,8 @@ manca una delle cose che il **suo** corpo legge:
 
 | Trigger | Altra tabella | Colonne lette |
 | --- | --- | --- |
-| block, sul **padre** | la figlia, primo e secondo argomento | sulla figlia la colonna FK (terzo); sul padre la colonna referenziata (quarto, `id` se manca) e la colonna attivo (quinto, `attivo` se manca) |
-| require, sul **figlio** | il padre, primo e secondo argomento | sul padre la colonna attivo (terzo) e la colonna referenziata (quinto, `id` se manca); sul figlio la colonna FK (quarto) |
+| block, sul **padre** | la figlia, primo e secondo argomento | sulla figlia la colonna FK (terzo); sul padre la colonna referenziata (quarto) e la colonna attivo (quinto) |
+| require, sul **figlio** | il padre, primo e secondo argomento | sul padre la colonna attivo (terzo) e la colonna referenziata (quinto); sul figlio la colonna FK (quarto) |
 
 ---
 
@@ -54,20 +55,20 @@ manca una delle cose che il **suo** corpo legge:
 | --- | --- | --- |
 | `TABELLA_ASSENTE` | l'altra tabella non esiste | la tabella nominata |
 | `COLONNA_ASSENTE` | manca una delle tre colonne lette | le colonne che mancano |
-| `ARGOMENTI_INSUFFICIENTI` | meno argomenti del minimo: tre per il block, quattro per il require | quanti sono |
+| `ARGOMENTI_INVALIDI` | il montaggio è fuori dalla grammatica: un argomento mancante, vuoto o in più (ne servono cinque, tutti) | il perché, come lo dice la grammatica |
 
 Il terzo non è un residuo ma un errore di scrittura: il ritiro non lo tocca.
 
-⚠️ I minimi e i valori di riserva della tabella qui sopra sono la grammatica degli argomenti delle
-due funzioni trigger, scritta una seconda volta: se una delle due cambia la sua, il lettore va
-allineato a mano.
+⭐ Gli argomenti li legge `dbops.fn_trigger_attivo_argomenti`, la stessa grammatica che usano le
+funzioni trigger: un montaggio che il trigger rifiuterebbe per gli argomenti è quello che il
+lettore riporta, e non ci sono minimi o valori di riserva da tenere allineati.
 
 ---
 
 ### ⛔ Legge il catalogo, non `information_schema`
 
 Tabelle e colonne si cercano per nome in `pg_class` e `pg_attribute`, con gli argomenti letti da
-`dbops.fn_trigger_argomenti`. `information_schema` mostra solo le colonne su cui chi chiede ha un
+`dbops.fn_trigger_argomenti` e interpretati da `dbops.fn_trigger_attivo_argomenti`. `information_schema` mostra solo le colonne su cui chi chiede ha un
 privilegio, e il job delle automazioni vedrebbe «assente» una colonna valida.
 
 ---
@@ -84,6 +85,8 @@ privilegio, e il job delle automazioni vedrebbe «assente» una colonna valida.
 ### Note di migrazione
 
 * 2026-10-21 — nasce per il ritiro degli orfani (`brief-be-utenti-di-sviluppo` §9.5).
+* 2026-11-07 — legge gli argomenti dalla grammatica condivisa; il motivo `ARGOMENTI_INSUFFICIENTI`
+  diventa `ARGOMENTI_INVALIDI`, perché gli argomenti sono tutti obbligatori.
 
 ---
 

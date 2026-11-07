@@ -1,0 +1,173 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_fusione_ripunta_figlie: sposta sulla destinazione tutto cio' che
+# riferiva l'origine. Il terzo dei tre building block della fusione.
+#   Brief: brief-db-revisione-dbops, D3 e D4 (giro 2, decisione Q1).
+#
+# ⭐ IN DUE TEMPI, per non lasciare niente a meta'.
+#   1. Prima i doppi (dbops.fn_fusione_righe_doppie): se ce n'e' anche uno, la
+#      fusione si ferma prima di scrivere, con E_MERGE_RIGHE_DOPPIE e l'elenco
+#      nel contesto (le prime cento coppie, piu' il conteggio). Nessuna unione
+#      automatica: chi fonde decide che cosa fare dei doppi (decisione Q1).
+#   2. Poi una UPDATE per figlia: le colonne della FK prendono i valori della
+#      destinazione. Vale anche per una FK composta o verso una chiave che non
+#      e' la primaria, perche' le colonne vengono in coppia da
+#      dbops.fn_fusione_figlie.
+#   Il ripiego: un indice che il controllo non sa leggere (su espressioni, o su
+#   una colonna che un trigger ricalcola dalla FK) puo' ancora collidere. Ogni
+#   UPDATE intercetta 23505 e 23P01 e risponde con lo stesso codice, col nome
+#   del vincolo e il dettaglio di PostgreSQL nel contesto. Ogni altro errore
+#   (il guard di una figlia, un vincolo di CHECK) risale com'e'.
+#
+# ⚠️ LE PORTE DELLE FIGLIE NON LE APRE QUI. Una figlia puo' avere un guard che
+#   rifiuta il cambio della FK (anagrafiche.indirizzi_dettaglio rifiuta il
+#   cambio di stradario_id fuori dalla manutenzione). Quale porta aprire lo sa
+#   la fusione che chiama, non il building block: lo fa
+#   dbops.fn_admin_merge_stradario attorno a questa chiamata.
+#
+# Risultato: un jsonb { "schema.tabella": righe ripuntate }, una chiave per
+#   figlia, anche a zero.
+#
+# INVOKER, VOLATILE, senza SET search_path: le UPDATE fanno scattare i trigger
+#   delle figlie, che girano col search_path di chi chiama; uno ristretto qui
+#   lo restringerebbe anche a loro.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261107-04-create-fn-fusione-ripunta-figlie-mctit.yaml
+
+  - changeSet:
+      id: 20261107-04-create-fn-fusione-ripunta-figlie
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Nuovo dbops.fn_fusione_ripunta_figlie: prima i doppi (si ferma con l'elenco), poi
+        una UPDATE per figlia; un 23505 o 23P01 sfuggito risponde con lo stesso codice (D3, D4).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_fusione_ripunta_figlie';
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_fusione_righe_doppie';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION dbops.fn_fusione_ripunta_figlie(
+                  p_padre     regclass,
+                  p_id_orig   bigint,             -- generica su ogni padre: la chiave si confronta con =
+                  p_id_target bigint,
+                  p_porta     dbops.error_log.function_name%TYPE DEFAULT NULL -- nome della fusione che chiama, per i messaggi
+              )
+              RETURNS jsonb
+              LANGUAGE plpgsql
+              VOLATILE
+              SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_chi       dbops.error_log.function_name%TYPE := COALESCE(p_porta, 'dbops.fn_fusione_ripunta_figlie');
+                  v_n_doppi   bigint;
+                  v_doppi     jsonb;
+                  v_tabelle   text;
+                  r_fk        record;
+                  v_set       text;
+                  v_rif       text;
+                  v_n         bigint;
+                  v_esito     jsonb := '{}'::jsonb;
+                  v_vincolo   pg_catalog.pg_constraint.conname%TYPE;
+                  v_dettaglio text;
+              BEGIN
+                  -- 1. I doppi, prima di scrivere.
+                  WITH d AS (
+                      SELECT d.tabella, d.indice, d.riga_origine, d.riga_destinazione
+                        FROM dbops.fn_fusione_righe_doppie(p_padre, p_id_orig, p_id_target, v_chi) d
+                  )
+                  SELECT (SELECT count(*) FROM d),
+                         (SELECT jsonb_agg(jsonb_build_object(
+                                     'tabella', e.tabella::text,
+                                     'indice', e.indice::text,
+                                     'riga_origine', e.riga_origine,
+                                     'riga_destinazione', e.riga_destinazione))
+                            FROM (SELECT * FROM d
+                                   ORDER BY d.tabella::text, d.indice::text, d.riga_origine::text
+                                   LIMIT 100) e),
+                         (SELECT string_agg(DISTINCT d.tabella::text, ', ') FROM d)
+                    INTO v_n_doppi, v_doppi, v_tabelle;
+
+                  IF v_n_doppi > 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', v_chi, 'E_MERGE_RIGHE_DOPPIE',
+                          jsonb_build_object('padre', p_padre::text,
+                                             'id_origine', p_id_orig,
+                                             'id_destinazione', p_id_target,
+                                             'n_doppi', v_n_doppi,
+                                             'doppi', v_doppi),
+                          NULL::uuid,
+                          p_id_orig::text, p_id_target::text, v_tabelle);
+                  END IF;
+
+                  -- 2. Una UPDATE per figlia.
+                  FOR r_fk IN
+                      SELECT f.figlia, f.colonne_fk, f.colonne_rif, f.chiave_padre
+                        FROM dbops.fn_fusione_figlie(p_padre, v_chi) f
+                  LOOP
+                      SELECT string_agg(format('%I', x.c), ', ' ORDER BY x.o),
+                             string_agg(format('p.%I', x.r), ', ' ORDER BY x.o)
+                        INTO v_set, v_rif
+                        FROM unnest(r_fk.colonne_fk, r_fk.colonne_rif) WITH ORDINALITY AS x(c, r, o);
+
+                      BEGIN
+                          EXECUTE format(
+                              'UPDATE %1$s c SET (%2$s) = (SELECT %3$s FROM %4$s p WHERE p.%5$I = $2)
+                                WHERE (%6$s) = (SELECT %3$s FROM %4$s p WHERE p.%5$I = $1)',
+                              r_fk.figlia, v_set, v_rif, p_padre, r_fk.chiave_padre,
+                              (SELECT string_agg(format('c.%I', x.c), ', ' ORDER BY x.o)
+                                 FROM unnest(r_fk.colonne_fk) WITH ORDINALITY AS x(c, o)))
+                          USING p_id_orig, p_id_target;
+                          GET DIAGNOSTICS v_n = ROW_COUNT;
+                      EXCEPTION WHEN unique_violation OR exclusion_violation THEN
+                          GET STACKED DIAGNOSTICS v_vincolo   = CONSTRAINT_NAME,
+                                                  v_dettaglio = PG_EXCEPTION_DETAIL;
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', v_chi, 'E_MERGE_RIGHE_DOPPIE',
+                              jsonb_build_object('padre', p_padre::text,
+                                                 'id_origine', p_id_orig,
+                                                 'id_destinazione', p_id_target,
+                                                 'tabella', r_fk.figlia::text,
+                                                 'vincolo', v_vincolo,
+                                                 'dettaglio', v_dettaglio),
+                              NULL::uuid,
+                              p_id_orig::text, p_id_target::text, r_fk.figlia::text);
+                      END;
+
+                      v_esito := v_esito || jsonb_build_object(r_fk.figlia::text, v_n);
+                  END LOOP;
+
+                  RETURN v_esito;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_fusione_ripunta_figlie(regclass, bigint, bigint, text) IS
+                  'Sposta su p_id_target tutto cio'' che riferiva p_id_orig, due righe di p_padre: una UPDATE per ogni tabella figlia (dbops.fn_fusione_figlie), che porta le colonne della chiave esterna ai valori della destinazione. Prima di scrivere cerca i doppi (dbops.fn_fusione_righe_doppie) e, se ce n''e'' anche uno, si ferma con E_MERGE_RIGHE_DOPPIE e l''elenco nel contesto (le prime cento coppie e il conteggio). Un doppio che quel controllo non sa leggere (un indice su espressioni) risponde allo stesso modo, col vincolo e il dettaglio di PostgreSQL. Ogni altro rifiuto di una figlia risale com''e''. Non apre le porte delle figlie: se una figlia protegge la sua chiave esterna con un guard, la fusione che chiama la apre attorno a questa chiamata. Restituisce le righe ripuntate per figlia, { "schema.tabella": n }. p_porta e'' il nome della fusione che chiama, e compare nei messaggi.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_fusione_ripunta_figlie(regclass, bigint, bigint, text);

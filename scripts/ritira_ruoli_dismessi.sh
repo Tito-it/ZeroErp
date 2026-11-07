@@ -137,7 +137,7 @@ $FERMO && { echo "⛔ Qualcosa ha fermato il ritiro: vedi sopra."; exit 3; }
 if $ESEGUI && [[ -n "$DEV_DB" ]] && [[ -n "$(Q -d postgres -c "SELECT 1 FROM pg_database WHERE datname = '$DEV_DB'")" ]]; then
   if [[ -n "$(Q -d "$DEV_DB" -c "SELECT to_regclass('dbops.vw_processi_che_bypassano')")" ]]; then
     echo "── presidio dbops.vw_processi_che_bypassano su $DEV_DB (atteso: nessuna riga)"
-    Q -d "$DEV_DB" -c "SELECT ruolo || ' ' || stato FROM dbops.vw_processi_che_bypassano"
+    Q -d "$DEV_DB" -c "SELECT ruolo FROM dbops.vw_processi_che_bypassano"
   fi
 fi
 echo "✅ fatto"

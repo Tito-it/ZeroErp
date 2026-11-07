@@ -60,7 +60,8 @@ BEGIN
   END IF;
 
   -- MOTIVO 1 — merce gia' uscita: esiste un DDT figlio VIVO.
-  -- Catena diretta: ddt.sorgente_uid e' uuid e punta all'uid.
+  -- Catena diretta: la bolla porta l'ordine nella sorgente, nelle due
+  -- grammatiche (rev 2026-11-06, giro 0.3): l'uid oggi, l'id dal lotto T.
   -- ⚠️ I DDT ANNULLATI non contano: un documento morto non deve
   -- bloccare il padre per sempre e senza uscita (stessa regola del
   -- preventivo, 20260810-03). `is_abortito` e non il codice: e' l'asse
@@ -69,7 +70,7 @@ BEGIN
     INTO v_ddt
     FROM vendite.ddt d
     JOIN config.stati_doc_ddt sdd ON sdd.id = d.stato_doc_ddt_id
-   WHERE d.sorgente_uid = v_uid
+   WHERE (d.sorgente_id = p_ordine_id OR d.sorgente_uid = v_uid)
      AND d.sorgente_tipo_id = (SELECT s.id FROM config.sorgenti s
                                 WHERE s.codice_interno = 'ORDINE_VENDITA')
      AND sdd.is_abortito IS NOT TRUE;
@@ -114,7 +115,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_check_ordine_annullabile(p_ordine_id bigint)
-IS 'Pure check: motivi che impediscono l''annullamento di un ordine. [] = lecito. Motivi: 1) un DDT figlio vivo (vendite.ddt.sorgente_uid = ordini.uid, chiave uuid): E_ORD_ANNULLA_CON_DDT; 2) righe di commessa gia'' EMESSA spinte dall''ordine (script.fn_check_sorgente_chiudibile, chiave <ordine>.uid::text): E_SORGENTE_CON_RIGHE_EMESSE. Le righe di commessa NON_EMESSA non bloccano: si ritirano con la conferma all''annullo (vendite.fn_annulla_ordine). Sede unica condivisa dal guard di transizione e da script.fn_available_actions_ordine. Brief: brief-db-vie-uscita-operatore. rev 2026-08-15: il MOTIVO 1 conta solo i DDT figli VIVI — i DDT con config.stati_doc_ddt.is_abortito true sono esclusi. Lacuna speculare a quella corretta sul preventivo con 20260810-03, dove l''esclusione del figlio annullato e'' dichiarata voluta: un figlio morto non deve bloccare il padre per sempre e senza uscita, che e'' il difetto stesso che il cantiere vie-d''uscita ha chiuso. ⚠️ Era stata classificata «asimmetria latente, oggi non morde» perche'' nessun DDT bloccante risultava annullato: era una conta su dati di TEST, e in esercizio annullare un DDT e'' ordinario. Esclude SOLO l''annullato — il DDT in stato RESO ha is_abortito false e continua a bloccare, ed e'' giusto: la merce e'' tornata ma il documento e'' vissuto. brief-db-vie-uscita-operatore §12.6. rev 2026-10-12 (brief-db-annullo-a-valle-riapre-a-monte, R-12): commento riallineato al corpo. Citava come secondo motivo «una riga in vendite.commesse_sorgenti (chiave id::text)», che il corpo non legge piu'': dal 2026-08-26 il secondo motivo viene da script.fn_check_sorgente_chiudibile sulle righe EMESSA. Corpo invariato.';
+IS 'Pure check: i motivi che impediscono l''annullamento di un ordine; [] = lecito. 1) una bolla figlia viva, cercata con la regola (d.sorgente_id = id dell''ordine OR d.sorgente_uid = uid dell''ordine): E_ORD_ANNULLA_CON_DDT. Conta solo le bolle vive (config.stati_doc_ddt.is_abortito false): un figlio annullato non blocca il padre; la bolla in stato RESO continua a bloccare, perche'' il documento e'' vissuto. 2) righe di commessa gia'' EMESSA spinte dall''ordine (script.fn_check_sorgente_chiudibile): E_SORGENTE_CON_RIGHE_EMESSE. Le righe NON_EMESSA non bloccano: si ritirano con la conferma all''annullo (vendite.fn_annulla_ordine). Sede unica del guard di transizione e di script.fn_available_actions_ordine.';
 ```
 
 </div>

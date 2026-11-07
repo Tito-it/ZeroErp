@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_pgtap_crea_indirizzo_dettaglio`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 7 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -25,8 +25,9 @@
 
 ### 🎯 Scopo Principale
 
-Un indirizzo di dettaglio per un test, fabbricato e non cercato: civico 99999 sul primo
-stradario di seed, con l'etichetta del test come interno. Ne torna l'id.
+Un indirizzo di dettaglio per un test, fabbricato e non cercato: civico 99999 sulla prima
+via viva di seed, con l'etichetta del test come interno. Ne torna l'id. Una via soppressa non si
+usa: il guard del ritiro rifiuterebbe l'indirizzo.
 
 ---
 

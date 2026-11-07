@@ -1,5 +1,10 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
+-- rev 2026-11-07 (brief-db-sorgente-documento-e-riga, giro T.5, 20261106-96): documento_origine_* e
+--   uq_ordini_v_documento_origine_offerta sono ritirati. Gli ordini della fixture e dei test 14-15
+--   scrivono la sola provenienza (sorgente_*), come i verbi; il 14 sbatte su uq_ordini_v_sorgente_offerta,
+--   il 15 cita un preventivo vero (il guard unico vuole un documento che esiste: prima bastava un id
+--   inventato nella colonna parallela, polimorfa e senza FK). Attese invariate.
 -- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2b, 20261019-87 … -99):
 --   l'ordine nato dall'offerta porta documento_origine_tipo = OFFERTA_COMMERCIALE, il
 --   codice della sorgente (era OFFERTA: ora la FK verso config.sorgenti lo rifiuta).
@@ -38,7 +43,7 @@
 --     genera_ordine E push_contratto assenti; available_actions = [annulla SPENTA,
 --     reason DOCUMENTI_VIVI] (rev 2026-10-21)
 -- 13) non ACCETTATA (BOZZA): can_genera_ordine=false, reason='OFFERTA_NON_ACCETTATA'
--- 14) Indice: secondo ordine ('OFFERTA_COMMERCIALE', X) viola uq_ordini_v_documento_origine_offerta
+-- 14) Indice: secondo ordine dalla stessa offerta (provenienza) viola uq_ordini_v_sorgente_offerta
 -- 15) Indice: due ordini ('PREVENTIVO', Y) consentiti (indice non li vincola)
 -- 16a/16b) BOZZA senza listino_versione_id su un listino con una versione in
 --     vigore: azione verso EMESSA ACCESA, nessun motivo. ⚠️ Rev 2026-10-07
@@ -251,7 +256,7 @@ SELECT dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', i.offerta_id,
  WHERE i.slot = 'RIFIUTATA';
 
 -- Slot ACCT-ORD: ACCETTATA (per la matrice) con un ordine gia' generato
--- (documento_origine = ('OFFERTA_COMMERCIALE', id)) -> genera_ordine NON disponibile
+-- (la provenienza: OFFERTA_COMMERCIALE + uid) -> genera_ordine NON disponibile
 -- (test 12) e secondo ordine bloccato dall'indice (test 14).
 WITH ins AS (
     INSERT INTO vendite.offerte_commerciali (
@@ -270,17 +275,20 @@ SELECT dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', i.offerta_id,
   FROM tmp_aa_ids i
  WHERE i.slot = 'ACCT-ORD';
 
--- Ordine collegato all'offerta ACCT-ORD (documento_origine OFFERTA).
+-- Ordine collegato all'offerta ACCT-ORD (la provenienza: OFFERTA_COMMERCIALE + uid).
 -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-1/D-6): col BA del cliente, quello
 --   dell'offerta da cui nasce. Prima nasceva col BA NULL.
 INSERT INTO vendite.ordini (
     soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
     stato_doc_ordine_id, valuta_id, data, storicizza,
-    documento_origine_tipo, documento_origine_id
+    -- la provenienza, come la scrive il verbo (giro T.5 di brief-db-sorgente-documento-e-riga)
+    sorgente_tipo_id, sorgente_uid
 )
 SELECT od.soggetto_ruolo_id, (SELECT c.billing_account_id FROM tmp_aa_cli c), od.emittente_fiscale_id,
        od.stato_draft_ordine_id, od.valuta_id, DATE '2087-01-02', false,
-       'OFFERTA_COMMERCIALE', (SELECT offerta_id FROM tmp_aa_ids WHERE slot = 'ACCT-ORD')
+       (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'OFFERTA_COMMERCIALE'),
+       (SELECT o.uid FROM vendite.offerte_commerciali o
+         WHERE o.id = (SELECT offerta_id FROM tmp_aa_ids WHERE slot = 'ACCT-ORD'))
   FROM tmp_aa_ord od;
 
 -- ============================================================
@@ -519,38 +527,44 @@ SELECT ok(
 
 -- ============================================================
 -- TEST 14) Indice: secondo ordine ('OFFERTA_COMMERCIALE', X) sull'offerta ACCT-ORD
---          (che ne ha gia' uno) viola uq_ordini_v_documento_origine_offerta.
+--          (che ne ha gia' uno) viola uq_ordini_v_sorgente_offerta.
 -- ============================================================
 SELECT throws_ok(
     $sql$
         INSERT INTO vendite.ordini (
             soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
             stato_doc_ordine_id, valuta_id, data, storicizza,
-            documento_origine_tipo, documento_origine_id
+            sorgente_tipo_id, sorgente_uid
         )
         SELECT od.soggetto_ruolo_id, (SELECT c.billing_account_id FROM tmp_aa_cli c), od.emittente_fiscale_id,
                od.stato_draft_ordine_id, od.valuta_id, DATE '2087-01-03', false,
-               'OFFERTA_COMMERCIALE', (SELECT offerta_id FROM tmp_aa_ids WHERE slot = 'ACCT-ORD')
+               (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'OFFERTA_COMMERCIALE'),
+               (SELECT o.uid FROM vendite.offerte_commerciali o
+                 WHERE o.id = (SELECT offerta_id FROM tmp_aa_ids WHERE slot = 'ACCT-ORD'))
           FROM tmp_aa_ord od
     $sql$,
     '23505',
     NULL,
-    '14) secondo ordine OFFERTA duplicato viola uq_ordini_v_documento_origine_offerta'
+    '14) secondo ordine dalla stessa offerta viola uq_ordini_v_sorgente_offerta'
 );
 
 -- ============================================================
 -- TEST 15) Indice: due ordini ('PREVENTIVO', Y) sono consentiti
---          (l'indice parziale vincola solo OFFERTA). Id origine arbitrario:
---          documento_origine_id e' polimorfo senza FK.
+--          (l'indice parziale vincola solo OFFERTA). Il preventivo e' vero: la
+--          provenienza la valida il guard unico, che vuole un documento che esiste.
 -- ============================================================
+CREATE TEMP TABLE tmp_aa_prev AS
+SELECT preventivo_uid FROM dbops.fn_pgtap_crea_preventivo_con_righe('PGT-AA-PREV', 'DRAFT');
+
 INSERT INTO vendite.ordini (
     soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
     stato_doc_ordine_id, valuta_id, data, storicizza,
-    documento_origine_tipo, documento_origine_id
+    sorgente_tipo_id, sorgente_uid
 )
 SELECT od.soggetto_ruolo_id, (SELECT c.billing_account_id FROM tmp_aa_cli c), od.emittente_fiscale_id,
        od.stato_draft_ordine_id, od.valuta_id, DATE '2087-02-01', false,
-       'PREVENTIVO', 999999
+       (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'PREVENTIVO'),
+       (SELECT preventivo_uid FROM tmp_aa_prev)
   FROM tmp_aa_ord od;
 
 SELECT lives_ok(
@@ -558,11 +572,12 @@ SELECT lives_ok(
         INSERT INTO vendite.ordini (
             soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
             stato_doc_ordine_id, valuta_id, data, storicizza,
-            documento_origine_tipo, documento_origine_id
+            sorgente_tipo_id, sorgente_uid
         )
         SELECT od.soggetto_ruolo_id, (SELECT c.billing_account_id FROM tmp_aa_cli c), od.emittente_fiscale_id,
                od.stato_draft_ordine_id, od.valuta_id, DATE '2087-02-02', false,
-               'PREVENTIVO', 999999
+               (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'PREVENTIVO'),
+               (SELECT preventivo_uid FROM tmp_aa_prev)
           FROM tmp_aa_ord od
     $sql$,
     '15) due ordini PREVENTIVO con stessa origine consentiti (indice non li vincola)'

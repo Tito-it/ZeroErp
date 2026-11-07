@@ -22,6 +22,7 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
 | flusso_id | bigint | YES |  |
+| sorgente_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

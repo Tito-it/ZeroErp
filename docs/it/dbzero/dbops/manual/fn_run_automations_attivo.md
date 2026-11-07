@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_run_automations_attivo`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 7 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -86,12 +86,14 @@ La regola dichiara una strategia (`existence_strategy`): `BY_NAME` guarda il nom
 `BY_FUNCTION` guarda funzione e argomenti, `BOTH` si accontenta di uno dei due. Senza strategia
 vale `BY_NAME`; la regola del seed dichiara `BOTH`.
 
-⚠️ Il controllo per argomenti oggi non riconosce mai un trigger (vedi
-`dbops.fn_trigger_exists_block_by_args`): con `BOTH` decide solo il nome, e con `BY_FUNCTION` ogni
-giro toglierebbe e ricreerebbe il trigger.
+Il controllo per argomenti riconosce la funzione del trigger per identità e legge gli argomenti
+con la grammatica dei trigger ATTIVO (`dbops.fn_trigger_exists_block_by_args`,
+`dbops.fn_trigger_exists_require_by_args`): la risposta non dipende dal `search_path` di chi lancia
+il motore, e un trigger già montato con gli stessi argomenti non si ricrea.
 
 Se il trigger manca, prima di crearlo il motore **riconcilia**: toglie i trigger della stessa
-funzione con gli stessi argomenti, così un trigger rinominato non resta doppio. La riconciliazione
+funzione con gli stessi argomenti (`dbops.fn_drop_triggers_by_function_args`, che li riconosce allo
+stesso modo), così un trigger rinominato non resta doppio. La riconciliazione
 la governa la chiave `reconcile_on_change` dei parametri della regola, vera se manca; è l'**unica**
 chiave dei parametri che il motore legge.
 

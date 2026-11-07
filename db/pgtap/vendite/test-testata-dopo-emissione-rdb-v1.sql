@@ -616,14 +616,14 @@ BEGIN
     -- che ha lo stesso cliente.
     UPDATE vendite.ddt d
        SET sorgente_tipo_id = (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'ORDINE_VENDITA'),
-           sorgente_uid     = (SELECT o.uid FROM vendite.ordini o WHERE o.id = pg_temp.doc('ORD_CONF'))
+           sorgente_id      = pg_temp.doc('ORD_CONF')
      WHERE d.id = pg_temp.doc('DDT_DA_ORDINE');
 END
 $ddt$;
 
 SELECT is(
     (SELECT count(*)::text FROM vendite.ddt d
-      CROSS JOIN LATERAL vendite.fn_ddt_vincoli_cliente(d.id, d.sorgente_tipo_id, d.sorgente_uid)
+      CROSS JOIN LATERAL vendite.fn_ddt_vincoli_cliente(d.id, d.sorgente_tipo_id, d.sorgente_uid, d.sorgente_id)
       WHERE d.id = pg_temp.doc('DDT_LIBERA'))
       || '|' || ((script.fn_available_actions_ddt(pg_temp.doc('DDT_LIBERA')) -> 'non_editable_fields')
                  ? 'billing_account_id')::text,
@@ -634,7 +634,7 @@ SELECT is(
 SELECT is(
     (SELECT string_agg(v.vincolo || ':' || v.sorgente || ':' || (v.billing_account_id = (SELECT billing_account_id FROM _m))::text, ',')
        FROM vendite.ddt d
-      CROSS JOIN LATERAL vendite.fn_ddt_vincoli_cliente(d.id, d.sorgente_tipo_id, d.sorgente_uid) AS v
+      CROSS JOIN LATERAL vendite.fn_ddt_vincoli_cliente(d.id, d.sorgente_tipo_id, d.sorgente_uid, d.sorgente_id) AS v
       WHERE d.id = pg_temp.doc('DDT_DA_ORDINE'))
       || '|' || ((script.fn_available_actions_ddt(pg_temp.doc('DDT_DA_ORDINE')) -> 'non_editable_fields')
                  ? 'billing_account_id')::text,

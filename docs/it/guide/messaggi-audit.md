@@ -1,6 +1,6 @@
 # Guida — Sistema di Audit Logging
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 7 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali
 >
@@ -14,7 +14,6 @@
 > **Vedi anche** — funzioni e trigger DB:
 >
 > * [dbops.fn_audit_log_once](/dbzero/dbops/funzioni/fn_audit_log_once) — la riga intera in una volta: **l'unica funzione di audit**
-> * [script.fn_ensure_logconn](/dbzero/script/funzioni/fn_ensure_logconn) — la connessione di log per la scrittura fuori transazione
 >
 > **Vedi anche** — guide correlate:
 >
@@ -33,14 +32,14 @@ A differenza dell'error log (che registra solo gli errori), l'audit log registra
 
 Il registro si scrive in un modo solo: **una riga intera in una volta**, con `dbops.fn_audit_log_once` — stato, parametri, messaggio, esito. Non esiste una modalità che apra una corsa e la chiuda dopo: una riga, una volta scritta, non si riscrive.
 
-La funzione ha un ramo **fuori transazione** via dblink, pensato perché il log sopravviva a un rollback; col provisioning di oggi quel ramo non scrive (vedi *Logging fuori transazione*).
+La riga si scrive sempre nella transazione di chi chiama, e ne segue il destino (vedi *Una riga della transazione*).
 
 **Cosa troverai in questa guida:**
 
 * La tabella `audit_log` e i suoi campi
 * La funzione di audit e quando usarla
 * Il rapporto con il framework di automazione
-* Il supporto al logging fuori transazione
+* Perché l'audit vive nella transazione, e gli errori no
 * Gli esempi pronti — un processo con la sua durata, un evento singolo, la lettura del registro — in coda, in [Area tecnica](#area-tecnica-esempi)
 
 ---
@@ -55,8 +54,8 @@ dbops.audit_log (registro attivita)
             restituisce audit_id
 ```
 
-* **Riga** = un record completo creato con `fn_audit_log_once`, senza bisogno di chiusura. Un processo che dura nel tempo scrive la sua riga alla fine, con l'esito; la durata, se l'ha misurata, la mette in `result`
-* **Fuori transazione** = con `myapp.log_with_dblink='on'` la scrittura passerebbe dalla connessione separata `logconn`; col provisioning di oggi quel ramo fallisce (vedi *Logging fuori transazione*), e l'audit si scrive nella transazione del chiamante
+* **Riga** = un record completo creato con `fn_audit_log_once`, senza bisogno di chiusura. Un processo che dura nel tempo scrive la sua riga alla fine, con l'esito; la durata, se l'ha misurata, la passa in `p_duration_ms`
+* **Nella transazione** = la riga d'audit nasce nella transazione del chiamante, e se quella si annulla si annulla anche la riga; il canale fuori transazione (`myapp.log_with_dblink`) serve al registro degli errori, non all'audit
 
 ---
 
@@ -80,7 +79,7 @@ Da un punto di vista tecnico:
 | `executed_at`   | TIMESTAMPTZ |    no    | `now()`        | Timestamp di inizio                                                                                        |
 | `status`        | TEXT        |    no    | —              | Esito: `OK`, `ERROR`, `DRYRUN`, `WARN` (vincolo `chk_audit_status`) |
 | `message`       | TEXT        |    si    | —              | Messaggio descrittivo                                                                                      |
-| `duration_ms`   | INTEGER     |    si    | —              | Durata in millisecondi: la scriveva la modalità sessione ritirata; `fn_audit_log_once` non la prevede     |
+| `duration_ms`   | INTEGER     |    si    | —              | Durata in millisecondi, misurata da chi scrive e passata in `p_duration_ms`: la sede unica della durata |
 | `params`        | JSONB       |    si    | —              | Parametri di input / contesto strutturato                                                                  |
 | `result`        | JSONB       |    si    | —              | Risultato strutturato                                                                                      |
 | `exec_mode`     | TEXT        |    si    | —              | Modalita di esecuzione (`AUTO`, `CI`, `SCHEDULED`)                                                         |
@@ -115,7 +114,7 @@ Il sistema espone una sola funzione di scrittura. La modalità sessione — una 
 
 #### `dbops.fn_audit_log_once`
 
-Registra una riga intera in una sola chiamata. È la funzione da usare per ogni registrazione: un'azione puntuale, una simulazione, un salto motivato, l'esito di un processo che dura nel tempo (la firma non ha la durata: chi l'ha misurata la mette in `result`). Restituisce l'`audit_id` del record creato.
+Registra una riga intera in una sola chiamata. È la funzione da usare per ogni registrazione: un'azione puntuale, una simulazione, un salto motivato, l'esito di un processo che dura nel tempo (chi ha misurato la durata la passa in `p_duration_ms`). Restituisce l'`audit_id` del record creato.
 
 Da un punto di vista tecnico:
 
@@ -135,6 +134,7 @@ Da un punto di vista tecnico:
 | `p_result`        | JSONB   | NULL    | Risultato strutturato        |
 | `p_host`          | TEXT    | NULL    | Host origine                 |
 | `p_app_version`   | TEXT    | NULL    | Versione applicazione        |
+| `p_duration_ms`   | INTEGER | NULL    | Durata in millisecondi       |
 
 > Documentazione dettagliata: [dbops.fn_audit_log_once](/dbzero/dbops/funzioni/fn_audit_log_once)
 
@@ -217,11 +217,11 @@ Si riconoscono così, e restano così: chi le scrisse non si può ricostruire.
 
 ---
 
-## Logging fuori transazione
+## Una riga della transazione
 
-La funzione di audit ha un ramo di scrittura **fuori transazione**: se il GUC `myapp.log_with_dblink` vale `on` e la connessione di log `logconn` si apre, la riga passa da quella connessione invece che dalla transazione del chiamante. ⚠️ Qui un GUC assente vale «spento», e solo il valore esatto `on` accende il ramo. Le altre funzioni che scrivono fuori transazione seguono invece una regola comune, in cui l'interruttore assente vale «acceso» e solo `off` spegne ([script.fn_canale_log_stringa](/dbzero/script/funzioni/fn_canale_log_stringa)): l'audit non la segue ancora. Senza il GUC, quindi, l'audit si scrive nella transazione di chi chiama e ne segue il destino.
+La riga d'audit si scrive **sempre nella transazione di chi chiama**, qualunque valore abbia l'interruttore del canale di log (`myapp.log_with_dblink`): se la transazione si annulla, si annulla anche la riga. È una scelta di modello: l'audit racconta ciò che è successo davvero, e un lavoro annullato non è successo.
 
-⛔ Col provisioning di oggi il ramo fuori transazione **non scrive**: la connessione di log entra con il ruolo del canale, che può solo aggiungere a `dbops.error_log` (e al giornale dei job), non scrivere né aggiornare `dbops.audit_log`. Con `myapp.log_with_dblink='on'` la chiamata di audit fallisce, e con lei la transazione del chiamante: non c'è un ripiego sulla scrittura locale. Il ramo ha anche difetti suoi (senza parametri scrive il JSON `null` invece di un vuoto, e senza moduli costruisce un array non valido). Il dettaglio è nella scheda [dbops.fn_audit_log_once](/dbzero/dbops/funzioni/fn_audit_log_once).
+⭐ Ciò che deve sopravvivere a un errore non sta nell'audit ma nel **registro degli errori** (`dbops.error_log`), che `fn_log_and_raise_error` scrive dal canale fuori transazione prima di sollevare. Per questo una funzione che fallisce non scrive una riga d'audit `ERROR` prima di rilanciare l'errore: la riga sparirebbe con l'errore, e il fallimento è già nel registro degli errori con il suo codice.
 
 Per i dettagli sulla configurazione di dblink, vedi la [Guida Messaggi di Errore](/guide/Messaggi-di-Errore-e-Generazione-Log#setup-operativo-devops).
 
@@ -251,7 +251,7 @@ L'audit log e l'error log sono sistemi **complementari ma separati**:
 | ------------------ | ------------------------------------ | ----------------------------------------------------- |
 | **Cosa traccia**   | Operazioni (successi, errori, skip)  | Solo errori                                           |
 | **Chi scrive**     | `dbops.fn_audit_log_once`            | `script.fn_log_error_only` / `fn_log_and_raise_error` |
-| **Persistenza**    | In-transazione (default) o dblink    | Sempre dblink (fuori transazione)                     |
+| **Persistenza**    | Sempre nella transazione             | Sempre dblink (fuori transazione)                     |
 | **Messaggi**       | Testo libero                         | Da catalogo `config.messaggi_errore`                  |
 | **Uso principale** | Tracciamento processi, deploy, batch | Diagnosi errori, audit eccezioni                      |
 
@@ -261,10 +261,10 @@ In un processo complesso (es. automazione batch), l'audit log traccia l'avanzame
 
 ## Best practice
 
-* Usare `fn_audit_log_once` per ogni registrazione. ⭐ **È l'unica funzione di audit**: un processo con durata misurabile scrive la sua riga alla fine, con l'esito, e la durata misurata in `result`
+* Usare `fn_audit_log_once` per ogni registrazione. ⭐ **È l'unica funzione di audit**: un processo con durata misurabile scrive la sua riga alla fine, con l'esito, e la durata misurata in `p_duration_ms`
 * Popolare sempre `params` con dati strutturati (JSONB) che identifichino l'operazione — tabella, trigger, schemi coinvolti
 * Non usare l'audit log per tracciare errori di dominio — usare `dbops.error_log` e i log di dominio specifici (vedi guida errori)
-* Non attivare `myapp.log_with_dblink='on'` per l'audit: oggi fa fallire la scrittura (vedi *Logging fuori transazione*)
+* Non scrivere una riga `ERROR` prima di rilanciare un errore: si annullerebbe con la transazione; il fallimento lo registra `dbops.error_log`
 * Sfruttare `cleanup_at` per la retention automatica dei record non piu necessari
 * Interrogare regolarmente `audit_log` con `status='ERROR'` per identificare problemi ricorrenti
 
@@ -315,9 +315,9 @@ erDiagram
 
 ## Area tecnica — esempi
 
-**Un processo batch** — il corpo, poi **una** riga d'audit con l'esito, in entrambi i finali
-possibili: l'esito buono e l'eccezione, che registra e **rilancia** (`RAISE`) perché il fallimento
-non va inghiottito dal logging. La durata, misurata dal processo, va in `result`:
+**Un processo batch** — il corpo, poi **una** riga d'audit con l'esito. La durata, misurata dal
+processo, va in `p_duration_ms`. Un errore non scrive una riga d'audit: rilanciato, annullerebbe
+anche quella, e lo registra già `dbops.error_log`:
 
 ```sql
 DO $$
@@ -333,28 +333,11 @@ BEGIN
     'Trigger TX_ID applicati su 12 tabelle',
     p_exec_mode     := 'CI',
     p_rows_affected := 12,
-    p_result        := jsonb_build_object('duration_ms',
-                         floor(extract(epoch FROM clock_timestamp() - v_inizio) * 1000))
+    p_duration_ms   := floor(extract(epoch FROM clock_timestamp() - v_inizio) * 1000)::int
   );
-
-EXCEPTION WHEN OTHERS THEN
-  PERFORM dbops.fn_audit_log_once(
-    'dbops.mio_batch',
-    'ERROR',
-    jsonb_build_object('schemas', ARRAY['anagrafiche']),
-    SQLERRM,
-    p_exec_mode     := 'CI',
-    p_sqlstate      := SQLSTATE,
-    p_error_context := PG_EXCEPTION_CONTEXT
-  );
-  RAISE;
 END;
 $$;
 ```
-
-⚠️ Con il `RAISE` la transazione si annulla, e con lei la riga `ERROR` scritta nella transazione:
-resta solo l'errore nel registro degli errori. Il ramo fuori transazione che la salverebbe oggi non
-scrive (vedi *Logging fuori transazione*).
 
 **Un evento singolo** — un controllo puntuale che registra il risultato:
 

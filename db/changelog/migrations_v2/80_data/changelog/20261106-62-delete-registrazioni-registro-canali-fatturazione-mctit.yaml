@@ -1,0 +1,68 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE REGISTRAZIONI DEL REGISTRO DEI CANALI, RITIRATO
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto T, giro T.1 (D-10).
+#
+# 00_schema/vendite/20261106-61 ritira vendite.documenti_fatturazione_canali.
+# Restano due righe di catalogo che la nominano:
+#   * dbops.storico_scope_policy, id 101 (NESSUNO): senza la madre sarebbe
+#     RIGA_SENZA_MADRE nel digest dello scope. Il CSV
+#     (80_data/sql/dbops/storico_scope_policy.csv) la perde nello stesso commit:
+#     il suo mirror e' un loadUpdateData, che aggiunge e aggiorna ma non
+#     cancella, quindi su un database gia' popolato la riga la toglie questo
+#     changeSet (che in 80_data gira dopo il mirror 20260911-23);
+#   * config.storico_set_storicizza: la registrazione automatica della madre
+#     (insert_manuale = false). Si toglie come per la legacy del 2026-09-12
+#     (20260912-09), senza aspettare la potatura.
+# Da zero nessuna delle due nasce: i DELETE non trovano niente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261106-62-delete-registrazioni-registro-canali-fatturazione-mctit.yaml
+
+  - changeSet:
+      id: 20261106-62-delete-registrazioni-registro-canali-fatturazione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Toglie le registrazioni di vendite.documenti_fatturazione_canali,
+        ritirata da 20261106-61: la riga 101 di dbops.storico_scope_policy e la
+        riga di config.storico_set_storicizza.
+        brief-db-sorgente-documento-e-riga §7.2 lotto T, giro T.1.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: dbops
+              tableName: storico_scope_policy
+          - tableExists:
+              schemaName: config
+              tableName: storico_set_storicizza
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Per id E per coordinate: sul solo id si scommetterebbe che
+              -- nessuno abbia riusato quel numero.
+              DELETE FROM dbops.storico_scope_policy m
+               WHERE (m.id, m.schema_tabella, m.nome_tabella) IN (
+                         (101, 'vendite', 'documenti_fatturazione_canali'));
+
+              DELETE FROM config.storico_set_storicizza s
+               WHERE s.table_name = 'vendite.documenti_fatturazione_canali';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- La tabella non esiste piu': non c'e' niente da registrare.
+              SELECT 1;

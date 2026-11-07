@@ -1,0 +1,51 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# RITIRO DELLA FIRMA (tipo, uid) DI vendite.fn_ddt_trigger_ordine_testata
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto 0 giro 0.3 («i lettori trasversali sul BB che risolve»).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   La firma con sorgente_id in coda (20261106-24) la sostituisce; i due chiamanti
+#   sono passati (-25, -26).
+#
+# ── ⚠️ CHE COSA CAMBIA ──────────────────────────────────────────────
+#   Nessuno: con il DEFAULT della firma nuova una chiamata a due argomenti
+#   risolve sulla nuova.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261106-27-drop-fn-ddt-trigger-ordine-testata-due-argomenti-mctit.yaml
+
+  - changeSet:
+      id: 20261106-27-drop-fn-ddt-trigger-ordine-testata-due-argomenti
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_ddt_trigger_ordine_testata(tipo, uid) si ritira. brief-db-sorgente-documento-e-riga §7.2 giro 0.3.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite' AND p.proname = 'fn_ddt_trigger_ordine_testata' AND p.pronargs = 3;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION vendite.fn_ddt_trigger_ordine_testata(vendite.ddt.sorgente_tipo_id%TYPE, vendite.ddt.sorgente_uid%TYPE);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- La firma a due argomenti e' quella di 20261103-43: un rollback la riprende da li'.
+              SELECT 1;

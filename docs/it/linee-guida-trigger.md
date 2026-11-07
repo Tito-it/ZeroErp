@@ -1,6 +1,6 @@
 # Linee guida Trigger (PostgreSQL + Liquibase)
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 7 novembre 2026
 >
 > **Destinatari**: chi scrive o modifica un trigger o una funzione trigger
 >
@@ -87,7 +87,10 @@ Riceve le differenze per tabella come **argomenti del trigger** (`TG_ARGV`).
 
 ⚠️ Chi legge quegli argomenti da fuori (una capability, un presidio che interpreta `pg_trigger.tgargs`)
 non ricopia la loro grammatica: la estrae in una funzione condivisa che usano sia il trigger sia il
-lettore. `TG_ARGV` parte da 0, `dbops.fn_trigger_argomenti` da 1.
+lettore (per la famiglia ATTIVO, `dbops.fn_trigger_attivo_argomenti`). `TG_ARGV` parte da 0,
+`dbops.fn_trigger_argomenti` da 1: la funzione condivisa rinumera, e nessun chiamante conta
+posizioni. Gli argomenti si leggono per nome e senza valori di riserva: un ripiego che indovina
+una colonna dà una colonna sbagliata che non si vede.
 
 Check e guard — che cosa restituisce una `fn_check_*` e che cosa solleva una `fn_guard_*` — e come si
 solleva un errore sono in [Linee guida SQL, §5](linee-guida-sql.md).
@@ -162,6 +165,16 @@ una colonna la deriva il database e da fuori non si scrive, servono due trigger:
   asseriva il vincolo diventa rosso. È un miglioramento — il guard dice i valori ammessi, il CHECK no
   — ma va dichiarato, e il CHECK **resta**, con un'asserzione sua sulla sua esistenza: presidia le
   strade che il trigger non percorre.
+* ⛔ **Un guard che decide su una riga correlata non la legge sotto la row level security di chi
+  scrive.** Una funzione trigger gira con l'identità di chi scrive: il padre, il figlio, il
+  documento collegato fuori dal suo perimetro risultano assenti, e il guard decide su un'assenza
+  che non c'è — rifiuta per la ragione sbagliata, o lascia passare. In un trigger differito conta
+  per di più il contesto di chi chiude la transazione. La lettura va in una funzione
+  `SECURITY DEFINER` del proprietario, con `search_path` fissato, che risponde il minimo che
+  serve. ⛔ Se la funzione esegue SQL dinamico **non riceve nomi di tabelle o colonne**: riceve il
+  trigger (tabella e nome) e legge gli argomenti dal montaggio, e risponde solo per tabelle del
+  proprietario — altrimenti chiunque la chiami legge qualunque colonna. Esempio:
+  `dbops.fn_trigger_padre_stato` e `dbops.fn_trigger_figlie_presenti`, le letture dei guard ATTIVO.
 * ⛔ **Un trigger che scrive una colonna lucchettata non la «difende».** Riassegnare
   `NEW.colonna := OLD.colonna` «per sicurezza» annulla anche le scritture che passano dalla porta del
   lucchetto (`zeroerp.allow_lock_columns_override`), e lo fa senza errore. A parità di condizione

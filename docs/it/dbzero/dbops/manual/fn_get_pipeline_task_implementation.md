@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_get_pipeline_task_implementation`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 7 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -29,14 +29,12 @@ funzione con cui il backend trova l'handler prima di eseguire ogni task di uno s
 
 1. Prima verifica che il task sia registrato e attivo in un dominio attivo
    (`dbops.fn_check_pipeline_task_registered`): se non lo è, si ferma con l'errore di quella.
-2. Se è stata chiesta una variante, prova quella, purché attiva.
-3. Altrimenti, **e anche quando la variante chiesta non esiste o è spenta**, usa la variante di
-   default attiva.
+2. Se è stata chiesta una variante, restituisce quella, purché attiva; se non c'è, **nessuna
+   riga**. Non ripiega sul default: chi chiede «la variante X» non riceve un'altra cosa senza
+   saperlo. Che cosa fare di un risultato vuoto lo decide chi chiama (il backend solleva
+   `E_PIPELINE_TASK_HANDLER_NOT_FOUND`).
+3. Se la variante non è chiesta, usa la variante di default attiva.
 4. Se non c'è un default attivo, rifiuta.
-
-⚠️ Il ripiego del punto 3 è silenzioso: chi chiede una variante che non c'è riceve il default,
-senza errore e senza traccia. Chi chiama sa quale variante è stata usata solo leggendo la colonna
-della variante nel risultato.
 
 ⚠️ Il punto 2 e il punto 3 non ricontrollano il dominio: lo ha già fatto la verifica del punto 1.
 
@@ -44,18 +42,29 @@ della variante nel risultato.
 
 ### Codici errore
 
-* `E_GENERICO` — dominio non indicato, codice del task vuoto, nessuna implementazione di default
-  attiva; e, attraverso la verifica del punto 1, task non registrato o spento.
+* `E_PIPELINE_TASK_HANDLER_NOT_FOUND` — nessuna implementazione di default attiva, quando la
+  variante non è chiesta; e, attraverso la verifica del punto 1, task non registrato o spento.
+  Dominio e task sono nel dettaglio.
+* `E_DBOPS_CHIAMATA_NON_VALIDA` — dominio non indicato o codice del task vuoto: lo produce solo un
+  chiamante rotto.
 
 ---
 
 ### Test
 
-* `db/pgtap/dbops/test-pipeline-task-registry.sql`, test 5, 6 e 8 — la variante chiesta, il ripiego
-  sul default, l'errore senza default.
+* `db/pgtap/dbops/test-pipeline-task-registry.sql`, test 5, 6, 8, 9 e 10 — la variante chiesta,
+  la variante assente che non restituisce righe, l'errore senza default, il default senza
+  variante, il dominio mancante.
 * `db/pgtap/vendite/test-seed-pull-commessa-pipeline-v1.sql` e
   `test-pipeline-consuma-plafond-seed-v1.sql` — un task del dominio `FATTURAZIONE` si risolve dal
   suo seed come lo risolve il backend.
+
+---
+
+### Note di migrazione
+
+* 2026-11-07 — una variante chiesta e assente non ripiega più sul default; i rifiuti hanno un
+  codice al posto di `E_GENERICO` (`brief-db-revisione-dbops`, giro 2).
 
 ---
 
