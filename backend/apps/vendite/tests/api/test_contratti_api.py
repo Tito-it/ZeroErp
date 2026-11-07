@@ -202,7 +202,9 @@ class TestDocumentiContratto(_BaseApiTest):
         self.assertEqual(body["count"], 1)
         kwargs = svc_cls.return_value.list_documenti_per_sorgente.call_args.kwargs
         self.assertEqual(kwargs["sorgente_tipo_id"], 4)
-        self.assertEqual(kwargs["sorgente_uid"], "0190b000-0000-0000-0000-000000000007")
+        # Giro D.1: la lista cerca per id dell'entità, come scrive la stampa.
+        self.assertEqual(kwargs["sorgente_id"], 7)
+        self.assertNotIn("sorgente_uid", kwargs)
         self.assertEqual((kwargs["limit"], kwargs["offset"]), (10, 10))
         self.assertEqual((kwargs["order_by"], kwargs["order_dir"]), ("titolo", "asc"))
         self.assertEqual(kwargs["search"], "contr")
@@ -452,7 +454,8 @@ class TestEmissioneAllegatiContratto(_BaseApiTest):
         self.assertEqual(kwargs["emittente_fiscale_id"], 11)
         self.assertEqual(kwargs["sorgente_tipo_id"], 4)
         self.assertEqual(kwargs["sorgente_id"], 7)
-        self.assertEqual(kwargs["sorgente_uid"], "0190b000-0000-0000-0000-000000000007")
+        # Giro D.1: la view passa l'id, la chiave della stampa la sceglie il DB.
+        self.assertNotIn("sorgente_uid", kwargs)
         self.assertEqual(len(kwargs["allegati"]), 1)
         self.assertEqual(kwargs["allegati"][0]["mime_type"], "application/pdf")
         self.assertEqual(kwargs["allegati"][0]["file_name"], "allegato.pdf")

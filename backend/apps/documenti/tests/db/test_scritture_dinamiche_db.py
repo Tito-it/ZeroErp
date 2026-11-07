@@ -39,10 +39,16 @@ from django.db import connection, transaction
 
 from apps.core.tests.db_e2e import Annulla, richiedi_db_provvisto
 
+# ⭐ Il mondo è un PREVENTIVO vero (giro D.1 di brief-db-sorgente-documento-e-riga,
+#    2026-11-07): una stampa cita un documento che esiste, e il guard unico
+#    rifiuta una chiave inventata. Il preventivo porta azienda e operatore.
 _FIXTURE: tuple[str, ...] = (
     """
     CREATE TEMP TABLE _mondo AS
-    SELECT m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m
+    SELECT p.preventivo_id, p.preventivo_uid, p.emittente_fiscale_id, p.auth_user_id,
+           (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'PREVENTIVO')
+               AS sorgente_tipo_id
+      FROM dbops.fn_pgtap_crea_preventivo('scritture dinamiche documenti') p
     """,
     "SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo))",
 )
@@ -63,7 +69,7 @@ class ScrittureDinamicheDocumentiDbTests(unittest.TestCase):
         emittente = cur.fetchone()[0]
         cur.execute("SELECT id FROM documenti.tipi_documento_output ORDER BY id LIMIT 1")
         tipo_output = cur.fetchone()[0]
-        cur.execute("SELECT id FROM config.sorgenti WHERE attivo ORDER BY id LIMIT 1")
+        cur.execute("SELECT sorgente_tipo_id FROM _mondo")
         sorgente = cur.fetchone()[0]
         repo = DocumentiRepository()
         template_id = repo.create_template({
@@ -79,6 +85,11 @@ class ScrittureDinamicheDocumentiDbTests(unittest.TestCase):
             "meta": {"origine": "test", "n": 1},
         })
         return repo, emittente, template_id
+
+    # Scopo: l'uid del preventivo del mondo, la chiave della sua stampa.
+    def _preventivo_uid(self, cur) -> str:
+        cur.execute("SELECT preventivo_uid::text FROM _mondo")
+        return cur.fetchone()[0]
 
     # 1. Testata template: create + update con `meta` dict.
     def test_template_create_update_con_meta(self):
@@ -168,7 +179,9 @@ class ScrittureDinamicheDocumentiDbTests(unittest.TestCase):
                     "template_documento_id": template_id,
                     "template_versione_id": versione_id,
                     "sorgente_tipo_id": sorgente,
-                    "sorgente_uid": "scrdin-1",
+                    # Il preventivo del mondo: tipo a chiave uid (D.1).
+                    "sorgente_id": None,
+                    "sorgente_uid": self._preventivo_uid(cur),
                     "sorgente_riga": None,
                     "progressivo_sorgente": 1,
                     "stato": "GENERATO",

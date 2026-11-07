@@ -50,10 +50,6 @@ from apps.core.types import (
 LOOKUP_COLONNE_VALORE: frozenset[str] = frozenset({"id", "codice", "codice_interno"})
 
 
-# Cap massimo righe sorgente per la CTE lookup. Il dataset atteso è molto più piccolo
-# (tabelle config con poche decine/centinaia di record); il cap è una guardia di sicurezza.
-LOOKUP_MAX_SOURCE_ROWS = 10_000
-
 # Scopo: le colonne per cui si ordina una lookup di codici, generica o
 #        specializzata: SEDE UNICA (2026-09-26, regola del 2). Le legge anche
 #        `lookup_service` per validare `order_by` col codice del dominio —
@@ -377,10 +373,13 @@ class DbopsRepository:
         return results, total_count
 
     # Scopo: Restituisce la lista dei valori lookup per una relazione config con filtro ILIKE
-    # e paginazione. Chiama dbops.fn_get_lookup_codici con limit ampio per ottenere tutti i
-    # record attivi e applica il filtro testo e la paginazione esternamente via SQL wrapper.
-    # Obiettivo: evitare di modificare la funzione DB generica mantenendo la logica di ricerca
-    # lato Python/SQL.
+    # e paginazione. Chiama dbops.fn_get_lookup_codici SENZA tetto (`p_limit` NULL: tutte le
+    # righe della tabella coi filtri attivo/obsoleti) e applica ricerca, ordinamento e
+    # paginazione sopra, in un wrapper SQL.
+    # ⭐ BE4 di brief-db-revisione-dbops (D57, decisione di Tid del 2026-11-07): fino a quel
+    #    giorno passava un tetto di 10 000 righe (`LOOKUP_MAX_SOURCE_ROWS`) e cercava DOPO il
+    #    taglio, quindi su una tabella più lunga la ricerca non vedeva le righe oltre — e
+    #    quali restavano fuori lo decideva l'ORDER BY della funzione. Il tetto è caduto.
     # Perimetro: sola lettura; solleva ServiceError se la relazione non è in whitelist.
     # Risultato: tuple (list[dict], total_count) con campi id, codice, descrizione.
     def list_lookup_codici(
@@ -413,7 +412,7 @@ class DbopsRepository:
         search_pattern = pattern_contiene(search)
 
         # Wrappa fn_get_lookup_codici in una CTE con filtro ILIKE e paginazione esterna.
-        # Il limit interno (LOOKUP_MAX_SOURCE_ROWS) è una guardia; il filtro è applicato sul risultato.
+        # ⛔ Nessun limit interno (`p_limit` NULL): la ricerca deve vedere tutta la tabella.
         # ⛔ L'ORDER BY lo scrive il BB `sql_order_clause` (2026-09-26): prima
         #    `{order_col} {order_dir}` interpolati, fidandosi della whitelist
         #    del service, e lo spareggio `id` sempre ASC.
@@ -432,7 +431,7 @@ class DbopsRepository:
                                %s,
                                %s,
                                %s,
-                               %s,
+                               NULL,
                                0,
                                %s
                            )
@@ -450,7 +449,6 @@ class DbopsRepository:
             order_col,
             order_dir,
             attivo_only,
-            LOOKUP_MAX_SOURCE_ROWS,
             includi_obsoleti,
             search_pattern,
             search_pattern,

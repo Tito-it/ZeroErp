@@ -84,9 +84,8 @@ class TestFattureDocumentiApi(JwtMockedApiTest):
         self.assertEqual(kwargs["emittente_fiscale_id"], 11)
         self.assertEqual(kwargs["sorgente_tipo_id"], 10)
         self.assertEqual(kwargs["sorgente_id"], 42)
-        self.assertEqual(
-            kwargs["sorgente_uid"], "0190b000-0000-0000-0000-000000000042",
-        )
+        # Giro D.1: la view passa l'id, la chiave della stampa la sceglie il DB.
+        self.assertNotIn("sorgente_uid", kwargs)
 
     # 2. Lista documenti generati per la sorgente: 200 envelope paginato.
     @patch(_AUTH, return_value=(Mock(), None))

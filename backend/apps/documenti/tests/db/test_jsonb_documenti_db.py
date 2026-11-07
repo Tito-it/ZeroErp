@@ -51,20 +51,19 @@ class JsonbDocumentiDbTests(unittest.TestCase):
         with connection.cursor() as cur:
             cur.execute(
                 """
-                SELECT p.preventivo_id, p.preventivo_uid::text, p.emittente_fiscale_id,
+                SELECT p.preventivo_id, p.emittente_fiscale_id,
                        p.auth_user_id,
                        (SELECT id FROM config.sorgenti WHERE codice_interno = 'PREVENTIVO')
                   FROM dbops.fn_pgtap_crea_preventivo_con_righe('jsonb documenti be') p
                 """
             )
-            preventivo_id, preventivo_uid, self.emittente, uid, sorgente = cur.fetchone()
+            preventivo_id, self.emittente, uid, sorgente = cur.fetchone()
         self.generato = DocumentGenerationService(storage=storage).genera_documento(
             get_user_model().objects.get(pk=uid),
             emittente_fiscale_id=self.emittente,
             sorgente_tipo_id=sorgente,
             sorgente_id=preventivo_id,
-            sorgente_uid=preventivo_uid,
-        )
+                    )
 
     def test_template_meta_oggetto(self) -> None:
         t = self.repo.get_template(self.generato["template_documento_id"], emittente_ids_scope=None)

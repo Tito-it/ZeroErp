@@ -169,7 +169,7 @@ def crea_riga_commessa(
             p_stato_approvazione => %s, p_stato_emissione => %s,
             p_sorgente_tipo_id => (SELECT s.id FROM config.sorgenti s
                                     WHERE s.codice_interno = %s AND s.attivo),
-            p_sorgente_uid => %s::text,
+            p_sorgente_chiave => %s::text,
             p_sorgente_riga => %s::bigint,
             p_meta => %s::jsonb
         )

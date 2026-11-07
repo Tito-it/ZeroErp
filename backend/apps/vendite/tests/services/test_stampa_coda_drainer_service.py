@@ -47,7 +47,6 @@ def _item(
         "id": coda_id,
         "sorgente_tipo_id": 10,
         "sorgente_id": fattura_id,
-        "sorgente_uid": str(fattura_id),
         "lotto_id": 7,
         "template_documento_id": template_id,
         "tipo_documento_output_id": tipo_id,
@@ -120,7 +119,9 @@ class DrainerHappyPathTests(SimpleTestCase):
         self.assertEqual(kwargs["emittente_fiscale_id"], 11)
         self.assertEqual(kwargs["sorgente_tipo_id"], 10)
         self.assertEqual(kwargs["sorgente_id"], 42)
-        self.assertEqual(kwargs["sorgente_uid"], "42")
+        # Giro D.1: la coda non porta più `sorgente_uid`, e la chiave della
+        # stampa la sceglie il DB dal tipo.
+        self.assertNotIn("sorgente_uid", kwargs)
         self.assertEqual(kwargs["template_documento_id"], 5)
         self.assertIsNone(kwargs["tipo_documento_output_id"])
 

@@ -767,7 +767,9 @@ class BaseSourceHandler(ABC):
             uom_operativa_id=row.uom_operativa_id,
             factor_to_base=row.factor_to_base,
             sorgente_tipo_id=row.sorgente_tipo_id,
-            sorgente_uid=row.sorgente_uid,
+            # Il lister restituisce l'uid del documento: è una chiave come
+            # un'altra per la madre, che la traduce (giro K.1).
+            sorgente_chiave=row.sorgente_uid,
             # La riga del documento che il lister restituisce (`riga_id`); i
             # consumi non ce l'hanno e passano None (BE-C.3-a). Un componente
             # di kit eredita la riga del suo padre: e' quella del documento.

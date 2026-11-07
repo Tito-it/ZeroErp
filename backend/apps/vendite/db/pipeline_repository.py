@@ -2702,7 +2702,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                    user_update = CURRENT_USER
               FROM claimed
              WHERE c.id = claimed.id
-            RETURNING c.id, c.sorgente_tipo_id, c.sorgente_id, c.sorgente_uid,
+            RETURNING c.id, c.sorgente_tipo_id, c.sorgente_id,
                       c.lotto_id, c.template_documento_id,
                       c.tipo_documento_output_id, c.tentativi
         """

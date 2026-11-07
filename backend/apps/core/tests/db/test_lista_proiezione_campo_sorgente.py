@@ -514,6 +514,8 @@ _ESERCIZI: dict[str, Esercizio] = {
             "apps.documenti.db.documenti_repository", "DocumentiRepository"
         ).list_documenti_per_sorgente(
             sorgente_tipo_id=_ID_FINTO,
+            # Una chiave sola, il ramo uid (giro D.1): la query, non il documento.
+            sorgente_id=None,
             sorgente_uid="00000000-0000-0000-0000-000000000000",
             sorgente_riga=None,
             emittente_ids_scope=None,

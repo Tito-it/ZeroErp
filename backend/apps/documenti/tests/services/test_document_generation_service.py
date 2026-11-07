@@ -122,7 +122,6 @@ _GENERA_DEFAULT: dict[str, Any] = {
     "emittente_fiscale_id": 11,
     "sorgente_tipo_id": 10,
     "sorgente_id": 100,
-    "sorgente_uid": "uid-100",
     "sorgente_riga": None,
 }
 
@@ -201,7 +200,14 @@ class GeneraDocumentoHappyPathTests(SimpleTestCase):
         documento_data = repo.create_documento_generato.call_args.args[0]
         self.assertEqual(documento_data["template_documento_id"], 7)
         self.assertEqual(documento_data["template_versione_id"], 12)
-        self.assertEqual(documento_data["sorgente_uid"], "uid-100")
+        # La chiave del documento nella colonna del suo tipo (giro D.1): la
+        # coppia del DB, scritta e usata per il progressivo — la stessa.
+        repo.chiave_sorgente.assert_called_once_with(sorgente_tipo_id=10, chiave="100")
+        self.assertEqual(documento_data["sorgente_id"], 100)
+        self.assertIsNone(documento_data["sorgente_uid"])
+        repo.next_progressivo_sorgente.assert_called_once_with(
+            sorgente_tipo_id=10, sorgente_id=100, sorgente_uid=None, sorgente_riga=None,
+        )
         self.assertEqual(documento_data["progressivo_sorgente"], 1)
         self.assertEqual(documento_data["context_json"], {"numero": 42})
         self.assertEqual(len(documento_data["context_hash"]), 64)
@@ -350,6 +356,23 @@ class GeneraDocumentoResolveTemplateTests(SimpleTestCase):
             with self.assertRaises(ServiceError) as ctx:
                 svc.genera_documento(make_user(), **_GENERA_DEFAULT)
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_TEMPLATE_SENZA_PREDEFINITO")
+        repo.create_documento_generato.assert_not_called()
+        storage.write.assert_not_called()
+
+    # 5b-bis. la chiave della stampa (giro D.1): un rifiuto di
+    #     `script.fn_sorgente_chiave` (qui il tipo spento) arriva come
+    #     ServiceError col codice del DB — mai un DatabaseError grezzo, che
+    #     dalla view uscirebbe 500 — e PRIMA di scegliere il modello.
+    def test_genera_documento_chiave_rifiutata_dal_db_e_service_error(self) -> None:
+        svc, repo, _, storage = service_with_mocks()
+        repo.chiave_sorgente.side_effect = make_db_error(
+            "Configurazione sorgente mancante o non attiva", codice="E_SORG_CONF",
+        )
+        with patch_scope(None):
+            with self.assertRaises(ServiceError) as ctx:
+                svc.genera_documento(make_user(), **_GENERA_DEFAULT)
+        self.assertEqual(ctx.exception.code, "E_SORG_CONF")
+        repo.risolvi_template_applicabile.assert_not_called()
         repo.create_documento_generato.assert_not_called()
         storage.write.assert_not_called()
 
@@ -741,7 +764,7 @@ class GeneraDocumentoTransactionalTests(SimpleTestCase):
         self.assertEqual(h1, h2)
         self.assertEqual(len(h1), 64)
 
-    # 20. input guard: id non positivi e sorgente_uid vuoto rifiutati pre-DB.
+    # 20. input guard: id non positivi rifiutati pre-DB.
     def test_genera_documento_input_guard_su_input_scalari(self) -> None:
         svc, repo, _, _ = service_with_mocks()
         bad_inputs = [
@@ -749,8 +772,6 @@ class GeneraDocumentoTransactionalTests(SimpleTestCase):
             {"emittente_fiscale_id": -1},
             {"sorgente_tipo_id": 0},
             {"sorgente_id": 0},
-            {"sorgente_uid": ""},
-            {"sorgente_uid": "   "},
             {"sorgente_riga": 0},
         ]
         for override in bad_inputs:
@@ -764,6 +785,7 @@ class GeneraDocumentoTransactionalTests(SimpleTestCase):
                 )
         # Nessuna chiamata DB per nessuno degli input invalid.
         repo.risolvi_template_applicabile.assert_not_called()
+        repo.chiave_sorgente.assert_not_called()
         repo.create_documento_generato.assert_not_called()
 
     # 17. commit DB fail post-write -> cleanup STORAGE_ORPHAN best-effort.

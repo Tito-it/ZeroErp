@@ -314,9 +314,7 @@ class PrezzoRigaCommessaDbTests(TestCase):
             listino_versione_id=self.v2,
             listino_riga_id=self.riga_v2,
             sorgente_tipo_id=sorgente_tipo_id,
-            # Il campo della porta si chiama `sorgente_uid`, ma porta la
-            # chiave del documento in testo (id o uid, secondo il tipo).
-            sorgente_uid=sorgente_chiave,
+            sorgente_chiave=sorgente_chiave,
             sorgente_riga=sorgente_riga,
         )])
         self.assertEqual(esito.errors, [])

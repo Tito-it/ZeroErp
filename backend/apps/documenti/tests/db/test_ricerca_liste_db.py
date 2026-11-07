@@ -39,10 +39,16 @@ from apps.core.tests.db_e2e import (
     verifica_ricerca_colonna_per_colonna,
 )
 
+# ⭐ Il mondo è un PREVENTIVO vero (giro D.1 di brief-db-sorgente-documento-e-riga,
+#    2026-11-07): una stampa cita un documento che esiste, e il guard unico
+#    rifiuta una chiave inventata. Il preventivo porta azienda e operatore.
 _FIXTURE: tuple[str, ...] = (
     """
     CREATE TEMP TABLE _mondo AS
-    SELECT m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m
+    SELECT p.preventivo_id, p.preventivo_uid, p.emittente_fiscale_id, p.auth_user_id,
+           (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'PREVENTIVO')
+               AS sorgente_tipo_id
+      FROM dbops.fn_pgtap_crea_preventivo('ricerca liste documenti') p
     """,
     "SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo))",
 )
@@ -74,7 +80,7 @@ class RicercaListeDocumentiDbTests(unittest.TestCase):
                            (tipo_documento_output_id, sorgente_tipo_id, emittente_fiscale_id,
                             codice, codice_interno, descrizione, context_builder_code)
                     VALUES ((SELECT id FROM documenti.tipi_documento_output ORDER BY id LIMIT 1),
-                            (SELECT id FROM config.sorgenti ORDER BY id LIMIT 1),
+                            (SELECT sorgente_tipo_id FROM _mondo),
                             %s, 'RICCODTPL', 'RICINTTPL', 'Template ricdesctpl', 'ricerca')
                     RETURNING id
                     """,
@@ -133,20 +139,19 @@ class RicercaListeDocumentiDbTests(unittest.TestCase):
     def test_versioni_e_documenti_sorgente_trovano_ogni_colonna_accesa(self):
         from apps.documenti.db.documenti_repository import DocumentiRepository
 
-        sorgente_uid = "00000000-0000-0000-0000-00000000c0de"
         try:
             with transaction.atomic(), connection.cursor() as cur:
                 for passo in _FIXTURE:
                     cur.execute(passo)
-                cur.execute("SELECT emittente_fiscale_id FROM _mondo")
-                emittente = cur.fetchone()[0]
+                cur.execute("SELECT emittente_fiscale_id, preventivo_uid::text FROM _mondo")
+                emittente, sorgente_uid = cur.fetchone()
                 cur.execute(
                     """
                     INSERT INTO documenti.template_documenti
                            (tipo_documento_output_id, sorgente_tipo_id, emittente_fiscale_id,
                             codice, codice_interno, descrizione, context_builder_code)
                     VALUES ((SELECT id FROM documenti.tipi_documento_output ORDER BY id LIMIT 1),
-                            (SELECT id FROM config.sorgenti ORDER BY id LIMIT 1),
+                            (SELECT sorgente_tipo_id FROM _mondo),
                             %s, 'RICVERTPL', 'RICVERINT', 'Template versioni', 'ricerca')
                     RETURNING id, tipo_documento_output_id, sorgente_tipo_id
                     """,
@@ -173,7 +178,7 @@ class RicercaListeDocumentiDbTests(unittest.TestCase):
                             template_versione_id, sorgente_tipo_id, sorgente_uid,
                             progressivo_sorgente, titolo, nome_file, context_json,
                             context_hash, template_hash, pdf_hash, emittente_fiscale_id)
-                    VALUES (%s, %s, %s, %s, %s, 1, 'Documento rictitdoc',
+                    VALUES (%s, %s, %s, %s, %s::uuid, 1, 'Documento rictitdoc',
                             'ricfiledoc.pdf', '{"_meta": {"context_version": 1}}'::jsonb,
                             repeat('a', 64),
                             repeat('b', 64), repeat('c', 64), %s)
@@ -192,7 +197,8 @@ class RicercaListeDocumentiDbTests(unittest.TestCase):
                 # Scopo: le righe della lista documenti della sorgente per `t`.
                 def cerca_documenti(t):
                     return DocumentiRepository().list_documenti_per_sorgente(
-                        sorgente_tipo_id=sorgente_tipo, sorgente_uid=sorgente_uid,
+                        sorgente_tipo_id=sorgente_tipo, sorgente_id=None,
+                        sorgente_uid=sorgente_uid,
                         sorgente_riga=None, emittente_ids_scope=None,
                         search=t, limit=200, offset=0,
                     )[0]
