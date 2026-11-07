@@ -12,13 +12,19 @@
 #        alla volta con l'identità del rispettivo utente tecnico. Eseguibile come cron/systemd timer accanto a
 #        `run_fatturazione_batch`; drena in background le stampe accodate alla
 #        DEFINITIVA e le ristampe on-demand.
+#        ⭐ Dal 2026-11-07 un emittente il cui giro non parte chiude la corsa
+#        rossa (D9), dopo gli altri: la stessa regola della coda lavori.
 # ------------------------------------------------------------
 
 from __future__ import annotations
 
 from apps.core.management.comando_aziendale import ComandoAziendale
 
-from apps.core.services.job_run import ORIGINE_CRON, registered_job
+from apps.core.services.job_run import (
+    ORIGINE_CRON,
+    chiudi_se_elementi_non_completati,
+    registered_job,
+)
 from apps.core.services.processi import PROCESSO_DRAINA_CODA_STAMPA
 from apps.vendite.services.stampa_coda_drainer_service import (
     draina_coda_stampa_per_roster,
@@ -85,6 +91,16 @@ class Command(ComandoAziendale):
             self._print_summary(summary)
             job.set_meta(summary)
             job.set_rows_affected(summary.get("claimate", 0))
+            # ⭐ Un emittente il cui giro non e' partito lascia le sue stampe in
+            #    coda senza che nessuno le abbia guardate: la corsa non chiude
+            #    verde (D9), come quella della coda lavori. Il meta e' gia'
+            #    scritto. Le righe fallite una per una no: quelle le dice la
+            #    coda stessa, con il loro errore.
+            chiudi_se_elementi_non_completati(
+                job,
+                [f["emittente_codice"] for f in summary["emittenti_falliti"]],
+                cosa="emittenti con la coda stampa non drenata",
+            )
 
     # Scopo: log di fine giro per un singolo emittente (callback del core).
     def _print_emittente_esito(self, badge, esito, errore) -> None:

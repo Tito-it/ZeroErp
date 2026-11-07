@@ -282,6 +282,12 @@ class CommessaAttivitaInput:
     listino_riga_id: int | None = None  # la riga di listino del prezzo (la rende «propagata»)
     sorgente_tipo_id: int | None = None
     sorgente_uid: str | None = None
+    # ⭐ La RIGA del documento d'origine (dal giro C.3 di
+    #    brief-db-sorgente-documento-e-riga, BE-C.3-a). None = provenienza dal
+    #    documento intero (consumi, quote fisse del listino di un contratto):
+    #    il guard la ammette, ma una riga che ce l'ha e non la passa perde la
+    #    sua provenienza.
+    sorgente_riga: int | None = None
     meta: dict[str, Any] | None = None
 
     # === Snapshot pricing v5 (F2-BE-11) ===
@@ -835,16 +841,24 @@ class CommesseRepository(EventLogRepositoryMixin):
         return int(row[0] or 0)
 
     def get_commessa_viva_by_sorgente(
-        self, *, sorgente_codice: str, sorgente_chiave: str,
+        self,
+        *,
+        sorgente_codice: str,
+        sorgente_id: int | None = None,
+        sorgente_uid: str | None = None,
     ) -> int | None:
         """La commessa APERTA in cui sta un documento sorgente, o None.
 
         Wrapper di `vendite.fn_commessa_viva_di_sorgente`: un documento puo'
         avere piu' link (quelli verso commesse chiuse o annullate restano
         come storia, D-12 di brief-db-annullo-a-valle-riapre-a-monte), e
-        quale conta lo dice il DB. `sorgente_chiave` e' la chiave CANONICA
-        del link (`config.sorgenti.key_selector`): l'uid per il preventivo,
-        `id::text` per ordine, contratto, bolla e consumi.
+        quale conta lo dice il DB. Il documento si nomina con le sue DUE
+        chiavi, come le tiene il link dal giro C.2 di
+        brief-db-sorgente-documento-e-riga (BE-C.2-a): `sorgente_uid` per i
+        tipi a uid (il preventivo), `sorgente_id` per ordine, contratto, bolla
+        e consumi. Chi ha il documento può passarle entrambe: l'incontro lo fa
+        la funzione, con la regola del modello. Fino a quel giorno era una
+        chiave testuale sola (`sorgente_chiave`).
 
         ⛔ Niente `SELECT` propria su `commesse_sorgenti`: quella di prima
         (`LIMIT 1` senza stato) con due link poteva dare la commessa morta.
@@ -853,12 +867,16 @@ class CommesseRepository(EventLogRepositoryMixin):
         None: «nessuna commessa aperta» e «sorgente sbagliata» non si
         confondono (un codice errato farebbe saltare l'aggancio in silenzio)."""
         sql = """
-            SELECT vendite.fn_commessa_viva_di_sorgente(s.id, %s)
+            SELECT vendite.fn_commessa_viva_di_sorgente(s.id, %s::bigint, %s::uuid)
             FROM config.sorgenti s
             WHERE s.codice_interno = %s
         """
         with connection.cursor() as cursor:
-            cursor.execute(sql, [sorgente_chiave, sorgente_codice])
+            cursor.execute(sql, [
+                None if sorgente_id is None else int(sorgente_id),
+                sorgente_uid,
+                sorgente_codice,
+            ])
             row = cursor.fetchone()
         ErrorManager.require(
             row is not None,
@@ -1041,7 +1059,8 @@ class CommesseRepository(EventLogRepositoryMixin):
                     p_tipo_movimento => %s,
                     p_meta => %s::jsonb,
                     p_causale_onere_id => %s,
-                    p_listino_riga_id => %s
+                    p_listino_riga_id => %s,
+                    p_sorgente_riga => %s
                 )
                 """,
                 [
@@ -1083,6 +1102,7 @@ class CommesseRepository(EventLogRepositoryMixin):
                     self._to_jsonb_param(inp.meta),
                     inp.causale_onere_id,
                     inp.listino_riga_id,
+                    inp.sorgente_riga,
                 ],
             )
             row = cursor.fetchone()
@@ -1128,6 +1148,8 @@ class CommesseRepository(EventLogRepositoryMixin):
             "stato_emissione": inp.stato_emissione,
             "sorgente_tipo_id": inp.sorgente_tipo_id,
             "sorgente_uid": inp.sorgente_uid,
+            # La riga del documento: la legge il wrapper batch (giro C.3).
+            "sorgente_riga": inp.sorgente_riga,
             "tipo_movimento": inp.tipo_movimento,
             # Chiave facoltativa del wrapper (20261103-49): senza, ogni riga
             # ONERE del push e' rifiutata dalla madre.

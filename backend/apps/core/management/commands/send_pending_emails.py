@@ -43,6 +43,11 @@ from apps.core.services.processi import PROCESSO_SEND_PENDING_EMAILS
 logger = logging.getLogger("zeroerp.email")
 
 
+# I contatori di un giro delle email (`_esegui_giro`), che il giro per azienda
+# somma (`EsitoGiroPerAzienda.totali`).
+_CHIAVI_ESITO_EMAIL: tuple[str, ...] = ("processate", "inviate", "fallite")
+
+
 class Command(ComandoAziendale):
     help = (
         "Processa la coda email: PENDING sempre, piu' FAILED e RETRY finche' "
@@ -149,14 +154,11 @@ class Command(ComandoAziendale):
             esito["senza_identita"] = True
             return esito
 
-        totali = {"processate": 0, "inviate": 0, "fallite": 0}
-        per_emittente: list[dict] = []
-        for badge, parziale in giro.serviti:
-            for chiave in totali:
-                totali[chiave] += parziale.get(chiave, 0)
-            per_emittente.append({
-                "emittente_codice": badge["emittente_codice"], **parziale,
-            })
+        totali = giro.totali(_CHIAVI_ESITO_EMAIL)
+        per_emittente = [
+            {"emittente_codice": badge["emittente_codice"], **parziale}
+            for badge, parziale in giro.serviti
+        ]
         if giro.non_serviti:
             # ⭐ Il numero che rompe il silenzio, come per la fatturazione: senza
             #    badge quell'azienda non viene servita, e il giro chiuderebbe
@@ -226,7 +228,7 @@ class Command(ComandoAziendale):
 
         if count == 0:
             self.stdout.write("Nessuna email in coda.")
-            return {"processate": 0, "inviate": 0, "fallite": 0}
+            return dict.fromkeys(_CHIAVI_ESITO_EMAIL, 0)
 
         self.stdout.write(f"Processando {count} email...")
         repo = EmailRepository()

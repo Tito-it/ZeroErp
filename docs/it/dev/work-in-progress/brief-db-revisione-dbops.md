@@ -76,7 +76,7 @@ Le scelte di §18.4 restano da guardare (la 1 rivede metà della Q14 ③).
 | 9-decies | ✅ sessione DB | Giro 2, blocco 2b (Q16): la via soppressa; lettori censiti, scritto e provato sullo scratch | §14.7 | 9-nonies |
 | 10 | sessione DB | Giri 5-14 nell'ordine di §8, uno alla volta, ognuno col suo via e il suo apply | §8 | 9-vicies-septies |
 | 11 | team BE | Le ricadute di §5, quando il giro DB corrispondente è applicato. BE3 e BE6 ✅ (2026-11-07, da committare); BE5 e BE7 (commenti stantii) quando capita | §5 | 10 |
-| 11-bis | sessione DB | S-BE-1: la frase di `E_ATTIVO_PADRE_NON_ATTIVO` ed `E_PADRE_INESISTENTE` nomina `schema.tabella` all'operatore | §5 | — |
+| 11-bis | sessione DB | S-BE-1: la frase di `E_ATTIVO_PADRE_NON_ATTIVO` ed `E_PADRE_INESISTENTE` nomina `schema.tabella` all'operatore. ✅ Modello deciso da Tid (2026-11-07): frase senza tabelle, il padre come bersaglio `config.tipi_entita` nel `DATATYPE`; da dove il trigger sa il tipo resta al DB. Blocco a parte, dopo il 5b | §5 | — |
 | 12 | sessione DB | Pagine `manual/` e guide riallineate a ogni difetto chiuso, insieme al COMMENT; brief in `work-done/` | §1, §8 | 10 |
 
 **Decisioni aperte di Tid:** le scelte del blocco 5a (§18.4), applicate: la 1 (`vw_coda_lavori_da_guardare` letta
@@ -566,6 +566,35 @@ ricognizione regalata (la stessa ragione per cui `targets` porta un codice di `c
 una tabella: `api.md` §`targets`). Si chiede al team DB di decidere la forma: il nome della cosa al posto
 della tabella (da dove leggerlo è una scelta del modello), i nomi tecnici nel solo contesto del diario.
 Il backend non ha niente da cambiare quando la frase cambia: la legge dal catalogo.
+
+**✅ Decisione di Tid (2026-11-07) su S-BE-1: il nome viene da `config.tipi_entita`, non dalla tabella.**
+Proposta del team BE, accettata. Si chiede al team DB:
+
+1. **La frase non nomina più né il padre né la figlia.** Diventa la frase della cosa, senza valori di
+   tabella: per esempio *«La riga a cui si collega non è attiva: non vi si può collegare una riga
+   attiva.»* (`E_ATTIVO_PADRE_NON_ATTIVO`) e *«La riga a cui si collega non esiste.»*
+   (`E_PADRE_INESISTENTE`), cioè le frasi che il backend ha già come ripiego.
+2. **QUALE cosa lo dice il bersaglio, non la frase.** Il trigger mette il padre nel campo strutturato
+   `DATATYPE` come bersaglio — il codice di `config.tipi_entita` e l'id della riga — come ogni altro
+   bersaglio del catalogo (`brief-db-bersaglio-errore` §4.4). Il backend lo legge già
+   (`db_error_fields.bersagli_envelope` → `targets` dell'envelope), e il frontend lo mostra con
+   l'`etichetta_key` di quel tipo: il nome è tradotto, e un portale o uno shop non vedono una tabella.
+   ⚠️ Niente nome nella frase anche quando il tipo c'è: `etichetta_key` è una chiave di traduzione,
+   e una frase del DB che la ricopiasse in chiaro sarebbe un secondo vocabolario.
+3. **Da dove il trigger sa il tipo: è la scelta del modello che resta al team DB.** `config.tipi_entita`
+   non ha una colonna con la tabella; `sorgente_codice_interno` porta a `config.sorgenti` solo per i
+   tipi che sono sorgenti, e il padre di un require spesso non lo è (`anagrafiche.risorse_umane`). La
+   forma che il backend suggerisce, perché resta dichiarativa: il codice del tipo come **argomento del
+   trigger**, scritto da chi lo monta (`dbops.fn_run_automations_attivo` lo legge dalla FK), con
+   `E_TRIGGER_ARGOMENTI_INVALIDI` se non è un codice del catalogo.
+   ⛔ Un padre senza un tipo nel catalogo **non** è un caso da coprire con la tabella: il bersaglio
+   manca, la frase regge da sola (`api.md` §`targets`: il bersaglio è facoltativo).
+4. **I nomi tecnici restano nel contesto del diario** (`dbops.error_log`), padre, figlia e id: chi
+   legge il diario è chi ripara il dato.
+
+Ricaduta BE: **nessuna obbligatoria** — frase e bersaglio arrivano dai canali che il backend legge già.
+All'apply va solo provato un rifiuto vero (un pgTAP o un test sul DB) che porti `targets` fino
+all'envelope.
 
 **Stato al 2026-11-07, BE10 (team BE, da committare): (a), (b) e (c) fatte.**
 

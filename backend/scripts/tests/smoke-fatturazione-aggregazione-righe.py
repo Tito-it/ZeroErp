@@ -55,6 +55,7 @@ from apps.vendite.services import _kit_meta as kit_meta
 from apps.vendite.services.fatture_righe_service import FattureRigheService
 from scripts.tests._smoke_contesto import apri_contesto_smoke
 from scripts.tests._smoke_fatturazione import (
+    chiave_di_commessa,
     costruisci_base_fatturazione,
     crea_articolo_di_prova,
     crea_attivita_di_commessa,
@@ -99,12 +100,19 @@ with transaction.atomic():
         # A1 e A2 condividono la chiave di gruppo -> devono fondersi in UNA riga.
         # A3 ha prezzo diverso -> riga separata (il prezzo sta nella chiave).
         # K1 e K2 sono componenti dello stesso kit -> riga padre + componenti.
-        kit_padre_segment = f"SMOKE:{marker}:R:1"
+        # ⭐ Ogni chiave nomina il documento della provenienza, qui la commessa
+        #    (giro C.3 di brief-db-sorgente-documento-e-riga): l'etichetta dello
+        #    smoke ne e' il suffisso. Anche la chiave del padre del kit, da cui
+        #    i componenti ereditano la loro (`#CMP:`).
+        def _chiave(etichetta: str) -> str:
+            return chiave_di_commessa(cur, t, t["commessa_id"], etichetta)
+
+        kit_padre_segment = _chiave(f"SMOKE:{marker}:R:1")
         af = {}
         for nome, seg, qta, prezzo, meta in [
-            ("A1", f"SMOKE:{marker}:A1", Decimal("0.333333"), Decimal("10.00"), "{}"),
-            ("A2", f"SMOKE:{marker}:A2", Decimal("0.333333"), Decimal("10.00"), "{}"),
-            ("A3", f"SMOKE:{marker}:A3", Decimal("2.000000"), Decimal("99.00"), "{}"),
+            ("A1", _chiave(f"SMOKE:{marker}:A1"), Decimal("0.333333"), Decimal("10.00"), "{}"),
+            ("A2", _chiave(f"SMOKE:{marker}:A2"), Decimal("0.333333"), Decimal("10.00"), "{}"),
+            ("A3", _chiave(f"SMOKE:{marker}:A3"), Decimal("2.000000"), Decimal("99.00"), "{}"),
         ]:
             _ca, af[nome] = crea_attivita_di_commessa(
                 cur, t, segment_key=seg, lock_batch_id=lock_batch_id,

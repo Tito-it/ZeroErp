@@ -136,8 +136,10 @@ def ripartisci_per_azienda(
 
 
 # Scopo: Accoda un lavoro di fatturazione per ogni azienda della richiesta e
-#        ritorna l'handle di ciascuno: `[{job_id, stato, emittente_fiscale_id,
-#        emittente_codice, gruppi?, lotti?}]`, nell'ordine delle aziende.
+#        ritorna l'handle di ciascuno: `[{job_id, emittente_fiscale_id,
+#        emittente_codice, gruppi?, lotti?, stato}]`, nell'ordine delle
+#        aziende; `stato` è quello vero del lavoro (PENDING, o IN_CORSO se la
+#        dedup ha restituito un lavoro già vivo).
 #        `payload` è il payload comune già validato (competenza ed extra);
 #        gruppi e lotti li aggiunge qui, per azienda.
 # ⭐ Ogni lavoro ha la chiave di BUSINESS della sua azienda (competenza +
@@ -191,7 +193,6 @@ def accoda_per_azienda(
         )
         voce: dict[str, Any] = {
             "job_id": job_id,
-            "stato": "PENDING",
             "emittente_fiscale_id": int(azienda["emittente_fiscale_id"]),
             "emittente_codice": azienda["codice"],
         }
@@ -200,4 +201,22 @@ def accoda_per_azienda(
         if lotti_az:
             voce["lotti"] = list(lotti_az)
         lavori.append(voce)
+
+    # ⭐ Lo stato VERO di ciascun lavoro, letto dopo averli accodati tutti (una
+    #    query): sulla dedup l'id è quello di un lavoro già vivo, che può
+    #    essere IN_CORSO. Prima si rispondeva «PENDING» per costruzione.
+    # ⛔ Un id che la porta ha dato e che chi accoda non vede non è un caso da
+    #    gestire: la porta accoda solo dentro il perimetro di chi chiama, e la
+    #    policy fa vedere proprio quel perimetro. Se succede, è un difetto del
+    #    modello, e si dice con un 500 — non con uno stato inventato.
+    stati = coda_repo.stati_di([v["job_id"] for v in lavori])
+    for voce in lavori:
+        stato = stati.get(voce["job_id"])
+        if stato is None:
+            raise RuntimeError(
+                f"Lavoro {voce['job_id']} accodato ma non visibile a chi l'ha "
+                f"accodato (emittente {voce['emittente_codice']}): porta e "
+                "policy della coda non concordano sul perimetro."
+            )
+        voce["stato"] = stato
     return lavori

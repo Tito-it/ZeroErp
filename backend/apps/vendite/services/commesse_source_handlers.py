@@ -768,6 +768,10 @@ class BaseSourceHandler(ABC):
             factor_to_base=row.factor_to_base,
             sorgente_tipo_id=row.sorgente_tipo_id,
             sorgente_uid=row.sorgente_uid,
+            # La riga del documento che il lister restituisce (`riga_id`); i
+            # consumi non ce l'hanno e passano None (BE-C.3-a). Un componente
+            # di kit eredita la riga del suo padre: e' quella del documento.
+            sorgente_riga=row.riga_sorgente_id,
             meta=row.meta,
             # ⭐ La versione di listino da cui verrebbe il prezzo (2026-10-08):
             #    senza, il guard «versione cambiata» di `fn_riallinea_prezzo`

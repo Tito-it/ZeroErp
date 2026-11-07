@@ -42,6 +42,7 @@ from collections.abc import Callable, Mapping
 from typing import Any
 
 from apps.core.db.processi_repository import ProcessiRepository
+from apps.core.services.coda_lavori.drain_engine import CHIAVI_ESITO_DRENAGGIO
 from apps.core.services.db_error_fields import bersagli_envelope, diagnostica_db
 from apps.core.services.error_manager import ServiceError
 from apps.core.services.giro_per_azienda import giro_per_azienda
@@ -64,11 +65,6 @@ _LIMIT_DEFAULT = 500
 # Reaper: righe IN_CORSO più vecchie di N minuti = worker morto → riportate a
 # PENDING. Soglia larga (≫ tempo di un render) per non toccare worker lenti.
 _STALE_MINUTI_DEFAULT = 30
-
-# I contatori che il giro completo somma emittente per emittente. Sede unica:
-# aggiungerne uno qui lo fa comparire nell'esito senza toccare il ciclo.
-_CHIAVI_AGGREGATE = ("recuperate", "claimate", "fatto", "errore", "riprovabili")
-
 
 # Scopo: Drena la coda stampa. Perimetro e risultato:
 #         1. (opz.) reaper delle righe IN_CORSO stantie → PENDING (o ERRORE
@@ -185,13 +181,10 @@ def draina_coda_stampa_per_roster(
         processi_repo=processi_repo,
     )
     per_emittente = [esito for _badge, esito in giro.serviti]
-    # ⚠️ Le chiavi da sommare si dichiarano UNA volta (`_CHIAVI_AGGREGATE`).
-    totali = {
-        chiave: sum(esito.get(chiave, 0) for esito in per_emittente)
-        for chiave in _CHIAVI_AGGREGATE
-    }
+    # ⚠️ Le chiavi da sommare sono il vocabolario del drenaggio, dichiarato una
+    #    volta nel motore (`CHIAVI_ESITO_DRENAGGIO`).
     return {
-        **totali,
+        **giro.totali(CHIAVI_ESITO_DRENAGGIO),
         "emittenti_serviti": len(per_emittente),
         "emittenti_falliti": giro.falliti,
         # ⭐ Il numero che rompe il silenzio: emittenti attivi che nessun badge

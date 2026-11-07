@@ -12,6 +12,7 @@
 #   2. un'azienda che fallisce non ferma le altre, e finisce in `falliti`
 #   3. le aziende senza utente tecnico finiscono in `non_serviti`
 #   4. roster vuoto: nessun lavoro, e l'esito lo dice
+#   4-bis. `totali`: somma i soli serviti, chiave assente = 0, ordine delle chiavi
 #   5. drenatore: un giro per badge, totali sommati, UN repository per tutti
 #   6. drenatore: roster vuoto = niente drenato, `roster_vuoto` nell'esito
 # ------------------------------------------------------------
@@ -124,6 +125,24 @@ class GiroPerAziendaTests(TestCase):
         lavoro.assert_not_called()
         self.assertTrue(esito.roster_vuoto)
         self.assertEqual(esito.non_serviti, ["ACME"])
+
+    # 4-bis. ⭐ I totali sommano i SOLI serviti: ACME fallisce e non conta come
+    #    zero. Una chiave che un risultato non porta vale 0.
+    def test_totali_dei_soli_serviti(self) -> None:
+        identita = _IdentitaFinta(falliscono={"processo@ACME"})
+        risultati = {"BETA": {"fatto": 2, "errore": 1}, "GAMMA": {"fatto": 3}}
+        with patch(f"{_BB}.operator_identity_context", identita):
+            esito = giro_per_azienda(
+                "p", lambda b: risultati[b["emittente_codice"]], evento="t",
+                processi_repo=_processi(
+                    [_badge("ACME", 1), _badge("BETA", 2), _badge("GAMMA", 3)],
+                ),
+            )
+        self.assertEqual(
+            esito.totali(("errore", "fatto", "riprovabili")),
+            {"errore": 1, "fatto": 5, "riprovabili": 0},
+        )
+        self.assertEqual(list(esito.totali(("fatto", "errore"))), ["fatto", "errore"])
 
 
 class DrenatoreCodaLavoriPerAziendaTests(TestCase):
