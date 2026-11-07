@@ -79,7 +79,7 @@ DB S-BE-1 (§5).
 | 9-nonies | ✅ Tid | Q16: la via fusa resta, marcata come soppressa (b, 2026-11-07) | §4 | 9-septies |
 | 9-decies | ✅ sessione DB | Giro 2, blocco 2b (Q16): la via soppressa; lettori censiti, scritto e provato sullo scratch | §14.7 | 9-nonies |
 | 10 | sessione DB | Giri 5-14 nell'ordine di §8, uno alla volta, ognuno col suo via e il suo apply | §8 | 9-vicies-septies |
-| 11 | team BE | Le ricadute di §5, quando il giro DB corrispondente è applicato. BE3 e BE6 ✅ (2026-11-07, da committare); BE5 e BE7 (commenti stantii) quando capita | §5 | 10 |
+| 11 | team BE | Le ricadute di §5, quando il giro DB corrispondente è applicato. BE3, BE6 e BE10 ✅ (2026-11-07, mergiati); BE5 e BE7 (commenti stantii) quando capita | §5 | 10 |
 | 11-bis | sessione DB | S-BE-1: la frase di `E_ATTIVO_PADRE_NON_ATTIVO` ed `E_PADRE_INESISTENTE` nomina `schema.tabella` all'operatore. ✅ Modello deciso da Tid (2026-11-07): frase senza tabelle, il padre come bersaglio `config.tipi_entita` nel `DATATYPE`; da dove il trigger sa il tipo resta al DB. Blocco a parte, dopo il 5b | §5 | — |
 | 12 | sessione DB | Pagine `manual/` e guide riallineate a ogni difetto chiuso, insieme al COMMENT; brief in `work-done/` | §1, §8 | 10 |
 
