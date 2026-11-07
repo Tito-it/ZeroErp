@@ -18,7 +18,8 @@
 --  3) chk_processi_canale respinge un canale fuori catalogo
 --  4) uq_processi_codice respinge un codice doppio
 --  5) la FK bersagli -> processi respinge un processo inesistente
---  6) chk_processi_bersagli_via respinge un percorso fuori vocabolario
+--  6) fk_processi_bersagli_emittente_via respinge un percorso che non e' un modo del registro
+--     (era il CHECK chk_processi_bersagli_via, ritirato: brief-db-revisione-dbops D21)
 --  7) chk_processi_bersagli_via_colonna respinge un percorso senza colonna
 --  8) ogni canale DICHIARATO dal CHECK e' usato da almeno un processo
 --  9) ogni bersaglio seedato punta a un processo DOMINIO
@@ -101,10 +102,10 @@ SELECT throws_ok(
 SELECT throws_ok(
     $$INSERT INTO dbops.processi_bersagli
           (id, processo_id, schema_tabella, nome_tabella, emittente_via, emittente_colonna)
-      VALUES (9005, 20, 'vendite', 'fatture', 'telepatia', 'emittente_fiscale_id')$$,
-    '23514',
+      VALUES (9005, 20, 'vendite', 'pgtap_non_bersaglio', 'telepatia', 'emittente_fiscale_id')$$,
+    '23503',
     NULL,
-    'chk_processi_bersagli_via respinge un percorso fuori vocabolario'
+    'fk_processi_bersagli_emittente_via respinge un percorso che non e'' un modo di dbops.emittente_modi'
 );
 
 -- Un percorso senza colonna non sarebbe verificabile dalla vista: passerebbe a

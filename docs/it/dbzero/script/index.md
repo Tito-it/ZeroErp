@@ -244,9 +244,9 @@ search:
 - [fn_registra_tentativo_login](funzioni/fn_registra_tentativo_login.md) — (riscritta il 25-09-2026)
 - [fn_resolve_codice_postale](funzioni/fn_resolve_codice_postale.md) — Risolve il `codice_postale_id` con logica di fallback a due livelli. Unica source of truth per la logica CAP (prima nel watcher Vue).
 - [fn_resolve_controparte_sr_id](funzioni/fn_resolve_controparte_sr_id.md) — (nata il 2026-10-21, `20261021-30`)
-- [fn_resolve_emittente_fiscale_id](funzioni/fn_resolve_emittente_fiscale_id.md) — (rev 2026-08-22)
+- [fn_resolve_emittente_fiscale_id](funzioni/fn_resolve_emittente_fiscale_id.md) — Risponde a **una** domanda di fatto, *«di chi è questa riga?»*, **fuori dalla row security**: dato un modo e un valore, restituisce l'id dell'emittente fiscale, oppure `NULL` se il riferimento non porta a nessun emittente.
 - [fn_resolve_emittente_for_user](funzioni/fn_resolve_emittente_for_user.md)
-- [fn_resolve_emittente_sr_id](funzioni/fn_resolve_emittente_sr_id.md)
+- [fn_resolve_emittente_sr_id](funzioni/fn_resolve_emittente_sr_id.md) — La stessa domanda del gemello fiscale, *«di chi è questa riga?»*, **fuori dalla row security**, con la risposta nell'altra convenzione: il **soggetto-ruolo** dell'emittente, oppure `NULL` se il riferimento non porta a nessun emittente. Il doppio binario fra id dell'emittente fiscale e soggetto-ruolo è una scelta dichiarata del progetto.
 - [fn_resolve_indirizzo_documento](funzioni/fn_resolve_indirizzo_documento.md) — (latest review 02-08-2026)
 - [fn_resolve_livello_area](funzioni/fn_resolve_livello_area.md) — (latest review 04-05-2026 — modello legacy `profili_reparto_*` dismesso)
 - [fn_resolve_livello_oggetto](funzioni/fn_resolve_livello_oggetto.md) — (riscritta il 04-10-2026, brief-db-permessi-tetto-area)

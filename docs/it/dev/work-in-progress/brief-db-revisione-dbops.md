@@ -1,6 +1,6 @@
 # Brief DB — Revisione dello schema `dbops`: i difetti di codice e i metadati
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-07 (giro 3 chiuso)
+## ⏭️ Chi riparte — aggiornato al 2026-11-07 (giro 4 chiuso, blocco 4b compreso)
 
 **Giro 1 chiuso e committato** (blocco 1d in `8c75d5682a`). **Decisioni di §4 prese** (Tid, 2026-11-05/06):
 tutte, Q1-Q15 (la Q7 non è mai esistita), con la Q14 punto per punto. **Ordine dei giri deciso** (2026-11-06):
@@ -8,9 +8,15 @@ si fa tutto lo sviluppo DB, per gravità, e i lavori sugli stessi oggetti vanno 
 l'ordine alla sessione DB). Il piano è riscritto in §8, giri 2-14. **Giro 2 chiuso** (2026-11-07, §14):
 blocchi 2a e 2b (Q16), `20261107-01` … `-19`, applicati su dbdev e sullo scratch, pgTAP verdi, committato
 (`93b650e517`). **Giro 3 chiuso** (2026-11-07, §15): i guard ATTIVO, D5, D18, D46, D47, D49, D51,
-`20261107-20` … `-27` e i due CSV dei codici, applicati, pgTAP verdi, committato.
-**Riparte: Tid**, con la baseline B-7 (§14.4 e §15.5 insieme) e il via al giro 4. Il team BE ha BE3 e BE6 (§5):
-il giro 3 è applicato.
+`20261107-20` … `-27` e i due CSV dei codici, applicati, pgTAP verdi, committato. **Baseline B-7 aggiornata**
+(2026-11-07, §16.6): le sole righe di §14.4 e §15.5. **Giro 4 applicato** (2026-11-07, §16): D6 e D53,
+`20261107-28` … `-30`, `-33`, `-34`, su dbdev e sullo scratch, pgTAP verdi. **D21 + M18 passa al blocco 4b** (decisione
+di Tid, §16.9): registro dei modi e risolutore generato, dopo l'apply del giro 4.
+**Blocco 4b scritto** (2026-11-07, §17): D21 + M18, il registro dei modi e i due risolutori generati,
+`20261107-31`, `-32`, `-35` … `-40`, due CSV nuovi o cambiati e due codici (1453, 1454); provato sullo scratch e su dbdev.
+**Blocco 4b applicato** (Tid, 2026-11-07): pgTAP di §17.5 verdi. **Giro 4 chiuso**: giro 4, blocco 4b e baseline B-7
+committati insieme.
+**Riparte: Tid**, col via al giro 5 (la coda lavori sotto RLS, §8). Il team BE ha BE3 e BE6 (§5): il giro 3 è applicato; dal blocco 4b anche i due codici nuovi in BE6.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -38,23 +44,34 @@ il giro 3 è applicato.
 | 9-octies | ✅ Tid | Apply del giro 2 fino al `-17` (il `-05` rinumerato, §14.7.5); pgTAP come app: tre rossi (2026-11-07) | §14.3 | 9-decies |
 | 9-undecies | ✅ sessione DB | I tre rossi: nomi delle tabelle senza schema per l'app, l'indice della FK tolto dalla politica; `-18`, `-19`, CSV | §14.8 | 9-octies |
 | 9-duodecies | ✅ Tid | Apply di `-18`, `-19` e di `fk_index_policy_bonifica_ridondanze.csv`; pgTAP di §14.3 verdi (2026-11-07). Il giro 2 è chiuso | §14.3, §14.8 | 9-undecies |
-| 9-terdecies | **Tid** ⏭️ | Baseline B-7: l'aggiornamento con le righe di §14.4 e di §15.5 (`scripts/codici-errore-baseline.sh --update`, dopo averle confrontate); non è nei commit dei giri 2 e 3 | §14.4, §15.5 | 9-septdecies |
+| 9-terdecies | ✅ sessione DB, su richiesta di Tid | Baseline B-7: le sette righe di §14.4 e §15.5, a mano, senza `--update` (le altre differenze sono di altri cantieri) | §16.6 | 9-septdecies |
 | 9-quaterdecies | ✅ Tid | Commit del giro 2 (`93b650e517`) e via al giro 3, con i numeri dal primo libero e `%TYPE` (2026-11-07) | §8 | — |
 | 9-quindecies | ✅ sessione DB | Giro 3 (D5, D18, D46, D47, D49, D51 con Q8): scritto e provato sullo scratch | §15 | 9-quaterdecies |
 | 9-sexdecies | ✅ Tid | Apply del giro 3 (`20261107-20` … `-27`, i due CSV dei codici); pgTAP come app di §15.6 verdi (2026-11-07) | §15.6 | 9-quindecies |
 | 9-septdecies | ✅ sessione DB, su richiesta di Tid | Commit del giro 3 (2026-11-07). Il giro 3 è chiuso | §8 | 9-sexdecies |
-| 9-octodecies | **Tid** ⏭️ | Via al giro 4 | §8 | 9-septdecies |
+| 9-octodecies | ✅ Tid | Via al giro 4, dal `20261107-28` e con `%TYPE` (2026-11-07) | §8 | 9-septdecies |
+| 9-vicies | ✅ sessione DB | Giro 4 (D6, D53): scritto e provato sullo scratch e su dbdev | §16 | 9-octodecies |
+| 9-vicies-semel | ✅ Tid | Apply del giro 4 (`20261107-28`, `-29`, `-30`, `-33`, `-34`) su dbdev e scratch; pgTAP come app di §16.5 verdi (2026-11-07) | §16.5 | 9-vicies |
+| 9-vicies-semel-bis | ✅ sessione DB, su richiesta di Tid | Commit del giro 4 e della baseline B-7, insieme al blocco 4b (2026-11-07) | §16, §16.6 | 9-vicies-sexies |
+| 9-vicies-bis | ✅ Tid | D21: sede unica col registro dei modi e il risolutore generato, nel blocco 4b dopo l'apply del giro 4 (2026-11-07) | §16.9 | 9-vicies |
+| 9-vicies-ter | ✅ Tid | Il perimetro del registro: il gemello SR dentro (generato), i 36 adattatori fuori, con un pgTAP che controlla che nominino un modo del registro (2026-11-07) | §16.9 | 9-vicies-bis |
+| 9-vicies-quater | ✅ Tid | Via al blocco 4b (2026-11-07) | §16.9 | 9-vicies-semel |
+| 9-vicies-quinquies | ✅ sessione DB | Blocco 4b: registro dei modi, risolutore fiscale e gemello SR generati, FK delle vie; scritto e provato sullo scratch e su dbdev | §17 | 9-vicies-quater |
+| 9-vicies-sexies | ✅ Tid | Apply del blocco 4b (`20261107-31`, `-32`, `-35` … `-40`, `emittente_modi.csv`, `processi_bersagli.csv`, i due CSV dei codici) su dbdev e scratch; pgTAP come app di §17.5 verdi (2026-11-07). Il giro 4 è chiuso | §17.5 | 9-vicies-quinquies |
+| 9-vicies-septies | **Tid** ⏭️ | Via al giro 5 (Q14 ③, D9: la coda lavori sotto RLS) | §8 | 9-vicies-semel-bis |
 | 9-nonies | ✅ Tid | Q16: la via fusa resta, marcata come soppressa (b, 2026-11-07) | §4 | 9-septies |
 | 9-decies | ✅ sessione DB | Giro 2, blocco 2b (Q16): la via soppressa; lettori censiti, scritto e provato sullo scratch | §14.7 | 9-nonies |
-| 10 | sessione DB | Giri 4-14 nell'ordine di §8, uno alla volta, ognuno col suo via e il suo apply | §8 | 9-octodecies |
+| 10 | sessione DB | Giri 5-14 nell'ordine di §8, uno alla volta, ognuno col suo via e il suo apply | §8 | 9-vicies-septies |
 | 11 | team BE | Le ricadute di §5, quando il giro DB corrispondente è applicato (BE3 e BE6 ora: il giro 3 è applicato); BE5 e BE7 (commenti stantii) quando capita | §5 | 10 |
 | 12 | sessione DB | Pagine `manual/` e guide riallineate a ogni difetto chiuso, insieme al COMMENT; brief in `work-done/` | §1, §8 | 10 |
 
-**Decisioni aperte di Tid:** la baseline B-7 (§14.4, §15.5); le scelte dentro il giro 3 (§15.3), già applicate:
-se una non va, la si corregge con un changeSet nuovo.
+**Decisioni aperte di Tid:** nessuna. Le scelte del giro 3 (§15.3) e del blocco 4b (§17.3) sono applicate: se una non
+va, la si corregge con un changeSet nuovo.
 **Da verificare:** se lo scratch è stato ricostruito con `ci-local.sh --fresh` dopo il `20261103-29` (§13).
 ⚠️ **Numerazione:** questo cantiere ha preso `20261107-01` … `-27`; il prossimo numero libero del giorno è il
-`-28`. Gli id dei messaggi presi qui: 1442-1450; il prossimo libero è 1451. L'altro cantiere aperto
+`-28`; il giro 4 ha preso `-28` … `-30`, `-33`, `-34`, il blocco 4b `-31`, `-32`, `-35` … `-40`; il prossimo libero è il
+`-41`. Gli id dei messaggi presi qui: 1442-1450 e 1453-1454 (1451 e 1452 li ha presi l'altro cantiere, giro T.4); il
+prossimo libero è 1455. L'altro cantiere aperto
 (`brief-db-sorgente-documento-e-riga`) numera oggi nel blocco `20261106-74` … `-87`.
 
 > **Chi scrive:** sessione DB (`dev/db-tid`), 2026-11-04; decisioni registrate il 2026-11-06. **A chi:** Tid e team DB; §5 al team BE.
@@ -108,8 +125,8 @@ sono difetti: il peso dice l'ordine dei giri, non se si fanno.
 
 | Classe | Difetti |
 | --- | --- |
-| **A** — D14, D15, D54, D56 ✅ scritti nel giro 1a (§12); D1 ✅ nel blocco 1b (§12.8); D40, D41 ✅ nel blocco 1c (§12.9); D43 ✅ nel blocco 1d (§12.10); D3, D4, D44 ✅ nel giro 2 (§14); D46, D47, D51 ✍️ scritti nel giro 3 (§15) | D1 (contratto del 2026-07-22: un dblink fallito restituisce la sentinella), D3, D4, D6, D14, D15, D21, D25, D30 (cinque righe del seed senza prefisso), D35, D36, D37, D40, D41, D43, D44, D46, D47, D51, D53, D54, D56, D57, D58, D59, D63, D64, D66, D67, D68, D70 |
-| **B** — D26 ✅ nel blocco 1b (§12.8); D7 ✅ nel blocco 1d (§12.10); D45, D60 ✅ nel giro 2 (§14); D5, D18, D49 ✍️ scritti nel giro 3 (§15) | D2, D5, D7, D8, D9, D10, D11, D12, D13, D16, D17, D18, D19, D20, D22, D23, D24, D26, D27, D28, D29, D32, D33, D34, D38, D39, D45, D49, D52, D60, D69, D71, D73 |
+| **A** — D14, D15, D54, D56 ✅ scritti nel giro 1a (§12); D1 ✅ nel blocco 1b (§12.8); D40, D41 ✅ nel blocco 1c (§12.9); D43 ✅ nel blocco 1d (§12.10); D3, D4, D44 ✅ nel giro 2 (§14); D46, D47, D51 ✅ nel giro 3 (§15); D6, D53 ✅ nel giro 4 (§16), D21 ✅ nel blocco 4b (§17) | D1 (contratto del 2026-07-22: un dblink fallito restituisce la sentinella), D3, D4, D6, D14, D15, D21, D25, D30 (cinque righe del seed senza prefisso), D35, D36, D37, D40, D41, D43, D44, D46, D47, D51, D53, D54, D56, D57, D58, D59, D63, D64, D66, D67, D68, D70 |
+| **B** — D26 ✅ nel blocco 1b (§12.8); D7 ✅ nel blocco 1d (§12.10); D45, D60 ✅ nel giro 2 (§14); D5, D18, D49 ✅ nel giro 3 (§15) | D2, D5, D7, D8, D9, D10, D11, D12, D13, D16, D17, D18, D19, D20, D22, D23, D24, D26, D27, D28, D29, D32, D33, D34, D38, D39, D45, D49, D52, D60, D69, D71, D73 |
 | **C** | D17-bis, D42, D48, D50, D55, D61, D62, D65, D72, D74 — ✅ scritti nel giro C1 (§10) tutti tranne D17-bis e D74; di D61 restano i quattro strumenti DBA (Q9) |
 
 ⚠️ D31 non c'è: il ramo del `tx_id` non registrato l'ha già giudicato il brief chiuso
@@ -483,7 +500,7 @@ Si chiedono quando il giro DB corrispondente è applicato.
 | BE3 | I controlli preventivi «padre non attivo» si ritirano e si mappa il codice nuovo (`E_ATTIVO_PADRE_NON_ATTIVO`, CONFLITTO_STATO; `E_PADRE_INESISTENTE`, DATO_ERRATO; tutti e due con la colonna FK in `campo`). I commenti che dicono «`E_ATTIVO_REQUIRE`, TECNICO, 500» diventano falsi | `backend/apps/vendite/services/commesse_service.py:552`, `backend/apps/anagrafiche/db/anagrafiche_repository.py:98`; commenti in `backend/apps/magazzino/services/anagrafiche_magazzino_service.py:13-18`, `backend/apps/magazzino/services/magazzino_service.py:208`, `backend/apps/vendite/tests/services/test_commesse_service.py:2035` | D46 (giro 3) |
 | BE4 | La ricerca dei lookup passa alla funzione DB (o cade il tetto `LOOKUP_MAX_SOURCE_ROWS`); la paginazione resta com'è | `backend/apps/core/db/dbops_repository.py:55, 415-470` | D57 |
 | BE5 | Docstring stantie: «tre viste … SECURITY DEFINER» (`fn_conta_presidio` è INVOKER) e «registro non vuoto» (il corpo ammette vuoto) | `backend/apps/core/db/presidi_repository.py:16-22`, `backend/apps/core/tests/test_error_codes_db_policy_guardrail.py:66-67` | — |
-| BE6 | Codici nuovi → rigenerare `error_policies_generated.py`, e le voci di `error_messages_fallback.py`: dal giro 2 `E_DBOPS_CHIAMATA_NON_VALIDA`, `E_MERGE_RIGHE_DOPPIE`, `E_MERGE_FIGLIA_SOTTO_RLS`, `E_STRADARIO_SOPPRESSO` e gli altri di §14.1; dal giro 3 `E_ATTIVO_PADRE_NON_ATTIVO`, `E_PADRE_INESISTENTE`. Poi D12 (giro 9) | `backend/apps/core/services/error_messages_fallback.py:113-123` (la voce di `E_ATTIVO_REQUIRE` dice «trigger configurato male», ora è solo il generatore) | §2.5, §14.1, §15.2 |
+| BE6 | Codici nuovi → rigenerare `error_policies_generated.py`, e le voci di `error_messages_fallback.py`: dal giro 2 `E_DBOPS_CHIAMATA_NON_VALIDA`, `E_MERGE_RIGHE_DOPPIE`, `E_MERGE_FIGLIA_SOTTO_RLS`, `E_STRADARIO_SOPPRESSO` e gli altri di §14.1; dal giro 3 `E_ATTIVO_PADRE_NON_ATTIVO`, `E_PADRE_INESISTENTE`; dal blocco 4b `E_EMITTENTE_MODI_INVALIDO`, `E_EMITTENTE_MODI_NON_SCRIVIBILE` (li vede chi migra, non l'operatore: basta la policy generata). Poi D12 (giro 9) | `backend/apps/core/services/error_messages_fallback.py:113-123` (la voce di `E_ATTIVO_REQUIRE` dice «trigger configurato male», ora è solo il generatore) | §2.5, §14.1, §15.2, §17.1 |
 | BE7 | Commento stantio: il test nomina il presidio `dbops.vw_run_senza_attore`, ritirato | `backend/apps/core/tests/services/test_job_run.py:136-138` | D42 |
 | BE8 | Il livello «sessione» degli override esce: via `session_key` da `_DIMENSIONI_OVERRIDE` e dalle firme di `ParameterRepository.get_parameter` e affini | `backend/apps/core/db/parameter_repository.py:97-140` | Q10 |
 | BE9 | Dopo la RLS su `dbops.coda_lavori`: il filtro per `scope_key` scritto a mano negli elenchi e nei conteggi della coda lavori si ritira, la separazione la fa il DB (come per la coda di stampa) | `backend/apps/core/services/coda_lavori/gestione_service.py:83-320`, `CodaLavoriRepository` | Q14.3 |
@@ -565,8 +582,8 @@ entra nel giro che apre lo stesso oggetto.
 | --- | --- | --- | --- |
 | 1 ✅ | A | D1 (+ D26), D14 + D15, D40, D41, D43, D54, D56 (+ D7) | Applicato e verde (§12) |
 | 2 ✅ | A | **Le fusioni e la pipeline.** D3, D4, D45 (Q1); D60 con R6 e R7 (Q9: il ramo dblink di `fn_audit_log_once` esce, nasce il parametro della durata); D44 con Q14 ① | Le porte che falliscono appena le si usa vengono prima di tutto. D60 entra qui (prima era nel giro 7) perché le fusioni devono scrivere la durata nella colonna, e il parametro per farlo lo porta D60. ① è la stessa funzione di D44 |
-| 3 ✍️ | A | **I guard ATTIVO.** D46, D47, D49, D5, D51 (Q8, con il censimento delle fixture che chiudono i differiti), D18 — scritto e provato sullo scratch (§15), da applicare | Sono le stesse due o tre funzioni trigger (`trgfn_child_requires_active_parent`, `…_non_obsolete_parent`, `trgfn_prevent_deactivate_if_children`): prima erano divise fra i giri 2, 4, 6 e 7. Codice sbagliato e lettura sotto la RLS sbagliata sono errori che l'operatore vede. Alla fine del giro, una sola rigenerazione BE (BE6) per i codici dei giri 2 e 3; BE3 |
-| 4 | A | **Riconoscimento e strumenti.** D6, D21 (+ M18), D53 (Q9) | D6 dà il riconoscimento del trigger dalla funzione (`tgfoid`): il giro 10 lo riusa, quindi viene prima |
+| 3 ✅ | A | **I guard ATTIVO.** D46, D47, D49, D5, D51 (Q8, con il censimento delle fixture che chiudono i differiti), D18 — applicato e verde (§15) | Sono le stesse due o tre funzioni trigger (`trgfn_child_requires_active_parent`, `…_non_obsolete_parent`, `trgfn_prevent_deactivate_if_children`): prima erano divise fra i giri 2, 4, 6 e 7. Codice sbagliato e lettura sotto la RLS sbagliata sono errori che l'operatore vede. Alla fine del giro, una sola rigenerazione BE (BE6) per i codici dei giri 2 e 3; BE3 |
+| 4 ✅ | A | **Riconoscimento e strumenti.** D6, D53 (Q9) — applicato e verde (§16). D21 (+ M18) nel blocco 4b: registro dei modi e risolutori generati, applicato e verde (§17) | D6 dà il riconoscimento del trigger dalla funzione (`tgfoid`): il giro 10 lo riusa, quindi viene prima |
 | 5 | A | **La coda lavori sotto RLS.** Q14 ③, D9 | Separare le aziende nel DB è un contratto deciso (Q14 ③). D9 (`fn_accoda_lavoro`) è la stessa tabella. Poi BE9 e la revisione del `perimetro` di `vw_coda_lavori_da_guardare` |
 | 6 | A | **Presidi che guardano il campo sbagliato.** Q14 ④, ⑦ | Un presidio che non vede un caso che il modello ammette (il buco dei lotti congelati) dice il falso. Tutti e due riaprono il catalogo `presidi.csv` / `presidi_testi.csv`. ⑧ va nell'altro brief (§8.1) |
 | 7 | A | **Promesse senza esecutore, ricerca dei lookup.** D35, D36, D37 (Q4), D57 | Tutti riaprono l'ambito delle automazioni o un lettore che non vede tutto. BE4. D25 è passato al giro 10a (stessa funzione di D32) |
@@ -1458,6 +1475,8 @@ differisce dalla baseline committata anche fuori da questo brief (per esempio `E
 **Esito (Tid, 2026-11-07):** apply su dbdev e sullo scratch, pgTAP di §15.6 verdi come app. La baseline B-7
 resta da fare (punto 3).
 
+**Punto 3 fatto** (sessione DB su richiesta di Tid, 2026-11-07): §16.6.
+
 ### 15.7 Doc
 
 * Pagine `manual/` riscritte sul comportamento nuovo: `trgfn_child_requires_active_parent`,
@@ -1476,11 +1495,328 @@ resta da fare (punto 3).
 
 ### 15.8 Residuo
 
-* **D6, giro 4.** Le tre funzioni di riconoscimento e ritiro per argomenti leggono ancora `tgargs` per
-  posizione: nel giro 4 passano dalla grammatica di `-20` (il presidio 23 del test nuovo le aggiungerà al suo
-  elenco).
+* ~~**D6, giro 4.**~~ Fatto nel giro 4 (§16): i due riconoscimenti passano dalla grammatica di `-20` e sono
+  nel presidio 23; il ritiro è generico e confronta l'array intero.
 * **BE3 e BE6** (§5): il giro 3 è applicato, il team BE può farle.
 * La require dell'obsoleto e gli altri trigger scritti a mano non sono nel presidio degli orfani (che guarda
   solo i generati): un montaggio a mano verso una colonna sparita ora si ferma con
   `E_TRIGGER_ARGOMENTI_INVALIDI` invece di passare, ma nessuno lo ritira da solo. È la scelta di oggi
   («orfano = nome morto» dei soli generati), non un difetto aperto.
+
+## 16. Giro 4 — riconoscimento e strumenti, 2026-11-07
+
+**Via di Tid (2026-11-07):** giro 4, YAML dal primo numero libero (`20261107-28`), `%TYPE`; primo id messaggio
+libero 1451 (il giro non ne prende). Difetti: D6, D21 con M18, D53 (Q9).
+
+### 16.1 Che cosa è stato scritto
+
+| changeSet | Oggetto | Difetti |
+| --- | --- | --- |
+| `20_code/dbops/20261107-28` | `fn_trigger_exists_block_by_args`: funzione del trigger per OID (`'dbops.trgfn_…()'::regprocedure`), argomenti per nome da `fn_trigger_attivo_argomenti`, confronto esatto; firma da `text` a `name` (`%TYPE` del catalogo), DROP e CREATE | D6 |
+| `20_code/dbops/20261107-29` | `fn_trigger_exists_require_by_args`: lo stesso, per il require | D6 |
+| `20_code/dbops/20261107-30` | `fn_drop_triggers_by_function_args`: funzione per `to_regprocedure`, argomenti da `tgargs` uguali all'array chiesto, `DROP` con schema e nome dal catalogo; firma ancorata | D6 |
+| `00_schema/dbops/20261107-31` | `chk_processi_bersagli_via` si allarga ai 34 modi di `script.fn_resolve_emittente_fiscale_id`, più `padre` fino al seed | D21 |
+| `80_data/sql/dbops/processi_bersagli.csv` | riga 2 (`vendite.listini_versioni`): `padre` → `listino`, la via del guard montato | D21 |
+| `90_end/20261107-32` | `chk_processi_bersagli_via` stretto sui modi del risolutore (`padre` esce), con un controllo che dice la riga fuori vocabolario; COMMENT di tabella e colonne riscritti | D21, M18 |
+| `20_code/dbops/20261107-33` | `fn_foreign_keys_info(regclass)`: da `pg_constraint` con `unnest(conkey, confkey) WITH ORDINALITY`, schema compreso, cloni delle partizioni non ripetuti; DROP e CREATE (era `text`, `information_schema`) | D53 |
+| `20_code/dbops/20261107-34` | `fn_find_file_usage`: le righe entranti di `fn_foreign_keys_info`, col nome del vincolo, la posizione e `referenced_column` (era `pk_column`); DROP e CREATE | D53 |
+
+Nessun chiamante cambia: l'unico delle tre di D6 è `fn_run_automations_attivo`, che passa `name` e `text`
+(`text → name` è implicito); le due di D53 non ne hanno (DB, backend, pgTAP, censiti il 2026-11-07). Le firme
+nuove prendono i privilegi dai default dello schema, come le funzioni del giro 3.
+
+⚠️ Le righe di `-31`, del CSV e di `-32` (D21) sono uscite dal giro il 2026-11-07 e passano al blocco 4b (§16.9).
+
+### 16.2 Perché due passi per il vincolo delle vie
+
+Il CSV dei bersagli lo carica `80_data`, dopo `00_schema`. Su dbdev la riga 2 dice ancora `padre` quando gira il
+`-31`, quindi lì il vincolo deve ammetterlo; da zero, il CSV arriva già con `listino`, che il vincolo vecchio
+respingerebbe. Il vincolo largo in `00_schema` regge tutti e due i casi, lo stretto nasce in `90_end`, dopo il
+seed (la regola della memoria «CHECK su riga di seed: 90_end»).
+
+### 16.3 Le scelte dentro il giro (da guardare, Tid)
+
+1. **Il vocabolario delle vie è scritto due volte, dichiarato.** «Una sede» (D21) non è raggiungibile senza
+   riscrivere il risolutore: un CHECK non legge il corpo di una funzione, e il risolutore è una catena di
+   `IF p_modo = …` di 34 rami (DEFINER, toccato anche dall'altro cantiere). La sede del significato resta il
+   risolutore; il CHECK è il suo specchio, e il pgTAP `test-processi-bersagli-via-modi-del-risolutore-v1` (1) li
+   confronta testo contro testo, come il presidio di `commesse_push_log`. Alternativa scartata: un
+   `script.fn_emittente_vie()` IMMUTABLE letto dal CHECK, che toglie la copia dal CHECK ma la sposta in una
+   terza sede, perché il risolutore resterebbe com'è.
+2. **Tutti i modi del risolutore sono vie dichiarabili**, non solo listino e magazzino: la via è per
+   definizione il primo argomento del guard, e il guard accetta ogni modo.
+3. **La regola «la via dichiarata è quella del guard montato»** è nel test 6 dello stesso file, come presidio
+   sul seed (oggi le undici righe coincidono). Proposta per il giro 9, che riapre la vista: portarla in
+   `vw_processi_dominio_senza_difesa` come motivo «guard montato con un'altra via», così la vede anche il
+   panorama.
+4. **D6, le firme passano a `name`.** Con `%TYPE` del catalogo la firma cambia, quindi DROP e CREATE invece di
+   `CREATE OR REPLACE`. Il presidio dell'overload: dopo l'estratto c'è una sola funzione per nome (§16.4).
+5. **D6, il ritiro resta generico**: confronta l'array intero e non applica la grammatica ATTIVO, perché non è
+   una funzione ATTIVO (schema e nome della funzione sono parametri). Quindi non è nel presidio 23.
+6. **D53, i nomi del risultato.** `fn_find_file_usage` prende `fk_name` e `posizione` (senza, le righe di una
+   chiave composita non si raggruppano) e `pk_column` diventa `referenced_column` (la FK può puntare a una
+   UNIQUE). `fn_foreign_keys_info` cambia parametro (`tabella text` → `p_tabella regclass`) e risultato
+   (tabelle `regclass`, colonne `name`, `posizione`). Nessun chiamante.
+7. **D53, le partizioni.** Un clone di FK che ripete il vincolo padre dallo stesso lato non si mostra; una
+   partizione chiesta da sola vede le FK che la vincolano.
+
+**Decisioni di Tid (2026-11-07):**
+
+* **Scelta 1 → no al doppio elenco: sede unica, si riscrive il risolutore.** La forma della riscrittura è in
+  §16.9 e aspetta la conferma di Tid; finché non c'è, D21 non va all'apply.
+* **Scelta 3 → accettata:** nel giro 9 `vw_processi_dominio_senza_difesa` prende il motivo «guard montato con
+  un'altra via» (la regola oggi è il test 6 di `test-processi-bersagli-via-modi-del-risolutore-v1`).
+* **Residuo del 10b (§16.8) → è un difetto da risolvere** nel giro 10b, con D17.
+
+### 16.4 Le prove (scratch `zeroerp_ruoli` e dbdev, da owner, SQL estratto dagli YAML, `BEGIN … ROLLBACK`)
+
+* **L'estratto nell'ordine di Liquibase** (`-28` … `-31`, `-33`, `-34`, la riga del CSV simulata da un
+  UPDATE, poi il `-32`), con le tre preCondition eseguite come controllo: passa intero su scratch e dbdev. Dopo,
+  una sola funzione per ognuno dei cinque nomi, con la firma nuova; dopo il ROLLBACK, i due database puliti
+  (firme vecchie, riga 2 a `padre`, vincolo vecchio).
+* **Il runner ATTIVO vero, con l'estratto:** i due riconoscimenti trovano tutti gli 833 trigger ATTIVO dello
+  scratch (prima: nessuno); `fn_run_automations_attivo('CI', NULL, …)` in dry run e poi vero non ricrea, non
+  toglie e non aggiunge nessun trigger.
+* **`plpgsql_check`** su `fn_drop_triggers_by_function_args` e `fn_run_automations_attivo`: nessun avviso.
+* **pgTAP** (scratch, da owner, con e senza l'estratto in testa):
+
+| File | Con | Senza |
+| --- | --- | --- |
+| nuovo `dbops/test-trigger-attivo-riconoscimento-per-funzione-v1` (15, runner app: trigger su TEMP sue) | 15/15 | 7/15: le firme e i riconoscimenti rossi; come app la fixture si costruisce |
+| nuovo `dbops/test-processi-bersagli-via-modi-del-risolutore-v1` (6, runner owner come `test-processi-registro`) | 6/6 | 1/6 |
+| nuovo `dbops/test-fk-info-su-pg-constraint-v1` (9, runner app: TEMP sue, anche partizionate) | 9/9 | si ferma al 1 (la firma non esiste); come app la fixture si costruisce |
+| `dbops/test-guard-attivo-grammatica-e-codici-v1` (presidio 23 esteso ai due riconoscimenti) | 23/23 | rosso il 23 |
+| `dbops/test-processi-registro` (16), `dbops/test-presidi-debito-dichiarato` (8), `dbops/test-trigger-attivo-orfani-v1` (10), `dbops/test-automazione-attivo-eccezioni-v1` (8), `dbops/test-trgfn-prevent-deactivate-if-children-pdp` (13), `config/test-trgfn-prevent-deactivate-if-children-toponomastica` (9), `pratiche/test-guard-non-obsolete-parent-v1` (10), `rls/test-rls-fatture-stampa-coda-write-guard` (6), `vendite/test-event-log-deriva-scope` (7), `vendite/test-preventivo-scadenza-v1` (19) | tutti verdi | tutti verdi |
+| presidi: `dbops/test-riferimenti-morti-v1` (12), `dbops/test-security-definer-search-path-v1` (5), `script/test-catalogo-messaggi-errore-completo` (7), `dbops/test-corpo-funzione-senza-commenti-v1` (15), `dbops/test-punti-canale-campo-v1` (18) | tutti verdi | tutti verdi |
+| `dbops/test-guard-attivo-occhi-del-proprietario-v1` (runner app) | da owner 2, 6, 7, 8 rossi per costruzione, come dichiarato | uguale |
+
+* Guardrail dei changelog, del preambolo pgTAP, dei letterali, del fuso e del v1 congelato verdi; header di
+  licenza a posto. Il pre-commit è rosso solo su `check-i18n-keys` per `vendite.righe.articolo_reason.obsoleto`,
+  come ai giri 2 e 3 (cantiere degli articoli).
+* B-7: il giro non porta codici nuovi né nuovi punti di sollevamento.
+
+### 16.5 Per Tid
+
+1. Apply su dbdev e sullo scratch: `20261107-28`, `-29`, `-30`, `-33`, `-34`.
+2. pgTAP **come app**: i due nuovi (`dbops/test-trigger-attivo-riconoscimento-per-funzione-v1`,
+   `dbops/test-fk-info-su-pg-constraint-v1`), `dbops/test-guard-attivo-grammatica-e-codici-v1`, `dbops/test-processi-registro`,
+   `dbops/test-presidi-debito-dichiarato`, `dbops/test-trigger-attivo-orfani-v1`,
+   `dbops/test-automazione-attivo-eccezioni-v1`, `dbops/test-trgfn-prevent-deactivate-if-children-pdp`,
+   `dbops/test-riferimenti-morti-v1`, `dbops/test-security-definer-search-path-v1`.
+3. Il commit (giro 4 e baseline B-7, §16.6), poi il via al blocco 4b (§16.9).
+
+**Esito (Tid, 2026-11-07):** apply su dbdev e sullo scratch, pgTAP di §16.5 verdi. Via al blocco 4b dato.
+
+### 16.6 La baseline B-7 (§14.4 e §15.5), 2026-11-07
+
+Su richiesta di Tid. Fotografia di `scripts/sql/codici_errore_famiglie_snapshot.sql` come app, in sola lettura:
+scratch e dbdev rispondono uguale. In `db/baseline-codici-errore-famiglie.tsv` si sono cambiate **solo le sette
+righe di questo brief**, con i valori misurati, senza `--update` (che avrebbe scritto anche le righe degli altri
+cantieri):
+
+| Codice | Prima | Dopo |
+| --- | --- | --- |
+| `E_ATTIVO_REQUIRE` | `NOT_FOUND`, 6 | — (esce: lo solleva solo il generatore, che la misura non legge) |
+| `E_CATALOGO_OBSOLETO_NUOVA_ISTANZA` | `NOT_FOUND`, 5 | — (esce) |
+| `E_DBOPS_CHIAMATA_NON_VALIDA` | — | `PARAMETRO`, 15 |
+| `E_GENERICO` | `ENUM,NOT_FOUND,PARAMETRO`, 31 | stesse famiglie, 9 |
+| `E_MERGE_RIGHE_DOPPIE` | — | `ECCEZIONE`, 2 |
+| `E_PIPELINE_TASK_HANDLER_NOT_FOUND` | — | `NOT_FOUND`, 2 |
+| `E_TRIGGER_ARGOMENTI_INVALIDI` | `ECCEZIONE,ENUM,VALORE_ATTESO`, 5 | stesse famiglie, 10 |
+
+⚠️ `E_GENERICO` scende a 9 punti, non a 25: i sei del giro 2 e gli altri di altri cantieri. I punti sono
+informativi (il confronto guarda le famiglie): si è scritto il valore misurato, l'unico che corrisponde a un
+database. Il confronto dopo l'aggiornamento: nessun accumulo, nessun ristretto. Resta un «rientrato»,
+`E_ARTICOLO_ONERE_NATURA_MERCE`, e restano fuori dalla baseline le righe nuove `E_DDT_EMISSIONE_SOLO_ONERI`,
+`E_DDT_ONERE_NON_FATTURABILE`, `E_DDT_TRASPORTO_NON_DOVUTO`, `E_SORG_*` e i punti di `E_CONFIG_MANCANTE` e
+`E_SORG_CONF`: sono dei cantieri degli articoli e della sorgente, e le allineano loro.
+
+### 16.7 Doc
+
+* Pagine `manual/` riscritte sul comportamento nuovo: `fn_trigger_exists_block_by_args`,
+  `fn_trigger_exists_require_by_args`, `fn_drop_triggers_by_function_args`, `fn_foreign_keys_info`,
+  `fn_find_file_usage`; aggiornate `fn_run_automations_attivo` (la strategia di esistenza) e
+  `processi_bersagli` (le vie sono i modi del risolutore, il doppio elenco e il suo presidio).
+  ⚠️ Quest'ultima è stata riportata com'era quando D21 è passato al blocco 4b: si riscrive lì.
+* Nessuna guida descriveva i difetti chiusi. Il drawer dei processi mostra la via com'è (`listino` al posto di
+  `padre`): nessuna chiave da tradurre.
+
+### 16.8 Residuo
+
+* La regola «via dichiarata = guard montato» nel presidio dei processi: **giro 9** (decisione di Tid,
+  2026-11-07).
+* **Difetto, giro 10b (decisione di Tid, 2026-11-07).** Il ritiro per argomenti (`reconcile_on_change`) con la strategia `BY_FUNCTION` toglie i trigger con gli
+  argomenti **nuovi**, non quelli con argomenti vecchi sullo stesso nome: se cambia la colonna attivo di un
+  padre (override), il `CREATE` trova il nome preso e si ferma con `E_ATTIVO_REQUIRE`/`E_ATTIVO_BLOCK`. Oggi la
+  strategia del seed è `BOTH`, che decide col nome e non ci arriva: allora il trigger resta con gli argomenti
+  vecchi, ed è lo stesso difetto visto dall'altro lato. Si risolve con la strategia di esistenza (D17), giro 10b.
+
+### 16.9 D21, la sede unica: il registro dei modi (proposta, da confermare)
+
+**Il fatto, sul corpo del 2026-11-07.** I 34 rami di `script.fn_resolve_emittente_fiscale_id` hanno tutti la
+stessa forma: leggono una tabella per chiave (`id`, tranne `soggetto_ruolo`) e trovano l'emittente in uno di tre
+modi:
+
+| Forma | Che cosa fa | Modi |
+| --- | --- | --- |
+| radice PK | la colonna `emittente_fiscale_id` della tabella | fiscale (la tabella è `emittenti_fiscali`), magazzino, ddt, ordine, preventivo, offerta, contratto, reso, asset, pratica, documento_generato |
+| radice SR | la colonna del soggetto-ruolo, unita a `emittenti_fiscali` | soggetto_ruolo (chiave `soggetto_ruolo_id` su `emittenti_fiscali`), fattura, contabile, listino, commessa, lotto |
+| salto | una FK verso la testata, che ha il suo modo | le righe dei documenti, listino_versione, commessa_attivita, attivita_fatturabile, fattura_sdi, evento_asset, inventario, movimento, rettifica, trasferimento (`magazzino_id_from`), flusso; ente_incasso fa due salti, con un modo intermedio sul conto bancario |
+
+**La proposta.**
+
+1. Un registro `script.emittente_modi` (modo PK; tabella; colonna chiave; forma `PK`/`SR`/`SALTO`; colonna
+   dell'emittente o della FK; modo padre per i salti, FK su sé stesso), scritto da un CSV: è **la** sede del
+   vocabolario e del significato di ogni modo.
+2. Il risolutore non si scrive più a mano: lo **genera** una funzione dal registro, con lo stesso SQL statico di
+   oggi (un ramo per modo, i salti appiattiti in JOIN). Stessa velocità: lo chiamano 101 policy RLS e 41
+   funzioni, e una versione a SQL dinamico le rallenterebbe tutte. Il registro cambia → il risolutore si rigenera.
+3. `processi_bersagli.emittente_via` prende una FK verso il registro al posto del CHECK: `-31` e `-32` si
+   riscrivono (non sono applicati), il pgTAP di confronto testo contro testo esce, e al suo posto un pgTAP
+   prova che il risolutore generato risponde, per ogni modo, come quello di oggi (costruendo i casi).
+4. Decisione del 2026-10-18 (D-3b-2, «una strada sola: il modo del risolutore»): la proposta la **completa**, non
+   la revoca: la strada resta il risolutore, cambia chi lo scrive.
+
+**Che cosa costa, e i nodi da decidere.**
+
+* **Da zero, l'ordine.** Policy e funzioni che chiamano il risolutore nascono in `00_schema`/`20_code`, il CSV in
+  `80_data`. Il registro deve quindi nascere col suo contenuto prima di loro (righe di sistema nello stesso
+  changeSet della tabella, o in `70_dati_sistema`) e il CSV in `80_data` resta il mirror; oppure il risolutore a
+  mano resta fino a `90_end`, dove si rigenera. Da scegliere nel disegno di dettaglio.
+* **I due gemelli.** `script.fn_resolve_emittente_sr_id` (lotto, commessa, fattura, in convenzione SR) è la
+  stessa domanda con un'altra risposta: il registro può generare anche quello, o restare fuori.
+* **I 36 adattatori** `script.fn_scope_ef_whitelist_via_<modo>` sono un terzo elenco dei modi, per nome di
+  funzione. Generarli dal registro è la stessa regola; si può fare qui o in un giro suo.
+* **L'altro cantiere** (`brief-db-sorgente-documento-e-riga`) legge il risolutore (modi `movimento`,
+  `evento_asset`) ma oggi non lo modifica: il lavoro va concordato con lui solo se aggiunge un modo.
+* Il risolutore è DEFINER e regge la separazione fra aziende: la generazione è un DDL di una funzione di
+  sicurezza, da provare con le policy (pgTAP di perimetro come app) prima dell'apply.
+
+**Deciso (Tid, 2026-11-07): registro + risolutore generato, nel blocco 4b dopo l'apply del giro 4.**
+**Perimetro (Tid, 2026-11-07):** il registro genera anche il gemello SR (`script.fn_resolve_emittente_sr_id`),
+che oggi riscrive la strada di tre modi: diventa la stessa strada con la colonna del soggetto-ruolo in fondo, per
+tutti i modi. I 36 adattatori `fn_scope_ef_whitelist_via_*` restano fuori: non ripetono la strada, solo il nome
+del modo; un pgTAP controlla che ognuno nomini un modo del registro. Il loro ritiro, se servirà, è un giro suo
+con il team BE (31 funzioni DB e 3 file del backend li chiamano).
+
+Tolti dal giro 4 e tenuti per il 4b: `-31`, `-32`, `test-processi-bersagli-via-modi-del-risolutore-v1`, e anche
+la riga del CSV `padre` → `listino`: senza il `-31` il vincolo di oggi non ammette `listino`, e l'apply si
+fermerebbe sul CSV (la prima stesura di questo paragrafo diceva il contrario, ed era sbagliata). Pagina
+`processi_bersagli` riportata com'era. Dopo il ritiro, l'estratto ridotto (`-28`, `-29`, `-30`, `-33`, `-34`) e i
+pgTAP di §16.4 rifatti: verdi.
+
+## 17. Blocco 4b — il registro dei modi dell'emittente (D21, M18), 2026-11-07
+
+**Via di Tid (2026-11-07)**, dopo l'apply del giro 4 (pgTAP verdi). Decisioni di §16.9: registro + risolutore
+generato con SQL statico; il registro genera anche il gemello SR; i 36 adattatori restano fuori, con un presidio.
+
+### 17.1 Che cosa è stato scritto
+
+| changeSet | Oggetto | Che cosa |
+| --- | --- | --- |
+| `00_schema/dbops/20261107-31` | nuova `dbops.emittente_modi` | il registro: modo (PK), tabella, colonna chiave, forma `PK`/`SR`/`SALTO`, colonna, modo padre (FK su sé stessa, differita); CHECK su forma e padre |
+| `00_schema/dbops/20261107-32` | `dbops.processi_bersagli` | via il CHECK `chk_processi_bersagli_via` |
+| `20_code/dbops/20261107-35` | nuovo `dbops.trgfn_emittente_modi_solo_migrazione` + due trigger | il registro lo scrive solo il proprietario (`script.fn_is_proprietario_tabella`); righe e TRUNCATE; `E_EMITTENTE_MODI_NON_SCRIVIBILE` |
+| `20_code/dbops/20261107-36` | nuovo `dbops.fn_risolutore_emittente_corpo(boolean)` | il corpo dei due risolutori dal registro, dopo il controllo (tabelle, colonne, catene); `E_EMITTENTE_MODI_INVALIDO` con tutti i problemi insieme |
+| `20_code/dbops/20261107-37` | nuovo `dbops.fn_genera_risolutori_emittente()` | riscrive `script.fn_resolve_emittente_fiscale_id` e `script.fn_resolve_emittente_sr_id` solo se corpo o COMMENT sono diversi; firma ancorata (`%TYPE`), stessi tipi |
+| `80_data/changelog/20261107-38` + `sql/dbops/emittente_modi.csv` | seed del registro | i 34 modi di oggi più `conto_bancario` (il passo intermedio di `ente_incasso`) |
+| `80_data/sql/dbops/processi_bersagli.csv` | riga 2 | `padre` → `listino` |
+| `90_end/20261107-39` | convergenza, `runAlways` | `SELECT dbops.fn_genera_risolutori_emittente()` a ogni migrate, dopo il seed |
+| `90_end/20261107-40` | FK `fk_processi_bersagli_emittente_via` → `dbops.emittente_modi`, indice | con il controllo che nomina il bersaglio fuori vocabolario; COMMENT di tabella e colonne riscritti (M18) |
+| `80_data/sql/config/codici_errore.csv`, `messaggi_errore.csv` | due codici | `E_EMITTENTE_MODI_INVALIDO` (TECNICO, 1453), `E_EMITTENTE_MODI_NON_SCRIVIBILE` (NON_PERMESSO, 1454) |
+
+pgTAP: nuovi `dbops/test-emittente-modi-registro-v1` (16, runner owner) e `dbops/test-emittente-modi-solo-migrazione-v1`
+(4, runner app); `dbops/test-processi-registro` test 6 (la FK al posto del CHECK, su una tabella che non è già un
+bersaglio: col CHECK parlava prima il vincolo, ora parlerebbe l'unicità).
+
+### 17.2 L'ordine, da zero e su dbdev
+
+Policy e funzioni che chiamano i risolutori nascono in `00_schema`/`20_code` con i risolutori scritti a mano; il
+registro nasce vuoto in `00_schema`, il seed lo riempie in `80_data`, e in `90_end` il `-39` sostituisce i corpi
+scritti a mano con quelli generati, con le stesse risposte. Il CHECK delle vie esce in `00_schema` (`-32`), la FK
+entra in `90_end` (`-40`): in mezzo il CSV dei bersagli scrive `listino`, che il CHECK di prima non ammetteva. Da
+quel momento un corpo scritto a mano (un changeSet di `20_code` di un altro cantiere) torna quello del registro al
+migrate dopo: la regola è nel COMMENT delle due funzioni, nell'intestazione del corpo generato e in
+`linee-guida-sql.md` §10.
+
+### 17.3 Le scelte dentro il blocco (da guardare, Tid)
+
+1. **Il registro in `dbops`**, accanto a `processi_bersagli` (lo schema dei registri); i risolutori restano in
+   `script`, coi nomi di oggi.
+2. **Un modo nuovo, `conto_bancario`**, per spezzare in due salti la strada di `ente_incasso`, che era l'unica con
+   due JOIN in un ramo. È un modo vero (il conto bancario di un soggetto-ruolo), quindi è anche dichiarabile e
+   chiamabile.
+3. **Il gemello SR conosce ora tutti i modi**, non tre. Per le radici `SR` copia la colonna senza controllare che
+   sia un emittente, come faceva per `lotto`, `commessa` e `fattura`; per le radici `PK` passa dall'emittente
+   fiscale.
+4. **Il corpo generato tiene la catena `IF p_modo = … ELSIF`** di oggi (non un `CASE`): i presidi che leggono il
+   corpo dei risolutori non cambiano lettura, e la B-7 non si muove di famiglia.
+5. **Il registro lo scrive solo il proprietario, con un guard**: è codice della funzione che separa le aziende, e
+   il giro dei grant di `ci_apply` ridà all'applicazione i privilegi sulle tabelle di `dbops`. Il TRUNCATE lo ferma
+   già la FK dei bersagli; il trigger resta per quando nessuno riferisce un modo.
+6. **Due codici nuovi** invece di riusarne: nessuno esistente diceva «registro incoerente» o «scrittura non dal
+   migrate», e riusarne uno avrebbe aggiunto una famiglia nella B-7.
+7. **Un modo tolto dal CSV resta nella tabella** (il loader non cancella): il ritiro di un modo è un changeSet suo,
+   dopo il censimento di guard e bersagli che lo nominano. È scritto nel loader e nella pagina del registro.
+
+### 17.4 Le prove (scratch `zeroerp_ruoli` e dbdev, da owner, SQL estratto dagli YAML, `BEGIN … ROLLBACK`)
+
+* **L'estratto nell'ordine di Liquibase** (`-31`, `-32`, `-35` … `-37`, i quattro CSV simulati da INSERT/UPDATE
+  generati dai CSV con `NULL` come il loader, `-39`, `-40`): passa su scratch e dbdev. 35 modi caricati; il
+  generatore riscrive le due funzioni, e chiamato una seconda volta non riscrive niente. Una sola funzione per nome.
+  Dopo il ROLLBACK i due database sono puliti (registro assente, riga 2 a `padre`, CHECK vecchio, corpo del
+  risolutore con lo stesso md5).
+* **Equivalenza sulla popolazione di dbdev** (fatto datato, 2026-11-07; la regola la provano i test costruiti):
+  per ogni modo, ogni riga della sua tabella (10.031 in tutto; `asset`, `ente_incasso`, `evento_asset`,
+  `fattura_sdi`, `trasferimento` senza righe), risolutore scritto a mano contro generato: **nessuna differenza** né
+  per il fiscale né per i tre modi del gemello; e il soggetto-ruolo generato coincide sempre col soggetto-ruolo
+  dell'emittente fiscale. Sullo scratch le tabelle sono vuote.
+* **`plpgsql_check`** sui due risolutori generati, sul costruttore, sul generatore e sul guard: solo l'avviso
+  «STABLE che chiama una VOLATILE» (`fn_log_and_raise_error`), come nei giri 2 e 3.
+* **pgTAP** (scratch, da owner, con e senza l'estratto in testa):
+
+| File | Con | Senza |
+| --- | --- | --- |
+| nuovo `dbops/test-emittente-modi-registro-v1` (16) | 16/16 | si ferma al 3 (il registro non esiste) |
+| nuovo `dbops/test-emittente-modi-solo-migrazione-v1` (4, runner app) | da owner 1-3 rossi per costruzione (il proprietario scrive), 4 verde | si ferma (la tabella non esiste) |
+| `dbops/test-processi-registro` (16) | 16/16 | rosso il 6 (la FK non c'è) |
+| `script/test-catalogo-messaggi-errore-completo` (7) | 7/7, con le due righe dei codici simulate | 7/7 |
+| `dbops/test-presidi-debito-dichiarato`, `test-riferimenti-morti-v1`, `test-security-definer-search-path-v1`, `test-corpo-funzione-senza-commenti-v1`, `test-punti-canale-campo-v1`, `test-vw-codici-errore-valore-atteso`, `script/test-rubinetto-primo-motivo-v1`, `rls/test-rls-fatture-stampa-coda-write-guard`, `vendite/test-event-log-deriva-scope` | tutti verdi | tutti verdi |
+| regressione: i 13 file `rls/*ef-whitelist*`, `rls/test-rls-perimetro*`, `script/test-fn-scope-*`, e altri 100 di `rls/`, `magazzino/`, `pratiche/` | esito identico a «senza», file per file | — |
+
+* **B-7 con l'estratto:** nessuna famiglia nuova; `E_DBOPS_CHIAMATA_NON_VALIDA` 15 → 16 punti e
+  `E_PARAMETRO_INVALIDO` 255 → 256, stesse famiglie; i due codici nuovi la misura non li legge. La baseline non
+  cambia.
+* Guardrail dei changelog, del preambolo, dei letterali, del fuso, del v1 verdi; header di licenza a posto;
+  pre-commit rosso solo su `check-i18n-keys` (cantiere degli articoli), come prima.
+
+### 17.5 Per Tid
+
+1. Apply su dbdev e sullo scratch: `20261107-31`, `-32`, `-35` … `-40`, `emittente_modi.csv`, `processi_bersagli.csv`,
+   `codici_errore.csv`, `messaggi_errore.csv`.
+2. pgTAP **come app**: `dbops/test-emittente-modi-solo-migrazione-v1` (i quattro verdi solo come app),
+   `dbops/test-emittente-modi-registro-v1` (gira da owner per il marcatore), `dbops/test-processi-registro`,
+   `script/test-catalogo-messaggi-errore-completo`, `vendite/test-event-log-deriva-scope`, e i `rls/` del perimetro
+   (`rls/test-rls-*ef-whitelist*`, `rls/test-rls-perimetro*`): il blocco riscrive la funzione che leggono.
+3. Il commit del giro 4, del blocco 4b e della baseline B-7; poi il via al giro 5.
+
+**Esito (Tid, 2026-11-07):** apply su dbdev e sullo scratch, pgTAP di §17.5 verdi, le scelte di §17.3 restano
+come sono. Giro 4, blocco 4b e baseline B-7 committati insieme dalla sessione DB, solo i file di questo cantiere (le
+righe dell'altro cantiere nei due CSV dei codici restano fuori dal commit). Il giro 4 è chiuso.
+
+### 17.6 Doc
+
+* Pagine `manual/` nuove: `dbops/emittente_modi`, `fn_risolutore_emittente_corpo`, `fn_genera_risolutori_emittente`,
+  `trgfn_emittente_modi_solo_migrazione`, `script/fn_resolve_emittente_sr_id`; riscritta
+  `script/fn_resolve_emittente_fiscale_id` (i modi rimandano al registro: l'elenco a mano era una quinta copia);
+  aggiornata `dbops/processi_bersagli` (le vie sono i modi del registro). Voci negli indici di `dbops` e `script`.
+* `linee-guida-sql.md` §10: un modo nuovo è una riga del registro, mai un ramo scritto a mano.
+
+### 17.7 Residuo
+
+* La regola «via dichiarata = guard montato» resta il test 14 di `test-emittente-modi-registro-v1` fino al giro 9,
+  che la porta in `vw_processi_dominio_senza_difesa` (§16.8).
+* I 36 adattatori `script.fn_scope_ef_whitelist_via_*` restano scritti a mano; il test 13 controlla che ogni modo che
+  nominano sia nel registro.
+* La pagina `script/manual/trgfn_guard_emittente_scope.md` non elenca i modi, ma ha uno stile vecchio (marcatori di
+  revisione): si rivede col giro dello schema `script`, non qui.

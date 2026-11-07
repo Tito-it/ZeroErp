@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_trigger_exists_block_by_args`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 7 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -10,7 +10,8 @@
 > * [dbops.trgfn_prevent_deactivate_if_children](/dbzero/dbops/funzioni/trgfn_prevent_deactivate_if_children) — la funzione del trigger che cerca
 > * [dbops.fn_trigger_exists_require_by_args](/dbzero/dbops/funzioni/fn_trigger_exists_require_by_args) — la gemella per il require sul figlio
 > * [dbops.fn_trigger_exists_by_name](/dbzero/dbops/funzioni/fn_trigger_exists_by_name) — il controllo per nome, l'altra metà della strategia
-> * [dbops.fn_trigger_argomenti](/dbzero/dbops/funzioni/fn_trigger_argomenti) — la lettura degli argomenti che altri lettori usano
+> * [dbops.fn_trigger_attivo_argomenti](/dbzero/dbops/funzioni/fn_trigger_attivo_argomenti) — la grammatica degli argomenti, la stessa che legge il trigger
+> * [dbops.fn_trigger_argomenti](/dbzero/dbops/funzioni/fn_trigger_argomenti) — gli argomenti salvati di un trigger
 >
 > Guide:
 >
@@ -29,25 +30,32 @@ Serve a `dbops.fn_run_automations_attivo` quando la regola riconosce i trigger p
 
 ---
 
-### ⚠️ Oggi non riconosce nessun trigger
+### Come riconosce un trigger
 
-Il confronto si fa sul testo della definizione del trigger (`pg_get_triggerdef`), cercando la
-chiamata con gli argomenti separati da una **virgola senza spazio**. PostgreSQL scrive la
-definizione con gli argomenti separati da **virgola e spazio**: il testo cercato non compare mai,
-e la funzione restituisce sempre falso.
-
-Conseguenze sul motore: con la strategia `BOTH` (quella del seed) decide solo il nome; con
-`BY_FUNCTION` ogni giro toglierebbe e ricreerebbe il trigger.
-
-Il confronto è anche `ILIKE`: il trattino basso dei nomi vale come carattere qualsiasi. Questo
-allargherebbe il riconoscimento, non lo restringe.
+* **La funzione, per identità.** Un trigger è un block se esegue proprio
+  `dbops.trgfn_prevent_deactivate_if_children`, riconosciuta dal suo identificativo interno e non dal
+  nome scritto: la risposta è la stessa con qualunque `search_path` di chi chiama.
+* **Gli argomenti, per nome.** Gli argomenti salvati del trigger si leggono con la grammatica dei
+  trigger ATTIVO, la stessa che il trigger usa quando scatta: figlia, colonna FK, colonna
+  referenziata, colonna attivo. Un montaggio che la grammatica rifiuta (un argomento in meno, uno
+  vuoto) non è riconosciuto.
+* **Confronto esatto.** Sono nomi di tabelle e colonne: una maiuscola diversa è un altro nome, e il
+  trattino basso è un carattere come gli altri.
 
 ---
 
 ### Che cosa non fa
 
-Non guarda il nome né gli eventi del trigger, e non dice quanti trigger corrispondono: solo se ce
-n'è almeno uno. È `STABLE` e non tocca niente.
+Non guarda il nome né gli eventi del trigger, né se è acceso: un block disattivato c'è. Non dice
+quanti trigger corrispondono, solo se ce n'è almeno uno. È `STABLE` e non tocca niente.
+
+---
+
+### Test
+
+`dbops/test-trigger-attivo-riconoscimento-per-funzione-v1`: un block montato come lo monta il
+generatore è riconosciuto, anche col `search_path` dell'applicazione; una colonna diversa, una
+maiuscola o un trattino basso al posto di una lettera no.
 
 ---
 

@@ -1,0 +1,119 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_drop_triggers_by_function_args: i trigger da togliere si
+#   riconoscono dalla funzione (tgfoid) e dagli argomenti (tgargs), non dal
+#   testo del CREATE TRIGGER.
+#   Brief: brief-db-revisione-dbops, D6 (giro 4).
+#
+# ⚠️ IL DIFETTO CHE CHIUDE (D6). Cercava in pg_get_triggerdef il testo
+#   «EXECUTE FUNCTION <schema>.<funzione>(<argomenti>)» con ILIKE. PostgreSQL
+#   scrive lo schema della funzione solo se non e' nel search_path: con dbops
+#   nel search_path (quello dell'applicazione) il pattern non trovava niente, e
+#   la riconciliazione del runner ATTIVO dipendeva da chi lo lanciava. E ILIKE
+#   trattava «_» e «%» negli argomenti come jolly e ignorava le maiuscole.
+#
+# ⭐ LA FORMA NUOVA. La funzione si risolve per schema e nome con
+#   to_regprocedure (una funzione trigger non ha argomenti: «schema.nome()»),
+#   e il trigger si confronta per OID; gli argomenti si leggono da
+#   pg_trigger.tgargs con dbops.fn_trigger_argomenti e si confrontano con
+#   l'array chiesto, uguali in numero, ordine e testo. Questa funzione e'
+#   generica (non solo ATTIVO): confronta l'array intero, la grammatica di una
+#   famiglia la applica chi chiama. Una funzione che non esiste non ha trigger
+#   da togliere: risponde 0.
+#
+# Il DROP nomina la tabella con schema e nome dal catalogo, non col testo del
+#   regclass (che omette lo schema se e' nel search_path).
+#
+# INVARIATO: le partizioni restano escluse (i loro trigger clonati non si
+#   tolgono da soli), il risultato e' il numero di trigger tolti.
+#
+# ⚠️ LA FIRMA CAMBIA: schema e nome della funzione passano a name (%TYPE del
+#   catalogo), quindi DROP e CREATE. L'unico chiamante, dbops.fn_run_automations_attivo,
+#   passa letterali e name: si risolve senza toccarlo. Privilegi dai default
+#   privileges dello schema.
+#
+# Corpo di partenza: la scheda auto-generata del 2026-11-07.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261107-30-update-fn-drop-triggers-by-function-args-riconosce-per-oid-mctit.yaml
+
+  - changeSet:
+      id: 20261107-30-update-fn-drop-triggers-by-function-args-riconosce-per-oid
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_drop_triggers_by_function_args riconosce i trigger dalla funzione (tgfoid) e
+        dagli argomenti (tgargs), non da un ILIKE su pg_get_triggerdef che dipendeva dal
+        search_path (D6). Firma ancorata al catalogo.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION dbops.fn_drop_triggers_by_function_args(regclass, text, text, text[]);
+
+              CREATE FUNCTION dbops.fn_drop_triggers_by_function_args(
+                  -- regclass: la tabella da cui togliere i trigger (pg_trigger.tgrelid e' un oid)
+                  p_rel         regclass,
+                  p_func_schema pg_catalog.pg_namespace.nspname%TYPE,
+                  p_func_name   pg_catalog.pg_proc.proname%TYPE,
+                  -- text[]: gli argomenti del CREATE TRIGGER, come li restituisce
+                  --   dbops.fn_trigger_argomenti (tgargs e' bytea, nessuna colonna da ancorare)
+                  VARIADIC p_args text[]
+              )
+              RETURNS integer
+              LANGUAGE plpgsql
+              VOLATILE
+              SECURITY INVOKER
+              AS $function$
+              DECLARE
+                -- la funzione trigger risolta per schema e nome
+                v_funzione pg_catalog.pg_trigger.tgfoid%TYPE;
+                r          record;
+                -- un conteggio: nessuna colonna di cui sia il riflesso
+                n          integer := 0;
+              BEGIN
+                -- Scopo: togliere da una tabella i trigger che chiamano questa
+                --   funzione con esattamente questi argomenti; restituisce quanti.
+                v_funzione := pg_catalog.to_regprocedure(
+                                format('%I.%I()', p_func_schema, p_func_name));
+                IF v_funzione IS NULL THEN
+                  RETURN 0;
+                END IF;
+
+                FOR r IN
+                  SELECT t.tgname, ns.nspname, c.relname
+                    FROM pg_catalog.pg_trigger t
+                    JOIN pg_catalog.pg_class c      ON c.oid = t.tgrelid
+                    JOIN pg_catalog.pg_namespace ns ON ns.oid = c.relnamespace
+                   WHERE t.tgrelid = p_rel
+                     AND NOT t.tgisinternal
+                     AND NOT c.relispartition
+                     AND t.tgfoid = v_funzione
+                     AND dbops.fn_trigger_argomenti(t.tgargs) = p_args
+                LOOP
+                  EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I.%I', r.tgname, r.nspname, r.relname);
+                  n := n + 1;
+                END LOOP;
+
+                RETURN n;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_drop_triggers_by_function_args(regclass, name, name, text[]) IS
+                'Toglie da una tabella i trigger che chiamano la funzione indicata (schema e nome) con esattamente questi argomenti, e restituisce quanti ne ha tolti. Riconosce la funzione per OID (to_regprocedure di schema.nome(), quindi con qualunque search_path) e confronta gli argomenti di pg_trigger.tgargs (dbops.fn_trigger_argomenti) con l''array chiesto: stesso numero, stesso ordine, stesso testo. Generica: la grammatica di una famiglia di trigger la applica chi chiama. Una funzione che non esiste risponde 0. Esclude le partizioni. La chiama dbops.fn_run_automations_attivo per riconciliare block e require prima di montarli.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo dal corpo della scheda auto-generata del 2026-11-07.
+              SELECT 1;

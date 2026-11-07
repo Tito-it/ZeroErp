@@ -1,12 +1,13 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.processi_bersagli`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 7 novembre 2026
 >
 > 👀 **Vedi anche**
 >
 > Approfondimento tabelle:
 >
 > * [dbops.processi](/dbzero/dbops/tabelle/processi) — il processo di cui la riga dichiara un bersaglio
+> * [dbops.emittente_modi](/dbzero/dbops/tabelle/emittente_modi) — i modi: la via di un bersaglio è uno di loro
 >
 > Approfondimento viste:
 >
@@ -51,21 +52,29 @@ Una tabella compare una volta sola per processo (chiave unica su processo, schem
 
 ### ⭐ Il percorso è una via più una colonna
 
+La via è un **modo** del registro [`dbops.emittente_modi`](/dbzero/dbops/tabelle/emittente_modi)
+(chiave esterna): il modo con cui il guard di scrittura (`script.trgfn_guard_emittente_scope`) trova
+l'emittente della riga. La colonna è quella che il modo legge. Sono i due argomenti con cui il guard
+è montato sulla tabella, e la dichiarazione dice la stessa cosa del montaggio. Qualche esempio:
+
 | `emittente_via` | Che cosa contiene `emittente_colonna` |
 | --- | --- |
 | `fiscale` | è **già** l'id dell'emittente fiscale |
 | `soggetto_ruolo` | l'id del soggetto-ruolo dell'emittente |
 | `fattura` | l'id di una fattura, da cui si risale |
-| `contabile` | l'id di una distinta, da cui si risale al conto di incasso |
-| `padre` | la chiave verso la testata da cui la riga eredita l'emittente (per esempio il listino sopra la versione) |
+| `listino` | l'id del listino da cui una versione eredita l'emittente |
+| `magazzino` | l'id di un magazzino, che appartiene a un emittente |
+
+Una riga figlia dichiara il modo con cui il guard la risolve: una versione di listino dice `listino`
+sulla colonna `listino_id`, come il guard montato su `vendite.listini_versioni`. Che cosa vuol dire
+ogni modo, e da dove passa, lo dice il registro.
 
 ⚠️ **Via e colonna vivono o muoiono insieme** (`chk_processi_bersagli_via_colonna`): o si
 dichiarano tutte e due, o nessuna. Una via senza colonna sembrerebbe una dichiarazione fatta e non
 direbbe niente, e il presidio non potrebbe verificarla.
 
-⚠️ Il vocabolario delle vie è chiuso dal CHECK `chk_processi_bersagli_via`, e **non coincide** con
-quello del guard di scrittura `script.trgfn_guard_emittente_scope`: il guard conosce anche
-`listino` e `magazzino`, che qui non si possono dichiarare, mentre `padre` esiste solo qui.
+⚠️ Che la via dichiarata sia quella del guard montato lo controlla oggi il pgTAP
+`dbops/test-emittente-modi-registro-v1` (test 14).
 
 ---
 

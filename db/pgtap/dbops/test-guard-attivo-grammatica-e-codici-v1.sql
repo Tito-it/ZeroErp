@@ -48,8 +48,9 @@
 --  20)   D49: block con quattro argomenti -> E_ATTIVO_BLOCK_ARGS
 --  21)   il block resta E_ATTIVO_BLOCK_CHILDREN_ACTIVE con una figlia attiva
 --  22)   la lettura del padre rifiuta un trigger che non e' un require
---  23)   PRESIDIO sul testo: nessuno dei cinque legge gli argomenti per posizione,
---        tutti passano dalla grammatica
+--  23)   PRESIDIO sul testo: nessuno dei sette (i tre trigger, gli orfani, il ritiro
+--        delle eccezioni e, dal giro 4, i due riconoscimenti per argomenti) legge
+--        gli argomenti per posizione, tutti passano dalla grammatica
 --
 -- ⚠️ I test 8 e 23 sono PRESIDI su cio' che c'e' (i montaggi, i corpi): il 8
 --   in CI guarda i trigger che ci_apply ha generato. La regola la provano i
@@ -315,11 +316,13 @@ SELECT is_empty(
                            'trgfn_child_requires_active_parent',
                            'trgfn_child_requires_non_obsolete_parent',
                            'fn_trigger_attivo_orfani',
-                           'fn_ritira_attivo_eccezioni')
+                           'fn_ritira_attivo_eccezioni',
+                           'fn_trigger_exists_block_by_args',
+                           'fn_trigger_exists_require_by_args')
          AND (   dbops.fn_testo_senza_commenti(p.prosrc) ~ 'TG_ARGV\s*\['
               OR dbops.fn_testo_senza_commenti(p.prosrc) ~ '\ma\s*\[\s*[0-9]'
               OR dbops.fn_testo_senza_commenti(p.prosrc) !~ 'dbops\.fn_trigger_attivo_argomenti\s*\(')$$,
-    '23) presidio: i tre trigger e i due lettori non leggono gli argomenti per posizione, passano tutti da dbops.fn_trigger_attivo_argomenti'
+    '23) presidio: i tre trigger e i quattro lettori non leggono gli argomenti per posizione, passano tutti da dbops.fn_trigger_attivo_argomenti'
 );
 
 SELECT * FROM finish();

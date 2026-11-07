@@ -1,6 +1,6 @@
 id,processo_id,schema_tabella,nome_tabella,emittente_via,emittente_colonna,note,debito_dichiarato
 1,12,vendite,contratti,fiscale,emittente_fiscale_id,Cessazione automatica alla scadenza (ATTIVO -> CESSATO).,false
-2,12,vendite,listini_versioni,padre,listino_id,Chiusura automatica alla scadenza (ATTIVA -> CHIUSA). L emittente arriva dal listino (vendite.listini.emittente_soggetto_ruolo_id NOT NULL).,false
+2,12,vendite,listini_versioni,listino,listino_id,Chiusura automatica alla scadenza (ATTIVA -> CHIUSA). L emittente arriva dal listino (vendite.listini.emittente_soggetto_ruolo_id NOT NULL).,false
 10,20,vendite,fatturazione_lotti,soggetto_ruolo,emittente_soggetto_ruolo_id,Creazione e avanzamento del lotto per la corsia.,false
 11,20,vendite,fatture,soggetto_ruolo,emittente_soggetto_ruolo_id,Emissione delle fatture del lotto.,false
 20,21,vendite,fatture_stampa_coda,fattura,sorgente_id,Claim e marcatura esito delle righe di coda stampa.,false

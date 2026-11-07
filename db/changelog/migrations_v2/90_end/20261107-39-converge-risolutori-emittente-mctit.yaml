@@ -1,0 +1,57 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I due risolutori dell'emittente convergono sul registro, a ogni migrate.
+#   Brief: brief-db-revisione-dbops, D21 (blocco 4b).
+#
+# ⭐ PERCHE' QUI E A OGNI MIGRATE. Il registro dbops.emittente_modi lo carica
+#   80_data (20261107-38, runOnChange): quando il CSV cambia, i risolutori vanno
+#   riscritti dopo. dbops.fn_genera_risolutori_emittente riscrive solo cio' che
+#   e' cambiato (a regime nessun DDL), e cosi' riporta al registro anche un
+#   risolutore toccato a mano da un changeSet di 20_code: il corpo scritto a
+#   mano non sopravvive al migrate successivo, e la regola e' detta nel COMMENT
+#   delle due funzioni.
+#
+# ⚠️ Da zero i risolutori nascono scritti a mano dai changeSet di 20_code (le
+#   policy e le funzioni che li chiamano nascono prima del seed): qui diventano
+#   quelli generati, con le stesse risposte.
+#
+# Non dipende dalle automazioni di ci_apply: puo' girare in 90_end. Senza dbms:
+#   su un runAlways con validCheckSums ANY Liquibase 5.0.4 lo salterebbe
+#   (scripts/guardrail_run_on_change.py).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261107-39-converge-risolutori-emittente-mctit.yaml
+
+  - changeSet:
+      id: 20261107-39-converge-risolutori-emittente
+      author: mctit
+      runAlways: true
+      # Una rete che converge: il corpo puo' cambiare senza che il checksum
+      # debba invalidare i database dove ha gia' girato.
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Riscrive script.fn_resolve_emittente_fiscale_id e script.fn_resolve_emittente_sr_id dal
+        registro dbops.emittente_modi quando sono diversi, a ogni migrate e dopo il seed (D21).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_genera_risolutori_emittente';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              SELECT dbops.fn_genera_risolutori_emittente();

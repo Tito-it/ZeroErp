@@ -1,0 +1,133 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_foreign_keys_info: le FK di una tabella, entranti e uscenti, lette
+#   da pg_constraint, colonna per colonna nell'ordine della chiave.
+#   Brief: brief-db-revisione-dbops, D53 (giro 4, Q9 di Tid: una funzione sola
+#   su pg_constraint, l'altra la chiama).
+#
+# ⚠️ IL DIFETTO CHE CHIUDE (D53). La versione di prima:
+#   - prendeva il NOME della tabella senza schema (tabella text) e filtrava
+#     su information_schema per solo nome: due tabelle omonime in due schemi
+#     si mescolavano;
+#   - univa key_column_usage e constraint_column_usage per nome del vincolo:
+#     su una FK composita ogni colonna della figlia si accoppiava con ogni
+#     colonna del padre (prodotto cartesiano), e i nomi dei vincoli sono unici
+#     per tabella, non per schema;
+#   - leggeva information_schema, che mostra solo gli oggetti su cui chi
+#     chiama ha un privilegio: la risposta dipendeva da chi la lanciava.
+#
+# ⭐ LA FORMA NUOVA. La tabella e' un regclass (schema compreso). Le FK si
+#   leggono da pg_constraint, e le coppie di colonne da
+#   unnest(conkey, confkey) WITH ORDINALITY: la colonna n della figlia con la
+#   colonna n del padre, e la posizione nella chiave. Le tabelle escono come
+#   regclass.
+#
+# ⚠️ LE PARTIZIONI. Su una tabella partizionata PostgreSQL clona la FK: una
+#   riga di pg_constraint per ogni partizione della figlia, e una per ogni
+#   partizione del padre (conparentid punta al vincolo dichiarato). Un clone
+#   che ripete il suo vincolo padre DALLO STESSO LATO (stessa figlia per le
+#   uscenti, stesso padre per le entranti) non si mostra: e' la stessa FK, non
+#   un'altra. Una partizione vede invece le FK che la vincolano davvero.
+#
+# ⚠️ LA FIRMA CAMBIA (text -> regclass, colonne del risultato nuove e
+#   ancorate): DROP e CREATE. Nessun chiamante nel database, nel backend e nei
+#   test (censito il 2026-11-07); dbops.fn_find_file_usage la chiama dal
+#   changeSet successivo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261107-33-update-fn-foreign-keys-info-su-pg-constraint-mctit.yaml
+
+  - changeSet:
+      id: 20261107-33-update-fn-foreign-keys-info-su-pg-constraint
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_foreign_keys_info(regclass): FK entranti e uscenti da pg_constraint, colonne
+        accoppiate con unnest(conkey, confkey) WITH ORDINALITY, schema compreso; i cloni delle
+        partizioni non si ripetono (D53, Q9).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION dbops.fn_foreign_keys_info(text);
+
+              CREATE FUNCTION dbops.fn_foreign_keys_info(
+                  -- regclass: la tabella di cui si chiedono le FK (pg_constraint.conrelid e' un oid)
+                  p_tabella regclass
+              )
+              RETURNS TABLE(
+                  -- 'incoming' (un'altra tabella punta a questa) | 'outgoing' (questa punta a un'altra):
+                  --   un vocabolario della funzione, nessuna colonna da ancorare
+                  relazione       text,
+                  constraint_name pg_catalog.pg_constraint.conname%TYPE,
+                  -- la posizione della colonna nella chiave (WITH ORDINALITY): nessuna colonna da ancorare
+                  posizione       bigint,
+                  -- regclass: la tabella che porta la FK (conrelid)
+                  source_table    regclass,
+                  source_column   pg_catalog.pg_attribute.attname%TYPE,
+                  -- regclass: la tabella referenziata (confrelid)
+                  target_table    regclass,
+                  target_column   pg_catalog.pg_attribute.attname%TYPE
+              )
+              LANGUAGE sql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+                -- Scopo: le FK entranti e uscenti di una tabella, una riga per
+                --   colonna della chiave.
+                -- Uso: SELECT * FROM dbops.fn_foreign_keys_info('vendite.fatture');
+                WITH fk AS (
+                    SELECT c.conname,
+                           c.conrelid,
+                           c.confrelid,
+                           k.n,
+                           ac.attname AS source_column,
+                           af.attname AS target_column,
+                           -- un clone di partizione che ripete il vincolo padre dallo stesso lato
+                           (pc.oid IS NOT NULL AND pc.conrelid  = c.conrelid)  AS clone_uscente,
+                           (pc.oid IS NOT NULL AND pc.confrelid = c.confrelid) AS clone_entrante
+                      FROM pg_catalog.pg_constraint c
+                     CROSS JOIN LATERAL unnest(c.conkey, c.confkey) WITH ORDINALITY AS k(num_figlia, num_padre, n)
+                      JOIN pg_catalog.pg_attribute ac
+                        ON ac.attrelid = c.conrelid  AND ac.attnum = k.num_figlia
+                      JOIN pg_catalog.pg_attribute af
+                        ON af.attrelid = c.confrelid AND af.attnum = k.num_padre
+                      LEFT JOIN pg_catalog.pg_constraint pc
+                        ON pc.oid = c.conparentid
+                     WHERE c.contype = 'f'
+                       AND (c.conrelid = p_tabella OR c.confrelid = p_tabella)
+                )
+                SELECT 'incoming'::text, fk.conname, fk.n,
+                       fk.conrelid::regclass, fk.source_column,
+                       fk.confrelid::regclass, fk.target_column
+                  FROM fk
+                 WHERE fk.confrelid = p_tabella
+                   AND NOT fk.clone_entrante
+                UNION ALL
+                SELECT 'outgoing'::text, fk.conname, fk.n,
+                       fk.conrelid::regclass, fk.source_column,
+                       fk.confrelid::regclass, fk.target_column
+                  FROM fk
+                 WHERE fk.conrelid = p_tabella
+                   AND NOT fk.clone_uscente
+                 ORDER BY 1, 4, 2, 3;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_foreign_keys_info(regclass) IS
+                'Le FK di una tabella: entranti (relazione incoming: un''altra tabella punta a questa) e uscenti (outgoing: questa punta a un''altra), una riga per colonna della chiave con la sua posizione, la colonna della figlia accoppiata alla colonna del padre nello stesso posto (unnest di conkey e confkey WITH ORDINALITY: una FK composita non si moltiplica). La tabella si passa come regclass, schema compreso, e le tabelle del risultato sono regclass. Legge pg_constraint, non information_schema: la risposta non dipende dai privilegi di chi chiama. Su una tabella partizionata un clone della FK che ripete dallo stesso lato il vincolo dichiarato non si mostra; una partizione vede le FK che la vincolano. Strumento DBA; la chiama dbops.fn_find_file_usage per le sole entranti.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo dal corpo della scheda auto-generata del 2026-11-07.
+              SELECT 1;

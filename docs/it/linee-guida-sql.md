@@ -1,6 +1,6 @@
 **Best Practice e Convenzioni**
 
-> **Ultimo aggiornamento**: 5 novembre 2026
+> **Ultimo aggiornamento**: 7 novembre 2026
 >
 > 👀 **Vedi anche:**   
 > Per come applicare queste best practice nelle migrazioni, consulta il documento  
@@ -1474,6 +1474,12 @@ Per le tabelle **senza** colonna emittente l'emittente della riga lo dà
 una lettura per chiave, senza rieseguire la policy del padre (rev 2026-10-18,
 `20261018-31…-33`):
 `script.fn_scope_ef_perimetro((SELECT …perimetro…), script.fn_resolve_emittente_fiscale_id('ddt', ddt_id))`.
+⛔ **Un modo nuovo è una riga del registro, mai un ramo scritto a mano** (rev 2026-11-07). I modi, e la
+strada di ognuno fino all'emittente, stanno in `dbops.emittente_modi` (seed
+`80_data/sql/dbops/emittente_modi.csv`); i due risolutori, fiscale e soggetto-ruolo, li genera il migrate
+da lì, e un corpo toccato a mano torna quello del registro alla migrazione dopo. La via dichiarata di un
+bersaglio dei processi è un modo dello stesso registro. Pagina:
+[`dbops.emittente_modi`](/dbzero/dbops/manual/emittente_modi).
 Il billing account ha un emittente che **non** è un fatto della riga
 (`script.fn_get_ba_emittente_sr_id`: legame, altrimenti l'emittente dell'utente in
 sessione, altrimenti il default): lì il perimetro va in convenzione soggetto_ruolo,
