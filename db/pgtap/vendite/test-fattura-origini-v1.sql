@@ -1,5 +1,8 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
+-- rev 2026-11-07 (brief-db-sorgente-documento-e-riga, giro T.5, 20261106-96/-97): le colonne parallele
+--   della provenienza (ordini.documento_origine_*, contratti.offerta_id) sono ritirate; la fixture
+--   scrive e il test legge la sola provenienza (sorgente_*), come i verbi. Attese invariate.
 -- pgTAP test per Zero ERP
 -- Test: le ORIGINI di una fattura (vendite.fn_fattura_origini, 20261027-22) e il
 --   registro dei tipi che si citano (config.sorgenti.citato_in_fattura, 20261027-21).
@@ -68,11 +71,7 @@ CREATE TEMP TABLE t_pa AS SELECT * FROM dbops.fn_pgtap_crea_preventivo('pgtap or
 -- O1 nasce da P1 con una riga portata (arco A vivo); O3 dichiara P3 senza
 -- righe portate (arco A ritirato: non ha portato nulla).
 UPDATE vendite.ordini o
-   SET documento_origine_tipo = 'PREVENTIVO',
-       documento_origine_id   = CASE o.id WHEN (SELECT ordine_id FROM t_o1)
-                                          THEN (SELECT preventivo_id FROM t_p1)
-                                          ELSE (SELECT preventivo_id FROM t_p3) END,
-       -- la provenienza, che la lineage legge (giro T.3 di brief-db-sorgente-documento-e-riga)
+   SET -- la provenienza, che la lineage legge (giro T.5 di brief-db-sorgente-documento-e-riga)
        sorgente_tipo_id       = (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'PREVENTIVO'),
        sorgente_uid           = (SELECT p.uid FROM vendite.preventivi p
                                   WHERE p.id = CASE o.id WHEN (SELECT ordine_id FROM t_o1)

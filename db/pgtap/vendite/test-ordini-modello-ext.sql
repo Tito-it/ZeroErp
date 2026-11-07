@@ -1,5 +1,9 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
+-- ⚠️ rev 2026-11-07 (brief-db-sorgente-documento-e-riga, giro T.5, 20261106-96): documento_origine_*
+--   e i loro vincoli sono ritirati; da dove nasce l'ordine lo dice la provenienza (sorgente_*). I test
+--   6-12 guardano la provenienza con le stesse due meta' della regola A1: nessuna UNIQUE piena (piu'
+--   ordini da uno stesso preventivo), una UNIQUE parziale sulla sola offerta (1:1). Piano invariato.
 -- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2b, 20261019-87 … -99):
 --   il tipo dell'origine non ha piu' un CHECK col suo vocabolario: e' una FK verso
 --   config.sorgenti(codice_interno) (G-3). Il test 8 cerca la FK, il 12 che nessun CHECK
@@ -11,8 +15,8 @@
 --   - fix CHECK chk_ordini_v_r_qta_pos (era sul prezzo, ora su quantita)
 --   - CHECK co-presenza UoM operativa
 --   - estensione E: agente_soggetto_ruolo_id (FK soggetti_ruoli, nullable)
---   - estensione A1: documento_origine_tipo/_id (varchar+FK verso le sorgenti, nullable,
---     SENZA UNIQUE -> piu' ordini da una stessa origine)
+--   - estensione A1, oggi sulla provenienza (sorgente_*): tipo con FK verso le sorgenti,
+--     nullable, SENZA UNIQUE piena -> piu' ordini da una stessa origine
 --
 -- Indice test (1..12):
 --   1.  chk_ordini_v_r_qta_pos referenzia la QUANTITA' (quantita)
@@ -20,13 +24,13 @@
 --   3.  CHECK co-presenza UoM operativa presente su ordini_righe
 --   4.  agente_soggetto_ruolo_id presente e nullable
 --   5.  FK fk_ordini_v_agente_ruolo -> anagrafiche.soggetti_ruoli
---   6.  documento_origine_tipo presente e nullable
---   7.  documento_origine_id presente, bigint, nullable
---   8.  FK fk_ordini_documento_origine_tipo_sorgenti verso config.sorgenti(codice_interno)
---   9.  CHECK chk_ordini_documento_origine_copres presente (co-presenza tipo<->id)
---   10. Nessuna UNIQUE PIENA su documento_origine_* (A1: piu' ordini da una origine)
+--   6.  documento_origine_tipo e documento_origine_id non ci sono piu' (giro T.5)
+--   7.  sorgente_tipo_id, sorgente_id, sorgente_uid presenti e nullable
+--   8.  FK fk_ordini_v_sorgente_tipo verso config.sorgenti(id)
+--   9.  CHECK chk_ordini_sorgente_forma presente (il tipo con una sola chiave)
+--   10. Nessuna UNIQUE PIENA su sorgente_* (A1: piu' ordini da una origine)
 --   11. Esiste la UNIQUE PARZIALE limitata a OFFERTA_COMMERCIALE (1:1 offerta->ordine)
---   12. Nessun CHECK enumera i codici del tipo origine (il vocabolario e' config.sorgenti)
+--   12. Nessun vincolo ne' indice dell'ordine nomina piu' documento_origine
 -- ------------------------------------------------------------
 BEGIN;
 -- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
@@ -101,101 +105,107 @@ SELECT ok(
     '5. FK fk_ordini_v_agente_ruolo -> anagrafiche.soggetti_ruoli'
 );
 
--- 6. documento_origine_tipo presente e nullable
+-- 6. Le colonne parallele sono ritirate (giro T.5, 20261106-96)
 SELECT is(
     (
-        SELECT is_nullable FROM information_schema.columns
+        SELECT COUNT(*)::INTEGER FROM information_schema.columns
          WHERE table_schema = 'vendite' AND table_name = 'ordini'
-           AND column_name = 'documento_origine_tipo'
+           AND column_name IN ('documento_origine_tipo', 'documento_origine_id')
     ),
-    'YES',
-    '6. documento_origine_tipo presente e nullable'
+    0,
+    '6. documento_origine_tipo e documento_origine_id non ci sono piu'' (la provenienza e'' sorgente_*)'
 );
 
--- 7. documento_origine_id presente, bigint, nullable
+-- 7. La provenienza: le tre colonne, nullable (un ordine puo' nascere da solo)
 SELECT is(
     (
-        SELECT data_type || '/' || is_nullable FROM information_schema.columns
+        SELECT string_agg(column_name || '/' || is_nullable, ',' ORDER BY column_name)
+          FROM information_schema.columns
          WHERE table_schema = 'vendite' AND table_name = 'ordini'
-           AND column_name = 'documento_origine_id'
+           AND column_name IN ('sorgente_tipo_id', 'sorgente_id', 'sorgente_uid')
     ),
-    'bigint/YES',
-    '7. documento_origine_id presente, bigint, nullable'
+    'sorgente_id/YES,sorgente_tipo_id/YES,sorgente_uid/YES',
+    '7. sorgente_tipo_id, sorgente_id, sorgente_uid presenti e nullable'
 );
 
--- 8. Il vocabolario del tipo: FK verso le sorgenti (rev 2026-10-19, lotto 2b)
+-- 8. Il vocabolario del tipo: FK verso le sorgenti
 SELECT ok(
     EXISTS (
         SELECT 1 FROM pg_constraint
-         WHERE conname = 'fk_ordini_documento_origine_tipo_sorgenti'
+         WHERE conname = 'fk_ordini_v_sorgente_tipo'
            AND conrelid = 'vendite.ordini'::regclass
            AND contype = 'f'
            AND confrelid = 'config.sorgenti'::regclass
-           AND pg_get_constraintdef(oid) LIKE '%(documento_origine_tipo) REFERENCES %(codice_interno)%'
+           AND pg_get_constraintdef(oid) LIKE '%(sorgente_tipo_id) REFERENCES %(id)%'
     ),
-    '8. FK fk_ordini_documento_origine_tipo_sorgenti verso config.sorgenti(codice_interno)'
+    '8. FK fk_ordini_v_sorgente_tipo verso config.sorgenti(id)'
 );
 
--- 9. CHECK co-presenza tipo <-> id
+-- 9. CHECK di forma: nessuna provenienza, o il tipo con una chiave sola
 SELECT ok(
     EXISTS (
         SELECT 1 FROM pg_constraint
-         WHERE conname = 'chk_ordini_documento_origine_copres'
+         WHERE conname = 'chk_ordini_sorgente_forma'
            AND conrelid = 'vendite.ordini'::regclass
+           AND contype = 'c'
     ),
-    '9. CHECK chk_ordini_documento_origine_copres presente'
+    '9. CHECK chk_ordini_sorgente_forma presente'
 );
 
--- 10-11. Le UNIQUE su documento_origine_*
--- 🔴 PRECISATO IL 2026-08-18.
---   Il test pretendeva ZERO indici unici su `documento_origine_*` — la scelta
---   A1 del `20260603-13`, «piu' ordini da una stessa origine», per consentire i
---   riordini. Falliva con have=1, e non e' una regressione: il `20260607-07` ha
---   invertito quella scelta **per la sola origine OFFERTA** (ratificato Tid,
---   2026-06-07), perche' un'offerta non ha righe materializzate — e' una
---   condizione quadro atomica, quindi l'1:1 e' la sua natura e non un ripiego.
---   PREVENTIVO non e' toccato: il suo modello e' lo split per riga.
+-- 10-11. Le UNIQUE sulla provenienza
+-- 🔴 PRECISATO IL 2026-08-18, e passato alla provenienza il 2026-11-07 (giro T.5).
+--   La scelta A1 del `20260603-13` («piu' ordini da una stessa origine», per i
+--   riordini) e la sua eccezione per la sola OFFERTA (`20260607-07`, ratificata
+--   da Tid il 2026-06-07: un'offerta e' una condizione quadro atomica, l'1:1 e' la
+--   sua natura) valgono oggi su sorgente_*. PREVENTIVO non e' toccato: il suo
+--   modello e' lo split per riga.
 --
---   ⚠️ Il test non si rovescia e non si cancella: si RENDE PRECISO. «Nessuna
---   UNIQUE» era troppo, «una UNIQUE qualsiasi» sarebbe troppo poco — passerebbe
---   anche se qualcuno togliesse il `WHERE` e vincolasse pure i preventivi, che
---   e' esattamente il danno che A1 voleva evitare. Le due meta' della regola
---   vanno guardate separatamente, ed e' per questo che qui i test sono due.
+--   ⚠️ Le due meta' della regola si guardano separatamente: «una UNIQUE qualsiasi»
+--   passerebbe anche se qualcuno togliesse il `WHERE` e vincolasse pure i
+--   preventivi, che e' il danno che A1 voleva evitare.
 SELECT is(
     (
         SELECT COUNT(*)::INTEGER FROM pg_indexes
          WHERE schemaname = 'vendite' AND tablename = 'ordini'
-           AND indexdef ILIKE '%documento_origine%'
+           AND indexdef ILIKE '%sorgente_%'
            AND indexdef ILIKE '%unique%'
            AND indexdef NOT ILIKE '%where%'
     ),
     0,
-    '10. Nessuna UNIQUE PIENA su documento_origine_* (A1: piu ordini da una stessa origine)'
+    '10. Nessuna UNIQUE PIENA su sorgente_* (A1: piu ordini da una stessa origine)'
 );
 
+-- Il predicato nomina l'id di OFFERTA_COMMERCIALE nel catalogo (D-8): si confronta
+-- col catalogo, non con un numero scritto qui.
 SELECT is(
     (
-        SELECT COUNT(*)::INTEGER FROM pg_indexes
-         WHERE schemaname = 'vendite' AND tablename = 'ordini'
-           AND indexdef ILIKE '%documento_origine%'
-           AND indexdef ILIKE '%unique%'
-           AND indexdef ILIKE '%where%'
-           AND indexdef ILIKE '%''OFFERTA_COMMERCIALE''%'
+        SELECT COUNT(*)::INTEGER
+          FROM pg_index i
+          JOIN pg_class c ON c.oid = i.indexrelid
+         WHERE i.indrelid = 'vendite.ordini'::regclass
+           AND i.indisunique
+           AND i.indpred IS NOT NULL
+           AND pg_get_indexdef(i.indexrelid) ILIKE '%sorgente_%'
+           AND pg_get_expr(i.indpred, i.indrelid) LIKE
+               '%(sorgente_tipo_id = ' || (SELECT s.id FROM config.sorgenti s
+                                           WHERE s.codice_interno = 'OFFERTA_COMMERCIALE')::text || ')%'
     ),
     1,
-    '11. Esiste la UNIQUE parziale limitata a OFFERTA_COMMERCIALE (1:1 offerta->ordine, 20260607-07)'
+    '11. Esiste la UNIQUE parziale limitata a OFFERTA_COMMERCIALE (1:1 offerta->ordine, sulla provenienza)'
 );
 
--- 12. Nessun CHECK enumera i codici del tipo origine (rev 2026-10-19, lotto 2b):
---     un tipo nuovo e' una riga di config.sorgenti, non un CHECK da riscrivere (G-3).
+-- 12. Niente dell'ordine nomina piu' la colonna parallela (giro T.5)
 SELECT is_empty(
-    $$SELECT c.conname
+    $$SELECT c.conname::text
         FROM pg_constraint c
        WHERE c.conrelid = 'vendite.ordini'::regclass
-         AND c.contype = 'c'
-         AND pg_get_constraintdef(c.oid) LIKE '%documento_origine_tipo%'
-         AND pg_get_constraintdef(c.oid) ~ '''[A-Z_]+'''$$,
-    '12. nessun CHECK enumera i codici del tipo origine (il vocabolario e'' config.sorgenti)'
+         AND (c.conname ~ 'documento_origine' OR pg_get_constraintdef(c.oid) ~ 'documento_origine')
+      UNION ALL
+      SELECT i.indexrelid::regclass::text
+        FROM pg_index i
+       WHERE i.indrelid = 'vendite.ordini'::regclass
+         AND pg_get_indexdef(i.indexrelid) ~ 'documento_origine'$$,
+    '12. nessun vincolo ne'' indice dell''ordine nomina piu'' documento_origine'
 );
 
 SELECT * FROM finish();

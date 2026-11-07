@@ -2,7 +2,7 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-07
 
-**Riparte: Tid**, col via al giro T.5 (il ritiro delle colonne parallele, §7.2 «Lotto T, i giri»). I giri T.1 … T.4 sono applicati, verdi e committati. Il lotto 0 e il lotto R sono chiusi.
+**Riparte: Tid**, con il via al prossimo lotto (C, D, P, M o Z; §7.2). Il lotto T è chiuso: i giri T.1 … T.5 sono applicati e verdi come applicazione (T.5 il 2026-11-07); T.1 … T.4 committati, T.5 da committare. Il lotto 0 e il lotto R sono chiusi. ⚠️ Dall'apply del giro T.5 i due percorsi BE del §8.8 danno errore, come accettato dal piano.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -41,14 +41,16 @@
 | 7-octodecies | ✅ DB | giro T.4: ordini, bolle, resi e contratti si cancellano solo da bozza vuota; il guard esistente prende la metà «vuota», legge lo stato dal BB, diventa DEFINER; provato in transazione (2026-11-07) | §7.2 «Il giro T.4» | — |
 | 7-octodecies-ter | ✅ Tid | il contratto precedente di altri contratti non si cancella: `fk_contratti_parent` da `SET NULL` a `NO ACTION` (2026-11-07) | §7.2 «Il giro T.4» | — |
 | 7-octodecies-bis | ✅ Tid | apply del giro T.4 (`20261106-88` … `-91`, i due CSV dei codici, il CSV del registro indici), pgTAP verdi come applicazione (2026-11-07) | §7.2 «Il giro T.4» | — |
-| 7-novodecies | Tid | via al giro T.5 | §7.2 «Lotto T, i giri» | — |
-| 7-novodecies-bis | DB | giro T.5 | §7.2 «Lotto T, i giri» | 7-novodecies |
-| 8 | DB | lotti R, T, C, D, P, M, Z, ognuno col suo via; il §8 si riempie strada facendo. ⛔ Il lotto M porta anche D58, D29 e ⑧ di `brief-db-revisione-dbops`: prima del via si riverifica la loro analisi (promemoria in §7.2 «Lotto M») | §7.2, §8 | 7-novodecies-bis |
+| 7-novodecies | ✅ Tid | via al giro T.5 (2026-11-07) | §7.2 «Lotto T, i giri» | — |
+| 7-novodecies-bis | ✅ DB | giro T.5: i verbi non scrivono più le colonne parallele, il lock le toglie, le colonne si ritirano coi loro indici e vincoli; provato in transazione (2026-11-07) | §7.2 «Il giro T.5» | — |
+| 7-vicies | ✅ Tid | apply del giro T.5 (`20261106-92` … `-99`, i due CSV dei codici), pgTAP verdi come applicazione (2026-11-07). ⚠️ Dall'apply i due percorsi BE del §8.8 (BE-T.5-a, BE-T.5-b) danno errore, come accettato dal piano | §7.2 «Il giro T.5», §8.8 | — |
+| 7-vicies-bis | Tid | via al prossimo lotto (C, D, P, M o Z) | §7.2 | — |
+| 8 | DB | lotti C, D, P, M, Z, ognuno col suo via; il §8 si riempie strada facendo. ⛔ Il lotto M porta anche D58, D29 e ⑧ di `brief-db-revisione-dbops`: prima del via si riverifica la loro analisi (promemoria in §7.2 «Lotto M») | §7.2, §8 | 7-vicies-bis |
 | 9 | BE/FE | il §8 intero, una volta sola | §8 | 8 |
 | 10 | DB | la documentazione del §7.3 (lotto DOC), poi archiviazione | §7.3 | 9 |
 
 **Decisioni aperte di Tid:** nessuna (il contratto precedente: deciso il 2026-11-07, §7.2 «Il giro T.4»).
-**Lavoro da committare:** nessuno. Il giro T.4 (`20261106-88` … `-91`, i tre CSV, il pgTAP nuovo, i quattro pgTAP allineati, le due pagine `manual/`, questo brief) è committato su `dev/db-tid` il 2026-11-07; il giro T.3 anche (`b86108e56a`). I giri T.1 e T.2 (`20261106-61` … `-73`, `storico_scope_policy.csv`, i pgTAP, le
+**Lavoro da committare:** il giro T.5, applicato e verde (`20261106-92` … `-99`, i due CSV dei codici, i diciassette pgTAP allineati, questo brief), su `dev/db-tid`. Il giro T.4 (`20261106-88` … `-91`, i tre CSV, il pgTAP nuovo, i quattro pgTAP allineati, le due pagine `manual/`, questo brief) è committato su `dev/db-tid` il 2026-11-07; il giro T.3 anche (`b86108e56a`). I giri T.1 e T.2 (`20261106-61` … `-73`, `storico_scope_policy.csv`, i pgTAP, le
 pagine `manual/` cancellate, questo brief) sono committati su `dev/db-tid` il 2026-11-06. Il lotto 0 intero e il lotto R (giri R.1 e R.2: changeSet `20261106-46` …
 `-60`, i due CSV, i pgTAP, i due brief) sono committati su `dev/db-tid` il 2026-11-06. ⚠️ I test Django sono rossi finché il BE non rigenera il file delle policy d'errore (§8.1
 BE-0.1-a, §8.2 BE-0.2-a): accettato dal piano, va detto nella PR.
@@ -932,7 +934,7 @@ colonne di oggi, poi se ne cambia la grammatica.
 | **T.2** | bolle e resi (S-5, D-4): conversione all'id, CHECK di forma (per il reso al posto del NOT NULL dell'uid), guard unico, i due verbi che scrivono la bolla (la riconsegna dichiara il **reso**), il builder pgTAP del reso, le viste di lista, la corsia dell'ordine dietro un reso, lock fuori bozza e colonne ferme della capability con `sorgente_id` | ✅ applicato da Tid, pgTAP verdi (2026-11-06) |
 | **T.3** | ordini, contratti, fatture: l'import esce (indici «idempotenza import»), `documento_origine_*` e `offerta_id` confluiscono in `sorgente_*` (preventivo e offerta per uid), l'unicità «un'offerta, un ordine/contratto vivo» sull'indice parziale per id del tipo con il pgTAP sul seed (D-8), guard unico, i tre verbi di push e i lettori | ✅ applicato da Tid, pgTAP verdi (2026-11-07) |
 | **T.4** | la cancellazione (V-4): «si cancella solo la bozza vuota» nel DB per ordini, bolle, resi e contratti; il contratto precedente di altri contratti non si cancella | ✅ applicato da Tid, pgTAP verdi (2026-11-07) |
-| **T.5** | ritiro delle colonne parallele (`documento_origine_*` con la FK per codice, il CHECK di co-presenza e i due indici `uq_ordini_v_documento_origine_offerta`, `ix_ordini_documento_origine`; `offerta_id` con la FK e `uq_contratti_offerta_id`), insieme alle righe dei tre verbi che le scrivono ancora e alle loro terne nel lock fuori bozza; il presidio di struttura ha già perso le cinque testate (T.2, T.3) | da fare |
+| **T.5** | ritiro delle colonne parallele (`documento_origine_*` con la FK per codice, il CHECK di co-presenza e i due indici `uq_ordini_v_documento_origine_offerta`, `ix_ordini_documento_origine`; `offerta_id` con la FK e `uq_contratti_offerta_id`), insieme alle righe dei tre verbi che le scrivono ancora e alle loro terne nel lock fuori bozza; il presidio di struttura ha già perso le cinque testate (T.2, T.3) | ✅ applicato da Tid, pgTAP verdi (2026-11-07) |
 
 ✅ **Deciso per T.4 (Tid, 2026-11-06, «confermo tua proposta»):** il contratto, che oggi non ha né una regola DB di
 cancellazione né un percorso BE che lo cancelli (`zeroerp_app` ha il privilegio DELETE), prende la stessa regola delle
@@ -1284,6 +1286,104 @@ riscritta, `script/fn_get_stato_testata_documento` (il consumatore nuovo).
 
 **Fatto da Tid il 2026-11-07:** apply di `-88` … `-91` e dei tre CSV, pgTAP verdi come applicazione.
 
+**Il giro T.5, le scelte** (team DB, 2026-11-07; via di Tid lo stesso giorno; nessuna è un cambio di modello: è S-8,
+il ritiro che il giro T.3 aveva rinviato):
+
+* **Prima chi scrive, poi il lock, poi le colonne.** I tre verbi smettono di scrivere le colonne parallele (`-92` …
+  `-94`); il lock fuori bozza di ordine e contratto perde le loro terne (`-95`); poi le colonne se ne vanno, con ciò che
+  vive solo per loro (`-96`, `-97`). L'ordine conta: il lock legge la testata con `to_jsonb`, e una colonna del montaggio
+  che la testata non ha è `E_DOC_RIGHE_LOCK_MONTAGGIO` a ogni UPDATE (verificato sul corpo del lock).
+* **I verbi dal changeSet del T.3, non riscritti.** Firma con `%TYPE`, corpo e COMMENT da `-85` … `-87`, che rieseguiti
+  danno lo stesso `pg_get_functiondef` del vivo; cambiano solo le righe delle colonne parallele e le frasi che le
+  citano. Il rollback è quel changeSet. Nessuna variabile nuova.
+* **Che cosa prende il posto di ciò che se ne va.** «Un'offerta, un ordine o contratto vivo» resta sugli indici della
+  provenienza (`uq_ordini_v_sorgente_offerta`, `uq_contratti_sorgente_offerta`, D-8 del T.3). La protezione di
+  `fk_contratti_offerta` (un'offerta citata non si cancella) la dà il guard unico (BLOCCA) col lato «in uscita», dal T.3.
+  La FK per codice dell'ordine verso `config.sorgenti` la sostituisce `fk_ordini_v_sorgente_tipo`, per id.
+* **I COMMENT che nominavano ciò che se ne va** si riscrivono dal testo vivo, cambiando solo quella frase: il BB degli
+  snapshot di stato (`-98`), la tabella delle offerte, la colonna `ordini.is_abortito_snapshot` e i due trigger degli
+  snapshot (in `-96`, `-97`). Il COMMENT di `vw_ordini_lista` resta vero: gli alias `documento_origine_*` restano,
+  calcolati dalla provenienza.
+* **Il registro degli indici FK** perde le righe delle due FK ritirate (`-99`, la forma di `20261001-25`).
+* **Tre testi di codici d'errore** citavano gli indici o le colonne ritirate (`E_ORD_OFFERTA_GIA_CONVERTITA`,
+  `E_OFFERTA_CONTRATTO_GIA_GENERATO`, `E_OFFERTA_ORDINE_GIA_GENERATO`): riscritti sui documenti vivi dell'offerta e sugli
+  indici della provenienza. La soluzione dell'ultimo diceva «eliminarlo»: un ordine con righe dal giro T.4 non si
+  elimina, si annulla, e un ordine annullato non consuma l'offerta.
+* **Che cosa non cambia:** nessuna funzione, vista o trigger generato da `ci_apply` legge le colonne (catalogo vivo e
+  grep, 2026-11-07); nessun changeSet di `80_data` o `90_end` le pretende (il template standard dell'ordine,
+  `20261020-25`, le nomina solo nei commenti); nessuna tabella di storico ha quelle colonne. Il builder
+  `dbops.fn_pgtap_crea_contratto` passa dal verbo e non cambia.
+
+**Che cosa cambia per chi legge, dichiarato:**
+
+* **Il BE si rompe nei due punti del §8.6** (BE-T.3-b, BE-T.3-c): `ordini_repository.get_ordine_by_documento_origine`
+  e il join offerta → contratto di `offerte_repository`. Era accettato dal piano (il lotto BE viene dopo il lotto Z):
+  dall'apply quei due percorsi danno errore finché il BE non li sposta. I lettori che passano dagli alias di
+  `vw_ordini_lista` (la stampa dell'ordine, la lista FE) non cambiano (§8.8).
+* **Lineage, documenti vivi, lista ordini:** nessuna differenza su tutta la popolazione di dbdev (sotto).
+
+**I changeSet del giro T.5:** `20_code/vendite/20261106-92` … `-94` (i tre verbi), `-95` (il lock fuori bozza di ordine
+e contratto), `00_schema/vendite/-96` (`ordini`: via `documento_origine_*`, i due indici, il CHECK e la FK per codice; i
+COMMENT dello snapshot), `-97` (`contratti`: via `offerta_id`, l'indice unico e la FK; i COMMENT della tabella delle
+offerte e dello snapshot), `20_code/vendite/-98` (il COMMENT del BB degli snapshot), `80_data/changelog/-99` (il
+registro degli indici FK); `80_data/sql/config/codici_errore.csv` e `messaggi_errore.csv` (i tre testi). Nessuna
+funzione nuova, nessun codice nuovo.
+
+**Gli allineamenti dei pgTAP (diciassette file):**
+
+* **presidi di struttura che asserivano gli oggetti ritirati**, ora asseriscono la loro assenza e la regola sulla
+  provenienza: `vendite/test-ordini-modello-ext` (6-12: le due metà della regola A1, nessuna UNIQUE piena e una
+  parziale sulla sola offerta, ora su `sorgente_*`), `vendite/test-grammatica-origine-destinazione-sorgenti-v1` (1, 6, 8,
+  9: l'origine è una FK per id, il codice corto non si può più scrivere), `vendite/test-annullo-documento-con-legami-v1`
+  (5: gli indici unici sui soli vivi sono quelli della provenienza), `vendite/test-testata-dopo-emissione-v1` (l'elenco
+  delle colonne del lock);
+* **fixture che scrivevano la colonna parallela accanto alla provenienza**, ora la sola provenienza:
+  `script/test-fn-available-actions-offerta-v1` (anche 14-15: il secondo ordine dalla stessa offerta sbatte su
+  `uq_ordini_v_sorgente_offerta`; i due ordini dallo stesso preventivo citano un preventivo vero, perché il guard unico
+  vuole un documento che esiste), `vendite/offerte_commerciali/test_fn_push_offerta_a_contratto`,
+  `vendite/test-annullo-documento-con-legami-v1`, `vendite/test-fattura-origini-v1`,
+  `vendite/test-documento-lineage-seminata-v1`;
+* **lettori della colonna parallela**, ora della provenienza: `vendite/test-fn-push-preventivo-a-ordine-v1` (3, 8b),
+  `vendite/offerte_commerciali/test-righe-ammesse-ai-passi-e-annullo-v1` (13),
+  `vendite/test-sorgente-testate-ordini-contratti-v1` (5-7; l'azzeramento delle colonne prima dei lettori non serve
+  più), e chi riconosceva il contratto nato dall'offerta da `offerta_id`: `dbops/test-fn-pgtap-crea-contratto-v1` (9,
+  10), `vendite/offerte_commerciali/test_offerte_commerciali_end_to_end` (3),
+  `vendite/offerte_commerciali/test_offerte_eccezioni_componenti` (20),
+  `vendite/offerte_commerciali/test_push_offerta_fissa_qta_operativa` (3, 4),
+  `vendite/offerte_commerciali/test_fn_push_offerta_successione` (3, 5), `vendite/test-righe-gemelle-secondo-giro-v1`.
+  Gli ultimi due lettori (`successione`, e il 4 di `fissa_qta_operativa`) li ha trovati la regressione: il censimento
+  cercava `offerta_id` con un alias del contratto, e lì la colonna è scritta senza alias o in un `JOIN … ON`;
+* ⚠️ **un difetto preesistente, corretto nello stesso file:** il test 3 di
+  `vendite/test-sorgente-testate-ordini-contratti-v1` (giro T.3) confrontava `regclass::text` con nomi qualificati, la
+  trappola del test 1 del giro T.4. Come app è verde perché `vendite` non sta nel `search_path` dell'app; con lo schema
+  nel `search_path` è rosso anche su HEAD. Ora schema e nome vengono da `pg_class` + `pg_namespace`.
+
+**La prova del giro T.5** (2026-11-07, come `zeroerp_owner`, in transazione annullata):
+
+* **i corpi di partenza sono quelli vivi:** i tre changeSet del T.3 (`-85` … `-87`), rieseguiti, danno lo stesso
+  `pg_get_functiondef` del vivo su dbdev; il lock è rimontato dai `pg_get_triggerdef` vivi, uguali su scratch e dbdev;
+  i COMMENT riscritti partono dal testo vivo, uguale su scratch e dbdev;
+* **l'estratto** degli otto changeSet gira intero su scratch e dbdev, nell'ordine dei numeri; dopo, le colonne non
+  ci sono più. `plpgsql_check` sui tre verbi: nessun avviso, prima e dopo;
+* **equivalenza prima/dopo su tutta la popolazione di dbdev** (fatto datato, 2026-11-07), `EXCEPT ALL` nei due versi,
+  zero differenze: `vw_ordini_lista` (597), i documenti vivi di ogni offerta, gli archi della lineage (1551). La
+  capability di ogni ordine e contratto (1110) cambia solo in `non_editable_fields`, che perde esattamente
+  `documento_origine_tipo`, `documento_origine_id` e `offerta_id` (§8.8);
+* **regressione prima/dopo su 386 pgTAP** (tutti `dbops/`, `storico/`, `maintenance/`, e chi nomina ordini, contratti,
+  offerte, preventivi, i tre verbi, i loro builder, la lineage, i legami, la lista ordini o i documenti vivi; sullo
+  scratch, in sequenza; prima = il file di HEAD senza estratto, dopo = il file dell'albero con l'estratto): 4896 ok
+  prima. Fuori dai file allineati i rossi sono gli stessi riga per riga (scope e permessi, rossi da owner per
+  costruzione). Tre differenze, spiegate: i due lettori di `offerta_id` sfuggiti al censimento (sopra), allineati e
+  poi verdi con e senza l'estratto su scratch e dbdev; il 6 di `dbops/test-processi-registro`, file modificato
+  nell'albero dall'altro cantiere (`brief-db-revisione-dbops`): rosso anche senza l'estratto, verde il file di HEAD con
+  l'estratto. Non è del giro;
+* **i diciassette file del giro, con l'estratto, su dbdev:** verdi, salvo il 30 di
+  `vendite/test-annullo-documento-con-legami-v1`, «rosso da owner» già dichiarato; e verdi anche rilanciati con gli schemi
+  `vendite`, `config`, `script`, `dbops` nel `search_path` (la prova che al giro T.4 mancava);
+* guardrail statici (`scripts/guardrail_*.py`, licenze): verdi.
+
+Non coperto, e resta di Tid: l'apply, la corsa dei pgTAP come applicazione (la RLS), la baseline. **Fatto da Tid il 2026-11-07:** apply di `-92` … `-99` e dei due CSV, pgTAP verdi come applicazione.
+
 #### Lotto C — commesse e fatturazione
 
 * `commesse_sorgenti`: da testo alle colonne tipizzate (S-4).
@@ -1571,6 +1671,18 @@ ritirano; le voci sotto vanno fatte con il lotto BE, che arriva dopo il lotto Z 
 | --- | --- | --- | --- |
 | BE-T.4-a | codici nuovi `E_DELETE_DOC_CON_RIGHE` e `E_DELETE_CONTRATTO_CON_SUCCESSIVI` (`CONFLITTO_STATO`, 409): una bozza con righe attive non si cancella, un contratto precedente di altri contratti nemmeno | `apps/core/services/error_policies_generated.py`, `error_messages_fallback.py` | rigenerarli dal catalogo, insieme a BE-0.1-a e BE-0.2-a |
 | — | ordine, bolla, reso e contratto si cancellano solo da bozza vuota anche nel DB; un reso confermato non si cancella più | `ordini_service.elimina_ordine`, `ddt_service.elimina_ddt`, `resi_service.elimina_reso` | nessuna: il controllo del BE resta come controllo preventivo, e ha lo stesso significato (stato iniziale, zero righe attive). I 409 del DB arrivano solo da un percorso che il BE non ha. Nessun percorso cancella un contratto (grep, 2026-11-07) |
+
+### 8.8 Dal lotto T, giro T.5 (2026-11-07)
+
+Le colonne parallele non ci sono più: le due voci di T.3 che le leggevano (§8.6) si rompono dall'apply del giro T.5.
+
+| # | Che cosa cambia | Percorso | Che cosa fa il BE/FE |
+| --- | --- | --- | --- |
+| BE-T.5-a | `vendite.ordini.documento_origine_tipo` e `_id` non esistono più | `ordini_repository.get_ordine_by_documento_origine` (`:426-433`) ← `post_smistamento_handler.py:73`, `preventivi_service.py:2144`; test `tests/db/test_origine_ordine_sorgente_db.py:56`, `tests/db/test_genera_ordine_da_offerta_db.py:129` | è BE-T.3-b: leggere da `vendite.vw_ordini_lista` (alias stabili) o con la regola d'incontro su `sorgente_*` |
+| BE-T.5-b | `vendite.contratti.offerta_id` non esiste più | `offerte_repository.py:228` (`LEFT JOIN vendite.contratti c ON c.offerta_id = o.id`) | è BE-T.3-c: `vendite.fn_offerta_documenti_vivi(offerta_id)` |
+| BE-T.5-c | `uq_ordini_v_documento_origine_offerta` non esiste più | `ordini_service.py:88` (`_UNIQUE_CONSTRAINTS`) | la voce vecchia si toglie; resta `uq_ordini_v_sorgente_offerta` (BE-T.3-a) |
+| — | `vw_ordini_lista`: `documento_origine_tipo`, `_id`, `_codice` restano, calcolati dalla provenienza | `ordini_repository.py:280-286`, `ordine_document_context_builder.py:213`, FE `OrdiniSearchTable.vue` | nessuna |
+| — | la capability perde dalle colonne ferme `documento_origine_*` dell'ordine e `offerta_id` del contratto (`non_editable_fields`, dal montaggio del lock). Su tutti gli ordini e contratti di dbdev è l'unica differenza della capability (2026-11-07) | capability di ordine e contratto | nessuna, se il FE non le nomina (grep FE, 2026-11-07: le nomina solo un commento) |
 
 ---
 

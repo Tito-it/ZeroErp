@@ -1,5 +1,8 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
+-- rev 2026-11-07 (giro T.5, 20261106-92 … -97): le colonne parallele sono ritirate e i verbi non le
+--   scrivono piu'. I test 5-7 guardano la sola provenienza; l'azzeramento prima dei lettori (9-18)
+--   non serve piu', perche' le colonne non ci sono: i lettori leggono la provenienza per forza.
 -- pgTAP test per Zero ERP
 -- Test: la PROVENIENZA di testata di ordini, contratti e fatture nella
 --   grammatica del modello: il tipo del documento + una sola chiave
@@ -17,11 +20,11 @@
 --    4) D-8: il predicato dei due indici «un'offerta, un documento vivo» nomina
 --       l'id di OFFERTA_COMMERCIALE nel catalogo, NULLS NOT DISTINCT
 --   I VERBI
---    5) push preventivo -> ordine: PREVENTIVO + uid, e accanto documento_origine_*
---    6) ordine dall'offerta: OFFERTA_COMMERCIALE + uid, e accanto documento_origine_*
---    7) contratto dall'offerta: OFFERTA_COMMERCIALE + uid, e accanto offerta_id
+--    5) push preventivo -> ordine: PREVENTIVO + uid
+--    6) ordine dall'offerta: OFFERTA_COMMERCIALE + uid
+--    7) contratto dall'offerta: OFFERTA_COMMERCIALE + uid
 --    8) ... con una pratica: il contratto entra in pratiche_sorgenti con l'id (V-1)
---   I LETTORI, su documenti che hanno SOLO la provenienza (colonne parallele azzerate)
+--   I LETTORI, su documenti che hanno SOLO la provenienza (colonne parallele ritirate, giro T.5)
 --    9) i documenti vivi dell'offerta: l'ordine
 --   10) ... e il contratto
 --   11) il preventivo con un ordine vivo non si annulla (E_PREV_ORDINE_GIA_GENERATO)
@@ -45,9 +48,9 @@
 -- ⚠️ Il mondo si COSTRUISCE coi builder dbops.fn_pgtap_* (cliente, listino,
 --   articoli), come vendite/test-sorgente-righe-vendita-v1. Gira come
 --   l'applicazione (operatore in sessione, RLS attiva).
--- ⚠️ I casi 9-18 azzerano le colonne parallele (documento_origine_*,
---   offerta_id) dei documenti in bozza: i lettori di prima, che le leggevano,
---   li darebbero vuoti. E' il ramo che il giro T.3 apre.
+-- ⚠️ I casi 9-18 leggono documenti che hanno la sola provenienza: fino al giro
+--   T.5 il file azzerava le colonne parallele (documento_origine_*, offerta_id),
+--   dal giro T.5 non ci sono piu'.
 -- ⚠️ L'unicita' sul contratto (uq_contratti_sorgente_offerta) si prova dalla
 --   definizione (4), uguale a quella dell'ordine: un secondo contratto vivo
 --   sulla stessa istanza si ferma prima, sulla successione dei contratti.
@@ -92,9 +95,13 @@ SELECT is(
   '2) le tre testate hanno il CHECK di forma della provenienza');
 
 SELECT results_eq(
-  $$SELECT tabella::text COLLATE "default", livello_minimo, azione_cancellazione
-      FROM script.fn_sorgente_guard_montaggi()
-     WHERE tabella IN ('vendite.ordini'::regclass, 'vendite.contratti'::regclass, 'vendite.fatture'::regclass)
+  -- ⚠️ Schema e nome dal catalogo, non da regclass::text: quello toglie lo schema
+  --   quando sta nel search_path di chi lancia (rev 2026-11-07, giro T.5).
+  $$SELECT format('%I.%I', n.nspname, c.relname) COLLATE "default", m.livello_minimo, m.azione_cancellazione
+      FROM script.fn_sorgente_guard_montaggi() m
+      JOIN pg_class c     ON c.oid = m.tabella
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+     WHERE m.tabella IN ('vendite.ordini'::regclass, 'vendite.contratti'::regclass, 'vendite.fatture'::regclass)
      ORDER BY 1$$,
   $$VALUES ('vendite.contratti', 'DOCUMENTO', 'BLOCCA'),
            ('vendite.fatture', 'DOCUMENTO', 'BLOCCA'),
@@ -217,34 +224,34 @@ SELECT pg_temp.mk_preventivo('acc', 'ACCETTATO', (SELECT art_prev FROM _ref));
 INSERT INTO _fix SELECT 'ord_prev', vendite.fn_push_preventivo_a_ordine(pg_temp.fix('acc'));
 
 SELECT is(
-  (SELECT format('%s|%s|%s|%s|%s', o.sorgente_tipo_id = k.t_prev, o.sorgente_id IS NULL,
-                 o.sorgente_uid = p.uid, o.documento_origine_tipo, o.documento_origine_id = p.id)
+  (SELECT format('%s|%s|%s', o.sorgente_tipo_id = k.t_prev, o.sorgente_id IS NULL,
+                 o.sorgente_uid = p.uid)
      FROM vendite.ordini o, _ref k, vendite.preventivi p
     WHERE o.id = pg_temp.fix('ord_prev') AND p.id = pg_temp.fix('acc')),
-  't|t|t|PREVENTIVO|t',
-  '5) push preventivo -> ordine: la testata cita PREVENTIVO con l''uid, e accanto la colonna parallela (PREVENTIVO, id)');
+  't|t|t',
+  '5) push preventivo -> ordine: la testata cita PREVENTIVO con l''uid');
 
 SELECT pg_temp.mk_offerta('off_ord');
 INSERT INTO _fix SELECT 'ord_off', vendite.fn_genera_ordine_da_offerta(pg_temp.fix('off_ord'));
 
 SELECT is(
-  (SELECT format('%s|%s|%s|%s|%s', o.sorgente_tipo_id = k.t_off, o.sorgente_id IS NULL,
-                 o.sorgente_uid = f.uid, o.documento_origine_tipo, o.documento_origine_id = f.id)
+  (SELECT format('%s|%s|%s', o.sorgente_tipo_id = k.t_off, o.sorgente_id IS NULL,
+                 o.sorgente_uid = f.uid)
      FROM vendite.ordini o, _ref k, vendite.offerte_commerciali f
     WHERE o.id = pg_temp.fix('ord_off') AND f.id = pg_temp.fix('off_ord')),
-  't|t|t|OFFERTA_COMMERCIALE|t',
-  '6) ordine dall''offerta: la testata cita OFFERTA_COMMERCIALE con l''uid, e accanto la colonna parallela');
+  't|t|t',
+  '6) ordine dall''offerta: la testata cita OFFERTA_COMMERCIALE con l''uid');
 
 SELECT pg_temp.mk_offerta('off_ctr');
 INSERT INTO _fix SELECT 'ctr', vendite.fn_push_offerta_a_contratto(pg_temp.fix('off_ctr'), pg_temp.fix('pratica'));
 
 SELECT is(
-  (SELECT format('%s|%s|%s|%s', c.sorgente_tipo_id = k.t_off, c.sorgente_id IS NULL,
-                 c.sorgente_uid = f.uid, c.offerta_id = f.id)
+  (SELECT format('%s|%s|%s', c.sorgente_tipo_id = k.t_off, c.sorgente_id IS NULL,
+                 c.sorgente_uid = f.uid)
      FROM vendite.contratti c, _ref k, vendite.offerte_commerciali f
     WHERE c.id = pg_temp.fix('ctr') AND f.id = pg_temp.fix('off_ctr')),
-  't|t|t|t',
-  '7) contratto dall''offerta: la testata cita OFFERTA_COMMERCIALE con l''uid, e accanto offerta_id');
+  't|t|t',
+  '7) contratto dall''offerta: la testata cita OFFERTA_COMMERCIALE con l''uid');
 
 SELECT is(
   (SELECT string_agg(ps.sorgente_uid || '|' || ps.ruolo_link, ',')
@@ -254,12 +261,9 @@ SELECT is(
   '8) ... con una pratica: il contratto entra in pratiche_sorgenti con la sua chiave, l''id (V-1)');
 
 -- ============================================================
--- I LETTORI, sulla sola provenienza: le colonne parallele dei documenti in
--- bozza si azzerano. Chi leggesse ancora quelle non troverebbe niente.
+-- I LETTORI, sulla sola provenienza (le colonne parallele sono ritirate dal
+-- giro T.5: fino ad allora qui si azzeravano).
 -- ============================================================
-UPDATE vendite.ordini SET documento_origine_tipo = NULL, documento_origine_id = NULL
- WHERE id IN (pg_temp.fix('ord_prev'), pg_temp.fix('ord_off'));
-UPDATE vendite.contratti SET offerta_id = NULL WHERE id = pg_temp.fix('ctr');
 
 SELECT is(
   (SELECT string_agg(v.tipo || ':' || (v.documento_id = pg_temp.fix('ord_off')), ',')

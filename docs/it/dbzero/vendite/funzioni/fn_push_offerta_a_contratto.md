@@ -18,8 +18,8 @@ CREATE OR REPLACE FUNCTION vendite.fn_push_offerta_a_contratto(p_offerta_id bigi
 AS $function$
 -- rev 2026-11-06 (brief-db-sorgente-documento-e-riga giro T.3): la testata scrive
 --   la provenienza con la chiave del key_selector (sorgente_id/sorgente_uid),
---   letta una volta per testata e righe; offerta_id resta accanto finche' si
---   ritira. L'aggancio alla pratica scrive l'id del contratto, non il suo uid
+--   letta una volta per testata e righe (offerta_id ritirata nel giro T.5, il
+--   2026-11-07). L'aggancio alla pratica scrive l'id del contratto, non il suo uid
 --   (il tipo CONTRATTO ha chiave id: l'uid lo rifiutava il guard testuale).
 -- rev 2026-10-24 (20261024-13, brief-modello-documento-vendita N-1/P-2):
 --   lo stato iniziale non si scrive piu' qui: lo mette il trigger della
@@ -220,7 +220,6 @@ BEGIN
             sorgente_tipo_id,
             sorgente_id,
             sorgente_uid,
-            offerta_id,
             emittente_fiscale_id,
             generazione_canone,
             mese_partenza_canone,
@@ -239,7 +238,6 @@ BEGIN
             v_prov_tipo_id,
             v_prov_id,
             v_prov_uid,
-            p_offerta_id,
             v_offerta.emittente_fiscale_id,
             v_offerta.generazione_canone,
             v_offerta.mese_partenza_canone,
@@ -460,7 +458,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_push_offerta_a_contratto(p_offerta_id bigint, p_pratica_id bigint, p_chiudi_contratto_esistente boolean)
-IS 'Genera un contratto DRAFT da un''offerta commerciale in uno stato di accettazione. Un''offerta genera al piu'' un documento vivo fra contratto e ordine, letti da vendite.fn_offerta_documenti_vivi (E_OFFERTA_CONTRATTO_GIA_GENERATO, E_OFFERTA_ORDINE_GIA_GENERATO), col bersaglio sul documento gia'' generato, in un array; un documento annullato conserva la provenienza ma non consuma l''offerta. Applica la successione dei contratti (advisory lock, sovrapposizione, instradamento; p_chiudi_contratto_esistente). La testata porta la provenienza: OFFERTA_COMMERCIALE con la chiave dell''offerta da script.fn_sorgente_provenienza (letta una volta per testata e righe), e accanto offerta_id, la colonna parallela con la FK. Copia gli indirizzi ammessi per CONTRATTO, le utility, e le eccezioni dell''offerta come righe del contratto, una per eccezione nell''ordine dell''id, coi loro componenti e con le marche di approvazione prezzo 1:1. Ogni riga porta la provenienza: OFFERTA_COMMERCIALE con la chiave dell''offerta da script.fn_sorgente_provenienza, e in sorgente_riga l''eccezione copiata. L''aggancio facoltativo alla pratica (p_pratica_id) scrive il contratto come COLLEGATO in pratiche.pratiche_sorgenti, con la sua chiave testuale: l''id, perche'' il tipo CONTRATTO ha chiave id. Gli indici unici uq_contratti_sorgente_offerta e uq_ordini_v_sorgente_offerta (e, sulle colonne parallele, uq_contratti_offerta_id e uq_ordini_v_documento_origine_offerta) valgono sui soli documenti vivi. SECURITY INVOKER.';
+IS 'Genera un contratto DRAFT da un''offerta commerciale in uno stato di accettazione. Un''offerta genera al piu'' un documento vivo fra contratto e ordine, letti da vendite.fn_offerta_documenti_vivi (E_OFFERTA_CONTRATTO_GIA_GENERATO, E_OFFERTA_ORDINE_GIA_GENERATO), col bersaglio sul documento gia'' generato, in un array; un documento annullato conserva la provenienza ma non consuma l''offerta. Applica la successione dei contratti (advisory lock, sovrapposizione, instradamento; p_chiudi_contratto_esistente). La testata porta la provenienza: OFFERTA_COMMERCIALE con la chiave dell''offerta da script.fn_sorgente_provenienza (letta una volta per testata e righe). Copia gli indirizzi ammessi per CONTRATTO, le utility, e le eccezioni dell''offerta come righe del contratto, una per eccezione nell''ordine dell''id, coi loro componenti e con le marche di approvazione prezzo 1:1. Ogni riga porta la provenienza: OFFERTA_COMMERCIALE con la chiave dell''offerta da script.fn_sorgente_provenienza, e in sorgente_riga l''eccezione copiata. L''aggancio facoltativo alla pratica (p_pratica_id) scrive il contratto come COLLEGATO in pratiche.pratiche_sorgenti, con la sua chiave testuale: l''id, perche'' il tipo CONTRATTO ha chiave id. Gli indici unici uq_contratti_sorgente_offerta e uq_ordini_v_sorgente_offerta valgono sui soli documenti vivi. SECURITY INVOKER.';
 ```
 
 </div>

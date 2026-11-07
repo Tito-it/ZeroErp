@@ -1,5 +1,8 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
+-- rev 2026-11-07 (brief-db-sorgente-documento-e-riga, giro T.5, 20261106-95): il lock di ordine e
+--   contratto non nomina piu' le colonne parallele (ordini.documento_origine_*, contratti.offerta_id),
+--   ritirate in -96 e -97: escono dall'elenco atteso. Piano invariato.
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): i due ordini (CONFERMATO, ANNULLATO) da dbops.fn_pgtap_crea_ordine_con_righe (2 x 10, trigger SPEDITO scritto in bozza); il preventivo resta a mano: e' fuori dalle tre strade del giro (c'e' dbops.fn_pgtap_crea_preventivo, da valutare a parte).
 -- pgTAP test per Zero ERP
 --
@@ -103,7 +106,6 @@ INSERT INTO _atteso VALUES
   ('ordini','serie',''),('ordini','registro_id',''),('ordini','utility_id',''),('ordini','emittente_fiscale_id',''),
   ('ordini','modalita_pagamento_id',''),('ordini','termine_pagamento_id',''),('ordini','agente_soggetto_ruolo_id',''),
   ('ordini','fatturazione_trigger',''),('ordini','sorgente_tipo_id',''),('ordini','sorgente_uid',''),('ordini','sorgente_id',''),
-  ('ordini','documento_origine_tipo',''),('ordini','documento_origine_id',''),
   ('ordini','meta','ALLOCATO,CONFERMATO,CONSEGNATO,EVASO,PARZIALMENTE_EVASO,SPEDITO'),
   -- preventivo (D-3, D-6, D-7, D-9, D-10)
   ('preventivi','data',''),('preventivi','valuta_id',''),('preventivi','rev',''),
@@ -127,7 +129,7 @@ INSERT INTO _atteso VALUES
   ('contratti','istanza_utility_id',''),('contratti','utility_id','-'),('contratti','emittente_fiscale_id','-'),
   ('contratti','listino_id',''),('contratti','listino_versione_id',''),('contratti','tipo_variazione_globale',''),
   ('contratti','valore_variazione_globale',''),('contratti','ambito',''),('contratti','valido_dal',''),
-  ('contratti','parent_contratto_id',''),('contratti','categoria_cliente_id_snapshot',''),('contratti','offerta_id',''),('contratti','sorgente_tipo_id',''),
+  ('contratti','parent_contratto_id',''),('contratti','categoria_cliente_id_snapshot',''),('contratti','sorgente_tipo_id',''),
   ('contratti','sorgente_uid',''),('contratti','sorgente_id',''),
   ('contratti','generazione_canone',''),('contratti','mese_partenza_canone',''),
   ('contratti','valido_al','ATTIVO'),('contratti','codice_cig','ATTIVO'),('contratti','codice_cup','ATTIVO'),

@@ -1,5 +1,8 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
+-- rev 2026-11-07 (brief-db-sorgente-documento-e-riga, giro T.5, 20261106-96/-97): le colonne parallele
+--   della provenienza (ordini.documento_origine_*, contratti.offerta_id) sono ritirate; la fixture
+--   scrive e il test legge la sola provenienza (sorgente_*), come i verbi. Attese invariate.
 -- pgTAP test per Zero ERP
 -- Copyright (C) 2026 Tid (Michele Carlo Titini)
 --
@@ -92,9 +95,7 @@ SELECT dbops.fn_pgtap_crea_ddt((SELECT billing_account_id FROM g_ord),
                                'VENDITA') AS ddt_id;
 
 UPDATE vendite.ordini o
-   SET documento_origine_tipo = 'PREVENTIVO',
-       documento_origine_id   = (SELECT preventivo_id FROM g_prev),
-       -- la provenienza, che la lineage legge (giro T.3 di brief-db-sorgente-documento-e-riga)
+   SET -- la provenienza, che la lineage legge (giro T.5 di brief-db-sorgente-documento-e-riga)
        sorgente_tipo_id       = (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'PREVENTIVO'),
        sorgente_uid           = (SELECT p.uid FROM vendite.preventivi p WHERE p.id = (SELECT preventivo_id FROM g_prev))
  WHERE o.id = (SELECT ordine_id FROM g_ord);

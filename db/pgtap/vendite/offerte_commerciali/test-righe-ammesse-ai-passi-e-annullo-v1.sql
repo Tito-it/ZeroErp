@@ -1,5 +1,8 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
+-- rev 2026-11-07 (brief-db-sorgente-documento-e-riga, giro T.5, 20261106-96/-97): le colonne parallele
+--   della provenienza (ordini.documento_origine_*, contratti.offerta_id) sono ritirate; la fixture
+--   scrive e il test legge la sola provenienza (sorgente_*), come i verbi. Attese invariate.
 -- pgtap-runner: owner
 -- pgtap-runner-motivo: la fixture cambia il vocabolario del perimetro (config.nature_vendita_erogazioni), un seed che nessun operatore scrive, per far uscire dal perimetro righe gia' scritte: e' la strada che il modello lascia aperta, e il caso da provare
 -- rev 2026-11-01 (20261101-04/-06, brief-db-contratto-righe-periodiche-in-commessa passo 4): la
@@ -339,14 +342,16 @@ INSERT INTO tmp_ra_doc (slot, id)
 SELECT 'ORDINE', vendite.fn_genera_ordine_da_offerta(pg_temp.doc('ORD'));
 
 SELECT is(
-    (SELECT s.codice_interno || ' ' || o.documento_origine_tipo || ' '
-            || (o.documento_origine_id = pg_temp.doc('ORD'))::text || ' '
+    (SELECT s.codice_interno || ' ' || so.codice_interno || ' '
+            || (o.sorgente_uid = (SELECT f.uid FROM vendite.offerte_commerciali f
+                                   WHERE f.id = pg_temp.doc('ORD')))::text || ' '
             || (SELECT count(*) || ' ' || max(r.riga_nr) || ' ' || max(r.qta_operativa)::numeric(10,2)
                        || ' ' || max(r.prezzo_unitario)::numeric(10,2)
                   FROM vendite.ordini_righe r
                  WHERE r.ordine_id = o.id AND r.articolo_id = pg_temp.art('M'))
        FROM vendite.ordini o
        JOIN config.stati_doc_ordini s ON s.id = o.stato_doc_ordine_id
+       JOIN config.sorgenti so ON so.id = o.sorgente_tipo_id
       WHERE o.id = pg_temp.doc('ORDINE')),
     -- ⚠️ rev 2026-10-28 (brief-modello-documento-vendita §16): la riga della
     --   merce e' la 2, perche' la 1 e' la riga d'appoggio del listino della

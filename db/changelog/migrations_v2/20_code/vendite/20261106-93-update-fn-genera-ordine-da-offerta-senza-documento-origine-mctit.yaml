@@ -1,0 +1,517 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'ORDINE DALL'OFFERTA NON SCRIVE PIU' documento_origine_*
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto T, giro T.5 (S-8).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   La testata dell'ordine dichiara l'offerta con la provenienza (sorgente_*, giro
+#   T.3). La colonna parallela documento_origine_* (OFFERTA_COMMERCIALE, id) restava
+#   scritta accanto finche' i lettori DB passavano alla provenienza: sono passati (T.3),
+#   e le colonne si ritirano in questo giro (-96). Il verbo smette di scriverle prima.
+#   L'unicita' «un'offerta, un ordine vivo» la tiene uq_ordini_v_sorgente_offerta.
+#
+#   Firma (con %TYPE), corpo e COMMENT dal changeSet del giro T.3 (20261106-86), applicato e
+#   uguale al vivo; cambiano solo le colonne parallele e le frasi che le citano.
+#   Il rollback rimette quel changeSet.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261106-93-update-fn-genera-ordine-da-offerta-senza-documento-origine-mctit.yaml
+
+  - changeSet:
+      id: 20261106-93-update-fn-genera-ordine-da-offerta-senza-documento-origine
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_genera_ordine_da_offerta: la testata non scrive piu' la colonna parallela della
+        provenienza. brief-db-sorgente-documento-e-riga §7.2 lotto T, giro T.5.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_genera_ordine_da_offerta(
+                  p_offerta_id vendite.offerte_commerciali.id%TYPE)
+              RETURNS vendite.ordini.id%TYPE
+              LANGUAGE plpgsql
+              VOLATILE
+              SECURITY INVOKER
+              AS $function$
+              -- rev 2026-11-06 (brief-db-sorgente-documento-e-riga giro T.3): la testata scrive
+              --   la provenienza (sorgente_*), letta una volta per testata e righe.
+              -- rev 2026-10-24 (20261024-19, brief-modello-documento-vendita N-1/P-2):
+              --   lo stato iniziale non si scrive piu' qui: lo mette il trigger della
+              --   nascita (script.trgfn_doc_stato_iniziale), letto dal vocabolario.
+              -- =========================================================
+              -- VERBO (brief-db-offerta-emissione-ed-erogazione §I.2, I-D2 di Tid,
+              --   2026-10-21): genera un ordine DRAFT da un'offerta ACCETTATA, in UNA
+              --   transazione. Gemello di vendite.fn_push_offerta_a_contratto: fino a
+              --   oggi lo orchestrava il backend in Python
+              --   (ordini_service.crea_ordine_da_offerta), che si ritira e chiama questo.
+              --
+              -- I passi, nell'ordine del Python che sostituisce:
+              --   1. l'offerta, bloccata FOR UPDATE: due «genera» concorrenti (o un
+              --      genera e un push) si mettono in fila, e il secondo vede il primo
+              --      fra i documenti vivi;
+              --   2. lo stato: solo ACCETTATA (E_ORD_ORIGINE_NON_CONVERTIBILE);
+              --   3. i documenti VIVI nati dall'offerta (vendite.fn_offerta_documenti_vivi,
+              --      la sede del push e della capability): un ordine vivo
+              --      (E_ORD_OFFERTA_GIA_CONVERTITA) o un contratto vivo
+              --      (E_OFFERTA_CONTRATTO_GIA_GENERATO), col bersaglio;
+              --   4. le righe: il primo motivo di script.fn_check_righe_offerta_in_ordine,
+              --      lo stesso che spegne «Genera ordine» nella capability — prima di
+              --      scrivere. Il guard delle righe d'ordine resta la rete;
+              --   5. la testata: cliente, emittente, valuta dall'offerta; la provenienza
+              --      (OFFERTA_COMMERCIALE, id) nella stessa INSERT. Data, utility, ruolo
+              --      e numero li scrivono default e trigger dell'ordine;
+              --   6. l'indirizzo di default dall'anagrafica del cliente
+              --      (vendite.fn_doc_indirizzo_default), come per ogni ordine nuovo;
+              --   7. le righe espanse (vendite.fn_offerta_righe_espanse), una per una nel
+              --      loro ordine, coi prezzi NEGOZIATI: il non composito col suo prezzo;
+              --      il composito a 0, perche' il prezzo del padre lo ricalcola il DB dai
+              --      componenti, che nascono da vendite.fn_ordine_riga_componenti_init
+              --      coi prezzi dell'offerta come override.
+              --
+              -- ⚠️ Override a zero: fn_ordine_riga_componenti_init rifiuta un override
+              --   0 su un componente obbligatorio. Come faceva il Python, un componente
+              --   negoziato a 0 non va negli override e ricade sul resolver.
+              -- =========================================================
+              DECLARE
+                  v_offerta       vendite.offerte_commerciali%ROWTYPE;
+                  v_stato_cod     config.stati_doc_offerte.codice_interno%TYPE;
+                  v_accettazione  config.stati_doc_offerte.accettazione%TYPE;
+                  v_ordine_id     vendite.ordini.id%TYPE;
+                  v_ordine_data   vendite.ordini.data%TYPE;
+                  v_emittente_fiscale_id vendite.ordini.emittente_fiscale_id%TYPE;
+                  v_emittente_sr_id      anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE;
+                  v_riga_id       vendite.ordini_righe.id%TYPE;
+                  v_prov_tipo_id   vendite.ordini_righe.sorgente_tipo_id%TYPE;
+                  v_prov_id        vendite.ordini_righe.sorgente_id%TYPE;
+                  v_prov_uid       vendite.ordini_righe.sorgente_uid%TYPE;
+                  -- Nudi DICHIARATI: l'array {tipo, id} dei documenti vivi e gli
+                  -- override dei componenti sono frammenti jsonb composti; v_riga e' una
+                  -- riga di vendite.fn_offerta_righe_espanse con la sua posizione.
+                  v_bersagli      jsonb;
+                  v_overrides     jsonb;
+                  v_riga          record;
+              BEGIN
+                  IF p_offerta_id IS NULL OR p_offerta_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_genera_ordine_da_offerta',
+                          'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('param', 'p_offerta_id', 'value', p_offerta_id),
+                          NULL::uuid,
+                          'p_offerta_id = ' || COALESCE(p_offerta_id::text, 'NULL'));
+                  END IF;
+
+                  -- 1. L'offerta, in fila (sotto RLS: un'offerta che non si vede non c'e').
+                  SELECT * INTO v_offerta
+                    FROM vendite.offerte_commerciali
+                   WHERE id = p_offerta_id
+                     FOR UPDATE;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_genera_ordine_da_offerta',
+                          'E_OFFERTA_NON_TROVATA',
+                          jsonb_build_object('offerta_id', p_offerta_id),
+                          NULL::uuid,
+                          p_offerta_id::text);
+                  END IF;
+
+                  -- 2. Solo dallo stato di accettazione, dal vocabolario
+                  --    (rev 2026-10-31 (20261031-18, brief-modello-documento-vendita §17)).
+                  SELECT codice_interno, accettazione INTO v_stato_cod, v_accettazione
+                    FROM config.stati_doc_offerte
+                   WHERE id = v_offerta.stato_doc_offerta_id;
+
+                  IF v_accettazione IS NOT TRUE THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_genera_ordine_da_offerta',
+                          'E_ORD_ORIGINE_NON_CONVERTIBILE',
+                          jsonb_build_object('offerta_id',     p_offerta_id,
+                                             'stato_corrente', COALESCE(v_stato_cod, 'NULL')),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  -- 3. Gia' trasformata? Solo i documenti VIVI. Il bersaglio e' il
+                  --    documento che blocca la strada, non l'offerta (come nel push).
+                  SELECT jsonb_agg(jsonb_build_object('tipo', d.tipo, 'id', d.documento_id::text)
+                                   ORDER BY d.documento_id)
+                    INTO v_bersagli
+                    FROM vendite.fn_offerta_documenti_vivi(p_offerta_id) AS d
+                   WHERE d.tipo = 'ORDINE_VENDITA';
+
+                  IF v_bersagli IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_genera_ordine_da_offerta',
+                          'E_ORD_OFFERTA_GIA_CONVERTITA',
+                          jsonb_build_object('offerta_id', p_offerta_id,
+                                             'bersaglio',  v_bersagli),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  SELECT jsonb_agg(jsonb_build_object('tipo', d.tipo, 'id', d.documento_id::text)
+                                   ORDER BY d.documento_id)
+                    INTO v_bersagli
+                    FROM vendite.fn_offerta_documenti_vivi(p_offerta_id) AS d
+                   WHERE d.tipo = 'CONTRATTO';
+
+                  IF v_bersagli IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_genera_ordine_da_offerta',
+                          'E_OFFERTA_CONTRATTO_GIA_GENERATO',
+                          jsonb_build_object('offerta_id', p_offerta_id,
+                                             'bersaglio',  v_bersagli),
+                          NULL::uuid,
+                          COALESCE(v_offerta.codice, p_offerta_id::text));
+                  END IF;
+
+                  -- 4. Le righe, prima di scrivere: lo stesso motivo della capability.
+                  PERFORM script.fn_raise_primo_motivo_se_presente(
+                      'vendite', 'fn_genera_ordine_da_offerta',
+                      script.fn_check_righe_offerta_in_ordine(p_offerta_id),
+                      'articolo_id',
+                      NULL::uuid,
+                      jsonb_build_object('offerta_id', p_offerta_id,
+                                         'codice',     v_offerta.codice));
+
+                  -- 5. La testata, con la provenienza: il tipo e la chiave dell'offerta, per il
+                  --    key_selector del tipo (script.fn_sorgente_provenienza), letti una volta per
+                  --    la testata e per le righe.
+                  --    Lo stato non si scrive: DRAFT lo mette trg_ordini_a05_stato_iniziale_ins.
+                  SELECT p.sorgente_tipo_id, p.sorgente_id, p.sorgente_uid
+                    INTO v_prov_tipo_id, v_prov_id, v_prov_uid
+                    FROM script.fn_sorgente_provenienza('OFFERTA_COMMERCIALE', p_offerta_id::text) p;
+
+                  INSERT INTO vendite.ordini (
+                      billing_account_id,
+                      emittente_fiscale_id,
+                      valuta_id,
+                      sorgente_tipo_id,
+                      sorgente_id,
+                      sorgente_uid)
+                  VALUES (
+                      v_offerta.billing_account_id,
+                      v_offerta.emittente_fiscale_id,
+                      v_offerta.valuta_id,
+                      v_prov_tipo_id,
+                      v_prov_id,
+                      v_prov_uid)
+                  RETURNING id, data, emittente_fiscale_id
+                       INTO v_ordine_id, v_ordine_data, v_emittente_fiscale_id;
+
+                  -- 6. L'indirizzo di default dall'anagrafica del cliente.
+                  PERFORM vendite.fn_doc_indirizzo_default('ORDINE_VENDITA', v_ordine_id);
+
+                  -- 7. Le righe espanse. L'emittente dei componenti e' il soggetto-ruolo
+                  --    dell'emittente fiscale dell'ordine (non la sua PK), la data quella
+                  --    dell'ordine.
+                  SELECT ef.soggetto_ruolo_id INTO v_emittente_sr_id
+                    FROM anagrafiche.emittenti_fiscali ef
+                   WHERE ef.id = v_emittente_fiscale_id;
+
+                  FOR v_riga IN
+                      SELECT r.*
+                        FROM vendite.fn_offerta_righe_espanse(p_offerta_id)
+                             WITH ORDINALITY AS r(articolo_id, articolo_codice, descrizione, is_composito,
+                                                  quantita, uom_operativa_id, qta_operativa, factor_to_base,
+                                                  prezzo_unitario, sconto_percentuale, iva_id,
+                                                  tipo_eccezione, origine, componenti, eccezione_id,
+                                                  riga_nr)
+                       ORDER BY r.riga_nr
+                  LOOP
+                      INSERT INTO vendite.ordini_righe (
+                          ordine_id, riga_nr, articolo_id, descrizione,
+                          quantita, qta_operativa, uom_operativa_id, factor_to_base,
+                          prezzo_unitario, sconto_percentuale, iva_id,
+                          sorgente_tipo_id, sorgente_id, sorgente_uid, sorgente_riga)
+                      VALUES (
+                          v_ordine_id, v_riga.riga_nr::integer, v_riga.articolo_id, v_riga.descrizione,
+                          v_riga.quantita, v_riga.qta_operativa, v_riga.uom_operativa_id, v_riga.factor_to_base,
+                          CASE WHEN v_riga.is_composito THEN 0 ELSE v_riga.prezzo_unitario END,
+                          v_riga.sconto_percentuale, v_riga.iva_id,
+                          -- La provenienza: l'offerta e l'eccezione da cui la riga viene
+                          -- (NULL per la riga del solo listino: la provenienza e' l'offerta).
+                          v_prov_tipo_id, v_prov_id, v_prov_uid, v_riga.eccezione_id)
+                      RETURNING id INTO v_riga_id;
+
+                      IF v_riga.is_composito IS TRUE THEN
+                          SELECT jsonb_object_agg(c ->> 'componente_id', c ->> 'prezzo')
+                            INTO v_overrides
+                            FROM jsonb_array_elements(
+                                     CASE WHEN jsonb_typeof(v_riga.componenti) = 'array'
+                                          THEN v_riga.componenti ELSE '[]'::jsonb END) AS c
+                           WHERE c ->> 'componente_id' IS NOT NULL
+                             AND c ->> 'prezzo' IS NOT NULL
+                             AND (c ->> 'prezzo')::numeric <> 0;
+
+                          PERFORM vendite.fn_ordine_riga_componenti_init(
+                              v_riga_id, v_emittente_sr_id, v_ordine_data, v_overrides);
+                      END IF;
+                  END LOOP;
+
+                  RETURN v_ordine_id;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.fn_genera_ordine_da_offerta(vendite.offerte_commerciali.id%TYPE) IS
+                  'Genera un ordine DRAFT da un''offerta in uno stato di accettazione, in una transazione, e ne restituisce l''id. Gemello di vendite.fn_push_offerta_a_contratto. Passi: l''offerta FOR UPDATE, sotto RLS (assente: E_OFFERTA_NON_TROVATA); solo da uno stato di accettazione del vocabolario (E_ORD_ORIGINE_NON_CONVERTIBILE); i documenti vivi da vendite.fn_offerta_documenti_vivi, un ordine (E_ORD_OFFERTA_GIA_CONVERTITA) o un contratto (E_OFFERTA_CONTRATTO_GIA_GENERATO), col bersaglio nel contesto; il primo motivo di script.fn_check_righe_offerta_in_ordine (E_DOC_RIGA_NON_AMMESSA), lo stesso della capability, prima di scrivere; la testata con cliente, emittente e valuta dell''offerta e la provenienza nella stessa INSERT: OFFERTA_COMMERCIALE con la chiave dell''offerta da script.fn_sorgente_provenienza (letta una volta per testata e righe); l''indirizzo di default (vendite.fn_doc_indirizzo_default); le righe di vendite.fn_offerta_righe_espanse nel loro ordine (riga_nr dalla posizione), coi prezzi negoziati, ognuna con la sua provenienza: OFFERTA_COMMERCIALE con la chiave dell''offerta da script.fn_sorgente_provenienza, e in sorgente_riga l''eccezione da cui viene, NULL per la riga del solo listino. Il composito nasce a 0 e prende il prezzo dai componenti, che crea vendite.fn_ordine_riga_componenti_init coi prezzi dell''offerta come override (esclusi quelli a 0, che la init rifiuta). SECURITY INVOKER: sotto RLS e coi guard dell''ordine, come se scrivesse l''operatore. L''unicita'' la tiene uq_ordini_v_sorgente_offerta, sulla provenienza.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_genera_ordine_da_offerta(
+                  p_offerta_id vendite.offerte_commerciali.id%TYPE)
+              RETURNS vendite.ordini.id%TYPE
+              LANGUAGE plpgsql
+              VOLATILE
+              SECURITY INVOKER
+              AS $function$
+              -- rev 2026-11-06 (brief-db-sorgente-documento-e-riga giro T.3): la testata scrive
+              --   la provenienza (sorgente_*), letta una volta per testata e righe.
+              -- rev 2026-10-24 (20261024-19, brief-modello-documento-vendita N-1/P-2):
+              --   lo stato iniziale non si scrive piu' qui: lo mette il trigger della
+              --   nascita (script.trgfn_doc_stato_iniziale), letto dal vocabolario.
+              -- =========================================================
+              -- VERBO (brief-db-offerta-emissione-ed-erogazione §I.2, I-D2 di Tid,
+              --   2026-10-21): genera un ordine DRAFT da un'offerta ACCETTATA, in UNA
+              --   transazione. Gemello di vendite.fn_push_offerta_a_contratto: fino a
+              --   oggi lo orchestrava il backend in Python
+              --   (ordini_service.crea_ordine_da_offerta), che si ritira e chiama questo.
+              --
+              -- I passi, nell'ordine del Python che sostituisce:
+              --   1. l'offerta, bloccata FOR UPDATE: due «genera» concorrenti (o un
+              --      genera e un push) si mettono in fila, e il secondo vede il primo
+              --      fra i documenti vivi;
+              --   2. lo stato: solo ACCETTATA (E_ORD_ORIGINE_NON_CONVERTIBILE);
+              --   3. i documenti VIVI nati dall'offerta (vendite.fn_offerta_documenti_vivi,
+              --      la sede del push e della capability): un ordine vivo
+              --      (E_ORD_OFFERTA_GIA_CONVERTITA) o un contratto vivo
+              --      (E_OFFERTA_CONTRATTO_GIA_GENERATO), col bersaglio;
+              --   4. le righe: il primo motivo di script.fn_check_righe_offerta_in_ordine,
+              --      lo stesso che spegne «Genera ordine» nella capability — prima di
+              --      scrivere. Il guard delle righe d'ordine resta la rete;
+              --   5. la testata: cliente, emittente, valuta dall'offerta; la provenienza
+              --      (OFFERTA_COMMERCIALE, id) nella stessa INSERT. Data, utility, ruolo
+              --      e numero li scrivono default e trigger dell'ordine;
+              --   6. l'indirizzo di default dall'anagrafica del cliente
+              --      (vendite.fn_doc_indirizzo_default), come per ogni ordine nuovo;
+              --   7. le righe espanse (vendite.fn_offerta_righe_espanse), una per una nel
+              --      loro ordine, coi prezzi NEGOZIATI: il non composito col suo prezzo;
+              --      il composito a 0, perche' il prezzo del padre lo ricalcola il DB dai
+              --      componenti, che nascono da vendite.fn_ordine_riga_componenti_init
+              --      coi prezzi dell'offerta come override.
+              --
+              -- ⚠️ Override a zero: fn_ordine_riga_componenti_init rifiuta un override
+              --   0 su un componente obbligatorio. Come faceva il Python, un componente
+              --   negoziato a 0 non va negli override e ricade sul resolver.
+              -- =========================================================
+              DECLARE
+                  v_offerta       vendite.offerte_commerciali%ROWTYPE;
+                  v_stato_cod     config.stati_doc_offerte.codice_interno%TYPE;
+                  v_accettazione  config.stati_doc_offerte.accettazione%TYPE;
+                  v_ordine_id     vendite.ordini.id%TYPE;
+                  v_ordine_data   vendite.ordini.data%TYPE;
+                  v_emittente_fiscale_id vendite.ordini.emittente_fiscale_id%TYPE;
+                  v_emittente_sr_id      anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE;
+                  v_riga_id       vendite.ordini_righe.id%TYPE;
+                  v_prov_tipo_id   vendite.ordini_righe.sorgente_tipo_id%TYPE;
+                  v_prov_id        vendite.ordini_righe.sorgente_id%TYPE;
+                  v_prov_uid       vendite.ordini_righe.sorgente_uid%TYPE;
+                  -- Nudi DICHIARATI: l'array {tipo, id} dei documenti vivi e gli
+                  -- override dei componenti sono frammenti jsonb composti; v_riga e' una
+                  -- riga di vendite.fn_offerta_righe_espanse con la sua posizione.
+                  v_bersagli      jsonb;
+                  v_overrides     jsonb;
+                  v_riga          record;
+              BEGIN
+                  IF p_offerta_id IS NULL OR p_offerta_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_genera_ordine_da_offerta',
+                          'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('param', 'p_offerta_id', 'value', p_offerta_id),
+                          NULL::uuid,
+                          'p_offerta_id = ' || COALESCE(p_offerta_id::text, 'NULL'));
+                  END IF;
+
+                  -- 1. L'offerta, in fila (sotto RLS: un'offerta che non si vede non c'e').
+                  SELECT * INTO v_offerta
+                    FROM vendite.offerte_commerciali
+                   WHERE id = p_offerta_id
+                     FOR UPDATE;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_genera_ordine_da_offerta',
+                          'E_OFFERTA_NON_TROVATA',
+                          jsonb_build_object('offerta_id', p_offerta_id),
+                          NULL::uuid,
+                          p_offerta_id::text);
+                  END IF;
+
+                  -- 2. Solo dallo stato di accettazione, dal vocabolario
+                  --    (rev 2026-10-31 (20261031-18, brief-modello-documento-vendita §17)).
+                  SELECT codice_interno, accettazione INTO v_stato_cod, v_accettazione
+                    FROM config.stati_doc_offerte
+                   WHERE id = v_offerta.stato_doc_offerta_id;
+
+                  IF v_accettazione IS NOT TRUE THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_genera_ordine_da_offerta',
+                          'E_ORD_ORIGINE_NON_CONVERTIBILE',
+                          jsonb_build_object('offerta_id',     p_offerta_id,
+                                             'stato_corrente', COALESCE(v_stato_cod, 'NULL')),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  -- 3. Gia' trasformata? Solo i documenti VIVI. Il bersaglio e' il
+                  --    documento che blocca la strada, non l'offerta (come nel push).
+                  SELECT jsonb_agg(jsonb_build_object('tipo', d.tipo, 'id', d.documento_id::text)
+                                   ORDER BY d.documento_id)
+                    INTO v_bersagli
+                    FROM vendite.fn_offerta_documenti_vivi(p_offerta_id) AS d
+                   WHERE d.tipo = 'ORDINE_VENDITA';
+
+                  IF v_bersagli IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_genera_ordine_da_offerta',
+                          'E_ORD_OFFERTA_GIA_CONVERTITA',
+                          jsonb_build_object('offerta_id', p_offerta_id,
+                                             'bersaglio',  v_bersagli),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  SELECT jsonb_agg(jsonb_build_object('tipo', d.tipo, 'id', d.documento_id::text)
+                                   ORDER BY d.documento_id)
+                    INTO v_bersagli
+                    FROM vendite.fn_offerta_documenti_vivi(p_offerta_id) AS d
+                   WHERE d.tipo = 'CONTRATTO';
+
+                  IF v_bersagli IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_genera_ordine_da_offerta',
+                          'E_OFFERTA_CONTRATTO_GIA_GENERATO',
+                          jsonb_build_object('offerta_id', p_offerta_id,
+                                             'bersaglio',  v_bersagli),
+                          NULL::uuid,
+                          COALESCE(v_offerta.codice, p_offerta_id::text));
+                  END IF;
+
+                  -- 4. Le righe, prima di scrivere: lo stesso motivo della capability.
+                  PERFORM script.fn_raise_primo_motivo_se_presente(
+                      'vendite', 'fn_genera_ordine_da_offerta',
+                      script.fn_check_righe_offerta_in_ordine(p_offerta_id),
+                      'articolo_id',
+                      NULL::uuid,
+                      jsonb_build_object('offerta_id', p_offerta_id,
+                                         'codice',     v_offerta.codice));
+
+                  -- 5. La testata, con la provenienza: il tipo e la chiave dell'offerta, per il
+                  --    key_selector del tipo (script.fn_sorgente_provenienza), letti una volta per
+                  --    la testata e per le righe. Accanto, la colonna parallela
+                  --    documento_origine_*, che si ritira a parte.
+                  --    Lo stato non si scrive: DRAFT lo mette trg_ordini_a05_stato_iniziale_ins.
+                  SELECT p.sorgente_tipo_id, p.sorgente_id, p.sorgente_uid
+                    INTO v_prov_tipo_id, v_prov_id, v_prov_uid
+                    FROM script.fn_sorgente_provenienza('OFFERTA_COMMERCIALE', p_offerta_id::text) p;
+
+                  INSERT INTO vendite.ordini (
+                      billing_account_id,
+                      emittente_fiscale_id,
+                      valuta_id,
+                      sorgente_tipo_id,
+                      sorgente_id,
+                      sorgente_uid,
+                      documento_origine_tipo,
+                      documento_origine_id)
+                  VALUES (
+                      v_offerta.billing_account_id,
+                      v_offerta.emittente_fiscale_id,
+                      v_offerta.valuta_id,
+                      v_prov_tipo_id,
+                      v_prov_id,
+                      v_prov_uid,
+                      'OFFERTA_COMMERCIALE',
+                      p_offerta_id)
+                  RETURNING id, data, emittente_fiscale_id
+                       INTO v_ordine_id, v_ordine_data, v_emittente_fiscale_id;
+
+                  -- 6. L'indirizzo di default dall'anagrafica del cliente.
+                  PERFORM vendite.fn_doc_indirizzo_default('ORDINE_VENDITA', v_ordine_id);
+
+                  -- 7. Le righe espanse. L'emittente dei componenti e' il soggetto-ruolo
+                  --    dell'emittente fiscale dell'ordine (non la sua PK), la data quella
+                  --    dell'ordine.
+                  SELECT ef.soggetto_ruolo_id INTO v_emittente_sr_id
+                    FROM anagrafiche.emittenti_fiscali ef
+                   WHERE ef.id = v_emittente_fiscale_id;
+
+                  FOR v_riga IN
+                      SELECT r.*
+                        FROM vendite.fn_offerta_righe_espanse(p_offerta_id)
+                             WITH ORDINALITY AS r(articolo_id, articolo_codice, descrizione, is_composito,
+                                                  quantita, uom_operativa_id, qta_operativa, factor_to_base,
+                                                  prezzo_unitario, sconto_percentuale, iva_id,
+                                                  tipo_eccezione, origine, componenti, eccezione_id,
+                                                  riga_nr)
+                       ORDER BY r.riga_nr
+                  LOOP
+                      INSERT INTO vendite.ordini_righe (
+                          ordine_id, riga_nr, articolo_id, descrizione,
+                          quantita, qta_operativa, uom_operativa_id, factor_to_base,
+                          prezzo_unitario, sconto_percentuale, iva_id,
+                          sorgente_tipo_id, sorgente_id, sorgente_uid, sorgente_riga)
+                      VALUES (
+                          v_ordine_id, v_riga.riga_nr::integer, v_riga.articolo_id, v_riga.descrizione,
+                          v_riga.quantita, v_riga.qta_operativa, v_riga.uom_operativa_id, v_riga.factor_to_base,
+                          CASE WHEN v_riga.is_composito THEN 0 ELSE v_riga.prezzo_unitario END,
+                          v_riga.sconto_percentuale, v_riga.iva_id,
+                          -- La provenienza: l'offerta e l'eccezione da cui la riga viene
+                          -- (NULL per la riga del solo listino: la provenienza e' l'offerta).
+                          v_prov_tipo_id, v_prov_id, v_prov_uid, v_riga.eccezione_id)
+                      RETURNING id INTO v_riga_id;
+
+                      IF v_riga.is_composito IS TRUE THEN
+                          SELECT jsonb_object_agg(c ->> 'componente_id', c ->> 'prezzo')
+                            INTO v_overrides
+                            FROM jsonb_array_elements(
+                                     CASE WHEN jsonb_typeof(v_riga.componenti) = 'array'
+                                          THEN v_riga.componenti ELSE '[]'::jsonb END) AS c
+                           WHERE c ->> 'componente_id' IS NOT NULL
+                             AND c ->> 'prezzo' IS NOT NULL
+                             AND (c ->> 'prezzo')::numeric <> 0;
+
+                          PERFORM vendite.fn_ordine_riga_componenti_init(
+                              v_riga_id, v_emittente_sr_id, v_ordine_data, v_overrides);
+                      END IF;
+                  END LOOP;
+
+                  RETURN v_ordine_id;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.fn_genera_ordine_da_offerta(vendite.offerte_commerciali.id%TYPE) IS
+                  'Genera un ordine DRAFT da un''offerta in uno stato di accettazione, in una transazione, e ne restituisce l''id. Gemello di vendite.fn_push_offerta_a_contratto. Passi: l''offerta FOR UPDATE, sotto RLS (assente: E_OFFERTA_NON_TROVATA); solo da uno stato di accettazione del vocabolario (E_ORD_ORIGINE_NON_CONVERTIBILE); i documenti vivi da vendite.fn_offerta_documenti_vivi, un ordine (E_ORD_OFFERTA_GIA_CONVERTITA) o un contratto (E_OFFERTA_CONTRATTO_GIA_GENERATO), col bersaglio nel contesto; il primo motivo di script.fn_check_righe_offerta_in_ordine (E_DOC_RIGA_NON_AMMESSA), lo stesso della capability, prima di scrivere; la testata con cliente, emittente e valuta dell''offerta e la provenienza nella stessa INSERT: OFFERTA_COMMERCIALE con la chiave dell''offerta da script.fn_sorgente_provenienza (letta una volta per testata e righe), e accanto la colonna parallela documento_origine_* (OFFERTA_COMMERCIALE, id); l''indirizzo di default (vendite.fn_doc_indirizzo_default); le righe di vendite.fn_offerta_righe_espanse nel loro ordine (riga_nr dalla posizione), coi prezzi negoziati, ognuna con la sua provenienza: OFFERTA_COMMERCIALE con la chiave dell''offerta da script.fn_sorgente_provenienza, e in sorgente_riga l''eccezione da cui viene, NULL per la riga del solo listino. Il composito nasce a 0 e prende il prezzo dai componenti, che crea vendite.fn_ordine_riga_componenti_init coi prezzi dell''offerta come override (esclusi quelli a 0, che la init rifiuta). SECURITY INVOKER: sotto RLS e coi guard dell''ordine, come se scrivesse l''operatore. L''unicita'' la tiene uq_ordini_v_sorgente_offerta, sulla provenienza (e uq_ordini_v_documento_origine_offerta sulla colonna parallela).';

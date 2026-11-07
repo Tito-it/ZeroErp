@@ -1,5 +1,8 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
+-- rev 2026-11-07 (brief-db-sorgente-documento-e-riga, giro T.5, 20261106-97): contratti.offerta_id e'
+--   ritirata; il contratto nato dall'offerta si riconosce dalla provenienza (sorgente_uid = l'uid
+--   dell'offerta, col tipo OFFERTA_COMMERCIALE). Attese invariate.
 -- pgTAP test per Zero ERP
 -- rev 2026-10-26 (brief-modello-documento-vendita §13, giro 9): lo stato dell'offerta si
 --   cambia solo dal verbo; la fixture arriva ad ACCETTATA con dbops.fn_pgtap_porta_a_stato
@@ -113,7 +116,7 @@ SELECT lives_ok(
 -- ============================================================
 SELECT ok(
     EXISTS(SELECT 1 FROM vendite.contratti
-            WHERE offerta_id = (SELECT id FROM vendite.offerte_commerciali WHERE meta->>'pgtap_pushfissa'='1')),
+            WHERE sorgente_uid = (SELECT uid FROM vendite.offerte_commerciali WHERE meta->>'pgtap_pushfissa'='1')),
     '3) push -> contratto DRAFT creato dall''offerta');
 
 -- ============================================================
@@ -123,7 +126,7 @@ SELECT ok(
     (SELECT cr.qta_operativa = 3 AND cr.quantita = 3
        FROM vendite.contratti_righe cr
        JOIN vendite.contratti c ON c.id = cr.contratto_id
-      WHERE c.offerta_id = (SELECT id FROM vendite.offerte_commerciali WHERE meta->>'pgtap_pushfissa'='1')
+      WHERE c.sorgente_uid = (SELECT uid FROM vendite.offerte_commerciali WHERE meta->>'pgtap_pushfissa'='1')
       LIMIT 1),
     '4) riga contratto copiata: qta_operativa=3 e quantita=3 coerenti');
 
