@@ -84,8 +84,10 @@ _UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
     # Univocità 1:1 offerta→ordine: la violazione dell'indice parziale diventa
     # lo stesso errore parlante del verbo `fn_genera_ordine_da_offerta`. Il
     # verbo blocca l'offerta `FOR UPDATE`, quindi due generazioni si mettono in
-    # fila: l'indice resta la rete.
-    "uq_ordini_v_documento_origine_offerta": (
+    # fila: l'indice resta la rete. ⚠️ Dal giro T.5 di
+    # brief-db-sorgente-documento-e-riga (2026-11-07) l'indice sta sulla
+    # provenienza: `uq_ordini_v_documento_origine_offerta` non esiste piu'.
+    "uq_ordini_v_sorgente_offerta": (
         "E_ORD_OFFERTA_GIA_CONVERTITA",
         "Un ordine è già stato generato da questa offerta.",
     ),

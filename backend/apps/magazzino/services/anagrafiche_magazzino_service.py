@@ -15,7 +15,8 @@
 #       magazzino dell'ubicazione e' immutabile (lock,
 #       `E_MAG_UBICAZIONE_MAGAZZINO_IMMUTABILE`), la scadenza del lotto e' >=
 #       dell'arrivo (`chk_mag_lotti_scadenza_dopo_arrivo`), l'articolo del
-#       lotto e' attivo (`E_ATTIVO_REQUIRE`). Il service esegue e traduce.
+#       lotto e' attivo (`E_ATTIVO_PADRE_NON_ATTIVO`, 409 col campo). Il
+#       service esegue e traduce.
 #
 #       ⭐ `emittente_fiscale_id` del magazzino NON viaggia nel payload: lo
 #       mette `trgfn_default_emittente_fiscale('SOLLEVA')` dalla GUC. L'admin

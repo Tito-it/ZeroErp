@@ -507,6 +507,8 @@
       "descrizione_breve": "Descrizione breve",
       "descrizione_fattura": "Descrizione in fattura",
       "descrizione_locale": "Descrizione locale",
+      "dettaglio_fk_column": "Colonna verso la riga (dettaglio)",
+      "dettaglio_table": "Tabella del dettaglio",
       "direzione": "Direzione",
       "emissione": "Stato di emissione",
       "emittibile": "Emettibile",
@@ -575,7 +577,9 @@
       "richiede_cliente": "Richiede il cliente",
       "richiede_abbinamento": "Richiede abbinamento",
       "richiede_pdp": "Richiede PDP",
+      "righe_fk_column": "Colonna verso il documento (righe)",
       "righe_lavorabili": "Righe lavorabili",
+      "righe_table": "Tabella delle righe",
       "ripartizione": "Ripartizione",
       "ripetibilita": "Ripetibilità",
       "scadenza": "Stato di scadenza",
@@ -2181,7 +2185,8 @@
         "composito_come_bundle": "È un kit: in un listino entra come bundle, coi prezzi dei suoi componenti.",
         "tipologia_mancante": "L'articolo non ha una tipologia di listino: in un listino non può entrare.",
         "tipologia_incompatibile": "La tipologia dell'articolo non è quella del listino.",
-        "kit_senza_componenti": "Kit senza componenti: completa la sua distinta prima di usarlo."
+        "kit_senza_componenti": "Kit senza componenti: completa la sua distinta prima di usarlo.",
+        "obsoleto": "Articolo ritirato: non si può scegliere per una riga nuova."
       }
     },
     "date_consegna": {

@@ -32,9 +32,3 @@ class AnagraficheService:
         termine = (search or "").strip() or None
         require_min_search_length(termine, field_name="search")
         return {"results": self._repo.list_risorse_umane_lookup(search=termine)}
-
-    # Scopo: Una risorsa umana per id (id, nome, attivo) o None. Serve ai
-    #        service di dominio che assegnano una persona e vogliono dire
-    #        «non e' attiva» PRIMA che lo dica il trigger con un codice tecnico.
-    def get_risorsa_umana_lookup(self, risorsa_umana_id: int) -> dict[str, Any] | None:
-        return self._repo.get_risorsa_umana_lookup(risorsa_umana_id)

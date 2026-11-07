@@ -22,7 +22,7 @@ from typing import Any
 
 from django.db import connection
 
-from apps.config.sorgenti import SORGENTE_RESO_VENDITA
+from apps.config.sorgenti import SORGENTE_DDT_VENDITA, SORGENTE_RESO_VENDITA
 from apps.core.api.constants import MAX_LIMIT
 from apps.core.db._helpers import (
     colonna_ordinamento,
@@ -321,20 +321,35 @@ class ResiRepository(RigheDocumentoRepositoryMixin):
 
     # Scopo: Lettura LEGGERA per i guard delle righe: stato corrente, numero
     #        (l'etichetta del rifiuto «Reso 2026/00012», o «Reso #131» se NULL)
-    #        e id del DDT di origine (via uid sorgente), senza materializzare
+    #        e id del DDT di origine (dalla provenienza), senza materializzare
     #        la vista lista con le decodifiche. None se il reso non esiste.
+    # ⭐ La provenienza la risolve il BB del DB `script.fn_sorgente_documento`
+    #        (tipo + la chiave che c'e', id o uid, coerenti fra loro): e' la
+    #        sede unica della regola d'incontro, non si riscrive qui.
+    # ⛔ Il TIPO e' parte della chiave: `sorgente_id` e' polimorfo, e il
+    #        modello non vincola il tipo della provenienza di un reso (nessun
+    #        CHECK, guard `'DOCUMENTO'`). Senza il filtro un reso nato da un
+    #        altro documento con lo stesso id numerico si legherebbe a QUELLA
+    #        bolla, e `gestisci_riga` ne copierebbe le righe. Tipo diverso =
+    #        `ddt_origine_id` NULL, e il service rifiuta in chiaro.
     def get_stato_e_ddt_origine(self, reso_id: int) -> dict[str, Any] | None:
         sql = """
             SELECT sdr.codice_interno AS stato_codice_interno,
                    r.numero,
-                   d.id               AS ddt_origine_id
+                   d.documento_id     AS ddt_origine_id
               FROM vendite.resi r
               JOIN config.stati_doc_reso sdr ON sdr.id = r.stato_doc_reso_id
-              LEFT JOIN vendite.ddt d ON d.uid = r.sorgente_uid
+              JOIN config.sorgenti s ON s.id = r.sorgente_tipo_id
+              LEFT JOIN LATERAL (
+                  SELECT x.documento_id
+                    FROM script.fn_sorgente_documento(
+                             r.sorgente_tipo_id, r.sorgente_id, r.sorgente_uid) x
+                   WHERE s.codice_interno = %s
+              ) d ON true
              WHERE r.id = %s
         """
         with connection.cursor() as cursor:
-            cursor.execute(sql, [reso_id])
+            cursor.execute(sql, [SORGENTE_DDT_VENDITA, reso_id])
             return row_to_dict(cursor)
 
     # Scopo: Stato corrente (codice_interno) del reso. Guard pre-operazione del
@@ -629,22 +644,40 @@ class ResiRepository(RigheDocumentoRepositoryMixin):
     #        NOT NULL di tabella sono soddisfatti dal trigger). Nemmeno lo
     #        stato: lo mette il DB, lo stato iniziale del vocabolario
     #        (`script.trgfn_doc_stato_iniziale`).
+    # ⭐ La PROVENIENZA la sceglie il BB del DB, non questo metodo:
+    #        `script.fn_sorgente_provenienza('DDT_VENDITA', <id bolla>)` da' il
+    #        tipo e la sola chiave che il `key_selector` del tipo vuole (per la
+    #        bolla, `sorgente_id`), e solleva se il tipo e' spento o la bolla non
+    #        e' visibile. Fino al giro T.2 di brief-db-sorgente-documento-e-riga
+    #        (2026-11-07) qui si scriveva l'uid della bolla e il tipo lo leggeva
+    #        il service: il guard unico della provenienza ora lo rifiuta
+    #        (`E_SORG_CHIAVE_NON_CONFORME`). Scegliere la chiave a mano sarebbe
+    #        una seconda copia del catalogo delle sorgenti.
     def create_reso(
         self,
         *,
-        sorgente_tipo_id: int,
-        sorgente_uid: str,
+        ddt_id: int,
         data: date | None = None,
         meta: dict[str, Any] | None = None,
         magazzino_id: int | None = None,
     ) -> dict[str, Any]:
-        # BB `execute_dynamic_insert`: `data` None si omette (`skip_none`) e
-        # vale il DEFAULT `fn_data_operativa()`; chiavi letterali del metodo.
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT sorgente_tipo_id, sorgente_id, sorgente_uid"
+                "  FROM script.fn_sorgente_provenienza(%s, %s::text)",
+                [SORGENTE_DDT_VENDITA, ddt_id],
+            )
+            provenienza = row_to_dict(cursor)
+        assert provenienza is not None  # ROWS 1: la funzione solleva, non torna vuota
+        # BB `execute_dynamic_insert`: i None si omettono (`skip_none`) — la
+        # chiave che il tipo non usa, `data` (DEFAULT `fn_data_operativa()`),
+        # il magazzino; chiavi letterali del metodo.
         return execute_dynamic_insert(
             "vendite.resi",
             {
-                "sorgente_tipo_id": sorgente_tipo_id,
-                "sorgente_uid": sorgente_uid,
+                "sorgente_tipo_id": provenienza["sorgente_tipo_id"],
+                "sorgente_id": provenienza["sorgente_id"],
+                "sorgente_uid": provenienza["sorgente_uid"],
                 "data": data,
                 # None = il default del DB (il magazzino della bolla d'origine).
                 "magazzino_id": magazzino_id,

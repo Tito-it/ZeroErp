@@ -51,7 +51,6 @@ from apps.core.services.payload_helpers import (
     translate_db_errors,
 )
 from apps.core.services.testata_guard import testata_o_not_found
-from apps.anagrafiche.services.anagrafiche_service import AnagraficheService
 from apps.anagrafiche.services.billing_account_service import istanza_del_billing_account
 from apps.vendite.db.commesse_repository import (
     TESTATA_COMMESSE,
@@ -546,12 +545,13 @@ _TESTATA_FK_CONSTRAINTS: dict[str, tuple] = {
 #        esplicito AZZERA (togliere il responsabile e' un gesto legittimo).
 #        Nessun guard di STATO: il DB non ne mette, di proposito — la
 #        descrizione di una commessa chiusa si puo' correggere.
-# ⭐ Il responsabile deve essere una persona ATTIVA, e lo si dice QUI con un
-#        400 che nomina il campo: a DB lo rifiuterebbe comunque il require sul
-#        figlio (`trg_commesse_a10_risorse_umane_require_attivo_ins_upd`), ma
-#        con `E_ATTIVO_REQUIRE`, che e' di classe TECNICO (500) e parla di
-#        trigger — non e' una frase per l'operatore. Il guard DB resta
-#        l'autorita'; questo e' il messaggio.
+# ⭐ Il responsabile deve essere una persona ATTIVA, e lo dice il DB: il
+#        require sul figlio (`trg_commesse_a10_risorse_umane_require_attivo_ins_upd`)
+#        risponde `E_ATTIVO_PADRE_NON_ATTIVO` (CONFLITTO_STATO, 409) con la
+#        colonna nel campo, e una persona inesistente e' la FK qui sotto.
+#        Fino al 2026-11-07 il require diceva `E_ATTIVO_REQUIRE` (TECNICO, 500)
+#        e il service lo anticipava con una lettura sua: ritirata con
+#        brief-db-revisione-dbops BE3 (D46), la regola ha una sede sola.
 def aggiorna_commessa_testata(commessa_id: int, payload: dict[str, Any]) -> dict:
     function_name = "vendite.commesse_service.aggiorna_commessa_testata"
     _guard_commessa_id(commessa_id, function_name=function_name)
@@ -566,25 +566,6 @@ def aggiorna_commessa_testata(commessa_id: int, payload: dict[str, Any]) -> dict
         context_vuoto={"commessa_id": commessa_id, "allowed_keys": sorted(_TESTATA_KEYS)},
         function_name=function_name,
     )
-
-    responsabile_id = dati.get("responsabile_risorsa_umana_id")
-    if responsabile_id is not None:
-        persona = AnagraficheService().get_risorsa_umana_lookup(responsabile_id)
-        ErrorManager.require(
-            persona is not None and bool(persona.get("attivo")),
-            code="E_COMMESSA_VALIDATION",
-            message=(
-                "Il responsabile deve essere una risorsa umana attiva."
-                if persona is not None else "Responsabile non trovato."
-            ),
-            context={
-                "field": "responsabile_risorsa_umana_id",
-                "commessa_id": commessa_id,
-                "responsabile_risorsa_umana_id": responsabile_id,
-            },
-            function_name=function_name,
-            log_to_db=True,
-        )
 
     repo = CommesseRepository()
     with translate_db_errors(
