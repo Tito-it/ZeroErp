@@ -169,6 +169,8 @@ CREATE OR REPLACE FUNCTION pg_temp.invia(v jsonb) RETURNS bigint AS $$
       p_stato_emissione               => 'NON_EMESSA',
       p_sorgente_tipo_id              => (v ->> 'sorgente_tipo_id')::bigint,
       p_sorgente_uid                  => v ->> 'sorgente_uid',
+      -- La riga del documento, dal lister (come la passa il backend).
+      p_sorgente_riga => (v ->> 'riga_id')::bigint,
       p_tipo_movimento                => (v ->> 'tipo_movimento')::varchar,
       p_meta                          => COALESCE(v -> 'meta', '{}'::jsonb),
       p_causale_onere_id              => (v ->> 'causale_onere_id')::bigint) u
@@ -303,7 +305,7 @@ SELECT pg_temp.invia(l.v) AS id FROM _lo l WHERE l.v ->> 'tipo_movimento' = 'ONE
 SELECT is(
   (SELECT ca.tipo_movimento || '|' || (ca.causale_onere_id = (SELECT id FROM _caus))::text
           || '|' || s.codice_interno
-          || '|' || (ca.sorgente_uid = (SELECT o.uid::text FROM vendite.ordini o WHERE o.id = (SELECT id FROM _ob)))::text
+          || '|' || (vendite.fn_documento_uid_di_attivita(ca.sorgente_tipo_id, ca.segment_key) = (SELECT o.uid::text FROM vendite.ordini o WHERE o.id = (SELECT id FROM _ob)))::text
      FROM _io i
      JOIN vendite.commesse_attivita ca ON ca.id = i.id
      JOIN config.sorgenti s ON s.id = ca.sorgente_tipo_id),
@@ -350,7 +352,7 @@ SELECT pg_temp.invia(l.v) AS id FROM _ld l WHERE l.v ->> 'tipo_movimento' = 'ONE
 SELECT is(
   (SELECT ca.tipo_movimento || '|' || (ca.causale_onere_id = (SELECT id FROM _caus))::text
           || '|' || s.codice_interno
-          || '|' || (ca.sorgente_uid = (SELECT ddt_uid::text FROM _ba1))::text
+          || '|' || (vendite.fn_documento_uid_di_attivita(ca.sorgente_tipo_id, ca.segment_key) = (SELECT ddt_uid::text FROM _ba1))::text
      FROM _id i
      JOIN vendite.commesse_attivita ca ON ca.id = i.id
      JOIN config.sorgenti s ON s.id = ca.sorgente_tipo_id),

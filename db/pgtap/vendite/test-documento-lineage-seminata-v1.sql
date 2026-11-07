@@ -154,18 +154,18 @@ BEGIN
 
   -- B, E, U: una riga di commessa NON_EMESSA per ciascuna sorgente.
   FOR k IN
-    SELECT s.id AS tipo_id, x.uid
+    SELECT s.id AS tipo_id, x.codice, x.uid
       FROM (VALUES ('PREVENTIVO',     (SELECT preventivo_uid::text FROM g_prev)),
                    ('ORDINE_VENDITA', (SELECT ordine_uid::text     FROM g_ord)),
                    ('DDT_VENDITA',    (SELECT d.uid::text FROM vendite.ddt d
                                         WHERE d.id = (SELECT ddt_id FROM g_ddt)))) AS x(codice, uid)
       JOIN config.sorgenti s ON s.codice_interno = x.codice
   LOOP
+    -- La riga nasce dal suo documento: il builder compone la chiave del push col suo uid.
     SELECT a.attivita_id INTO v_ca
-      FROM dbops.fn_pgtap_crea_commessa_attivita((SELECT commessa_id FROM g_com)) a;
-    UPDATE vendite.commesse_attivita
-       SET sorgente_tipo_id = k.tipo_id, sorgente_uid = k.uid
-     WHERE id = v_ca;
+      FROM dbops.fn_pgtap_crea_commessa_attivita((SELECT commessa_id FROM g_com),
+                                                 p_sorgente_codice => k.codice,
+                                                 p_sorgente_uid    => k.uid) a;
   END LOOP;
 END $leg$;
 

@@ -283,14 +283,14 @@ INSERT INTO vendite.commesse_attivita (
   commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita,
   uom_id, quantita, competenza_mese, competenza_dal, competenza_al,
   tipo_doc_fiscale_id, valuta_id, prezzo_snapshot, pricing_mode,
-  stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
+  stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_id)
 SELECT (SELECT id FROM tmp_ap_commessa),
-       'PGTAP-AP-A1-' || substr(md5(clock_timestamp()::text), 1, 8),
+       ((SELECT x.segment_key FROM dbops.fn_pgtap_consumo_della_commessa((SELECT id FROM tmp_ap_commessa)) x) || ':' || 'PGTAP-AP-A1-' || substr(md5(clock_timestamp()::text), 1, 8)),
        r.articolo_id, r.istanza_utility_id, DATE '2080-02-01', r.uom_id, 1,
        DATE '2080-02-01', DATE '2080-02-01', DATE '2080-02-28',
        r.tipo_doc_fiscale_id, r.valuta_id, 33.000000, 'FIXED',
-       'BOZZA', 'NON_EMESSA', (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
-         ((SELECT id FROM tmp_ap_commessa))::text
+       'BOZZA', 'NON_EMESSA', (SELECT x.sorgente_tipo_id FROM dbops.fn_pgtap_consumo_della_commessa((SELECT id FROM tmp_ap_commessa)) x),
+         (SELECT x.consumo_id FROM dbops.fn_pgtap_consumo_della_commessa((SELECT id FROM tmp_ap_commessa)) x)
 FROM tmp_ap_refs r;
 
 -- ============================================================

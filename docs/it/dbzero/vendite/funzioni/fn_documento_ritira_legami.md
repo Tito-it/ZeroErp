@@ -52,8 +52,9 @@ DECLARE
     -- rev 2026-10-12. I motivi che vietano: il valore di ritorno di
     -- una fn_check_*, nessuna colonna dietro.
     v_motivi        jsonb;
-    -- La chiave della sorgente di bolla e contratto: <testata>.uid::text,
-    -- la stessa che porta la riga di commessa.
+    -- La chiave del documento di bolla e contratto, come la scrive la riga
+    -- di commessa: id e uid, con la regola d'incontro.
+    v_sorgente_id   vendite.commesse_attivita.sorgente_id%TYPE;
     v_sorgente_uid  vendite.commesse_attivita.sorgente_uid%TYPE;
     v_ca_id         vendite.commesse_attivita.id%TYPE;
     v_resi_riga_id  vendite.resi_righe.id%TYPE;
@@ -92,16 +93,16 @@ BEGIN
     ELSE  -- DDT_VENDITA, CONTRATTO
         -- ⭐ rev 2026-11-06 (20261106-43, giro 0.3): la chiave dal BB che
         --   risolve, la stessa lettura per bolla e contratto.
-        SELECT d.documento_uid::text INTO v_sorgente_uid
+        SELECT d.documento_id, d.documento_uid INTO v_sorgente_id, v_sorgente_uid
           FROM config.sorgenti s
           CROSS JOIN LATERAL script.fn_sorgente_documento(s.id, p_id, NULL::uuid) d
          WHERE s.codice_interno = p_documento;
         -- Testata assente: nessun motivo, decide chi cambia lo stato.
-        IF v_sorgente_uid IS NOT NULL THEN
+        IF v_sorgente_id IS NOT NULL THEN
             v_motivi := script.fn_check_sorgente_chiudibile(
                 (SELECT s.id FROM config.sorgenti s
                   WHERE s.codice_interno = p_documento),
-                v_sorgente_uid);
+                v_sorgente_id, v_sorgente_uid);
         END IF;
     END IF;
 
@@ -181,13 +182,14 @@ BEGIN
     -- 4c. Commessa: le righe NON_EMESSA, per sorgente, dalla
     --     primitiva col registro.
     FOR v_sorgente IN
-        SELECT DISTINCT ca.sorgente_tipo_id, ca.sorgente_uid
+        SELECT DISTINCT ca.sorgente_tipo_id, ca.sorgente_id, ca.sorgente_uid
           FROM vendite.fn_documento_legami(p_documento, p_id) AS l
           JOIN vendite.commesse_attivita ca ON ca.id = l.origine_riga_id
          WHERE l.origine = 'COMMESSA'
     LOOP
         PERFORM vendite.fn_ritira_commessa_attivita_da_sorgente(
             v_sorgente.sorgente_tipo_id,
+            v_sorgente.sorgente_id,
             v_sorgente.sorgente_uid,
             format('Ritiro all''annullo confermato del documento di origine (%s %s)',
                    p_documento, p_id));
@@ -207,13 +209,14 @@ BEGIN
         v_motivo := format('Ritiro all''annullo confermato della commessa %s', p_id);
 
         FOR v_sorgente IN
-            SELECT DISTINCT ca.sorgente_tipo_id, ca.sorgente_uid
+            SELECT DISTINCT ca.sorgente_tipo_id, ca.sorgente_id, ca.sorgente_uid
               FROM vendite.fn_documento_legami(p_documento, p_id) AS l
               JOIN vendite.commesse_attivita ca ON ca.id = l.riga_id
              WHERE ca.sorgente_tipo_id IS NOT NULL
         LOOP
             PERFORM vendite.fn_ritira_commessa_attivita_da_sorgente(
-                v_sorgente.sorgente_tipo_id, v_sorgente.sorgente_uid, v_motivo, p_id);
+                v_sorgente.sorgente_tipo_id, v_sorgente.sorgente_id, v_sorgente.sorgente_uid,
+                v_motivo, p_id);
         END LOOP;
 
         FOR v_resi_riga_id IN

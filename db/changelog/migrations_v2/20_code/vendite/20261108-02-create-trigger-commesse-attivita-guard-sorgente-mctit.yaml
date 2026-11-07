@@ -1,0 +1,51 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL GUARD UNICO DELLA PROVENIENZA SU vendite.commesse_attivita
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto C, giro C.3 (livello DOCUMENTO, Tid 2026-11-07).
+#
+#   La riga di commessa non aveva un guard polimorfo: nessuno verificava che il documento
+#   d'origine esistesse. Dopo la forma del modello (20261107-70) monta il guard unico, livello
+#   DOCUMENTO e azione BLOCCA come commesse_sorgenti e fatture_righe. DOCUMENTO e non RIGA: le
+#   quote fisse del listino di un contratto (fn_contratti_addebiti_maturati) e i consumi vengono
+#   dal documento intero; la riga, quando c'e', si verifica. Il lato in uscita e' gia' montato
+#   sui documenti e sulle righe del catalogo (lo legge dai montaggi): da qui un documento, o una
+#   sua riga, citato da una riga di commessa non si cancella (E_SORG_ORIGINE_REFERENZIATA).
+#   UPDATE OF sulle quattro colonne: nessun trigger BEFORE della tabella le scrive.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261108-02-create-trigger-commesse-attivita-guard-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20261108-02-create-trigger-commesse-attivita-guard-sorgente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.commesse_attivita: montato script.trgfn_guard_sorgente(DOCUMENTO, BLOCCA). brief-db-
+        sorgente-documento-e-riga §7.2 lotto C, giro C.3.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_commesse_attivita_a10_guard_sorgente_ins_upd
+                  BEFORE INSERT OR UPDATE OF sorgente_tipo_id, sorgente_id, sorgente_uid, sorgente_riga
+                  ON vendite.commesse_attivita
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_sorgente('DOCUMENTO', 'BLOCCA');
+              COMMENT ON TRIGGER trg_commesse_attivita_a10_guard_sorgente_ins_upd ON vendite.commesse_attivita IS
+                'Il guard unico della provenienza (script.trgfn_guard_sorgente, livello DOCUMENTO, azione BLOCCA): il tipo esiste ed e'' attivo, la chiave e'' quella del key_selector del tipo, il documento esiste e si vede, la riga se c''e'' appartiene al documento. DOCUMENTO e non RIGA: le quote fisse del listino di un contratto e i consumi vengono dal documento intero. BLOCCA: il documento, e la riga, non si cancellano finche'' una riga di commessa li cita. Scatta prima di ...a10_guard_sorgente_segment_ins_upd (ordine alfabetico), che confronta la chiave del push con un documento che a quel punto esiste.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER trg_commesse_attivita_a10_guard_sorgente_ins_upd ON vendite.commesse_attivita;

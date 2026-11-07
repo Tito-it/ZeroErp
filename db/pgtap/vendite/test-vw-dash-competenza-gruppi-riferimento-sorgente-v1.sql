@@ -162,7 +162,7 @@ SELECT vendite.fn_link_commessa_sorgente(
 CREATE TEMP TABLE tmp_rif_att AS
 SELECT * FROM vendite.fn_upsert_commessa_attivita(
   p_commessa_id => (SELECT commessa_id FROM tmp_rif_comm),
-  p_segment_key => 'SEG-VGRIF-1'::varchar,
+  p_segment_key => ((SELECT script.fn_segment_key(s.codice_interno, d.documento_uid::text) FROM config.sorgenti s, script.fn_sorgente_documento_da_chiave(s.id, ((SELECT uid::text FROM tmp_rif_prev0))::text) d WHERE s.id = (SELECT src_preventivo_id FROM tmp_rif_refs)) || ':' || 'SEG-VGRIF-1'::varchar)::varchar,
   p_articolo_id => (SELECT articolo_id FROM tmp_rif_refs),
   p_istanza_utility_id => (SELECT istanza_utility_id FROM tmp_rif_refs),
   p_data_attivita => DATE '2082-01-15',

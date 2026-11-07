@@ -1,0 +1,280 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I LEGAMI DEL DOCUMENTO SULLE COLONNE DEL MODELLO: vendite.fn_documento_legami
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto C, giro C.3.
+#
+#   Due letture della riga di commessa: il documento d'origine (ramo COMMESSA) passa dal
+#   ponte testuale al BB che risolve sulle colonne del modello; le righe di commessa di un
+#   documento si cercano con la regola d'incontro su id e uid, al posto dell'uid testuale.
+#   Corpo dal vivo (dbdev, 2026-11-07), firma dal 20261106-80, clausole del vivo (DEFINER,
+#   search_path). COMMENT invariato; CREATE OR REPLACE mantiene i privilegi.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261107-84-update-fn-documento-legami-colonne-tipizzate-mctit.yaml
+
+  - changeSet:
+      id: 20261107-84-update-fn-documento-legami-colonne-tipizzate
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_documento_legami: la riga di commessa letta sulle colonne del modello. brief-db-
+        sorgente-documento-e-riga §7.2 lotto C, giro C.3.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_documento_legami(
+                  p_documento config.sorgenti.codice_interno%TYPE,
+                  p_id bigint)
+              RETURNS TABLE(
+                  riga_id         bigint,
+                  riga_nr         integer,
+                  origine         config.sorgenti.codice_interno%TYPE,
+                  natura          text,
+                  origine_id      bigint,
+                  origine_riga_id bigint,
+                  qta             numeric)
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              
+              #variable_conflict use_column
+              -- =========================================================
+              -- Scopo: i legami di un documento, una riga per legame: che
+              --   cosa si riapre se lo annullo, e dove. Vedi l'intestazione
+              --   del changeSet per la tabella dei legami.
+              -- Parametri: p_documento e' il codice della sorgente del
+              --   documento (DDT_VENDITA, ORDINE_VENDITA, PREVENTIVO, CONTRATTO,
+              --   COMMESSA, OFFERTA_COMMERCIALE), p_id la testata: polimorfa,
+              --   tipo nudo.
+              -- Ritorna: origine e' il codice della sorgente dall'altra parte
+              --   del legame (config.sorgenti.codice_interno), tranne ONERE:
+              --   una riga di commessa senza sorgente per progetto, che non ha
+              --   un documento a monte. natura e' il vocabolario di questa
+              --   funzione (CONSUMO, PROVENIENZA, ANNULLO); riga_id, riga_nr,
+              --   origine_id, origine_riga_id e qta sono polimorfi (righe e
+              --   testate di tabelle diverse): tipi nudi.
+              -- rev 2026-10-12 (brief-db-annullo-a-valle-riapre-a-monte, D-2,
+              --   D-7): + COMMESSA, il ramo in fondo all'IF.
+              -- rev 2026-10-19 (20261019-95, brief-db-grammatica-unica-documenti
+              --   lotto 2b): origine e' il codice della sorgente (ORDINE ->
+              --   ORDINE_VENDITA, RESO -> RESO_VENDITA, OFFERTA ->
+              --   OFFERTA_COMMERCIALE, DDT -> DDT_VENDITA, CONSUMI ->
+              --   ATTIVITA_CONSUMI), ancorato in RETURNS TABLE; nel ramo della
+              --   commessa la traduzione dal codice della sorgente non c'e' piu'.
+              -- rev 2026-10-26 (20261026-20, brief-modello-documento-vendita
+              --   §13, O-4 di Tid): + OFFERTA_COMMERCIALE. Il legame e' la
+              --   revisione precedente, superata, che torna emessa quando si
+              --   annulla la sua ultima revisione viva (Regola 6: un annullo che
+              --   riapre altro si conferma). PROVENIENZA: niente da ritirare.
+              -- =========================================================
+              DECLARE
+                  -- La sorgente di commessa del documento e la sua chiave, come la
+                  -- scrive la riga di commessa: id e uid, con la regola d'incontro.
+                  v_sorgente config.sorgenti.codice_interno%TYPE;
+                  v_doc_id   vendite.commesse_attivita.sorgente_id%TYPE;
+                  v_doc_uid  vendite.commesse_attivita.sorgente_uid%TYPE;
+              BEGIN
+                  IF p_id IS NULL OR p_id <= 0
+                     OR p_documento IS NULL
+                     OR p_documento NOT IN ('DDT_VENDITA', 'ORDINE_VENDITA', 'PREVENTIVO', 'CONTRATTO', 'COMMESSA', 'OFFERTA_COMMERCIALE') THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_documento_legami',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_documento', p_documento, 'p_id', p_id),
+                          NULL::uuid, 'vendite.fn_documento_legami',
+                          'documento (DDT_VENDITA, ORDINE_VENDITA, PREVENTIVO, CONTRATTO, COMMESSA, OFFERTA_COMMERCIALE) e id maggiore di zero');
+                  END IF;
+              
+                  IF p_documento = 'DDT_VENDITA' THEN
+                      v_sorgente := 'DDT_VENDITA';
+              
+                      RETURN QUERY
+                          SELECT dr.id, dr.riga_nr, 'ORDINE_VENDITA'::character varying, 'CONSUMO'::text,
+                                 orr.ordine_id, f.ordine_riga_id, f.qta_evasa::numeric
+                            FROM vendite.ddt_righe dr
+                            JOIN vendite.ordini_righe_fulfillment f ON f.ddt_riga_id = dr.id
+                            JOIN vendite.ordini_righe orr ON orr.id = f.ordine_riga_id
+                           WHERE dr.ddt_id = p_id
+                          UNION ALL
+                          SELECT dr.id, dr.riga_nr, 'RESO_VENDITA'::character varying, 'CONSUMO'::text,
+                                 r.reso_id, rr.resi_riga_id, rr.qta::numeric
+                            FROM vendite.ddt_righe dr
+                            JOIN vendite.resi_righe_riconsegne rr ON rr.ddt_riga_id = dr.id
+                            JOIN vendite.resi_righe r ON r.id = rr.resi_riga_id
+                           WHERE dr.ddt_id = p_id;
+              
+                  ELSIF p_documento = 'ORDINE_VENDITA' THEN
+                      v_sorgente := 'ORDINE_VENDITA';
+              
+                      RETURN QUERY
+                          SELECT orr.id, orr.riga_nr, 'PREVENTIVO'::character varying, 'CONSUMO'::text,
+                                 pr.preventivo_id, orr.preventivo_riga_id, orr.quantita::numeric
+                            FROM vendite.ordini_righe orr
+                            JOIN vendite.preventivi_righe pr ON pr.id = orr.preventivo_riga_id
+                           WHERE orr.ordine_id = p_id
+                          UNION ALL
+                          -- La provenienza dall'offerta: l'ordine la dichiara in sorgente_*
+                          -- (regola d'incontro del modello).
+                          SELECT NULL::bigint, NULL::integer, 'OFFERTA_COMMERCIALE'::character varying, 'PROVENIENZA'::text,
+                                 oc.id, NULL::bigint, NULL::numeric
+                            FROM vendite.ordini o
+                            JOIN config.sorgenti s ON s.id = o.sorgente_tipo_id
+                                                  AND s.codice_interno = 'OFFERTA_COMMERCIALE'
+                            JOIN vendite.offerte_commerciali oc ON (oc.id = o.sorgente_id OR oc.uid = o.sorgente_uid)
+                           WHERE o.id = p_id;
+              
+                  ELSIF p_documento = 'PREVENTIVO' THEN
+                      v_sorgente := 'PREVENTIVO';
+              
+                  ELSIF p_documento = 'COMMESSA' THEN
+                      -- ⭐ rev 2026-10-12 (D-1, D-2, D-7 di Tid): la commessa e' a
+                      --   valle di tutto cio' che la riempie. Un legame per riga
+                      --   NON_EMESSA (le EMESSA non sono legami: bloccano,
+                      --   script.fn_check_commessa_annullabile):
+                      --   - con sorgente: il documento che l'ha spinta (PREVENTIVO,
+                      --     ORDINE_VENDITA, CONTRATTO, DDT_VENDITA) o il consumo
+                      --     (ATTIVITA_CONSUMI), col codice della sorgente com'e';
+                      --     CONSUMO, si riapre: torna da mandare in commessa;
+                      --   - RETTIFICA (sourceless per progetto): il RESO_VENDITA del
+                      --     suo accredito; CONSUMO, il reso torna da accreditare;
+                      --   - ONERE (sourceless): niente a monte; natura ANNULLO, la
+                      --     riga si annulla con la commessa e la finestra lo dice.
+                      --   rev 2026-10-12 (20261012-28): una riga senza sorgente e' ONERE
+                      --   o RETTIFICA per vincolo di tabella
+                      --   (chk_commesse_attivita_senza_sorgente_onere_rettifica,
+                      --   20261012-27): il ramo MANUALE non esiste piu'.
+                      -- riga_id: la riga di commessa; origine_id: il documento (o il
+                      --   reso) dall'altra parte, dal resolver unico della sorgente
+                      --   polimorfa (script.fn_sorgente_documento, sulle colonne del modello);
+                      --   origine_riga_id: la riga di reso dell'accredito.
+                      RETURN QUERY
+                          SELECT ca.id,
+                                 NULL::integer,
+                                 -- rev 2026-10-19 (lotto 2b): il codice della sorgente
+                                 -- com'e', senza traduzione; ONERE non e' una sorgente.
+                                 CASE
+                                   WHEN ca.sorgente_tipo_id IS NOT NULL THEN s.codice_interno
+                                   WHEN ca.tipo_movimento = 'RETTIFICA' THEN 'RESO_VENDITA'
+                                   ELSE 'ONERE'
+                                 END::character varying,
+                                 CASE
+                                   WHEN ca.sorgente_tipo_id IS NULL AND ca.tipo_movimento = 'ONERE'
+                                     THEN 'ANNULLO'
+                                   ELSE 'CONSUMO'
+                                 END::text,
+                                 CASE
+                                   WHEN ca.sorgente_tipo_id IS NOT NULL THEN ref.documento_id
+                                   ELSE acc.reso_id
+                                 END,
+                                 acc.resi_riga_id,
+                                 ca.quantita::numeric
+                            FROM vendite.commesse_attivita ca
+                            LEFT JOIN config.sorgenti s ON s.id = ca.sorgente_tipo_id
+                            LEFT JOIN LATERAL (
+                                   SELECT r.documento_id
+                                     FROM script.fn_sorgente_documento(
+                                            ca.sorgente_tipo_id, ca.sorgente_id, ca.sorgente_uid) AS r
+                                    WHERE ca.sorgente_tipo_id IS NOT NULL
+                                 ) ref ON true
+                            LEFT JOIN LATERAL (
+                                   SELECT a.resi_riga_id, rr.reso_id
+                                     FROM vendite.resi_righe_accrediti a
+                                     JOIN vendite.resi_righe rr ON rr.id = a.resi_riga_id
+                                    WHERE a.commessa_attivita_id = ca.id
+                                      AND ca.tipo_movimento = 'RETTIFICA'
+                                    ORDER BY a.id
+                                    LIMIT 1
+                                 ) acc ON true
+                           WHERE ca.commessa_id = p_id
+                             AND ca.stato_emissione = 'NON_EMESSA'
+                           ORDER BY ca.id;
+                      RETURN;
+              
+                  ELSIF p_documento = 'OFFERTA_COMMERCIALE' THEN
+                      -- ⭐ rev 2026-10-26 (20261026-20, O-4 di Tid): la revisione
+                      --   precedente (il padre, superato) torna emessa se questa e'
+                      --   la sua ultima revisione viva: lo scrive la proiezione
+                      --   vendite.fn_offerta_proietta_stato_revisione, all'annullo.
+                      --   PROVENIENZA: niente da ritirare, si conferma. Nessun legame
+                      --   se la revisione e' gia' annullata, se il padre non e'
+                      --   superato o se un'altra revisione viva lo tiene superato:
+                      --   l'annullo non riaprirebbe niente.
+                      v_sorgente := 'OFFERTA_COMMERCIALE';
+              
+                      RETURN QUERY
+                          SELECT NULL::bigint, NULL::integer, 'OFFERTA_COMMERCIALE'::character varying, 'PROVENIENZA'::text,
+                                 o.revisione_padre_id, NULL::bigint, NULL::numeric
+                            FROM vendite.offerte_commerciali o
+                            JOIN config.stati_doc_offerte so ON so.id = o.stato_doc_offerta_id
+                            JOIN vendite.offerte_commerciali pd ON pd.id = o.revisione_padre_id
+                            JOIN config.stati_doc_offerte sp ON sp.id = pd.stato_doc_offerta_id
+                           WHERE o.id = p_id
+                             AND so.is_abortito IS FALSE
+                             AND sp.is_superato IS TRUE
+                             AND NOT EXISTS (
+                                   SELECT 1
+                                     FROM vendite.offerte_commerciali f
+                                     JOIN config.stati_doc_offerte sf ON sf.id = f.stato_doc_offerta_id
+                                    WHERE f.revisione_padre_id = o.revisione_padre_id
+                                      AND f.id <> o.id
+                                      AND sf.is_abortito IS FALSE);
+              
+                  ELSE  -- CONTRATTO
+                      v_sorgente := 'CONTRATTO';
+              
+                      RETURN QUERY
+                          -- La provenienza dall'offerta: il contratto la dichiara in sorgente_*
+                          -- (regola d'incontro del modello).
+                          SELECT NULL::bigint, NULL::integer, 'OFFERTA_COMMERCIALE'::character varying, 'PROVENIENZA'::text,
+                                 oc.id, NULL::bigint, NULL::numeric
+                            FROM vendite.contratti c
+                            JOIN config.sorgenti s ON s.id = c.sorgente_tipo_id
+                                                  AND s.codice_interno = 'OFFERTA_COMMERCIALE'
+                            JOIN vendite.offerte_commerciali oc ON (oc.id = c.sorgente_id OR oc.uid = c.sorgente_uid)
+                           WHERE c.id = p_id;
+                  END IF;
+              
+                  -- ⭐ rev 2026-11-06 (20261106-42, giro 0.3): la chiave delle righe di
+                  --   commessa del documento (tipo + sorgente_id o sorgente_uid) dal BB che
+                  --   risolve, per ogni tipo: niente piu' una lettura per tabella nei rami
+                  --   sopra.
+                  SELECT d.documento_id, d.documento_uid INTO v_doc_id, v_doc_uid
+                    FROM config.sorgenti s
+                    CROSS JOIN LATERAL script.fn_sorgente_documento(s.id, p_id, NULL::uuid) d
+                   WHERE s.codice_interno = v_sorgente;
+              
+                  -- Le righe di commessa che il documento ha spinto e che
+                  -- nessuno ha ancora emesso: le stesse che il ritiro porta ad
+                  -- ANNULLATA (vendite.fn_ritira_commessa_attivita_da_sorgente).
+                  -- Documento inesistente o invisibile: chiavi NULL, nessuna riga.
+                  RETURN QUERY
+                      SELECT NULL::bigint, NULL::integer, 'COMMESSA'::character varying, 'CONSUMO'::text,
+                             ca.commessa_id, ca.id, ca.quantita::numeric
+                        FROM vendite.commesse_attivita ca
+                        JOIN config.sorgenti s ON s.id = ca.sorgente_tipo_id
+                       WHERE s.codice_interno  = v_sorgente
+                         AND (ca.sorgente_id = v_doc_id OR ca.sorgente_uid = v_doc_uid)
+                         AND ca.stato_emissione = 'NON_EMESSA'
+                       ORDER BY ca.id;
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only, come 20261107-70.
+              SELECT 1;

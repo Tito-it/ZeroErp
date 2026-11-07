@@ -286,7 +286,7 @@ CREATE TEMP TABLE tmp_upsert_core AS
 SELECT r.attivita_id AS commessa_attivita_id
 FROM vendite.fn_upsert_commessa_attivita(
   p_commessa_id => (SELECT commessa_id FROM tmp_commessa_core),
-  p_segment_key => ('SEG-' || substr(md5(clock_timestamp()::text), 1, 18))::varchar,
+  p_segment_key => ((SELECT x.segment_key FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa_core)) x) || ':' || ('SEG-' || substr(md5(clock_timestamp()::text), 1, 18))::varchar)::varchar,
   p_articolo_id => (SELECT articolo_id FROM tmp_refs_commesse_core),
   p_istanza_utility_id => (SELECT istanza_utility_id FROM tmp_refs_commesse_core),
   p_data_attivita => DATE '2026-06-15',
@@ -317,8 +317,8 @@ FROM vendite.fn_upsert_commessa_attivita(
   p_prezzo_da_riallineare => false,
   p_stato_approvazione => 'APPROVATA',
   p_stato_emissione => 'NON_EMESSA',
-  p_sorgente_tipo_id => (SELECT root_sorgente_tipo_id FROM tmp_refs_commesse_core),
-  p_sorgente_uid => ('EXT-' || substr(md5(clock_timestamp()::text), 1, 10))::text,
+  p_sorgente_tipo_id => (SELECT x.sorgente_tipo_id FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa_core)) x),
+  p_sorgente_uid => (SELECT x.consumo_id::text FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa_core)) x),
   p_tipo_movimento => 'NORMALE',
   p_meta => jsonb_build_object('case', 'UPSERT_INSERT')
 ) r;
@@ -366,11 +366,12 @@ WITH lst_v AS (
 SELECT r.attivita_id AS commessa_attivita_id
 FROM vendite.fn_upsert_commessa_attivita(
   p_commessa_id => (SELECT commessa_id FROM tmp_commessa_core),
-  p_segment_key => (
+  -- la chiave di una riga gia' scritta: ha gia' la provenienza nel prefisso
+  p_segment_key => ((
     SELECT ca.segment_key
     FROM vendite.commesse_attivita ca
     WHERE ca.id = (SELECT commessa_attivita_id FROM tmp_upsert_core)
-  ),
+  ))::varchar,
   p_articolo_id => (SELECT articolo_id FROM tmp_refs_commesse_core),
   p_istanza_utility_id => (SELECT istanza_utility_id FROM tmp_refs_commesse_core),
   p_data_attivita => DATE '2026-06-16',
@@ -401,12 +402,8 @@ FROM vendite.fn_upsert_commessa_attivita(
   p_prezzo_da_riallineare => false,
   p_stato_approvazione => 'APPROVATA',
   p_stato_emissione => 'NON_EMESSA',
-  p_sorgente_tipo_id => (SELECT root_sorgente_tipo_id FROM tmp_refs_commesse_core),
-  p_sorgente_uid => (
-    SELECT ca.sorgente_uid
-    FROM vendite.commesse_attivita ca
-    WHERE ca.id = (SELECT commessa_attivita_id FROM tmp_upsert_core)
-  ),
+  p_sorgente_tipo_id => (SELECT x.sorgente_tipo_id FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa_core)) x),
+  p_sorgente_uid => (SELECT x.consumo_id::text FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa_core)) x),
   p_tipo_movimento => 'NORMALE',
   p_meta => jsonb_build_object('case', 'UPSERT_UPDATE')
 ) r;
@@ -470,11 +467,12 @@ WHERE id = (SELECT commessa_attivita_id FROM tmp_upsert_core);
 
 SELECT * FROM vendite.fn_upsert_commessa_attivita(
   p_commessa_id => (SELECT commessa_id FROM tmp_commessa_core),
-  p_segment_key => (
+  -- la chiave di una riga gia' scritta: ha gia' la provenienza nel prefisso
+  p_segment_key => ((
     SELECT ca.segment_key
     FROM vendite.commesse_attivita ca
     WHERE ca.id = (SELECT commessa_attivita_id FROM tmp_upsert_core)
-  ),
+  ))::varchar,
   p_articolo_id => (SELECT articolo_id FROM tmp_refs_commesse_core),
   p_istanza_utility_id => (SELECT istanza_utility_id FROM tmp_refs_commesse_core),
   p_data_attivita => DATE '2026-06-16',
@@ -505,12 +503,8 @@ SELECT * FROM vendite.fn_upsert_commessa_attivita(
   p_prezzo_da_riallineare => false,
   p_stato_approvazione => 'APPROVATA',
   p_stato_emissione => 'NON_EMESSA',
-  p_sorgente_tipo_id => (SELECT root_sorgente_tipo_id FROM tmp_refs_commesse_core),
-  p_sorgente_uid => (
-    SELECT ca.sorgente_uid
-    FROM vendite.commesse_attivita ca
-    WHERE ca.id = (SELECT commessa_attivita_id FROM tmp_upsert_core)
-  ),
+  p_sorgente_tipo_id => (SELECT x.sorgente_tipo_id FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa_core)) x),
+  p_sorgente_uid => (SELECT x.consumo_id::text FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa_core)) x),
   p_tipo_movimento => 'NORMALE',
   p_meta => jsonb_build_object('case', 'UPSERT_PRICE_UPDATE')
 );

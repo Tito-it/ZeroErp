@@ -332,7 +332,8 @@ BEGIN
     LEFT JOIN LATERAL (
       SELECT max(ca.competenza_al) AS al
         FROM vendite.commesse_attivita ca
-       WHERE ca.sorgente_uid = c.uid::text
+       WHERE ca.sorgente_tipo_id = (SELECT so.id FROM config.sorgenti so WHERE so.codice_interno = 'CONTRATTO')
+         AND ca.sorgente_id = c.id
          AND ca.segment_base::text ~>=~ (f.prefisso || ':M:')
          AND ca.segment_base::text ~<~ (f.prefisso || ':M;')
          AND ca.tipo_movimento = 'NORMALE'
@@ -376,7 +377,8 @@ BEGIN
     -- arretra, positiva se avanza o sparisce (si riaddebita). Ogni rettifica
     -- ha la sua chiave: #STO la prima, #STO:<n> le successive.
     SELECT
-      c.id AS contratto_id, c.uid AS contratto_uid, NULL::bigint AS riga_id,
+      -- La riga dello storno e' quella del pezzo che storna: la stessa provenienza.
+      c.id AS contratto_id, c.uid AS contratto_uid, ca.sorgente_riga AS riga_id,
       c.billing_account_id, c.utility_id, c.emittente_id,
       CASE WHEN d.quantita < 0 THEN greatest(c.valido_al + 1, ca.competenza_dal)
            ELSE ca.competenza_dal END AS competenza_dal,
@@ -404,7 +406,8 @@ BEGIN
     JOIN ctr c ON c.id = f.contratto_id
     -- I pezzi addebitati della fonte: le righe del canone, non le rettifiche.
     JOIN vendite.commesse_attivita ca
-      ON ca.sorgente_uid = c.uid::text
+      ON ca.sorgente_tipo_id = (SELECT so.id FROM config.sorgenti so WHERE so.codice_interno = 'CONTRATTO')
+     AND ca.sorgente_id = c.id
      AND ca.segment_base::text ~>=~ (f.prefisso || ':M:')
      AND ca.segment_base::text ~<~ (f.prefisso || ':M;')
      AND ca.segment_key::text !~ '#STO'
@@ -419,7 +422,8 @@ BEGIN
              COALESCE(sum(s.quantita) FILTER (WHERE s.stato_emissione <> 'ANNULLATA'), 0) AS q,
              COALESCE(sum(s.qta_operativa) FILTER (WHERE s.stato_emissione <> 'ANNULLATA'), 0) AS qo
         FROM vendite.commesse_attivita s
-       WHERE s.sorgente_uid = ca.sorgente_uid
+       WHERE s.sorgente_tipo_id = ca.sorgente_tipo_id
+         AND s.sorgente_id = ca.sorgente_id
          AND s.segment_base = ca.segment_base
          AND s.segment_key::text ~ '#STO'
          AND s.meta ->> 'storno_di_attivita_id' = ca.id::text) g
@@ -513,7 +517,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_contratti_addebiti_maturati(p_competenza_mese date, p_billing_account_id bigint, p_contratto_id bigint)
-IS 'Gli addebiti maturati dei contratti ATTIVO e CESSATO a questo giro e non ancora in commessa, con gli scartati e il motivo (scarto). Sede unica della regola del push dei contratti: la leggono vendite.fn_list_contratti_da_pushare (scarto NULL) e vendite.vw_dash_fatturazione_contratti (tutte e due). Rami: 0 una tantum, 1 canoni a periodi (vendite.fn_canone_periodi), 2 storni come differenza dal gia'' stornato, 3 fonti scartate (una riga per fonte, senza pezzo). Scarto: SENZA_PERIODICITA, DURATA_SENZA_CALENDARIO (ramo 3), SENZA_PREZZO (un pezzo o la una tantum senza prezzo alla data). Le righe gia'' inviate (script.fn_get_stato_push_segment <> LIBERA) e le quantita'' a zero non escono. Regola completa nelle intestazioni dei changeSet 20261030-01, 20261031-01 e 20261031-02: brief-db-contratto-righe-periodiche-in-commessa §6.12, §6.13. rev 2026-10-31 (20261031-35, brief-db-contratto-righe-periodiche-in-commessa L14): i kit del listino (quota fissa da vendite.listini_kit, prezzo del kit non negoziato = somma dei componenti da vendite.fn_contratto_kit_componenti), la periodicita'' della quota fissa da vendite.fn_listino_periodicita_articolo, lo scarto QUOTA_FISSA_SENZA_CANONE.';
+IS 'Gli addebiti maturati dei contratti ATTIVO e CESSATO a questo giro e non ancora in commessa, con gli scartati e il motivo (scarto). Sede unica della regola del push dei contratti: la leggono vendite.fn_list_contratti_da_pushare (scarto NULL) e vendite.vw_dash_fatturazione_contratti (tutte e due). Rami: 0 una tantum, 1 canoni a periodi (vendite.fn_canone_periodi), 2 storni come differenza dal gia'' stornato, 3 fonti scartate (una riga per fonte, senza pezzo). Le fonti del canone sono le righe del contratto (ADESIONE, AGGIUNTA, l''OVERRIDE di una quota fissa) e le quote fisse del listino senza una riga del contratto sullo stesso articolo, kit compresi (quota fissa da vendite.listini_kit, prezzo non negoziato = somma dei componenti da vendite.fn_contratto_kit_componenti; periodicita'' da vendite.fn_listino_periodicita_articolo). Scarto: SENZA_PERIODICITA, DURATA_SENZA_CALENDARIO, QUOTA_FISSA_SENZA_CANONE (ramo 3), SENZA_PREZZO (un pezzo o la una tantum senza prezzo alla data). Le righe gia'' inviate (script.fn_get_stato_push_segment <> LIBERA) e le quantita'' a zero non escono. La riga di commessa gia'' addebitata si riconosce per tipo CONTRATTO, id del contratto (sorgente_id) e base della chiave; uno storno porta in riga_id la riga del contratto del pezzo che storna (NULL per le quote fisse del listino, che non hanno una riga del contratto).';
 ```
 
 </div>

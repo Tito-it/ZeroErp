@@ -120,7 +120,7 @@ BEGIN
     -- Una passata sola su commesse_attivita, con i salti in
     -- avanti in LEFT JOIN: la chiave costa ~5 µs a riga e non
     -- va pagata due volte.
-    SELECT vendite.fn_build_gruppo_fatturabile_key(ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id) AS gruppo_key,
+    SELECT vendite.fn_gruppo_fatturabile_key_di_attivita(ca.sorgente_tipo_id, ca.segment_key, ca.commessa_id) AS gruppo_key,
            ca.id AS commessa_attivita_id,
            ca.stato_emissione,
            -- ⚠️ L'id arriva da fatturazione_lotti, NON da
@@ -137,7 +137,7 @@ BEGIN
       LEFT JOIN vendite.fatture_righe fr              ON fr.id = af.fattura_riga_id
       LEFT JOIN vendite.fatturazione_lotti_fatture flf ON flf.fattura_id = fr.fattura_id
       LEFT JOIN vendite.fatturazione_lotti l           ON l.id = flf.lotto_id
-     WHERE vendite.fn_build_gruppo_fatturabile_key(ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id)
+     WHERE vendite.fn_gruppo_fatturabile_key_di_attivita(ca.sorgente_tipo_id, ca.segment_key, ca.commessa_id)
            IN (SELECT u.gruppo_key FROM universo u)
   ),
   contesto AS (

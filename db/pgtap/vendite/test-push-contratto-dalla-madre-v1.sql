@@ -199,6 +199,8 @@ RETURNS bigint AS $$
       p_stato_emissione               => 'NON_EMESSA',
       p_sorgente_tipo_id              => (v ->> 'sorgente_tipo_id')::bigint,
       p_sorgente_uid                  => v ->> 'sorgente_uid',
+      -- La riga del documento, dal lister (come la passa il backend).
+      p_sorgente_riga => (v ->> 'riga_id')::bigint,
       p_tipo_movimento                => (v ->> 'tipo_movimento')::varchar,
       p_meta                          => COALESCE(v -> 'meta', '{}'::jsonb) || p_meta_extra) u
 $$ LANGUAGE sql;
@@ -224,7 +226,7 @@ SELECT pg_temp.pc_invia(l.v) AS id, l.v ->> 'segment_key' AS segment_key
 SELECT ok(
   (SELECT ca.commessa_id = (SELECT id FROM tmp_pc_commessa)
           AND ca.sorgente_tipo_id = (SELECT sorg_contratto_id FROM tmp_pc_refs)
-          AND ca.sorgente_uid = (SELECT uid::text FROM tmp_pc_contratto)
+          AND vendite.fn_documento_uid_di_attivita(ca.sorgente_tipo_id, ca.segment_key) = (SELECT uid::text FROM tmp_pc_contratto)
           AND ca.segment_key = t.segment_key
      FROM tmp_pc_ca t JOIN vendite.commesse_attivita ca ON ca.id = t.id),
   '4) l''invio dalla madre scrive la riga di commessa del contratto (sorgente e segmento del lister)');
@@ -249,16 +251,18 @@ SELECT ok(
 -- ============================================================
 -- C — La chiave ritirata non rinasce
 -- ============================================================
--- Una riga «della commessa» (sorgente COMMESSA con l'id della commessa, come
--- il builder dbops.fn_pgtap_crea_commessa_attivita: fuori dalla porta del link)
--- con un meta che porta ancora tipo_consumo, come quello che il reso ricopia
--- da una riga scritta prima del ritiro.
+-- Una riga da un altro documento (il consumo della commessa, come il builder
+-- dbops.fn_pgtap_crea_commessa_attivita) con un meta che porta ancora
+-- tipo_consumo, come quello che il reso ricopia da una riga scritta prima del
+-- ritiro. Il consumo non ha righe: riga_id NULL.
 CREATE TEMP TABLE tmp_pc_vecchio AS
 SELECT (SELECT v FROM tmp_pc_lista)
        || jsonb_build_object(
-            'segment_key',      'PGT-PC-TC:' || substr(md5(clock_timestamp()::text), 1, 8),
-            'sorgente_tipo_id', (SELECT sorg_commessa_id FROM tmp_pc_refs),
-            'sorgente_uid',     (SELECT id::text FROM tmp_pc_commessa)) AS v;
+            'segment_key',      x.segment_key || ':PGT-PC-TC:' || substr(md5(clock_timestamp()::text), 1, 8),
+            'sorgente_tipo_id', x.sorgente_tipo_id,
+            'sorgente_uid',     x.consumo_id::text,
+            'riga_id',          NULL) AS v
+  FROM dbops.fn_pgtap_consumo_della_commessa((SELECT id FROM tmp_pc_commessa)) x;
 
 CREATE TEMP TABLE tmp_pc_ca2 AS
 SELECT pg_temp.pc_invia(v, jsonb_build_object('tipo_consumo', 'CONGUAGLIO', 'pgt_resta', 1)) AS id
@@ -367,7 +371,7 @@ SELECT pg_temp.pc_invia(l.v, '{}'::jsonb, (SELECT id FROM tmp_pc_commessa2)) AS 
 
 SELECT ok(
   (SELECT ca.competenza_dal = c.valido_dal AND ca.competenza_al = c.valido_dal
-          AND ca.sorgente_uid = c.uid::text
+          AND vendite.fn_documento_uid_di_attivita(ca.sorgente_tipo_id, ca.segment_key) = c.uid::text
      FROM tmp_pc_aperto_ca t
      JOIN vendite.commesse_attivita ca ON ca.id = t.id, tmp_pc_aperto c
     WHERE ca.segment_key LIKE '%:R:' || (SELECT id FROM tmp_pc_aperto_righe
@@ -387,7 +391,7 @@ SELECT ok(
           AND (SELECT count(*) FROM vendite.fn_list_contratti_da_pushare(p_contratto_id => c.id)) = 0
      FROM tmp_pc_aperto c
      JOIN vendite.commesse_attivita ca
-       ON ca.sorgente_uid = c.uid::text
+       ON vendite.fn_documento_uid_di_attivita(ca.sorgente_tipo_id, ca.segment_key) = c.uid::text
       AND ca.segment_key LIKE '%:R:' || (SELECT id FROM tmp_pc_aperto_righe
                                           WHERE tipo_erogazione = 'CANONE') || ':M:%'
     GROUP BY c.id),

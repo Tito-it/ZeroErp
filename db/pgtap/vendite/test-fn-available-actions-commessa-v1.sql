@@ -129,9 +129,9 @@ SELECT r.attivita_id
 FROM vendite.fn_upsert_commessa_attivita(
   p_commessa_id => (SELECT commessa_id FROM tmp_commessa_aa),
   -- La riga NORMALE ha la sua sorgente (vincolo 20261012-27).
-  p_sorgente_tipo_id => (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
-  p_sorgente_uid => ((SELECT commessa_id FROM tmp_commessa_aa))::text,
-  p_segment_key => ('SEG-AA-' || substr(md5(clock_timestamp()::text), 1, 14))::varchar,
+  p_sorgente_tipo_id => (SELECT x.sorgente_tipo_id FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa_aa)) x),
+  p_sorgente_uid => (SELECT x.consumo_id::text FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa_aa)) x),
+  p_segment_key => ((SELECT x.segment_key FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa_aa)) x) || ':' || ('SEG-AA-' || substr(md5(clock_timestamp()::text), 1, 14))::varchar)::varchar,
   p_articolo_id => (SELECT articolo_id FROM tmp_refs_aa),
   p_istanza_utility_id => (SELECT istanza_utility_id FROM tmp_refs_aa),
   p_data_attivita => DATE '2026-07-15',

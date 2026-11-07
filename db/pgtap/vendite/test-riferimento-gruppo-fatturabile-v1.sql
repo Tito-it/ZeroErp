@@ -275,8 +275,21 @@ SELECT is(
 --   commessa con un'attivita', dbops.fn_pgtap_crea_commessa) e si legge
 --   SOLO quella; prima si pescavano le prime cinque righe visibili, e da zero
 --   non ce n'era nessuna (skip).
+-- ⚠️ La riga viene da un ordine, un documento con un numero: e' il caso che le due
+--   scritture fanno coincidere. Per un documento SENZA numero (un consumo) oggi
+--   divergono: la dashboard ripiega sul codice della commessa, la funzione sulla
+--   chiave grezza (brief-db-sorgente-documento-e-riga §3.6, V-7, da decidere).
 CREATE TEMP TABLE tmp_commessa_dash AS
-SELECT * FROM dbops.fn_pgtap_crea_commessa('riferimento dashboard', NULL, NULL, true);
+SELECT * FROM dbops.fn_pgtap_crea_commessa('riferimento dashboard', NULL, NULL, false);
+
+CREATE TEMP TABLE tmp_ordine_dash AS
+SELECT o.* FROM dbops.fn_pgtap_crea_ordine('riferimento dashboard', 'DRAFT',
+                                           (SELECT billing_account_id FROM tmp_commessa_dash)) o;
+
+SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita(
+    p_commessa_id     => (SELECT commessa_id FROM tmp_commessa_dash),
+    p_sorgente_codice => 'ORDINE_VENDITA',
+    p_sorgente_uid    => (SELECT ordine_uid::text FROM tmp_ordine_dash));
 
 CREATE TEMP TABLE tmp_dash AS
 SELECT g.gruppo_key, g.riferimento

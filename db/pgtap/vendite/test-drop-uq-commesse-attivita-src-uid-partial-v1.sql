@@ -85,7 +85,8 @@ SELECT lives_ok(
           p_commessa_id      => (SELECT id FROM tmp_commessa_srcuid),
           p_sorgente_codice  => 'PREVENTIVO',
           p_sorgente_uid     => (SELECT preventivo_uid::text FROM tmp_prev_srcuid),
-          p_sorgente_riga_id => v.riga,
+          -- due righe dello stesso preventivo, distinte dall'etichetta della chiave
+          p_chiave_etichetta => v.riga::text,
           p_stato_approvazione => 'BOZZA')
         FROM (VALUES (1), (2)) AS v(riga);
     END $righe$;
@@ -97,7 +98,7 @@ DO $conta$
 BEGIN
   IF (SELECT count(DISTINCT ca.segment_key) FROM vendite.commesse_attivita ca
        WHERE ca.commessa_id = (SELECT id FROM tmp_commessa_srcuid)
-         AND ca.sorgente_uid = (SELECT preventivo_uid::text FROM tmp_prev_srcuid)) <> 2 THEN
+         AND vendite.fn_documento_uid_di_attivita(ca.sorgente_tipo_id, ca.segment_key) = (SELECT preventivo_uid::text FROM tmp_prev_srcuid)) <> 2 THEN
     RAISE EXCEPTION 'fixture: attese 2 righe con la stessa sorgente e due chiavi diverse';
   END IF;
 END $conta$;

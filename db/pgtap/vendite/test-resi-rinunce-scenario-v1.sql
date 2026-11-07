@@ -120,8 +120,10 @@ SELECT u.attivita_id
        vendite.fn_upsert_commessa_attivita(
          p_commessa_id                   => (SELECT commessa_id FROM tmp_com),
          -- La riga NORMALE ha la sua sorgente (vincolo 20261012-27).
-         p_sorgente_tipo_id => (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
-         p_sorgente_uid => ((SELECT commessa_id FROM tmp_com))::text,
+         -- La provenienza e' il documento che la chiave nomina (come nel push).
+         p_sorgente_tipo_id => (SELECT k.sorgente_tipo_id FROM dbops.fn_pgtap_provenienza_da_chiave(('DDT_VENDITA:' || r.ddt_uid || ':R:' || r.ddt_riga_id)::varchar) k),
+         p_sorgente_uid => (SELECT k.sorgente_chiave FROM dbops.fn_pgtap_provenienza_da_chiave(('DDT_VENDITA:' || r.ddt_uid || ':R:' || r.ddt_riga_id)::varchar) k),
+         p_sorgente_riga => (SELECT k.sorgente_riga FROM dbops.fn_pgtap_provenienza_da_chiave(('DDT_VENDITA:' || r.ddt_uid || ':R:' || r.ddt_riga_id)::varchar) k),
          p_segment_key                   => ('DDT_VENDITA:' || r.ddt_uid || ':R:' || r.ddt_riga_id)::varchar,
          p_articolo_id                   => r.articolo_id,
          p_istanza_utility_id            => (SELECT ba.istanza_utility_id

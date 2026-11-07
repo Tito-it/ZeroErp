@@ -2,7 +2,7 @@
 # ⚙️ Funzione `fn_check_sorgente_chiudibile`
 
 ```sql
-CREATE FUNCTION fn_check_sorgente_chiudibile(p_sorgente_tipo_id bigint, p_sorgente_uid text)
+CREATE FUNCTION fn_check_sorgente_chiudibile(p_sorgente_tipo_id bigint, p_sorgente_id bigint, p_sorgente_uid uuid)
 ```
 
 > 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
@@ -12,7 +12,7 @@ CREATE FUNCTION fn_check_sorgente_chiudibile(p_sorgente_tipo_id bigint, p_sorgen
 <div data-search-exclude markdown>
 
 ```sql
-CREATE OR REPLACE FUNCTION script.fn_check_sorgente_chiudibile(p_sorgente_tipo_id bigint, p_sorgente_uid text)
+CREATE OR REPLACE FUNCTION script.fn_check_sorgente_chiudibile(p_sorgente_tipo_id bigint, p_sorgente_id bigint, p_sorgente_uid uuid)
  RETURNS jsonb
  LANGUAGE plpgsql
  STABLE
@@ -28,11 +28,9 @@ BEGIN
     --   Funzione PURA: nessuna scrittura, nessun raise di
     --   dominio. Chi ferma solleva il primo motivo.
     --
-    -- ⛔ LA CHIAVE. Si legge vendite.commesse_attivita, dove
-    --   `sorgente_uid` porta `<testata>.uid::text` per TUTTE le
-    --   sorgenti. NON e' la stessa chiave di
-    --   vendite.commesse_sorgenti, che varia per sorgente (uid
-    --   per il preventivo, id per l'ordine). Sbagliarla non
+    -- ⛔ LA CHIAVE e' quella del modello: tipo + sorgente_id o
+    --   sorgente_uid, con la regola d'incontro. Chi ha il
+    --   documento passa il suo id e il suo uid. Sbagliarla non
     --   produce un errore: produce ZERO motivi.
     -- =========================================================
     IF p_sorgente_tipo_id IS NULL OR p_sorgente_tipo_id <= 0 THEN
@@ -44,13 +42,16 @@ BEGIN
             NULL::uuid, 'p_sorgente_tipo_id');
     END IF;
 
-    IF p_sorgente_uid IS NULL OR btrim(p_sorgente_uid) = '' THEN
+    -- Una chiave almeno; un id, se c'e', positivo.
+    IF (p_sorgente_id IS NULL AND p_sorgente_uid IS NULL)
+       OR p_sorgente_id <= 0 THEN
         PERFORM script.fn_log_and_raise_error(
             'script', 'fn_check_sorgente_chiudibile',
             'E_RITIRO_SORGENTE_PARAMETRO_MANCANTE',
-            jsonb_build_object('parametro', 'p_sorgente_uid',
-                               'valore',    p_sorgente_uid),
-            NULL::uuid, 'p_sorgente_uid');
+            jsonb_build_object('parametro', 'p_sorgente_id',
+                               'valore',    p_sorgente_id,
+                               'sorgente_uid', p_sorgente_uid),
+            NULL::uuid, 'p_sorgente_id / p_sorgente_uid');
     END IF;
 
     -- ── MOTIVO 1 — righe gia' EMESSA ─────────────────────────
@@ -66,7 +67,7 @@ BEGIN
       INTO v_emesse
       FROM vendite.commesse_attivita ca
      WHERE ca.sorgente_tipo_id = p_sorgente_tipo_id
-       AND ca.sorgente_uid     = btrim(p_sorgente_uid)
+       AND (ca.sorgente_id = p_sorgente_id OR ca.sorgente_uid = p_sorgente_uid)
        AND ca.stato_emissione  = 'EMESSA';
 
     IF v_emesse > 0 THEN
@@ -90,8 +91,8 @@ BEGIN
 END;
 $function$
 
-COMMENT ON FUNCTION script.fn_check_sorgente_chiudibile(p_sorgente_tipo_id bigint, p_sorgente_uid text)
-IS 'Elenca i motivi che impediscono di CHIUDERE (annullare) un documento che ha spinto righe in commessa. Funzione PURA: nessuna scrittura e nessun raise di dominio — chi ferma solleva il primo motivo, e chi disegna l''interfaccia li mostra tutti. ⭐ Oggi il motivo e'' UNO: ci sono righe di commessa gia'' EMESSA. Quelle non si ritirano — sono in volo verso una fattura — e finche'' ci sono la testata non si chiude. ⭐ E dal lotto L5 quel rifiuto ha una VIA D''USCITA, che il messaggio nomina: «Riporta da emettere» riporta la riga a NON_EMESSA, e da li'' il ritiro la prende. Prima di L5 non ce n''era una, ed e'' il motivo per cui E_PREV_ANNULLA_COMMESSA_EMESSA era un vicolo cieco. ⭐ UNA primitiva per tutte le sorgenti, non una per documento: la sorgente e'' polimorfa e la coppia (sorgente_tipo_id, sorgente_uid) e'' gia'' la chiave che tutto il dominio usa; sei copie divergerebbero. ⛔ LA CHIAVE, e non e'' un dettaglio: si legge vendite.commesse_attivita, dove sorgente_uid porta <testata>.uid::text per TUTTE le sorgenti — verificato sul contratto, cioe'' sul corpo di fn_list_ordini_da_pushare, fn_list_preventivi_da_pushare, fn_list_ddt_da_pushare, fn_list_contratti_da_pushare e fn_list_consumi_da_pushare, che compongono tutte x.uid::text. ⚠️ NON e'' la chiave di vendite.commesse_sorgenti, che VARIA per sorgente (uid per il preventivo, id::text per l''ordine): e'' la ragione per cui fn_check_preventivo_annullabile confronta v_uid::text mentre fn_check_ordine_annullabile confronta p_ordine_id::text — le due non sono in disaccordo, ognuna segue la chiave della propria sorgente. Chi chiama QUESTA funzione deve passare <testata>.uid::text, perche'' sbagliare la chiave non produce un errore: produce ZERO motivi, cioe'' un freno che lascia passare tutto. ℹ️ Non conta le righe gia'' ANNULLATA (sono uscite di proposito) ne'' le NON_EMESSA (sono proprio quelle che il ritiro portera'' via). ⚠️ E non raggiunge le righe SOURCELESS — ONERE e RETTIFICA — perche'' non hanno sorgente: e'' corretto, e va detto invece che lasciato dedurre. Piano: brief-db-lavoro-che-non-torna-indietro, L7 / Q-5'' strada A.';
+COMMENT ON FUNCTION script.fn_check_sorgente_chiudibile(p_sorgente_tipo_id bigint, p_sorgente_id bigint, p_sorgente_uid uuid)
+IS 'Elenca i motivi che impediscono di chiudere (annullare) un documento che ha spinto righe in commessa. Funzione pura: nessuna scrittura e nessun raise di dominio; chi ferma solleva il primo motivo, chi disegna l''interfaccia li mostra tutti. Il motivo e'' uno: righe di commessa gia'' EMESSA (E_SORGENTE_CON_RIGHE_EMESSE, con il conteggio nei valori). Non si ritirano, sono in volo verso una fattura; la via d''uscita e'' «Riporta da emettere», che le riporta a NON_EMESSA e da li'' il ritiro (vendite.fn_ritira_commessa_attivita_da_sorgente) le prende. Una primitiva per tutti i tipi: il documento si passa con le colonne del modello (tipo, sorgente_id, sorgente_uid) e si cerca con la regola d''incontro; chi ha il documento passa il suo id e il suo uid. Una chiave sbagliata non solleva: produce zero motivi. Non conta le righe ANNULLATA ne'' le NON_EMESSA (sono quelle che il ritiro porta via), ne'' le righe senza documento (ONERE, RETTIFICA). Chiamanti: script.fn_check_ordine_annullabile, script.fn_check_preventivo_annullabile, vendite.trgfn_doc_guard_chiusura_sorgente, vendite.fn_documento_ritira_legami. Solleva E_RITIRO_SORGENTE_PARAMETRO_MANCANTE su tipo o chiave mancanti o <= 0.';
 ```
 
 </div>

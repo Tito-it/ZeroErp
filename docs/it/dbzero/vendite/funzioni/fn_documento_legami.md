@@ -50,10 +50,11 @@ AS $function$
 --   riapre altro si conferma). PROVENIENZA: niente da ritirare.
 -- =========================================================
 DECLARE
-    -- La sorgente di commessa del documento e la sua chiave
-    -- (commesse_attivita.sorgente_uid porta <testata>.uid::text).
+    -- La sorgente di commessa del documento e la sua chiave, come la
+    -- scrive la riga di commessa: id e uid, con la regola d'incontro.
     v_sorgente config.sorgenti.codice_interno%TYPE;
-    v_uid      vendite.commesse_attivita.sorgente_uid%TYPE;
+    v_doc_id   vendite.commesse_attivita.sorgente_id%TYPE;
+    v_doc_uid  vendite.commesse_attivita.sorgente_uid%TYPE;
 BEGIN
     IF p_id IS NULL OR p_id <= 0
        OR p_documento IS NULL
@@ -126,7 +127,7 @@ BEGIN
         --   20261012-27): il ramo MANUALE non esiste piu'.
         -- riga_id: la riga di commessa; origine_id: il documento (o il
         --   reso) dall'altra parte, dal resolver unico della sorgente
-        --   polimorfa (vendite.fn_get_sorgente_documento_ref);
+        --   polimorfa (script.fn_sorgente_documento, sulle colonne del modello);
         --   origine_riga_id: la riga di reso dell'accredito.
         RETURN QUERY
             SELECT ca.id,
@@ -153,8 +154,8 @@ BEGIN
               LEFT JOIN config.sorgenti s ON s.id = ca.sorgente_tipo_id
               LEFT JOIN LATERAL (
                      SELECT r.documento_id
-                       FROM vendite.fn_get_sorgente_documento_ref(
-                              ca.sorgente_tipo_id, ca.sorgente_uid) AS r
+                       FROM script.fn_sorgente_documento(
+                              ca.sorgente_tipo_id, ca.sorgente_id, ca.sorgente_uid) AS r
                       WHERE ca.sorgente_tipo_id IS NOT NULL
                    ) ref ON true
               LEFT JOIN LATERAL (
@@ -216,10 +217,10 @@ BEGIN
     END IF;
 
     -- ⭐ rev 2026-11-06 (20261106-42, giro 0.3): la chiave delle righe di
-    --   commessa del documento (commesse_attivita.sorgente_uid porta
-    --   <testata>.uid::text) dal BB che risolve, per ogni tipo: niente piu'
-    --   una lettura per tabella nei rami sopra.
-    SELECT d.documento_uid::text INTO v_uid
+    --   commessa del documento (tipo + sorgente_id o sorgente_uid) dal BB che
+    --   risolve, per ogni tipo: niente piu' una lettura per tabella nei rami
+    --   sopra.
+    SELECT d.documento_id, d.documento_uid INTO v_doc_id, v_doc_uid
       FROM config.sorgenti s
       CROSS JOIN LATERAL script.fn_sorgente_documento(s.id, p_id, NULL::uuid) d
      WHERE s.codice_interno = v_sorgente;
@@ -227,14 +228,14 @@ BEGIN
     -- Le righe di commessa che il documento ha spinto e che
     -- nessuno ha ancora emesso: le stesse che il ritiro porta ad
     -- ANNULLATA (vendite.fn_ritira_commessa_attivita_da_sorgente).
-    -- Documento inesistente o invisibile: v_uid NULL, nessuna riga.
+    -- Documento inesistente o invisibile: chiavi NULL, nessuna riga.
     RETURN QUERY
         SELECT NULL::bigint, NULL::integer, 'COMMESSA'::character varying, 'CONSUMO'::text,
                ca.commessa_id, ca.id, ca.quantita::numeric
           FROM vendite.commesse_attivita ca
           JOIN config.sorgenti s ON s.id = ca.sorgente_tipo_id
          WHERE s.codice_interno  = v_sorgente
-           AND ca.sorgente_uid   = v_uid
+           AND (ca.sorgente_id = v_doc_id OR ca.sorgente_uid = v_doc_uid)
            AND ca.stato_emissione = 'NON_EMESSA'
          ORDER BY ca.id;
 END;

@@ -153,14 +153,14 @@ WITH ins AS (
     commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita,
     uom_id, quantita, competenza_mese, competenza_dal, competenza_al,
     tipo_doc_fiscale_id, valuta_id, prezzo_snapshot, pricing_mode,
-    stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
+    stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_id)
   SELECT (SELECT id FROM tmp_dc_commessa),
-         'PGTAP-DC-A1-' || substr(md5(clock_timestamp()::text), 1, 8),
+         ((SELECT x.segment_key FROM dbops.fn_pgtap_consumo_della_commessa((SELECT id FROM tmp_dc_commessa)) x) || ':' || 'PGTAP-DC-A1-' || substr(md5(clock_timestamp()::text), 1, 8)),
          r.articolo_id, r.istanza_utility_id, DATE '2080-01-01', r.uom_id, 1,
          DATE '2080-01-01', DATE '2080-01-01', DATE '2080-01-31',
          r.tipo_doc_fiscale_id, r.valuta_id, 10.000000, 'FIXED',
-         'BOZZA', 'NON_EMESSA', (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
-         ((SELECT id FROM tmp_dc_commessa))::text
+         'BOZZA', 'NON_EMESSA', (SELECT x.sorgente_tipo_id FROM dbops.fn_pgtap_consumo_della_commessa((SELECT id FROM tmp_dc_commessa)) x),
+         (SELECT x.consumo_id FROM dbops.fn_pgtap_consumo_della_commessa((SELECT id FROM tmp_dc_commessa)) x)
     FROM tmp_dc_refs r
   RETURNING id)
 INSERT INTO tmp_dc_att SELECT 'A1_DA_APPROVARE', id FROM ins;
@@ -192,14 +192,14 @@ WITH ins AS (
     commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita,
     uom_id, quantita, competenza_mese, competenza_dal, competenza_al,
     tipo_doc_fiscale_id, valuta_id, prezzo_snapshot, pricing_mode,
-    stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
+    stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_id)
   SELECT (SELECT id FROM tmp_dc_commessa),
-         'PGTAP-DC-A3-' || substr(md5(clock_timestamp()::text), 1, 8),
+         ((SELECT x.segment_key FROM dbops.fn_pgtap_consumo_della_commessa((SELECT id FROM tmp_dc_commessa)) x) || ':' || 'PGTAP-DC-A3-' || substr(md5(clock_timestamp()::text), 1, 8)),
          r.articolo_id, r.istanza_utility_id, DATE '2080-01-01', r.uom_id, 1,
          DATE '2080-01-01', DATE '2080-01-01', DATE '2080-01-31',
          r.tipo_doc_fiscale_id, r.valuta_id, 30.000000, 'FIXED',
-         'APPROVATA', 'EMESSA', (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
-         ((SELECT id FROM tmp_dc_commessa))::text
+         'APPROVATA', 'EMESSA', (SELECT x.sorgente_tipo_id FROM dbops.fn_pgtap_consumo_della_commessa((SELECT id FROM tmp_dc_commessa)) x),
+         (SELECT x.consumo_id FROM dbops.fn_pgtap_consumo_della_commessa((SELECT id FROM tmp_dc_commessa)) x)
     FROM tmp_dc_refs r
   RETURNING id)
 INSERT INTO tmp_dc_att SELECT 'A3_EMESSA', id FROM ins;
@@ -209,14 +209,14 @@ WITH ins AS (
     commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita,
     uom_id, quantita, competenza_mese, competenza_dal, competenza_al,
     tipo_doc_fiscale_id, valuta_id, prezzo_snapshot, pricing_mode,
-    stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
+    stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_id)
   SELECT (SELECT id FROM tmp_dc_commessa),
-         'PGTAP-DC-A4-' || substr(md5(clock_timestamp()::text), 1, 8),
+         ((SELECT x.segment_key FROM dbops.fn_pgtap_consumo_della_commessa((SELECT id FROM tmp_dc_commessa)) x) || ':' || 'PGTAP-DC-A4-' || substr(md5(clock_timestamp()::text), 1, 8)),
          r.articolo_id, r.istanza_utility_id, DATE '2080-01-01', r.uom_id, 1,
          DATE '2080-01-01', DATE '2080-01-01', DATE '2080-01-31',
          r.tipo_doc_fiscale_id, r.valuta_id, 40.000000, 'FIXED',
-         'APPROVATA', 'EMESSA', (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
-         ((SELECT id FROM tmp_dc_commessa))::text
+         'APPROVATA', 'EMESSA', (SELECT x.sorgente_tipo_id FROM dbops.fn_pgtap_consumo_della_commessa((SELECT id FROM tmp_dc_commessa)) x),
+         (SELECT x.consumo_id FROM dbops.fn_pgtap_consumo_della_commessa((SELECT id FROM tmp_dc_commessa)) x)
     FROM tmp_dc_refs r
   RETURNING id)
 INSERT INTO tmp_dc_att SELECT 'A4_FATTURATA', id FROM ins;
@@ -226,14 +226,14 @@ WITH ins AS (
     commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita,
     uom_id, quantita, competenza_mese, competenza_dal, competenza_al,
     tipo_doc_fiscale_id, valuta_id, prezzo_snapshot, pricing_mode,
-    stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
+    stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_id)
   SELECT (SELECT id FROM tmp_dc_commessa),
-         'PGTAP-DC-A5-' || substr(md5(clock_timestamp()::text), 1, 8),
+         ((SELECT x.segment_key FROM dbops.fn_pgtap_consumo_della_commessa((SELECT id FROM tmp_dc_commessa)) x) || ':' || 'PGTAP-DC-A5-' || substr(md5(clock_timestamp()::text), 1, 8)),
          r.articolo_id, r.istanza_utility_id, DATE '2080-01-01', r.uom_id, 1,
          DATE '2080-01-01', DATE '2080-01-01', DATE '2080-01-31',
          r.tipo_doc_fiscale_id, r.valuta_id, 999.000000, 'FIXED',
-         'APPROVATA', 'ANNULLATA', (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
-         ((SELECT id FROM tmp_dc_commessa))::text
+         'APPROVATA', 'ANNULLATA', (SELECT x.sorgente_tipo_id FROM dbops.fn_pgtap_consumo_della_commessa((SELECT id FROM tmp_dc_commessa)) x),
+         (SELECT x.consumo_id FROM dbops.fn_pgtap_consumo_della_commessa((SELECT id FROM tmp_dc_commessa)) x)
     FROM tmp_dc_refs r
   RETURNING id)
 INSERT INTO tmp_dc_att SELECT 'A5_VOID', id FROM ins;

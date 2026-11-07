@@ -12,7 +12,7 @@
 -- 6) Check ruolo_link invalido su commesse_sorgenti
 -- 7) Vincolo una sola ROOT per commessa
 -- 8) Unicita` (commessa_id, segment_key) su commesse_attivita
--- 9) Pair sorgente_tipo_id/sorgente_uid coerente su commesse_attivita
+-- 9) Forma della provenienza: il tipo senza chiave lo rifiuta il guard unico
 -- 10) pricing_mode invalido bloccato su commesse_attivita
 -- 10-bis) riga NORMALE senza sorgente bloccata (vincolo 20261012-27, rev 2026-10-12)
 -- 11) Colonna attivita_fatturabili.commessa_id presente
@@ -159,6 +159,12 @@ SELECT c.commessa_id AS id
 FROM dbops.fn_pgtap_crea_commessa(
   'schema commesse 2', NULL, (SELECT billing_account_id FROM tmp_cli_cs)) c;
 
+-- La provenienza delle righe di commessa del test: un consumo vero della prima
+-- commessa (il modello vuole un documento; la commessa stessa non lo e'). Le
+-- chiavi del push sono la sua, col suffisso #<etichetta> del test.
+CREATE TEMP TABLE tmp_src_cs AS
+SELECT * FROM dbops.fn_pgtap_consumo_della_commessa((SELECT id FROM tmp_commessa_cs));
+
 SELECT throws_ok(
   $$
   INSERT INTO vendite.commesse_sorgenti (
@@ -200,13 +206,13 @@ WITH ins AS (
     commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita, uom_id, quantita,
     competenza_mese, competenza_dal, competenza_al, tipo_doc_fiscale_id, valuta_id,
     prezzo_snapshot, pricing_mode, stato_approvazione, stato_emissione,
-    sorgente_tipo_id, sorgente_uid   -- la riga NORMALE ha la sua sorgente (vincolo 20261012-27)
+    sorgente_tipo_id, sorgente_id   -- la riga NORMALE ha la sua sorgente (vincolo 20261012-27)
   )
   SELECT
-    (SELECT id FROM tmp_commessa_cs), 'SEG-001', r.articolo_id, r.istanza_utility_id, script.fn_data_operativa(), r.uom_id, 1,
+    (SELECT id FROM tmp_commessa_cs), (SELECT segment_key FROM tmp_src_cs) || ':SEG-001', r.articolo_id, r.istanza_utility_id, script.fn_data_operativa(), r.uom_id, 1,
     date_trunc('month', script.fn_data_operativa())::date, script.fn_data_operativa(), script.fn_data_operativa(), r.tipo_doc_fiscale_id, r.valuta_id,
     1.2300000000, 'FIXED', 'BOZZA', 'NON_EMESSA',
-    r.sorgente_tipo_id, (SELECT id FROM tmp_commessa_cs)::text
+    (SELECT sorgente_tipo_id FROM tmp_src_cs), (SELECT consumo_id FROM tmp_src_cs)
   FROM tmp_refs_cs r
   RETURNING id
 )
@@ -218,13 +224,13 @@ SELECT throws_ok(
     commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita, uom_id, quantita,
     competenza_mese, competenza_dal, competenza_al, tipo_doc_fiscale_id, valuta_id,
     prezzo_snapshot, pricing_mode, stato_approvazione, stato_emissione,
-    sorgente_tipo_id, sorgente_uid   -- la riga NORMALE ha la sua sorgente (vincolo 20261012-27)
+    sorgente_tipo_id, sorgente_id   -- la riga NORMALE ha la sua sorgente (vincolo 20261012-27)
   )
   SELECT
-    (SELECT id FROM tmp_commessa_cs), 'SEG-001', r.articolo_id, r.istanza_utility_id, script.fn_data_operativa(), r.uom_id, 1,
+    (SELECT id FROM tmp_commessa_cs), (SELECT segment_key FROM tmp_src_cs) || ':SEG-001', r.articolo_id, r.istanza_utility_id, script.fn_data_operativa(), r.uom_id, 1,
     date_trunc('month', script.fn_data_operativa())::date, script.fn_data_operativa(), script.fn_data_operativa(), r.tipo_doc_fiscale_id, r.valuta_id,
     1.2300000000, 'FIXED', 'BOZZA', 'NON_EMESSA',
-    r.sorgente_tipo_id, (SELECT id FROM tmp_commessa_cs)::text
+    (SELECT sorgente_tipo_id FROM tmp_src_cs), (SELECT consumo_id FROM tmp_src_cs)
   FROM tmp_refs_cs r;
   $$,
   '23505',
@@ -232,24 +238,23 @@ SELECT throws_ok(
   'Unicita` (commessa_id, segment_key) su commesse_attivita'
 );
 
-SELECT throws_ok(
+SELECT throws_like(
   $$
   INSERT INTO vendite.commesse_attivita (
     commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita, uom_id, quantita,
     competenza_mese, competenza_dal, competenza_al, tipo_doc_fiscale_id, valuta_id,
     prezzo_snapshot, pricing_mode, stato_approvazione, stato_emissione,
-    sorgente_tipo_id, sorgente_uid
+    sorgente_tipo_id, sorgente_id
   )
   SELECT
-    (SELECT id FROM tmp_commessa_cs), 'SEG-PAIR-001', r.articolo_id, r.istanza_utility_id, script.fn_data_operativa(), r.uom_id, 1,
+    (SELECT id FROM tmp_commessa_cs), (SELECT segment_key FROM tmp_src_cs) || ':SEG-PAIR-001', r.articolo_id, r.istanza_utility_id, script.fn_data_operativa(), r.uom_id, 1,
     date_trunc('month', script.fn_data_operativa())::date, script.fn_data_operativa(), script.fn_data_operativa(), r.tipo_doc_fiscale_id, r.valuta_id,
     1.2300000000, 'FIXED', 'BOZZA', 'NON_EMESSA',
-    r.sorgente_tipo_id, NULL
+    (SELECT sorgente_tipo_id FROM tmp_src_cs), NULL
   FROM tmp_refs_cs r;
   $$,
-  '23514',
-  NULL,
-  'Pair sorgente_tipo_id/sorgente_uid coerente su commesse_attivita'
+  '%si scrive con la sola chiave sorgente_id%',
+  'Forma della provenienza: il tipo senza la chiave del documento lo rifiuta il guard unico (prima del CHECK di forma)'
 );
 
 SELECT throws_ok(
@@ -258,13 +263,13 @@ SELECT throws_ok(
     commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita, uom_id, quantita,
     competenza_mese, competenza_dal, competenza_al, tipo_doc_fiscale_id, valuta_id,
     prezzo_snapshot, pricing_mode, stato_approvazione, stato_emissione,
-    sorgente_tipo_id, sorgente_uid   -- la riga NORMALE ha la sua sorgente (vincolo 20261012-27)
+    sorgente_tipo_id, sorgente_id   -- la riga NORMALE ha la sua sorgente (vincolo 20261012-27)
   )
   SELECT
-    (SELECT id FROM tmp_commessa_cs), 'SEG-MODE-001', r.articolo_id, r.istanza_utility_id, script.fn_data_operativa(), r.uom_id, 1,
+    (SELECT id FROM tmp_commessa_cs), (SELECT segment_key FROM tmp_src_cs) || ':SEG-MODE-001', r.articolo_id, r.istanza_utility_id, script.fn_data_operativa(), r.uom_id, 1,
     date_trunc('month', script.fn_data_operativa())::date, script.fn_data_operativa(), script.fn_data_operativa(), r.tipo_doc_fiscale_id, r.valuta_id,
     1.2300000000, 'DYNAMIC', 'BOZZA', 'NON_EMESSA',
-    r.sorgente_tipo_id, (SELECT id FROM tmp_commessa_cs)::text
+    (SELECT sorgente_tipo_id FROM tmp_src_cs), (SELECT consumo_id FROM tmp_src_cs)
   FROM tmp_refs_cs r;
   $$,
   '23514',

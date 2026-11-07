@@ -103,7 +103,7 @@ BEGIN
     IF p_gruppi IS NOT NULL THEN
         v_join := ' JOIN vendite.commesse_attivita ca ON ca.id = a.commessa_attivita_id';
         v_where := v_where
-            || ' AND vendite.fn_build_gruppo_fatturabile_key(ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id) = ANY ('
+            || ' AND vendite.fn_gruppo_fatturabile_key_di_attivita(ca.sorgente_tipo_id, ca.segment_key, ca.commessa_id) = ANY ('
             || quote_literal(p_gruppi::text) || '::text[])';
     END IF;
 

@@ -130,8 +130,8 @@ SELECT is(
               ('vendite.commesse_attivita'::regclass, 'trg_commesse_attivita_z90_proietta_stato_preventivo_upd')))
   + (SELECT max(p.pronargs)::int FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
       WHERE n.nspname = 'vendite' AND p.proname = 'fn_ritira_commessa_attivita_da_sorgente'),
-  11,
-  '1) quattro funzioni nuove, tre trigger montati, la primitiva del ritiro con quattro parametri');
+  12,
+  '1) quattro funzioni nuove, tre trigger montati, la primitiva del ritiro con cinque parametri (tipo, sorgente_id, sorgente_uid, motivo, commessa)');
 
 -- ============================================================
 -- Fixture — COSTRUITE
@@ -667,7 +667,8 @@ BEGIN
       p_contratto_id => NULL, p_categoria_cliente_id_snapshot => NULL, p_classe_utenza_id_snapshot => NULL,
       p_tipo_doc_fiscale_id => r.tipo_doc_fiscale_id, p_valuta_id => r.valuta_id,
       p_stato_approvazione => 'BOZZA', p_stato_emissione => 'NON_EMESSA',
-      p_sorgente_tipo_id => r.sorg_commessa_id, p_sorgente_uid => pg_temp.ac_fix('b_cm2')::text,
+      -- la provenienza: il consumo della commessa (un documento vero), la chiave lo nomina
+      p_sorgente_tipo_id => (SELECT sorgente_tipo_id FROM tmp_ac_src), p_sorgente_uid => (SELECT consumo_id::text FROM tmp_ac_src),
       p_tipo_movimento => 'NORMALE') u;
   IF p_emissione <> 'NON_EMESSA' THEN
     UPDATE vendite.commesse_attivita SET stato_emissione = p_emissione WHERE id = v;
@@ -675,13 +676,18 @@ BEGIN
   RETURN v;
 END $$ LANGUAGE plpgsql;
 
-SELECT pg_temp.ac_riga('PGT-AC-SEG:A', 'ANNULLATA');
-SELECT pg_temp.ac_riga('PGT-AC-SEG:B', 'EMESSA');
-SELECT pg_temp.ac_riga('PGT-AC-SEG:B#RET:1', 'ANNULLATA');
+-- La base delle chiavi del caso: la chiave del push del consumo della commessa,
+-- a cui il caso aggiunge i suoi segmenti (il classificatore li legge cosi').
+CREATE TEMP TABLE tmp_ac_src AS
+SELECT * FROM dbops.fn_pgtap_consumo_della_commessa(pg_temp.ac_fix('b_cm2'));
 
-SELECT is(script.fn_get_stato_push_segment('PGT-AC-SEG:A'), 'LIBERA',
+SELECT pg_temp.ac_riga(((SELECT segment_key FROM tmp_ac_src) || ':PGT-AC-SEG:A'), 'ANNULLATA');
+SELECT pg_temp.ac_riga(((SELECT segment_key FROM tmp_ac_src) || ':PGT-AC-SEG:B'), 'EMESSA');
+SELECT pg_temp.ac_riga(((SELECT segment_key FROM tmp_ac_src) || ':PGT-AC-SEG:B#RET:1'), 'ANNULLATA');
+
+SELECT is(script.fn_get_stato_push_segment(((SELECT segment_key FROM tmp_ac_src) || ':PGT-AC-SEG:A')), 'LIBERA',
   '25) classificatore: un segmento con la sola riga ANNULLATA e'' LIBERA (D-5)');
-SELECT is(script.fn_get_stato_push_segment('PGT-AC-SEG:B'), 'EMESSA',
+SELECT is(script.fn_get_stato_push_segment(((SELECT segment_key FROM tmp_ac_src) || ':PGT-AC-SEG:B')), 'EMESSA',
   '26) classificatore: EMESSA con una rettifica ANNULLATA resta EMESSA (la ritirata non conta)');
 
 SELECT ok(
@@ -701,7 +707,7 @@ SELECT ok(
 -- Il preventivo b e' EVASO (caso 12). Una riga di un'altra sorgente sulla
 -- stessa commessa che cambia stato non lo muove.
 UPDATE vendite.commesse_attivita SET stato_emissione = 'ANNULLATA'
- WHERE commessa_id = pg_temp.ac_fix('b_cm2') AND segment_key = 'PGT-AC-SEG:B';
+ WHERE commessa_id = pg_temp.ac_fix('b_cm2') AND segment_key = ((SELECT segment_key FROM tmp_ac_src) || ':PGT-AC-SEG:B');
 SELECT is(pg_temp.ac_stato('preventivi', pg_temp.ac_fix('b_prev')), 'EVASO',
   '28) una riga di un''altra sorgente che cambia stato non muove il preventivo');
 

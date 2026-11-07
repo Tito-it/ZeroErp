@@ -203,7 +203,7 @@ CREATE TEMP TABLE tmp_ca_sot AS
 SELECT r.attivita_id AS commessa_attivita_id
 FROM vendite.fn_upsert_commessa_attivita(
   p_commessa_id => (SELECT commessa_id FROM tmp_commessa_sot),
-  p_segment_key => ('SOT-' || substr(md5(clock_timestamp()::text), 1, 18))::varchar,
+  p_segment_key => ((SELECT script.fn_segment_key(s.codice_interno, d.documento_uid::text) FROM config.sorgenti s, script.fn_sorgente_documento_da_chiave(s.id, ((SELECT uid::text FROM tmp_prev_sot))::text) d WHERE s.id = (SELECT sorgente_preventivo_id FROM tmp_refs_sot)) || ':' || ('SOT-' || substr(md5(clock_timestamp()::text), 1, 18))::varchar)::varchar,
   p_articolo_id => (SELECT articolo_id FROM tmp_refs_sot),
   p_istanza_utility_id => (SELECT istanza_utility_id FROM tmp_refs_sot),
   p_data_attivita => DATE '2026-07-15',

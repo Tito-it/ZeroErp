@@ -465,10 +465,10 @@ BEGIN
   SELECT * INTO r FROM tmp_al_refs;
   SELECT c.commessa_id INTO v_commessa FROM tmp_al_commessa c;
   SELECT p.uid::text INTO v_uid FROM vendite.preventivi p WHERE p.id = pg_temp.al_fix('e_prev');
-  SELECT a.attivita_id INTO v_ca FROM dbops.fn_pgtap_crea_commessa_attivita(v_commessa) a;
-  UPDATE vendite.commesse_attivita
-     SET sorgente_tipo_id = r.sorg_preventivo_id, sorgente_uid = v_uid
-   WHERE id = v_ca;
+  -- La riga nasce dal preventivo: il builder compone la chiave del push col suo uid.
+  SELECT a.attivita_id INTO v_ca
+    FROM dbops.fn_pgtap_crea_commessa_attivita(v_commessa, p_sorgente_codice => 'PREVENTIVO',
+                                               p_sorgente_uid => v_uid) a;
   INSERT INTO tmp_al_fix VALUES ('e_ca', v_ca);
   SELECT a.attivita_id INTO v_ca FROM dbops.fn_pgtap_crea_commessa_attivita(v_commessa) a;
   INSERT INTO tmp_al_fix VALUES ('e_ca_altra', v_ca);

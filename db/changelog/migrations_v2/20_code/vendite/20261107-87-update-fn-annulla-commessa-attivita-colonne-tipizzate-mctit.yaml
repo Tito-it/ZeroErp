@@ -1,0 +1,275 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'ANNULLO DI UNA RIGA DI COMMESSA NOMINA IL DOCUMENTO DALLE COLONNE DEL MODELLO: vendite.fn_annulla_commessa_attivita
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto C, giro C.3.
+#
+#   Il guard ORIGINE nominava il documento col ponte testuale (vendite.fn_get_sorgente_documento_ref
+#   sull'uid della riga): dal 20261107-70 la riga porta la chiave del modello, e il numero lo
+#   da' il BB che risolve sulle due colonne. Il contesto dell'errore porta sorgente_id e
+#   sorgente_uid. ⚠️ Il DECLARE ancorava v_sorgente_uid alla colonna, che ora e' uuid: il
+#   %TYPE si risolve alla prima esecuzione, e il ponte testuale non avrebbe piu' trovato la
+#   firma. Corpo dal vivo (dbdev, 2026-11-07); firma ancorata (l'ultimo YAML, 20260826-56, era
+#   a tipi nudi), SECURITY INVOKER esplicito. COMMENT invariato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261107-87-update-fn-annulla-commessa-attivita-colonne-tipizzate-mctit.yaml
+
+  - changeSet:
+      id: 20261107-87-update-fn-annulla-commessa-attivita-colonne-tipizzate
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_annulla_commessa_attivita: il documento d'origine nominato dal BB che risolve
+        sulle colonne del modello. brief-db-sorgente-documento-e-riga §7.2 lotto C, giro C.3.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_annulla_commessa_attivita(
+                  p_commessa_attivita_id vendite.commesse_attivita.id%TYPE,
+                  -- il perche' dell'annullo: va nel dettaglio jsonb del log, nessuna colonna lo rispecchia
+                  p_motivo               text)
+               RETURNS vendite.commesse_attivita.id%TYPE
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                v_motivo           text;
+                v_commessa_id      vendite.commesse_attivita.commessa_id%TYPE;
+                v_segment_key      vendite.commesse_attivita.segment_key%TYPE;
+                v_stato_emissione  vendite.commesse_attivita.stato_emissione%TYPE;
+                v_sorgente_tipo_id vendite.commesse_attivita.sorgente_tipo_id%TYPE;
+                v_sorgente_id      vendite.commesse_attivita.sorgente_id%TYPE;
+                v_sorgente_uid     vendite.commesse_attivita.sorgente_uid%TYPE;
+                v_prezzo_snapshot  vendite.commesse_attivita.prezzo_snapshot%TYPE;
+                v_tipo_movimento   vendite.commesse_attivita.tipo_movimento%TYPE;
+                -- ⭐ D-6: il NUMERO leggibile del documento sorgente. text e non %TYPE:
+                --   non riflette una colonna, e' cio' che il resolver COMPONE — e su
+                --   sorgenti diverse arriva da colonne diverse (`numero` o `codice`,
+                --   secondo config.sorgenti.label_selector).
+                v_sorgente_doc_numero text;
+              BEGIN
+                -- Scopo: madre DB dell'annullamento di una riga MANUALE di
+                -- commessa. Perimetro: una sola riga, due scritture in una
+                -- unita' atomica (UPDATE stato + INSERT evento di log).
+                -- Risultato: l'id della riga annullata. Non cancella nulla:
+                -- la riga resta, con importo e storia, e smette solo di essere
+                -- eleggibile alla fatturazione (tutte le porte filtrano gia'
+                -- ANNULLATA). Il presidio permessi vive sul BE.
+              
+                -- ---------------------------------------------------------
+                -- 1. Guard parametri (AGENTS.md: NULL o <=0 -> errore parlante,
+                --    mai normalizzazione silenziosa).
+                -- ---------------------------------------------------------
+                IF p_commessa_attivita_id IS NULL OR p_commessa_attivita_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite','fn_annulla_commessa_attivita','E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('parametro','commessa_attivita_id',
+                                       'valore',p_commessa_attivita_id),
+                    NULL::uuid, 'commessa_attivita_id obbligatorio (>0)');
+                END IF;
+              
+                -- Motivo: normalizzato con btrim, poi obbligatorio non vuoto.
+                -- L'annullamento e' irreversibile e l'unica traccia del PERCHE'
+                -- e' l'evento di log: senza motivo resta il fatto senza la
+                -- ragione, e a mesi di distanza un importo sparito senza
+                -- spiegazione e' indistinguibile da un errore.
+                v_motivo := btrim(COALESCE(p_motivo, ''));
+                IF v_motivo = '' THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite','fn_annulla_commessa_attivita','E_RIGA_COMMESSA_MOTIVO_OBBLIGATORIO',
+                    jsonb_build_object('commessa_attivita_id', p_commessa_attivita_id),
+                    NULL::uuid, p_commessa_attivita_id::text);
+                END IF;
+              
+                -- ---------------------------------------------------------
+                -- 2. Caricare la riga SOTTO LOCK.
+                --    FOR UPDATE serializza i concorrenti sulla stessa riga:
+                --    due annullamenti simultanei scriverebbero altrimenti due
+                --    eventi di log per un solo annullamento, e una emissione
+                --    concorrente darebbe esito non deterministico. Sotto READ
+                --    COMMITTED chi aspetta ri-legge la versione aggiornata e
+                --    cade sul guard corretto (gia' annullata / gia' emessa).
+                -- ---------------------------------------------------------
+                SELECT ca.commessa_id, ca.segment_key, ca.stato_emissione,
+                       ca.sorgente_tipo_id, ca.sorgente_id, ca.sorgente_uid, ca.prezzo_snapshot,
+                       ca.tipo_movimento
+                  INTO v_commessa_id, v_segment_key, v_stato_emissione,
+                       v_sorgente_tipo_id, v_sorgente_id, v_sorgente_uid, v_prezzo_snapshot,
+                       v_tipo_movimento
+                  FROM vendite.commesse_attivita ca
+                 WHERE ca.id = p_commessa_attivita_id
+                 FOR UPDATE;
+              
+                IF NOT FOUND THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite','fn_annulla_commessa_attivita','E_VALORE_MANCANTE',
+                    jsonb_build_object('commessa_attivita_id', p_commessa_attivita_id),
+                    NULL::uuid, concat('commessa_attivita_id ', p_commessa_attivita_id));
+                END IF;
+              
+                -- ---------------------------------------------------------
+                -- 3. Guard "gia' annullata". PRIMO della catena: una riga
+                --    ANNULLATA e' per costruzione gia' passata da qui, quindi
+                --    non toglie mai il posto a una diagnosi migliore. Codice
+                --    DEDICATO: dire "gia' emessa" a chi ha riannullato una riga
+                --    e' falso e lo manda a cercare una fattura che non esiste.
+                -- ---------------------------------------------------------
+                IF v_stato_emissione = 'ANNULLATA' THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite','fn_annulla_commessa_attivita','E_RIGA_COMMESSA_GIA_ANNULLATA',
+                    jsonb_build_object('commessa_attivita_id', p_commessa_attivita_id,
+                                       'commessa_id', v_commessa_id,
+                                       'segment_key', v_segment_key),
+                    NULL::uuid, p_commessa_attivita_id::text, v_segment_key);
+                END IF;
+              
+                -- ---------------------------------------------------------
+                -- 4. Guard ORIGINE: la riga nasce da un documento?
+                --    Prima di "gia' emessa" perche' e' l'identita' della riga,
+                --    non una condizione: per una riga da push il rimedio e'
+                --    SEMPRE a monte, sul documento, sia essa emessa o no.
+                --    NOTA: fn_upsert_commessa_attivita ha p_sorgente_tipo_id
+                --    DEFAULT NULL, quindi "sourceless" e' garantito dalla
+                --    disciplina di chi chiama e non dalla struttura -> questo
+                --    guard e' necessario e non va dato per implicito.
+                -- ---------------------------------------------------------
+                IF v_sorgente_tipo_id IS NOT NULL THEN
+                  -- ⭐ D-6 (2026-08-26): IL DOCUMENTO SI NOMINA, NON SI FA CERCARE.
+                  --   Il terzo %s del messaggio riceveva `sorgente_uid`, cioe' un UUID:
+                  --   diceva «nasce dal documento sorgente
+                  --   0198f3a2-...» a una persona, che con quel valore non puo' fare
+                  --   niente. Il resolver unico lo traduce nel numero che l'operatore
+                  --   legge davvero (ORD0000227, DDT0010839).
+                  -- ⚠️ Il resolver NON solleva e restituisce SEMPRE una riga, anche tutta
+                  --   a NULL: e' SECURITY INVOKER, quindi su un documento fuori perimetro
+                  --   il numero non c'e'. Il COALESCE ripiega sull'uid — un messaggio meno
+                  --   utile, mai un messaggio mancante.
+                  -- ⛔ Un errore non deve poter morire dentro la sua diagnostica: se un
+                  --   giorno il resolver cambiasse idea e sollevasse, il rifiuto del guard
+                  --   diventerebbe un 500 e la regola sparirebbe. Il contratto su cui
+                  --   ci si appoggia sta nel suo COMMENT: non solleva, e una riga la
+                  --   restituisce sempre — anche tutta a NULL.
+                  SELECT ref.documento_numero
+                    INTO v_sorgente_doc_numero
+                    FROM script.fn_sorgente_documento(
+                           v_sorgente_tipo_id, v_sorgente_id, v_sorgente_uid) ref;
+              
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite','fn_annulla_commessa_attivita','E_RIGA_COMMESSA_NON_MANUALE',
+                    jsonb_build_object('commessa_attivita_id', p_commessa_attivita_id,
+                                       'commessa_id', v_commessa_id,
+                                       'segment_key', v_segment_key,
+                                       'sorgente_tipo_id', v_sorgente_tipo_id,
+                                       'sorgente_id', v_sorgente_id,
+                                       'sorgente_uid', v_sorgente_uid,
+                                       -- ℹ️ Il numero entra anche nel diario: chi indaga su
+                                       --   dbops.error_log a mesi di distanza non ha piu' il
+                                       --   messaggio composto, ha il context.
+                                       'sorgente_documento_numero', v_sorgente_doc_numero),
+                    NULL::uuid, p_commessa_attivita_id::text, v_segment_key,
+                    COALESCE(v_sorgente_doc_numero, v_sorgente_id::text, v_sorgente_uid::text, '?'));
+                END IF;
+              
+                -- ---------------------------------------------------------
+                -- 4-bis. ⭐ Guard NATURA (2026-08-20, segnalazione BE).
+                --    ORIGINE e NATURA sono DUE FATTI DIVERSI, e fino al
+                --    2026-08-18 coincidevano solo per assenza: sourceless
+                --    voleva dire ONERE perche' nessuno scriveva RETTIFICA.
+                --    Da quando fn_accredita_riga_reso ne scrive — e le scrive
+                --    sourceless per progetto — il solo guard di origine lascia
+                --    passare una riga di NOTA DI CREDITO.
+                --    ⚠️ E il danno non e' un errore: l'annullo riesce, il ponte
+                --    in vendite.resi_righe_accrediti SOPRAVVIVE, la quota resta
+                --    accreditata e la riga del reso NON torna in coda. Credito
+                --    al cliente, nessun documento, nessun segnale.
+                --    ⭐ WHITELIST e non blacklist: si ammette ONERE. Un quarto
+                --    movimento manuale dovra' essere ammesso esplicitamente,
+                --    non ereditare in silenzio un verbo distruttivo.
+                --    Sta PRIMA di "gia' emessa" perche' e' identita', non
+                --    condizione: per una rettifica il rimedio e' «annulla
+                --    l'accredito» sia da NON_EMESSA sia da EMESSA.
+                -- ---------------------------------------------------------
+                IF v_tipo_movimento IS DISTINCT FROM 'ONERE' THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite','fn_annulla_commessa_attivita','E_RIGA_COMMESSA_MOVIMENTO_NON_ANNULLABILE',
+                    jsonb_build_object('commessa_attivita_id', p_commessa_attivita_id,
+                                       'commessa_id', v_commessa_id,
+                                       'segment_key', v_segment_key,
+                                       'tipo_movimento', v_tipo_movimento),
+                    NULL::uuid, p_commessa_attivita_id::text, v_segment_key,
+                    COALESCE(v_tipo_movimento::text,'?'));
+                END IF;
+              
+                -- ---------------------------------------------------------
+                -- 5. Guard "non emessa". Scritto come <> 'NON_EMESSA' e non
+                --    = 'EMESSA': se domani il CHECK ammettesse un quarto stato,
+                --    il default resta il rifiuto (fail-closed).
+                --    Una riga emessa ha gia' generato la sua attivita_fatturabili:
+                --    annullare qui non la toglierebbe dalla catena, lascerebbe
+                --    un'AF orfana in viaggio verso la fattura.
+                -- ---------------------------------------------------------
+                IF v_stato_emissione <> 'NON_EMESSA' THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite','fn_annulla_commessa_attivita','E_RIGA_COMMESSA_GIA_EMESSA',
+                    jsonb_build_object('commessa_attivita_id', p_commessa_attivita_id,
+                                       'commessa_id', v_commessa_id,
+                                       'segment_key', v_segment_key,
+                                       'stato_emissione', v_stato_emissione),
+                    NULL::uuid, p_commessa_attivita_id::text, v_segment_key,
+                    v_stato_emissione::text);
+                END IF;
+              
+                -- ---------------------------------------------------------
+                -- 6. L'annullamento. stato_approvazione resta com'e': sono due
+                --    assi distinti con CHECK separati, e una riga annullata
+                --    conserva la memoria di essere stata approvata.
+                --    data_update/user_update/tx_id/storico: li mettono i
+                --    trigger della tabella (la madre fa solo dominio).
+                -- ---------------------------------------------------------
+                UPDATE vendite.commesse_attivita ca
+                   SET stato_emissione = 'ANNULLATA'
+                 WHERE ca.id = p_commessa_attivita_id;
+              
+                -- ---------------------------------------------------------
+                -- 7. Audit. Secondo evento di commesse_attivita_log dopo
+                --    ONERE_AGGIUNTO. La colonna evento non ha CHECK ne'
+                --    tabella-vocabolario: nessun seed da estendere.
+                --    prezzo_snapshot e tipo_movimento restano nel dettaglio
+                --    perche' l'informazione utile a chi indaga e' QUANTO
+                --    valore e' uscito dal giro, non solo che e' uscito.
+                -- ---------------------------------------------------------
+                INSERT INTO vendite.commesse_attivita_log (commessa_attivita_id, evento, dettaglio)
+                VALUES (
+                  p_commessa_attivita_id,
+                  'RIGA_MANUALE_ANNULLATA',
+                  jsonb_build_object(
+                    'motivo',            v_motivo,
+                    'stato_precedente',  v_stato_emissione,
+                    'prezzo_snapshot',   v_prezzo_snapshot,
+                    'tipo_movimento',    v_tipo_movimento,
+                    'segment_key',       v_segment_key,
+                    'commessa_id',       v_commessa_id
+                  )
+                );
+              
+                RETURN p_commessa_attivita_id;
+              END
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only, come 20261107-70.
+              SELECT 1;

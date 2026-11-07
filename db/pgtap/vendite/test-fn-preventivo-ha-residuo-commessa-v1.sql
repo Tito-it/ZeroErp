@@ -412,14 +412,14 @@ SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita(
 INSERT INTO vendite.commesse_attivita (
   commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita, uom_id, quantita,
   competenza_mese, competenza_dal, competenza_al, tipo_doc_fiscale_id, valuta_id, prezzo_snapshot,
-  pricing_mode, stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
+  pricing_mode, stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_id, sorgente_uid)
 SELECT (SELECT id FROM tmp_rc_commessa),
   script.fn_segment_key('PREVENTIVO', (SELECT prev_uid FROM tmp_rc_bom)::text, (SELECT riga_id FROM tmp_rc_bom)) || '#CMP:999',
   r.art_serv_id, r.istanza_utility_id, DATE '2080-01-01', r.uom_id, 1,
   DATE '2080-01-01', DATE '2080-01-01', DATE '2080-12-31', r.tipo_doc_fiscale_id, r.valuta_id, 25.000000,
   'FIXED', 'BOZZA', 'NON_EMESSA',
   r.sorgente_preventivo_id,
-  (SELECT prev_uid FROM tmp_rc_bom)::text
+  (SELECT k.sorgente_id FROM script.fn_sorgente_chiave(r.sorgente_preventivo_id, ((SELECT prev_uid FROM tmp_rc_bom)::text)::text) k), (SELECT k.sorgente_uid FROM script.fn_sorgente_chiave(r.sorgente_preventivo_id, ((SELECT prev_uid FROM tmp_rc_bom)::text)::text) k)
 FROM tmp_rc_refs r;
 
 -- Attivita ANNULLATA con la chiave esatta della riga (caso 12): dal builder.

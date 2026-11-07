@@ -158,9 +158,9 @@ BEGIN
         commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita,
         uom_id, quantita, competenza_mese, competenza_dal, competenza_al,
         tipo_doc_fiscale_id, valuta_id, prezzo_snapshot, pricing_mode,
-        stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
+        stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_id)
       SELECT (SELECT id FROM tmp_commessa_rde),
-             'PGTAP-RDE-' || s || '-' || substr(md5(clock_timestamp()::text), 1, 12),
+             ((SELECT x.segment_key FROM dbops.fn_pgtap_consumo_della_commessa((SELECT id FROM tmp_commessa_rde)) x) || ':' || 'PGTAP-RDE-' || s || '-' || substr(md5(clock_timestamp()::text), 1, 12)),
              r.articolo_id, r.istanza_utility_id, script.fn_data_operativa(), r.uom_id, 1,
              date_trunc('month', script.fn_data_operativa())::date,
              date_trunc('month', script.fn_data_operativa())::date,
@@ -170,8 +170,8 @@ BEGIN
              --   forma in cui «gia' disponibile» esiste ancora (motivo 3): con
              --   la riga EMESSA sarebbe la divergenza, che il verbo accetta.
              'BOZZA', CASE WHEN s = 'LIBERA' THEN 'NON_EMESSA' ELSE 'EMESSA' END,
-             (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
-         ((SELECT id FROM tmp_commessa_rde))::text
+             (SELECT x.sorgente_tipo_id FROM dbops.fn_pgtap_consumo_della_commessa((SELECT id FROM tmp_commessa_rde)) x),
+         (SELECT x.consumo_id FROM dbops.fn_pgtap_consumo_della_commessa((SELECT id FROM tmp_commessa_rde)) x)
         FROM tmp_refs_rde r
       RETURNING id)
     INSERT INTO tmp_ca_rde(slot, attivita_id) SELECT s, ins.id FROM ins;

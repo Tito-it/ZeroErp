@@ -200,8 +200,7 @@ SELECT 'G2', a.attivita_id
 -- mano nel test significherebbe verificare la copia, non l'originale.
 CREATE TEMP TABLE tmp_eg_key AS
 SELECT a.slot,
-       vendite.fn_build_gruppo_fatturabile_key(
-         ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id) AS gruppo_key
+       vendite.fn_gruppo_fatturabile_key_di_attivita(ca.sorgente_tipo_id, ca.segment_key, ca.commessa_id) AS gruppo_key
   FROM tmp_eg_att a
   JOIN vendite.commesse_attivita ca ON ca.id = a.attivita_id;
 

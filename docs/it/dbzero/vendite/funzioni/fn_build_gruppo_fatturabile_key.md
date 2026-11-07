@@ -26,7 +26,10 @@ AS $function$
 -- mirata. Se la forma cambiasse qui, cambierebbe ovunque insieme.
 -- brief-db-emissione-fattura-per-documento-sorgente A1 / D-1 / D-9.
 DECLARE
-    v_uid             vendite.commesse_attivita.sorgente_uid%TYPE;
+    -- L'uid del documento in testo, come lo riceve: la chiave del gruppo e' testo, e
+    -- nessuna colonna lo rispecchia per ogni tipo (commesse_attivita.sorgente_uid e'
+    -- uuid e vale solo per i tipi a chiave uid).
+    v_uid             text;
     v_codice_interno  config.sorgenti.codice_interno%TYPE;
 BEGIN
     -- Guard parametri ID: errore esplicito, mai normalizzazione
@@ -52,9 +55,8 @@ BEGIN
     -- ============================================
     -- CASO 1: riga SOURCELESS -> gruppo "oneri di commessa"
     -- ============================================
-    -- Il CHECK chk_commesse_attivita_sorgente_pair impone che la
-    -- coppia (sorgente_tipo_id, sorgente_uid) sia tutta NULL o
-    -- tutta valorizzata: sourceless = entrambe NULL.
+    -- Una riga senza documento (chk_commesse_attivita_sorgente_forma:
+    -- tutte le sorgente_* NULL) arriva con tipo e uid NULL.
     IF p_sorgente_tipo_id IS NULL AND v_uid IS NULL THEN
         IF p_commessa_id IS NULL THEN
             -- Senza documento E senza commessa la riga non ha
@@ -77,9 +79,11 @@ BEGIN
     -- ============================================
     -- CASO 2: coppia incoerente -> fail-loud
     -- ============================================
-    -- Non dovrebbe accadere (lo impedisce il CHECK sulla tabella),
-    -- ma la funzione e' chiamabile con valori arbitrari: meglio
-    -- rumore che una chiave inventata che poi non risolve.
+    -- Non accade per una riga di commessa (la chiave del push porta
+    -- l'uid del documento, e il guard di trg_commesse_attivita_a10_
+    -- guard_sorgente_segment_ins_upd lo verifica), ma la funzione e'
+    -- chiamabile con valori arbitrari: meglio rumore che una chiave
+    -- inventata che poi non risolve.
     IF p_sorgente_tipo_id IS NULL OR v_uid IS NULL THEN
         PERFORM script.fn_log_and_raise_error(
             'vendite', 'fn_build_gruppo_fatturabile_key', 'E_PARAMETRO_INVALIDO',
@@ -112,15 +116,16 @@ BEGIN
         );
     END IF;
 
-    -- v_uid e' l'UID del documento (D-9): e' la forma presente in
-    -- commesse_attivita, NON la chiave canonica di
-    -- commesse_sorgenti. Vedi header del changeSet.
+    -- v_uid e' l'UID del documento anche per i tipi a chiave id: la
+    -- chiave del gruppo non segue il key_selector (D-6), e per una riga
+    -- di commessa lo legge dalla segment_key
+    -- vendite.fn_gruppo_fatturabile_key_di_attivita.
     RETURN v_codice_interno || ':' || v_uid;
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_build_gruppo_fatturabile_key(p_sorgente_tipo_id bigint, p_sorgente_uid text, p_commessa_id bigint)
-IS 'Unica fonte di verita'' della chiave di GRUPPO FATTURABILE di una riga vendite.commesse_attivita. Due forme: riga con documento sorgente -> ''<codice_interno_sorgente>:<sorgente_uid>''; riga sourceless (oneri della porta manuale, sorgente_* NULL) -> ''MAN:<commessa_id>'' (tutti gli oneri di una commessa sono UN gruppo). Prefisso da codice_interno (immutabile), mai da codice. ⚠️ L''identificativo del documento e'' l''UID, perche'' e'' cio'' che commesse_attivita.sorgente_uid contiene per TUTTE le sorgenti, anche quelle con config.sorgenti.key_selector=''id'': NON allineare a commesse_sorgenti, che e'' normalizzata da fn_link_commessa_sorgente e per lo stesso documento contiene un valore diverso (decisione D-9; guida /guide/sorgente-polimorfa §4a). La chiave non esce mai dal perimetro di commesse_attivita: la produce vw_dash_competenza_gruppi e la consumano i filtri p_gruppi dell''emissione mirata. Non derivarla da segment_key. STABLE (lookup su config.sorgenti). Guard: ID <= 0, riga sourceless senza commessa, coppia sorgente incoerente. brief-db-emissione-fattura-per-documento-sorgente A1, rev 2026-07-27.';
+IS 'Unica fonte di verita'' della chiave di GRUPPO FATTURABILE. Due forme: riga con documento -> ''<codice_interno del tipo>:<uid del documento>''; riga senza documento (oneri della porta manuale, rettifiche) -> ''MAN:<commessa_id>'' (tutti gli oneri di una commessa sono UN gruppo). Il prefisso viene da config.sorgenti.codice_interno (immutabile), mai da codice. ⚠️ L''identificativo e'' l''UID del documento anche per i tipi a chiave id: la chiave del gruppo e'' salvata nei lotti (fatturazione_lotti_gruppi, _esiti, _log) e non segue il key_selector della provenienza. Per una riga di commessa la costruisce vendite.fn_gruppo_fatturabile_key_di_attivita, che legge l''uid dalla segment_key; il verso inverso e'' vendite.fn_split_gruppo_fatturabile_key. La consumano gli elenchi dei gruppi (vendite.vw_dash_competenza_gruppi) e i filtri p_gruppi dell''emissione mirata. STABLE (lettura di config.sorgenti). Solleva E_PARAMETRO_INVALIDO su id <= 0, riga senza documento e senza commessa, tipo senza uid o uid senza tipo; E_CODICE su un tipo che non c''e''.';
 ```
 
 </div>

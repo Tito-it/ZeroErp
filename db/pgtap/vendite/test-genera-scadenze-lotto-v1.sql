@@ -85,12 +85,16 @@ SELECT plan(11);
 -- ⭐ rev 2026-10-24 (R-1): il lotto non contiene piu' una fattura oltre soglia
 -- (il modello non la mette in un lotto in bozza): il filtro D-F non ha niente
 -- da saltare, e il 4 e' uno skip dichiarato.
--- ⚠️ Il pull PRETENDE una sorgente ROOT, e il builder non la scrive: la scrive il
---   test (sorgente COMMESSA, chiave = id della commessa).
+-- ⚠️ Il pull PRETENDE una sorgente ROOT. Di solito c'e' gia': il builder della
+--   commessa scrive un'attivita' da un consumo, e la madre lega il consumo (il
+--   primo link e' ROOT). Se manca, la scrive il test (sorgente COMMESSA, chiave =
+--   id della commessa).
 INSERT INTO vendite.commesse_sorgenti (commessa_id, sorgente_tipo_id, sorgente_id, ruolo_link)
 SELECT c.commessa_id, s.id, c.commessa_id, 'ROOT'
   FROM tmp_comm_gsl c
-  JOIN config.sorgenti s ON s.codice_interno = 'COMMESSA' AND s.attivo IS TRUE;
+  JOIN config.sorgenti s ON s.codice_interno = 'COMMESSA' AND s.attivo IS TRUE
+ WHERE NOT EXISTS (SELECT 1 FROM vendite.commesse_sorgenti x
+                    WHERE x.commessa_id = c.commessa_id AND x.ruolo_link = 'ROOT');
 
 CREATE TEMP TABLE tmp_lotto_gsl AS
 SELECT vendite.fn_create_fatturazione_lotto(

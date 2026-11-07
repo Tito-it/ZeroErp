@@ -1,0 +1,61 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite.vw_lotti_gruppi_serviti SULLA RIGA DI COMMESSA DEL MODELLO
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto C, giro C.3.
+#
+#   Ricreata dopo il 20261107-70: la chiave del gruppo (colonna e GROUP BY) da vendite.fn_gruppo_fatturabile_key_di_attivita.
+#   Il resto identico al vivo.
+#   security_invoker, GRANT e COMMENT ripetuti dal catalogo (dbdev, 2026-11-07); il COMMENT di vista e'
+#   quello vivo, con i suoi marcatori di storia: non e' un oggetto riscritto dal giro (lotto DOC).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261107-97-create-vw-lotti-gruppi-serviti-chiave-di-attivita-mctit.yaml
+
+  - changeSet:
+      id: 20261107-97-create-vw-lotti-gruppi-serviti-chiave-di-attivita
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.vw_lotti_gruppi_serviti ricreata sulla riga di commessa del modello (chiave del
+        gruppo dalla funzione della riga). brief-db-sorgente-documento-e-riga §7.2 lotto C, giro
+        C.3.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- security_invoker si azzera a ogni CREATE VIEW: si ripete dal catalogo.
+              CREATE VIEW vendite.vw_lotti_gruppi_serviti WITH (security_invoker=on) AS
+               SELECT flf.lotto_id,
+                  vendite.fn_gruppo_fatturabile_key_di_attivita(ca.sorgente_tipo_id, ca.segment_key, ca.commessa_id) AS gruppo_key,
+                  ca.commessa_id,
+                  count(DISTINCT ca.id) AS n_attivita_fatturate,
+                  count(DISTINCT f.id) AS n_fatture
+                 FROM vendite.fatturazione_lotti_fatture flf
+                   JOIN vendite.fatture f ON f.id = flf.fattura_id
+                   JOIN vendite.fatture_righe fr ON fr.fattura_id = f.id
+                   JOIN vendite.attivita_fatturabili af ON af.fattura_riga_id = fr.id
+                   JOIN vendite.commesse_attivita ca ON ca.id = af.commessa_attivita_id
+                GROUP BY flf.lotto_id, (vendite.fn_gruppo_fatturabile_key_di_attivita(ca.sorgente_tipo_id, ca.segment_key, ca.commessa_id)), ca.commessa_id;
+              
+              COMMENT ON VIEW vendite.vw_lotti_gruppi_serviti IS
+                'CONSUNTIVO: quali gruppi fatturabili ciascun lotto ha davvero servito, cioe'' per quali gruppi esiste almeno un''attivita'' con fattura_riga_id valorizzato su una fattura del lotto. Grana (lotto_id, gruppo_key, commessa_id). Risponde alla richiesta §8.2 di brief-db-emittibilita-visibile-e-sbloccabile: vendite.fn_list_emittibili_lane.gruppi_coperti e'' una PREVISIONE fatta alla discovery, e fra quella e l''esecuzione il lavoro puo'' sparire (righe prese da un altro giro) senza che nessuno lo dica — la pipeline esce senza errore e senza lotto, e l''esito legge pieno successo. ⚠️ vendite.fatturazione_lotti_gruppi NON risponde a questa domanda: registra il PERMESSO (quali gruppi un lotto puo'' lavorare), non il servito. ⚠️ La chiave arriva da vendite.fn_build_gruppo_fatturabile_key calcolata su commesse_attivita, mai sulle colonne gemelle di attivita_fatturabili: e'' la stessa fonte della lane e di vw_dash_competenza_gruppi, e senza quella identita'' il confronto servito/richiesto non sarebbe un confronto. ⚠️ E'' una MISURA VIVA, non un log immutabile: se un lotto torna a DRAFT e le fatture spariscono, il gruppo smette di risultare servito — corretto, ma non e'' il registro storico di cosa fece quel giro. Nessun importo per scelta: il valore pro-quota di una riga e'' una formula che vive gia'' in vw_dash_competenza_attivita.valore_fatturato, e la domanda del §8.2 e'' quali gruppi, non per quanto. security_invoker=on: il cancello di scope e'' il JOIN su vendite.fatture / fatture_righe / commesse_attivita, che la RLS ce l''hanno.';
+              COMMENT ON COLUMN vendite.vw_lotti_gruppi_serviti.commessa_id IS
+                'La commessa e'' nella grana perche'' gruppo_key, per una riga con documento sorgente, vale ''<codice_interno>:<uid>'' e NON contiene la commessa: nulla vieta in linea di principio che lo stesso documento alimenti righe su due commesse. Oggi non accade (commesse_sorgenti ha UNIQUE su (sorgente_tipo_id, sorgente_uid) e in sviluppo i gruppi multi-commessa sono zero) ma nessun vincolo lo impedisce su commesse_attivita, e vw_dash_competenza_gruppi la commessa la tiene gia'' nel proprio GROUP BY.';
+              
+              GRANT SELECT, INSERT, UPDATE, DELETE ON vendite.vw_lotti_gruppi_serviti TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW vendite.vw_lotti_gruppi_serviti;

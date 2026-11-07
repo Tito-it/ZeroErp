@@ -27,7 +27,7 @@ SELECT ca.id AS commessa_attivita_id,
     sc.codice_interno AS commessa_stato_codice_interno,
     COALESCE(sc.descrizione, sc.codice) AS commessa_stato_descrizione,
     sc.emittibile AS commessa_emittibile,
-    vendite.fn_build_gruppo_fatturabile_key(ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id) AS gruppo_key,
+    vendite.fn_gruppo_fatturabile_key_di_attivita(ca.sorgente_tipo_id, ca.segment_key, ca.commessa_id) AS gruppo_key,
     ca.competenza_mese,
     ca.tipo_doc_fiscale_id,
     co.emittente_soggetto_ruolo_id,
@@ -51,7 +51,7 @@ SELECT ca.id AS commessa_attivita_id,
      JOIN vendite.stati_commessa sc ON ((sc.id = co.stato_commessa_id)))
      LEFT JOIN LATERAL ( SELECT array_agg(t.lotto_id ORDER BY t.lotto_id) AS lotti
            FROM vendite.vw_documenti_trattenuti_da_lotto t
-          WHERE ((t.gruppo_key = vendite.fn_build_gruppo_fatturabile_key(ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id)) AND (t.lotto_competenza_mese >= ca.competenza_mese))) trat ON (true));
+          WHERE ((t.gruppo_key = vendite.fn_gruppo_fatturabile_key_di_attivita(ca.sorgente_tipo_id, ca.segment_key, ca.commessa_id)) AND (t.lotto_competenza_mese >= ca.competenza_mese))) trat ON (true));
 ```
 
 </div>
