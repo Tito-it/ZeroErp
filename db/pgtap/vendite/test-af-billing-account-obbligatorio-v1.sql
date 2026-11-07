@@ -168,7 +168,7 @@ SELECT r.attivita_id AS commessa_attivita_id
     p_stato_approvazione            => 'APPROVATA',
     p_stato_emissione               => 'NON_EMESSA',
     p_sorgente_tipo_id              => (SELECT x.sorgente_tipo_id FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM _commessa)) x),
-    p_sorgente_uid                  => (SELECT x.consumo_id::text FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM _commessa)) x),
+    p_sorgente_chiave               => (SELECT x.consumo_id::text FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM _commessa)) x),
     p_tipo_movimento                => 'NORMALE',
     p_meta                          => jsonb_build_object('case', 'AF_BA_NOTNULL')
   ) r;
@@ -177,7 +177,7 @@ SELECT vendite.fn_link_commessa_sorgente(
     p_commessa_id      => (SELECT commessa_id FROM _commessa),
     p_sorgente_tipo_id => (SELECT s.id FROM config.sorgenti s
                             WHERE s.codice_interno = 'COMMESSA' AND s.attivo LIMIT 1),
-    p_sorgente_uid     => (SELECT commessa_id FROM _commessa)::text
+    p_sorgente_chiave  => (SELECT commessa_id FROM _commessa)::text
 );
 
 -- Lo stato si cambia dal verbo (la porta, giro 10): la fixture cammina la

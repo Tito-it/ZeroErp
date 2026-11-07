@@ -11,7 +11,6 @@
 | id | bigint | NO |  |
 | sorgente_tipo_id | bigint | NO |  |
 | sorgente_id | bigint | NO |  |
-| sorgente_uid | text | NO |  |
 | lotto_id | bigint | YES |  |
 | template_documento_id | bigint | YES |  |
 | stato | text | NO | 'PENDING'::text |

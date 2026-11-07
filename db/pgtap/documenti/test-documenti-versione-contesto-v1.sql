@@ -44,6 +44,13 @@ BEGIN;
 
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
+-- ⭐ La stampa e' di un preventivo VERO, del mondo dell'operatore in sessione: dal
+--   lotto D di brief-db-sorgente-documento-e-riga il guard unico verifica che il
+--   documento stampato esista, e la chiave di un preventivo e' il suo uid.
+CREATE TEMP TABLE _dg_src AS
+SELECT p.preventivo_uid FROM dbops.fn_pgtap_crea_preventivo('dg versione contesto', 'DRAFT') p;
+
+
 SET CONSTRAINTS ALL IMMEDIATE;
 
 SELECT plan(15);
@@ -167,7 +174,7 @@ BEGIN
            (SELECT id FROM tmp_dvc_template),
            (SELECT id FROM tmp_dvc_v WHERE versione = 1),
            c.sorgente_id,
-           'PGTAP-DVC-' || v_n, NULL, 1,
+           (SELECT preventivo_uid FROM _dg_src), NULL, v_n,
            'Stampa pgTAP ' || v_n, 'pgtap-dvc-' || v_n || '.pdf',
            p_contesto,
            repeat('1', 64), repeat('2', 64), repeat('3', 64),

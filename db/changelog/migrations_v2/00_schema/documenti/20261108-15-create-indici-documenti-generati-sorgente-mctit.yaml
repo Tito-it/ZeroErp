@@ -1,0 +1,52 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# «CHI DERIVA DA X» SU documenti.documenti_generati: gli indici della provenienza
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto D, giro D.1.
+#
+#   La ricerca per tipo e sorgente_id la serve l'unicita' delle versioni
+#   (20261108-14), che comincia con quelle due colonne. Mancano le altre due
+#   chiavi: sorgente_uid (le stampe di un preventivo o di un'offerta, e il lato in
+#   uscita del guard unico alla loro cancellazione) e sorgente_riga (il lato in
+#   uscita, alla cancellazione di una riga). Parziali, come su commesse_sorgenti.
+#   Rollback: DROP INDEX.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/documenti/20261108-15-create-indici-documenti-generati-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20261108-15-create-indici-documenti-generati-sorgente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        documenti.documenti_generati: indici parziali per tipo e sorgente_uid, per tipo e
+        sorgente_riga. brief-db-sorgente-documento-e-riga §7.2 lotto D, giro D.1.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE INDEX ix_documenti_generati_sorgente_uid ON documenti.documenti_generati USING btree (sorgente_tipo_id, sorgente_uid)
+               WHERE sorgente_uid IS NOT NULL;
+              COMMENT ON INDEX documenti.ix_documenti_generati_sorgente_uid IS
+                'Chi deriva da X: le stampe di un documento a chiave uid, per tipo e chiave del documento. Lo usano la lista delle stampe di un documento e il lato in uscita della provenienza (script.trgfn_sorgente_in_uscita, alla cancellazione del documento). Per tipo e sorgente_id serve uq_documenti_generati_sorgente_progressivo.';
+
+              CREATE INDEX ix_documenti_generati_sorgente_riga ON documenti.documenti_generati USING btree (sorgente_tipo_id, sorgente_riga)
+               WHERE sorgente_riga IS NOT NULL;
+              COMMENT ON INDEX documenti.ix_documenti_generati_sorgente_riga IS
+                'Chi deriva da X: le stampe di una riga di un documento, per tipo e riga. Lo usa il lato in uscita della provenienza (script.trgfn_sorgente_in_uscita, alla cancellazione della riga). Non unico.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP INDEX documenti.ix_documenti_generati_sorgente_uid;
+              DROP INDEX documenti.ix_documenti_generati_sorgente_riga;

@@ -2,7 +2,7 @@
 # ⚙️ Funzione `fn_link_commessa_sorgente`
 
 ```sql
-CREATE FUNCTION fn_link_commessa_sorgente(p_commessa_id bigint, p_sorgente_tipo_id bigint, p_sorgente_uid text, p_sorgente_riga bigint, p_meta jsonb)
+CREATE FUNCTION fn_link_commessa_sorgente(p_commessa_id bigint, p_sorgente_tipo_id bigint, p_sorgente_chiave text, p_sorgente_riga bigint, p_meta jsonb)
 ```
 
 > 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
@@ -12,13 +12,13 @@ CREATE FUNCTION fn_link_commessa_sorgente(p_commessa_id bigint, p_sorgente_tipo_
 <div data-search-exclude markdown>
 
 ```sql
-CREATE OR REPLACE FUNCTION vendite.fn_link_commessa_sorgente(p_commessa_id bigint, p_sorgente_tipo_id bigint, p_sorgente_uid text, p_sorgente_riga bigint DEFAULT NULL::bigint, p_meta jsonb DEFAULT '{}'::jsonb)
+CREATE OR REPLACE FUNCTION vendite.fn_link_commessa_sorgente(p_commessa_id bigint, p_sorgente_tipo_id bigint, p_sorgente_chiave text, p_sorgente_riga bigint DEFAULT NULL::bigint, p_meta jsonb DEFAULT '{}'::jsonb)
  RETURNS bigint
  LANGUAGE plpgsql
 AS $function$
 DECLARE
     v_link_id  vendite.commesse_sorgenti.id%TYPE;
-    v_uid      text := btrim(p_sorgente_uid);
+    v_uid      text := btrim(p_sorgente_chiave);
     v_existing vendite.commesse_sorgenti%ROWTYPE;
     v_ruolo    vendite.commesse_sorgenti.ruolo_link%TYPE;
     v_altra_commessa_id vendite.commesse_sorgenti.commessa_id%TYPE;
@@ -36,9 +36,9 @@ BEGIN
             jsonb_build_object('parametro', 'p_sorgente_tipo_id', 'valore', p_sorgente_tipo_id), NULL::uuid, 'p_sorgente_tipo_id obbligatorio e > 0');
     END IF;
 
-    IF p_sorgente_uid IS NULL OR v_uid = '' THEN
+    IF p_sorgente_chiave IS NULL OR v_uid = '' THEN
         PERFORM script.fn_log_and_raise_error('vendite', 'fn_link_commessa_sorgente', 'E_PARAMETRO_INVALIDO',
-            jsonb_build_object('parametro', 'p_sorgente_uid', 'valore', p_sorgente_uid), NULL::uuid, 'p_sorgente_uid obbligatoria');
+            jsonb_build_object('parametro', 'p_sorgente_chiave', 'valore', p_sorgente_chiave), NULL::uuid, 'p_sorgente_chiave obbligatoria');
     END IF;
 
     IF p_sorgente_riga IS NOT NULL AND p_sorgente_riga < 0 THEN
@@ -142,8 +142,8 @@ BEGIN
 END;
 $function$
 
-COMMENT ON FUNCTION vendite.fn_link_commessa_sorgente(p_commessa_id bigint, p_sorgente_tipo_id bigint, p_sorgente_uid text, p_sorgente_riga bigint, p_meta jsonb)
-IS 'La porta del link documento -> commessa (vendite.commesse_sorgenti): collega una sorgente a una commessa in modo idempotente decidendo il ruolo (prima sorgente della commessa -> ROOT, successive -> COLLEGATO: commessa multi-sorgente, aggregazione del fatturabile). La chiave la decide il BB che scrive la provenienza, script.fn_sorgente_chiave: legge il key_selector del tipo, traduce la chiave del chiamante (l''uuid per un tipo a chiave id, l''id per un tipo a chiave uid), verifica che il documento esista, solleva E_SORG_CONF / E_SORG_FORMATO / E_SORG_NORM_NON_RISOLTA / E_SORG_NOT_FOUND e restituisce la chiave del modello, sorgente_id oppure sorgente_uid: idempotenza, lock e insert lavorano su quella. p_sorgente_uid e'' la chiave del documento come la passa il chiamante, id o uid resi a testo; nella tabella la riga e'' validata dal guard unico, script.trgfn_guard_sorgente. Un documento sta in UNA SOLA COMMESSA APERTA alla volta: il link resta come storia dopo la chiusura o l''annullo della commessa (unicita'' della tabella per commessa); se il documento sta gia'' in un''altra commessa aperta (vendite.fn_commessa_viva_di_sorgente) solleva E_COMMESSA_SORGENTE_ALTRA_COMMESSA. Due invii dello stesso documento verso commesse diverse li serializza un lock advisory sulla sorgente (forma a due argomenti, namespace = questa funzione; vale in READ COMMITTED, come l''applicazione); il lock sulla commessa serializza il ruolo. Il meta si riscrive solo se cambia. Chiamante: vendite.fn_upsert_commessa_attivita, per ogni riga con una sorgente di scope PUSH_COMMESSA.';
+COMMENT ON FUNCTION vendite.fn_link_commessa_sorgente(p_commessa_id bigint, p_sorgente_tipo_id bigint, p_sorgente_chiave text, p_sorgente_riga bigint, p_meta jsonb)
+IS 'La porta del link documento -> commessa (vendite.commesse_sorgenti): collega una sorgente a una commessa in modo idempotente decidendo il ruolo (prima sorgente della commessa -> ROOT, successive -> COLLEGATO: commessa multi-sorgente, aggregazione del fatturabile). La chiave la decide il BB che scrive la provenienza, script.fn_sorgente_chiave: legge il key_selector del tipo, traduce la chiave del chiamante (l''uuid per un tipo a chiave id, l''id per un tipo a chiave uid), verifica che il documento esista, solleva E_SORG_CONF / E_SORG_FORMATO / E_SORG_NORM_NON_RISOLTA / E_SORG_NOT_FOUND e restituisce la chiave del modello, sorgente_id oppure sorgente_uid: idempotenza, lock e insert lavorano su quella. p_sorgente_chiave e'' la chiave del documento come la passa il chiamante, id o uid resi a testo; nella tabella la riga e'' validata dal guard unico, script.trgfn_guard_sorgente. Un documento sta in UNA SOLA COMMESSA APERTA alla volta: il link resta come storia dopo la chiusura o l''annullo della commessa (unicita'' della tabella per commessa); se il documento sta gia'' in un''altra commessa aperta (vendite.fn_commessa_viva_di_sorgente) solleva E_COMMESSA_SORGENTE_ALTRA_COMMESSA. Due invii dello stesso documento verso commesse diverse li serializza un lock advisory sulla sorgente (forma a due argomenti, namespace = questa funzione; vale in READ COMMITTED, come l''applicazione); il lock sulla commessa serializza il ruolo. Il meta si riscrive solo se cambia. Chiamante: vendite.fn_upsert_commessa_attivita, per ogni riga con una sorgente di scope PUSH_COMMESSA.';
 ```
 
 </div>

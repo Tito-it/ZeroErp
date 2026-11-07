@@ -79,8 +79,12 @@ SELECT vendite.fn_get_or_create_commessa(
 
 -- Il payload come lo compone il backend: le righe del lister, piu' la
 -- commessa e lo stato. Approvate, perche' la fattura del caso C le emette.
+-- ⚠️ La chiave del documento: il lister la restituisce in sorgente_uid, il batch
+--   la vuole in sorgente_chiave (20261108-24, il nome del parametro della madre).
+--   Il backend la mappa da se' (commesse_repository); qui la si copia.
 CREATE TEMP TABLE _payload AS
 SELECT jsonb_agg(to_jsonb(l) || jsonb_build_object(
+           'sorgente_chiave',    l.sorgente_uid,
            'commessa_id',        (SELECT id FROM _comm),
            'stato_approvazione', 'APPROVATA',
            'stato_emissione',    'NON_EMESSA') ORDER BY l.riga_id) AS righe

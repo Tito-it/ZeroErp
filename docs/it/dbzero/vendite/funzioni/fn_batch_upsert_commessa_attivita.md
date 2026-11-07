@@ -97,7 +97,7 @@ BEGIN
         p_stato_approvazione            => (v_row ->> 'stato_approvazione')::varchar,
         p_stato_emissione               => (v_row ->> 'stato_emissione')::varchar,
         p_sorgente_tipo_id              => (v_row ->> 'sorgente_tipo_id')::bigint,
-        p_sorgente_uid                  => (v_row ->> 'sorgente_uid')::text,
+        p_sorgente_chiave               => (v_row ->> 'sorgente_chiave')::text,
         -- La riga del documento (la riga_id del lister): NULL se il documento non ha
         --   righe o la provenienza e' il documento intero.
         p_sorgente_riga                 => (v_row ->> 'sorgente_riga')::bigint,
@@ -130,7 +130,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_batch_upsert_commessa_attivita(p_rows jsonb)
-IS 'Il batch del push: un array jsonb di righe, ognuna passata a vendite.fn_upsert_commessa_attivita con le chiavi dei suoi parametri (senza il prefisso p_), e i contatori total_rows, inserted, updated con gli errori raccolti tutti (collect-all: una riga che fallisce non ferma le altre). Le chiavi dello snapshot di prezzo (prezzo_base_snapshot, origine_prezzo, tipo_variazione_applicata, valore_variazione_applicata, promo_id, contratto_id, categoria_cliente_id_snapshot, classe_utenza_id_snapshot) sono obbligatorie come nella madre. La provenienza: sorgente_tipo_id, sorgente_uid (la chiave del documento come la ha il chiamante, id o uid) e sorgente_riga (la riga del documento, dalla riga_id dei lister del push).';
+IS 'Il batch del push: un array jsonb di righe, ognuna passata a vendite.fn_upsert_commessa_attivita con le chiavi dei suoi parametri (senza il prefisso p_), e i contatori total_rows, inserted, updated con gli errori raccolti tutti (collect-all: una riga che fallisce non ferma le altre). Le chiavi dello snapshot di prezzo (prezzo_base_snapshot, origine_prezzo, tipo_variazione_applicata, valore_variazione_applicata, promo_id, contratto_id, categoria_cliente_id_snapshot, classe_utenza_id_snapshot) sono obbligatorie come nella madre. La provenienza: sorgente_tipo_id, sorgente_chiave (la chiave del documento come la ha il chiamante, id o uid) e sorgente_riga (la riga del documento, dalla riga_id dei lister del push).';
 ```
 
 </div>

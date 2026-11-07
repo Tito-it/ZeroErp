@@ -151,7 +151,7 @@ SELECT vendite.fn_link_commessa_sorgente(
   -- ROOT: sorgente COMMESSA (key_selector='id') con uid = id della commessa
   -- stessa: esiste per costruzione -> passa formato ed esistenza del guard
   -- sorgente polimorfa. rev 2026-07-27 (bonifica).
-  p_sorgente_uid => (SELECT commessa_id FROM tmp_commessa_a)::text,
+  p_sorgente_chiave => (SELECT commessa_id FROM tmp_commessa_a)::text,
   p_sorgente_riga => NULL,
   p_meta => '{}'::jsonb
 );
@@ -192,7 +192,7 @@ FROM vendite.fn_upsert_commessa_attivita(
   p_stato_approvazione => 'APPROVATA',
   p_stato_emissione => 'NON_EMESSA',
   p_sorgente_tipo_id => (SELECT x.sorgente_tipo_id FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa_a)) x),
-  p_sorgente_uid => (SELECT x.consumo_id::text FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa_a)) x),
+  p_sorgente_chiave => (SELECT x.consumo_id::text FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa_a)) x),
   p_tipo_movimento => 'NORMALE',
   p_meta => jsonb_build_object('case', 'GUARD_A')
 ) r;
@@ -290,7 +290,7 @@ SELECT vendite.fn_link_commessa_sorgente(
   -- ROOT: sorgente COMMESSA (key_selector='id') con uid = id della commessa
   -- stessa: esiste per costruzione -> passa formato ed esistenza del guard
   -- sorgente polimorfa. rev 2026-07-27 (bonifica).
-  p_sorgente_uid => (SELECT commessa_id FROM tmp_commessa_b)::text,
+  p_sorgente_chiave => (SELECT commessa_id FROM tmp_commessa_b)::text,
   p_sorgente_riga => NULL,
   p_meta => '{}'::jsonb
 );
@@ -331,7 +331,7 @@ FROM vendite.fn_upsert_commessa_attivita(
   p_stato_approvazione => 'APPROVATA',
   p_stato_emissione => 'NON_EMESSA',
   p_sorgente_tipo_id => (SELECT x.sorgente_tipo_id FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa_b)) x),
-  p_sorgente_uid => (SELECT x.consumo_id::text FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa_b)) x),
+  p_sorgente_chiave => (SELECT x.consumo_id::text FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa_b)) x),
   p_tipo_movimento => 'NORMALE',
   p_meta => jsonb_build_object('case', 'GUARD_B')
 ) r;

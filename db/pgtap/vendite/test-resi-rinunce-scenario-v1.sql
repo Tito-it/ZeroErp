@@ -122,7 +122,7 @@ SELECT u.attivita_id
          -- La riga NORMALE ha la sua sorgente (vincolo 20261012-27).
          -- La provenienza e' il documento che la chiave nomina (come nel push).
          p_sorgente_tipo_id => (SELECT k.sorgente_tipo_id FROM dbops.fn_pgtap_provenienza_da_chiave(('DDT_VENDITA:' || r.ddt_uid || ':R:' || r.ddt_riga_id)::varchar) k),
-         p_sorgente_uid => (SELECT k.sorgente_chiave FROM dbops.fn_pgtap_provenienza_da_chiave(('DDT_VENDITA:' || r.ddt_uid || ':R:' || r.ddt_riga_id)::varchar) k),
+         p_sorgente_chiave => (SELECT k.sorgente_chiave FROM dbops.fn_pgtap_provenienza_da_chiave(('DDT_VENDITA:' || r.ddt_uid || ':R:' || r.ddt_riga_id)::varchar) k),
          p_sorgente_riga => (SELECT k.sorgente_riga FROM dbops.fn_pgtap_provenienza_da_chiave(('DDT_VENDITA:' || r.ddt_uid || ':R:' || r.ddt_riga_id)::varchar) k),
          p_segment_key                   => ('DDT_VENDITA:' || r.ddt_uid || ':R:' || r.ddt_riga_id)::varchar,
          p_articolo_id                   => r.articolo_id,

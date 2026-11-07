@@ -76,6 +76,13 @@ DO $ctx$ BEGIN
   PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _e WHERE lato = 'E1'));
 END $ctx$;
 
+-- ⭐ La stampa e' di un preventivo VERO, del mondo dell'operatore in sessione: dal
+--   lotto D di brief-db-sorgente-documento-e-riga il guard unico verifica che il
+--   documento stampato esista, e la chiave di un preventivo e' il suo uid.
+CREATE TEMP TABLE _dg_src AS
+SELECT p.preventivo_uid FROM dbops.fn_pgtap_crea_preventivo('dg standard', 'DRAFT') p;
+
+
 SET CONSTRAINTS ALL IMMEDIATE;
 
 SELECT plan(36);
@@ -396,7 +403,7 @@ SELECT lives_ok(
         sorgente_tipo_id, sorgente_uid, sorgente_riga, progressivo_sorgente,
         titolo, nome_file, context_json, context_hash, template_hash, pdf_hash,
         emittente_fiscale_id)
-    SELECT k.tipo, s.s1, sv.v2, k.sorg, 'PGTAP-STD-DOC-1', NULL, 1,
+    SELECT k.tipo, s.s1, sv.v2, k.sorg, (SELECT preventivo_uid FROM _dg_src), NULL, 1,
            'Doc std', 'doc-std.pdf', '{"_meta": {"context_version": 2}}'::jsonb,
            repeat('1', 64), repeat('2', 64), repeat('3', 64), k.e1
       FROM _k k, _s s, _sv sv$$,
@@ -421,7 +428,7 @@ SELECT throws_like(
         sorgente_tipo_id, sorgente_uid, sorgente_riga, progressivo_sorgente,
         titolo, nome_file, context_json, context_hash, template_hash, pdf_hash,
         emittente_fiscale_id)
-    SELECT k.tipo, t.id, v.id, k.sorg, 'PGTAP-STD-DOC-2', NULL, 1,
+    SELECT k.tipo, t.id, v.id, k.sorg, (SELECT preventivo_uid FROM _dg_src), NULL, 1,
            'Doc e2', 'doc-e2.pdf', '{"_meta": {"context_version": 2}}'::jsonb,
            repeat('1', 64), repeat('2', 64), repeat('3', 64), k.e1
       FROM _k k

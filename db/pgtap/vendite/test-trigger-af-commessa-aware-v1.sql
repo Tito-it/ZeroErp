@@ -171,7 +171,7 @@ FROM vendite.fn_upsert_commessa_attivita(
     WHERE s.codice = 'PREVENTIVO' AND s.attivo IS TRUE
     LIMIT 1
   ),
-  p_sorgente_uid => (SELECT uid::text FROM tmp_prev_tca),
+  p_sorgente_chiave => (SELECT uid::text FROM tmp_prev_tca),
   p_tipo_movimento => 'NORMALE',
   p_meta => jsonb_build_object('case', 'TCA_TRIGGER_TEST')
 ) r;
@@ -195,7 +195,7 @@ SELECT vendite.fn_link_commessa_sorgente(
     WHERE s.codice_interno = 'COMMESSA' AND s.attivo IS TRUE
     LIMIT 1
   ),
-  p_sorgente_uid => (SELECT commessa_id FROM tmp_commessa_tca)::text
+  p_sorgente_chiave => (SELECT commessa_id FROM tmp_commessa_tca)::text
 );
 
 -- Porta commessa in stato PRONTA_FATTURAZIONE (emittibile=true)

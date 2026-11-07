@@ -147,7 +147,7 @@ CREATE TEMP TABLE tmp_link_a AS
 SELECT vendite.fn_link_commessa_sorgente(
   p_commessa_id => (SELECT commessa1_id FROM tmp_commesse_link),
   p_sorgente_tipo_id => (SELECT sorgente_tipo_id FROM tmp_refs_link),
-  p_sorgente_uid => (SELECT src_uid FROM tmp_src_link WHERE tag = 'A'),
+  p_sorgente_chiave => (SELECT src_uid FROM tmp_src_link WHERE tag = 'A'),
   p_sorgente_riga => NULL,
   p_meta => jsonb_build_object('src', 'A')
 ) AS link_id;
@@ -166,7 +166,7 @@ CREATE TEMP TABLE tmp_link_b AS
 SELECT vendite.fn_link_commessa_sorgente(
   p_commessa_id => (SELECT commessa1_id FROM tmp_commesse_link),
   p_sorgente_tipo_id => (SELECT sorgente_tipo_id FROM tmp_refs_link),
-  p_sorgente_uid => (SELECT src_uid FROM tmp_src_link WHERE tag = 'B'),
+  p_sorgente_chiave => (SELECT src_uid FROM tmp_src_link WHERE tag = 'B'),
   p_sorgente_riga => NULL,
   p_meta => jsonb_build_object('src', 'B')
 ) AS link_id;
@@ -185,7 +185,7 @@ CREATE TEMP TABLE tmp_link_c AS
 SELECT vendite.fn_link_commessa_sorgente(
   p_commessa_id => (SELECT commessa1_id FROM tmp_commesse_link),
   p_sorgente_tipo_id => (SELECT sorgente_tipo_id FROM tmp_refs_link),
-  p_sorgente_uid => (SELECT src_uid FROM tmp_src_link WHERE tag = 'C'),
+  p_sorgente_chiave => (SELECT src_uid FROM tmp_src_link WHERE tag = 'C'),
   p_sorgente_riga => NULL,
   p_meta => jsonb_build_object('src', 'C')
 ) AS link_id;
@@ -205,7 +205,7 @@ SELECT is(
   vendite.fn_link_commessa_sorgente(
     p_commessa_id => (SELECT commessa1_id FROM tmp_commesse_link),
     p_sorgente_tipo_id => (SELECT sorgente_tipo_id FROM tmp_refs_link),
-    p_sorgente_uid => (SELECT src_uid FROM tmp_src_link WHERE tag = 'B'),
+    p_sorgente_chiave => (SELECT src_uid FROM tmp_src_link WHERE tag = 'B'),
     p_sorgente_riga => NULL,
     p_meta => jsonb_build_object('rilink', true)
   ),
@@ -259,7 +259,7 @@ CREATE TEMP TABLE tmp_link_a2 AS
 SELECT vendite.fn_link_commessa_sorgente(
   p_commessa_id => (SELECT commessa2_id FROM tmp_commesse_link),
   p_sorgente_tipo_id => (SELECT sorgente_tipo_id FROM tmp_refs_link),
-  p_sorgente_uid => (SELECT src_uid FROM tmp_src_link WHERE tag = 'A'),
+  p_sorgente_chiave => (SELECT src_uid FROM tmp_src_link WHERE tag = 'A'),
   p_sorgente_riga => NULL,
   p_meta => '{}'::jsonb
 ) AS link_id;
@@ -286,7 +286,7 @@ SELECT ok(
   vendite.fn_link_commessa_sorgente(
     p_commessa_id => (SELECT commessa2_id FROM tmp_commesse_link),
     p_sorgente_tipo_id => (SELECT sorgente_tipo_id FROM tmp_refs_link),
-    p_sorgente_uid => (SELECT src_uid FROM tmp_src_link WHERE tag = 'A'))
+    p_sorgente_chiave => (SELECT src_uid FROM tmp_src_link WHERE tag = 'A'))
   = (SELECT link_id FROM tmp_link_a2),
   '11a) re-link di A su commessa2: idempotente, stesso id');
 
@@ -298,7 +298,7 @@ SELECT is(
 SELECT vendite.fn_link_commessa_sorgente(
   p_commessa_id => (SELECT commessa2_id FROM tmp_commesse_link),
   p_sorgente_tipo_id => (SELECT sorgente_tipo_id FROM tmp_refs_link),
-  p_sorgente_uid => (SELECT src_uid FROM tmp_src_link WHERE tag = 'A'),
+  p_sorgente_chiave => (SELECT src_uid FROM tmp_src_link WHERE tag = 'A'),
   p_meta => jsonb_build_object('rilink', 'pgtap'));
 SELECT is(
   (SELECT cs.meta ->> 'rilink' FROM vendite.commesse_sorgenti cs WHERE cs.id = (SELECT link_id FROM tmp_link_a2)),

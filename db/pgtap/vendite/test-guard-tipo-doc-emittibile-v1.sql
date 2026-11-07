@@ -145,7 +145,7 @@ SELECT vendite.fn_link_commessa_sorgente(
   -- ROOT: sorgente COMMESSA (key_selector='id') con uid = id della commessa
   -- stessa: esiste per costruzione -> passa formato ed esistenza del guard
   -- sorgente polimorfa. rev 2026-07-27 (bonifica).
-  p_sorgente_uid => (SELECT commessa_id FROM tmp_commessa)::text,
+  p_sorgente_chiave => (SELECT commessa_id FROM tmp_commessa)::text,
   p_sorgente_riga => NULL,
   p_meta => '{}'::jsonb
 );
@@ -199,7 +199,7 @@ FROM vendite.fn_upsert_commessa_attivita(
   p_stato_approvazione => 'BOZZA',
   p_stato_emissione => 'NON_EMESSA',
   p_sorgente_tipo_id => (SELECT x.sorgente_tipo_id FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa)) x),
-  p_sorgente_uid => (SELECT x.consumo_id::text FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa)) x),
+  p_sorgente_chiave => (SELECT x.consumo_id::text FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa)) x),
   p_tipo_movimento => 'NORMALE',
   p_meta => jsonb_build_object('case', 'NORMALIZE')
 ) r;
@@ -255,7 +255,7 @@ SELECT 1 FROM vendite.fn_upsert_commessa_attivita(
   p_stato_approvazione => 'BOZZA',
   p_stato_emissione => 'NON_EMESSA',
   p_sorgente_tipo_id => (SELECT x.sorgente_tipo_id FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa)) x),
-  p_sorgente_uid => (SELECT x.consumo_id::text FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa)) x),
+  p_sorgente_chiave => (SELECT x.consumo_id::text FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa)) x),
   p_tipo_movimento => 'NORMALE',
   p_meta => jsonb_build_object('case', 'NO_REGRESSIONE')
 );
@@ -307,7 +307,7 @@ FROM vendite.fn_upsert_commessa_attivita(
   p_stato_approvazione => 'BOZZA',
   p_stato_emissione => 'NON_EMESSA',
   p_sorgente_tipo_id => (SELECT x.sorgente_tipo_id FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa)) x),
-  p_sorgente_uid => (SELECT x.consumo_id::text FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa)) x),
+  p_sorgente_chiave => (SELECT x.consumo_id::text FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa)) x),
   p_tipo_movimento => 'NORMALE',
   p_meta => jsonb_build_object('case', 'BOZZA_NULL')
 ) r;

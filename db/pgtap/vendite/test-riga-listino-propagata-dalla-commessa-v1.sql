@@ -198,7 +198,7 @@ SELECT b.*
            -- la provenienza della riga che si ri-invia: la stessa (la chiave la nomina)
            'sorgente_tipo_id',              (SELECT ca.sorgente_tipo_id FROM vendite.commesse_attivita ca
                                               WHERE ca.id = (SELECT attivita_id FROM t_a)),
-           'sorgente_uid',                  (SELECT COALESCE(ca.sorgente_id::text, ca.sorgente_uid::text)
+           'sorgente_chiave',               (SELECT COALESCE(ca.sorgente_id::text, ca.sorgente_uid::text)
                                                FROM vendite.commesse_attivita ca
                                               WHERE ca.id = (SELECT attivita_id FROM t_a)),
            'tipo_movimento',                'NORMALE'))) b;
@@ -226,7 +226,7 @@ SELECT vendite.fn_link_commessa_sorgente(
     p_commessa_id      => (SELECT commessa_id FROM t_c),
     p_sorgente_tipo_id => (SELECT s.id FROM config.sorgenti s
                             WHERE s.codice_interno = 'COMMESSA' AND s.attivo),
-    p_sorgente_uid     => (SELECT commessa_id FROM t_c)::text);
+    p_sorgente_chiave  => (SELECT commessa_id FROM t_c)::text);
 
 -- Lo stato dal verbo (la porta rifiuta l'UPDATE): la fixture cammina la matrice
 -- e concede da se' l'azione cambia_stato_commessa.

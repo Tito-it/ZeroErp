@@ -22,8 +22,9 @@ AS $function$
 -- Regole:
 --   Campi immutabili (snapshot):
 --     - tipo_documento_output_id, template_documento_id,
---       template_versione_id, sorgente_tipo_id, sorgente_uid,
---       sorgente_riga, progressivo_sorgente, emittente_fiscale_id
+--       template_versione_id, sorgente_tipo_id, sorgente_id,
+--       sorgente_uid, sorgente_riga, progressivo_sorgente,
+--       emittente_fiscale_id
 --     - context_json, context_hash, template_hash, pdf_hash
 --     - titolo, nome_file, uid
 --     - generato_at, generato_da_user_id
@@ -33,6 +34,8 @@ AS $function$
 --   Il documento rappresenta un'istantanea di generazione.
 --   Se cambia il template, il tipo documento, la sorgente,
 --   il context o i dati, quell'istantanea è corrotta.
+--   ⚠️ Le due chiavi della sorgente (sorgente_id, sorgente_uid) e la
+--      riga possono essere NULL: si confrontano con IS DISTINCT FROM.
 --
 -- Errore:
 --   E_DOCUMENTI_GENERATO_SNAPSHOT_IMMUTABILE
@@ -41,7 +44,8 @@ BEGIN
        NEW.template_documento_id         != OLD.template_documento_id         OR
        NEW.template_versione_id          != OLD.template_versione_id          OR
        NEW.sorgente_tipo_id              != OLD.sorgente_tipo_id              OR
-       NEW.sorgente_uid                  != OLD.sorgente_uid                  OR
+       NEW.sorgente_id                   IS DISTINCT FROM OLD.sorgente_id     OR
+       NEW.sorgente_uid                  IS DISTINCT FROM OLD.sorgente_uid    OR
        NEW.sorgente_riga                 IS DISTINCT FROM OLD.sorgente_riga   OR
        NEW.progressivo_sorgente          != OLD.progressivo_sorgente          OR
        NEW.emittente_fiscale_id          != OLD.emittente_fiscale_id          OR
@@ -70,7 +74,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION documenti.trgfn_documenti_generati_protect_snapshot()
-IS 'Guard A7: blocca UPDATE su snapshot. Documento generato = istantanea immutabile di generazione. Solo stato e meta modificabili.';
+IS 'Guard A7: blocca UPDATE su snapshot. Documento generato = istantanea immutabile di generazione. Solo stato e meta modificabili. La sorgente fa parte dello snapshot con tutte e due le chiavi (sorgente_id, sorgente_uid) e la riga, confrontate con IS DISTINCT FROM perche'' possono essere NULL.';
 ```
 
 </div>

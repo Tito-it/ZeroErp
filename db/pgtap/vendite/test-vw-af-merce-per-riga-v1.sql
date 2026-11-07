@@ -127,7 +127,7 @@ SELECT vendite.fn_get_or_create_commessa(
 SELECT vendite.fn_link_commessa_sorgente(
   p_commessa_id => (SELECT commessa_id FROM tmp_com),
   p_sorgente_tipo_id => (SELECT sorgente_root_id FROM tmp_refs),
-  p_sorgente_uid => (SELECT commessa_id FROM tmp_com)::text,
+  p_sorgente_chiave => (SELECT commessa_id FROM tmp_com)::text,
   p_sorgente_riga => NULL, p_meta => '{}'::jsonb);
 
 -- Helper: una CA con segment_key esplicito, tipo_movimento e meta.
@@ -149,7 +149,7 @@ BEGIN
     -- La riga NORMALE ha la sua sorgente; ONERE e RETTIFICA no (vincolo 20261012-27).
     -- La provenienza e' il documento che la chiave nomina (come nel push).
     p_sorgente_tipo_id => CASE WHEN p_tipo_mov = 'NORMALE' THEN (SELECT k.sorgente_tipo_id FROM dbops.fn_pgtap_provenienza_da_chiave(p_segment) k) END,
-    p_sorgente_uid => CASE WHEN p_tipo_mov = 'NORMALE' THEN (SELECT k.sorgente_chiave FROM dbops.fn_pgtap_provenienza_da_chiave(p_segment) k) END,
+    p_sorgente_chiave => CASE WHEN p_tipo_mov = 'NORMALE' THEN (SELECT k.sorgente_chiave FROM dbops.fn_pgtap_provenienza_da_chiave(p_segment) k) END,
     -- La riga della chiave e' sintetica: la provenienza e' il documento intero.
     p_sorgente_riga => NULL,
     p_segment_key => p_segment,

@@ -172,7 +172,7 @@ SELECT vendite.fn_link_commessa_sorgente(
     p_commessa_id      => (SELECT commessa_id FROM t_c),
     p_sorgente_tipo_id => (SELECT s.id FROM config.sorgenti s
                             WHERE s.codice_interno = 'COMMESSA' AND s.attivo),
-    p_sorgente_uid     => (SELECT commessa_id FROM t_c)::text);
+    p_sorgente_chiave  => (SELECT commessa_id FROM t_c)::text);
 
 -- rev 2026-10-26 (giro 10): lo stato non si scrive piu' (la porta,
 -- E_DOC_STATO_SOLO_DAL_VERBO): la fixture cammina la matrice dal verbo e

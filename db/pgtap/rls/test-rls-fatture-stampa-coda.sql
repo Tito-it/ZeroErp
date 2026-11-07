@@ -107,8 +107,8 @@ SELECT (SELECT m.auth_user_id FROM _mondi m WHERE m.lato = 'IO')    AS io,
 CREATE TEMP TABLE _coda AS
 WITH c AS (
     INSERT INTO vendite.fatture_stampa_coda
-        (sorgente_tipo_id, sorgente_id, sorgente_uid, stato)
-    SELECT f.tipo_id, f.fattura_id, f.fattura_id::text, 'ERRORE'
+        (sorgente_tipo_id, sorgente_id, stato)
+    SELECT f.tipo_id, f.fattura_id, 'ERRORE'
       FROM _fat f
     RETURNING id
 )
