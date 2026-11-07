@@ -1,10 +1,6 @@
 {% include-markdown "it/dbzero/script/manual/fn_get_sorgente_emittente_sr_id.md" %}
 # ⚙️ Funzione `fn_get_sorgente_emittente_sr_id`
 
-> ⚠️ **2 firme** con lo stesso nome: ognuna ha il suo blocco qui sotto, in ordine di argomenti.
-
-## Firma `(p_sorgente_tipo_id bigint, p_sorgente_id bigint, p_sorgente_uid uuid)`
-
 ```sql
 CREATE FUNCTION fn_get_sorgente_emittente_sr_id(p_sorgente_tipo_id bigint, p_sorgente_id bigint, p_sorgente_uid uuid)
 ```
@@ -151,108 +147,6 @@ $function$
 
 COMMENT ON FUNCTION script.fn_get_sorgente_emittente_sr_id(p_sorgente_tipo_id bigint, p_sorgente_id bigint, p_sorgente_uid uuid)
 IS '«Chi emette questo documento», per la sorgente polimorfa, sulle colonne del modello: dato il tipo (config.sorgenti) e la chiave del documento (sorgente_id o sorgente_uid) restituisce il soggetto_ruolo dell''emittente. Il documento lo risolve script.fn_sorgente_documento, con la chiave che riceve; qui si legge solo l''emittente, per id, per tre strade in ordine di direttezza: (1) emittente_soggetto_ruolo_id se la tabella ce l''ha (commesse, fatture, lotti); (2) emittente_fiscale_id tradotto in soggetto_ruolo (i documenti: e'' NOT NULL, mentre il billing account e'' facoltativo su ordini, preventivi, bolle e resi); (3) billing_account_id con anagrafiche.fn_get_emittente_fiscale_id (attivita_consumi, attivita_fatturabili). La strada la sceglie il catalogo prima del documento. Fail-closed, mai un NULL silenzioso: tipo assente o spento -> E_SORG_CONF; nessuna chiave -> E_SORG_KEY_MISSING; tabella senza nessuna delle tre colonne -> E_SORG_CONF; documento inesistente o senza emittente -> E_SORG_EMITTENTE_NON_RISOLTO. SECURITY DEFINER: da INVOKER la sorgente di un altro emittente sarebbe invisibile sotto RLS, e il chiamante concluderebbe «non esiste» invece di «e'' di un altro». La porta testuale (tipo, chiave text) controlla la forma e passa qui.';
-```
-
-</div>
-
-## Firma `(p_sorgente_tipo_id bigint, p_sorgente_uid text)`
-
-```sql
-CREATE FUNCTION fn_get_sorgente_emittente_sr_id(p_sorgente_tipo_id bigint, p_sorgente_uid text)
-```
-
-> 🔐 **Sicurezza**: `SECURITY DEFINER` — gira con i privilegi dell'owner `zeroerp_owner`: GRANT e RLS sono i suoi, non quelli di chi la chiama.
-
-**Definizione completa:**
-
-<div data-search-exclude markdown>
-
-```sql
-CREATE OR REPLACE FUNCTION script.fn_get_sorgente_emittente_sr_id(p_sorgente_tipo_id bigint, p_sorgente_uid text)
- RETURNS bigint
- LANGUAGE plpgsql
- STABLE SECURITY DEFINER
- SET search_path TO 'pg_catalog', 'public', 'pg_temp'
-AS $function$
-DECLARE
-    v_selector  config.sorgenti.key_selector%TYPE;
-BEGIN
-    -- =========================================================
-    -- Scopo: la porta per chi ha la chiave del documento come TESTO
-    --   canonico (vendite.commesse_sorgenti, G3: id::text o uuid::text
-    --   secondo key_selector). Controlla la forma come prima, poi passa
-    --   la chiave giusta alla funzione sulle colonne del modello
-    --   (tipo, sorgente_id, sorgente_uid), che risolve e legge
-    --   l'emittente (brief-db-sorgente-documento-e-riga §7.2 giro 0.3).
-    -- ⭐ Il ponte: si ritira quando l'ultimo chiamante passa le colonne
-    --   tipizzate (lotto C, commesse_sorgenti a sorgente_id/sorgente_uid).
-    -- =========================================================
-    IF p_sorgente_tipo_id IS NULL OR p_sorgente_tipo_id <= 0 THEN
-        PERFORM script.fn_log_and_raise_error(
-            'script', 'fn_get_sorgente_emittente_sr_id', 'E_SORG_CONF',
-            jsonb_build_object('detail', 'Tipo sorgente non valorizzato',
-                               'sorgente_tipo_id', p_sorgente_tipo_id),
-            NULL::uuid, COALESCE(p_sorgente_tipo_id::text, '<nessuno>'));
-    END IF;
-
-    SELECT s.key_selector INTO v_selector
-      FROM config.sorgenti s
-     WHERE s.id = p_sorgente_tipo_id
-       AND s.attivo = true;
-
-    IF v_selector IS NULL THEN
-        PERFORM script.fn_log_and_raise_error(
-            'script', 'fn_get_sorgente_emittente_sr_id', 'E_SORG_CONF',
-            jsonb_build_object('detail', 'Sorgente non attiva o senza key_selector',
-                               'sorgente_tipo_id', p_sorgente_tipo_id),
-            NULL::uuid, p_sorgente_tipo_id::text);
-    END IF;
-
-    IF NULLIF(btrim(p_sorgente_uid), '') IS NULL THEN
-        PERFORM script.fn_log_and_raise_error(
-            'script', 'fn_get_sorgente_emittente_sr_id', 'E_SORG_KEY_MISSING',
-            jsonb_build_object('sorgente_tipo_id', p_sorgente_tipo_id,
-                               'key_selector', v_selector),
-            NULL::uuid, p_sorgente_tipo_id::text, v_selector);
-    END IF;
-
-    -- La forma CANONICA secondo il catalogo (script.fn_sorgente_chiave_id /
-    -- _uuid, la stessa regola del guard), sul valore RICEVUTO.
-    IF v_selector = 'id' THEN
-        IF script.fn_sorgente_chiave_id(p_sorgente_uid) IS NULL THEN
-            PERFORM script.fn_log_and_raise_error(
-                'script', 'fn_get_sorgente_emittente_sr_id', 'E_SORG_FORMATO',
-                jsonb_build_object('sorgente_tipo_id', p_sorgente_tipo_id,
-                                   'sorgente_uid', p_sorgente_uid,
-                                   'key_selector', v_selector),
-                NULL::uuid, concat('atteso id::text, ricevuto «', p_sorgente_uid, '»'));
-        END IF;
-        RETURN script.fn_get_sorgente_emittente_sr_id(
-            p_sorgente_tipo_id, script.fn_sorgente_chiave_id(p_sorgente_uid), NULL::uuid);
-    ELSIF v_selector = 'uid' THEN
-        IF script.fn_sorgente_chiave_uuid(p_sorgente_uid) IS NULL THEN
-            PERFORM script.fn_log_and_raise_error(
-                'script', 'fn_get_sorgente_emittente_sr_id', 'E_SORG_FORMATO',
-                jsonb_build_object('sorgente_tipo_id', p_sorgente_tipo_id,
-                                   'sorgente_uid', p_sorgente_uid,
-                                   'key_selector', v_selector),
-                NULL::uuid, concat('atteso uuid, ricevuto «', p_sorgente_uid, '»'));
-        END IF;
-        RETURN script.fn_get_sorgente_emittente_sr_id(
-            p_sorgente_tipo_id, NULL::bigint, script.fn_sorgente_chiave_uuid(p_sorgente_uid));
-    END IF;
-
-    PERFORM script.fn_log_and_raise_error(
-        'script', 'fn_get_sorgente_emittente_sr_id', 'E_SORG_KEYSEL',
-        jsonb_build_object('sorgente_tipo_id', p_sorgente_tipo_id,
-                           'key_selector', v_selector),
-        NULL::uuid, v_selector);
-    RETURN NULL;  -- non si arriva qui: fn_log_and_raise_error solleva
-END;
-$function$
-
-COMMENT ON FUNCTION script.fn_get_sorgente_emittente_sr_id(p_sorgente_tipo_id bigint, p_sorgente_uid text)
-IS 'La porta testuale di script.fn_get_sorgente_emittente_sr_id(tipo, sorgente_id, sorgente_uid): «chi emette questo documento», per un tipo di config.sorgenti e la sua chiave in testo, nella forma CANONICA secondo il key_selector (quella che vendite.fn_link_commessa_sorgente scrive). Controlla tipo e chiave e passa alla firma sulle colonne del modello la chiave che il key_selector chiede: tipo assente o spento -> E_SORG_CONF; chiave mancante -> E_SORG_KEY_MISSING; chiave non canonica -> E_SORG_FORMATO (la regola e'' di script.fn_sorgente_chiave_id / _uuid, la stessa del guard); key_selector fuori catalogo -> E_SORG_KEYSEL. Il resto (le tre strade, E_SORG_EMITTENTE_NON_RISOLTO, fail-closed) e'' della firma sulle colonne. SECURITY DEFINER, come lei.';
 ```
 
 </div>

@@ -17,7 +17,8 @@ CREATE OR REPLACE FUNCTION vendite.fn_emit_attivita_fatturabili_da_commessa(p_co
  LANGUAGE plpgsql
 AS $function$
 -- Scopo: emette righe da commesse_attivita verso attivita_fatturabili
---        in modalita' idempotente (sorgente COMMESSA + segment_key).
+--        in modalita' idempotente: una attivita' fatturabile per riga di
+--        commessa, ritrovata per commessa_attivita_id (FK NOT NULL, unica).
 --        Propaga lo snapshot audit pricing v5 (8 colonne) 1:1 e il
 --        registro tipo_movimento (colonna dal 2026-07-17).
 -- Sottosistema lotto rimosso (deprecato 20260227-16).
@@ -34,8 +35,6 @@ AS $function$
 --        il prezzo. Senza, il legame si fermava sulla commessa: un
 --        riallineamento che sposta la commessa su un'altra riga
 --        liberava quella gia' FATTURATA, perche' nessuna AF la citava.
--- rev 2026-06-28 (analisi-hardcoded-codice §3a): sorgente COMMESSA
---        risolta per codice_interno (immutabile), non per codice.
 -- rev 2026-07-17: propaga tipo_movimento (brief immutabilita §4c.2);
 --        e' il filtro con cui il contatore tenuti-fatturati tiene
 --        fuori dal libro mastro della merce le righe non-NORMALE.
@@ -76,10 +75,8 @@ AS $function$
 DECLARE
     v_commessa              vendite.commesse%ROWTYPE;
     v_root_id               vendite.commesse_sorgenti.id%TYPE;
-    v_commessa_source_id    config.sorgenti.id%TYPE;
     v_existing_id           vendite.attivita_fatturabili.id%TYPE;
     v_existing_fatturato    vendite.attivita_fatturabili.fatturato%TYPE;
-    v_sorgente_uid_uuid     vendite.attivita_fatturabili.sorgente_uid%TYPE;
     -- ⭐ IL LOTTO DI QUESTO GIRO, risolto dal marchio che il chiamante passa
     --   gia' (vendite.fn_lotto_da_emit_batch). Serve a non escludere le righe
     --   che il giro sta trattenendo DA SE' — vedi il JOIN piu' sotto.
@@ -126,20 +123,6 @@ BEGIN
         );
     END IF;
 
-    -- Sorgente COMMESSA
-    SELECT s.id INTO v_commessa_source_id
-      FROM config.sorgenti s
-     WHERE s.codice_interno = 'COMMESSA' AND s.attivo IS TRUE
-     LIMIT 1;
-
-    IF v_commessa_source_id IS NULL THEN
-        PERFORM script.fn_log_and_raise_error(
-            'vendite', 'fn_emit_attivita_fatturabili_da_commessa', 'E_CODICE',
-            jsonb_build_object('codice', 'COMMESSA'),
-            NULL::uuid, 'COMMESSA', 'config.sorgenti'
-        );
-    END IF;
-
     -- ⭐ IL LOTTO DI QUESTO GIRO (rev 2026-09-09; dal 2026-09-12 in una sede
     --   sola, vendite.fn_lotto_da_emit_batch: `lock_batch_id` ha un UNIQUE).
     -- ⚠️ Puo' restare NULL, ed e' legittimo: un chiamante fuori pipeline
@@ -158,7 +141,6 @@ BEGIN
                ca.prezzo_snapshot, ca.prezzo_bloccato, ca.stato_approvazione, ca.meta,
                ca.tipo_movimento,
                ca.natura_doc_id, ca.fattura_riga_rettificata_id,
-               ca.sorgente_tipo_id AS ca_sorgente_tipo_id,
                -- Snapshot audit pricing v5 (propagati 1:1)
                ca.prezzo_base_snapshot, ca.origine_prezzo,
                ca.tipo_variazione_applicata, ca.valore_variazione_applicata,
@@ -210,19 +192,13 @@ BEGIN
     LOOP
         total_candidate := total_candidate + 1;
 
-        -- Hash segment_key -> UUID deterministico
-        v_sorgente_uid_uuid := (
-            substr(md5(v_row.segment_key), 1, 8) || '-' ||
-            substr(md5(v_row.segment_key), 9, 4) || '-' ||
-            substr(md5(v_row.segment_key), 13, 4) || '-' ||
-            substr(md5(v_row.segment_key), 17, 4) || '-' ||
-            substr(md5(v_row.segment_key), 21, 12)
-        )::uuid;
-
+        -- ⭐ La riga gia' emessa si ritrova per commessa_attivita_id: e' la FK
+        --   NOT NULL della provenienza, unica (uq_attivita_fatturabili_commessa_attivita).
+        --   Non dipende dal formato di segment_key, che puo' cambiare sotto una
+        --   riga gia' emessa, e non esce dalla commessa.
         SELECT a.id, a.fatturato INTO v_existing_id, v_existing_fatturato
           FROM vendite.attivita_fatturabili a
-         WHERE a.sorgente_tipo_id = v_commessa_source_id
-           AND a.sorgente_uid = v_sorgente_uid_uuid
+         WHERE a.commessa_attivita_id = v_row.id
            FOR UPDATE;
 
         IF p_dry_run THEN
@@ -234,12 +210,12 @@ BEGIN
         IF v_existing_id IS NULL THEN
             INSERT INTO vendite.attivita_fatturabili (
                 articolo_id, billing_account_id, istanza_utility_id, data_attivita,
-                quantita, competenza_mese, approvato, meta, sorgente_riga,
-                posticipa_al, sorgente_tipo_id, sorgente_uid, uom_id, qta_operativa,
+                quantita, competenza_mese, approvato, meta,
+                posticipa_al, uom_id, qta_operativa,
                 uom_operativa_id, factor_to_base, valuta_id, prezzo_unitario,
                 tipo_doc_fiscale_id, competenza_dal, competenza_al,
                 area_geografica_id, stato_esecuzione, prezzo_bloccato,
-                commessa_id, commessa_attivita_id, sorgente_origine_tipo_id,
+                commessa_id, commessa_attivita_id,
                 tipo_movimento,
                 natura_doc_id, fattura_riga_rettificata_id,
                 prezzo_base_snapshot, origine_prezzo, tipo_variazione_applicata,
@@ -256,12 +232,12 @@ BEGIN
                     'scope', 'COMMESSE', 'commessa_id', p_commessa_id,
                     'commessa_attivita_id', v_row.id, 'segment_key', v_row.segment_key
                 ),
-                v_row.id, v_row.posticipa_al, v_commessa_source_id, v_sorgente_uid_uuid,
+                v_row.posticipa_al,
                 v_row.uom_id, v_row.qta_operativa, v_row.uom_operativa_id, v_row.factor_to_base,
                 v_row.valuta_id, v_row.prezzo_snapshot,
                 v_row.tipo_doc_fiscale_id, v_row.competenza_dal, v_row.competenza_al,
                 v_row.area_geografica_id, 'PENDING', v_row.prezzo_bloccato,
-                p_commessa_id, v_row.id, v_row.ca_sorgente_tipo_id,
+                p_commessa_id, v_row.id,
                 v_row.tipo_movimento,
                 v_row.natura_doc_id, v_row.fattura_riga_rettificata_id,
                 v_row.prezzo_base_snapshot, v_row.origine_prezzo, v_row.tipo_variazione_applicata,
@@ -295,7 +271,6 @@ BEGIN
                        'scope', 'COMMESSE', 'commessa_id', p_commessa_id,
                        'commessa_attivita_id', v_row.id, 'segment_key', v_row.segment_key
                    ),
-                   sorgente_riga = v_row.id,
                    posticipa_al = v_row.posticipa_al,
                    uom_id = v_row.uom_id,
                    qta_operativa = v_row.qta_operativa,
@@ -310,7 +285,6 @@ BEGIN
                    prezzo_bloccato = v_row.prezzo_bloccato,
                    commessa_id = p_commessa_id,
                    commessa_attivita_id = v_row.id,
-                   sorgente_origine_tipo_id = v_row.ca_sorgente_tipo_id,
                    -- Registro della riga: lo specchio segue la CA
                    -- (la riga gia' fatturata e' respinta sopra).
                    tipo_movimento = v_row.tipo_movimento,
@@ -353,7 +327,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_emit_attivita_fatturabili_da_commessa(p_commessa_id bigint, p_only_approved boolean, p_dry_run boolean, p_gruppi text[], p_emit_batch_id uuid)
-IS 'Il PULL: emette le righe di una commessa in vendite.attivita_fatturabili, in modo idempotente (sorgente COMMESSA + segment_key), propagando snapshot pricing e tipo_movimento. Quali righe: si legge la CLASSE da vendite.vw_commesse_attivita_emittibilita, vista DAL GIRO con vendite.fn_classe_emittibilita_per_giro — una riga TRATTENUTA soltanto dal lotto corrente (vendite.fn_lotto_da_emit_batch(p_emit_batch_id)) e'' PRONTA, cosi'' il RILANCIO riprende i propri documenti; una riga trattenuta da un altro lotto in gioco resta fuori; con p_only_approved = false entrano anche NON_APPROVATA e RIFIUTATA. p_gruppi restringe alle chiavi richieste (emissione mirata). p_emit_batch_id e'' anche il marchio scritto su ogni riga consegnata. Rev 2026-09-12: auto-esclusione dalla sede unica, la stessa di fn_list_commesse_emittibili (brief-db-rilancio-step-non-rivede-le-proprie-commesse, D1). Rev 2026-10-09 (brief-db-riga-listino-propagata-dalla-commessa R-2): propaga anche listino_riga_id, cosi'' la riga di listino di un documento emesso resta «propagata» per vendite.trgfn_listini_righe_guard_stato anche dopo che la commessa e'' stata riallineata su un''altra riga.';
+IS 'Il PULL: emette le righe di una commessa in vendite.attivita_fatturabili, una attivita'' fatturabile per riga di commessa, in modo idempotente: la riga gia'' emessa si ritrova per commessa_attivita_id (FK NOT NULL, unica per uq_attivita_fatturabili_commessa_attivita) e si aggiorna, quella nuova si inserisce; una riga gia'' fatturata solleva E_RIGA_GIA_FATTURATA. La provenienza dell''attivita'' e'' la riga di commessa (commessa_id, commessa_attivita_id): il documento da cui nasce si legge da li''. Propaga snapshot del prezzo, riga di listino, tipo_movimento, natura e riga rettificata. Quali righe: la CLASSE di vendite.vw_commesse_attivita_emittibilita vista DAL GIRO con vendite.fn_classe_emittibilita_per_giro, per cui una riga trattenuta soltanto dal lotto corrente (vendite.fn_lotto_da_emit_batch(p_emit_batch_id)) e'' PRONTA e il rilancio riprende i propri documenti; con p_only_approved = false entrano anche NON_APPROVATA e RIFIUTATA. p_gruppi restringe alle chiavi richieste (emissione mirata). p_emit_batch_id e'' il marchio del giro su ogni riga consegnata; senza giro, l''aggiornamento tiene il marchio di prima. p_dry_run conta senza scrivere.';
 ```
 
 </div>

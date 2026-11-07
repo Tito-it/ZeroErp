@@ -1,0 +1,100 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Policy rls_coda_lavori_ef_perimetro su dbops.coda_lavori.
+#   Brief: brief-db-revisione-dbops, giro 5 (Q14 ③).
+#
+# ⭐ COSA DICE. Un lavoro OPERATORE lo vede e lo scrive chi ha la sua azienda nel
+#   perimetro; un lavoro SISTEMA il super admin e l'identita' tecnica viva del
+#   drenatore. La regola e' in script.fn_scope_coda_lavori_perimetro; qui le tre
+#   risposte su chi guarda, ognuna in una sottoquery non correlata, calcolate una
+#   volta per istruzione (linee-guida-sql §10.3), come la policy di
+#   config.email_log.
+#
+# ⭐ FOR ALL, WITH CHECK = USING. Il drenatore prende, recupera e chiude i lavori
+#   con UPDATE; l'interfaccia annulla, rimette in coda, archivia. Le scritture e
+#   le letture hanno la stessa regola, e una riga non esce dal perimetro di chi
+#   la scrive. L'INSERT passa dalla porta DEFINER (20261107-53), che la policy
+#   non vede: la porta fa da se' lo stesso controllo.
+#
+# ⚠️ NASCE INERTE. Nessun ENABLE qui: la RLS si arma col suo changeSet quando il
+#   drenatore del backend lavora un'azienda alla volta con l'utente tecnico, e
+#   gli utenti tecnici di draina_coda_lavori esistono. Prima, armata, fermerebbe
+#   la coda: il drenatore di oggi prende senza identita'.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261107-54-create-policy-rls-coda-lavori-ef-perimetro-mctit.yaml
+
+  - changeSet:
+      id: 20261107-54-create-policy-rls-coda-lavori-ef-perimetro
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Policy rls_coda_lavori_ef_perimetro su dbops.coda_lavori (FOR ALL, WITH CHECK = USING): OPERATORE se
+        l'azienda e' nel perimetro, SISTEMA al super admin e al drenatore (script.fn_scope_coda_lavori_perimetro,
+        chi guarda in sottoquery). Inerte: nessun ENABLE. Giro 5 di brief-db-revisione-dbops (Q14 ③).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc
+                   WHERE pronamespace = 'script'::regnamespace AND proname = 'fn_scope_coda_lavori_perimetro'
+            - sqlCheck:
+                expectedResult: 0
+                sql: >
+                  SELECT count(*) FROM pg_policies
+                   WHERE schemaname = 'dbops' AND tablename = 'coda_lavori'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE POLICY rls_coda_lavori_ef_perimetro
+                  ON dbops.coda_lavori
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_coda_lavori_perimetro(
+                          (SELECT script.fn_is_super_admin(
+                               NULLIF(current_setting('app.current_user_id', true), '')::integer)),
+                          (SELECT script.fn_scope_identita_processo(
+                               NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                               'draina_coda_lavori')),
+                          (SELECT script.fn_get_emittenti_scope_pk_ids(
+                               NULLIF(current_setting('app.current_user_id', true), '')::integer)),
+                          run_as,
+                          emittente_fiscale_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_coda_lavori_perimetro(
+                          (SELECT script.fn_is_super_admin(
+                               NULLIF(current_setting('app.current_user_id', true), '')::integer)),
+                          (SELECT script.fn_scope_identita_processo(
+                               NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                               'draina_coda_lavori')),
+                          (SELECT script.fn_get_emittenti_scope_pk_ids(
+                               NULLIF(current_setting('app.current_user_id', true), '')::integer)),
+                          run_as,
+                          emittente_fiscale_id)
+                  );
+
+              COMMENT ON POLICY rls_coda_lavori_ef_perimetro ON dbops.coda_lavori IS
+              'Chi vede e scrive quali lavori della coda: un lavoro OPERATORE chi ha la sua azienda (emittente_fiscale_id) nel perimetro, un lavoro SISTEMA il super admin e l''identita'' tecnica viva del drenatore (draina_coda_lavori). La regola e'' script.fn_scope_coda_lavori_perimetro; chi guarda si calcola una volta per istruzione, in tre sottoquery. Il drenatore vede i lavori OPERATORE solo col perimetro del suo utente tecnico, un''azienda alla volta. FOR ALL con WITH CHECK = USING: una riga non esce dal perimetro di chi la scrive. L''INSERT passa da dbops.fn_accoda_lavoro, SECURITY DEFINER, che fa lo stesso controllo. Gate OPERATORE: fail-closed per le altre vesti e per una sessione senza identita''.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP POLICY IF EXISTS rls_coda_lavori_ef_perimetro ON dbops.coda_lavori;

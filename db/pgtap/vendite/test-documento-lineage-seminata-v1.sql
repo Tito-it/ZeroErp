@@ -105,11 +105,13 @@ UPDATE vendite.ddt d
        sorgente_id      = (SELECT ordine_id FROM g_ord)
  WHERE d.id = (SELECT ddt_id FROM g_ddt);
 
-INSERT INTO vendite.commesse_sorgenti (commessa_id, sorgente_tipo_id, sorgente_uid, ruolo_link)
-SELECT (SELECT commessa_id FROM g_com), s.id, k.uid, k.ruolo
-  FROM (VALUES ('PREVENTIVO',     (SELECT preventivo_uid::text FROM g_prev), 'ROOT'),
-               ('ORDINE_VENDITA', (SELECT ordine_id::text      FROM g_ord),  'COLLEGATO'),
-               ('DDT_VENDITA',    (SELECT ddt_id::text         FROM g_ddt),  'COLLEGATO')) AS k(codice, uid, ruolo)
+-- La chiave del documento nella colonna del suo key_selector (giro C.2 di
+-- brief-db-sorgente-documento-e-riga): l'uid del preventivo, l'id degli altri.
+INSERT INTO vendite.commesse_sorgenti (commessa_id, sorgente_tipo_id, sorgente_id, sorgente_uid, ruolo_link)
+SELECT (SELECT commessa_id FROM g_com), s.id, k.id, k.uid, k.ruolo
+  FROM (VALUES ('PREVENTIVO',     NULL::bigint,                   (SELECT preventivo_uid FROM g_prev), 'ROOT'),
+               ('ORDINE_VENDITA', (SELECT ordine_id FROM g_ord),  NULL::uuid,                          'COLLEGATO'),
+               ('DDT_VENDITA',    (SELECT ddt_id    FROM g_ddt),  NULL::uuid,                          'COLLEGATO')) AS k(codice, id, uid, ruolo)
   JOIN config.sorgenti s ON s.codice_interno = k.codice;
 
 -- ⚠️ rev 2026-10-13 (20261013-69…-71, D-15 di Tid): ogni legame del grafo PORTA

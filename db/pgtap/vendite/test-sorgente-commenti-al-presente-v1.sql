@@ -2,7 +2,7 @@
 -- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: i COMMENT degli oggetti della provenienza (lotto 0 giro 0.3, lotto R, lotto T giro T.3,
---   lotto C giro C.1)
+--   lotto C giri C.1 e C.2)
 --   descrivono l'oggetto al presente, come vuole linee-guida-sql §5d: niente
 --   brief, marcatori di revisione, id di changeSet, sigle di decisione.
 --   Il giro 0.3 li aveva scritti con un prefisso di cronaca; il giro R.2 li
@@ -46,7 +46,6 @@ INSERT INTO _fn VALUES
   ('vendite.fn_documento_lineage_archi(bigint[],text[])'),
   ('vendite.fn_documento_legami(character varying,bigint)'),
   ('vendite.trgfn_ddt_guard_cliente_sorgente()'),
-  ('script.fn_get_sorgente_emittente_sr_id(bigint,text)'),
   ('script.trgfn_default_emittente_fiscale()'),
   ('script.fn_get_sorgente_emittente_sr_id(bigint,bigint,uuid)'),
   ('vendite.fn_ddt_trigger_ordine_testata(bigint,uuid,bigint)'),
@@ -77,7 +76,15 @@ INSERT INTO _fn VALUES
   ('vendite.fn_emit_attivita_fatturabili_da_commessa(bigint,boolean,boolean,text[],uuid)'),
   ('vendite.trgfn_attivita_fatturabili_normalize()'),
   ('vendite.fn_resolve_termini_pagamento(bigint)'),
-  ('dbops.fn_sorgenti_orfane_perimetro()');
+  ('dbops.fn_sorgenti_orfane_perimetro()'),
+  -- lotto C, giro C.2
+  ('vendite.fn_commessa_viva_di_sorgente(bigint,bigint,uuid)'),
+  ('vendite.fn_link_commessa_sorgente(bigint,bigint,text,bigint,jsonb)'),
+  ('vendite.trgfn_guard_fatturazione_immediata_immutabile()'),
+  ('vendite.fn_check_commessa_sorgente_emittente_omogeneo(bigint,bigint,bigint,uuid)'),
+  ('vendite.fn_guard_commessa_sorgente_emittente(bigint,bigint,bigint,uuid)'),
+  ('vendite.trgfn_commesse_sorgenti_guard_emittente()'),
+  ('dbops.fn_pgtap_crea_commessa(text,character varying,bigint,boolean,boolean)');
 
 CREATE TEMP TABLE _tab (tabella text PRIMARY KEY);
 INSERT INTO _tab VALUES ('vendite.preventivi_righe'), ('vendite.ordini_righe'),
@@ -85,7 +92,9 @@ INSERT INTO _tab VALUES ('vendite.preventivi_righe'), ('vendite.ordini_righe'),
                         -- lotto T, giro T.3: le testate
                         ('vendite.ordini'), ('vendite.contratti'), ('vendite.fatture'),
                         -- lotto C, giro C.1: le righe di fattura
-                        ('vendite.fatture_righe');
+                        ('vendite.fatture_righe'),
+                        -- lotto C, giro C.2: il link documento -> commessa
+                        ('vendite.commesse_sorgenti');
 
 CREATE TEMP TABLE _ix (indice text PRIMARY KEY);
 INSERT INTO _ix VALUES
@@ -101,7 +110,9 @@ INSERT INTO _ix VALUES
   ('vendite.uq_ordini_v_sorgente_offerta'), ('vendite.uq_contratti_sorgente_offerta'),
   -- lotto C, giro C.1
   ('vendite.ix_fatture_righe_sorgente_id'), ('vendite.ix_fatture_righe_sorgente_uid'),
-  ('vendite.ix_fatture_righe_sorgente_riga');
+  ('vendite.ix_fatture_righe_sorgente_riga'),
+  -- lotto C, giro C.2 (l'unicita' porta il COMMENT sul vincolo, non sull'indice)
+  ('vendite.ix_commesse_sorgenti_sorgente_uid'), ('vendite.ix_commesse_sorgenti_sorgente_riga');
 
 SELECT is(
   (SELECT count(*)::int FROM _fn WHERE to_regprocedure(firma) IS NULL)

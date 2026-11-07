@@ -272,7 +272,7 @@ SELECT vendite.fn_link_commessa_sorgente(
   p_commessa_id => (SELECT commessa_id FROM tmp_com),
   p_sorgente_tipo_id => (SELECT sorgente_root_id FROM tmp_refs),
   p_sorgente_uid => (SELECT commessa_id FROM tmp_com)::text,
-  p_sorgente_riga => 1, p_meta => '{}'::jsonb);
+  p_sorgente_riga => NULL, p_meta => '{}'::jsonb);
 -- Componente di kit SENZA `coeff_qta`: la quantita' del padre non e' ricostruibile.
 DO $mk$
 DECLARE r RECORD;

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.coda_lavori`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 7 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -10,6 +10,8 @@
 > * [dbops.idempotency_keys](/dbzero/dbops/tabelle/idempotency_keys) — l'altra idempotenza, quella delle richieste HTTP
 > * [vendite.fatture_stampa_coda](/dbzero/vendite/tabelle/fatture_stampa_coda) — la coda gemella delle stampe, con la stessa archiviazione
 > * [maintenance.job_run_log](/dbzero/maintenance/tabelle/job_run_log) — il giornale delle corse, a cui una riga può legarsi
+> * [anagrafiche.emittenti_fiscali](/dbzero/anagrafiche/tabelle/emittenti_fiscali) — l'azienda di un lavoro operatore
+> * [dbops.processi_bersagli](/dbzero/dbops/tabelle/processi_bersagli) — la coda come bersaglio del drenatore, con la strada fino all'azienda
 >
 > Approfondimento viste:
 >
@@ -19,6 +21,7 @@
 >
 > * [dbops.fn_accoda_lavoro](/dbzero/dbops/funzioni/fn_accoda_lavoro) — l'unica porta d'ingresso
 > * [dbops.trgfn_coda_archiviazione](/dbzero/dbops/funzioni/trgfn_coda_archiviazione) — governa la bandiera `archiviato`
+> * [script.fn_scope_coda_lavori_perimetro](/dbzero/script/funzioni/fn_scope_coda_lavori_perimetro) — chi vede quali righe
 >
 > Guide:
 >
@@ -47,6 +50,42 @@ Il vincolo `chk_coda_lavori_run_as_scope` tiene insieme le due cose: un operator
 girerebbe senza filtro, un lavoro di sistema con uno scope direbbe un perimetro che nessuno
 applica. Che un lavoro di **dominio** sia sempre `OPERATORE` lo controlla `fn_accoda_lavoro`, perché
 il vincolo non conosce la natura del lavoro.
+
+---
+
+### ⭐ Di chi è un lavoro: `emittente_fiscale_id`
+
+Un lavoro `OPERATORE` appartiene a **un'azienda**: l'emittente attivo di chi l'ha accodato. Lo scope
+lo porta (`emittente_attivo_id`), e la colonna `emittente_fiscale_id` lo dice a policy e vincoli.
+Un lavoro `SISTEMA` non ha azienda.
+
+* `chk_coda_lavori_run_as_emittente`: `OPERATORE` con l'azienda, `SISTEMA` senza. Un lavoro che
+  copre più aziende non esiste: in modalità globale se ne accoda uno per azienda.
+* `chk_coda_lavori_emittente_dallo_scope`: la colonna e lo scope dicono la stessa azienda. Lo scope
+  serve al drenatore per riproporre l'identità di chi ha accodato, la colonna a chi filtra.
+* La FK verso `anagrafiche.emittenti_fiscali` fa nascere, dalle automazioni, il blocco sul padre:
+  un'azienda con righe in coda non si spegne finché le righe ci sono, come per le email.
+
+---
+
+### Chi vede quali righe
+
+La policy `rls_coda_lavori_ef_perimetro` (`FOR ALL`, con la stessa regola in lettura e in scrittura):
+
+| Lavoro | Lo vede e lo scrive |
+| --- | --- |
+| `OPERATORE` | chi ha la sua azienda nel perimetro (il super admin, tutte) |
+| `SISTEMA` | il super admin e l'identità tecnica del drenatore (`draina_coda_lavori`) |
+
+Il drenatore lavora **un'azienda alla volta**, con l'utente tecnico di quell'azienda: vede i lavori
+operatore della sua azienda e i lavori di sistema. Non ha un ramo che gli mostri tutte le aziende.
+L'accodamento passa dalla porta `fn_accoda_lavoro`, `SECURITY DEFINER`, che fa da sé lo stesso
+controllo.
+
+⚠️ La policy c'è, la row level security non è ancora accesa: si arma quando il drenatore lavora per
+azienda e gli utenti tecnici di `draina_coda_lavori` esistono. Fino ad allora la tabella è nel
+registro del debito ([dbops.rls_perimetro_debito](/dbzero/dbops/tabelle/rls_perimetro_debito),
+`POLICY_INERTE`).
 
 Un lavoro `OPERATORE` che parte completa con lo scope con cui è nato: una revoca dei permessi vale
 per i lavori futuri, non interrompe quello in corso.
@@ -146,6 +185,10 @@ dalle automazioni.
 
 * `E_CODA_ARCHIVIAZIONE_NON_AMMESSA` — si archivia una riga ancora viva (dalla trigger function
   dell'archiviazione).
+* `E_CODA_LAVORO_SENZA_EMITTENTE`, `E_CODA_SCOPE_ALTRUI`, `E_CODA_CHIAVE_ALTRUI` — dalla porta
+  d'ingresso: vedi [dbops.fn_accoda_lavoro](/dbzero/dbops/funzioni/fn_accoda_lavoro).
+* Un lavoro senza azienda, o con un'azienda diversa da quella dello scope, arriva dai vincoli
+  (23514); una scrittura fuori dal perimetro, dalla policy (42501).
 
 ---
 
@@ -156,6 +199,10 @@ dalle automazioni.
 * `db/pgtap/dbops/test-coda-archiviazione.sql` — l'archiviazione: le due code simmetriche, una
   riga viva rifiutata, i timbri derivati e immutabili, il reset al requeue, i vincoli all'inserimento.
 * `db/pgtap/dbops/test-vw-coda-lavori-da-guardare.sql` — il presidio sulla coda.
+* `db/pgtap/rls/test-rls-coda-lavori-perimetro-v1.sql` — la policy, armata dentro la transazione:
+  l'operatore e la sua azienda, l'altra azienda, il lavoro di sistema, il drenatore per azienda, il
+  fail-closed senza veste, la vista di presidio letta da una persona, `WITH CHECK`.
+* `db/pgtap/dbops/test-fn-accoda-lavoro-porta-v1.sql` — i due vincoli dell'azienda e la porta.
 * `db/pgtap/dbops/test-stati-check-scrittori-v1.sql` — ogni stato del vincolo ha uno scrittore
   dichiarato.
 
@@ -166,6 +213,8 @@ dalle automazioni.
 * 2026-07-20 — nasce, con il registro dei tipi e la porta d'ingresso
   (`brief-db-coda-lavori-generica`).
 * 2026-09-04 — nasce l'archiviazione, insieme sulle due code (`brief-db-archiviazione-righe-code`).
+* 2026-11-07 — nasce `emittente_fiscale_id` con i suoi due vincoli, e la policy, ancora inerte
+  (`brief-db-revisione-dbops`, giro 5, `20261107-51`, `-54`).
 
 ---
 

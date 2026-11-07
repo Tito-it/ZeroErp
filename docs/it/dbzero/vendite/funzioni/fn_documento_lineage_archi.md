@@ -36,7 +36,6 @@ BEGIN ATOMIC
              ( SELECT array_agg(p.id) AS array_agg
                     FROM vendite.preventivi p
                    WHERE (p.uid = ANY (k.prev_uids))) AS prev_ids,
-             (k.prev_uids)::text[] AS prev_txt,
              k.off_uids,
              ( SELECT array_agg(oc.id) AS array_agg
                     FROM vendite.offerte_commerciali oc
@@ -45,14 +44,11 @@ BEGIN ATOMIC
              ( SELECT array_agg(o.uid) AS array_agg
                     FROM vendite.ordini o
                    WHERE (o.id = ANY (k.ord_ids))) AS ord_uids,
-             (k.ord_ids)::text[] AS ord_txt,
              k.con_ids,
-             (k.con_ids)::text[] AS con_txt,
              k.ddt_ids,
              ( SELECT array_agg(d.uid) AS array_agg
                     FROM vendite.ddt d
                    WHERE (d.id = ANY (k.ddt_ids))) AS ddt_uids,
-             (k.ddt_ids)::text[] AS ddt_txt,
              k.fat_ids,
              k.com_ids,
              k.res_ids,
@@ -77,22 +73,16 @@ BEGIN ATOMIC
              cs.commessa_id,
              cs.sorgente_tipo_id,
              cs.ruolo_link,
-                 CASE
-                     WHEN (cs.sorgente_tipo_id = k.t_prev) THEN (cs.sorgente_uid)::uuid
-                     ELSE NULL::uuid
-                 END AS k_uuid,
-                 CASE
-                     WHEN (((cs.sorgente_tipo_id = k.t_ord) OR (cs.sorgente_tipo_id = k.t_con)) OR (cs.sorgente_tipo_id = k.t_ddt)) THEN (cs.sorgente_uid)::bigint
-                     ELSE NULL::bigint
-                 END AS k_bigint
+             cs.sorgente_uid AS k_uuid,
+             cs.sorgente_id AS k_bigint
             FROM (chiavi k
               JOIN vendite.commesse_sorgenti cs ON (((cs.commessa_id = ANY (k.com_ids)) AND ((((cs.sorgente_tipo_id = k.t_prev) OR (cs.sorgente_tipo_id = k.t_ord)) OR (cs.sorgente_tipo_id = k.t_con)) OR (cs.sorgente_tipo_id = k.t_ddt)))))
          ), prev_k AS MATERIALIZED (
-          SELECT (p.uid)::text AS uid
+          SELECT p.uid
             FROM vendite.preventivi p
            WHERE ((fn_documento_lineage_archi.p_tipo_ids IS NULL) AND (fn_documento_lineage_archi.p_uids IS NULL))
          ), ord_k AS MATERIALIZED (
-          SELECT (o.id)::text AS id
+          SELECT o.id
             FROM vendite.ordini o
            WHERE ((fn_documento_lineage_archi.p_tipo_ids IS NULL) AND (fn_documento_lineage_archi.p_uids IS NULL))
          ), archi(from_tipo_id, from_uid, to_tipo_id, to_uid, ruolo, arco) AS (
@@ -109,7 +99,7 @@ BEGIN ATOMIC
            WHERE ((fn_documento_lineage_archi.p_tipo_ids IS NULL) AND (fn_documento_lineage_archi.p_uids IS NULL))
          UNION ALL
           SELECT s_from.id,
-             p.uid,
+             (p.uid)::text AS uid,
              s_to.id,
              (cm.id)::text AS id,
              cs.ruolo_link,
@@ -157,13 +147,13 @@ BEGIN ATOMIC
            WHERE ((figlia.revisione_padre_id IS NOT NULL) AND (fn_documento_lineage_archi.p_tipo_ids IS NULL) AND (fn_documento_lineage_archi.p_uids IS NULL))
          UNION ALL
           SELECT s_from.id,
-             o.id,
+             (o.id)::text AS id,
              s_to.id,
              (cm.id)::text AS id,
              cs.ruolo_link,
              'E'::text
             FROM ((((vendite.commesse_sorgenti cs
-              JOIN ord_k o ON ((o.id = cs.sorgente_uid)))
+              JOIN ord_k o ON ((o.id = cs.sorgente_id)))
               JOIN vendite.commesse cm ON ((cm.id = cs.commessa_id)))
               JOIN config.sorgenti s_from ON (((s_from.id = cs.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'ORDINE_VENDITA'::text))))
               JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'COMMESSA'::text) AND (s_to.attivo IS TRUE))))
@@ -176,7 +166,7 @@ BEGIN ATOMIC
              cs.ruolo_link,
              'F'::text
             FROM ((((vendite.commesse_sorgenti cs
-              JOIN vendite.contratti c ON (((c.id)::text = cs.sorgente_uid)))
+              JOIN vendite.contratti c ON ((c.id = cs.sorgente_id)))
               JOIN vendite.commesse cm ON ((cm.id = cs.commessa_id)))
               JOIN config.sorgenti s_from ON (((s_from.id = cs.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'CONTRATTO'::text))))
               JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'COMMESSA'::text) AND (s_to.attivo IS TRUE))))
@@ -189,7 +179,7 @@ BEGIN ATOMIC
              cs.ruolo_link,
              'U'::text
             FROM ((((vendite.commesse_sorgenti cs
-              JOIN vendite.ddt d ON (((d.id)::text = cs.sorgente_uid)))
+              JOIN vendite.ddt d ON ((d.id = cs.sorgente_id)))
               JOIN vendite.commesse cm ON ((cm.id = cs.commessa_id)))
               JOIN config.sorgenti s_from ON (((s_from.id = cs.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'DDT_VENDITA'::text))))
               JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'COMMESSA'::text) AND (s_to.attivo IS TRUE))))
@@ -311,12 +301,12 @@ BEGIN ATOMIC
              'B'::text
             FROM ((((vendite.commesse_sorgenti cs
               JOIN config.sorgenti s_from ON (((s_from.id = cs.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'PREVENTIVO'::text))))
-              JOIN vendite.preventivi p ON ((p.uid = (cs.sorgente_uid)::uuid)))
+              JOIN vendite.preventivi p ON ((p.uid = cs.sorgente_uid)))
               JOIN vendite.commesse cm ON ((cm.id = cs.commessa_id)))
               JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'COMMESSA'::text) AND (s_to.attivo IS TRUE))))
            WHERE ((NOT ((fn_documento_lineage_archi.p_tipo_ids IS NULL) AND (fn_documento_lineage_archi.p_uids IS NULL))) AND (cs.sorgente_tipo_id = ( SELECT k.t_prev
-                    FROM chiavi k)) AND (cs.sorgente_uid = ANY (( SELECT k.prev_txt
-                    FROM chiavi k)::text[])) AND (p.uid = ANY (( SELECT k.prev_uids
+                    FROM chiavi k)) AND (cs.sorgente_uid = ANY (( SELECT k.prev_uids
+                    FROM chiavi k)::uuid[])) AND (p.uid = ANY (( SELECT k.prev_uids
                     FROM chiavi k)::uuid[])))
          UNION ALL
           SELECT s_from.id,
@@ -425,12 +415,12 @@ BEGIN ATOMIC
              'E'::text
             FROM ((((vendite.commesse_sorgenti cs
               JOIN config.sorgenti s_from ON (((s_from.id = cs.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'ORDINE_VENDITA'::text))))
-              JOIN vendite.ordini o ON ((o.id = (cs.sorgente_uid)::bigint)))
+              JOIN vendite.ordini o ON ((o.id = cs.sorgente_id)))
               JOIN vendite.commesse cm ON ((cm.id = cs.commessa_id)))
               JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'COMMESSA'::text) AND (s_to.attivo IS TRUE))))
            WHERE ((NOT ((fn_documento_lineage_archi.p_tipo_ids IS NULL) AND (fn_documento_lineage_archi.p_uids IS NULL))) AND (cs.sorgente_tipo_id = ( SELECT k.t_ord
-                    FROM chiavi k)) AND (cs.sorgente_uid = ANY (( SELECT k.ord_txt
-                    FROM chiavi k)::text[])) AND (o.id = ANY (( SELECT k.ord_ids
+                    FROM chiavi k)) AND (cs.sorgente_id = ANY (( SELECT k.ord_ids
+                    FROM chiavi k)::bigint[])) AND (o.id = ANY (( SELECT k.ord_ids
                     FROM chiavi k)::bigint[])))
          UNION ALL
           SELECT s_from.id,
@@ -456,12 +446,12 @@ BEGIN ATOMIC
              'F'::text
             FROM ((((vendite.commesse_sorgenti cs
               JOIN config.sorgenti s_from ON (((s_from.id = cs.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'CONTRATTO'::text))))
-              JOIN vendite.contratti c ON ((c.id = (cs.sorgente_uid)::bigint)))
+              JOIN vendite.contratti c ON ((c.id = cs.sorgente_id)))
               JOIN vendite.commesse cm ON ((cm.id = cs.commessa_id)))
               JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'COMMESSA'::text) AND (s_to.attivo IS TRUE))))
            WHERE ((NOT ((fn_documento_lineage_archi.p_tipo_ids IS NULL) AND (fn_documento_lineage_archi.p_uids IS NULL))) AND (cs.sorgente_tipo_id = ( SELECT k.t_con
-                    FROM chiavi k)) AND (cs.sorgente_uid = ANY (( SELECT k.con_txt
-                    FROM chiavi k)::text[])) AND (c.id = ANY (( SELECT k.con_ids
+                    FROM chiavi k)) AND (cs.sorgente_id = ANY (( SELECT k.con_ids
+                    FROM chiavi k)::bigint[])) AND (c.id = ANY (( SELECT k.con_ids
                     FROM chiavi k)::bigint[])))
          UNION ALL
           SELECT s_from.id,
@@ -487,12 +477,12 @@ BEGIN ATOMIC
              'U'::text
             FROM ((((vendite.commesse_sorgenti cs
               JOIN config.sorgenti s_from ON (((s_from.id = cs.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'DDT_VENDITA'::text))))
-              JOIN vendite.ddt d ON ((d.id = (cs.sorgente_uid)::bigint)))
+              JOIN vendite.ddt d ON ((d.id = cs.sorgente_id)))
               JOIN vendite.commesse cm ON ((cm.id = cs.commessa_id)))
               JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'COMMESSA'::text) AND (s_to.attivo IS TRUE))))
            WHERE ((NOT ((fn_documento_lineage_archi.p_tipo_ids IS NULL) AND (fn_documento_lineage_archi.p_uids IS NULL))) AND (cs.sorgente_tipo_id = ( SELECT k.t_ddt
-                    FROM chiavi k)) AND (cs.sorgente_uid = ANY (( SELECT k.ddt_txt
-                    FROM chiavi k)::text[])) AND (d.id = ANY (( SELECT k.ddt_ids
+                    FROM chiavi k)) AND (cs.sorgente_id = ANY (( SELECT k.ddt_ids
+                    FROM chiavi k)::bigint[])) AND (d.id = ANY (( SELECT k.ddt_ids
                     FROM chiavi k)::bigint[])))
          UNION ALL
           SELECT s_from.id,
@@ -719,7 +709,7 @@ BEGIN ATOMIC
 END
 
 COMMENT ON FUNCTION vendite.fn_documento_lineage_archi(p_tipo_ids bigint[], p_uids text[])
-IS 'Gli ARCHI della lineage dei documenti, grezzi (chiavi, ruolo, lettera A…V, is_ramo_inverso, rango_origine), per chiave del nodo. Il seme e'' quello di vendite.fn_documento_lineage_nodi: (tipo_id, uid::text) in due array paralleli; entrambi NULL = tutti gli archi (vendite.vw_documento_lineage_archi ne e'' la proiezione decorata). Col seme: gli archi uscenti da un nodo del seme e quelli entranti il cui from non sta nel seme, ciascuno una volta, con gli stessi DISTINCT della vista. Il seme scende come array (= ANY) sulla prima tabella di ogni ramo. Gli archi A (preventivo -> ordine), C (offerta -> contratto), D (offerta -> ordine), H (ordine -> bolla) e R (bolla -> reso) leggono la provenienza di testata del documento a valle (sorgente_*) con la regola d''incontro (doc.id = sorgente_id OR doc.uid = sorgente_uid), in tutti e due i modi, con gli indici ix_ordini_v_sorgente_uid / _id, ix_contratti_sorgente_uid / _id, ix_ddt_v_sorgente / ix_ddt_v_sorgente_id e ix_resi_sorgente / ix_resi_sorgente_id. Nei rami polimorfi B, E, F, U il join verso il documento confronta colonne dello stesso tipo: un cast nel join non sarebbe leakproof. V e'' la revisione dell''offerta (madre -> figlia, revisione_padre_id), rango 60, non un''origine. Il vocabolario delle lettere e'' quello di vendite.vw_documento_lineage_archi: un arco nuovo si aggiunge qui, nei due modi. SET jit = off e plan_cache_mode = force_generic_plan: la funzione si pianifica una volta per sessione. BEGIN ATOMIC, SECURITY INVOKER.';
+IS 'Gli ARCHI della lineage dei documenti, grezzi (chiavi, ruolo, lettera A…V, is_ramo_inverso, rango_origine), per chiave del nodo. Il seme e'' quello di vendite.fn_documento_lineage_nodi: (tipo_id, uid::text) in due array paralleli; entrambi NULL = tutti gli archi (vendite.vw_documento_lineage_archi ne e'' la proiezione decorata). Col seme: gli archi uscenti da un nodo del seme e quelli entranti il cui from non sta nel seme, ciascuno una volta, con gli stessi DISTINCT della vista. Il seme scende come array (= ANY) sulla prima tabella di ogni ramo. Gli archi A (preventivo -> ordine), C (offerta -> contratto), D (offerta -> ordine), H (ordine -> bolla) e R (bolla -> reso) leggono la provenienza di testata del documento a valle (sorgente_*) con la regola d''incontro (doc.id = sorgente_id OR doc.uid = sorgente_uid), in tutti e due i modi, con gli indici ix_ordini_v_sorgente_uid / _id, ix_contratti_sorgente_uid / _id, ix_ddt_v_sorgente / ix_ddt_v_sorgente_id e ix_resi_sorgente / ix_resi_sorgente_id. Nei rami B, E, F, U (le sorgenti delle commesse) la chiave del link sta nella colonna del suo tipo, vendite.commesse_sorgenti.sorgente_uid per il preventivo e sorgente_id per ordine, contratto e DDT (indici ix_commesse_sorgenti_sorgente_uid e uq_commesse_sorgenti_sorgente_commessa): il join verso il documento confronta colonne dello stesso tipo, senza cast, ed e'' leakproof anche sotto RLS. V e'' la revisione dell''offerta (madre -> figlia, revisione_padre_id), rango 60, non un''origine. Il vocabolario delle lettere e'' quello di vendite.vw_documento_lineage_archi: un arco nuovo si aggiunge qui, nei due modi. SET jit = off e plan_cache_mode = force_generic_plan: la funzione si pianifica una volta per sessione. BEGIN ATOMIC, SECURITY INVOKER.';
 ```
 
 </div>

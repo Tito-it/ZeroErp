@@ -87,8 +87,8 @@ SELECT plan(11);
 -- da saltare, e il 4 e' uno skip dichiarato.
 -- ⚠️ Il pull PRETENDE una sorgente ROOT, e il builder non la scrive: la scrive il
 --   test (sorgente COMMESSA, chiave = id della commessa).
-INSERT INTO vendite.commesse_sorgenti (commessa_id, sorgente_tipo_id, sorgente_uid, ruolo_link)
-SELECT c.commessa_id, s.id, c.commessa_id::text, 'ROOT'
+INSERT INTO vendite.commesse_sorgenti (commessa_id, sorgente_tipo_id, sorgente_id, ruolo_link)
+SELECT c.commessa_id, s.id, c.commessa_id, 'ROOT'
   FROM tmp_comm_gsl c
   JOIN config.sorgenti s ON s.codice_interno = 'COMMESSA' AND s.attivo IS TRUE;
 

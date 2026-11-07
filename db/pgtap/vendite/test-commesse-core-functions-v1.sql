@@ -214,7 +214,7 @@ SELECT vendite.fn_link_commessa_sorgente(
   p_sorgente_tipo_id => (SELECT root_sorgente_tipo_id FROM tmp_refs_commesse_core),
   -- ROOT: uid = id della commessa stessa, esiste per costruzione.
   p_sorgente_uid => (SELECT commessa_id FROM tmp_commessa_core)::text,
-  p_sorgente_riga => 1,
+  p_sorgente_riga => NULL,
   p_meta => jsonb_build_object('test_scope', 'pgtap_commesse_core')
 ) AS link_id;
 
@@ -227,12 +227,14 @@ CREATE TEMP TABLE tmp_link_core_reuse AS
 SELECT vendite.fn_link_commessa_sorgente(
   p_commessa_id => (SELECT commessa_id FROM tmp_commessa_core),
   p_sorgente_tipo_id => (SELECT root_sorgente_tipo_id FROM tmp_refs_commesse_core),
+  -- La chiave che il link ha stoccato (COMMESSA: l'id, in sorgente_id), resa a testo
+  -- come la passa il chiamante.
   p_sorgente_uid => (
-    SELECT cs.sorgente_uid
+    SELECT COALESCE(cs.sorgente_id::text, cs.sorgente_uid::text)
     FROM vendite.commesse_sorgenti cs
     WHERE cs.id = (SELECT link_id FROM tmp_link_core)
   ),
-  p_sorgente_riga => 1,
+  p_sorgente_riga => NULL,
   p_meta => jsonb_build_object('idempotent', true)
 ) AS link_id;
 
@@ -268,7 +270,7 @@ SELECT vendite.fn_link_commessa_sorgente(
   p_commessa_id => (SELECT commessa_id FROM tmp_commessa_core),
   p_sorgente_tipo_id => (SELECT root_sorgente_tipo_id FROM tmp_refs_commesse_core),
   p_sorgente_uid => (SELECT commessa_id FROM tmp_commessa_core_2)::text,
-  p_sorgente_riga => 2,
+  p_sorgente_riga => NULL,
   p_meta => '{}'::jsonb
 ) AS link_id;
 

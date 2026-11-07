@@ -114,9 +114,8 @@ SELECT lives_ok(
     $$SELECT dbops.fn_accoda_lavoro(
           p_job_type => 'PGTAP-TIPO-DOMINIO',
           p_run_as   => 'OPERATORE',
-          p_scope    => '{"auth_user_id": 1, "username": "pgtap",
-                          "identita_id": 1}'::jsonb)$$,
-    'lo stesso job accodato come OPERATORE con scope passa'
+          p_scope    => dbops.fn_pgtap_scope_operatore())$$,
+    'lo stesso job accodato come OPERATORE con scope passa (lo scope di chi e'' in sessione, con la sua azienda: giro 5 di brief-db-revisione-dbops)'
 );
 
 -- ⭐ Il guard e' una regola sul DOMINIO, non una tassa su tutta la coda: un

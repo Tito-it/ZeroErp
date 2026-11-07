@@ -155,16 +155,21 @@ VALUES ('PGTAP_CL_SISTEMA',  'pgtap_noop', 'SISTEMA',   TRUE,  'PGTAP_PROC_CODA_
 
 -- Side-effect: enqueue base (OPERATORE, scope obbligatorio) + 2a chiamata
 -- idempotente stessa chiave + enqueue SISTEMA. Id catturati in tmp_enq.
+-- ⭐ Rev 2026-11-07 (giro 5 di brief-db-revisione-dbops): lo scope e' quello di
+--   chi e' in sessione, con un'azienda del suo perimetro
+--   (dbops.fn_pgtap_scope_operatore). Uno scope di fantasia ({"auth_user_id":1})
+--   la porta lo respinge da una sessione dell'applicazione, e un lavoro
+--   OPERATORE senza azienda non nasce piu'.
 CREATE TEMP TABLE tmp_enq AS
 SELECT dbops.fn_accoda_lavoro(
            'FATTURAZIONE_GIRO', '{}'::jsonb, NULL,
-           '{"emittente_ids":[1],"auth_user_id":1}'::jsonb, 'pgtap-key-1'
+           dbops.fn_pgtap_scope_operatore(), 'pgtap-key-1'
        ) AS id1;
 ALTER TABLE tmp_enq ADD COLUMN id2 bigint;
 ALTER TABLE tmp_enq ADD COLUMN id3 bigint;
 UPDATE tmp_enq SET id2 = dbops.fn_accoda_lavoro(
            'FATTURAZIONE_GIRO', '{}'::jsonb, NULL,
-           '{"emittente_ids":[1],"auth_user_id":1}'::jsonb, 'pgtap-key-1');
+           dbops.fn_pgtap_scope_operatore(), 'pgtap-key-1');
 UPDATE tmp_enq SET id3 = dbops.fn_accoda_lavoro('PGTAP_CL_SISTEMA');
 
 -- ============================================================
@@ -234,9 +239,13 @@ SELECT throws_ok(
 -- ============================================================
 -- J) Unique parziale vivo (raw INSERT doppione vivo -> 23505)
 -- ============================================================
+-- ⚠️ La riga e' valida in tutto il resto (scope e azienda coerenti): il CHECK
+--   si valuta prima dell'indice unico, e una riga senza azienda darebbe 23514.
 SELECT throws_ok(
-    $$ INSERT INTO dbops.coda_lavori (job_type, run_as, scope, idempotency_key)
-       VALUES ('FATTURAZIONE_GIRO', 'OPERATORE', '{"emittente_ids":[1]}'::jsonb, 'pgtap-key-1') $$,
+    format($$ INSERT INTO dbops.coda_lavori (job_type, run_as, scope, emittente_fiscale_id, idempotency_key)
+       VALUES ('FATTURAZIONE_GIRO', 'OPERATORE', %L::jsonb, %s, 'pgtap-key-1') $$,
+       dbops.fn_pgtap_scope_operatore()::text,
+       dbops.fn_pgtap_scope_operatore() ->> 'emittente_attivo_id'),
     '23505', NULL, '57) doppione vivo (job_type, idempotency_key) viola uq_coda_lavori_vivo_idem');
 
 SELECT * FROM finish();

@@ -49,6 +49,8 @@
 --   dice la regex _perimetro qui sotto, una per tutti i test.
 --   Rev 2026-10-21 (giro 5, 20261021-41): e fn_scope_email_ambito_perimetro, a
 --   cui la policy passa in sottoquery le quattro risposte su chi guarda.
+--   Rev 2026-11-07 (20261107-52, giro 5 di brief-db-revisione-dbops): e
+--   fn_scope_coda_lavori_perimetro, la stessa forma con tre risposte.
 --   Rev 2026-10-21 (giro 4, 20261021-38): e gli smistatori delle note di
 --   cliente e shop (fn_scope_note_cliente_perimetro, fn_scope_note_shop_perimetro).
 --   Rev 2026-10-21 (20261021-29..-32, giro 2): anche fn_scope_sr_perimetro, la
@@ -90,7 +92,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SELECT plan(6);
 
 -- La funzione di scope col perimetro, in tutte le sue forme (vedi testata).
-CREATE TEMP TABLE _re AS SELECT 'fn_scope_((note_|note_magazzino_)?ef|sr|note_cliente|note_shop|email_ambito)_perimetro\('::text AS perimetro;
+CREATE TEMP TABLE _re AS SELECT 'fn_scope_((note_|note_magazzino_)?ef|sr|note_cliente|note_shop|email_ambito|coda_lavori)_perimetro\('::text AS perimetro;
 
 -- ⚠️ Il DEBITO di controparte (test 6): le funzioni di scope che calcolano
 --   ancora il perimetro dell'identita' per riga, curate dai giri successivi

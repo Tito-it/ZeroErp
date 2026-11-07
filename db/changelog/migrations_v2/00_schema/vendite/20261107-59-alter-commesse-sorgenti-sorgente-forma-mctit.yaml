@@ -1,0 +1,139 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL LINK DOCUMENTO -> COMMESSA NELLA GRAMMATICA DEL MODELLO: vendite.commesse_sorgenti
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto C, giro C.2 (S-4).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   La tabella teneva la chiave del documento come TESTO canonico in sorgente_uid:
+#   id::text per i tipi a chiave id (ordine, contratto, DDT), uuid::text per
+#   quelli a chiave uid (preventivo). Nel modello la chiave sta in una sola delle
+#   due colonne tipizzate, secondo il key_selector del tipo: sorgente_id bigint
+#   oppure sorgente_uid uuid (S-4). Le righe si convertono qui, nel changeSet della
+#   forma: e' la migrazione del modello, non una correzione.
+#
+# ── LA FORMA ─────────────────────────────────────────────────────────
+#   1. Si tolgono gli oggetti che legano il tipo della colonna (pg_depend, dbdev,
+#      2026-11-07): la funzione BEGIN ATOMIC vendite.fn_documento_lineage_archi
+#      con la sua vista vendite.vw_documento_lineage_archi (le ricreano
+#      20261107-66 e -67), e i due trigger scritti a mano con sorgente_uid in
+#      UPDATE OF: il guard testuale (al suo posto il guard unico, 20261107-69,
+#      con lo stesso nome) e quello dell'emittente (rimontato da 20261107-64).
+#      DROP senza CASCADE e senza IF EXISTS: un dipendente non censito ferma il
+#      migrate invece di sparire in silenzio.
+#   2. Le righe dei tipi a chiave id passano a sorgente_id, coi trigger della
+#      tabella spenti e riaccesi com'erano (audit e storico: e' il modello che
+#      cambia, non il link).
+#   3. sorgente_uid diventa uuid NULL; l'unicita' passa sulla chiave nuova, con
+#      NULLS NOT DISTINCT (una delle due chiavi e' sempre NULL); il CHECK di forma.
+#   Nessuna riga orfana su dbdev (2026-11-07). Da zero la tabella e' vuota.
+#   Rollback: forward-only.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261107-59-alter-commesse-sorgenti-sorgente-forma-mctit.yaml
+
+  - changeSet:
+      id: 20261107-59-alter-commesse-sorgenti-sorgente-forma
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.commesse_sorgenti: la chiave del documento dal testo canonico alle colonne
+        tipizzate (sorgente_id / sorgente_uid uuid), unicita' sulla chiave nuova, CHECK di forma.
+        Tolte qui la lineage degli archi e la sua vista e i due trigger che legano la colonna.
+        brief-db-sorgente-documento-e-riga §7.2 lotto C, giro C.2.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 1. Chi lega il tipo di sorgente_uid.
+              DROP VIEW vendite.vw_documento_lineage_archi;
+              DROP FUNCTION vendite.fn_documento_lineage_archi(bigint[], text[]);
+              DROP TRIGGER trg_commesse_sorgenti_a10_guard_sorgente_ins_upd ON vendite.commesse_sorgenti;
+              DROP TRIGGER trg_commesse_sorgenti_a10_guard_sorgente_omogeneita_ins_upd ON vendite.commesse_sorgenti;
+
+              -- 2. Le righe dei tipi a chiave id: l'id del documento in sorgente_id.
+              ALTER TABLE vendite.commesse_sorgenti ALTER COLUMN sorgente_uid DROP NOT NULL;
+
+              DO $do$
+              DECLARE
+                  v_nomi text[];
+                  v_modi "char"[];
+                  i      integer;
+              BEGIN
+                  -- L'elenco si legge UNA volta, prima di spegnere: uno spento di proposito
+                  -- resta spento, uno ALWAYS torna ALWAYS.
+                  SELECT array_agg(t.tgname::text ORDER BY t.tgname),
+                         array_agg(t.tgenabled    ORDER BY t.tgname)
+                    INTO v_nomi, v_modi
+                    FROM pg_catalog.pg_trigger t
+                   WHERE t.tgrelid = 'vendite.commesse_sorgenti'::regclass
+                     AND NOT t.tgisinternal
+                     AND t.tgenabled <> 'D';
+
+                  FOR i IN 1 .. COALESCE(cardinality(v_nomi), 0) LOOP
+                      EXECUTE format('ALTER TABLE vendite.commesse_sorgenti DISABLE TRIGGER %I', v_nomi[i]);
+                  END LOOP;
+
+                  -- ⚠️ Il cast non ha rete: un testo che non e' un id ferma il migrate. Il
+                  --    guard testuale montato fino a qui garantiva la forma canonica.
+                  UPDATE vendite.commesse_sorgenti cs
+                     SET sorgente_id  = cs.sorgente_uid::bigint,
+                         sorgente_uid = NULL
+                    FROM config.sorgenti s
+                   WHERE s.id = cs.sorgente_tipo_id
+                     AND s.key_selector = 'id';
+
+                  FOR i IN 1 .. COALESCE(cardinality(v_nomi), 0) LOOP
+                      EXECUTE format('ALTER TABLE vendite.commesse_sorgenti ENABLE %s TRIGGER %I',
+                                     CASE v_modi[i] WHEN 'A' THEN 'ALWAYS'
+                                                    WHEN 'R' THEN 'REPLICA'
+                                                    ELSE '' END,
+                                     v_nomi[i]);
+                  END LOOP;
+              END;
+              $do$;
+
+              -- 3. Il tipo, l'unicita' e la forma.
+              ALTER TABLE vendite.commesse_sorgenti
+                DROP CONSTRAINT uq_commesse_sorgenti_src_uid_commessa;
+
+              -- ⚠️ Anche qui il cast non ha rete: restano solo le chiavi dei tipi a uid.
+              ALTER TABLE vendite.commesse_sorgenti
+                ALTER COLUMN sorgente_uid TYPE uuid USING sorgente_uid::uuid;
+
+              ALTER TABLE vendite.commesse_sorgenti
+                ADD CONSTRAINT uq_commesse_sorgenti_sorgente_commessa
+                UNIQUE NULLS NOT DISTINCT (sorgente_tipo_id, sorgente_id, sorgente_uid, commessa_id);
+              COMMENT ON CONSTRAINT uq_commesse_sorgenti_sorgente_commessa ON vendite.commesse_sorgenti IS
+                'Un documento compare una volta sola per commessa: tipo, chiave del documento (sorgente_id o sorgente_uid, una delle due e'' sempre NULL: NULLS NOT DISTINCT) e commessa. Non dice «una sola commessa per documento»: il link resta come storia dopo la chiusura o l''annullo della commessa, e «una sola commessa APERTA» la fa valere vendite.fn_link_commessa_sorgente, sotto lock (un indice non legge lo stato della commessa). Serve anche la ricerca per tipo e sorgente_id.';
+
+              ALTER TABLE vendite.commesse_sorgenti
+                ADD CONSTRAINT chk_commesse_sorgenti_sorgente_forma CHECK (num_nonnulls(sorgente_id, sorgente_uid) = 1);
+              COMMENT ON CONSTRAINT chk_commesse_sorgenti_sorgente_forma ON vendite.commesse_sorgenti IS
+                'La forma della provenienza: il tipo c''e'' sempre (NOT NULL) e con lui una sola chiave del documento, sorgente_id oppure sorgente_uid. Quale delle due, e che il documento e la riga esistano, lo verifica script.trgfn_guard_sorgente.';
+
+              -- 4. I COMMENT delle colonne, al presente.
+              COMMENT ON COLUMN vendite.commesse_sorgenti.sorgente_tipo_id IS
+                'Il tipo del documento collegato alla commessa (config.sorgenti): preventivo, ordine, contratto, DDT. Con lui una sola chiave del documento, quella del key_selector del tipo; la forma la tiene chk_commesse_sorgenti_sorgente_forma, documento e riga li verifica script.trgfn_guard_sorgente, che blocca anche la cancellazione del documento finche'' il link lo cita.';
+              COMMENT ON COLUMN vendite.commesse_sorgenti.sorgente_id IS
+                'La chiave del documento quando il suo tipo ha key_selector ''id'' (ordine, contratto, DDT): l''id del documento. In alternativa a sorgente_uid, mai tutte e due. La scrive vendite.fn_link_commessa_sorgente dalla chiave che restituisce script.fn_sorgente_chiave.';
+              COMMENT ON COLUMN vendite.commesse_sorgenti.sorgente_uid IS
+                'La chiave del documento quando il suo tipo ha key_selector ''uid'' (preventivo): l''uid del documento. In alternativa a sorgente_id, mai tutte e due. La scrive vendite.fn_link_commessa_sorgente dalla chiave che restituisce script.fn_sorgente_chiave.';
+              COMMENT ON COLUMN vendite.commesse_sorgenti.sorgente_riga IS
+                'La riga del documento quando il link e'' a grana di riga: l''id nella tabella delle righe che config.sorgenti dichiara per il tipo. NULL quando il link e'' al documento intero, come lo scrive oggi la porta.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: la chiave testuale non si ricostruisce, e nessuno la legge.
+              SELECT 1;

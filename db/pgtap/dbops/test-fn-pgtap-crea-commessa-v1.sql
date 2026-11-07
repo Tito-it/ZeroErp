@@ -166,7 +166,7 @@ SELECT * FROM dbops.fn_pgtap_crea_commessa(
 
 SELECT is(
     (SELECT count(*)::text || ' ' || bool_and(s.codice_interno = 'COMMESSA')::text
-            || ' ' || bool_and(cs.sorgente_uid = t.commessa_id::text)::text
+            || ' ' || bool_and(cs.sorgente_id = t.commessa_id)::text
        FROM t_c6 t
        JOIN vendite.commesse_sorgenti cs ON cs.commessa_id = t.commessa_id AND cs.ruolo_link = 'ROOT'
        JOIN config.sorgenti s ON s.id = cs.sorgente_tipo_id),

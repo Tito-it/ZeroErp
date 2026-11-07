@@ -113,7 +113,7 @@ SELECT vendite.fn_link_commessa_sorgente(
   -- il tipo. rev 2026-07-27 (bonifica: prima era una stringa inventata su
   -- sorgente PREVENTIVO, illegale dal guard del 2026-07-18).
   p_sorgente_uid => (SELECT commessa_id FROM tmp_com)::text,
-  p_sorgente_riga => 1, p_meta => '{}'::jsonb);
+  p_sorgente_riga => NULL, p_meta => '{}'::jsonb);
 
 CREATE OR REPLACE FUNCTION pg_temp.mk_af(p_segment varchar, p_qta numeric)
 RETURNS void AS $$

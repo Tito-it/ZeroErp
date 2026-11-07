@@ -108,18 +108,18 @@ END $conta$;
 -- ============================================================
 -- NOTA 2026-07-18 (brief-db-guard-sorgente-polimorfa): il guard sorgente
 -- valida esistenza e formato della chiave, quindi la sorgente del test e' la
--- commessa REALE del fixture (tipo COMMESSA, chiave canonica id::text) — non
+-- commessa REALE del fixture (tipo COMMESSA, l'id in sorgente_id) — non
 -- piu' l'uuid sintetico, che il guard respingerebbe (E_SORG_NOT_FOUND).
 SELECT throws_ok(
   $$
     WITH ids AS (SELECT id FROM tmp_commessa_srcuid),
          refs AS (SELECT s.id AS sorgente_tipo_id FROM config.sorgenti s
                    WHERE s.codice_interno = 'COMMESSA' AND s.attivo IS TRUE LIMIT 1)
-    INSERT INTO vendite.commesse_sorgenti (commessa_id, sorgente_tipo_id, sorgente_uid, ruolo_link)
-    SELECT ids.id, refs.sorgente_tipo_id, ids.id::text, 'ROOT'
+    INSERT INTO vendite.commesse_sorgenti (commessa_id, sorgente_tipo_id, sorgente_id, ruolo_link)
+    SELECT ids.id, refs.sorgente_tipo_id, ids.id, 'ROOT'
     FROM ids, refs
     UNION ALL
-    SELECT ids.id, refs.sorgente_tipo_id, ids.id::text, 'ROOT'
+    SELECT ids.id, refs.sorgente_tipo_id, ids.id, 'ROOT'
     FROM ids, refs;
   $$,
   '23505',

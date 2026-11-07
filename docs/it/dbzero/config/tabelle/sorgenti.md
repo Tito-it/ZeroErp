@@ -61,7 +61,6 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_sorgenti_a10_attivita_fatturabili_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'attivita_fatturabili', 'sorgente_origine_tipo_id', 'id', 'attivo')` |
 | trg_sorgenti_a10_commesse_attivita_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'commesse_attivita', 'sorgente_tipo_id', 'id', 'attivo')` |
 | trg_sorgenti_a10_commesse_sorgenti_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'commesse_sorgenti', 'sorgente_tipo_id', 'id', 'attivo')` |
 | trg_sorgenti_a10_contratti_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'contratti', 'sorgente_tipo_id', 'id', 'attivo')` |
@@ -89,8 +88,8 @@
 | trg_sorgenti_a10_trasferimenti_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('magazzino', 'trasferimenti', 'sorgente_tipo_id', 'id', 'attivo')` |
 | trg_sorgenti_a15_codice_maiuscolo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
 | trg_sorgenti_a15_codice_maiuscolo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
-| trg_sorgenti_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_sorgenti_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_sorgenti_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_sorgenti_normalize_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION config.trgfn_sorgenti_normalize()` |
 | trg_sorgenti_normalize_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION config.trgfn_sorgenti_normalize()` |
 

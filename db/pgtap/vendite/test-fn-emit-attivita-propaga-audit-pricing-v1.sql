@@ -93,7 +93,7 @@ SELECT vendite.fn_link_commessa_sorgente(
   -- (formato id::text + esistenza nel target). fn_emit pretende solo che una
   -- ROOT esista, non ne dereferenzia il tipo. rev 2026-07-27 (bonifica).
   p_sorgente_uid => (SELECT commessa_id FROM tmp_commessa_au)::text,
-  p_sorgente_riga => 1,
+  p_sorgente_riga => NULL,
   p_meta => jsonb_build_object('test_scope', 'pgtap_emit_audit')
 ) AS link_id;
 

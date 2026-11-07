@@ -137,7 +137,7 @@ SELECT vendite.fn_link_commessa_sorgente(
   p_commessa_id      => (SELECT commessa_id FROM tmp_com_afk),
   p_sorgente_tipo_id => (SELECT sorgente_root_id FROM tmp_refs_afk),
   p_sorgente_uid     => (SELECT commessa_id FROM tmp_com_afk)::text,
-  p_sorgente_riga    => 1,
+  p_sorgente_riga    => NULL,
   p_meta             => '{}'::jsonb);
 
 -- Helper: un'attivita' con segment_key esplicita, tipo_movimento e meta.

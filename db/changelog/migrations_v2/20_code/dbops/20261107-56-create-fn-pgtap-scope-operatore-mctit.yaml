@@ -1,0 +1,104 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_pgtap_scope_operatore: helper di fixture pgTAP, lo scope di un lavoro
+#   OPERATORE accodato da chi e' in sessione. Brief: brief-db-revisione-dbops,
+#   giro 5 (Q14 ③).
+#
+# ⭐ PERCHE' UN HELPER (regola del 2). Dal giro 5 un lavoro OPERATORE nasce dentro
+#   un'azienda (emittente_attivo_id nello scope, chk_coda_lavori_run_as_emittente)
+#   e la porta, da una sessione dell'applicazione, pretende che lo scope sia di
+#   chi accoda e dentro il suo perimetro. Sei pgTAP della coda costruivano lo
+#   scope a mano con valori di fantasia ({"auth_user_id": 1, ...}): la stessa
+#   costruzione, giusta, va scritta una volta sola.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261107-56-create-fn-pgtap-scope-operatore-mctit.yaml
+
+  - changeSet:
+      id: 20261107-56-create-fn-pgtap-scope-operatore
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Helper di fixture pgTAP dbops.fn_pgtap_scope_operatore: lo scope di un lavoro OPERATORE accodato da chi
+        e' in sessione (identita' del contesto, un'azienda del suo perimetro). Giro 5 di brief-db-revisione-dbops.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_proc
+               WHERE pronamespace = 'dbops'::regnamespace AND proname = 'fn_pgtap_scope_operatore'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_scope_operatore(
+                  p_emittente_fiscale_id anagrafiche.emittenti_fiscali.id%TYPE DEFAULT NULL)
+               RETURNS dbops.coda_lavori.scope%TYPE
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              DECLARE
+                  -- ⚠️ `integer` esplicito: django.auth_user.id, a cui il DB non si lega.
+                  v_utente    integer;
+                  -- ⚠️ `bigint[]` esplicito: elementi = anagrafiche.emittenti_fiscali.id.
+                  v_perimetro bigint[];
+                  v_emittente anagrafiche.emittenti_fiscali.id%TYPE;
+                  v_identita  anagrafiche.identita_digitali.id%TYPE;
+              BEGIN
+                  -- Scopo: lo scope di un lavoro OPERATORE accodato da chi e' in
+                  --   sessione: la sua identita' e un'azienda del suo perimetro
+                  --   (quella chiesta, oppure la prima). Super admin (perimetro
+                  --   NULL): la prima azienda attiva.
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  IF v_utente IS NULL THEN
+                      RAISE EXCEPTION 'dbops.fn_pgtap_scope_operatore: nessun utente in sessione (app.current_user_id); prima script.fn_pgtap_set_contesto_operatore()';
+                  END IF;
+
+                  v_perimetro := script.fn_get_emittenti_scope_pk_ids(v_utente);
+
+                  v_emittente := COALESCE(
+                      p_emittente_fiscale_id,
+                      (SELECT min(e) FROM unnest(v_perimetro) AS e),
+                      CASE WHEN v_perimetro IS NULL
+                           THEN (SELECT min(ef.id) FROM anagrafiche.emittenti_fiscali ef)
+                      END);
+                  IF v_emittente IS NULL THEN
+                      RAISE EXCEPTION 'dbops.fn_pgtap_scope_operatore: l''utente % non ha nessuna azienda nel perimetro', v_utente;
+                  END IF;
+
+                  SELECT idg.id INTO v_identita
+                    FROM anagrafiche.identita_digitali idg
+                   WHERE idg.auth_user_id = v_utente
+                     AND idg.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
+                   ORDER BY idg.id
+                   LIMIT 1;
+
+                  RETURN jsonb_build_object(
+                      'auth_user_id',        v_utente,
+                      'username',            'pgtap',
+                      'identita_id',         v_identita,
+                      'emittente_attivo_id', v_emittente,
+                      'emittente_ids',       jsonb_build_array(v_emittente),
+                      'scope_key',           v_emittente::text);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_scope_operatore(bigint) IS
+              'Helper di fixture pgTAP: lo scope di un lavoro OPERATORE di dbops.coda_lavori accodato da chi e'' in sessione: auth_user_id dal contesto (app.current_user_id), l''identita'' OPERATORE dell''utente, e un''azienda del suo perimetro in emittente_attivo_id ed emittente_ids (quella passata, altrimenti la prima; per il super admin la prima azienda). E'' lo scope che dbops.fn_accoda_lavoro accetta da una sessione dell''applicazione. Solleva se in sessione non c''e'' nessuno, o se l''utente non ha aziende. Prima: script.fn_pgtap_set_contesto_operatore().';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_pgtap_scope_operatore(bigint);

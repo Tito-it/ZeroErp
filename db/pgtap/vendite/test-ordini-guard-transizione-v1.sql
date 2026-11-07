@@ -267,10 +267,10 @@ SELECT * FROM dbops.fn_pgtap_crea_commessa(
     'guard transizione ordini', 'APERTA',
     (SELECT billing_account_id FROM tmp_gt_cli), true);
 
-INSERT INTO vendite.commesse_sorgenti (commessa_id, sorgente_tipo_id, sorgente_uid, ruolo_link)
+INSERT INTO vendite.commesse_sorgenti (commessa_id, sorgente_tipo_id, sorgente_id, ruolo_link)
 SELECT (SELECT commessa_id FROM tmp_gt_com),
        (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'ORDINE_VENDITA'),
-       (SELECT ordine_id FROM tmp_gt_f)::text,
+       (SELECT ordine_id FROM tmp_gt_f),
        'ROOT';
 
 -- ⛔ E la riga che davvero FERMA: una commessa_attivita gia' EMESSA spinta da
@@ -278,7 +278,7 @@ SELECT (SELECT commessa_id FROM tmp_gt_com),
 --    voluto, perche' il documento ritira da se' cio' che nessuno ha emesso.
 -- ⚠️ La chiave e' l'`uid` dell'ordine, non il suo `id`: e' quella che
 --    fn_list_ordini_da_pushare scrive in commesse_attivita.sorgente_uid.
---    ⭐ E NON e' la stessa che commesse_sorgenti usa qui sopra (li' e' l'id):
+--    ⭐ E NON e' la stessa che commesse_sorgenti usa qui sopra (li' e' l'id, in sorgente_id):
 --    due chiavi polimorfe diverse per la stessa sorgente, e confonderle non
 --    darebbe un errore — darebbe un guard che non ferma.
 INSERT INTO vendite.commesse_attivita (
