@@ -16,7 +16,7 @@ CREATE OR REPLACE VIEW script.vw_lotto_documento_righe
 WITH (security_invoker=true) AS
 SELECT DISTINCT lf.lotto_id,
     fr.fattura_id,
-    vendite.fn_build_gruppo_fatturabile_key(ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id) AS gruppo_key
+    vendite.fn_gruppo_fatturabile_key_di_attivita(ca.sorgente_tipo_id, ca.segment_key, ca.commessa_id) AS gruppo_key
    FROM (((vendite.fatturazione_lotti_fatture lf
      JOIN vendite.fatture_righe fr ON ((fr.fattura_id = lf.fattura_id)))
      JOIN vendite.attivita_fatturabili af ON ((af.fattura_riga_id = fr.id)))

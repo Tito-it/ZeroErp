@@ -185,7 +185,11 @@ FROM (VALUES ('P', 1, 100.0), ('P', 2, 100.0), ('C', 1, 50.0), ('C', 2, 50.0)) A
 CROSS JOIN LATERAL (
   SELECT * FROM vendite.fn_upsert_commessa_attivita(
     p_commessa_id => (SELECT commessa_id FROM tmp_vg_comm),
-    p_segment_key => ('SEG-VG-' || x.g || '-' || x.n)::varchar,
+    p_segment_key => ((SELECT script.fn_segment_key(s.codice_interno, d.documento_uid::text) FROM config.sorgenti s, script.fn_sorgente_documento_da_chiave(s.id, (CASE WHEN x.g = 'P'
+                           THEN (SELECT uid::text FROM tmp_vg_prev)
+                           ELSE (SELECT uid::text FROM tmp_vg_contr) END)::text) d WHERE s.id = CASE WHEN x.g = 'P'
+                               THEN (SELECT src_preventivo_id FROM tmp_vg_refs)
+                               ELSE (SELECT src_contratto_id FROM tmp_vg_refs) END) || ':' || ('SEG-VG-' || x.g || '-' || x.n)::varchar)::varchar,
     p_articolo_id => (SELECT articolo_id FROM tmp_vg_refs),
     p_istanza_utility_id => (SELECT istanza_utility_id FROM tmp_vg_refs),
     p_data_attivita => DATE '2081-01-15',

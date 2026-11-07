@@ -160,7 +160,7 @@ CREATE TEMP TABLE tmp_commessa_att_a AS
 SELECT r.attivita_id AS commessa_attivita_id
 FROM vendite.fn_upsert_commessa_attivita(
   p_commessa_id => (SELECT commessa_id FROM tmp_commessa_a),
-  p_segment_key => ('SEG-A-' || substr(md5(clock_timestamp()::text), 1, 18))::varchar,
+  p_segment_key => ((SELECT x.segment_key FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa_a)) x) || ':' || ('SEG-A-' || substr(md5(clock_timestamp()::text), 1, 18))::varchar)::varchar,
   p_articolo_id => (SELECT articolo_id FROM tmp_guard_refs),
   p_istanza_utility_id => (SELECT istanza_utility_id FROM tmp_guard_refs),
   p_data_attivita => DATE '2026-07-15',
@@ -191,8 +191,8 @@ FROM vendite.fn_upsert_commessa_attivita(
   p_prezzo_da_riallineare => false,
   p_stato_approvazione => 'APPROVATA',
   p_stato_emissione => 'NON_EMESSA',
-  p_sorgente_tipo_id => (SELECT src_preventivo_id FROM tmp_guard_refs),
-  p_sorgente_uid => ('EXT-A-' || substr(md5(clock_timestamp()::text), 1, 10))::text,
+  p_sorgente_tipo_id => (SELECT x.sorgente_tipo_id FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa_a)) x),
+  p_sorgente_uid => (SELECT x.consumo_id::text FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa_a)) x),
   p_tipo_movimento => 'NORMALE',
   p_meta => jsonb_build_object('case', 'GUARD_A')
 ) r;
@@ -299,7 +299,7 @@ CREATE TEMP TABLE tmp_commessa_att_b AS
 SELECT r.attivita_id AS commessa_attivita_id
 FROM vendite.fn_upsert_commessa_attivita(
   p_commessa_id => (SELECT commessa_id FROM tmp_commessa_b),
-  p_segment_key => ('SEG-B-' || substr(md5(clock_timestamp()::text), 1, 18))::varchar,
+  p_segment_key => ((SELECT x.segment_key FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa_b)) x) || ':' || ('SEG-B-' || substr(md5(clock_timestamp()::text), 1, 18))::varchar)::varchar,
   p_articolo_id => (SELECT articolo_id FROM tmp_guard_refs),
   p_istanza_utility_id => (SELECT istanza_utility_id FROM tmp_guard_refs),
   p_data_attivita => DATE '2026-08-10',
@@ -330,8 +330,8 @@ FROM vendite.fn_upsert_commessa_attivita(
   p_prezzo_da_riallineare => false,
   p_stato_approvazione => 'APPROVATA',
   p_stato_emissione => 'NON_EMESSA',
-  p_sorgente_tipo_id => (SELECT src_preventivo_id FROM tmp_guard_refs),
-  p_sorgente_uid => ('EXT-B-' || substr(md5(clock_timestamp()::text), 1, 10))::text,
+  p_sorgente_tipo_id => (SELECT x.sorgente_tipo_id FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa_b)) x),
+  p_sorgente_uid => (SELECT x.consumo_id::text FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_commessa_b)) x),
   p_tipo_movimento => 'NORMALE',
   p_meta => jsonb_build_object('case', 'GUARD_B')
 ) r;

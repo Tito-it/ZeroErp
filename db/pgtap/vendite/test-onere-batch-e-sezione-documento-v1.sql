@@ -98,7 +98,8 @@ SELECT is(
   '1) il batch inserisce onere e merce, senza errori (prima: l''onere rifiutato, causale persa)');
 
 CREATE TEMP TABLE _ca AS
-SELECT ca.id, ca.articolo_id, ca.tipo_movimento, ca.causale_onere_id, ca.sorgente_uid
+SELECT ca.id, ca.articolo_id, ca.tipo_movimento, ca.causale_onere_id,
+       vendite.fn_documento_uid_di_attivita(ca.sorgente_tipo_id, ca.segment_key) AS sorgente_uid
   FROM vendite.commesse_attivita ca
  WHERE ca.commessa_id = (SELECT id FROM _comm);
 

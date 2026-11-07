@@ -1,0 +1,156 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA CHIAVE DEL GRUPPO DALLA RIGA DI COMMESSA: vendite.fn_select_attivita_fatturabili
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto C, giro C.3 (D-6 precisata da Tid il
+#   2026-11-07).
+#
+#   La chiave del gruppo fatturabile di una riga di commessa si costruiva da
+#   ca.sorgente_uid, che dal 20261107-70 non porta piu' l'uid per i tipi a chiave id: la
+#   costruisce vendite.fn_gruppo_fatturabile_key_di_attivita (20261107-74), con l'uid dalla
+#   segment_key. La chiave e' la stessa di prima, per ogni riga.
+#   Corpo dal vivo (dbdev, 2026-11-07), firma dal 20261009-50, SECURITY INVOKER esplicito.
+#   COMMENT invariato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261107-91-update-fn-select-attivita-fatturabili-chiave-di-attivita-mctit.yaml
+
+  - changeSet:
+      id: 20261107-91-update-fn-select-attivita-fatturabili-chiave-di-attivita
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_select_attivita_fatturabili: la chiave del gruppo fatturabile da
+        vendite.fn_gruppo_fatturabile_key_di_attivita. brief-db-sorgente-documento-e-riga §7.2 lotto
+        C, giro C.3.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_select_attivita_fatturabili(p_competenza_mese vendite.attivita_fatturabili.competenza_mese%TYPE, p_tipo_doc_fiscale_id config.tipi_doc_fiscale.id%TYPE, p_lock_batch_id vendite.attivita_fatturabili.lock_batch_id%TYPE DEFAULT NULL::uuid, p_lock boolean DEFAULT false, p_data_fatturazione vendite.fatture.data%TYPE DEFAULT script.fn_data_operativa(), p_billing_account_id anagrafiche.billing_account.id%TYPE DEFAULT NULL::bigint, p_utility_id config.utilities.id%TYPE DEFAULT NULL::integer, p_valuta_id config.valute.id%TYPE DEFAULT NULL::integer, p_emittente_soggetto_ruolo_id anagrafiche.soggetti_ruoli.id%TYPE DEFAULT NULL::bigint, p_area_geografica_id vendite.attivita_fatturabili.area_geografica_id%TYPE DEFAULT NULL::bigint, p_limit integer DEFAULT NULL::integer, p_gruppi text[] DEFAULT NULL::text[])
+               RETURNS SETOF vendite.attivita_fatturabili
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: seleziona (e opzionalmente blocca) le attivita' fatturabili
+              --        eleggibili di un perimetro, marcandole stato_esecuzione=PENDING.
+              -- rev 2026-06-19: FOR UPDATE OF a (lock ristretto ad attivita_fatturabili).
+              -- rev 2026-07-27 (brief emissione mirata A4): p_gruppi restringe la
+              --        selezione ai GRUPPI FATTURABILI richiesti. E' il secondo e
+              --        decisivo punto di applicazione del perimetro mirato: qui si
+              --        filtrano le AF GIA' ESISTENTI, che il filtro sul pull
+              --        (fn_emit_attivita_fatturabili_da_commessa) non puo' vedere.
+              DECLARE
+                  v_competenza vendite.attivita_fatturabili.competenza_mese%TYPE;
+                  v_data_fatturazione vendite.fatture.data%TYPE;
+                  v_where TEXT;
+                  v_join TEXT;
+                  v_limit TEXT;
+                  v_sql TEXT;
+              BEGIN
+                  IF p_competenza_mese IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_select_attivita_fatturabili', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_competenza_mese', 'valore', NULL), NULL::uuid, 'p_competenza_mese obbligatoria');
+                  END IF;
+                  IF p_tipo_doc_fiscale_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_select_attivita_fatturabili', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_tipo_doc_fiscale_id', 'valore', NULL), NULL::uuid, 'p_tipo_doc_fiscale_id obbligatorio');
+                  END IF;
+                  IF p_lock AND p_lock_batch_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_select_attivita_fatturabili', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_lock_batch_id', 'valore', NULL), NULL::uuid, 'p_lock_batch_id obbligatorio quando p_lock=true');
+                  END IF;
+              
+                  v_competenza := date_trunc('month', p_competenza_mese)::DATE;
+                  v_data_fatturazione := COALESCE(p_data_fatturazione, script.fn_data_operativa());
+              
+                  v_where := ' WHERE a.approvato IS TRUE AND a.fatturato IS FALSE AND a.sospesa IS FALSE AND COALESCE(a.lock_in_fatturazione, false) IS FALSE'
+                      || ' AND (a.posticipa_al IS NULL OR a.posticipa_al <= ' || quote_literal(v_data_fatturazione) || ')'
+                      || ' AND a.competenza_mese <= ' || quote_literal(v_competenza)
+                      || ' AND a.tipo_doc_fiscale_id = ' || quote_literal(p_tipo_doc_fiscale_id);
+              
+                  -- 🔴 D1+D2 — IL PERIMETRO CONSEGNATO, e da qui in poi il rifiuto DECIDE.
+                  --   Fino al 2026-09-04 il perimetro di un giro era «tutto cio' che e'
+                  --   libero e in competenza»: una riga liberata da un giro disfatto era
+                  --   indistinguibile da una appena consegnata dal pull, quindi la commessa
+                  --   che il pull aveva RESPINTO finiva in fattura lo stesso — e senza
+                  --   nessun errore, perche' quella fattura di troppo e' una fattura
+                  --   normale.
+                  --   ⇒ Adesso si fattura solo cio' che il pull di QUESTO giro ha firmato.
+                  --
+                  -- ⭐ IL PERIMETRO NON SI PUO' DIMENTICARE, ed e' il punto della forma.
+                  --   Non c'e' nessun interruttore da ricordarsi di accendere: chi lucchetta
+                  --   e' gia' OBBLIGATO a dichiarare il proprio giro (il guard qui sopra
+                  --   pretende `p_lock_batch_id` quando `p_lock`), e dichiarare il giro
+                  --   SIGNIFICA prendersi il suo perimetro. Le due cose non possono piu'
+                  --   divergere perche' sono lo stesso parametro.
+                  --
+                  -- ⚠️ La condizione e' sulla PRESENZA del giro e non su `p_lock`, e non e'
+                  --   la stessa cosa: cosi' anche un'anteprima che dichiara il proprio giro
+                  --   vede ESATTAMENTE cio' che il giro vero prendera'. Un'anteprima
+                  --   filtrata diversamente dal giro e' peggio di nessuna anteprima —
+                  --   mostra un elenco che poi non si avvera.
+                  --   Una chiamata senza giro (`p_lock_batch_id` NULL, quindi per forza
+                  --   senza lucchetto) resta senza filtro: non fattura niente e non puo'
+                  --   fare danni.
+                  IF p_lock_batch_id IS NOT NULL THEN
+                      v_where := v_where || ' AND a.emit_batch_id = ' || quote_literal(p_lock_batch_id);
+                  END IF;
+              
+                  IF p_billing_account_id IS NOT NULL THEN v_where := v_where || ' AND a.billing_account_id = ' || quote_literal(p_billing_account_id); END IF;
+                  IF p_utility_id IS NOT NULL THEN v_where := v_where || ' AND ba.utility_id = ' || quote_literal(p_utility_id); END IF;
+                  IF p_valuta_id IS NOT NULL THEN v_where := v_where || ' AND a.valuta_id = ' || quote_literal(p_valuta_id); END IF;
+                  IF p_emittente_soggetto_ruolo_id IS NOT NULL THEN
+                      v_where := v_where || ' AND a.billing_account_id IS NOT NULL AND anagrafiche.fn_get_emittente_fiscale_id(a.billing_account_id) = ' || quote_literal(p_emittente_soggetto_ruolo_id);
+                  END IF;
+                  IF p_area_geografica_id IS NOT NULL THEN v_where := v_where || ' AND a.area_geografica_id = ' || quote_literal(p_area_geografica_id); END IF;
+              
+                  -- ============================================
+                  -- EMISSIONE MIRATA (rev 2026-07-27): filtro per gruppo.
+                  -- ============================================
+                  -- Il join alla riga di commessa si aggiunge SOLO quando il
+                  -- filtro e' attivo: senza p_gruppi la query resta identica a
+                  -- prima, sia come forma sia come piano (garanzia G1).
+                  -- commessa_attivita_id e' NOT NULL su attivita_fatturabili,
+                  -- quindi l'INNER JOIN non perde righe.
+                  -- L'array entra come letterale quotato + cast, coerente con
+                  -- gli altri parametri iniettati sopra.
+                  v_join := '';
+                  IF p_gruppi IS NOT NULL THEN
+                      v_join := ' JOIN vendite.commesse_attivita ca ON ca.id = a.commessa_attivita_id';
+                      v_where := v_where
+                          || ' AND vendite.fn_gruppo_fatturabile_key_di_attivita(ca.sorgente_tipo_id, ca.segment_key, ca.commessa_id) = ANY ('
+                          || quote_literal(p_gruppi::text) || '::text[])';
+                  END IF;
+              
+                  v_limit := CASE WHEN p_limit IS NOT NULL THEN ' LIMIT ' || p_limit::TEXT ELSE '' END;
+              
+                  IF p_lock THEN
+                      -- ⚠️ FOR UPDATE OF a: il lock resta ristretto ad
+                      -- attivita_fatturabili anche in presenza del join. Non
+                      -- estenderlo a ca: serializzerebbe la fatturazione con le
+                      -- operazioni di commessa.
+                      v_sql := 'WITH candidati AS (SELECT a.id FROM vendite.attivita_fatturabili a JOIN anagrafiche.billing_account ba ON ba.id = a.billing_account_id' || v_join || v_where || ' ORDER BY a.data_attivita, a.id' || v_limit || ' FOR UPDATE OF a SKIP LOCKED) UPDATE vendite.attivita_fatturabili a SET lock_in_fatturazione = true, lock_batch_id = ' || quote_literal(p_lock_batch_id) || ', stato_esecuzione = ''PENDING'', data_update = now(), user_update = current_user FROM candidati c WHERE a.id = c.id AND a.fatturato IS FALSE AND COALESCE(a.lock_in_fatturazione, false) IS FALSE RETURNING a.*';
+                  ELSE
+                      v_sql := 'WITH candidati AS (SELECT a.id FROM vendite.attivita_fatturabili a JOIN anagrafiche.billing_account ba ON ba.id = a.billing_account_id' || v_join || v_where || ' ORDER BY a.data_attivita, a.id' || v_limit || ') SELECT a.* FROM vendite.attivita_fatturabili a JOIN candidati c ON c.id = a.id ORDER BY a.data_attivita, a.id';
+                  END IF;
+              
+                  RETURN QUERY EXECUTE v_sql;
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only, come 20261107-70.
+              SELECT 1;

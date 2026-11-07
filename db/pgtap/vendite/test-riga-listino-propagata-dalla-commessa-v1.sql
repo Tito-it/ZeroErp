@@ -195,9 +195,12 @@ SELECT b.*
            'listino_riga_id',               rr.r2,
            'stato_approvazione',            'APPROVATA',
            'stato_emissione',               'NON_EMESSA',
-           'sorgente_tipo_id',              (SELECT so.id FROM config.sorgenti so
-                                              WHERE so.codice_interno = 'COMMESSA' AND so.attivo),
-           'sorgente_uid',                  c.commessa_id::text,
+           -- la provenienza della riga che si ri-invia: la stessa (la chiave la nomina)
+           'sorgente_tipo_id',              (SELECT ca.sorgente_tipo_id FROM vendite.commesse_attivita ca
+                                              WHERE ca.id = (SELECT attivita_id FROM t_a)),
+           'sorgente_uid',                  (SELECT COALESCE(ca.sorgente_id::text, ca.sorgente_uid::text)
+                                               FROM vendite.commesse_attivita ca
+                                              WHERE ca.id = (SELECT attivita_id FROM t_a)),
            'tipo_movimento',                'NORMALE'))) b;
 
 SELECT is(

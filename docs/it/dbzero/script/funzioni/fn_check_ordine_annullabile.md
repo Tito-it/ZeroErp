@@ -98,17 +98,15 @@ BEGIN
   -- pulsante, quella ferma la scrittura).
   -- ⚠️ Il codice resta a catalogo con `obsoleto_dal`: non si cancella, smette
   -- di essere sollevato.
-  -- ⛔ E la CHIAVE cambia insieme al criterio: la primitiva legge
-  -- vendite.commesse_attivita, dove `sorgente_uid` porta `uid::text` — non
-  -- l'`id::text` che vendite.commesse_sorgenti usa per l'ordine. Passare la
-  -- chiave vecchia non darebbe errore: darebbe zero motivi.
+  -- ⛔ La chiave e' quella del modello: l'id e l'uid dell'ordine, con la
+  -- regola d'incontro. Sbagliarla non darebbe errore: darebbe zero motivi.
   -- ⚠️ I motivi di questa check arrivano QUI DENTRO gia' fatti, `valori`
   --   compresi: non si ricompongono e non si riordinano. E' il motivo per cui
   --   fn_check_sorgente_chiudibile e' entrata nello stesso cantiere — senza,
   --   meta' dei motivi di questa funzione sarebbe rimasta senza valori.
   v_motivi := v_motivi || script.fn_check_sorgente_chiudibile(
       (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'ORDINE_VENDITA'),
-      v_uid::text);
+      p_ordine_id, v_uid);
 
   RETURN v_motivi;
 END;

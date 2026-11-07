@@ -196,6 +196,7 @@ search:
 - [fn_documento_righe_eccezione](funzioni/fn_documento_righe_eccezione.md) — (funzione nata il 2026-10-04, `20261004-70`)
 - [fn_documento_righe_preview](funzioni/fn_documento_righe_preview.md) — (funzione nata il 2026-10-04, `20261004-71`, dal corpo di `fn_contratto_righe_preview`)
 - [fn_documento_ritira_legami](funzioni/fn_documento_ritira_legami.md)
+- [fn_documento_uid_di_attivita](funzioni/fn_documento_uid_di_attivita.md)
 - [fn_elimina_fattura_da_lotto](funzioni/fn_elimina_fattura_da_lotto.md) — (latest review 04-08-2026)   Toglie **una sola fattura** da un lotto **cancellandola**, senza toccare il lotto né le altre fatture. È il verbo per il caso in cui un documento è sbagliato e va rifatto, mentre il resto del giro è sano.
 - [fn_elimina_versione_listino](funzioni/fn_elimina_versione_listino.md)
 - [fn_emit_attivita_fatturabili_da_commessa](funzioni/fn_emit_attivita_fatturabili_da_commessa.md) — (latest review 16-06-2026) Esegue il pull da `commesse_attivita` verso `attivita_fatturabili` (step 0 pipeline attività fatturabili).
@@ -242,6 +243,7 @@ search:
 - [fn_get_totale_fondi_fattura](funzioni/fn_get_totale_fondi_fattura.md) — La funzione **`vendite.fn_get_totale_fondi_fattura()`** restituisce il totale dei fondi fattura **attivi** associati alla testata.
 - [fn_get_valuta_id](funzioni/fn_get_valuta_id.md) — (latest review 26-01-2026) La funzione **`vendite.fn_get_valuta_id`** risolve la valuta con fallback al **gestore** quando non esistono valori specifici su BA/utility.
 - [fn_get_vendite_note](funzioni/fn_get_vendite_note.md) — (latest review 10-02-2026)   La funzione **`vendite.fn_get_vendite_note()`** e` un wrapper su `script.fn_get_note('vendite.note')` per recuperare le note vendite da tabella partizionata in modo uniforme.
+- [fn_gruppo_fatturabile_key_di_attivita](funzioni/fn_gruppo_fatturabile_key_di_attivita.md)
 - [fn_guard_commessa_sorgente_emittente](funzioni/fn_guard_commessa_sorgente_emittente.md)
 - [fn_guard_lotto_fatture_stato_coerente](funzioni/fn_guard_lotto_fatture_stato_coerente.md) — (rev 2026-10-24 — funzione rev 2026-10-24, R-1)
 - [fn_imposta_data_documento_lotto](funzioni/fn_imposta_data_documento_lotto.md) — **Dichiara la data documento di un lotto** — l'atto che l'operatore compie davvero: *«questo lotto lo dato al 31 luglio»*.
@@ -362,6 +364,7 @@ search:
 - [trgfn_attivita_guard_listino_riga](funzioni/trgfn_attivita_guard_listino_riga.md) — (rev 2026-10-15, D-1 di Tid; rev 2026-10-16, §6 del brief)
 - [trgfn_commesse_attivita_guard_prezzo_rettifica](funzioni/trgfn_commesse_attivita_guard_prezzo_rettifica.md) — (rev 2026-08-21 — decisione di Tid del 2026-08-20, brief nota di credito §42.2)
 - [trgfn_commesse_attivita_guard_quantita_immutabile](funzioni/trgfn_commesse_attivita_guard_quantita_immutabile.md) — (rev 2026-08-21)
+- [trgfn_commesse_attivita_guard_sorgente_segment](funzioni/trgfn_commesse_attivita_guard_sorgente_segment.md)
 - [trgfn_commesse_attivita_guard_tipo_doc_emittibile](funzioni/trgfn_commesse_attivita_guard_tipo_doc_emittibile.md) — (rev 2026-06-19)
 - [trgfn_commesse_attivita_proietta_stato_preventivo](funzioni/trgfn_commesse_attivita_proietta_stato_preventivo.md) — (2026-10-12, brief-db-annullo-a-valle-riapre-a-monte, D-10)
 - [trgfn_commesse_default_emittente](funzioni/trgfn_commesse_default_emittente.md) — (latest review 26-08-26)

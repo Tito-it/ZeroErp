@@ -368,13 +368,11 @@ SELECT a.attivita_id
 
 CREATE TEMP TABLE tmp_commessa AS
 SELECT ca.commessa_id,
-       array_agg(DISTINCT vendite.fn_build_gruppo_fatturabile_key(
-                     ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id)) AS chiavi
+       array_agg(DISTINCT vendite.fn_gruppo_fatturabile_key_di_attivita(ca.sorgente_tipo_id, ca.segment_key, ca.commessa_id)) AS chiavi
   FROM vendite.commesse_attivita ca
  WHERE ca.commessa_id = (SELECT commessa_id FROM tmp_commessa_gk)
  GROUP BY ca.commessa_id
-HAVING count(DISTINCT vendite.fn_build_gruppo_fatturabile_key(
-                 ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id)) >= 2;
+HAVING count(DISTINCT vendite.fn_gruppo_fatturabile_key_di_attivita(ca.sorgente_tipo_id, ca.segment_key, ca.commessa_id)) >= 2;
 
 -- Un secondo lotto SENZA perimetro: li' la commessa li alimenta tutti.
 CREATE TEMP TABLE tmp_lotto_massa (id bigint);

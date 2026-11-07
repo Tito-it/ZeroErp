@@ -1,0 +1,278 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL RITIRO DEI LEGAMI SULLE COLONNE DEL MODELLO: vendite.fn_documento_ritira_legami
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto C, giro C.3.
+#
+#   La chiudibilita' di bolla e contratto e il ritiro delle righe di commessa per documento
+#   passano le due colonne del modello (20261107-78, -79) invece dell'uid testuale: il
+#   documento si risolve col BB che risolve (id e uid), le righe di commessa danno tipo,
+#   sorgente_id e sorgente_uid. Corpo dal vivo (dbdev, 2026-11-07), firma dal 20261106-43.
+#   COMMENT invariato; CREATE OR REPLACE mantiene il REVOKE da PUBLIC.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261107-81-update-fn-documento-ritira-legami-colonne-tipizzate-mctit.yaml
+
+  - changeSet:
+      id: 20261107-81-update-fn-documento-ritira-legami-colonne-tipizzate
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_documento_ritira_legami: chiudibilita' e ritiro sulle colonne del modello. brief-
+        db-sorgente-documento-e-riga §7.2 lotto C, giro C.3.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_documento_ritira_legami(
+                  p_documento config.sorgenti.codice_interno%TYPE,
+                  p_id bigint,
+                  p_legami_confermati integer)
+              RETURNS integer
+              LANGUAGE plpgsql
+              VOLATILE
+              SECURITY INVOKER
+              AS $function$
+              
+              -- =========================================================
+              -- Scopo: la conferma e il ritiro dei consumi di un documento
+              --   che si sta annullando. Lascia APERTA la porta del ritiro:
+              --   la chiude il verbo dopo il cambio di stato. Vedi
+              --   l'intestazione del changeSet.
+              -- Parametri: documento e testata polimorfi (tipi nudi);
+              --   p_legami_confermati e' un CONTEGGIO.
+              -- Ritorna: i legami confermati (0 se non ce n'erano).
+              -- rev 2026-10-12 (brief-db-annullo-a-valle-riapre-a-monte):
+              --   + COMMESSA (D-1, D-2, D-7); prima cio' che vieta, poi la
+              --   conferma (D-3, per tutti i documenti); lo stato del
+              --   preventivo dal BB vendite.fn_preventivo_proietta_stato_
+              --   smistamento (D-10). Vedi l'intestazione del changeSet.
+              -- rev 2026-10-19 (20261019-96, brief-db-grammatica-unica-documenti
+              --   lotto 2b): l'origine dei legami e' il codice della sorgente
+              --   (ORDINE_VENDITA, RESO_VENDITA); v_sorgente_uid ancorato.
+              -- rev 2026-10-26 (20261026-21, brief-modello-documento-vendita
+              --   §13, O-4): + OFFERTA_COMMERCIALE. Prima cio' che vieta
+              --   (script.fn_check_offerta_annullabile), poi la conferma; il
+              --   legame (la revisione precedente) e' di provenienza, niente da
+              --   ritirare.
+              -- =========================================================
+              DECLARE
+                  -- CONTEGGIO dei legami: nessuna colonna da ancorare.
+                  v_legami        integer;
+                  -- L'etichetta del lettore di testata: un'uscita di funzione, nessuna
+                  -- colonna dietro.
+                  v_etichetta     text;
+                  v_riga_id       vendite.ddt_righe.id%TYPE;
+                  v_preventivo_id vendite.preventivi.id%TYPE;
+                  -- I preventivi toccati: array, %TYPE[] non esiste.
+                  v_preventivi    bigint[];
+                  v_sorgente      record;
+                  -- rev 2026-10-12. I motivi che vietano: il valore di ritorno di
+                  -- una fn_check_*, nessuna colonna dietro.
+                  v_motivi        jsonb;
+                  -- La chiave del documento di bolla e contratto, come la scrive la riga
+                  -- di commessa: id e uid, con la regola d'incontro.
+                  v_sorgente_id   vendite.commesse_attivita.sorgente_id%TYPE;
+                  v_sorgente_uid  vendite.commesse_attivita.sorgente_uid%TYPE;
+                  v_ca_id         vendite.commesse_attivita.id%TYPE;
+                  v_resi_riga_id  vendite.resi_righe.id%TYPE;
+                  -- Il motivo del ritiro, testo libero per i verbi che lo registrano.
+                  v_motivo        text;
+              BEGIN
+                  -- 1. Parametri.
+                  IF p_id IS NULL OR p_id <= 0
+                     OR p_documento IS NULL
+                     OR p_documento NOT IN ('DDT_VENDITA', 'ORDINE_VENDITA', 'PREVENTIVO', 'CONTRATTO', 'COMMESSA', 'OFFERTA_COMMERCIALE') THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_documento_ritira_legami',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_documento', p_documento, 'p_id', p_id),
+                          NULL::uuid, 'vendite.fn_documento_ritira_legami',
+                          'documento (DDT_VENDITA, ORDINE_VENDITA, PREVENTIVO, CONTRATTO, COMMESSA, OFFERTA_COMMERCIALE) e id maggiore di zero');
+                  END IF;
+              
+                  -- 1-bis. ⭐ Prima cio' che vieta (rev 2026-10-12, D-3): chi annulla
+                  --    non deve confermare un ritiro che il cambio di stato rifiuterebbe
+                  --    comunque. Le stesse check che i guard della testata sollevano
+                  --    (il primo motivo, con l'helper): preventivo e ordine dalla loro
+                  --    fn_check_*_annullabile, commessa dalla sua, bolla e contratto
+                  --    dalla chiusura della sorgente (righe di commessa EMESSA). La
+                  --    matrice resta ai guard.
+                  IF p_documento = 'PREVENTIVO' THEN
+                      v_motivi := script.fn_check_preventivo_annullabile(p_id);
+                  ELSIF p_documento = 'ORDINE_VENDITA' THEN
+                      v_motivi := script.fn_check_ordine_annullabile(p_id);
+                  ELSIF p_documento = 'COMMESSA' THEN
+                      v_motivi := script.fn_check_commessa_annullabile(p_id);
+                  ELSIF p_documento = 'OFFERTA_COMMERCIALE' THEN
+                      -- rev 2026-10-26 (20261026-21, O-4): un contratto o un ordine
+                      -- vivo nato dall'offerta, lo stesso del guard di transizione.
+                      v_motivi := script.fn_check_offerta_annullabile(p_id);
+                  ELSE  -- DDT_VENDITA, CONTRATTO
+                      -- ⭐ rev 2026-11-06 (20261106-43, giro 0.3): la chiave dal BB che
+                      --   risolve, la stessa lettura per bolla e contratto.
+                      SELECT d.documento_id, d.documento_uid INTO v_sorgente_id, v_sorgente_uid
+                        FROM config.sorgenti s
+                        CROSS JOIN LATERAL script.fn_sorgente_documento(s.id, p_id, NULL::uuid) d
+                       WHERE s.codice_interno = p_documento;
+                      -- Testata assente: nessun motivo, decide chi cambia lo stato.
+                      IF v_sorgente_id IS NOT NULL THEN
+                          v_motivi := script.fn_check_sorgente_chiudibile(
+                              (SELECT s.id FROM config.sorgenti s
+                                WHERE s.codice_interno = p_documento),
+                              v_sorgente_id, v_sorgente_uid);
+                      END IF;
+                  END IF;
+              
+                  PERFORM script.fn_raise_primo_motivo_se_presente(
+                      'vendite', 'vendite.fn_documento_ritira_legami',
+                      COALESCE(v_motivi, '[]'::jsonb),
+                      NULL,
+                      NULL::uuid,
+                      jsonb_build_object('documento', p_documento, 'id', p_id));
+              
+                  -- 2. La conferma: dichiara quanti legami si sono visti.
+                  SELECT count(*)::integer INTO v_legami
+                    FROM vendite.fn_documento_legami(p_documento, p_id) AS l;
+              
+                  IF v_legami = 0 THEN
+                      RETURN 0;
+                  END IF;
+              
+                  IF p_legami_confermati IS DISTINCT FROM v_legami THEN
+                      SELECT t.etichetta INTO v_etichetta
+                        FROM script.fn_get_stato_testata_documento(p_documento, p_id) AS t;
+              
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_documento_ritira_legami',
+                          'E_DOC_ANNULLO_CON_LEGAMI',
+                          jsonb_build_object('documento',  p_documento,
+                                             'id',         p_id,
+                                             'legami',     v_legami,
+                                             'confermati', p_legami_confermati),
+                          NULL::uuid,
+                          COALESCE(v_etichetta, p_documento || ' #' || p_id::text),
+                          v_legami::text);
+                  END IF;
+              
+                  -- 3. La porta del ritiro, per QUESTO documento. Resta aperta.
+                  PERFORM set_config('zeroerp.doc_ritira_legami',
+                                     p_documento || ':' || p_id::text, true);
+              
+                  -- 4a. Bolla: i legami con ordini e resi, riga per riga.
+                  --     ⚠️ rev 2026-10-12: solo per la bolla. Anche la commessa ha
+                  --     legami di origine ORDINE_VENDITA e RESO_VENDITA, e i suoi riga_id sono righe
+                  --     di commessa, non di bolla.
+                  IF p_documento = 'DDT_VENDITA' THEN
+                      FOR v_riga_id IN
+                          SELECT DISTINCT l.riga_id
+                            FROM vendite.fn_documento_legami(p_documento, p_id) AS l
+                           WHERE l.origine IN ('ORDINE_VENDITA', 'RESO_VENDITA')
+                           ORDER BY l.riga_id
+                      LOOP
+                          PERFORM vendite.fn_ddt_riga_ritira_legami(v_riga_id);
+                      END LOOP;
+                  END IF;
+              
+                  -- 4b. Ordine: le righe si staccano dal preventivo; lo stato del
+                  --     preventivo lo riproietta il BB (EVASO con un residuo torna
+                  --     ACCETTATO). rev 2026-10-12 (D-10): la regola non e' piu' qui.
+                  IF p_documento = 'ORDINE_VENDITA' THEN
+                      -- Una CTE che scrive non sta dentro il cursore di un FOR:
+                      -- i preventivi toccati si raccolgono prima.
+                      WITH staccate AS (
+                          UPDATE vendite.ordini_righe orr
+                             SET preventivo_riga_id = NULL
+                            FROM vendite.preventivi_righe pr
+                           WHERE orr.ordine_id = p_id
+                             AND pr.id = orr.preventivo_riga_id
+                          RETURNING pr.preventivo_id)
+                      SELECT array_agg(DISTINCT st.preventivo_id ORDER BY st.preventivo_id)
+                        INTO v_preventivi
+                        FROM staccate st;
+              
+                      FOREACH v_preventivo_id IN ARRAY COALESCE(v_preventivi, ARRAY[]::bigint[])
+                      LOOP
+                          PERFORM vendite.fn_preventivo_proietta_stato_smistamento(v_preventivo_id);
+                      END LOOP;
+                  END IF;
+              
+                  -- 4c. Commessa: le righe NON_EMESSA, per sorgente, dalla
+                  --     primitiva col registro.
+                  FOR v_sorgente IN
+                      SELECT DISTINCT ca.sorgente_tipo_id, ca.sorgente_id, ca.sorgente_uid
+                        FROM vendite.fn_documento_legami(p_documento, p_id) AS l
+                        JOIN vendite.commesse_attivita ca ON ca.id = l.origine_riga_id
+                       WHERE l.origine = 'COMMESSA'
+                  LOOP
+                      PERFORM vendite.fn_ritira_commessa_attivita_da_sorgente(
+                          v_sorgente.sorgente_tipo_id,
+                          v_sorgente.sorgente_id,
+                          v_sorgente.sorgente_uid,
+                          format('Ritiro all''annullo confermato del documento di origine (%s %s)',
+                                 p_documento, p_id));
+                  END LOOP;
+              
+                  -- 4d. ⭐ rev 2026-10-12 (D-1, D-7): la COMMESSA. Le sue righe
+                  --     NON_EMESSA dal lettore, ciascuna dal verbo del suo genere:
+                  --     - con sorgente (documento o consumo): la primitiva col registro,
+                  --       limitata a QUESTA commessa (p_commessa_id, 20261012-18); lo
+                  --       stato del preventivo lo riproietta il trigger delle righe;
+                  --     - RETTIFICA: l'annullo dell'accredito (il reso torna da
+                  --       accreditare), per riga di reso: l'unita' e' l'accredito intero;
+                  --     - ONERE: l'annullo della riga manuale, col suo registro.
+                  --     Una riga senza sorgente e' ONERE o RETTIFICA per vincolo di
+                  --     tabella (20261012-27): ogni riga ha il suo verbo.
+                  IF p_documento = 'COMMESSA' THEN
+                      v_motivo := format('Ritiro all''annullo confermato della commessa %s', p_id);
+              
+                      FOR v_sorgente IN
+                          SELECT DISTINCT ca.sorgente_tipo_id, ca.sorgente_id, ca.sorgente_uid
+                            FROM vendite.fn_documento_legami(p_documento, p_id) AS l
+                            JOIN vendite.commesse_attivita ca ON ca.id = l.riga_id
+                           WHERE ca.sorgente_tipo_id IS NOT NULL
+                      LOOP
+                          PERFORM vendite.fn_ritira_commessa_attivita_da_sorgente(
+                              v_sorgente.sorgente_tipo_id, v_sorgente.sorgente_id, v_sorgente.sorgente_uid,
+                              v_motivo, p_id);
+                      END LOOP;
+              
+                      FOR v_resi_riga_id IN
+                          SELECT DISTINCT l.origine_riga_id
+                            FROM vendite.fn_documento_legami(p_documento, p_id) AS l
+                           WHERE l.origine = 'RESO_VENDITA'
+                             AND l.origine_riga_id IS NOT NULL
+                           ORDER BY l.origine_riga_id
+                      LOOP
+                          PERFORM vendite.fn_annulla_accredito_riga_reso(v_resi_riga_id, v_motivo);
+                      END LOOP;
+              
+                      FOR v_ca_id IN
+                          SELECT l.riga_id
+                            FROM vendite.fn_documento_legami(p_documento, p_id) AS l
+                           WHERE l.origine = 'ONERE'
+                           ORDER BY l.riga_id
+                      LOOP
+                          PERFORM vendite.fn_annulla_commessa_attivita(v_ca_id, v_motivo);
+                      END LOOP;
+                  END IF;
+              
+                  RETURN v_legami;
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only, come 20261107-70.
+              SELECT 1;

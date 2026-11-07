@@ -1,0 +1,94 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA PROIEZIONE SUL PREVENTIVO DALLA CHIAVE DEL MODELLO: vendite.trgfn_commesse_attivita_proietta_stato_preventivo
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto C, giro C.3.
+#
+#   Cercava il preventivo con p.uid::text = sorgente_uid: dal 20261107-70 la colonna e' uuid, e
+#   il confronto testo = uuid non c'e'. Regola d'incontro su id e uid, come i lettori del giro
+#   0.3. Corpo dal vivo (dbdev, 2026-11-07), SECURITY INVOKER esplicito. COMMENT invariato.
+#   I due trigger che la montano (z90_proietta_stato_preventivo_*) non cambiano.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261107-88-update-trgfn-commesse-attivita-proietta-stato-preventivo-chiave-mctit.yaml
+
+  - changeSet:
+      id: 20261107-88-update-trgfn-commesse-attivita-proietta-stato-preventivo-chiave
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.trgfn_commesse_attivita_proietta_stato_preventivo: il preventivo dalla chiave del
+        modello. brief-db-sorgente-documento-e-riga §7.2 lotto C, giro C.3.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_commesse_attivita_proietta_stato_preventivo()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- =========================================================
+              -- Scopo: una riga di commessa di un preventivo e' nata, ha
+              --   cambiato stato_emissione o e' sparita: il preventivo si
+              --   riproietta (ACCETTATO <-> EVASO) dal BB
+              --   vendite.fn_preventivo_proietta_stato_smistamento.
+              -- Montaggio: AFTER INSERT OR DELETE, e AFTER UPDATE con WHEN sul
+              --   cambio di stato_emissione, FOR EACH ROW. Vedi l'intestazione
+              --   del changeSet.
+              -- =========================================================
+              DECLARE
+                  v_sorgente_tipo_id vendite.commesse_attivita.sorgente_tipo_id%TYPE;
+                  v_sorgente_id      vendite.commesse_attivita.sorgente_id%TYPE;
+                  v_sorgente_uid     vendite.commesse_attivita.sorgente_uid%TYPE;
+                  v_preventivo_id    vendite.preventivi.id%TYPE;
+              BEGIN
+                  IF TG_OP = 'DELETE' THEN
+                      v_sorgente_tipo_id := OLD.sorgente_tipo_id;
+                      v_sorgente_id      := OLD.sorgente_id;
+                      v_sorgente_uid     := OLD.sorgente_uid;
+                  ELSE
+                      v_sorgente_tipo_id := NEW.sorgente_tipo_id;
+                      v_sorgente_id      := NEW.sorgente_id;
+                      v_sorgente_uid     := NEW.sorgente_uid;
+                  END IF;
+              
+                  -- Sourceless (oneri, rettifiche) o di un'altra sorgente: niente.
+                  IF v_sorgente_tipo_id IS NULL
+                     OR NOT EXISTS (SELECT 1
+                                      FROM config.sorgenti s
+                                     WHERE s.id = v_sorgente_tipo_id
+                                       AND s.codice_interno = 'PREVENTIVO') THEN
+                      RETURN NULL;
+                  END IF;
+              
+                  -- La chiave del modello, con la regola d'incontro (il preventivo e'
+                  -- a chiave uid: la riga porta sorgente_uid).
+                  SELECT p.id
+                    INTO v_preventivo_id
+                    FROM vendite.preventivi p
+                   WHERE (p.id = v_sorgente_id OR p.uid = v_sorgente_uid);
+              
+                  IF v_preventivo_id IS NOT NULL THEN
+                      PERFORM vendite.fn_preventivo_proietta_stato_smistamento(v_preventivo_id);
+                  END IF;
+              
+                  RETURN NULL;
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only, come 20261107-70.
+              SELECT 1;

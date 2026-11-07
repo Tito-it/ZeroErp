@@ -130,8 +130,8 @@ BEGIN
                    true) c;
 
         INSERT INTO tmp_sp VALUES (r.caso, v_comm,
-            vendite.fn_build_gruppo_fatturabile_key(
-                (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'), v_comm::text, v_comm),
+            (SELECT vendite.fn_gruppo_fatturabile_key_di_attivita(ca.sorgente_tipo_id, ca.segment_key, ca.commessa_id)
+                FROM vendite.commesse_attivita ca WHERE ca.id = v_ca),
             v_ca);
     END LOOP;
 END;

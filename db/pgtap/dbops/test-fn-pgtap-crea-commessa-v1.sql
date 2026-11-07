@@ -28,7 +28,7 @@
 --   9) ...con UN'attivita' APPROVATA e NON_EMESSA, quella tornata
 --  10) p_con_attivita => false: l'uscita senza lavoro la ferma il guard vero
 --  11) uno stato che non c'e' solleva, nominando il builder
---  12) senza richiesta nessuna sorgente ROOT
+--  12) senza richiesta nessuna sorgente ROOT COMMESSA: l'unico link e' il consumo dell'attivita'
 --  13) p_con_sorgente_root: UNA riga ROOT, sorgente COMMESSA, chiave l'id
 -- ------------------------------------------------------------
 
@@ -150,12 +150,18 @@ SELECT throws_like(
     'uno stato che non c''e'' solleva prima di costruire, nominando il builder'
 );
 
--- 12) Senza richiesta, nessuna sorgente ROOT (la madre non la scrive)
+-- 12) Senza richiesta, nessuna sorgente ROOT di tipo COMMESSA. L'unico link e'
+--   quello del documento dell'attivita' (un consumo, dbops.fn_pgtap_crea_commessa_attivita):
+--   la madre lo lega dalla porta, e il primo link di una commessa e' ROOT.
 SELECT is(
-    (SELECT count(*)::int FROM vendite.commesse_sorgenti cs
-      WHERE cs.commessa_id = (SELECT commessa_id FROM t_c3) AND cs.ruolo_link = 'ROOT'),
-    0,
-    'senza p_con_sorgente_root la commessa non ha una sorgente ROOT'
+    (SELECT string_agg(s.codice_interno || ':' || cs.ruolo_link
+                       || ':' || (cs.sorgente_id = ca.sorgente_id)::text, ', ' ORDER BY cs.id)
+       FROM vendite.commesse_sorgenti cs
+       JOIN config.sorgenti s ON s.id = cs.sorgente_tipo_id
+       JOIN vendite.commesse_attivita ca ON ca.id = (SELECT attivita_id FROM t_c3)
+      WHERE cs.commessa_id = (SELECT commessa_id FROM t_c3)),
+    'ATTIVITA_CONSUMI:ROOT:true',
+    'senza p_con_sorgente_root nessuna sorgente ROOT COMMESSA: l''unico link e'' il consumo dell''attivita'''
 );
 
 -- 13) La sorgente ROOT a richiesta

@@ -1,0 +1,189 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE ORIGINI DELLA FATTURA DALLA CHIAVE DEL MODELLO: vendite.fn_fattura_origini
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto C, giro C.3.
+#
+#   Il livello 1 dall'arco G leggeva l'uid testuale della riga di commessa e cercava nella
+#   tabella del documento la colonna del key_selector (SQL dinamico per documento). Dal
+#   20261107-70 la riga porta gia' la chiave del modello, che e' la chiave del nodo: resta
+#   solo la verifica che il documento si veda, dal BB che risolve.
+#   Corpo dal vivo (dbdev, 2026-11-07), firma dal 20261031-26. COMMENT invariato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261107-86-update-fn-fattura-origini-chiave-del-modello-mctit.yaml
+
+  - changeSet:
+      id: 20261107-86-update-fn-fattura-origini-chiave-del-modello
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_fattura_origini: i documenti delle righe fatturate dalla chiave del modello.
+        brief-db-sorgente-documento-e-riga §7.2 lotto C, giro C.3.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_fattura_origini(
+                  p_fattura_id vendite.fatture.id%TYPE)
+               RETURNS TABLE(livello             integer,
+                             tipo_id             config.sorgenti.id%TYPE,
+                             tipo_codice_interno config.sorgenti.codice_interno%TYPE,
+                             etichetta           config.sorgenti.etichetta%TYPE,
+                             uid                 text,
+                             codice              text)
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_tipo_fattura config.sorgenti.id%TYPE;   -- per chiamare il lineage dalla fattura
+                  v_doc     record;     -- un documento di livello 1
+                  -- Tipi nudi solo dove %TYPE non si puo' usare: la chiave di nodo
+                  -- e' la chiave del modello resa a testo (id o uid secondo il key_selector,
+                  -- come vendite.fn_documento_lineage.from_uid); gli array non
+                  -- accettano %TYPE[] (sintassi non valida), la colonna e' accanto.
+                  v_chiave  text;       -- la sua chiave di nodo (key_selector)
+                  v_semi_t  bigint[]  := ARRAY[]::bigint[];   -- config.sorgenti.id: i documenti di livello 1,
+                  v_semi_u  text[]    := ARRAY[]::text[];     -- chiave di nodo, in parallelo
+                  v_tipi    bigint[]  := ARRAY[]::bigint[];   -- config.sorgenti.id: i candidati,
+                  v_uids    text[]    := ARRAY[]::text[];     -- chiave di nodo,
+                  v_livelli integer[] := ARRAY[]::integer[];  -- e livello (fn_documento_lineage.livello), in parallelo
+                  i         integer;    -- indice del ciclo
+              BEGIN
+                  -- ==========================================================
+                  -- Scopo: i documenti a monte che una fattura cita (D-G1):
+                  --   i suoi genitori diretti di ogni tipo e i loro antenati,
+                  --   tenuti i tipi con config.sorgenti.citato_in_fattura.
+                  -- rev 2026-10-27 (20261027-22, brief-modello-documento-
+                  --   vendita §15.10): nasce, dalle righe fatturate.
+                  -- rev 2026-10-27 (20261027-26, §15.11, Q-F7): le sorgenti di
+                  --   ogni tipo (la nota di credito: archi N e S); la risalita
+                  --   non attraversa G e segue solo legami vivi.
+                  -- ==========================================================
+                  IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_fattura_origini',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_fattura_id', p_fattura_id),
+                          NULL::uuid, 'vendite.fn_fattura_origini',
+                          'p_fattura_id obbligatorio e maggiore di zero');
+                  END IF;
+              
+                  -- (1a) Livello 1 dall'arco G: i documenti delle righe FATTURATE
+                  -- qui. La riga di commessa porta il suo con la chiave del modello
+                  -- (sorgente_id o sorgente_uid, secondo il key_selector), che e'
+                  -- anche la chiave del nodo della lineage.
+                  FOR v_doc IN
+                      SELECT DISTINCT ca.sorgente_tipo_id AS t, ca.sorgente_id AS sid, ca.sorgente_uid AS suid
+                        FROM vendite.fatture_righe fr
+                        JOIN vendite.attivita_fatturabili af ON af.fattura_riga_id = fr.id
+                        JOIN vendite.commesse_attivita ca ON ca.id = af.commessa_attivita_id
+                       WHERE fr.fattura_id = p_fattura_id
+                         AND ca.sorgente_tipo_id IS NOT NULL
+                  LOOP
+                      -- Un documento che chi legge non vede (RLS) non torna: lo dice il
+                      -- BB che risolve, che legge la tabella del documento.
+                      SELECT CASE WHEN d.documento_id IS NOT NULL
+                                  THEN COALESCE(v_doc.sid::text, v_doc.suid::text) END
+                        INTO v_chiave
+                        FROM script.fn_sorgente_documento(v_doc.t, v_doc.sid, v_doc.suid) d;
+              
+                      CONTINUE WHEN v_chiave IS NULL;
+              
+                      v_semi_t := v_semi_t || v_doc.t;
+                      v_semi_u := v_semi_u || v_chiave;
+                  END LOOP;
+              
+                  -- (1b) Livello 1 dagli altri archi: i genitori diretti della
+                  -- fattura nel lineage, di qualunque tipo (la nota di credito:
+                  -- la fattura rettificata, arco N; il reso, arco S). G no: e' a
+                  -- grana di commessa, e lo sostituisce il passo (1a).
+                  SELECT s.id INTO v_tipo_fattura
+                    FROM config.sorgenti s
+                   WHERE s.codice_interno = 'FATTURA';
+              
+                  -- Le due aggregazioni con lo stesso ORDER BY: gli array restano
+                  -- allineati (tipo i con chiave i).
+                  SELECT v_semi_t || coalesce(array_agg(l.from_tipo_id ORDER BY l.from_tipo_id, l.from_uid), ARRAY[]::bigint[]),
+                         v_semi_u || coalesce(array_agg(l.from_uid ORDER BY l.from_tipo_id, l.from_uid), ARRAY[]::text[])
+                    INTO v_semi_t, v_semi_u
+                    FROM (SELECT DISTINCT l0.from_tipo_id, l0.from_uid
+                            FROM vendite.fn_documento_lineage(v_tipo_fattura, p_fattura_id::text, 'indietro') l0
+                           WHERE l0.livello = 1
+                             AND l0.arco <> 'G'
+                             AND l0.is_legame_ritirato IS NOT TRUE) l;
+              
+                  -- (2) Da ogni documento di livello 1, la risalita: solo legami
+                  -- vivi e mai attraverso G (dalla fattura rettificata si
+                  -- tornerebbe alla commessa intera). Livello = 1 + la distanza.
+                  FOR i IN 1 .. coalesce(cardinality(v_semi_t), 0) LOOP
+                      SELECT v_tipi || coalesce(array_agg(x.t), ARRAY[]::bigint[]),
+                             v_uids || coalesce(array_agg(x.u), ARRAY[]::text[]),
+                             v_livelli || coalesce(array_agg(x.liv), ARRAY[]::integer[])
+                        INTO v_tipi, v_uids, v_livelli
+                        FROM (
+                          WITH RECURSIVE e AS (
+                              SELECT l.from_tipo_id, l.from_uid, l.to_tipo_id, l.to_uid
+                                FROM vendite.fn_documento_lineage(v_semi_t[i], v_semi_u[i], 'indietro') l
+                               -- Ne' G ne' V (rev 2026-10-31, 20261031-26): la revisione
+                               -- dell'offerta non e' un'origine, la superata non si cita.
+                               WHERE l.arco NOT IN ('G', 'V')
+                                 AND l.is_legame_ritirato IS NOT TRUE
+                          ), r(t, u, dist) AS (
+                              SELECT v_semi_t[i], v_semi_u[i], 0
+                              UNION
+                              SELECT e.from_tipo_id, e.from_uid, r.dist + 1
+                                FROM r
+                                JOIN e ON e.to_tipo_id = r.t AND e.to_uid = r.u
+                               WHERE r.dist < 10
+                          )
+                          SELECT r.t, r.u, 1 + min(r.dist) AS liv
+                            FROM r
+                           GROUP BY r.t, r.u
+                        ) x;
+                  END LOOP;
+              
+                  -- ⛔ Nessun candidato: si esce QUI. Con due array NULL o vuoti
+                  --   il lettore dei nodi non va chiamato (senza seme risponde
+                  --   con TUTTI i nodi del sistema).
+                  IF cardinality(v_tipi) = 0 THEN
+                      RETURN;
+                  END IF;
+              
+                  -- Ogni documento citato una volta, col livello piu' vicino;
+                  -- la decorazione dal lettore dei nodi (fuori gli annullati e
+                  -- quelli che chi legge non vede).
+                  RETURN QUERY
+                  WITH c AS (
+                      SELECT a.t, a.u, min(a.liv) AS liv
+                        FROM unnest(v_tipi, v_uids, v_livelli) a(t, u, liv)
+                        JOIN config.sorgenti s ON s.id = a.t
+                       WHERE s.citato_in_fattura
+                       GROUP BY a.t, a.u
+                  )
+                  SELECT c.liv, s.id, s.codice_interno, s.etichetta, c.u, n.codice::text
+                    FROM c
+                    JOIN vendite.fn_documento_lineage_nodi(v_tipi, v_uids) n
+                      ON n.tipo_id = c.t AND n.uid = c.u
+                    JOIN config.sorgenti s ON s.id = c.t
+                   WHERE n.is_abortito IS NOT TRUE
+                   ORDER BY c.liv, s.codice_interno, n.codice, c.u;
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only, come 20261107-70.
+              SELECT 1;

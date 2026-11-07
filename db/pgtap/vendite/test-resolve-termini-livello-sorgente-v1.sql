@@ -174,6 +174,8 @@ BEGIN
             p_pricing_mode                  => r ->> 'pricing_mode',
             p_sorgente_tipo_id              => (r ->> 'sorgente_tipo_id')::bigint,
             p_sorgente_uid                  => r ->> 'sorgente_uid',
+            -- La riga del documento, dal lister (come la passa il backend).
+            p_sorgente_riga => (r ->> 'riga_id')::bigint,
             p_meta                          => r -> 'meta');
     END LOOP;
 
@@ -185,7 +187,7 @@ BEGIN
               FROM vendite.attivita_fatturabili a
               JOIN vendite.commesse_attivita ca ON ca.id = a.commessa_attivita_id
              WHERE a.commessa_id = v_commessa
-               AND ca.sorgente_uid = p_righe -> 0 ->> 'sorgente_uid');
+               AND vendite.fn_documento_uid_di_attivita(ca.sorgente_tipo_id, ca.segment_key) = p_righe -> 0 ->> 'sorgente_uid');
 END
 $f$;
 

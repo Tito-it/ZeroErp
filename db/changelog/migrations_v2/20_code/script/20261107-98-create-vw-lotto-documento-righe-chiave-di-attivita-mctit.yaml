@@ -1,0 +1,57 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.vw_lotto_documento_righe SULLA RIGA DI COMMESSA DEL MODELLO
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto C, giro C.3.
+#
+#   Ricreata dopo il 20261107-70: la chiave del gruppo da vendite.fn_gruppo_fatturabile_key_di_attivita. Il resto
+#   identico al vivo, GRANT a PUBLIC compreso (20260908-04).
+#   security_invoker, GRANT e COMMENT ripetuti dal catalogo (dbdev, 2026-11-07); il COMMENT di vista e'
+#   quello vivo, con i suoi marcatori di storia: non e' un oggetto riscritto dal giro (lotto DOC).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261107-98-create-vw-lotto-documento-righe-chiave-di-attivita-mctit.yaml
+
+  - changeSet:
+      id: 20261107-98-create-vw-lotto-documento-righe-chiave-di-attivita
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.vw_lotto_documento_righe ricreata sulla riga di commessa del modello (chiave del
+        gruppo dalla funzione della riga). brief-db-sorgente-documento-e-riga §7.2 lotto C, giro
+        C.3.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- security_invoker si azzera a ogni CREATE VIEW: si ripete dal catalogo.
+              CREATE VIEW script.vw_lotto_documento_righe WITH (security_invoker=true) AS
+               SELECT DISTINCT lf.lotto_id,
+                  fr.fattura_id,
+                  vendite.fn_gruppo_fatturabile_key_di_attivita(ca.sorgente_tipo_id, ca.segment_key, ca.commessa_id) AS gruppo_key
+                 FROM vendite.fatturazione_lotti_fatture lf
+                   JOIN vendite.fatture_righe fr ON fr.fattura_id = lf.fattura_id
+                   JOIN vendite.attivita_fatturabili af ON af.fattura_riga_id = fr.id
+                   JOIN vendite.commesse_attivita ca ON ca.id = af.commessa_attivita_id;
+              
+              COMMENT ON VIEW script.vw_lotto_documento_righe IS
+                'Quale BOZZA di un lotto contiene righe di quale DOCUMENTO: la terna (lotto, fattura, gruppo_key), distinta. ⭐ Esiste perche'' la stessa relazione si legge nei DUE versi — la madre chiede «quali bozze tocca questo documento» per cancellarle, il conteggio chiede «quali documenti contiene questa bozza» per dire chi viene trascinato — e scritti separatamente sarebbero due catene da tenere allineate a mano. 🔴 La chiave si calcola su vendite.commesse_attivita, raggiunta da attivita_fatturabili.commessa_attivita_id: su attivita_fatturabili darebbe COMMESSA:<hash del segment_key>, che non combacia con nessuna riga di perimetro (misurato il 2026-09-08: zero corrispondenze). ⚠️ security_invoker: commesse_attivita ha la RLS e attivita_fatturabili no — il JOIN alla commessa E'' il perimetro. Brief: brief-db-uscita-documento-dal-giro §5.4-bis.';
+              
+              GRANT SELECT, INSERT, UPDATE, DELETE ON script.vw_lotto_documento_righe TO zeroerp_app;
+              -- Come la crea 20260908-04: la porta e' aperta, il perimetro lo tengono le tabelle sotto.
+              GRANT SELECT ON script.vw_lotto_documento_righe TO PUBLIC;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW script.vw_lotto_documento_righe;

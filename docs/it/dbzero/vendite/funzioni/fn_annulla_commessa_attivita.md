@@ -22,6 +22,7 @@ DECLARE
   v_segment_key      vendite.commesse_attivita.segment_key%TYPE;
   v_stato_emissione  vendite.commesse_attivita.stato_emissione%TYPE;
   v_sorgente_tipo_id vendite.commesse_attivita.sorgente_tipo_id%TYPE;
+  v_sorgente_id      vendite.commesse_attivita.sorgente_id%TYPE;
   v_sorgente_uid     vendite.commesse_attivita.sorgente_uid%TYPE;
   v_prezzo_snapshot  vendite.commesse_attivita.prezzo_snapshot%TYPE;
   v_tipo_movimento   vendite.commesse_attivita.tipo_movimento%TYPE;
@@ -74,10 +75,10 @@ BEGIN
   --    cade sul guard corretto (gia' annullata / gia' emessa).
   -- ---------------------------------------------------------
   SELECT ca.commessa_id, ca.segment_key, ca.stato_emissione,
-         ca.sorgente_tipo_id, ca.sorgente_uid, ca.prezzo_snapshot,
+         ca.sorgente_tipo_id, ca.sorgente_id, ca.sorgente_uid, ca.prezzo_snapshot,
          ca.tipo_movimento
     INTO v_commessa_id, v_segment_key, v_stato_emissione,
-         v_sorgente_tipo_id, v_sorgente_uid, v_prezzo_snapshot,
+         v_sorgente_tipo_id, v_sorgente_id, v_sorgente_uid, v_prezzo_snapshot,
          v_tipo_movimento
     FROM vendite.commesse_attivita ca
    WHERE ca.id = p_commessa_attivita_id
@@ -134,9 +135,8 @@ BEGIN
     --   restituisce sempre — anche tutta a NULL.
     SELECT ref.documento_numero
       INTO v_sorgente_doc_numero
-      FROM vendite.fn_get_sorgente_documento_ref(
-             p_sorgente_tipo_id => v_sorgente_tipo_id,
-             p_sorgente_uid     => v_sorgente_uid) ref;
+      FROM script.fn_sorgente_documento(
+             v_sorgente_tipo_id, v_sorgente_id, v_sorgente_uid) ref;
 
     PERFORM script.fn_log_and_raise_error(
       'vendite','fn_annulla_commessa_attivita','E_RIGA_COMMESSA_NON_MANUALE',
@@ -144,13 +144,14 @@ BEGIN
                          'commessa_id', v_commessa_id,
                          'segment_key', v_segment_key,
                          'sorgente_tipo_id', v_sorgente_tipo_id,
+                         'sorgente_id', v_sorgente_id,
                          'sorgente_uid', v_sorgente_uid,
                          -- ℹ️ Il numero entra anche nel diario: chi indaga su
                          --   dbops.error_log a mesi di distanza non ha piu' il
                          --   messaggio composto, ha il context.
                          'sorgente_documento_numero', v_sorgente_doc_numero),
       NULL::uuid, p_commessa_attivita_id::text, v_segment_key,
-      COALESCE(v_sorgente_doc_numero, v_sorgente_uid, '?'));
+      COALESCE(v_sorgente_doc_numero, v_sorgente_id::text, v_sorgente_uid::text, '?'));
   END IF;
 
   -- ---------------------------------------------------------

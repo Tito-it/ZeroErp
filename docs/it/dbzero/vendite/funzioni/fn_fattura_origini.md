@@ -20,9 +20,8 @@ AS $function$
 DECLARE
     v_tipo_fattura config.sorgenti.id%TYPE;   -- per chiamare il lineage dalla fattura
     v_doc     record;     -- un documento di livello 1
-    v_tab     record;     -- la sua tabella (config.fn_sorgente_tabella)
     -- Tipi nudi solo dove %TYPE non si puo' usare: la chiave di nodo
-    -- e' CALCOLATA (id o uid a seconda di key_selector, sempre testo,
+    -- e' la chiave del modello resa a testo (id o uid secondo il key_selector,
     -- come vendite.fn_documento_lineage.from_uid); gli array non
     -- accettano %TYPE[] (sintassi non valida), la colonna e' accanto.
     v_chiave  text;       -- la sua chiave di nodo (key_selector)
@@ -53,41 +52,24 @@ BEGIN
     END IF;
 
     -- (1a) Livello 1 dall'arco G: i documenti delle righe FATTURATE
-    -- qui. La riga di commessa porta il suo, con la chiave
-    -- <testata>.uid::text.
+    -- qui. La riga di commessa porta il suo con la chiave del modello
+    -- (sorgente_id o sorgente_uid, secondo il key_selector), che e'
+    -- anche la chiave del nodo della lineage.
     FOR v_doc IN
-        SELECT DISTINCT ca.sorgente_tipo_id AS t, ca.sorgente_uid AS u,
-                        s.codice_interno, s.key_selector
+        SELECT DISTINCT ca.sorgente_tipo_id AS t, ca.sorgente_id AS sid, ca.sorgente_uid AS suid
           FROM vendite.fatture_righe fr
           JOIN vendite.attivita_fatturabili af ON af.fattura_riga_id = fr.id
           JOIN vendite.commesse_attivita ca ON ca.id = af.commessa_attivita_id
-          JOIN config.sorgenti s ON s.id = ca.sorgente_tipo_id
          WHERE fr.fattura_id = p_fattura_id
-           AND ca.sorgente_uid IS NOT NULL
+           AND ca.sorgente_tipo_id IS NOT NULL
     LOOP
-        -- La chiave del nodo, dal registro: join alla tabella del
-        -- documento sulla sua uid. Senza colonna uid la chiave della
-        -- riga e' gia' quella del nodo.
-        SELECT ft.schema_tabella, ft.nome_tabella, ft.relid
-          INTO v_tab
-          FROM config.fn_sorgente_tabella(v_doc.codice_interno) ft;
-        IF v_tab.relid IS NULL THEN
-            CONTINUE;
-        END IF;
+        -- Un documento che chi legge non vede (RLS) non torna: lo dice il
+        -- BB che risolve, che legge la tabella del documento.
+        SELECT CASE WHEN d.documento_id IS NOT NULL
+                    THEN COALESCE(v_doc.sid::text, v_doc.suid::text) END
+          INTO v_chiave
+          FROM script.fn_sorgente_documento(v_doc.t, v_doc.sid, v_doc.suid) d;
 
-        IF EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a
-                    WHERE a.attrelid = v_tab.relid AND a.attname = 'uid'
-                      AND NOT a.attisdropped) THEN
-            v_chiave := NULL;
-            EXECUTE format('SELECT (x.%I)::text FROM %I.%I x WHERE x.uid::text = $1',
-                           v_doc.key_selector, v_tab.schema_tabella, v_tab.nome_tabella)
-               INTO v_chiave
-              USING v_doc.u;
-        ELSE
-            v_chiave := v_doc.u;
-        END IF;
-
-        -- Un documento che chi legge non vede (RLS) non torna.
         CONTINUE WHEN v_chiave IS NULL;
 
         v_semi_t := v_semi_t || v_doc.t;

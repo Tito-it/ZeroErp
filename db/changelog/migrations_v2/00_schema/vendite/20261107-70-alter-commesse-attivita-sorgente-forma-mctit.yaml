@@ -1,0 +1,189 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA RIGA DI COMMESSA NELLA GRAMMATICA DEL MODELLO: vendite.commesse_attivita
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto C, giro C.3 (S-5).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   La riga di commessa teneva in sorgente_uid l'uid del documento come TESTO, per
+#   ogni tipo, anche per quelli a chiave id (ordine, contratto, DDT, consumi), e la
+#   riga del documento solo dentro la segment_key (:R:<riga>). Nel modello la
+#   chiave sta in una sola delle due colonne tipizzate, secondo il key_selector del
+#   tipo (sorgente_id bigint oppure sorgente_uid uuid), e la riga in sorgente_riga.
+#   Le righe si convertono qui, nel changeSet della forma: e' la migrazione del
+#   modello, non una correzione.
+#   ⛔ La segment_key NON si converte (D-6): e' la chiave d'idempotenza del push,
+#   salvata anche nei lotti; resta costruita con l'uid.
+#
+# ── LA FORMA ─────────────────────────────────────────────────────────
+#   1. Si tolgono gli oggetti che legano il tipo della colonna (pg_depend, dbdev,
+#      2026-11-07): le sei viste che leggono sorgente_uid o ci costruiscono la
+#      chiave del gruppo fatturabile, nell'ordine delle loro dipendenze; le
+#      ricreano 20261107-93 ... -98 nella stessa corsa. L'indice
+#      (sorgente_uid, competenza_mese) e il CHECK della coppia (tipo, uid) se ne
+#      vanno: al loro posto gli indici di 20261107-71 e il CHECK di forma.
+#      DROP senza CASCADE e senza IF EXISTS: un dipendente non censito ferma il
+#      migrate invece di sparire in silenzio.
+#   2. Le righe dei tipi a chiave id passano a sorgente_id, tradotte dal ponte del
+#      BB che risolve (script.fn_sorgente_documento_da_chiave); la riga del
+#      documento passa dalla segment_key a sorgente_riga, per i tipi che hanno
+#      righe. Coi trigger della tabella spenti e riaccesi com'erano (audit,
+#      storico, guard della riga emessa: e' il modello che cambia, non la riga).
+#      ⚠️ Un documento che non si risolve lascia la riga senza chiave, e il CHECK
+#      di forma ferma il migrate (S-6: un orfano si corregge a mano, prima).
+#      ⚠️ Una riga che non appartiene al suo documento ferma il migrate allo
+#      stesso modo: il guard unico, montato dopo, non la rileggerebbe.
+#   3. sorgente_uid diventa uuid; il CHECK di forma; i COMMENT delle colonne.
+#   Su dbdev (2026-11-07, fatto datato) tutte le righe si risolvono e tutte le
+#   righe lette dalla chiave appartengono al loro documento. Da zero la tabella
+#   e' vuota.
+#   Rollback: forward-only.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261107-70-alter-commesse-attivita-sorgente-forma-mctit.yaml
+
+  - changeSet:
+      id: 20261107-70-alter-commesse-attivita-sorgente-forma
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.commesse_attivita: la chiave del documento dall'uid testuale alle colonne
+        tipizzate (sorgente_id / sorgente_uid uuid), la riga dalla segment_key a sorgente_riga,
+        CHECK di forma. Tolte qui le sei viste che legano la colonna, l'indice e il CHECK della
+        coppia. brief-db-sorgente-documento-e-riga §7.2 lotto C, giro C.3.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 1. Chi lega il tipo di sorgente_uid, nell'ordine delle dipendenze.
+              DROP VIEW vendite.vw_dash_competenza_mensile;
+              DROP VIEW vendite.vw_dash_competenza_gruppi;
+              DROP VIEW vendite.vw_dash_competenza_attivita;
+              DROP VIEW vendite.vw_commesse_attivita_emittibilita;
+              DROP VIEW vendite.vw_lotti_gruppi_serviti;
+              DROP VIEW script.vw_lotto_documento_righe;
+              DROP INDEX vendite.ix_commesse_attivita_sorgente_competenza;
+              ALTER TABLE vendite.commesse_attivita
+                DROP CONSTRAINT chk_commesse_attivita_sorgente_pair;
+
+              -- 2. La chiave e la riga del modello.
+              DO $do$
+              DECLARE
+                  v_nomi text[];
+                  v_modi "char"[];
+                  i      integer;
+                  r      record;
+                  v_fuori bigint;
+              BEGIN
+                  -- L'elenco si legge UNA volta, prima di spegnere: uno spento di proposito
+                  -- resta spento, uno ALWAYS torna ALWAYS.
+                  SELECT array_agg(t.tgname::text ORDER BY t.tgname),
+                         array_agg(t.tgenabled    ORDER BY t.tgname)
+                    INTO v_nomi, v_modi
+                    FROM pg_catalog.pg_trigger t
+                   WHERE t.tgrelid = 'vendite.commesse_attivita'::regclass
+                     AND NOT t.tgisinternal
+                     AND t.tgenabled <> 'D';
+
+                  FOR i IN 1 .. COALESCE(cardinality(v_nomi), 0) LOOP
+                      EXECUTE format('ALTER TABLE vendite.commesse_attivita DISABLE TRIGGER %I', v_nomi[i]);
+                  END LOOP;
+
+                  -- I tipi a chiave id: l'id del documento, dal ponte del BB che risolve.
+                  -- ⚠️ Un documento che non si risolve da' NULL, e il CHECK sotto ferma il migrate.
+                  UPDATE vendite.commesse_attivita ca
+                     SET sorgente_id  = (SELECT d.documento_id
+                                           FROM script.fn_sorgente_documento_da_chiave(
+                                                  ca.sorgente_tipo_id, ca.sorgente_uid) d),
+                         sorgente_uid = NULL
+                    FROM config.sorgenti s
+                   WHERE s.id = ca.sorgente_tipo_id
+                     AND s.key_selector = 'id';
+
+                  -- La riga del documento, letta dalla chiave del push (:R:<riga>), per i
+                  -- tipi che hanno righe. Senza :R: (le quote fisse del listino di un
+                  -- contratto, i consumi) la provenienza e' il documento intero: NULL.
+                  UPDATE vendite.commesse_attivita ca
+                     SET sorgente_riga = script.fn_segment_key_riga(ca.segment_key)
+                    FROM config.sorgenti s
+                   WHERE s.id = ca.sorgente_tipo_id
+                     AND s.righe_table IS NOT NULL;
+
+                  FOR i IN 1 .. COALESCE(cardinality(v_nomi), 0) LOOP
+                      EXECUTE format('ALTER TABLE vendite.commesse_attivita ENABLE %s TRIGGER %I',
+                                     CASE v_modi[i] WHEN 'A' THEN 'ALWAYS'
+                                                    WHEN 'R' THEN 'REPLICA'
+                                                    ELSE '' END,
+                                     v_nomi[i]);
+                  END LOOP;
+
+                  -- Ogni riga scritta appartiene al suo documento: per tipo, dalla tabella
+                  -- delle righe e dalla sua FK che il catalogo dichiara, verso l'id del
+                  -- documento (per un tipo a chiave uid lo da' il ponte). Il guard unico,
+                  -- montato dopo, non rilegge le righe che ci sono gia'.
+                  FOR r IN
+                      SELECT DISTINCT l.righe_schema, l.righe_tabella, l.righe_fk_column, s.id AS tipo_id
+                        FROM vendite.commesse_attivita ca
+                        JOIN config.sorgenti s ON s.id = ca.sorgente_tipo_id
+                       CROSS JOIN LATERAL config.fn_sorgente_livelli(s.id) l
+                       WHERE ca.sorgente_riga IS NOT NULL
+                  LOOP
+                      EXECUTE format(
+                          'SELECT count(*) FROM vendite.commesse_attivita ca
+                            WHERE ca.sorgente_tipo_id = $1 AND ca.sorgente_riga IS NOT NULL
+                              AND NOT EXISTS (
+                                    SELECT 1 FROM %I.%I r
+                                     WHERE r.id = ca.sorgente_riga
+                                       AND r.%I = COALESCE(ca.sorgente_id,
+                                                  (SELECT d.documento_id
+                                                     FROM script.fn_sorgente_documento_da_chiave(
+                                                            ca.sorgente_tipo_id, ca.sorgente_uid) d)))',
+                          r.righe_schema, r.righe_tabella, r.righe_fk_column)
+                        INTO v_fuori
+                        USING r.tipo_id;
+                      IF v_fuori > 0 THEN
+                          RAISE EXCEPTION
+                              'commesse_attivita: % righe di tipo % citano una riga che non e'' del loro documento',
+                              v_fuori, r.tipo_id;
+                      END IF;
+                  END LOOP;
+              END;
+              $do$;
+
+              -- 3. Il tipo e la forma.
+              -- ⚠️ Il cast non ha rete: restano solo le chiavi dei tipi a uid.
+              ALTER TABLE vendite.commesse_attivita
+                ALTER COLUMN sorgente_uid TYPE uuid USING sorgente_uid::uuid;
+
+              ALTER TABLE vendite.commesse_attivita
+                ADD CONSTRAINT chk_commesse_attivita_sorgente_forma CHECK (
+                  (sorgente_tipo_id IS NULL AND sorgente_id IS NULL AND sorgente_uid IS NULL AND sorgente_riga IS NULL)
+                  OR (sorgente_tipo_id IS NOT NULL AND num_nonnulls(sorgente_id, sorgente_uid) = 1));
+              COMMENT ON CONSTRAINT chk_commesse_attivita_sorgente_forma ON vendite.commesse_attivita IS
+                'La forma della provenienza: o nessuna colonna sorgente_* valorizzata (le righe senza documento: ONERE manuale, RETTIFICA, come vuole chk_commesse_attivita_senza_sorgente_onere_rettifica), o il tipo con una sola chiave del documento, sorgente_id oppure sorgente_uid. Quale delle due, e che il documento e la riga esistano, lo verifica script.trgfn_guard_sorgente.';
+
+              -- 4. I COMMENT delle colonne, al presente.
+              COMMENT ON COLUMN vendite.commesse_attivita.sorgente_tipo_id IS
+                'Il tipo del documento da cui nasce la riga di commessa (config.sorgenti): preventivo, ordine, contratto, DDT, consumi. NULL solo per le righe senza documento (ONERE manuale, RETTIFICA). Con il tipo, una sola chiave del documento, quella del key_selector del tipo, e la riga in sorgente_riga quando la provenienza e'' una riga. La forma la tiene chk_commesse_attivita_sorgente_forma; documento e riga li verifica script.trgfn_guard_sorgente, che blocca anche la cancellazione dell''origine finche'' la riga di commessa la cita. ⚠️ La segment_key porta l''uid del documento anche per i tipi a chiave id: e'' la chiave d''idempotenza del push, e da li'' si legge la chiave del gruppo fatturabile (vendite.fn_gruppo_fatturabile_key_di_attivita).';
+              COMMENT ON COLUMN vendite.commesse_attivita.sorgente_id IS
+                'La chiave del documento d''origine quando il suo tipo ha key_selector ''id'' (ordine, contratto, DDT, consumi): l''id del documento. In alternativa a sorgente_uid, mai tutte e due. La scrive vendite.fn_upsert_commessa_attivita dalla chiave che restituisce script.fn_sorgente_chiave.';
+              COMMENT ON COLUMN vendite.commesse_attivita.sorgente_uid IS
+                'La chiave del documento d''origine quando il suo tipo ha key_selector ''uid'' (preventivo): l''uid del documento. In alternativa a sorgente_id, mai tutte e due. La scrive vendite.fn_upsert_commessa_attivita dalla chiave che restituisce script.fn_sorgente_chiave.';
+              COMMENT ON COLUMN vendite.commesse_attivita.sorgente_riga IS
+                'La riga del documento d''origine da cui nasce la riga di commessa: l''id nella tabella delle righe che config.sorgenti dichiara per il tipo (la riga del preventivo, dell''ordine, del contratto, del DDT). La scrive vendite.fn_upsert_commessa_attivita dalla riga che il lister del push restituisce. NULL quando la provenienza e'' il documento intero: i consumi, che non hanno righe, e le quote fisse del listino di un contratto, che non corrispondono a una riga del contratto.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: l'uid testuale per i tipi a chiave id non si ricostruisce.
+              SELECT 1;

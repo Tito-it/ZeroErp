@@ -161,7 +161,9 @@ BEGIN
                -- l'ultimo aggiornamento dell'attivita'.
                fatt.fatturata_il,
                fatt.fattura_id, fatt.fattura_numero, fatt.fattura_stato,
-               ca.sorgente_uid, s.apribile AS sorgente_apribile,
+               -- L'uid del documento d'origine per ogni tipo, dal BB che risolve:
+               -- la riga lo porta in sorgente_uid solo per i tipi a chiave uid.
+               ref.documento_uid::text AS sorgente_uid, s.apribile AS sorgente_apribile,
                -- Id e numero del documento di origine: UNA
                -- chiamata, non due funzioni gemelle.
                ref.documento_id AS sorgente_documento_id,
@@ -184,18 +186,17 @@ BEGIN
           -- Il documento di origine, id + numero in una lettura.
           -- La funzione restituisce SEMPRE una riga, quindi qui il
           -- LEFT e' cintura, non necessita'.
-          LEFT JOIN LATERAL vendite.fn_get_sorgente_documento_ref(
-                       ca.sorgente_tipo_id, ca.sorgente_uid) ref ON TRUE
+          LEFT JOIN LATERAL script.fn_sorgente_documento(
+                       ca.sorgente_tipo_id, ca.sorgente_id, ca.sorgente_uid) ref ON TRUE
           -- Il gruppo fatturabile dalla SUA unica fonte di verita'.
-          -- ⚠️ fn_build_gruppo_fatturabile_key SOLLEVA su coppia
-          -- sorgente incoerente o riga sourceless senza commessa:
-          -- da qui non puo' accadere — lo impediscono il CHECK
-          -- chk_commesse_attivita_sorgente_pair e il NOT NULL su
-          -- commessa_id. In un LATERAL cosi' l'ORDER BY puo'
-          -- nominarlo come una colonna qualunque.
+          -- ⚠️ La chiave SOLLEVA su una riga con tipo e una chiave del
+          -- push senza uid: da qui non puo' accadere, lo impedisce
+          -- trg_commesse_attivita_a10_guard_sorgente_segment_ins_upd.
+          -- In un LATERAL cosi' l'ORDER BY puo' nominarla come una
+          -- colonna qualunque.
           CROSS JOIN LATERAL (
-              SELECT vendite.fn_build_gruppo_fatturabile_key(
-                         ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id
+              SELECT vendite.fn_gruppo_fatturabile_key_di_attivita(
+                         ca.sorgente_tipo_id, ca.segment_key, ca.commessa_id
                      ) AS gruppo_key
           ) grp
           -- ⚠️ LATERAL ordinato e non join nuda: oggi il rapporto

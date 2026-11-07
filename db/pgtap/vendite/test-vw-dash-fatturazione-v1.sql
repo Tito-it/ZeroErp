@@ -583,7 +583,7 @@ INSERT INTO vendite.commesse_attivita (
   competenza_mese, competenza_dal, competenza_al,
   tipo_doc_fiscale_id, valuta_id, prezzo_snapshot,
   pricing_mode, stato_approvazione, stato_emissione,
-  sorgente_tipo_id, sorgente_uid)
+  sorgente_tipo_id, sorgente_id, sorgente_uid)
 SELECT
   (SELECT id FROM tmp_df_commessa),
   script.fn_segment_key('CONTRATTO', (SELECT uid FROM tmp_df_contratto)::text, 0,
@@ -594,7 +594,7 @@ SELECT
   (date_trunc('month', script.fn_data_operativa()) + interval '1 month - 1 day')::date,
   r.tipo_doc_fiscale_id, r.valuta_id, 25.000000,
   'FIXED', 'APPROVATA', 'EMESSA',
-  r.sorg_contratto_id, (SELECT uid FROM tmp_df_contratto)::text
+  r.sorg_contratto_id, (SELECT k.sorgente_id FROM script.fn_sorgente_chiave(r.sorg_contratto_id, ((SELECT uid FROM tmp_df_contratto)::text)::text) k), (SELECT k.sorgente_uid FROM script.fn_sorgente_chiave(r.sorg_contratto_id, ((SELECT uid FROM tmp_df_contratto)::text)::text) k)
 FROM tmp_df_refs r;
 
 SELECT ok(

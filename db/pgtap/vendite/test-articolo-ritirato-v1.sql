@@ -207,9 +207,13 @@ BEGIN
   SELECT to_jsonb(ca) || jsonb_build_object(
            'sorgente_tipo_id', CASE WHEN p_con_sorgente
                                     THEN (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'ORDINE_VENDITA') END,
-           'sorgente_uid',     CASE WHEN p_con_sorgente
-                                    THEN (SELECT o.ordine_uid::text FROM tmp_ar_ord o) END,
-           'segment_key',      ca.segment_key || p_suffisso,
+           -- l'ordine e' a chiave id: sorgente_id, e la chiave del push lo nomina
+           'sorgente_id',      CASE WHEN p_con_sorgente
+                                    THEN (SELECT o.ordine_id FROM tmp_ar_ord o) END,
+           'sorgente_uid',     NULL,
+           'segment_key',      CASE WHEN p_con_sorgente
+                                    THEN script.fn_segment_key('ORDINE_VENDITA', (SELECT o.ordine_uid::text FROM tmp_ar_ord o))
+                                    ELSE ca.segment_key END || p_suffisso,
            'tx_id',            NULL)
     INTO v_src
     FROM vendite.commesse_attivita ca WHERE ca.id = (SELECT attivita_id FROM tmp_ar_onere);

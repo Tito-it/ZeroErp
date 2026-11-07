@@ -214,9 +214,9 @@ BEGIN
         commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita,
         uom_id, quantita, competenza_mese, competenza_dal, competenza_al,
         tipo_doc_fiscale_id, valuta_id, prezzo_snapshot, pricing_mode,
-        stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
+        stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_id)
       SELECT (SELECT id FROM tmp_commessa_mnf),
-             'PGTAP-MNF-' || s || '-' || substr(md5(clock_timestamp()::text), 1, 12),
+             ((SELECT x.segment_key FROM dbops.fn_pgtap_consumo_della_commessa((SELECT id FROM tmp_commessa_mnf)) x) || ':' || 'PGTAP-MNF-' || s || '-' || substr(md5(clock_timestamp()::text), 1, 12)),
              r.articolo_id, r.istanza_utility_id,
              (SELECT competenza_mese FROM tmp_cost_mnf),
              r.uom_id, 1,
@@ -224,8 +224,8 @@ BEGIN
              (SELECT competenza_mese FROM tmp_cost_mnf),
              ((SELECT competenza_mese FROM tmp_cost_mnf) + INTERVAL '1 month - 1 day')::date,
              r.tipo_doc_fiscale_id, r.valuta_id, 10.000000, 'FIXED',
-             'APPROVATA', 'EMESSA', (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
-         ((SELECT id FROM tmp_commessa_mnf))::text
+             'APPROVATA', 'EMESSA', (SELECT x.sorgente_tipo_id FROM dbops.fn_pgtap_consumo_della_commessa((SELECT id FROM tmp_commessa_mnf)) x),
+         (SELECT x.consumo_id FROM dbops.fn_pgtap_consumo_della_commessa((SELECT id FROM tmp_commessa_mnf)) x)
         FROM tmp_refs_mnf r
       RETURNING id)
     INSERT INTO tmp_ca_mnf(slot, attivita_id) SELECT s, ins.id FROM ins;

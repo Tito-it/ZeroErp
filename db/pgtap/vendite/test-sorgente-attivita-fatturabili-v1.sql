@@ -134,8 +134,9 @@ SELECT is(
 
 -- Il caso V-3: la chiave del segmento cambia sotto la riga gia' emessa (come col
 -- cambio di formato delle chiavi), la riga si libera, il giro dopo la riprende.
+-- La chiave nuova nomina ancora il suo documento (il guard della chiave del push).
 UPDATE vendite.commesse_attivita ca
-   SET segment_key = (ca.segment_key || '-NUOVA')::varchar
+   SET segment_key = (ca.segment_key || ':NUOVA')::varchar
  WHERE ca.id = (SELECT attivita_id FROM _ca WHERE k = 'A');
 
 SELECT vendite.fn_libera_attivita_fatturabili(ARRAY(SELECT id FROM _af1));
@@ -169,10 +170,18 @@ INSERT INTO _ca
 SELECT 'B', a.attivita_id
   FROM dbops.fn_pgtap_crea_commessa_attivita(pg_temp.comm('M2'), 20) a;
 
+-- La chiave nomina il documento della riga: B prende da A provenienza e chiave
+-- insieme (a mano, senza la porta del link: un documento sta in una sola commessa
+-- aperta, e qui serve solo la stessa chiave in due commesse).
 UPDATE vendite.commesse_attivita ca
-   SET segment_key = (SELECT x.segment_key FROM vendite.commesse_attivita x
-                       WHERE x.id = (SELECT attivita_id FROM _ca WHERE k = 'A'))
- WHERE ca.id = (SELECT attivita_id FROM _ca WHERE k = 'B');
+   SET segment_key      = x.segment_key,
+       sorgente_tipo_id = x.sorgente_tipo_id,
+       sorgente_id      = x.sorgente_id,
+       sorgente_uid     = x.sorgente_uid,
+       sorgente_riga    = x.sorgente_riga
+  FROM vendite.commesse_attivita x
+ WHERE x.id = (SELECT attivita_id FROM _ca WHERE k = 'A')
+   AND ca.id = (SELECT attivita_id FROM _ca WHERE k = 'B');
 
 SELECT vendite.fn_libera_attivita_fatturabili(ARRAY(SELECT id FROM _af1));
 SELECT * FROM vendite.fn_emit_attivita_fatturabili_da_commessa(p_commessa_id => pg_temp.comm('M2'));

@@ -1,0 +1,68 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'UID DEL DOCUMENTO, LETTO DALLA CHIAVE DEL PUSH: script.fn_segment_key_uid
+#   Brief: brief-db-sorgente-documento-e-riga §7.2 lotto C, giro C.3 (D-6 precisata da
+#   Tid il 2026-11-07).
+#
+#   La terza lettrice della chiave, accanto a fn_segment_key_sorgente (il codice) e
+#   fn_segment_key_riga (la riga): la grammatica della chiave sta con il suo solo
+#   costruttore, script.fn_segment_key (G-8 della grammatica unica, 2026-10-20).
+#   Serve alla chiave del gruppo fatturabile (CODICE:<uid>), che resta costruita con
+#   l'uid anche per i tipi a chiave id (D-6): dopo il giro C.3 l'uid non sta piu' in
+#   commesse_attivita.sorgente_uid per quei tipi, e la segment_key lo porta per
+#   costruzione. Solo un uuid in forma canonica, subito dopo il codice: una chiave
+#   senza documento (MAN:<commessa>:<n>) o fuori grammatica da' NULL.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261107-72-create-fn-segment-key-uid-mctit.yaml
+
+  - changeSet:
+      id: 20261107-72-create-fn-segment-key-uid
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_segment_key_uid: l'uid del documento letto dalla chiave del push.
+        brief-db-sorgente-documento-e-riga §7.2 lotto C, giro C.3.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION script.fn_segment_key_uid(
+                  p_segment_key vendite.commesse_attivita.segment_key%TYPE)
+              -- l'uid in testo, come sta nella chiave: la chiave del gruppo fatturabile
+              -- che lo usa e' testo, e nessuna colonna lo rispecchia per ogni tipo
+              RETURNS text
+              LANGUAGE sql
+              IMMUTABLE
+              SECURITY INVOKER
+              AS $function$
+              -- =========================================================
+              -- Scopo: l'uid del documento da cui viene una riga di commessa,
+              --   letto dalla chiave (<sorgente>:<uid>...); NULL se la chiave
+              --   non ne ha uno in forma canonica (righe a mano MAN:...).
+              -- Nessun SET: si espande in linea.
+              -- =========================================================
+              SELECT substring(p_segment_key
+                     FROM '^[^:#]+:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:[:#]|$)');
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_segment_key_uid(vendite.commesse_attivita.segment_key%TYPE) IS
+                'L''uid del documento da cui viene una riga di commessa, letto dalla chiave del push (<sorgente>:<uid>[:R:<riga>][:A:<articolo>][:M:<mese>][#...]): il secondo campo, se e'' un uuid in forma canonica; NULL altrimenti (le righe a mano MAN:<commessa>:<n>, una chiave fuori grammatica). La chiave la costruisce solo script.fn_segment_key, con l''uid del documento anche per i tipi a chiave id; le sorelle script.fn_segment_key_sorgente e script.fn_segment_key_riga ne leggono il codice e la riga. La usa vendite.fn_documento_uid_di_attivita, da cui la chiave del gruppo fatturabile. LANGUAGE sql IMMUTABLE senza SET: si espande in linea.';
+
+              GRANT EXECUTE ON FUNCTION script.fn_segment_key_uid(vendite.commesse_attivita.segment_key%TYPE) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION script.fn_segment_key_uid(vendite.commesse_attivita.segment_key%TYPE);

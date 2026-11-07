@@ -31,8 +31,9 @@ AS $function$
     SELECT a.arco, a.ft, a.fu, a.tt, a.tu,
            CASE
              -- Documento -> commessa: nessuna riga NON annullata di quel
-             -- documento nella commessa. La chiave delle righe e'
-             -- <testata>.uid::text (quella di vendite.fn_documento_legami).
+             -- documento nella commessa. Il documento si risolve dalla
+             -- chiave del nodo (testo) col ponte del BB che risolve, e le
+             -- righe si cercano con la regola d'incontro su id e uid.
              -- ⭐ rev 2026-11-06 (20261106-44, giro 0.3): l'uid del documento
              --   dal BB che risolve (ponte: la chiave del nodo e' testo), per
              --   ogni tipo; niente piu' un ramo per tabella.
@@ -42,9 +43,11 @@ AS $function$
                 WHERE ca.commessa_id      = script.fn_sorgente_chiave_id(a.tu)
                   AND ca.sorgente_tipo_id = a.ft
                   AND ca.stato_emissione <> 'ANNULLATA'
-                  AND ca.sorgente_uid = (
-                        SELECT d.documento_uid::text
-                          FROM script.fn_sorgente_documento_da_chiave(a.ft, a.fu) d))
+                  AND EXISTS (
+                        SELECT 1
+                          FROM script.fn_sorgente_documento_da_chiave(a.ft, a.fu) d
+                         WHERE ca.sorgente_id = d.documento_id
+                            OR ca.sorgente_uid = d.documento_uid))
              -- Preventivo -> ordine: nessuna riga ATTIVA dell'ordine viene
              -- da una riga del preventivo.
              WHEN a.arco = 'A' THEN NOT EXISTS (
@@ -83,7 +86,7 @@ AS $function$
 $function$
 
 COMMENT ON FUNCTION vendite.fn_documento_lineage_legami(p_archi text[], p_from_tipo_ids bigint[], p_from_uids text[], p_to_tipo_ids bigint[], p_to_uids text[])
-IS 'Decoratore degli ARCHI della lineage, gemello di vendite.fn_documento_lineage_nodi: i nodi danno lo stato, questo il LEGAME. Per ogni arco (array paralleli: lettera, tipo e chiave dei due estremi) dice se il legame e'' ritirato con i due nodi vivi: true / false; NULL per una lettera non censita («non so», non «vivo»). B, E, F, U (documento -> commessa): ritirato se nella commessa non resta nessuna riga di quel documento con stato_emissione diverso da ANNULLATA; la chiave delle righe e'' l''uid del documento, letto per ogni tipo dal BB script.fn_sorgente_documento_da_chiave; commessa annullata -> true insieme a to_is_abortito. A (preventivo -> ordine): ritirato se nessuna riga attiva dell''ordine viene da una riga del preventivo. H (ordine -> bolla): se nessuna riga attiva della bolla evade una riga dell''ordine (ordini_righe_fulfillment). R (bolla -> reso): se nessuna riga attiva del reso viene da una riga della bolla. C, D, V (legami di sola testata) e G, N, S, T (l''arco nasce e sparisce con le righe di legame): false. SECURITY DEFINER: righe di commessa, ordine, bolla e reso hanno la RLS, e righe vive fuori perimetro farebbero dire «ritirato» a torto; restituisce un booleano per un arco che chi legge ha gia''. Consumatore: vendite.fn_documento_lineage (is_legame_ritirato).';
+IS 'Decoratore SECURITY DEFINER degli ARCHI della lineage, gemello di vendite.fn_documento_lineage_nodi: i nodi danno lo stato, questo il LEGAME. Per ogni arco (array paralleli: lettera, tipo e chiave dei due estremi) dice se il legame e'' ritirato con i due nodi vivi: true / false; NULL per una lettera non censita («non so», non «vivo»). B, E, F, U (documento -> commessa): ritirato se nella commessa non resta nessuna riga di quel documento con stato_emissione <> ANNULLATA (una riga EMESSA e'' viva); il documento si risolve dalla chiave del nodo, che e'' testo, col ponte script.fn_sorgente_documento_da_chiave, e le righe di commessa si cercano con la regola d''incontro (sorgente_id = id del documento OR sorgente_uid = uid del documento): un tipo nuovo non va aggiunto a mano. Commessa annullata -> true insieme a to_is_abortito. A (preventivo -> ordine): ritirato se nessuna riga ATTIVA dell''ordine viene da una riga del preventivo. H (ordine -> bolla): se nessuna riga ATTIVA della bolla evade una riga dell''ordine (ordini_righe_fulfillment). R (bolla -> reso): se nessuna riga ATTIVA del reso viene da una riga della bolla. C, D, V (offerta -> contratto/ordine, revisione dell''offerta): false, il legame e'' solo di testata. G, N, S, T: false per costruzione, l''arco nasce dalle righe di legame e sparisce con loro. SECURITY DEFINER: righe di commessa, ordine, bolla e reso hanno la RLS, e righe vive fuori perimetro farebbero dire «ritirato» a torto; restituisce un booleano per un arco che chi legge ha gia''. Consumatore: vendite.fn_documento_lineage (colonna is_legame_ritirato).';
 ```
 
 </div>

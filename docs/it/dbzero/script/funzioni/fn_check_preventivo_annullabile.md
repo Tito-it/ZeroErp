@@ -110,7 +110,7 @@ BEGIN
     FROM jsonb_array_elements(
            script.fn_check_sorgente_chiudibile(
                (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'PREVENTIVO'),
-               v_uid::text)) AS m
+               p_preventivo_id, v_uid)) AS m
    WHERE m ->> 'codice' = 'E_SORGENTE_CON_RIGHE_EMESSE';
 
   IF v_emesse > 0 THEN

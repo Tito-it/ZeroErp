@@ -84,14 +84,13 @@ BEGIN
             NULL::uuid, 'TG_ARGV[0]');
     END IF;
 
-    -- ⛔ LA CHIAVE e' `uid::text`: e' cio' che le cinque
-    --    fn_list_*_da_pushare scrivono in
-    --    commesse_attivita.sorgente_uid. NON e' la chiave di
-    --    commesse_sorgenti, che varia per sorgente — confonderle
-    --    non darebbe errore, darebbe ZERO motivi.
+    -- ⛔ LA CHIAVE e' quella del modello: il trigger ha il documento,
+    --    e ne passa l'id e l'uid (regola d'incontro). Sbagliarla non
+    --    darebbe errore, darebbe ZERO motivi.
     v_motivi := script.fn_check_sorgente_chiudibile(
                     v_sorgente_tipo_id,
-                    (to_jsonb(NEW) ->> 'uid'));
+                    (to_jsonb(NEW) ->> 'id')::bigint,
+                    (to_jsonb(NEW) ->> 'uid')::uuid);
 
     -- ⭐ La coda del primo motivo sta in un posto solo: l'helper legge il
     --   codice da `v_motivi -> 0`, ne prende i `valori` per la frase, fonde il

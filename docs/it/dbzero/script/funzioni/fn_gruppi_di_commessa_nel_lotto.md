@@ -65,8 +65,8 @@ BEGIN
             --   COMMESSA:<hash>, che non aggancia niente e non
             --   fallisce. ⭐ La costruisce la funzione che la
             --   costruisce gia' per la dashboard: una sola sede.
-            SELECT DISTINCT vendite.fn_build_gruppo_fatturabile_key(
-                       ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id
+            SELECT DISTINCT vendite.fn_gruppo_fatturabile_key_di_attivita(
+                       ca.sorgente_tipo_id, ca.segment_key, ca.commessa_id
                    ) AS gruppo_key
               FROM vendite.commesse_attivita ca
              WHERE ca.commessa_id = p_commessa_id

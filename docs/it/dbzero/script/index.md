@@ -306,6 +306,7 @@ search:
 - [fn_segment_key](funzioni/fn_segment_key.md)
 - [fn_segment_key_riga](funzioni/fn_segment_key_riga.md)
 - [fn_segment_key_sorgente](funzioni/fn_segment_key_sorgente.md)
+- [fn_segment_key_uid](funzioni/fn_segment_key_uid.md)
 - [fn_snapshot_indirizzo](funzioni/fn_snapshot_indirizzo.md)
 - [fn_snapshot_indirizzo_soggetto](funzioni/fn_snapshot_indirizzo_soggetto.md) — (latest review 02-08-2026)
 - [fn_sorgente_chiave](funzioni/fn_sorgente_chiave.md)

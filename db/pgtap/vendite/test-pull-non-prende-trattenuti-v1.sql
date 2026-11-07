@@ -190,8 +190,8 @@ BEGIN
         --   E_VALORE_MANCANTE prima ancora di guardare le righe. L'ha scritta
         --   il builder della commessa (COMMESSA, uid = id della commessa).
         INSERT INTO tmp_pt VALUES (r.caso, v_comm, v_ca,
-            vendite.fn_build_gruppo_fatturabile_key(
-                (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'), v_comm::text, v_comm));
+            (SELECT vendite.fn_gruppo_fatturabile_key_di_attivita(ca.sorgente_tipo_id, ca.segment_key, ca.commessa_id)
+                FROM vendite.commesse_attivita ca WHERE ca.id = v_ca));
     END LOOP;
 
     -- Due lotti DRAFT IN GIOCO, dal builder: «altrui» tiene la commessa
@@ -390,21 +390,23 @@ INSERT INTO vendite.commesse_attivita (
     commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita,
     uom_id, quantita, competenza_mese, competenza_dal, competenza_al,
     tipo_doc_fiscale_id, valuta_id, prezzo_snapshot, pricing_mode,
-    stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
+    stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_id)
 SELECT t.commessa_id,
-       'PGTAP-PT-bozza-' || substr(md5(clock_timestamp()::text), 1, 12),
+       -- la provenienza e la chiave della riga che il lotto trattiene: stesso gruppo
+       (src.segment_key || ':' || 'PGTAP-PT-bozza-' || substr(md5(clock_timestamp()::text), 1, 12)),
        r.articolo_id, r.istanza_utility_id, r.mese,
        r.uom_id, 1, r.mese, r.mese, (r.mese + INTERVAL '1 month - 1 day')::date,
        r.tipo_doc_fiscale_id, r.valuta_id, 10.000000, 'FIXED',
-       'BOZZA', 'NON_EMESSA', (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
-         (t.commessa_id)::text
-  FROM tmp_pt_rif r, tmp_pt t WHERE t.caso = 'bloccata';
+       'BOZZA', 'NON_EMESSA', src.sorgente_tipo_id, src.sorgente_id
+  FROM tmp_pt_rif r, tmp_pt t
+  JOIN vendite.commesse_attivita src ON src.id = t.ca_id
+ WHERE t.caso = 'bloccata';
 
 SELECT is(
     (SELECT e.classe_emittibilita::text || ' / tenuta=' || (e.trattenuta_da_lotti IS NOT NULL)::text
        FROM vendite.vw_commesse_attivita_emittibilita e
        JOIN vendite.commesse_attivita ca ON ca.id = e.commessa_attivita_id
-      WHERE ca.segment_key LIKE 'PGTAP-PT-bozza-%'),
+      WHERE ca.segment_key LIKE '%:PGTAP-PT-bozza-%'),
     'NON_APPROVATA / tenuta=true',
     '10. una riga NON approvata tenuta da un lotto e'' NON_APPROVATA, non TRATTENUTA (la premessa dell''helper)'
 );

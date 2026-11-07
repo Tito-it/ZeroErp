@@ -142,7 +142,11 @@ CREATE TEMP TABLE tmp_att_tca AS
 SELECT r.attivita_id AS commessa_attivita_id
 FROM vendite.fn_upsert_commessa_attivita(
   p_commessa_id => (SELECT commessa_id FROM tmp_commessa_tca),
-  p_segment_key => ('SEG-TCA-' || substr(md5(clock_timestamp()::text), 1, 12))::varchar,
+  p_segment_key => ((SELECT script.fn_segment_key(s.codice_interno, d.documento_uid::text) FROM config.sorgenti s, script.fn_sorgente_documento_da_chiave(s.id, ((SELECT uid::text FROM tmp_prev_tca))::text) d WHERE s.id = (
+    SELECT s.id FROM config.sorgenti s
+    WHERE s.codice = 'PREVENTIVO' AND s.attivo IS TRUE
+    LIMIT 1
+  )) || ':' || ('SEG-TCA-' || substr(md5(clock_timestamp()::text), 1, 12))::varchar)::varchar,
   p_articolo_id => (SELECT articolo_id FROM tmp_refs_tca),
   p_istanza_utility_id => (SELECT istanza_utility_id FROM tmp_refs_tca),
   p_data_attivita => DATE '2026-09-15',

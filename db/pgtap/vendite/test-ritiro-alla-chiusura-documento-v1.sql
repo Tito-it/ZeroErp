@@ -130,9 +130,8 @@ SELECT id FROM ins;
 CREATE TEMP TABLE tmp_rc_ca (slot text PRIMARY KEY, attivita_id bigint);
 
 -- Due righe spinte dallo STESSO ordine: una ancora da emettere, una emessa.
--- ⛔ `sorgente_uid` e' l'`uid` dell'ordine: e' cio' che
---    fn_list_ordini_da_pushare scrive. La chiave di commesse_sorgenti (l'id)
---    darebbe un ritiro che non ritira, e nessun errore.
+-- La provenienza e' quella del modello: l'ordine e' a chiave id (sorgente_id), e
+--    la chiave del push porta il suo uid, come la compone fn_list_ordini_da_pushare.
 DO $fx$
 DECLARE s text;
 BEGIN
@@ -142,7 +141,7 @@ BEGIN
         commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita,
         uom_id, quantita, competenza_mese, competenza_dal, competenza_al,
         tipo_doc_fiscale_id, valuta_id, prezzo_snapshot, pricing_mode,
-        stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
+        stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_id, sorgente_uid)
       SELECT (SELECT id FROM tmp_rc_commessa),
              'ORDINE_VENDITA:' || (SELECT uid FROM tmp_rc_ordine)::text || ':R:' || s,
              r.articolo_id, r.istanza_utility_id, script.fn_data_operativa(), r.uom_id, 1,
@@ -153,7 +152,7 @@ BEGIN
              'BOZZA',
              CASE WHEN s = 'EMESSA' THEN 'EMESSA' ELSE 'NON_EMESSA' END,
              r.sorgente_tipo_id,
-             (SELECT uid FROM tmp_rc_ordine)::text
+             (SELECT k.sorgente_id FROM script.fn_sorgente_chiave(r.sorgente_tipo_id, ((SELECT uid FROM tmp_rc_ordine)::text)::text) k), (SELECT k.sorgente_uid FROM script.fn_sorgente_chiave(r.sorgente_tipo_id, ((SELECT uid FROM tmp_rc_ordine)::text)::text) k)
         FROM tmp_rc_refs r
       RETURNING id)
     INSERT INTO tmp_rc_ca(slot, attivita_id) SELECT s, ins.id FROM ins;
@@ -161,22 +160,29 @@ BEGIN
 END
 $fx$;
 
--- Una riga di UN ALTRO documento, che non deve essere toccata (test 6).
+-- Una riga di UN ALTRO documento, che non deve essere toccata (test 6): un secondo
+-- ordine VERO sullo stesso billing account (la provenienza deve esistere).
+CREATE TEMP TABLE tmp_rc_ordine2 AS
+SELECT o.ordine_id AS id, o.ordine_uid AS uid
+  FROM dbops.fn_pgtap_crea_ordine('ritiro chiusura estranea', 'DRAFT',
+         (SELECT x.billing_account_id FROM vendite.ordini x WHERE x.id = (SELECT id FROM tmp_rc_ordine))) o;
+
 CREATE TEMP TABLE tmp_rc_estranea AS
 WITH ins AS (
   INSERT INTO vendite.commesse_attivita (
     commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita,
     uom_id, quantita, competenza_mese, competenza_dal, competenza_al,
     tipo_doc_fiscale_id, valuta_id, prezzo_snapshot, pricing_mode,
-    stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
+    stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_id, sorgente_uid)
   SELECT (SELECT id FROM tmp_rc_commessa),
-         'ORDINE_VENDITA:PGTAP-RC-ESTRANEA:' || substr(md5(clock_timestamp()::text), 1, 10),
+         script.fn_segment_key('ORDINE_VENDITA', (SELECT uid FROM tmp_rc_ordine2)::text)
+           || ':PGTAP-RC-ESTRANEA:' || substr(md5(clock_timestamp()::text), 1, 10),
          r.articolo_id, r.istanza_utility_id, script.fn_data_operativa(), r.uom_id, 1,
          date_trunc('month', script.fn_data_operativa())::date,
          date_trunc('month', script.fn_data_operativa())::date,
          (date_trunc('month', script.fn_data_operativa()) + INTERVAL '1 month - 1 day')::date,
          r.tipo_doc_fiscale_id, r.valuta_id, 10.000000, 'FIXED',
-         'BOZZA', 'NON_EMESSA', r.sorgente_tipo_id, gen_random_uuid()::text
+         'BOZZA', 'NON_EMESSA', r.sorgente_tipo_id, (SELECT id FROM tmp_rc_ordine2), NULL
     FROM tmp_rc_refs r
   RETURNING id)
 SELECT id FROM ins;
@@ -223,7 +229,7 @@ SELECT is(
 SELECT is(
   script.fn_check_sorgente_chiudibile(
     (SELECT sorgente_tipo_id FROM tmp_rc_refs),
-    (SELECT uid FROM tmp_rc_ordine)::text) -> 0 ->> 'codice',
+    (SELECT id FROM tmp_rc_ordine), (SELECT uid FROM tmp_rc_ordine)) -> 0 ->> 'codice',
   'E_SORGENTE_CON_RIGHE_EMESSE',
   '3) la check di dominio nomina lo stesso motivo che il guard solleva'
 );

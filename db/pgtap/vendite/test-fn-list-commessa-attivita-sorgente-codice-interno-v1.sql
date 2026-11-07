@@ -67,20 +67,23 @@ SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita((SELECT commessa_id FROM t_c
 -- Una sorgente di prova, poi RINOMINATA: codice ed etichetta sono dell'operatore,
 -- codice_interno no (lock trg_sorgenti_a10_lock_columns_upd).
 CREATE TEMP TABLE t_s AS
-SELECT dbops.fn_pgtap_crea_sorgente('PGTAP_SCI_ORIGINE') AS sorgente_id;
+-- I suoi documenti sono i consumi: la provenienza della riga deve essere un
+-- documento vero (il guard unico), e qui serve solo il nome del tipo.
+SELECT dbops.fn_pgtap_crea_sorgente('PGTAP_SCI_ORIGINE', 'vendite.attivita_consumi'::regclass) AS sorgente_id;
 
 UPDATE config.sorgenti
    SET codice    = 'PGTAP_SCI_NOME_OPERATORE',
        etichetta = 'Origine di prova'
  WHERE id = (SELECT sorgente_id FROM t_s);
 
--- L'attivita' viene da quella sorgente (la coppia tipo + uid e' completa:
--- chk_commesse_attivita_sorgente_pair). L'uid non risolve un documento: il
--- resolver torna una riga a NULL, e non e' l'oggetto del test.
-UPDATE vendite.commesse_attivita
+-- L'attivita' viene da quella sorgente: un consumo della commessa, con la chiave del
+-- push nel codice della sorgente di prova (provenienza e chiave cambiano insieme).
+UPDATE vendite.commesse_attivita ca
    SET sorgente_tipo_id = (SELECT sorgente_id FROM t_s),
-       sorgente_uid     = '999999999'
- WHERE id = (SELECT attivita_id FROM t_a);
+       sorgente_id      = x.consumo_id,
+       segment_key      = script.fn_segment_key('PGTAP_SCI_ORIGINE', x.consumo_uid::text)
+  FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM t_c)) x
+ WHERE ca.id = (SELECT attivita_id FROM t_a);
 
 -- ⛔ Il verbo in un'istruzione SUA: la lettura nella stessa istruzione delle
 --   scritture non le vedrebbe.

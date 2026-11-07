@@ -15,7 +15,7 @@
 CREATE OR REPLACE VIEW vendite.vw_lotti_gruppi_serviti
 WITH (security_invoker=on) AS
 SELECT flf.lotto_id,
-    vendite.fn_build_gruppo_fatturabile_key(ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id) AS gruppo_key,
+    vendite.fn_gruppo_fatturabile_key_di_attivita(ca.sorgente_tipo_id, ca.segment_key, ca.commessa_id) AS gruppo_key,
     ca.commessa_id,
     count(DISTINCT ca.id) AS n_attivita_fatturate,
     count(DISTINCT f.id) AS n_fatture
@@ -24,7 +24,7 @@ SELECT flf.lotto_id,
      JOIN vendite.fatture_righe fr ON ((fr.fattura_id = f.id)))
      JOIN vendite.attivita_fatturabili af ON ((af.fattura_riga_id = fr.id)))
      JOIN vendite.commesse_attivita ca ON ((ca.id = af.commessa_attivita_id)))
-  GROUP BY flf.lotto_id, (vendite.fn_build_gruppo_fatturabile_key(ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id)), ca.commessa_id;
+  GROUP BY flf.lotto_id, (vendite.fn_gruppo_fatturabile_key_di_attivita(ca.sorgente_tipo_id, ca.segment_key, ca.commessa_id)), ca.commessa_id;
 ```
 
 </div>

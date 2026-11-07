@@ -27,14 +27,17 @@ AS $function$
 -- =========================================================
 DECLARE
     v_sorgente_tipo_id vendite.commesse_attivita.sorgente_tipo_id%TYPE;
+    v_sorgente_id      vendite.commesse_attivita.sorgente_id%TYPE;
     v_sorgente_uid     vendite.commesse_attivita.sorgente_uid%TYPE;
     v_preventivo_id    vendite.preventivi.id%TYPE;
 BEGIN
     IF TG_OP = 'DELETE' THEN
         v_sorgente_tipo_id := OLD.sorgente_tipo_id;
+        v_sorgente_id      := OLD.sorgente_id;
         v_sorgente_uid     := OLD.sorgente_uid;
     ELSE
         v_sorgente_tipo_id := NEW.sorgente_tipo_id;
+        v_sorgente_id      := NEW.sorgente_id;
         v_sorgente_uid     := NEW.sorgente_uid;
     END IF;
 
@@ -47,11 +50,12 @@ BEGIN
         RETURN NULL;
     END IF;
 
-    -- La chiave e' <preventivo>.uid::text (fn_list_preventivi_da_pushare).
+    -- La chiave del modello, con la regola d'incontro (il preventivo e'
+    -- a chiave uid: la riga porta sorgente_uid).
     SELECT p.id
       INTO v_preventivo_id
       FROM vendite.preventivi p
-     WHERE p.uid::text = v_sorgente_uid;
+     WHERE (p.id = v_sorgente_id OR p.uid = v_sorgente_uid);
 
     IF v_preventivo_id IS NOT NULL THEN
         PERFORM vendite.fn_preventivo_proietta_stato_smistamento(v_preventivo_id);

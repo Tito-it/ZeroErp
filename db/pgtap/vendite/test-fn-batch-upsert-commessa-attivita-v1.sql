@@ -141,7 +141,7 @@ CREATE TEMP TABLE tmp_upsert_new AS
 SELECT r.attivita_id, r.is_new
 FROM vendite.fn_upsert_commessa_attivita(
   p_commessa_id => (SELECT commessa_id FROM tmp_batch_commessa),
-  p_segment_key => (SELECT seg_a FROM tmp_batch_keys),
+  p_segment_key => ((SELECT x.segment_key FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_batch_commessa)) x) || ':' || (SELECT seg_a FROM tmp_batch_keys))::varchar,
   p_articolo_id => (SELECT articolo_id FROM tmp_batch_refs),
   p_istanza_utility_id => (SELECT istanza_utility_id FROM tmp_batch_refs),
   p_data_attivita => DATE '2026-06-15',
@@ -159,8 +159,8 @@ FROM vendite.fn_upsert_commessa_attivita(
   p_contratto_id => NULL,
   p_categoria_cliente_id_snapshot => NULL,
   p_classe_utenza_id_snapshot => NULL,
-  p_sorgente_tipo_id => (SELECT root_sorgente_tipo_id FROM tmp_batch_refs),
-  p_sorgente_uid => ('EXT-' || substr(md5(clock_timestamp()::text || 'a'), 1, 10))::text
+  p_sorgente_tipo_id => (SELECT x.sorgente_tipo_id FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_batch_commessa)) x),
+  p_sorgente_uid => (SELECT x.consumo_id::text FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_batch_commessa)) x)
 ) r;
 
 SELECT ok(
@@ -176,7 +176,7 @@ CREATE TEMP TABLE tmp_upsert_upd AS
 SELECT r.attivita_id, r.is_new
 FROM vendite.fn_upsert_commessa_attivita(
   p_commessa_id => (SELECT commessa_id FROM tmp_batch_commessa),
-  p_segment_key => (SELECT seg_a FROM tmp_batch_keys),
+  p_segment_key => ((SELECT x.segment_key FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_batch_commessa)) x) || ':' || (SELECT seg_a FROM tmp_batch_keys))::varchar,
   p_articolo_id => (SELECT articolo_id FROM tmp_batch_refs),
   p_istanza_utility_id => (SELECT istanza_utility_id FROM tmp_batch_refs),
   p_data_attivita => DATE '2026-06-15',
@@ -194,11 +194,8 @@ FROM vendite.fn_upsert_commessa_attivita(
   p_contratto_id => NULL,
   p_categoria_cliente_id_snapshot => NULL,
   p_classe_utenza_id_snapshot => NULL,
-  p_sorgente_tipo_id => (SELECT root_sorgente_tipo_id FROM tmp_batch_refs),
-  p_sorgente_uid => (
-    SELECT sorgente_uid FROM vendite.commesse_attivita
-    WHERE id = (SELECT attivita_id FROM tmp_upsert_new)
-  )
+  p_sorgente_tipo_id => (SELECT x.sorgente_tipo_id FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_batch_commessa)) x),
+  p_sorgente_uid => (SELECT x.consumo_id::text FROM dbops.fn_pgtap_consumo_della_commessa((SELECT commessa_id FROM tmp_batch_commessa)) x)
 ) r;
 
 SELECT ok(
@@ -228,7 +225,10 @@ CREATE FUNCTION pg_temp.mk_row(
 ) RETURNS jsonb AS $$
   SELECT jsonb_build_object(
     'commessa_id', (SELECT commessa_id FROM tmp_batch_commessa),
-    'segment_key', p_seg,
+    -- La chiave del push del consumo della commessa (la provenienza), col
+    -- suffisso del test: la chiave di una riga con provenienza nomina il suo documento.
+    'segment_key', (SELECT x.segment_key FROM dbops.fn_pgtap_consumo_della_commessa(
+                       (SELECT commessa_id FROM tmp_batch_commessa)) x) || ':' || p_seg,
     'articolo_id', (SELECT articolo_id FROM tmp_batch_refs)::text,
     'istanza_utility_id', (SELECT istanza_utility_id FROM tmp_batch_refs),
     'data_attivita', '2026-06-15',
@@ -238,8 +238,11 @@ CREATE FUNCTION pg_temp.mk_row(
     'competenza_dal', '2026-06-01',
     'competenza_al', '2026-06-30',
     'prezzo_snapshot', p_prezzo,
-    'sorgente_tipo_id', (SELECT root_sorgente_tipo_id FROM tmp_batch_refs),
-    'sorgente_uid', COALESCE(p_sorgente_uid, 'BEXT-' || substr(md5(p_seg || clock_timestamp()::text), 1, 10))
+    'sorgente_tipo_id', (SELECT x.sorgente_tipo_id FROM dbops.fn_pgtap_consumo_della_commessa(
+                            (SELECT commessa_id FROM tmp_batch_commessa)) x),
+    'sorgente_uid', COALESCE(p_sorgente_uid,
+                             (SELECT x.consumo_id::text FROM dbops.fn_pgtap_consumo_della_commessa(
+                                (SELECT commessa_id FROM tmp_batch_commessa)) x))
   );
 $$ LANGUAGE sql;
 
