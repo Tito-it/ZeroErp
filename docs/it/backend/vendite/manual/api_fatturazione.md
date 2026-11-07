@@ -291,6 +291,10 @@ stato emesso nessun numero), **non** «nessun limite noto». `data_corrente` a
       "gruppi": ["CONTRATTO:…"] }
 ] }, "meta": { "request_id": "..." } }
 ```
+  `stato` è lo stato **vero** del lavoro, letto dopo l'accodamento: `PENDING`
+  per uno nuovo, ma la dedup della chiave di business restituisce un lavoro
+  già vivo, che può essere `IN_CORSO` (dal 2026-11-07; prima era `PENDING` per
+  costruzione).
   Con una selezione (`gruppi` del giro, `lotti` della numerazione) il backend la
   **divide per azienda** (i gruppi dalla vista dei gruppi fatturabili della
   competenza, i lotti dalla loro azienda): ogni lavoro porta le sue righe, ed è

@@ -2080,7 +2080,7 @@ def _aggancia_commessa_servizi_a_pratica(preventivo_id: int, preventivo_uid: str
     if pratica_id is None:
         return
     commessa_id = CommesseRepository().get_commessa_viva_by_sorgente(
-        sorgente_codice=SORGENTE_PREVENTIVO, sorgente_chiave=preventivo_uid,
+        sorgente_codice=SORGENTE_PREVENTIVO, sorgente_uid=preventivo_uid,
     )
     if commessa_id is None:
         return

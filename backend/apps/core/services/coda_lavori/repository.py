@@ -866,6 +866,22 @@ class CodaLavoriRepository:
             vivi.setdefault(str(chiave), {"id": int(item_id), "stato": str(stato)})
         return vivi
 
+    # Scopo: Lo STATO attuale di ciascun lavoro chiesto: `{id: stato}` per i
+    #        soli id che chi chiede vede (la RLS della coda, quando è accesa).
+    #        Una `SELECT` per tutti gli id (`= ANY`).
+    # ⭐ Serve a chi ha appena accodato: la porta restituisce l'id e basta, e
+    #    sulla dedup quell'id è un lavoro che c'era già — può essere IN_CORSO.
+    #    Rispondere «PENDING» per costruzione era una frase non vera.
+    def stati_di(self, item_ids: Sequence[int]) -> dict[int, str]:
+        if not item_ids:
+            return {}
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT id, stato FROM dbops.coda_lavori WHERE id = ANY(%s::bigint[])",
+                [[int(i) for i in item_ids]],
+            )
+            return {int(r[0]): str(r[1]) for r in cursor.fetchall()}
+
     # Scopo: Stato di un job per il polling FE (I-3 non bloccante): stato +
     #        result (a FATTO) + ultimo_errore (a ERRORE). None se id inesistente
     #        o fuori dal perimetro di `owner_emittenti`: un lavoro è di chi ha la

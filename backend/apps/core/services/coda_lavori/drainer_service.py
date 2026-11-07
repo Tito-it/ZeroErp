@@ -43,7 +43,10 @@ from apps.core.services.coda_lavori.context import (
     operator_identity_context,
     senza_identita_context,
 )
-from apps.core.services.coda_lavori.drain_engine import QueueDrainEngine
+from apps.core.services.coda_lavori.drain_engine import (
+    CHIAVI_ESITO_DRENAGGIO,
+    QueueDrainEngine,
+)
 from apps.core.services.coda_lavori.handler_registry import get_handler
 from apps.core.services.coda_lavori.repository import (
     RUN_AS_SISTEMA,
@@ -125,11 +128,6 @@ def draina_coda_lavori(
     )
 
 
-# I contatori che il giro completo somma azienda per azienda. Sede unica:
-# aggiungerne uno qui lo fa comparire nell'esito senza toccare il ciclo.
-_CHIAVI_AGGREGATE = ("recuperate", "claimate", "fatto", "errore", "riprovabili")
-
-
 # Scopo: IL GIRO COMPLETO — drena la coda per OGNI azienda servita dal
 #        processo `draina_coda_lavori`, una alla volta, con l'identità del suo
 #        utente tecnico (BB `giro_per_azienda`). Aggrega gli esiti.
@@ -168,12 +166,8 @@ def draina_coda_lavori_per_roster(
         processi_repo=processi_repo,
     )
     per_emittente = [esito for _badge, esito in giro.serviti]
-    totali = {
-        chiave: sum(esito.get(chiave, 0) for esito in per_emittente)
-        for chiave in _CHIAVI_AGGREGATE
-    }
     return {
-        **totali,
+        **giro.totali(CHIAVI_ESITO_DRENAGGIO),
         "emittenti_serviti": len(per_emittente),
         "emittenti_falliti": giro.falliti,
         "emittenti_non_serviti": giro.non_serviti,

@@ -866,7 +866,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
         )
         # La commessa si cerca APERTA, con l'uid del preventivo come chiave.
         MockCommRepo.return_value.get_commessa_viva_by_sorgente.assert_called_once_with(
-            sorgente_codice="PREVENTIVO", sorgente_chiave="abc",
+            sorgente_codice="PREVENTIVO", sorgente_uid="abc",
         )
 
     # ── Eliminazione bozza (abbandono drawer) ──

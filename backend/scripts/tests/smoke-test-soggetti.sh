@@ -312,9 +312,12 @@ echo "-- 13. Lista ruoli dopo assegnazione --"
 if [[ -n "$RUOLO_ASSEGNATO" ]]; then
     do_curl GET "/api/v1/anagrafiche/soggetti/${SOGG_ID}/ruoli/"
     if check "Lista ruoli" "200"; then
+        # ⚠️ La chiave e' `ruolo_codice_interno` dal 2026-11-04 (61eb42c39,
+        #    «chiavi interne esatte»): con il nome vecchio il parser falliva
+        #    in silenzio e la lista sembrava vuota.
         RUOLI=$(echo "$LAST_BODY" | python3 -c "
 import sys, json
-print(' '.join(r['ruolo_codice'] for r in json.load(sys.stdin)['data']['results']))" 2>/dev/null || true)
+print(' '.join(r['ruolo_codice_interno'] for r in json.load(sys.stdin)['data']['results']))" 2>/dev/null || true)
         if [[ " $RUOLI " == *" VT "* ]]; then
             log_ok "VETTORE in lista ($RUOLI)"
         else

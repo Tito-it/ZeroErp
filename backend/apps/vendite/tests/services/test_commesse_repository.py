@@ -217,13 +217,15 @@ class CommesseRepositoryUnitTests(TestCase):
     def test_get_commessa_viva_by_sorgente_legge_la_funzione_db(self, mock_cursor_factory):
         mock_cursor_factory.return_value = _mock_cursor(fetchone=(99,))
         result = CommesseRepository().get_commessa_viva_by_sorgente(
-            sorgente_codice="PREVENTIVO", sorgente_chiave="uuid-001",
+            sorgente_codice="PREVENTIVO", sorgente_uid="uuid-001",
         )
         self.assertEqual(result, 99)
         sql, args = mock_cursor_factory.return_value.execute.call_args[0]
         self.assertIn("vendite.fn_commessa_viva_di_sorgente", sql)
         self.assertNotIn("commesse_sorgenti", sql)
-        self.assertEqual(args, ["uuid-001", "PREVENTIVO"])
+        # Le due chiavi del documento, nell'ordine della firma: per il
+        # preventivo l'id e' NULL e l'uid porta la chiave (BE-C.2-a).
+        self.assertEqual(args, [None, "uuid-001", "PREVENTIVO"])
         self.assertEqual(sql.count("%s"), len(args))
 
     # Scopo: Nessuna commessa aperta → la funzione torna NULL → None.
@@ -231,7 +233,7 @@ class CommesseRepositoryUnitTests(TestCase):
     def test_get_commessa_viva_by_sorgente_none_senza_commessa_aperta(self, mock_cursor_factory):
         mock_cursor_factory.return_value = _mock_cursor(fetchone=(None,))
         self.assertIsNone(CommesseRepository().get_commessa_viva_by_sorgente(
-            sorgente_codice="PREVENTIVO", sorgente_chiave="uuid-001",
+            sorgente_codice="PREVENTIVO", sorgente_uid="uuid-001",
         ))
 
     # Scopo: Codice sorgente assente da config.sorgenti (nessuna riga) → errore
@@ -242,7 +244,7 @@ class CommesseRepositoryUnitTests(TestCase):
         mock_cursor_factory.return_value = _mock_cursor(fetchone=None)
         with self.assertRaises(ServiceError) as ctx:
             CommesseRepository().get_commessa_viva_by_sorgente(
-                sorgente_codice="SCONOSCIUTO", sorgente_chiave="uuid-001",
+                sorgente_codice="SCONOSCIUTO", sorgente_uid="uuid-001",
             )
         self.assertEqual(ctx.exception.code, "E_COMMESSA_SORGENTE_SCONOSCIUTA")
 

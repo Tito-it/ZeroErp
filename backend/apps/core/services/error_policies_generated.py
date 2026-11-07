@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1193, di cui 124 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1194, di cui 124 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -309,6 +309,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_COLONNA_NON_MODIFICABILE": "CONFLITTO_STATO",
     # Guard di uscita commessa (brief-db-guard-uscita-commessa 558/559): · transizione terminale IRREVERSIBILE bloccata → conflitto di stato (409), · come la famiglia immutabilita`. Banner: e` un blocco d'azione grave.
     "E_COMMESSA_ANNULLA_CON_RIGHE_EMESSE": "CONFLITTO_STATO",
+    # vendite.trgfn_commesse_attivita_guard_sorgente_segment, guard di vendite.commesse_attivita. TECNICO: la chiave del push la compone il codice (script.fn_segment_key, nei lister e nei verbi), non una persona in un form; il lettore del messaggio e' chi ha scritto la chiamata, per questo la frase nomina la chiave. Qui: una riga con provenienza ha una segment_key che non comincia con il codice del tipo e l'uid del documento d'origine.
+    "E_COMMESSA_ATTIVITA_CHIAVE_NON_DEL_DOCUMENTO": "TECNICO",
     "E_COMMESSA_ATTIVITA_GIA_EMESSA": "CONFLITTO_STATO",
     "E_COMMESSA_ATTIVITA_NON_COERENTE": "DATO_ERRATO",
     "E_COMMESSA_ATTIVITA_NOT_FOUND": "NON_TROVATO",
