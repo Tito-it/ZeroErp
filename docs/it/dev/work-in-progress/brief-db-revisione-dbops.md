@@ -1,6 +1,6 @@
 # Brief DB — Revisione dello schema `dbops`: i difetti di codice e i metadati
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-07 (giro 5, blocco 5a applicato; BE10 e BE6 fatte)
+## ⏭️ Chi riparte — aggiornato al 2026-11-07 (giro 5 chiuso: blocco 5b applicato e committato)
 
 **Giro 1 chiuso e committato** (blocco 1d in `8c75d5682a`). **Decisioni di §4 prese** (Tid, 2026-11-05/06):
 tutte, Q1-Q15 (la Q7 non è mai esistita), con la Q14 punto per punto. **Ordine dei giri deciso** (2026-11-06):
@@ -21,11 +21,12 @@ committati insieme.
 la correzione dei 137 lavori senza azienda, §18.6), pgTAP verdi.
 Il team BE ha chiuso BE3 e BE6 fino al blocco 4b (§5, 2026-11-07, merge di `Tito-dev`); al team DB resta la
 segnalazione S-BE-1 (§5: la frase di due codici nomina le tabelle).
-**Riparte: Tid**, per il commit del giro BE e il via al blocco 5b (l'`ENABLE`). BE10 (a), (b), (c) e BE6 del giro 5 ✅
-(team BE, 2026-11-07, da committare, §5), con l'ownership della coda già per azienda (anticipo di BE9). Gli utenti
-tecnici di `draina_coda_lavori` li ha creati Tid (2026-11-07): ⚠️ manca quello di **EMITEST** (§5). Al team DB la
-richiesta S-BE-2 (§5).
-Le scelte di §18.4 restano da guardare (la 1 rivede metà della Q14 ③).
+**Giro 5 chiuso** (2026-11-07): blocco 5b applicato da Tid su dbdev e scratch, pgTAP verdi, committato (§18.9).
+`dbops.coda_lavori` è sotto RLS. BE10 (a), (b), (c) e BE6 del giro 5 ✅ e **mergiati** (team BE, PR #40, §5); gli utenti
+tecnici di `draina_coda_lavori` ci sono tutti, EMITEST compresa. Scelte 1 e 3 di §18.4 ok (Tid). S-BE-2 fatta, con la
+regola canale/`run_as` ristretta ai `CODA` di `DOMINIO` (§18.9).
+**Riparte: team BE** per il test di S-BE-2 e BE9 (§18.9.2 punto 4); **Tid** per il via al giro 6 (§8). Resta al team
+DB S-BE-1 (§5).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -70,8 +71,11 @@ Le scelte di §18.4 restano da guardare (la 1 rivede metà della Q14 ③).
 | 9-vicies-septies | ✅ Tid | Via al giro 5, coi numeri `20261107-51` … `-58` e `%TYPE`; decisioni del giro: drenatore per azienda, porta DEFINER, `draina_coda_lavori` di DOMINIO, un lavoro un'azienda (2026-11-07) | §18.1 | 9-vicies-semel-bis |
 | 9-vicies-octies | ✅ sessione DB | Giro 5, blocco 5a (Q14 ③, D9): scritto e provato sullo scratch, prima e dopo l'apply | §18 | 9-vicies-septies |
 | 9-vicies-nonies | ✅ Tid | Correzione dei dati su dbdev (§18.6 punto 1), apply del 5a su dbdev e scratch, pgTAP di §18.6 verdi (2026-11-07); commit del 5a dalla sessione DB | §18.6 | 9-vicies-octies |
-| 9-tricies | team BE ✅, **Tid** ⏭️ | BE10 ✅: (a) un lavoro per azienda dal cockpit, con ownership per azienda (anticipo di BE9), (b) drenatore per azienda, (c) chi accoda, «Esegui ora» SISTEMA; BE6 per i tre codici nuovi ✅ (2026-11-07, da committare). Utenti tecnici creati da Tid, manca EMITEST | §5 | 9-vicies-nonies |
-| 9-tricies-semel | sessione DB | Blocco 5b: l'`ENABLE` della RLS, il debito tolto, la decisione dell'indice della FK, la guida; dopo BE10 e gli utenti tecnici | §18.8 | 9-tricies |
+| 9-tricies | team BE ✅, **Tid** ⏭️ | BE10 ✅: (a) un lavoro per azienda dal cockpit, con ownership per azienda (anticipo di BE9), (b) drenatore per azienda, (c) chi accoda, «Esegui ora» SISTEMA; BE6 per i tre codici nuovi ✅ (2026-11-07, mergiati con la PR #40). Utenti tecnici creati da Tid, **manca EMITEST** | §5 | 9-vicies-nonies |
+| 9-tricies-semel | ✅ sessione DB | Blocco 5b: l'`ENABLE` della RLS, il debito tolto, la decisione dell'indice della FK, S-BE-2, la guida; scritto e provato sullo scratch (2026-11-07) | §18.9 | 9-tricies |
+| 9-tricies-bis | ✅ Tid | Apply del 5b (`20261107-57`, `-58`, `20261108-08`, quattro CSV) su dbdev e scratch; pgTAP di §18.9.2 verdi (2026-11-07); commit dalla sessione DB. Il giro 5 è chiuso | §18.9.2 | 9-tricies-semel |
+| 9-tricies-ter | **team BE** ⏭️ | Il test di S-BE-2 a SISTEMA (`test_avvio_manuale_catalogo`), BE9 (il filtro di perimetro si ritira, lo fa la RLS) | §18.9.2, §5 | 9-tricies-bis |
+| 9-tricies-quater | **Tid** ⏭️ | Il via al giro 6 | §8 | 9-tricies-bis |
 | 9-nonies | ✅ Tid | Q16: la via fusa resta, marcata come soppressa (b, 2026-11-07) | §4 | 9-septies |
 | 9-decies | ✅ sessione DB | Giro 2, blocco 2b (Q16): la via soppressa; lettori censiti, scritto e provato sullo scratch | §14.7 | 9-nonies |
 | 10 | sessione DB | Giri 5-14 nell'ordine di §8, uno alla volta, ognuno col suo via e il suo apply | §8 | 9-vicies-septies |
@@ -79,15 +83,14 @@ Le scelte di §18.4 restano da guardare (la 1 rivede metà della Q14 ③).
 | 11-bis | sessione DB | S-BE-1: la frase di `E_ATTIVO_PADRE_NON_ATTIVO` ed `E_PADRE_INESISTENTE` nomina `schema.tabella` all'operatore. ✅ Modello deciso da Tid (2026-11-07): frase senza tabelle, il padre come bersaglio `config.tipi_entita` nel `DATATYPE`; da dove il trigger sa il tipo resta al DB. Blocco a parte, dopo il 5b | §5 | — |
 | 12 | sessione DB | Pagine `manual/` e guide riallineate a ogni difetto chiuso, insieme al COMMENT; brief in `work-done/` | §1, §8 | 10 |
 
-**Decisioni aperte di Tid:** le scelte del blocco 5a (§18.4), applicate: la 1 (`vw_coda_lavori_da_guardare` letta
-col perimetro di chi guarda) rivede metà della Q14 ③; la 3 (il guard di scrittura non montato) lascia un debito da
-decidere entro il giro 9. Se una non va, la si corregge con un changeSet nuovo.
+**Decisioni aperte di Tid:** la decisione dell'indice della FK della coda (false, §18.9) è da guardare; il debito
+della scelta 3 di §18.4 (il presidio non riconosce la policy come difesa di scrittura) si decide al giro 9.
 **Da committare:** niente di questo cantiere.
 **Da verificare:** se lo scratch è stato ricostruito con `ci-local.sh --fresh` dopo il `20261103-29` (§13).
 ⚠️ **Numerazione:** questo cantiere ha preso `20261107-01` … `-27`; il prossimo numero libero del giorno è il
 `-28`; il giro 4 ha preso `-28` … `-30`, `-33`, `-34`, il blocco 4b `-31`, `-32`, `-35` … `-40`; il prossimo libero è il
-`-41`. Il giro 5 ha preso `-51` … `-56` e tiene `-57`, `-58` per il blocco 5b (`-41` … `-50` e `-59` … `-69` sono
-dell'altro cantiere). Gli id dei messaggi presi qui: 1442-1450, 1453-1454 e 1455-1457 (1451 e 1452 li ha presi l'altro
+`-41`. Il giro 5 ha preso `-51` … `-58` (il 5b `-57`, `-58`) e `20261108-08` (dato da Tid; `-41` … `-50` e `-59` … `-69`
+sono dell'altro cantiere). Gli id dei messaggi presi qui: 1442-1450, 1453-1454 e 1455-1457 (1451 e 1452 li ha presi l'altro
 cantiere, giro T.4); il prossimo libero è 1458. L'altro cantiere aperto
 (`brief-db-sorgente-documento-e-riga`) numera oggi nel blocco `20261106-74` … `-87`.
 
@@ -643,7 +646,8 @@ all'envelope.
   EMITEST non si drena, e il command lo scrive a ogni corsa: va creato prima del 5b
   (`script.fn_crea_utente_tecnico('draina_coda_lavori', 'EMITEST')`).
 
-**⏭️ Richiesta al team DB (S-BE-2, 2026-11-07): il tipo `ESEGUI_PROCESSO` dice ancora OPERATORE.** In
+**✅ Richiesta al team DB (S-BE-2, 2026-11-07): il tipo `ESEGUI_PROCESSO` dice ancora OPERATORE.** Fatta nel blocco 5b
+(§18.9), con la regola canale/`run_as` ristretta ai `CODA` di `DOMINIO` (decisione di Tid); all'apply si avvisa il BE. In
 `80_data/sql/dbops/coda_lavori_tipi.csv` la riga ha `run_as_default = OPERATORE` e la descrizione «con l'identità di chi
 preme (run_as OPERATORE)». Il backend passa `SISTEMA` esplicito, quindi non è un blocco; ma il default è il
 suggerimento che chiunque altro accodi leggerebbe, e la pagina `manual/coda_lavori_tipi` lo ripete. Si chiede di
@@ -2122,7 +2126,98 @@ committato dalla sessione DB, solo i file di questo cantiere. Restano BE10 e gli
   della FK nuova in `fk_index_policy` (checklist di `linee-guida-sql` §10.9); `test-rls-coda-lavori-perimetro-v1`
   senza l'`ENABLE` locale (test della postura armata); la guida con la visibilità per azienda. ⚠️ Con la RLS accesa
   cambiano i SQLSTATE di due test di `test-coda-lavori` (55 e 57: la `WITH CHECK` parla prima del CHECK); si
-  rivedono nel 5b.
+  rivedono nel 5b. ⚠️ Provato nel 5b: sono 54, 55 e 56 (§18.9).
 * Il bersaglio della coda resta debito dichiarato finché non si decide §18.4 punto 3 (giro 9).
 * Le note di `brief-be-fe-gestione-code-lavori-stampa` («RLS su `dbops.coda_lavori` = ondata futura») restano: è un
   brief chiuso, e questo giro è l'ondata.
+
+### 18.9 Blocco 5b — la RLS accesa, scritto il 2026-11-07
+
+**Via di Tid (2026-11-07)**, con S-BE-2 dentro e il terzo numero `20261108-08` (dato da Tid). Prima del via:
+EMITEST servita (Tid, 2026-11-07; dbdev: `vw_emittenti_non_serviti` vuota per `draina_coda_lavori`), le scelte di
+§18.4 guardate: **1 ok, 3 ok** (il debito di scrittura resta dichiarato fino al giro 9).
+
+| changeSet / file | Oggetto | Che cosa |
+| --- | --- | --- |
+| `20_code/dbops/20261107-57` | `dbops.coda_lavori` | `ENABLE ROW LEVEL SECURITY`, senza `FORCE`. preCondition: la policy c'è ed è `FOR ALL`, la porta è DEFINER, nessuna postura sbagliata (tabella dell'app, `BYPASSRLS` all'app, `FORCE`: 0). Corregge il COMMENT di `coda_lavori_tipi.run_as_default` («worker BYPASSRLS», falso) |
+| `80_data/changelog/20261107-58` + `fk_index_policy_coda_lavori_emittente.csv` | `dbops.fk_index_policy` | `fk_coda_lavori_emittente_fiscale` a **false**, dichiarata (§10.9): nessuna query dell'applicazione entra dall'azienda, la policy la passa a una funzione; come `config.email_log` |
+| `80_data/changelog/20261108-08` + `rls_perimetro_debito.csv` | `dbops.rls_perimetro_debito` | la riga 92 (`POLICY_INERTE`) esce dal CSV e, con una `DELETE` per id e coordinate, da dove c'è |
+| `80_data/sql/dbops/coda_lavori_tipi.csv` | `ESEGUI_PROCESSO` | **S-BE-2**: `run_as_default` SISTEMA, descrizione con la ragione (chi preme è l'attore, `richiesto_da`) |
+| `80_data/sql/dbops/processi.csv` | `avvio_manuale` | la descrizione diceva «CODA perché l'identità è la sua»: il lavoro è SISTEMA, chi preme è l'attore |
+
+pgTAP cambiati:
+
+* `rls/test-rls-coda-lavori-perimetro-v1` (14 → 15): l'`ENABLE` locale esce, resta il `FORCE` (il runner è il
+  proprietario, che senza non subisce la policy); il nuovo 15 pretende la RLS accesa dal changeSet.
+* `dbops/test-coda-lavori` (57): con la RLS cambiano **54, 55 e 56**, non 55 e 57 come diceva §18.8 (provato, sotto).
+  54 e 56 girano con la veste del drenatore (un lavoro SISTEMA lo vede e lo scrive solo lui o il super admin), 55 è una
+  riga OPERATORE della propria azienda: tutte e tre passano la policy e cadono sul CHECK, prima e dopo l'`ENABLE`.
+  ⚠️ L'ordine della fixture è voluto: prima l'operatore, poi il drenatore senza contesto, poi l'operatore per id (in CI,
+  senza operatori, il contesto senza argomento potrebbe scegliere l'utente tecnico appena nato).
+* `dbops/test-coda-archiviazione` (18): la fixture e i test 15-16 scrivevano un lavoro SISTEMA da operatore, che la
+  policy respinge (42501 al posto del CHECK): ora un lavoro OPERATORE della propria azienda. L'archiviazione non
+  dipende dal `run_as`.
+* `dbops/test-coda-tipi-canale-e-run-as` (6): vedi sotto, la regola 2 si restringe; il 5 pretende SISTEMA.
+
+**Decisione di Tid nel blocco (2026-11-07): la regola fra canale e `run_as` vale per i `CODA` di `DOMINIO`.** S-BE-2
+rompeva l'invariante «sotto un `CODA` il tipo è OPERATORE, è la definizione del canale» (decisa il 2026-09-14 in
+`work-done/brief-db-avvio-manuale-di-un-processo` §8.3), perché `avvio_manuale` è `CODA` + `MANUTENZIONE`. La regola
+**si restringe** e la decisione del 09-14 è **revocata in parte**: un `CODA` di `DOMINIO` tocca i dati di un'azienda e
+vuole l'identità di chi accoda; un `CODA` di `MANUTENZIONE` può essere SISTEMA, con chi preme come attore nel payload. Il
+rischio che il 09-14 nominava («l'audit perde chi ha premuto») resta coperto da `richiesto_da`. Riscritti test 2 e 5, il
+COMMENT di `run_as_default`, le pagine `processi` e `coda_lavori_tipi`, la descrizione di `avvio_manuale`.
+
+**Il debito della scelta 3 (§18.4), com'è dopo il 5b.** Con la RLS accesa la scrittura della coda è difesa due volte: la
+`WITH CHECK` della policy per ogni scrittura dell'applicazione (UPDATE del drenatore e dell'interfaccia, un INSERT
+diretto), e la porta DEFINER per gli accodamenti. Il proprietario non subisce né l'una né il guard, per scelta. Il
+presidio `vw_processi_dominio_senza_difesa` però riconosce la difesa di scrittura **solo dal nome** del guard
+`trgfn_guard_emittente_scope`: la coda resta lì come «write-guard mancante», `DEBITO_DICHIARATO`. Il debito è quindi del
+**presidio**, non un buco: al giro 9 si sceglie se il presidio impari a riconoscere una policy `FOR ALL` con `WITH CHECK`
+(più una porta DEFINER) come difesa, o se il guard impari a lasciar passare il proprietario e allora si monta.
+
+#### 18.9.1 Le prove (scratch `zeroerp_ruoli`, prima dell'apply)
+
+Da owner, l'SQL estratto dagli YAML nell'ordine del migrate (`-57`, `-58`, `20261108-08`), i CSV simulati,
+`BEGIN … ROLLBACK`, scratch verificato pulito dopo (`relrowsecurity = false`). Le preCondition del `-57` come `SELECT`:
+1, 1, 0.
+
+* **Come subisce la RLS l'applicazione, prima dell'apply.** Da owner non si passa all'app nella stessa transazione: si
+  arma `ENABLE` + `FORCE`. ⚠️ Il `FORCE` fa subire la policy anche alla porta DEFINER, che nella realtà non la subisce:
+  i rossi dentro `fn_accoda_lavoro` (fixture di `test-coda-lavori`, test 6 di `test-coda-accoda-classe`) sono di questa
+  simulazione. Per `test-coda-lavori` la RLS si è armata **dopo** la fixture: prima delle correzioni rossi 54, 55, 56;
+  dopo, 57/57. `test-coda-archiviazione` rosso dalla fixture prima, 18/18 dopo (lì l'INSERT era diretto, non della
+  porta: rosso vero).
+* **Come app vera** (RLS spenta, la postura di oggi): `test-coda-lavori` 57/57, `test-coda-archiviazione` 18/18.
+* Con l'SQL del blocco in testa, «senza → con»: `test-rls-coda-lavori-perimetro-v1` 7/15 → **15/15** (prima
+  dell'apply è rosso per costruzione: `FORCE` senza `ENABLE` non arma niente); `test-coda-tipi-canale-e-run-as` 5/6 →
+  **6/6**; identici e verdi: `test-rls-perimetro-scoperto`, `test-rls-viste-security-invoker`,
+  `test-rls-policies-structure`, `test-rls-write-policies-structure`, `test-postura-proprietario-rls-v1`,
+  `test-presidi-debito-dichiarato`, `test-processi-registro`, `test-catalogo-presidi-v1`, `test-coda-accoda-classe`,
+  `test-indici-letture-trasversali-v1`, `test-policy-funzioni-cost-v1`,
+  `test-scope-ef-perimetro-una-volta-per-istruzione-v1`, `maintenance/test-vw-job-run-da-guardare`,
+  `test-fn-guardiano-digest`, `test-fn-accoda-chiusura-scadenze`, `test-chiusura-scadenze-una-volta-al-giorno-v1`,
+  `test-coda-lavori`, `test-coda-archiviazione`. Con `ENABLE` + `FORCE`, da owner, verdi anche
+  `test-fn-accoda-lavoro-porta-v1`, `test-processi-accensione-v1`, `test-vw-coda-lavori-da-guardare`, `test-tx-id-coerenza-non-registrato`.
+* `test-guard-attivo-occhi-del-proprietario-v1` è rosso da owner (2, 6, 7, 8) con e senza il blocco: è del runner (il
+  file non ha marcatore, gira come app: 9/9).
+* Guardrail `run_on_change`, `precondition_seed`, `ddl_su_trigger_automazione`, `grant_ruolo_batch` verdi; pre-commit
+  sui file del blocco verde.
+
+#### 18.9.2 Per Tid
+
+1. Apply su dbdev e scratch: `20261107-57`, `-58` e `20261108-08`, con i CSV `fk_index_policy_coda_lavori_emittente.csv`
+   (nuovo), `rls_perimetro_debito.csv`, `coda_lavori_tipi.csv`, `processi.csv`.
+2. pgTAP **come app**: `dbops/test-coda-lavori`, `dbops/test-coda-archiviazione`, `dbops/test-coda-tipi-canale-e-run-as`,
+   `dbops/test-fn-accoda-lavoro-porta-v1`, `dbops/test-vw-coda-lavori-da-guardare`, `dbops/test-processi-accensione-v1`,
+   `dbops/test-tx-id-coerenza-non-registrato`; da owner per marcatore: `rls/test-rls-coda-lavori-perimetro-v1`,
+   `rls/test-rls-perimetro-scoperto`, `dbops/test-postura-proprietario-rls-v1`, `dbops/test-coda-accoda-classe`,
+   `dbops/test-presidi-debito-dichiarato`.
+3. ⚠️ Dall'apply: un'azienda senza l'utente tecnico del drenatore non viene drenata (`vw_emittenti_non_serviti`), e
+   un lavoro SISTEMA lo vedono solo super admin e drenatore.
+4. **Al team BE, all'apply:** S-BE-2 è fatta → `core/tests/db/test_avvio_manuale_catalogo.py`
+   (`test_tipo_esegui_processo`) va girato a SISTEMA; e **BE9**: il filtro di perimetro scritto a mano si può ritirare,
+   lo fa la RLS.
+
+**Esito (Tid, 2026-11-07):** apply su dbdev e scratch (`databasechangelog`: i tre changeSet `EXECUTED`; la coda ha
+`relrowsecurity = true`, `relforcerowsecurity = false`; la riga 92 del debito non c'è più; `ESEGUI_PROCESSO` è SISTEMA),
+pgTAP verdi. Blocco 5b committato dalla sessione DB. **Il giro 5 è chiuso.**

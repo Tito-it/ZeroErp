@@ -76,8 +76,14 @@ INSERT INTO dbops.coda_lavori_tipi
 VALUES ('PGTAP_ARCHIVIAZIONE', 'pgtap.archiviazione', 'SISTEMA', true,
         'PGTAP_PROC_ARCHIVIAZIONE');
 
-INSERT INTO dbops.coda_lavori (job_type, run_as, origine)
-VALUES ('PGTAP_ARCHIVIAZIONE', 'SISTEMA', 'API');
+-- ⭐ Rev 2026-11-07 (blocco 5b di brief-db-revisione-dbops): la coda lavori e'
+--   sotto RLS, e un lavoro SISTEMA lo scrivono solo super admin e drenatore.
+--   L'operatore di questo file scrive un lavoro OPERATORE della sua azienda
+--   (dbops.fn_pgtap_scope_operatore): l'archiviazione non dipende dal run_as.
+INSERT INTO dbops.coda_lavori (job_type, run_as, scope, emittente_fiscale_id, origine)
+SELECT 'PGTAP_ARCHIVIAZIONE', 'OPERATORE', s.scope,
+       (s.scope ->> 'emittente_attivo_id')::bigint, 'API'
+  FROM (SELECT dbops.fn_pgtap_scope_operatore() AS scope) s;
 
 CREATE TEMP TABLE _job AS
 SELECT id FROM dbops.coda_lavori WHERE job_type = 'PGTAP_ARCHIVIAZIONE';
@@ -245,17 +251,25 @@ SELECT ok(
 -- ============================================================
 -- ⚠️ Il trigger e' un BEFORE UPDATE: su queste due righe non viene nemmeno
 --   chiamato. E' esattamente il motivo per cui l'invariante ha anche un CHECK.
+-- ⚠️ Righe che la policy ammette (OPERATORE, nell'azienda di chi scrive): con
+--   la RLS accesa la WITH CHECK parla prima del CHECK, e una riga respinta da
+--   lei darebbe 42501 senza mostrare il vincolo.
 SELECT throws_ok(
-    $$ INSERT INTO dbops.coda_lavori
-           (job_type, run_as, origine, archiviato, archiviato_il, archiviato_da)
-       VALUES ('PGTAP_ARCHIVIAZIONE', 'SISTEMA', 'API', true, now(), 'pgtap') $$,
+    format($$ INSERT INTO dbops.coda_lavori
+           (job_type, run_as, scope, emittente_fiscale_id, origine,
+            archiviato, archiviato_il, archiviato_da)
+       VALUES ('PGTAP_ARCHIVIAZIONE', 'OPERATORE', %L::jsonb, %s, 'API', true, now(), 'pgtap') $$,
+       dbops.fn_pgtap_scope_operatore()::text,
+       dbops.fn_pgtap_scope_operatore() ->> 'emittente_attivo_id'),
     '23514', NULL,
     '15) una riga non puo'' NASCERE archiviata-e-viva: lo ferma il CHECK');
 
 SELECT throws_ok(
-    $$ INSERT INTO dbops.coda_lavori
-           (job_type, run_as, origine, stato, archiviato)
-       VALUES ('PGTAP_ARCHIVIAZIONE', 'SISTEMA', 'API', 'FATTO', true) $$,
+    format($$ INSERT INTO dbops.coda_lavori
+           (job_type, run_as, scope, emittente_fiscale_id, origine, stato, archiviato)
+       VALUES ('PGTAP_ARCHIVIAZIONE', 'OPERATORE', %L::jsonb, %s, 'API', 'FATTO', true) $$,
+       dbops.fn_pgtap_scope_operatore()::text,
+       dbops.fn_pgtap_scope_operatore() ->> 'emittente_attivo_id'),
     '23514', NULL,
     '16) una riga archiviata SENZA timbri non esiste: lo ferma il CHECK di coerenza');
 

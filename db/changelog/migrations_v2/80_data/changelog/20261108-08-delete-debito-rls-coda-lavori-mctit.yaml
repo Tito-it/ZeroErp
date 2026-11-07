@@ -1,0 +1,64 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL DEBITO PAGATO ESCE DAL REGISTRO — dbops.coda_lavori (id 92, POLICY_INERTE)
+#   Brief: brief-db-revisione-dbops, giro 5, blocco 5b (§18.8).
+#
+# La riga diceva «la policy c'e' ma e' inerte, si arma col drenatore per
+# azienda». Il 20261107-57 la arma: la riga e' estinta.
+#
+# ── ⛔ PERCHE' UNA `DELETE` E NON SOLO LA RIGA TOLTA DAL CSV ─────────
+#   `loadUpdateData` aggiorna e inserisce, non cancella (come il 20260910-30).
+#   Le due cose vanno insieme: il CSV `80_data/sql/dbops/rls_perimetro_debito.csv`
+#   senza la riga, perche' un database ricostruito da zero non la crei; questa
+#   `DELETE`, perche' dove c'e' gia' se ne vada. Senza, esce come
+#   `DEBITO_ESTINTO` e `db/pgtap/rls/test-rls-perimetro-scoperto.sql` diventa
+#   rosso.
+#
+# ⚠️ Gira DOPO il 20261107-57 (l'ordine e' per numero su tutti i livelli): fra
+#   l'ENABLE e questa DELETE la riga e' per un istante un debito estinto, dentro
+#   lo stesso migrate.
+# ⚠️ Si cancella per id E per coordinate: sul solo id si scommetterebbe che
+#   nessuno abbia riusato quel numero.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261108-08-delete-debito-rls-coda-lavori-mctit.yaml
+
+  - changeSet:
+      id: 20261108-08-delete-debito-rls-coda-lavori
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Toglie dal registro del debito RLS la riga di dbops.coda_lavori (id 92,
+        POLICY_INERTE): il 20261107-57 arma la policy. loadUpdateData non
+        cancella, quindi togliere la riga dal CSV non basta. Blocco 5b di
+        brief-db-revisione-dbops.
+      preConditions:
+        - onFail: MARK_RAN
+        - tableExists:
+            schemaName: dbops
+            tableName: rls_perimetro_debito
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DELETE FROM dbops.rls_perimetro_debito d
+               WHERE d.criterio = 'POLICY_INERTE'
+                 AND (d.id, d.schema_tabella, d.nome_tabella) = (92, 'dbops', 'coda_lavori');
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- La riga torna dal CSV solo se la si rimette li': il rollback di
+              -- questo changeSet va insieme a quello del 20261107-57.
+              SELECT 1;

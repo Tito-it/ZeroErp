@@ -82,10 +82,16 @@ operatore della sua azienda e i lavori di sistema. Non ha un ramo che gli mostri
 L'accodamento passa dalla porta `fn_accoda_lavoro`, `SECURITY DEFINER`, che fa da sé lo stesso
 controllo.
 
-⚠️ La policy c'è, la row level security non è ancora accesa: si arma quando il drenatore lavora per
-azienda e gli utenti tecnici di `draina_coda_lavori` esistono. Fino ad allora la tabella è nel
-registro del debito ([dbops.rls_perimetro_debito](/dbzero/dbops/tabelle/rls_perimetro_debito),
-`POLICY_INERTE`).
+La row level security è accesa, senza `FORCE`: il proprietario non la subisce, e così la porta, le
+sveglie di pgAgent e le migrazioni continuano a vedere tutte le righe. L'applicazione la subisce
+sempre.
+
+⚠️ Un'azienda senza l'utente tecnico del drenatore non viene drenata: i suoi lavori restano in
+attesa. Lo dice [dbops.vw_emittenti_non_serviti](/dbzero/dbops/views/vw_emittenti_non_serviti).
+
+L'indice sulla chiave esterna dell'azienda è dichiarato **assente** nel registro degli indici: le
+letture entrano per stato, id o uid, e la policy passa l'azienda a una funzione, che nessun piano usa
+come ingresso. È la stessa scelta della coda delle email.
 
 Un lavoro `OPERATORE` che parte completa con lo scope con cui è nato: una revoca dei permessi vale
 per i lavori futuri, non interrompe quello in corso.
@@ -199,9 +205,10 @@ dalle automazioni.
 * `db/pgtap/dbops/test-coda-archiviazione.sql` — l'archiviazione: le due code simmetriche, una
   riga viva rifiutata, i timbri derivati e immutabili, il reset al requeue, i vincoli all'inserimento.
 * `db/pgtap/dbops/test-vw-coda-lavori-da-guardare.sql` — il presidio sulla coda.
-* `db/pgtap/rls/test-rls-coda-lavori-perimetro-v1.sql` — la policy, armata dentro la transazione:
-  l'operatore e la sua azienda, l'altra azienda, il lavoro di sistema, il drenatore per azienda, il
-  fail-closed senza veste, la vista di presidio letta da una persona, `WITH CHECK`.
+* `db/pgtap/rls/test-rls-coda-lavori-perimetro-v1.sql` — la policy, fatta subire al proprietario
+  dentro la transazione: l'operatore e la sua azienda, l'altra azienda, il lavoro di sistema, il
+  drenatore per azienda, il fail-closed senza veste, la vista di presidio letta da una persona,
+  `WITH CHECK`; e la row level security accesa dal changeSet, non dal test.
 * `db/pgtap/dbops/test-fn-accoda-lavoro-porta-v1.sql` — i due vincoli dell'azienda e la porta.
 * `db/pgtap/dbops/test-stati-check-scrittori-v1.sql` — ogni stato del vincolo ha uno scrittore
   dichiarato.
@@ -213,8 +220,9 @@ dalle automazioni.
 * 2026-07-20 — nasce, con il registro dei tipi e la porta d'ingresso
   (`brief-db-coda-lavori-generica`).
 * 2026-09-04 — nasce l'archiviazione, insieme sulle due code (`brief-db-archiviazione-righe-code`).
-* 2026-11-07 — nasce `emittente_fiscale_id` con i suoi due vincoli, e la policy, ancora inerte
-  (`brief-db-revisione-dbops`, giro 5, `20261107-51`, `-54`).
+* 2026-11-07 — nasce `emittente_fiscale_id` con i suoi due vincoli, e la policy, prima inerte
+  (`brief-db-revisione-dbops`, giro 5, `20261107-51`, `-54`); poi la row level security si accende,
+  con l'indice dell'azienda dichiarato assente (`20261107-57`, `-58`).
 
 ---
 
