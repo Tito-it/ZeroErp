@@ -74,7 +74,7 @@ DB S-BE-1 (§5).
 | 9-tricies | team BE ✅, **Tid** ⏭️ | BE10 ✅: (a) un lavoro per azienda dal cockpit, con ownership per azienda (anticipo di BE9), (b) drenatore per azienda, (c) chi accoda, «Esegui ora» SISTEMA; BE6 per i tre codici nuovi ✅ (2026-11-07, mergiati con la PR #40). Utenti tecnici creati da Tid, **manca EMITEST** | §5 | 9-vicies-nonies |
 | 9-tricies-semel | ✅ sessione DB | Blocco 5b: l'`ENABLE` della RLS, il debito tolto, la decisione dell'indice della FK, S-BE-2, la guida; scritto e provato sullo scratch (2026-11-07) | §18.9 | 9-tricies |
 | 9-tricies-bis | ✅ Tid | Apply del 5b (`20261107-57`, `-58`, `20261108-08`, quattro CSV) su dbdev e scratch; pgTAP di §18.9.2 verdi (2026-11-07); commit dalla sessione DB. Il giro 5 è chiuso | §18.9.2 | 9-tricies-semel |
-| 9-tricies-ter | **team BE** ⏭️ | Il test di S-BE-2 a SISTEMA (`test_avvio_manuale_catalogo`), BE9 (il filtro di perimetro si ritira, lo fa la RLS) | §18.9.2, §5 | 9-tricies-bis |
+| 9-tricies-ter | **team BE** ✅ (2026-11-07, committato su `dev/backend-tid`) | Il test di S-BE-2 a SISTEMA (`test_avvio_manuale_catalogo`), BE9 (il filtro di perimetro si ritira, lo fa la RLS): fatti, con «mio» per persona (decisione di Tid) — §5, «Stato BE9» | §18.9.2, §5 | 9-tricies-bis |
 | 9-tricies-quater | **Tid** ⏭️ | Il via al giro 6 | §8 | 9-tricies-bis |
 | 9-nonies | ✅ Tid | Q16: la via fusa resta, marcata come soppressa (b, 2026-11-07) | §4 | 9-septies |
 | 9-decies | ✅ sessione DB | Giro 2, blocco 2b (Q16): la via soppressa; lettori censiti, scritto e provato sullo scratch | §14.7 | 9-nonies |
@@ -645,6 +645,42 @@ all'envelope.
   PGTAPEF202; ⚠️ **EMITEST non è servita** (gli altri tre processi del roster sì). Finché manca, la coda lavori di
   EMITEST non si drena, e il command lo scrive a ogni corsa: va creato prima del 5b
   (`script.fn_crea_utente_tecnico('draina_coda_lavori', 'EMITEST')`).
+
+**Stato al 2026-11-07, BE9 e il test di S-BE-2 (team BE, committato su `dev/backend-tid`): fatti.**
+
+* **S-BE-2**: `test_avvio_manuale_catalogo` vuole SISTEMA; il suo accodamento reale gira come **super admin**
+  (`apri_contesto_operatore(cur, super_admin=True)`, nuovo parametro del BB), perché sotto la RLS una riga SISTEMA la
+  vedono solo il super admin e il drenatore — senza, la rilettura tornava `{}`.
+* **BE9, il filtro si ritira.** `_filtro_perimetro` e i parametri `owner_emittenti`/`caller_emittenti` del
+  repository non ci sono più: elenco, conteggi del badge, dettaglio, stato e polling leggono ciò che la RLS mostra.
+* ⭐ **Decisione di Tid nel giro: «mio» è per PERSONA.** Con la RLS accesa «mio = della mia azienda» (BE10 a) sarebbe
+  stato vero per ogni lavoro visibile. Ora `ambito=miei` = i lavori **accodati da me**, `tutti` = tutti quelli **delle
+  mie aziende**: la semantica della coda stampa (una per le due code, decisione del 2026-07-23). Una regola sola in SQL,
+  `_espr_accodato_da` — `scope.auth_user_id` per un OPERATORE, `payload.richiesto_da` per il SISTEMA di «Esegui ora» —
+  usata dal filtro «miei», da `is_mio` e dallo split miei/altri del cockpit (`operatore_coda`). Dettaglio e azioni sui
+  lavori dei colleghi restano dietro `code_manage`; il polling dei giri non restringe ai miei (dedup condivisa).
+* **Lo stato vero** dopo l'accodamento anche per «Esegui ora» (`stati_dopo_accodamento`, regola del 2 con la
+  fatturazione): il super admin vede il SISTEMA che ha accodato.
+* **Fixture dei test sul DB vero** rotte dal 5b o dal giro C.3 (di `brief-db-sorgente-documento-e-riga`):
+  `test_coda_lavori_summary_corse` e `test_coda_lavori_vivi_per_chiave` scrivono come super admin;
+  `test_ricerca_liste_db` compone la chiave del push con `script.fn_segment_key`; `test_prezzo_riga_commessa_db`
+  rilegge la chiave del documento dalla colonna del suo tipo. `test_coda_perimetro_db` era il presidio del filtro
+  ritirato: ora prova `_espr_accodato_da` su righe **costruite** e l'SQL di ogni lettura, non la popolazione.
+* **Analisi critica del giro** (2026-11-07): nessun bug di logica; corretto ciò che attorno al diff raccontava
+  ancora la semantica vecchia. Il parametro OpenAPI `ambito` (condiviso dalle due code) diceva «`tutti` richiede
+  `code_manage`», falso già dal 2026-07-23: ora `miei` = accodate/innescate da me, `tutti` = il perimetro d'azienda
+  della RLS, `code_manage` solo per dettaglio e azioni altrui. Riallineate le docstring di lista, dettaglio e annullo
+  in `views_tracciamento.py` (erano sulla `scope_key`) e due righe del catalogo BB (`owner_emittenti` in `requeue` e
+  `count_per_stato`, `scope_key_da_emittenti`). In `test_prezzo_riga_commessa_db` la variabile locale è
+  `sorgente_chiave`: porta la chiave del documento (id o uid), non un uid.
+* ⚠️ **Residuo, fuori da questo cantiere**: il nome `sorgente_uid` per «la chiave del documento, id o uid» vive nel
+  contratto DB (`p_sorgente_uid` della madre `fn_upsert_commessa_attivita` e della porta del link, la chiave JSON
+  del batch) e in molti service BE che vi passano un id (`ordini_service`, `ddt_service`, `commesse_service`, push
+  orchestrator, source handlers). Il rinomina lo sta facendo il team DB (Tid, 2026-11-07), nel tema di
+  `brief-db-sorgente-documento-e-riga`; il BE si allinea all'apply, con una prova a chiamata reale (binding per
+  nome). Restano `sorgente_uid` i lister `fn_list_*_da_pushare` e `PushableRow`: lì è davvero l'uid.
+* Aperto, da decidere: `conteggi_code(user, *, auth_user_id)` non usa più `user` dopo BE9. Resta per la firma dei
+  contatori dashboard-home; se non serve, si toglie con la view e due test.
 
 **✅ Richiesta al team DB (S-BE-2, 2026-11-07): il tipo `ESEGUI_PROCESSO` dice ancora OPERATORE.** Fatta nel blocco 5b
 (§18.9), con la regola canale/`run_as` ristretta ai `CODA` di `DOMINIO` (decisione di Tid); all'apply si avvisa il BE. In

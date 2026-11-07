@@ -318,7 +318,13 @@ class ProcessiService:
             idempotency_key=chiave,
             origine=ORIGINE_API,
         )
-        return {"job_id": job_id, "stato": "PENDING", "unit": unit}
+        # ⭐ Lo stato VERO (`stati_dopo_accodamento`): la corsa fra due click
+        #    finisce sulla dedup della porta, che restituisce il lavoro già
+        #    vivo — può essere IN_CORSO. Chi preme è super admin
+        #    (`AdminAPIView`), e un lavoro SISTEMA sotto la RLS della coda lo
+        #    vede.
+        stato = self._coda.stati_dopo_accodamento([job_id])[job_id]
+        return {"job_id": job_id, "stato": stato, "unit": unit}
 
     # Scopo: La SCELTA A MANO sull'accensione di un processo, su questa
     #        installazione (brief-db-processi-accensione-per-ambiente §6.0

@@ -109,6 +109,7 @@ def _service(*, get_processo=None, vivi=None, acceso=True):
     coda = MagicMock()
     coda.lavori_vivi_per_chiave.return_value = vivi or {}
     coda.accoda.return_value = 4321
+    coda.stati_dopo_accodamento.return_value = {4321: "PENDING"}
     return ProcessiService(repo=repo, presidi=MagicMock(), coda=coda), coda
 
 

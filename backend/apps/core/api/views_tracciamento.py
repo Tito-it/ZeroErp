@@ -417,8 +417,10 @@ _AMBITO_PARAM = OpenApiParameter(
     name="ambito", type=str, location=OpenApiParameter.QUERY,
     required=False, enum=["miei", "tutti"],
     description=(
-        "'tutti' mostra i job di ogni scope (richiede permesso code_manage "
-        "o SUPER_ADMIN); default: solo i propri."
+        "'miei' (default): le righe accodate/innescate dal chiamante; "
+        "'tutti': tutte quelle del suo perimetro d'azienda (lo fa la RLS). "
+        "Visibilita' aperta a ogni operatore: code_manage serve solo per "
+        "dettaglio e azioni sulle righe altrui."
     ),
 )
 _SOLO_VIVI_PARAM = OpenApiParameter(
@@ -542,8 +544,9 @@ class ApiCodeConteggi(DomainAPIView):
 
 class ApiCodaLavoriList(DomainAPIView):
     """BE-5: lista paginata della coda lavori generica (dbops.coda_lavori).
-    Scope operatore (scope_key) di default; `?ambito=tutti` solo con
-    code_manage/SUPER_ADMIN (colonna proprietario + is_mio dal BE, P-5)."""
+    «Miei» (accodati dal chiamante) di default; `?ambito=tutti` = tutti quelli
+    che la RLS mostra (le sue aziende), aperto a ogni operatore (colonna
+    proprietario + is_mio dal BE, P-5)."""
 
     area_funzionale = "strumenti"
     is_search_endpoint = True
@@ -611,8 +614,9 @@ class ApiCodaStampaList(DomainAPIView):
 
 class ApiCodaLavoriDetail(DomainAPIView):
     """BE-8: dettaglio completo di un job per il drawer (payload, timeline,
-    tentativi/errore, esito, proprietario, is_mio). Ownership scope-based:
-    fuori scope/inesistente → 404 unificato (no leak)."""
+    tentativi/errore, esito, proprietario, is_mio). Ownership per persona
+    (lavori accodati dal chiamante; ogni lavoro visibile con code_manage),
+    perimetro d'azienda dalla RLS: altrui/inesistente → 404 unificato (no leak)."""
 
     area_funzionale = "strumenti"
 
@@ -656,9 +660,9 @@ _IDEMPOTENCY_HEADER_PARAM = OpenApiParameter(
 
 class ApiCodaLavoriAnnulla(DomainAPIView):
     """BE-7: annulla un job PENDING della coda lavori (→ ANNULLATO). Ownership
-    BE: un operatore annulla solo i job del proprio scope (fuori scope → 404);
+    BE: un operatore annulla solo i job che ha accodato lui (altrui → 404);
     job altrui solo con code_manage/SUPER_ADMIN. Non piu' PENDING → 409
-    (nessuna race col worker: l'UPDATE ri-verifica stato e scope)."""
+    (nessuna race col worker: l'UPDATE ri-verifica stato e proprietario)."""
 
     area_funzionale = "strumenti"
 

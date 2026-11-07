@@ -18,9 +18,6 @@ from apps.core.api.endpoint_helpers import (
 from apps.core.services.coda_lavori.repository import (
     CodaLavoriRepository,
 )
-from apps.core.services.coda_lavori.gestione_service import (
-    perimetro_coda_operatore,
-)
 from apps.core.services.coda_lavori.scope import (
     scope_operatore_da_request,
 )
@@ -2928,23 +2925,17 @@ class ApiFatturazioneRunStato(DomainAPIView):
             )
         },
     )
-    # Scopo: Restituisce lo stato del job, con ownership per AZIENDA: il
-    #        lavoro è di chi ha la sua azienda nel perimetro, la regola della
-    #        policy della coda (`_filtro_perimetro` del repository). Così chi
-    #        accoda dalla modalità globale segue i lavori di ciascuna azienda,
-    #        e due operatori della stessa azienda che condividono un giro via
-    #        dedup ne seguono entrambi l'avanzamento.
-    #        Admin globale (whitelist None) → nessun filtro (vede ogni job).
-    # ⭐ Fino al 2026-11-07 era la `scope_key` esatta: col lavoro per azienda
-    #    (BE10 a) il giro dell'azienda E porta «E», e chi l'aveva accodato con
-    #    «1,2» avrebbe ricevuto 404 sul proprio lavoro.
+    # Scopo: Restituisce lo stato del job. Il perimetro lo fa la RLS della coda
+    #        (blocco 5b, BE9): chi chiede vede i lavori delle sue aziende, e un
+    #        lavoro di un'altra azienda è indistinguibile da inesistente. Così
+    #        chi accoda dalla modalità globale segue i lavori di ciascuna
+    #        azienda, e due colleghi della stessa azienda che condividono un giro
+    #        via dedup ne seguono entrambi l'avanzamento — per questo il polling
+    #        non restringe ai lavori «miei».
+    # ⭐ Fino al 2026-11-07 era la `scope_key` esatta, poi (BE10) il perimetro
+    #    scritto a mano nel repository; da BE9 lo fa il DB.
     def get(self, request: Request, job_id: int) -> JsonResponse:
-        # ⭐ Il perimetro lo dà il BB della gestione code, non una seconda
-        #    lettura della whitelist qui: e' la stessa regola di `elenca` e
-        #    del dettaglio, e due copie divergerebbero al primo cambio.
-        stato = CodaLavoriRepository().get_stato(
-            int(job_id), owner_emittenti=perimetro_coda_operatore(request.user),
-        )
+        stato = CodaLavoriRepository().get_stato(int(job_id))
         ErrorManager.require(
             stato is not None,
             code="E_JOB_NON_TROVATO",

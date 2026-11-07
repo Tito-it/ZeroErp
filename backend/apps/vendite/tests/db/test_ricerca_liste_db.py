@@ -166,7 +166,12 @@ _FIXTURE: tuple[str, ...] = (
     """
     SELECT * FROM vendite.fn_upsert_commessa_attivita(
         p_commessa_id                   => (SELECT commessa_id FROM _comm),
-        p_segment_key                   => 'SEG-RICVEN-1'::varchar,
+        -- ⛔ La chiave nomina il documento della provenienza (giro C.3 di
+        --    brief-db-sorgente-documento-e-riga): la compone il dominio, e
+        --    l'etichetta del test ne e' il suffisso.
+        p_segment_key                   => (script.fn_segment_key(
+                                               'PREVENTIVO', (SELECT uid::text FROM _prev))
+                                            || ':SEG-RICVEN-1')::varchar,
         p_articolo_id                   => (SELECT articolo_id FROM _art),
         p_istanza_utility_id            => (SELECT istanza_utility_id FROM _mondo),
         p_data_attivita                 => DATE '2083-02-15',

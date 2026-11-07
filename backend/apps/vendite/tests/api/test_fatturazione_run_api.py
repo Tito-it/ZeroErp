@@ -17,10 +17,11 @@
 #   3-bis) run_modalita_globale_un_lavoro_per_azienda — BE10 a: N aziende,
 #      N lavori, ognuno con la sua scope_key e la sua chiave
 #   4) run_senza_identita_400 — JWT senza claim identita_id
-#   5) stato_ok_ritorna_job — 200, ownership per azienda (perimetro richiedente)
-#   6) stato_non_trovato_404 — job di altro scope/inesistente
-#   7) stato_admin_vede_tutto — whitelist None → owner_emittenti None (no filtro)
-#   8) stato_ownership_azienda_non_enqueuer — fix cross-operatore (filtro per azienda)
+#   5) stato_ok_ritorna_job — 200; il perimetro d'azienda lo fa la RLS (BE9):
+#      la view non filtra
+#   6) stato_non_trovato_404 — job di altra azienda (RLS) / inesistente
+#   7) stato_non_restringe_ai_miei — un collega della stessa azienda segue il
+#      giro condiviso via dedup: il polling non filtra per chi ha accodato
 # ------------------------------------------------------------
 
 import json
@@ -37,9 +38,6 @@ _REPO = "apps.vendite.api.views.CodaLavoriRepository"
 #    combo di topbar (`EmittenteAttivoRepository.list_selezionabili`).
 _REPO_ACCODA = "apps.vendite.services.fatturazione_accodamento_service.CodaLavoriRepository"
 _AZIENDE = "apps.core.services.coda_lavori.scope.EmittenteAttivoRepository"
-# Il resolver del POLLING (ownership per azienda) e' quello del BB della
-# gestione code (`perimetro_coda_operatore`), che la view chiama.
-_RESOLVER = "apps.core.services.coda_lavori.gestione_service.PermissionResolver"
 # ⭐ Dal 2026-09-15 la CATTURA dello scope all'enqueue sta nel BB
 #    `coda_lavori.scope.scope_operatore_da_request` (seconda occorrenza: «Esegui
 #    ora» dal drawer dei processi): i tre nomi dell'enqueue si mockano LA', non
@@ -103,7 +101,7 @@ class FatturazioneRunApiTests(JwtMockedApiTest):
             {"emittente_fiscale_id": 3, "codice": "ACME", "soggetto_ruolo_id": 30},
         ]
         repo_cls.return_value.accoda.return_value = 555
-        repo_cls.return_value.stati_di.return_value = {555: "PENDING"}
+        repo_cls.return_value.stati_dopo_accodamento.return_value = {555: "PENDING"}
 
         resp = self.client.post(
             _RUN, data=json.dumps({"competenza_mese": "2026-06-15"}),
@@ -159,7 +157,7 @@ class FatturazioneRunApiTests(JwtMockedApiTest):
             {"emittente_fiscale_id": 4, "codice": "BETA", "soggetto_ruolo_id": 40},
         ]
         repo_cls.return_value.accoda.side_effect = [555, 556]
-        repo_cls.return_value.stati_di.return_value = {555: "PENDING", 556: "PENDING"}
+        repo_cls.return_value.stati_dopo_accodamento.return_value = {555: "PENDING", 556: "PENDING"}
 
         resp = self.client.post(
             _RUN, data=json.dumps({"competenza_mese": "2026-06-15"}),
@@ -206,13 +204,12 @@ class FatturazioneRunApiTests(JwtMockedApiTest):
         )
         repo_cls.return_value.accoda.assert_not_called()
 
-    # 5. Polling: ritorna lo stato del job, ownership per AZIENDA (il
-    #    perimetro del richiedente, non l'id di chi ha accodato).
+    # 5. Polling: ritorna lo stato del job. ⭐ Dal blocco 5b (BE9) il perimetro
+    #    d'azienda lo fa la RLS della coda: la view non passa nessun filtro, e
+    #    non legge la whitelist.
     @patch(_AUTH, return_value=(Mock(), None))
-    @patch(_RESOLVER)
     @patch(_REPO)
-    def test_stato_ok_ritorna_job(self, repo_cls, resolver, _auth) -> None:
-        resolver.get_emittenti_pk_ids.return_value = [72]  # operatore scoped
+    def test_stato_ok_ritorna_job(self, repo_cls, _auth) -> None:
         repo_cls.return_value.get_stato.return_value = {
             "id": 555, "job_type": "FATTURAZIONE_GIRO", "stato": "FATTO",
             "tentativi": 0, "max_tentativi": 5,
@@ -223,51 +220,24 @@ class FatturazioneRunApiTests(JwtMockedApiTest):
 
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()["data"]["stato"], "FATTO")
-        # get_stato invocato col perimetro del richiedente (ownership per azienda)
-        repo_cls.return_value.get_stato.assert_called_once_with(
-            555, owner_emittenti=[72],
-        )
+        repo_cls.return_value.get_stato.assert_called_once_with(555)
 
-    # 6. Job inesistente o di altro SCOPE → 404 (get_stato None).
+    # 6. Job inesistente o di un'altra azienda (la RLS non lo mostra) → 404.
     @patch(_AUTH, return_value=(Mock(), None))
-    @patch(_RESOLVER)
     @patch(_REPO)
-    def test_stato_non_trovato_404(self, repo_cls, resolver, _auth) -> None:
-        resolver.get_emittenti_pk_ids.return_value = [72]
+    def test_stato_non_trovato_404(self, repo_cls, _auth) -> None:
         repo_cls.return_value.get_stato.return_value = None
         resp = self.client.get(f"{_RUN}999/")
         self.assertEqual(resp.status_code, 404)
         self.assertEqual(resp.json()["error"]["code"], "E_JOB_NON_TROVATO")
 
-    # 7. Admin globale (whitelist None) → owner_emittenti=None: nessun filtro,
-    #    vede ogni job.
-    @patch(_AUTH, return_value=(Mock(), None))
-    @patch(_RESOLVER)
-    @patch(_REPO)
-    def test_stato_admin_vede_tutto(self, repo_cls, resolver, _auth) -> None:
-        resolver.get_emittenti_pk_ids.return_value = None  # admin globale
-        repo_cls.return_value.get_stato.return_value = {
-            "id": 555, "job_type": "FATTURAZIONE_GIRO", "stato": "IN_CORSO",
-            "tentativi": 0, "max_tentativi": 5,
-            "result": None, "ultimo_errore": None, "job_run_id": 1,
-        }
-        resp = self.client.get(f"{_RUN}555/")
-        self.assertEqual(resp.status_code, 200)
-        repo_cls.return_value.get_stato.assert_called_once_with(
-            555, owner_emittenti=None,
-        )
-
-    # 8. Fix cross-operatore: l'ownership del polling dipende dal PERIMETRO del
-    #    richiedente (le sue aziende), NON dall'id di chi ha accodato → un altro
-    #    operatore delle stesse aziende vede il job condiviso via dedup (qui
-    #    user_id 99 ≠ enqueuer).
+    # 7. ⛔ Il polling NON restringe ai lavori «miei»: un collega della stessa
+    #    azienda (qui user_id 99 ≠ chi ha accodato) segue il giro che la dedup
+    #    gli ha restituito. «Miei» è un filtro della lista code, non del
+    #    polling.
     @patch(_AUTH, return_value=(_mock_user(user_id=99, username="altro_op"), None))
-    @patch(_RESOLVER)
     @patch(_REPO)
-    def test_stato_ownership_azienda_non_enqueuer(
-        self, repo_cls, resolver, _auth,
-    ) -> None:
-        resolver.get_emittenti_pk_ids.return_value = [4, 3]  # stesse aziende
+    def test_stato_non_restringe_ai_miei(self, repo_cls, _auth) -> None:
         repo_cls.return_value.get_stato.return_value = {
             "id": 555, "job_type": "FATTURAZIONE_GIRO", "stato": "IN_CORSO",
             "tentativi": 0, "max_tentativi": 5,
@@ -275,7 +245,4 @@ class FatturazioneRunApiTests(JwtMockedApiTest):
         }
         resp = self.client.get(f"{_RUN}555/")
         self.assertEqual(resp.status_code, 200)
-        # filtrato per AZIENDE (4, 3), non per user_id 99
-        repo_cls.return_value.get_stato.assert_called_once_with(
-            555, owner_emittenti=[4, 3],
-        )
+        repo_cls.return_value.get_stato.assert_called_once_with(555)

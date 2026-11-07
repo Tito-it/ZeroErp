@@ -6,14 +6,14 @@
 #        code-lavori-stampa, FASE BE). Mock dei repository (nessun DB).
 #
 # Indice test:
-#   1) conteggi_code_scoped_operatore — owner filter = aziende del perimetro, worker attivi
+#   1) conteggi_code_scoped_operatore — nessun filtro scritto qui (lo fa la RLS, BE9), worker attivi
 #   2) conteggi_code_worker_mai_girato — liveness assente → worker giù
-#   3) elenca_coda_lavori_operatore — filtro owner + perimetro del chiamante per is_mio
+#   3) elenca_coda_lavori_operatore — «miei» = accodati dal chiamante, lui per is_mio (BE9)
 #   4) elenca_coda_lavori_tutti_aperto_senza_permesso — visibilità libera
 #   5) elenca_coda_lavori_tutti_con_permesso — owner filter None
 #   6) elenca_coda_stampa_ambito_per_operatore — miei=user_insert, tutti=None
 #   7) dettaglio_job_non_trovato_404
-#   8) dettaglio_job_admin_code_manage_vede_tutto — owner filter None
+#   8) dettaglio_job_admin_code_manage_vede_tutto — nessun filtro «miei»; 8-bis senza permesso solo i miei
 #   9) annulla_job_ok
 #  10) annulla_job_fuori_scope_404
 #  11) annulla_job_non_pending_409
@@ -48,6 +48,13 @@ from apps.core.services.coda_lavori.scope import scope_key_da_emittenti
 from apps.core.services.service_errors import ServiceError
 
 _SVC = "apps.core.services.coda_lavori.gestione_service"
+# L'utente che chiede, con il suo `auth_user.id` VERO: è ciò con cui la coda
+# dice «mio» da BE9 (lavori accodati da me).
+_IO = 42
+
+
+def _utente(user_id: int = _IO) -> MagicMock:
+    return MagicMock(id=user_id)
 
 
 # Scopo: patch standard dei collaboratori del service (resolver + repo code +
@@ -82,8 +89,9 @@ def _patch_all(
 
 class ConteggiCodeTests(SimpleTestCase):
 
-    # 1. Operatore scoped: coda lavori filtrata per azienda del lavoro, coda stampa per
-    #    auth_user_id; worker con run recente → attivo.
+    # 1. Operatore: coda lavori SENZA filtro scritto qui (dal blocco 5b il
+    #    perimetro d'azienda lo fa la RLS, BE9), coda stampa per auth_user_id;
+    #    worker con run recente → attivo.
     def test_conteggi_code_scoped_operatore(self) -> None:
         patches, _resolver, repo_cls, maint_cls = _patch_all(emittenti=[4, 3])
         try:
@@ -113,9 +121,7 @@ class ConteggiCodeTests(SimpleTestCase):
             for p in patches:
                 p.stop()
 
-        repo_cls.return_value.count_per_stato.assert_called_once_with(
-            owner_emittenti=[4, 3],
-        )
+        repo_cls.return_value.count_per_stato.assert_called_once_with()
         self.assertEqual(esito["coda_lavori"], {"pending": 2, "in_corso": 1})
         self.assertEqual(esito["coda_stampa"], {"pending": 5, "in_corso": 0})
         self.assertTrue(esito["worker"]["coda_lavori"]["attivo"])
@@ -136,10 +142,7 @@ class ConteggiCodeTests(SimpleTestCase):
             for p in patches:
                 p.stop()
 
-        # Admin globale (whitelist None) → nessun filtro sulla coda lavori.
-        repo_cls.return_value.count_per_stato.assert_called_once_with(
-            owner_emittenti=None,
-        )
+        repo_cls.return_value.count_per_stato.assert_called_once_with()
         # Stessa forma di `job_liveness` (2026-09-14): ne' un segno di vita ne'
         # una corsa conclusa — non un `last_ok` che di una corsa inesistente
         # direbbe l'esito.
@@ -154,7 +157,8 @@ class ConteggiCodeTests(SimpleTestCase):
 
 class ElencaCodaLavoriTests(SimpleTestCase):
 
-    # 3. Operatore: righe filtrate per le sue aziende, il suo perimetro per is_mio.
+    # 3. Operatore, «miei» di default: i lavori accodati da lui, e lui per
+    #    `is_mio` (BE9). Il perimetro d'azienda lo fa la RLS.
     def test_elenca_coda_lavori_operatore(self) -> None:
         patches, _resolver, repo_cls, _maint = _patch_all(emittenti=[7])
         try:
@@ -162,14 +166,15 @@ class ElencaCodaLavoriTests(SimpleTestCase):
                 "items": [{"id": 1, "is_mio": True}], "total": 1,
                 "archiviate": 2,
             }
-            esito = svc.elenca_coda_lavori(MagicMock(), stato="ERRORE", limit=10)
+            esito = svc.elenca_coda_lavori(_utente(), stato="ERRORE", limit=10)
         finally:
             for p in patches:
                 p.stop()
 
         kwargs = repo_cls.return_value.elenca.call_args.kwargs
-        self.assertEqual(kwargs["owner_emittenti"], [7])
-        self.assertEqual(kwargs["caller_emittenti"], [7])
+        self.assertEqual(kwargs["accodati_da"], _IO)
+        self.assertEqual(kwargs["chiamante"], _IO)
+        self.assertNotIn("owner_emittenti", kwargs)
         self.assertEqual(kwargs["stati"], ["ERRORE"])
         # ⭐ Default ordinamento (2026-09-07): l'ultimo lavoro ENTRATO in coda in
         #    testa. Era `started_at` — «l'ultimo AVVIATO» — e un lavoro in
@@ -219,29 +224,30 @@ class ElencaCodaLavoriTests(SimpleTestCase):
         patches, _resolver, repo_cls, _maint = _patch_all(emittenti=[7])
         try:
             repo_cls.return_value.elenca.return_value = {"items": [], "total": 0, "archiviate": 0}
-            svc.elenca_coda_lavori(MagicMock(), tutti=True)
+            svc.elenca_coda_lavori(_utente(), tutti=True)
         finally:
             for p in patches:
                 p.stop()
         kwargs = repo_cls.return_value.elenca.call_args.kwargs
-        # Nessun filtro righe; la caller key resta per marcare `is_mio`.
-        self.assertIsNone(kwargs["owner_emittenti"])
-        self.assertEqual(kwargs["caller_emittenti"], [7])
+        # «Tutti» = ciò che la RLS mostra: nessun filtro; il chiamante resta
+        # per marcare `is_mio`.
+        self.assertIsNone(kwargs["accodati_da"])
+        self.assertEqual(kwargs["chiamante"], _IO)
 
-    # 5. `tutti` con code_manage → identico (owner filter None, caller resta).
+    # 5. `tutti` con code_manage → identico (nessun filtro, il chiamante resta).
     def test_elenca_coda_lavori_tutti_con_permesso(self) -> None:
         patches, _resolver, repo_cls, _maint = _patch_all(
             emittenti=[7], code_manage=True,
         )
         try:
             repo_cls.return_value.elenca.return_value = {"items": [], "total": 0, "archiviate": 0}
-            svc.elenca_coda_lavori(MagicMock(), tutti=True)
+            svc.elenca_coda_lavori(_utente(), tutti=True)
         finally:
             for p in patches:
                 p.stop()
         kwargs = repo_cls.return_value.elenca.call_args.kwargs
-        self.assertIsNone(kwargs["owner_emittenti"])
-        self.assertEqual(kwargs["caller_emittenti"], [7])
+        self.assertIsNone(kwargs["accodati_da"])
+        self.assertEqual(kwargs["chiamante"], _IO)
 
 
 class ElencaCodaStampaTests(SimpleTestCase):
@@ -302,22 +308,36 @@ class DettaglioJobTests(SimpleTestCase):
                 p.stop()
         self.assertEqual(ctx.exception.code, "E_JOB_NON_TROVATO")
 
-    # 8. Operatore con code_manage → dettaglio senza filtro owner (vede tutto),
-    #    caller key preservata per is_mio.
+    # 8. Operatore con code_manage → dettaglio di ogni lavoro che la RLS gli
+    #    mostra, il chiamante preservato per is_mio.
     def test_dettaglio_job_admin_code_manage_vede_tutto(self) -> None:
         patches, _resolver, repo_cls, _maint = _patch_all(
             emittenti=[7], code_manage=True,
         )
         try:
             repo_cls.return_value.get_dettaglio.return_value = {"id": 5}
-            esito = svc.dettaglio_job(MagicMock(), 5)
+            esito = svc.dettaglio_job(_utente(), 5)
         finally:
             for p in patches:
                 p.stop()
         repo_cls.return_value.get_dettaglio.assert_called_once_with(
-            5, owner_emittenti=None, caller_emittenti=[7],
+            5, accodati_da=None, chiamante=_IO,
         )
         self.assertEqual(esito, {"id": 5})
+
+    # 8-bis. ⛔ Senza code_manage il dettaglio è dei SOLI lavori accodati dal
+    #    chiamante: payload ed errori di un collega restano dietro il permesso.
+    def test_dettaglio_job_senza_code_manage_solo_miei(self) -> None:
+        patches, _resolver, repo_cls, _maint = _patch_all(emittenti=[7])
+        try:
+            repo_cls.return_value.get_dettaglio.return_value = {"id": 5}
+            svc.dettaglio_job(_utente(), 5)
+        finally:
+            for p in patches:
+                p.stop()
+        repo_cls.return_value.get_dettaglio.assert_called_once_with(
+            5, accodati_da=_IO, chiamante=_IO,
+        )
 
 
 class AzioniJobTests(SimpleTestCase):
@@ -328,12 +348,14 @@ class AzioniJobTests(SimpleTestCase):
         try:
             repo_cls.return_value.get_stato.return_value = {"id": 5, "stato": "PENDING"}
             repo_cls.return_value.annulla.return_value = True
-            esito = svc.annulla_job(MagicMock(), 5)
+            esito = svc.annulla_job(_utente(), 5)
         finally:
             for p in patches:
                 p.stop()
+        # Senza code_manage: solo i lavori accodati dal chiamante (BE9).
+        repo_cls.return_value.get_stato.assert_called_once_with(5, accodati_da=_IO)
         repo_cls.return_value.annulla.assert_called_once_with(
-            5, owner_emittenti=[7],
+            5, accodati_da=_IO,
         )
         self.assertEqual(esito, {"job_id": 5, "stato": "ANNULLATO"})
 
@@ -369,12 +391,12 @@ class AzioniJobTests(SimpleTestCase):
         try:
             repo_cls.return_value.get_stato.return_value = {"id": 5, "stato": "ERRORE"}
             repo_cls.return_value.requeue.return_value = True
-            esito = svc.requeue_job(MagicMock(), 5, extra_tentativi=2)
+            esito = svc.requeue_job(_utente(), 5, extra_tentativi=2)
         finally:
             for p in patches:
                 p.stop()
         repo_cls.return_value.requeue.assert_called_once_with(
-            5, extra_tentativi=2, owner_emittenti=[7],
+            5, extra_tentativi=2, accodati_da=_IO,
         )
         self.assertEqual(esito, {"job_id": 5, "stato": "PENDING"})
 
