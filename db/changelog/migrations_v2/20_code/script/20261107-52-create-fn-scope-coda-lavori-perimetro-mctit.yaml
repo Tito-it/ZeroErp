@@ -1,0 +1,98 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_scope_coda_lavori_perimetro: chi guarda puo' vedere questo lavoro
+#   della coda? La regola di dbops.coda_lavori, con le tre risposte su chi
+#   guarda gia' calcolate dalla policy, una volta per istruzione
+#   (linee-guida-sql §10.3). Brief: brief-db-revisione-dbops, giro 5 (Q14 ③).
+#
+# ⭐ LA REGOLA.
+#   * OPERATORE: il lavoro appartiene a un'azienda; lo vede chi ha quell'azienda
+#     nel perimetro (script.fn_scope_ef_perimetro: perimetro NULL = tutte, cioe'
+#     il super admin). Il drenatore e' fra questi: lavora un'azienda alla volta
+#     con l'utente tecnico di quell'azienda, il cui perimetro e' l'azienda.
+#   * SISTEMA: non ha azienda. Lo vedono il super admin e l'identita' tecnica
+#     viva del drenatore (draina_coda_lavori), come le email di SISTEMA in
+#     config.email_log (script.fn_scope_email_ambito_perimetro).
+#   * altro run_as: nessuno (fail-closed).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261107-52-create-fn-scope-coda-lavori-perimetro-mctit.yaml
+
+  - changeSet:
+      id: 20261107-52-create-fn-scope-coda-lavori-perimetro
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_scope_coda_lavori_perimetro: la regola di visibilita' di dbops.coda_lavori, con super admin,
+        identita' del drenatore e perimetro emittenti di chi guarda gia' calcolati dalla policy. Pura. Giro 5 di
+        brief-db-revisione-dbops (Q14 ③).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists: { schemaName: dbops, tableName: coda_lavori, columnName: emittente_fiscale_id }
+            - sqlCheck:
+                expectedResult: 0
+                sql: >
+                  SELECT count(*) FROM pg_proc
+                   WHERE pronamespace = 'script'::regnamespace AND proname = 'fn_scope_coda_lavori_perimetro'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_scope_coda_lavori_perimetro(
+                  -- Chi guarda, gia' calcolato dalla policy (una volta per istruzione):
+                  p_super_admin          boolean,   -- calcolato: script.fn_is_super_admin
+                  p_processo             boolean,   -- calcolato: script.fn_scope_identita_processo(utente, 'draina_coda_lavori')
+                  -- ⚠️ `bigint[]` esplicito: elementi = anagrafiche.emittenti_fiscali.id.
+                  p_perimetro            bigint[],
+                  -- La riga:
+                  p_run_as               dbops.coda_lavori.run_as%TYPE,
+                  p_emittente_fiscale_id dbops.coda_lavori.emittente_fiscale_id%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               IMMUTABLE
+               -- ⚠️ Nessun COST: non legge tabelle. Elencata fra le economiche di
+               --    script/test-policy-funzioni-cost-v1.
+              AS $function$
+                  -- Scopo: chi guarda puo' vedere questo lavoro della coda?
+                  --   OPERATORE: l'azienda del lavoro e' nel perimetro di chi
+                  --   guarda. SISTEMA: chi guarda e' il super admin o l'identita'
+                  --   tecnica del drenatore. Altro: no.
+                  -- ⚠️ Il drenatore non ha un ramo per i lavori OPERATORE: li
+                  --   vede col perimetro del suo utente tecnico, un'azienda alla
+                  --   volta. Un ramo che glieli mostrasse tutti sarebbe una porta
+                  --   fra le aziende.
+                  SELECT COALESCE(
+                      CASE p_run_as
+                          WHEN 'SISTEMA'   THEN p_super_admin OR p_processo
+                          WHEN 'OPERATORE' THEN script.fn_scope_ef_perimetro(p_perimetro, p_emittente_fiscale_id)
+                          ELSE false
+                      END,
+                      false)
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_scope_coda_lavori_perimetro(
+                  boolean, boolean, bigint[],
+                  dbops.coda_lavori.run_as%TYPE,
+                  dbops.coda_lavori.emittente_fiscale_id%TYPE) IS
+              'La regola di visibilita'' di dbops.coda_lavori, con le tre risposte su chi guarda gia'' calcolate dalla policy una volta per istruzione: super admin (script.fn_is_super_admin), identita'' tecnica viva del drenatore (script.fn_scope_identita_processo con draina_coda_lavori) e perimetro emittenti (script.fn_get_emittenti_scope_pk_ids). OPERATORE: l''azienda del lavoro e'' nel perimetro (script.fn_scope_ef_perimetro; perimetro NULL = tutte). SISTEMA: super admin o drenatore. Altro run_as: false. Il drenatore vede i lavori OPERATORE solo col perimetro del suo utente tecnico, un''azienda alla volta. Pura, non legge tabelle (linee-guida-sql §10.3).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_scope_coda_lavori_perimetro(
+                  boolean, boolean, bigint[],
+                  dbops.coda_lavori.run_as%TYPE,
+                  dbops.coda_lavori.emittente_fiscale_id%TYPE);

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Vista `dbops.vw_coda_lavori_da_guardare`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 7 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -74,11 +74,18 @@ Un presidio che elenca anche ciò che è stato visto smette di essere una lista 
 
 ---
 
-### Legge con gli occhi del proprietario
+### Una persona legge col suo perimetro, il digest conta tutto
 
-La vista non è `security_invoker`, e `dbops.coda_lavori` non ha row level security: chi la
-interroga vede i lavori di tutte le aziende, scope compreso. Nel catalogo dei presidi ha perimetro
-libero e la guarda un amministratore.
+La vista è `security_invoker`, come la gemella della coda stampa: chi la interroga legge
+`dbops.coda_lavori` coi propri occhi, quindi sotto la sua policy. Un operatore vede i lavori della
+sua azienda, il super admin anche quelli di sistema. Il conteggio del digest passa da
+`dbops.fn_conta_presidio`, che conta come proprietario e vede tutte le aziende: per questo nel
+catalogo dei presidi il perimetro è `DEFINER`, e il digest riporta il numero, non le righe.
+
+⚠️ Finché la row level security della coda non è accesa, chiunque la legga vede ancora tutto.
+
+Un lavoro mai preso può voler dire due cose: il drenatore è fermo, oppure l'azienda del lavoro non
+ha l'utente tecnico del drenatore, che lavora un'azienda alla volta.
 
 ---
 
@@ -87,6 +94,8 @@ libero e la guarda un amministratore.
 * `db/pgtap/dbops/test-vw-coda-lavori-da-guardare.sql` — un lavoro in `ERRORE`, uno `IN_CORSO` da
   oltre un'ora e uno `PENDING` da oltre un'ora compaiono col loro motivo; uno appena accodato, uno
   appena preso, uno annullato e uno archiviato no.
+* `db/pgtap/rls/test-rls-coda-lavori-perimetro-v1.sql` (test 11) — letta da un operatore, mostra
+  solo i lavori del suo perimetro.
 
 ---
 
@@ -94,6 +103,8 @@ libero e la guarda un amministratore.
 
 * 2026-09-05 — nasce, prima della migrazione dei processi di dominio sulla coda
   (`brief-db-processi-automatici-identita-e-perimetro`).
+* 2026-11-07 — diventa `security_invoker`, perimetro `DEFINER` nel catalogo dei presidi
+  (`brief-db-revisione-dbops`, giro 5, `20261107-55`).
 
 ---
 

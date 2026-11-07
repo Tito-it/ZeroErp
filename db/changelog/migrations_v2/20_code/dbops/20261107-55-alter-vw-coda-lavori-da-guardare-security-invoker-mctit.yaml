@@ -1,0 +1,52 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.vw_coda_lavori_da_guardare diventa security_invoker, come la gemella
+#   dbops.vw_fatture_stampa_coda_da_guardare.
+#   Brief: brief-db-revisione-dbops, giro 5 (Q14 ③: «dopo la RLS si rivaluta il
+#   perimetro della vista»).
+#
+# ⭐ PERCHE'. Senza security_invoker la vista legge la coda come il suo
+#   proprietario, che la row level security non la subisce: chiunque la legga
+#   vedrebbe i lavori di tutte le aziende, anche con la coda sotto policy. Con
+#   security_invoker una persona legge col suo perimetro; il conteggio del digest
+#   resta onesto perche' passa da dbops.fn_conta_presidio, che conta come
+#   proprietario. Il catalogo dei presidi la dichiara DEFINER (presidi.csv), come
+#   la gemella.
+#
+# ⚠️ Finche' la RLS della coda non e' armata, il risultato non cambia.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261107-55-alter-vw-coda-lavori-da-guardare-security-invoker-mctit.yaml
+
+  - changeSet:
+      id: 20261107-55-alter-vw-coda-lavori-da-guardare-security-invoker
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.vw_coda_lavori_da_guardare security_invoker = true, come la gemella della coda stampa: una persona
+        legge col suo perimetro, il digest conta da proprietario (dbops.fn_conta_presidio). Giro 5 di
+        brief-db-revisione-dbops (Q14 ③).
+      preConditions:
+        - onFail: HALT
+        - viewExists: { schemaName: dbops, viewName: vw_coda_lavori_da_guardare }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER VIEW dbops.vw_coda_lavori_da_guardare SET (security_invoker = true);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER VIEW dbops.vw_coda_lavori_da_guardare RESET (security_invoker);

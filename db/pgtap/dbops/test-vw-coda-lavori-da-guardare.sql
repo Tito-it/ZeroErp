@@ -55,41 +55,45 @@ DECLARE
     --   espone `scope` — chi ha chiesto il lavoro — e non `payload`. Un test
     --   che marcasse le righe in una colonna che il presidio non mostra non
     --   potrebbe interrogarle per nome.
-    v_scope jsonb := jsonb_build_object(
-        'auth_user_id', 1, 'username', 'pgtap', 'identita_id', 1);
+    -- ⭐ Rev 2026-11-07 (giro 5 di brief-db-revisione-dbops): lo scope di chi e'
+    --   in sessione, con la sua azienda. Un lavoro OPERATORE nasce dentro
+    --   un'azienda (chk_coda_lavori_run_as_emittente), e la vista, letta da una
+    --   persona, mostra il suo perimetro.
+    v_scope jsonb := dbops.fn_pgtap_scope_operatore();
+    v_emitt bigint := (dbops.fn_pgtap_scope_operatore() ->> 'emittente_attivo_id')::bigint;
 BEGIN
     INSERT INTO dbops.coda_lavori
-        (job_type, payload, run_as, scope, origine, stato,
+        (job_type, payload, run_as, scope, emittente_fiscale_id, origine, stato,
          tentativi, max_tentativi, run_after, claimed_at,
          archiviato, archiviato_il, archiviato_da)
     VALUES
         -- 1) si e' arreso
         ('CHIUSURA_SCADENZE', '{}'::jsonb,
-         'OPERATORE', v_scope || jsonb_build_object('caso', 'errore'), 'CRON', 'ERRORE', 3, 3, NULL, NULL,
+         'OPERATORE', v_scope || jsonb_build_object('caso', 'errore'), v_emitt, 'CRON', 'ERRORE', 3, 3, NULL, NULL,
          false, NULL, NULL),
         -- 2) preso e mai chiuso: il worker e' morto a meta'
         ('CHIUSURA_SCADENZE', '{}'::jsonb,
-         'OPERATORE', v_scope || jsonb_build_object('caso', 'in_corso_stantio'), 'CRON', 'IN_CORSO', 1, 3, NULL,
+         'OPERATORE', v_scope || jsonb_build_object('caso', 'in_corso_stantio'), v_emitt, 'CRON', 'IN_CORSO', 1, 3, NULL,
          now() - interval '3 hours', false, NULL, NULL),
         -- 3) ⛔ mai preso: nessuno sta drenando la coda
         ('CHIUSURA_SCADENZE', '{}'::jsonb,
-         'OPERATORE', v_scope || jsonb_build_object('caso', 'pending_vecchio'), 'CRON', 'PENDING', 0, 3,
+         'OPERATORE', v_scope || jsonb_build_object('caso', 'pending_vecchio'), v_emitt, 'CRON', 'PENDING', 0, 3,
          now() - interval '3 hours', NULL, false, NULL, NULL),
         -- 4) appena accodato: e' normale
         ('CHIUSURA_SCADENZE', '{}'::jsonb,
-         'OPERATORE', v_scope || jsonb_build_object('caso', 'pending_fresco'), 'CRON', 'PENDING', 0, 3, now(), NULL,
+         'OPERATORE', v_scope || jsonb_build_object('caso', 'pending_fresco'), v_emitt, 'CRON', 'PENDING', 0, 3, now(), NULL,
          false, NULL, NULL),
         -- 5) appena preso: sta lavorando
         ('CHIUSURA_SCADENZE', '{}'::jsonb,
-         'OPERATORE', v_scope || jsonb_build_object('caso', 'in_corso_fresco'), 'CRON', 'IN_CORSO', 1, 3, NULL, now(),
+         'OPERATORE', v_scope || jsonb_build_object('caso', 'in_corso_fresco'), v_emitt, 'CRON', 'IN_CORSO', 1, 3, NULL, now(),
          false, NULL, NULL),
         -- 6) qualcuno ha deciso di non farlo
         ('CHIUSURA_SCADENZE', '{}'::jsonb,
-         'OPERATORE', v_scope || jsonb_build_object('caso', 'annullato'), 'CRON', 'ANNULLATO', 0, 3,
+         'OPERATORE', v_scope || jsonb_build_object('caso', 'annullato'), v_emitt, 'CRON', 'ANNULLATO', 0, 3,
          now() - interval '3 hours', NULL, false, NULL, NULL),
         -- 7) fallito, ma gia' guardato e messo via
         ('CHIUSURA_SCADENZE', '{}'::jsonb,
-         'OPERATORE', v_scope || jsonb_build_object('caso', 'archiviato'), 'CRON', 'ERRORE', 3, 3, NULL, NULL,
+         'OPERATORE', v_scope || jsonb_build_object('caso', 'archiviato'), v_emitt, 'CRON', 'ERRORE', 3, 3, NULL, NULL,
          true, now(), 'pgtap');
 END
 $fixture$;

@@ -1,0 +1,138 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.coda_lavori: nasce emittente_fiscale_id, l'azienda a cui un lavoro
+#   OPERATORE appartiene. Brief: brief-db-revisione-dbops, giro 5 (Q14 ③).
+#
+# ⭐ PERCHE'. La coda va sotto row level security (Q14 ③): la separazione fra
+#   aziende sta nel database, non nel filtro del backend. Una policy, il guard
+#   di scrittura e il registro dei bersagli dei processi chiedono tutti la stessa
+#   cosa a una riga: «di quale azienda sei?». Fino a oggi la risposta stava solo
+#   dentro lo scope jsonb, e non era una sola: emittente_attivo_id vuoto in
+#   modalita' globale, emittente_ids con piu' aziende o vuoto per l'admin.
+#   Decisione di Tid (2026-11-07): un lavoro, un'azienda. Un lavoro OPERATORE
+#   nasce dentro l'emittente attivo di chi lo accoda; un lavoro SISTEMA non ha
+#   azienda.
+#
+# ⭐ UNA SEDE SOLA, DUE COLONNE. Lo scope resta la cattura dell'identita' con cui
+#   il drenatore ripropone chi ha accodato (il backend lo legge cosi'); la
+#   colonna e' la stessa informazione resa leggibile a policy e vincoli. Non
+#   possono dire due cose diverse: chk_coda_lavori_emittente_dallo_scope le
+#   tiene uguali. ⚠️ Colonna normale e non GENERATED: una colonna generata si
+#   calcola DOPO i trigger BEFORE, che la vedrebbero vuota.
+#
+# ⚠️ IL CENSIMENTO. Le righe di oggi prendono l'emittente dallo scope. Un lavoro
+#   OPERATORE accodato in modalita' globale non ne ha uno: il modello lo
+#   ammetteva, e non si inventa. Il changeSet si ferma e le nomina; si
+#   correggono a mano (o si tolgono), poi si rilancia.
+#
+# ⚠️ CONSEGUENZA DELLA FK (come per config.email_log). L'automazione ATTIVO
+#   monta il blocco sul padre: un emittente con righe in coda non si spegne
+#   finche' le righe ci sono.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20261107-51-alter-coda-lavori-emittente-fiscale-mctit.yaml
+
+  - changeSet:
+      id: 20261107-51-alter-coda-lavori-emittente-fiscale
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.coda_lavori.emittente_fiscale_id: l'azienda di un lavoro OPERATORE, presa
+        dallo scope catturato (emittente_attivo_id) e tenuta uguale a lui da un CHECK;
+        NULL per un lavoro SISTEMA. FK verso anagrafiche.emittenti_fiscali. Le righe di
+        oggi si riempiono dallo scope; se una riga OPERATORE non ha emittente il
+        changeSet si ferma e la nomina (giro 5 di brief-db-revisione-dbops, Q14 ③).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists: { schemaName: dbops, tableName: coda_lavori, columnName: scope }
+            - not:
+                - columnExists: { schemaName: dbops, tableName: coda_lavori, columnName: emittente_fiscale_id }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 1. La colonna, vuota.
+              ALTER TABLE dbops.coda_lavori
+                  ADD COLUMN emittente_fiscale_id bigint;
+
+              -- 2. Le righe di oggi: l'emittente dallo scope catturato.
+              --    ⚠️ Un valore che non e' un numero ferma l'UPDATE (22P02):
+              --    voluto, uno scope cosi' e' gia' rotto.
+              UPDATE dbops.coda_lavori
+                 SET emittente_fiscale_id = (scope ->> 'emittente_attivo_id')::bigint
+               WHERE run_as = 'OPERATORE'
+                 AND scope ->> 'emittente_attivo_id' IS NOT NULL;
+
+              -- 3. Il censimento, prima dei vincoli: le righe che non hanno
+              --    un'azienda, o ne nominano una che non esiste.
+              DO $censimento$
+              DECLARE
+                  v_senza  bigint[];
+                  v_ignoti bigint[];
+              BEGIN
+                  SELECT array_agg(c.id ORDER BY c.id)
+                    INTO v_senza
+                    FROM dbops.coda_lavori c
+                   WHERE c.run_as = 'OPERATORE'
+                     AND c.emittente_fiscale_id IS NULL;
+
+                  SELECT array_agg(c.id ORDER BY c.id)
+                    INTO v_ignoti
+                    FROM dbops.coda_lavori c
+                   WHERE c.emittente_fiscale_id IS NOT NULL
+                     AND NOT EXISTS (SELECT 1
+                                       FROM anagrafiche.emittenti_fiscali ef
+                                      WHERE ef.id = c.emittente_fiscale_id);
+
+                  IF v_senza IS NOT NULL OR v_ignoti IS NOT NULL THEN
+                      RAISE EXCEPTION
+                          'dbops.coda_lavori: lavori OPERATORE senza emittente attivo nello scope (id %), lavori con un emittente che non esiste (id %). Un lavoro OPERATORE appartiene a un''azienda: queste righe si correggono o si tolgono a mano, poi si rilancia la migrazione.',
+                          coalesce(v_senza::text, 'nessuno'),
+                          coalesce(v_ignoti::text, 'nessuno');
+                  END IF;
+              END
+              $censimento$;
+
+              -- 4. I vincoli.
+              ALTER TABLE dbops.coda_lavori
+                  ADD CONSTRAINT fk_coda_lavori_emittente_fiscale
+                      FOREIGN KEY (emittente_fiscale_id)
+                      REFERENCES anagrafiche.emittenti_fiscali (id),
+                  ADD CONSTRAINT chk_coda_lavori_run_as_emittente
+                      CHECK ((run_as = 'OPERATORE') = (emittente_fiscale_id IS NOT NULL)),
+                  ADD CONSTRAINT chk_coda_lavori_emittente_dallo_scope
+                      CHECK (emittente_fiscale_id IS NOT DISTINCT FROM
+                             (scope ->> 'emittente_attivo_id')::bigint);
+
+              COMMENT ON COLUMN dbops.coda_lavori.emittente_fiscale_id IS
+              'L''azienda a cui il lavoro appartiene: l''emittente attivo di chi l''ha accodato, lo stesso valore di scope->>''emittente_attivo_id'' (chk_coda_lavori_emittente_dallo_scope). Obbligatoria per un lavoro OPERATORE, vuota per un lavoro SISTEMA (chk_coda_lavori_run_as_emittente). La leggono la policy della tabella e il drenatore, che prende i lavori un''azienda alla volta.';
+
+              COMMENT ON CONSTRAINT chk_coda_lavori_run_as_emittente ON dbops.coda_lavori IS
+              'Un lavoro OPERATORE appartiene a un''azienda, un lavoro SISTEMA a nessuna. Un lavoro che copre piu'' aziende non esiste: in modalita'' globale se ne accoda uno per azienda.';
+
+              COMMENT ON CONSTRAINT chk_coda_lavori_emittente_dallo_scope ON dbops.coda_lavori IS
+              'La colonna e lo scope catturato dicono la stessa azienda: lo scope serve al drenatore per riproporre l''identita'' di chi ha accodato, la colonna a policy e vincoli.';
+
+              COMMENT ON TABLE dbops.coda_lavori IS
+              'Coda dei lavori asincroni sul database, senza broker: una riga e'' un lavoro (job_type e payload). Si accoda solo da dbops.fn_accoda_lavoro, che controlla tipo, classe e scope ed e'' idempotente sui lavori vivi; il drenatore del backend prende, recupera e chiude i lavori. Un lavoro OPERATORE appartiene a un''azienda (emittente_fiscale_id) e gira con l''identita'' catturata nello scope; un lavoro SISTEMA non ha azienda ne'' scope. Chi vede quali righe lo dice la policy rls_coda_lavori_ef_perimetro.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE dbops.coda_lavori
+                  DROP CONSTRAINT IF EXISTS chk_coda_lavori_emittente_dallo_scope,
+                  DROP CONSTRAINT IF EXISTS chk_coda_lavori_run_as_emittente,
+                  DROP CONSTRAINT IF EXISTS fk_coda_lavori_emittente_fiscale,
+                  DROP COLUMN IF EXISTS emittente_fiscale_id;

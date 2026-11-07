@@ -1,6 +1,6 @@
 # Guida – Gestione delle code di lavoro
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 7 novembre 2026
 >
 > Destinatari: sviluppatori backend e database, analisti funzionali
 >
@@ -52,6 +52,12 @@ La soluzione è **spezzare in due momenti**:
 * La coda **non fa doppioni**: se lo stesso lavoro viene richiesto due volte
   mentre è ancora in corso, la seconda richiesta si aggancia alla prima invece di
   crearne una copia (**idempotenza**).
+* Un job chiesto da una persona **appartiene a un'azienda sola**: quella in cui la
+  persona sta lavorando quando lo chiede. Chi lavora «su tutte le aziende» insieme
+  ne mette in coda uno per azienda, oppure sceglie prima l'azienda. I job di
+  sistema, che non riguardano i dati di nessuna azienda, non ne hanno.
+* Un job si mette in coda solo **a proprio nome** e dentro le proprie aziende: il
+  job girerà poi con quell'identità, e vedrà i dati di quell'azienda.
 
 Chi vuole il dettaglio tecnico (colonne, stati, indici) lo trova in
 [dbops.coda_lavori](/dbzero/dbops/tabelle/coda_lavori).
