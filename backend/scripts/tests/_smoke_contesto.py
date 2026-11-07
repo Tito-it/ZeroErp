@@ -104,3 +104,39 @@ def seleziona_emittente_di_prova(cur: Any) -> tuple[int, int]:
         )
     cur.execute("SELECT set_config('app.current_emittente_id', %s, false)", [str(riga[0])])
     return int(riga[0]), int(riga[1])
+
+
+# Scopo: Rimette DIFFERITI i vincoli che nascono differiti (`INITIALLY
+#        DEFERRED` a catalogo), dopo una chiamata a un builder del DB
+#        (`dbops.fn_pgtap_crea_*`). La transazione dello smoke torna quella
+#        che la produzione avrebbe.
+# ⛔ Perche' serve: i builder escono con `SET CONSTRAINTS ALL IMMEDIATE` per
+#    contratto (sono fatti per pgTAP, `linee-guida-trigger.md` §Trigger
+#    differiti), e l'impostazione vale per il RESTO della transazione. Uno
+#    smoke che dopo il builder esegue la pipeline vera vedeva un guard
+#    differito scattare a meta' verbo: il 2026-11-07 la numerazione si fermava
+#    su `E_LOTTO_FATTURE_STATO_INCOERENTE`, che al commit non sarebbe mai
+#    scattato. Il rosso era della fixture, non del codice.
+# ⭐ Si rimettono i SOLI vincoli che il catalogo dichiara differiti, non `SET
+#    CONSTRAINTS ALL DEFERRED`: quello differirebbe anche i vincoli
+#    `DEFERRABLE INITIALLY IMMEDIATE`, e lo smoke diventerebbe piu' permissivo
+#    della produzione — l'errore opposto.
+# ⚠️ Un nome condiviso da piu' vincoli dello stesso schema si rimette solo se
+#    sono differiti TUTTI: `SET CONSTRAINTS` per nome li tocca insieme.
+def ripristina_vincoli_differiti(cur: Any) -> None:
+    cur.execute(
+        """
+        SELECT string_agg(format('%I.%I', n.nspname, c.conname), ', ')
+          FROM (SELECT connamespace, conname
+                  FROM pg_catalog.pg_constraint
+                 GROUP BY connamespace, conname
+                HAVING bool_and(condeferred)) c
+          JOIN pg_catalog.pg_namespace n ON n.oid = c.connamespace
+        """
+    )
+    elenco = cur.fetchone()[0]
+    if elenco:
+        # I nomi vengono dal catalogo e sono quotati da `format('%I')`.
+        # ⚠️ `execute` SENZA parametri: Django non interpola, e `%I` arriva
+        #    intatto a `format` (con parametri andrebbe scritto `%%I`).
+        cur.execute(f"SET CONSTRAINTS {elenco} DEFERRED")

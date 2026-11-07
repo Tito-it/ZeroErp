@@ -101,6 +101,7 @@ from apps.vendite.services.fatture_righe_service import FattureRigheService
 from apps.vendite.services.pipeline_service import run_lotto_pipeline_until_done
 from scripts.tests._smoke_contesto import apri_contesto_smoke
 from scripts.tests._smoke_fatturazione import (
+    chiave_di_commessa,
     costruisci_base_fatturazione,
     crea_attivita_di_commessa,
     crea_commessa_di_prova,
@@ -184,7 +185,7 @@ with transaction.atomic():
         commessa_id = crea_commessa_di_prova(cur, t, termine_id=term_id, marker=marker)
         _ca_id, attivita_id = crea_attivita_di_commessa(
             cur, t, commessa_id=commessa_id, lock_batch_id=lock_batch_id,
-            segment_key=f"SMOKE:{marker}:R1", prezzo=Decimal("333.33"),
+            segment_key=chiave_di_commessa(cur, t, commessa_id, f"SMOKE:{marker}:R1"), prezzo=Decimal("333.33"),
         )
         print(f"lotto {lotto_id} · commessa {commessa_id} · attivita' {attivita_id}\n")
 
@@ -357,7 +358,8 @@ with transaction.atomic():
         t_df = costruisci_base_fatturazione(cur, marker=marker_df, competenza_mese=competenza_df)
         lock_df = str(uuid.uuid4())
         crea_attivita_di_commessa(
-            cur, t_df, segment_key=f"SMOKE:{marker_df}:DF", lock_batch_id=lock_df,
+            cur, t_df,
+            segment_key=chiave_di_commessa(cur, t_df, t_df["commessa_id"], f"SMOKE:{marker_df}:DF"), lock_batch_id=lock_df,
             prezzo=Decimal("50.00"), stato_approvazione="APPROVATA",
             stato_emissione="EMESSA", emit_batch_id=lock_df,
         )

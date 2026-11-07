@@ -55,6 +55,7 @@ from apps.vendite.services.pipeline_runner import (
 )
 from scripts.tests._smoke_contesto import apri_contesto_smoke
 from scripts.tests._smoke_fatturazione import (
+    chiave_di_commessa,
     costruisci_base_fatturazione,
     crea_attivita_di_commessa,
     crea_lotto_di_prova,
@@ -129,7 +130,8 @@ with transaction.atomic():
         #   dal cantiere «esito parziale». La fixture si marchia col PROPRIO
         #   giro, come fa il backend nel task di pull.
         ca_id, af_id = crea_attivita_di_commessa(
-            cur, t, segment_key=f"SMOKE:F6:{marker}", lock_batch_id=lock_batch_id,
+            cur, t,
+            segment_key=chiave_di_commessa(cur, t, t["commessa_id"], f"SMOKE:F6:{marker}"), lock_batch_id=lock_batch_id,
             prezzo=Decimal("250.00"), stato_approvazione="APPROVATA",
             stato_emissione="EMESSA", emit_batch_id=lock_batch_id,
         )

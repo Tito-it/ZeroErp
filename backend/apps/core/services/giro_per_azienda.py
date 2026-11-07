@@ -26,9 +26,9 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Generic, TypeVar
+from typing import Any, Generic, TypeVar, cast
 
 from apps.core.db.processi_repository import ProcessiRepository, RigaRoster
 from apps.core.services.coda_lavori.context import operator_identity_context
@@ -49,6 +49,23 @@ class EsitoGiroPerAzienda(Generic[T]):
     falliti: list[dict[str, str]] = field(default_factory=list)
     non_serviti: list[str] = field(default_factory=list)
     roster_vuoto: bool = False
+
+    # Scopo: Somma, sui soli SERVITI, i contatori `chiavi` dei loro risultati
+    #        (un risultato è un dizionario di contatori; una chiave assente
+    #        vale 0). Ritorna `{chiave: totale}` nell'ordine di `chiavi`.
+    # ⭐ Regola del 3 (ok Tid 2026-11-07): drenatore lavori, drenatore stampa e
+    #    giro delle email sommavano ciascuno a modo suo. Le chiavi restano del
+    #    chiamante — ognuno conta cose diverse — e si dichiarano una volta.
+    # ⛔ Un'azienda fallita non entra nel totale: non ha un risultato, e
+    #    contarla come zero direbbe «guardata, niente da fare».
+    def totali(self, chiavi: Sequence[str]) -> dict[str, int]:
+        risultati = [
+            cast(Mapping[str, Any], risultato) for _badge, risultato in self.serviti
+        ]
+        return {
+            chiave: sum(int(r.get(chiave) or 0) for r in risultati)
+            for chiave in chiavi
+        }
 
 
 # Scopo: Esegue `lavoro(badge)` per ogni utente tecnico di `processo_codice`,

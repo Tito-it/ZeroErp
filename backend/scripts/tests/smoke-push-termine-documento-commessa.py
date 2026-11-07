@@ -30,8 +30,10 @@
 # LA VIA REALE. Il fixture clona un ordine vero (testata+riga) in stato
 # CONFERMATO col termine multi-rata, poi ogni passo successivo e' il codice
 # di produzione: `pr_run_commesse_push_one` (handler + ponte approvazione +
-# PRONTA_FATTURAZIONE), `fn_emit_attivita_fatturabili_da_commessa` (la pull
-# che ristampa la sorgente a COMMESSA — la forma che ha nascosto il bug),
+# PRONTA_FATTURAZIONE), `fn_emit_attivita_fatturabili_da_commessa` (la pull;
+# fino al giro C.1 ristampava la sorgente a COMMESSA — la forma che ha
+# nascosto il bug —, da allora l'attivita' arriva al documento solo dalla sua
+# riga di commessa),
 # `fn_select_attivita_fatturabili` con lock, `FattureRigheService`, task IVA
 # e scadenze. Un fixture che scrivesse il termine sulla commessa o sulla
 # testata fattura testerebbe se stesso (lezione
@@ -80,7 +82,11 @@ from apps.vendite.db.commesse_repository import CommesseRepository
 from apps.vendite.db.pipeline_repository import VenditePipelineRepository
 from apps.vendite.services.commesse_service import pr_run_commesse_push_one
 from apps.vendite.services.fatture_righe_service import FattureRigheService
-from scripts.tests._smoke_commessa import crea_riga_commessa
+from scripts.tests._smoke_commessa import (
+    SORGENTE_CONSUMO,
+    consumo_di_commessa,
+    crea_riga_commessa,
+)
 from scripts.tests._smoke_contesto import apri_contesto_smoke
 from scripts.tests._smoke_fatturazione import (
     costruisci_base_fatturazione,
@@ -337,13 +343,23 @@ with transaction.atomic():
             SELECT a.id, s.codice_interno, a.commessa_attivita_id, a.commessa_id,
                    a.tipo_doc_fiscale_id, a.valuta_id
               FROM vendite.attivita_fatturabili a
-              JOIN config.sorgenti s ON s.id = a.sorgente_tipo_id
+              -- ⭐ Dal giro C.1 (brief-db-sorgente-documento-e-riga, BE-C.1-b)
+              --    l'attivita' non porta una provenienza sua: la sua e' la
+              --    riga di commessa, e il tipo si legge da li'.
+              JOIN vendite.commesse_attivita ca ON ca.id = a.commessa_attivita_id
+              JOIN config.sorgenti s ON s.id = ca.sorgente_tipo_id
              WHERE a.commessa_id = ANY(%s) ORDER BY a.id
             """, [[com_a, com_b]],
         )
         afs = cur.fetchall()
         af_a = next((a for a in afs if a[3] == com_a), None)
-        forma_ok = bool(afs) and all(a[1] == "COMMESSA" and a[2] is not None for a in afs)
+        # La forma reale dal giro C.1: l'attivita' arriva all'ORDINE solo
+        # attraverso la sua riga di commessa (`commessa_attivita_id`), e quella
+        # riga nomina l'ordine. Fino a quel giorno il pull ristampava la
+        # sorgente dell'attivita' a COMMESSA, e il test controllava quello.
+        forma_ok = bool(afs) and all(
+            a[1] == "ORDINE_VENDITA" and a[2] is not None for a in afs
+        )
 
         # 3) La FORMA REALE (quella che rendeva morto il vecchio livello 1) +
         #    il resolver che ci vede attraverso (T.2). Asserzione doppia di
@@ -363,7 +379,7 @@ with transaction.atomic():
                 " vendite.fn_resolve_termini_pagamento(%s)", [af_b[0]],
             )
             ris_b = cur.fetchone()[0]
-        check("3) forma reale (sorgente COMMESSA + commessa_attivita_id) e il"
+        check("3) forma reale (commessa_attivita_id, la riga nomina l'ORDINE) e il"
               " resolver risolve il termine dell'ORDINE",
               forma_ok and ris_a == term_doc and ris_b == term_alt,
               f"forma={'ok' if forma_ok else 'NO'} · A->{ris_a} (atteso {term_doc}) "
@@ -394,8 +410,15 @@ with transaction.atomic():
         )
         istanza_ctrl, uom_ctrl = cur.fetchone()
         giorno_ctrl = competenza - timedelta(days=1)
+        # La riga di controllo viene da un consumo vero della sua commessa: la
+        # chiave lo nomina (giro C.3, BE-C.3-c).
+        consumo_ctrl, chiave_ctrl = consumo_di_commessa(
+            cur, com_ctrl, giorno_ctrl.replace(day=1),
+        )
         ca_ctrl = crea_riga_commessa(
-            cur, commessa_id=com_ctrl, segment_key=f"SMOKE:{marker}:CTRL",
+            cur, commessa_id=com_ctrl,
+            segment_key=f"{chiave_ctrl}:SMOKE:{marker}:CTRL",
+            sorgente_codice=SORGENTE_CONSUMO, sorgente_uid=str(consumo_ctrl),
             articolo_id=riga_tpl["articolo_id"], istanza_utility_id=istanza_ctrl,
             uom_id=uom_ctrl, data_attivita=giorno_ctrl,
             competenza_mese=giorno_ctrl.replace(day=1),
@@ -410,12 +433,12 @@ with transaction.atomic():
                 uom_operativa_id, factor_to_base, prezzo_unitario, valuta_id,
                 tipo_doc_fiscale_id, competenza_mese, competenza_dal,
                 competenza_al, commessa_id, commessa_attivita_id,
-                sorgente_tipo_id, sorgente_uid, lock_in_fatturazione, approvato, stato_esecuzione, prezzo_bloccato, meta
+                lock_in_fatturazione, approvato, stato_esecuzione, prezzo_bloccato, meta
             )
             SELECT a.articolo_id, a.istanza_utility_id, a.billing_account_id,
                    %s, 1, a.uom_id, 1, a.uom_id, 1, 10, a.valuta_id,
                    a.tipo_doc_fiscale_id, %s, %s, %s, %s, %s,
-                   a.sorgente_tipo_id, %s, FALSE, FALSE,
+                   FALSE, FALSE,
                    'PENDING', TRUE, '{}'::jsonb
               FROM vendite.attivita_fatturabili a WHERE a.id = %s
             RETURNING id
@@ -423,7 +446,7 @@ with transaction.atomic():
             [competenza - timedelta(days=1),
              (competenza - timedelta(days=1)).replace(day=1),
              competenza - timedelta(days=1), competenza - timedelta(days=1),
-             com_ctrl, ca_ctrl, str(uuid.uuid4()), af_a[0]],
+             com_ctrl, ca_ctrl, af_a[0]],
         )
         af_ctrl = cur.fetchone()[0]
         cur.execute(

@@ -103,6 +103,7 @@ class FatturazioneRunApiTests(JwtMockedApiTest):
             {"emittente_fiscale_id": 3, "codice": "ACME", "soggetto_ruolo_id": 30},
         ]
         repo_cls.return_value.accoda.return_value = 555
+        repo_cls.return_value.stati_di.return_value = {555: "PENDING"}
 
         resp = self.client.post(
             _RUN, data=json.dumps({"competenza_mese": "2026-06-15"}),
@@ -158,6 +159,7 @@ class FatturazioneRunApiTests(JwtMockedApiTest):
             {"emittente_fiscale_id": 4, "codice": "BETA", "soggetto_ruolo_id": 40},
         ]
         repo_cls.return_value.accoda.side_effect = [555, 556]
+        repo_cls.return_value.stati_di.return_value = {555: "PENDING", 556: "PENDING"}
 
         resp = self.client.post(
             _RUN, data=json.dumps({"competenza_mese": "2026-06-15"}),

@@ -15,6 +15,8 @@
 #   3b. ⛔ un gruppo col ruolo NULL (dalla vista) è orfano: 400, mai un 500
 #   4. ⛔ nessuna azienda nel perimetro: 403 prima di accodare
 #   5. il giro mirato per azienda porta corsia «mirata» e i soli suoi gruppi
+#   6. ⭐ lo stato è quello VERO: la dedup restituisce un lavoro IN_CORSO
+#   7. ⛔ un id che chi accoda non vede è un difetto del modello: si solleva
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -34,6 +36,10 @@ _BETA = {"emittente_fiscale_id": 4, "codice": "BETA", "soggetto_ruolo_id": 40}
 _GAMMA = {"emittente_fiscale_id": 5, "codice": "GAMMA", "soggetto_ruolo_id": 50}
 _MESE = date(2026, 6, 1)
 _SCOPE = "apps.core.services.coda_lavori.scope.EmittenteAttivoRepository"
+_SCOPE_OPERATORE = {
+    "auth_user_id": 9, "username": "op9", "identita_id": 5,
+    "emittente_attivo_id": None, "emittente_ids": [3, 4], "scope_key": "3,4",
+}
 
 
 class RipartisciPerAziendaTests(TestCase):
@@ -108,6 +114,7 @@ class AccodaPerAziendaTests(TestCase):
         vendite.aziende_dei_gruppi.return_value = {"g1": [40], "g2": [30]}
         coda = MagicMock()
         coda.accoda.side_effect = [1, 2]
+        coda.stati_di.return_value = {1: "PENDING", 2: "PENDING"}
         lavori = accoda_per_azienda(
             {"auth_user_id": 9, "username": "op9", "identita_id": 5,
              "emittente_attivo_id": None, "emittente_ids": [3, 4], "scope_key": "3,4"},
@@ -123,3 +130,32 @@ class AccodaPerAziendaTests(TestCase):
         self.assertEqual([c["payload"]["gruppi"] for c in chiamate], [["g2"], ["g1"]])
         for c, azienda in zip(chiamate, ("3", "4"), strict=True):
             self.assertTrue(c["idempotency_key"].startswith(f"FATTURAZIONE_GIRO:mirata:2026-06-01:{azienda}:"))
+
+    # 6. ⭐ La dedup restituisce l'id di un lavoro già vivo, che può essere
+    #    IN_CORSO: la risposta dice quello, non «PENDING» per costruzione.
+    @patch(_SCOPE)
+    def test_stato_vero_dalla_dedup(self, aziende_cls) -> None:
+        aziende_cls.return_value.list_selezionabili.return_value = [_ACME, _BETA]
+        coda = MagicMock()
+        coda.accoda.side_effect = [1, 2]
+        coda.stati_di.return_value = {1: "IN_CORSO", 2: "PENDING"}
+        lavori = accoda_per_azienda(
+            _SCOPE_OPERATORE, job_type="FATTURAZIONE_GIRO", competenza=_MESE,
+            payload={"competenza_mese": "2026-06-01"}, coda_repo=coda,
+        )
+        self.assertEqual([lv["stato"] for lv in lavori], ["IN_CORSO", "PENDING"])
+        coda.stati_di.assert_called_once_with([1, 2])
+
+    # 7. ⛔ Un id che la porta ha dato e che chi accoda non vede: porta e policy
+    #    non concordano. Non si inventa uno stato.
+    @patch(_SCOPE)
+    def test_id_non_visibile_solleva(self, aziende_cls) -> None:
+        aziende_cls.return_value.list_selezionabili.return_value = [_ACME]
+        coda = MagicMock()
+        coda.accoda.return_value = 1
+        coda.stati_di.return_value = {}
+        with self.assertRaises(RuntimeError):
+            accoda_per_azienda(
+                _SCOPE_OPERATORE, job_type="FATTURAZIONE_GIRO", competenza=_MESE,
+                payload={"competenza_mese": "2026-06-01"}, coda_repo=coda,
+            )

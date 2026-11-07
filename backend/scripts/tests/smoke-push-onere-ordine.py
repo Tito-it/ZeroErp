@@ -160,7 +160,7 @@ with transaction.atomic():
         cur.execute(
             """
             SELECT ca.segment_key, ca.tipo_movimento, ca.causale_onere_id,
-                   s.codice_interno, ca.sorgente_uid
+                   s.codice_interno, ca.sorgente_id, ca.sorgente_riga
               FROM vendite.commesse_attivita ca
               LEFT JOIN config.sorgenti s ON s.id = ca.sorgente_tipo_id
              WHERE ca.commessa_id = ANY(%s)
@@ -172,9 +172,15 @@ with transaction.atomic():
     ca_merce = next((a for k, a in attivita.items() if k.endswith(f":R:{riga_merce}")), None)
 
     # 2) L'onere in commessa: ONERE, causale, sorgente del documento.
-    check("2) in commessa l'onere e' ONERE con causale TRASPORTO e la sorgente dell'ordine",
+    # ⭐ Dal giro C.3 (brief-db-sorgente-documento-e-riga, BE-C.3-b) l'ordine,
+    #    tipo a chiave id, sta in `sorgente_id`; e la RIGA dell'ordine in
+    #    `sorgente_riga`, che il push passa da BE-C.3-a. Fino a quel giorno si
+    #    leggeva l'uid dell'ordine in `sorgente_uid`.
+    check("2) in commessa l'onere e' ONERE con causale TRASPORTO e la sorgente "
+          "dell'ordine, fino alla sua riga",
           ca_onere is not None and ca_onere[1] == "ONERE" and ca_onere[2] == causale_trasporto
-          and ca_onere[3] == "ORDINE_VENDITA" and ca_onere[4] == ordine_uid,
+          and ca_onere[3] == "ORDINE_VENDITA" and ca_onere[4] == int(ordine_id)
+          and ca_onere[5] == int(riga_onere),
           f"riga={ca_onere}")
 
     # 3) La merce non cambia.

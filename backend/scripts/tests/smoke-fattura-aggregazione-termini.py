@@ -66,6 +66,7 @@ from django.db import connection, transaction
 from apps.vendite.services.fatture_righe_service import FattureRigheService
 from scripts.tests._smoke_contesto import apri_contesto_smoke
 from scripts.tests._smoke_fatturazione import (
+    chiave_di_commessa,
     costruisci_base_fatturazione,
     crea_attivita_di_commessa,
     crea_commessa_di_prova,
@@ -140,11 +141,11 @@ with transaction.atomic():
 
         af = {
             "A1": crea_attivita_di_commessa(cur, t, commessa_id=c1, lock_batch_id=lock_batch_id,
-                                segment_key=f"SMOKE:{marker}:A1", prezzo=Decimal("10.00"))[1],
+                                segment_key=chiave_di_commessa(cur, t, c1, f"SMOKE:{marker}:A1"), prezzo=Decimal("10.00"))[1],
             "A2": crea_attivita_di_commessa(cur, t, commessa_id=c2, lock_batch_id=lock_batch_id,
-                                segment_key=f"SMOKE:{marker}:A2", prezzo=Decimal("20.00"))[1],
+                                segment_key=chiave_di_commessa(cur, t, c2, f"SMOKE:{marker}:A2"), prezzo=Decimal("20.00"))[1],
             "A3": crea_attivita_di_commessa(cur, t, commessa_id=c3, lock_batch_id=lock_batch_id,
-                                segment_key=f"SMOKE:{marker}:A3", prezzo=Decimal("30.00"))[1],
+                                segment_key=chiave_di_commessa(cur, t, c3, f"SMOKE:{marker}:A3"), prezzo=Decimal("30.00"))[1],
         }
 
         # 0) Controprova a monte, ASSERITA e non solo stampata (una controprova
