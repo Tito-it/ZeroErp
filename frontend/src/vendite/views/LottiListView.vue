@@ -573,7 +573,7 @@ const gestoNumera = useChiaveGesto()
 // ⚠️ Si può ammettere SOLO perché le righe spedite escono dalla selezione
 //    (`lottiInGiro`): senza quella, due invii avrebbero perimetri sovrapposti e
 //    il secondo rimanderebbe lotti già numerati.
-const { start: seguiJob, isFollowing, nJobsInCorso: nGiriNumera } = useJobPolling({
+const { seguiLavori: seguiJobs, nJobsInCorso: nGiriNumera } = useJobPolling({
   fetchStatus: (jobId) => getFatturazioneRun(jobId),
   maxConcurrent: Infinity,
   onDone: (stato, context) => {
@@ -644,24 +644,32 @@ async function confermaNumeraPerimetro(dataDocumento) {
     (config) => runNumerazione(competenza, opzioni, config),
   ))
   if (res === null) return false
+  // ⭐ La risposta e' una LISTA di lavori, uno per azienda (BE10 a,
+  //    2026-11-07): dalla modalita' «Tutti gli emittenti» la selezione si
+  //    divide per azienda, e ogni lavoro porta i SUOI lotti (`lavoro.lotti`).
+  //    Li segue il BB (`seguiLavori`).
+  const { seguiti, nonSeguiti } = seguiJobs(res.lavori, (lavoro) => ({
+    jobId: lavoro.job_id, competenza,
+  }))
   // Stesso perimetro ancora vivo → il backend non crea un secondo job: torna
-  // l'id di quello in corso (chiave competenza + scope + digest del perimetro).
-  // Seguirlo di nuovo lo conterebbe due volte, e all'operatore va detto che non
-  // ha avviato niente di nuovo.
-  if (isFollowing(res.job_id)) {
+  // l'id di quello in corso (chiave competenza + azienda + digest del
+  // perimetro). Seguirlo di nuovo lo conterebbe due volte, e all'operatore va
+  // detto che non ha avviato niente di nuovo.
+  if (seguiti.length === 0 && nonSeguiti.length === 0) {
     notify.info(t('vendite.lotti.numera_gia_in_corso'))
     return true
   }
   notify.info(t('vendite.lotti.numera_accodato'))
-  // ⚠️ Si marca SOLO se il polling ha davvero preso in carico il giro. `start`
-  //    può rifiutare (job già seguito, o tetto raggiunto) e ritorna `false`:
-  //    marcare comunque lascerebbe righe con la rotellina e fuori dalla
-  //    selezione PER SEMPRE, perché lo `smarca` vive in `onDone`/`onTimeout` —
-  //    callback di un giro che nessuno sta seguendo e che quindi non arriveranno
-  //    mai. Sono righe che diventano non lavorabili senza che niente lo dica.
-  const seguito = seguiJob(res.job_id, { jobId: res.job_id, competenza })
-  // Le chiavi del giro sono gli id del perimetro: solo per l'atto su SELEZIONE.
-  if (seguito && lotti?.length) lottiInGiro.marca(res.job_id, lotti)
+  // ⚠️ Si marcano SOLO i giri che il polling ha davvero preso in carico: lo
+  //    `smarca` vive in `onDone`/`onTimeout`, callback di un giro seguito.
+  //    Marcare un giro che nessuno segue lascerebbe righe con la rotellina e
+  //    fuori dalla selezione PER SEMPRE — non lavorabili senza che niente lo
+  //    dica.
+  // Le chiavi di un giro sono gli id del suo perimetro: solo per l'atto su
+  // SELEZIONE (l'atto di mese non ne ha).
+  for (const lavoro of seguiti) {
+    if (lavoro.lotti?.length) lottiInGiro.marca(lavoro.job_id, lavoro.lotti)
+  }
   return true
 }
 

@@ -9,7 +9,7 @@
 #        (brief-db-archiviazione-righe-code) — l'ARCHIVIAZIONE delle righe di
 #        entrambe le code, che le toglie dall'ELENCO senza toccarne lo stato.
 #        Regole portanti:
-#         - scope OPERATORE = `scope_key` (coda lavori) / emittenti via JOIN
+#         - scope OPERATORE = azienda del lavoro (coda lavori) / emittenti via JOIN
 #           fatture (coda stampa) — nessuna seconda logica di scope (I-1);
 #         - il salto a "tutti i job / job altrui" richiede SUPER_ADMIN o
 #           l'azione di processo `code_manage` (D-A; seed area core, brief §6);
@@ -36,7 +36,6 @@ from apps.core.services.coda_lavori.repository import (
     STATI_VIVI,
     CodaLavoriRepository,
 )
-from apps.core.services.coda_lavori.scope import scope_key_da_emittenti
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.fan_out import run_fan_out
 from apps.core.services.list_helpers import validate_order_params
@@ -80,27 +79,33 @@ _SOGLIA_LIVENESS_RIPIEGO_MINUTI = 10
 # seconda copia, e un alias locale sarebbe un secondo nome per la stessa cosa.
 
 
-# Scopo: Risolve le due chiavi di scope del chiamante: `caller_key` (la
-#        scope_key canonica, per `is_mio` — "ALL" per l'admin globale) e
-#        `owner_filter` (filtro righe/azioni: None = vede tutto, per whitelist
-#        emittenti None; altrimenti la propria scope_key). Speculare al
-#        polling `run/<job_id>/` di vendite (stessa semantica, stessa fonte
-#        `scope_key_da_emittenti`).
-def _resolve_scope_keys(user: Any) -> tuple[str, str | None]:
+# Scopo: Il PERIMETRO del chiamante sulla coda lavori: le aziende (PK degli
+#        emittenti) di cui vede e gestisce i lavori, None = tutte (admin
+#        globale, whitelist None). Ritorna la coppia `(caller, owner_filter)`:
+#        `caller` per `is_mio`, `owner_filter` per filtrare righe e azioni —
+#        oggi lo stesso valore, che chi vede tutte le code azzera a None
+#        lasciando `caller` com'è. Speculare al polling `run/<job_id>/` di
+#        vendite (stessa fonte, `PermissionResolver.get_emittenti_pk_ids`).
+# ⭐ Dal 2026-11-07 (BE10 a, anticipo di BE9 — decisione di Tid) il lavoro è
+#    di chi ha la sua AZIENDA nel perimetro, come nella policy della coda; fino
+#    a quel giorno era di chi aveva la stessa `scope_key`, cioè la stessa
+#    whitelist esatta. La regola in SQL sta nel repository
+#    (`_filtro_perimetro`, `_espr_nel_perimetro`): qui si dice solo QUALE
+#    perimetro.
+def _resolve_perimetro(user: Any) -> tuple[list[int] | None, list[int] | None]:
     emittente_ids = PermissionResolver.get_emittenti_pk_ids(user)
-    caller_key = scope_key_da_emittenti(emittente_ids)
-    owner_filter = None if emittente_ids is None else caller_key
-    return caller_key, owner_filter
+    perimetro = None if emittente_ids is None else [int(e) for e in emittente_ids]
+    return perimetro, perimetro
 
 
-# Scopo: Chiave di scope che IDENTIFICA il chiamante sui job di coda ('ALL'
-#        per l'admin globale, altrimenti gli emittenti ordinati). È la stessa
-#        identità con cui `elenca` calcola `is_mio`. Esposta come API pubblica
-#        del modulo perché serve anche fuori dalla gestione code: il cockpit
-#        fatturazione spezza i conteggi dei giri in «miei / di altri» e deve
-#        usare la STESSA identità, non una seconda copia che può divergere.
-def scope_key_operatore(user: Any) -> str:
-    return _resolve_scope_keys(user)[0]
+# Scopo: Il perimetro che IDENTIFICA il chiamante sui lavori di coda (None per
+#        l'admin globale, altrimenti le sue aziende). È lo stesso con cui
+#        `elenca` calcola `is_mio`. Esposto come API pubblica del modulo perché
+#        serve anche fuori dalla gestione code: il cockpit fatturazione spezza
+#        i conteggi dei giri in «miei / di altri» e deve usare la STESSA
+#        regola, non una seconda copia che può divergere.
+def perimetro_coda_operatore(user: Any) -> list[int] | None:
+    return _resolve_perimetro(user)[0]
 
 
 # Scopo: Il chiamante può vedere/gestire i job di TUTTI gli scope? SUPER_ADMIN
@@ -189,14 +194,14 @@ def _liveness_worker(jobnames: list[str]) -> dict[str, dict]:
 # Scopo: BE-4 — conteggi per il badge top bar + liveness worker. Ritorna
 #        `{coda_lavori: {pending, in_corso}, coda_stampa: {pending, in_corso},
 #        worker: {coda_lavori: {...}, coda_stampa: {...}}}`. I conteggi sono
-#        SCOPED al chiamante (coda lavori per scope_key; coda stampa per
+#        SCOPED al chiamante (coda lavori per azienda del lavoro; coda stampa per
 #        emittente via JOIN fatture — `auth_user_id` None = superuser, vede
 #        tutto). La liveness confronta l'ultimo run dei drainer col clock DB;
 #        un worker mai girato → {last_run_at: None, attivo: False} (fail-visible:
 #        "worker giù", non un buco nel payload).
 def conteggi_code(user: Any, *, auth_user_id: int | None) -> dict[str, Any]:
-    _caller_key, owner_filter = _resolve_scope_keys(user)
-    lavori = CodaLavoriRepository().count_per_stato(owner_scope_key=owner_filter)
+    _caller, owner_filter = _resolve_perimetro(user)
+    lavori = CodaLavoriRepository().count_per_stato(owner_emittenti=owner_filter)
 
     # Coda stampa: area vendite, satellite di fatture (import lazy — vedi header).
     from apps.vendite.db.pipeline_repository import VenditePipelineRepository
@@ -260,7 +265,7 @@ def elenca_coda_lavori(
     sort_by: str | None = None,
     sort_dir: str | None = None,
 ) -> dict[str, Any]:
-    caller_key, owner_filter = _resolve_scope_keys(user)
+    caller, owner_filter = _resolve_perimetro(user)
     if tutti:
         owner_filter = None
     # `allowed` DERIVATO dalla whitelist del repository, mai ricopiato: era una
@@ -287,8 +292,8 @@ def elenca_coda_lavori(
         function_name="core.gestione_code.elenca_coda_lavori",
     )
     esito = CodaLavoriRepository().elenca(
-        owner_scope_key=owner_filter,
-        caller_scope_key=caller_key,
+        owner_emittenti=owner_filter,
+        caller_emittenti=caller,
         # `solo_vivi` → vocabolario STATI_VIVI QUI (simmetrico alla coda
         # stampa: il repo riceve sempre `stati`, mai un secondo meccanismo).
         stati=list(STATI_VIVI) if solo_vivi else ([stato] if stato else None),
@@ -374,17 +379,17 @@ def elenca_coda_stampa(
 
 
 # Scopo: BE-8 — dettaglio completo di un job per il drawer (payload, timeline,
-#        tentativi/errore, esito, proprietario, is_mio). Ownership scope-based
+#        tentativi/errore, esito, proprietario, is_mio). Ownership per azienda
 #        come il polling: fuori scope/inesistente → 404 unificato (no leak);
 #        chi può gestire tutte le code vede ogni job.
 def dettaglio_job(user: Any, job_id: int) -> dict[str, Any]:
-    caller_key, owner_filter = _resolve_scope_keys(user)
+    caller, owner_filter = _resolve_perimetro(user)
     if owner_filter is not None and puo_gestire_tutte_le_code(user):
         owner_filter = None
     dettaglio = CodaLavoriRepository().get_dettaglio(
         int(job_id),
-        owner_scope_key=owner_filter,
-        caller_scope_key=caller_key,
+        owner_emittenti=owner_filter,
+        caller_emittenti=caller,
     )
     ErrorManager.require(
         dettaglio is not None,
@@ -397,11 +402,11 @@ def dettaglio_job(user: Any, job_id: int) -> dict[str, Any]:
 
 
 # Scopo: Ownership per le AZIONI (annulla/requeue): un operatore agisce solo
-#        sui job della propria scope_key; chi può gestire tutte le code agisce
+#        sui job delle aziende del suo perimetro; chi può gestire tutte le code agisce
 #        su qualunque job (owner filter None). Ritorna il filtro da passare
 #        al repository.
-def _owner_filter_per_azione(user: Any) -> str | None:
-    _caller_key, owner_filter = _resolve_scope_keys(user)
+def _owner_filter_per_azione(user: Any) -> list[int] | None:
+    _caller, owner_filter = _resolve_perimetro(user)
     if owner_filter is not None and puo_gestire_tutte_le_code(user):
         return None
     return owner_filter
@@ -415,14 +420,14 @@ def _owner_filter_per_azione(user: Any) -> str | None:
 def annulla_job(user: Any, job_id: int) -> dict[str, Any]:
     owner_filter = _owner_filter_per_azione(user)
     repo = CodaLavoriRepository()
-    stato = repo.get_stato(int(job_id), owner_scope_key=owner_filter)
+    stato = repo.get_stato(int(job_id), owner_emittenti=owner_filter)
     ErrorManager.require(
         stato is not None,
         code="E_JOB_NON_TROVATO",
         message="Job non trovato.",
         detail=f"job_id={job_id}",
     )
-    annullato = repo.annulla(int(job_id), owner_scope_key=owner_filter)
+    annullato = repo.annulla(int(job_id), owner_emittenti=owner_filter)
     ErrorManager.require(
         annullato,
         code="E_JOB_NON_ANNULLABILE",
@@ -447,7 +452,7 @@ def requeue_job(
     )
     owner_filter = _owner_filter_per_azione(user)
     repo = CodaLavoriRepository()
-    stato = repo.get_stato(int(job_id), owner_scope_key=owner_filter)
+    stato = repo.get_stato(int(job_id), owner_emittenti=owner_filter)
     ErrorManager.require(
         stato is not None,
         code="E_JOB_NON_TROVATO",
@@ -457,7 +462,7 @@ def requeue_job(
     riaccodato = repo.requeue(
         int(job_id),
         extra_tentativi=int(extra_tentativi),
-        owner_scope_key=owner_filter,
+        owner_emittenti=owner_filter,
     )
     ErrorManager.require(
         riaccodato,

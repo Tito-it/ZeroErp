@@ -1318,6 +1318,68 @@ class VenditeRepository:
                 for row in cursor.fetchall()
             ]
 
+    # Scopo: L'AZIENDA (ruolo dell'emittente, `emittente_soggetto_ruolo_id`)
+    #        di ciascun gruppo fatturabile chiesto, per la competenza: serve a
+    #        dividere un'emissione mirata in un lavoro per azienda (BE10 a di
+    #        brief-db-revisione-dbops). Ritorna `{gruppo_key: [sr_id, ...]}` per
+    #        le sole chiavi trovate.
+    # Perimetro: sola lettura su `vw_dash_competenza_gruppi` (security_invoker):
+    #        lo scope emittente lo applica la vista, quindi un gruppo fuori
+    #        perimetro NON torna — per chi chiede è un gruppo che non c'è.
+    # ⭐ La sorgente è quella dell'elenco «Da emettere» da cui l'operatore ha
+    #    spuntato le chiavi, con lo stesso filtro di competenza
+    #    (`g.competenza_mese = %s`): la risposta parla delle righe che ha visto.
+    # ⚠️ Una lista e non un valore: un gruppo parzialmente fatturato sta su più
+    #    righe (una per stadio, vedi la vista), e il chiamante deve poter
+    #    vedere che l'azienda è UNA invece di prenderne una a caso.
+    # ⛔ Solo le due colonne che servono: il costo della vista dipende da cosa le
+    #    si chiede (vedi `get_dash_competenza_gruppi_accessori`).
+    # ⛔ Un ruolo NULL resta nella lista come None, non si scarta né si
+    #    converte: la colonna viene da una vista, e un `int(None)` sarebbe un
+    #    500. Così il gruppo arriva al chiamante come «azienda non
+    #    attribuibile» e diventa il suo 400 parlante.
+    def aziende_dei_gruppi(
+        self, *, competenza_mese: date, chiavi: Sequence[str],
+    ) -> dict[str, list[int | None]]:
+        if not chiavi:
+            return {}
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT g.gruppo_key,
+                       array_agg(DISTINCT g.emittente_soggetto_ruolo_id)
+                  FROM vendite.vw_dash_competenza_gruppi g
+                 WHERE g.competenza_mese = %s
+                   AND g.gruppo_key = ANY(%s::text[])
+                 GROUP BY g.gruppo_key
+                """,
+                [competenza_mese, list(chiavi)],
+            )
+            return {
+                str(r[0]): [None if x is None else int(x) for x in r[1]]
+                for r in cursor.fetchall()
+            }
+
+    # Scopo: L'AZIENDA (`emittente_soggetto_ruolo_id`) di ciascun lotto
+    #        chiesto: serve a dividere «Rendi definitive» su una selezione in un
+    #        lavoro per azienda (BE10 a). Ritorna `{lotto_id: sr_id}` per i soli
+    #        lotti trovati.
+    # Perimetro: sola lettura; la policy dei lotti filtra al perimetro di chi
+    #        chiede, quindi un lotto fuori perimetro non torna.
+    def aziende_dei_lotti(self, *, lotti_ids: Sequence[int]) -> dict[int, int]:
+        if not lotti_ids:
+            return {}
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT fl.id, fl.emittente_soggetto_ruolo_id
+                  FROM vendite.fatturazione_lotti fl
+                 WHERE fl.id = ANY(%s::bigint[])
+                """,
+                [[int(i) for i in lotti_ids]],
+            )
+            return {int(r[0]): int(r[1]) for r in cursor.fetchall()}
+
     # Scopo: Restituisce il dettaglio testata di un singolo lotto (stessa
     #        proiezione della lista), con scope emittente applicato: un lotto
     #        fuori scope torna None → il BE risponde 404 (indistinguibile da id

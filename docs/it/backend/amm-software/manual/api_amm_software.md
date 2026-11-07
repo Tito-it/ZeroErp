@@ -1774,7 +1774,10 @@ e non al dettaglio di un processo chiamato «presidi».
 ### 6.2 POST /api/v1/amm-software/processi/{codice}/esegui-ora/ — «Esegui ora» su una sveglia
 
 Accoda **un** lavoro `ESEGUI_PROCESSO` su `dbops.coda_lavori` per la sveglia di
-deploy indicata, con lo scope di chi preme (`run_as = OPERATORE`); il drenatore
+deploy indicata, come lavoro `SISTEMA` (senza scope; dal 2026-11-07, BE10 di
+`brief-db-revisione-dbops`: il processo `avvio_manuale` è di manutenzione e il
+comando lavora da sé sulle aziende del suo roster) con chi preme nel payload come
+attore (`richiesto_da`); il drenatore
 (`draina_coda_lavori`, ogni minuto) lancia `bin/run-command.sh <comando>` come
 sottoprocesso — **la stessa riga del timer, meno l'orario** — e il comando
 registra il suo run sotto il proprio processo con `origine = COMMAND` e

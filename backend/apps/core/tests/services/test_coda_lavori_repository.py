@@ -140,7 +140,7 @@ class CodaLavoriRepositoryJsonbTests(SimpleTestCase):
         )
         conn.cursor.return_value = _cursor_with(row, many=False)
 
-        det = CodaLavoriRepository().get_dettaglio(5, caller_scope_key="ALL")
+        det = CodaLavoriRepository().get_dettaglio(5, caller_emittenti=None)
 
         assert det is not None
         self.assertEqual(det["payload"], {"competenza_mese": "2026-06-01"})

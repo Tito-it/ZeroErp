@@ -65,6 +65,36 @@ STALE_MINUTI_DEFAULT = 30
 # service e view NON lo ripetono — passano None/omettono il kwarg).
 DEFAULT_EXTRA_TENTATIVI = 3
 
+
+# Scopo: Il PERIMETRO di chi guarda la coda, in SQL. Un lavoro e' di chi ha la
+#        sua azienda (`emittente_fiscale_id`) nel perimetro: la stessa regola
+#        della policy `rls_coda_lavori_ef_perimetro`, scritta qui finche' la
+#        RLS non e' accesa (blocco 5b), e che BE9 ritira quando la fa il DB.
+#        Due frammenti, una regola:
+#          - `_filtro_perimetro`: FILTRA le righe. None = nessun filtro (admin
+#            globale, o chi gestisce tutte le code).
+#          - `_espr_nel_perimetro`: l'espressione booleana di `is_mio` e
+#            `mio_count`. None = tutte le aziende (admin globale); una lista
+#            vuota = nessuna (chiamante di sistema).
+# ⭐ Fino al 2026-11-07 «mio» era «stessa `scope_key`», cioe' stessa whitelist
+#    esatta: col giro per azienda (BE10 a) il lavoro dell'azienda E porta la
+#    scope_key «E», e chi l'ha accodato in modalita' globale («1,2») non lo
+#    avrebbe piu' visto. Anticipato BE9 (decisione di Tid, 2026-11-07).
+# ⚠️ Un lavoro SISTEMA non ha azienda: non e' «mio» di nessuno e lo vede solo
+#    chi non ha filtro, come nella policy.
+# ⛔ `::bigint[]` esplicito: una lista vuota arriva come `'{}'`, che senza
+#    tipo PostgreSQL non sa confrontare.
+def _filtro_perimetro(emittenti: Sequence[int] | None) -> tuple[str | None, list[Any]]:
+    if emittenti is None:
+        return None, []
+    return "emittente_fiscale_id = ANY(%s::bigint[])", [[int(e) for e in emittenti]]
+
+
+def _espr_nel_perimetro(emittenti: Sequence[int] | None) -> tuple[str, list[Any]]:
+    if emittenti is None:
+        return "(emittente_fiscale_id IS NOT NULL)", []
+    return "(emittente_fiscale_id = ANY(%s::bigint[]))", [[int(e) for e in emittenti]]
+
 # Whitelist ORDER BY della lista code: chiave = `campo_sorgente` inviato dal
 # frontend, valore = espressione SQL (nuda solo dove e' un alias di output della
 # SELECT, che e' l'unico caso in cui ORDER BY la risolve). Direzione, NULLS e
@@ -349,15 +379,16 @@ class CodaLavoriRepository:
 
     # Scopo: Annulla un job SOLO se ancora PENDING → ANNULLATO (0 righe se già
     #        claimato: nessuna race col worker). Ritorna True se annullato.
-    #        `owner_scope_key`: enforcement ownership (agisce solo sui job della
-    #        propria `scope_key`; None = qualunque job, per l'admin `code_manage`).
+    #        `owner_emittenti`: enforcement ownership (agisce solo sui job delle
+    #        aziende del perimetro; None = qualunque job, per l'admin `code_manage`).
     #        Job fuori scope → 0 righe, indistinguibile da inesistente (no leak).
-    def annulla(self, item_id: int, *, owner_scope_key: str | None = None) -> bool:
+    def annulla(self, item_id: int, *, owner_emittenti: Sequence[int] | None = None) -> bool:
         conditions = ["id = %s", "stato = 'PENDING'"]
         params: list[Any] = [int(item_id)]
-        if owner_scope_key is not None:
-            conditions.append("scope->>'scope_key' = %s")
-            params.append(str(owner_scope_key))
+        filtro, filtro_params = _filtro_perimetro(owner_emittenti)
+        if filtro is not None:
+            conditions.append(filtro)
+            params.extend(filtro_params)
         where = " AND ".join(conditions)
         with connection.cursor() as cursor:
             cursor.execute(
@@ -374,7 +405,7 @@ class CodaLavoriRepository:
     #        ERRORE terminale → PENDING. `tentativi` si MANTIENE (storia dei
     #        fallimenti preservata) e si alza `max_tentativi += extra_tentativi`
     #        per consentire i nuovi tentativi (brief DB §3a). Ritorna True se
-    #        rimesso in coda. `owner_scope_key`: enforcement ownership (None =
+    #        rimesso in coda. `owner_emittenti`: enforcement ownership (None =
     #        qualunque job, per l'admin `code_manage`); fuori scope → 0 righe.
     #        ⚠️ IN_CORSO è riaccodabile SOLO se STANTIO (`claimed_at` oltre
     #        `stale_minuti`, stessa soglia del reaper): riaccodare un job che
@@ -385,7 +416,7 @@ class CodaLavoriRepository:
         item_id: int,
         *,
         extra_tentativi: int = DEFAULT_EXTRA_TENTATIVI,
-        owner_scope_key: str | None = None,
+        owner_emittenti: Sequence[int] | None = None,
         stale_minuti: int = STALE_MINUTI_DEFAULT,
     ) -> bool:
         conditions = [
@@ -395,9 +426,10 @@ class CodaLavoriRepository:
                     AND claimed_at < now() - make_interval(mins => %s)))""",
         ]
         params: list[Any] = [int(item_id), int(stale_minuti)]
-        if owner_scope_key is not None:
-            conditions.append("scope->>'scope_key' = %s")
-            params.append(str(owner_scope_key))
+        filtro, filtro_params = _filtro_perimetro(owner_emittenti)
+        if filtro is not None:
+            conditions.append(filtro)
+            params.extend(filtro_params)
         where = " AND ".join(conditions)
         with connection.cursor() as cursor:
             cursor.execute(
@@ -413,20 +445,21 @@ class CodaLavoriRepository:
             return cursor.rowcount > 0
 
     # Scopo: Conteggi per stato (monitoraggio), opzionalmente per job_type e/o
-    #        scope operatore. `owner_scope_key` None = tutta la coda (admin/
-    #        sistema); valorizzato = solo i job della propria `scope_key` (badge
+    #        perimetro operatore. `owner_emittenti` None = tutta la coda (admin/
+    #        sistema); valorizzato = solo i job delle aziende del perimetro (badge
     #        top bar per-operatore).
     def count_per_stato(
-        self, *, job_type: str | None = None, owner_scope_key: str | None = None,
+        self, *, job_type: str | None = None, owner_emittenti: Sequence[int] | None = None,
     ) -> dict[str, int]:
         conditions: list[str] = []
         params: list[Any] = []
         if job_type is not None:
             conditions.append("job_type = %s")
             params.append(job_type)
-        if owner_scope_key is not None:
-            conditions.append("scope->>'scope_key' = %s")
-            params.append(str(owner_scope_key))
+        filtro, filtro_params = _filtro_perimetro(owner_emittenti)
+        if filtro is not None:
+            conditions.append(filtro)
+            params.extend(filtro_params)
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
         sql = f"""
             SELECT stato, COUNT(*)::int
@@ -452,12 +485,13 @@ class CodaLavoriRepository:
     #    la competenza è DICHIARATA all'accodamento (l'endpoint la normalizza al
     #    1° del mese) — nessun ripiego euristico, a differenza dei run storici
     #    del batch.
-    #  - `caller_scope_key`: NON filtra — i conteggi sono l'attività COMPLESSIVA
+    #  - `caller_emittenti`: NON filtra — i conteggi sono l'attività COMPLESSIVA
     #    (decisione Tid 2026-07-23: chi è autorizzato all'attività deve vedere il
     #    totale, un conteggio ristretto ai propri è un'informazione sbagliata).
-    #    Serve a SPEZZARE il totale in `mio_count` (job con la stessa scope_key
-    #    del chiamante) vs altri — stessa identità di `is_mio` in `elenca`, mai
-    #    una seconda regola. None (uso di sistema) → `mio_count = 0`.
+    #    Serve a SPEZZARE il totale in `mio_count` (lavori delle aziende del
+    #    perimetro del chiamante) vs altri — la stessa regola di `is_mio` in
+    #    `elenca` (`_espr_nel_perimetro`), mai una seconda. Vuoto (uso di
+    #    sistema, il default) → `mio_count = 0`; None = tutte le aziende.
     #
     # `ok`/`fail` contano gli stati TERMINALI (FATTO/ERRORE); `total` include
     # anche i non terminali (PENDING/IN_CORSO) e gli ANNULLATO, così «10/13» si
@@ -481,7 +515,7 @@ class CodaLavoriRepository:
         *,
         job_types: list[str],
         competenza_mese: date | None = None,
-        caller_scope_key: str | None = None,
+        caller_emittenti: Sequence[int] | None = (),
     ) -> list[dict[str, Any]]:
         if not job_types:
             return []
@@ -494,17 +528,18 @@ class CodaLavoriRepository:
         # `ended_at` è l'istante in cui il lavoro si è concluso; per i job non
         # ancora terminati si ripiega su started_at e infine sull'accodamento,
         # così «ultimo giro» non risulta mai vuoto per un job in corso.
-        # `caller_scope_key` è il primo parametro perché compare per primo
-        # nell'SQL (FILTER del mio_count); '' quando None: non matcha nessuna
-        # scope_key reale → mio_count 0. Le condizioni compaiono TRE volte
-        # (summary, recente, conclusa): i loro valori, nello stesso ordine.
+        # L'espressione del «mio» compare per prima nell'SQL (FILTER del
+        # mio_count), quindi i suoi valori vanno per primi. Le condizioni
+        # compaiono TRE volte (summary, recente, conclusa): i loro valori,
+        # nello stesso ordine.
+        mio_sql, mio_params = _espr_nel_perimetro(caller_emittenti)
         sql = f"""
             WITH summary AS (
                 SELECT job_type,
                        COUNT(*)::int AS total_runs,
                        COUNT(*) FILTER (WHERE stato = 'FATTO')::int AS ok_count,
                        COUNT(*) FILTER (WHERE stato = 'ERRORE')::int AS fail_count,
-                       COUNT(*) FILTER (WHERE scope->>'scope_key' = %s)::int
+                       COUNT(*) FILTER (WHERE {mio_sql})::int
                            AS mio_count
                   FROM dbops.coda_lavori
                   {where}
@@ -537,7 +572,7 @@ class CodaLavoriRepository:
              ORDER BY s.job_type
         """  # noqa: S608 — where da condizioni whitelisted (nessun input libero)
         with connection.cursor() as cursor:
-            cursor.execute(sql, [caller_scope_key or "", *params, *params, *params])
+            cursor.execute(sql, [*mio_params, *params, *params, *params])
             return [
                 {
                     "jobname": str(r[0]),
@@ -559,11 +594,11 @@ class CodaLavoriRepository:
     # (senza, in DESC PG li metterebbe in testa).
     # Scopo: Elenco paginato dei job per la UI di gestione code (tracciamento).
     #        Proietta stato/tentativi/errore/timeline/proprietario + `is_mio`
-    #        (il job è del chiamante: la `scope_key` combacia) calcolato QUI, così
-    #        il FE non confronta identità (P-5). `owner_scope_key` FILTRA le righe
-    #        (operatore → solo le proprie; None = tutte, per l'admin `code_manage`);
-    #        `caller_scope_key` serve SOLO a calcolare `is_mio` (resta la chiave del
-    #        chiamante anche quando vede tutto). Filtri opzionali stato/job_type/
+    #        (la sua azienda è nel perimetro del chiamante) calcolato QUI, così
+    #        il FE non confronta identità (P-5). `owner_emittenti` FILTRA le righe
+    #        (operatore → le sue aziende; None = tutte, per l'admin `code_manage`);
+    #        `caller_emittenti` serve SOLO a calcolare `is_mio` (resta il
+    #        perimetro del chiamante anche quando vede tutto). Filtri opzionali stato/job_type/
     #        intervallo `data_insert` (giorni dell'AZIENDA, `data_a` incluso:
     #        BB `predicato_giorno_operativo`). Ritorna `{items, total, archiviate}` via BB
     #        `fetch_paged_with_total` (fallback pagina-stantia: le code si
@@ -593,8 +628,8 @@ class CodaLavoriRepository:
     def elenca(
         self,
         *,
-        owner_scope_key: str | None = None,
-        caller_scope_key: str | None = None,
+        owner_emittenti: Sequence[int] | None = None,
+        caller_emittenti: Sequence[int] | None = (),
         stati: list[str] | None = None,
         job_type: str | None = None,
         data_da: date | None = None,
@@ -610,9 +645,10 @@ class CodaLavoriRepository:
         # avere lo stesso perimetro (scritto due volte, divergerebbe).
         base_conditions: list[str] = []
         base_params: list[Any] = []
-        if owner_scope_key is not None:
-            base_conditions.append("scope->>'scope_key' = %s")
-            base_params.append(str(owner_scope_key))
+        filtro, filtro_params = _filtro_perimetro(owner_emittenti)
+        if filtro is not None:
+            base_conditions.append(filtro)
+            base_params.extend(filtro_params)
         if stati:
             base_conditions.append("stato = ANY(%s)")
             base_params.append(list(stati))
@@ -628,6 +664,7 @@ class CodaLavoriRepository:
             conditions.append("NOT archiviato")
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
         safe_limit, safe_offset = limiti_pagina(limit, offset)
+        mio_sql, mio_params = _espr_nel_perimetro(caller_emittenti)
         # Whitelist prima dell'SQL: l'ordinamento finisce interpolato nel testo.
         # BB `sql_order_clause` RIGIDO — sort_by o sort_dir fuori lista sono
         # `ValueError`, mai il default.
@@ -644,7 +681,7 @@ class CodaLavoriRepository:
                    archiviato, archiviato_il, archiviato_da,
                    scope->>'username' AS proprietario,
                    scope->>'scope_key' AS scope_key,
-                   (scope->>'scope_key' = %s) AS is_mio,
+                   {mio_sql} AS is_mio,
                    COUNT(*) OVER() AS total_count
               FROM dbops.coda_lavori
               {where}
@@ -653,7 +690,7 @@ class CodaLavoriRepository:
         """  # noqa: S608 — where/order da whitelist chiuse (nessun input libero)
         rows, total = fetch_paged_with_total(
             data_sql,
-            [caller_scope_key, *where_params, safe_limit, safe_offset],
+            [*mio_params, *where_params, safe_limit, safe_offset],
             fallback_count_sql=(
                 f"SELECT COUNT(*) FROM dbops.coda_lavori {where}"  # noqa: S608
             ),
@@ -732,23 +769,25 @@ class CodaLavoriRepository:
     # Scopo: Dettaglio COMPLETO di un job per il drawer della UI code (BE-8):
     #        oltre ai campi del polling, payload, origine, priorita, timeline
     #        (accodato/claimed/started/ended), run_after, proprietario
-    #        (scope->>'username') e `is_mio` (scope_key del job == quella del
-    #        chiamante, calcolato QUI — il FE non confronta identità, P-5).
-    #        `owner_scope_key` filtra come in `get_stato` (None = nessun filtro,
-    #        admin `code_manage`); `caller_scope_key` serve SOLO a `is_mio`.
+    #        (scope->>'username') e `is_mio` (l'azienda del job è nel perimetro
+    #        del chiamante, calcolato QUI — il FE non confronta identità, P-5).
+    #        `owner_emittenti` filtra come in `get_stato` (None = nessun filtro,
+    #        admin `code_manage`); `caller_emittenti` serve SOLO a `is_mio`.
     #        None se id inesistente o fuori scope (indistinguibile, no leak).
     def get_dettaglio(
         self,
         item_id: int,
         *,
-        owner_scope_key: str | None = None,
-        caller_scope_key: str | None = None,
+        owner_emittenti: Sequence[int] | None = None,
+        caller_emittenti: Sequence[int] | None = (),
     ) -> dict[str, Any] | None:
+        mio_sql, mio_params = _espr_nel_perimetro(caller_emittenti)
         conditions = ["id = %s"]
-        params: list[Any] = [caller_scope_key, int(item_id)]
-        if owner_scope_key is not None:
-            conditions.append("scope->>'scope_key' = %s")
-            params.append(str(owner_scope_key))
+        params: list[Any] = [*mio_params, int(item_id)]
+        filtro, filtro_params = _filtro_perimetro(owner_emittenti)
+        if filtro is not None:
+            conditions.append(filtro)
+            params.extend(filtro_params)
         where = " AND ".join(conditions)
         with connection.cursor() as cursor:
             cursor.execute(
@@ -759,7 +798,7 @@ class CodaLavoriRepository:
                        ended_at, job_run_id,
                        scope->>'username' AS proprietario,
                        scope->>'scope_key' AS scope_key,
-                       (scope->>'scope_key' = %s) AS is_mio
+                       {mio_sql} AS is_mio
                   FROM dbops.coda_lavori
                  WHERE {where}
                 """,  # noqa: S608 — where da condizioni whitelisted
@@ -791,14 +830,6 @@ class CodaLavoriRepository:
             "is_mio": bool(row[18]),
         }
 
-    # Scopo: Stato di un job per il polling FE (I-3 non bloccante): stato +
-    #        result (a FATTO) + ultimo_errore (a ERRORE). None se id inesistente
-    #        (o fuori dallo scope, se `owner_scope_key` passato). Ownership
-    #        SCOPE-based: il job è di proprietà della sua `scope->>'scope_key'`
-    #        (chi condivide lo scope lo vede — coerente con la dedup, che aggancia
-    #        allo stesso job solo chi ha la stessa scope_key). Un job di altro
-    #        scope è indistinguibile da inesistente (no leak). `owner_scope_key`
-    #        None = nessun filtro (admin globale / sistema: vede ogni job).
     # Scopo: i lavori VIVI di un tipo, per chiave di idempotenza:
     #        `{chiave: {"id", "stato"}}` per le sole chiavi che ne hanno uno.
     #        Una `SELECT` per tutte le chiavi chieste (`= ANY`), non una per
@@ -835,14 +866,21 @@ class CodaLavoriRepository:
             vivi.setdefault(str(chiave), {"id": int(item_id), "stato": str(stato)})
         return vivi
 
+    # Scopo: Stato di un job per il polling FE (I-3 non bloccante): stato +
+    #        result (a FATTO) + ultimo_errore (a ERRORE). None se id inesistente
+    #        o fuori dal perimetro di `owner_emittenti`: un lavoro è di chi ha la
+    #        sua azienda nel perimetro (`_filtro_perimetro`, la regola della
+    #        policy). Fuori perimetro è indistinguibile da inesistente (no leak).
+    #        `owner_emittenti` None = nessun filtro (admin globale / sistema).
     def get_stato(
-        self, item_id: int, *, owner_scope_key: str | None = None,
+        self, item_id: int, *, owner_emittenti: Sequence[int] | None = None,
     ) -> dict[str, Any] | None:
         conditions = ["id = %s"]
         params: list[Any] = [int(item_id)]
-        if owner_scope_key is not None:
-            conditions.append("scope->>'scope_key' = %s")
-            params.append(str(owner_scope_key))
+        filtro, filtro_params = _filtro_perimetro(owner_emittenti)
+        if filtro is not None:
+            conditions.append(filtro)
+            params.extend(filtro_params)
         where = " AND ".join(conditions)
         with connection.cursor() as cursor:
             cursor.execute(

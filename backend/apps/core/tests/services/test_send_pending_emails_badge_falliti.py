@@ -27,6 +27,7 @@ from apps.core.services.service_errors import ServiceError
 from apps.core.tests.job_run_fakes import fake_registered_job
 
 _CMD = "apps.core.management.commands.send_pending_emails"
+_BB = "apps.core.services.giro_per_azienda"
 
 
 def _badge(codice: str, auth_user_id: int) -> dict:
@@ -55,8 +56,8 @@ class BadgeFallitiTests(TestCase):
 
         giro = {"processate": 1, "inviate": 1, "fallite": 0}
         with patch(f"{_CMD}.registered_job", cm), \
-                patch(f"{_CMD}.ProcessiRepository", return_value=processi), \
-                patch(f"{_CMD}.operator_identity_context", _identita), \
+                patch(f"{_BB}.ProcessiRepository", return_value=processi), \
+                patch(f"{_BB}.operator_identity_context", _identita), \
                 patch(f"{_CMD}.Command._esegui_giro", return_value=giro):
             call_command("send_pending_emails", stdout=StringIO(), stderr=StringIO())
 

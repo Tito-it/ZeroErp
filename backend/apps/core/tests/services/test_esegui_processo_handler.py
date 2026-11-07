@@ -35,7 +35,7 @@
 #       e il sottoprocesso NON parte
 #    7. sveglia non candidata / processo spento / accensione non decidibile
 #       -> il codice del predicato, terminale, niente sottoprocesso
-#    8. scope senza attore -> E_CODA_SCOPE_OPERATORE_INVALIDO terminale
+#    8. payload senza attore -> E_VALIDATION_INPUT terminale
 #    9. run-command.sh assente -> E_CONFIG_MANCANTE terminale
 #   10. `coda_output` tiene le ultime righe, accetta bytes e None, non solleva
 #   11. l'handler e' registrato con il codice del seed (CoreConfig.ready)
@@ -63,19 +63,17 @@ from apps.core.services.avvio_manuale import (
     TETTO_SOTTOPROCESSO_SECONDI,
 )
 from apps.core.services.coda_lavori import esegui_processo_handler as mod
-from apps.core.services.coda_lavori.context import E_SCOPE_OPERATORE
 from apps.core.services.coda_lavori.drain_engine import CONTEXT_KEY_TERMINALE
 from apps.core.services.coda_lavori.handler_registry import get_handler
 from apps.core.services.job_run import ENV_JOB_AUTH_USER_ID, ENV_JOB_ORIGINE, ORIGINE_COMMAND
 from apps.core.services.processi import PROCESSO_DRAINA_CODA_LAVORI
-from apps.core.services.service_errors import ServiceError
+from apps.core.services.service_errors import E_VALIDATION_INPUT, ServiceError
 from apps.core.services.sveglie import RUN_COMMAND, sveglie_di_processo
 from apps.core.tests._sveglie import prima_sveglia_candidata
 
 _POPEN = "apps.core.services.sottoprocesso.subprocess.Popen"   # il lancio sta nel BB
 _KILLPG = "apps.core.services.sottoprocesso.os.killpg"
 _IS_FILE = f"{mod.__name__}._wrapper_presente"
-_SCOPE = {"auth_user_id": 9, "username": "op9", "identita_id": 5}
 _PID = 4242
 
 
@@ -120,7 +118,10 @@ def _popen(proc: _ProcessoFinto):
 class EseguiProcessoHandlerTests(SimpleTestCase):
     def setUp(self) -> None:
         self.sveglia = prima_sveglia_candidata()
-        self.payload = {"processo_codice": self.sveglia.processo_codice, "unit": self.sveglia.unit}
+        self.payload = {
+            "processo_codice": self.sveglia.processo_codice, "unit": self.sveglia.unit,
+            "richiesto_da": 9,
+        }
         # Il wrapper «esiste» per default: il caso in cui manca e' il test 9.
         patcher = patch(_IS_FILE, return_value=True)
         patcher.start()
@@ -141,7 +142,7 @@ class EseguiProcessoHandlerTests(SimpleTestCase):
     def test_argv_dal_dichiarato_senza_shell(self) -> None:
         proc = _ProcessoFinto()
         with _popen(proc) as popen:
-            mod.esegui_processo_handler(self.payload, scope=_SCOPE)
+            mod.esegui_processo_handler(self.payload, scope=None)
         args, kwargs = popen.call_args
         self.assertEqual(args[0], [str(RUN_COMMAND), *self.sveglia.comando])
         self.assertIsInstance(args[0], list)
@@ -159,7 +160,7 @@ class EseguiProcessoHandlerTests(SimpleTestCase):
         self.assertNotIn(ENV_JOB_ORIGINE, os.environ)
         self.assertNotIn(ENV_JOB_AUTH_USER_ID, os.environ)
         with patch.dict(os.environ, {"ZEROERP_TEST_EREDITATA": "si"}), _popen(_ProcessoFinto()) as popen:
-            mod.esegui_processo_handler(self.payload, scope=_SCOPE)
+            mod.esegui_processo_handler(self.payload, scope=None)
             env = popen.call_args.kwargs["env"]
             self.assertEqual(env[ENV_JOB_ORIGINE], ORIGINE_COMMAND)
             self.assertEqual(env[ENV_JOB_AUTH_USER_ID], "9")
@@ -171,7 +172,7 @@ class EseguiProcessoHandlerTests(SimpleTestCase):
     # 3. Exit 0: il result del lavoro, con la coda dell'output.
     def test_exit_zero_e_fatto(self) -> None:
         with _popen(_ProcessoFinto(stdout="riga1\nriga2\n", stderr="avviso\n")):
-            esito = mod.esegui_processo_handler(self.payload, scope=_SCOPE)
+            esito = mod.esegui_processo_handler(self.payload, scope=None)
         self.assertEqual(esito["unit"], self.sveglia.unit)
         self.assertEqual(esito["comando"], list(self.sveglia.comando))
         self.assertEqual(esito["exit_code"], 0)
@@ -183,7 +184,7 @@ class EseguiProcessoHandlerTests(SimpleTestCase):
     def test_exit_non_zero_e_fallito_terminale(self) -> None:
         with _popen(_ProcessoFinto(returncode=3, stdout="", stderr="boom\n")):
             with self.assertRaises(ServiceError) as cm:
-                mod.esegui_processo_handler(self.payload, scope=_SCOPE)
+                mod.esegui_processo_handler(self.payload, scope=None)
         err = cm.exception
         self.assertEqual(err.code, E_AVVIO_FALLITO)
         self.assertTrue(err.context[CONTEXT_KEY_TERMINALE])
@@ -199,7 +200,7 @@ class EseguiProcessoHandlerTests(SimpleTestCase):
         proc = _ProcessoFinto(scade=True, stdout="parziale\n")
         with _popen(proc):
             with self.assertRaises(ServiceError) as cm:
-                mod.esegui_processo_handler(self.payload, scope=_SCOPE)
+                mod.esegui_processo_handler(self.payload, scope=None)
         self.killpg.assert_called_once_with(_PID, signal.SIGKILL)
         self.assertEqual(
             [c["timeout"] for c in proc.communicate_calls],
@@ -226,7 +227,7 @@ class EseguiProcessoHandlerTests(SimpleTestCase):
             for payload in casi:
                 with self.subTest(payload=payload):
                     with self.assertRaises(ServiceError) as cm:
-                        mod.esegui_processo_handler(payload, scope=_SCOPE)
+                        mod.esegui_processo_handler(payload, scope=None)
                     self.assertEqual(cm.exception.code, mod.E_PAYLOAD)
                     self.assertTrue(cm.exception.context[CONTEXT_KEY_TERMINALE])
                     self.assertEqual(cm.exception.context["field"], "unit")
@@ -241,7 +242,7 @@ class EseguiProcessoHandlerTests(SimpleTestCase):
         with _popen(_ProcessoFinto()) as popen:
             with self.assertRaises(ServiceError) as cm:
                 mod.esegui_processo_handler(
-                    {"processo_codice": drenatore.processo_codice, "unit": drenatore.unit}, scope=_SCOPE,
+                    {"processo_codice": drenatore.processo_codice, "unit": drenatore.unit}, scope=None,
                 )
             self.assertEqual(cm.exception.code, E_SVEGLIA_NON_AVVIABILE_A_MANO)
             self.assertTrue(cm.exception.context[CONTEXT_KEY_TERMINALE])
@@ -251,21 +252,23 @@ class EseguiProcessoHandlerTests(SimpleTestCase):
                     self.acceso.reset_mock()
                     self.acceso.return_value = acceso
                     with self.assertRaises(ServiceError) as cm:
-                        mod.esegui_processo_handler(self.payload, scope=_SCOPE)
+                        mod.esegui_processo_handler(self.payload, scope=None)
                     self.assertEqual(cm.exception.code, codice)
                     self.assertTrue(cm.exception.context[CONTEXT_KEY_TERMINALE])
                     self.acceso.assert_called_once_with(self.sveglia.processo_codice, self.sveglia.unit)
             popen.assert_not_called()
 
-    # 8. Senza l'attore nello scope il comando non si lancia: scriverlo come
-    #    CRON sarebbe il contrario di cio' per cui la variabile esiste.
-    def test_scope_senza_attore(self) -> None:
+    # 8. Senza l'attore nel payload (`richiesto_da`, BE10) il comando non si
+    #    lancia: scriverlo come CRON sarebbe il contrario di cio' per cui la
+    #    variabile esiste. Terminale: riprovare non lo fa comparire.
+    def test_payload_senza_attore(self) -> None:
         with _popen(_ProcessoFinto()) as popen:
-            for scope in (None, {}, {"username": "x"}):
-                with self.subTest(scope=scope):
+            for attore in (None, "9", True):
+                with self.subTest(attore=attore):
+                    payload = {**self.payload, "richiesto_da": attore}
                     with self.assertRaises(ServiceError) as cm:
-                        mod.esegui_processo_handler(self.payload, scope=scope)
-                    self.assertEqual(cm.exception.code, E_SCOPE_OPERATORE)
+                        mod.esegui_processo_handler(payload, scope=None)
+                    self.assertEqual(cm.exception.code, E_VALIDATION_INPUT)
                     self.assertTrue(cm.exception.context[CONTEXT_KEY_TERMINALE])
             popen.assert_not_called()
 
@@ -273,7 +276,7 @@ class EseguiProcessoHandlerTests(SimpleTestCase):
     def test_wrapper_assente(self) -> None:
         with patch(_IS_FILE, return_value=False), _popen(_ProcessoFinto()) as popen:
             with self.assertRaises(ServiceError) as cm:
-                mod.esegui_processo_handler(self.payload, scope=_SCOPE)
+                mod.esegui_processo_handler(self.payload, scope=None)
             popen.assert_not_called()
         self.assertEqual(cm.exception.code, mod.E_CONFIG_MANCANTE)
         self.assertTrue(cm.exception.context[CONTEXT_KEY_TERMINALE])
@@ -288,7 +291,7 @@ class EseguiProcessoHandlerTests(SimpleTestCase):
                 _popen(_ProcessoFinto()) as popen:
             repo_cls.return_value.acceso_processo.side_effect = LookupError("x")
             with self.assertRaises(ServiceError) as cm:
-                mod.esegui_processo_handler(self.payload, scope=_SCOPE)
+                mod.esegui_processo_handler(self.payload, scope=None)
             popen.assert_not_called()
         self.assertEqual(cm.exception.code, mod.E_NOT_FOUND)
         self.assertTrue(cm.exception.context[CONTEXT_KEY_TERMINALE])
@@ -317,11 +320,11 @@ class EseguiProcessoHandlerTests(SimpleTestCase):
         proc = _ProcessoFinto(interrompi=KeyboardInterrupt())
         with _popen(proc):
             with self.assertRaises(KeyboardInterrupt):
-                mod.esegui_processo_handler(self.payload, scope=_SCOPE)
+                mod.esegui_processo_handler(self.payload, scope=None)
         self.killpg.assert_called_once_with(_PID, signal.SIGKILL)
         self.assertTrue(proc.waited, "il figlio ucciso va raccolto")
         # E un gruppo gia' morto non e' un errore: il colpo a vuoto si ignora.
         self.killpg.side_effect = ProcessLookupError()
         with _popen(_ProcessoFinto(interrompi=KeyboardInterrupt())):
             with self.assertRaises(KeyboardInterrupt):
-                mod.esegui_processo_handler(self.payload, scope=_SCOPE)
+                mod.esegui_processo_handler(self.payload, scope=None)

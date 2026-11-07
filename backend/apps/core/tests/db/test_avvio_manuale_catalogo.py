@@ -42,6 +42,7 @@ from apps.core.services.coda_lavori.handler_registry import get_handler
 from apps.core.services.coda_lavori.repository import (
     ORIGINE_API,
     RUN_AS_OPERATORE,
+    RUN_AS_SISTEMA,
     CodaLavoriRepository,
 )
 from apps.core.tests.db_e2e import richiedi_db_provvisto
@@ -85,6 +86,9 @@ class AvvioManualeCatalogoTests(TestCase):
         handler_code, run_as, max_tentativi, processo = riga
         self.assertEqual(handler_code, HANDLER_CODE)
         get_handler(handler_code)  # solleva se il boot non l'ha registrato
+        # ⚠️ Il DEFAULT a catalogo dice ancora OPERATORE: il backend passa
+        #    SISTEMA esplicito (BE10), e il seed lo allinea il team DB
+        #    (S-BE-2 di brief-db-revisione-dbops §5). Quel giro gira questa riga.
         self.assertEqual(run_as, RUN_AS_OPERATORE)
         self.assertEqual(max_tentativi, 1)
         self.assertEqual(processo, _PROCESSO)
@@ -123,15 +127,21 @@ class AvvioManualeCatalogoTests(TestCase):
         )
         assert attivo is not None
         repo = CodaLavoriRepository()
-        scope = {"auth_user_id": 1, "username": "test", "identita_id": 1, "scope_key": "ALL"}
         chiave = chiave_idempotenza(_UNIT_DI_PROVA)
 
+        # ⭐ La forma di `ProcessiService.esegui_ora` dal 2026-11-07 (BE10 di
+        #    brief-db-revisione-dbops): un lavoro SISTEMA, senza scope, con
+        #    l'attore nel payload. Nella forma OPERATORE senza azienda la porta
+        #    del giro 5a lo rifiuta (`E_CODA_LAVORO_SENZA_EMITTENTE`).
         def _accoda() -> int:
             return repo.accoda(
                 job_type=JOB_TYPE_ESEGUI_PROCESSO,
-                payload={"processo_codice": _PROCESSO, "unit": _UNIT_DI_PROVA},
-                run_as=RUN_AS_OPERATORE,
-                scope=scope,
+                payload={
+                    "processo_codice": _PROCESSO, "unit": _UNIT_DI_PROVA,
+                    "richiesto_da": 1,
+                },
+                run_as=RUN_AS_SISTEMA,
+                scope=None,
                 idempotency_key=chiave,
                 origine=ORIGINE_API,
             )

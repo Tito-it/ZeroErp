@@ -234,8 +234,8 @@ class EsitiFatturazioneTests(SimpleTestCase):
              ) as CodaRepo, \
              patch(
                  "apps.core.services.coda_lavori.gestione_service"
-                 ".scope_key_operatore",
-                 return_value="scope-1",
+                 ".perimetro_coda_operatore",
+                 return_value=[1],
              ) as mock_scope, \
              patch(f"{_SVC}.VenditePipelineRepository") as PipeRepo:
             CodaRepo.return_value.summary_per_job_type.return_value = [
@@ -283,11 +283,11 @@ class EsitiFatturazioneTests(SimpleTestCase):
         # (offset completato a ±HH:MM per Safari).
         self.assertEqual(per_origine["app"]["last_run_at"], "2026-07-23T00:43:24+00:00")
         self.assertEqual(per_origine["batch"]["last_run_at"], "2026-06-20T00:31:09+00:00")
-        # I giri dell'app: filtro per competenza DICHIARATA; la scope key del
+        # I giri dell'app: filtro per competenza DICHIARATA; il perimetro del
         # chiamante serve allo SPLIT, non a filtrare (conteggi complessivi).
         kwargs = CodaRepo.return_value.summary_per_job_type.call_args.kwargs
         self.assertEqual(kwargs["competenza_mese"], date(2026, 6, 1))
-        self.assertEqual(kwargs["caller_scope_key"], "scope-1")
+        self.assertEqual(kwargs["caller_emittenti"], [1])
         self.assertEqual(
             kwargs["job_types"], ["FATTURAZIONE_GIRO", "FATTURAZIONE_NUMERA"],
         )
