@@ -140,9 +140,30 @@ class CodaLavoriRepositoryJsonbTests(SimpleTestCase):
         )
         conn.cursor.return_value = _cursor_with(row, many=False)
 
-        det = CodaLavoriRepository().get_dettaglio(5, caller_emittenti=None)
+        det = CodaLavoriRepository().get_dettaglio(5, chiamante=None)
 
         assert det is not None
         self.assertEqual(det["payload"], {"competenza_mese": "2026-06-01"})
         self.assertIsNone(det["result"])
         self.assertEqual(det["ultimo_errore"], {"code": "AttributeError"})
+
+
+class CodaLavoriRepositoryStatiDopoAccodamentoTests(SimpleTestCase):
+
+    # Lo stato VERO di ciascun lavoro appena accodato, una query per tutti.
+    @patch(f"{_MOD}.connection")
+    def test_stati_veri(self, conn) -> None:
+        conn.cursor.return_value = _cursor_with([(1, "IN_CORSO"), (2, "PENDING")], many=True)
+        self.assertEqual(
+            CodaLavoriRepository().stati_dopo_accodamento([1, 2]),
+            {1: "IN_CORSO", 2: "PENDING"},
+        )
+
+    # ⛔ Un id che la porta ha dato e che chi accoda non vede: porta e policy
+    #    non concordano, e non si inventa uno stato.
+    @patch(f"{_MOD}.connection")
+    def test_id_non_visibile_solleva(self, conn) -> None:
+        conn.cursor.return_value = _cursor_with([(1, "PENDING")], many=True)
+        with self.assertRaises(RuntimeError) as ctx:
+            CodaLavoriRepository().stati_dopo_accodamento([1, 2])
+        self.assertIn("[2]", str(ctx.exception))

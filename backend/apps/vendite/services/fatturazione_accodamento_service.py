@@ -204,19 +204,9 @@ def accoda_per_azienda(
 
     # ⭐ Lo stato VERO di ciascun lavoro, letto dopo averli accodati tutti (una
     #    query): sulla dedup l'id è quello di un lavoro già vivo, che può
-    #    essere IN_CORSO. Prima si rispondeva «PENDING» per costruzione.
-    # ⛔ Un id che la porta ha dato e che chi accoda non vede non è un caso da
-    #    gestire: la porta accoda solo dentro il perimetro di chi chiama, e la
-    #    policy fa vedere proprio quel perimetro. Se succede, è un difetto del
-    #    modello, e si dice con un 500 — non con uno stato inventato.
-    stati = coda_repo.stati_di([v["job_id"] for v in lavori])
+    #    essere IN_CORSO (`stati_dopo_accodamento`, che solleva su un id che
+    #    chi accoda non vede).
+    stati = coda_repo.stati_dopo_accodamento([v["job_id"] for v in lavori])
     for voce in lavori:
-        stato = stati.get(voce["job_id"])
-        if stato is None:
-            raise RuntimeError(
-                f"Lavoro {voce['job_id']} accodato ma non visibile a chi l'ha "
-                f"accodato (emittente {voce['emittente_codice']}): porta e "
-                "policy della coda non concordano sul perimetro."
-            )
-        voce["stato"] = stato
+        voce["stato"] = stati[voce["job_id"]]
     return lavori

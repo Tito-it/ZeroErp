@@ -650,6 +650,42 @@ all'envelope.
   EMITEST non si drena, e il command lo scrive a ogni corsa: va creato prima del 5b
   (`script.fn_crea_utente_tecnico('draina_coda_lavori', 'EMITEST')`).
 
+**Stato al 2026-11-07, BE9 e il test di S-BE-2 (team BE, committato su `dev/backend-tid`): fatti.**
+
+* **S-BE-2**: `test_avvio_manuale_catalogo` vuole SISTEMA; il suo accodamento reale gira come **super admin**
+  (`apri_contesto_operatore(cur, super_admin=True)`, nuovo parametro del BB), perché sotto la RLS una riga SISTEMA la
+  vedono solo il super admin e il drenatore — senza, la rilettura tornava `{}`.
+* **BE9, il filtro si ritira.** `_filtro_perimetro` e i parametri `owner_emittenti`/`caller_emittenti` del
+  repository non ci sono più: elenco, conteggi del badge, dettaglio, stato e polling leggono ciò che la RLS mostra.
+* ⭐ **Decisione di Tid nel giro: «mio» è per PERSONA.** Con la RLS accesa «mio = della mia azienda» (BE10 a) sarebbe
+  stato vero per ogni lavoro visibile. Ora `ambito=miei` = i lavori **accodati da me**, `tutti` = tutti quelli **delle
+  mie aziende**: la semantica della coda stampa (una per le due code, decisione del 2026-07-23). Una regola sola in SQL,
+  `_espr_accodato_da` — `scope.auth_user_id` per un OPERATORE, `payload.richiesto_da` per il SISTEMA di «Esegui ora» —
+  usata dal filtro «miei», da `is_mio` e dallo split miei/altri del cockpit (`operatore_coda`). Dettaglio e azioni sui
+  lavori dei colleghi restano dietro `code_manage`; il polling dei giri non restringe ai miei (dedup condivisa).
+* **Lo stato vero** dopo l'accodamento anche per «Esegui ora» (`stati_dopo_accodamento`, regola del 2 con la
+  fatturazione): il super admin vede il SISTEMA che ha accodato.
+* **Fixture dei test sul DB vero** rotte dal 5b o dal giro C.3 (di `brief-db-sorgente-documento-e-riga`):
+  `test_coda_lavori_summary_corse` e `test_coda_lavori_vivi_per_chiave` scrivono come super admin;
+  `test_ricerca_liste_db` compone la chiave del push con `script.fn_segment_key`; `test_prezzo_riga_commessa_db`
+  rilegge la chiave del documento dalla colonna del suo tipo. `test_coda_perimetro_db` era il presidio del filtro
+  ritirato: ora prova `_espr_accodato_da` su righe **costruite** e l'SQL di ogni lettura, non la popolazione.
+* **Analisi critica del giro** (2026-11-07): nessun bug di logica; corretto ciò che attorno al diff raccontava
+  ancora la semantica vecchia. Il parametro OpenAPI `ambito` (condiviso dalle due code) diceva «`tutti` richiede
+  `code_manage`», falso già dal 2026-07-23: ora `miei` = accodate/innescate da me, `tutti` = il perimetro d'azienda
+  della RLS, `code_manage` solo per dettaglio e azioni altrui. Riallineate le docstring di lista, dettaglio e annullo
+  in `views_tracciamento.py` (erano sulla `scope_key`) e due righe del catalogo BB (`owner_emittenti` in `requeue` e
+  `count_per_stato`, `scope_key_da_emittenti`). In `test_prezzo_riga_commessa_db` la variabile locale è
+  `sorgente_chiave`: porta la chiave del documento (id o uid), non un uid.
+* ⚠️ **Residuo, fuori da questo cantiere**: il nome `sorgente_uid` per «la chiave del documento, id o uid» vive nel
+  contratto DB (`p_sorgente_uid` della madre `fn_upsert_commessa_attivita` e della porta del link, la chiave JSON
+  del batch) e in molti service BE che vi passano un id (`ordini_service`, `ddt_service`, `commesse_service`, push
+  orchestrator, source handlers). Il rinomina lo sta facendo il team DB (Tid, 2026-11-07), nel tema di
+  `brief-db-sorgente-documento-e-riga`; il BE si allinea all'apply, con una prova a chiamata reale (binding per
+  nome). Restano `sorgente_uid` i lister `fn_list_*_da_pushare` e `PushableRow`: lì è davvero l'uid.
+* Aperto, da decidere: `conteggi_code(user, *, auth_user_id)` non usa più `user` dopo BE9. Resta per la firma dei
+  contatori dashboard-home; se non serve, si toglie con la view e due test.
+
 **✅ Richiesta al team DB (S-BE-2, 2026-11-07): il tipo `ESEGUI_PROCESSO` dice ancora OPERATORE.** Fatta nel blocco 5b
 (§18.9), con la regola canale/`run_as` ristretta ai `CODA` di `DOMINIO` (decisione di Tid); all'apply si avvisa il BE. In
 `80_data/sql/dbops/coda_lavori_tipi.csv` la riga ha `run_as_default = OPERATORE` e la descrizione «con l'identità di chi

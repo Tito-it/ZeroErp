@@ -9,8 +9,10 @@
 #        (brief-db-archiviazione-righe-code) — l'ARCHIVIAZIONE delle righe di
 #        entrambe le code, che le toglie dall'ELENCO senza toccarne lo stato.
 #        Regole portanti:
-#         - scope OPERATORE = azienda del lavoro (coda lavori) / emittenti via JOIN
-#           fatture (coda stampa) — nessuna seconda logica di scope (I-1);
+#         - il perimetro d'azienda lo fa il DB (RLS di `dbops.coda_lavori` dal
+#           blocco 5b; coda stampa per emittenti via JOIN fatture); «mio» =
+#           accodato da me, per le due code (BE9) — nessuna seconda logica di
+#           scope (I-1);
 #         - il salto a "tutti i job / job altrui" richiede SUPER_ADMIN o
 #           l'azione di processo `code_manage` (D-A; seed area core, brief §6);
 #         - l'enforcement delle azioni è SEMPRE a livello BE (I-3): il FE
@@ -79,33 +81,24 @@ _SOGLIA_LIVENESS_RIPIEGO_MINUTI = 10
 # seconda copia, e un alias locale sarebbe un secondo nome per la stessa cosa.
 
 
-# Scopo: Il PERIMETRO del chiamante sulla coda lavori: le aziende (PK degli
-#        emittenti) di cui vede e gestisce i lavori, None = tutte (admin
-#        globale, whitelist None). Ritorna la coppia `(caller, owner_filter)`:
-#        `caller` per `is_mio`, `owner_filter` per filtrare righe e azioni —
-#        oggi lo stesso valore, che chi vede tutte le code azzera a None
-#        lasciando `caller` com'è. Speculare al polling `run/<job_id>/` di
-#        vendite (stessa fonte, `PermissionResolver.get_emittenti_pk_ids`).
-# ⭐ Dal 2026-11-07 (BE10 a, anticipo di BE9 — decisione di Tid) il lavoro è
-#    di chi ha la sua AZIENDA nel perimetro, come nella policy della coda; fino
-#    a quel giorno era di chi aveva la stessa `scope_key`, cioè la stessa
-#    whitelist esatta. La regola in SQL sta nel repository
-#    (`_filtro_perimetro`, `_espr_nel_perimetro`): qui si dice solo QUALE
-#    perimetro.
-def _resolve_perimetro(user: Any) -> tuple[list[int] | None, list[int] | None]:
-    emittente_ids = PermissionResolver.get_emittenti_pk_ids(user)
-    perimetro = None if emittente_ids is None else [int(e) for e in emittente_ids]
-    return perimetro, perimetro
-
-
-# Scopo: Il perimetro che IDENTIFICA il chiamante sui lavori di coda (None per
-#        l'admin globale, altrimenti le sue aziende). È lo stesso con cui
-#        `elenca` calcola `is_mio`. Esposto come API pubblica del modulo perché
-#        serve anche fuori dalla gestione code: il cockpit fatturazione spezza
-#        i conteggi dei giri in «miei / di altri» e deve usare la STESSA
-#        regola, non una seconda copia che può divergere.
-def perimetro_coda_operatore(user: Any) -> list[int] | None:
-    return _resolve_perimetro(user)[0]
+# Scopo: CHI È il chiamante sui lavori di coda: il suo `auth_user.id` VERO
+#        (anche per un superuser, lo stesso che la cattura dello scope scrive in
+#        `scope.auth_user_id` e «Esegui ora» in `payload.richiesto_da`), o None
+#        per un uso senza utente. È ciò con cui la coda dice «mio»: `is_mio`
+#        degli elenchi, il filtro «miei», le azioni di chi non ha
+#        `code_manage`, lo split miei/altri del cockpit fatturazione — che per
+#        questo lo chiede qui, e non ne scrive una seconda copia.
+# ⭐ BE9 di brief-db-revisione-dbops (decisione di Tid, 2026-11-07): con la RLS
+#    accesa su `dbops.coda_lavori` (blocco 5b) il PERIMETRO d'azienda lo fa il
+#    DB, e il filtro per azienda scritto qui è ritirato. «Miei» = i lavori che
+#    ho accodato io; «tutti» = tutti quelli che la RLS mi mostra, cioè delle
+#    mie aziende (i SISTEMA solo al super admin). È la semantica della coda
+#    stampa (una sola per le due code, decisione di Tid del 2026-07-23). Fino a
+#    BE9 «mio» era «della mia azienda» (BE10 a), che sotto la RLS sarebbe stato
+#    vero per ogni lavoro visibile.
+def operatore_coda(user: Any) -> int | None:
+    user_id = getattr(user, "id", None)
+    return None if user_id is None else int(user_id)
 
 
 # Scopo: Il chiamante può vedere/gestire i job di TUTTI gli scope? SUPER_ADMIN
@@ -194,14 +187,13 @@ def _liveness_worker(jobnames: list[str]) -> dict[str, dict]:
 # Scopo: BE-4 — conteggi per il badge top bar + liveness worker. Ritorna
 #        `{coda_lavori: {pending, in_corso}, coda_stampa: {pending, in_corso},
 #        worker: {coda_lavori: {...}, coda_stampa: {...}}}`. I conteggi sono
-#        SCOPED al chiamante (coda lavori per azienda del lavoro; coda stampa per
-#        emittente via JOIN fatture — `auth_user_id` None = superuser, vede
+#        SCOPED al chiamante (coda lavori: le sue aziende, dalla RLS; coda stampa
+#        per emittente via JOIN fatture — `auth_user_id` None = superuser, vede
 #        tutto). La liveness confronta l'ultimo run dei drainer col clock DB;
 #        un worker mai girato → {last_run_at: None, attivo: False} (fail-visible:
 #        "worker giù", non un buco nel payload).
 def conteggi_code(user: Any, *, auth_user_id: int | None) -> dict[str, Any]:
-    _caller, owner_filter = _resolve_perimetro(user)
-    lavori = CodaLavoriRepository().count_per_stato(owner_emittenti=owner_filter)
+    lavori = CodaLavoriRepository().count_per_stato()
 
     # Coda stampa: area vendite, satellite di fatture (import lazy — vedi header).
     from apps.vendite.db.pipeline_repository import VenditePipelineRepository
@@ -237,13 +229,15 @@ def conteggi_code(user: Any, *, auth_user_id: int | None) -> dict[str, Any]:
     }
 
 
-# Scopo: BE-5 — lista paginata della coda lavori. Scope operatore di default;
-#        `tutti=True` (query `?ambito=tutti`) è VISIBILITÀ, non gestione, ed è
-#        aperto a ogni operatore (decisione Tid 2026-07-23): la coda è una
+# Scopo: BE-5 — lista paginata della coda lavori. «Miei» (i lavori che ho
+#        accodato io) di default; `tutti=True` (query `?ambito=tutti`) = tutti
+#        quelli delle mie aziende, cioè ciò che la RLS mostra (BE9), ed è
+#        VISIBILITÀ, non gestione, aperta a ogni operatore (decisione Tid
+#        2026-07-23): la coda è una
 #        risorsa condivisa e chi aspetta deve poter vedere il lavoro altrui che
 #        la impegna — proprietario e tipo attività non sono segreti tra
 #        colleghi. Restano gated da `code_manage`: le AZIONI sui job altrui
-#        (`_owner_filter_per_azione`) e il DETTAGLIO (payload/errori possono
+#        (`_accodati_da_per_gestione`) e il DETTAGLIO (payload/errori possono
 #        contenere dati dell'attività altrui — vedi `dettaglio_job`).
 #        `is_mio` continua a marcare i propri. `data_a` è inclusiva a livello
 #        di GIORNO, e i giorni sono quelli dell'azienda: li traduce in confini
@@ -265,9 +259,7 @@ def elenca_coda_lavori(
     sort_by: str | None = None,
     sort_dir: str | None = None,
 ) -> dict[str, Any]:
-    caller, owner_filter = _resolve_perimetro(user)
-    if tutti:
-        owner_filter = None
+    io = operatore_coda(user)
     # `allowed` DERIVATO dalla whitelist del repository, mai ricopiato: era una
     # copia a mano di 4 nomi e sarebbe divergita alla prima estensione (che
     # infatti e' arrivata il 2026-08-02 con `stato`/`proprietario`).
@@ -292,8 +284,9 @@ def elenca_coda_lavori(
         function_name="core.gestione_code.elenca_coda_lavori",
     )
     esito = CodaLavoriRepository().elenca(
-        owner_emittenti=owner_filter,
-        caller_emittenti=caller,
+        # «Miei» = accodati da me; «tutti» = ciò che la RLS mostra (BE9).
+        accodati_da=None if tutti else io,
+        chiamante=io,
         # `solo_vivi` → vocabolario STATI_VIVI QUI (simmetrico alla coda
         # stampa: il repo riceve sempre `stati`, mai un secondo meccanismo).
         stati=list(STATI_VIVI) if solo_vivi else ([stato] if stato else None),
@@ -379,17 +372,16 @@ def elenca_coda_stampa(
 
 
 # Scopo: BE-8 — dettaglio completo di un job per il drawer (payload, timeline,
-#        tentativi/errore, esito, proprietario, is_mio). Ownership per azienda
-#        come il polling: fuori scope/inesistente → 404 unificato (no leak);
-#        chi può gestire tutte le code vede ogni job.
+#        tentativi/errore, esito, proprietario, is_mio). Il chiamante vede il
+#        dettaglio dei SUOI lavori; chi ha `code_manage` quello di ogni lavoro
+#        che la RLS gli mostra (payload ed errori possono contenere dati
+#        dell'attività di un collega). Altrui o inesistente → 404 unificato.
 def dettaglio_job(user: Any, job_id: int) -> dict[str, Any]:
-    caller, owner_filter = _resolve_perimetro(user)
-    if owner_filter is not None and puo_gestire_tutte_le_code(user):
-        owner_filter = None
+    io = operatore_coda(user)
     dettaglio = CodaLavoriRepository().get_dettaglio(
         int(job_id),
-        owner_emittenti=owner_filter,
-        caller_emittenti=caller,
+        accodati_da=_accodati_da_per_gestione(user),
+        chiamante=io,
     )
     ErrorManager.require(
         dettaglio is not None,
@@ -401,15 +393,14 @@ def dettaglio_job(user: Any, job_id: int) -> dict[str, Any]:
     return dettaglio
 
 
-# Scopo: Ownership per le AZIONI (annulla/requeue): un operatore agisce solo
-#        sui job delle aziende del suo perimetro; chi può gestire tutte le code agisce
-#        su qualunque job (owner filter None). Ritorna il filtro da passare
+# Scopo: Ownership per il DETTAGLIO e le AZIONI (annulla/requeue): un operatore
+#        agisce sui lavori che ha accodato lui; chi può gestire tutte le code su
+#        ogni lavoro che la RLS gli mostra (None). Ritorna il filtro da passare
 #        al repository.
-def _owner_filter_per_azione(user: Any) -> list[int] | None:
-    _caller, owner_filter = _resolve_perimetro(user)
-    if owner_filter is not None and puo_gestire_tutte_le_code(user):
+def _accodati_da_per_gestione(user: Any) -> int | None:
+    if puo_gestire_tutte_le_code(user):
         return None
-    return owner_filter
+    return operatore_coda(user)
 
 
 # Scopo: BE-7 — annulla un job PENDING (→ ANNULLATO). Sequenza: esistenza in
@@ -418,16 +409,16 @@ def _owner_filter_per_azione(user: Any) -> list[int] | None:
 #        scope, quindi nessuna race col worker: un claim concorrente vince e
 #        l'annullo fallisce onestamente). Ritorna `{job_id, stato: ANNULLATO}`.
 def annulla_job(user: Any, job_id: int) -> dict[str, Any]:
-    owner_filter = _owner_filter_per_azione(user)
+    accodati_da = _accodati_da_per_gestione(user)
     repo = CodaLavoriRepository()
-    stato = repo.get_stato(int(job_id), owner_emittenti=owner_filter)
+    stato = repo.get_stato(int(job_id), accodati_da=accodati_da)
     ErrorManager.require(
         stato is not None,
         code="E_JOB_NON_TROVATO",
         message="Job non trovato.",
         detail=f"job_id={job_id}",
     )
-    annullato = repo.annulla(int(job_id), owner_emittenti=owner_filter)
+    annullato = repo.annulla(int(job_id), accodati_da=accodati_da)
     ErrorManager.require(
         annullato,
         code="E_JOB_NON_ANNULLABILE",
@@ -450,9 +441,9 @@ def requeue_job(
         message="`extra_tentativi` deve essere tra 1 e 10.",
         detail=f"extra_tentativi={extra_tentativi}",
     )
-    owner_filter = _owner_filter_per_azione(user)
+    accodati_da = _accodati_da_per_gestione(user)
     repo = CodaLavoriRepository()
-    stato = repo.get_stato(int(job_id), owner_emittenti=owner_filter)
+    stato = repo.get_stato(int(job_id), accodati_da=accodati_da)
     ErrorManager.require(
         stato is not None,
         code="E_JOB_NON_TROVATO",
@@ -462,7 +453,7 @@ def requeue_job(
     riaccodato = repo.requeue(
         int(job_id),
         extra_tentativi=int(extra_tentativi),
-        owner_emittenti=owner_filter,
+        accodati_da=accodati_da,
     )
     ErrorManager.require(
         riaccodato,
@@ -502,7 +493,7 @@ def requeue_job(
 #    finché qualcuno non lo restringe e non capisce perché non ha effetto.
 #    ⇒ La view NON dichiara `post_permission`: l'area la verifica la catena
 #    standard, `code_manage` lo verifica questo service — esattamente come
-#    `_owner_filter_per_azione` fa per annulla/requeue. Un controllo per
+#    `_accodati_da_per_gestione` fa per annulla/requeue. Un controllo per
 #    ciascuna delle due cose, nessuna delle due saltata.
 # ⛔ NESSUN controllo di stato in Python. «Solo una riga non viva si archivia»
 #    ha UNA sede — il trigger `_a10_archiviazione_upd` più il `CHECK` — e da lì

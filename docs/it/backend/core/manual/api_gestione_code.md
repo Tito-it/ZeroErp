@@ -22,7 +22,7 @@ Asimmetria di scope (regge il design):
 
 | | Coda lavori | Coda stampa |
 | --- | --- | --- |
-| Proprietario | per-UTENTE via `scope->>'scope_key'` (whitelist emittenti) | per-OPERATORE via `user_insert` (chi ha innescato la stampa); perimetro emittente dalla RLS e, nei conteggi, via JOIN a `vendite.fatture` |
+| Proprietario | per-OPERATORE: chi ha accodato (`scope->>'auth_user_id'`; per «Esegui ora», lavoro SISTEMA, `payload->>'richiesto_da'`); perimetro d'azienda dalla RLS (dal 2026-11-07, blocco 5b e BE9) | per-OPERATORE via `user_insert` (chi ha innescato la stampa); perimetro emittente dalla RLS e, nei conteggi, via JOIN a `vendite.fatture` |
 | Azioni di esecuzione | annulla / requeue (solo propri, o `code_manage`) | nessuna (il drainer ritenta da solo) |
 | Archiviazione | archivia / ripristina (`code_manage`, effetto globale) | identica: le due code sono simmetriche |
 
@@ -76,15 +76,19 @@ area `core`. I POST richiedono `Idempotency-Key` (header).
 ### 2. Lista coda lavori (BE-5, sola lettura)
 
 - `GET /api/v1/core/tracciamento/coda-lavori/`
-- Query: `ambito` (`miei` default | `tutti` — **visibilità aperta a ogni
-  operatore**: la coda è una risorsa condivisa; `code_manage` serve solo per
-  azioni e dettaglio sui job altrui),
+- Query: `ambito` (`miei` default = i lavori **accodati da me** | `tutti` =
+  tutti quelli **delle mie aziende**, cioè ciò che la RLS di
+  `dbops.coda_lavori` mostra — i lavori SISTEMA solo al super admin. È
+  **visibilità aperta a ogni operatore**: la coda è una risorsa condivisa;
+  `code_manage` serve solo per azioni e dettaglio sui lavori dei colleghi),
   `stato`, `tipo` (job_type), `solo_vivi`, `data_da`/`data_a` (YYYY-MM-DD,
   inclusiva; giorni **dell'azienda** (fuso `SYSTEM_FUSO_ORARIO`, confini calcolati dal DB col BB `predicato_giorno_operativo`, dal 2026-10-09)), `archiviate` (bool, default `false` — vedi §6), `limit` (default
   25, max 200)/`offset`, `order_by`/`order_dir` (fino al 2026-10-20
   `sort_by`/`sort_dir`, oggi ignorati: brief-be-verifica-documentazione-api §A4).
-- Ogni riga porta `is_mio` (calcolato dal BE: la `scope_key` del job coincide
-  con quella del chiamante) e `proprietario` (`scope->>'username'`).
+- Ogni riga porta `is_mio` (calcolato dal BE: il lavoro l'ha accodato il
+  chiamante — la stessa regola del filtro «miei»; fino al 2026-11-07 era «la
+  stessa `scope_key`», poi per poche ore «della mia azienda») e `proprietario`
+  (`scope->>'username'`).
 
 #### ⭐ `data_insert` e l'ordinamento di default (dal 2026-09-07)
 
@@ -312,11 +316,14 @@ sono incluse (lì non c'è niente di nascosto da dichiarare).
 
 ## Regole
 
-- **Ownership scope-based (I-3)**: l'operatore vede/agisce sui job della
-  propria `scope_key` (stessa fonte `scope_key_da_emittenti` dell'enqueue —
-  nessuna seconda logica di scope, I-1). Fuori scope = **404** indistinguibile
-  da inesistente (no leak). Whitelist emittenti `None` (admin globale) = vede
-  tutto.
+- **Perimetro d'azienda dal DB, ownership per persona (BE9, 2026-11-07)**: la
+  RLS di `dbops.coda_lavori` (blocco 5b) mostra a ciascuno i lavori delle sue
+  aziende, i SISTEMA al solo super admin e al drenatore; il backend non scrive
+  più un filtro per azienda. Dettaglio e azioni sono dei lavori **accodati dal
+  chiamante**, o di ogni lavoro visibile con `code_manage`. Fuori perimetro o
+  altrui = **404** indistinguibile da inesistente (no leak). Il polling dei giri
+  (`/vendite/fatturazione/run/<id>/`) **non** restringe ai miei: due colleghi
+  della stessa azienda seguono il giro condiviso via dedup.
 - **`code_manage`** (azione di processo, area `strumenti` — seed §6 del brief,
   id atteso 28): sblocca il dettaglio e le azioni su job altrui, e
   l'archiviazione. `?ambito=tutti` **non** lo richiede. SUPER_ADMIN bypassa. ⚠️ Fino all'apply dei seed (area + azione), tutto il layer è

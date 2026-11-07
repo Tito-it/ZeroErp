@@ -92,6 +92,8 @@ class ProcessiEseguiOraApiTests(JwtMockedApiTest):
         coda = coda_cls.return_value
         coda.lavori_vivi_per_chiave.return_value = {}
         coda.accoda.return_value = 777
+        # Lo stato VERO del lavoro accodato (non un «PENDING» per costruzione).
+        coda.stati_dopo_accodamento.return_value = {777: "PENDING"}
         resp = self._post({"unit": self.unit})
         self.assertEqual(resp.status_code, 200, resp.content)
         self.assertEqual(resp.json()["data"], {"job_id": 777, "stato": "PENDING", "unit": self.unit})
