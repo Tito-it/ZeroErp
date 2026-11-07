@@ -2,7 +2,7 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-07
 
-**Riparte: Tid**, con il via al prossimo lotto (C, D, P, M o Z; §7.2). Il lotto T è chiuso: i giri T.1 … T.5 sono applicati e verdi come applicazione (T.5 il 2026-11-07); T.1 … T.4 committati, T.5 da committare. Il lotto 0 e il lotto R sono chiusi. ⚠️ Dall'apply del giro T.5 i due percorsi BE del §8.8 danno errore, come accettato dal piano.
+**Riparte: Tid**, col commit del giro C.1 e il via al giro C.2. Il lotto C è in quattro giri (§7.2 «Lotto C, i giri»): C.1 è applicato su dbdev e scratch, pgTAP verdi come applicazione (2026-11-07). I lotti 0, R e T sono chiusi e committati. ⚠️ Dall'apply del giro T.5 i due percorsi BE del §8.8 danno errore, e dall'apply di C.1 quelli del §8.9: accettato dal piano.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -44,6 +44,12 @@
 | 7-novodecies | ✅ Tid | via al giro T.5 (2026-11-07) | §7.2 «Lotto T, i giri» | — |
 | 7-novodecies-bis | ✅ DB | giro T.5: i verbi non scrivono più le colonne parallele, il lock le toglie, le colonne si ritirano coi loro indici e vincoli; provato in transazione (2026-11-07) | §7.2 «Il giro T.5» | — |
 | 7-vicies | ✅ Tid | apply del giro T.5 (`20261106-92` … `-99`, i due CSV dei codici), pgTAP verdi come applicazione (2026-11-07). ⚠️ Dall'apply i due percorsi BE del §8.8 (BE-T.5-a, BE-T.5-b) danno errore, come accettato dal piano | §7.2 «Il giro T.5», §8.8 | — |
+| 7-vicies-bis | ✅ Tid | via al lotto C («procedere con lo sviluppo», 2026-11-07) | §7.2 | — |
+| 7-vicies-ter | ✅ DB | lotto C in quattro giri; giro C.1: `attivita_fatturabili` e `fatture_righe` (V-3, V-2, D-1, D-3); provato in transazione (2026-11-07) | §7.2 «Lotto C, i giri» | — |
+| 7-vicies-quater | ✅ Tid | apply del giro C.1 (`20261107-41` … `-50`), pgTAP verdi come applicazione (2026-11-07). La convergenza `ci_apply` è passata al secondo update, dopo aver alzato il limite dei file aperti del servizio PostgreSQL (§7.2 «L'apply del giro C.1»). ⚠️ Dall'apply i percorsi BE del §8.9 danno errore, come accettato dal piano | §7.2 «Il giro C.1», §8.9 | — |
+| 7-vicies-quinquies | Tid | via al giro C.2 (`commesse_sorgenti`) | §7.2 «Lotto C, i giri» | 7-vicies-quater |
+| 8 | DB | giri C.2 … C.4, poi lotti D, P, M, Z, ognuno col suo via; il §8 si riempie strada facendo. ⛔ Il lotto M porta anche D58, D29 e ⑧ di `brief-db-revisione-dbops`: prima del via si riverifica la loro analisi (promemoria in §7.2 «Lotto M») | §7.2, §8 | 7-vicies-quinquies |
+| 9 | BE/FE | il §8 intero, una volta sola | §8 | 8 |
 | 7-vicies-bis | Tid | via al prossimo lotto (C, D, P, M o Z) | §7.2 | — |
 | 8 | DB | lotti C, D, P, M, Z, ognuno col suo via; il §8 si riempie strada facendo. ⛔ Il lotto M porta anche D58, D29 e ⑧ di `brief-db-revisione-dbops`: prima del via si riverifica la loro analisi (promemoria in §7.2 «Lotto M») | §7.2, §8 | 7-vicies-bis |
 | 9-bis | ✅ BE | il §8 fino al lotto T: codici, reso, ordine dal preventivo, contratto dall'offerta (2026-11-07, da committare su `dev/backend-tid`). I due percorsi rotti dal giro T.5 sono ripristinati | §8 «Stato al 2026-11-07, dopo il giro BE» | — |
@@ -51,7 +57,7 @@
 | 10 | DB | la documentazione del §7.3 (lotto DOC), poi archiviazione | §7.3 | 9 |
 
 **Decisioni aperte di Tid:** nessuna (il contratto precedente: deciso il 2026-11-07, §7.2 «Il giro T.4»).
-**Lavoro da committare:** il giro T.5, applicato e verde (`20261106-92` … `-99`, i due CSV dei codici, i diciassette pgTAP allineati, questo brief), su `dev/db-tid`. Il giro T.4 (`20261106-88` … `-91`, i tre CSV, il pgTAP nuovo, i quattro pgTAP allineati, le due pagine `manual/`, questo brief) è committato su `dev/db-tid` il 2026-11-07; il giro T.3 anche (`b86108e56a`). I giri T.1 e T.2 (`20261106-61` … `-73`, `storico_scope_policy.csv`, i pgTAP, le
+**Lavoro da committare:** il giro C.1, applicato (`20261107-41` … `-50`, il pgTAP nuovo, i pgTAP allineati, questo brief), su `dev/db-tid`. Il giro T.5 (`20261106-92` … `-99`) è committato (`d385cbd3d3`). Il giro T.4 (`20261106-88` … `-91`, i tre CSV, il pgTAP nuovo, i quattro pgTAP allineati, le due pagine `manual/`, questo brief) è committato su `dev/db-tid` il 2026-11-07; il giro T.3 anche (`b86108e56a`). I giri T.1 e T.2 (`20261106-61` … `-73`, `storico_scope_policy.csv`, i pgTAP, le
 pagine `manual/` cancellate, questo brief) sono committati su `dev/db-tid` il 2026-11-06. Il lotto 0 intero e il lotto R (giri R.1 e R.2: changeSet `20261106-46` …
 `-60`, i due CSV, i pgTAP, i due brief) sono committati su `dev/db-tid` il 2026-11-06. ⚠️ I test Django sono rossi finché il BE non rigenera il file delle policy d'errore (§8.1
 BE-0.1-a, §8.2 BE-0.2-a): accettato dal piano, va detto nella PR.
@@ -1400,6 +1406,136 @@ Non coperto, e resta di Tid: l'apply, la corsa dei pgTAP come applicazione (la R
 * **Voci per il §8 (BE):** `pipeline_repository` (parametro `sorgente_uid: int`), `commesse_repository` e
   `commesse_service`, il dataclass `AttivitaDaFatturare`.
 
+##### Lotto C, i giri (team DB, 2026-11-07)
+
+Quattro giri, ognuno provato da solo. Prima quello che toglie lettori (le colonne dell'attività fatturabile
+leggevano la riga di commessa di oggi), poi le due grammatiche che cambiano, il ritiro del tipo per ultimo.
+
+| Giro | Che cosa | Stato |
+| --- | --- | --- |
+| **C.1** | `attivita_fatturabili` e `fatture_righe` (G5): il pull ritrova la riga emessa per `commessa_attivita_id` (V-3, D-1); i lettori delle colonne dell'attività (normalize, catena dei termini, smistamento V-2) leggono la riga di commessa; via `sorgente_*` e `sorgente_origine_tipo_id` (D-3); `fatture_righe` nel modello (conversione, CHECK, guard unico); il presidio degli orfani perde le due esenzioni | ✅ DB, provato in transazione; ✅ applicato da Tid, pgTAP verdi (2026-11-07) |
+| **C.2** | `commesse_sorgenti` (S-4): dal testo alle colonne tipizzate (`sorgente_uid` da `text` a `uuid`, `sorgente_id`), l'unicità sulla chiave nuova, il guard unico al posto del testuale; `fn_link_commessa_sorgente`, `fn_commessa_viva_di_sorgente` e i lettori (archi della lineage, chiudibile, annullabilità dell'ordine, guard della fatturazione immediata, guard dell'emittente, la firma testuale di `fn_get_sorgente_emittente_sr_id`), il builder | da fare, col via |
+| **C.3** | `commesse_attivita` (S-5): all'id per i tipi a chiave `id`, `sorgente_uid` a `uuid`, `sorgente_riga` riempita; CHECK di forma e guard unico; la madre e i cinque lister del push; i lettori (legami, ritiro, lineage, origini della fattura, gruppo fatturabile con l'uid dal BB che risolve, D-6); il ramo del ponte per le commesse | da fare, col via |
+| **C.4** | `ATTIVITA` esce dalle sorgenti e resta in `tipi_entita` (D-2); il lato «in uscita» su `attivita_fatturabili` si smonta con la convergenza | da fare, col via |
+
+**Il giro C.1, le scelte** (team DB, 2026-11-07; via di Tid lo stesso giorno, «procedere con lo sviluppo»; nessuna è
+un cambio di modello: sono D-1, D-3, S-7, V-2 e V-3 per D-12):
+
+* **La riga già emessa si ritrova per `commessa_attivita_id`** (`-41`). È la FK NOT NULL della provenienza, unica
+  (`uq_attivita_fatturabili_commessa_attivita`): non dipende dal formato della `segment_key` e non esce dalla
+  commessa (il caveat C1 si chiude). Il pull smette di scrivere `sorgente_*` e `sorgente_origine_tipo_id`, e con loro
+  se ne va la lettura del tipo COMMESSA dal catalogo, che serviva solo a scriverle.
+* **I lettori passano alla riga di commessa** prima del ritiro: il normalize prende il tipo del documento d'origine
+  da `commesse_attivita.sorgente_tipo_id` per la FK, e la riga senza documento (onere, rettifica) prende COMMESSA,
+  come prima col ripiego su `sorgente_tipo_id` (`-42`; il trigger si rimonta senza le colonne della provenienza e con
+  `commessa_attivita_id` nell'`UPDATE OF`). La catena dei termini parte dalla riga di commessa e cerca ordine e
+  preventivo con la regola d'incontro del modello (`-43`): vera oggi e dopo il giro C.3, che non la deve ritoccare.
+* **V-2 attraverso la riga di commessa** (`-44`). FATTURATA ed EMESSA_AF cercano le righe di commessa del segmento
+  della riga del preventivo (`segment_base = fn_segment_key(PREVENTIVO, uid, riga)`, la stessa chiave di
+  IN_COMMESSA), non annullate, e da lì l'attività per `commessa_attivita_id`. ⚠️ Il piano diceva «sul BB che risolve»:
+  non serve, perché il tipo è noto (è la regola del giro 0.3: chi sa dove cercare usa la regola d'incontro, non il
+  BB), e la chiave del segmento resta sull'uid (D-6). Così i tre stati leggono la stessa chiave.
+* **Il ritiro** (`-45`): le quattro colonne con le due FK e il `DEFAULT 0`. Il trigger ATTIVO generato sulla FK
+  blocca il `DROP COLUMN` e si toglie prima, con `IF EXISTS` (§11.5: da zero non c'è ancora); il gemello su
+  `config.sorgenti` lo ritira il generatore a `ci_apply`, come al giro T.1. Le righe del registro degli indici FK
+  escono in `-50`.
+* **`fatture_righe` nel modello** (`-46` … `-48`). Le righe nate da una riga di commessa dicevano COMMESSA, la riga
+  e un'impronta in `sorgente_uid`: prendono la commessa in `sorgente_id` (la chiave del tipo), l'impronta se ne va
+  (S-7: tipo e riga restano). Coi trigger spenti e riaccesi com'erano (la riga di una fattura emessa è bloccata), solo
+  dove la riga di commessa c'è: un orfano ferma il CHECK, ed è voluto (S-6). Poi il CHECK di forma, i COMMENT delle
+  colonne al presente, tre indici «chi deriva da X» e il guard unico, livello DOCUMENTO e azione BLOCCA.
+* **Il presidio degli orfani** (`-49`) perde le esenzioni delle due tabelle: `attivita_fatturabili` esce dal perimetro
+  da sola (non ha più le colonne), `fatture_righe` è UNICO. Resta il log dei reconcile.
+* **Firme e COMMENT.** Firme con `%TYPE` dagli ultimi YAML (`20261031-47`, `20260227-06`, `20261008-70`,
+  `20261106-20`), che rieseguiti danno lo stesso `pg_get_functiondef` del vivo su dbdev e scratch; COMMENT riscritti
+  al presente (`linee-guida-sql` §5d), quello della catena dei termini con la firma ancorata.
+
+**Che cosa cambia per chi legge, dichiarato:**
+
+* **Il pull non si ferma più su una riga liberata** la cui chiave del segmento è cambiata dopo l'emissione (V-3). Su
+  dbdev (fatto datato, 2026-11-07, prova a secco su 366 commesse): 4 righe in 2 commesse passano da «inserita» ad
+  «aggiornata». Sono attività liberate con l'impronta stantia: un giro vero le avrebbe fermate con `23505`.
+* **Lo smistamento mostra FATTURATA ed EMESSA_AF** (V-2): su dbdev 13 righe di preventivo passano da IN_COMMESSA a
+  FATTURATA; le altre colonne della vista sono identiche.
+* **`attivita_fatturabili` non ha più `sorgente_*`**: il BE le legge in due punti e gli smoke le scrivono (§8.9).
+* **Una riga di fattura con una provenienza** ora è validata dal guard unico: la parte IVA del plafond che ricopia la
+  provenienza della capofila senza `sorgente_id` è rifiutata dal CHECK (§8.9, BE-C.1-c).
+
+**I changeSet del giro C.1:** `20_code/vendite/20261107-41` (il pull), `-42` (il normalize e il suo trigger), `-43`
+(la catena dei termini), `-44` (lo smistamento), `00_schema/vendite/-45` (via le colonne di `attivita_fatturabili`),
+`-46` (`fatture_righe`: conversione, CHECK, COMMENT), `-47` (i tre indici), `20_code/vendite/-48` (il guard unico),
+`20_code/dbops/-49` (il perimetro degli orfani), `80_data/changelog/-50` (il registro degli indici FK). Nessun codice
+nuovo, nessun CSV, nessuna funzione nuova. pgTAP: nuovo `vendite/test-sorgente-attivita-fatturabili-v1` (20);
+allineati i presidi `dbops/test-sorgenti-struttura-v1` (il debito perde le due tabelle), `dbops/test-sorgenti-orfane-v1`
+(test 3: un'esenzione sola), `vendite/test-sorgente-commenti-al-presente-v1` (l'elenco chiuso) e i file che scrivevano o
+leggevano le colonne ritirate (sotto).
+
+**Gli allineamenti dei pgTAP (nove file):**
+
+* **i presidi:** `dbops/test-sorgenti-struttura-v1` (2: il debito perde le due tabelle; nomi dal perimetro),
+  `dbops/test-sorgenti-orfane-v1` (3: un'esenzione sola; i nomi da `pg_class`), `vendite/test-sorgente-commenti-al-presente-v1`
+  (l'elenco chiuso prende le tre funzioni, il perimetro, `fatture_righe` e i tre indici);
+* **chi scriveva le colonne ritirate:** `vendite/test-attivita-fatturabili.sql` (22: al posto del «DEFAULT 0» l'assenza
+  delle colonne; 30-31 senza le colonne), `vendite/test-fatturazione-draft.sql` (la fixture);
+* **chi le leggeva:** `vendite/test-commesse-core-functions-v1` (la propagazione: la provenienza è la riga di commessa),
+  `vendite/test-resolve-termini-livello-sorgente-v1` (1: l'invariante di forma riscritta sulla forma che resta),
+  `vendite/test-sorgente-origine-tipo-doc-fiscale-v1` (1, 2, 6, 9, 10: §26 resta, il tipo d'origine si legge dalla riga
+  di commessa), `vendite/test-porta-oneri-giro-completo-v1` (8: un secondo pull non crea una seconda AF).
+
+**La prova del giro C.1** (2026-11-07, come `zeroerp_owner`, in transazione annullata):
+
+* **i corpi di partenza sono quelli vivi:** i quattro YAML di partenza, rieseguiti, danno lo stesso
+  `pg_get_functiondef` del vivo (con clausole e privilegi) su dbdev e scratch;
+* **l'estratto** dei dieci changeSet gira intero su scratch e dbdev; su dbdev le 8 righe di fattura con COMMESSA
+  passano alla commessa della loro riga (8 su 8), il presidio degli orfani è vuoto, il guard è montato con argomenti
+  validi, le sette viste sopra lo smistamento restano; `plpgsql_check` sulle tre funzioni: solo l'avviso noto (STABLE
+  che chiama `fn_log_and_raise_error`);
+* **il ramo nuovo si costruisce:** `vendite/test-sorgente-attivita-fatturabili-v1` 20/20 su scratch e dbdev. Senza
+  l'estratto è rosso dalla forma (1-3) e al 5 riproduce V-3 esattamente: `23505 uq_attivita_fatturabili_commessa_attivita`;
+* **equivalenza prima/dopo su tutta la popolazione di dbdev:** catena dei termini di ogni attività (64), zero
+  differenze nei due versi; smistamento e pull a secco: le differenze dette sopra, nessun'altra;
+* **regressione prima/dopo su 270 pgTAP** (tutti `dbops/` e `storico/`, e chi nomina attività fatturabili, righe di
+  fattura, righe di commessa, il pull, la catena dei termini, lo smistamento e le sue viste, il perimetro degli orfani;
+  sullo scratch, in sequenza; prima = il file di HEAD senza estratto, dopo = il file dell'albero con l'estratto): 3217
+  ok prima. Fuori dai file del giro i rossi sono gli stessi riga per riga (scope e permessi, rossi da owner per
+  costruzione). Tre differenze, spiegate:
+  * `vendite/test-porta-oneri-giro-completo-v1` (8): leggeva `sorgente_tipo_id` dell'attività. Il censimento cercava
+    le colonne con un alias dell'attività, e qui la colonna è letta da una tabella temporanea della fixture. Allineato
+    (sotto), poi 9/9 prima e dopo;
+  * `dbops/test-trigger-attivo-orfani-v1` (3): il trigger ATTIVO `trg_sorgenti_a10_attivita_fatturabili_block_deact_upd`
+    su `config.sorgenti`, gemello della FK ritirata, resta orfano finché non gira il ritiro del generatore. Previsto
+    dal test, come al giro T.1: con l'estratto e `dbops.fn_ritira_attivo_orfani()`, 10/10. In CI gira dopo i DROP, su
+    dbdev lo fa l'`update` senza `--contexts`. Finché non gira, disattivare una sorgente sbatterebbe su quel trigger;
+  * due file troncati nelle **due** corse da un limite d'ambiente («Troppi file aperti» nel caricare
+    `llvmjit.so`): `vendite/test-riporta-lotto-a-draft-v1` e `vendite/test-sorgente-righe-vendita-v1`, rifatti con
+    `jit = off`: 14/14 e 24/24 prima e dopo, su scratch e dbdev. Non è del giro: la causa è il limite dei file aperti
+    del servizio PostgreSQL, vedi «L'apply del giro C.1» qui sotto;
+* **i file allineati, con l'estratto, su dbdev**, e rilanciati con gli schemi `vendite`, `config`, `script`, `dbops`
+  nel `search_path`: tutti verdi. ⚠️ **Un difetto preesistente, corretto nello stesso file:** `dbops/test-sorgenti-orfane-v1`
+  confrontava `regclass::text` coi nomi qualificati (test 3, 6, 8, 9, 10: rossi anche su HEAD con lo schema nel
+  `search_path`, verdi come app per caso). Ora i nomi vengono da `pg_class` + `pg_namespace` (`pg_temp.qn`): 12/12 nei
+  due modi, su scratch e dbdev. Lo stesso per il test 2 di `dbops/test-sorgenti-struttura-v1`;
+* guardrail statici (`scripts/guardrail_*.py`, licenze): verdi.
+
+⚠️ **Un incidente durante il censimento, dichiarato:** un `plpgsql_check` lanciato su **tutte** le funzioni plpgsql di
+dbdev in una volta, dentro una transazione col `DROP COLUMN` in prova, ha fatto cadere il backend, e il cluster è
+passato da un crash recovery (12:35, 2026-11-07: tutte le connessioni ricominciate). La transazione era aperta ed è
+stata annullata: nessun dato toccato (verificato dopo). Da lì il censimento è sui corpi (`pg_get_functiondef`) e il
+`plpgsql_check` una funzione alla volta, sullo scratch.
+
+Non coperto, e resta di Tid: la baseline.
+
+**L'apply del giro C.1** (Tid, 2026-11-07): i dieci changeSet entrano su dbdev e sullo scratch al primo `update`. La
+convergenza `ci_apply` (`20260926-10`, che rigira a ogni update) cade invece su entrambi con
+`apertura del segmento di memoria condivisa "/PostgreSQL.N" fallito: Troppi file aperti`, nel controllo su
+`maintenance.job_run_log` dopo un processo (query parallela). La transazione della convergenza si annulla intera; i
+changeSet del giro restano, perché Liquibase committa per changeSet. La causa è l'ambiente, non il giro: il servizio
+PostgreSQL partiva col limite di sistema di 1024 file aperti per processo, con `max_files_per_process = 1000` e
+`io_method = io_uring`, e la sessione lunga della convergenza li esauriva (la stessa causa dei due file troncati della
+regressione). Tid alza il limite del servizio (`LimitNOFILE=65536` nel drop-in systemd di `postgresql@18-main`), riavvia
+e rilancia: convergenza passata, ritiro del trigger ATTIVO orfano compreso, pgTAP verdi come applicazione. Il requisito
+per ogni installazione è scritto in `installazione.md` (§7.3 D, «Aggiunte dal giro C.1»).
+
 #### Lotto D — documenti generati e coda di stampa
 
 * `documenti_generati`:
@@ -1569,6 +1705,15 @@ nell'indice). Ogni giro aggiunge qui le pagine che ha toccato e il censimento no
   T.2 cambia `vendite/ddt`, `vendite/resi`, `vendite/vw_ddt_lista`, `vendite/vw_resi_lista` (lotto T),
   `vendite/fn_genera_ddt_da_ordine`, `vendite/fn_genera_ddt_riconsegna` (elencate al lotto R: la testata cambia in T.2).
 
+* **Aggiunte dal giro C.1** (2026-11-07, pagine toccate e non censite) (1): `vendite/vw_preventivi_smistamento_righe`
+  (FATTURATA ed EMESSA_AF dalla riga di commessa, V-2). Delle pagine già nell'elenco, C.1 cambia
+  `vendite/attivita_fatturabili` (le colonne `sorgente_*` ritirate; il manuale dava ancora per vivo l'indice unico
+  ritirato a febbraio, R-5), `vendite/fatture_righe` (elencata al lotto R: la grammatica cambia in C.1),
+  `vendite/fn_emit_attivita_fatturabili_da_commessa`, `vendite/trgfn_attivita_fatturabili_normalize`,
+  `vendite/fn_resolve_termini_pagamento` e `dbops/fn_sorgenti_orfane_perimetro`.
+  Fuori dal manuale: `installazione.md`, il requisito del limite dei file aperti del servizio PostgreSQL
+  (§7.2 «L'apply del giro C.1»), ✅ scritto il 2026-11-07.
+
 * **Lotto 0 (meccanismo, catalogo)** (18): `config/sorgenti`, `dbops/fn_sorgenti_orfane_perimetro`, `dbops/fn_sorgenti_orfane`, `dbops/vw_sorgenti_orfane`, `pratiche/fn_stato_sorgente`, `script/fn_get_sorgente_emittente_sr_id`, `script/fn_sorgente_chiave_id`, `script/fn_sorgente_chiave_uuid`, `script/trgfn_guard_sorgente_polimorfa_testuale`, `script/trgfn_guard_sorgente_polimorfa_tipizzata`, `script/vw_stato_sorgente`, `vendite/fn_get_sorgente_documento_ref`, `vendite/vw_stato_sorgente_contratto`, `vendite/vw_stato_sorgente_ddt`, `vendite/vw_stato_sorgente_offerta`, `vendite/vw_stato_sorgente_ordine`, `vendite/vw_stato_sorgente_preventivo`, `vendite/vw_stato_sorgente_reso`.
 * **Lotto R** (11): `dbops/vw_ddt_emessi_senza_scarico`, `vendite/fatture_righe`, `vendite/fn_documento_legami`, `vendite/fn_documento_lineage_archi`, `vendite/fn_genera_ddt_da_ordine`, `vendite/fn_genera_ddt_riconsegna`, `vendite/fn_list_ddt_da_pushare`, `vendite/fn_list_ordini_da_pushare`, `vendite/fn_list_preventivi_da_pushare`, `vendite/fn_push_offerta_a_contratto`, `vendite/ordini_righe`.
 * **Lotto T** (21): `dbops/vw_resi_confermati_senza_carico`, `script/fn_check_ordine_annullabile`, `script/trgfn_default_emittente_fiscale`, ~~`storico/documenti_fatturazione_canali`~~, `vendite/contratti`, `vendite/ddt`, ~~`vendite/documenti_fatturazione_canali`~~, `vendite/fatture`, `vendite/fn_accoda_stampe_lotto`, `vendite/fn_list_commessa_attivita`, `vendite/fn_resolve_termini_pagamento`, `vendite/fn_select_attivita_fatturabili`, `vendite/ordini`, `vendite/resi`, `vendite/trgfn_ddt_normalize`, `vendite/trgfn_resi_guard_ddt_consegnato`, `vendite/trgfn_resi_normalize`, `vendite/vw_dash_competenza_attivita`, `vendite/vw_ddt_lista`, `vendite/vw_lotti_gruppi_serviti`, `vendite/vw_resi_lista`.
@@ -1685,6 +1830,15 @@ Le colonne parallele non ci sono più: le due voci di T.3 che le leggevano (§8.
 | — | `vw_ordini_lista`: `documento_origine_tipo`, `_id`, `_codice` restano, calcolati dalla provenienza | `ordini_repository.py:280-286`, `ordine_document_context_builder.py:213`, FE `OrdiniSearchTable.vue` | nessuna |
 | — | la capability perde dalle colonne ferme `documento_origine_*` dell'ordine e `offerta_id` del contratto (`non_editable_fields`, dal montaggio del lock). Su tutti gli ordini e contratti di dbdev è l'unica differenza della capability (2026-11-07) | capability di ordine e contratto | nessuna, se il FE non le nomina (grep FE, 2026-11-07: le nomina solo un commento) |
 
+### 8.9 Dal lotto C, giro C.1 (2026-11-07)
+
+| # | Che cosa cambia | Percorso | Che cosa fa il BE/FE |
+| --- | --- | --- | --- |
+| BE-C.1-a | `vendite.attivita_fatturabili.sorgente_tipo_id`, `sorgente_uid`, `sorgente_riga`, `sorgente_origine_tipo_id` non esistono più | `PipelineRepository.list_attivita_da_fatturare` (`pipeline_repository.py:1824-1826`, `:1860-1862`) → il dataclass `AttivitaDaFatturare` (`:189-191`); test `tests/services/test_fatture_righe_service.py:242-244` | togliere le tre colonne dalla SELECT e i tre campi dal dataclass: il consumatore unico (`fatture_righe_service.py`) non li legge (censimento S-7, L5). La provenienza dell'attività è `commessa_attivita_id` |
+| BE-C.1-b | gli smoke che scrivono o leggono le stesse colonne | `backend/scripts/tests/_smoke_fatturazione.py:204, 268, 281` (INSERT con `sorgente_tipo_id`, `uuid4()` in `sorgente_uid`, `sorgente_origine_tipo_id`); `smoke-push-termine-documento-commessa.py:340` (JOIN su `a.sorgente_tipo_id`) e `:413-418` (INSERT che copia `a.sorgente_tipo_id` e scrive `sorgente_uid`) | togliere le colonne dagli INSERT; il JOIN legge il tipo dalla riga di commessa (`commesse_attivita.sorgente_tipo_id` per `commessa_attivita_id`) |
+| BE-C.1-c | una riga di fattura con il tipo vuole la chiave del documento: CHECK `chk_fatture_righe_sorgente_forma` (23514) e il guard unico (`E_SORG_CHIAVE_NON_CONFORME`, `E_SORG_RIGA_NON_DEL_DOCUMENTO`, `E_SORG_NOT_FOUND`, `TECNICO`) | `PipelineRepository.list_righe_per_plafond` (`:1959`) e `insert_parte_plafond` (`:2005-2014`): la parte IVA ricopia `sorgente_tipo_id`, `sorgente_uid`, `sorgente_riga` della capofila | ricopiare anche `sorgente_id` (e leggerlo in `list_righe_per_plafond`). Oggi tocca le sole righe di fattura nate da una riga di commessa (la commessa sta in `sorgente_id`); le righe aggregate le scrive NULL `:3489-3503`, che resta valido |
+| — | `vendite.vw_preventivi_smistamento_righe`: FATTURATA ed EMESSA_AF ora compaiono (V-2) | vista → `PreventiviSmistamentoDialog.vue:148`, `frontend/src/vendite/constants.js:175-181`, i servizi preventivi e ordini | nessuna obbligatoria: gli stati c'erano già nel FE, ora arrivano. Da guardare nello smoke del dialogo di smistamento |
+| — | il pull (`fn_emit_attivita_fatturabili_da_commessa`) non solleva più `E_CODICE` per un tipo COMMESSA assente dal catalogo; firma, colonne e codici invariati per il resto | `commesse_service` / pipeline (chiamata del pull) | nessuna |
 
 **Stato al 2026-11-07, dopo il giro BE** (team BE, da committare). Fatte le voci segnate ✅ di §8:
 

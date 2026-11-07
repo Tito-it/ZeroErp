@@ -1,6 +1,6 @@
 # Installazione
 
-> **Ultimo aggiornamento**: 25 ottobre 2026
+> **Ultimo aggiornamento**: 7 novembre 2026
 
 Questa pagina dice **in che ordine** si tira su ZeroErp su una macchina nuova e
 rimanda alle pagine che spiegano ogni passo. Ciò che si configura **dentro** il
@@ -75,6 +75,38 @@ Nel database le creano tre momenti diversi:
   dei pgTAP, sullo scratch `scripts/ci-local.sh`.
 
 A che cosa serve ciascuna: [Estensioni utilizzate](postgresql/estensioni-utilizzate.md).
+
+### Il limite dei file aperti del server
+
+Ogni processo di PostgreSQL tiene aperti tanti file quante sono le tabelle e gli
+indici che sta usando, più alcuni per la memoria condivisa delle query parallele,
+per la compilazione JIT e, in PostgreSQL 18, per l'I/O asincrono (`io_uring`).
+Il sistema operativo mette un tetto a quanti file può aprire un processo, e su
+Debian il servizio PostgreSQL parte col tetto di sistema: **1024**.
+
+ZeroErp ha centinaia di tabelle e quasi duemila indici, e alcune operazioni lunghe
+(la convergenza delle automazioni a ogni aggiornamento, le suite pgTAP) li
+toccano quasi tutti nella stessa sessione. Con 1024 il processo arriva al tetto e
+l'operazione si ferma con `Troppi file aperti` (`Too many open files`), di solito
+mentre apre un segmento di memoria condivisa o il JIT. Non è un errore dei dati e
+non dipende dai changeSet: è il limite del servizio.
+
+⛔ Su ogni server, sviluppo e produzione, si alza il tetto **prima** del primo
+aggiornamento, con un drop-in di systemd:
+
+```bash
+sudo mkdir -p /etc/systemd/system/postgresql@18-main.service.d
+printf '[Service]\nLimitNOFILE=65536\n' | sudo tee /etc/systemd/system/postgresql@18-main.service.d/override.conf
+sudo systemctl daemon-reload
+sudo systemctl restart postgresql@18-main
+grep 'open files' /proc/$(pgrep -o -f 'bin/postgres -D')/limits   # deve dire 65536
+```
+
+`postgresql@18-main` è il nome dell'unità per il cluster `18/main` di Debian; con
+un altro cluster cambia il nome. `max_files_per_process` (1000 di default) resta
+com'è: è il tetto che PostgreSQL si dà da solo **sotto** quello del sistema, e
+serve che il sistema gli lasci spazio sopra. In un container il limite si dà al
+container (`--ulimit nofile=65536:65536` o `ulimits` in compose).
 
 ### L'ordine dei passi
 

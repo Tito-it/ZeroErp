@@ -13,13 +13,16 @@
 --   Brief: brief-db-magazzino-lotto-2-motore §4.7 (la nascita);
 --   brief-db-sorgente-documento-e-riga §7.2 lotto 0, giro 0.2 (il perimetro e i tre
 --   livelli, 20261106-20); lotto T, giro T.2 (bolla e reso col guard unico: il caso
---   TESTUALE passa su una tabella del test).
+--   TESTUALE passa su una tabella del test); lotto C, giro C.1 (un'esenzione sola; i nomi
+--   delle tabelle da pg_class + pg_namespace con pg_temp.qn, non da regclass::text, che
+--   col nome dello schema nel search_path perde lo schema).
 --
 -- Elenco test (plan 12):
 --   1) il PERIMETRO contiene le sei tabelle di magazzino, con grammatica MODELLO_A
 --   2) le testate di vendita sono nel perimetro, tutte col guard unico (UNICO): bolla e reso
 --      dal giro T.2, ordine, contratto e fattura dal giro T.3 di brief-db-sorgente-documento-e-riga
---   3) le esenzioni dichiarate sono tre, ognuna col suo motivo
+--   3) l'esenzione dichiarata e' una, il log dei reconcile, col suo motivo (il lotto C,
+--      giro C.1, toglie attivita_fatturabili e fatture_righe)
 --   4) zero orfani di magazzino sul mondo costruito
 --   5) MODELLO_A: cancellato il bersaglio di un movimento -> UNA riga, livello DOCUMENTO
 --   6) TESTUALE: una tabella senza guard che nomina un ordine che non c'e' -> UNA riga
@@ -37,6 +40,14 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SET CONSTRAINTS ALL IMMEDIATE;
 
 SELECT plan(12);
+
+-- Il nome qualificato di una tabella da pg_class + pg_namespace: regclass::text
+-- dipende dal search_path di chi guarda (senza schema, se lo schema ci sta).
+CREATE FUNCTION pg_temp.qn(p regclass) RETURNS text LANGUAGE sql STABLE AS $qn$
+  SELECT n.nspname || '.' || c.relname
+    FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+   WHERE c.oid = p
+$qn$;
 
 CREATE TEMP TABLE _mondo AS SELECT * FROM dbops.fn_pgtap_crea_emittente_operatore();
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo)); END $ctx$;
@@ -88,7 +99,7 @@ SELECT (SELECT id FROM config.sorgenti WHERE codice_interno = 'DDT_VENDITA')    
 
 -- ===== il perimetro =====
 SELECT is(
-    (SELECT string_agg(tabella::text || ':' || grammatica, ',' ORDER BY tabella::text)
+    (SELECT string_agg(pg_temp.qn(tabella) || ':' || grammatica, ',' ORDER BY pg_temp.qn(tabella))
        FROM dbops.fn_sorgenti_orfane_perimetro() WHERE schema_tabella = 'magazzino'),
     'magazzino.eventi_assets:MODELLO_A,magazzino.inventari:MODELLO_A,magazzino.movimenti:MODELLO_A,'
     'magazzino.movimenti_attesi:MODELLO_A,magazzino.rettifiche:MODELLO_A,magazzino.trasferimenti:MODELLO_A',
@@ -101,18 +112,18 @@ SELECT is(
     'contratti:UNICO,ddt:UNICO,fatture:UNICO,ordini:UNICO,resi:UNICO',
     '2) le testate di vendita sono nel perimetro, tutte col guard unico (UNICO)');
 
+-- ⚠️ Schema e nome dal perimetro, non regclass::text, che dipende dal search_path.
 SELECT results_eq(
-    $$SELECT tabella::text COLLATE "default", orfani_esclusi_perche IS NOT NULL, guard_esente_perche IS NOT NULL
+    $$SELECT (schema_tabella || '.' || nome_tabella)::text COLLATE "default",
+             orfani_esclusi_perche IS NOT NULL, guard_esente_perche IS NOT NULL
         FROM dbops.fn_sorgenti_orfane_perimetro()
        WHERE orfani_esclusi_perche IS NOT NULL OR guard_esente_perche IS NOT NULL
        ORDER BY 1$$,
-    $$VALUES ('pratiche.reconcile_errori', true, true),
-             ('vendite.attivita_fatturabili', true, false),
-             ('vendite.fatture_righe', true, false)$$,
-    '3) le esenzioni dichiarate sono tre, ognuna col suo motivo');
+    $$VALUES ('pratiche.reconcile_errori', true, true)$$,
+    '3) l''esenzione dichiarata e'' una, il log dei reconcile, col suo motivo');
 
 SELECT is(
-    (SELECT count(*) FROM dbops.vw_sorgenti_orfane o WHERE o.tabella::text LIKE 'magazzino.%'),
+    (SELECT count(*) FROM dbops.vw_sorgenti_orfane o WHERE pg_temp.qn(o.tabella) LIKE 'magazzino.%'),
     0::bigint,
     '4) zero orfani di magazzino sul mondo costruito');
 
@@ -124,8 +135,8 @@ DELETE FROM magazzino.inventari_righe WHERE id = (SELECT riga FROM _fix);
 ALTER TABLE magazzino.inventari_righe ENABLE TRIGGER USER;
 
 SELECT is(
-    (SELECT (o.tabella::text, o.riga_id, o.grammatica, o.livello, o.sorgente_codice_interno,
-             o.sorgente_riga, o.target_table::text)::text
+    (SELECT (pg_temp.qn(o.tabella), o.riga_id, o.grammatica, o.livello, o.sorgente_codice_interno,
+             o.sorgente_riga, pg_temp.qn(o.target_table))::text
        FROM dbops.vw_sorgenti_orfane o WHERE o.riga_id = (SELECT mov FROM _fix) AND o.tabella = 'magazzino.movimenti'::regclass),
     (SELECT ('magazzino.movimenti', mov, 'MODELLO_A', 'DOCUMENTO', 'INVENTARIO_RIGA', riga,
              'magazzino.inventari_righe')::text FROM _fix),
@@ -142,7 +153,7 @@ INSERT INTO pg_temp._prov_testo (sorgente_tipo_id, sorgente_uid)
 SELECT ord, '00000000-0000-4000-8000-0000000000aa' FROM _t;
 
 SELECT is(
-    (SELECT (o.grammatica, o.livello, o.sorgente_codice_interno, o.sorgente_uid, o.target_table::text)::text
+    (SELECT (o.grammatica, o.livello, o.sorgente_codice_interno, o.sorgente_uid, pg_temp.qn(o.target_table))::text
        FROM dbops.vw_sorgenti_orfane o WHERE o.tabella = 'pg_temp._prov_testo'::regclass),
     '(TESTUALE,DOCUMENTO,ORDINE_VENDITA,00000000-0000-4000-8000-0000000000aa,vendite.ordini)',
     '6) TESTUALE: la riga senza guard che nomina un ordine inesistente e'' UNA riga orfana');
@@ -168,7 +179,7 @@ SELECT is(
     '7) una tabella col guard unico entra nel perimetro con la grammatica UNICO');
 
 SELECT results_eq(
-    $$SELECT p.caso, o.livello, o.target_table::text COLLATE "default"
+    $$SELECT p.caso, o.livello, pg_temp.qn(o.target_table) COLLATE "default"
         FROM dbops.vw_sorgenti_orfane o
         JOIN pg_temp._prov p ON p.id = o.riga_id
        WHERE o.tabella = 'pg_temp._prov'::regclass AND p.caso = 'documento'$$,
@@ -176,7 +187,7 @@ SELECT results_eq(
     '8) UNICO, livello DOCUMENTO: la bolla che non c''e''');
 
 SELECT results_eq(
-    $$SELECT p.caso, o.livello, o.target_table::text COLLATE "default"
+    $$SELECT p.caso, o.livello, pg_temp.qn(o.target_table) COLLATE "default"
         FROM dbops.vw_sorgenti_orfane o
         JOIN pg_temp._prov p ON p.id = o.riga_id
        WHERE o.tabella = 'pg_temp._prov'::regclass AND p.caso = 'riga'$$,
@@ -184,7 +195,7 @@ SELECT results_eq(
     '9) UNICO, livello RIGA: la riga di un''altra bolla');
 
 SELECT results_eq(
-    $$SELECT p.caso, o.livello, o.target_table::text COLLATE "default"
+    $$SELECT p.caso, o.livello, pg_temp.qn(o.target_table) COLLATE "default"
         FROM dbops.vw_sorgenti_orfane o
         JOIN pg_temp._prov p ON p.id = o.riga_id
        WHERE o.tabella = 'pg_temp._prov'::regclass AND p.caso IN ('dettaglio', 'buona')$$,
