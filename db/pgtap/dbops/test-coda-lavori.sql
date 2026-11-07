@@ -43,7 +43,37 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
 -- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- ⭐ Rev 2026-11-07 (blocco 5b di brief-db-revisione-dbops, RLS accesa): un
+--   lavoro SISTEMA lo vedono e lo scrivono solo il super admin e l'utente
+--   tecnico del drenatore (policy rls_coda_lavori_ef_perimetro). I test 54 e 56
+--   girano con quella veste, il resto da operatore.
+-- ⛔ L'ORDINE CONTA. Prima si sceglie l'operatore, poi si costruisce il
+--   drenatore SENZA contesto (come fa test-rls-email-ambito-reparto-operatore),
+--   poi si rientra nell'operatore PER ID. Al contrario, su un database senza
+--   operatori (CI) fn_pgtap_set_contesto_operatore() senza argomento potrebbe
+--   scegliere proprio l'utente tecnico appena nato: un utente con un'azienda,
+--   che per lei e' un operatore, e che vede i lavori SISTEMA.
+CREATE TEMP TABLE tmp_veste AS
+SELECT script.fn_pgtap_set_contesto_operatore() AS operatore_id;
+SELECT set_config('app.current_user_id', '', false),
+       set_config('app.ruolo_applicativo', '', false);
+ALTER TABLE tmp_veste ADD COLUMN drenatore_id integer;
+UPDATE tmp_veste
+   SET drenatore_id = (SELECT r.auth_user_id
+                         FROM dbops.fn_pgtap_crea_roster_processo('draina_coda_lavori') r);
+DO $ctx$ BEGIN
+    PERFORM script.fn_pgtap_set_contesto_operatore((SELECT operatore_id FROM tmp_veste));
+END $ctx$;
+
+-- Cambia veste per il resto della transazione: 'OPERATORE' o 'DRENATORE'.
+CREATE FUNCTION pg_temp.veste(p_veste text) RETURNS void
+LANGUAGE sql AS $$
+    SELECT set_config('app.current_user_id',
+                      (SELECT CASE p_veste WHEN 'DRENATORE' THEN v.drenatore_id
+                                           ELSE v.operatore_id END::text
+                         FROM tmp_veste v),
+                      true);
+$$;
 
 SELECT plan(57);
 
@@ -220,21 +250,32 @@ SELECT throws_ok(
 -- H) Enqueue SISTEMA — scope NULL ammesso
 -- ============================================================
 SELECT isnt((SELECT id3 FROM tmp_enq), NULL::bigint, '53) enqueue SISTEMA ritorna un id');
+-- ⚠️ Un lavoro SISTEMA l'operatore non lo vede (RLS): lo si legge da drenatore.
+SELECT pg_temp.veste('DRENATORE');
 SELECT is(
-    (SELECT run_as FROM dbops.coda_lavori WHERE id = (SELECT id3 FROM tmp_enq)),
-    'SISTEMA', '54) run_as SISTEMA con scope NULL');
+    (SELECT run_as || '/' || coalesce(scope::text, 'NULL')
+       FROM dbops.coda_lavori WHERE id = (SELECT id3 FROM tmp_enq)),
+    'SISTEMA/NULL', '54) run_as SISTEMA con scope NULL (letto dal drenatore: l''operatore non lo vede)');
+SELECT pg_temp.veste('OPERATORE');
 
 -- ============================================================
 -- I) CHECK di coerenza run_as<->scope (raw INSERT -> 23514)
 -- ============================================================
+-- ⚠️ Con la RLS accesa la WITH CHECK della policy parla PRIMA dei CHECK: una
+--   riga che la policy respinge da' 42501 e il CHECK non si vede. Le due righe
+--   sono quindi ammesse dalla policy per chi le scrive, e sbagliate solo nel
+--   vincolo: l'OPERATORE nella propria azienda, il SISTEMA dal drenatore.
 SELECT throws_ok(
-    $$ INSERT INTO dbops.coda_lavori (job_type, run_as, scope)
-       VALUES ('FATTURAZIONE_GIRO', 'OPERATORE', NULL) $$,
+    format($$ INSERT INTO dbops.coda_lavori (job_type, run_as, scope, emittente_fiscale_id)
+       VALUES ('FATTURAZIONE_GIRO', 'OPERATORE', NULL, %s) $$,
+       dbops.fn_pgtap_scope_operatore() ->> 'emittente_attivo_id'),
     '23514', NULL, '55) OPERATORE con scope NULL viola chk_coda_lavori_run_as_scope');
+SELECT pg_temp.veste('DRENATORE');
 SELECT throws_ok(
     $$ INSERT INTO dbops.coda_lavori (job_type, run_as, scope)
        VALUES ('FATTURAZIONE_GIRO', 'SISTEMA', '{"x":1}'::jsonb) $$,
     '23514', NULL, '56) SISTEMA con scope NOT NULL viola chk_coda_lavori_run_as_scope');
+SELECT pg_temp.veste('OPERATORE');
 
 -- ============================================================
 -- J) Unique parziale vivo (raw INSERT doppione vivo -> 23505)

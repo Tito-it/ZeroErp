@@ -82,8 +82,6 @@ sua azienda, il super admin anche quelli di sistema. Il conteggio del digest pas
 `dbops.fn_conta_presidio`, che conta come proprietario e vede tutte le aziende: per questo nel
 catalogo dei presidi il perimetro è `DEFINER`, e il digest riporta il numero, non le righe.
 
-⚠️ Finché la row level security della coda non è accesa, chiunque la legga vede ancora tutto.
-
 Un lavoro mai preso può voler dire due cose: il drenatore è fermo, oppure l'azienda del lavoro non
 ha l'utente tecnico del drenatore, che lavora un'azienda alla volta.
 

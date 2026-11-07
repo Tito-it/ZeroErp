@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.processi`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 7 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -99,6 +99,11 @@ lo accoda una sveglia non ha un nome da prestare: vuole l'identità tecnica come
 sveglia, lo accoda una persona e non tocca i dati di nessuna azienda. Sotto di lui non si scrive
 nessuna corsa: l'audit del gesto è la riga di [dbops.coda_lavori](/dbzero/dbops/tabelle/coda_lavori),
 l'audit dell'esecuzione è la corsa che il comando lanciato scrive sotto il **proprio** processo.
+
+⚠️ Per questo il suo lavoro è `SISTEMA`, non `OPERATORE`: il comando serve da sé tutte le aziende
+del suo processo, e un lavoro `OPERATORE` apparterrebbe a una sola. Chi preme non è l'identità del
+lavoro ma il suo **attore**, e viaggia nei dati del lavoro. La regola «un `CODA` ha l'identità di
+chi accoda» vale per i `CODA` di `DOMINIO`, che toccano i dati di un'azienda.
 
 ---
 
@@ -301,6 +306,9 @@ falsa.
   quali sveglie fossero accese su un'installazione: lo sapeva solo il deploy.
 * 2026-10-18 — nascono `accendibile_in_produzione`, che porta nel database un consenso che stava
   solo nel `.env` di una macchina, e `corsa_verdetto_completo`.
+* 2026-11-07 — la regola fra canale `CODA` e identità si restringe ai processi di `DOMINIO`: il
+  lavoro di `avvio_manuale` è `SISTEMA`, con chi preme come attore (`brief-db-revisione-dbops`,
+  giro 5). Revoca in parte la decisione del 2026-09-14 (`brief-db-avvio-manuale-di-un-processo`).
 
 ---
 

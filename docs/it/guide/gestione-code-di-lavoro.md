@@ -58,6 +58,13 @@ La soluzione è **spezzare in due momenti**:
   sistema, che non riguardano i dati di nessuna azienda, non ne hanno.
 * Un job si mette in coda solo **a proprio nome** e dentro le proprie aziende: il
   job girerà poi con quell'identità, e vedrà i dati di quell'azienda.
+* **Chi vede quali job** lo decide il database, non solo lo schermo: una persona
+  vede i job delle sue aziende; i job di sistema li vedono solo l'amministratore
+  generale e il worker.
+* Il worker lavora **un'azienda alla volta**, con un utente tecnico per ogni
+  azienda. Un'azienda a cui l'utente tecnico manca resta con i job in attesa, e
+  un presidio lo segnala
+  ([dbops.vw_emittenti_non_serviti](/dbzero/dbops/views/vw_emittenti_non_serviti)).
 
 Chi vuole il dettaglio tecnico (colonne, stati, indici) lo trova in
 [dbops.coda_lavori](/dbzero/dbops/tabelle/coda_lavori).

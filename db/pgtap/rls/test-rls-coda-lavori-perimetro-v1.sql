@@ -1,10 +1,12 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgtap-runner: owner
--- pgtap-runner-motivo: la policy di dbops.coda_lavori nasce inerte (la RLS si
---   arma col drenatore per azienda, giro 5 di brief-db-revisione-dbops). Per
---   esercitarla prima, la transazione la arma da se': ENABLE e FORCE ROW LEVEL
---   SECURITY, che solo il proprietario puo' dare, e che il ROLLBACK spegne.
+-- pgtap-runner-motivo: la RLS di dbops.coda_lavori e' accesa dal 20261107-57
+--   (blocco 5b di brief-db-revisione-dbops), ma il proprietario non la subisce
+--   (FORCE spento per scelta, linee-guida-sql §10.5). Per esercitarla da owner
+--   la transazione accende FORCE ROW LEVEL SECURITY, che solo il proprietario
+--   puo' dare e che il ROLLBACK spegne. L'ENABLE no: e' del changeSet, e il
+--   test 15 lo pretende.
 -- pgTAP test per Zero ERP
 -- Test: RLS su dbops.coda_lavori — policy rls_coda_lavori_ef_perimetro
 --       (20261107-54) e la sua regola script.fn_scope_coda_lavori_perimetro
@@ -46,13 +48,15 @@
 --  12)  una scrittura nel perimetro passa (archiviazione)
 --  13)  ⛔ WITH CHECK: spostare un lavoro nell'azienda di un altro e' respinto
 --  14)  ⛔ un altro perimetro non scrive il lavoro (USING: zero righe)
+--   POSTURA
+--  15)  la RLS e' accesa dal changeSet, non dal test
 -- ------------------------------------------------------------
 
 BEGIN;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(14);
+SELECT plan(15);
 
 -- ============================================================
 -- Fixture: il mondo, POI il contesto
@@ -162,9 +166,11 @@ SELECT is_empty(
     '4) la regola sui valori: OPERATORE col perimetro, SISTEMA a super admin e drenatore, il resto no (mai NULL)');
 
 -- ============================================================
--- 5-14) Chi vede e scrive cosa: la RLS si arma ORA, per questa transazione
+-- 5-14) Chi vede e scrive cosa: la RLS e' accesa (20261107-57); FORCE, solo
+--   per questa transazione, la fa subire anche al proprietario che esegue
 -- ============================================================
-ALTER TABLE dbops.coda_lavori ENABLE ROW LEVEL SECURITY;
+-- ⚠️ Prima dell'apply del 20261107-57 i test 5-15 sono rossi: FORCE senza
+--   ENABLE non arma niente. E' il segnale giusto, non un rosso da curare qui.
 ALTER TABLE dbops.coda_lavori FORCE ROW LEVEL SECURITY;
 
 SELECT pg_temp.come('IO');
@@ -233,6 +239,17 @@ SELECT is(
     pg_temp.archivia((SELECT id FROM _lavori WHERE lato = 'IO'), false),
     0::bigint,
     '14) un operatore di un altro perimetro non scrive il lavoro: USING non glielo mostra');
+
+-- ============================================================
+-- 15) Postura: l'ENABLE e' del changeSet
+-- ============================================================
+-- ⭐ Il test non accende piu' la RLS: se la tabella la perdesse (un DISABLE a
+--   mano, il rollback del 20261107-57) i test 5-14 sarebbero rossi, e questo
+--   dice perche'. Il FORCE locale non conta: e' relforcerowsecurity, un'altra
+--   colonna, e il ROLLBACK lo spegne (lo presidia test-postura-proprietario-rls-v1).
+SELECT ok(
+    (SELECT c.relrowsecurity FROM pg_class c WHERE c.oid = 'dbops.coda_lavori'::regclass),
+    '15) la row level security di dbops.coda_lavori e'' accesa dal changeSet 20261107-57');
 
 SELECT * FROM finish();
 ROLLBACK;

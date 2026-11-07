@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.coda_lavori_tipi`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 7 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -75,8 +75,9 @@ tipo a catalogo è rosso, un tipo acceso senza handler è rosso.
 
 ### ⭐ Il canale del processo e il `run_as` del tipo si accordano
 
-* sotto un processo di canale `CODA` il tipo è `OPERATORE`: lo accoda una persona, e l'identità è
-  la sua;
+* sotto un processo di canale `CODA` e di classe `DOMINIO` il tipo è `OPERATORE`: lo accoda una
+  persona, tocca i dati di un'azienda, e l'identità è la sua. Sotto un `CODA` di `MANUTENZIONE` può
+  essere `SISTEMA`: allora chi preme è l'**attore** del lavoro, nei suoi dati, non la sua identità;
 * sotto un processo `PGAGENT` il tipo è `SISTEMA`: una macchina non ha un nome da prestare, e un
   lavoro che vuole un'identità sta sotto un processo `CODA_AUTOMATICA`;
 * nessun tipo sta sotto un processo `COMMAND`: quello lo esegue systemd, non il drenatore.
@@ -93,7 +94,7 @@ Non c'è un guard a database per questo: lo presidia un pgTAP sul seed.
 | `FATTURAZIONE_NUMERA` | `FATTURAZIONE_NUMERA` (`CODA`, `DOMINIO`) | `OPERATORE` | La numerazione dei lotti emessi di un mese |
 | `CHIUSURA_SCADENZE` | `chiusura_scadenze_daily` (`CODA_AUTOMATICA`, `DOMINIO`) | `OPERATORE` | La chiusura per scadenza di un'azienda, accodata dalla sveglia pgAgent con l'identità tecnica dell'azienda |
 | `NOTIFICA_DIGEST_MUTO` | `guardiano_digest` (`PGAGENT`, `MANUTENZIONE`) | `SISTEMA` | Avvisa una persona che il digest dei presidi ha smesso di girare, uno al giorno |
-| `ESEGUI_PROCESSO` | `avvio_manuale` (`CODA`, `MANUTENZIONE`) | `OPERATORE` | «Esegui ora» su una sveglia di deploy, con l'identità di chi preme; un tentativo solo, perché un processo caduto a metà non è idempotente |
+| `ESEGUI_PROCESSO` | `avvio_manuale` (`CODA`, `MANUTENZIONE`) | `SISTEMA` | «Esegui ora» su una sveglia di deploy: il comando serve da sé tutte le aziende del suo processo, chi preme viaggia nei dati del lavoro (`richiesto_da`); un tentativo solo, perché un processo caduto a metà non è idempotente |
 
 ---
 
@@ -127,6 +128,9 @@ La tabella non solleva errori propri. Quelli che nascono dalle sue righe li soll
   handler i lavori restano in attesa», vera prima del drenatore; il pgTAP su canale e `run_as`.
 * 2026-09-15 — `ESEGUI_PROCESSO` si accende, nato spento il giorno prima
   (`brief-db-avvio-manuale-di-un-processo`).
+* 2026-11-07 — `ESEGUI_PROCESSO` passa a `SISTEMA`, e la regola fra canale e `run_as` si restringe
+  ai `CODA` di `DOMINIO` (`brief-db-revisione-dbops`, giro 5): revoca in parte la decisione del
+  2026-09-14.
 
 ---
 

@@ -7,10 +7,10 @@
 --
 -- Elenco test (plan 6):
 --  1) dbops.coda_lavori_tipi non e' vuota (protegge 2..4 dal verde a vuoto)
---  2) ⭐ ogni tipo sotto un processo CODA ha run_as_default = OPERATORE
+--  2) ⭐ ogni tipo sotto un processo CODA di DOMINIO ha run_as_default = OPERATORE
 --  3) ⭐ ogni tipo sotto un processo PGAGENT ha run_as_default = SISTEMA
 --  4) ⛔ nessun tipo di coda sta sotto un processo COMMAND
---  5) il tipo ESEGUI_PROCESSO: handler, OPERATORE, un tentativo, avvio_manuale
+--  5) il tipo ESEGUI_PROCESSO: handler, SISTEMA, un tentativo, avvio_manuale
 --  6) il processo avvio_manuale: MANUTENZIONE, CODA, nessun contratto
 --
 -- Scopo:
@@ -20,9 +20,10 @@
 --      · CODA = «lo accoda una persona, e l'identita' e' la sua» — e' la
 --        DEFINIZIONE del canale (processi.md, processi_repository
 --        `_CANALI_CON_IDENTITA`, test-processi-coda-automatica test 6). Un
---        tipo SISTEMA sotto un CODA contraddice la definizione: il lavoro
---        girerebbe senza il nome di chi ha premuto, e l'audit lo perderebbe
---        in silenzio;
+--        tipo SISTEMA sotto un CODA di DOMINIO contraddice la definizione: il
+--        lavoro girerebbe senza il nome di chi ha premuto e fuori da ogni
+--        azienda. Sotto un CODA di MANUTENZIONE e' ammesso, con chi preme nel
+--        payload (rev 2026-11-07, sotto);
 --      · PGAGENT = il lavoro lo fa pgAgent; se il lavoro passa dal drenatore e
 --        vuole un'identita', il canale e' CODA_AUTOMATICA (correzione R-E:
 --        «un processo di coda accodato da una MACCHINA vuole l'identita'
@@ -33,6 +34,18 @@
 --        lavoro che esegue il drenatore. E' la ragione per cui il brief conia
 --        `avvio_manuale` invece di appendere ESEGUI_PROCESSO a
 --        `draina_coda_lavori`;
+--  ⚠️ Rev 2026-11-07 (blocco 5b di brief-db-revisione-dbops, decisione di Tid):
+--    la regola 2 si RESTRINGE ai processi di DOMINIO, e revoca in parte quella
+--    del 2026-09-14 (brief-db-avvio-manuale-di-un-processo §8.3, «CODA =>
+--    OPERATORE e' la definizione del canale»). Un lavoro che tocca i dati di
+--    un'azienda vuole l'identita' di chi lo accoda; un CODA di MANUTENZIONE non
+--    ne tocca nessuna, e puo' essere SISTEMA: allora la persona e' l'ATTORE del
+--    lavoro, nel payload, non la sua identita'. E' «Esegui ora»
+--    (ESEGUI_PROCESSO, richiesto_da nel payload): il comando serve da se' tutte
+--    le aziende del roster, e un lavoro OPERATORE apparterrebbe a una sola
+--    (un lavoro, un'azienda: §18.1 dello stesso brief). Il rischio che la
+--    regola del 09-14 nominava, «l'audit perde chi ha premuto», resta coperto
+--    dal payload.
 --  - 5 e 6 sono il seed pin delle righe di questo brief — SENZA `attivo` sul
 --    tipo, che nasce spento (regola del binding) e si accende a release BE
 --    avvenuta: un test che lo pinnasse sarebbe rosso sulla riparazione.
@@ -73,8 +86,9 @@ SELECT is_empty(
         FROM dbops.coda_lavori_tipi t
         JOIN dbops.processi p ON p.codice = t.processo_codice
        WHERE p.canale = 'CODA'
+         AND p.classe = 'DOMINIO'
          AND t.run_as_default <> 'OPERATORE'$$,
-    '2. ogni tipo sotto un processo CODA e'' OPERATORE: lo accoda una persona, l''identita'' e'' la sua'
+    '2. ogni tipo sotto un processo CODA di DOMINIO e'' OPERATORE: tocca i dati di un''azienda, l''identita'' e'' di chi lo accoda'
 );
 
 SELECT is_empty(
@@ -101,8 +115,8 @@ SELECT results_eq(
     $$SELECT handler_code, run_as_default, max_tentativi_default, processo_codice
         FROM dbops.coda_lavori_tipi
        WHERE codice = 'ESEGUI_PROCESSO'$$,
-    $$VALUES ('esegui_processo_default', 'OPERATORE', 1, 'avvio_manuale')$$,
-    '5. ESEGUI_PROCESSO: handler dichiarato, OPERATORE, UN tentativo (non idempotente), sotto avvio_manuale'
+    $$VALUES ('esegui_processo_default', 'SISTEMA', 1, 'avvio_manuale')$$,
+    '5. ESEGUI_PROCESSO: handler dichiarato, SISTEMA (chi preme e'' l''attore, nel payload), UN tentativo (non idempotente), sotto avvio_manuale'
 );
 
 SELECT results_eq(
