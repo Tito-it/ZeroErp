@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1195, di cui 125 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1197, di cui 128 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -575,6 +575,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # vendite.trgfn_ddt_guard_transizione, Regola 3 - la porta del registro (2026-09-28, D-L3-e): emissione, annullo di una bolla emessa o consegna di una bolla di trasferimento, su una bolla che muove merce, tentati con un UPDATE diretto invece che dal verbo vendite.fn_cambia_stato_ddt (manca la GUC transazionale, o chi scrive non e' il proprietario). TECNICO: e' un chiamante che scavalca il verbo, non una scelta dell'operatore. Il VARIADIC porta numero della bolla e stato di destinazione. Ritirato il 2026-10-25 (20261025-14, brief-modello-documento-vendita §7, S-1 b di Tid): la porta del registro della bolla e' contenuta nella porta comune script.trgfn_doc_stato_solo_dal_verbo, che chiude OGNI cambio di stato della bolla al suo verbo, col codice E_DOC_STATO_SOLO_DAL_VERBO. Resta a catalogo per le righe gia' scritte in dbops.error_log (pattern obsoleto_dal).
     # ⚠️ RITIRATO il 2026-10-25
     "E_DDT_STATO_SOLO_DA_VERBO": "TECNICO",
+    # Lo sollevavano solo i controlli del backend sulla bolla (cancellazione di una bozza con righe, modifica fuori bozza), ritirati: le stesse regole le dice il database, con E_DELETE_DOC_NON_BOZZA, E_DELETE_DOC_CON_RIGHE e i lock fuori bozza.
+    # ⚠️ RITIRATO il 2026-11-08
     "E_DDT_STATO_TRANSIZIONE": "CONFLITTO_STATO",
     # Motivo 3-quater di script.fn_check_ddt_emittibile (20261103-47, T-3 bis di Tid, 2026-11-03, brief-db-addebito-trasporto-ordine §10.2), sollevato da vendite.trgfn_ddt_guard_causale_emissione all'emissione (-48) e mostrato dalla capability (reason TRASPORTO_NON_DOVUTO): una riga attiva il cui articolo ha la causale onere TRASPORTO su una bolla con modalita' di addebito ASSEGNATO o TERZI (config.modalita_addebito_trasporto, per codice_interno). FRANCO o modalita' assente: nessun motivo. CONFLITTO_STATO come i fratelli: nessun campo; dettaglio {riga_id, riga_nr, modalita, modalita_descrizione}. I VALORI: numero del DDT, numero di riga, descrizione della modalita'.
     "E_DDT_TRASPORTO_NON_DOVUTO": "CONFLITTO_STATO",
@@ -937,6 +939,7 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_GROUP_ATTIVITA_INVALID_DATA": "DATO_ERRATO",
     "E_GROUP_ATTIVITA_NOT_FOUND": "NON_TROVATO",
     "E_GROUP_ATTIVITA_VALIDATION": "DATO_ERRATO",
+    "E_GUARD_UTILITY": "TECNICO",
     # Sollevato dal backend (core/middleware/jwt_audit_middleware.py), nessuna funzione DB: a inizio richiesta il reset delle GUC app.* della connessione e' fallito, e la richiesta si rifiuta (fail-closed: una connessione che porta il contesto di un'altra richiesta non si usa). TECNICO: e' un guasto della connessione o della macchina, l'operatore non puo' rimediare. Frase volutamente generica, uguale a E_DB_ROLE_UNSAFE: il dettaglio sta nel log, non a video. Messo a catalogo il 2026-10-07 (brief-db-codici-sfilati-e-lista-parametri R-1).
     "E_GUC_RESET_FAILED": "TECNICO",
     "E_HANDLER_NON_REGISTRATO": "TECNICO",
@@ -1419,6 +1422,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_PREV_RIGA_NATURA_IMMUTABILE": "CONFLITTO_STATO",
     "E_PREV_RIGA_NOT_FOUND": "NON_TROVATO",
     "E_PREV_STATO_CORRENTE_NON_TROVATO": "NON_TROVATO",
+    # Lo sollevavano solo i controlli del backend sul preventivo (cancellazione fuori bozza o con righe o pratiche collegate), ritirati: le stesse regole le dice il database, con E_DELETE_DOC_NON_BOZZA, E_DELETE_DOC_CON_RIGHE ed E_SORG_ORIGINE_REFERENZIATA.
+    # ⚠️ RITIRATO il 2026-11-08
     "E_PREV_STATO_NON_MODIFICABILE": "CONFLITTO_STATO",
     "E_PREV_STATO_TRANSIZIONE": "CONFLITTO_STATO",
     # Matrice del preventivo, ora vincolante anche a DB (brief vie-uscita · §11.1, changeSet 20260805-15): dal 2026-08-05 la transizione fuori · matrice e' rifiutata dal guard `trgfn_preventivi_guard_transizione`, · non piu' dalla sola porta `fn_cambia_stato_preventivo`. · ⚠️ UNO solo per DUE sedi: porta e guard sollevano lo stesso codice. · Il precedente `PREV_TRANSIZIONE_NON_AMMESSA` (senza prefisso `E_`, · quindi non agganciato dall'estrattore e degradato a E_DATABASE) resta · dichiarato piu' sotto e a catalogo — la sua riga non e' cancellabile, · ha 109 righe in `dbops.error_log` che la trattengono — ma nessuna · funzione viva lo solleva piu'. · 409 e non 400: e' un rifiuto di PERCORSO (lo stato di partenza non · ammette quell'arrivo), non un campo compilato male.
@@ -1558,6 +1563,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # Gemello del precedente sull'ALTRA uscita della stessa copertura · (id 560): ri-spedizioni e rinunce condividono il residuo · `quantita - Sigma ric - Sigma rin`, quindi anche la rinuncia puo' · eccederlo. Causa tipica: due operatori sulla stessa riga reso, uno · ri-spedisce e l'altro dichiara definitiva la quota -> 409, conflitto · di stato, non errore di validazione del payload.
     "E_RESO_RINUNCIA_SUPERA_RESO": "CONFLITTO_STATO",
     "E_RESO_SENZA_RIGHE": "CONFLITTO_STATO",
+    # Un reso nasce da una bolla di vendita: la sua provenienza e' sempre DDT_VENDITA, con la chiave della bolla in sorgente_id (chk_resi_sorgente_forma). Lo solleva vendite.trgfn_resi_guard_cliente_ddt quando il reso dichiara un altro tipo di documento.
+    "E_RESO_SORGENTE_NON_DDT": "DATO_ERRATO",
     # fn_annulla_reso: annullo ammesso da DRAFT/CONFERMATO; bloccato se il · reso e' gia' stato ri-spedito (storno ri-spedizione fuori perimetro).
     "E_RESO_STATO_NON_ANNULLABILE": "CONFLITTO_STATO",
     # fn_conferma_reso: conferma ammessa solo da DRAFT / con righe attive.
@@ -1565,6 +1572,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # vendite.trgfn_resi_guard_transizione, Regola 2 - la porta del registro (2026-09-28, D-3b-f): conferma o annullo di un reso confermato, su un reso che fa rientrare merce, tentati con un UPDATE diretto invece che dai verbi vendite.fn_conferma_reso / fn_annulla_reso (manca la GUC transazionale, o chi scrive non e' il proprietario). TECNICO: e' un chiamante che scavalca il verbo. Il VARIADIC porta numero del reso e stato di destinazione. Ritirato il 2026-10-25 (20261025-15, brief-modello-documento-vendita §7, S-1 b e T-3 di Tid): la porta del registro del reso e' contenuta nella porta comune script.trgfn_doc_stato_solo_dal_verbo, che chiude OGNI cambio di stato del reso ai suoi verbi, col codice E_DOC_STATO_SOLO_DAL_VERBO. Resta a catalogo per le righe gia' scritte in dbops.error_log (pattern obsoleto_dal).
     # ⚠️ RITIRATO il 2026-10-25
     "E_RESO_STATO_SOLO_DA_VERBO": "TECNICO",
+    # Lo sollevavano solo i controlli del backend sul reso (cancellazione di una bozza con righe, modifica fuori bozza), ritirati: le stesse regole le dice il database, con E_DELETE_DOC_NON_BOZZA, E_DELETE_DOC_CON_RIGHE e i lock fuori bozza.
+    # ⚠️ RITIRATO il 2026-11-08
     "E_RESO_STATO_TRANSIZIONE": "CONFLITTO_STATO",
     "E_RESO_VALIDAZIONE": "DATO_ERRATO",
     # script.trgfn_righe_guard_periodicita_canone (trigger _a10_ BEFORE INSERT OR UPDATE OF tipo_erogazione, periodicita su vendite.contratti_righe e vendite.offerte_commerciali_eccezioni; 2026-11-01, brief-db-contratto-righe-periodiche-in-commessa §6.11, passo 4, la (b) di Tid del 2026-10-29): una riga a canone dice ogni quanto si addebita. ADESIONE e OVERRIDE la ereditano dal listino quando la dice; l'AGGIUNTA la scrive l'operatore (F-9). Rete: i CHECK chk_contrighe_canone_periodicita e chk_offerte_eccezioni_canone_periodicita. * DATO_ERRATO: c'e' un campo da correggere, campo = periodicita nel contesto (con riga_id, contratto_id o offerta_id, articolo_id, tipo_eccezione). * Frase chiusa, nessun valore: l'operatore e' gia' sulla riga.
@@ -2140,6 +2149,7 @@ CODICI_RITIRATI: frozenset[str] = frozenset(
         "E_DDT_ANNULLO_CON_LEGAMI",
         "E_DDT_EMITTENTE_BA_INCOERENTE",
         "E_DDT_STATO_SOLO_DA_VERBO",
+        "E_DDT_STATO_TRANSIZIONE",
         "E_DELETE_RIGA_DOC_NON_BOZZA",
         "E_DRYRUN_CREATE_TRIGGER",
         "E_EMITTENTE_DISATTIVAZIONE_BLOCCATA",
@@ -2163,12 +2173,14 @@ CODICI_RITIRATI: frozenset[str] = frozenset(
         "E_PREVENTIVO_RIGHE_PRICING_PENDENTI",
         "E_PREV_GIA_IN_COMMESSA",
         "E_PREV_RIGA_NATURA_IMMUTABILE",
+        "E_PREV_STATO_NON_MODIFICABILE",
         "E_PREZZO_LISTINO_NON_TROVATO",
         "E_PULL_COMMESSA_ALL_FAILED",
         "E_REFRESH_LOCK_TIMEOUT",
         "E_REGOLA_FATTURAZIONE_MANCANTE",
         "E_RESO_EMITTENTE_BA_INCOERENTE",
         "E_RESO_STATO_SOLO_DA_VERBO",
+        "E_RESO_STATO_TRANSIZIONE",
         "ERRORE_PARAMETRI",
         "ERRORE_PARAMETRI_TABELLA",
         "E_SORG_BA_NON_RISOLTO",

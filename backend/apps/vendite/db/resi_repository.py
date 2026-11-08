@@ -326,12 +326,16 @@ class ResiRepository(RigheDocumentoRepositoryMixin):
     # ⭐ La provenienza la risolve il BB del DB `script.fn_sorgente_documento`
     #        (tipo + la chiave che c'e', id o uid, coerenti fra loro): e' la
     #        sede unica della regola d'incontro, non si riscrive qui.
-    # ⛔ Il TIPO e' parte della chiave: `sorgente_id` e' polimorfo, e il
-    #        modello non vincola il tipo della provenienza di un reso (nessun
-    #        CHECK, guard `'DOCUMENTO'`). Senza il filtro un reso nato da un
-    #        altro documento con lo stesso id numerico si legherebbe a QUELLA
-    #        bolla, e `gestisci_riga` ne copierebbe le righe. Tipo diverso =
-    #        `ddt_origine_id` NULL, e il service rifiuta in chiaro.
+    # ⛔ Il TIPO e' parte della chiave: `sorgente_id` e' polimorfo. Che un
+    #        reso nasca solo da una bolla di vendita lo dice il DB
+    #        (`chk_resi_sorgente_forma` e `vendite.trgfn_resi_guard_cliente_ddt`,
+    #        `E_RESO_SORGENTE_NON_DDT`, G-3 di brief-db-sorgente-documento-e-
+    #        riga, 2026-11-08), ma questa lettura non si appoggia a quella
+    #        regola: una chiave polimorfa si legge sempre insieme al suo tipo.
+    #        Senza il filtro un id numerico di un altro documento si
+    #        legherebbe a QUELLA bolla, e `gestisci_riga` ne copierebbe le
+    #        righe. Tipo diverso = `ddt_origine_id` NULL, e il service
+    #        rifiuta in chiaro.
     def get_stato_e_ddt_origine(self, reso_id: int) -> dict[str, Any] | None:
         sql = """
             SELECT sdr.codice_interno AS stato_codice_interno,

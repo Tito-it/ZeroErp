@@ -18,12 +18,12 @@ Indice test eseguiti (classe :: metodo):
 
 ResiServiceGuardsTests
  1) test_get_reso_not_found              — E_RESO_NOT_FOUND se testata None
- 2) test_aggiorna_reso_stato_non_draft   — E_RESO_STATO_TRANSIZIONE se != DRAFT
+ 2) test_aggiorna_reso_fuori_bozza_decide_il_db — fuori bozza il service passa: decide il lock di testata del DB
  3) test_gestisci_riga_stato_non_draft   — E_RIGA_DOC_NON_BOZZA se != DRAFT (il codice del DB, BB richiedi_righe_in_bozza)
  4) test_elimina_riga_stato_non_draft    — E_RIGA_DOC_NON_BOZZA se != DRAFT
 
 ResiCreaTests
- 5) test_crea_reso_ok                    — sorgente per codice + uid DDT + DRAFT
+ 5) test_crea_reso_ok                    — passa solo la bolla: provenienza e stato li sceglie il DB
  6) test_crea_reso_ddt_mancante          — E_RESO_VALIDAZIONE senza ddt_id
  7) test_crea_reso_ddt_id_non_numerico   — E_RESO_VALIDAZIONE (no 500)
  8) test_crea_reso_ddt_not_found         — E_DDT_NOT_FOUND
@@ -46,8 +46,9 @@ ResiCodaAccreditareTests
 16d) test_etichetta_none_default          — assente = tutte le righe
 
 ResiEliminaTests
-17) test_elimina_reso_con_righe_rifiutato — E_RESO_STATO_TRANSIZIONE
-18) test_elimina_reso_bozza_orfana_ok     — hard-delete ammesso (0 righe)
+17) test_elimina_rifiuto_del_db_passa_col_suo_codice — il rifiuto del DB (E_DELETE_DOC_CON_RIGHE) col suo codice, nessuna lettura prima
+17b) test_elimina_inesistente_e_404        — DELETE che non tocca niente: E_RESO_NOT_FOUND
+18) test_elimina_bozza_orfana_ok          — hard-delete ammesso (0 righe)
 
 ResiAzioniTests
 19) test_conferma_delega_fn_madre_light   — fn_conferma_reso + stato RILETTO dal DB
@@ -153,7 +154,7 @@ _SNAPSHOT_RIGA = {
 
 
 class ResiServiceGuardsTests(SimpleTestCase):
-    """Guard di stato (E_RESO_STATO_TRANSIZIONE sulla testata, E_RIGA_DOC_NON_BOZZA
+    """Guard di stato (sulla testata decide il lock del DB; E_RIGA_DOC_NON_BOZZA
     sulle righe — il codice del BB a DB, anche se su resi_righe non e' ancora
     montato) e not-found (E_RESO_NOT_FOUND)."""
 

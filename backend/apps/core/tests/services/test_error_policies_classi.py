@@ -222,13 +222,18 @@ class ErrorPoliciesClassiTest(TestCase):
         self.assertEqual(policy.http_status, 500)
 
     # Scopo: passo B-1. `PREV_STATO_NON_MODIFICABILE` senza prefisso era una
-    #        policy orfana: il gemello vivo e' `E_PREV_STATO_NON_MODIFICABILE`,
-    #        e la riga senza prefisso il DB l'ha cancellata dal catalogo il
-    #        2026-08-05 (`20260805-16`). Il test serve a non farla tornare col
-    #        primo giro del generatore.
+    #        policy orfana: il gemello col prefisso e'
+    #        `E_PREV_STATO_NON_MODIFICABILE`, e la riga senza prefisso il DB
+    #        l'ha cancellata dal catalogo il 2026-08-05 (`20260805-16`). Il test
+    #        serve a non farla tornare col primo giro del generatore.
+    # ⚠️ Il gemello e' RITIRATO dal 2026-11-08 (brief-db-sorgente-documento-
+    #        e-riga §8.24, BE-Z.6-a): nessuno lo solleva piu', ma resta a
+    #        catalogo e risolve, perche' `dbops.error_log` ne ha le righe. Un
+    #        codice ritirato non e' un codice cancellato.
     def test_policy_morta_prev_stato_non_modificabile_rimossa(self):
         self.assertFalse(ErrorPolicyRegistry.has("PREV_STATO_NON_MODIFICABILE"))
         self.assertTrue(ErrorPolicyRegistry.has("E_PREV_STATO_NON_MODIFICABILE"))
+        self.assertIn("E_PREV_STATO_NON_MODIFICABILE", CODICI_RITIRATI)
 
     # Scopo: `has` e `resolve` devono guardare lo stesso registro. Se `has`
     #        dicesse di si' e `resolve` ripiegasse, il cancello del terzo lato

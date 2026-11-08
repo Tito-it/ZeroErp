@@ -49,7 +49,7 @@ from decimal import Decimal
 
 from django.db import connection, transaction
 
-from apps.core.db._helpers import coerce_jsonb_dict
+from apps.core.db._helpers import coerce_jsonb_dict, rows_to_list
 
 from apps.vendite.services import _kit_meta as kit_meta
 from apps.vendite.services.fatture_righe_service import FattureRigheService
@@ -158,7 +158,7 @@ with transaction.atomic():
         cur.execute(
             """
             SELECT r.id, r.riga_nr, r.qta, r.prezzo_unitario, r.imponibile_riga,
-                   r.sorgente_tipo_id, r.sorgente_uid, r.kit_key,
+                   r.kit_key,
                    r.kit_esposizione, r.kit_articolo_padre_id,
                    r.kit_descrizione_padre, r.meta, r.fattura_id,
                    r.kit_qta, r.kit_uom_id
@@ -169,17 +169,22 @@ with transaction.atomic():
             """,
             [lotto_id],
         )
-        # Il driver restituisce `jsonb` come stringa: stessa coercion che
+        # ⭐ Righe per NOME, col lettore comune: un indice di posizione si
+        #    sposta in silenzio quando la SELECT perde o guadagna una colonna
+        #    (e' successo col ritiro delle `sorgente_*`, G-4).
+        # Il driver puo' restituire `jsonb` come stringa: stessa coercion che
         # applica il repository (e' il difetto che questo smoke ha scoperto).
-        righe = [tuple(r[:11]) + (coerce_jsonb_dict(r[11]), r[12], r[13], r[14])
-                 for r in cur.fetchall()]
+        righe = rows_to_list(cur)
         for r in righe:
-            print(f"  riga {r[1]}: qta={r[2]} x {r[3]} = {r[4]} | kit={r[7]} "
-                  f"| n_attivita={r[11].get('n_attivita')}")
+            r["meta"] = coerce_jsonb_dict(r["meta"])
+        for r in righe:
+            print(f"  riga {r['riga_nr']}: qta={r['qta']} x {r['prezzo_unitario']}"
+                  f" = {r['imponibile_riga']} | kit={r['kit_key']}"
+                  f" | n_attivita={r['meta'].get('n_attivita')}")
         print()
 
         # 1) aggregazione
-        aggregata = [r for r in righe if r[11].get("n_attivita") == 2 and r[7] is None]
+        aggregata = [r for r in righe if r["meta"].get("n_attivita") == 2 and r["kit_key"] is None]
         check("1) due attivita' stessa chiave -> UNA riga", len(aggregata) == 1,
               f"righe aggregate trovate: {len(aggregata)}")
 
@@ -187,14 +192,15 @@ with transaction.atomic():
             ag = aggregata[0]
             # 7) somma esatta: 0.333333 + 0.333333 = 0.666666, NON 0.667
             check("7) quantita' aggregata non arrotondata",
-                  ag[2] == Decimal("0.666666"), f"qta={ag[2]}")
-            # 2) sorgenti
-            check("2) riga aggregata senza sorgente singola",
-                  ag[5] is None and ag[6] is None)
+                  ag["qta"] == Decimal("0.666666"), f"qta={ag['qta']}")
+            # Il vecchio check 2 («riga aggregata senza sorgente singola») e'
+            # ritirato: la riga di fattura non ha piu' colonne di provenienza
+            # (G-4, brief-db-sorgente-documento-e-riga). La tracciabilita' la
+            # prova il check 3, su attivita_fatturabili.fattura_riga_id.
             # 5) importo dal trigger
-            atteso = (ag[2] * ag[3]).quantize(Decimal("0.01"))
-            check("5) importo calcolato dal DB", ag[4] == atteso,
-                  f"{ag[4]} atteso {atteso}")
+            atteso = (ag["qta"] * ag["prezzo_unitario"]).quantize(Decimal("0.01"))
+            check("5) importo calcolato dal DB", ag["imponibile_riga"] == atteso,
+                  f"{ag['imponibile_riga']} atteso {atteso}")
 
             cur.execute(
                 "SELECT id, fattura_riga_id, fatturato, stato_esecuzione "
@@ -203,28 +209,29 @@ with transaction.atomic():
             )
             att = cur.fetchall()
             check("3) entrambe le attivita' puntano alla riga",
-                  len({a[1] for a in att}) == 1 and att[0][1] == ag[0],
+                  len({a[1] for a in att}) == 1 and att[0][1] == ag["id"],
                   f"fattura_riga_id={[a[1] for a in att]}")
             check("4) attivita' fatturate e COMPLETED",
                   all(a[2] and a[3] == "COMPLETED" for a in att),
                   str([(a[2], a[3]) for a in att]))
 
         # 6) prezzo diverso -> riga separata
-        prezzi = {r[3] for r in righe if r[7] is None}
+        prezzi = {r["prezzo_unitario"] for r in righe if r["kit_key"] is None}
         check("6) prezzo diverso -> riga separata",
               Decimal("99.00") in prezzi and Decimal("10.00") in prezzi,
               f"prezzi distinti: {sorted(prezzi)}")
 
         # 8) snapshot kit
-        kit_righe = [r for r in righe if r[7] is not None]
+        kit_righe = [r for r in righe if r["kit_key"] is not None]
         check("8) snapshot kit congelato sulla riga",
               len(kit_righe) == 2
-              and all(r[8] is not None and r[9] is not None
-                      and r[10] is not None for r in kit_righe),
+              and all(r["kit_esposizione"] is not None
+                      and r["kit_articolo_padre_id"] is not None
+                      and r["kit_descrizione_padre"] is not None for r in kit_righe),
               f"righe kit: {len(kit_righe)}")
 
         # 9) la vista di esposizione
-        fattura_id = righe[0][12]
+        fattura_id = righe[0]["fattura_id"]
         cur.execute(
             "SELECT tipo_riga, count(*) FROM vendite.vw_fattura_righe_esposte "
             "WHERE fattura_id = %s GROUP BY tipo_riga ORDER BY 1", [fattura_id],
@@ -235,11 +242,12 @@ with transaction.atomic():
               and esposizione.get("KIT_COMPONENTE") == 2,
               str(esposizione))
         check("8c) quantita' e UoM del padre congelate dal meta",
-              all(r[13] == KIT_QTA_PADRE and r[14] == t["uom_id"] for r in kit_righe),
-              str([(r[13], r[14]) for r in kit_righe]))
+              all(r["kit_qta"] == KIT_QTA_PADRE and r["kit_uom_id"] == t["uom_id"]
+                  for r in kit_righe),
+              str([(r["kit_qta"], r["kit_uom_id"]) for r in kit_righe]))
         check("8b) il modo e' congelato col suo codice",
-              sorted(r[8] for r in kit_righe) == ["DESCRITTIVO", "VALORIZZATO"],
-              str(sorted(r[8] for r in kit_righe)))
+              sorted(r["kit_esposizione"] for r in kit_righe) == ["DESCRITTIVO", "VALORIZZATO"],
+              str(sorted(r["kit_esposizione"] for r in kit_righe)))
 
         # 11) il valorizzato fuori dal padre, legato al kit
         cur.execute(
@@ -254,7 +262,8 @@ with transaction.atomic():
         check("11) valorizzato con importo, descrittivo senza, padre = descrittivo",
               len(padre) == 1 and len(valorizzati) == 1 and len(descrittivi) == 1
               and valorizzati[0][2] is not None and descrittivi[0][2] is None
-              and padre[0][2] == next(r[4] for r in kit_righe if r[8] == "DESCRITTIVO")
+              and padre[0][2] == next(r["imponibile_riga"] for r in kit_righe
+                                      if r["kit_esposizione"] == "DESCRITTIVO")
               and valorizzati[0][3] == padre[0][3],
               str(vista))
 
