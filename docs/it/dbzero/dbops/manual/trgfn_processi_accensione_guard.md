@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Trigger function `dbops.trgfn_processi_accensione_guard`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -30,7 +30,8 @@ non spegnibile, l'accensione in produzione di un non accendibile e la scelta sen
 Il primo che parla è quello che arriva al drawer, quindi l'ordine va dal più radicale al più
 formale:
 
-1. **senza sveglia** (canale `CODA`, o ritirato con `obsoleto_dal`): non c'è niente da scegliere;
+1. **senza sveglia** (canale `CODA`, o ritiro raggiunto secondo `script.fn_e_obsoleto`): non c'è
+   niente da scegliere. Un ritiro programmato ammette la scelta a mano fino al suo giorno;
 2. **non spegnibile**: spegnere è vietato; confermarlo acceso, o rimetterlo al default, è ammesso;
 3. **non accendibile in produzione**: accendere è vietato. Il predicato è lo stesso della regola
    dello stato effettivo, e con l'ambiente non dichiarato non sa decidere: lo dice il lettore
@@ -57,7 +58,7 @@ più non si riscrive accesa.
 
 ### Codici errore
 
-* `E_PROCESSO_SENZA_SVEGLIA` — processo `CODA` o ritirato.
+* `E_PROCESSO_SENZA_SVEGLIA` — processo `CODA`, o con il ritiro raggiunto.
 * `E_PROCESSO_NON_SPEGNIBILE` — spegnimento di un non spegnibile.
 * `E_PROCESSO_NON_ACCENDIBILE_IN_PRODUZIONE` — accensione in produzione di un non accendibile.
 * `E_CONFIG_MANCANTE` — la stessa accensione con l'ambiente non dichiarato.
@@ -73,6 +74,8 @@ più non si riscrive accesa.
 * `db/pgtap/dbops/test-processi-accensione-produzione-v1.sql` — in una produzione costruita: il
   non accendibile non si riaccende, nemmeno ritoccando il solo motivo; spegnerlo e rimetterlo al
   default è ammesso; senza ambiente l'accensione dà `E_CONFIG_MANCANTE` e lo spegnimento passa.
+* `db/pgtap/dbops/test-processo-vivo-v1.sql` — la scelta a mano su un ritiro programmato è
+  ammessa, su un ritiro raggiunto dà `E_PROCESSO_SENZA_SVEGLIA`.
 
 ---
 

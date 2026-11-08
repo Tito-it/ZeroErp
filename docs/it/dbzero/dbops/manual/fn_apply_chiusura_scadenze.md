@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_apply_chiusura_scadenze`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -30,8 +30,8 @@ Il motore della chiusura per scadenza: per ogni riga attiva di
 `dbops.automazione_chiusura_scadenze` porta allo stato «chiuso» le righe ancora «attive» la cui
 data di fine validità è passata, e restituisce quante ne ha chiuse per tabella.
 
-La chiama l'handler del lavoro di coda `CHIUSURA_SCADENZE`, un'azienda alla volta. È `SECURITY
-INVOKER`: vede e chiude solo ciò che vede l'identità con cui gira.
+La chiama l'handler del lavoro di coda `CHIUSURA_SCADENZE`, un'azienda alla volta, senza
+argomenti. È `SECURITY INVOKER`: vede e chiude solo ciò che vede l'identità con cui gira.
 
 ---
 
@@ -50,17 +50,18 @@ scade mai.
 
 ### Due strade per chiudere
 
-* **Testata sotto la porta del modello del documento** (`tipo_stato = FK` e la porta
-  `script.trgfn_doc_stato_solo_dal_verbo` sulla tabella): la funzione non scrive lo stato, chiama
-  il verbo dichiarato in `verbo_chiusura`, e il conteggio è quello che il verbo restituisce. È la
-  strada di tutti i bersagli di oggi.
-* **Tutte le altre**: un `UPDATE` della colonna di stato dallo stato attivo a quello chiuso, sulle
-  righe scadute. Con `tipo_stato = FK` i due codici si traducono prima nei loro id, nella tabella
-  di vocabolario dichiarata.
+Porta e verbo si guardano **prima** di scegliere come scrivere lo stato, e per ogni `tipo_stato`
+(`VARCHAR` e `FK`):
 
-⚠️ La presenza della porta si guarda solo nel ramo `FK`. Una tabella `VARCHAR` sotto la porta non
-arriverebbe al verbo: il suo `UPDATE` sarebbe rifiutato dalla porta. E un `verbo_chiusura`
-dichiarato su una tabella senza porta non si usa.
+* **Un verbo dichiarato** in `verbo_chiusura` si usa **sempre**: la funzione non scrive lo stato,
+  chiama il verbo, e il conteggio è quello che il verbo restituisce. È la strada di tutti i
+  bersagli di oggi, testate sotto la porta del modello del documento
+  (`script.trgfn_doc_stato_solo_dal_verbo`).
+* **Una testata sotto la porta senza verbo** è una configurazione non valida: un `UPDATE` diretto
+  sarebbe rifiutato dalla porta, e la funzione lo dice prima di provarci.
+* **Senza porta e senza verbo**: un `UPDATE` della colonna di stato dallo stato attivo a quello
+  chiuso, sulle righe scadute. Con `tipo_stato = FK` i due codici si traducono prima nei loro id,
+  nella tabella di vocabolario dichiarata.
 
 Gli identificatori e i valori del registro entrano nello SQL dinamico sempre quotati, anche se il
 registro lo scrive solo il seed.
@@ -69,9 +70,10 @@ registro lo scrive solo il seed.
 
 ### ⛔ Una riga di configurazione rotta ferma il giro
 
-Prima di lavorare una riga la funzione controlla che esistano la tabella, la colonna di stato e
-quella della data; per `FK` anche la tabella di vocabolario e i due codici; per una testata sotto
-la porta, che il verbo sia dichiarato e sia una funzione viva senza argomenti. Qualunque mancanza
+Prima di lavorare una riga la funzione controlla che il bersaglio sia di classe `DOMINIO`, che
+esistano la tabella, la colonna di stato e quella della data; che un verbo dichiarato sia una
+funzione viva senza argomenti, e che una testata sotto la porta un verbo ce l'abbia; per `FK`
+anche la tabella di vocabolario e i due codici. Qualunque mancanza
 solleva `E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA`, e il motivo nel contesto dice quale.
 
 Il fallimento non si isola per riga: il giro si ferma e la transazione si annulla, comprese le
@@ -101,23 +103,25 @@ nessuno se ne accorgerebbe se non contando le righe.
 
 ---
 
-### `p_classe`: un filtro che oggi nessuno passa
+### ⛔ Solo bersagli `DOMINIO`
 
-Con una classe, la funzione lavora solo i bersagli di quella classe; senza (il default), lavora
-tutti i bersagli attivi. L'handler della coda chiama senza argomenti.
+La funzione lavora tutti i bersagli attivi del registro, e li lavora con l'identità e la row level
+security dell'azienda per cui gira: è l'esecutore giusto solo per righe che hanno un padrone. Per
+questo il registro ammette solo bersagli `DOMINIO`, e la funzione rifiuta comunque un bersaglio di
+un'altra classe (motivo `classe_senza_esecutore`), come difesa se il CHECK del registro mancasse.
 
-⚠️ Il filtro non è il cancello: il cancello è il `NOT NULL` su
-`automazione_chiusura_scadenze.classe`, che obbliga ogni riga a dichiarare la propria natura. Oggi
-tutti i bersagli sono `DOMINIO`, quindi lavorarli tutti e lavorare i `DOMINIO` è la stessa cosa.
+Un bersaglio di `MANUTENZIONE` o di `AMMINISTRAZIONE` chiede un esecutore diverso, che lavori una
+volta sola con un'identità tecnica: non c'è, e va sviluppato prima di aprirgli il registro.
 
 ---
 
 ### Codici errore
 
 * `E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA` — una riga attiva del registro non è applicabile:
-  tabella, colonna o tabella di vocabolario inesistente, codice attivo o chiuso non trovato, testata
-  sotto la porta senza verbo o con un verbo che non è una funzione viva senza argomenti, tipo di
-  stato non gestito. Il contesto porta l'id della riga, la tabella bersaglio e il motivo.
+  bersaglio di una classe senza esecutore (`classe_senza_esecutore`), tabella, colonna o tabella di
+  vocabolario inesistente, codice attivo o chiuso non trovato, verbo dichiarato che non è una
+  funzione viva senza argomenti, testata sotto la porta senza verbo (`porta_senza_verbo_di_chiusura`),
+  tipo di stato non gestito. Il contesto porta l'id della riga, la tabella bersaglio e il motivo.
 
 ---
 
@@ -127,8 +131,10 @@ tutti i bersagli sono `DOMINIO`, quindi lavorarli tutti e lavorare i `DOMINIO` �
   listino e contratto, l'idempotenza, i rifiuti per tabella, colonna o codice inesistenti, la
   testata sotto la porta senza verbo, il verbo che non esiste. ⚠️ Il ramo `UPDATE` diretto non ha
   un bersaglio configurato: lo attraversano solo i controlli preliminari.
-* `db/pgtap/dbops/test-chiusura-scadenze-classe.sql` — la chiamata senza argomenti, e con una
-  classe senza bersagli attivi non lavora niente.
+* `db/pgtap/dbops/test-chiusura-scadenze-classe.sql` — una sola firma, senza argomenti, e la
+  chiamata funziona; un bersaglio non `DOMINIO` (col CHECK tolto nella transazione) è rifiutato;
+  un verbo dichiarato si usa anche con `tipo_stato = VARCHAR` e l'`UPDATE` diretto non gira; una
+  testata `VARCHAR` sotto la porta senza verbo è rifiutata.
 * `db/pgtap/dbops/test-chiusura-scadenze-audit-v1.sql` — un giro scrive una riga di audit `OK`
   con il riepilogo restituito.
 * `db/pgtap/dbops/test-fn-accoda-chiusura-scadenze.sql` — la sveglia che porta qui.
@@ -149,6 +155,9 @@ tutti i bersagli sono `DOMINIO`, quindi lavorarli tutti e lavorare i `DOMINIO` �
   contratto.
 * 2026-11-03 — l'audit si scrive con status `OK`: fino ad allora era `INFO`, fuori dal vincolo, e
   non si è mai scritto (`brief-db-revisione-maintenance` R5).
+* 2026-11-08 — `p_classe` esce, e la firma resta senza argomenti: il registro ammette solo
+  `DOMINIO`. Porta e verbo si valutano per ogni `tipo_stato`: prima la porta si guardava solo con
+  `FK`, e una testata `VARCHAR` sotto la porta finiva sull'`UPDATE` diretto.
 
 ---
 

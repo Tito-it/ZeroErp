@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Vista `dbops.vw_emittenti_non_serviti`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -58,12 +58,13 @@ la risposta giusta: dice **quali** aziende sono scoperte, non solo che manca qua
 
 | Entra | Non entra |
 | --- | --- |
-| i processi di classe `DOMINIO`, attivi e senza data di obsolescenza | i processi di manutenzione e di amministrazione |
+| i processi di classe `DOMINIO` vivi: ritiro non raggiunto (`script.fn_e_obsoleto`) | i processi di manutenzione e di amministrazione, e quelli col ritiro raggiunto |
 | i canali `PGAGENT` e `COMMAND`, e `CODA_AUTOMATICA`: i lavori di coda che nessuna persona accoda | il canale `CODA`: quei lavori girano con l'identità dell'operatore che li accoda |
 | le aziende emittenti attive | le aziende disattivate: non vanno servite, e terrebbero la vista rossa per sempre |
 
-⚠️ Un processo con una data di obsolescenza **nel futuro**, cioè un ritiro programmato, è già
-fuori dalla vista, anche se finché quella data non arriva continua a girare.
+⚠️ Un processo con una data di ritiro **nel futuro**, cioè un ritiro programmato, resta nella
+vista fino a quel giorno: finché la data non arriva continua a girare, e un'azienda scoperta resta
+scoperta.
 
 ⚠️ Conta solo l'identità attiva del processo (`processi_identita.attivo`), non lo stato
 dell'utente nel backend: un utente tecnico disattivato dall'applicazione serve ancora l'azienda,

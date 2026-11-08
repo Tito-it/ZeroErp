@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Trigger function `dbops.trgfn_tx_id_managed`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -48,17 +48,17 @@ La normalizzazione della stringa vuota sta prima dell'uscita, ed è un ordine vi
 
 ### Quando la riga non ha `tx_id`
 
-1. **Il bypass.** Si legge `tx_id_bypass_enabled` in `config.parameters`; se non è attivo, si
-   legge l'override di sessione `myapp.bypass_tx_id_check`. Con il bypass attivo nessun id si
+1. **Il bypass.** Si legge `tx_id_bypass_enabled` in `config.parameters`; se non accende il
+   bypass, si legge sempre l'override di sessione `myapp.bypass_tx_id_check`. Con il bypass attivo nessun id si
    genera né si verifica: vale quello della sessione, o la sentinella nulla.
 2. **L'id della sessione.** Se il GUC `dbops.tx_id` è pubblicato, deve esistere in
    `dbops.transaction_ids`: se c'è si usa.
 3. **Nessun id in sessione.** Lo chiede a `dbops.fn_get_or_create_session_tx_id`, che lo genera e
    lo registra fuori transazione, o restituisce la sentinella se il canale non c'è.
 
-⚠️ Se il parametro `tx_id_bypass_enabled` manca dalla tabella dei parametri, la funzione registra
-`E_ERRORE_PARAMETRI_TABELLA` senza sollevare, ma il bypass resta **indefinito**, non spento: in
-quel caso anche l'override di sessione viene ignorato, e il bypass non scatta.
+⚠️ Se la riga `tx_id_bypass_enabled` manca dalla tabella dei parametri, il bypass vale **spento**:
+la funzione scrive l'avviso `W_TXID_BYPASS_PARAMETRO_ASSENTE` nel log, non ferma la scrittura, e
+l'override di sessione si legge comunque.
 
 ---
 
@@ -79,7 +79,8 @@ non la sentinella. Lo stesso vale con il bypass: se il GUC è pubblicato, vince 
 
 * `E_SQL_READ_TABLE` — la lettura di `config.parameters` fallisce (per esempio per permessi): è
   bloccante, e la scrittura della riga si ferma.
-* `E_ERRORE_PARAMETRI_TABELLA` — il parametro del bypass non c'è: registrato, non sollevato.
+* `W_TXID_BYPASS_PARAMETRO_ASSENTE` — il parametro del bypass non c'è: il bypass vale spento;
+  registrato, non sollevato.
 * `W_TXID_NOT_REGISTERED` — l'id pubblicato nella sessione non è nel registro: registrato, non
   sollevato.
 * `E_TXID_GENERATION` — la generazione dell'id fallisce con un errore: è bloccante.
@@ -92,6 +93,10 @@ non la sentinella. Lo stesso vale con il bypass: se il GUC è pubblicato, vince 
   riesce con la sentinella; un GUC forzato a un id non registrato non blocca la scrittura; con il
   bypass la scrittura riesce; un `tx_id` esplicito si conserva tale e quale, anche con il GUC
   avvelenato; l'uscita anticipata sta prima della lettura dei parametri.
+* `db/pgtap/dbops/test-tx-id-bypass-parametro-assente-v1.sql` — senza la riga del parametro il
+  corpo scrive `W_TXID_BYPASS_PARAMETRO_ASSENTE` (non più un codice `E_`), porta il bypass a
+  spento, e una scrittura tracciata passa col bypass di sessione; il codice è registrato come
+  avviso.
 
 ---
 
@@ -103,6 +108,9 @@ non la sentinella. Lo stesso vale con il bypass: se il GUC è pubblicato, vince 
   (`brief-db-coerenza-tx-id-non-registrato`).
 * 2026-07-24 — l'uscita anticipata sale in testa: prima la funzione faceva tutto il giro anche per
   le righe che portavano il proprio `tx_id` (`brief-db-tx-id-uscita-anticipata`).
+* 2026-11-08 — senza la riga del parametro il bypass vale spento e l'override di sessione si
+  legge: prima il bypass restava indefinito, l'override si ignorava, e si scriveva
+  `E_ERRORE_PARAMETRI_TABELLA`, un codice `E_` che non fermava niente.
 
 ---
 

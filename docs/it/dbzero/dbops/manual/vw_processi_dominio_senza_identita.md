@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Vista `dbops.vw_processi_dominio_senza_identita`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -51,7 +51,8 @@ Le righe del terzo verso non hanno processo né canale: sono identità senza pad
 
 ### ⭐ Quali processi vogliono un'identità
 
-Il primo verso guarda i processi `DOMINIO` attivi, non ritirati, sui canali `PGAGENT`, `COMMAND` e
+Il primo verso guarda i processi `DOMINIO` vivi (ritiro non raggiunto, `script.fn_e_obsoleto`: un
+ritiro programmato conta fino al suo giorno), sui canali `PGAGENT`, `COMMAND` e
 `CODA_AUTOMATICA`: quelli che nessuna persona lancia.
 
 ⚠️ `CODA_AUTOMATICA` c'è perché un lavoro di coda accodato da una **macchina** non ha un'identità
@@ -82,6 +83,8 @@ debito dichiarabile, e si conta la vista intera. La vista gira coi privilegi del
   compare, un processo `CODA` no, un'identità tecnica non rivendicata compare.
 * `db/pgtap/dbops/test-processi-coda-automatica.sql` — un processo `CODA_AUTOMATICA` senza utente
   tecnico compare.
+* `db/pgtap/dbops/test-processo-vivo-v1.sql` — un processo a ritiro programmato compare, uno a
+  ritiro raggiunto no.
 * ⚠️ Il secondo verso (un legame verso un utente senza identità tecnica `OPERATORE`) non ha un caso
   costruito.
 

@@ -1,0 +1,59 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# chk_messaggi_errore_codici_legacy_non_conforme chiama dbops.fn_codice_errore_conforme
+#   (20_code/dbops/20261109-53) al posto della regex scritta nel vincolo (D22, N5).
+#   Brief: brief-db-revisione-dbops, giro 9, blocco 9b (§24).
+#   In 90_end: da zero 00_schema gira prima della funzione. Stessa regola, quindi
+#   le righe del registro (CSV di 80_data) la rispettano gia'.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261109-57-alter-chk-codici-legacy-fn-conforme-mctit.yaml
+
+  - changeSet:
+      id: 20261109-57-alter-chk-codici-legacy-fn-conforme
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Il CHECK del registro dei codici fuori convenzione chiama dbops.fn_codice_errore_conforme. Brief: brief-db-revisione-dbops, giro 9.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc
+               WHERE oid = to_regprocedure('dbops.fn_codice_errore_conforme(text)')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.messaggi_errore_codici_legacy
+                  DROP CONSTRAINT chk_messaggi_errore_codici_legacy_non_conforme;
+
+              ALTER TABLE dbops.messaggi_errore_codici_legacy
+                  ADD CONSTRAINT chk_messaggi_errore_codici_legacy_non_conforme
+                      CHECK (NOT dbops.fn_codice_errore_conforme(codice));
+
+              COMMENT ON CONSTRAINT chk_messaggi_errore_codici_legacy_non_conforme ON dbops.messaggi_errore_codici_legacy IS
+                  'Il registro accoglie solo codici FUORI convenzione: la convenzione e'' dbops.fn_codice_errore_conforme, la stessa che legge il guardrail di CI. Un codice conforme non ha bisogno di essere registrato qui.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.messaggi_errore_codici_legacy
+                  DROP CONSTRAINT IF EXISTS chk_messaggi_errore_codici_legacy_non_conforme;
+
+              ALTER TABLE dbops.messaggi_errore_codici_legacy
+                  ADD CONSTRAINT chk_messaggi_errore_codici_legacy_non_conforme
+                      CHECK (codice !~ '^[EW]_[A-Z0-9_]+$');

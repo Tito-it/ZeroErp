@@ -1,0 +1,47 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# VALIDATE di chk_processi_accensione nella forma che guarda solo il canale
+#   (00_schema/dbops/20261109-40, NOT VALID), dopo che il CSV dei processi ha dato
+#   le quattro colonne dell'accensione alle righe ritirate (23, 24).
+#   Brief: brief-db-revisione-dbops, giro 9, blocco 9a (§24, N1).
+#
+#   Da zero il vincolo l'ha gia' convalidato 90_end/20261016-31 (il CSV arriva
+#   prima di 90_end): qui e' un no-op. Su dbdev e' la convalida vera.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261109-47-validate-chk-processi-accensione-mctit.yaml
+
+  - changeSet:
+      id: 20261109-47-validate-chk-processi-accensione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        VALIDATE CONSTRAINT chk_processi_accensione dopo il CSV dei processi (righe ritirate con
+        l'accensione). Brief: brief-db-revisione-dbops, giro 9.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_constraint
+               WHERE conrelid = 'dbops.processi'::regclass
+                 AND conname = 'chk_processi_ritiro_con_data'
+      changes:
+        - sql:
+            dbms: postgresql
+            sql: ALTER TABLE dbops.processi VALIDATE CONSTRAINT chk_processi_accensione;
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Un vincolo convalidato non torna NOT VALID: il rollback e' un
+              -- no-op dichiarato (lo toglie il rollback di 20261109-40).
+              SELECT 1;

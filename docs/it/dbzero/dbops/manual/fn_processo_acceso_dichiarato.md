@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_processo_acceso_dichiarato`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -32,7 +32,8 @@ catalogo, la scelta a mano e l'ambiente, e chiede la risposta alla regola. Non s
 
 La funzione risponde vuoto in tre casi, tutti normali per chi mostra uno stato:
 
-* il processo non ha una sveglia (canale `CODA`, o ritirato con `obsoleto_dal`);
+* il processo non ha una sveglia (canale `CODA`, o ritiro raggiunto: un ritiro programmato ha la
+  sveglia fino al suo giorno);
 * il codice non è a catalogo;
 * l'ambiente non è dichiarato e né il catalogo né una scelta a mano bastano a decidere.
 

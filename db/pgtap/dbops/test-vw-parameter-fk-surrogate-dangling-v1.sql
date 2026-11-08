@@ -6,7 +6,7 @@
 --       Migrations:
 --         20260502-09 (create-vw-parameter-fk-surrogate-dangling)
 --
--- Indice test (1..4):
+-- Indice test (1..6):
 --   1) La vista esiste in dbops.
 --   2) Il count dangling e' >= 0 (sanity, non assume DB pulito - puo'
 --      esistere dangling pre-esistente storico in parameter_overrides).
@@ -17,6 +17,10 @@
 --      dangling di esattamente +1 (delta robusto rispetto a baseline).
 --      No permessi speciali: solo UPDATE su parameter_fk_surrogate.
 --   4) Le colonne attese sono tutte presenti (schema check).
+--   5) ⭐ Un codice preso da EXACT e da un LIKE esce UNA volta (giro 9 di
+--      brief-db-revisione-dbops, D24): la regola la sceglie
+--      script.fn_parameter_fk_surrogate_regola, come la check.
+--   6) ... e col target della regola EXACT, quella che la check usa.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -36,7 +40,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(4);
+SELECT plan(6);
 
 -- ============================================================
 -- 1) Vista esiste
@@ -100,6 +104,29 @@ SELECT columns_are(
     ARRAY['source','source_id','code','value','target',
           'matched_pattern','matched_mode'],
     'Vista ha esattamente le 7 colonne attese'
+);
+
+-- ============================================================
+-- 5-6) Due regole sullo stesso codice: EXACT e LIKE
+--    Una regola LIKE esistente si riscrive (solo UPDATE, come sopra) perche'
+--    prenda anche DEFAULT_UTILITY, verso un altro target.
+-- ============================================================
+UPDATE config.parameter_fk_surrogate
+   SET code_pattern = 'DEFAULT_UTIL%'
+ WHERE code_pattern = 'DEFAULT_TIPO_SOGGETTO_DETTAGLIO_%';
+
+SELECT is(
+    (SELECT count(*) FROM dbops.vw_parameter_fk_surrogate_dangling)::int,
+    (SELECT n FROM tmp_baseline_dangling) + 1,
+    '5) un codice preso da EXACT e da LIKE esce una volta sola'
+);
+
+SELECT is(
+    (SELECT string_agg(target || ' ' || matched_mode, ',')
+       FROM dbops.vw_parameter_fk_surrogate_dangling
+      WHERE value = 'PGTAP_VALORE_INESISTENTE'),
+    'config.utilities.codice_interno EXACT',
+    '6) ... col target della regola EXACT, la stessa che usa la check'
 );
 
 SELECT * FROM finish();

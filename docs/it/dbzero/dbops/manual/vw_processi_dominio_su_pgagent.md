@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Vista `dbops.vw_processi_dominio_su_pgagent`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -22,7 +22,8 @@
 
 ### 🎯 Scopo Principale
 
-Presidio: i processi di classe `DOMINIO`, attivi e non ritirati, che **eseguono** dentro pgAgent.
+Presidio: i processi di classe `DOMINIO` vivi (ritiro non raggiunto, `script.fn_e_obsoleto`), che
+**eseguono** dentro pgAgent.
 Deve restare vuota; ogni riga dice il rimedio.
 
 ---

@@ -1,0 +1,68 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.sessioni_utente.evento: SCADENZA esce dal vincolo (Q14 ⑨).
+#   Brief: brief-db-revisione-dbops, giro 9, blocco 9b (§24).
+#   La scadenza di un token non e' un gesto: nessuno la compie, e scriverla
+#   vorrebbe dire inventare un evento da un'assenza. Chi vuole le sessioni
+#   scadute le legge dalla scadenza del token. Prima del vincolo stretto si
+#   contano le righe SCADENZA: se ce n'e' una, il changeSet si ferma e le
+#   nomina. Lettori del valore censiti: nessuno in backend e frontend.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20261109-49-alter-sessioni-utente-evento-senza-scadenza-mctit.yaml
+
+  - changeSet:
+      id: 20261109-49-alter-sessioni-utente-evento-senza-scadenza
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.sessioni_utente.evento non ammette piu' SCADENZA. Brief: brief-db-revisione-dbops, giro 9.
+      preConditions:
+        - onFail: HALT
+        - tableExists: { schemaName: dbops, tableName: sessioni_utente }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $scadenza$
+              DECLARE
+                  -- quante righe portano l'evento che esce: nessuna colonna di cui sia il riflesso
+                  v_n bigint;
+              BEGIN
+                  SELECT count(*) INTO v_n FROM dbops.sessioni_utente WHERE evento = 'SCADENZA';
+                  IF v_n > 0 THEN
+                      RAISE EXCEPTION 'dbops.sessioni_utente ha % righe con evento SCADENZA: il valore esce dal vincolo chk_sessioni_utente_evento. Decidere che cosa ne e'' prima di riprovare.', v_n;
+                  END IF;
+              END
+              $scadenza$;
+
+              ALTER TABLE dbops.sessioni_utente DROP CONSTRAINT chk_sessioni_utente_evento;
+
+              ALTER TABLE dbops.sessioni_utente
+                  ADD CONSTRAINT chk_sessioni_utente_evento CHECK (evento = ANY (ARRAY['LOGIN'::text, 'REFRESH'::text, 'LOGOUT'::text, 'REVOCA'::text, 'TOTP_DISABILITATO'::text]));
+
+              COMMENT ON TABLE dbops.sessioni_utente IS
+                  'Audit delle sessioni JWT e del secondo fattore: traccia login, refresh, logout e revoca dei token, e la disattivazione del secondo fattore. La scadenza di un token non e'' un evento: si legge dalla scadenza del token.';
+
+              COMMENT ON COLUMN dbops.sessioni_utente.evento IS
+                  'Tipo evento: LOGIN, REFRESH, LOGOUT, REVOCA (sessioni JWT, li scrive il backend); TOTP_DISABILITATO (il secondo fattore della credenziale disattivato dal server dalla sessione del migratore, lo scrive script.fn_totp_disabilita_device; jti NULL, chi e perche'' in dettaglio). Nessun evento per la scadenza: non la compie nessuno.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.sessioni_utente DROP CONSTRAINT IF EXISTS chk_sessioni_utente_evento;
+
+              ALTER TABLE dbops.sessioni_utente
+                  ADD CONSTRAINT chk_sessioni_utente_evento CHECK (evento = ANY (ARRAY['LOGIN'::text, 'REFRESH'::text, 'LOGOUT'::text, 'SCADENZA'::text, 'REVOCA'::text, 'TOTP_DISABILITATO'::text]));

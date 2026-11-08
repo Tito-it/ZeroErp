@@ -139,8 +139,8 @@ SELECT is_empty(
                                            '''([A-Z_]+)''::text', 'g')) AS canale
                 FROM pg_constraint WHERE conname = 'chk_processi_canale') c
        WHERE NOT EXISTS (SELECT 1 FROM dbops.processi p
-                          WHERE p.attivo AND p.canale = c.canale)$$,
-    '8. ogni canale dichiarato dal CHECK e'' usato da almeno un processo attivo'
+                          WHERE NOT script.fn_e_obsoleto(p.obsoleto_dal) AND p.canale = c.canale)$$,
+    '8. ogni canale dichiarato dal CHECK e'' usato da almeno un processo vivo'
 );
 
 -- I bersagli si dichiarano per la sola classe DOMINIO: e' quella su cui il
@@ -342,9 +342,9 @@ SELECT isnt_empty(
 --   nuova si aggiunge quando la si scopre, e sparisce quando una delle due
 --   righe viene ritirata. Se resta vuoto un giorno, si cancella il test.
 --
--- ⚠️ «Viva» qui significa cio' che significa per il panorama — `attivo` E
---   `obsoleto_dal IS NULL` — e non il solo `attivo`: si ritira con
---   `obsoleto_dal`, che non sveglia nessun guard di disattivazione con figlie.
+-- ⚠️ «Viva» qui significa cio' che significa per il panorama: il ritiro non
+--   raggiunto (script.fn_e_obsoleto). La data e' l'unica sede del ritiro;
+--   `attivo` non si legge.
 SELECT is_empty(
     $$WITH gemelli (uno, altro, lavoro) AS (
           VALUES ('sync_auth_user_expired_daily', 'sync_auth_user_active',
@@ -355,8 +355,7 @@ SELECT is_empty(
        WHERE (SELECT count(*)
                 FROM dbops.processi p
                WHERE p.codice IN (g.uno, g.altro)
-                 AND p.attivo
-                 AND p.obsoleto_dal IS NULL) > 1$$,
+                 AND NOT script.fn_e_obsoleto(p.obsoleto_dal)) > 1$$,
     '15. di due righe di catalogo per lo stesso lavoro ne vive al massimo una'
 );
 

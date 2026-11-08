@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Vista `dbops.vw_processi_roster`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -53,7 +53,7 @@ Una coppia compare solo se valgono tutte:
 | l'identità è attiva, con ruolo `OPERATORE` | è la veste che le regole di sicurezza riconoscono |
 | l'utente Django è attivo | l'accesso non è stato revocato |
 | l'emittente è attivo | c'è ancora un'azienda da servire |
-| il processo è attivo e non ritirato | il lavoro esiste ancora |
+| il processo è vivo: ritiro non raggiunto (`script.fn_e_obsoleto`) | il lavoro esiste ancora; un ritiro programmato lavora fino al suo giorno |
 
 ⛔ Spegnere un anello basta a fermare il processo, quindi guardarne uno solo basta a sbagliare:
 un'identità spenta a un livello solo farebbe partire un lavoro che si ferma a metà, o che gira a

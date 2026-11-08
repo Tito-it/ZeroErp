@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Vista `dbops.vw_parameter_fk_surrogate_dangling`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -14,6 +14,7 @@
 > Approfondimento funzioni:
 >
 > * [script.fn_check_parameter_fk_surrogate](/dbzero/script/funzioni/fn_check_parameter_fk_surrogate) — la verifica che la vista chiama riga per riga
+> * [script.fn_parameter_fk_surrogate_regola](/dbzero/script/funzioni/fn_parameter_fk_surrogate_regola) — la scelta della regola che governa un codice, la stessa della verifica
 > * [config.trgfn_parameters_fk_surrogate_dispatch](/dbzero/config/funzioni/trgfn_parameters_fk_surrogate_dispatch) — il guard che rifiuta un valore inesistente in scrittura
 > * [config.trgfn_parameter_overrides_fk_surrogate_dispatch](/dbzero/config/funzioni/trgfn_parameter_overrides_fk_surrogate_dispatch) — lo stesso guard sulle sovrascritture
 >
@@ -46,16 +47,15 @@ di catalogo cancellata.
 
 ### Come decide
 
-Per ogni parametro (e per ogni sovrascrittura) a cui si applica un pattern abilitato del registro, la
-vista chiede a `script.fn_check_parameter_fk_surrogate` se il valore esiste nel bersaglio. Un valore
-vuoto vale come «nessun valore» e passa. La verifica è viva: ogni interrogazione cerca nel catalogo
-di oggi.
+Per ogni parametro (e per ogni sovrascrittura) governato da una regola del registro, la vista chiede
+a `script.fn_check_parameter_fk_surrogate` se il valore esiste nel bersaglio. Un valore vuoto vale
+come «nessun valore» e passa. La verifica è viva: ogni interrogazione cerca nel catalogo di oggi.
 
-⚠️ **La vista e la verifica scelgono il pattern in due modi diversi.** La verifica usa un pattern solo,
-il più specifico (prima la corrispondenza esatta, poi il pattern più lungo); la vista abbina invece il
-parametro a **ogni** pattern che lo copre. Un parametro coperto da due pattern compare due volte, e
-`target`, `matched_pattern` e `matched_mode` di una delle due righe nominano un bersaglio che non è
-quello verificato. Il bersaglio vero è quello del pattern più specifico.
+⭐ **La vista e la verifica nominano la stessa regola.** Quale regola governa un codice lo decide una
+funzione sola, `script.fn_parameter_fk_surrogate_regola`: fra le regole abilitate che lo prendono,
+prima la corrispondenza esatta, poi il pattern più lungo. Un parametro coperto da più pattern compare
+quindi **una volta sola**, e `target`, `matched_pattern` e `matched_mode` sono quelli della regola che
+la verifica usa.
 
 ---
 
@@ -69,7 +69,8 @@ l'amministratore. Non blocca niente: è diagnostica.
 ### Test
 
 * `db/pgtap/dbops/test-vw-parameter-fk-surrogate-dangling-v1.sql` — una sovrascrittura con un valore
-  inesistente, inserita a guard spento, compare nella vista come una riga in più.
+  inesistente, inserita a guard spento, compare nella vista come una riga in più; un codice preso da
+  una regola esatta e da un `LIKE` compare una volta sola, col bersaglio della regola esatta.
 
 ---
 
@@ -77,6 +78,9 @@ l'amministratore. Non blocca niente: è diagnostica.
 
 * 2026-05-02 — nasce col registro delle chiavi esterne surrogate sui parametri, come diagnostica del
   caso che il guard non copre: la cancellazione del bersaglio.
+* 2026-11-08 — la regola la sceglie `script.fn_parameter_fk_surrogate_regola`, come la verifica:
+  prima la vista univa ogni pattern che combaciava, e un codice preso da due pattern usciva due
+  volte, una col bersaglio che la verifica non usava.
 
 ---
 

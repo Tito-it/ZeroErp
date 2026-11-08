@@ -1,0 +1,113 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.processi: il ritiro ha una sede sola, la data (D11, Q2; N1 e N2).
+#   Brief: brief-db-revisione-dbops, giro 9, blocco 9a (§24).
+#
+#   1. chk_processi_ritiro_con_data: un processo con attivo = false ha la
+#      data del ritiro. Vivo = script.fn_e_obsoleto(obsoleto_dal) falso
+#      (data vuota o non ancora arrivata); attivo non lo legge piu' nessuno.
+#   2. chk_processi_accensione guarda solo il canale (N1): un CHECK non
+#      legge la data di oggi, quindi non distingue un ritiro programmato
+#      (processo ancora vivo, con la sveglia) da uno raggiunto. Ogni
+#      processo non CODA dichiara la sua accensione, anche da ritirato.
+#      NOT VALID qui, convalidato in 90_end/20261109-47 dopo che il CSV
+#      ha dato i valori alle righe ritirate (stessa forma di
+#      20261018-10 / 90_end/20261018-14).
+#   3. COMMENT di attivo e obsoleto_dal riscritti al presente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20261109-40-alter-processi-ritiro-con-data-mctit.yaml
+
+  - changeSet:
+      id: 20261109-40-alter-processi-ritiro-con-data
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.processi: il ritiro si scrive con la data (chk_processi_ritiro_con_data);
+        chk_processi_accensione guarda solo il canale. Brief: brief-db-revisione-dbops, giro 9.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists: { schemaName: dbops, tableName: processi, columnName: accendibile_in_produzione }
+            - sqlCheck:
+                expectedResult: 0
+                sql: >
+                  SELECT count(*) FROM pg_constraint
+                   WHERE conrelid = 'dbops.processi'::regclass
+                     AND conname = 'chk_processi_ritiro_con_data'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.processi
+                  ADD CONSTRAINT chk_processi_ritiro_con_data
+                      CHECK (attivo OR obsoleto_dal IS NOT NULL);
+
+              ALTER TABLE dbops.processi
+                  DROP CONSTRAINT IF EXISTS chk_processi_accensione;
+
+              ALTER TABLE dbops.processi
+                  ADD CONSTRAINT chk_processi_accensione CHECK (
+                      CASE
+                        WHEN canale = 'CODA' THEN
+                             acceso_in_sviluppo IS NULL
+                         AND acceso_in_produzione IS NULL
+                         AND spegnibile IS NULL
+                         AND accendibile_in_produzione IS NULL
+                        ELSE
+                             acceso_in_sviluppo IS NOT NULL
+                         AND acceso_in_produzione IS NOT NULL
+                         AND spegnibile IS NOT NULL
+                         AND accendibile_in_produzione IS NOT NULL
+                         AND (spegnibile OR (acceso_in_sviluppo AND acceso_in_produzione))
+                         AND (accendibile_in_produzione OR NOT acceso_in_produzione)
+                      END
+                  ) NOT VALID;
+
+              COMMENT ON CONSTRAINT chk_processi_ritiro_con_data ON dbops.processi IS
+                  'Il ritiro di un processo si scrive con la data: attivo = false senza obsoleto_dal e'' rifiutato. La data e'' l''unica sede del ritiro, e i lettori non leggono attivo.';
+
+              COMMENT ON CONSTRAINT chk_processi_accensione ON dbops.processi IS
+                  'Un processo con una sveglia (canale diverso da CODA) dichiara le quattro colonne dell''accensione, anche da ritirato: un CHECK non sa se la data del ritiro e'' arrivata, e un processo a ritiro programmato gira fino a quel giorno. Un non spegnibile e'' acceso di default in tutti e due gli ambienti; un non accendibile in produzione vi e'' spento di default. Un processo CODA non ha accensione (tutte NULL).';
+
+              COMMENT ON COLUMN dbops.processi.obsoleto_dal IS
+                  'Il giorno da cui il processo e'' ritirato: vuota o non ancora arrivata = processo vivo, raggiunta (nel fuso aziendale) = ritirato. E'' l''unica sede del ritiro; la regola e'' script.fn_e_obsoleto, letta da sveglia (maintenance.fn_sveglia_accesa), accensione, presidi, panorama e roster. Un ritirato non ha sveglia (E_PROCESSO_SENZA_SVEGLIA) ed esce dai presidi e dal panorama; la riga resta, perche'' il giornale delle corse la riferisce.';
+
+              COMMENT ON COLUMN dbops.processi.attivo IS
+                  'Il processo e'' un riferimento valido. Non dice se il processo e'' vivo: quello lo dice obsoleto_dal, e attivo = false pretende la data del ritiro (chk_processi_ritiro_con_data).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE dbops.processi
+                  DROP CONSTRAINT IF EXISTS chk_processi_ritiro_con_data;
+              ALTER TABLE dbops.processi
+                  DROP CONSTRAINT IF EXISTS chk_processi_accensione;
+              ALTER TABLE dbops.processi
+                  ADD CONSTRAINT chk_processi_accensione CHECK (
+                      CASE
+                        WHEN canale = 'CODA' OR obsoleto_dal IS NOT NULL THEN
+                             acceso_in_sviluppo IS NULL
+                         AND acceso_in_produzione IS NULL
+                         AND spegnibile IS NULL
+                         AND accendibile_in_produzione IS NULL
+                        ELSE
+                             acceso_in_sviluppo IS NOT NULL
+                         AND acceso_in_produzione IS NOT NULL
+                         AND spegnibile IS NOT NULL
+                         AND accendibile_in_produzione IS NOT NULL
+                         AND (spegnibile OR (acceso_in_sviluppo AND acceso_in_produzione))
+                         AND (accendibile_in_produzione OR NOT acceso_in_produzione)
+                      END
+                  ) NOT VALID;

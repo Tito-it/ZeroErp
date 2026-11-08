@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.sessioni_utente`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -36,9 +36,10 @@ entrato, da dove, quante volte ha rinnovato, quando e perché un token è stato 
 * `TOTP_DISABILITATO`: il secondo fattore della persona spento. Quando lo spegne l'applicazione la
   traccia la scrive il backend; quando lo spegne **dal server** chi amministra il database, la scrive
   `script.fn_totp_disabilita_device`, senza `jti`, con da dove, chi e perché nel `dettaglio`.
-* `SCADENZA`: ammesso dal vincolo `chk_sessioni_utente_evento`, ma oggi nessuno lo scrive.
+Un evento fuori da questo elenco è respinto dal vincolo `chk_sessioni_utente_evento`.
 
-Un evento fuori da questo elenco è respinto dal vincolo.
+⭐ **La scadenza di un token non è un evento**: non la compie nessuno, e scriverla vorrebbe dire
+inventare un gesto da un'assenza. Le sessioni scadute si leggono dalla scadenza del token.
 
 ---
 
@@ -82,6 +83,7 @@ non l'hanno ancora; la stessa pulizia cancella le righe scadute.
 * 2026-03-05 — nasce, per gli eventi dei token.
 * 2026-04-09 — riceve le colonne di aggiornamento dell'audit.
 * 2026-09-29 — il vincolo ammette `TOTP_DISABILITATO` (`brief-db-secondo-fattore-totp`).
+* 2026-11-08 — il vincolo non ammette più `SCADENZA`, che nessuno scriveva.
 
 ---
 

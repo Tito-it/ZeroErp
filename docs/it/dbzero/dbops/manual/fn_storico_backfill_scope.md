@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_storico_backfill_scope`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -71,9 +71,9 @@ archivio rispondono, la versione resta senza scope e, sulla shadow armata, non s
 Il risultato riporta anche quante versioni ha aggiornato, quante restano senza origine e se ha
 messo il `NOT NULL`. L'audit si scrive solo se la funzione ha fatto qualcosa.
 
-⚠️ Il `NOT NULL` lo mette solo se l'utente corrente è **esattamente** il proprietario della shadow
-(confronto sul nome del ruolo): altrimenti le versioni si attribuiscono lo stesso e la colonna resta
-nullable.
+⚠️ Il `NOT NULL` lo mette solo se l'utente corrente ha i privilegi del proprietario della shadow
+(il proprietario, un suo membro con `INHERIT`, un superuser: il controllo è sui privilegi, non sul
+nome del ruolo): altrimenti le versioni si attribuiscono lo stesso e la colonna resta nullable.
 
 ---
 
@@ -91,6 +91,8 @@ della propria madre.
   attribuire le versioni scritte prima di quel giorno. Letto sul database di sviluppo dopo l'apply
   di quel giorno (fatto datato): tutte le versioni attribuite, e tutte le shadow con madre passate a
   `origine_schema NOT NULL`, comprese le condivise.
+* 2026-11-08 — il proprietario si riconosce dai privilegi (appartenenza con `INHERIT`, o superuser),
+  non più dal nome del ruolo.
 
 ---
 

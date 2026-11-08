@@ -1,0 +1,59 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_codice_errore_conforme(text): la convenzione E_/W_ in un posto solo (D22, N5).
+#   Brief: brief-db-revisione-dbops, giro 9, blocco 9b (§24).
+#   La chiamano il CHECK del registro dei codici fuori convenzione (riscritto in
+#   90_end/20261109-57) e il guardrail di CI.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261109-53-create-fn-codice-errore-conforme-mctit.yaml
+
+  - changeSet:
+      id: 20261109-53-create-fn-codice-errore-conforme
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_codice_errore_conforme: la convenzione dei codici d'errore in un posto solo. Brief: brief-db-revisione-dbops, giro 9.
+      preConditions:
+        - onFail: HALT
+        - not:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc
+                   WHERE oid = to_regprocedure('dbops.fn_codice_errore_conforme(text)')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION dbops.fn_codice_errore_conforme(p_codice text)
+               RETURNS boolean
+               LANGUAGE sql
+               IMMUTABLE PARALLEL SAFE
+              AS $function$
+                  -- Scopo: il codice segue la convenzione E_/W_ (lettere maiuscole, cifre,
+                  --   underscore)? La sola sede della regola.
+                  SELECT p_codice ~ '^[EW]_[A-Z0-9_]+$';
+              $function$;
+
+              GRANT EXECUTE ON FUNCTION dbops.fn_codice_errore_conforme(text) TO zeroerp_app;
+
+              COMMENT ON FUNCTION dbops.fn_codice_errore_conforme(text) IS
+                  'La convenzione dei codici d''errore: true se il codice comincia con E_ (errore, si solleva) o W_ (avviso, si scrive solo nel log) e prosegue con lettere maiuscole, cifre e underscore. NULL per un codice NULL. E'' la sola sede della regola: la chiamano il CHECK chk_messaggi_errore_codici_legacy_non_conforme (il registro dei codici fuori convenzione accetta solo codici che non la rispettano) e il guardrail di CI scripts/sql/guardrail_codice_errore_strutturato.sql. IMMUTABLE: entra in un CHECK.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_codice_errore_conforme(text);

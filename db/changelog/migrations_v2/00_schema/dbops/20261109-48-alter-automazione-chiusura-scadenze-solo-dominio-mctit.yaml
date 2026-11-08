@@ -1,0 +1,68 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.automazione_chiusura_scadenze.classe: solo DOMINIO (D38, Q5).
+#   Brief: brief-db-revisione-dbops, giro 9, blocco 9b (§24).
+#   Un bersaglio di un'altra classe chiedera' un giro suo: esecutore con
+#   identita' tecnica, chi lo lancia, CHECK riaperto.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20261109-48-alter-automazione-chiusura-scadenze-solo-dominio-mctit.yaml
+
+  - changeSet:
+      id: 20261109-48-alter-automazione-chiusura-scadenze-solo-dominio
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        automazione_chiusura_scadenze.classe ammette solo DOMINIO. Brief: brief-db-revisione-dbops, giro 9.
+      preConditions:
+        - onFail: HALT
+        - columnExists: { schemaName: dbops, tableName: automazione_chiusura_scadenze, columnName: classe }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $classe$
+              DECLARE
+                  -- l'elenco dei bersagli fuori classe, per il messaggio
+                  v_fuori text;
+              BEGIN
+                  SELECT string_agg(format('%s.%s (%s)', a.schema_tabella, a.nome_tabella, a.classe), ', ' ORDER BY a.id)
+                    INTO v_fuori
+                    FROM dbops.automazione_chiusura_scadenze a
+                   WHERE a.classe <> 'DOMINIO';
+                  IF v_fuori IS NOT NULL THEN
+                      RAISE EXCEPTION 'Bersagli della chiusura per scadenza non di classe DOMINIO: %. Il registro ammette solo DOMINIO: correggere 80_data/sql/dbops/automazione_chiusura_scadenze.csv.', v_fuori;
+                  END IF;
+              END
+              $classe$;
+
+              ALTER TABLE dbops.automazione_chiusura_scadenze
+                  DROP CONSTRAINT chk_automazione_chiusura_scadenze_classe;
+
+              ALTER TABLE dbops.automazione_chiusura_scadenze
+                  ADD CONSTRAINT chk_automazione_chiusura_scadenze_classe CHECK (classe = 'DOMINIO');
+
+              COMMENT ON COLUMN dbops.automazione_chiusura_scadenze.classe IS
+                  'La natura di QUESTO bersaglio. Il registro ammette solo DOMINIO (chk_automazione_chiusura_scadenze_classe): il chiamante, l''handler della coda dei lavori, lavora ogni bersaglio con l''identita'' e la RLS di ciascuna azienda. Un bersaglio di un''altra natura (MANUTENZIONE, AMMINISTRAZIONE) chiede un esecutore che lavori una volta con un''identita'' tecnica: finche'' non c''e'', il CHECK lo respinge e dbops.fn_apply_chiusura_scadenze lo rifiuterebbe (E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA). Sta sulla riga e non sul job: la natura del giro e'' quella dei suoi bersagli.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.automazione_chiusura_scadenze
+                  DROP CONSTRAINT IF EXISTS chk_automazione_chiusura_scadenze_classe;
+
+              ALTER TABLE dbops.automazione_chiusura_scadenze
+                  ADD CONSTRAINT chk_automazione_chiusura_scadenze_classe
+                      CHECK (((classe IS NULL) OR (classe = ANY (ARRAY['MANUTENZIONE'::text, 'AMMINISTRAZIONE'::text, 'DOMINIO'::text]))));

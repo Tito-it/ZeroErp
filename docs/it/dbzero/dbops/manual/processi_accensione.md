@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.processi_accensione`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 8 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -59,7 +59,7 @@ su ogni inserimento e modifica, nell'ordine in cui l'operatore li legge:
 
 | Cosa si chiede | Risposta |
 | --- | --- |
-| una scelta su un processo senza sveglia (canale `CODA`, o ritirato con `obsoleto_dal`) | rifiutata |
+| una scelta su un processo senza sveglia (canale `CODA`, o ritiro raggiunto) | rifiutata; un ritiro programmato la ammette fino al suo giorno |
 | spegnere un processo **non spegnibile** | rifiutato; confermarlo acceso, o rimetterlo al default, è ammesso |
 | accendere, in produzione, un processo **non accendibile in produzione** | rifiutato |
 | la stessa accensione con l'ambiente non dichiarato | rifiutata: il divieto non sa decidere |
@@ -91,7 +91,7 @@ La riga segue il processo: cancellato il processo, la sua scelta a mano se ne va
 
 ### Codici errore
 
-* `E_PROCESSO_SENZA_SVEGLIA` — il processo è `CODA` o ritirato.
+* `E_PROCESSO_SENZA_SVEGLIA` — il processo è `CODA`, o il suo ritiro è raggiunto.
 * `E_PROCESSO_NON_SPEGNIBILE` — si spegne un processo non spegnibile.
 * `E_PROCESSO_NON_ACCENDIBILE_IN_PRODUZIONE` — si accende in produzione un processo non accendibile.
 * `E_CONFIG_MANCANTE` — la stessa accensione con l'ambiente non dichiarato.

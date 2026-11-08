@@ -27,6 +27,7 @@
 >
 > * [dbops.fn_processo_acceso_su_valori](/dbzero/dbops/funzioni/fn_processo_acceso_su_valori) — la regola dell'accensione, sulle quattro colonne di questa tabella
 > * [maintenance.fn_sveglia_accesa](/dbzero/maintenance/funzioni/fn_sveglia_accesa) — il cancello che le sveglie chiedono prima di partire
+> * [script.fn_e_obsoleto](/dbzero/script/funzioni/fn_e_obsoleto) — la regola del ritiro: data raggiunta nel fuso aziendale
 > * [script.fn_crea_utente_tecnico](/dbzero/script/funzioni/fn_crea_utente_tecnico) — crea l'utente tecnico di un processo di dominio
 > * [dbops.fn_accoda_lavoro](/dbzero/dbops/funzioni/fn_accoda_lavoro) — la porta dei lavori di coda
 >
@@ -118,13 +119,19 @@ chi accoda» vale per i `CODA` di `DOMINIO`, che toccano i dati di un'azienda.
   può chiamarsi diversamente dal processo che registra (`apply_fk_index_policy` è svegliato da
   `automations_apply_fk_indexes_policy`). Due processi non possono dichiarare lo stesso job, e un
   nome vuoto non vale come «nessun job».
-* Un processo ritirato **non si cancella**: la sua storia nel giornale resta leggibile. Il ritiro
-  ha due colonne, `attivo` e `obsoleto_dal`, e non tutti i lettori guardano le stesse:
-  * il panorama, i presidi e il roster considerano solo i processi con `attivo` vero **e**
-    `obsoleto_dal` vuoto;
-  * ⚠️ la regola dell'accensione, il suo guard e la sveglia guardano solo `obsoleto_dal`: un
-    processo con `attivo` falso e `obsoleto_dal` vuoto ha ancora una sveglia, e se la sveglia lo
-    chiama parte, ma il panorama non lo mostra. Un ritiro si scrive quindi sempre con la data.
+* Un processo ritirato **non si cancella**: la sua storia nel giornale resta leggibile.
+* ⭐ **Il ritiro ha una sede sola: `obsoleto_dal`.** Un processo è **vivo** finché la data è
+  vuota o non è ancora arrivata, ed è **ritirato** dal giorno indicato (nel fuso aziendale). La
+  regola è il building block [script.fn_e_obsoleto](/dbzero/script/funzioni/fn_e_obsoleto), e la
+  leggono tutti: la sveglia, l'accensione e il suo guard, il panorama, i presidi, il roster,
+  l'utente tecnico.
+  * Un ritiro **programmato** (data futura) lascia il processo vivo fino a quel giorno: ha la
+    sveglia, ammette la scelta a mano, compare nel panorama, nel roster e nei presidi.
+  * Un processo ritirato non ha sveglia (`E_PROCESSO_SENZA_SVEGLIA`) ed esce dal panorama e dai
+    presidi.
+  * ⚠️ `attivo` dice solo se la riga è un riferimento valido, non se il processo è vivo: nessun
+    lettore la guarda per questo. `attivo` falso pretende la data del ritiro
+    (`chk_processi_ritiro_con_data`).
 * `meta` raccoglie le estensioni in JSONB.
 
 ---
@@ -178,9 +185,11 @@ ha un job non ne dichiara nessuna (`chk_processi_convergenza_ci`):
 
 ### ⭐ Acceso o spento: il default per ambiente
 
-Ogni processo **con una sveglia** (canali `PGAGENT`, `COMMAND`, `CODA_AUTOMATICA`, senza
-`obsoleto_dal`) dichiara quattro cose; i `CODA` e i ritirati le lasciano tutte vuote
-(`chk_processi_accensione`).
+Ogni processo **con una sveglia** (canali `PGAGENT`, `COMMAND`, `CODA_AUTOMATICA`) dichiara
+quattro cose, **anche da ritirato**; i `CODA` le lasciano tutte vuote (`chk_processi_accensione`).
+⚠️ Il CHECK guarda solo il canale: non sa se la data del ritiro è arrivata, e un processo a ritiro
+programmato gira fino a quel giorno. Che un ritirato non abbia sveglia lo dice la regola
+dell'accensione, non il CHECK.
 
 | Colonna | Che cosa dice |
 | --- | --- |
@@ -285,6 +294,9 @@ falsa.
   convalidato, i non spegnibili e i non accendibili a catalogo.
 * `db/pgtap/dbops/test-vw-processi-programmazione.sql` — il contratto di liveness letto dal
   panorama.
+* `db/pgtap/dbops/test-processo-vivo-v1.sql` — il ritiro con la data: `attivo` falso senza data
+  rifiutato, un ritiro programmato vivo per la sveglia, la scelta a mano, il panorama e i presidi,
+  un ritiro raggiunto senza sveglia e fuori; i lettori chiamano `script.fn_e_obsoleto`.
 
 ---
 
@@ -312,6 +324,10 @@ falsa.
 * 2026-11-08 — perde `tx_id`, `data_update`, `user_update` e i due trigger montati a mano che li
   scrivevano: la tabella la scrive solo la migrazione, dal CSV, e le colonne direbbero sempre «il
   migratore» (regola dello scrittore, `automazione-db.md` §1.1; `brief-db-revisione-dbops`, giro 7-bis).
+* 2026-11-08 — il ritiro passa alla sola `obsoleto_dal`, letta con `script.fn_e_obsoleto`. Prima panorama, presidi e roster leggevano `attivo` e la
+  data scritta, l'accensione solo la data scritta: un ritiro programmato spariva dai presidi il
+  giorno in cui si scriveva. Nasce `chk_processi_ritiro_con_data`; `chk_processi_accensione` smette
+  di esentare i ritirati.
 
 ---
 
